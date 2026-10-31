@@ -917,6 +917,14 @@
   text-align: left;
 }
 
+/* Keep the explicit outside-workspace prefix before the filename, even when
+   the normal path row uses RTL to preserve its basename on overflow. */
+.review-change-card-path[data-outside-path],
+.turn-changes-path[data-outside-path] {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .review-change-card-header:hover .review-change-card-path {
   color: var(--ds-text-primary);
 }

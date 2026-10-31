@@ -407,7 +407,8 @@ visualization lives as long as its session:
 - **Permissions.** `Write`/`Edit` inside the root auto-allow without a card,
   under the same conditions as scratch. Plan and Goal expose no Write/Edit, so
   contract modes cannot write here. Results carry `root: "visualization"`, are
-  not recorded as artifacts, and are not review-snapshotted.
+  not recorded as artifacts. Successful Write/Edit operations retain bounded
+  review evidence without granting rollback access outside the workspace.
 - **Lifecycle.** Created lazily on the first write. Deleted with
   `session.delete`. The startup sweep removes only safe session directories
   whose session no longer exists; it never expires live cards by age or
@@ -439,9 +440,10 @@ visualization lives as long as its session:
 
 ## 4c. Message-owned review snapshots and rollback
 
-`Write` and `Edit` are the structured review boundary. For a successful
-workspace-root mutation, host-core captures the previous file before execution
-and adds bounded review evidence to the tool result:
+`Write` and `Edit` are the structured review boundary, regardless of whether
+their approved target is in the workspace, scratch, visualization, or external
+filesystem. After normal tool approval, host-core captures the previous file
+before execution and adds bounded review evidence only on tool success:
 
 ```ts
 type ReviewChange = {
@@ -463,8 +465,11 @@ type ReviewChange = {
 
 - The renderer persists and displays this record with the tool message; it
   does not recompute Review from Git, `HEAD`, or the current dirty tree.
-- Scratch-root, failed, denied, and unresolvable writes have no `review`
-  record. Binary or oversized content may omit hunks and be non-reversible.
+- Failed, denied, sensitive, and unresolvable writes have no `review` record.
+  Bash and external applications are not capture sources. Workspace paths remain
+  relative; other targets retain absolute identity and display as `.../basename`.
+  Binary or oversized content may omit hunks. Non-workspace snapshots are
+  readable evidence, not persistent path grants, and are non-reversible.
 - Rollback is host-owned and hash-guarded. It restores the captured previous
   bytes, or removes a newly-created file, only when the current content still
   equals the post-tool hash. A later edit returns `conflict` without touching

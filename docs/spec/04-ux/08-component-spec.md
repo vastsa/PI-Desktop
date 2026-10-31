@@ -4603,3 +4603,57 @@ Input, selection, submission and dismissal semantics remain unchanged.
 Project-delete descriptions and plugin dialog headings/outcomes also wrap long
 project or plugin names instead of overflowing their existing widths. Project
 instructions, memory and OAuth dialogs retain their existing bounded layouts.
+
+## Round review reader
+
+Local Review defaults to Last round (the latest modified user round). Its
+scope dropdown also offers History, which reveals a separate user-round selector row,
+independent of the chat's loaded message window. Rounds without changes do not
+replace Latest. Main and delegated Write/Edit evidence share a file list; actual
+execution roots distinguish identically named files. The file header opens all
+of that file's recorded operations in order, without claiming a net diff.
+
+Expanded file content has no fixed-height inner viewport or vertical scrollbar.
+The outer Review scroll owns vertical travel; the current file header sticks
+below the toolbar within its file section. It is not reordered. A borderless ellipsis button after the summary totals opens a menu containing
+only Word wrap and Context lines. Hovering Context lines opens a secondary
+menu with 1/3/5 (first-use default 3); the choice is profile-wide, remembered
+across sessions, panel reopening and application restarts. Invalid or missing
+preferences use 3, and unavailable storage never blocks the current selection.
+No context selector is shown in the main toolbar.
+Toggle checks appear on the right. History options show only date and time in
+a compact selector with reserved arrow space. File headings have no permanent
+button fill or border; execution roots are not rendered as extra diff rows.
+A separate file ellipsis offers Open internally (disabled without the loaded
+File Manager view; never auto-enables it), Open externally (OS default app),
+and Open folder (system file manager, revealing the current file).
+All three resolve the current exact file through session-aware authorized roots, not
+a historical export or a same-named fallback. Stale session/project results are
+discarded; lookup/open failures are visible without changing stored evidence.
+Absolute and outside-root relative path labels use `.../basename`; full paths
+remain in the title and stored evidence. Native review captures successful
+approved Write/Edit mutations inside and outside the workspace, never Bash or
+external-application changes. Outside snapshots do not grant rollback or general filesystem permissions.
+Their file menu omits internal open and offers only external open and folder
+reveal through explicit snapshot-bound user actions (ADR 0338). Other file-open
+surfaces retain their existing authorization.
+
+Both scope and historical round selectors reuse the shared native Select.
+Review-only CSS opts into Chromium's customizable native picker: its base follows
+the sidebar color, with a contrasting sidebar-derived selected fill (no system
+blue). Only the first option's upper and last option's lower corners are rounded;
+interior edges are square, including when an interior row is selected or hovered.
+A single option has all four outer corners. The scope trigger is 24px high; the
+round field stays 28px high. Both vertically center their text and arrow. Round
+labels show date/time only with reserved arrow space. Native keyboard selection,
+Escape dismissal and focus remain browser-owned. Shared primitives and the AI
+Command shell selector are unchanged.
+Only file action menus opt into compact density. Recorded operations have no
+numbered title or dividing rule. One footer per file copies all its recorded
+hunks or requests a Host-preflighted file rollback; chat's inline actions remain
+unchanged. The copied sequence is not represented as a net diff.
+Diff rows show old/new line numbers, and Word wrap toggles wrapping without
+introducing nested vertical scrolling. Unsupported
+historical context has an explicit explanation and retains recorded evidence.
+Remote Review retains its existing presentation. Chat inline review rows retain
+their default layout and hash-guarded rollback; no Git or model behavior changes.

@@ -1,3 +1,5 @@
+import type { UiMessage } from "./messages.js";
+
 /** Shared public types grouped by the owning application domain. */
 // --- Work panel (review / browser / files / plugin views) ---
 
@@ -26,6 +28,7 @@ export type ReviewChange = {
   version: 1;
   snapshotId: string;
   messageId: string;
+  /** Relative inside the execution workspace; absolute for other approved roots. */
   path: string;
   operation: ReviewChangeOperation;
   status: ReviewChangeStatus;
@@ -36,6 +39,28 @@ export type ReviewChange = {
   binary?: boolean;
   truncated?: boolean;
   reversible: boolean;
+  /** Host-resolved execution root; never a renderer authorization grant. */
+  root?: string;
+};
+
+export type ReviewContextLines = 1 | 3 | 5;
+export type ReviewTurn = {
+  id: string;
+  userMessageId: string;
+  createdAt: string;
+  title: string;
+  changeCount: number;
+};
+export type ReviewTurnsPage = { turns: ReviewTurn[]; nextBefore?: number };
+export type ReviewHistoryChange = { message: UiMessage; root?: string };
+export type ReviewChangesPage = {
+  turnId: string | null;
+  changes: ReviewHistoryChange[];
+  nextOffset?: number;
+};
+export type ReviewContextResult = {
+  hunks: DiffHunk[];
+  unavailable?: "legacy" | "binary" | "tooLarge";
 };
 
 export type ReviewRollbackStatus =
@@ -49,6 +74,11 @@ export type ReviewRollbackResult = {
   snapshotId: string;
   messageId?: string;
   path?: string;
+};
+
+export type ReviewFileRollbackResult = {
+  status: ReviewRollbackStatus;
+  changes: ReviewRollbackResult[];
 };
 
 export type DiffFileStatus =

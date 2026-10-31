@@ -1521,3 +1521,37 @@ clients never supply authoritative identities. A changed workspace binding
 reports TOOL_CONTEXT_CHANGED; an identity/address change fails before writing.
 Close/expiry cannot release a running disk task; no failed/uncertain write is
 automatically replayed. See the Host file admission ADR for lifecycle and limits.
+
+## Round review reader
+
+- `review.turns({sessionId, before?, limit?})` returns `turns` (newest user round
+  first, each with `id`, `userMessageId`, `createdAt`, `title`, `changeCount`) and
+  optional `nextBefore`. Only rounds with valid successful Write/Edit review
+  evidence are listed, including approved targets outside the workspace.
+  Source `details.root` is preserved; workspace-relative and non-workspace
+  absolute paths retain distinct identities. Limit is bounded to 100; title is a short excerpt.
+- `review.changes({sessionId, turnId?, snapshotId?, offset?, limit?})` returns
+  `turnId`, `changes: [{message, root?}]`, and optional `nextOffset`. Without a
+  selector it resolves the latest modified user round; a snapshot selector locates
+  its owning round, or returns null when absent. Transport omits unrelated tool
+  arguments and result bodies. Oversized previews are explicitly truncated, never
+  silently dropped. Parent Task ancestry and durable message-turn ownership beat
+  arrival order. Duplicate snapshots are emitted once.
+- `review.context({sessionId, snapshotId, context})` accepts only 1, 3 or 5
+  and returns `hunks`, optionally `unavailable: legacy | binary | tooLarge`.
+  Content comes only from bounded immutable context hunks, not current workspace files.
+  Normal containment, session ownership and remote-workspace capability rules apply.
+
+These reads do not replace the chat transcript window or alter execution state.
+
+`review.fileTarget({sessionId, snapshotId})` authenticates a persisted native
+snapshot in the session transcript and returns its exact existing regular file
+path. Replaced symlinks and sensitive targets are rejected. It is used only by
+Main's explicit reviewed-file open/reveal action; it is not a directory grant.
+`review.rollbackFile({sessionId, snapshotId})` selects the complete same-file
+snapshot chain in the anchor's round, returning `{status, changes}`. All active
+links and the current file are checked before one restoration; conflicts leave
+both content and states untouched. Success persists each affected review state.
+The old `review.rollback` contract remains unchanged. Both rollback methods
+participate in Host file-resource exclusion and re-resolve the session root after
+admission. Both new operations reject remote workspaces. See [ADR 0338](../../adr/0338-explicit-reviewed-file-actions.md).

@@ -26,10 +26,12 @@ that produced it rather than to a mutable repository snapshot.
 
 ## Decision
 
-1. Before a workspace `Write` or `Edit`, host-core captures the previous file
-   bytes in a session-scoped snapshot outside the workspace. After a successful
-   tool, it writes a bounded `details.review` record into the tool result. The
-   record contains the snapshot id, message/tool id, relative path, operation,
+1. After normal path authorization, before any `Write` or `Edit`, host-core
+   captures the previous file bytes in a session-scoped snapshot outside the
+   workspace. Successful workspace, scratch, visualization, and approved external
+   mutations write bounded `details.review` evidence into the tool result. The
+   record contains snapshot/message ids, a workspace-relative or otherwise
+   absolute path, operation,
    added/modified/deleted status, addition/deletion counts, expandable hunks,
    active/rolled-back state, and whether rollback is reversible.
 2. The renderer derives `ReviewChangeCard` and the Review panel's chronological
@@ -48,9 +50,10 @@ that produced it rather than to a mutable repository snapshot.
    Session deletion removes it; startup removes directories for missing
    sessions. Forked transcripts retain visible diff evidence but mark rollback
    unavailable because the source snapshot belongs to another session.
-5. Scratch-root writes, failed tools, and tools without a structured workspace
-   path do not create review records. Large or binary files may still show
-   status/count metadata while omitting hunks and rollback when the bounded
+5. Failed, denied, sensitive, or unresolvable operations do not create review
+   records. Non-workspace snapshots are readable evidence, not persistent path
+   grants, so they are non-reversible; existing file-open authorization remains
+   unchanged. Large or binary files may omit hunks and rollback when the bounded
    previous content cannot be retained.
 
 ## Consequences
@@ -71,3 +74,18 @@ that produced it rather than to a mutable repository snapshot.
   and the patch would be lost on restart or session reload.
 - **Rollback unconditionally:** it could overwrite a user's later edit or an
   external change, so the post-tool hash guard is mandatory.
+
+## Round review reader amendment
+
+The native Review panel additionally groups persisted changes by user conversation
+round and execution root/path. Latest means the newest user round with recorded
+changes, not the most recently arriving tool result. Delegate ancestry and the
+Host message-turn index preserve ownership of late results. This is a read
+projection, not a second capture store or a change to model context.
+
+New snapshots retain bounded 1/3/5-line context hunks next to the existing
+`before` rollback snapshot and optional execution-root metadata. `review.context`
+reads these immutable hunks only; no full after-image cache is created. Legacy records retain their recorded hunks and explicitly
+report unavailable expanded context. The root is provenance, not permission;
+rollback cannot use it to write into a different checkout. Existing hash guards,
+session cleanup and preview computation budgets remain in force.

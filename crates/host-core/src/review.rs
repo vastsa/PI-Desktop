@@ -16,6 +16,14 @@ use uuid::Uuid;
 
 use crate::workspace::{self, ContainedRoots, ToolRoot};
 
+mod context;
+#[cfg(test)]
+mod context_tests;
+pub(crate) mod file_actions;
+pub(crate) mod query;
+#[cfg(test)]
+mod trim_tests;
+
 const REVIEW_DIR: &str = "review-changes";
 const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_DIFF_BYTES: u64 = 512 * 1024;
@@ -68,15 +76,17 @@ pub struct ReviewChange {
     pub snapshot_id: String,
     pub message_id: String,
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
     pub operation: ReviewChangeOperation,
     pub status: ReviewChangeStatus,
     pub state: ReviewChangeState,
     pub additions: usize,
     pub deletions: usize,
     pub hunks: Vec<ReviewDiffHunk>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub binary: bool,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub truncated: bool,
     pub reversible: bool,
 }
@@ -97,6 +107,12 @@ struct SnapshotMeta {
     session_id: String,
     message_id: String,
     path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    root: Option<String>,
+    #[serde(default)]
+    context_saved: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context_unavailable: Option<String>,
     operation: ReviewChangeOperation,
     before_exists: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +133,8 @@ pub struct PendingChange {
     message_id: String,
     snapshot_id: String,
     path: String,
+    root: String,
+    within_workspace: bool,
     operation: ReviewChangeOperation,
     before_exists: bool,
     before_hash: Option<String>,
@@ -220,6 +238,7 @@ pub fn prepare_change(
     roots: &ContainedRoots,
     tool_name: &str,
     args: &Value,
+    allow_external_paths: bool,
 ) -> Result<Option<PendingChange>> {
     let Some(operation) = tool_operation(tool_name) else {
         return Ok(None);
@@ -230,10 +249,20 @@ pub fn prepare_change(
     let Some(input) = args.get("path").and_then(Value::as_str) else {
         return Ok(None);
     };
-    let Ok((resolved, root_kind)) = workspace::resolve_tool_path(root, roots, input) else {
+    // Execution lazily creates a safe visualization root before resolving its
+    // target. Do the same after authorization so the first mutation is captured,
+    // not only later edits after that root already exists.
+    if let Some(claimed) = roots.lexical_root(input) {
+        if claimed.kind == ToolRoot::Visualization && claimed.allows_implicit_access() {
+            crate::visualizations::ensure_session_root(&claimed.path)?;
+        }
+    }
+    let Ok((resolved, root_kind)) =
+        workspace::resolve_tool_path_with_external(root, roots, input, allow_external_paths)
+    else {
         return Ok(None);
     };
-    if root_kind != ToolRoot::Workspace {
+    if crate::tools::ignore_rules::is_sensitive_path(&resolved) {
         return Ok(None);
     }
 
@@ -253,7 +282,12 @@ pub fn prepare_change(
             .as_ref()
             .is_some_and(|value| value.len() <= MAX_SNAPSHOT_BYTES)
         && fs::copy(&resolved, &before_path).is_ok();
-    let path = relative_path(root, &resolved);
+    let within_workspace = root_kind == ToolRoot::Workspace;
+    let path = if within_workspace {
+        relative_path(root, &resolved)
+    } else {
+        resolved.to_string_lossy().replace('\\', "/")
+    };
 
     Ok(Some(PendingChange {
         snapshot_dir,
@@ -263,6 +297,8 @@ pub fn prepare_change(
         message_id: message_id.to_string(),
         snapshot_id,
         path,
+        root: root.canonicalize()?.to_string_lossy().into_owned(),
+        within_workspace,
         operation,
         before_exists,
         before_hash,
@@ -285,10 +321,44 @@ fn read_preview(path: Option<&Path>, exists: bool) -> Result<Option<Vec<u8>>> {
     if !metadata.is_file() || metadata.len() > MAX_DIFF_BYTES {
         return Ok(None);
     }
-    Ok(Some(fs::read(path)?))
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(MAX_DIFF_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    Ok((bytes.len() as u64 <= MAX_DIFF_BYTES).then_some(bytes))
 }
 
 fn diff_ops(before: &[String], after: &[String]) -> Option<Vec<DiffOp>> {
+    let prefix = before
+        .iter()
+        .zip(after)
+        .take_while(|(old, new)| old == new)
+        .count();
+    let suffix = before[prefix..]
+        .iter()
+        .rev()
+        .zip(after[prefix..].iter().rev())
+        .take_while(|(old, new)| old == new)
+        .count();
+    // Unchanged edges are linear work, not part of the quadratic LCS budget.
+    // Reattach them so hunk coordinates and finite context stay file-relative.
+    let middle = diff_middle(
+        &before[prefix..before.len() - suffix],
+        &after[prefix..after.len() - suffix],
+    )?;
+    let mut ops = Vec::with_capacity(prefix + middle.len() + suffix);
+    ops.extend(before[..prefix].iter().cloned().map(DiffOp::Equal));
+    ops.extend(middle);
+    ops.extend(
+        before[before.len() - suffix..]
+            .iter()
+            .cloned()
+            .map(DiffOp::Equal),
+    );
+    Some(ops)
+}
+
+fn diff_middle(before: &[String], after: &[String]) -> Option<Vec<DiffOp>> {
     if (before.len() + 1).saturating_mul(after.len() + 1) > MAX_DIFF_CELLS {
         return None;
     }
@@ -346,6 +416,10 @@ fn new_line_count(op: &DiffOp) -> usize {
 }
 
 fn make_hunks(ops: &[DiffOp]) -> Vec<ReviewDiffHunk> {
+    make_hunks_with_context(ops, CONTEXT_LINES)
+}
+
+fn make_hunks_with_context(ops: &[DiffOp], context: usize) -> Vec<ReviewDiffHunk> {
     let changed: Vec<usize> = ops
         .iter()
         .enumerate()
@@ -357,8 +431,11 @@ fn make_hunks(ops: &[DiffOp]) -> Vec<ReviewDiffHunk> {
 
     let mut ranges: Vec<(usize, usize)> = Vec::new();
     for index in changed {
-        let start = index.saturating_sub(CONTEXT_LINES);
-        let end = (index + CONTEXT_LINES + 1).min(ops.len());
+        let start = index.saturating_sub(context);
+        let end = index
+            .saturating_add(context)
+            .saturating_add(1)
+            .min(ops.len());
         if let Some((_, previous_end)) = ranges.last_mut() {
             if start <= *previous_end {
                 *previous_end = (*previous_end).max(end);
@@ -437,11 +514,17 @@ fn make_preview(
 
 pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
     let after_exists = pending.resolved.is_file();
+    // Read a bounded after image only while capturing the finite context hunks.
+    let after = read_preview(Some(&pending.resolved), after_exists)?;
     let after_hash = if after_exists {
-        Some(hash_file(&pending.resolved)?)
+        Some(match &after {
+            Some(bytes) => hex::encode(Sha256::digest(bytes)),
+            None => hash_file(&pending.resolved)?,
+        })
     } else {
         None
     };
+    let context_unavailable = context::save(pending, after.as_deref())?;
     let (binary, truncated, additions, deletions, hunks) = make_preview(
         pending
             .before_copied
@@ -457,16 +540,21 @@ pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
     };
     // Existing files remain reversible even when the tool deleted them; new
     // files need to exist after the tool so rollback can remove them.
-    let reversible = if pending.before_exists {
-        pending.before_copied
-    } else {
-        after_exists
-    };
+    // Capture is not a persistent grant to write outside the current workspace.
+    let reversible = pending.within_workspace
+        && if pending.before_exists {
+            pending.before_copied
+        } else {
+            after_exists
+        };
     let meta = SnapshotMeta {
         version: 1,
         session_id: pending.session_id.clone(),
         message_id: pending.message_id.clone(),
         path: pending.path.clone(),
+        root: Some(pending.root.clone()),
+        context_saved: context_unavailable.is_none(),
+        context_unavailable,
         operation: pending.operation,
         before_exists: pending.before_exists,
         before_hash: pending.before_hash.clone(),
@@ -481,6 +569,7 @@ pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
         snapshot_id: pending.snapshot_id.clone(),
         message_id: pending.message_id.clone(),
         path: pending.path.clone(),
+        root: Some(pending.root.clone()),
         operation: pending.operation,
         status,
         state: ReviewChangeState::Active,
@@ -533,6 +622,15 @@ pub fn rollback_change(
     let Some(root) = workspace_root else {
         return Ok(unavailable());
     };
+    // Snapshot roots are evidence, never an authorization to access a path.
+    // Delegate worktrees must not be rolled back into the session checkout.
+    if meta
+        .root
+        .as_deref()
+        .is_some_and(|captured| root.canonicalize().ok().as_deref() != Some(Path::new(captured)))
+    {
+        return Ok(unavailable());
+    }
     let Ok(target) = workspace::resolve_in_workspace(root, &meta.path) else {
         return Ok(unavailable());
     };
@@ -617,9 +715,70 @@ mod tests {
             &ContainedRoots::new(),
             "Edit",
             &json!({ "path": path }),
+            false,
         )
         .unwrap()
         .unwrap()
+    }
+
+    #[test]
+    fn outside_capture_requires_approval_and_skips_sensitive_paths() {
+        let data = tempdir().unwrap();
+        let workspace = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let target = outside.path().join("file.txt");
+        fs::write(&target, "fixture before\n").unwrap();
+        let args = json!({"path": target.to_string_lossy()});
+        assert!(prepare_change(
+            data.path(),
+            "s",
+            "m",
+            Some(workspace.path()),
+            &ContainedRoots::new(),
+            "Write",
+            &args,
+            false
+        )
+        .unwrap()
+        .is_none());
+        assert!(!data.path().join(REVIEW_DIR).exists());
+        let pending = prepare_change(
+            data.path(),
+            "s",
+            "m",
+            Some(workspace.path()),
+            &ContainedRoots::new(),
+            "Write",
+            &args,
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(&pending.before_path).unwrap(),
+            "fixture before\n"
+        );
+        discard_change(pending);
+        let sensitive = outside.path().join(".env");
+        fs::write(&sensitive, "NON_SECRET_TEST_FIXTURE=1\n").unwrap();
+        assert!(prepare_change(
+            data.path(),
+            "s",
+            "sensitive",
+            Some(workspace.path()),
+            &ContainedRoots::new(),
+            "Write",
+            &json!({"path": sensitive.to_string_lossy()}),
+            true
+        )
+        .unwrap()
+        .is_none());
+        assert_eq!(
+            fs::read_dir(data.path().join(REVIEW_DIR).join("s"))
+                .unwrap()
+                .count(),
+            0
+        );
     }
 
     #[test]

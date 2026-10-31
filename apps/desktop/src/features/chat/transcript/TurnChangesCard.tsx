@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewChangeStatus, UiMessage } from "@pi-desktop/shared";
 import { cx } from "../../../components/ui";
+import { reviewFilePathLabel } from "../../../lib/review-history";
 import { requestReviewFocus } from "../../../lib/review-focus-request";
 import {
   summarizeTurnChanges,
@@ -54,7 +55,7 @@ export const TurnChangesCard = memo(function TurnChangesCard({
   const hidden = files.length - visible.length;
 
   const openReview = (snapshotIds: readonly string[], expand: boolean) => {
-    requestReviewFocus(snapshotIds, { expand });
+    requestReviewFocus(snapshotIds, { expand, sessionId: sessionId ?? undefined });
     const tab = toolWorkPanelTab("review");
     if (sessionId) openTabForSession(sessionId, tab);
     else openTab(tab);
@@ -102,7 +103,7 @@ export const TurnChangesCard = memo(function TurnChangesCard({
                 <span className="turn-changes-mark" aria-hidden>
                   {STATUS_MARKS[file.status]}
                 </span>
-                <span className="turn-changes-path">{file.path}</span>
+                <span className="turn-changes-path" data-outside-path={reviewFilePathLabel(file.path) !== file.path || undefined}>{reviewFilePathLabel(file.path)}</span>
                 <Counts additions={file.additions} deletions={file.deletions} />
               </button>
             </li>

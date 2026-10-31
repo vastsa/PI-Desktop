@@ -19378,3 +19378,69 @@ their separate platform acceptance.
   `apps/desktop/test/plugin-projects.test.mjs` covers pin-independent ordering,
   group lookup failure, missing project providers, failed/malformed lookup,
   rename identity, and stale results after Host replacement.
+
+## Round review reader
+
+Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
+
+- Preconditions: candidate JavaScript and Rust Host built; isolated temporary
+  profile/data/workspace; no provider or running user instance.
+- Command: `node scripts/e2e-review-history.mjs` with `PI_DESKTOP_HOST_BIN` pointing
+  at this candidate's Host binary. The runner writes controlled-data preview PNGs
+  under `docs/public/screenshots/review-history/`.
+- Actions: create modified, newer modified and no-edit rounds through real Host
+  RPC; add delegated evidence; select rounds, expand a multi-operation file,
+  choose Last round/History, hover the context submenu (only 1/3/5), toggle word
+  wrapping, scroll and resize, copy, attempt conflicting rollback, append a
+  late delegate result, restart Host and switch sessions. Choose one context line,
+  reopen Review, switch conversations and reload the renderer from the same
+  isolated profile; verify both the checked menu option and actual diff context
+  retain that choice. Missing/invalid/blocked storage is unit-covered by
+  `apps/desktop/test/review-preferences.test.mjs`.
+- Expected: latest skips no-edit rounds; delegates belong to their original user
+  round; all file records are accessible; old/new numbers and bounded immutable context
+  agree; no full after-image is cached; only the outer review scrolls; headers stick without toolbar overlap in
+  normal/narrow layouts; copy and conflict protection survive; history restores.
+  Toggle checks trail labels, summary dots have no circle, history options contain
+  only date/time and fit a compact arrow-safe field, file headers have no idle
+  fill, and no execution-root row appears. File menus disable internal open when
+  the plugin is absent, open its loaded view when available, and pass the resolved
+  current file and session to external open. The third action, Open folder,
+  invokes system reveal without requiring a plugin (OS launch/reveal boundaries
+  are stubbed). Non-workspace rows hide internal open; their remaining two actions
+  exercise the real reviewed-file service and Host snapshot authentication.
+  A multi-operation file has exactly one action bar and no record-number heading;
+  copy contains every operation, conflicting rollback changes nothing, and a
+  successful grouped rollback restores the content before the first operation.
+  Scope and historical round controls reuse the shared native Select with local
+  customizable-picker styles. Check light/dark palettes and live sidebar color
+  changes: selected fills follow the sidebar but differ from the list base, not
+  system blue. Only first-row upper and last-row lower corners are rounded;
+  interior edges are square, and a single row has all four corners. Verify native
+  ArrowUp/ArrowDown, Enter, Escape/focus retention and close-after-selection;
+  the scope trigger is 24px high, the round field stays 28px high, and both
+  vertically center their text and arrow. Round labels show only date/time with
+  reserved trigger-arrow space.
+  The long-file fixture has 3100 lines with local edits: unchanged head/tail do
+  not consume the LCS matrix budget, while original hunk coordinates, 1/3/5-line
+  context, copy and guarded rollback still work. Byte/line/middle-cell caps remain. Absolute/outside-root labels show `.../basename`, while the title
+  retains the full path; normal workspace-relative labels remain unchanged.
+  A real approved outside-workspace Write is included in the historical round:
+  its diff remains readable after restart, its label is `.../basename`, and it
+  grants no rollback writes. Rust RPC tests cover workspace/scratch/external
+  Write and Edit, same-named paths, approval denial, failed Edit, and no Bash capture.
+  The visualization RPC Write → Read → Edit path starts with no visualization
+  directory and checks non-reversible review evidence for both mutations.
+  Ordinary operations keep that root lazy; denied redirected writes leave no
+  review snapshots. Run the complete visualization suite, not only review-named
+  tests, to cover the pre-existing cross-platform path contract.
+  `review-file-open.test.mjs` covers missing/fuzzy paths, worktree/secondary-root
+  locations, plugin unload, stale session/project results, and visible failures.
+- Additional acceptance: Rust RPC tests cover over 100 turns/changes, dedup,
+  invalid evidence and root isolation; context tests cover legacy, binary, resource
+  budgets, additions/deletions and newline-only changes. Renderer unit tests cover
+  numbered ranges, grouping and cancelled pagination. Existing review/chat/history
+  tests remain required regression coverage.
+- Specs: ADR 0043; runtime RPC/storage specs; component spec Round review reader.
+- Milestone: maintenance. Traceability: acceptance criteria 1–9 of the approved
+  native round-review enhancement map to this scenario and the tests above.

@@ -5,7 +5,11 @@ import type {
   ReviewChange,
   ReviewChangeStatus,
   UiMessage,
+  ReviewContextLines,
+  ReviewContextResult,
 } from "@pi-desktop/shared";
+import { api } from "../lib/api";
+import { numberedReviewHunks, reviewFilePathLabel } from "../lib/review-history";
 import { reviewChangeFromMessage } from "../lib/workspace-review";
 import { useAppStore } from "../stores/app-store";
 import { useCopy } from "./Markdown";
@@ -20,7 +24,7 @@ const STATUS_MARKS: Record<ReviewChangeStatus, string> = {
   deleted: "D",
 };
 
-function reviewDiffText(change: ReviewChange): string {
+export function reviewDiffText(change: Pick<ReviewChange, "hunks">): string {
   return change.hunks
     .map((hunk) =>
       [
@@ -33,7 +37,10 @@ function reviewDiffText(change: ReviewChange): string {
     .join("\n");
 }
 
-function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }) {
+export function ReviewChangeDetails({ message, compact = false, contextLines = 3, sessionId, onChanged, numbered = false, actions = true }: {
+  message: UiMessage; compact?: boolean; contextLines?: ReviewContextLines;
+  sessionId?: string; onChanged?: () => void; numbered?: boolean; actions?: boolean;
+}) {
   const { t } = useTranslation();
   const change = reviewChangeFromMessage(message);
   const localToolsAllowed = useChatSessionCapability("canUseLocalTools");
@@ -41,34 +48,57 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
   const { copied, copy } = useCopy();
   const [rollingBack, setRollingBack] = useState(false);
 
+  const [expanded, setExpanded] = useState<{ key: string; result?: ReviewContextResult; error?: boolean } | null>(null);
+  const contextKey = `${sessionId}:${change?.snapshotId}:${contextLines}`;
+  useEffect(() => {
+    if (!sessionId || !change) return;
+    let active = true;
+    api.workspaceReviewContext({ sessionId, snapshotId: change.snapshotId, context: contextLines })
+      .then(result => { if (active) setExpanded({ key: contextKey, result }); })
+      .catch(() => { if (active) setExpanded({ key: contextKey, error: true }); });
+    return () => { active = false; };
+  }, [sessionId, change?.snapshotId, contextLines, contextKey]);
   if (!change) return null;
-
-  const diffText = reviewDiffText(change);
+  const contextResult = expanded?.key === contextKey ? expanded : null;
+  const pending = !!sessionId && !contextResult;
+  const unavailable = contextResult?.result?.unavailable;
+  const displayChange = contextResult?.result && !unavailable
+    ? { ...change, hunks: contextResult.result.hunks, truncated: false } : change;
+  const hunks = numberedReviewHunks(displayChange.hunks);
+  const diffText = reviewDiffText(displayChange);
 
   const runRollback = async () => {
     if (!localToolsAllowed || !change.reversible || change.state === "rolledBack" || rollingBack) return;
     setRollingBack(true);
     // A conflict or an unavailable snapshot is already reported through the
     // store's toast; this card owns the rollback action only.
-    await rollback(message.id, change.snapshotId);
+    const result = await rollback(message.id, change.snapshotId);
+    if (result?.status === "rolledBack" || result?.status === "alreadyRolledBack") onChanged?.();
     setRollingBack(false);
   };
 
   return (
     <div className="review-change-card-body-content">
+      {pending && <div className="review-change-note" role="status">{t("panel.review.loadingHistory")}</div>}
+      {contextResult?.error && <div className="review-change-note" role="alert">{t("panel.review.contextError")}</div>}
+      {unavailable && (contextLines !== 3 || change.truncated) && <div className="review-change-note" role="status">{t(`panel.review.contextUnavailable.${unavailable}`)}</div>}
       {change.binary ? (
         <div className="review-change-note">{t("panel.review.binary")}</div>
-      ) : change.truncated ? (
+      ) : displayChange.truncated ? (
         <div className="review-change-note">{t("panel.review.tooLarge")}</div>
-      ) : change.hunks.length > 0 ? (
+      ) : displayChange.hunks.length > 0 ? (
         <div className="review-change-diff">
-          {change.hunks.map((hunk, hunkIndex) => (
+          {hunks.map((hunk, hunkIndex) => (
             <div className="diff-hunk" key={`${hunk.header}-${hunkIndex}`}>
               <div className="diff-line hunk">
                 <span className="diff-line-text">{hunk.header}</span>
               </div>
               {hunk.lines.map((line, lineIndex) => (
                 <div className={cx("diff-line", line.type)} key={lineIndex}>
+                  {numbered && <>
+                    <span className="review-line-number" data-side="old" aria-label={line.oldLine === null ? undefined : t("panel.review.oldLine", { line: line.oldLine })}>{line.oldLine}</span>
+                    <span className="review-line-number" data-side="new" aria-label={line.newLine === null ? undefined : t("panel.review.newLine", { line: line.newLine })}>{line.newLine}</span>
+                  </>}
                   <span className="diff-line-sign" aria-hidden>
                     {line.type === "add" ? "+" : line.type === "del" ? "−" : " "}
                   </span>
@@ -82,7 +112,7 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
         <div className="review-change-note">{t("panel.review.noLineDetails")}</div>
       )}
 
-      <div className={cx("review-change-card-actions", compact && "is-compact")}>
+      {actions && <div className={cx("review-change-card-actions", compact && "is-compact")}>
         {change.state === "rolledBack" ? (
           <span className="review-change-state is-rolled-back">
             <IconCheck size={13} />
@@ -115,7 +145,7 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
           {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
           {copied ? t("chat.copied") : t("chat.copy")}
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -188,8 +218,8 @@ export const ReviewChangeCard = memo(function ReviewChangeCard({
         >
           {STATUS_MARKS[change.status]}
         </span>
-        <span className="review-change-card-path" title={change.path}>
-          {change.path}
+        <span className="review-change-card-path" data-outside-path={reviewFilePathLabel(change.path) !== change.path || undefined} title={change.path}>
+          {reviewFilePathLabel(change.path)}
         </span>
         <span
           className="review-change-card-counts diff-counts"
@@ -205,7 +235,7 @@ export const ReviewChangeCard = memo(function ReviewChangeCard({
       </button>
       {open ? (
         <div className="review-change-card-body" id={detailsId}>
-          <DiffBody message={message} compact={compact} />
+          <ReviewChangeDetails message={message} compact={compact} />
         </div>
       ) : null}
     </section>
