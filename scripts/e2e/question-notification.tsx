@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import i18n from "i18next";
@@ -46,14 +47,23 @@ function until(predicate: () => boolean, message: string): Promise<void> {
   });
 }
 function Surface() {
+  const [toastAnchor, setToastAnchor] = useState<HTMLDivElement | null>(null);
   const active = useAppStore((state) => state.activeSessionId);
   const page = useAppStore((state) => state.page);
   const pending = useAppStore((state) => state.pendingAsks);
   const request = active ? headAsk(pending, active) : undefined;
   return <>
+    <div
+      aria-hidden
+      style={{ position: "fixed", inset: 0, display: "flex", pointerEvents: "none" }}
+    >
+      <div id="toast-left-rail" style={{ flex: "0 0 0" }} />
+      <div ref={setToastAnchor} id="toast-safe-area" style={{ flex: "0 0 640px" }} />
+      <div style={{ flex: 1 }} />
+    </div>
     <output id="active-chat">{page}:{active ?? "home"}</output>
     {request && <AskToolCard key={request.requestId} request={request} />}
-    <ToastHost />
+    <ToastHost anchorElement={toastAnchor} />
   </>;
 }
 function reset(page: "chat" | "settings" = "chat", activeSessionId?: string) {
@@ -91,6 +101,18 @@ async function selected(sessionId: string) {
     Boolean(document.querySelector(".asktool-card")), `destination chat ${sessionId} and pending question`);
   assert(useAppStore.getState().activeProjectPath === `C:/fixture/${sessionId}`, "Project did not follow the chat");
   assert(useAppStore.getState().messages[0]?.content === `Transcript ${sessionId}`, "Wrong conversation transcript");
+}
+function toastFollowsSafeArea(): boolean {
+  const safeArea = document.getElementById("toast-safe-area");
+  const viewport = document.querySelector<HTMLElement>(".toast-viewport");
+  if (!safeArea || !viewport) return false;
+  const safeRect = safeArea.getBoundingClientRect();
+  const toastRect = viewport.getBoundingClientRect();
+  const safeCenter = safeRect.left + safeRect.width / 2;
+  const toastCenter = toastRect.left + toastRect.width / 2;
+  return toastRect.left >= safeRect.left - 0.5 &&
+    toastRect.right <= safeRect.right + 0.5 &&
+    Math.abs(toastCenter - safeCenter) <= 0.5;
 }
 
 declare global {
@@ -145,6 +167,15 @@ globalThis.questionNotificationProbe = async () => {
   reset();
   const request = ask("B");
   const originalToastId = useAppStore.getState().toasts[0]?.id;
+  await until(toastFollowsSafeArea, "question toast stays inside the main-content safe area");
+  const safeArea = document.getElementById("toast-safe-area");
+  assert(safeArea, "Missing toast safe area");
+  safeArea.style.flexBasis = "520px";
+  await until(toastFollowsSafeArea, "question toast follows the resized main-content safe area");
+  const leftRail = document.getElementById("toast-left-rail");
+  assert(leftRail, "Missing toast safe-area left rail");
+  leftRail.style.flexBasis = "120px";
+  await until(toastFollowsSafeArea, "question toast follows a shifted main-content safe area");
   assert(useAppStore.getState().activeSessionId === undefined, "Receipt must not navigate automatically");
   action("B").click();
   assert(useAppStore.getState().toasts.some((item) => item.id === originalToastId),
@@ -202,6 +233,9 @@ globalThis.questionNotificationProbe = async () => {
   const originalClearTimeout = browser.clearTimeout;
   const timers = new Map<number, TimerHandler>();
   let timerId = -1;
+  const activeElementDescriptor = Object.getOwnPropertyDescriptor(document, "activeElement");
+  let activeElement = document.activeElement;
+  Object.defineProperty(document, "activeElement", { configurable: true, get: () => activeElement });
   browser.setTimeout = (handler) => { timers.set(--timerId, handler); return timerId; };
   browser.clearTimeout = (id) => {
     if (id === undefined || !timers.delete(id)) originalClearTimeout(id);
@@ -210,17 +244,23 @@ globalThis.questionNotificationProbe = async () => {
     flushSync(() => useAppStore.getState().showToast("Focus timer", { sessionId: "B", sound: false }));
     assert(Array.from(timers).length === 1, "Toast should own one countdown");
     const focused = action("B");
-    flushSync(() => focused.focus());
+    // Control DOM focus events here; the OS may keep the isolated Electron
+    // window behind another app. Return and Space still use native input below.
+    activeElement = focused;
+    flushSync(() => focused.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: document.body })));
     assert(Array.from(timers).length === 0, "Focus did not pause the countdown");
     focused.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
     assert(Array.from(timers).length === 0, "Mouse leave restarted a keyboard-focused countdown");
-    flushSync(() => focused.blur());
+    activeElement = document.body;
+    flushSync(() => focused.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: document.body })));
     assert(Array.from(timers).length === 1, "Blur did not resume the countdown");
     reset();
     assert(Array.from(timers).length === 0, "Unmount left a countdown behind");
   } finally {
     browser.setTimeout = originalSetTimeout;
     browser.clearTimeout = originalClearTimeout;
+    if (activeElementDescriptor) Object.defineProperty(document, "activeElement", activeElementDescriptor);
+    else Reflect.deleteProperty(document, "activeElement");
   }
 
   reset();
@@ -255,6 +295,8 @@ globalThis.questionNotificationProbe = async () => {
     await selected("B");
     assert(unexpected.length === 0, `Unexpected IPC: ${unexpected}`);
   };
-  return { ok: true, home: true, crossProject: true, answered: true, distinctTargets: true,
-    dismiss: true, textSelection: true, focusTimer: true, ordinaryToast: true, errorFeedback: true, retry: true };
+  return { ok: true, home: true, safeArea: true, safeAreaResize: true,
+    safeAreaShift: true, crossProject: true, answered: true, distinctTargets: true,
+    dismiss: true, textSelection: true, focusTimer: true, ordinaryToast: true,
+    errorFeedback: true, retry: true };
 };

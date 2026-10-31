@@ -190,6 +190,10 @@ function useResolveChatFileRef() {
         showToast(t("chat.fileRefLookupFailed"), { variant: "error" });
         return null;
       }
+      // An isolated session's files live in its worktree, which is outside the
+      // plugin's project roots. A relative path would be resolved by the file
+      // view against the parent checkout, so the branch copy stays absolute.
+      const isolated = Boolean(session?.worktree);
       const match = result.match;
       if (!match) {
         const key = result.reason === "outside-allowed-roots"
@@ -213,7 +217,7 @@ function useResolveChatFileRef() {
       // absolute path and the file view switches to that folder (ADR 0263).
       const primary = match.projectRoot ? match.projectRoot.primary : true;
       return {
-        path: primary ? match.relativePath : match.absolutePath,
+        path: primary && !isolated ? match.relativePath : match.absolutePath,
         absolutePath: match.absolutePath,
         relativePath: match.relativePath,
         inProject: true,

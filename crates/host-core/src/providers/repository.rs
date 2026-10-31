@@ -103,6 +103,7 @@ fn hydrate_dynamic_plugin_models(db: &Database, provider: &mut ProviderPublic) -
                 thinking_levels: Vec::new(),
                 default_thinking_level: None,
                 thinking_protocol: None,
+                supports_reasoning_effort: None,
                 supports_images: model
                     .capabilities
                     .iter()
@@ -111,6 +112,7 @@ fn hydrate_dynamic_plugin_models(db: &Database, provider: &mut ProviderPublic) -
                 supports_documents: None,
                 available_for_subagents: None,
                 native_web_search: None,
+                fast_mode_allowed: None,
             }
         })
         .collect();
@@ -471,6 +473,10 @@ pub fn update_provider(
                 .collect(),
         };
         forget_missing_discovered_models(db, &input.id, &configured)?;
+        db.conn().execute(
+            "UPDATE models SET discovery_state = NULL WHERE provider_id = ?1",
+            params![input.id],
+        )?;
     }
     get_provider(db, secrets, &input.id)
 }

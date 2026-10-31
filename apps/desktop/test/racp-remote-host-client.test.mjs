@@ -52,7 +52,7 @@ test("legacy Agent remains usable but unsupported workspace calls fail before di
   try {
     await adapter.connect();
     assert.ok(Array.isArray((await adapter.client.request("session/list")).sessions));
-    for (const method of ["workspace/toolShell", "workspace/toolExecute", "workspace/toolAbort", "workspace/files"]) {
+    for (const method of ["workspace/toolShell", "workspace/toolExecute", "workspace/toolAbort", "workspace/files", "workspace/pluginFiles"]) {
       await assert.rejects(adapter.client.request(method, {}), error => error.errorCode === "HOST_VERSION_MISMATCH"
         && /upgrade/i.test(error.message));
     }

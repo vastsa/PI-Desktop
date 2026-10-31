@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-04
+- Amended: 2026-10-21
 - Deciders: PI-Desktop core
 - Related: D071, D290, E2E-053, E2E-083
 
@@ -23,9 +24,13 @@ status marker with a one-second opacity pulse instead of a text shimmer. Tool
 spinners, run-row status dots, and the assistant streaming rail keep their
 existing state feedback.
 
-All new marker motion is disabled under `prefers-reduced-motion: reduce`; the
-text and static marker remain visible so state is never conveyed by motion
-alone. No protocol, persistence, runtime, or localization contract changes.
+The Thinking indicator is the explicit exception: the collapsed/live Thinking
+label uses a whole-run `TextShimmer` with a 1.2s sweep and 220ms fade, defined by
+`turn-process-and-thinking-display` (2026-10-21). It does not move the highlight
+glyph by glyph. All marker and shimmer motion is disabled under
+`prefers-reduced-motion: reduce`; the text and static marker remain visible so
+state is never conveyed by motion alone. No protocol, persistence, runtime, or
+localization contract changes.
 
 ## Consequences
 

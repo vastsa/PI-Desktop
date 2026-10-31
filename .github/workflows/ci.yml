@@ -109,11 +109,17 @@ jobs:
       - name: Test transcript module on Windows
         run: "cargo test -p host-core --locked transcripts::"
 
+      - name: Test visualization paths and lifecycle on Windows
+        run: cargo test -p host-core --locked visualization
+
       - name: Build host-core
         run: cargo build -p host-core --locked
 
       - name: Build Host RPC helper dependency
         run: pnpm --filter @pi-desktop/shared build
+
+      - name: Test GenUI document file boundaries on Windows
+        run: node --test apps/desktop/test/gen-ui-file-safety.test.mjs
 
       - name: Run transcript cache Host RPC E2E
         run: node scripts/e2e-transcript-cache.mjs
@@ -159,8 +165,17 @@ jobs:
       - name: Build Desktop bundle
         run: pnpm --filter @pi-desktop/desktop build
 
+      - name: Build host-core
+        run: cargo build -p host-core --locked
+
+      - name: Run plugin project enumeration Host/process E2E
+        run: pnpm test:e2e:plugin-projects
+
+      - name: Run inline GenUI interaction and isolation E2E
+        run: xvfb-run --auto-servernum pnpm test:e2e:gen-ui
+
       - name: Run provider optional client certificate E2E
-        run: pnpm test:e2e:provider-client-certificate
+        run: xvfb-run --auto-servernum pnpm test:e2e:provider-client-certificate
 
       - name: Run browser capture/resize E2E
         run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-browser-capture-resize.mjs'
@@ -168,10 +183,14 @@ jobs:
       - name: Run transcript rendering and disclosure E2E
         run: xvfb-run --auto-servernum sh -c 'node scripts/e2e-transcript-render.mjs && node scripts/e2e-transcript-disclosure-anchor.mjs'
 
-      - name: Build host-core
-        run: cargo build -p host-core --locked
+      - name: Run transcript turn-completion E2E
+        run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-transcript-turn-completion.mjs'
 
       - name: Run trusted extensions E2E
         env:
           DEBUG_E2E: "1"
         run: xvfb-run --auto-servernum pnpm test:e2e:trusted-extensions
+      - name: Run MCP market owner E2E
+        run: xvfb-run --auto-servernum node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs
+      - name: Run File Manager theme E2E
+        run: xvfb-run --auto-servernum pnpm test:e2e:file-manager-theme

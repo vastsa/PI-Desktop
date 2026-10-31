@@ -20,20 +20,20 @@ Only the selected page is attached to the measured browser hole; hidden pages
 retain their WebContents and use Chromium background throttling. The browser
 partition and existing URL, permission, file-root and CDP allowlists stay intact.
 
-BrowserPreview validates the request and asks the renderer to open a new resource
-tab. Only that tab starts its navigation. Background browser.navigate records an
-intent for the session's last selected tab; before a session has a tab, its first
-tab consumes that intent once. Older load completion cannot overwrite an intent.
+BrowserPreview validates the request and asks BrowserHost to create and load a
+new resource page before its renderer tab mounts. Background browser.navigate
+runs immediately in its session's connected page. Presentation selection and
+the tool connection are independent; see [background lifecycle](browser-background-lifecycle.md).
 An empty tab has no inherited native page state. Bundled browser chrome tags
 its navigation/action requests with the owning session/tab; a delayed reply
 cannot repaint another tab. Agent-facing methods retain runtime-owned session
 identity rather than accepting these UI routing fields.
 
 Closing a tab releases its page and CDP state. Session deletion, plugin disposal,
-renderer reload, window destruction and application shutdown release the corresponding pages.
-This iteration does not automatically evict pages or persist their DOM across
-application restarts. Navigation/reload can still reset state as on a normal
-browser, and page crashes do not promise preservation of unsaved form data.
+window destruction and application shutdown release the corresponding pages.
+Renderer reload now only detaches presentation; Main retains pages and exposes
+their metadata for restoring side-panel tabs. Application restart does not
+persist arbitrary DOM, and page crashes do not promise unsaved-form recovery.
 
 ## Alternatives
 

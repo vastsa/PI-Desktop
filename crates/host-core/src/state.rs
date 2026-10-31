@@ -19,6 +19,8 @@ pub const PROTOCOL_VERSION: u32 = 11;
 pub const HOST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BASH_ABORT_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
 const MAX_BASH_ABORT_TOMBSTONES: usize = 1024;
+const TOOL_ABORT_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
+const MAX_TOOL_ABORT_TOMBSTONES: usize = 1024;
 const PLUGIN_IMPORT_RATE_WINDOW: Duration = Duration::from_secs(60);
 const PLUGIN_IMPORT_RATE_LIMIT: usize = 10;
 const PLUGIN_BATCH_IMPORT_RATE_LIMIT: usize = 5;
@@ -66,6 +68,11 @@ pub struct AppState {
     /// (session_id, tool_call_id) -> cancellation signal for an active Bash
     /// process. The signal is removed by the execution owner in all outcomes.
     pub active_bash_cancellations: HashMap<(String, String), tokio::sync::watch::Sender<bool>>,
+    /// (session_id, tool_call_id, tool_name) -> cancellation signal for
+    /// in-flight non-process tools, including permission waits and remote
+    /// workspace calls.
+    pub(crate) active_tool_cancellations:
+        HashMap<(String, String, String), tokio::sync::watch::Sender<bool>>,
     /// request_id -> (session_id, tool_call_id) for permission requests that
     /// are currently awaited by an RPC task. PermissionManager intentionally
     /// keeps its pending map private, so AppState tracks the ownership needed
@@ -75,6 +82,10 @@ pub struct AppState {
     /// separate tasks. A short-lived tombstone makes the later request start
     /// already cancelled instead of executing after Stop was acknowledged.
     pending_bash_aborts: HashMap<(String, String), Instant>,
+    /// Typed aborts that race ahead of a non-process tools.execute request.
+    /// Including the tool name prevents an old abort from cancelling a later
+    /// tool call that happens to reuse the same id for another tool.
+    pub(crate) pending_tool_aborts: HashMap<(String, String, String), Instant>,
     /// Session-scoped Read/Edit snapshot store (ADR 0087). Interior mutex so
     /// tool execution does not hold the AppState lock.
     pub hashline: crate::tools::HashlineStore,
@@ -153,8 +164,10 @@ impl AppState {
             plugin_delete_rates: HashMap::new(),
             tool_budget: ToolBudget::new(),
             active_bash_cancellations: HashMap::new(),
+            active_tool_cancellations: HashMap::new(),
             pending_permissions: HashMap::new(),
             pending_bash_aborts: HashMap::new(),
+            pending_tool_aborts: HashMap::new(),
             hashline: crate::tools::HashlineStore::new(),
         })
     }
@@ -295,12 +308,105 @@ impl AppState {
         self.pending_bash_aborts.remove(&key);
     }
 
+    fn prune_tool_abort_tombstones(&mut self) {
+        self.pending_tool_aborts
+            .retain(|_, requested_at| requested_at.elapsed() < TOOL_ABORT_TOMBSTONE_TTL);
+        while self.pending_tool_aborts.len() > MAX_TOOL_ABORT_TOMBSTONES {
+            let Some(oldest) = self
+                .pending_tool_aborts
+                .iter()
+                .min_by_key(|(_, requested_at)| **requested_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.pending_tool_aborts.remove(&oldest);
+        }
+    }
+
+    pub fn register_tool_cancellation(
+        &mut self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+    ) -> Result<tokio::sync::watch::Receiver<bool>, String> {
+        if self.shutting_down {
+            return Err("HOST_SHUTTING_DOWN".into());
+        }
+        self.prune_tool_abort_tombstones();
+        let key = (
+            session_id.to_string(),
+            tool_call_id.to_string(),
+            tool_name.to_string(),
+        );
+        if self.active_tool_cancellations.contains_key(&key) {
+            return Err("TOOL_BUSY".into());
+        }
+        let initially_aborted = self.pending_tool_aborts.remove(&key).is_some();
+        let (sender, receiver) = tokio::sync::watch::channel(initially_aborted);
+        self.active_tool_cancellations.insert(key, sender);
+        Ok(receiver)
+    }
+
+    pub fn abort_or_queue_tool(
+        &mut self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+    ) -> (bool, bool) {
+        self.prune_tool_abort_tombstones();
+        let key = (
+            session_id.to_string(),
+            tool_call_id.to_string(),
+            tool_name.to_string(),
+        );
+        let active = self
+            .active_tool_cancellations
+            .get(&key)
+            .is_some_and(|sender| sender.send(true).is_ok());
+        if active {
+            (true, false)
+        } else {
+            self.pending_tool_aborts.insert(key, Instant::now());
+            (false, true)
+        }
+    }
+
+    pub fn abort_active_tool(&mut self, session_id: &str, tool_call_id: &str) -> bool {
+        self.active_tool_cancellations
+            .iter()
+            .find(|((active_session, active_call, _), _)| {
+                active_session == session_id && active_call == tool_call_id
+            })
+            .is_some_and(|(_, sender)| sender.send(true).is_ok())
+    }
+
+    pub fn clear_tool_cancellation(
+        &mut self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+    ) {
+        let key = (
+            session_id.to_string(),
+            tool_call_id.to_string(),
+            tool_name.to_string(),
+        );
+        self.active_tool_cancellations.remove(&key);
+        self.pending_tool_aborts.remove(&key);
+    }
+
     pub fn shutdown(&mut self) {
         self.shutting_down = true;
         for sender in self.active_bash_cancellations.values() {
             let _ = sender.send(true);
         }
         self.active_bash_cancellations.clear();
+        for sender in self.active_tool_cancellations.values() {
+            let _ = sender.send(true);
+        }
+        self.active_tool_cancellations.clear();
+        self.pending_tool_aborts.clear();
         // Chat-started background tasks follow the application: signal every
         // running supervisor so its process tree is terminated and reaped.
         crate::background_tasks::stop_all_running_sync(&self.background_tasks);
@@ -344,18 +450,24 @@ mod tests {
         let mut cancellation = state
             .register_bash_cancellation("session-1", "tool-call-2")
             .unwrap();
+        let mut tool_cancellation = state
+            .register_tool_cancellation("session-1", "tool-call-4", "Write")
+            .unwrap();
 
         state.shutdown();
 
         assert!(state.pending_permissions.is_empty());
         assert!(state.active_bash_cancellations.is_empty());
         assert!(state.pending_bash_aborts.is_empty());
+        assert!(state.active_tool_cancellations.is_empty());
+        assert!(state.pending_tool_aborts.is_empty());
         assert!(state.shutting_down);
         assert!(matches!(
             state.register_bash_cancellation("session-1", "tool-call-3"),
             Err(error) if error == "HOST_SHUTTING_DOWN"
         ));
         assert!(*cancellation.borrow_and_update());
+        assert!(*tool_cancellation.borrow_and_update());
         assert_eq!(
             state.permissions.resolve(
                 &request.request_id,
@@ -363,6 +475,28 @@ mod tests {
             ),
             Err("NOT_FOUND".into())
         );
+    }
+
+    #[test]
+    fn tool_abort_tombstones_are_scoped_to_the_tool_name() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut state = AppState::open(data_dir.path()).unwrap();
+        let mut write = state
+            .register_tool_cancellation("session-1", "same-id", "Write")
+            .unwrap();
+
+        assert_eq!(
+            state.abort_or_queue_tool("session-1", "same-id", "Edit"),
+            (false, true)
+        );
+        assert!(!*write.borrow_and_update());
+        state.clear_tool_cancellation("session-1", "same-id", "Write");
+
+        let edit = state
+            .register_tool_cancellation("session-1", "same-id", "Edit")
+            .unwrap();
+        assert!(*edit.borrow());
+        assert!(state.pending_tool_aborts.is_empty());
     }
 
     #[test]

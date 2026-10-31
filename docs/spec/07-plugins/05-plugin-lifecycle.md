@@ -41,7 +41,7 @@ discovered
 
 ## 3. Lifecycle hooks
 
-**Implemented today:** the runtime (`apps/desktop/electron/main/plugin-runtime.ts`) invokes `onLoad` (when a plugin is loaded on load/enable) and `onUnload` (dispatched into the plugin process on unload/disable/reload/app quit, 5s budget — 1.5s on quit — then the process is stopped); unloading tears down the plugin's registered commands and tools. The other hooks below are declared in the API but not yet fired.
+**Implemented today:** the runtime (`apps/desktop/electron/main/plugin-runtime.ts`) invokes `onLoad` (when a plugin is loaded on load/enable) and `onUnload` (dispatched into the plugin process on unload/disable/reload/app quit, 5s budget — 1.5s on quit — then the process is stopped); unloading tears down the plugin's registered commands and tools. The other lifecycle names below are proposals, not members of the current `PluginModule` type.
 
 `onProviderOAuth` is a provider operation callback, not a lifecycle hook. The
 host invokes it only for an enabled plugin's declared OAuth provider during
@@ -59,7 +59,8 @@ unload, and timeout.
 7. `onUninstall`
 
 ### Invocation constraints
-- Hooks must be able to time out (default 5s, configurable)
+- Module evaluation plus `onLoad`: 15s; `onUnload`: 5s, shortened to 1.5s on quit.
+  These are host budgets, not manifest-configurable timeouts
 - A hook exception must not crash the host
 - If `onLoad` fails, enter `load_error` and automatically roll back the contribution points already registered
 
@@ -135,7 +136,7 @@ never be the reason the app appears to hang on quit.
 - Close panel
 - Stop resident services and disconnect MCP servers
 - Cancel any pending restart backoff
-- Call `onUnload` / `onDisable`
+- Call `onUnload`; `onDisable` is not invoked
 - Persist as disabled
 
 ## 5. Startup recovery
@@ -213,10 +214,12 @@ Fields:
 
 Before uninstall:
 1. disable + unload
-2. Call `onUninstall`
+2. No `onUninstall` callback is invoked in the current runtime
 3. Delete installed files
-4. Clean up plugin-private data (may ask the user whether to keep it)
+4. Delete plugin-private data by default; no keep-data option is implemented
 
 Default recommendation:
 - Clean up settings/data on uninstall (D016: uninstall deletes plugin data by default)
-- Provide a "keep data" advanced option (can be deferred)
+- A keep-data option is a future proposal, not a current uninstall guarantee.
+  Development source directories are not deleted; bundled plugin ids cannot be
+  uninstalled and may be disabled instead

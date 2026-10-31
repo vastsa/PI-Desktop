@@ -52,7 +52,29 @@ async function rendered() {
 }
 
 globalThis.workPanelDragProbe = async (stage) => {
-  if (stage === "overflow-end") {
+  if (stage === "active-close") {
+    await ready;
+    const longFileTab = {
+      id: "file:/workspace/very-long-folder-name/another-folder/README.md",
+      kind: "file" as const,
+      resource: "/workspace/very-long-folder-name/another-folder/README.md",
+    };
+    flushSync(() => {
+      useAppStore.setState({
+        activeSessionId: "drag-a",
+        workPanelOpen: true,
+        workPanelWidth: 244,
+        workPanelTabs: [longFileTab],
+        activeWorkPanelTabId: longFileTab.id,
+        pluginViews: [],
+      });
+      root.render(<I18nextProvider i18n={i18n}><WorkPanel containerWidth={1000} sidebarCollapsed /></I18nextProvider>);
+    });
+    await rendered();
+    const strip = element(".work-panel-tab-strip").getBoundingClientRect();
+    const close = element(".work-panel-tab-close").getBoundingClientRect();
+    assert(close.left >= strip.left && close.right <= strip.right, "active tab close button is clipped from the strip viewport");
+  } else if (stage === "overflow-end") {
     await ready;
     flushSync(() => {
       useAppStore.setState({ activeSessionId: "drag-a", workPanelWidth: 360, pluginViews: [] });

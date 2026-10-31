@@ -1,6 +1,44 @@
 import { describe, expect, it } from "vitest";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import type { AgentEventEnvelope, UiMessage } from "@pi-desktop/shared";
 import { TurnEventPipeline } from "./turn-events.js";
+
+it("keeps the host alive until a streaming checkpoint finishes during disposal", async () => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let hostDisposed = false;
+  let saved: UiMessage | undefined;
+  const pipeline = new TurnEventPipeline({
+    getHost: () => ({ async call<T>(method: string, params: unknown): Promise<T> {
+      expect(method).toBe("session.saveInflightMessage");
+      started.resolve();
+      await release.promise;
+      expect(hostDisposed).toBe(false);
+      saved = (params as { message: UiMessage }).message;
+      return {} as T;
+    } }),
+    ownership: { activeTurnId: () => "turn", isStaleTerminalEvent: () => false, finishTurn: async () => undefined },
+    emit: () => undefined,
+    log: () => undefined,
+  });
+  const message: UiMessage = {
+    id: "reply", role: "assistant", content: "Migration step completed",
+    status: "streaming", createdAt: "2026-10-27T00:00:00Z",
+  };
+  pipeline.handle({ sessionId: "session", turnId: "turn", ts: 1,
+    event: { type: "message_update", message } });
+  await started.promise;
+  const disposing = pipeline.dispose().then(() => { hostDisposed = true; });
+  try {
+    await nextTurn();
+    expect(hostDisposed).toBe(false);
+  } finally {
+    release.resolve();
+    await disposing;
+  }
+  expect(saved).toMatchObject({ id: "reply", content: message.content });
+  expect(hostDisposed).toBe(true);
+});
 
 for (const delegate of [false, true]) {
   describe(`nested tool persistence (${delegate ? "delegate" : "root"})`, () => {

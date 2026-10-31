@@ -40,7 +40,8 @@ import {
 } from "@pi-desktop/host-runtime";
 import { openableMp4Path } from "../open-attachment-video";
 import { isChatRefOutsideRoots, resolveChatFileRef } from "../chat-ref-resolve";
-import { getWorkspaceFileIndex } from "../fs-index";
+import { rebaseWorktreeRef, type WorktreeRefContext } from "../worktree-ref";
+import { getWorkspaceFileIndex, searchWorkspaceFiles } from "../fs-index";
 import {
   projectFolderPaths,
   refreshProjectGroups,
@@ -325,11 +326,10 @@ export function registerWorkspaceIpc({
             .map((path) => resolve(path)),
         ),
       ];
-      if (safeFolders.some((path) => !existsSync(path) || !statSync(path).isDirectory())) {
-        throw Object.assign(new Error("project group folders must be directories"), {
-          errorCode: ErrorCodes.INVALID_ARGUMENT,
-        });
-      }
+      // No blanket existence pre-check here: the host validates the submitted
+      // roots (folders new to the group must exist on disk) while roots the
+      // group already owns may have been renamed or unmounted externally and
+      // must stay editable so the group can be healed (#1869).
       // The promoted primary must be one of the folders this call keeps.
       const safePrimary = primary ? resolve(primary) : "";
       if (safePrimary && !safeFolders.includes(safePrimary)) {
@@ -768,26 +768,63 @@ export function registerWorkspaceIpc({
     return browserHost.getState();
   });
 
-  const requireWorkspaceRoot = async (sessionId?: string) => {
+  handle(IPC.invoke.browserGetPages, async (input: { sessionId?: string } = {}) => {
+    const sessionId = String(input.sessionId ?? "").trim();
+    if (!sessionId) return [];
+    return browserHost.getPages(sessionId);
+  });
+
+  type WorkspaceRootInfo = {
+    root: string;
+    /** Present only for an isolated session's worktree checkout. */
+    worktree?: string;
+    /** The parent checkout a worktree session's project identity points at. */
+    parent?: string;
+  };
+
+  const workspaceRootInfo = async (
+    sessionId?: string,
+  ): Promise<WorkspaceRootInfo> => {
     const owner = getHost();
     if (!owner) throw new Error("host unavailable");
     let root: string | undefined;
+    let worktree: string | undefined;
+    let parent: string | undefined;
     if (sessionId) {
       const { session } = await owner.call<{ session?: { projectPath?: string; worktree?: unknown } }>(
         "session.get", { id: sessionId, messageLimit: 1 },
       );
-      // Chat references and source reads must see the same files as the
-      // session's tools, not a same-named file in the parent checkout.
-      root = session?.worktree
-        ? (await owner.call<{ path?: string }>("worktree.location", { sessionId })).path
-        : session?.projectPath;
+      const projectPath = session?.projectPath?.trim();
+      if (session?.worktree) {
+        // Chat references and source reads must see the same files as the
+        // session's tools, not a same-named file in the parent checkout.
+        worktree =
+          (await owner.call<{ path?: string }>("worktree.location", { sessionId })).path?.trim() ||
+          undefined;
+        root = worktree;
+        // A reference captured from this checkout rebases onto the worktree
+        // (issue #1747); the opaque remote identity is never a local parent.
+        parent =
+          projectPath && !projectPath.startsWith("remote-project:")
+            ? projectPath
+            : undefined;
+      } else {
+        root = projectPath;
+      }
     } else {
       root = (await owner.call<{ workspace?: { path: string } }>("workspace.get")).workspace?.path;
     }
     if (getHost() !== owner) throw Object.assign(new Error("host replaced"), { errorCode: ErrorCodes.HOST_UNAVAILABLE });
     if (!root) throw Object.assign(new Error("workspace required"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
-    return root;
+    return {
+      root,
+      ...(worktree ? { worktree } : {}),
+      ...(parent ? { parent } : {}),
+    };
   };
+
+  const requireWorkspaceRoot = async (sessionId?: string) =>
+    (await workspaceRootInfo(sessionId)).root;
 
   handle(IPC.invoke.fsList, async (input: { path?: string; sessionId?: string } = {}) => {
     const remote = await remoteFileWorkspace(input.sessionId);
@@ -984,6 +1021,15 @@ export function registerWorkspaceIpc({
     return getWorkspaceFileIndex(root);
   });
 
+  handle(IPC.invoke.fsSearch, async (input: { sessionId?: string; query?: string } = {}) => {
+    // The remote file protocol has no search operation, so a remote session
+    // keeps answering from its truncated snapshot.
+    if (await remoteFileWorkspace(input.sessionId)) return { entries: [], truncated: true };
+    const root = await optionalWorkspaceRoot(input.sessionId);
+    if (!root) return { entries: [], truncated: false };
+    return searchWorkspaceFiles(root, String(input.query ?? ""));
+  });
+
   /**
    * Resolve a file reference from chat to a real file (D320 follow-up).
    * The renderer knows the workspace but not where a session keeps its scratch
@@ -997,11 +1043,29 @@ export function registerWorkspaceIpc({
     async (
       input: { ref?: string; sessionId?: string } = {},
     ): Promise<FsChatRefResolveResult> => {
-      const ref = String(input.ref ?? "").trim();
-      if (!ref) return { match: null };
+      const rawRef = String(input.ref ?? "").trim();
+      if (!rawRef) return { match: null };
       const remote = await remoteFileWorkspace(input.sessionId);
-      if (remote && !(await isLocalStoredFile(ref))) return await readRemoteFiles(remote, "resolve", ref) as FsChatRefResolveResult;
-      const workspaceRoot = await optionalWorkspaceRoot(input.sessionId);
+      if (remote && !(await isLocalStoredFile(rawRef))) return await readRemoteFiles(remote, "resolve", rawRef) as FsChatRefResolveResult;
+      // A reference captured from the parent checkout names the same relative
+      // file the session's worktree holds; resolve the branch copy instead of
+      // rejecting the path as outside the isolated roots (issue #1747).
+      let rootInfo: WorkspaceRootInfo | undefined;
+      try {
+        rootInfo = await workspaceRootInfo(input.sessionId);
+      } catch {
+        rootInfo = undefined;
+      }
+      const ref = await rebaseWorktreeRef(
+        rawRef,
+        rootInfo?.worktree && rootInfo.parent
+          ? ({
+              worktree: rootInfo.worktree,
+              parent: rootInfo.parent,
+            } satisfies WorktreeRefContext)
+          : null,
+      );
+      const workspaceRoot = rootInfo?.root ?? null;
       const roots = {
         project: projectRootsFor(workspaceRoot),
         scratch: await sessionScratchRoot(input.sessionId),

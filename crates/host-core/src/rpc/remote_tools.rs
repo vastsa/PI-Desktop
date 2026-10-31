@@ -122,7 +122,7 @@ pub(super) async fn execute_remote_tool(
             started,
         );
     }
-    if bash_cancellation_requested(&cancellation) {
+    if tool_cancellation_requested(&cancellation) {
         return failure(p, "TOOL_ABORTED", "tool aborted", started);
     }
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -149,7 +149,7 @@ pub(super) async fn execute_remote_tool(
         outcome = tokio::time::timeout(Duration::from_millis(timeout_ms.saturating_add(15_000)), receiver) => match outcome {
             Ok(Ok(value)) => Ok(value), _ => Err("TOOL_TIMEOUT"),
         },
-        _ = wait_for_bash_cancellation(&mut cancellation) => Err("TOOL_ABORTED"),
+        _ = wait_for_tool_cancellation(&mut cancellation) => Err("TOOL_ABORTED"),
     };
     state.lock().await.remote_execs.remove(&request_id);
     match outcome {
@@ -322,7 +322,7 @@ pub(super) async fn handle(
             .map_err(|code| rpc_err(1008, "tool already executing", &code))?;
         (Some(cancellation), st.hashline.clone(), shell)
     };
-    if bash_cancellation_requested(&cancellation) {
+    if tool_cancellation_requested(&cancellation) {
         state
             .lock()
             .await
@@ -353,10 +353,11 @@ pub(super) async fn handle(
             session_id: &p.session_id,
             store: &hashline,
         }),
+        visualization_root: None,
     };
     let mut result = tokio::select! {
         result = tools::execute_tool_with_path_access(Some(&root),None,&p.tool_name,&p.args,options) => result,
-        _ = wait_for_bash_cancellation(&mut cancellation) => failure(&p,"TOOL_ABORTED","tool aborted",started),
+        _ = wait_for_tool_cancellation(&mut cancellation) => failure(&p,"TOOL_ABORTED","tool aborted",started),
     };
     result.tool_call_id = p.tool_call_id.clone();
     state

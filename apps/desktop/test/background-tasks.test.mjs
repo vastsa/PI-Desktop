@@ -27,7 +27,7 @@ const backgroundTasks = await readFile(
   "utf8",
 );
 const bar = await readFile(
-  new URL("../src/components/BackgroundTasksBar.tsx", import.meta.url),
+  new URL("../src/components/TaskDock.tsx", import.meta.url),
   "utf8",
 );
 const controller = await readFile(
@@ -78,7 +78,7 @@ test("a background Bash call returns a backgroundTaskId and never a blocking std
 test("turn cancellation and timeout cannot reach a background task: it never registers a bash cancellation", () => {
   assert.match(
     rpcSources.replace(/\r/g, ""),
-    /cancellation_receiver = if remote_workspace\.is_some\(\)[\s\S]*?&& !p\.run_in_background\)/,
+    /let cancellation_receiver = if matches!\(p\.tool_name\.as_str\(\), "Bash" \| "GenerateImages"\)[\s\S]*?if remote_workspace\.is_none\(\) && p\.tool_name == "Bash" && p\.run_in_background \{\s*None/,
   );
   assert.match(rpcSources.replace(/\r/g, ""), /"Bash" \| "GenerateImages"/);
 });
@@ -86,19 +86,26 @@ test("turn cancellation and timeout cannot reach a background task: it never reg
 test("the registry keeps output bounded and stops everything on shutdown", () => {
   assert.match(backgroundTasks, /RING_MAX_BYTES: usize = 256 \* 1024/);
   assert.match(backgroundTasks, /stop_all_running_sync/);
-  assert.match(backgroundTasks, /MAX_RUNNING_TASKS: usize = 32/);
+  // The user-visible limit is per session; a process-wide ceiling stays only as
+  // a host safety net and must be reported separately.
+  assert.match(backgroundTasks, /MAX_RUNNING_TASKS_PER_SESSION: usize = 10/);
+  assert.match(backgroundTasks, /MAX_RUNNING_TASKS_TOTAL/);
+  assert.doesNotMatch(backgroundTasks, /MAX_RUNNING_TASKS: usize = 32/);
 });
 
-test("the renderer bar lists tasks, offers output and stop, and mounts above the composer input", () => {
+test("the renderer container lists tasks, offers output and stop, and mounts above the composer input", () => {
   assert.match(controller, /api\.backgroundTasksList\(\)/);
   assert.match(controller, /api\.backgroundTasksStop\(id\)/);
-  assert.match(bar, /aria-label=\{t\("backgroundTasks\.title"\)\}/);
-  assert.match(composer, /import \{ BackgroundTasksBar \} from "\.\/BackgroundTasksBar";/);
-  assert.match(composer, /<BackgroundTasksBar \/>/);
-  // The bar renders before the composer shell (above the input, not inside it).
-  const barIndex = composer.indexOf("<BackgroundTasksBar />");
+  // The shared container is the only composer surface for tasks now.
+  assert.match(composer, /import \{ TaskDock \} from "\.\/TaskDock";/);
+  assert.match(composer, /<TaskDock sessionId=\{activeSessionId\} \/>/);
+  assert.doesNotMatch(composer, /BackgroundTasksBar/);
+  // It renders before the composer shell (above the input, not inside it).
+  const dockIndex = composer.indexOf("<TaskDock sessionId={activeSessionId} />");
   const shellIndex = composer.indexOf('className={`composer-shell');
-  assert.ok(barIndex > 0 && shellIndex > barIndex, "bar must precede the composer shell");
+  assert.ok(dockIndex > 0 && shellIndex > dockIndex, "container must precede the composer shell");
+  // The todo side is gated exactly as the todo dock was.
+  assert.match(composer, /activeSessionId && localToolsAllowed \? <TaskDock/);
 });
 
 test("the api layer names the wire channels for list, output, stop, and the change event", () => {
@@ -117,34 +124,68 @@ test("the host notification fan-out exists in the electron main host wiring", as
   assert.match(host, /sendToRenderer\(IPC\.event\.backgroundTasksChanged/);
 });
 
-test("the bar styles exist and mark a running task with a pulse", () => {
-  assert.match(styles, /\.background-tasks-bar \{/);
+test("the container styles exist and mark a running task with a pulse", () => {
+  assert.match(styles, /\.dock \{/);
   assert.match(
     styles,
-    /\.background-task\[data-state="running"\] \.background-task-state \{[^}]*animation:/,
+    /\.task-row\[data-state="running"\] \.task-state \{[^}]*animation:/,
   );
   // Legibility: the command is the high-contrast element and every size comes
   // from the token scale instead of a raw literal.
-  assert.match(styles, /\.background-task-command \{[^}]*color: var\(--ds-text-primary\)/);
+  assert.match(styles, /\.task-command \{[^}]*color: var\(--ds-text-primary\)/);
+  // The tabs sit in the header row: the container must expose the tablist, the
+  // badge, and a separate disclosure control.
+  assert.match(styles, /\.dock-tablist \{/);
+  assert.match(styles, /\.dock-tab-badge \{/);
+  assert.match(styles, /\.dock-toggle\.btn \{/);
 });
 
 test("the running/stopped/failed/exited labels are translated", () => {
   assert.match(i18nEn, /backgroundTasks: \{[^}]*running: "Running"/);
 });
 
-test("the bar shows only live work: a finished row expires and can be closed", async () => {
+test("the container shows only live work: a finished row expires and can be removed", async () => {
   const visibility = await readFile(
     new URL("../src/features/chat/background-tasks/bar-visibility.ts", import.meta.url),
     "utf8",
   );
   // The grace window is a named constant, not a magic number in the component.
   assert.match(visibility, /export const ENDED_VISIBLE_MS = 10_000;/);
-  assert.match(controller, /selectVisibleTasks\(visibility, tasks, clock, expandedId\)/);
+  assert.match(controller, /selectVisibleTasks\(visibility, sessionTasks, clock, expandedId\)/);
   assert.match(controller, /observeTasks\(current, result\.tasks, observedAt\)/);
-  assert.match(controller, /dismissTask\(current, id\)/);
-  // A finished row offers closing instead of stopping: it must be able to leave
-  // the composer without touching the process lifecycle.
+  // Removal is refused for a live task in the state layer, not just by hiding
+  // the control.
+  assert.match(visibility, /task\.state === "running"\) return state;/);
+  assert.match(controller, /if \(!task \|\| task\.state === "running"\)/);
+  assert.match(controller, /dismissTask\(current, task\)/);
+  // A finished row offers removal instead of stopping.
   assert.match(bar, /\{t\("backgroundTasks\.dismiss"\)\}/);
-  assert.match(bar, /onClick=\{\(\) => dismiss\(task\.id\)\}/);
-  assert.match(i18nEn, /backgroundTasks: \{[^}]*dismiss: "Dismiss"/);
+  assert.match(bar, /onClick=\{\(\) => onRemove\(task\.id\)\}/);
+});
+
+test("the container filters to the active session and badges new work", () => {
+  assert.match(controller, /task\.sessionId === sessionId/);
+  // The wire contract stays session-agnostic.
+  assert.match(controller, /api\.backgroundTasksList\(\)/);
+  // The badge clears only when the user enters the tasks tab.
+  assert.match(controller, /const openTasksTab = useCallback/);
+  assert.match(controller, /clearBadge\(selectTab\(current, sessionId, "tasks"\), sessionId\)/);
+});
+
+test("deleting a session signals its tasks from the shared cleanup path only", () => {
+  // D6: every deletion path converges on `drop_session_side_data`, so that is
+  // the one place a stop is issued. There is no archive RPC: archiving is a
+  // renderer flag, which is what keeps it from killing live processes.
+  const cleanup = rpcSources.match(
+    /fn drop_session_side_data\(st: &AppState, id: &str\) \{([\s\S]*?)\n\}/,
+  );
+  assert.ok(cleanup, "the shared per-session cleanup must exist");
+  assert.match(cleanup[1], /st\.background_tasks\.stop_session_running\(id\);/);
+  // Deleting is the only caller of that cleanup, and no archive method exists.
+  assert.equal(
+    rpcSources.match(/drop_session_side_data\(&st, id\);/g)?.length,
+    2,
+    "both deletion paths reach the shared cleanup",
+  );
+  assert.doesNotMatch(rpcSources, /"session\.archive"/);
 });

@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "resources": [
+    {
+      "package": "@floating-ui/core",
+      "version": "1.7.3",
+      "url": "https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js",
+      "file": "floating-ui-core-1.7.3.min.js",
+      "sha256": "6985ce661153c01d97f6be9babb6a9566f923c716c2b7fbead48fbb09f419ba8",
+      "license": "MIT",
+      "licenseFile": "floating-ui-core-1.7.3.min.js.LICENSE",
+      "licenseSha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+      "tarball": "https://registry.npmjs.org/@floating-ui/core/-/core-1.7.3.tgz",
+      "integrity": "sha512-sGnvb5dmrJaKEZ+LDIpguvdX3bDlEllmv4/ClQ9awcmCZrlx5jQyyMWFM5kBI+EyNOCDDiKk8il0zeuX3Zlg/w==",
+      "source": "dist/floating-ui.core.umd.min.js"
+    },
+    {
+      "package": "@floating-ui/dom",
+      "version": "1.7.4",
+      "url": "https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js",
+      "file": "floating-ui-dom-1.7.4.min.js",
+      "sha256": "b8199f76adccb9b17b3ab57124c42585dc19197127d1a5d19307d1983f80bd89",
+      "license": "MIT",
+      "licenseFile": "floating-ui-dom-1.7.4.min.js.LICENSE",
+      "licenseSha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+      "tarball": "https://registry.npmjs.org/@floating-ui/dom/-/dom-1.7.4.tgz",
+      "integrity": "sha512-OOchDgh4F2CchOX94cRVqhvy7b3AFb+/rQXyswmzmGakRfkMgoWVjfnLWkRirfLEfuD4ysVW16eXzwt3jHIzKA==",
+      "source": "dist/floating-ui.dom.umd.min.js"
+    },
+    {
+      "package": "d3",
+      "version": "7.9.0",
+      "url": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+      "file": "d3-7.9.0.min.js",
+      "sha256": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+      "license": "ISC",
+      "licenseFile": "d3-7.9.0.min.js.LICENSE",
+      "licenseSha256": "3e6849627f74ff73c257a3ae1efb574015d94fc1035c05ec3c15805165efcbc4",
+      "tarball": "https://registry.npmjs.org/d3/-/d3-7.9.0.tgz",
+      "integrity": "sha512-e1U46jVP+w7Iut8Jt8ri1YsPOvFpg46k+K8TpCb0P+zjCkjkPnV7WzfDJzMHy1LnA+wj5pLT1wjO901gLXeEhA==",
+      "source": "dist/d3.min.js"
+    }
+  ]
+}

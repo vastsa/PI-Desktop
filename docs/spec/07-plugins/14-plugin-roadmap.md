@@ -30,7 +30,8 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - Unified namespace and audit ✅
 - Per-plugin settings API and generated settings UI are implemented. The UI
   supports string/number/boolean/select/json fields and plugin-local command
-  shortcuts; OS-global plugin shortcuts remain out of scope.
+  shortcuts. OS-global bindings are implemented separately through
+  `keyboard.globalShortcut`, `contributes.globalShortcuts`, and `pi.keyboard`.
 - Plugin log panel remains planned; runtime audit logs exist without a dedicated
   plugin-log surface
 
@@ -66,6 +67,18 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - Marketplace reviews / quality score (partial: the desktop reads public
   summaries and reviews anonymously and links out to the centre to write;
   accounts, writing, voting, and reporting live on the centre's web page)
+
+### Current additive capabilities
+
+- Renderer slots and reviewed draft/attachment dispatch (`renderer.extension`)
+- Manifest-owned providers, Add Service categories, and host-owned OAuth login
+- Composer transforms with undo and dismissible Composer suggestions
+- Plugin-owned session import/read/rename/delete and compare-and-set auto titles
+- Completed-turn usage facts; model catalog and host-owned one-shot completion
+- Selected-session snapshots and host-owned work-panel view reveal
+- Runtime themes, typed theme variables, and data-only scenic Settings cards
+- Bounded WebSockets and host-owned global shortcuts
+- Background audio remains callable but returns `UNSUPPORTED`; no device backend
 
 ### R7 — Agent extensions (v1.1 ✅, D387 / D388)
 - v1: ExtensionAPI adapter in the Agent sidecar; tools, commands, lifecycle and
@@ -103,5 +116,5 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 |---|---|
 | Building the marketplace too early destabilizes the core | Defer the marketplace; R1 does local first |
 | Plugin security incident | Deny by default + audit + mandatory signing later |
-| Frequent API breakage | apiVersion / schemaVersion |
+| Frequent API breakage | Additive SDK contracts, capability detection, schemaVersion |
 | High developer barrier | Templates + hello example + SDK |

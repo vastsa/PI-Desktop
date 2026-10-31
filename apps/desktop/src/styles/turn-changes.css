@@ -1,0 +1,160 @@
+/* Per-turn changed-files summary under a completed reply (D297 tile scheme:
+   one soft tile, no border or rules; spacing separates head, rows, and foot).
+   Up to four files use relaxed 25px rows; more switch to dense 21px rows. */
+.turn-changes-card {
+  box-sizing: border-box;
+  width: min(100%, var(--chat-prose-max-width, 720px));
+  min-width: 0;
+  margin: 8px 0 2px;
+  padding: 8px 6px 6px;
+  border-radius: var(--radius-lg);
+  background: var(--ds-tile);
+}
+
+.turn-changes-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 4px;
+}
+
+.turn-changes-title {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.turn-changes-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-changes-total {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.turn-changes-body {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.turn-changes-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 25px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-secondary);
+  text-align: left;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.turn-changes-row:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.turn-changes-row:focus-visible {
+  outline: 1.5px solid color-mix(in oklab, var(--ds-focus) 78%, transparent);
+  outline-offset: -2px;
+}
+
+.turn-changes-mark {
+  width: 10px;
+  flex: 0 0 auto;
+  color: var(--ds-warning);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+}
+
+.turn-changes-row[data-status="added"] .turn-changes-mark {
+  color: var(--ds-success);
+}
+
+.turn-changes-row[data-status="deleted"] .turn-changes-mark {
+  color: var(--ds-error);
+}
+
+.turn-changes-path {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-changes-counts {
+  margin-left: auto;
+}
+
+/* Rolled-back files stay listed, struck through like the review row. */
+.turn-changes-row[data-rolled-back] .turn-changes-mark {
+  color: var(--ds-text-faint);
+}
+
+.turn-changes-row[data-rolled-back] .turn-changes-path {
+  color: var(--ds-text-faint);
+  text-decoration: line-through;
+}
+
+.turn-changes-row[data-rolled-back] .turn-changes-counts {
+  opacity: 0.55;
+}
+
+.turn-changes-body.is-dense .turn-changes-row {
+  min-height: 21px;
+  padding-block: 1px;
+}
+
+.turn-changes-body.is-dense .turn-changes-path {
+  font-size: var(--text-xs-plus);
+}
+
+.turn-changes-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  color: var(--ds-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.turn-changes-foot {
+  padding: 4px 6px 2px;
+}
+
+.turn-changes-view-all {
+  padding: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.turn-changes-view-all:hover {
+  color: var(--ds-text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-changes-row {
+    transition-duration: 0.01ms;
+  }
+}

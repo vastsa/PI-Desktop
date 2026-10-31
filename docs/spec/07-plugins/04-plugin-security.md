@@ -91,9 +91,9 @@ transcript replacement and regeneration.
 
 ## 3.1 Contributed theme CSS
 
-A theme contribution (`ui.theme`) is the one case where plugin-authored content
-runs inside the host renderer, so it crosses a sanitizer in the main process
-before it is ever sent to the UI:
+A theme contribution (`ui.theme`) sends CSS into the host renderer through a
+main-process sanitizer. The separate high-risk `renderer.extension` evaluates
+trusted plugin JavaScript in the host renderer and is not a sandbox:
 
 - Only CSS the browser applies is inspected: comment bodies and string literals
   are blanked first, with one space per masked character so any offset still
@@ -104,7 +104,7 @@ before it is ever sent to the UI:
   declared theme asset, a `url(` the parser cannot resolve, `javascript:`,
   `expression(`, and markup sequences (`<style`, `</style`, `<!--`); an empty
   sheet is refused too
-- Capped at 256KB per file, 8 themes per plugin
+- Capped at 256 KiB per file; no per-plugin theme-count cap
 - A theme may declare `assets` using whitelisted image/font extensions: either
   package-relative paths (resolved inside the plugin root; traversal and `node_modules`
   references are rejected) or absolute paths. The total is capped at 4MB.
@@ -118,7 +118,8 @@ before it is ever sent to the UI:
   `ui.window.appearance` and applies only while one of that plugin's themes is
   the selected one; leaving the theme restores the host background, because the
   appearance is derived from the live catalog rather than remembered. macOS
-  keeps `vibrancy` and its native corner behavior; Linux retains native corner
+  keeps native corners; its translucent vibrancy surface ignores the color,
+  while turning off Translucent window applies it to the opaque surface; Linux retains native corner
   behavior. Windows defaults to a 12 DIP corner request. On Windows 11 (build
   22000+), radius 0 requests square corners and positive values use the same
   system-rounded preference, while the OS chooses the actual radius; alpha
@@ -314,16 +315,15 @@ self-declared risk level. A server's catalog is registered whole — the count i
 bounded only by the protocol guards in §8.1 — while at most 8 servers per plugin
 are admitted.
 
-Plan is an additional host policy boundary for agent tools:
-
-- no plugin tool is visible or executable in Plan;
-- the deny precedes manifest risk, declared/granted permissions, session
-  grants, and the `auto` permission mode;
-- a direct forged `tools.execute` call returns `PLUGIN_DISABLED_IN_PLAN` and is
-  audited; it is not forwarded to the plugin runtime;
-- plugin commands and panels may remain usable as explicit user UI actions,
-  but they cannot become model-callable Plan tools or silently mutate Plan
-  state.
+Plugin tools are hidden and denied in Plan/Goal by default. A runtime tool
+registration may opt in with non-empty `planSafeActions`; only an `args.action`
+in that list may execute in those modes. The list is checked against the schema's
+action enum when present. Keep the manifest descriptor and runtime registration
+in sync: the runtime registration drives the executable tool. Risk `low`, session
+grants, and `auto` do not substitute for the declaration. Host policy and the
+plugin runner both check it; a disallowed runner action is `PERMISSION_DENIED`.
+The declaration is an author assertion of read-only behavior, not a side-effect
+sandbox (ADR 0211).
 
 ## 8. Network and external links
 
@@ -509,7 +509,8 @@ The host should be able to:
 9. An MCP server declared with an absolute `command` fails manifest validation;
    a non-loopback plain-HTTP URL is accepted only when its host is declared in
    `manifest.net.domains` and the UI shows the unencrypted-connection warning
-10. A low-risk or granted plugin tool still fails closed in Plan
+10. A plugin tool without plan-safe actions, or an action outside its list,
+    still fails closed in Plan/Goal regardless of risk or grants
 
 
 ## 11. Implementation status

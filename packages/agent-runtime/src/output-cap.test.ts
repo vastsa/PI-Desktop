@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { getCurrentSystemPrompt, normalizeContext, type Message } from "@earendil-works/pi-ai";
 import {
   clampOutputToContext,
   estimateOutputCapInputTokens,
+  requestTranscript,
   type OutputCapContext,
 } from "./output-cap.js";
 
@@ -350,6 +352,33 @@ describe("clampOutputToContext", () => {
         clampOutputToContext(LARGE_WINDOW_MODEL, context, requested),
       ).toBeLessThanOrEqual(requested);
     }
+  });
+});
+
+describe("requestTranscript", () => {
+  const updates = (count: number): Message[] => [
+    { role: "system", content: "Base instructions.", timestamp: 1 },
+    ...Array.from({ length: count }, (_, index): Message => ({
+      role: "system", content: "", sections: { context: `${index}`.padEnd(40_000, "x") }, timestamp: 2 + index,
+    })),
+    { role: "user", content: "Continue.", timestamp: 100 },
+  ];
+  const model = { contextWindow: 128_000, maxTokens: 8_192, compat: { supportsMidConvoSystemMessages: false } };
+
+  it("charges only the current instructions when the adapter folds system updates", () => {
+    const context = normalizeContext({ messages: updates(16) });
+    const request = requestTranscript(model, context);
+    expect(request.messages.filter((message) => message.role === "system")).toHaveLength(1);
+    expect(getCurrentSystemPrompt(request.messages)).toBe(getCurrentSystemPrompt(context.messages));
+    expect(clampOutputToContext(model, context, 8_192)).toBe(1);
+    expect(clampOutputToContext(model, request, 8_192)).toBe(8_192);
+  });
+
+  it("keeps every update for a model that receives them mid-conversation", () => {
+    const midConversation = { ...model, compat: { supportsMidConvoSystemMessages: true } };
+    const context = normalizeContext({ messages: updates(16) });
+    expect(requestTranscript(midConversation, context)).toBe(context);
+    expect(clampOutputToContext(midConversation, requestTranscript(midConversation, context), 8_192)).toBe(1);
   });
 });
 

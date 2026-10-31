@@ -26,7 +26,7 @@ export type ClassifiedAgentError = {
 const MAX_ERROR_MESSAGE_CHARS = 600;
 
 const NETWORK_PATTERN =
-  /ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EPIPE|ENETUNREACH|EHOSTUNREACH|UND_ERR|fetch failed|socket hang up|network error|connection error|connection refused|dns/i;
+  /ECONNREFUSED|ECONNRESET|ECONNABORTED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EPIPE|ENETUNREACH|EHOSTUNREACH|UND_ERR|fetch failed|socket hang up|network error|connection error|connection refused|connection abort|dns/i;
 
 const CONTEXT_PATTERN =
   /context[ _-]?length|maximum context|context window|too many tokens|prompt is too long|input token count|exceeds the (?:maximum|model)|token limit/i;
@@ -36,8 +36,28 @@ const CONTEXT_PATTERN =
  * reports its tokens-per-minute throttle as "Throttling error: Too many tokens,
  * please wait before trying again.", which `CONTEXT_PATTERN` would otherwise
  * read as an overflow (pi-ai's `isContextOverflow` excludes it the same way).
+ *
+ * A bare `quota` must not be included. It also matches account and filesystem
+ * exhaustion ("monthly spending quota", "credit quota is exhausted", "Billing
+ * quota exceeded", "disk quota exceeded"). Explicit exhaustion codes and
+ * phrases are checked before this matcher, while generic `quota exceeded`
+ * wording remains eligible for throughput-rate-limit retries.
  */
-const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|quota|overloaded|throttl/i;
+const RATE_LIMIT_PATTERN =
+  /rate.?limit|too many requests|quota.?exceeded|overloaded|throttl/i;
+
+/**
+ * Billing, spending, credit, and disk exhaustion are terminal, including
+ * OpenAI's `insufficient_quota` type and explicit 429 error codes. Checked
+ * before the status table because those conditions do not recover by backing
+ * off. Generic "quota exceeded" wording remains eligible for rate-limit
+ * classification below.
+ */
+const EXHAUSTED_QUOTA_CODE_PATTERN =
+  /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded)\b/i;
+
+const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
+  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b/i;
 
 /**
  * Whether a provider message reports a context overflow.
@@ -63,7 +83,17 @@ function isContextOverflowMessage(message: string): boolean {
 }
 
 const STREAM_TERMINATION_PATTERN =
-  /\bterminated\b|stream ended without finish_reason|premature(?:ly)?\s+(?:closed|ended)|(?:stream|response).*(?:closed|interrupted)/i;
+  /\bterminated\b|stream ended without finish_reason|premature(?:ly)?\s+(?:closed|ended)|(?:stream|response).*(?:closed|interrupted)|\bstream aborted\b|aborted the stream/i;
+
+/**
+ * User-Stop wording the runtime and AbortError actually emit (`Request
+ * aborted`, `The operation was aborted`, `Turn aborted …`). Do not widen this
+ * to `\babort`: socket and stream failures ("software caused connection
+ * abort", "connection aborted", "stream aborted") contain the same stem and
+ * must stay retriable network or stream errors instead of `TURN_ABORTED`.
+ */
+const TURN_ABORTED_MESSAGE_PATTERN =
+  /\b(?:request aborted|the operation was aborted|turn aborted)\b/i;
 
 /** An adapter refusing a request option, e.g. "Custom fetch is not supported
  * by the Google Generative AI adapter" (issue #1072). */
@@ -244,6 +274,17 @@ function pickNetworkCode(codes: readonly string[]): {
 }
 
 /**
+ * TLS handshake / certificate wording. Not an API-key rejection: stacks say
+ * "mutual TLS authentication failed" and "authentication handshake timed out"
+ * for the transport itself.
+ */
+function isTlsTransportText(text: string): boolean {
+  return /certificate|self[- ]signed|(?:^|[^a-z])(?:tls|ssl)(?:[^a-z]|$)|handshake/i.test(
+    text,
+  );
+}
+
+/**
  * Last resort when no errno survived: classify by wording. Order matters —
  * "proxy" outranks the transport wording it usually wraps.
  */
@@ -252,11 +293,7 @@ function networkCategoryFromText(text: string): NetworkFailureCategory {
   if (/getaddrinfo|ENOTFOUND|EAI_AGAIN|dns|name resolution/i.test(text)) {
     return "dns";
   }
-  if (
-    /certificate|self[- ]signed|(?:^|[^a-z])(?:tls|ssl)(?:[^a-z]|$)|EPROTO|handshake/i.test(
-      text,
-    )
-  ) {
+  if (isTlsTransportText(text) || /EPROTO/i.test(text)) {
     return "tls";
   }
   if (/timed?\s?out|timeout/i.test(text)) return "timeout";
@@ -265,7 +302,7 @@ function networkCategoryFromText(text: string): NetworkFailureCategory {
     return "unreachable";
   }
   if (
-    /ECONNRESET|ECONNABORTED|EPIPE|socket hang up|premature close|reset by peer|connection (?:was )?(?:closed|lost|reset)/i.test(
+    /ECONNRESET|ECONNABORTED|EPIPE|socket hang up|premature close|reset by peer|connection (?:was )?(?:closed|lost|reset|abort)/i.test(
       text,
     )
   ) {
@@ -383,6 +420,33 @@ export function networkFailureDiagnostics(
   return { category: network.category, fields: networkDetailFields(network) };
 }
 
+/**
+ * Credential rejection worded without an HTTP status.
+ *
+ * Bare "authentication" is not enough. Keep the API-key / unauthorized
+ * phrases, and keep "authentication" only beside an API key, bearer token,
+ * or credentials — or as a short provider phrase such as "authentication
+ * failed". Handshake, TLS/SSL, and certificate text is transport, so it
+ * never counts.
+ */
+const STATUSLESS_CREDENTIAL_PATTERN =
+  /invalid[ _]api[ _]key|api key not valid|unauthorized|permission denied/i;
+
+const AUTHENTICATION_WITH_CREDENTIAL_PATTERN =
+  /(?:api[-_ ]?key|credentials|bearer).{0,48}\bauthentication\b|\bauthentication\b.{0,48}(?:api[-_ ]?key|credentials|bearer)/i;
+
+const AUTHENTICATION_FAILURE_PATTERN =
+  /\bauthentication[_ ](?:failed|failure|error)\b/i;
+
+function isStatuslessCredentialFailure(message: string): boolean {
+  if (STATUSLESS_CREDENTIAL_PATTERN.test(message)) return true;
+  if (isTlsTransportText(message)) return false;
+  return (
+    AUTHENTICATION_WITH_CREDENTIAL_PATTERN.test(message) ||
+    AUTHENTICATION_FAILURE_PATTERN.test(message)
+  );
+}
+
 export function classifyAgentError(err: unknown): ClassifiedAgentError {
   const envelope = err !== null && typeof err === "object"
     ? err as Record<string, unknown> : undefined;
@@ -462,7 +526,7 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
   // cause, and that turn must read as stopped, not as a compaction failure.
   if (
     explicitlyAborted ||
-    /\babort/i.test(rawMessage)
+    TURN_ABORTED_MESSAGE_PATTERN.test(rawMessage)
   ) {
     return result("TURN_ABORTED", false);
   }
@@ -473,9 +537,15 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
   // "fetch failed" causes don't fall through to the generic bucket. The cause
   // chain is summarized as a coarse category plus the transport errno, so the
   // failing layer is identifiable without a user-visible code per layer.
+  // Handshake and certificate wording is the same kind of failure when no
+  // status is present, even if the text says "authentication".
   const network = describeNetworkFailure(err, rawMessage);
   const certificateFailure = isCertificateVerificationError(network.code);
-  if (hasNetworkCause(err, rawMessage) || (status === undefined && certificateFailure)) {
+  if (
+    hasNetworkCause(err, rawMessage) ||
+    (status === undefined &&
+      (certificateFailure || isTlsTransportText(rawMessage)))
+  ) {
     return result(
       "NETWORK_ERROR",
       !certificateFailure,
@@ -503,6 +573,18 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     return result("PROVIDER_ERROR", false);
   }
 
+  // These terminal billing/account exhaustion errors can also be HTTP 429.
+  // Inspect both the message and structured provider code before the generic
+  // 429 retry branch so the rate-limit budget cannot replay them.
+  if (
+    EXHAUSTED_QUOTA_CODE_PATTERN.test(rawMessage) ||
+    EXHAUSTED_QUOTA_MESSAGE_PATTERN.test(rawMessage) ||
+    (typeof providerCode === "string" &&
+      EXHAUSTED_QUOTA_CODE_PATTERN.test(providerCode))
+  ) {
+    return result("PROVIDER_ERROR", false);
+  }
+
   if (status !== undefined) {
     if (status === 401 || status === 403) return result("PROVIDER_UNAUTHORIZED", false);
     if (status === 408) return result("TIMEOUT", true);
@@ -518,7 +600,7 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     return result("PROVIDER_ERROR", true);
   }
 
-  if (/invalid[ _]api[ _]key|api key not valid|unauthorized|authentication|permission denied/i.test(rawMessage)) {
+  if (isStatuslessCredentialFailure(rawMessage)) {
     return result("PROVIDER_UNAUTHORIZED", false);
   }
   if (RATE_LIMIT_PATTERN.test(rawMessage)) {

@@ -12,18 +12,31 @@
 
 插件可以提供以下一项或多项功能：
 
-| 能力 | 用它来 | 主要构建模块 |
+| 能力 | 用途 | 主要 API 与声明 |
 |---|---|---|
-| 命令 | 全局搜索中的显式操作 | `contributes.commands`、`pi.commands.register` |
-| 面板 | 一个小的独立的 HTML 界面 | `ui.panel`、`ui.panel` 权限、`window.pluginBridge` |
-| 悬浮挂件 | 透明无边框的小挂件窗口——例如一个圆形球体 | `ui.panel` 权限、`"ui": { "shape": "widget" }`、`window.pluginBridge` |
-| Agent 工具 | Agent 可以调用的函数 | `contributes.agentTools`、`pi.agent.registerTool` |
-| 技能 | Agent 按需加载指令 | `contributes.skills`、`agent.prompt.inject` 权限 |
-| 主题 | 设计令牌覆盖 | `contributes.themes`、`ui.theme` 权限 |
-| MCP 服务器 | 从本地或远程 MCP 服务器发现的工具 | `contributes.mcpServers`，MCP 权限 |
-| 服务 | 驻地工作由主人监督 | `contributes.services`、`background.service` 权限 |
-| 消息总线 | 插件之间按约定类型化事件 | `contributes.bus`，总线权限 |
-| 渲染器插槽 | 在应用自身窗口内绘制界面：输入区控件、消息操作栏、回复下方区块、工具卡、代码块渲染器、角落浮层 | `renderer`、`renderer.extension` 权限、`packages/plugin-sdk/src/renderer.ts` |
+| 命令 | An explicit action in global search | `contributes.commands`, `pi.commands.register` |
+| 独立面板 | A small isolated HTML interface | `ui.panel`, `ui.panel` permission, `window.pluginBridge` |
+| 悬浮挂件 | A transparent, frameless companion window — a round orb, not a rectangle | `ui.panel` permission, `"ui": { "shape": "widget" }`, `window.pluginBridge` |
+| 工作面板视图 | An interface docked in the app's right work panel | `contributes.views`, `ui.view` permission, `window.pluginBridge` |
+| Agent 工具 | A function the Agent can call | `contributes.agentTools`, `pi.agent.registerTool` |
+| OAuth Provider | A provider row with host-owned sign-in and encrypted credentials | `contributes.providers`, `provider.oauth`, `onProviderOAuth` |
+| 单次补全 | A host-owned completion against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
+| 技能 | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
+| 主题 | Design-token overrides | `contributes.themes`, `ui.theme` permission |
+| MCP 服务器 | Tools discovered from a local or remote MCP server | `contributes.mcpServers`, an MCP permission |
+| 常驻服务 | Resident work supervised by the host | `contributes.services`, `background.service` permission |
+| 消息总线 | Typed-by-convention events between plugins | `contributes.bus`, bus permissions |
+| 渲染器插槽 | UI drawn inside the app's own window: composer controls, message action bars, blocks below a reply, tool cards, code-block renderers, corner layers | `renderer`, `renderer.extension` permission, `packages/plugin-sdk/src/renderer.ts` |
+| 输入框建议 | One dismissible line offered to the input box, taken with Tab | `pi.composer.suggest`, `composer.suggest` permission |
+| 模型 Provider | API-key, no-auth, or OAuth model service | `contributes.providers`, `provider.register`; OAuth also needs `provider.oauth` |
+| 会话导入 | Import, read, rename, and delete this plugin's own history | `contributes.sessionSources`, matching `session.*` grants |
+| 用量事实 | Compute your own usage dashboard | `pi.usage.listTurns`, `usage.read` |
+| 输入框转换 | An explicit draft-text action with undo | `contributes.composerTransforms`, `onComposerTransform`, `composer.transform` |
+| 系统快捷键 | Invoke your command while the app is unfocused | `contributes.globalShortcuts`, `pi.keyboard`, `keyboard.globalShortcut` |
+| 受信任 Agent 扩展 | pi ExtensionAPI hooks, tools, commands, and custom agents | `contributes.agentExtensions`, `agent.extension` |
+| 实时连接 | Host-owned, bounded WebSockets | `pi.net.websocket`, `net.websocket` |
+| 浏览器与桌面控制 | Reviewed browser or app operations | `pi.browser`, `browser.cdp`; `pi.desktop`, `desktop.control` |
+| 语音适配器 | Add a speech protocol handled by the plugin process | `pi.speech`, `speech.adapter.register` |
 
 插件入口代码在专用的 Node 进程中运行。面板在沙盒中运行，
 上下文隔离的 Electron 窗口，没有 Node 集成。来自任一方的呼叫
@@ -35,7 +48,7 @@
 > 当您信任其来源并使用主机 API 而不是直接 Node 文件时
 > 或网络访问。请参阅[安全规范](/zh-CN/spec/07-plugins/04-plugin-security)。
 
-## 2.先决条件
+## 2. 先决条件
 
 对于推荐的应用优先路径，您需要：
 
@@ -44,8 +57,8 @@
 - 文本编辑器。
 - 若要导入带 npm 依赖的 pi 扩展目录，`PATH` 中必须有系统 `npm` 可执行文件。发布版不附带独立 Node/npm；缺少 npm 时，PI-Desktop 会报告警告，导入扩展的依赖无法加载。
 
-对于存储库 CLI 路径，您还需要 Node.js 22.19 或更高版本、pnpm 10 或
-较新，并签出此存储库。 devkit 和 SDK 目前已
+仓库 CLI 路径使用根目录 `package.json` 中 `engines` 和 `packageManager`
+声明的 Node.js、pnpm 版本，并需要本仓库的检出副本。 devkit 和 SDK 目前已
 私有工作空间包，所以不要假设`npm install
 @pi-desktop/plugin-devkit` 在此存储库之外工作。
 
@@ -93,7 +106,7 @@ pnpm pi-plugin init panel-basic ../my-first-plugin \
 私人插件。保持 ID 稳定：设置、数据、授权、更新和
 包名称由它作为键。
 
-## 4.了解生成的文件
+## 4. 了解生成的文件
 
 `panel-basic` 模板生成：
 
@@ -183,23 +196,23 @@ async function onUnload() {
 module.exports = { onLoad, onUnload };
 ```
 
-主机将 `pi` 作为全局注入。 `onLoad` 和 `onUnload` 不接收任何参数。
-CommonJS是最简单的入口格式；当条目是
-ES 模块。模块评估加上 `onLoad` 有 15 秒预算。 `onUnload`
-有 5 秒预算并且尽力而为，因此释放计时器和订阅
-及时。
+宿主注入全局 `pi`；主进程的 `onLoad` 和 `onUnload` 不接收参数。支持 CommonJS 和 ESM。
+模块求值与 `onLoad` 共用 15 秒预算；`onUnload` 为 5 秒，应用退出时缩短至 1.5 秒。
+只有这两个生命周期钩子会执行。`onPanelInvoke`、`onRendererCall`、`onComposerTransform`、
+`onProviderOAuth` 是操作回调；`onInstall`、`onEnable`、`onDisable`、`onUninstall` 不会执行，
+也没有 `entrypoints` 清单分发器。
 
-今天仅解雇 `onLoad` 和 `onUnload`。中的其他生命周期名称
-清单是为计划的完整生命周期保留的。
+OAuth 回调只处理自己声明的 Provider，凭证由宿主加密保存。`provider.oauth` 是高风险权限；
+通过宿主 API 请求令牌仍需 `net.fetch` 和相应出网范围，详见 §6.13。
 
 ### `renderer/index.html`
 
 PI-Desktop 在 macOS、Windows 和 Linux 上都使用无边框窗口承载面板。
 主机精确保留透明的 46 CSS 像素拖拽带，并只在右上角渲染最简胶囊，
 其中包含最小化、最大化/还原和关闭三个按钮。面板标题、工具栏、背景
-以及其他所有可见界面都由插件实现。普通流内容会由主机自动偏移到拖拽带
-下方，不要再额外添加 46px 顶部内边距。拖拽带除胶囊外不可点击；开发面板
-会显示这一限制的提醒。
+以及其他可见界面都由插件实现。新页面应声明 `<meta name="pi-plugin-chrome" content="v2">`，
+并用 `var(--pi-plugin-titlebar-height, 0px)` 自行添加一次顶部间距。没有此标记的旧页面
+由宿主自动偏移，不要再加第二份 46px 间距。拖拽带除胶囊外不可点击，开发面板会提示。
 
 如果面板使用 `position: fixed` 或 `position: sticky` 实现顶部界面，
 不要使用 `top: 0`，而应使用主机变量：
@@ -242,7 +255,9 @@ PI-Desktop 在 macOS、Windows 和 Linux 上都使用无边框窗口承载面板
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v2" />
     <title>My First Plugin</title>
+    <style>body { padding-top: var(--pi-plugin-titlebar-height, 0px); }</style>
   </head>
   <body>
     <h1>My First Plugin</h1>
@@ -309,10 +324,13 @@ await pi.agent.registerTool({
 });
 ```
 
-在 `onUnload` 中取消注册。主机将其暴露给模型
-插件命名空间名称，应用正常的 Agent 权限策略，审核
-执行，并强制执行 110 秒的插件端超时。插件工具不是
-在 Plan 模式下可用。
+在 `onUnload` 中注销工具。宿主使用命名空间名称、正常权限策略和审计，插件侧超时为 110 秒。
+工具通过 `ToolSearch` 按需加载，默认在 Plan/Goal 中隐藏并拒绝。
+只有运行时注册描述符明确提供 `planSafeActions`，且 `args.action` 在该列表中时，才允许在这些
+模式执行。声明应只列只读操作，并与清单保持一致；有 schema action enum 时会校验取值。
+`risk: "low"`、会话授权和 `auto` 都不能代替该声明。
+通过 `context.signal` 处理取消，用 `context.sessionId` / `turnId` 关联发起调用的会话和轮次，
+不能替换成当前可见会话。
 
 ### 6.2 技能
 
@@ -387,7 +405,8 @@ const dataPath = await pi.plugin.getDataPath();
 }
 ```
 
-插件快捷键只在聚焦的 PI-Desktop 窗口中生效，并会避让应用快捷键；暂不支持全局注册。
+插件快捷键只在聚焦的 PI-Desktop 窗口中生效，并会避让应用快捷键；系统级快捷键使用独立的 `contributes.globalShortcuts`、`pi.keyboard` 和
+`keyboard.globalShortcut` 权限（§6.17）。
 用户编辑后插件会收到 `plugin:settingsChanged`。请勿将凭据放入 `manifest.json` 或源代码管理。
 
 ### 6.4 工作区文件、剪贴板、网络和通知
@@ -485,14 +504,32 @@ root 本身。`net.fetch` 接受 HTTP(S)，并且只能到达 `manifest.net.doma
 （沙箱面板依然有网络栈），你声明的远程 HTTP MCP 服务器也一样。
 面板里的 `window.open` 一律拒绝。
 
-`net.domains` 缺失、为空或非法就意味着**完全不放行出网**，即使 `net.fetch`
-已被授予。重定向由主机手工跟随并重新检查，所以被允许的主机没法把请求弹到
-一个你没声明的主机上。请把资源打进插件包，而不是从一个你还得额外声明的 CDN
+没有 `net.anyHost` 时，缺失或空的 `net.domains` 不提供出网权限，即使已授予 `net.fetch`；
+非法声明会校验失败。重定向由宿主手工跟随并逐跳检查，不能跳到授权范围之外。请把资源打进插件包，而不是从一个你还得额外声明的 CDN
 上加载。
 
 `fetch` 返回服务器实际给出的内容，`429` 和 `Retry-After` 都在内：宿主从不重试
 你的插件发出的请求，所以遇到限流之后的退避是你自己的策略，而不是主机隐藏的
 行为。返回 `>= 400` 的调用依然会进审计，记为 `ok: false` 并带上它通告的延迟。
+
+`net.anyHost` 是安装时单独确认的高风险权限，用于用户输入的自建端点。
+它放宽域名列表，覆盖 fetch、WebSocket、面板和远端 MCP，但仍拒绝云元数据地址，
+也不会单独授予 fetch 或 socket API。
+
+### Fetch redirect policy
+
+依赖重定向策略前，必须先查询能力。旧宿主可能忽略未知字段，不能回退到原始网络请求。
+
+```js
+if (typeof pi.net.getCapabilities !== "function") throw new Error("Upgrade PI-Desktop");
+const capabilities = await pi.net.getCapabilities();
+if (!capabilities.fetchRedirectModes.includes("error")) throw new Error("Unsupported host");
+const response = await pi.net.fetch({ url: endpoint, redirect: "error" });
+```
+
+`error` 在访问 Location 前拒绝所有 3xx，错误为 `REDIRECT_DISALLOWED`。
+`manual` 返回首个响应；省略或 `follow` 最多跟随 5 次，每跳重新校验出网策略。
+非法值在 I/O 前拒绝，所有模式都不会扩权。
 
 ### 6.7 主题
 
@@ -518,35 +555,69 @@ root 本身。`net.fetch` 接受 HTTP(S)，并且只能到达 `manifest.net.doma
 }
 ```
 
-`base` 选择覆盖样式所基于的内置 `light` 或 `dark` 调色板；省略时默认
-为 `dark`。用户在“设置”中选择插件贡献的主题。
-
-覆盖设计令牌时，应使用与基础调色板相同的选择器：
+`base` 选择底层的 `light` 或 `dark` 调色板，省略时为 `dark`。用户在设置中选择主题。
+覆盖设计令牌时，应匹配宿主调色板选择器：
 
 ```css
 :root[data-theme="dark"] { --ds-bg-primary: #141a24; }
 :root[data-theme="light"] { --ds-bg-primary: #f5f7fa; }
 ```
 
-主题样式表追加在宿主样式之后，但只有选择器特异度相同时，后写的声明才胜出。
-宿主调色板使用 `:root[data-theme="dark"]` 和 `:root[data-theme="light"]`；
-单独的 `:root` 特异度较低，不能保证覆盖这些声明。浅色基础主题应显式使用
-`:root[data-theme="light"]`。
+样式表在宿主样式之后追加，但后写的声明只有在特异度相同时才胜出。单独的 `:root`
+特异度低于 `:root[data-theme="dark"]` 和 `:root[data-theme="light"]`，因此不能保证覆盖。
 
-宿主清理 CSS，拒绝 `@import`，`url()` 目标仅允许 `data:` URI 或已声明的主题资源；每份
-样式表上限 256 KiB，每个插件最多八个主题。可选 `assets` 接受 `png`、`jpg`、
-`jpeg`、`webp`、`avif`、`svg`、`woff2` 文件，总大小上限 4 MiB。路径可以是插件包内
-相对路径（不得逃出插件根目录或引用 `node_modules`），也可以是绝对路径。
-匹配的 CSS URL 会改写为已注册、只读的 `plugin-asset://` URL；卸载插件时撤销
-注册，渲染器不会收到原始文件系统路径。
+CSS 会经过清理：拒绝 `@import`，`url()` 仅允许 `data:` 或已声明的资源。
+每份 CSS 上限 256 KiB；不限制每个插件的主题数量。每份主题资源总量上限 4 MiB，
+支持 `png`、`jpg`、`jpeg`、`webp`、`avif`、`svg`、`woff2`。资源路径可以是插件内相对路径
+或经过单独验证的绝对路径；匹配的 URL 会被重写为只读的 `plugin-asset://` 地址，
+卸载后失效，渲染器不会收到原始文件系统路径。
 
-可选的 `contributes.windowAppearance.backgroundColor` 为 `light`/`dark` 提供
-`#rrggbb` 或 `#rrggbbaa` 颜色，除 `ui.theme` 外还需要 `ui.window.appearance`。
-它仅在该插件的主题被选中时生效，切换到其他主题后恢复宿主背景；macOS 保留
-系统 vibrancy。完整主题与窗口外观字段参见
-[清单契约](spec/07-plugins/02-plugin-manifest-schema.md)。
+`windowAppearance.backgroundColor` 支持 `#rrggbb` 或 `#rrggbbaa`，需要
+`ui.window.appearance`，仅在本插件主题选中时生效。macOS 默认透明窗口会忽略该颜色，
+关闭 **Translucent window** 后才应用到不透明窗口。`cornerRadius` 接受 0..24 DIP 整数；
+Windows 11 的 0 表示直角，正数使用系统圆角，macOS 保持原生圆角。
+完整字段见[清单规范](/zh-CN/spec/07-plugins/02-plugin-manifest-schema)。
 
-### 6.8 MCP 服务器
+
+运行时改主题无需重载：`pi.themes.upsert`、`remove`、`list`、`pi.app.setTheme` 使用 `ui.theme`。
+`pi.themes.setVariables(themeId, values)` 只接受本主题已声明的类型变量
+（`length`、`number`、`color`、`select`），不接受任意 CSS 或宿主保留变量。
+`contributes.scenicThemes` 通过宿主渲染 1..12 张设置卡片，需要 `ui.settings` 与 `ui.theme`。
+任意 HTML/JS 形式的 `settingsDestinations` 不是公开贡献点。
+
+### 6.8 工作面板视图
+
+`contributes.views` 声明停靠在工作面板中的隔离 HTML 页面，需要 `ui.view`。
+可以和独立面板共用 HTML；停靠时没有窗口控制条，`--pi-plugin-titlebar-height` 为 `0px`。
+
+```json
+{
+  "contributes": {
+    "views": [
+      {
+        "id": "changes",
+        "title": { "en": "Changes", "zh-CN": "改动" },
+        "icon": "diff",
+        "entry": "views/changes.html",
+        "order": 10
+      }
+    ]
+  },
+  "permissions": ["ui.view"]
+}
+```
+
+标题支持字符串或 `{ en, "zh-CN" }`。图标使用 SDK 的 `PLUGIN_VIEW_ICONS` 列表，
+未知名称显示字母方块，检查器会给出警告。激活范围不匹配的项目不会显示该视图。
+用 `pi.ui.revealView({ viewId, sessionId, location })` 显示自己的视图；指定已不在前台的
+会话会被拒绝。首次位置通过 URL 参数 `piViewOpen` 传入，加载后的新位置通过
+`view:open` 事件 `{ path }` 传入，不重载页面，也不丢弃未保存状态。
+
+`examples/plugins/hello/views/greetings.html` 是最小示例，
+`apps/desktop/resources/plugins/pi.file-manager` 是完整实现。
+自定义 `onPanelInvoke` 操作必须自行验证输入；宿主不会自动把它们变成受 `pi.fs` 权限控制的调用。
+
+### 6.9 MCP 服务器
 
 MCP 服务器是声明性的。本地服务器需要 `mcp.server.local`；一个
 远程服务器需要 `mcp.server.remote`：
@@ -554,6 +625,10 @@ MCP 服务器是声明性的。本地服务器需要 `mcp.server.local`；一个
 ```json
 {
   "contributes": {
+    "settings": [
+      { "key": "docsMode", "title": "Docs mode", "type": "string", "default": "public" },
+      { "key": "clientName", "title": "Client name", "type": "string", "default": "my-plugin" }
+    ],
     "mcpServers": [
       {
         "id": "docs",
@@ -562,7 +637,7 @@ MCP 服务器是声明性的。本地服务器需要 `mcp.server.local`；一个
         "command": "bin/docs-server",
         "args": ["--stdio"],
         "env": {
-          "DOCS_TOKEN": { "setting": "docsToken" }
+          "DOCS_MODE": { "setting": "docsMode" }
         }
       },
       {
@@ -570,12 +645,13 @@ MCP 服务器是声明性的。本地服务器需要 `mcp.server.local`；一个
         "transport": "http",
         "url": "https://mcp.example.com/tools",
         "headers": {
-          "Authorization": { "setting": "issuesAuthorization" }
+          "X-Client-Name": { "setting": "clientName" }
         }
       }
     ]
   },
-  "permissions": ["mcp.server.local", "mcp.server.remote"]
+  "permissions": ["mcp.server.local", "mcp.server.remote"],
+  "net": { "domains": ["mcp.example.com"] }
 }
 ```
 
@@ -584,9 +660,9 @@ stdio 命令必须是 `PATH` 上的裸命令或插件相对路径的可执行文
 默认 uv 安装位置）。远程 URL 可以使用 HTTP 或 HTTPS，并且主机必须列在
 `net.domains` 中；非回环 HTTP 不加密，因此只应在可信网络中使用。设置引用仅读取
 该插件的设置——主机环境和提供商密钥永远不会被转发。MCP 工具遵循与手写插件工具
-相同的仅 Agent 策略和命名空间。
+相同的按需工具目录与命名空间。MCP 工具默认中风险，不会因服务器声称只读就自动获得 Plan 权限。
 
-### 6.9 常驻服务和消息总线
+### 6.10 常驻服务和消息总线
 
 声明服务 ID 和允许的主题：
 
@@ -632,7 +708,7 @@ unsubscribe = await pi.bus.subscribe("example.build.*", async (message) => {
 消息。将主题视为对任何已安装的具有匹配插件的公共主题
 订阅；切勿将秘密放入有效负载中。
 
-### 6.10 Agent 扩展（pi ExtensionAPI 模块）
+### 6.11 Agent 扩展（pi ExtensionAPI 模块）
 
 插件可以携带直接在 agent 进程内运行的代码：一个面向 pi CLI `ExtensionAPI` 编写的
 模块，与 pi 扩展使用同一契约。它可以注册工具、斜杠命令，以及每个回合、每次工具调用
@@ -695,7 +771,7 @@ export default function (pi) {
   Electron 头重建（`npx @electron/rebuild -v <electron 版本>`）即可修复。安装失败会清理
   部分依赖并显示警告 toast，不会阻塞导入；只有扩展实际加载失败时插件行才显示 load error。
 
-### 6.11 渲染器插槽
+### 6.12 渲染器插槽
 
 上面每一种界面都是插件自己拥有的窗口或页面。**渲染模块**则绘制在 PI-Desktop 自己的窗口里：
 输入区工具栏上的控件、消息操作栏上的条目、助手回复下方的区块、自有 Agent 工具的卡片、
@@ -754,16 +830,200 @@ export function onLoad(pi) {
 `packages/plugin-sdk/src/renderer.ts` 里有类型和各插槽的 props，manifest 侧见
 [规格 07-plugins/02 §3.2](spec/07-plugins/02-plugin-manifest-schema.md)。
 
-## 7.权限设计
+### 6.13 模型 Provider 与 OAuth
+
+通过 `provider.register` 和清单声明 Provider。宿主持有 Provider 行、API key 表单、
+加密凭证和模型请求；插件不会收到用户在 Add Service 输入的 key。
+完整 id 为 `plugin:<pluginId>:<id>`。分类和简介支持字符串或 `{ en, "zh-CN" }`。
+
+```json
+{
+  "permissions": ["provider.register"],
+  "contributes": {
+    "providers": [{
+      "id": "example",
+      "name": "Example AI",
+      "category": "Example services",
+      "description": "Models from your Example account.",
+      "baseUrl": "https://api.example.com/v1",
+      "apiStyle": "chat_completions",
+      "authKind": "api_key",
+      "models": []
+    }]
+  }
+}
+```
+
+空模型列表仅适用于提供 `baseUrl` 的 API-key Provider，宿主在保存 key 后发现模型。
+其他情况应声明 1..64 个模型；不限制每个插件的 Provider 数量。支持的 API style 为
+`chat_completions`、`opencode_go`、`responses`、`anthropic_messages`、
+`google_generative_ai`、`openai_codex_responses`、`pi_messages`；认证类型为
+`api_key`、`none`、`oauth`。
+
+OAuth 还需要 `provider.oauth`、`baseUrl` 以及 `onProviderOAuth(request, { signal })`。
+处理 `login` / `refresh`，返回 `{ accessToken, refreshToken?, expiresAt?, accountLabel?, headers? }`。
+只有 refresh 会收到本项现有凭证。使用 `pi.providers.oauth.prompt` / `.notify` 展示宿主交互，
+并响应取消。refresh token 不会进入渲染器或 Agent Runtime。令牌请求若走宿主网络 API，
+仍需单独的 `net.fetch` 与出网声明。禁用插件保留并关闭 Provider 行；移除声明或卸载会删除行及凭证。
+
+### 6.14 跟随会话、导入历史、读取用量
+
+用 `pi.session.getActive()` 与 `session:activated` 跟随当前选择的会话，无需新增权限，
+但仍受项目激活范围限制。离开聊天时返回 `null`，否则为 `{ sessionId, projectPath, activeTurn }`；
+`activeTurn` 为 `null` 或 `{ turnId, startedAt }`。快照可能在 `await` 期间失效。
+
+`session:turnEnded` 提供 `{ sessionId, turnId, reason }`，原因为 `completed`、`aborted`、`error`。
+存活的插件每轮收到一次，事件不确认、不重放，也不保证所有迟到的工具已退出。
+订阅与取消订阅应使用同一个函数引用。
+
+```js
+function onSession(snapshot) {
+  if (!snapshot) return;
+  console.log("Selected session", snapshot.sessionId);
+}
+
+async function onLoad() {
+  pi.events.on("session:activated", onSession);
+  onSession(await pi.session.getActive());
+}
+
+function onUnload() {
+  pi.events.off("session:activated", onSession);
+}
+
+module.exports = { onLoad, onUnload };
+```
+
+历史管理使用独立的所有权边界。声明
+`contributes.sessionSources: [{ id: "archive", label: "Archive" }]` 后，按需使用：
+
+| 任务 | 方法 | 权限 |
+|---|---|---|
+| 导入历史 | `session.import`、`session.importBatch` | `session.import` |
+| 读取自己导入的历史 | `session.list`、`get`、`listMessages` | `session.read.own` |
+| 重命名自己导入的会话 | `session.rename` | `session.update.own` |
+| 移入回收站或清除自己导入的会话 | `session.delete` | `session.delete.own` |
+| 创建或复用显式项目绑定 | `project.create`；导入传 `projectId` | `project.create` |
+| 生成默认标题 | `session.getAutoTitleContext`、`setAutoTitle` | `session.autoTitle` |
+| 读取已完成轮次用量 | `usage.listTurns` | `usage.read` |
+
+导入以 `(pluginId, source, externalId)` 幂等。时间必须为严格 RFC3339，消息时间单调递增，
+后续调用使用宿主返回的 id。导入的 Provider、模型、路径只是历史元数据，不会自动建立实时绑定。
+传现有 `projectId` 才绑定项目；创建项目不会切换工作区。宿主用 `sessionsChanged` 刷新界面。
+
+读取与修改仅限自己导入的会话。批量 `skip` 逐项继续，`fail` 原子提交。
+`trash` 保留正文和来源，`purge` 删除两者。没有通用消息修改或任意会话重绑定 API。
+自动标题只暴露默认标题会话的首条提示词和回复摘要，通过 `expectedTitle` 比较更新，手动改名优先。
+用量只含计数和标识，不含正文。载荷与上限见[会话 API 规范](/zh-CN/spec/07-plugins/03-plugin-api)。
+
+### 6.15 模型目录与单次补全
+
+`pi.models.list()`（`models.list`）返回已就绪的模型绑定，不含凭证。
+将返回的 `key` 原样传给 `pi.agent.complete`（`agent.complete`），模型 id 自身可能包含 `/`。
+
+```js
+const models = await pi.models.list();
+const model = models.find((item) => item.isDefault) ?? models[0];
+if (!model) throw new Error("Configure a model first");
+const answer = await pi.agent.complete({
+  modelKey: model.key,
+  system: "Answer briefly.",
+  messages: [{ role: "user", content: "Explain this plugin's purpose." }],
+});
+await pi.ui.showToast(answer.text);
+```
+
+该 API 会消耗用户的 Provider 配额，不启用工具。认证、错误分类和有界重试由宿主持有。
+上限为 90 秒、每插件滚动一分钟 8 次。`includeSessionContext` 还需 `session.read`，
+且必须处于本插件 Agent 工具的有效调用中；`session.getLlmContext()` 同样如此。
+后台服务、输入框转换、当前会话快照都不授予读取正文的能力。
+处理 `TIMEOUT`、`RATE_LIMITED` 及 Provider 分类错误，避免无限重试。
+
+### 6.16 输入框转换与建议
+
+转换由用户主动触发，只收到 `{ id, text, modelKey? }`。声明
+`contributes.composerTransforms` 和 `composer.transform` 后导出：
+
+```js
+function onComposerTransform({ id, text }) {
+  if (id !== "trim") throw new Error("Unknown transform");
+  return text.trim();
+}
+
+module.exports = { onComposerTransform };
+```
+
+在该贡献中声明 `{ "id": "trim", "title": "Trim draft", "undoTitle": "Undo trim" }`。
+输入与输出各限 100,000 字符。宿主保留文件引用，丢弃编辑或切换会话后的过时结果，并提供撤销。
+回调不会收到历史正文、附件数据或单独的文件路径元数据。
+
+建议使用独立的主进程 API `pi.composer`，需要 `composer.suggest`，只在空草稿时显示占位提示，
+不会发送消息。
+
+```js
+const active = await pi.session.getActive();
+if (active) {
+  const result = await pi.composer.suggest({
+    sessionId: active.sessionId,
+    turnId: active.activeTurn?.turnId,
+    text: "Add a regression test for this change",
+    ttlMs: 120_000,
+  });
+  if (!result.shown) console.log("Suggestion refused", result.reason);
+}
+// On your own cancellation path:
+await pi.composer.clearSuggestion();
+```
+
+文本合并成一行并截为 200 字符；默认存活 120 秒，范围限制为 1..600 秒。
+Tab 接受、Esc 忽略。输入、粘贴、附件、发送、切换会话、新轮次、卸载、渲染器重载或关窗都会清除。
+正常拒绝返回 `{ shown: false, reason }`，原因为 `session-not-visible`、`draft-not-empty`、
+`stale-turn`、`replaced`、`unsupported`；非法输入或缺少权限仍抛错。
+若由 `session:turnEnded` 触发生成，传该事件的 `turnId`，避免迟到的补全干扰新轮次。
+
+### 6.17 系统快捷键、WebSocket、麦克风与语音
+
+系统快捷键独立于应用内 `shortcut` 设置。在 `contributes.globalShortcuts` 中声明 id 与自己的命令，
+申请 `keyboard.globalShortcut`，并在 `onLoad` 注册命令。`default` 在加载后注册；运行时通过
+`pi.keyboard.registerGlobalShortcut` 修改。检查返回的 `registered` / `error`，冲突返回
+`registered: false` 而非抛错。卸载、禁用、崩溃都会释放，最多每插件 8 条。
+
+WebSocket 需要 `net.websocket`，使用与 fetch 相同的出网策略。通过
+`pi.net.websocket.connect` / `send` / `close` 操作，订阅完整名称
+`net:websocket:open`、`net:websocket:message`、`net:websocket:close`、`net:websocket:error`，
+事件包含所属 `socketId`。上限为 4 个连接、1 MiB 帧、4 MiB 待发送队列，随插件释放。
+
+`ui.microphone` 仅允许隔离面板用 `getUserMedia` 获取音频，摄像头仍拒绝。
+后台 `pi.audio.*` 有类型和权限门，但**尚无设备后端**，授权后仍返回或抛出 `UNSUPPORTED`。
+不能仅凭清单声明实现后台录音。
+
+`pi.speech.registerAdapter` / `unregisterAdapter`（`speech.adapter.register`）添加协议处理器，
+返回文本、音频或宿主执行的 HTTP 计划。`openai_audio`、`openai_chat_audio` 是保留 id；
+携带绑定 Provider key 的 HTTP 计划只能访问该 Provider origin。
+
+### 6.18 浏览器与桌面操作
+
+`fs.openInBrowser(path)` 只需 `fs.read`，将现有可读 HTML 打开为工作面板资源页，不授予浏览器自动化。
+自动化使用 `browser.cdp` 与 `pi.browser.*`；工具调用绑定发起会话，后台会话不能重定向前台页面。
+CDP 使用允许列表，Cookie、存储、目标管理、网络拦截仍拒绝。`browser.reveal()` 只负责显式展示，
+后台导航无需先调用它。整页截图按比例缩至最多 1280×2048，捕获超时 30 秒。
+
+`desktop.control` 通过 `pi.desktop.listOperations()` 与
+`pi.desktop.invoke({ operation, args, confirm? })` 访问审定目录，不开放任意 IPC。
+危险操作同时需要 `confirm: true` 和宿主原生对话框中的用户确认。
+会话协作的 `spawn` / `send` 还要求有效的插件 Agent 工具调用，来源会话与轮次由宿主注入。
+在创建、发消息、取消或删除会话前，请读[桌面控制契约](/zh-CN/spec/07-plugins/03-plugin-api)。
+
+## 7. 权限设计
 
 权限均在 `manifest.json` 中声明并由用户授予。
 未声明或未授予的 API 调用失败并显示 `PERMISSION_DENIED`。
 
 | 风险 | 权限 |
 |---|---|
-| 低 | `ui.panel`、`ui.theme`、`notify` |
-| 中等 | `clipboard.read`、`clipboard.write`、`fs.read`、`shell.openExternal`、`background.service`、`bus.publish`、`bus.subscribe`、`audio.playback.background`、`keyboard.globalShortcut` |
-| 高 | `fs.write`、`fs.delete`、`agent.tool.register`、`agent.prompt.inject`、`renderer.extension`、`net.fetch`、`mcp.server.local`、`mcp.server.remote`、`audio.capture.background`、`net.websocket` |
+| 低 | `ui.panel`, `ui.view`, `ui.theme`, `ui.settings`, `ui.window.appearance`, `notify` |
+| 中等 | `ui.microphone`, `clipboard.read`, `clipboard.write`, `fs.read`, `composer.transform`, `composer.suggest`, `models.list`, `session.read.own`, `session.update.own`, `usage.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
+| 高 | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `agent.complete`, `agent.extension`, `renderer.extension`, `provider.register`, `provider.oauth`, `desktop.control`, `project.create`, `session.read`, `session.import`, `session.delete.own`, `session.autoTitle`, `net.fetch`, `net.anyHost`, `mcp.server.local`, `mcp.server.remote`, `browser.cdp`, `audio.capture.background`, `speech.adapter.register`, `net.websocket` |
 
 `keyboard.globalShortcut` 与 `net.websocket` 已实现。`pi.audio.*` 已经存在并且
 可以调用，其方法仍由权限把关，但当前宿主还没有设备后端：获得授权的调用会以
@@ -783,6 +1043,9 @@ export function onLoad(pi) {
 
 完整的映射和策略位于
 [权限矩阵](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)。
+
+自动重载不会扩大授权或文件范围。若保存后被权限门拒绝，可在插件行的 **More → Reload**
+中显式审核并重新加载已登记目录，或再次加载开发目录。删除权限会立即生效。
 
 ## 8. 开发和调试
 
@@ -819,7 +1082,7 @@ export function onLoad(pi) {
 `LIMIT_EXCEEDED` 或 `RATE_LIMITED`。捕获可选操作的错误
 并将代码包含在诊断中而不记录秘密。
 
-## 9.检查、打包、安装
+## 9. 检查、打包、安装
 
 从存储库根运行验证：
 
@@ -863,10 +1126,16 @@ Agent 还可以在每种操作模式下运行 `PluginCheck`。 `PluginScaffold`
 和 `PluginPack` 是代理模式工具，仅限于当前
 工作区。
 
+打包还会跳过凭证文件（`.env`、`.env.*`、`.npmrc`、`*.pem`、`*.key`）并给出警告。
+产物仍必须检查和实际安装，`check` 不证明运行时、兼容版本、授权、网络或中心审核一定成功。
+
 ### 用 `pi-plugin publish` 准备插件中心提交
 
 `publish` 会打包插件，并把包固定到构建它的 git 提交上，
 以便插件中心能够重新构建并比对工件：
+
+`publish` 仅在本地准备包和提交 JSON，不会上传或发布。先将 `dist/` 加入插件仓库的
+`.gitignore`，因为打包发生在干净工作区检查之前。
 
 ```bash
 pnpm pi-plugin publish ../my-first-plugin [--out <dir>] [--ref <ref>] [--channel stable|beta] [--allow-dirty]
@@ -908,8 +1177,8 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 [AIUO-Net/pi-desktop-plugins](https://github.com/AIUO-Net/pi-desktop-plugins) 作为 GitHub 备用通道。
 分发仓库不托管插件源码，向它提交「新增插件源码」的 PR 会被关闭。
 
-签名不是当前的信任原语。包 SHA-256 和显式
-许可审查是实施的基线；遵循
+当前使用包 SHA-256 和显式
+权限审核作为信任基线，后续规划见
 [签署和更新规范](/zh-CN/spec/07-plugins/08-plugin-signing-updates)
 了解路线图详细信息。
 
@@ -929,7 +1198,7 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 | MCP 服务器未启动 | 传输字段、命令、URL、设置或权限无效 | 运行 `pi-plugin check`，然后通过插件 ID 检查日志 |
 | 服务反复重启 | `start` 抛出异常或插件进程退出 | 使 `start` 幂等，在 `stop` 中进行清理，并检查重新启动日志 |
 
-## 12.参考图
+## 12. 参考索引
 
 - [示例插件](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins)
 - [插件系统概述](/zh-CN/spec/07-plugins/01-plugin-system)
@@ -941,21 +1210,53 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 - [权限](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)
 - [Hello 参考插件](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
 
-### Fetch redirect policy (unreleased)
+## 13. 完整 SDK 接口与源码索引
 
-Check host support before relying on a policy; old hosts can ignore unknown
-request fields. Never fall back to a raw network request.
+下表逐项对应 `packages/plugin-sdk/src/index.ts` 的 `PluginHostApi`，是方法索引，不代表已授权。
+权限、调用上下文和可用性限制仍适用，`pi.audio` 仍未实现设备后端。
+面板桥是较小的接口集合，见 API 规范 §6。
 
-```js
-if (typeof pi.net.getCapabilities !== "function") throw new Error("Upgrade PI-Desktop");
-const capabilities = await pi.net.getCapabilities();
-if (!capabilities.fetchRedirectModes.includes("error")) throw new Error("Unsupported host");
-const response = await pi.net.fetch({ url: endpoint, redirect: "error" });
-```
+| 命名空间 | 方法 |
+|---|---|
+| `pi.app` | `getVersion`, `getLocale`, `getAppearance`, `setTheme` |
+| `pi.themes` | `upsert`, `remove`, `list`, `setVariables` |
+| `pi.plugin` | `getId`, `getManifest`, `getSettings`, `setSettings`, `getDataPath` |
+| `pi.commands` | `register`, `unregister` |
+| `pi.speech` | `registerAdapter`, `unregisterAdapter` |
+| `pi.composer` | `suggest`, `clearSuggestion` |
+| `pi.ui` | `openPanel`, `closePanel`, `showToast`, `notify`, `getNotificationPermission`, `requestNotificationPermission`, `showNativeNotification`, `revealView` |
+| `pi.project` | `create` |
+| `pi.providers.oauth` | `prompt`, `notify` |
+| `pi.workspace` | `get` |
+| `pi.desktop` | `listOperations`, `invoke` |
+| `pi.audio` | `getInputDevices`, `openInput`, `closeInput`, `getCaptureState`, `onInputFrame`, `offInputFrame`, `openOutput`, `writeOutput`, `stopOutput`, `closeOutput` |
+| `pi.keyboard` | `registerGlobalShortcut`, `unregisterGlobalShortcut`, `listGlobalShortcuts` |
+| `pi.fs` | `readText`, `stat`, `readRange`, `readPreview`, `openDefault`, `openInBrowser`, `reveal`, `writeText`, `glob`, `list`, `remove`, `requestDirectory` |
+| `pi.agent` | `registerTool`, `unregisterTool`, `complete` |
+| `pi.models` | `list` |
+| `pi.session` | `getLlmContext`, `getActive`, `getAutoTitleContext`, `setAutoTitle`, `list`, `get`, `listMessages`, `import`, `importBatch`, `rename`, `delete` |
+| `pi.usage` | `listTurns` |
+| `pi.services` | `register`, `unregister` |
+| `pi.bus` | `publish`, `subscribe` |
+| `pi.clipboard` | `readText`, `writeText`, `getHistory` |
+| `pi.shell` | `openExternal` |
+| `pi.browser` | `reveal`, `navigate`, `action`, `setBounds`, `setVisible`, `getState`, `openExternal`, `snapshot`, `screenshot`, `click`, `fill`, `evaluate`, `console`, `cdp` |
+| `pi.net` | `getCapabilities`, `fetch` |
+| `pi.net.websocket` | `connect`, `send`, `close` |
+| `pi.events` | `on`, `off` |
 
-`error` rejects every 3xx with `REDIRECT_DISALLOWED` before accessing Location.
-`manual` returns the original status, headers and body. Omitted/`follow` retains
-the existing bounded, per-hop egress-checked behavior. Invalid modes are rejected
-before I/O. No mode expands network permissions. See the
-[complete contract](/spec/07-plugins/03-plugin-api.md#net) and the
-local-only test plugin at `examples/plugins/fetch-redirect/README.md` in the repository.
+渲染器模块的 `pi` 是另一套接口：`plugin.id` / `version`、`slots.register`、
+`ui.injectStyle`、`ui.openLayer`、`composer.subscribeDraft`、`dispatch`。
+订阅草稿需要在 `rendererActions` 声明 `composer.readDraft`；替换草稿需使用捕获的
+`generation` 作为 `expectedGeneration` 防止过时写入，要求用户输入事件、Composer 未聚焦，并保留全部宿主 chip。具体载荷见 `renderer-composer.ts`，不能访问宿主 store。
+没有用于直接发送消息的 renderer action。
+
+源码核对入口：`packages/plugin-sdk/src`（类型与校验）、`packages/plugin-devkit/src`
+（模板、检查、打包、提交准备）、`crates/host-core/src/plugins`（安装与持久化）、
+`apps/desktop/electron/main/plugin-runtime.ts` 与 `plugin-host-process.mjs`（实际分发与生命周期）、
+`apps/desktop/electron/preload/plugin-panel.ts`（面板桥）、`apps/desktop/test/plugin-*.test.mjs`（验证）。
+示例位于 `examples/plugins/{hello,ui-slots-lab,fetch-redirect,roundtable}`。
+
+`docs/plugin-plan` 包含评审材料和规划中的运行时钩子，draft 页面不是已实现的 SDK 导出。
+判断能力是否存在时，以 SDK 与实际运行时为准。应用内置开发说明位于
+`apps/desktop/resources/skills/plugin-development.md`。

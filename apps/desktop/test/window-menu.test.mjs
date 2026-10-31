@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
-import { readMainSource } from "./helpers/main-source.mjs";
+import { readMainModule, readMainSource } from "./helpers/main-source.mjs";
 
 const mainSource = await readMainSource();
+const windowIpcSource = await readMainModule("ipc/window-ipc.ts");
 const activationSource = await readFile(
   new URL("../electron/main/bootstrap/app-activation.ts", import.meta.url),
   "utf8",
@@ -279,6 +280,21 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
     mainSource,
     /PI_DESKTOP_START_MAXIMIZED[\s\S]*window\.maximize\(\)/,
   );
+});
+
+test("the work-panel tab menu is a validated native popup", () => {
+  assert.match(protocolSource, /workPanelTabMenu:\s*"pi-desktop\/workPanel\/tabMenu"/);
+  const start = windowIpcSource.indexOf("handleWithEvent(IPC.invoke.workPanelTabMenu");
+  const end = windowIpcSource.indexOf("\n  });", start);
+  const handler = windowIpcSource.slice(start, end);
+  assert.ok(start >= 0 && end > start, "native tab-menu IPC handler is registered");
+  assert.match(handler, /registrar\.assertMainWindowSender\(event\)/);
+  assert.match(handler, /parseWorkPanelTabMenuRequest\(input\)/);
+  assert.match(handler, /Menu\.buildFromTemplate/);
+  assert.match(handler, /enabled:\s*request\.canCloseOthers/);
+  assert.match(handler, /event\.sender\.getZoomFactor\(\)/);
+  assert.match(handler, /waitForNativeMenuResult\(/);
+  assert.match(handler, /menu\.popup\(\{ window, x, y, callback:/);
 });
 
 test("menu and window IPC reject actions outside their shared allowlists", () => {

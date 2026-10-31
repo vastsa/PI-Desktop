@@ -3,38 +3,45 @@ import { useTranslation } from "react-i18next";
 import {
   askToolOptionDescription,
   askToolOptionLabel,
-  type AskToolQuestion,
 } from "@pi-desktop/shared";
 import { AskToolRichText } from "./AskToolRichText";
-import type { PendingAsk } from "../lib/pending-asks";
+import {
+  emptyAskDraft,
+  type AskDraft,
+  type AskDraftAnswer,
+  type PendingAsk,
+} from "../lib/pending-asks";
 import { useAppStore } from "../stores/app-store";
 import { Button } from "./ui";
 
-type DraftAnswer = {
-  values: string[];
-  customSelected: boolean;
-  customText: string;
-  skipped: boolean;
-};
+type DraftAnswer = AskDraftAnswer;
 
 const CUSTOM_OPTION = "__asktool_custom__";
-
-function emptyDrafts(questions: AskToolQuestion[]): DraftAnswer[] {
-  return questions.map(() => ({
-    values: [],
-    customSelected: false,
-    customText: "",
-    skipped: false,
-  }));
-}
 
 export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queued?: number }) {
   const { t } = useTranslation();
   const resolveAsk = useAppStore((state) => state.resolveAsk);
   const showToast = useAppStore((state) => state.showToast);
-  const [index, setIndex] = useState(0);
-  const [drafts, setDrafts] = useState(() => emptyDrafts(request.questions));
+  const storedDraft = useAppStore((state) => state.askDrafts[request.requestId]);
+  const setAskDraft = useAppStore((state) => state.setAskDraft);
   const [resolving, setResolving] = useState(false);
+  // The store owns the draft, so a session switch (which unmounts this card)
+  // cannot reset the answers. Read lazily rather than seeding during render.
+  const draft: AskDraft =
+    storedDraft && storedDraft.answers.length === request.questions.length
+      ? {
+          ...storedDraft,
+          index: Math.min(
+            Math.max(0, storedDraft.index),
+            request.questions.length - 1,
+          ),
+        }
+      : emptyAskDraft(request.questions);
+  const index = draft.index;
+  const drafts = draft.answers;
+  const updateDraft = (next: AskDraft) => setAskDraft(request.requestId, next);
+  const setIndex = (nextIndex: number) =>
+    updateDraft({ ...draft, index: nextIndex });
   const current = request.questions[index];
   const currentDraft = drafts[index];
 
@@ -54,14 +61,17 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
     [drafts],
   );
 
-  const updateDraft = (update: (draft: DraftAnswer) => DraftAnswer) => {
-    setDrafts((previous) =>
-      previous.map((draft, draftIndex) => (draftIndex === index ? update(draft) : draft)),
-    );
+  const updateCurrentDraft = (update: (answer: DraftAnswer) => DraftAnswer) => {
+    updateDraft({
+      ...draft,
+      answers: drafts.map((answer, draftIndex) =>
+        draftIndex === index ? update(answer) : answer,
+      ),
+    });
   };
 
   const selectOption = (option: string) => {
-    updateDraft((draft) => {
+    updateCurrentDraft((draft) => {
       if (option === CUSTOM_OPTION) {
         return {
           ...draft,
@@ -113,18 +123,24 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
         ? { ...draft, skipped: true }
         : draft,
     );
-    setDrafts(nextDrafts);
-    if (index === request.questions.length - 1) void submit(nextDrafts);
-    else setIndex((value) => value + 1);
+    if (index === request.questions.length - 1) {
+      updateDraft({ ...draft, answers: nextDrafts });
+      void submit(nextDrafts);
+    } else {
+      updateDraft({ ...draft, answers: nextDrafts, index: index + 1 });
+    }
   };
 
   const skip = () => {
     const nextDrafts = drafts.map((draft, draftIndex) =>
       draftIndex === index ? { ...draft, skipped: true, values: [], customSelected: false } : draft,
     );
-    setDrafts(nextDrafts);
-    if (index === request.questions.length - 1) void submit(nextDrafts);
-    else setIndex((value) => value + 1);
+    if (index === request.questions.length - 1) {
+      updateDraft({ ...draft, answers: nextDrafts });
+      void submit(nextDrafts);
+    } else {
+      updateDraft({ ...draft, answers: nextDrafts, index: index + 1 });
+    }
   };
 
   return (
@@ -223,7 +239,7 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
           placeholder={t("askTool.customPlaceholder")}
           aria-label={t("askTool.customOption")}
           onChange={(event) =>
-            updateDraft((draft) => ({ ...draft, customText: event.target.value, skipped: false }))
+            updateCurrentDraft((draft) => ({ ...draft, customText: event.target.value, skipped: false }))
           }
           autoFocus
         />

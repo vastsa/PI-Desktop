@@ -3,12 +3,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectronBinary } from "./e2e/boot.mjs";
 
+const reasoningOnly = process.argv.includes("--reasoning-effort");
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(
   join(root, "packages/agent-runtime/package.json"),
@@ -35,9 +36,16 @@ try {
     },
     nodePaths: [join(root, "apps/desktop/node_modules")],
   });
+  let css = "";
+  if (reasoningOnly) {
+    for (const name of ["tokens", "base", "ui-kit", "settings", "providers", "model-config"]) {
+      css += (await readFile(join(root, `apps/desktop/src/styles/${name}.css`), "utf8")).replace(/@theme(?: inline)?/g, ":root") + "\n";
+    }
+  }
+  await writeFile(join(temp, "style.css"), css);
   await writeFile(
     join(temp, "index.html"),
-    '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'"><title>Provider API format regression</title><body><script src="renderer.js"></script>',
+    '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'"><link rel="stylesheet" href="style.css"><title>Provider API format regression</title><body><script src="renderer.js"></script>',
   );
   await writeFile(
     join(temp, "main.cjs"),
@@ -50,7 +58,13 @@ app.whenReady().then(async () => {
   window.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await window.loadFile(path.join(__dirname, "index.html"));
-    const result = await window.webContents.executeJavaScript("globalThis.providerApiStyleProbe()");
+    const result = ${reasoningOnly} ? [] : await window.webContents.executeJavaScript("globalThis.providerApiStyleProbe()");
+    if (${reasoningOnly}) {
+      for (const [width, height] of [[850, 600], [1000, 700], [1400, 900]]) {
+        window.setContentSize(width, height);
+        result.push(await window.webContents.executeJavaScript("globalThis.providerApiStyleProbe(true)"));
+      }
+    }
     console.log("PROVIDER_API_STYLE_PROBE " + JSON.stringify(result));
     app.quit();
   } catch (error) {
@@ -91,7 +105,8 @@ app.whenReady().then(async () => {
   const result = JSON.parse(line.slice("PROVIDER_API_STYLE_PROBE ".length));
   console.log("PROVIDER_API_STYLE_PROBE " + JSON.stringify(result));
   assert.equal(code, 0, output.slice(-6000));
-  assert.equal(result.ok, true);
+  if (reasoningOnly) for (const item of result) assert.equal(item.ok, true);
+  else assert.equal(result.ok, true);
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

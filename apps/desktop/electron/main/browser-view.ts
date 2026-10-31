@@ -4,6 +4,7 @@ import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserState } from "@pi-desktop/shared";
 import { isAllowedHttpUrl, parseAllowedExternalUrl } from "./safe-open-external";
+import { BrowserBackingHost } from "./browser-backing-host";
 
 /**
  * Work panel embedded preview browser (D100, ADR 0019).
@@ -120,13 +121,15 @@ function resolveBrowserLocalFile(raw: string, root: string | null): string | nul
 }
 
 export class BrowserPane {
+  private static readonly sharedBackingHost = new BrowserBackingHost();
   private view: WebContentsView | null = null;
   private surface: View | null = null;
   private window: BrowserWindow | null = null;
+  private attachedWindow: BrowserWindow | null = null;
   private visible = false;
   private bounds = { x: 0, y: 0, width: 0, height: 0 };
-  private capturing = false;
-  private captureTail: Promise<void> = Promise.resolve();
+  private viewportPinned = false;
+  private operationTail: Promise<void> = Promise.resolve();
   private onState: (state: BrowserState) => void;
   private fileRoot: string | null = null;
   private watcher: FSWatcher | null = null;
@@ -141,10 +144,16 @@ export class BrowserPane {
   private cancelPending: (() => void) | null = null;
 
   private readonly onOpenUrl?: (url: string) => void;
+  private readonly backingHost: BrowserBackingHost;
 
-  constructor(onState: (state: BrowserState) => void, onOpenUrl?: (url: string) => void) {
+  constructor(
+    onState: (state: BrowserState) => void,
+    onOpenUrl?: (url: string) => void,
+    backingHost = BrowserPane.sharedBackingHost,
+  ) {
     this.onState = onState;
     this.onOpenUrl = onOpenUrl;
+    this.backingHost = backingHost;
   }
 
   setWindow(window: BrowserWindow | null): void {
@@ -181,26 +190,32 @@ export class BrowserPane {
     return wc;
   }
 
-  /** Serialize captures with native resizing on this page only. */
+  /** Captures and pointer input share one page-local viewport owner. */
   captureScreenshot<T>(capture: (wc: WebContents) => Promise<T>): Promise<T> {
-    // Pin the guest before queueing so a closed/recreated page cannot receive
-    // a screenshot requested for its predecessor.
+    return this.withStableViewport(capture);
+  }
+
+  withStableViewport<T>(operation: (wc: WebContents) => Promise<T>): Promise<T> {
+    // Pin identity before queueing; a replacement cannot receive old work.
     const wc = this.getWebContents();
-    const task = this.captureTail.then(async () => {
+    const task = this.operationTail.then(async () => {
       if (!wc || wc.isDestroyed() || this.getWebContents() !== wc) {
         throw Object.assign(new Error("browser guest is not available"), { code: "UNAVAILABLE" });
       }
-      this.capturing = true;
+      const throttled = wc.getBackgroundThrottling();
+      this.viewportPinned = true;
+      wc.setBackgroundThrottling(false);
       try {
-        return await capture(wc);
+        return await operation(wc);
       } finally {
-        this.capturing = false;
+        this.viewportPinned = false;
+        if (!wc.isDestroyed()) wc.setBackgroundThrottling(throttled);
         this.applyBounds();
       }
     });
     // The caller still receives capture errors; a failure must not block the
     // next independent capture.
-    this.captureTail = task.then(() => undefined, () => undefined);
+    this.operationTail = task.then(() => undefined, () => undefined);
     return task;
   }
 
@@ -343,8 +358,8 @@ export class BrowserPane {
     // Move and clip the presentation surface immediately, even while Chromium
     // pins its capture-time viewport. A pending screenshot must not leave the
     // guest over the conversation when the window or work panel moves.
-    this.surface?.setBounds(this.bounds);
-    if (this.view && this.visible && !this.capturing && this.getWebContents()) {
+    if (this.visible) this.surface?.setBounds(this.bounds);
+    if (this.view && this.visible && !this.viewportPinned && this.getWebContents()) {
       this.view.setBounds({ x: 0, y: 0, width: this.bounds.width, height: this.bounds.height });
     }
   }
@@ -352,10 +367,8 @@ export class BrowserPane {
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (!this.view) return;
-    this.surface?.setVisible(visible);
-    this.view.setVisible?.(visible);
     if (visible) this.attach();
-    else this.detach();
+    else this.park();
   }
 
   openExternal(): void {
@@ -390,24 +403,41 @@ export class BrowserPane {
 
   private attach(): void {
     if (!this.window || this.window.isDestroyed() || !this.surface) return;
+    if (this.attachedWindow !== this.window) this.detach();
     const children = this.window.contentView.children;
-    // The guest hole sits on top of plugin chrome. Re-adding a plugin view
-    // after this pane is attached would cover the guest unless we keep it last.
+    // Keep the guest above its plugin chrome, but confined to the measured hole.
     if (children.includes(this.surface) && children[children.length - 1] !== this.surface) {
       this.window.contentView.removeChildView(this.surface);
     }
-    if (!this.window.contentView.children.includes(this.surface)) {
-      this.window.contentView.addChildView(this.surface);
-    }
+    if (!this.window.contentView.children.includes(this.surface)) this.window.contentView.addChildView(this.surface);
+    this.attachedWindow = this.window;
+    this.surface.setVisible(true);
+    this.view?.setVisible(true);
     this.applyBounds();
   }
 
+  /** A hidden native host keeps Chromium input/capture independent of the UI. */
+  private park(): void {
+    if (!this.surface || !this.view || !this.getWebContents()) return;
+    if (this.attachedWindow && this.attachedWindow !== this.window && !this.attachedWindow.isDestroyed()) return;
+    this.detach();
+    const bounds = this.view.getBounds();
+    const size = { width: bounds.width || 1024, height: bounds.height || 768 };
+    if (!bounds.width || !bounds.height) this.view.setBounds({ x: 0, y: 0, ...size });
+    this.surface.setBounds({ x: 0, y: 0, ...size });
+    this.surface.setVisible(true);
+    this.view.setVisible(true);
+    this.attachedWindow = this.backingHost.attach(this.surface, size);
+  }
+
   private detach(): void {
-    if (!this.window || this.window.isDestroyed() || !this.surface) return;
-    const children = this.window.contentView.children;
-    if (children.includes(this.surface)) {
-      this.window.contentView.removeChildView(this.surface);
+    if (!this.surface) return;
+    const owner = this.attachedWindow;
+    if (owner && !owner.isDestroyed() && owner.contentView.children.includes(this.surface)) {
+      owner.contentView.removeChildView(this.surface);
     }
+    this.attachedWindow = null;
+    this.backingHost.detach(this.surface);
   }
 
   /** Watch the previewed file's directory so page + asset edits re-render. */
@@ -541,6 +571,8 @@ export class BrowserPane {
       },
     );
     this.view = view;
+    if (this.visible) this.attach();
+    else this.park();
     return view;
   }
 

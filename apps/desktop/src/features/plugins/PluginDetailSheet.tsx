@@ -45,7 +45,7 @@ export function PluginDetailSheet({
   detailUpToDate,
   detailPermissions,
   installedDetail,
-  busyId,
+  isPluginBusy,
   queueInstall,
   setSelectedVersion,
   reviewSummaries,
@@ -164,7 +164,7 @@ export function PluginDetailSheet({
                   ) : (
                     <Button
                       variant="primary"
-                      disabled={busyId === detail.id || detailPackagePending}
+                      disabled={isPluginBusy(detail.id) || detailPackagePending}
                       onClick={() =>
                         queueInstall({
                           id: detail.id,
@@ -178,7 +178,7 @@ export function PluginDetailSheet({
                         ? t("plugins.withdrawn")
                         : detailPackagePending
                         ? t("plugins.packagePending")
-                        : busyId === detail.id
+                        : isPluginBusy(detail.id)
                           ? t("plugins.installing")
                           : installedDetail
                             ? t("plugins.updateNow")

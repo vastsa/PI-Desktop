@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
+import { assertLocalPluginRoot, pluginFsReadOptions, readRemotePluginFiles, type PluginRemoteFilesRead } from "./plugin-remote-files";
 import { getModuleDirectory } from "./module-path";
 import {
   busTopicAllowed,
@@ -28,6 +29,7 @@ import {
   normalizeFsPath,
   parseNetDomains,
   parseSkillFrontmatter,
+  PLUGIN_FS_LIST_MAX_ENTRIES,
   pluginMcpToolKey,
   pluginSkillId,
   pluginThemeId,
@@ -56,6 +58,7 @@ import {
   type PluginFsMode,
   type PluginFsPolicy,
   type PluginFsRule,
+  type PluginFsReadOptions,
   type PluginLlmContext,
   type PluginManifest,
   type PluginModelInfo,
@@ -68,9 +71,17 @@ import {
   type PluginProviderOAuthRequest,
   type PluginProviderContrib,
   type PluginRevealViewInput,
+  type PluginProjectInfo,
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginComposerTransformInput,
+  type PluginComposerSuggestInput,
+  type PluginComposerSuggestResult,
+  type PluginComposerClearSuggestionInput,
+  PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS,
+  PLUGIN_COMPOSER_SUGGESTION_TTL_MS,
+  PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS,
+  PLUGIN_COMPOSER_SUGGESTION_TTL_MAX_MS,
   type PluginSkillContrib,
   type PluginThemeVariableContrib,
 } from "@pi-desktop/plugin-sdk";
@@ -127,6 +138,10 @@ import {
   PROMPT_ENHANCEMENT_PLUGIN_ID,
   type LegacyPromptEnhancementSettings,
 } from "./plugin-prompt-enhancement-migration";
+import type {
+  ComposerSuggestionOffer,
+  ComposerSuggestionOutcome,
+} from "./services/composer-suggestion";
 
 export type RegisteredCommand = {
   id: string;
@@ -308,12 +323,15 @@ export type PluginHostServices = {
    * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
    */
   getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
+  /** Durable project metadata only; unavailable hosts resolve to an empty list. */
+  listProjects?: () => Promise<PluginProjectInfo[]>;
   /**
    * The project the tool session behind this call belongs to, when the host
    * tracks one. Additive: an fs call falls back to `getWorkspacePath` -- the
    * visible workspace -- for a panel call or an unknown session.
    */
   getWorkspacePathForSession?: (sessionId: string) => string | null;
+  readRemoteWorkspaceFiles?: PluginRemoteFilesRead;
   /** The set of `contributes.agentExtensions` modules changed (load/unload). */
   agentExtensionsChanged?: () => void;
   getLocale?: () => string;
@@ -461,18 +479,19 @@ export type PluginHostServices = {
     action: (action: "back" | "forward" | "reload" | "stop", sessionId?: string, tabId?: string) => void;
     setBounds: (pluginId: string, hole: unknown) => unknown;
     setVisible: (pluginId: string, visible: boolean) => void;
-    getState: () => unknown;
+    getState: (sessionId?: string, tabId?: string) => unknown;
     openExternal: (sessionId?: string, tabId?: string) => void;
-    snapshot: () => Promise<unknown>;
+    snapshot: (sessionId?: string, tabId?: string) => Promise<unknown>;
     screenshot: (
       input?: { fullPage?: boolean },
       sessionId?: string,
+      tabId?: string,
     ) => Promise<unknown>;
-    click: (uid: string) => Promise<void>;
-    fill: (uid: string, text: string) => Promise<void>;
-    evaluate: (expression: string) => Promise<unknown>;
-    console: (limit?: number) => unknown;
-    cdp: (method: string, params?: unknown) => Promise<unknown>;
+    click: (uid: string, sessionId?: string, tabId?: string) => Promise<void>;
+    fill: (uid: string, text: string, sessionId?: string, tabId?: string) => Promise<void>;
+    evaluate: (expression: string, sessionId?: string, tabId?: string) => Promise<unknown>;
+    console: (limit?: number, sessionId?: string, tabId?: string) => unknown;
+    cdp: (method: string, params?: unknown, sessionId?: string, tabId?: string) => Promise<unknown>;
   };
   onPluginUnload?: (pluginId: string) => void;
   listModels?: () => Promise<PluginModelInfo[]>;
@@ -514,6 +533,14 @@ export type PluginHostServices = {
     sessionId: string;
     location: string | null;
   }) => Promise<void>;
+  /**
+   * `pi.composer.suggest`: hand one line to the shell that owns the composer.
+   * The runtime already checked the permission and shaped the text; the shell
+   * says whether it went on screen, because only it knows the draft.
+   */
+  suggestComposer?: (offer: ComposerSuggestionOffer) => Promise<ComposerSuggestionOutcome>;
+  /** `pi.composer.clearSuggestion`: drop this plugin's own line. */
+  clearComposerSuggestion?: (pluginId: string, sessionId?: string) => void;
   project?: {
     create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
@@ -547,6 +574,8 @@ const HOST_API_ALLOWLIST = new Set([
   "plugin.setSettings",
   "plugin.getDataPath",
   "ui.revealView",
+  "composer.suggest",
+  "composer.clearSuggestion",
   "ui.openPanel",
   "ui.closePanel",
   "ui.showToast",
@@ -557,6 +586,7 @@ const HOST_API_ALLOWLIST = new Set([
   "desktop.listOperations",
   "desktop.invoke",
   "workspace.get",
+  "projects.list",
   "fs.readText",
   "fs.stat",
   "fs.readRange",
@@ -777,8 +807,6 @@ export const MAX_COMPLETE_SYSTEM_CHARS = 32 * 1024;
 export const MAX_COMPLETE_MESSAGE_CHARS = 200_000;
 /** Kept from the pre-scope implementation: a listing is not a search index. */
 const MAX_GLOB_MATCHES = 500;
-/** Entries returned for one directory. A tree is walked lazily, not dumped. */
-const MAX_LIST_ENTRIES = 1000;
 /** Maximum bytes one plugin range call may cross the broker with. */
 const MAX_FS_READ_RANGE_BYTES = 8 * 1024 * 1024;
 /**
@@ -1030,6 +1058,34 @@ function normalizePluginSessionInput(
 ): Record<string, unknown> {
   validatePluginSessionPayload(input, kind);
   return { ...(input as Record<string, unknown>) };
+}
+
+/** Longest session or turn id a plugin may name, matching the host's own bound. */
+const MAX_SESSION_ID_CHARS = 128;
+
+/**
+ * One line of suggestion text, in the form the composer draws: line breaks and
+ * runs of whitespace fold to single spaces, and the result is cut at the SDK
+ * ceiling. Shaping rather than refusing is deliberate — a plugin that asked for
+ * a long or multi-line string still gets a usable suggestion instead of an
+ * error it cannot repair from inside a turn.
+ */
+function composerSuggestionText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const line = value.replace(/\s+/g, " ").trim();
+  return [...line].slice(0, PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS).join("").trim();
+}
+
+/** The requested lifetime, clamped into the range the SDK publishes. */
+function composerSuggestionTtl(value: unknown): number {
+  if (value === undefined || value === null) return PLUGIN_COMPOSER_SUGGESTION_TTL_MS;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw apiError("INVALID_PARAMS", "ttlMs must be a number of milliseconds");
+  }
+  return Math.min(
+    Math.max(Math.round(value), PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS),
+    PLUGIN_COMPOSER_SUGGESTION_TTL_MAX_MS,
+  );
 }
 
 /**
@@ -2453,7 +2509,7 @@ export class PluginRuntime {
           context?.droppedPath,
         );
       case "fs.readPreview":
-        return api.fs.readPreview(String(payload?.path ?? ""));
+        return api.fs.readPreview(String(payload?.path ?? ""), pluginFsReadOptions(payload?.workspacePath));
       case "fs.openDefault":
         await api.fs.openDefault(String(payload?.path ?? ""));
         return { ok: true };
@@ -2469,7 +2525,7 @@ export class PluginRuntime {
       case "fs.glob":
         return api.fs.glob(String(payload?.pattern ?? "*"));
       case "fs.list":
-        return api.fs.list(String(payload?.path ?? ""));
+        return api.fs.list(String(payload?.path ?? ""), pluginFsReadOptions(payload?.workspacePath));
       // Deleting is not reachable from a panel; choosing a directory is, and
       // has to be, because a "pick a folder" button is panel UI by nature.
       case "fs.requestDirectory":
@@ -2523,6 +2579,8 @@ export class PluginRuntime {
         return { ok: true };
       case "workspace.get":
         return api.workspace.get();
+      case "projects.list":
+        return api.projects.list();
       case "models.list":
         this.assertPermission(loaded, "models.list");
         return this.dispatchHostCall(loaded, "models.list", []);
@@ -4565,6 +4623,84 @@ export class PluginRuntime {
       ts: Date.now(),
     });
   }
+  /**
+   * `pi.composer.suggest`: one line into the composer of the session the user
+   * is looking at (`composer.suggest`, ADR 0333).
+   *
+   * The plugin names the session and the turn its text answers. Nothing here
+   * can fail the plugin for a place that will not show it: the text is shaped
+   * rather than refused, and "not shown" comes back as a reason the plugin can
+   * log. What does throw is a broken call — no session id, no text left after
+   * shaping, a lifetime that is not a number — like every other host API.
+   */
+  private async suggestComposer(
+    loaded: LoadedPlugin,
+    input?: PluginComposerSuggestInput,
+  ): Promise<PluginComposerSuggestResult> {
+    this.assertPermission(loaded, "composer.suggest");
+    const raw = input && typeof input === "object" ? input : ({} as PluginComposerSuggestInput);
+    const sessionId = typeof raw.sessionId === "string" ? raw.sessionId.trim() : "";
+    if (!sessionId || sessionId.length > MAX_SESSION_ID_CHARS) {
+      throw apiError("INVALID_PARAMS", "sessionId must be a non-empty string");
+    }
+    const turnId = typeof raw.turnId === "string" ? raw.turnId.trim() : "";
+    if (turnId.length > MAX_SESSION_ID_CHARS) {
+      throw apiError("INVALID_PARAMS", "turnId must be at most 128 characters");
+    }
+    const text = composerSuggestionText(raw.text);
+    if (!text) throw apiError("INVALID_PARAMS", "text must contain at least one visible character");
+    const ttlMs = composerSuggestionTtl(raw.ttlMs);
+    // A plugin scoped to another project is not part of this conversation, so
+    // it does not get to write into the composer the user is looking at.
+    if (!this.services.isPluginActiveInProject?.(loaded.manifest.id)) {
+      return { shown: false, reason: "session-not-visible" };
+    }
+    if (!this.services.suggestComposer) {
+      throw apiError("UNSUPPORTED", "host api not available: composer.suggest");
+    }
+    const result = await this.services.suggestComposer({
+      pluginId: loaded.manifest.id,
+      sessionId,
+      ...(turnId ? { turnId } : {}),
+      text,
+      ttlMs,
+    });
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "composer.suggest",
+      ok: true,
+      sessionId,
+      shown: result.shown,
+      ...(result.shown ? {} : { reason: result.reason }),
+      ts: Date.now(),
+    });
+    return result;
+  }
+
+  /**
+   * `pi.composer.clearSuggestion`: drop the caller's own line. Nothing is shown
+   * when it is already gone, so the answer never depends on what the shell had.
+   */
+  private clearComposerSuggestion(
+    loaded: LoadedPlugin,
+    input?: PluginComposerClearSuggestionInput,
+  ): { ok: true } {
+    this.assertPermission(loaded, "composer.suggest");
+    const sessionId = typeof input?.sessionId === "string" ? input.sessionId.trim() : "";
+    if (sessionId.length > MAX_SESSION_ID_CHARS) {
+      throw apiError("INVALID_PARAMS", "sessionId must be at most 128 characters");
+    }
+    this.services.clearComposerSuggestion?.(loaded.manifest.id, sessionId || undefined);
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "composer.clearSuggestion",
+      ok: true,
+      sessionId: sessionId || null,
+      ts: Date.now(),
+    });
+    return { ok: true };
+  }
+
 
   private async readSessionContext(loaded: LoadedPlugin): Promise<PluginLlmContext> {
     this.assertPermission(loaded, "session.read");
@@ -4693,7 +4829,11 @@ export class PluginRuntime {
   }
 
   private browserSessionId(pluginId?: string): string | undefined {
-    return pluginId ? this.inFlightTool(pluginId)?.sessionId.trim() || undefined : undefined;
+    const invocation = pluginId ? this.inFlightTool(pluginId) : undefined;
+    if (!invocation) return undefined;
+    const sessionId = invocation.sessionId.trim();
+    if (!sessionId) throw apiError("INVALID_ARGUMENT", "Browser tool calls require a session.");
+    return sessionId;
   }
 
   private async invokeBrowser(
@@ -4851,6 +4991,33 @@ export class PluginRuntime {
     return scoped ?? this.services.getWorkspacePath();
   }
 
+  private remoteFsRead(loaded: LoadedPlugin, operation: "list" | "preview", ref: string, options?: PluginFsReadOptions) {
+    this.assertPermission(loaded, "fs.read");
+    const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
+    return readRemotePluginFiles({
+      workspacePath: this.fsRoot(loaded, rule), currentWorkspacePath: () => this.fsRoot(loaded, rule),
+      isActive: () => this.loaded.get(loaded.manifest.id) === loaded,
+      scope: rule.scope, read: this.services.readRemoteWorkspaceFiles,
+      audit: (entry) => this.services.audit?.({ ...entry, pluginId: loaded.manifest.id }),
+    }, operation, ref, options);
+  }
+
+  private assertFileWorkspace(loaded: LoadedPlugin, options?: PluginFsReadOptions): void {
+    if (!options) return;
+    if (this.loaded.get(loaded.manifest.id) !== loaded) throw apiError("PLUGIN_UNLOADED", "The plugin was unloaded during the file request");
+    const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
+    if (this.fsRoot(loaded, rule) !== options.workspacePath) throw apiError("WORKSPACE_CHANGED", "The file view's workspace has changed");
+  }
+
+  private captureFileWorkspace(loaded: LoadedPlugin, options?: PluginFsReadOptions): PluginFsReadOptions {
+    this.assertPermission(loaded, "fs.read");
+    this.assertFileWorkspace(loaded, options);
+    const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
+    const workspacePath = this.fsRoot(loaded, rule);
+    if (!workspacePath) throw apiError("NOT_FOUND", "No workspace is open");
+    return { workspacePath };
+  }
+
   /**
    * Resolve one file request and decide whether it may proceed.
    *
@@ -4906,6 +5073,7 @@ export class PluginRuntime {
     }
     const rule: PluginFsRule = loaded.fsPolicy[mode] ?? { root: "workspace", scope: [] };
     const root = this.fsRoot(loaded, rule);
+    assertLocalPluginRoot(root);
     if (!root) {
       throw apiError(
         "NOT_FOUND",
@@ -4983,6 +5151,7 @@ export class PluginRuntime {
     loaded: LoadedPlugin,
     requestPath: string,
   ): Promise<{ full: string; rel: string; root: string } | null> {
+    assertLocalPluginRoot(this.fsRoot(loaded, loaded.fsPolicy.read ?? { root: "workspace", scope: [] }));
     if (!isAbsolute(String(requestPath ?? ""))) return null;
     const rule: PluginFsRule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
     if (rule.root !== "workspace") return null;
@@ -5454,6 +5623,16 @@ export class PluginRuntime {
         revealView: async (input?: PluginRevealViewInput) =>
           this.revealWorkPanelView(loaded, input),
       },
+      composer: {
+        /**
+         * One dismissible line in the placeholder layer of the composer the
+         * user is looking at (`composer.suggest`, ADR 0333).
+         */
+        suggest: async (input?: PluginComposerSuggestInput) =>
+          this.suggestComposer(loaded, input),
+        clearSuggestion: async (input?: PluginComposerClearSuggestionInput) =>
+          this.clearComposerSuggestion(loaded, input),
+      },
       workspace: {
         get: async () => {
           // The enriched payload carries the project group behind the visible
@@ -5465,6 +5644,9 @@ export class PluginRuntime {
           if (!path) return null;
           return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
         },
+      },
+      projects: {
+        list: async () => this.services.listProjects?.() ?? [],
       },
       desktop: {
         listOperations: async () => {
@@ -5689,7 +5871,11 @@ export class PluginRuntime {
             await handle.close().catch(() => {});
           }
         },
-        readPreview: async (pathFromRoot: string) => {
+        readPreview: async (pathFromRoot: string, options?: PluginFsReadOptions) => {
+          const admitted = this.captureFileWorkspace(loaded, options);
+          const remote = await this.remoteFsRead(loaded, "preview", pathFromRoot, admitted);
+          if (remote && remote.kind !== "list") return remote;
+          this.assertFileWorkspace(loaded, admitted);
           const { full, rel } = await this.resolveFsRequest(
             loaded,
             "read",
@@ -5707,6 +5893,7 @@ export class PluginRuntime {
             throw apiError("INVALID_ARGUMENT", "only files can be previewed");
           }
           const preview = await previewFile(full, rel);
+          this.assertFileWorkspace(loaded, admitted);
           this.services.audit?.({
             pluginId,
             api: "fs.readPreview",
@@ -5858,11 +6045,15 @@ export class PluginRuntime {
          * paths, denied names, skipped heavy directories — because a listing is
          * a read: what a plugin may not open, it may not learn the name of.
          */
-        list: async (pathFromRoot: string) => {
+        list: async (pathFromRoot: string, options?: PluginFsReadOptions) => {
+          const admitted = this.captureFileWorkspace(loaded, options);
+          const remote = await this.remoteFsRead(loaded, "list", pathFromRoot, admitted);
+          if (remote?.kind === "list") return remote.entries;
+          this.assertFileWorkspace(loaded, admitted);
           this.assertPermission(loaded, "fs.read");
           const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
-          const root = this.fsRoot(loaded, rule);
-          if (!root) throw apiError("NOT_FOUND", "No workspace is open");
+          const root = admitted.workspacePath;
+          assertLocalPluginRoot(root);
           const rel = normalizeFsPath(String(pathFromRoot ?? ""));
           if (rel.split("/").includes("..")) {
             throw apiError("INVALID_ARGUMENT", "path must stay inside the root");
@@ -5886,7 +6077,7 @@ export class PluginRuntime {
             mtimeMs?: number;
           }> = [];
           for (const name of names.sort()) {
-            if (entries.length >= MAX_LIST_ENTRIES) break;
+            if (entries.length >= PLUGIN_FS_LIST_MAX_ENTRIES) break;
             const childRel = rel ? `${rel}/${name}` : name;
             const full = join(dir, name);
             if (isDeniedFsPath(childRel)) continue;
@@ -5949,6 +6140,7 @@ export class PluginRuntime {
           this.assertPermission(loaded, "fs.read");
           const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
           const root = this.fsRoot(loaded, rule);
+          assertLocalPluginRoot(root);
           if (!root) throw apiError("NOT_FOUND", "No workspace is open");
           const matches: string[] = [];
           const visit = (dir: string, rel = "") => {
@@ -6227,7 +6419,7 @@ export class PluginRuntime {
             action === "reload" ||
             action === "stop"
           ) {
-            this.services.browser.action(action, browserContext?.sessionId, browserContext?.tabId);
+            this.services.browser.action(action, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
           }
         },
         setBounds: (hole: unknown) => {
@@ -6250,14 +6442,14 @@ export class PluginRuntime {
           if (!this.services.browser) {
             throw apiError("UNAVAILABLE", "browser host missing");
           }
-          return this.services.browser.getState();
+          return this.services.browser.getState(this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
         openExternal: () => {
           this.assertPermission(loaded, "browser.cdp");
           if (!this.services.browser) {
             throw apiError("UNAVAILABLE", "browser host missing");
           }
-          this.services.browser.openExternal(browserContext?.sessionId, browserContext?.tabId);
+          this.services.browser.openExternal(this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
           this.services.audit?.({
             pluginId,
             api: "browser.openExternal",
@@ -6270,7 +6462,7 @@ export class PluginRuntime {
           if (!this.services.browser) {
             throw apiError("UNAVAILABLE", "browser host missing");
           }
-          return this.services.browser.snapshot();
+          return this.services.browser.snapshot(this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
         screenshot: async (input?: { fullPage?: boolean }) => {
           this.assertPermission(loaded, "browser.cdp");
@@ -6279,7 +6471,8 @@ export class PluginRuntime {
           }
           return this.services.browser.screenshot(
             input,
-            this.browserSessionId(pluginId),
+            this.browserSessionId(pluginId) ?? browserContext?.sessionId,
+            browserContext?.tabId,
           );
         },
         click: async (input: string | { uid?: string }) => {
@@ -6288,7 +6481,7 @@ export class PluginRuntime {
             throw apiError("UNAVAILABLE", "browser host missing");
           }
           const uid = typeof input === "string" ? input : String(input?.uid ?? "");
-          await this.services.browser.click(uid);
+          await this.services.browser.click(uid, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
         fill: async (
           input: string | { uid?: string; text?: string },
@@ -6300,7 +6493,7 @@ export class PluginRuntime {
           }
           const uid = typeof input === "string" ? input : String(input?.uid ?? "");
           const text = typeof input === "string" ? String(textArg ?? "") : String(input?.text ?? "");
-          await this.services.browser.fill(uid, text);
+          await this.services.browser.fill(uid, text, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
         evaluate: async (input: string | { expression?: string }) => {
           this.assertPermission(loaded, "browser.cdp");
@@ -6314,7 +6507,7 @@ export class PluginRuntime {
             ok: true,
             ts: Date.now(),
           });
-          return this.services.browser.evaluate(expression);
+          return this.services.browser.evaluate(expression, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
         console: (input?: number | { limit?: number }) => {
           this.assertPermission(loaded, "browser.cdp");
@@ -6322,7 +6515,7 @@ export class PluginRuntime {
             throw apiError("UNAVAILABLE", "browser host missing");
           }
           const limit = typeof input === "number" ? input : input?.limit;
-          return this.services.browser.console(limit);
+          return this.services.browser.console(limit, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
         cdp: async (
           input: string | { method?: string; params?: unknown },
@@ -6341,7 +6534,7 @@ export class PluginRuntime {
             ts: Date.now(),
             method,
           });
-          return this.services.browser.cdp(method, params);
+          return this.services.browser.cdp(method, params, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
         },
       },
     };

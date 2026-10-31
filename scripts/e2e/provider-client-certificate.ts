@@ -11,6 +11,13 @@ import { app, net, session } from "electron";
 import { applyNetworkProxy, disposeSystemProxyRelay } from "../../apps/desktop/electron/main/network-proxy";
 import { probeModelList, probeProviderEndpoint } from "../../apps/desktop/electron/main/model-discovery";
 
+// Assertions in server callbacks run outside the scenario's try/catch.
+// Report them instead of blocking CI in Electron's default error dialog.
+process.on("uncaughtException", (error) => {
+  console.error(error);
+  app.exit(1);
+});
+
 app.setPath("userData", process.argv[2]);
 app.commandLine.appendSwitch("ozone-platform", "headless");
 app.disableHardwareAcceleration();
@@ -37,9 +44,18 @@ const server = createHttpsServer({ key, cert, ca: cert, requestCert: true, rejec
 const proxy = createHttpServer();
 let tunnels = 0;
 proxy.on("connect", (req, client, head) => {
-  assert.equal(req.headers["proxy-authorization"], `Basic ${Buffer.from("fixture:password").toString("base64")}`);
   const target = new URL(`http://${req.url}`);
-  assert.equal(target.hostname, "localhost");
+  // Chromium's own background fetches (component updater, CRL sets) can reach the
+  // session proxy while this probe is installed — a cold profile on a CI runner
+  // connects to a gvt1.com CDN host, for one. Anything but the fixture is that
+  // traffic, not the request under test: refuse it, and keep both the assertions
+  // and `tunnels` about the fixture, so the runner's own traffic cannot fail a
+  // probe that never asked for it.
+  if (target.hostname !== "localhost") {
+    client.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+    return;
+  }
+  assert.equal(req.headers["proxy-authorization"], `Basic ${Buffer.from("fixture:password").toString("base64")}`);
   tunnels++;
   const upstream = connect({ host: "127.0.0.1", port: Number(target.port) });
   sockets.add(upstream);
@@ -74,34 +90,96 @@ void app.whenReady().then(async () => {
     const proxyAddress = proxy.address();
     assert.ok(address && typeof address !== "string" && proxyAddress && typeof proxyAddress !== "string");
     const baseUrl = `https://localhost:${address.port}/v1`;
+    // A CONNECT for any host but the fixture is Chromium's own traffic on a cold
+    // profile (component updater, CRL sets) and must be refused, never counted:
+    // it used to trip the tunnel assertions on CI runners (see the proxy handler).
+    const backgroundRefusal = await new Promise<string>((resolve, reject) => {
+      const socket = connect({ host: "127.0.0.1", port: proxyAddress.port });
+      let received = "";
+      socket.on("error", reject);
+      socket.on("connect", () => {
+        socket.write("CONNECT rr2.example.invalid:443 HTTP/1.1\r\nHost: rr2.example.invalid:443\r\n\r\n");
+      });
+      socket.on("data", (chunk) => { received += chunk.toString("latin1"); });
+      socket.on("close", () => resolve(received));
+    });
+    assert.match(backgroundRefusal, /^HTTP\/1\.1 502 Bad Gateway/);
+    assert.equal(tunnels, 0, "background CONNECTs must not count as fixture tunnels");
     await applyNetworkProxy({ mode: "direct" });
-    await assert.rejects(net.fetch(`${baseUrl}/models`), /ERR_SSL_CLIENT_AUTH_CERT_NEEDED/);
+    let baselineTimer: ReturnType<typeof setTimeout> | undefined;
+    const baselineTimeout = new Promise<{ kind: "timeout" }>((resolve) => {
+      baselineTimer = setTimeout(() => resolve({ kind: "timeout" }), 8_000);
+    });
+    const baselineOutcome = await Promise.race([
+      net.fetch(`${baseUrl}/models`).then(
+        () => ({ kind: "response" as const }),
+        (error: unknown) => ({ kind: "error" as const, error }),
+      ),
+      baselineTimeout,
+    ]);
+    if (baselineTimer !== undefined) clearTimeout(baselineTimer);
+    if (baselineOutcome.kind === "response") {
+      assert.fail("client certificate was unexpectedly omitted and the request succeeded");
+    }
+    if (baselineOutcome.kind === "error") {
+      assert.ok(
+        baselineOutcome.error instanceof Error &&
+          baselineOutcome.error.message.includes("ERR_SSL_CLIENT_AUTH_CERT_NEEDED"),
+        `unexpected baseline error: ${String(baselineOutcome.error)}`,
+      );
+    }
     assert.equal(requests, 0, "the original Electron 43 failure precedes HTTP");
-    console.log("baseline: Electron 43 net.fetch fails before HTTP");
+    console.log(`baseline: Electron 43 net.fetch ${baselineOutcome.kind === "timeout" ? "stalled" : "failed"} before HTTP`);
+    // Linux Electron may leave a second client-certificate handshake pending.
+    // Reuse the observed failure so subsequent calls exercise the real metadata
+    // fallback without issuing another Chromium request to the fixture.
+    const primaryFailure = baselineOutcome.kind === "error"
+      ? baselineOutcome.error
+      : new Error("net::ERR_SSL_CLIENT_AUTH_CERT_NEEDED");
+    const fixtureOrigin = new URL(baseUrl).origin;
+    const electronFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const requestUrl = input instanceof Request ? input.url : String(input);
+      if (new URL(requestUrl).origin === fixtureOrigin) throw primaryFailure;
+      return electronFetch(input, init);
+    };
     const options = { baseUrl, apiKey: "fixture", signal: AbortSignal.timeout(8_000) };
+    console.log("client certificate probe: direct model list");
     assert.deepEqual((await probeModelList(options)).models, [{ modelId: "fixture-model", displayName: "fixture-model" }]);
+    console.log("client certificate probe: direct endpoint");
     assert.equal((await probeProviderEndpoint(options)).status, 200);
+    console.log("client certificate probe: unauthorized response");
     await assert.rejects(probeModelList({ ...options, apiKey: "wrong" }), { status: 401 });
+    console.log("client certificate probe: configure authenticated proxy");
     await applyNetworkProxy({ mode: "custom", url: `http://fixture:password@127.0.0.1:${proxyAddress.port}`, bypass: "<-loopback>" });
     const before = tunnels;
+    console.log("client certificate probe: authenticated proxy endpoint");
     assert.equal((await probeProviderEndpoint(options)).status, 200);
     assert.ok(tunnels > before, "the retry must use the configured authenticated proxy");
+    console.log("client certificate probe: configure localhost bypass");
     await applyNetworkProxy({ mode: "custom", url: `http://fixture:password@127.0.0.1:${proxyAddress.port}` });
     const beforeBypass = tunnels;
+    console.log("client certificate probe: localhost bypass endpoint");
     assert.equal((await probeProviderEndpoint(options)).status, 200);
     assert.equal(tunnels, beforeBypass, "localhost bypass must apply to both transports");
+    console.log("client certificate probe: restore direct proxy mode");
     await applyNetworkProxy({ mode: "direct" });
     mode = "redirect";
+    console.log("client certificate probe: cross-origin redirect refusal");
     await assert.rejects(probeModelList(options), /left the configured origin/);
     mode = "stall";
     const controller = new AbortController();
     const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+    console.log("client certificate probe: wait for cancellable request to reach HTTP");
     const pending = probeModelList({ ...options, signal: controller.signal });
     await started;
+    console.log("client certificate probe: cancel in-flight request");
     controller.abort();
     await assert.rejects(pending, { name: "AbortError" });
     console.log("provider client certificate E2E passed");
+    console.log("client certificate probe: dispose proxy relay");
     await disposeSystemProxyRelay();
+    console.log("client certificate probe: close fixture sockets and servers");
     for (const socket of sockets) socket.destroy();
     await Promise.all([new Promise<void>((resolve) => server.close(() => resolve())), new Promise<void>((resolve) => proxy.close(() => resolve()))]);
     app.exit(0);

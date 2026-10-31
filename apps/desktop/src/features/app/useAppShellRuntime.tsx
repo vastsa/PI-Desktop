@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { installRendererApi } from "../../capture/renderer-api";
 import { StartupSplash } from "../../components/StartupSplash";
 import { api } from "../../lib/api";
+import { composerSuggestion } from "../chat/composer/plugins/suggestion-bridge";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
 import { playNotificationChime } from "../../lib/notification-sound";
 import {
@@ -84,6 +85,21 @@ export function useAppShellRuntime() {
       : null,
   );
   const workPanelVisible = workPanelOpen;
+
+  useEffect(() => {
+    if (!ready || !activeSessionId || activeSessionId.startsWith("remote:")) return;
+    const state = useAppStore.getState();
+    const tabs = state.workPanelContexts[activeSessionId]?.tabs ?? state.workPanelTabs;
+    let current = true;
+    void api.browserGetPages(activeSessionId).then((pages) => {
+      if (!current) return;
+      const live = useAppStore.getState();
+      const liveTabs = live.workPanelContexts[activeSessionId]?.tabs ?? live.workPanelTabs;
+      if (live.activeSessionId !== activeSessionId || liveTabs !== tabs) return;
+      live.restoreBrowserWorkPanelTabs(activeSessionId, pages);
+    }).catch((error) => console.warn("Browser tab restore failed", error));
+    return () => { current = false; };
+  }, [ready, activeSessionId, workPanelOpen]);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -683,6 +699,7 @@ export function useAppShellRuntime() {
       }
       state.openWorkPanelTabForSession(event.sessionId, {
         ...browserPluginTab(event.path ?? event.url),
+        ...(event.tabId ? { id: event.tabId } : {}),
       });
     });
     const offBrowserOpenFile = api.onBrowserOpenFile(({ path }) => {
@@ -698,6 +715,30 @@ export function useAppShellRuntime() {
       useAppStore.getState().openWorkPanelTabForSession(event.sessionId, {
         ...pluginWorkPanelTab(event.pluginId, event.viewId),
         ...(event.location ? { location: event.location } : {}),
+      });
+    });
+    // A plugin offered one line for the composer (`pi.composer.suggest`). The
+    // shell owns the composer, so it decides here and answers the main process,
+    // which is waiting on the plugin's call with that answer.
+    const offComposerSuggestion = api.onPluginComposerSuggestion((event) => {
+      if (event.kind === "clear") {
+        composerSuggestion.clear({
+          ...(event.pluginId ? { pluginId: event.pluginId } : {}),
+          ...(event.sessionId ? { sessionId: event.sessionId } : {}),
+        });
+        return;
+      }
+      const outcome = composerSuggestion.offer({
+        pluginId: event.pluginId,
+        sessionId: event.sessionId,
+        ...(event.turnId ? { turnId: event.turnId } : {}),
+        text: event.text,
+        expiresAt: event.expiresAt,
+      });
+      void api.pluginComposerSuggestionResult({
+        requestId: event.requestId,
+        shown: outcome.shown === true,
+        ...(outcome.shown ? {} : { reason: outcome.reason }),
       });
     });
     const offHostStatus = api.onHostStatus((status) => {
@@ -910,6 +951,7 @@ export function useAppShellRuntime() {
       offPluginViewReveal();
       offHostStatus();
       offNotificationChanged();
+      offComposerSuggestion();
       offSessionsChanged();
       offRemoteInteractions();
       offNotificationActivated();

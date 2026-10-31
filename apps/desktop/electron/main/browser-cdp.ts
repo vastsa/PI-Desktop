@@ -177,6 +177,10 @@ export class BrowserCdp {
     await wc.debugger.sendCommand("Page.enable");
     await wc.debugger.sendCommand("DOM.enable");
     await wc.debugger.sendCommand("Accessibility.enable");
+    // Chromium ignores input on detached guests unless it emulates focus.
+    // This does not focus or attach a native window, so background tools can
+    // interact with their own page without disturbing the visible session.
+    await wc.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
   }
 
   detach(wc?: WebContents): void {
@@ -258,21 +262,47 @@ export class BrowserCdp {
   async click(wc: WebContents, uid: string): Promise<void> {
     const backendNodeId = this.requireUid(uid);
     await this.attach(wc);
-    await wc.debugger.sendCommand("DOM.scrollIntoViewIfNeeded", { backendNodeId });
-    const model = (await wc.debugger.sendCommand("DOM.getBoxModel", { backendNodeId })) as {
-      model?: { content?: number[] };
+    await wc.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: false });
+    await wc.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
+    const resolved = (await wc.debugger.sendCommand("DOM.resolveNode", { backendNodeId })) as {
+      object?: { objectId?: string };
     };
-    const quad = model.model?.content;
-    if (!Array.isArray(quad) || quad.length < 8) {
-      throw Object.assign(new Error(`no box model for ${uid}`), { code: "NOT_FOUND" });
+    const objectId = resolved.object?.objectId;
+    if (!objectId) throw Object.assign(new Error(`could not resolve ${uid}`), { code: "NOT_FOUND" });
+    // CDP box quads can include the detached native view's offscreen offset.
+    // Resolve the actual element in its page viewport, then use trusted input.
+    const evaluated = (await wc.debugger.sendCommand("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function () {
+        const view = this.ownerDocument.defaultView;
+        let rect = this.getBoundingClientRect();
+        if (rect.left < 0 || rect.top < 0 || rect.right > view.innerWidth || rect.bottom > view.innerHeight) {
+          this.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+        }
+        return new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(() => {
+          rect = this.getBoundingClientRect();
+          const left = Math.max(0, rect.left), right = Math.min(view.innerWidth, rect.right);
+          const top = Math.max(0, rect.top), bottom = Math.min(view.innerHeight, rect.bottom);
+          resolve(right > left && bottom > top ? { x: (left + right) / 2, y: (top + bottom) / 2 } : null);
+        })));
+      }`,
+      awaitPromise: true,
+      returnByValue: true,
+    })) as { result?: { value?: { x?: number; y?: number } | null } };
+    const point = evaluated.result?.value;
+    if (typeof point?.x !== "number" || typeof point.y !== "number" || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw Object.assign(new Error(`no visible box for ${uid}`), { code: "NOT_FOUND" });
     }
-    const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
-    const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+    const { x, y } = point;
+    await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x, y, button: "none", buttons: 0,
+    });
     await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
       type: "mousePressed",
       x,
       y,
       button: "left",
+      buttons: 1,
       clickCount: 1,
     });
     await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
@@ -281,6 +311,7 @@ export class BrowserCdp {
       y,
       button: "left",
       clickCount: 1,
+      buttons: 0,
     });
   }
 
@@ -297,7 +328,7 @@ export class BrowserCdp {
     await wc.debugger.sendCommand("Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function (value) {
-        this.focus();
+        this.focus({ preventScroll: true });
         if ("value" in this) {
           this.value = value;
           this.dispatchEvent(new Event("input", { bubbles: true }));

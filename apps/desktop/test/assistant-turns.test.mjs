@@ -12,6 +12,7 @@ const {
   assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
   buildTranscriptEntries,
+  messageThinking,
   reuseTranscriptEntries,
   subagentRunsEqual,
 } = await import("../src/lib/assistant-turns.ts");
@@ -529,4 +530,22 @@ test("reuses unchanged activity parts when only the tail thinking token changes"
   assert.equal(sharedThink.kind, "activity");
   assert.notEqual(sharedThink, firstThink);
   assert.equal(sharedThink.items[0].message, nextThinking);
+});
+
+test("an echoed reasoning replay placeholder is not shown as thinking (#1945)", () => {
+  const placeholder = "[reasoning not retained for this turn]";
+  assert.equal(messageThinking(message("a", "assistant", "answer", { thinking: placeholder })), "");
+  assert.equal(
+    messageThinking(message("b", "assistant", "answer", { thinking: `${placeholder}real plan` })),
+    "real plan",
+  );
+  assert.equal(messageThinking(message("c", "assistant", "answer", { thinking: "real plan" })), "real plan");
+  // A placeholder-only row adds no thinking activity to its turn.
+  const { entries } = buildTranscriptEntries([
+    message("u", "user", "question"),
+    message("a", "assistant", "answer", { thinking: placeholder, status: "complete" }),
+  ]);
+  const turn = entries.find((entry) => entry.kind === "assistant-turn");
+  assert.ok(turn);
+  assert.equal(JSON.stringify(turn).includes('"kind":"thinking"'), false);
 });

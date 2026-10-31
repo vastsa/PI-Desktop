@@ -5,6 +5,8 @@
 - Deciders: PI-Desktop core
 - Amends: D389 / ADR 0136 / ADR 0064
 - Fixes: #296
+- Amended by: D677 (#1945) — decision 3 now normalizes every row to the
+  newest row's field and fills only rows with no reasoning
 
 ## Context
 
@@ -41,6 +43,15 @@ the #223 empty backfill fills `""` — which strict relays reject.
    `[reasoning not retained for this turn]` instead of `""`.
 4. ADR 0136 retained-tail rules are unchanged: user-only tails, no tool-call
    replay.
+5. Amendment (D677, #1945): the field is taken from the newest assistant row
+   that has real reasoning, not from fixed list order. Every assistant row is
+   normalized to that one field: real reasoning under another field name is
+   moved there, and the placeholder fills only rows with no reasoning at all.
+   A rebuilt row is stamped `reasoning_content` while a live relay row keeps
+   `reasoning_text`; the old pass picked `reasoning_content` and filled the
+   placeholder over the live row's real reasoning, in the field the model
+   reads, and the model echoed it. A leading echo of the placeholder in stored
+   thinking is neither displayed nor replayed.
 
 ## Consequences
 

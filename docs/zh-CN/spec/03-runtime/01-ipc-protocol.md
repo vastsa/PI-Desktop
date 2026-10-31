@@ -158,6 +158,8 @@ type SessionConfigureRequest = {
   providerId?: string;
   modelId?: string;
   thinkingLevel: SessionThinkingLevel;
+  /** Session `/fast` switch (ADR 0334); omitted keeps the stored value. */
+  fastMode?: boolean;
 };
 ```
 
@@ -588,6 +590,7 @@ type AgentEvent =
      willRetry: boolean; fallback?: "retained_tail";
      mark?: { id: string; throughMessageId: string;
               generation: number; summaryTokens: number;
+              contextTokens?: number;
               summarized: boolean;
               fallback?: "retained_tail" };
      error?: { code: string; message: string } }
@@ -618,7 +621,9 @@ type AgentEvent =
 只要安装了检查点，`compaction_end.mark` 就会出现。它是
 渲染器对该压缩的整体视图：`id`，`throughMessageId` 锚定
 转录本行位于 `generation` 之后（此会话有多少个检查点
-已安装）、`summaryTokens`（摘要的估计上下文成本）以及
+已安装）、`summaryTokens`（摘要的估计上下文成本）、`contextTokens`（检查点安装后
+下一次请求的估计大小；在之后的请求报告供应商用量前，输入框的上下文圆环显示它；
+此字段出现之前写入的检查点没有它）以及
 `summarized`（当窗口滚动且未向模型询问时，`false`
 总结）以及 `fallback`（摘要生成失败、检查点只带恢复说明和保留尾部时为
 `"retained_tail"`；转录行将其标为摘要生成失败，而不是 N tokens 的摘要）。记录本身不被携带——它的摘要和保留尾部被携带
@@ -1321,10 +1326,12 @@ type McpOAuthLoginEvent = {
   | { kind: "authUrl"; url: string; instructions?: string; opened: boolean }
   | { kind: "progress"; message: string }
   | { kind: "done"; status: McpServerStatus }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; errorCode?: "MCP_OAUTH_DCR_UNAVAILABLE" }
   | { kind: "cancelled" }
 );
 ```
+
+如果授权服务器元数据没有 `registration_endpoint`，且没有可复用的客户端，登录会在打开外部浏览器前失败。错误事件携带 `MCP_OAUTH_DCR_UNAVAILABLE`，渲染层显示本地化的恢复指引。主进程错误消息用于诊断，不应包含发现到的授权端点 URL。
 
 #### 状态与凭证存储
 - `McpServerStatus` 包含：
@@ -1450,7 +1457,7 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 - `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 带 `dataUrl`，或 `missing` / `notImage` / `tooLarge`）。包含范围与 `fs/read` 相同。从不返回非图片字节。仅渲染器使用，不是插件宿主 API。
 - `fs/reveal({path})` → 在 Finder 中显示。包含范围与 `fs/read` 相同。
 - `fs/open({path, mimeType?})` → 用系统默认应用打开已有的普通文件。与 `fs/read` 一样校验真实路径包含范围，拒绝通过符号链接逃逸。对于声明为 `video/mp4` 的无后缀 `attachments/<sha256>` blob，宿主在私有应用数据目录建立 `.mp4` 符号链接后再交给系统，不复制视频字节。
-- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0263），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`；解析本身不打开任何东西（ADR 0262）。
+- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。隔离会话以 `worktree.location` 而不是父项目 checkout 作为查找与读取的根；落在父 checkout 内的绝对引用会先映射到 worktree 中的同一相对路径（该文件存在时），从而打开分支上的副本，而不是报 `outside-allowed-roots`。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0263），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`；解析本身不打开任何东西（ADR 0262）。
 - `fs/list` 仍只限工作区；外面的遍历被拒绝（`INVALID_ARGUMENT`）。
 
 ## 13b. 桌面菜单和窗口 API
@@ -1493,6 +1500,29 @@ type NativeMenuAction =
 menu/nativeAction({ action: NativeMenuAction })
   -> { maximized: boolean; fullScreen: boolean }
 ```
+
+活动插件 `WebContentsView` 时，渲染器通过一个受限的 Main 通道发送标签菜单文案
+和指针锚点。Main 校验请求，按发送方当前缩放比例把 CSS 坐标换算成 DIP，限制在
+窗口内容区域内，并且只生成固定的关闭操作。取消菜单或窗口关闭时返回 `null`；
+跨越异步边界后，渲染器会重新检查会话和目标标签：
+
+```ts
+type WorkPanelTabMenuAction = "closeTab" | "closeOtherTabs" | "closeAllTabs";
+type WorkPanelTabMenuRequest = {
+  closeTabLabel: string;
+  closeOtherTabsLabel: string;
+  closeAllTabsLabel: string;
+  canCloseOthers: boolean;
+  x: number; // 渲染器 CSS 像素
+  y: number; // 渲染器 CSS 像素
+};
+
+workPanel/tabMenu(request: WorkPanelTabMenuRequest)
+  -> WorkPanelTabMenuAction | null
+```
+
+标签只用于显示文案，不能指定任意 Main 操作。使用操作系统原生菜单样式是为了
+保证菜单显示在原生视图上方。
 
 开发人员工具使用专用的 Main 拥有的门，而不是通用的本机
 菜单操作：
@@ -1629,7 +1659,7 @@ Electron 报告的右侧角）改变的是面板目标。Main 通过
 ## 13c. Composer 输入 API（D123/D124/D197、ADR 0024/0059）
 
 仅电子通道支持输入框自动完成和剪贴板文件
-参考。 `composer/commands` 和 `fs/index` 是只读且软故障；
+参考。 `composer/commands`、`fs/index` 和 `fs/search` 是只读且软故障；
 `composer/pasteFiles` 仅写入原始会话的 Electron 拥有的
 暂存目录。 None 添加主机 RPC 方法或更改主机协议
 版本。
@@ -1675,7 +1705,23 @@ type FsIndexEntry = { path: string; kind: "file" | "dir" };
 --exclude-standard`快速路径，忽略设置递归行走回退，
 从文件路径派生的目录，8000 个条目上限，`truncated: true`，
 每个根的短 TTL 缓存。无法关闭到空列表而没有
-工作区。模糊过滤发生在渲染器端。
+工作区。模糊过滤发生在渲染器端；被截断的索引只保留最浅的条目，因此针对它的
+查询还会发给 `fs/search`。
+
+### fs/search
+
+```ts
+fs/search({ sessionId?, query }) -> { entries: FsIndexEntry[]; truncated: boolean }
+```
+
+只有当 `fs/index` 快照被截断且查询非空时，`@` 菜单才会在输入短暂停顿后调用它，
+并把结果与自己的匹配合并（D669）。主进程用与渲染器相同的模糊打分，在该根目录的
+完整清单上排序，返回最好的 50 个条目。清单就是索引背后的 `git ls-files` 列表；
+若索引来自目录遍历，则改为一次更深的遍历（遵守同一忽略集，最多 200,000 个条目或
+2 秒）。清单与索引共用 TTL 缓存，过期即释放。`truncated: true` 表示搜索本身被截断。
+查询会去掉首尾空白并限制在 256 个字符内；空查询不返回条目。远程会话直接返回
+`{ entries: [], truncated: true }`，不联系远程主机——远程文件协议没有搜索操作——
+菜单继续只在远程快照里过滤。
 
 ### composer/pickFiles 和 composer/pickPhotos
 

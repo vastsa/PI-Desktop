@@ -14,6 +14,11 @@
 3.兼容OpenAI的网关是一流的
 4. 搜索是跨启用的提供商的全局搜索
 
+内置 OpenCode Go 预设还会同时遵循 models.dev Claude 条目明确声明的
+`anthropic_messages` API 与独立 Anthropic `baseUrl`；运行时随后访问该目录线路的
+`/v1/messages` 端点。自定义端点和外部 relay 匹配结果仍保留保存的 provider API 与
+Base URL。
+
 ## 2. 选择用户体验
 
 ### 模型选择器字段

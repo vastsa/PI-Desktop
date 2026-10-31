@@ -84,6 +84,23 @@ test("project group update is available through the host RPC and preload API", (
   assert.match(ipcSource, /\.\.\.\(safePrimary \? \{ primary: safePrimary \} : \{\}\)/);
 });
 
+test("only project group creation pre-checks folder existence here", () => {
+  // #1869: an update must reach the host even when a stored root is missing
+  // on disk (externally renamed/unmounted); the host validates new roots and
+  // exempts roots the group already owns. Creation still pre-checks because
+  // every submitted folder is new there.
+  const updateHandler = ipcSource.slice(
+    ipcSource.indexOf("IPC.invoke.projectGroupUpdate,"),
+    ipcSource.indexOf("IPC.invoke.projectGroupRename,"),
+  );
+  const createHandler = ipcSource.slice(
+    ipcSource.indexOf("IPC.invoke.projectGroupCreate,"),
+    ipcSource.indexOf("IPC.invoke.projectGroupUpdate,"),
+  );
+  assert.doesNotMatch(updateHandler, /must be directories/);
+  assert.match(createHandler, /project group folders must be directories/);
+});
+
 for (const [locale, source] of [["en", enSource], ["zh-CN", zhSource], ["tr", trSource]]) {
   test(`project edit labels are present in ${locale}`, () => {
     for (const key of [

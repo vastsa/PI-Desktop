@@ -197,11 +197,13 @@ async fn denied_remote_write_and_cancelled_read_never_run_locally() {
     handle_request(
         state.clone(),
         "tools.abort",
-        json!({"sessionId":id,"toolCallId":"read-b"}),
+        json!({"sessionId":id,"toolCallId":"read-b","toolName":"Read"}),
         tx.clone(),
     )
     .await
     .unwrap();
+    let abort_notification: Value = serde_json::from_str(&rx.recv().await.unwrap()).unwrap();
+    assert_eq!(abort_notification["method"], "tools.remoteAbort");
     assert_eq!(read.await.unwrap().unwrap()["errorCode"], "TOOL_ABORTED");
     assert!(state.lock().await.remote_execs.is_empty());
 }

@@ -6,6 +6,8 @@ mod background_tasks;
 mod config_sync;
 mod data_relocation;
 mod db;
+mod file_batches;
+mod file_resources;
 mod keyboard;
 mod mcp_servers;
 mod network_policy;
@@ -34,6 +36,7 @@ mod transcripts;
 mod turn_queue;
 mod user_skills;
 mod user_subagents;
+mod visualizations;
 mod workspace;
 
 use std::sync::Arc;
@@ -96,6 +99,9 @@ async fn main() -> anyhow::Result<()> {
         if let Ok(list) = sessions::list_sessions(&st.db) {
             let live: std::collections::HashSet<String> = list.into_iter().map(|s| s.id).collect();
             scratch::sweep(&data_dir, &live);
+            // Visualization dirs are swept for orphans only, never by age
+            // (D671): live transcripts still reference their cards.
+            visualizations::sweep(&data_dir, &live);
             review::sweep(&data_dir, &live);
         }
     }

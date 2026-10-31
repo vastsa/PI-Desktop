@@ -52,13 +52,10 @@ Create from template            (the folder opens as the project)
 
 ## 4. SDK 和 devkit
 
-`@pi-desktop/plugin-sdk` 由插件代码本身导入并保留
-无依赖且无节点。它提供：
-- 清单类型
-- 权限枚举
-- API 类型 (`PiPluginHostApi`)
-- 清单验证功能
-- 测试助手（模拟主机）
+`@pi-desktop/plugin-sdk` 是私有工作区包，不是插件必须安装的运行时。它依赖 `typebox`，
+不使用 Node 宿主 API，提供 `PluginManifest`、`PluginHostApi`、`PluginModule`、渲染器类型、
+权限常量和纯校验器，没有导出 mock-host 工厂。宿主注入 `pi`，仅为访问它无需打包 SDK；
+测试时可在真实外部边界提供自己的 fake。
 
 SDK 的剪贴板接口包含 `pi.clipboard.getHistory()`，通过现有的 `clipboard.read` 权限
 返回有界、按最新优先排列的文本和图片条目。主机只记录明确的写入和 Composer 粘贴事件，
@@ -66,7 +63,7 @@ SDK 的剪贴板接口包含 `pi.clipboard.getHistory()`，通过现有的 `clip
 第二份存储。
 
 `@pi-desktop/plugin-devkit` 是工具，而不是运行时，并且可以使用 Node。它拥有
-`scaffold` / `check` / `pack` 和 `pi-plugin` CLI。三位开发商
+`scaffold` / `check` / `pack` / `publish` 和 `pi-plugin` CLI。三位开发商
 表面（CLI、代理工具、插件页面）调用它，因此一旦成立就会强制执行规则
 无处不在。
 
@@ -85,15 +82,15 @@ pnpm --filter @pi-desktop/plugin-devkit... build
 pnpm pi-plugin init full-demo /tmp/my-plugin
 
 # validate manifest and package contents
-pnpm pi-plugin check .
+pnpm pi-plugin check /tmp/my-plugin
 
 # pack
-pnpm pi-plugin pack .
+pnpm pi-plugin pack /tmp/my-plugin
 
 # outputs dist/demo.hello-0.1.0.piplug
 
 # pack and pin the version to the commit that produced it
-pnpm pi-plugin publish .
+pnpm pi-plugin publish /tmp/my-plugin
 
 # also writes dist/demo.hello-0.1.0.submission.json
 ```
@@ -104,8 +101,8 @@ pnpm pi-plugin publish .
 没有 tag 时给出警告。插件中心会自行重新解析这些值；一次提交只是一个待核验的声明。
 见 [15-plugin-center.md](15-plugin-center.md)。
 
-`check` 重现安装程序强制执行的每条规则，因此 `check` 传递意味着
-安装会通过。它报告错误 - 丢失或无法解析的 `manifest.json`，
+`check` 执行编写和包安全检查，通过不代表加载、宿主版本兼容、授权、Provider 或中心审核一定成功。
+Rust 安装器与运行时仍是独立校验层。它报告错误 - 丢失或无法解析的 `manifest.json`，
 缺少 `main` / `ui.panel` / `manifest.renderer` / 技能文件，转义插件的技能路径
 目录，未知权限，符号链接，超过 2000 个文件，超过
 50 MB — 以及警告，不会阻止：高风险权限（[13-plugin-permissions-matrix.md](13-plugin-permissions-matrix.md)

@@ -32,7 +32,7 @@ export function PluginDialogs({
   confirmReview,
   autoUpdate,
   setAutoUpdate,
-  busyId,
+  isPluginBusy,
   confirmInstall,
   installJob,
   cancelInstallDownload,
@@ -93,10 +93,10 @@ export function PluginDialogs({
               </Button>
               <Button
                 variant="primary"
-                disabled={busyId === pendingReview.id}
+                disabled={isPluginBusy(pendingReview.id)}
                 onClick={() => void confirmReview()}
               >
-                {busyId === pendingReview.id
+                {isPluginBusy(pendingReview.id)
                   ? t("plugins.devReviewLoading")
                   : t("plugins.devReviewAccept")}
               </Button>
@@ -153,10 +153,10 @@ export function PluginDialogs({
               </Button>
               <Button
                 variant="primary"
-                disabled={busyId === pendingInstall.id}
+                disabled={isPluginBusy(pendingInstall.id)}
                 onClick={() => void confirmInstall()}
               >
-                {busyId === pendingInstall.id
+                {isPluginBusy(pendingInstall.id)
                   ? t("plugins.installing")
                   : t("plugins.acceptInstall")}
               </Button>

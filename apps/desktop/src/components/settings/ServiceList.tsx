@@ -21,7 +21,7 @@ export type ServiceListProps = {
   /** A page-level write or dialog is in flight; card order is locked meanwhile. */
   busy: boolean;
   isRowBusy: (providerId: string) => boolean;
-  testingId: string | null;
+  isTesting: (providerId: string) => boolean;
   onEdit: (provider: ProviderPublic) => void;
   onTest: (provider: ProviderPublic) => void;
   onCopy: (provider: ProviderPublic) => void;
@@ -36,7 +36,7 @@ export function ServiceList({
   accountFor,
   busy,
   isRowBusy,
-  testingId,
+  isTesting,
   onEdit,
   onTest,
   onCopy,
@@ -161,7 +161,7 @@ export function ServiceList({
             provider={provider}
             entry={accountFor(provider.id)}
             busy={rowBusy}
-            testing={testingId === provider.id}
+            testing={isTesting(provider.id)}
             dragging={reorder.draggingId === provider.id}
             menuItems={menuItems(provider)}
             menuOpen={openMenuId === provider.id}

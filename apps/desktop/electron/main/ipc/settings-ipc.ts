@@ -21,6 +21,7 @@ export type SettingsIpcDependencies = {
     theme?: unknown;
     keybindings?: unknown;
     developerMode?: unknown;
+    fontScale?: unknown;
   } | null) => void;
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
   applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
@@ -116,6 +117,9 @@ export function registerSettingsIpc({
         theme?: unknown;
         keybindings?: unknown;
         developerMode?: unknown;
+        // A docked plugin view follows the saved type scale (D343), so the
+        // Appearance write has to carry it to the host's view zoom.
+        fontScale?: unknown;
       } | null,
     );
     applyDeveloperMode(validatedSettings as { developerMode?: unknown } | null);

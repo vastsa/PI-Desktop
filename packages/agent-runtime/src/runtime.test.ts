@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { Type } from "typebox";
 import { type Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -38,6 +39,9 @@ import {
 } from "./provider-retry.js";
 import { getGlobalDispatcher } from "undici";
 import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
+import { resolveBatchExecutionMode } from "./tool-execution-policy.js";
+import { BatchPlanner } from "./batch-planner.js";
+import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
  * `Task` wiring around it is under test, so `SubagentRun` is replaced by a
@@ -60,13 +64,18 @@ vi.mock("./subagent.js", async (importOriginal) => {
     ...actual,
     SubagentRun: class {
       private signal?: AbortSignal;
+      private options: any;
       constructor(options: unknown) {
         if (subagentRuns.constructorError !== undefined) {
           throw subagentRuns.constructorError;
         }
         subagentRuns.calls.push(options);
+        this.options = options;
         // Per-instance: concurrent delegates must abort on their own signal.
         this.signal = (options as { signal?: AbortSignal }).signal;
+      }
+      setSystemPrompt(prompt: string) {
+        this.options.systemPrompt = prompt;
       }
       run() {
         if (subagentRuns.deferred) {
@@ -172,6 +181,7 @@ function createRuntime(
     remoteWorkspace: { hostKey: string; path: string };
     workspaceRoot: string;
     scratchDir: string;
+    visualizationsDir: string;
     customSystemPrompt: import("./custom-system-prompt.js").CustomSystemPrompt;
     projectInstructions: import("./project-instructions.js").ProjectInstructions;
     projectMemory: string;
@@ -204,6 +214,7 @@ function createRuntime(
     remoteWorkspace: overrides.remoteWorkspace,
     workspaceRoot: overrides.workspaceRoot,
     scratchDir: overrides.scratchDir,
+    visualizationsDir: overrides.visualizationsDir,
     customSystemPrompt: overrides.customSystemPrompt,
     pluginTools: overrides.pluginTools,
     subagents: overrides.subagents,
@@ -222,6 +233,388 @@ function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   if (!tool) throw new Error(`Runtime tool not found: ${name}`);
   return tool;
 }
+
+describe("Pi 1.4 client identity", () => {
+  it("forwards the desktop identity through a user prompt to the provider adapter", async () => {
+    const runtime = createRuntime();
+    const internal = runtime as unknown as {
+      models: {
+        streamSimple: (
+          model: unknown,
+          context: { messages: AgentMessage[] },
+          options?: { identity?: unknown },
+        ) => ReturnType<typeof createAssistantMessageEventStream>;
+      };
+    };
+    const identities: unknown[] = [];
+    internal.models = {
+      streamSimple: (_model, _context, options) => {
+        identities.push(options?.identity);
+        const message = assistantMessage({ content: [{ type: "text", text: "Ready." }] }) as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: "stop", message });
+          stream.end(message);
+        });
+        return stream;
+      },
+    };
+
+    try {
+      await runtime.prompt("Say ready.", "identity-user", "identity-turn");
+      expect(identities).toEqual([DESKTOP_AGENT_IDENTITY]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+});
+
+describe("ordered read preparation", () => {
+  it.each([
+    ["Bash", false], ["Write", false], ["Edit", false], ["Bash", true],
+  ] as const)("keeps Read/%s/Read sequential (Stop=%s)", async (middle, stop) => {
+    const entered: string[] = [];
+    const release = new Map<string, (result: unknown) => void>();
+    const host = { call: vi.fn(async (method: string, args: any) => {
+      if (method === "project.instructions.resolve") return { entries: [] };
+      if (method !== "tools.execute") return undefined;
+      entered.push(args.toolCallId);
+      return new Promise(resolve => release.set(args.toolCallId, resolve));
+    }) };
+    const runtime = createRuntime({ host });
+    const internal = runtime as any;
+    let requests = 0;
+    internal.models = { streamSimple: () => {
+      const first = ++requests === 1;
+      const message = assistantMessage({ content: first ? [
+        { type: "toolCall", id: "first", name: "Read", arguments: { path: "a.txt" } },
+        { type: "toolCall", id: "middle", name: middle, arguments: middle === "Bash"
+          ? { command: "echo fixture" } : middle === "Write"
+            ? { path: "a.txt", content: "fixture" } : { path: "a.txt", tag: "ABCD", ops: "PUT >$:\n+fixture" } },
+        { type: "toolCall", id: "last", name: "Read", arguments: { path: "a.txt" } },
+      ] : [{ type: "text", text: "done" }], stopReason: first ? "toolUse" : "stop" }) as AssistantMessage;
+      const stream = createAssistantMessageEventStream();
+      queueMicrotask(() => {
+        stream.push({ type: "start", partial: message });
+        stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
+        stream.end(message);
+      });
+      return stream;
+    } };
+    let pending: ReturnType<DesktopAgentRuntime["prompt"]> | undefined;
+    try {
+      pending = runtime.prompt("Run the mixed batch.");
+      await vi.waitFor(() => expect(entered).toEqual(["first"]));
+      await Promise.resolve();
+      expect(entered).toEqual(["first"]);
+      release.get("first")!({ ok: true, content: "before" });
+      await vi.waitFor(() => expect(entered).toEqual(["first", "middle"]));
+      const aborting = stop ? runtime.abort() : undefined;
+      release.get("middle")!({ ok: true, content: "after" });
+      await aborting;
+      if (!stop) {
+        await vi.waitFor(() => expect(entered).toEqual(["first", "middle", "last"]));
+        release.get("last")!({ ok: true, content: "after" });
+      }
+      await pending;
+      expect(entered).toEqual(stop ? ["first", "middle"] : ["first", "middle", "last"]);
+    } finally {
+      await runtime.abort();
+      for (const resolve of release.values()) resolve({ ok: true, content: "cleanup" });
+      await pending;
+      await runtime.dispose();
+    }
+  });
+
+  it("prepares sibling instructions in order, overlaps execution and preserves result IDs", async () => {
+    const entered: string[] = [];
+    const resolvers = new Map<string, (value: unknown) => void>();
+    const requests: AgentMessage[][] = [];
+    const host = {
+      call: vi.fn(async (method: string, args: any) => {
+        if (method === "project.instructions.resolve") {
+          return { entries: [{ source: `${args.path}/AGENTS.md`, content: `rules:${args.path}` }] };
+        }
+        if (method === "tools.execute") {
+          entered.push(args.toolCallId);
+          return new Promise((resolve) => resolvers.set(args.toolCallId, resolve));
+        }
+        return undefined;
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const internal = runtime as any;
+    internal.models = {
+      streamSimple: (_model: unknown, context: { messages: AgentMessage[] }) => {
+        requests.push([...context.messages]);
+        const first = requests.length === 1;
+        const message = assistantMessage({
+          content: first
+            ? ["a", "b"].map((id) => ({ type: "toolCall", id, name: "Read", arguments: { path: `${id}/file.ts` } }))
+            : [{ type: "text", text: "done" }],
+          stopReason: first ? "toolUse" : "stop",
+        }) as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
+          stream.end(message);
+        });
+        return stream;
+      },
+    };
+    try {
+      const pending = runtime.prompt("Read both files.", "user-parallel", "turn-parallel");
+      await vi.waitFor(() => expect(entered).toEqual(["a", "b"]));
+      // Both entered before either result is released: no timing-based assertion.
+      expect(host.call.mock.calls.filter(([method]) => method === "project.instructions.resolve").map(([, args]) => args.path))
+        .toEqual(["a/file.ts", "b/file.ts"]);
+      expect(internal.agent.state.systemPrompt).toContain("rules:b/file.ts");
+      expect(internal.agent.state.systemPrompt).not.toContain("rules:a/file.ts");
+      resolvers.get("b")!({ ok: true, content: "B" });
+      await Promise.resolve();
+      resolvers.get("a")!({ ok: true, content: "A" });
+      await pending;
+      expect(requests[1].filter((message) => message.role === "toolResult").map((message: any) => message.toolCallId))
+        .toEqual(["a", "b"]);
+      expect(internal.agent.state.systemPrompt).toContain("rules:b/file.ts");
+    } finally {
+      for (const resolve of resolvers.values()) resolve({ ok: true, content: "cleanup" });
+      await runtime.dispose();
+    }
+  });
+
+  it("keeps a delegate's direct-call instruction updates out of the parent", async () => {
+    const host = { call: vi.fn(async (method: string, args: any) => method === "project.instructions.resolve"
+      ? { entries: [{ source: "AGENTS.md", content: `rules:${args.path}` }] }
+      : { ok: true, content: "read" }) };
+    const runtime = createRuntime({ host });
+    const internal = runtime as any;
+    const apply = vi.fn();
+    const childTools = internal.scopeDelegateTools([runtimeTool(runtime, "Read")], { permission: "default" }, "child", apply);
+    try {
+      await runtimeTool(runtime, "Read").execute("parent-read", { path: "parent/a.ts" });
+      await childTools[0].execute("child-read", { path: "child/b.ts" });
+      expect(apply).toHaveBeenCalledWith({ entries: [{ source: "AGENTS.md", content: "rules:child/b.ts" }] });
+      expect(internal.agent.state.systemPrompt).toContain("rules:parent/a.ts");
+      expect(internal.agent.state.systemPrompt).not.toContain("rules:child/b.ts");
+    } finally { await runtime.dispose(); }
+  });
+
+  it("prepares delegated reads against the child's prompt and reuses canonical arguments", async () => {
+    const host = { call: vi.fn(async (method: string, args: any) => method === "project.instructions.resolve"
+      ? { entries: [{ source: "AGENTS.md", content: `rules:${args.path}` }] }
+      : { ok: true, content: "read" }) };
+    const runtime = createRuntime({ host, subagents: [{ name: "reader", description: "Read", tools: ["Read"], prompt: "Read", source: "builtin" }] });
+    subagentRuns.calls.length = 0;
+    try {
+      await runtimeTool(runtime, "Task").execute("task-prepared", { agent: "reader", task: "Read the child file." });
+      const child = subagentRuns.calls[0];
+      const args = { file_path: "child/file.ts" };
+      await child.beforeToolCall({ toolCall: { name: "Read", id: "child-prepared" }, args });
+      expect(child.systemPrompt).toContain("rules:child/file.ts");
+      expect((runtime as any).agent.state.systemPrompt).not.toContain("rules:child/file.ts");
+      await child.tools.find((tool: AgentTool) => tool.name === "Read").execute("child-prepared", args);
+      expect(host.call.mock.calls.filter(([method]) => method === "project.instructions.resolve")).toHaveLength(1);
+      expect(host.call).toHaveBeenCalledWith("tools.execute", expect.objectContaining({
+        toolCallId: "child-prepared", args: { path: "child/file.ts" },
+      }));
+    } finally { await runtime.dispose(); }
+  });
+});
+
+function toolCall(id: string, name: string, args: Record<string, unknown>) {
+  return { type: "toolCall", id, name, arguments: args };
+}
+
+/**
+ * pi stream that answers each request with the next scripted tool batch and,
+ * once the script runs out, a final text reply. Records every request.
+ */
+function scriptedStream(batches: unknown[][], requests: AgentMessage[][] = []) {
+  let turn = 0;
+  return (_model: unknown, context: { messages: AgentMessage[] }) => {
+    requests.push([...context.messages]);
+    const calls = batches[turn++];
+    const reason = calls ? "toolUse" : "stop";
+    const message = assistantMessage({
+      content: calls ?? [{ type: "text", text: "done" }],
+      stopReason: reason,
+    }) as AssistantMessage;
+    const stream = createAssistantMessageEventStream();
+    queueMicrotask(() => {
+      stream.push({ type: "start", partial: message });
+      stream.push({ type: "done", reason, message });
+      stream.end(message);
+    });
+    return stream;
+  };
+}
+
+/** Host whose `tools.execute` responses are held until the test releases them. */
+function gatedHost(fileBatches = false) {
+  const entered: string[] = [];
+  const release = new Map<string, (result: unknown) => void>();
+  // External Host fixture with declared virtual identities. Real filesystem
+  // identity/admission is covered by Rust and the real-Host E2E suite.
+  const tickets = new Map<string, { batch: string; id: string; name: string; path: string;
+    tree: boolean; write: boolean; submitted: boolean; done: Promise<void>; finish: () => void }>();
+  const aborted = new Set<string>();
+  let draining = false;
+  const host = {
+    call: vi.fn(async (method: string, args: any) => {
+      if (method === "project.instructions.resolve") return { entries: [] };
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: fileBatches };
+      if (method === "tools.fileBatchRegister") {
+        const ticket = `ticket-${tickets.size}`;
+        let finish = () => {};
+        const done = new Promise<void>((resolve) => { finish = resolve; });
+        tickets.set(ticket, { batch: args.batchId, id: args.toolCallId, name: args.toolName,
+          path: String(args.args.path ?? "").replace(/^\/root\//, "").replace(/^\.\//, ""),
+          tree: ["Glob", "Grep"].includes(args.toolName) || /^(?:MV|REM)\b|@/m.test(args.args.ops ?? ""),
+          write: ["Write", "Edit"].includes(args.toolName), submitted: false, done, finish });
+        return { ticket };
+      }
+      if (method === "tools.fileBatchAbandon") {
+        const slot = tickets.get(args.ticket);
+        if (slot && !slot.submitted) slot.finish();
+        return { ok: true };
+      }
+      if (method === "tools.fileBatchClose") {
+        for (const slot of tickets.values()) if (slot.batch === args.batchId && !slot.submitted) slot.finish();
+        return { ok: true };
+      }
+      if (method === "tools.fileBatchSeal") return { ok: true };
+      if (method === "tools.abort") {
+        aborted.add(args.toolCallId);
+        const result = { ok: false, content: "TOOL_ABORTED", errorCode: "TOOL_ABORTED" };
+        release.get(args.toolCallId)?.(result);
+        for (const slot of tickets.values()) if (slot.id === args.toolCallId) slot.finish();
+        return { ok: true };
+      }
+      if (method !== "tools.execute") return undefined;
+      const slot = tickets.get(args.fileBatchTicket);
+      if (slot) {
+        slot.submitted = true;
+        const predecessors = [];
+        for (const prior of tickets.values()) {
+          if (prior === slot) break;
+          if (prior.batch === slot.batch && (prior.write || slot.write)
+            && (prior.tree || slot.tree || prior.path === slot.path)) predecessors.push(prior.done);
+        }
+        await Promise.all(predecessors);
+      }
+      if (aborted.has(args.toolCallId)) return { ok: false, content: "TOOL_ABORTED", errorCode: "TOOL_ABORTED" };
+      if (draining) return { ok: true, content: "cleanup" };
+      entered.push(args.toolCallId);
+      try { return await new Promise((resolve) => release.set(args.toolCallId, resolve)); }
+      finally { slot?.finish(); }
+    }),
+  };
+  const finish = (id: string, result: unknown = { ok: true, content: id }) => release.get(id)!(result);
+  const drain = () => {
+    draining = true;
+    for (const resolve of release.values()) resolve({ ok: true, content: "cleanup" });
+    for (const slot of tickets.values()) slot.finish();
+  };
+  return { host, entered, finish, drain };
+}
+
+function toolResults(request: AgentMessage[]) {
+  return request
+    .filter((message) => message.role === "toolResult")
+    .map((message: any) => ({
+      id: message.toolCallId as string,
+      isError: message.isError as boolean,
+      text: JSON.stringify(message.content),
+    }));
+}
+
+describe("batch turn release", () => {
+  it("releases a parent call that fails argument checks before reaching the Host", async () => {
+    const { host, entered, finish, drain } = gatedHost();
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, projectPath: "/root" });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      // Grep without `pattern` passes the schema (the alias makes it optional)
+      // and then throws in execute; the Write is ordered behind its tree claim.
+      toolCall("grep", "Grep", { path: "src" }),
+      toolCall("write", "Write", { path: "x.txt", content: "x" }),
+    ]], requests) };
+    try {
+      const pending = runtime.prompt("Search, then write.");
+      await vi.waitFor(() => expect(entered).toEqual(["write"]));
+      finish("write");
+      await pending;
+      const results = toolResults(requests[1]);
+      expect(results.map(({ id, isError }) => [id, isError])).toEqual([["grep", true], ["write", false]]);
+      expect(results[0].text).toContain("`pattern` is required");
+    } finally {
+      drain();
+      await runtime.dispose();
+    }
+  });
+
+  it("releases a parent call rejected by the mode guard after a mid-turn mode switch", async () => {
+    const { host, entered, finish, drain } = gatedHost();
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, projectPath: "/root" });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      toolCall("read-1", "Read", { path: "x.txt" }),
+      toolCall("write", "Write", { path: "x.txt", content: "x" }),
+      toolCall("read-2", "Read", { path: "x.txt" }),
+    ]], requests) };
+    try {
+      const pending = runtime.prompt("Read, write, read.");
+      await vi.waitFor(() => expect(entered).toEqual(["read-1"]));
+      runtime.setMode("plan");
+      finish("read-1");
+      await vi.waitFor(() => expect(entered).toEqual(["read-1", "read-2"]));
+      finish("read-2");
+      await pending;
+      const results = toolResults(requests[1]);
+      expect(results.map(({ id, isError }) => [id, isError])).toEqual([
+        ["read-1", false], ["write", true], ["read-2", false],
+      ]);
+      expect(results[1].text).toContain("not allowed in plan");
+    } finally {
+      drain();
+      await runtime.dispose();
+    }
+  });
+
+  it("releases a delegate call that fails argument checks before reaching the Host", async () => {
+    const { SubagentRun: RealSubagentRun } = await vi.importActual<typeof import("./subagent.js")>("./subagent.js");
+    const { host, entered, finish, drain } = gatedHost();
+    const writer = { name: "writer", description: "Write", tools: ["Grep", "Write"], prompt: "Write", source: "builtin" as const };
+    const runtime = createRuntime({ host, projectPath: "/root", subagents: [writer] });
+    subagentRuns.calls.length = 0;
+    try {
+      await runtimeTool(runtime, "Task").execute("task-writer", { agent: "writer", task: "Search, then write." });
+      const options = subagentRuns.calls[0];
+      const child = new RealSubagentRun({ ...options, signal: undefined }) as unknown as {
+        agent: { streamFunction: unknown };
+        run: () => Promise<{ status: string }>;
+      };
+      const requests: AgentMessage[][] = [];
+      child.agent.streamFunction = scriptedStream([[
+        toolCall("child-grep", "Grep", { path: "src" }),
+        toolCall("child-write", "Write", { path: "x.txt", content: "x" }),
+      ]], requests);
+      const running = child.run();
+      await vi.waitFor(() => expect(entered).toEqual(["child-write"]));
+      finish("child-write");
+      await expect(running).resolves.toMatchObject({ status: "completed" });
+      expect(toolResults(requests[1]).map(({ id, isError }) => [id, isError])).toEqual([
+        ["child-grep", true], ["child-write", false],
+      ]);
+    } finally {
+      drain();
+      await runtime.dispose();
+    }
+  });
+});
 
 /** Minimal pi-ai assistant message; overrides carry the shape under test. */
 function assistantMessage(overrides: {
@@ -248,6 +641,632 @@ function assistantMessage(overrides: {
     content: overrides.content,
   };
 }
+
+describe("parallel file batches", () => {
+  it("owns the turn during capability negotiation and honors Stop before provider dispatch", async () => {
+    let release: (value: unknown) => void = () => {};
+    const capability = new Promise((resolve) => { release = resolve; });
+    const runtime = createRuntime({ host: { call: vi.fn((method: string) => method === "tools.fileBatchCapabilities" ? capability : Promise.resolve(undefined)) } });
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+    const pending = runtime.prompt("Wait for capabilities", undefined, "held-capability-turn");
+    expect(runtime.getStatus()).toMatchObject({ currentTurnId: "held-capability-turn", isRunning: true });
+    const stopping = runtime.abort();
+    release({ version: 1, supported: true });
+    await pending.catch(() => undefined);
+    await stopping;
+    expect(prompt).not.toHaveBeenCalled();
+    expect(runtime.getStatus().isRunning).toBe(false);
+    await runtime.dispose();
+  });
+  it.each([false, true])("keeps hard-link aliases ordered without Host identity support (write first: %s)", async (writeFirst) => {
+    const root = await mkdtemp(join(tmpdir(), "pi-batch-alias-"));
+    await writeFile(join(root, "actual.txt"), "before");
+    await link(join(root, "actual.txt"), join(root, "alias.txt"));
+    const calls = [
+      toolCall("read-alias", "Read", { path: "alias.txt" }),
+      toolCall("write-actual", "Write", { path: "actual.txt", content: "after" }),
+    ];
+    if (writeFirst) calls.reverse();
+    const batch = startBatch(calls, { projectPath: root, fileBatches: false });
+    try {
+      await vi.waitFor(() => expect(batch.entered).toContain(calls[0].id));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(batch.entered).toEqual([calls[0].id]);
+      batch.finish(calls[0].id);
+      await vi.waitFor(() => expect(batch.entered).toEqual(calls.map((call) => call.id)));
+      batch.finish(calls[1].id);
+      await batch.pending;
+    } finally {
+      await cleanup(batch);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  /** Starts a parent turn whose first request returns `calls` as one batch. */
+  function startBatch(calls: unknown[], options: { projectPath?: string; fileBatches?: boolean } = {}) {
+    const gate = gatedHost(options.fileBatches ?? true);
+    const requests: AgentMessage[][] = [];
+    const events: any[] = [];
+    const runtime = createRuntime({
+      host: gate.host,
+      projectPath: options.projectPath ?? "/root",
+      onEvent: (envelope) => { events.push((envelope as any).event); },
+    });
+    (runtime as any).models = { streamSimple: scriptedStream([calls], requests) };
+    const pending = runtime.prompt("Run the file batch.");
+    return { ...gate, runtime, requests, events, pending };
+  }
+
+  async function cleanup(batch: ReturnType<typeof startBatch>) {
+    batch.drain();
+    await batch.runtime.abort();
+    await batch.pending.catch(() => undefined);
+    await batch.runtime.dispose();
+  }
+
+  const editOps = { tag: "ABCD", ops: "PUT 1.=1:\n+x" };
+
+  it("starts [Read a, Read b, Read c, Edit d] together and keeps source-order results", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("read-b", "Read", { path: "b.ts" }),
+      toolCall("read-c", "Read", { path: "c.ts" }),
+      toolCall("edit-d", "Edit", { path: "d.ts", ...editOps }),
+    ]);
+    try {
+      await vi.waitFor(() => expect([...batch.entered].sort()).toEqual(["edit-d", "read-a", "read-b", "read-c"]));
+      for (const id of ["edit-d", "read-c", "read-b", "read-a"]) {
+        batch.finish(id);
+        await Promise.resolve();
+      }
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id }) => id)).toEqual(["read-a", "read-b", "read-c", "edit-d"]);
+    } finally { await cleanup(batch); }
+  });
+
+  it("holds only Edit a behind Read a in [Read a, Edit a, Read b, Write c]", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("edit-a", "Edit", { path: "a.ts", ...editOps }),
+      toolCall("read-b", "Read", { path: "b.ts" }),
+      toolCall("write-c", "Write", { path: "c.ts", content: "c" }),
+    ]);
+    try {
+      await vi.waitFor(() => expect([...batch.entered].sort()).toEqual(["read-a", "read-b", "write-c"]));
+      batch.finish("read-b");
+      batch.finish("write-c");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(batch.entered).not.toContain("edit-a");
+      batch.finish("read-a");
+      await vi.waitFor(() => expect(batch.entered.at(-1)).toBe("edit-a"));
+      batch.finish("edit-a");
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id }) => id)).toEqual(["read-a", "edit-a", "read-b", "write-c"]);
+    } finally { await cleanup(batch); }
+  });
+
+  it.each([
+    ["[Write x, Grep]", [
+      toolCall("first", "Write", { path: "x.ts", content: "x" }),
+      toolCall("second", "Grep", { pattern: "foo" }),
+    ]],
+    ["[Edit a with MV, Read b]", [
+      toolCall("first", "Edit", { path: "a.ts", tag: "ABCD", ops: "MV moved.ts" }),
+      toolCall("second", "Read", { path: "b.ts" }),
+    ]],
+    ["[Edit a with CUT @r, Edit b with PUT @r] (named register)", [
+      toolCall("first", "Edit", { path: "a.ts", tag: "ABCD", ops: "CUT 3.=5 @r" }),
+      toolCall("second", "Edit", { path: "b.ts", tag: "ABCD", ops: "PUT <1 @r" }),
+    ]],
+    ["[Read ./a.ts, Write a.ts] (Host-declared identity)", [
+      toolCall("first", "Read", { path: "./a.ts" }),
+      toolCall("second", "Write", { path: "a.ts", content: "a" }),
+    ]],
+  ] as const)("keeps %s in source order", async (_label, calls) => {
+    const batch = startBatch([...calls]);
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first"]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(batch.entered).toEqual(["first"]);
+      batch.finish("first");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first", "second"]));
+      batch.finish("second");
+      await batch.pending;
+    } finally { await cleanup(batch); }
+  });
+
+  it("sends absolute and relative spellings to the Host without inventing file identities", async () => {
+    const register = vi.spyOn(BatchPlanner.prototype, "register");
+    const batch = startBatch([
+      toolCall("first", "Read", { path: "/root/a.ts" }),
+      toolCall("second", "Write", { path: "a.ts", content: "a" }),
+    ], { projectPath: "/root" });
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first"]));
+      expect(register.mock.calls.map(([, , call]) => call)).toMatchObject([
+        { toolName: "Read", ordinal: 0, args: { path: "/root/a.ts" } },
+        { toolName: "Write", ordinal: 1, args: { path: "a.ts" } },
+      ]);
+      batch.finish("first");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first", "second"]));
+      batch.finish("second");
+      await batch.pending;
+    } finally {
+      register.mockRestore();
+      await cleanup(batch);
+    }
+  });
+
+  it("aborts an Edit still waiting behind a running Read without reaching the Host", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("edit-a", "Edit", { path: "a.ts", ...editOps }),
+    ]);
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read-a"]));
+      await batch.runtime.abort();
+      await batch.pending.catch(() => undefined);
+      expect(batch.entered).toEqual(["read-a"]);
+      const edit = batch.events.find((event) => event.type === "tool_end" && event.toolCallId === "edit-a");
+      expect(edit.isError).toBe(true);
+      expect(JSON.stringify(edit.result)).toContain("TOOL_ABORTED");
+    } finally { await cleanup(batch); }
+  });
+
+  it("still runs Edit a after Read a fails", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("edit-a", "Edit", { path: "a.ts", ...editOps }),
+    ]);
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read-a"]));
+      batch.finish("read-a", { ok: false, content: "FILE_NOT_FOUND" });
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read-a", "edit-a"]));
+      batch.finish("edit-a");
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id, isError }) => [id, isError])).toEqual([
+        ["read-a", true], ["edit-a", false],
+      ]);
+    } finally { await cleanup(batch); }
+  });
+
+  it("keeps a denied Write from affecting its same-batch sibling", async () => {
+    const batch = startBatch([
+      toolCall("write-a", "Write", { path: "a.ts", content: "a" }),
+      toolCall("write-b", "Write", { path: "b.ts", content: "b" }),
+    ]);
+    try {
+      // Both reach the Host before either result returns.
+      await vi.waitFor(() => expect([...batch.entered].sort()).toEqual(["write-a", "write-b"]));
+      batch.finish("write-a", { ok: false, denied: true, content: "Permission denied by the user." });
+      batch.finish("write-b");
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id, isError }) => [id, isError])).toEqual([
+        ["write-a", true], ["write-b", false],
+      ]);
+    } finally { await cleanup(batch); }
+  });
+
+  it("orders a delegate's [Read a, Edit a, Write b] without touching a concurrent parent batch", async () => {
+    const { SubagentRun: RealSubagentRun } = await vi.importActual<typeof import("./subagent.js")>("./subagent.js");
+    const writer = { name: "writer", description: "Edit", tools: ["Read", "Edit", "Write"], prompt: "Edit", source: "builtin" as const };
+    const gate = gatedHost(true);
+    const runtime = createRuntime({ host: gate.host, projectPath: "/root", subagents: [writer] });
+    (runtime as any).models = { streamSimple: scriptedStream([], []) };
+    await runtime.prompt("Initialize Host capabilities.");
+    const parentRequests: AgentMessage[][] = [];
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      toolCall("parent-read", "Read", { path: "p.ts" }),
+      toolCall("parent-write", "Write", { path: "q.ts", content: "q" }),
+    ]], parentRequests) };
+    subagentRuns.calls.length = 0;
+    let parent: Promise<unknown> | undefined;
+    try {
+      await runtimeTool(runtime, "Task").execute("task-writer", { agent: "writer", task: "Edit a." });
+      const child = new RealSubagentRun({ ...subagentRuns.calls[0], signal: undefined }) as unknown as {
+        agent: { streamFunction: unknown };
+        run: () => Promise<{ status: string }>;
+      };
+      const childRequests: AgentMessage[][] = [];
+      child.agent.streamFunction = scriptedStream([[
+        toolCall("child-read-a", "Read", { path: "a.ts" }),
+        toolCall("child-edit-a", "Edit", { path: "a.ts", ...editOps }),
+        toolCall("child-write-b", "Write", { path: "b.ts", content: "b" }),
+      ]], childRequests);
+      parent = runtime.prompt("Read and write in the parent.");
+      await vi.waitFor(() => expect([...gate.entered].sort()).toEqual(["parent-read", "parent-write"]));
+      const running = child.run();
+      await vi.waitFor(() => expect(gate.entered.slice(2).sort()).toEqual(["child-read-a", "child-write-b"]));
+      gate.finish("child-write-b");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(gate.entered).not.toContain("child-edit-a");
+      gate.finish("child-read-a");
+      // The child Edit waits only for its own batch's Read; the parent batch is still held.
+      await vi.waitFor(() => expect(gate.entered.at(-1)).toBe("child-edit-a"));
+      gate.finish("child-edit-a");
+      await expect(running).resolves.toMatchObject({ status: "completed" });
+      expect(toolResults(childRequests[1]).map(({ id }) => id)).toEqual(["child-read-a", "child-edit-a", "child-write-b"]);
+      gate.finish("parent-read");
+      gate.finish("parent-write");
+      await parent;
+      expect(toolResults(parentRequests[1]).map(({ id }) => id)).toEqual(["parent-read", "parent-write"]);
+    } finally {
+      await runtime.abort();
+      gate.drain();
+      await parent?.catch(() => undefined);
+      await runtime.dispose();
+    }
+  });
+});
+
+describe("Task/read batch execution policy", () => {
+  const message = (...names: string[]) => assistantMessage({
+    content: names.map((name, index) => ({
+      type: "toolCall",
+      id: `call-${index}`,
+      name,
+      arguments: {},
+    })),
+  }) as AssistantMessage;
+
+  it.each([
+    [["Task", "Read"], "sequential"],
+    [["Task", "Glob"], "sequential"],
+    [["Task", "Grep"], "sequential"],
+    [["Task", "Write"], "sequential"],
+    [["Edit", "Task"], "sequential"],
+    [["Task", "Task"], undefined],
+    [["Read", "Read"], undefined],
+    [["Read", "Glob", "Grep"], undefined],
+    [["Write", "Edit"], undefined],
+    [["Read", "Write"], undefined],
+  ] as const)("resolves %j to %s", (names, expected) => {
+    expect(resolveBatchExecutionMode(message(...names))).toBe(expected);
+  });
+});
+
+describe("Task/read mixed-batch safety", () => {
+  /** A parent Task call; the delegate it starts is settled by the test. */
+  function taskCall(id: string) {
+    return {
+      type: "toolCall",
+      id,
+      name: "Task",
+      arguments: { agent: "explorer", task: "Edit target.txt." },
+    };
+  }
+
+  /** A parent read/search of the workspace the delegate is expected to edit. */
+  function readCall(id: string, name: "Read" | "Glob" | "Grep" = "Read") {
+    return {
+      type: "toolCall",
+      id,
+      name,
+      arguments:
+        name === "Read"
+          ? { path: "target.txt" }
+          : { path: ".", pattern: "target*" },
+    };
+  }
+
+  /**
+   * A parent turn whose first assistant message issues `calls` as one batch.
+   * Every `tools.execute` stays pending until the test releases it, so each
+   * assertion is about dispatch order and never about elapsed time.
+   */
+  function setupMixedBatch(
+    calls: unknown[] = [taskCall("task"), readCall("read")],
+  ) {
+    const entered: string[] = [];
+    const events: any[] = [];
+    const releases = new Map<string, (result: unknown) => void>();
+    const host = {
+      call: vi.fn(async (method: string, args: any) => {
+        if (method === "project.instructions.resolve") return { entries: [] };
+        if (method !== "tools.execute") return undefined;
+        entered.push(args.toolCallId);
+        return new Promise((resolve) => { releases.set(args.toolCallId, resolve); });
+      }),
+    };
+    const runtime = createRuntime({
+      host,
+      onEvent: (envelope) => { events.push((envelope as any).event); },
+      subagents: [{
+        name: "explorer",
+        description: "Explore files.",
+        tools: ["Read", "Write", "Edit"],
+        prompt: "Explore files.",
+        source: "builtin",
+      }],
+    });
+    const internal = runtime as any;
+    let requests = 0;
+    internal.models = {
+      streamSimple: () => {
+        const first = ++requests === 1;
+        const message = assistantMessage({
+          content: first ? calls : [{ type: "text", text: "done" }],
+          stopReason: first ? "toolUse" : "stop",
+        }) as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
+          stream.end(message);
+        });
+        return stream;
+      },
+    };
+    subagentRuns.deferred = true;
+    subagentRuns.instances.length = 0;
+    subagentRuns.resolveRun = undefined;
+    return {
+      runtime,
+      internal,
+      entered,
+      events,
+      release: (toolCallId: string) => releases.get(toolCallId),
+    };
+  }
+
+  async function teardown(runtime: DesktopAgentRuntime) {
+    subagentRuns.deferred = false;
+    subagentRuns.resolveRun = undefined;
+    await runtime.dispose();
+  }
+
+  /** The Task tool result the model actually received for one call. */
+  function taskToolResult(events: any[], toolCallId = "task") {
+    const end = events.find(
+      (event) => event.type === "tool_end" && event.toolCallId === toolCallId,
+    );
+    return end.result as {
+      content: Array<{ type: string; text: string }>;
+      details: { delegationId: string; status: string };
+    };
+  }
+
+  function settled(status: "completed" | "failed" = "completed") {
+    return status === "completed"
+      ? {
+          agentName: "explorer",
+          status: "completed",
+          report: "Edited target.txt.",
+          turns: 1,
+          toolCalls: 1,
+        }
+      : {
+          agentName: "explorer",
+          status: "failed",
+          report: "",
+          turns: 0,
+          toolCalls: 0,
+          error: { code: "DELEGATE_FAILED", message: "boom" },
+        };
+  }
+
+  /** Index of one tool event; a missing event is a broken fixture. */
+  function toolIndex(events: any[], type: string, toolCallId: string) {
+    const index = events.findIndex(
+      (event) => event.type === type && event.toolCallId === toolCallId,
+    );
+    if (index < 0) throw new Error(`missing ${type} for ${toolCallId}`);
+    return index;
+  }
+
+  it.each(["Read", "Glob", "Grep"] as const)(
+    "returns the started notice while holding a same-batch %s behind a writable delegate's Edit",
+    async (readTool) => {
+      const batch = setupMixedBatch([taskCall("task"), readCall("read", readTool)]);
+      subagentRuns.calls.length = 0;
+      try {
+        const pending = batch.runtime.prompt("Run the delegate and read its target.");
+        await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+        // ADR 0089 still holds inside a mixed batch: Task is non-blocking.
+        await vi.waitFor(() => {
+          expect(
+            batch.events.some((event) => event.type === "tool_end" && event.toolCallId === "task"),
+          ).toBe(true);
+        });
+        const task = taskToolResult(batch.events);
+        expect(task.details.status).toBe("running");
+        expect(task.content[0].text).toContain("in the background");
+        expect(subagentRuns.instances[0].settled).toBe(false);
+
+        // The writable delegate mutates target.txt while the parent read/search
+        // from the same assistant batch is still held back from entering the Host.
+        const childEdit = subagentRuns.calls[0].tools.find(
+          (tool: AgentTool) => tool.name === "Edit",
+        );
+        const editPending = childEdit.execute(
+          "delegate-edit",
+          { path: "target.txt", tag: "ABCD", ops: "PUT >$:\n+updated" },
+          undefined,
+          undefined,
+        );
+        await vi.waitFor(() => expect(batch.entered).toEqual(["delegate-edit"]));
+        await Promise.resolve();
+        expect(batch.entered).toEqual(["delegate-edit"]);
+        batch.release("delegate-edit")!({ ok: true, content: "edited" });
+        await editPending;
+
+        subagentRuns.resolveRun!(settled());
+        await vi.waitFor(() => expect(batch.entered).toEqual(["delegate-edit", "read"]));
+        expect(toolIndex(batch.events, "tool_end", "task"))
+          .toBeLessThan(toolIndex(batch.events, "tool_start", "read"));
+        batch.release("read")!({ ok: true, content: "updated" });
+        await pending;
+        const read = batch.events.find(
+          (event) => event.type === "tool_end" && event.toolCallId === "read",
+        );
+        expect(read.result.content[0].text).toContain("updated");
+      } finally {
+        await teardown(batch.runtime);
+      }
+    },
+  );
+
+  it("serializes a parent Read against an in-flight shared-workspace delegate Edit on the same path", async () => {
+    const batch = setupMixedBatch([taskCall("task")]);
+    subagentRuns.calls.length = 0;
+    try {
+      await runtimeTool(batch.runtime, "Task").execute("task", {
+        agent: "explorer",
+        task: "Edit target.txt.",
+      });
+      const childEdit = subagentRuns.calls[0].tools.find(
+        (tool: AgentTool) => tool.name === "Edit",
+      );
+      const parentRead = runtimeTool(batch.runtime, "Read");
+
+      const editPending = childEdit.execute(
+        "delegate-edit",
+        { path: "target.txt", tag: "ABCD", ops: "PUT >$:\n+updated" },
+        undefined,
+        undefined,
+      );
+      await vi.waitFor(() => expect(batch.entered).toEqual(["delegate-edit"]));
+
+      // A parent read on the same path waits for the delegate's Edit to finish,
+      // while a read on an unrelated path proceeds immediately.
+      const samePathRead = parentRead.execute("read-same", { path: "./target.txt" }, undefined, undefined);
+      const otherPathRead = parentRead.execute("read-other", { path: "other.txt" }, undefined, undefined);
+      await vi.waitFor(() => expect(batch.entered).toEqual(["delegate-edit", "read-other"]));
+      batch.release("read-other")!({ ok: true, content: "other" });
+      await otherPathRead;
+      expect(batch.entered).toEqual(["delegate-edit", "read-other"]);
+
+      batch.release("delegate-edit")!({ ok: true, content: "edited" });
+      await editPending;
+      await vi.waitFor(() =>
+        expect(batch.entered).toEqual(["delegate-edit", "read-other", "read-same"]),
+      );
+      batch.release("read-same")!({ ok: true, content: "updated" });
+      await samePathRead;
+      subagentRuns.resolveRun!(settled());
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("runs [Task, Write] one call at a time without waiting for the delegate to settle", async () => {
+    const batch = setupMixedBatch([
+      taskCall("task"),
+      { type: "toolCall", id: "write", name: "Write", arguments: { path: "notes.txt", content: "n" } },
+    ]);
+    try {
+      const pending = batch.runtime.prompt("Delegate, then write.");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["write"]));
+      // Sequential: the Write was only prepared after the Task call returned.
+      expect(toolIndex(batch.events, "tool_end", "task"))
+        .toBeLessThan(toolIndex(batch.events, "tool_start", "write"));
+      // Unlike a file read, the Write does not wait for the writable delegate.
+      expect(subagentRuns.instances[0].settled).toBe(false);
+      batch.release("write")!({ ok: true, content: "written" });
+      subagentRuns.resolveRun!(settled());
+      await pending;
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("runs [Write, Task] one call at a time", async () => {
+    const batch = setupMixedBatch([
+      { type: "toolCall", id: "write", name: "Write", arguments: { path: "notes.txt", content: "n" } },
+      taskCall("task"),
+    ]);
+    try {
+      const pending = batch.runtime.prompt("Write, then delegate.");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["write"]));
+      await Promise.resolve();
+      expect(subagentRuns.instances).toEqual([]);
+      batch.release("write")!({ ok: true, content: "written" });
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+      expect(toolIndex(batch.events, "tool_end", "write"))
+        .toBeLessThan(toolIndex(batch.events, "tool_start", "task"));
+      subagentRuns.resolveRun!(settled());
+      await pending;
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("runs a Read the model ordered first before the Task starts", async () => {
+    const batch = setupMixedBatch([readCall("read"), taskCall("task")]);
+    try {
+      const pending = batch.runtime.prompt("Read the target, then delegate.");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read"]));
+      // The Task in this batch has not started a delegate yet, so this read is
+      // not racing anything and the batch order alone keeps the file stable.
+      expect(subagentRuns.instances).toEqual([]);
+      batch.release("read")!({ ok: true, content: "before" });
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+      const read = batch.events.find(
+        (event) => event.type === "tool_end" && event.toolCallId === "read",
+      );
+      expect(read.result.content[0].text).toContain("before");
+      expect(toolIndex(batch.events, "tool_end", "read"))
+        .toBeLessThan(toolIndex(batch.events, "tool_start", "task"));
+      expect(taskToolResult(batch.events).details.status).toBe("running");
+      subagentRuns.resolveRun!(settled());
+      await pending;
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("settles a failed delegate without disturbing the batch", async () => {
+    const batch = setupMixedBatch();
+    try {
+      const pending = batch.runtime.prompt("Run the delegate and read its target.");
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+      subagentRuns.resolveRun!(settled("failed"));
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read"]));
+      batch.release("read")!({ ok: true, content: "unchanged" });
+      await pending;
+      // The Task call already returned its started notice; the failure belongs
+      // to the delegation registry and reaches the parent through TaskWait.
+      const task = taskToolResult(batch.events);
+      expect(task.details.status).toBe("running");
+      expect(
+        batch.internal.delegations.get(task.details.delegationId).status,
+      ).toBe("failed");
+      const read = batch.events.find(
+        (event) => event.type === "tool_end" && event.toolCallId === "read",
+      );
+      expect(read.result.content[0].text).toContain("unchanged");
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("starts both delegates of a Task-only batch together", async () => {
+    const batch = setupMixedBatch([taskCall("task-a"), taskCall("task-b")]);
+    try {
+      const pending = batch.runtime.prompt("Delegate the work twice.");
+      // Both delegates are running before either settles: Task-only fan-out
+      // keeps its parallel behaviour.
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(2));
+      await vi.waitFor(() => {
+        expect(
+          batch.events.filter(
+            (event) => event.type === "tool_end" && String(event.toolCallId).startsWith("task-"),
+          ),
+        ).toHaveLength(2);
+      });
+      for (const id of ["task-a", "task-b"]) {
+        const result = taskToolResult(batch.events, id);
+        expect(result.details.status).toBe("running");
+        expect(result.content[0].text).toContain("in the background");
+      }
+      subagentRuns.resolveRun!(settled());
+      subagentRuns.resolveRun!(settled());
+      await pending;
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+});
 
 function runtimeMatches(
   runtime: DesktopAgentRuntime,
@@ -377,6 +1396,9 @@ describe("custom system prompt files (issue #542)", () => {
     // Operational rules from the default prompt must survive the replacement.
     expect(prompt).toContain("Complete the requested work and relevant checks");
     expect(prompt).toContain("Before each tool batch, briefly state its purpose");
+    expect(prompt).toContain("File references: when citing a real local file, use a Markdown link");
+    expect(prompt).toContain("do not use ranges or GitHub #L anchors");
+    expect(prompt).toContain("Do not wrap links in backticks or use file://, vscode://, or https://");
     expect(prompt).toContain("Editing workflow: inside the advertised workspace");
     expect(prompt).toContain("You are operating in Agent mode.");
 
@@ -423,6 +1445,7 @@ describe("custom system prompt files (issue #542)", () => {
     const prompt = promptOf(runtime);
 
     expect(prompt).toContain("You are PI-Desktop");
+    expect(prompt).toContain("File references: when citing a real local file, use a Markdown link");
     expect(prompt).not.toContain("MARKER-XYZ-123");
 
     await runtime.dispose();
@@ -1745,6 +2768,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       expect(host.call).toHaveBeenCalledWith("tools.abort", {
         sessionId: "session-1",
         toolCallId: "bash-progress",
+        toolName: "Bash",
       });
       expect(listeners.size).toBe(0);
       finishExecution({
@@ -1763,6 +2787,114 @@ describe("DesktopAgentRuntime configuration matching", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Same 64Ki UTF-16 budget and 60/40 marker split as appendToolProgress.
+  // Kept here so the tools.output path can lock the cap without exporting it.
+  const TOOL_PROGRESS_CAP_CHARS = 64 * 1024;
+  const TOOL_PROGRESS_CAP_MARKER = "\n\n[tool output progress truncated]\n\n";
+  const LONE_SURROGATE =
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+  async function flushedBashProgress(chunks: readonly string[]): Promise<string[]> {
+    vi.useFakeTimers();
+    try {
+      const listeners = new Set<(method: string, params: unknown) => void>();
+      let finishExecution!: (value: unknown) => void;
+      const execution = new Promise((resolve) => {
+        finishExecution = resolve;
+      });
+      const host = {
+        call: vi.fn((method: string) =>
+          method === "tools.execute"
+            ? execution
+            : Promise.resolve({ ok: true, content: "done" }),
+        ),
+        onNotification: vi.fn((handler: (method: string, params: unknown) => void) => {
+          listeners.add(handler);
+          return () => listeners.delete(handler);
+        }),
+      };
+      const updates: unknown[] = [];
+      const runtime = createRuntime({ host });
+      const bash = runtimeTool(runtime, "Bash");
+      const pending = bash.execute(
+        "bash-progress-cap",
+        { command: "printf progress" },
+        undefined,
+        (update: unknown) => updates.push(update),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      for (const chunk of chunks) {
+        for (const listener of listeners) {
+          listener("tools.output", {
+            sessionId: "session-1",
+            toolCallId: "bash-progress-cap",
+            commandShellId: "bash",
+            stream: "stdout",
+            chunk,
+          });
+        }
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      finishExecution({ ok: true, content: "done" });
+      await pending;
+      await runtime.dispose();
+      return updates.map((update) => (update as { content: Array<{ text: string }> }).content[0]!.text);
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("bounds supplementary-plane Bash progress to the UTF-16 cap without splitting pairs", async () => {
+    const chunk = "😀".repeat(40_000);
+    expect(chunk.length).toBe(80_000);
+    const texts = await flushedBashProgress([chunk, "z"]);
+    expect(texts).toHaveLength(2);
+    for (const text of texts) {
+      expect(text.length).toBeLessThanOrEqual(TOOL_PROGRESS_CAP_CHARS);
+      expect(text).not.toMatch(LONE_SURROGATE);
+    }
+    expect(texts[0]).toContain(TOOL_PROGRESS_CAP_MARKER);
+    expect(texts[1]?.endsWith("z")).toBe(true);
+  });
+
+  it("keeps a surrogate pair whole when Bash progress truncation lands on it", async () => {
+    const marker = TOOL_PROGRESS_CAP_MARKER;
+    const remaining = TOOL_PROGRESS_CAP_CHARS - marker.length;
+    const head = Math.ceil(remaining * 0.6);
+    const tail = remaining - head;
+    // One emoji starts on the last code unit of the head budget, and another
+    // starts on the code unit just before the tail budget. A code-unit slice
+    // would keep a lone surrogate; a code-point budget leaves both out.
+    const chunk = `${"a".repeat(head - 1)}😀${"b".repeat(100)}😀${"c".repeat(tail - 1)}`;
+    const [text] = await flushedBashProgress([chunk]);
+    expect(text).toBeDefined();
+    expect(text!.length).toBeLessThanOrEqual(TOOL_PROGRESS_CAP_CHARS);
+    expect(text).not.toMatch(LONE_SURROGATE);
+    expect(text!.indexOf(marker)).toBe(head - 1);
+    expect(text!.endsWith("c".repeat(tail - 1))).toBe(true);
+    expect(text).not.toContain("😀");
+  });
+
+  it("preserves ASCII truncation and in-cap concatenation for Bash progress", async () => {
+    const marker = TOOL_PROGRESS_CAP_MARKER;
+    const remaining = TOOL_PROGRESS_CAP_CHARS - marker.length;
+    const head = Math.ceil(remaining * 0.6);
+    const tail = remaining - head;
+    const oversized = `${"H".repeat(head)}${"M".repeat(1_000)}${"T".repeat(tail)}`;
+    const [truncated] = await flushedBashProgress([oversized]);
+    const expected = `${"H".repeat(head)}${marker}${"T".repeat(tail)}`;
+    expect(truncated).toBe(expected);
+    expect(truncated?.length).toBe(TOOL_PROGRESS_CAP_CHARS);
+    expect(truncated?.indexOf(marker)).toBe(head);
+
+    const within = await flushedBashProgress(["hello ", "😀世界"]);
+    expect(within).toEqual(["hello ", "hello 😀世界"]);
+
+    const exact = "e".repeat(TOOL_PROGRESS_CAP_CHARS);
+    const [atCap] = await flushedBashProgress([exact]);
+    expect(atCap).toBe(exact);
   });
 
   it("removes streamed-output resources when the host dies or runtime is disposed", async () => {
@@ -1843,6 +2975,154 @@ describe("DesktopAgentRuntime configuration matching", () => {
     controller.abort();
     finishExecution({ ok: false, content: { code: "TOOL_ABORTED" } });
       await expect(pending).rejects.toThrow("tools.abort protocol failure");
+    await runtime.dispose();
+  });
+
+  // #1767: a blocking read-only host call must not keep the user turn open.
+  it("ends the turn when a stop lands while a read-only core tool is still running", async () => {
+    let finishExecution!: (value: { ok: boolean; content: unknown }) => void;
+    const execution = new Promise<{ ok: boolean; content: unknown }>((resolve) => {
+      finishExecution = resolve;
+    });
+    const host = {
+      call: vi.fn((method: string) =>
+        method === "tools.execute"
+          ? execution
+          : method === "tools.abort"
+            ? Promise.resolve({ ok: true, found: true })
+            : Promise.resolve({ ok: true, content: "done" }),
+      ),
+      onNotification: vi.fn(() => () => undefined),
+    };
+    const runtime = createRuntime({ host });
+    const grep = runtimeTool(runtime, "Grep");
+    const controller = new AbortController();
+    const pending = grep.execute("grep-stop", { query: "needle" }, controller.signal);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    controller.abort();
+
+    // The Grep is still running in host-core; only this turn stops waiting.
+    await expect(pending).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
+    expect(host.call).toHaveBeenCalledWith("tools.abort", {
+      sessionId: "session-1",
+      toolCallId: "grep-stop",
+      toolName: "Grep",
+    });
+    // The orphaned call settling later must not resurface as an unhandled
+    // rejection or a second tool result.
+    finishExecution({ ok: true, content: "late result" });
+    await runtime.dispose();
+  });
+
+  it("stops waiting for a Bash call that ignores tools.abort once the grace window closes", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = {
+        call: vi.fn((method: string) =>
+          method === "tools.execute"
+            ? new Promise<never>(() => undefined)
+            : Promise.resolve({ ok: true, content: "abort requested" }),
+        ),
+        onNotification: vi.fn(() => () => undefined),
+      };
+      const runtime = createRuntime({ host });
+      const bash = runtimeTool(runtime, "Bash");
+      const controller = new AbortController();
+      const pending = bash.execute(
+        "bash-hung",
+        { command: "sleep 600" },
+        controller.signal,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+
+      controller.abort();
+      const assertion = expect(pending).rejects.toMatchObject({
+        errorCode: "TOOL_ABORTED",
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await assertion;
+      expect(host.call).toHaveBeenCalledWith("tools.abort", {
+        sessionId: "session-1",
+        toolCallId: "bash-hung",
+        toolName: "Bash",
+      });
+
+      await runtime.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases an in-flight tool when the stop lands without the tool signal firing", async () => {
+    const host = {
+      call: vi.fn((method: string) =>
+        method === "tools.execute"
+          ? new Promise<never>(() => undefined)
+          : Promise.resolve({ ok: true, content: "abort requested" }),
+      ),
+      onNotification: vi.fn(() => () => undefined),
+    };
+    const runtime = createRuntime({ host });
+    const grep = runtimeTool(runtime, "Grep");
+    // A signal that never fires stands in for the field case: the stop reached
+    // the runtime but not the tool, so the executor kept awaiting a host call
+    // that would not return and the abort RPC never came back.
+    const silent = new AbortController();
+    const pending = grep.execute("grep-silent", { query: "needle" }, silent.signal);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    await runtime.abort();
+
+    await expect(pending).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
+    expect(silent.signal.aborted).toBe(false);
+    await runtime.dispose();
+  });
+
+  it("waits for an in-flight Write result after requesting host cancellation", async () => {
+    let finishExecution!: (value: { ok: boolean; content: unknown }) => void;
+    const execution = new Promise<{ ok: boolean; content: unknown }>((resolve) => {
+      finishExecution = resolve;
+    });
+    let beginExecution!: () => void;
+    const executionStarted = new Promise<void>((resolve) => {
+      beginExecution = resolve;
+    });
+    const host = {
+      call: vi.fn((method: string) =>
+        method === "tools.execute"
+          ? (beginExecution(), execution)
+          : method === "project.instructions.resolve"
+            ? Promise.resolve(undefined)
+          : Promise.resolve({ ok: true, found: true }),
+      ),
+      onNotification: vi.fn(() => () => undefined),
+    };
+    const runtime = createRuntime({ host });
+    const write = runtimeTool(runtime, "Write");
+    const controller = new AbortController();
+    let settled = false;
+    const pending = write
+      .execute("write-stop", { path: "file.txt", content: "value" }, controller.signal)
+      .then(
+        () => { settled = true; },
+        () => { settled = true; },
+      );
+    await executionStarted;
+
+    controller.abort();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(host.call).toHaveBeenCalledWith("tools.abort", {
+      sessionId: "session-1",
+      toolCallId: "write-stop",
+      toolName: "Write",
+    });
+    expect(settled).toBe(false);
+
+    finishExecution({ ok: true, content: { path: "file.txt" } });
+    await pending;
+    expect(settled).toBe(true);
     await runtime.dispose();
   });
 });
@@ -3908,6 +5188,52 @@ describe("DesktopAgentRuntime thinking configuration", () => {
     await runtime.dispose();
   });
 
+  it("does not replay an echoed reasoning placeholder as the model's own thinking (#1945)", async () => {
+    const runtime = createRuntime({
+      provider: {
+        ...provider,
+        vendorKey: "deepseek",
+        baseUrl: "https://relay.example/v1",
+        modelId: "deepseek-v4",
+        modelConfig: {
+          ...provider.modelConfig!,
+          baseUrl: "https://relay.example/v1",
+        },
+      },
+      history: [
+        {
+          id: "assistant-echo-only",
+          role: "assistant",
+          content: "first answer",
+          thinking: "[reasoning not retained for this turn]",
+          createdAt: new Date().toISOString(),
+          status: "complete",
+        },
+        {
+          id: "assistant-echo-prefix",
+          role: "assistant",
+          content: "second answer",
+          thinking: "[reasoning not retained for this turn]real plan",
+          createdAt: new Date().toISOString(),
+          status: "complete",
+        },
+      ],
+    });
+    const assistants = (runtime as any).agent.state.messages.filter(
+      (message: any) => message.role === "assistant",
+    );
+
+    expect(assistants.map((message: any) => message.content)).toEqual([
+      [{ type: "text", text: "first answer" }],
+      [
+        { type: "thinking", thinking: "real plan", thinkingSignature: "reasoning_content" },
+        { type: "text", text: "second answer" },
+      ],
+    ]);
+
+    await runtime.dispose();
+  });
+
   it("keeps provider-native thinking unsigned for Anthropic history", async () => {
     const runtime = createRuntime({
       provider: {
@@ -5158,6 +6484,39 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
       }),
     );
 
+    await runtime.dispose();
+  });
+
+  it("retries from a compacted transcript when the failed assistant is gone (issue #1768)", async () => {
+    const runtime = createRuntime();
+    const agent = (runtime as any).agent;
+    const user = { role: "user", content: "hello", timestamp: 1 };
+    const compactedTail = {
+      role: "compactionSummary",
+      content: "Earlier work was summarized.",
+      timestamp: 2,
+    };
+    agent.state.messages = [user, compactedTail];
+    agent.continue = vi.fn(async () => undefined);
+    agent.waitForIdle = vi.fn(async () => undefined);
+    (runtime as any).pendingProviderRetry = {
+      code: "STREAM_FAILED",
+      message: "stream terminated",
+      retriable: true,
+    };
+    (runtime as any).providerTransientRetryAttempt = 1;
+
+    vi.useFakeTimers();
+    try {
+      const retry = (runtime as any).retryPendingProviderFailure();
+      await vi.runAllTimersAsync();
+      await retry;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(agent.state.messages).toEqual([user, compactedTail]);
+    expect(agent.continue).toHaveBeenCalledOnce();
     await runtime.dispose();
   });
 
@@ -6555,6 +7914,180 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  /**
+   * Read of `src/a.ts`, then Edit of `src/b.ts`, then a trailing user message.
+   * A large `keepRecentTokens` parks the calls in pi's retained tail; a tiny
+   * one leaves them in `messagesToSummarize`. Codex folds both ranges into the
+   * summary, so the file lists have to agree.
+   */
+  function recentFileOperationEntries() {
+    const readAssistant = {
+      ...assistant,
+      content: [
+        {
+          type: "toolCall" as const,
+          id: "read-a",
+          name: "Read",
+          arguments: { path: "src/a.ts" },
+        },
+      ],
+      stopReason: "toolUse" as const,
+    };
+    const readResult = {
+      ...toolResult,
+      toolCallId: "read-a",
+      toolName: "Read",
+      content: [{ type: "text" as const, text: "contents of a" }],
+    };
+    const editAssistant = {
+      ...assistant,
+      timestamp: 3,
+      content: [
+        {
+          type: "toolCall" as const,
+          id: "edit-b",
+          name: "Edit",
+          arguments: { path: "src/b.ts" },
+        },
+      ],
+      stopReason: "toolUse" as const,
+    };
+    const editResult = {
+      ...toolResult,
+      toolCallId: "edit-b",
+      toolName: "Edit",
+      timestamp: 4,
+      content: [{ type: "text" as const, text: "edited b" }],
+    };
+    return [
+      {
+        type: "message",
+        id: "user-1",
+        seq: 0,
+        parentId: null,
+        timestamp: Date.parse("2026-07-28T00:00:00Z"),
+        message: { role: "user", content: "update the files", timestamp: 1 },
+      },
+      {
+        type: "message",
+        id: "read-assistant",
+        seq: 1,
+        parentId: "user-1",
+        timestamp: Date.parse("2026-07-28T00:00:01Z"),
+        message: readAssistant,
+      },
+      {
+        type: "message",
+        id: "read-a",
+        seq: 2,
+        parentId: "read-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:02Z"),
+        message: readResult,
+      },
+      {
+        type: "message",
+        id: "edit-assistant",
+        seq: 3,
+        parentId: "read-a",
+        timestamp: Date.parse("2026-07-28T00:00:03Z"),
+        message: editAssistant,
+      },
+      {
+        type: "message",
+        id: "edit-b",
+        seq: 4,
+        parentId: "edit-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:04Z"),
+        message: editResult,
+      },
+      {
+        type: "message",
+        id: "user-next",
+        seq: 5,
+        parentId: "edit-b",
+        timestamp: Date.parse("2026-07-28T00:00:05Z"),
+        message: { role: "user", content: "next", timestamp: 5 },
+      },
+    ];
+  }
+
+  function summarizedToolCalls(messages: any[]) {
+    return messages.flatMap((message) =>
+      Array.isArray(message.content)
+        ? message.content
+            .filter((block: any) => block.type === "toolCall")
+            .map((block: any) => ({ name: block.name, path: block.arguments.path }))
+        : [],
+    );
+  }
+
+  function prepareRecentFileOperations(
+    runtime: DesktopAgentRuntime,
+    keepRecentTokens: number,
+  ) {
+    (runtime as any).fullEntries = recentFileOperationEntries();
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      entries.map((entry: any) => entry.message),
+    );
+    return (runtime as any).prepareCompactionInput(
+      entries,
+      { ...budget, keepRecentTokens },
+      20_000,
+      "completed_turn",
+    );
+  }
+
+  it("records file operations from tool calls folded out of the retained tail", async () => {
+    const runtime = createRuntime();
+    // Larger than the whole history, so pi leaves the Read/Edit calls in
+    // `retainedTail`. The shaped preparation still summarizes them.
+    const preparation = prepareRecentFileOperations(runtime, 1_000_000);
+
+    expect(preparation.ok).toBe(true);
+    expect(summarizedToolCalls(preparation.value.messagesToSummarize)).toEqual([
+      { name: "read", path: "src/a.ts" },
+      { name: "edit", path: "src/b.ts" },
+    ]);
+    expect([...preparation.value.fileOps.read]).toEqual(["src/a.ts"]);
+    expect([...preparation.value.fileOps.edited]).toEqual(["src/b.ts"]);
+    expect([...preparation.value.fileOps.written]).toEqual([]);
+
+    (runtime as any).models = {
+      completeSimple: async () =>
+        assistantMessage({ content: [{ type: "text", text: "Older work." }] }),
+    };
+    const summary = await (runtime as any).generateCompaction(
+      preparation.value,
+      new AbortController().signal,
+    );
+    expect(summary.ok).toBe(true);
+    expect(summary.value.summary).toContain(
+      "<modified-files>\nsrc/b.ts\n</modified-files>",
+    );
+    expect(summary.value.details.modifiedFiles).toEqual(["src/b.ts"]);
+    await runtime.dispose();
+  });
+
+  it("does not duplicate file operations already collected before the fold", async () => {
+    const runtime = createRuntime();
+    // The trailing user message is the only thing that fits, so the calls stay
+    // in pi's `messagesToSummarize` and are collected before the fold.
+    const preparation = prepareRecentFileOperations(runtime, 1);
+
+    expect(preparation.ok).toBe(true);
+    expect(summarizedToolCalls(preparation.value.messagesToSummarize)).toEqual([
+      { name: "read", path: "src/a.ts" },
+      { name: "edit", path: "src/b.ts" },
+    ]);
+    expect([...preparation.value.fileOps.read]).toEqual(["src/a.ts"]);
+    expect([...preparation.value.fileOps.edited]).toEqual(["src/b.ts"]);
+    expect([...preparation.value.fileOps.written]).toEqual([]);
+    expect(preparation.value.fileOps.read.size).toBe(1);
+    expect(preparation.value.fileOps.edited.size).toBe(1);
+    await runtime.dispose();
+  });
+
   it("retains only the active user message and truncates it at the retention cap", async () => {
     const runtime = createRuntime();
     // Historical user messages are summarized. The active prompt is retained
@@ -7463,6 +8996,8 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         compaction: expect.objectContaining({
           summary: SUMMARY,
           throughMessageId: "recent-user",
+          // The compacted request estimate survives a reload (#2015).
+          details: expect.objectContaining({ contextTokens: 40_000 }),
         }),
       }),
     );
@@ -7478,6 +9013,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
           throughMessageId: "recent-user",
           generation: 1,
           summaryTokens: 7,
+          contextTokens: 40_000,
           summarized: true,
         },
       }),
@@ -7983,7 +9519,10 @@ describe("DesktopAgentRuntime subagents", () => {
     try {
       await taskTool(runtime).execute("granted", { agent: "explorer", task: "Search.", model: "new/new-model" });
       expect(subagentRuns.calls).toHaveLength(1);
-      host.call.mockRejectedValue(new Error("model is not enabled for delegation"));
+      host.call.mockImplementation(async (method: string) => {
+        if (method === "provider.resolveSubagentModel") throw new Error("model is not enabled for delegation");
+        return undefined;
+      });
       expect(runtimeMatches(runtime)).toBe(true);
       await runtime.prompt("Search again.");
       const denied = await taskTool(runtime).execute("revoked", { agent: "explorer", task: "Search.", model: "new/new-model" });
@@ -7995,7 +9534,8 @@ describe("DesktopAgentRuntime subagents", () => {
 
   it("discards an on-demand grant returned after its prompt ended (#841)", async () => {
     let resolveGrant: (value: RuntimeProviderConfig) => void = () => {};
-    const host = { call: vi.fn().mockImplementation(() => new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; })) };
+    const host = { call: vi.fn().mockImplementation((method: string) => method === "provider.resolveSubagentModel"
+      ? new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; }) : Promise.resolve(undefined)) };
     const runtime = createRuntime({ subagents: [explorer], host });
     const agent = (runtime as unknown as { agent: Agent }).agent;
     vi.spyOn(agent, "prompt").mockResolvedValue();
@@ -8015,13 +9555,16 @@ describe("DesktopAgentRuntime subagents", () => {
     } finally { await runtime.dispose(); }
   });
 
-  it("is the only tool allowed to run in parallel", async () => {
+  it("keeps Write/Edit sequential until Host file batch support is negotiated", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
 
     expect(catalog.get("Task").executionMode).toBe("parallel");
     for (const [name, tool] of catalog) {
-      if (name === "Task") continue;
+      if (["Task", "Read", "Glob", "Grep"].includes(name)) {
+        expect(tool.executionMode).toBe("parallel");
+        continue;
+      }
       expect(tool.executionMode).toBe("sequential");
     }
 
@@ -9064,6 +10607,33 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
+  it("keeps a running delegation out of the resumable list TaskList reports", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    const internals = runtime as any;
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const started = await internals.agent.state.tools
+      .find((candidate: { name: string }) => candidate.name === "Task")
+      .execute("task-1", { agent: "explorer", task: "Find it." });
+    const delegationId = (started.details as { delegationId: string }).delegationId;
+
+    const listed = await internals.agent.state.tools
+      .find((candidate: { name: string }) => candidate.name === "TaskList")
+      .execute("list-1", {});
+    // The running delegation is reported as progress, never as a resume target:
+    // resuming it is a tool error the parent must not be lured into.
+    expect(listed.details.delegations).toContainEqual(
+      expect.objectContaining({ delegationId, status: "running" }),
+    );
+    expect(listed.details.resumable).toEqual([]);
+    expect(listed.content[0].text).not.toContain("Reusable subagent sessions");
+
+    subagentRuns.deferred = false;
+    await runtime.dispose();
+  });
+
   it("scopes a mutating delegate's tool calls with its permission", async () => {
     const mutator: SubagentDefinition = {
       name: "fixer",
@@ -9366,8 +10936,9 @@ describe("DesktopAgentRuntime subagents", () => {
       await runtime.dispose();
     });
 
-    it("lists a settled delegation in the parent's system prompt", async () => {
+    it("lists a settled delegation through TaskList, not in the system prompt", async () => {
       const runtime = createRuntime({ subagents: [explorer] });
+      const internals = runtime as any;
       subagentRuns.calls.length = 0;
       subagentRuns.deferred = true;
       const started = await startTask(runtime, "task-1", {
@@ -9376,6 +10947,7 @@ describe("DesktopAgentRuntime subagents", () => {
         description: "find the bug",
       });
       const delegationId = (started.details as any).delegationId as string;
+      const promptWhileRunning = internals.composedSystemPrompt;
       subagentRuns.resolveRun?.({
         agentName: "explorer",
         status: "completed",
@@ -9383,11 +10955,29 @@ describe("DesktopAgentRuntime subagents", () => {
         turns: 1,
         toolCalls: 0,
       });
+      // ADR 0337: a settlement must not rewrite the request prefix providers
+      // cache on, so the instructions stay byte-identical and the list is read
+      // on demand instead.
       await vi.waitFor(() => {
-        expect((runtime as any).agent.state.systemPrompt).toContain(
-          `explorer / ${delegationId}: find the bug`,
-        );
+        expect(internals.delegations.get(delegationId)?.status).toBe("completed");
       });
+      expect(internals.composedSystemPrompt).toBe(promptWhileRunning);
+      expect(internals.agent.state.systemPrompt).toBe(promptWhileRunning);
+      expect(internals.agent.state.systemPrompt).not.toContain(delegationId);
+
+      const listed = await internals.agent.state.tools
+        .find((tool: any) => tool.name === "TaskList")
+        .execute("list-1", {});
+      expect(listed.content[0].text).toContain(
+        `explorer / ${delegationId}: find the bug`,
+      );
+      expect(listed.details.resumable).toContainEqual(
+        expect.objectContaining({
+          agent: "explorer",
+          delegationId,
+          objective: "find the bug",
+        }),
+      );
       subagentRuns.deferred = false;
       await runtime.dispose();
     });
@@ -9558,13 +11148,26 @@ describe("DesktopAgentRuntime subagents", () => {
         turns: 1,
         toolCalls: 1,
       });
+      // The resumable list moved out of the system prompt into `TaskList`
+      // (ADR 0337): the instructions must not change when a delegation settles,
+      // or every settlement would invalidate the cached request prefix.
+      const promptBeforeSettlement = internals.composedSystemPrompt;
       await vi.waitFor(() => {
-        expect(internals.agent.state.systemPrompt).toContain(
-          "Files read: src/deep.ts",
-        );
+        expect(internals.agent.state.systemPrompt).toBe(promptBeforeSettlement);
       });
       expect(internals.agent.state.systemPrompt).not.toContain(
-        "Files read: none recorded",
+        "Files read: src/deep.ts",
+      );
+      const listed = await internals.agent.state.tools
+        .find((tool: any) => tool.name === "TaskList")
+        .execute("list-1", {});
+      expect(listed.content[0].text).toContain("Files read: src/deep.ts");
+      expect(listed.details.resumable).toContainEqual(
+        expect.objectContaining({
+          agent: "explorer",
+          delegationId,
+          files: ["src/deep.ts"],
+        }),
       );
       expect(
         internals.delegationChains
@@ -11099,7 +12702,7 @@ describe("DesktopAgentRuntime loop context ownership (D620)", () => {
   function scriptCallRounds(
     runtime: DesktopAgentRuntime,
     requests: AgentMessage[][],
-    options: { stopAfterRound?: number } = {},
+    options: { stopAfterRound?: number; reuseCallId?: boolean } = {},
   ): void {
     let round = 0;
     (runtime as any).models = {
@@ -11117,9 +12720,9 @@ describe("DesktopAgentRuntime loop context ownership (D620)", () => {
                 { type: "text", text: `round ${current}` },
                 {
                   type: "toolCall",
-                  id: `call-${current}`,
-                  name: "plugin_demo_probe",
-                  arguments: {},
+                  id: options.reuseCallId ? "call-reused" : `call-${current}`,
+                  name: options.reuseCallId ? "Bash" : "plugin_demo_probe",
+                  arguments: options.reuseCallId ? { command: "printf probe" } : {},
                 },
               ]
             : [{ type: "text", text: `round ${current}` }],
@@ -11142,7 +12745,7 @@ describe("DesktopAgentRuntime loop context ownership (D620)", () => {
 
   function probeRuntime(
     requests: AgentMessage[][],
-    options: { stopAfterRound?: number } = {},
+    options: { stopAfterRound?: number; reuseCallId?: boolean } = {},
   ): DesktopAgentRuntime {
     const runtime = createRuntime({
       host: {
@@ -11227,6 +12830,27 @@ describe("DesktopAgentRuntime loop context ownership (D620)", () => {
       ).toBe(true);
     }
   }
+
+  it("keeps both executed results in the next request when the provider reuses a call id", async () => {
+    const requests: AgentMessage[][] = [];
+    const runtime = probeRuntime(requests, { reuseCallId: true });
+    try {
+      await runtime.prompt("run the probe twice", "user-1", "turn-1");
+
+      expect(requests).toHaveLength(3);
+      expect(resultIds(requests[1]!)).toHaveLength(1);
+      const finalRequest = requests[2]!;
+      const ids = toolCallIds(finalRequest);
+      expect(ids).toHaveLength(2);
+      expect(new Set(ids).size).toBe(2);
+      expect(resultIds(finalRequest)).toEqual(ids);
+      expect(finalRequest.filter((m) => m.role === "toolResult").map((m) => m.content))
+        .toEqual([[{ type: "text", text: "probe ok" }], [{ type: "text", text: "probe ok" }]]);
+      expectResultsFollowTheirCalls(finalRequest);
+    } finally {
+      await runtime.dispose();
+    }
+  });
 
   it("stores one copy of every message the loop appends", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -11710,6 +13334,132 @@ describe("toolResultFromUi image restoration (issue #1073)", () => {
     ]);
   });
 
+  // github-mcp-server `get_file_contents` persists the file body as an embedded
+  // text resource (and a resource link for large files). Restoring that row
+  // must keep the same text the live path shows.
+  const embeddedResource = {
+    type: "resource" as const,
+    resource: {
+      uri: "file://x.ts",
+      mimeType: "text/plain",
+      text: "export const answer = 42;\n",
+    },
+  };
+  const statusAndResourceBlocks = [
+    { type: "text" as const, text: "successfully downloaded text file (SHA: abc123)" },
+    {
+      type: "resource" as const,
+      resource: {
+        uri: "repo://acme/app/contents/src/index.ts",
+        mimeType: "text/plain",
+        text: "export const answer = 42;\n",
+      },
+    },
+    {
+      type: "resource_link" as const,
+      uri: "https://raw.githubusercontent.com/acme/app/main/big.json",
+      name: "big.json",
+    },
+    { type: "image" as const, data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+  ];
+
+  it.each([
+    ["MCP content property", { content: [embeddedResource] }],
+    ["plugin bare content-block array", [embeddedResource]],
+  ])(
+    "restores a text resource from a %s instead of the missing-result placeholder",
+    (_shape, toolResult) => {
+      const restored = toolResultFromUi(
+        {
+          id: "call-resource-only",
+          role: "tool",
+          content: "",
+          createdAt: new Date(timestamp).toISOString(),
+          toolCallId: "call-resource-only",
+          toolName: "get_file_contents",
+          toolResult,
+          toolStatus: "success",
+          isError: false,
+        },
+        timestamp,
+      );
+      expect(
+        restored.content.some(
+          (block) => block.type === "text" && block.text.includes("export const answer = 42"),
+        ),
+      ).toBe(true);
+      expect(
+        restored.content.every(
+          (block) => !(block.type === "text" && block.text === "[no tool result recorded]"),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    ["MCP content property", { content: statusAndResourceBlocks, isError: false }],
+    ["plugin bare content-block array", statusAndResourceBlocks],
+  ])(
+    "restores status text, resource body, resource link, and image from a %s",
+    (_shape, toolResult) => {
+      const restored = toolResultFromUi(
+        {
+          id: "call-resource-mix",
+          role: "tool",
+          content: "",
+          createdAt: new Date(timestamp).toISOString(),
+          toolCallId: "call-resource-mix",
+          toolName: "get_file_contents",
+          toolResult,
+          toolStatus: "success",
+          isError: false,
+        },
+        timestamp,
+      );
+      expect(restored.content).toEqual([
+        { type: "text", text: "successfully downloaded text file (SHA: abc123)" },
+        { type: "text", text: "export const answer = 42;\n" },
+        {
+          type: "text",
+          text: "[resource link] big.json: https://raw.githubusercontent.com/acme/app/main/big.json",
+        },
+        { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+      ]);
+    },
+  );
+
+  it("ignores a binary MCP resource that has no text", () => {
+    const restored = toolResultFromUi(
+      {
+        id: "call-resource-blob",
+        role: "tool",
+        content: "",
+        createdAt: new Date(timestamp).toISOString(),
+        toolCallId: "call-resource-blob",
+        toolName: "get_file_contents",
+        toolResult: {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: "file:///a.bin",
+                mimeType: "application/octet-stream",
+                blob: "QkxPQi1CWVRFUw==",
+              },
+            },
+          ],
+        },
+        toolStatus: "success",
+        isError: false,
+      },
+      timestamp,
+    );
+    expect(restored.content).toEqual([
+      { type: "text", text: "[no tool result recorded]" },
+    ]);
+    expect(JSON.stringify(restored.content)).not.toContain("QkxPQi1CWVRFUw==");
+  });
+
   it.each([
     [
       "MCP content property",
@@ -12080,6 +13830,34 @@ describe("local runtime with a remote tool workspace", () => {
   });
 });
 
+describe("inline visualization directory (ADR gen-ui-inline-visualization)", () => {
+  const systemPrompt = (runtime: DesktopAgentRuntime): string =>
+    (runtime as unknown as { agent: { state: { systemPrompt: string } } }).agent.state
+      .systemPrompt;
+
+  it("advertises the directory and skill to local sessions", async () => {
+    const runtime = createRuntime({ visualizationsDir: "/data/visualizations/session-1" });
+    const prompt = systemPrompt(runtime);
+    expect(prompt).toContain("Visualization directory");
+    expect(prompt).toContain("`/data/visualizations/session-1`");
+    expect(prompt).toContain("pi-desktop/visualize");
+    await runtime.dispose();
+  });
+
+  it("omits the directory when none is provisioned or the workspace is remote", async () => {
+    const none = createRuntime({});
+    const remote = createRuntime({
+      remoteWorkspace: { hostKey: "ssh", path: "/remote/project" },
+      visualizationsDir: "/data/visualizations/session-1",
+    });
+    for (const runtime of [none, remote]) {
+      expect(systemPrompt(runtime)).not.toContain("Visualization directory");
+      expect(systemPrompt(runtime)).not.toContain("/data/visualizations");
+      await runtime.dispose();
+    }
+  });
+});
+
 describe("isolated session workspace (ADR 0329)", () => {
   const systemPrompt = (runtime: DesktopAgentRuntime): string =>
     (runtime as unknown as { agent: { state: { systemPrompt: string } } }).agent.state
@@ -12255,5 +14033,53 @@ describe("isolated-session subagent worktrees (ADR 0329)", () => {
     expect(delegateWorktreeNote({ result: "noChanges" }, resume)).toContain("no file changes");
     expect(delegateWorktreeNote({ result: "notMerged", reason: "busy" }, resume)).toContain("busy");
     expect(delegateWorktreeNote({ result: "none" }, resume)).toBe("");
+  });
+});
+
+describe("parallel policy tool provenance", () => {
+  const explorer = { name: "explorer", description: "Read", tools: ["Read"], prompt: "Read", source: "builtin" as const };
+  it("does not prepare native file work for a parent extension named Read", async () => {
+    const host = { call: vi.fn() };
+    const runtime = createRuntime({ host });
+    const internal = runtime as any;
+    const execute = vi.fn(async () => ({ content: [], details: {} }));
+    internal.extensionRunner = { hasHandlers: () => false, getAgentTools: () => [{ name: "Read", label: "extension", description: "dynamic",
+      parameters: Type.Object({}), execute }] };
+    try {
+      internal.rebuildToolCatalog();
+      const tool = internal.toolCatalog.get("Read");
+      expect(tool.executionMode).toBe("sequential");
+      const toolCall = { type: "toolCall", name: "Read", id: "dynamic-parent", arguments: {} };
+      await expect(internal.agent.beforeToolCall({ toolCall, args: {},
+        assistantMessage: { content: [toolCall] }, context: { tools: [tool] } })).resolves.toBeUndefined();
+      await tool.execute(toolCall.id, {});
+      expect(execute).toHaveBeenCalledOnce();
+      expect(host.call.mock.calls.some(([method]) =>
+        ["project.instructions.resolve", "tools.prepareFileCall"].includes(method))).toBe(false);
+    } finally { internal.extensionRunner = undefined; await runtime.dispose(); }
+  });
+
+  it("keeps delegate file preparation tied to selected provenance across parent rebuilds", async () => {
+    const host = { call: vi.fn() };
+    const runtime = createRuntime({ host, subagents: [explorer] });
+    const internal = runtime as any;
+    const execute = vi.fn(async () => ({ content: [], details: {} }));
+    internal.extensionRunner = { hasHandlers: () => false, getAgentTools: () => [{ name: "Read", label: "extension", description: "dynamic",
+      parameters: Type.Object({}), execute }] };
+    subagentRuns.calls.length = 0;
+    try {
+      internal.rebuildToolCatalog();
+      await internal.toolCatalog.get("Task").execute("task-dynamic-read", { agent: "explorer", task: "Read." });
+      const child = subagentRuns.calls[0];
+      const tool = child.tools.find((entry: AgentTool) => entry.name === "Read");
+      expect(tool.executionMode).toBe("sequential");
+      internal.extensionRunner = undefined;
+      internal.rebuildToolCatalog();
+      await expect(child.beforeToolCall({ toolCall: { name: "Read", id: "dynamic-child" }, args: {} })).resolves.toBeUndefined();
+      await tool.execute("dynamic-child", {});
+      expect(execute).toHaveBeenCalledOnce();
+      expect(host.call.mock.calls.some(([method]) =>
+        ["project.instructions.resolve", "tools.prepareFileCall"].includes(method))).toBe(false);
+    } finally { internal.extensionRunner = undefined; await runtime.dispose(); }
   });
 });

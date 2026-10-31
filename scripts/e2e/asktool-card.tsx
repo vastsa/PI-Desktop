@@ -8,7 +8,8 @@
  * the user-visible paths: the new header action order, select → next →
  * submit, skip → submit, decline-all, and a custom answer.
  *
- * Scenario: E2E-ASKTOOL-compact-card-interaction. It also pins the compact
+ * Scenario: E2E-ASKTOOL-compact-card-interaction and
+ * E2E-ASKTOOL-draft-survives-session-switch. It also pins the compact
  * question block: a multi-paragraph question body stays one stacked text
  * column rather than lining its blocks up in a row.
  */
@@ -389,6 +390,42 @@ export async function asktoolCardProbe() {
     assert(
       JSON.stringify(resolutions[4]!.answers) === JSON.stringify([["continue"]]),
       "the maximum-length question remains answerable",
+    );
+
+    // Flow H: the draft survives an unmount/remount with the same requestId —
+    // switching sessions in the real app unmounts the card the same way.
+    const persisted = mount("ask-persist");
+    await until(() => options().length > 0, "persist flow mounts");
+    flushSync(() => options()[1]!.click()); // select "beta" on question 1
+    flushSync(() => headerButtons().primary.click()); // next -> question 2
+    await until(
+      () => questionText().includes("Allow rollback?"),
+      "persist flow advances to question 2",
+    );
+    flushSync(() => root.render(null)); // unmount (session switched away)
+    flushSync(() =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <AskToolCard key={persisted.requestId} request={persisted} />
+        </I18nextProvider>,
+      ),
+    );
+    await until(() => options().length > 0, "persist flow remounts");
+    assert(
+      questionText().includes("Allow rollback?"),
+      "the remounted card resumes on the question the user left",
+    );
+    const indicators = [
+      ...host.querySelectorAll<HTMLButtonElement>(".asktool-indicator"),
+    ];
+    flushSync(() => indicators[0]!.click());
+    await until(
+      () => questionText().includes("Which upgrade path?"),
+      "the indicator returns to question 1",
+    );
+    assert(
+      options()[1]!.classList.contains("selected"),
+      "the answer selected before the remount is still selected",
     );
 
     assert(errors.length === 0, `render errors: ${errors.map(String)}`);

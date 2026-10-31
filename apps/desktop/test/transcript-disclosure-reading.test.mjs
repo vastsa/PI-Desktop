@@ -25,11 +25,21 @@ test("a manual disclosure hands over its title before the state changes", () => 
 });
 
 test("automatic disclosure does not claim a reading position", () => {
-  // Automatic reveal/collapse may claim the parent hierarchy, but never calls
-  // the scroll anchor notifier reserved for direct user interaction.
-  assert.match(disclosure, /if \(previousOpen\.current && !open && !choice && ownsReadingPosition/);
+  // Automatic reveal and collapse never call the scroll anchor notifier
+  // reserved for direct user interaction. A reader inside the level is a
+  // transient hold, never a permanent disclosure choice - recording those
+  // moments is what used to disable automatic folding for the pane's life.
+  const claimBody = disclosure.match(
+    /const claim = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[scope\.claim, syncReading\]\);/,
+  )?.[0];
+  assert.ok(claimBody, "the transient reading hold is missing");
+  assert.doesNotMatch(claimBody, /choices\.set/);
+  assert.match(
+    disclosure,
+    /if \(!choice && previousDerived\.current && !derivedOpen && ownsReading\(\)\) setReading\(true\);/,
+  );
   const revealEffect = disclosure.match(
-    /useLayoutEffect\(\(\) => \{\s*if \(revealRequest === undefined[\s\S]*?\n  \}, \[choices, key, parent\.claim, revealRequest\]\);/,
+    /useLayoutEffect\(\(\) => \{\s*if \(revealRequest === undefined[\s\S]*?\n  \}, \[choices, key, scope\.reveal, revealRequest\]\);/,
   )?.[0];
   assert.ok(revealEffect, "the automatic reveal effect is missing");
   assert.doesNotMatch(revealEffect, /notifyAnchor/);
@@ -91,8 +101,11 @@ test("holding a disclosure leaves follow without a delayed grab-back", () => {
   // on real input or an explicit re-pin, never by taking the bottom back later.
   assert.match(
     transcript,
-    /const releaseFollow = useCallback\(\(\) => \{\s*cancelReadingPosition\(\);\s*cancelFollowScroll\(\);\s*pinnedRef\.current = false;\s*setShowJump\(true\);/,
+    /const leaveFollow = useCallback\(\(\) => \{\s*cancelReadingPosition\(\);\s*cancelFollowScroll\(\);\s*pinnedRef\.current = false;\s*setShowJump\(true\);/,
   );
+  assert.match(transcript,
+    /const releaseFollow = useCallback\(\(\) => \{\s*stopSmoothScroll\(scrollRef\.current\);\s*leaveFollow\(\);/);
+  assert.match(transcript, /onAnchored: leaveFollow/);
   assert.match(
     transcript,
     /const enterDisclosureReading = useCallback\(\(\) => \{\s*releaseFollow\(\);/,
@@ -185,4 +198,17 @@ test("a nested owner holds its own position and passes the hold outward", () => 
   // Growing the dock grows the transcript's content too, so an outer scroller
   // still in follow mode would drag the same title away.
   assert.match(anchorControl, /outerNotifier\?\.\(title\);/);
+});
+
+test("a level's reading protection is restricted to its body and excludes its title toggle", () => {
+  // Focus on the toggle header itself must not mark the level as 'reading'
+  // and force it open prematurely before click completes.
+  assert.match(
+    disclosure,
+    /const ownsReading = useCallback\(\s*\(\) => ownsReadingPosition\(bodyRef\.current\),\s*\[\],\s*\);/,
+  );
+  assert.match(
+    disclosure,
+    /const syncReading = useCallback\(\s*\(\) => setReading\(ownsReadingPosition\(bodyRef\.current\)\),\s*\[\],\s*\);/,
+  );
 });

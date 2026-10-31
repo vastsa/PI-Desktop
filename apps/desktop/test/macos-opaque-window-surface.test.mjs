@@ -1,0 +1,209 @@
+import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { loadStyles } from "./helpers/styles.mjs";
+
+const mainSource = await readMainSource();
+const windowSource = await readMainModule("bootstrap/window.ts");
+const lifecycleSource = await readMainModule("bootstrap/app-lifecycle.ts");
+const windowIpcSource = await readMainModule("ipc/window-ipc.ts");
+const stylesSource = await loadStyles();
+
+function styleBlock(selector) {
+  return stylesSource.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
+}
+
+const createWindowSource =
+  windowSource.slice(windowSource.indexOf("export async function createWindow("));
+const mainWindowBlock =
+  createWindowSource.match(/mainWindow = new BrowserWindow\(\{[\s\S]*?\n  \}\);/)?.[0] ?? "";
+const macOptions =
+  mainWindowBlock.match(
+    /\.\.\.\(process\.platform === "darwin"[\s\S]*?\n      : \{[\s\S]*?\n        \}\),/,
+  )?.[0] ?? "";
+
+function functionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `expected function ${name}`);
+  const next = source.indexOf("\n  function ", start + 1);
+  return source.slice(start, next === -1 ? undefined : next);
+}
+
+test("macOS main window takes its surface from the platform helper", () => {
+  assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
+  // The position itself lives in @pi-desktop/shared so the renderer's reserve
+  // for it (styles/tokens.css) is derived from the same numbers.
+  assert.match(macOptions, /trafficLightPosition:\s*MAC_TRAFFIC_LIGHT_POSITION/);
+  // A transparent window over the macOS vibrancy material made WindowServer
+  // recomposite the whole window every frame it stayed dirty: an idle foreground
+  // app held ~40% GPU (issue #1064). The window no longer declares a material
+  // itself; the helper paints an opaque surface unless the user opted back in.
+  assert.doesNotMatch(macOptions, /vibrancy:/);
+  assert.doesNotMatch(macOptions, /visualEffectState:/);
+  assert.doesNotMatch(macOptions, /transparent:\s*true/);
+  assert.match(
+    macOptions,
+    /\.\.\.macosWindowSurfaceOptions\(\s*windowState\.macosWindowTranslucency,\s*initialWindowBackground,?\s*\)/,
+  );
+  assert.doesNotMatch(
+    mainWindowBlock,
+    /vibrancy:\s*"(?:sidebar|under-window)"/,
+    "no platform branch may re-introduce a vibrancy material",
+  );
+
+  // The platform helper receives the built-in fallback selected from the
+  // native theme. Windows 11 keeps its DWM surface opaque; earlier Windows
+  // builds and Linux retain their existing background behavior.
+  assert.match(
+    mainWindowBlock,
+    /\.\.\.mainWindowBackgroundOptions\(\s*process\.platform,\s*initialWindowBackground,\s*windows11NativeCorners,/,
+  );
+  assert.match(
+    windowSource,
+    /const initialWindowBackground = builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
+  );
+  assert.match(mainWindowBlock, /frame: false/);
+});
+
+test("native theme source follows the app preference without touching window material", () => {
+  const applyNative = functionSource(lifecycleSource, "applyNativeThemeSource");
+  const applyMenu = functionSource(lifecycleSource, "applyApplicationMenuSettings");
+  const send = functionSource(mainSource, "sendToRenderer");
+
+  assert.match(applyNative, /let next: "system" \| "light" \| "dark" = "system"/);
+  assert.match(
+    applyNative,
+    /if \(isThemeColorScheme\(preference\)\) \{\s*next = preference;/,
+  );
+  assert.match(applyNative, /preference\.startsWith\("plugin:"\)/);
+  assert.match(
+    applyNative,
+    /pluginTheme\?\.base === "light" \|\| pluginTheme\?\.base === "dark"/,
+  );
+  assert.match(applyNative, /next = pluginTheme\.base/);
+  assert.doesNotMatch(
+    applyNative,
+    /next = pluginTheme\?\.base \?\?/,
+    "a missing plugin theme must keep the system default, not a guessed base",
+  );
+  assert.match(applyNative, /if \(nativeTheme\.themeSource === next\) return;/);
+  assert.match(applyNative, /nativeTheme\.themeSource = next;/);
+  // Only a translucent window owns a material to reset. The opaque surface is
+  // repainted by the background path, so the theme switch and the material must
+  // not diverge.
+  assert.match(applyNative, /state\.macosWindowTranslucency &&/);
+  assert.match(applyNative, /state\.mainWindow\.setVibrancy\("sidebar"\)/);
+
+  // The theme mapping lives in `applyAppThemePreference` so the narrow plugin
+  // `setTheme` path can never re-derive locale, keybindings, or dev-mode menu
+  // state (ADR 0260). The full-settings path delegates to the same function.
+  const applyTheme = functionSource(lifecycleSource, "applyAppThemePreference");
+  assert.match(applyTheme, /applyNativeThemeSource\(\{\s*theme: preference \}\)/);
+  assert.match(applyMenu, /applyAppThemePreference\(settings\?\.theme\)/);
+  assert.match(
+    send,
+    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applicationLifecycle\?\.applyNativeThemeSource\(\{\s*theme: applicationAppearanceState\.appThemePreference,/,
+  );
+});
+
+test("a theme change repaints the macOS native surface instead of skipping it", () => {
+  // The native background path used to return early on darwin because vibrancy
+  // owned the surface. With the default opaque window the colour has to be
+  // applied; only a translucent window keeps its transparent pixels.
+  assert.doesNotMatch(
+    windowIpcSource,
+    /if \(process\.platform === "darwin"\) return \{ applied: false, theme \};/,
+    "darwin must no longer skip the native window background unconditionally",
+  );
+  assert.match(windowIpcSource, /if \(process\.platform === "darwin" && isMacosWindowTranslucent\(\)\) \{/);
+  assert.match(windowIpcSource, /applyMainWindowBackground\(/);
+});
+
+test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
+  const macGlassBlock =
+    stylesSource.match(
+      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar-surface,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
+    )?.[0] ?? "";
+  assert.match(macGlassBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
+  assert.doesNotMatch(macGlassBlock, /var\(--ds-bg-primary\)/);
+  // Keep splash `position: fixed`; relative is only for the dock surfaces.
+  assert.doesNotMatch(macGlassBlock, /position:\s*relative/);
+
+  // Other platforms keep the opaque boot surface; the glass is darwin-only.
+  const baseSplashBlock = stylesSource.match(/\n\.startup-splash\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(baseSplashBlock, /background:\s*var\(--ds-bg-primary\)/);
+  assert.doesNotMatch(baseSplashBlock, /glass/);
+
+  assert.match(
+    stylesSource,
+    /:root\[data-platform="darwin"\] \.app-shell\.is-booting:has\(\.startup-splash:not\(\.is-exiting\)\)\s*>\s*:not\(\.startup-splash\)\s*\{\s*visibility:\s*hidden;/,
+  );
+  assert.match(
+    stylesSource,
+    /:root\[data-platform="darwin"\] \.app-shell\.is-booting:has\(\.startup-splash\.is-exiting\)\s*>\s*:not\(\.startup-splash\)\s*\{\s*opacity:\s*1;\s*transition:\s*opacity/,
+  );
+});
+
+test("only macOS sidebar and splash surfaces receive the translucent glass treatment", () => {
+  const macGlassBlock =
+    stylesSource.match(
+      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar-surface,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
+    )?.[0] ?? "";
+  assert.match(macGlassBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
+  // Sheen, not a flat tint — this is what keeps the material reading as glass.
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
+  assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-bottom\)/);
+  // No dock seam on any platform (D297): neither the macOS glass rule nor the
+  // base `.sidebar` rule draws a right edge, so the glass meets the opaque main
+  // pane flush and no transparent override is needed.
+  assert.doesNotMatch(macGlassBlock, /border-right/);
+  const baseSidebarBlock = stylesSource.match(/\n\.sidebar\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(baseSidebarBlock, /border-right/);
+
+  const macAncestorBlock =
+    stylesSource.match(
+      /:root\[data-platform="darwin"\],\n:root\[data-platform="darwin"\] body,\n:root\[data-platform="darwin"\] #root,\n:root\[data-platform="darwin"\] \.app-shell,\n:root\[data-platform="darwin"\] \.settings-shell\s*\{[^}]*\}/,
+    )?.[0] ?? "";
+  assert.match(macAncestorBlock, /background:\s*transparent/);
+
+  const mainPaneBlock = styleBlock("\\.main-pane");
+  const mainTitlebarBlock = styleBlock("\\.main-titlebar");
+  const conversationTopbarBlock = styleBlock("\\.conversation-topbar");
+  for (const block of [mainPaneBlock, mainTitlebarBlock, conversationTopbarBlock]) {
+    assert.match(block, /background:\s*var\(--ds-bg-primary\)/);
+    assert.doesNotMatch(block, /transparent/);
+  }
+});
+
+test("the sidebar glass tint stays thin over the opaque native surface", () => {
+  // Slice at the @theme block so later partials cannot fake a token, and match
+  // the light selector at a line start — the file header comment quotes it.
+  const tokenSource = stylesSource.slice(0, stylesSource.indexOf("@theme {"));
+  const lightIndex = /\n:root\[data-theme="light"\]\s*\{/.exec(tokenSource)?.index ?? -1;
+  assert.ok(lightIndex > 0, "expected a light theme token block");
+  const themes = {
+    dark: tokenSource.slice(0, lightIndex),
+    light: tokenSource.slice(lightIndex),
+  };
+
+  for (const [theme, block] of Object.entries(themes)) {
+    for (const token of [
+      "--ds-sidebar-glass-tint",
+      "--ds-sidebar-glass-sheen-top",
+      "--ds-sidebar-glass-sheen-bottom",
+    ]) {
+      assert.match(block, new RegExp(`${token}:`), `${theme} must define ${token}`);
+    }
+    const tint = block.match(
+      /--ds-sidebar-glass-tint:\s*color-mix\(in oklab,\s*var\(--ds-bg-sidebar\)\s*(\d+)%,\s*transparent\)/,
+    );
+    assert.ok(tint, `${theme}: tint must derive from --ds-bg-sidebar`);
+    assert.ok(
+      Number(tint[1]) <= 60,
+      `${theme}: tint ${tint[1]}% is too opaque for the surface to read as glass`,
+    );
+  }
+});

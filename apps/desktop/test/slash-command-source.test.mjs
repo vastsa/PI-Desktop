@@ -206,3 +206,17 @@ test("the shipped locales carry the refusal copy", async () => {
   assert.match(en, /slashCommandSourceUnavailable:\s*"[^"]+"/);
   assert.match(zhCN, /slashCommandSourceUnavailable:\s*"[^"]+"/);
 });
+
+test("a remote session's menu leaves out the local-only visualize skill", async () => {
+  const { commandsForSession } = await load("../src/lib/composer-command-source.ts");
+  const commands = [
+    { name: "compact", kind: "builtin", title: "/compact" },
+    { name: "skill:pi-desktop/visualize", kind: "skill", title: "Visualize", skillId: "pi-desktop/visualize" },
+    { name: "skill:mine", kind: "skill", title: "Mine", skillId: "mine" },
+  ];
+  assert.deepEqual(commandsForSession(commands, { remote: false }), commands);
+  assert.deepEqual(
+    commandsForSession(commands, { remote: true }).map((command) => command.name),
+    ["compact", "skill:mine"],
+  );
+});

@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, Menu } from "electron";
 import { isWindowBackgroundColor, MAX_WINDOW_CORNER_RADIUS } from "@pi-desktop/plugin-sdk";
 import {
   builtinWindowBackground,
@@ -12,7 +12,13 @@ import {
   type WindowControlAction,
   type LifecycleDialogChoice,
   type TraySessionPreferences,
+  type WorkPanelTabMenuAction,
 } from "@pi-desktop/shared";
+import {
+  clampWorkPanelTabMenuPointToDip,
+  parseWorkPanelTabMenuRequest,
+  waitForNativeMenuResult,
+} from "../work-panel-tab-menu";
 import {
   emptyWorkPanelReservationState,
   parseWorkPanelChatWidth,
@@ -40,9 +46,16 @@ export type WindowIpcDependencies = {
   markMenuRendererReady: (window: BrowserWindow) => boolean;
   executeNativeMenuAction: (action: NativeMenuAction) => unknown;
   setTraySessionPreferences: (preferences: TraySessionPreferences) => Promise<void>;
+  isMacosWindowTranslucent: () => boolean;
 };
 
-/** Register renderer-drawn window chrome and work-panel geometry channels. */
+/**
+ * Register renderer-drawn window chrome and work-panel geometry channels.
+ *
+ * `isMacosWindowTranslucent` reports the surface the running window was
+ * created with: a translucent window leaves its pixels to the native vibrancy
+ * material, so a theme colour must not paint over it.
+ */
 export function registerWindowIpc({
   registrar,
   getMainWindow,
@@ -57,6 +70,7 @@ export function registerWindowIpc({
   respondLifecycleDialog,
   executeNativeMenuAction,
   setTraySessionPreferences,
+  isMacosWindowTranslucent,
 }: WindowIpcDependencies): void {
   const { handle, handleWithEvent } = registrar;
   handleWithEvent(IPC.invoke.traySetSessionPreferences, async (event, input: unknown) => {
@@ -133,7 +147,12 @@ export function registerWindowIpc({
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
-    if (process.platform === "darwin") return { applied: false, theme };
+    // A translucent macOS window keeps its pixels transparent over the native
+    // vibrancy material; painting the theme colour would flatten the glass.
+    // The default opaque surface takes the colour like every other platform.
+    if (process.platform === "darwin" && isMacosWindowTranslucent()) {
+      return { applied: false, theme };
+    }
     const mainWindow = getMainWindow();
     if (!mainWindow || mainWindow.isDestroyed()) {
       throw new Error("main window unavailable");
@@ -168,8 +187,14 @@ export function registerWindowIpc({
     ) {
       throw new Error("unsupported window control action");
     }
+    // A window outside macOS has no vibrancy surface: report `false` so the
+    // renderer never reads "not applicable" as "translucent".
+    const macosWindowTranslucency =
+      process.platform === "darwin" && isMacosWindowTranslucent();
     const mainWindow = getMainWindow();
-    if (!mainWindow || mainWindow.isDestroyed()) return { maximized: false };
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { maximized: false, macosWindowTranslucency };
+    }
     switch (input.action as WindowControlAction) {
       case "getState":
         break;
@@ -186,6 +211,9 @@ export function registerWindowIpc({
     }
     return {
       maximized: !mainWindow.isDestroyed() && mainWindow.isMaximized(),
+      // The surface this window was created with, so a Settings switch can tell
+      // whether the stored preference has taken effect (#1064 / ADR 0332).
+      macosWindowTranslucency,
     };
   });
 
@@ -249,6 +277,45 @@ export function registerWindowIpc({
     }
     return { ready: true };
   });
+
+  handleWithEvent(IPC.invoke.workPanelTabMenu, async (event, input: unknown) => {
+    registrar.assertMainWindowSender(event);
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const mainWindow = getMainWindow();
+    if (!window || window !== mainWindow || window.isDestroyed()) {
+      throw new Error("main window unavailable for work panel menu");
+    }
+    const request = parseWorkPanelTabMenuRequest(input);
+    if (!request) {
+      throw Object.assign(new Error("invalid work panel tab menu request"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    const [contentWidth, contentHeight] = window.getContentSize();
+    const { x, y } = clampWorkPanelTabMenuPointToDip(
+      request,
+      event.sender.getZoomFactor(),
+      contentWidth,
+      contentHeight,
+    );
+    let selected: WorkPanelTabMenuAction | null = null;
+    const menu = Menu.buildFromTemplate([
+      { label: request.closeTabLabel, click: () => { selected = "closeTab"; } },
+      { type: "separator" },
+      {
+        label: request.closeOtherTabsLabel,
+        enabled: request.canCloseOthers,
+        click: () => { selected = "closeOtherTabs"; },
+      },
+      { label: request.closeAllTabsLabel, click: () => { selected = "closeAllTabs"; } },
+    ]);
+    return waitForNativeMenuResult(
+      window,
+      (onMenuClosed) => menu.popup({ window, x, y, callback: onMenuClosed }),
+      () => selected,
+    );
+  });
+
 
   handle(IPC.invoke.nativeMenuAction, async (input: { action?: string } = {}) => {
     if (

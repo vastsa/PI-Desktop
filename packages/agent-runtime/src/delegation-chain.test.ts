@@ -166,7 +166,7 @@ describe("resolveResume", () => {
   });
 });
 
-describe("resumableList / promptBlock", () => {
+describe("resumableList / resumableBlock", () => {
   it("excludes running, non-resumable and over-budget chains, newest first", () => {
     vi.useFakeTimers({ now: 1_700_000_000_000 });
     const registry = new DelegationChainRegistry();
@@ -238,7 +238,7 @@ describe("resumableList / promptBlock", () => {
     });
     registry.settle("res-2", "failed");
 
-    const block = registry.promptBlock({ runningDelegationIds: NONE });
+    const block = registry.resumableBlock({ runningDelegationIds: NONE });
     expect(block).toContain("explorer / del-1: explore the parser");
     expect(block).toContain("Files read: a1.ts, a2.ts");
     expect(block).toContain("(+1 more)");
@@ -250,7 +250,7 @@ describe("resumableList / promptBlock", () => {
     const registry = new DelegationChainRegistry();
     start(registry, { delegateSessionId: "res-1", delegationId: "del-1" });
     registry.settle("res-1", "completed");
-    expect(registry.promptBlock({ runningDelegationIds: NONE })).toContain(
+    expect(registry.resumableBlock({ runningDelegationIds: NONE })).toContain(
       "Files read: none recorded",
     );
   });

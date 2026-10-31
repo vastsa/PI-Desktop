@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
+import { useRowBusy } from "../../hooks/use-row-busy";
 import { usePluginBrowseState } from "./browse-state";
 import type {
   MarketPluginDetail,
@@ -54,7 +55,10 @@ export function usePluginsPage() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [market, setMarket] = useState<MarketPluginSummary[]>([]);
   const [marketLoading, setMarketLoading] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // One busy key per plugin row: the first request to settle must not re-arm
+  // a row that is still in flight, and a busy row does not lock the others
+  // (the same contract the capability pages pin).
+  const rowBusy = useRowBusy();
   const [installJob, setInstallJob] = useState<PluginInstallJob | null>(null);
   /**
    * The job, and the reading a transfer speed is measured against, are mirrored
@@ -495,6 +499,7 @@ export function usePluginsPage() {
 
   const reloadPlugin = (id: string) =>
     run(async () => {
+      if (!rowBusy.begin(id)) return;
       setReloadingId(id);
       try {
         const result = await api.reloadPlugin(id);
@@ -507,6 +512,7 @@ export function usePluginsPage() {
         await refreshPlugins();
         showToast(t("plugins.reloadDone"), { variant: "success" });
       } finally {
+        rowBusy.end(id);
         setReloadingId(null);
       }
     });
@@ -576,7 +582,7 @@ export function usePluginsPage() {
   const confirmReview = async () => {
     const review = pendingReview;
     if (!review) return;
-    setBusyId(review.id);
+    if (!rowBusy.begin(review.id)) return;
     try {
       if (review.kind === "reload") {
         await api.confirmReloadPlugin({
@@ -597,7 +603,7 @@ export function usePluginsPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(review.id);
     }
   };
 
@@ -645,11 +651,11 @@ export function usePluginsPage() {
    * first step is visible, and the request's own answer is what ends it.
    */
   const runInstall = async (request: PluginInstallRequest) => {
+    if (!rowBusy.begin(request.id)) return;
     installSampleRef.current = null;
     const job = newInstallJob(request);
     installJobRef.current = job;
     setInstallJob(job);
-    setBusyId(request.id);
     try {
       await api.marketInstall({
         id: request.id,
@@ -688,7 +694,7 @@ export function usePluginsPage() {
       // be reported where the user is looking.
       if (!shown) showToast(message, { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(request.id);
     }
   };
 
@@ -778,7 +784,7 @@ export function usePluginsPage() {
     setCategory,
     market,
     marketLoading,
-    busyId,
+    isPluginBusy: rowBusy.isBusy,
     reloadingId,
     pendingInstall,
     setPendingInstall,

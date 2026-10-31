@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { ModelsDevCatalog } from "../electron/main/models-dev-catalog.ts";
 
@@ -25,7 +26,7 @@ const CORRECTED_CONTEXT_WINDOW = 1_050_000;
 
 async function fixtureRuntime() {
   const catalog = new ModelsDevCatalog({
-    catalogPath: new URL("../resources/models.dev/api.json", import.meta.url).pathname,
+    catalogPath: fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url)),
   });
   await catalog.loadLocal();
   return createProviderCatalogRuntime({

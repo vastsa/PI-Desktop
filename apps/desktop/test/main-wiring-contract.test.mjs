@@ -185,17 +185,22 @@ test("the IPC registrar passes every required agent IPC dependency", () => {
   );
 });
 
-test("browser state reaches every plugin surface", () => {
+test("browser metadata stays separate from the selected plugin presentation", () => {
   const services = read("services/plugin-services.ts");
-  const state = braceBody(
+  const metadata = braceBody(
     services,
     services.indexOf("{", services.indexOf("const emitBrowserState")),
   );
-  // The renderer plus both plugin surfaces: dropping one of them is silent,
-  // because each surface simply stops updating.
-  assert.match(state, /sendToRenderer\(IPC\.event\.browserState, state\)/);
-  assert.match(state, /pluginPanels\.broadcast\("browser:state", state\)/);
-  assert.match(state, /pluginViews\.broadcast\("browser:state", state\)/);
+  const presentation = braceBody(
+    services,
+    services.indexOf("{", services.indexOf("const emitBrowserPresentationState")),
+  );
+  assert.match(metadata, /sendToRenderer\(IPC\.event\.browserState, state\)/);
+  assert.doesNotMatch(metadata, /\.broadcast\("browser:state"/);
+  assert.match(presentation, /pluginPanels\.broadcast\("browser:state", state\)/);
+  assert.match(presentation, /pluginViews\.broadcast\("browser:state", state\)/);
+  assert.match(services, /onState: emitBrowserState/);
+  assert.match(services, /onPresentationState: emitBrowserPresentationState/);
 });
 
 test("a finished turn is announced to every plugin surface", () => {

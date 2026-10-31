@@ -55,6 +55,31 @@ describe("hydrateAttachmentHistory", () => {
     });
   });
 
+  it("keeps the path fallback for an image past the pixel limit (#1913)", async () => {
+    await withTempDir(async (tmp) => {
+      const imgPath = resolve(tmp, "page.png");
+      const header = Buffer.alloc(33);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(header);
+      header.write("IHDR", 12, "latin1");
+      header.writeUInt32BE(780, 16);
+      header.writeUInt32BE(14182, 20);
+      await writeFile(imgPath, header);
+      const history = [
+        userMessage("msg-1", [
+          { name: "page.png", ref: imgPath, kind: "image", mimeType: "image/png", size: 33 },
+        ]),
+      ];
+
+      const hydrated = await hydrateAttachmentHistory(history, {
+        projectPath: tmp,
+        supportsVision: true,
+      });
+
+      expect(hydrated[0]?.attachments?.[0]?.data).toBeUndefined();
+      expect(hydrated[0]?.content).toContain(imgPath);
+    });
+  });
+
   it("preserves historical image turns beyond ten messages when within the default byte budget", async () => {
     await withTempDir(async (tmp) => {
       const history: UiMessage[] = [];

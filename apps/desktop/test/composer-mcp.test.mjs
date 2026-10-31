@@ -279,3 +279,10 @@ test("remote workspace prompt and steering never resolve commands from the same 
   await fixture.steer(`/${selected.name} inspect again`);
   assert.deepEqual(roots, [null, null]);
 });
+
+test("remote sessions do not offer or expand the local-only visualize skill", async () => {
+  const catalog = service([], []);
+  const skillIds = (commands) => commands.flatMap((c) => c.kind === "skill" ? [c.skillId] : []);
+  assert.ok(skillIds(await catalog.buildComposerCommands(null)).includes("pi-desktop/visualize"));
+  assert.ok(!skillIds(await catalog.buildComposerCommands(null, { remote: true })).includes("pi-desktop/visualize"));
+});

@@ -77,10 +77,12 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                 thinking_levels,
                 default_thinking_level,
                 thinking_protocol,
+                supports_reasoning_effort: binding.supports_reasoning_effort,
                 supports_images: binding.supports_images,
                 supports_documents: binding.supports_documents,
                 available_for_subagents: binding.available_for_subagents,
                 native_web_search: binding.native_web_search,
+                fast_mode_allowed: binding.fast_mode_allowed,
             })
         })
         .collect()
@@ -100,10 +102,12 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 thinking_levels: Vec::new(),
                 default_thinking_level: None,
                 thinking_protocol: None,
+                supports_reasoning_effort: None,
                 supports_images: None,
                 supports_documents: None,
                 available_for_subagents: None,
                 native_web_search: None,
+                fast_mode_allowed: None,
             }]
         })
         .unwrap_or_default()
@@ -285,7 +289,7 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
     let (sql, bind_provider) = match provider_id {
         Some(id) => (
             "SELECT provider_id, model_id, display_name, source,
-                capabilities_json, context_window
+                capabilities_json, context_window, discovery_state
          FROM models
          WHERE provider_id = ?1
          ORDER BY display_name COLLATE NOCASE, model_id",
@@ -293,7 +297,7 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
         ),
         None => (
             "SELECT provider_id, model_id, display_name, source,
-                capabilities_json, context_window
+                capabilities_json, context_window, discovery_state
          FROM models
          ORDER BY provider_id, display_name COLLATE NOCASE, model_id",
             None,
@@ -304,6 +308,7 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
         let raw_capabilities: String = row.get(4)?;
         let capabilities = serde_json::from_str(&raw_capabilities).unwrap_or_default();
         Ok(ModelCatalogItem {
+            discovery_state: row.get(6)?,
             provider_id: row.get(0)?,
             model_id: row.get(1)?,
             display_name: row.get(2)?,
@@ -322,33 +327,42 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-/// Merge live discovery results into the durable catalog cache.
-///
-/// The answer is the service's current list, so it replaces the previous one:
-/// rows this answer no longer contains are dropped with it, while the rows the
-/// user owns survive — a configured binding, including a hand-typed id, is the
-/// user's configuration rather than the service's answer. A failed or empty
-/// probe never reaches this call, so a cache is only ever narrowed by an answer
-/// that actually arrived.
+/// Merge discovery atomically. Only a complete, nonempty answer marks missing
+/// previously discovered bindings as unlisted. Partial answers only enrich rows;
+/// user-owned rows, saved configuration, defaults and history are never changed.
 pub fn cache_discovered_models(
     db: &Database,
     provider_id: &str,
     models: &[DiscoveredModelInput],
+    complete: bool,
 ) -> Result<usize> {
+    // Empty or malformed answers cannot revoke a previously published model.
+    let complete = complete
+        && !models.is_empty()
+        && models.iter().all(|model| !model.model_id.trim().is_empty());
+    let configured = configured_model_ids(db, provider_id)?;
     let tx = db.conn().unchecked_transaction()?;
+    if complete {
+        tx.execute(
+            "UPDATE models SET discovery_state = 'unlisted'
+            WHERE provider_id = ?1 AND source = 'discovered' AND discovery_state IS NOT NULL",
+            params![provider_id],
+        )?;
+    }
     let now = now_ms();
     let mut changed = 0;
     {
         let mut stmt = tx.prepare_cached(
             "INSERT INTO models (
             provider_id, model_id, display_name, source,
-            capabilities_json, context_window, updated_at
-         ) VALUES (?1, ?2, ?3, 'discovered', ?4, ?5, ?6)
+            capabilities_json, context_window, updated_at, discovery_state
+         ) VALUES (?1, ?2, ?3, 'discovered', ?4, ?5, ?6, 'published')
          ON CONFLICT(provider_id, model_id) DO UPDATE SET
             display_name = excluded.display_name,
             capabilities_json = excluded.capabilities_json,
             context_window = excluded.context_window,
-            updated_at = excluded.updated_at
+            updated_at = excluded.updated_at,
+            discovery_state = 'published'
          WHERE models.source != 'user'",
         )?;
         for model in models {
@@ -362,6 +376,14 @@ pub fn cache_discovered_models(
             } else {
                 display_name
             };
+            // Bindings compare complete wire ids case-insensitively. A casing
+            // change must not leave an older spelling marked as unlisted.
+            tx.execute(
+                "UPDATE models SET discovery_state = 'published'
+                WHERE provider_id = ?1 AND lower(model_id) = lower(?2)
+                AND source = 'discovered'",
+                params![provider_id, model_id],
+            )?;
             changed += stmt.execute(params![
                 provider_id,
                 model_id,
@@ -372,16 +394,32 @@ pub fn cache_discovered_models(
             ])?;
         }
     }
+    if complete {
+        // Keep configured rows as durable unlisted records. Unconfigured rows
+        // can still be pruned; neither bindings nor history are rewritten.
+        let keep: std::collections::BTreeSet<String> = configured
+            .iter()
+            .map(|id| id.trim().to_lowercase())
+            .collect();
+        let stale: Vec<String> = {
+            let mut stmt = tx.prepare_cached(
+                "SELECT model_id FROM models
+                WHERE provider_id = ?1 AND source = 'discovered'
+                AND discovery_state = 'unlisted'",
+            )?;
+            let rows = stmt.query_map(params![provider_id], |row| row.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for id in stale {
+            if !keep.contains(&id.trim().to_lowercase()) {
+                tx.execute(
+                    "DELETE FROM models WHERE provider_id = ?1 AND model_id = ?2",
+                    params![provider_id, id],
+                )?;
+            }
+        }
+    }
     tx.commit()?;
-    // The rows above are the answer; anything discovered before that the answer
-    // no longer names belongs to a model the endpoint stopped publishing.
-    let mut keep: Vec<String> = models
-        .iter()
-        .map(|model| model.model_id.trim().to_string())
-        .filter(|model_id| !model_id.is_empty())
-        .collect();
-    keep.extend(configured_model_ids(db, provider_id)?);
-    forget_missing_discovered_models(db, provider_id, &keep)?;
     Ok(changed)
 }
 
@@ -426,18 +464,18 @@ pub(crate) fn forget_cached_models(
 
 /// Model ids the provider's own bindings configure, in any spelling.
 fn configured_model_ids(db: &Database, provider_id: &str) -> Result<Vec<String>> {
-    let raw: Option<String> = db
+    let saved: Option<(String, Option<String>)> = db
         .conn()
         .query_row(
-            "SELECT config_json FROM providers WHERE id = ?1",
+            "SELECT config_json, default_model_id FROM providers WHERE id = ?1",
             params![provider_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let Some(raw) = raw else {
+    let Some((raw, default_model_id)) = saved else {
         return Ok(Vec::new());
     };
-    Ok(config_model_bindings(&raw, None, provider_id)
+    Ok(config_model_bindings(&raw, default_model_id, provider_id)
         .into_iter()
         .map(|binding| binding.id)
         .collect())
@@ -486,10 +524,12 @@ mod tests {
             thinking_levels: Vec::new(),
             default_thinking_level: None,
             thinking_protocol: None,
+            supports_reasoning_effort: None,
             supports_images: None,
             supports_documents: None,
             available_for_subagents: None,
             native_web_search: None,
+            fast_mode_allowed: None,
         }
     }
 

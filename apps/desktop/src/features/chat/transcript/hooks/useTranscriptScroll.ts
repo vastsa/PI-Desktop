@@ -36,12 +36,16 @@ import {
   TRANSCRIPT_SCROLL_ROUNDING_TOLERANCE_PX,
   type ScrollInputType,
 } from "../../../../lib/transcript-scroll";
-import { readScrollInputContext } from "../../../../lib/scroll-input";
+import { readScrollInputContext, stopSmoothScroll } from "../../../../lib/scroll-input";
 import { useDisclosureAnchor } from "../../../../hooks/use-disclosure-anchor";
 import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
 import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
-import { getTranscriptReadingPosition } from "../../../../lib/transcript-reading-position";
+import {
+  getTranscriptReadingPosition,
+  transcriptRevealOwnership,
+} from "../../../../lib/transcript-reading-position";
 import { useTranscriptReadingPosition, type RestoreTranscriptReading } from "../../../../hooks/use-transcript-reading-position";
+import { useTurnCompletionScroll } from "./useTurnCompletionScroll";
 
 type UseTranscriptScrollOptions = {
   sessionId: string | undefined;
@@ -140,6 +144,15 @@ export function useTranscriptScroll({
     onRestore: onRestoreReading, onMissing: readingPositionMissing,
   });
 
+  // State transition only: completion calls this after starting its own
+  // prompt navigation, which must be allowed to finish.
+  const leaveFollow = useCallback(() => {
+    cancelReadingPosition();
+    cancelFollowScroll();
+    pinnedRef.current = false;
+    setShowJump(true);
+  }, [cancelFollowScroll, cancelReadingPosition]);
+
   /*
     Leave follow mode. Every reader-driven move inside the transcript starts
     here: while the scroller is still pinned, a scroll that carries no input
@@ -147,11 +160,9 @@ export function useTranscriptScroll({
     the view one frame later and undoes the move.
   */
   const releaseFollow = useCallback(() => {
-    cancelReadingPosition();
-    cancelFollowScroll();
-    pinnedRef.current = false;
-    setShowJump(true);
-  }, [cancelFollowScroll, cancelReadingPosition]);
+    stopSmoothScroll(scrollRef.current);
+    leaveFollow();
+  }, [leaveFollow]);
 
   // A manual disclosure (a tool, thinking or activity title; #324) hands this
   // scroller the very title it was toggled from, before the expansion state
@@ -188,6 +199,10 @@ export function useTranscriptScroll({
         contentRef.current,
       );
       if (!isScrollGestureInput(event.type as ScrollInputType, input)) return;
+      // Minimap / jump navigation runs in the browser, independently of our
+      // follow rAF. Real input must retire that animation at its current offset
+      // before its queued frames can overwrite the reader's next movement.
+      stopSmoothScroll(scrollRef.current);
       cancelReadingPosition();
       lastScrollGestureAtRef.current = performance.now();
       // Real input takes the viewport back from a held disclosure position.
@@ -247,8 +262,23 @@ export function useTranscriptScroll({
       retainedScrollTopRef.current = lastLaidOutScrollTopRef.current;
       return;
     }
-    if (!becameVisible || readingPositionPendingRef.current) return;
-    if (pinnedRef.current) {
+    if (!becameVisible) return;
+    const bookmark = getTranscriptReadingPosition(sessionId);
+    const ownership = transcriptRevealOwnership(
+      bookmark,
+      Boolean(readingPositionPendingRef.current),
+      pinnedRef.current,
+    );
+    if (ownership === "reading-position") {
+      // The reading-position hook restores this bookmark (or reports it
+      // missing). Bottoming here would race it and land on the newest turn.
+      if (bookmark?.pinned === false) {
+        pinnedRef.current = false;
+        setShowJump(true);
+      }
+      return;
+    }
+    if (ownership === "pinned") {
       scrollToBottom();
       return;
     }
@@ -257,7 +287,13 @@ export function useTranscriptScroll({
     el.scrollTop = retained;
     lastScrollTopRef.current = retained;
     lastLaidOutScrollTopRef.current = retained;
-  }, [cancelFollowScroll, paneVisible, releaseDisclosureAnchor, scrollToBottom]);
+  }, [
+    cancelFollowScroll,
+    paneVisible,
+    releaseDisclosureAnchor,
+    scrollToBottom,
+    sessionId,
+  ]);
 
   // A hidden pane must not chase its stream: its scroller has no visible
   // viewport, and the measurements a follow scroll depends on are unreliable
@@ -453,6 +489,13 @@ export function useTranscriptScroll({
     scrollToBottom,
   ]);
 
+  // A completed turn the reader followed ends at its prompt, not its last line.
+  useTurnCompletionScroll({
+    isRunning, paneVisible, readingWindow, messages, scrollRef, contentRef,
+    isFollowing: () => pinnedRef.current && !isDisclosureAnchorHeld(),
+    onAnchored: leaveFollow,
+  });
+
   useLayoutEffect(() => {
     scheduleFollowScroll();
   }, [
@@ -580,6 +623,7 @@ export function useTranscriptScroll({
   );
 
   const releaseSearchFollow = useCallback((fresh: boolean) => {
+    stopSmoothScroll(scrollRef.current);
     cancelReadingPosition();
     if (fresh) prependHeightRef.current = null;
     releaseDisclosureAnchor();
@@ -690,12 +734,16 @@ export function useTranscriptScroll({
     releaseDisclosureAnchor();
     pinnedRef.current = true;
     setShowJump(false);
+    // Persist the explicit follow intent before smooth scrolling yields. A
+    // session/project switch can hide or unmount this pane before its native
+    // scroll event; leaving the old bookmark would restore history on return.
+    rememberReadingPosition();
     scrollToBottom(
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
         ? "auto"
         : "smooth",
     );
-  }, [cancelReadingPosition, releaseDisclosureAnchor, scrollToBottom]);
+  }, [cancelReadingPosition, releaseDisclosureAnchor, rememberReadingPosition, scrollToBottom]);
 
   // D269: history progression follows the visible top boundary, not only a
   // native scroll event. A tail page can collapse to less than one viewport,

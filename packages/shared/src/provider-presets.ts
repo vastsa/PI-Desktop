@@ -508,7 +508,14 @@ export function isDeepSeekReasoningReplay(input: {
 
 /** Official DeepSeek Completions hosts that still accept empty-string replay. */
 export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean {
-  return (input.baseUrl ?? "").toLowerCase().includes("deepseek.com");
+  const baseUrl = input.baseUrl?.trim();
+  if (!baseUrl) return false;
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "deepseek.com" || hostname.endsWith(".deepseek.com");
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -520,10 +527,31 @@ export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean
 export const DEEPSEEK_REASONING_REPLAY_PLACEHOLDER =
   "[reasoning not retained for this turn]";
 
+/**
+ * The placeholder a model echoed back as the start of its own reasoning (and
+ * its observed `[reasoning retained for this turn]` rewrite), repeated or not.
+ */
+const ECHOED_REASONING_REPLAY_PLACEHOLDER =
+  /^(?:\s*\[reasoning (?:not )?retained for this turn\])+\s*/;
+
+/**
+ * Thinking without a leading echo of {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}.
+ * Models read the replayed placeholder as their previous reasoning and
+ * continued it, so persisted thinking can start with it (#1945). It is not
+ * reasoning: it is neither shown nor replayed. Stored text is not rewritten.
+ */
+export function withoutReasoningReplayPlaceholder(thinking: string): string {
+  return thinking.replace(ECHOED_REASONING_REPLAY_PLACEHOLDER, "");
+}
+
 export type DeepSeekRequestCompat = {
   requiresReasoningContentOnAssistantMessages: true;
-  /** DeepSeek endpoints reject the OpenAI-style `reasoning_effort` field. */
-  supportsReasoningEffort: false;
+  /**
+   * Relays reported rejecting the OpenAI-style `reasoning_effort` field
+   * (#1664), so it is suppressed off `deepseek.com`. Official endpoints
+   * document it next to `thinking` and keep pi-ai's detection (#1821).
+   */
+  supportsReasoningEffort?: false;
   /** When set, missing reasoning is filled with {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. */
   requiresNonEmptyReasoningReplay?: true;
 };
@@ -537,10 +565,7 @@ export function deepseekRequestCompat(input: {
 }): DeepSeekRequestCompat | undefined {
   if (!isDeepSeekReasoningReplay(input)) return undefined;
   if (isOfficialDeepSeekEndpoint(input)) {
-    return {
-      requiresReasoningContentOnAssistantMessages: true,
-      supportsReasoningEffort: false,
-    };
+    return { requiresReasoningContentOnAssistantMessages: true };
   }
   return {
     requiresReasoningContentOnAssistantMessages: true,

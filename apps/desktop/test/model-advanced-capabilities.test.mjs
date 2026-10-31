@@ -174,7 +174,7 @@ test("a configured model keeps its published record when discovery omits it", ()
   // Discovery stays the authority on what the service offers: only the rows it
   // returned are cached as discovered.
   const liveReturn = mainSource.slice(
-    mainSource.indexOf("await cacheForCurrentProvider(models);"),
+    mainSource.indexOf("await cacheForCurrentProvider(models, outcome.complete);"),
   );
   assert.match(liveReturn.slice(0, 260), /models: withConfiguredBindings\(models\)/);
 });
@@ -284,4 +284,16 @@ test("the offered default and the saved default use one order", () => {
     pickerSource,
     /resolveBindingDefaultThinkingLevel\(\s*binding\.defaultThinkingLevel,\s*sortThinkingLevels\(next\),/,
   );
+});
+
+test("model settings let the user allow Fast mode per model on Responses wires", () => {
+  // ADR 0334: the opt-in lives on the binding; `/fast` is the per-session switch.
+  assert.match(pickerSource, /const fastModeBilling = fastModeBillingOn\(apiStyle\);/);
+  assert.match(pickerSource, /checked=\{binding\.fastModeAllowed === true\}/);
+  assert.match(pickerSource, /disabled=\{!fastModeBilling\}/);
+  assert.match(pickerSource, /fastModeAllowed: event\.target\.checked \|\| undefined/);
+  // Plan limits and per-token billing are different costs, so the hint differs.
+  assert.match(pickerSource, /"settings\.fastModeAllowedSubscriptionHint"/);
+  assert.match(pickerSource, /"settings\.fastModeAllowedUsageHint"/);
+  assert.match(pickerSource, /"settings\.fastModeAllowedUnsupported"/);
 });

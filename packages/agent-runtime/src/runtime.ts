@@ -3,7 +3,11 @@ import {
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
   mutationTerminationAdvice, mutationTerminationMessage,
 } from "./mutation-recovery.js";
+import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 import { resolveMcpToolSelection } from "./mcp-tool-selection.js";
+import { BatchPlanner, withBatchTurn } from "./batch-planner.js";
+import { TOOL_EXECUTION_SPECS, resolveBatchExecutionMode, toolExecutionMode, withDynamicTaskExecutionMode } from "./tool-execution-policy.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, restoredToolActivation, syncToolActivation, type ToolDeclarationPolicy } from "./fixed-tool-declarations.js";
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
@@ -12,6 +16,7 @@ import { modeToolDenial, retainModeToolDeclaration, withModeExecutionGuard } fro
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
+import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { createJevClassifierTool } from "./jev-classifier-tool.js";
@@ -123,10 +128,19 @@ import {
   subagentToolsLabel,
   type ProposalKind,
   type SubagentPermission,
+  GEN_UI_SKILL_ID,
+  withoutReasoningReplayPlaceholder,
 } from "@pi-desktop/shared";
 import { createStreamCoalescer, type StreamCoalescer } from "./stream-coalescer.js";
+import { checkGenUiFragment, genUiFragmentCheckNote, isGenUiFragmentPath } from "./gen-ui-fragment-check.js";
 import type { RuntimeHost } from "./host-client.js";
 import { classifyAgentError } from "./agent-errors.js";
+import {
+  captureAssistantProviderReplay,
+  restoreAssistantProviderReplay,
+  providerReplayForBubble,
+  providerReplayToolCallSignatures,
+} from "./assistant-provider-replay.js";
 import {
   assistantContent,
   isRecord,
@@ -140,7 +154,10 @@ import {
 } from "./agent-messages.js";
 import { withExplicitRequired } from "./tool-schema.js";
 import { buildSessionContext } from "./session-context.js";
-import { prepareCompaction } from "./pi-runtime-compaction-plan.js";
+import {
+  collectMessageFileOperations,
+  prepareCompaction,
+} from "./pi-runtime-compaction-plan.js";
 import { compact } from "./pi-runtime-compaction-summary.js";
 import {
   ESTIMATED_TEXT_CHARS_PER_TOKEN,
@@ -167,6 +184,7 @@ import {
 } from "./system-transcript.js";
 import {
   dedupeToolCallMessages,
+  createToolCallIdentity,
   reportDuplicateToolCallDrop,
 } from "./tool-call-dedupe.js";
 import {
@@ -192,6 +210,7 @@ import { DelegationChainRegistry } from "./delegation-chain.js";
 import {
   extractReadFiles,
   isReadOnlyToolName,
+  listedReadFiles,
   originalTaskFromTranscript,
   rebuildChainsFromTranscript,
   selectChainRows,
@@ -202,6 +221,7 @@ import {
   clampOutputToContext,
   effectiveModelContextWindow,
   estimateOutputCapInputTokens,
+  requestTranscript,
 } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
@@ -240,6 +260,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
+import { withFastModeOptions } from "./fast-mode.js";
 import { withSessionAffinityOptions } from "./session-affinity.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
 import type { CompactionRequestShape } from "./compaction-diagnostics.js";
@@ -247,6 +268,7 @@ import {
   addSummaryUsage,
   compactionSummaryInputLimit,
   compactionSummaryOutputBudget,
+  compactionSummaryReserveTokens,
   COMPACTION_SUMMARY_RETRY_POLICY,
   estimateSummaryPromptTokens,
   planSummaryChunks,
@@ -514,6 +536,10 @@ export type DelegationStatus =
  */
 export type DelegationRecord = {
   delegationId: string;
+  /** Parent `Task` toolCallId that started this delegation. */
+  parentToolCallId?: string;
+  /** True when the delegate declares file-mutating tools (`Write` / `Edit`). */
+  writable?: boolean;
   /**
    * Chain id under which host-core keeps this Write/Edit subagent's own git
    * worktree in an isolated session (ADR 0329); absent otherwise.
@@ -978,6 +1004,11 @@ export type AgentRuntimeOptions = {
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
   infiniteProviderRetry?: boolean;
+  /**
+   * Fast mode for main turns, already resolved by the launcher from the
+   * session `/fast` switch and the model binding's opt-in (ADR 0334).
+   */
+  fastMode?: boolean;
   /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
   jevApiKey?: string;
   systemPrompt?: string;
@@ -1020,6 +1051,10 @@ export type AgentRuntimeOptions = {
    * Advertised to the model in the system prompt; host-core enforces it as
    * a second containment root. */
   scratchDir?: string;
+  /** Absolute per-session directory for inline visualization fragments
+   * (ADR gen-ui-inline-visualization). Advertised in the system prompt;
+   * host-core enforces it as a containment root. Ignored for remote sessions. */
+  visualizationsDir?: string;
   onEvent: (envelope: AgentEventEnvelope) => void;
   /** Bounded diagnostics routed to the Electron logger, never the transcript. */
   onDiagnostic?: (diagnostic: AgentRuntimeDiagnostic) => void;
@@ -1262,6 +1297,14 @@ const TOOL_PARAM_ALIASES: Record<string, Record<string, string>> = {
   Grep: { query: "pattern" },
 };
 const TOOL_OUTPUT_UPDATE_THROTTLE_MS = 100;
+const READ_ONLY_CORE_TOOLS = new Set(["Read", "Glob", "Grep"]);
+/**
+ * How long a stop request waits for a tool that host-core can actually
+ * interrupt (`Bash`, `GenerateImages`) to hand back the output it collected
+ * before the kill (#1767). Tools without host-side cancellation do not wait at
+ * all: the runtime stops waiting the moment the signal fires.
+ */
+const TOOL_ABORT_GRACE_MS = 10_000;
 const MAX_TOOL_PROGRESS_CHARS = 64 * 1024;
 const TOOL_PROGRESS_TRUNCATION_MARKER =
   "\n\n[tool output progress truncated]\n\n";
@@ -1449,17 +1492,53 @@ function commandTimeoutMs(params: unknown): number {
   return timeoutMs;
 }
 
+/**
+ * A supplementary-plane character is one code point and two UTF-16 code units.
+ * The progress cap counts code units, so a point that does not fit is left out
+ * whole instead of being sliced through the middle of its surrogate pair.
+ */
+function takePrefixCodeUnits(text: string, budget: number): string {
+  let used = 0;
+  let end = 0;
+  for (const point of text) {
+    if (used + point.length > budget) break;
+    used += point.length;
+    end += point.length;
+  }
+  return text.slice(0, end);
+}
+
+function takeSuffixCodeUnits(text: string, budget: number): string {
+  let used = 0;
+  let start = text.length;
+  while (start > 0 && used < budget) {
+    const low = text.charCodeAt(start - 1);
+    const high = start >= 2 ? text.charCodeAt(start - 2) : 0;
+    const pair =
+      low >= 0xdc00 &&
+      low <= 0xdfff &&
+      high >= 0xd800 &&
+      high <= 0xdbff;
+    const size = pair ? 2 : 1;
+    if (used + size > budget) break;
+    used += size;
+    start -= size;
+  }
+  return text.slice(start);
+}
+
 function appendToolProgress(current: string, chunk: string): string {
   const combined = `${current}${chunk}`;
   if (combined.length <= MAX_TOOL_PROGRESS_CHARS) return combined;
-  const codePoints = Array.from(combined);
-  const marker = Array.from(TOOL_PROGRESS_TRUNCATION_MARKER);
-  const remaining = Math.max(0, MAX_TOOL_PROGRESS_CHARS - marker.length);
-  const head = Math.ceil(remaining * 0.6);
-  const tail = remaining - head;
-  return `${codePoints.slice(0, head).join("")}${TOOL_PROGRESS_TRUNCATION_MARKER}${
-    tail > 0 ? codePoints.slice(-tail).join("") : ""
-  }`;
+  const remaining = Math.max(
+    0,
+    MAX_TOOL_PROGRESS_CHARS - TOOL_PROGRESS_TRUNCATION_MARKER.length,
+  );
+  const headBudget = Math.ceil(remaining * 0.6);
+  const tailBudget = remaining - headBudget;
+  const head = takePrefixCodeUnits(combined, headBudget);
+  const tail = tailBudget > 0 ? takeSuffixCodeUnits(combined, tailBudget) : "";
+  return `${head}${TOOL_PROGRESS_TRUNCATION_MARKER}${tail}`;
 }
 
 /** Bound a checkpoint message's text, naming the cut the way pi's tail does. */
@@ -1588,8 +1667,12 @@ export function toolResultFromUi(
   if (rawBlocks) {
     for (const b of rawBlocks) {
       if (!isRecord(b)) continue;
-      if (b.type === "text" && typeof b.text === "string") {
-        blocks.push({ type: "text", text: b.text });
+      // Same text rule as live execution: embedded MCP resources and resource
+      // links stay visible after a session restore. Binary resources have no
+      // text and stay out.
+      const blockText = hostContentBlockText(b);
+      if (blockText !== undefined) {
+        blocks.push({ type: "text", text: blockText });
       } else if (
         b.type === "image" &&
         typeof b.data === "string" &&
@@ -1603,8 +1686,9 @@ export function toolResultFromUi(
     // and image blocks so a restart does not flatten them into JSON (#1360).
     for (const b of raw) {
       if (!isRecord(b)) continue;
-      if (b.type === "text" && typeof b.text === "string") {
-        blocks.push({ type: "text", text: b.text });
+      const blockText = hostContentBlockText(b);
+      if (blockText !== undefined) {
+        blocks.push({ type: "text", text: blockText });
       } else if (
         b.type === "image" &&
         typeof b.data === "string" &&
@@ -1685,7 +1769,7 @@ function estimateToolTokenUsage(
   result: unknown,
   isError: boolean,
   timestamp: number,
-): ToolTokenUsage {
+): ToolTokenUsage | undefined {
   const toolCall = {
     role: "assistant" as const,
     content: [
@@ -1703,6 +1787,8 @@ function estimateToolTokenUsage(
     stopReason: "toolUse" as const,
     timestamp,
   } satisfies AssistantMessage;
+  // Optional telemetry must not suppress a terminal tool event.
+  if (!isValidToolCall(toolCall.content[0])) return undefined;
   const toolRow = {
     id: toolCallId,
     role: "tool" as const,
@@ -1834,9 +1920,6 @@ export class DesktopAgentRuntime {
   /** The prompt this runtime composed last, so a mid-turn refresh can tell its
    * own prompt from a transient variant it must not clobber. */
   private composedSystemPrompt?: string;
-  /** Set when a refresh was skipped because a transient prompt variant owned the
-   * live prompt; that variant's cleanup applies it once the prompt is restored. */
-  private resumablePromptStale = false;
   /** Set by `abort` / `dispose` so a finishing delegate cannot restart the parent. */
   private runCancelled = false;
   /**
@@ -1849,6 +1932,8 @@ export class DesktopAgentRuntime {
   private delegateWorktrees = new Map<string, string>();
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
+  /** Orders one parallel batch's calls by the resources they claim. */
+  private batchPlanner: BatchPlanner;
   /** Complete tool registry; only the active subset is sent to the provider. */
   private toolCatalog = new Map<string, AgentTool>();
   /** Tools intentionally omitted from the initial provider request. */
@@ -1859,6 +1944,7 @@ export class DesktopAgentRuntime {
   private trackToolActivation = false;
   private activationHydrated = false;
   private scratchDir?: string;
+  private visualizationsDir?: string;
   private projectPath?: string;
   private remoteWorkspace?: { hostKey: string; path: string };
   /** Set only for an isolated session; see `RuntimeConfig.workspaceRoot`. */
@@ -1866,6 +1952,10 @@ export class DesktopAgentRuntime {
   private commandShell: CommandShellOption;
   private baseProjectInstructions?: ProjectInstructions;
   private projectInstructions?: ProjectInstructions;
+  /** Weak argument identity binds preparation to the exact validated call, without retained IDs. */
+  private preparedPathToolArgs = new WeakMap<object, unknown>();
+  private builtinTools = new WeakSet<AgentTool>();
+  private instructionExecution = new AsyncLocalStorage<(instructions: ProjectInstructions | undefined) => void>();
   private projectMemory?: string;
   /** Per-prompt claims prevent repeated path-resolution RPCs for one directory. */
   private pathInstructionClaims = new Map<
@@ -1920,6 +2010,7 @@ export class DesktopAgentRuntime {
   private providerRateLimitRetryAttempt = 0;
   /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
   private infiniteProviderRetry = false;
+  private fastMode = false;
   private jevApiKey?: string;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
@@ -1974,6 +2065,7 @@ export class DesktopAgentRuntime {
   private terminatingToolCalls = new Set<string>();
   private delegateMutationTerminations = new Map<string, { code: string; message: string }>();
   private fullEntries: MessageEntry[];
+  private readonly uniqueToolCalls: ReturnType<typeof createToolCallIdentity>;
   private readonly systemJournal = new SystemTranscriptJournal();
   private composedSections: Record<string, string> = {};
   private activeCompaction?: ContextCompactionRecord;
@@ -2005,6 +2097,12 @@ export class DesktopAgentRuntime {
   private contextReminderClaimed = false;
   private contextFallbackReminderClaimed = false;
   private activeToolProgressCleanups = new Set<(flush: boolean) => void>();
+  /**
+   * Abort handlers for the tool calls currently awaiting `tools.execute`.
+   * `abort()` drives these directly: a tool must be released even when the
+   * signal it was handed never fires, or the stop RPC stays pending forever.
+   */
+  private activeToolAborts = new Set<() => void>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
   private compactionRequestShape?: CompactionRequestShape;
@@ -2023,8 +2121,10 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
+    this.fastMode = opts.fastMode === true;
     this.jevApiKey = opts.jevApiKey;
     this.host = opts.host;
+    this.batchPlanner = new BatchPlanner(this.host, this.sessionId);
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
       this.cleanupActiveToolProgress();
@@ -2046,6 +2146,7 @@ export class DesktopAgentRuntime {
     this.commandShell = opts.commandShell;
     this.remoteWorkspace = opts.remoteWorkspace;
     this.scratchDir = opts.remoteWorkspace ? undefined : opts.scratchDir;
+    this.visualizationsDir = opts.remoteWorkspace ? undefined : opts.visualizationsDir;
     this.projectPath = opts.remoteWorkspace?.path ?? (opts.projectPath?.trim() || undefined);
     // Remote workspaces are never isolated (ADR 0329).
     this.workspaceRoot = opts.remoteWorkspace ? undefined : opts.workspaceRoot?.trim() || undefined;
@@ -2065,6 +2166,7 @@ export class DesktopAgentRuntime {
 
     this.transcriptHistory = [...(opts.history ?? [])];
     this.fullEntries = this.historyToEntries(this.transcriptHistory);
+    this.uniqueToolCalls = createToolCallIdentity(this.fullEntries.map((entry) => entry.message));
     this.activeCompaction = opts.compaction;
     this.delegationChains.hydrate(
       rebuildChainsFromTranscript(this.transcriptHistory),
@@ -2077,6 +2179,8 @@ export class DesktopAgentRuntime {
       "Complete the requested work and relevant checks without expanding scope. Preserve unrelated user changes. Resolve recoverable blockers yourself.",
       // Visibility rules.
       "Before each tool batch, briefly state its purpose. Keep the user informed during long work. The final response must state the outcome, verification, and remaining blockers. Never claim actions or checks you did not perform.",
+      // File-reference formatting.
+      "File references: when citing a real local file, use a Markdown link with a short label and the exact absolute path as its target, e.g. [file.ts](/workspace/src/file.ts:42). Add only a starting line (:line or :line:column) when useful; do not use ranges or GitHub #L anchors. Wrap destinations containing spaces in angle brackets. Do not wrap links in backticks or use file://, vscode://, or https:// for local files. Link only to existing files in the accessible workspace; mention unavailable or other-repository files as code text.",
       // Delegation steering (ADR 0089).
       ...(this.subagents.length
         ? [
@@ -2100,6 +2204,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
           ]
         : []),
+      // Inline visualizations (ADR gen-ui-inline-visualization).
+      ...(this.visualizationsDir
+        ? [
+            `Visualization directory (absolute paths only, .html fragments only; see the ${GEN_UI_SKILL_ID} skill): \`${this.visualizationsDir}\``,
+          ]
+        : []),
       // Isolated session (ADR 0329).
       ...(this.workspaceRoot ? [isolatedWorkspaceGuidance()] : []),
     ];
@@ -2118,6 +2228,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.restoreDeferredToolsFromContext();
     const tools = this.declaredTools();
     this.agent = new Agent({
+      identity: DESKTOP_AGENT_IDENTITY,
       streamFn: (m, context, options) => {
         this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
         this.providerResponseStatus = undefined;
@@ -2183,23 +2294,24 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ),
           m.api,
         );
-        const hookedOptions = withSessionAffinityOptions(
-          this.withExtensionProviderHooks(requestOptions, m),
-          {
-            provider: this.provider,
-            api: m.api,
-            baseUrl: m.baseUrl,
-            sessionId: this.sessionId,
-          },
+        // Only main turns ask for the priority tier: subagents, compaction and
+        // one-shot requests build their own options and keep the default.
+        const hookedOptions = withFastModeOptions(
+          withSessionAffinityOptions(
+            this.withExtensionProviderHooks(requestOptions, m),
+            {
+              provider: this.provider,
+              api: m.api,
+              baseUrl: m.baseUrl,
+              sessionId: this.sessionId,
+            },
+          ),
+          m.api,
+          this.fastMode,
         );
-        // The watchdog must be able to *stop* what it abandons. It wraps the
-        // retry adapter, so draining alone would let the adapter wake from its
-        // backoff and open a second request for this turn while the runtime is
-        // already re-running the turn — two provider requests and two bills for
-        // one answer. So the stall trips a signal this request owns, combined
-        // with pi's own run signal (Stop must keep working): the adapter refuses
-        // to start an attempt on an aborted signal, and its backoff sleep rejects.
-        const stallAbort = new AbortController();
+        // Both output clamps, ours and pi-ai's inside `streamSimple`, must see
+        // the instructions the adapter sends, not every superseded snapshot.
+        const requestContext = requestTranscript(m, context);
         const attemptOptions: SimpleStreamOptions = {
           ...hookedOptions,
           // Cap the output budget at the pi-desktop layer so the estimate
@@ -2207,25 +2319,34 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // max_tokens, but the low-level `stream` path used by
           // `thinkingLevel: "omit"` would otherwise send it untouched, and
           // both consume an estimate that under-counts CJK text (issue B).
-          maxTokens: clampOutputToContext(m, context, hookedOptions.maxTokens),
-          signal: AbortSignal.any([
-            ...(hookedOptions.signal ? [hookedOptions.signal] : []),
-            stallAbort.signal,
-          ]),
+          maxTokens: clampOutputToContext(m, requestContext, hookedOptions.maxTokens),
         };
         const usageTurnId = this.turnId;
         const retryStream = createProviderRetryStream(
           m,
-          context,
+          requestContext,
           attemptOptions,
-          (retryOptions) => accountModelStream(m, () =>
-            this.thinkingLevel === "omit"
-              ? this.models.stream(omitThinkingModel(m), context, retryOptions)
-              : this.models.streamSimple(m, context, retryOptions), {
+          (retryOptions) => {
+            // Each network attempt owns its idle clock and abort signal.
+            // Deliberate backoff must not look like a stalled provider stream.
+            const stallAbort = new AbortController();
+            const timedOptions = {
+              ...retryOptions,
+              signal: AbortSignal.any([
+                ...(retryOptions.signal ? [retryOptions.signal] : []),
+                stallAbort.signal,
+              ]),
+            };
+            const stream = accountModelStream(m, () =>
+              this.thinkingLevel === "omit"
+                ? this.models.stream(omitThinkingModel(m), requestContext, timedOptions)
+                : this.models.streamSimple(m, requestContext, timedOptions), {
                 providerId: this.provider.id,
                 nativeCost: this.provider.modelConfig?.nativeCost,
                 onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
-              }),
+              });
+            return withStreamIdleTimeout(stream, m, streamIdleTimeoutMs(), () => stallAbort.abort());
+          },
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
             headers: () => this.providerRetryHeaders,
@@ -2243,13 +2364,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             },
           },
         );
-        // Zero-event idle watchdog: a stream that emits nothing for the
-        // configured budget ends as a STREAM_FAILED error and re-enters the
-        // shared transient retry path instead of hanging the turn on a
-        // connection the provider never closes.
-        return withStreamIdleTimeout(retryStream, m, streamIdleTimeoutMs(), () =>
-          stallAbort.abort(),
-        );
+        return this.uniqueToolCalls(retryStream, context.messages);
       },
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
       // from overriding the auth the provider just resolved for this request.
@@ -2268,6 +2383,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         );
       },
       prepareRequest: ({ context }) => this.prepareToolDeclarations(context),
+      // Extensions see every provider request, including the first one of a
+      // run, which `prepareNextTurn` never reaches (spec 16 §6, issue #1838).
+      transformContext: (messages) => this.extensionContext(messages),
       prepareNextTurnWithContext: (context, signal) =>
         this.prepareNextTurn(context, signal),
       afterToolCall: async (context) => this.afterToolCall(context),
@@ -2281,11 +2399,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Sequential execution also makes the host-confirmed mode change visible
       // before the next model request in the same run.
       beforeToolCall: (context) => this.beforeToolCall(context),
-      // Every tool except `Task` carries `executionMode: "sequential"`, and pi
-      // runs a batch sequentially as soon as it contains one such tool. So the
-      // only batch that actually runs concurrently is a batch of nothing but
-      // `Task` calls — subagent fan-out (ADR 0062) — and every existing tool
-      // ordering guarantee is untouched.
+      // pi prepares the entire parallel batch in source order before launching
+      // execution. Any sequential member still makes the whole batch sequential.
       toolExecution: "parallel",
       steeringMode: "all",
       // pi-agent-core 0.87 replaces shouldStopAfterTurn with finishTurn. A
@@ -2327,6 +2442,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   setInfiniteProviderRetry(enabled: boolean): void {
     if (this.disposed) throw new Error("runtime disposed");
     this.infiniteProviderRetry = enabled;
+  }
+
+  /** Apply the session `/fast` switch to the next turn of a reused runtime. */
+  setFastMode(enabled: boolean): void {
+    if (this.disposed) throw new Error("runtime disposed");
+    this.fastMode = enabled;
   }
 
   /** Refresh catalog instructions without changing the running session owner. */
@@ -2437,59 +2558,27 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
     const memoryPrompt = projectMemoryPrompt(this.projectMemory);
     const optionalToolsPrompt = this.optionalToolsPrompt();
-    const resumablePrompt =
-      this.subagents.length > 0
-        ? this.delegationChains.promptBlock({
-            runningDelegationIds: this.runningDelegationIds(),
-          })
-        : "";
     this.composedSections = {
       runtime: this.baseSystemPrompt,
       ...(this.trackToolActivation && this.declarationPolicy ? {
         [TOOL_ACTIVATION_SECTION]: toolActivationSection(this.declarationPolicy.key, this.activeDeferredToolNames),
       } : {}),
       ...pluginSkillsPromptSections(this.pluginSkills),
+      // The resumable-delegation list deliberately stays out: it changes on
+      // every settlement, and a system-prompt change rewrites the request
+      // prefix provider prompt caches key on (ADR 0337). `TaskList` carries it
+      // instead, so the parent pays for it only when it reads it.
       context: composeModeSystemPrompt(this.mode, [
         ...(this.customSystemPrompt?.append ? [this.customSystemPrompt.append] : []),
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
-        ...(resumablePrompt ? [resumablePrompt] : []),
       ].join("\n\n")),
     };
     const composed = Object.values(this.composedSections).filter(Boolean).join("\n\n");
     this.composedSystemPrompt = composed;
     return composed;
   }
-
-  /**
-   * The resumable list changes when a delegation settles, so the prompt the
-   * parent reads on its next turn reflects it. Recomposing is only worth it
-   * when subagents exist at all, and only while the live prompt is still the
-   * one this runtime composed: a transient variant (the delegation nudge) owns
-   * it otherwise, and the next turn recomposes anyway.
-   */
-  private refreshResumablePrompt(): void {
-    if (this.subagents.length === 0) return;
-    if (!this.agent) return;
-    if (this.composedSystemPrompt === undefined) return;
-    if (this.agentSystemPromptContent() !== this.composedSystemPrompt) {
-      // A transient variant (the delegation nudge) owns the live prompt. Its
-      // own cleanup restores the composed text, and applies this refresh then,
-      // so a chain that settled mid-nudge is still listed on the next turn.
-      this.resumablePromptStale = true;
-      return;
-    }
-    this.setAgentSystemPrompt(this.composeSystemPrompt());
-  }
-
-  /** Apply a resumable-list refresh that a transient prompt variant deferred. */
-  private applyPendingResumablePrompt(): void {
-    if (!this.resumablePromptStale) return;
-    this.resumablePromptStale = false;
-    this.refreshResumablePrompt();
-  }
-
   /**
    * Host failures and mutation-failure termination are recorded per tool-call
    * id while the call runs; this is where they reach pi's tool-error channel.
@@ -2559,17 +2648,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return Object.keys(out).length ? out : undefined;
   }
 
-  /** `context` hook: extensions may rewrite the message list before a provider request. */
-  private async extensionContext(update: AgentLoopTurnUpdate): Promise<AgentLoopTurnUpdate> {
+  /**
+   * `context` hook: extensions may rewrite the message list of one provider
+   * request. The replacement only shapes that request; the run's working
+   * context and the transcript keep the original messages.
+   */
+  private async extensionContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
     const runner = this.extensionRunner;
-    if (!runner?.hasHandlers("context") || !update.context) return update;
+    if (!runner?.hasHandlers("context")) return messages;
     const result = await runner.emit<{ messages?: AgentMessage[] }>(
       "context",
-      { type: "context", messages: update.context.messages },
+      { type: "context", messages },
       (_acc, next) => next,
     );
-    if (!Array.isArray(result?.messages)) return update;
-    return { ...update, context: { ...update.context, messages: result.messages } };
+    return Array.isArray(result?.messages) ? result.messages : messages;
   }
 
   /** Mirror pi-agent-core events to extension handlers (spec 16 §6). */
@@ -2631,7 +2723,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (!this.isToolAllowedInMode(context.toolCall.name)) {
         return { block: true, reason: modeToolDenial(context.toolCall.name, this.mode) };
       }
-      return this.extensionToolCall(context);
+      const blocked = await this.extensionToolCall(context);
+      if (blocked?.block) return blocked;
+      await this.preparePathToolCall(context);
+      await this.registerBatchCall(context);
+      return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
     if (enterKind && this.mode !== "agent") {
@@ -2793,6 +2889,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private applyExtensionAgent(agent: RegisteredTrustedExtensionAgent, model: Model<Api>): void {
+    // `/fast` was authorized for the model the session launched with: Main only
+    // sends it when that binding has `fastModeAllowed` (ADR 0334). An extension
+    // model has no such opt-in, so switching to it must not carry the priority
+    // tier along. The next launch re-applies the switch from the session's
+    // stored model through `setFastMode`.
+    this.fastMode = false;
     this.provider = this.extensionProviderFor(agent, model);
     this.model = model;
     this.models = createExtensionAgentModels({
@@ -3045,6 +3147,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // (the nearest one above), keeping each call adjacent to its result as
     // the provider APIs require.
     let toolCarrier: AssistantMessage | undefined;
+    // Function-call signatures of the carrier's row, restored by call id.
+    let carrierToolSignatures = new Map<string, string>();
     for (const m of orderSystemRows(history)) {
       // Subagent rows belong to the transcript and to review, never to the
       // parent's model context (ADR 0062): the parent only ever saw the `Task`
@@ -3082,20 +3186,37 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // but must never become model context on the next turn.
         if (m.status === "error" || m.isError || m.error) continue;
         const content: AssistantMessage["content"] = [];
-        if (m.thinking?.trim()) {
-          // Completions DeepSeek replay needs thinkingSignature so convertMessages
-          // maps the block to reasoning_content instead of dropping it (#296).
-          content.push({
-            type: "thinking" as const,
-            thinking: m.thinking,
-            ...(deepSeekCompletionsReplay
-              ? { thinkingSignature: "reasoning_content" as const }
-              : {}),
-          });
-        }
-        content.push(...restoreHostedSearchReplay(m.hostedSearch));
-        if (m.content?.trim()) {
-          content.push({ type: "text" as const, text: m.content });
+        // A replay placeholder the model echoed is not its reasoning; sending
+        // it back is what kept the model continuing it (#1945).
+        const rawThinking = m.thinking ?? "";
+        const thinking = withoutReasoningReplayPlaceholder(rawThinking);
+        // Signed blocks restore the request the live runtime sent, so a
+        // rebuild keeps the provider's prompt cache (#1972). Rows that were
+        // cleaned above, or whose text no longer matches, keep the plain path.
+        const replayed = thinking === rawThinking
+          ? restoreAssistantProviderReplay(m.providerReplay, rawThinking, m.content ?? "")
+          : undefined;
+        if (replayed) {
+          const firstText = replayed.findIndex((block) => block.type === "text");
+          const hosted = restoreHostedSearchReplay(m.hostedSearch);
+          if (firstText < 0) content.push(...replayed, ...hosted);
+          else content.push(...replayed.slice(0, firstText), ...hosted, ...replayed.slice(firstText));
+        } else {
+          if (thinking.trim()) {
+            // Completions DeepSeek replay needs thinkingSignature so convertMessages
+            // maps the block to reasoning_content instead of dropping it (#296).
+            content.push({
+              type: "thinking" as const,
+              thinking,
+              ...(deepSeekCompletionsReplay
+                ? { thinkingSignature: "reasoning_content" as const }
+                : {}),
+            });
+          }
+          content.push(...restoreHostedSearchReplay(m.hostedSearch));
+          if (m.content?.trim()) {
+            content.push({ type: "text" as const, text: m.content });
+          }
         }
         // Kept even when empty: a call-only turn has no text of its own and
         // becomes the carrier for the tool rows that follow. Assistants that
@@ -3117,6 +3238,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         };
         append(m.id, assistant);
         toolCarrier = assistant;
+        carrierToolSignatures = providerReplayToolCallSignatures(m.providerReplay);
       } else if (m.role === "tool") {
         if (!m.toolCallId || !m.toolName) continue;
         if (!toolCarrier) {
@@ -3133,12 +3255,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             timestamp,
           };
           append(`${m.id}:carrier`, toolCarrier);
+          carrierToolSignatures = new Map();
         }
+        const thoughtSignature = carrierToolSignatures.get(m.toolCallId);
         toolCarrier.content.push({
           type: "toolCall",
           id: m.toolCallId,
           name: m.toolName,
           arguments: toJsonObject(m.toolArgs),
+          ...(thoughtSignature ? { thoughtSignature } : {}),
         });
         toolCarrier.stopReason = "toolUse";
         append(m.id, toolResultFromUi(m, timestamp));
@@ -3161,11 +3286,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * The transcript is append-only and tolerates a retried append, so the same
    * call can reach the request twice: under the same row id (which the host's
    * keep-last dedupe already collapses) or a new one (which it cannot). The
-   * first occurrence wins, and a later call *or* a later result for that id is
-   * dropped, so the pair the provider validates stays well-formed — one call,
-   * one result. What was dropped is logged with its ids, because the next
-   * report of this should name the writer instead of only the provider's
-   * sentence.
+   * first pending occurrence wins; a later completed pair is retained under
+   * a fresh request id. New streamed executions are normalized before they
+   * reach this guard or the journal. What was dropped is logged with its ids,
+   * because the next report should name the writer instead of only the
+   * provider's sentence.
    */
   private dropDuplicateToolCalls(messages: AgentMessage[]): AgentMessage[] {
     const drop = dedupeToolCallMessages(messages);
@@ -3420,7 +3545,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 this.workspaceRoot ?? this.projectPath ?? this.scratchDir,
               )
           : undefined;
-        await this.loadPathInstructions(toolName, params);
         const isBash = toolName === "Bash";
         const timeoutMs = isBash ? commandTimeoutMs(params) : undefined;
         let progress = "";
@@ -3466,13 +3590,27 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               scheduleProgress();
             })
           : undefined;
+        // Read-only core tools may be abandoned locally if host-core is still
+        // waiting on a blocking read/search. Mutating, MCP, and plugin calls
+        // must settle before the turn is reported stopped. Bash and image
+        // generation retain their host process-abort path and grace window.
+        const hostAbortsProcess = isBash || toolName === "GenerateImages";
+        const canAbandonWait = READ_ONLY_CORE_TOOLS.has(toolName);
+        const abortedMarker = Symbol("tool-aborted");
+        let resolveAborted: (marker: typeof abortedMarker) => void = () => undefined;
+        const aborted = new Promise<typeof abortedMarker>((resolve) => {
+          resolveAborted = resolve;
+        });
+        let abortGraceTimer: ReturnType<typeof setTimeout> | undefined;
+        let stopped = false;
         const abort = () => {
-          if ((!isBash && toolName !== "GenerateImages") || abortRequested || settled) return;
+          if (abortRequested || settled) return;
           abortRequested = true;
           abortPromise = this.host
             .call("tools.abort", {
               sessionId: this.sessionId,
               toolCallId,
+              toolName,
             })
             .then(
               () => undefined,
@@ -3480,7 +3618,21 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 abortError = error;
               },
             );
+          // Release progress/output resources before arming the grace window:
+          // cleanup is idempotent and must not race the timer it would clear.
           cleanup(true);
+          if (hostAbortsProcess) {
+            // Bounded window for the partial output the host collected before
+            // the kill; past it the turn ends regardless.
+            abortGraceTimer = setTimeout(
+              () => resolveAborted(abortedMarker),
+              TOOL_ABORT_GRACE_MS,
+            );
+          } else if (canAbandonWait) {
+            // These tools are read-only, so returning before their host-side
+            // work drains cannot leave a write or external action behind.
+            resolveAborted(abortedMarker);
+          }
         };
 
         cleanup = (flush: boolean) => {
@@ -3492,6 +3644,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           unsubscribeOutput?.();
           signal?.removeEventListener("abort", abort);
           this.activeToolProgressCleanups.delete(cleanup);
+          this.activeToolAborts.delete(abort);
         };
         this.activeToolProgressCleanups.add(cleanup);
         if (signal?.aborted) {
@@ -3503,6 +3656,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (signal) {
           signal.addEventListener("abort", abort, { once: true });
         }
+        this.activeToolAborts.add(abort);
 
         let result: {
           ok: boolean;
@@ -3514,7 +3668,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         let executionError: unknown;
         let executionFailed = false;
         try {
-          result = await this.host.call<{
+          const execution = this.host.call<{
               ok: boolean;
               content: unknown;
               isError?: boolean;
@@ -3526,6 +3680,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               toolCallId,
               toolName,
               args: params,
+              ...(this.batchPlanner.ticket(toolCallId) ? { fileBatchTicket: this.batchPlanner.ticket(toolCallId) } : {}),
               mode: this.mode,
               ...(isBash
                 ? {
@@ -3565,15 +3720,39 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 ? { delegationId: this.delegateWorktrees.get(toolCallId) }
                 : {}),
             });
+          // #1767: read-only host work must not keep the user-facing turn open
+          // indefinitely. Other tool classes deliberately wait for the Host
+          // result so a write or extension action cannot outlive a reported
+          // stop.
+          const raced = await Promise.race([execution, aborted]);
+          if (raced === abortedMarker) {
+            stopped = true;
+          } else {
+            result = raced;
+          }
         } catch (error) {
           executionFailed = true;
           executionError = error;
         } finally {
           this.delegatePermissionScopes.delete(toolCallId);
           cleanup(true);
+          // cleanup is a no-op once the abort path has run, so the grace timer
+          // it armed is released here instead.
+          if (abortGraceTimer) clearTimeout(abortGraceTimer);
         }
-        if (abortPromise) await abortPromise;
-        if (abortError) throw abortError;
+        // A local read-only stop cannot depend on the same Host answering a
+        // second RPC. Its abort request already observes late rejections.
+        // Other tools retain Host settlement ownership for their side effects.
+        if (!canAbandonWait) {
+          if (abortPromise) await abortPromise;
+          if (abortError) throw abortError;
+        }
+        if (stopped) {
+          throw Object.assign(
+            new Error(`tool execution aborted while ${toolName} was running`),
+            { errorCode: "TOOL_ABORTED" },
+          );
+        }
         if (executionFailed) throw executionError;
         if (!result) throw new Error("tool execution returned no result");
         const recordParams = isRecord(params) ? params : undefined;
@@ -3763,6 +3942,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           text = JSON.stringify(rawContent, null, 2);
         }
         if (!result.ok) this.failedHostToolCalls.add(toolCallId);
+        // A visualization fragment gets one cheap static check in its Write
+        // result, so a broken card is fixed in one Edit instead of left blank.
+        if (
+          toolName === "Write" &&
+          result.ok &&
+          typeof recordParams?.content === "string" &&
+          isGenUiFragmentPath(recordParams.path, this.visualizationsDir)
+        ) {
+          const issues = checkGenUiFragment(recordParams.content);
+          if (issues.length > 0) text += `\n${genUiFragmentCheckNote(issues)}`;
+        }
         return {
           content: [{ type: "text", text }, ...imageBlocks],
           details,
@@ -3781,14 +3971,32 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // this line — the lock key, the host call, the transcript record — sees
         // canonical argument names only (D273).
         execute: async (toolCallId, rawParams, signal, onUpdate) => {
-          const params = normalizeToolParams(toolName, rawParams);
+          const prepared = typeof rawParams === "object" && rawParams !== null
+            && this.preparedPathToolArgs.has(rawParams);
+          const params = prepared
+            ? this.preparedPathToolArgs.get(rawParams as object)
+            : normalizeToolParams(toolName, rawParams);
+          if (prepared) this.preparedPathToolArgs.delete(rawParams as object);
           requireAliasedParams(toolName, params);
-          return PATH_MUTATING_TOOLS.has(toolName)
-            ? this.writeLocks.run(
-                isRecord(params) ? String(params.path ?? "") : "",
-                () => run(toolCallId, params, signal, onUpdate),
-              )
-            : run(toolCallId, params, signal, onUpdate);
+          if (READ_ONLY_CORE_TOOLS.has(toolName)) {
+            await this.waitForBatchWritableDelegations(toolCallId, signal);
+          }
+          // Direct/internal invocations retain preflight. pi invocations have
+          // already committed instructions in the ordered preparation phase.
+          if (!prepared) await this.loadPathInstructions(toolName, params, this.instructionExecution.getStore());
+          if (!this.batchPlanner.supported && PATH_MUTATING_TOOLS.has(toolName)) {
+            return this.writeLocks.run(
+              this.pathLockKey(toolCallId, params),
+              () => run(toolCallId, params, signal, onUpdate),
+            );
+          }
+          if (!this.batchPlanner.supported && toolName === "Read") {
+            return this.writeLocks.read(
+              this.pathLockKey(toolCallId, params),
+              () => run(toolCallId, params, signal, onUpdate),
+            );
+          }
+          return run(toolCallId, params, signal, onUpdate);
         },
       };
     };
@@ -3866,6 +4074,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       tools.push("PluginScaffold", "PluginPack", "GenerateImages", ...Object.keys(scheduledToolParameters));
     }
     const builtins = tools.map(exec);
+    for (const tool of builtins) this.builtinTools.add(tool);
     const jevTools: AgentTool[] =
       this.mode === "agent" && this.jevApiKey
         ? [createJevClassifierTool(this.jevApiKey)]
@@ -3938,6 +4147,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             this.buildSubagentStopTool(),
           ]
         : [];
+    for (const tool of subagentTools) this.builtinTools.add(tool);
     const contextTools = this.compactionEnabled
       ? [this.buildContextCompactionTool()]
       : [];
@@ -3967,23 +4177,30 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     for (const tool of this.buildToolDefinitions()) {
       if (!this.isToolAllowedInMode(tool.name) && !retainModeToolDeclaration(tool.name)) continue;
       // The execution mode is decided here, in one place, so no tool can grow
-      // an accidental parallel batch: everything is sequential except `Task`.
-      // pi runs a whole batch sequentially when it holds one sequential tool,
-      // so only an all-`Task` batch fans out.
+      // an accidental parallel batch: unknown tools remain sequential.
+      // pi runs a whole batch sequentially when it holds one sequential tool;
+      // the batch-level policy also keeps Task mixed with any file tool
+      // (Read/Glob/Grep/Write/Edit) sequential; only reads ordered after a
+      // writable Task wait for that delegate to settle.
       // The provider-facing schema is settled here too, at the single origin of
       // every tool, so the session agent and a delegated `Task` run send the
       // same declaration (#864).
-      catalog.set(
-        tool.name,
-        withModeExecutionGuard(
-          withExplicitRequired({
-            ...tool,
-            executionMode:
-              tool.name === SUBAGENT_TOOL_NAME ? "parallel" : "sequential",
-          }),
-          () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
-        ),
+      const builtin = this.builtinTools.has(tool);
+      const guarded = withModeExecutionGuard(
+        withExplicitRequired({
+          ...tool,
+          executionMode: builtin ? toolExecutionMode(tool.name, this.batchPlanner.supported) : "sequential",
+        }),
+        () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
       );
+      // Batch ordering wraps the mode guard: a call the guard rejects must
+      // still release the calls ordered behind it in its batch.
+      const catalogTool = withDynamicTaskExecutionMode(
+        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(guarded, this.batchPlanner) : guarded,
+        () => this.agent?.state.messages.at(-1),
+      );
+      if (builtin) this.builtinTools.add(catalogTool);
+      catalog.set(tool.name, catalogTool);
     }
     this.toolCatalog = catalog;
     this.deferredToolNames = new Set(
@@ -4385,7 +4602,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * collaboration rules are deliberately left out — a delegate has no user to
    * talk to, and its report format is set by `composeSubagentSystemPrompt`.
    */
-  private subagentGuidance(definition: SubagentDefinition): string[] {
+  private subagentGuidance(definition: SubagentDefinition, instructions: ProjectInstructions | null | undefined = this.projectInstructions): string[] {
     const tools = new Set(
       resolveSubagentToolNames(definition, [...this.toolCatalog.keys()]),
     );
@@ -4412,7 +4629,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const skillsPrompt = pluginSkillsPrompt(this.pluginSkills);
       if (skillsPrompt) blocks.push(skillsPrompt);
     }
-    const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
+    const projectPrompt = projectInstructionsPrompt(instructions ?? undefined);
     if (projectPrompt) blocks.push(projectPrompt);
     return blocks;
   }
@@ -4653,7 +4870,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Set in `rebuildToolCatalog`, which owns every execution mode; repeated
       // here so the intent survives a tool built outside that path.
       executionMode: "parallel",
-      execute: async (toolCallId, params) => {
+      execute: async (toolCallId, params, signal) => {
         const requested = isRecord(params) ? String(params.agent ?? "") : "";
         const definition = this.subagents.find(
           (candidate) => candidate.name === normalizeSubagentName(requested),
@@ -4788,13 +5005,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ? this.seedResumedDelegate(resumedChain, provider)
           : undefined;
         if (resume && !initialMessages) {
-          // The chain resolved but has nothing left to replay. Drop it so the
-          // prompt stops advertising an id that can never be continued, and
-          // report the drop without listing that same id as reusable.
-          if (resumedChain) {
-            this.delegationChains.drop(resumedChain.delegateSessionId);
-            this.refreshResumablePrompt();
-          }
+          // The chain resolved but has nothing left to replay. Drop it so it
+          // stops being advertised as reusable, and report the drop without
+          // listing that same id as reusable.
+          if (resumedChain) this.delegationChains.drop(resumedChain.delegateSessionId);
           return this.subagentToolError(
             toolCallId,
             this.noHistoryResumeMessage(resume),
@@ -4860,6 +5074,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         });
         const record: DelegationRecord = {
           delegationId,
+          parentToolCallId: toolCallId,
+          writable: declaredToolNames.some((name) => PATH_MUTATING_TOOLS.has(name)),
           taskTurnId: this.turnId,
           agentName: definition.name,
           modelId: provider.modelId,
@@ -4884,7 +5100,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         this.delegations.set(delegationId, record);
         let subagentRun: SubagentRun;
         try {
-          const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, worktreeKey);
+          const delegatePrompt = (instructions: ProjectInstructions | undefined) => composeSubagentSystemPrompt({
+            definition,
+            guidance: this.subagentGuidance(definition, instructions ?? null),
+            toolNames: declaredToolNames,
+          });
+          const applyInstructions = (instructions: ProjectInstructions | undefined) => {
+            subagentRun.setSystemPrompt(delegatePrompt(instructions));
+          };
+          const builtinToolNames = new Set(tools.filter((tool) => this.builtinTools.has(tool)).map((tool) => tool.name));
+          const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, worktreeKey, applyInstructions);
           subagentRun = new SubagentRun({
             definition,
             sessionId: this.sessionId,
@@ -4916,6 +5141,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               toolNames: declaredToolNames,
             }),
             tools: scopedTools,
+            beforeToolCall: async (context) => {
+              await this.preparePathToolCall(context, applyInstructions, builtinToolNames);
+              await this.registerBatchCall(context, builtinToolNames, worktreeKey);
+              return undefined;
+            },
+            onTurnEnd: (message) => this.batchPlanner.settleBatch(message),
             onEvent: (envelope) => {
               this.noteDelegationActivity(record, envelope);
               this.onEvent(envelope);
@@ -5007,8 +5238,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     tools: AgentTool[],
     definition: SubagentDefinition,
     mutationOwner: string,
-    worktreeKey?: string,
+    worktreeKeyOrApply?: string | ((instructions: ProjectInstructions | undefined) => void),
+    applyInstructions?: (instructions: ProjectInstructions | undefined) => void,
   ): AgentTool[] {
+    const worktreeKey = typeof worktreeKeyOrApply === "string" ? worktreeKeyOrApply : undefined;
+    const apply = typeof worktreeKeyOrApply === "function" ? worktreeKeyOrApply : applyInstructions;
     const scope = definition.permission ?? DEFAULT_SUBAGENT_PERMISSION;
     return tools.map((tool) => ({
       ...tool,
@@ -5019,7 +5253,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         if (worktreeKey) this.delegateWorktrees.set(toolCallId, worktreeKey);
         try {
-          return await tool.execute(toolCallId, args, signal, onUpdate);
+          return await this.instructionExecution.run(
+            apply ?? (() => undefined),
+            () => tool.execute(toolCallId, args, signal, onUpdate),
+          );
         } finally {
           this.delegatePermissionScopes.delete(toolCallId);
           this.delegateWorktrees.delete(toolCallId);
@@ -5125,7 +5362,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     } finally {
       this.clearMutationRecovery(record.delegationId);
       this.refreshDelegationWait();
-      this.refreshResumablePrompt();
+      // The settlement reaches `TaskList` on its next read; nothing here may
+      // touch the system prompt, which would invalidate the provider's prompt
+      // cache mid-session (ADR 0337).
       this.pruneFinishedDelegations();
     }
   }
@@ -5663,22 +5902,42 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name: SUBAGENT_LIST_TOOL_NAME,
       label: "Task List",
       description:
-        "List the subagents started by Task in this session with their status. Use it to check progress without waiting, or before TaskStop to choose what to stop.",
+        "List the subagents started by Task in this session with their status, plus the subagent sessions that `Task(resume: ...)` can continue. Use it to check progress without waiting, to find a resumable delegation id, or before TaskStop to choose what to stop.",
       parameters: Type.Object({}),
       executionMode: "sequential",
       execute: async () => {
         const delegations = [...this.delegations.values()].sort(
           (left, right) => left.startedAt - right.startedAt,
         );
-        const text =
+        // Resumability is reported here rather than in the system prompt
+        // (ADR 0337): the list changes on every settlement, and rewriting the
+        // instructions mid-session invalidates the provider's cached request
+        // prefix. A result the model reads on demand costs nothing otherwise.
+        const runningDelegationIds = this.runningDelegationIds();
+        const resumable = this.delegationChains.resumableList({
+          runningDelegationIds,
+        });
+        const text = [
           delegations.length === 0
             ? "No subagents have been started in this session."
             : delegations
                 .map((record) => `- ${formatDelegationHeartbeat(record)}`)
-                .join("\n");
+                .join("\n"),
+          this.delegationChains.resumableBlock({ runningDelegationIds }),
+        ]
+          .filter((part) => part.trim())
+          .join("\n\n");
         return {
           content: [{ type: "text", text }],
-          details: { delegations: delegations.map(delegationSummary) },
+          details: {
+            delegations: delegations.map(delegationSummary),
+            resumable: resumable.map((chain) => ({
+              agent: chain.agentName,
+              delegationId: chain.latestDelegationId,
+              objective: chain.latestObjective,
+              ...listedReadFiles(chain.readFiles),
+            })),
+          },
         };
       },
     };
@@ -6100,9 +6359,124 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
+  private pathLockKey(toolCallId: string, params: unknown): string {
+    const rawPath = isRecord(params) ? String(params.path ?? "") : "";
+    if (!rawPath) return "";
+    const worktreeKey = this.delegateWorktrees.get(toolCallId);
+    return worktreeKey ? `${worktreeKey}\0${rawPath}` : rawPath;
+  }
+
+  /**
+   * When a parent assistant message mixes `Task` with `Read`/`Glob`/`Grep`, any
+   * read ordered after a writable `Task` in that same message waits for the
+   * preceding writable delegation(s) from that message to settle before reading
+   * the workspace, while `Task` itself still returns its ADR 0089 started state.
+   */
+  private async waitForBatchWritableDelegations(
+    toolCallId: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!toolCallId || this.mutationOwners.has(toolCallId)) return;
+    const messages = this.agent?.state.messages ?? [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== "assistant" || !Array.isArray(message.content)) continue;
+      const toolCalls = message.content.filter(
+        (block): block is Extract<AssistantMessage["content"][number], { type: "toolCall" }> =>
+          block.type === "toolCall",
+      );
+      const currentIndex = toolCalls.findIndex((call) => call.id === toolCallId);
+      if (currentIndex < 0) continue;
+      if (currentIndex === 0) return;
+      const precedingTaskIds = new Set(
+        toolCalls
+          .slice(0, currentIndex)
+          .filter((call) => call.name === SUBAGENT_TOOL_NAME)
+          .map((call) => call.id),
+      );
+      if (precedingTaskIds.size === 0) return;
+      const running = [...this.delegations.values()].filter(
+        (record) =>
+          record.status === "running" &&
+          record.writable === true &&
+          record.parentToolCallId !== undefined &&
+          precedingTaskIds.has(record.parentToolCallId),
+      );
+      if (running.length === 0) return;
+      const completions = Promise.all(running.map((record) => record.completion));
+      if (!signal) {
+        await completions;
+        return;
+      }
+      if (signal.aborted) return;
+      await new Promise<void>((resolve) => {
+        const onAbort = () => resolve();
+        signal.addEventListener("abort", onAbort, { once: true });
+        void completions.finally(() => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        });
+      });
+      return;
+    }
+  }
+
+  /**
+   * Records what a prepared builtin call will touch so the batch can order it
+   * (`withBatchTurn`). Runs after every check that can block the call. Tools
+   * without claims are sequential, or Task, whose mixed batches pi already
+   * runs sequentially.
+   */
+  private async registerBatchCall(
+    context: BeforeToolCallContext,
+    builtinToolNames?: ReadonlySet<string>,
+    delegationId?: string,
+  ): Promise<void> {
+    const name = context.toolCall.name;
+    if (!this.batchPlanner.supported || !TOOL_EXECUTION_SPECS[name]?.file) return;
+    // pi prepares/executes sequential batches one call at a time. They must
+    // not seal a partial registration and later try to append to it.
+    const calls = context.assistantMessage.content.filter((block) => block.type === "toolCall");
+    if (resolveBatchExecutionMode(context.assistantMessage) === "sequential"
+      || calls.some((call) => context.context?.tools?.find((tool) => tool.name === call.name)?.executionMode !== "parallel")) return;
+    const selected = context.context?.tools?.find((tool) => tool.name === name);
+    const builtin = builtinToolNames ? builtinToolNames.has(name) : selected && this.builtinTools.has(selected);
+    const batch: unknown = context.assistantMessage;
+    if (!builtin || !isRecord(context.args) || !isRecord(batch)) return;
+    await this.batchPlanner.register(
+      batch,
+      context.args,
+      { toolName: name, toolCallId: context.toolCall.id,
+        ordinal: context.assistantMessage.content.findIndex((block) => block.type === "toolCall" && block.id === context.toolCall.id),
+        args: normalizeToolParams(name, context.args), delegationId },
+    );
+  }
+
+  private async preparePathToolCall(
+    context: BeforeToolCallContext,
+    apply?: (instructions: ProjectInstructions | undefined) => void,
+    builtinToolNames?: ReadonlySet<string>,
+  ): Promise<void> {
+    const name = context.toolCall.name;
+    const selected = context.context?.tools?.find((tool) => tool.name === name);
+    const builtin = builtinToolNames ? builtinToolNames.has(name) : selected && this.builtinTools.has(selected);
+    if (!builtin) return;
+    if (!builtinToolNames && READ_ONLY_CORE_TOOLS.has(name)) {
+      await this.waitForBatchWritableDelegations(context.toolCall.id);
+    }
+    if (!PATH_SCOPED_INSTRUCTION_TOOLS.has(name)) return;
+    const params = normalizeToolParams(name, context.args);
+    requireAliasedParams(name, params);
+    await this.loadPathInstructions(name, params, apply);
+    if (typeof context.args === "object" && context.args !== null) {
+      this.preparedPathToolArgs.set(context.args, params);
+    }
+  }
+
   private async loadPathInstructions(
     toolName: string,
     params: unknown,
+    apply?: (instructions: ProjectInstructions | undefined) => void,
   ): Promise<void> {
     if (this.remoteWorkspace || !PATH_SCOPED_INSTRUCTION_TOOLS.has(toolName)) {
       return undefined;
@@ -6138,7 +6512,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // Rules are scoped to the file currently being accessed. Rebuild the
     // complete chain so sibling-directory rules never leak into one another
     // and edits to an existing instruction file take effect immediately.
-    this.applyProjectInstructions(
+    (apply ?? ((instructions) => this.applyProjectInstructions(instructions)))(
       resolved.fallback ? this.baseProjectInstructions : resolved.instructions,
     );
   }
@@ -6408,14 +6782,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.activeProviderRetryAttempt = retryAttempt;
     this.pendingProviderRetry = undefined;
 
-    const messages = [...this.agent.state.messages];
-    if (messages.at(-1)?.role !== "assistant") {
-      throw new Error("Cannot retry a provider stream without its failed assistant message");
-    }
     // A failed stream can be represented by more than one trailing assistant
-    // message after a tool round. Remove the whole failed suffix before
-    // continuing; pi-agent-core rejects any assistant-terminated transcript.
-    while (messages.at(-1)?.role === "assistant") messages.pop();
+    // message after a tool round. Compaction may already have replaced the
+    // failed assistant with a summary or retained user message, so an
+    // assistant tail is optional. Remove any failed suffix before continuing;
+    // pi-agent-core rejects an assistant-terminated transcript.
+    const messages = removeTrailingAssistantMessages(this.agent.state.messages);
     this.setAgentMessages(messages);
 
     this.providerRetryInProgress = true;
@@ -6491,7 +6863,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (this.agentSystemPromptContent() === promptWithNudge) {
         this.setAgentSystemPrompt(promptBefore);
       }
-      this.applyPendingResumablePrompt();
       this.silentTurnRerunInProgress = false;
       this.suppressSilentTurnRunEnd = false;
     }
@@ -6602,7 +6973,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (this.agentSystemPromptContent() === promptWithNudge) {
         this.setAgentSystemPrompt(promptBefore);
       }
-      this.applyPendingResumablePrompt();
       this.progressTurnRerunInProgress = false;
       this.suppressProgressTurnRunEnd = false;
     }
@@ -6723,8 +7093,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    *
    * pi's cut point is still what marks the boundary, but the split it produces
    * is folded back together (see `codexShapedPreparation`), so
-   * `budget.keepRecentTokens` no longer decides what survives — it only decides
-   * which messages pi attributes file operations to.
+   * `budget.keepRecentTokens` no longer decides what survives. File operations
+   * are collected from that whole folded range, including the retained tail.
    */
   private prepareCompactionInput(
     entries: Entry[],
@@ -6795,6 +7165,18 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       ...preparation.turnPrefixMessages,
       ...preparation.retainedTail,
     ];
+    // pi records file operations for `messagesToSummarize` and, on a split
+    // turn, `turnPrefixMessages`. The tail is summarized too — including the
+    // suffix a split left uncollected — so copy the sets and record it there.
+    // The sets pi returned stay unchanged.
+    const fileOps: CompactionPreparation["fileOps"] = {
+      read: new Set(preparation.fileOps.read),
+      written: new Set(preparation.fileOps.written),
+      edited: new Set(preparation.fileOps.edited),
+    };
+    for (const message of preparation.retainedTail) {
+      collectMessageFileOperations(message, fileOps);
+    }
     const latestUser = messagesToSummarize
       .filter((message): message is UserMessage => message.role === "user")
       .at(-1);
@@ -6807,6 +7189,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       turnPrefixMessages: [],
       isSplitTurn: false,
       retainedTail: selectRetainedUserMessages(candidates, retainedUserTokens),
+      fileOps,
     };
   }
 
@@ -6843,13 +7226,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * this hook.
    */
   private async prepareNextTurn(
-    turn: PrepareNextTurnContext,
-    signal?: AbortSignal,
-  ): Promise<AgentLoopTurnUpdate> {
-    return this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
-  }
-
-  private async prepareNextTurnWithoutExtensions(
     turn: PrepareNextTurnContext,
     _signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
@@ -7355,13 +7731,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     budget: { hardLimit: number; requestHeadroom: number },
   ): AgentMessage[][] | undefined {
     const reduced = reduceSummaryInput(preparation) ?? preparation;
-    const reserveTokens = Math.max(
-      Math.ceil((preparation.previousSummary?.length ?? 0) / 4),
-      compactionSummaryOutputBudget({
+    const reserveTokens = compactionSummaryReserveTokens({
+      previousSummary: preparation.previousSummary,
+      outputBudget: compactionSummaryOutputBudget({
         requestHeadroom: budget.requestHeadroom,
         modelMaxTokens: this.model.maxTokens,
       }),
-    );
+    });
     return planSummaryChunks(reduced, {
       summaryInputLimit: this.summaryInputLimit(budget),
       reserveTokens,
@@ -7389,6 +7765,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     ) {
       return "oversized";
     }
+    // The composer would otherwise keep showing the last pre-compaction
+    // request's usage until another request reports one (#2015). The estimate
+    // rides in the opaque details so it survives a reload like the generation.
+    checkpoint = {
+      ...checkpoint,
+      details: {
+        ...(isRecord(checkpoint.details) ? checkpoint.details : {}),
+        contextTokens: compactedBudget.tokens,
+      },
+    };
     try {
       await this.host.call("session.appendCompaction", {
         sessionId: this.sessionId,
@@ -8397,7 +8783,18 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               ? { error: classifiedError, isError: true }
               : {}),
             ...(hostedSearch ? { hostedSearch } : {}),
+            // Signatures only describe this response's own blocks. A bubble
+            // that kept text from an earlier recovery attempt no longer lines
+            // up with them, so it keeps only the function-call signatures,
+            // which are linked by call id rather than by text position.
+            providerReplay: failed
+              ? undefined
+              : providerReplayForBubble(
+                  captureAssistantProviderReplay((event.message as any).content),
+                  nextText === content.text && nextThinking === content.thinking,
+                ),
           };
+          if (!this.currentAssistant.providerReplay) delete this.currentAssistant.providerReplay;
           this.emit({ type: "message_end", message: this.currentAssistant });
           this.activeProviderRetryAttempt = 0;
           this.streamStartedAt = undefined;
@@ -8502,6 +8899,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         break;
       case "turn_end":
+        this.batchPlanner.settleBatch(event.message);
         if (
           this.suppressOverflowRunEnd ||
           this.suppressProviderRetryRunEnd ||
@@ -8694,7 +9092,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // turn can be searched again when the new task actually needs it.
     this.subagentOverrideProviders = {};
     this.resetDeferredToolsForPrompt();
-    this.refreshResumablePrompt();
     // Claims are message-scoped: a later prompt must observe edited or newly
     // created instruction files instead of reusing a previous chain.
     this.pathInstructionClaims.clear();
@@ -8801,9 +9198,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
     const turnId = durableTurnId?.trim() || randomUUID();
-    return this.trackTurnOperation(turnId, () =>
-      this.promptTurn(input, userMessageId, turnId),
-    );
+    return this.trackTurnOperation(turnId, async () => {
+      try { return await this.promptTurn(input, userMessageId, turnId); }
+      finally { await this.batchPlanner.drain(); }
+    });
   }
 
   private async promptTurn(
@@ -8824,16 +9222,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.turnSubagentUsage = undefined;
     // Capabilities and path-scoped instruction claims belong to one prompt.
     this.subagentOverrideProviders = {};
-    this.resetDeferredToolsForPrompt();
-    if (selectedTools.length) {
-      this.activateDeferredTools(selectedTools);
-      this.setAgentTools(this.activeTools());
-    }
-    this.refreshResumablePrompt();
     this.pathInstructionClaims.clear();
     this.pendingUserMessageId = userMessageId;
     this.resetRunRecoveryState();
     this.autonomousExecution = false;
+    const recovered = recoverMalformedToolCalls(this.agent.state.messages);
+    if (recovered !== this.agent.state.messages) this.setAgentMessages(recovered);
     // Main resolves this provenance from the Host ledger. Never infer it from
     // prompt text, model output, extension content, or restored history.
     const origin = typeof input === "string" ? undefined : input.sessionMessage;
@@ -8845,6 +9239,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     try {
+      // Publish turn ownership before the first await. Status polling and Stop
+      // must include capability negotiation, not observe a falsely idle turn.
+      await this.batchPlanner.negotiate(Boolean(this.remoteWorkspace));
+      if (this.runCancelled || this.disposed) throw turnAbortedError("Turn aborted during Host capability negotiation");
+      this.rebuildToolCatalog();
+      this.resetDeferredToolsForPrompt();
+      if (selectedTools.length) this.activateDeferredTools(selectedTools);
+      this.setAgentTools(this.activeTools());
       const content = promptContent(modelInput);
       const incomingUserMessage: AgentMessage = {
         role: "user",
@@ -9099,6 +9501,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.providerRetryAbort?.abort();
     if (this.compactionInProgress) this.compactionAborted = true;
     this.compactionAbort?.abort();
+    // `agent.abort()` normally fires the signal each in-flight tool was handed,
+    // and the tool executor reacts to that. When the signal does not reach a
+    // tool, the executor keeps awaiting `tools.execute`, the turn never
+    // settles, and this method never returns. The renderer awaits this RPC
+    // before it clears the "processing" state, so one unyielding tool pinned
+    // the whole session until it finished on its own (#1767). Drive the tools
+    // from here as well, so a stop always releases them.
+    for (const abortTool of [...this.activeToolAborts]) abortTool();
     await settlement;
   }
 

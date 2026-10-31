@@ -298,6 +298,7 @@ export type SlashExpansion = {
 export function parseCommandArgs(argsString: string): string[] {
   const args: string[] = [];
   let current = "";
+  let hasToken = false;
   let inQuote: "'" | '"' | null = null;
   for (const char of argsString) {
     if (inQuote) {
@@ -305,16 +306,19 @@ export function parseCommandArgs(argsString: string): string[] {
       else current += char;
     } else if (char === '"' || char === "'") {
       inQuote = char;
+      hasToken = true;
     } else if (char === " " || char === "\t") {
-      if (current) {
+      if (hasToken) {
         args.push(current);
         current = "";
+        hasToken = false;
       }
     } else {
       current += char;
+      hasToken = true;
     }
   }
-  if (current) args.push(current);
+  if (hasToken) args.push(current);
   return args;
 }
 

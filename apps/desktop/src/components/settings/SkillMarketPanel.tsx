@@ -36,6 +36,11 @@ import {
   skillMarketFailureDetail,
   type SkillMarketFailureKind,
 } from "../../lib/skill-market-failure";
+import {
+  snapshotMatchesQuery,
+  snapshotTimeText,
+  type MarketSnapshot,
+} from "../../lib/market-snapshot";
 
 const CATEGORIES: readonly SkillCatalogCategory[] = [
   "workflow",
@@ -151,7 +156,7 @@ export function SkillMarketPanel({
   onBack: () => void;
   onInstalled: (id: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"all" | SkillCatalogCategory>("all");
@@ -178,6 +183,13 @@ export function SkillMarketPanel({
   });
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
   const [catalogRetry, setCatalogRetry] = useState(0);
+  /**
+   * The last successful search for this panel, kept so a later failure can
+   * still show the list the user just had (issue #1692) instead of dropping
+   * to built-in picks only. It answers one query only: a snapshot taken for
+   * a different search must not stand in for the one on screen.
+   */
+  const [snapshot, setSnapshot] = useState<MarketSnapshot<MarketItem> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,6 +229,7 @@ export function SkillMarketPanel({
           if (!cancelled) {
             const failed = result.failedSources ?? [];
             const entries = result.entries ?? [];
+            const query = search.trim();
             setRemote({
               status: entries.length === 0 && failed.length > 0 ? "error" : "ready",
               entries,
@@ -225,6 +238,12 @@ export function SkillMarketPanel({
               failureDetails: result.failureDetails ?? {},
               queryError: "",
             });
+            // The list the user was just shown is what a later failure falls
+            // back to. A response with no entries is not a list, and keeping
+            // it would pin the pane to a stale snapshot after one success.
+            if (entries.length > 0) {
+              setSnapshot({ entries, at: Date.now(), query });
+            }
           }
         })
         .catch((error: unknown) => {
@@ -251,6 +270,19 @@ export function SkillMarketPanel({
       ? [...DEFAULT_SKILL_SOURCES, ...sources].find((source) => source.id === id)?.name
       : undefined;
 
+  /**
+   * The last successful list stands in only while the current query has
+   * nothing of its own to show — a failure, or the retry that follows one.
+   * A snapshot taken for another query never answers this one, and a `ready`
+   * result with no entries is a real (empty) answer, not a failure to cover.
+   */
+  const snapshotForQuery = snapshotMatchesQuery(snapshot, search) ? snapshot : null;
+  const showingSnapshot =
+    snapshotForQuery != null &&
+    remote.entries.length === 0 &&
+    (remote.status === "error" || remote.status === "loading");
+  const displayEntries = showingSnapshot && snapshotForQuery ? snapshotForQuery.entries : remote.entries;
+
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     const matches = (entry: SkillCatalogEntry) => {
@@ -262,9 +294,9 @@ export function SkillMarketPanel({
     };
     return mergeSkillEntries(
       skills.filter(matches),
-      remote.entries.filter(matches),
+      displayEntries.filter(matches),
     ) as MarketItem[];
-  }, [remote.entries, search, category]);
+  }, [displayEntries, search, category]);
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -658,15 +690,37 @@ export function SkillMarketPanel({
       </div>
 
       {remote.status === "loading" ? (
-        <p className="sklm-status" role="status">
-          {t("settings.sklm.remoteLoading")}
-        </p>
+        <>
+          <p className="sklm-status" role="status">
+            {t("settings.sklm.remoteLoading")}
+          </p>
+          {showingSnapshot && snapshotForQuery ? (
+            <p className="sklm-status is-snapshot">
+              {t("settings.sklm.remoteStaleSnapshot", {
+                time: snapshotTimeText(
+                  snapshotForQuery.at,
+                  i18n.resolvedLanguage ?? i18n.language,
+                ),
+              })}
+            </p>
+          ) : null}
+        </>
       ) : null}
       {remote.status === "error" ? (
         <>
           <p className="sklm-status is-error" role="status">
             {remoteErrorText()}
           </p>
+          {showingSnapshot && snapshotForQuery ? (
+            <p className="sklm-status is-snapshot">
+              {t("settings.sklm.remoteStaleSnapshot", {
+                time: snapshotTimeText(
+                  snapshotForQuery.at,
+                  i18n.resolvedLanguage ?? i18n.language,
+                ),
+              })}
+            </p>
+          ) : null}
           {remote.failed.length ? (
             <p className="sklm-status">{failedSourceLabels().join(", ")}</p>
           ) : null}

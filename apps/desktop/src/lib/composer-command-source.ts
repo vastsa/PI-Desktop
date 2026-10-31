@@ -8,8 +8,24 @@
  * MCP/skill read, so paying for it on the keystroke is what made the menu feel
  * absent on a fresh launch.
  */
-import type { ComposerCommand } from "@pi-desktop/shared";
+import { GEN_UI_SKILL_ID, type ComposerCommand } from "@pi-desktop/shared";
 import { api } from "./api";
+
+/**
+ * The menu's view of the workspace list for one session. The source is keyed
+ * by workspace only, so session-specific omissions happen here: a remote
+ * session cannot render inline visualizations, so its runtime never receives
+ * the visualize skill and the menu must not offer it either.
+ */
+export function commandsForSession(
+  commands: ComposerCommand[],
+  { remote }: { remote: boolean },
+): ComposerCommand[] {
+  if (!remote) return commands;
+  return commands.filter(
+    (command) => !(command.kind === "skill" && command.skillId === GEN_UI_SKILL_ID),
+  );
+}
 
 /** Menu and resolver share one window; both re-read after it lapses. */
 const SOURCE_TTL_MS = 10_000;

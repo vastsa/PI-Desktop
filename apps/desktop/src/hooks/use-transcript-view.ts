@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { EMPTY_TRANSCRIPT, transcriptViewMessages } from "../lib/transcript-reading";
+import { EMPTY_TRANSCRIPT, isTranscriptAtLiveTail, transcriptViewMessages } from "../lib/transcript-reading";
 import { useAppStore } from "../stores/app-store";
 
 /** Main transcript and subagent details consume the same renderer reading range. */
@@ -19,6 +19,7 @@ export function useTranscriptView(sessionId: string) {
     focus: view?.focus ?? null,
     parentMessage: view?.parentMessage,
     historical: Boolean(view?.focus || view?.restored),
+    liveTail: isTranscriptAtLiveTail(live, messages, view),
     loading: Boolean(view?.loading),
   };
 }

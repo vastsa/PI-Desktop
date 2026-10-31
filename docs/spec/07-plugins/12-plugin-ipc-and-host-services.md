@@ -119,8 +119,8 @@ handler is logged, never fatal. This is the same channel that finally makes
 
 ### Query
 - The command palette only queries contributions that are enabled + loaded successfully
-- Agent sees registered tools; Plan receives no plugin tools regardless of risk
-  or grant state
+- Agent sees registered tools; Plan/Goal sees only tools with non-empty
+  runtime `planSafeActions`, and execution rechecks `args.action` against them
 
 ### Deregistration
 - Remove everything on disable/unload/uninstall, including stopping resident
@@ -254,9 +254,10 @@ permission gate and result envelope stay in host-core:
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`. `turnId` is
    the runtime turn identity, forwarded unchanged so the plugin tool context can
    be matched against the `session:turnEnded` event.
-3. Plan calls fail at the host policy step with `PLUGIN_DISABLED_IN_PLAN`; they
-   never reach Electron or the plugin runtime. Agent calls continue with
-   Electron main executing the registered plugin tool JS and answering via RPC
+3. Plan/Goal calls without `planSafeActions` fail at the host policy gate.
+   Admitted calls carry mode and the allowed actions; the desktop plugin runner
+   rejects missing or unlisted `args.action` before plugin code. Agent calls
+   use the normal permission flow. Electron answers through RPC
    `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`.
 4. host-core resolves the pending execution and returns a standard
    `ToolsExecuteResult` to the sidecar. Dispatch waits up to 150s

@@ -72,13 +72,10 @@ test("main serves BrowserPreview from its originating session workspace", async 
   assert.match(roots, /return \[path, join\(dataDir, "scratch", sessionId\)\]/);
   assert.ok(
     handler.indexOf("resolveLocalFile(raw, root)") <
-      handler.indexOf("sendToRenderer(IPC.event.browserPreview"),
+      handler.indexOf("browserHost.openTab"),
   );
   assert.doesNotMatch(handler, /browserPane\.navigate/);
-  assert.match(
-    handler,
-    /sendToRenderer\(IPC\.event\.browserPreview, \{\s*sessionId,\s*path: file,\s*\}\)/,
-  );
+  assert.match(handler, /await browserHost\.openTab\(\{ path: file \}, sessionId\)/);
   assert.match(protocolSource, /browserPreview: "pi-desktop\/browser\/event\/preview"/);
 });
 
@@ -139,10 +136,10 @@ test("agent runtime exposes BrowserPreview in every mode and prompts for it", ()
   assert.match(runtimeSource, /live-reloads/);
 });
 
-test("Browser tool automatically reveals its view before browser operations", async () => {
-  assert.match(browserPluginSource, /Browser operations automatically reveal the work-panel view/);
-  assert.match(browserPluginSource, /Do not ask the user to open Browser manually/);
-  assert.match(browserPluginSource, /await pi\.browser\.reveal\(\)/);
+test("Browser tool uses its connected page without forcing the side panel open", async () => {
+  assert.match(browserPluginSource, /side panel is hidden or another session is visible/);
+  assert.match(browserPluginSource, /Background operations never take focus/);
+  assert.doesNotMatch(browserPluginSource, /await pi\.browser\.reveal\(\)/);
 
   let registeredTool;
   const calls = [];
@@ -164,7 +161,7 @@ test("Browser tool automatically reveals its view before browser operations", as
     const plugin = await import("../resources/plugins/pi.browser/main.js");
     await plugin.onLoad();
     const result = await registeredTool.execute({ action: "snapshot" });
-    assert.deepEqual(calls, ["reveal", "snapshot"]);
+    assert.deepEqual(calls, ["snapshot"]);
     assert.deepEqual(result, {
       ok: true,
       action: "snapshot",

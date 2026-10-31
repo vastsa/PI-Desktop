@@ -1,3 +1,4 @@
+import { verifyReasoningEffort } from "./provider-reasoning-effort";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
@@ -13,7 +14,7 @@ import { copyProviderConfiguration } from "../../apps/desktop/src/components/set
 import { CUSTOM_SERVICE } from "../../apps/desktop/src/components/settings/service-catalog";
 import { api } from "../../apps/desktop/src/lib/api";
 
-declare global { var providerApiStyleProbe: () => Promise<unknown>; }
+declare global { var providerApiStyleProbe: (reasoningOnly?: boolean) => Promise<unknown>; }
 const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const pause = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 /* Anchored menus mount, position and reveal on animation frames, so wait for a
@@ -34,10 +35,10 @@ const fixture = (apiStyle: string): ProviderPublic => ({
     thinkingLevels: ["off"], defaultThinkingLevel: "off" }],
 });
 
-globalThis.providerApiStyleProbe = async () => {
+globalThis.providerApiStyleProbe = async (reasoningOnly = false) => {
   const i18n = createInstance();
   await i18n.init({ lng: "en", resources: {
-    en: { translation: catalogs.en }, "zh-CN": { translation: catalogs["zh-CN"] },
+    en: { translation: catalogs.en }, "zh-CN": { translation: catalogs["zh-CN"] }, de: { translation: catalogs.de },
   }, interpolation: { escapeValue: false } });
   const creates: ProviderCreateInput[] = [];
   const updates: ProviderUpdateInput[] = [];
@@ -113,7 +114,8 @@ globalThis.providerApiStyleProbe = async () => {
     flushSync(() => element!.click());
   };
   const button = (key: string) => [...document.querySelectorAll<HTMLButtonElement>("button")]
-    .find((element) => element.textContent?.trim() === i18n.t(key));
+    .find((element) => element.getAttribute("aria-label") === i18n.t(key)
+      || element.textContent?.trim() === i18n.t(key));
   const control = (key: string) => {
     const element = button(key);
     assert(element, `missing control ${key}`);
@@ -123,9 +125,6 @@ globalThis.providerApiStyleProbe = async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   };
-  const labeledSwitch = (label: string) =>
-    [...document.querySelectorAll<HTMLButtonElement>('[role="switch"]')]
-      .find((button) => button.getAttribute("aria-label") === label);
   /* A Field explains itself through the help icon's accessible name, so read the
      row's explanations from the affordance that carries them. */
   const rowHints = () => [...document.querySelectorAll<HTMLElement>(
@@ -217,8 +216,13 @@ globalThis.providerApiStyleProbe = async () => {
     await until(() => Boolean(searchInput()), "model capability settings");
   };
   try {
-    for (const locale of ["en", "zh-CN"]) {
+    for (const locale of (reasoningOnly ? ["en", "zh-CN", "de"] : ["en", "zh-CN"])) {
       await i18n.changeLanguage(locale);
+      if (reasoningOnly) {
+        await verifyReasoningEffort({ render, fixture, i18n, updates, click, control, until, frame });
+        results.push(`${locale}:reasoning-effort-auto-send-omit-save-reopen-protocol-switch`);
+        continue;
+      }
       render();
       const beforeStepfunCreate = creates.length;
       const beforeStepfunDiscovery = discoveries.length;
@@ -241,14 +245,19 @@ globalThis.providerApiStyleProbe = async () => {
       assert(discovery.baseUrl === "https://api.stepfun.com/step_plan/v1" &&
         discovery.apiStyle === "anthropic_messages" && discovery.apiKey === "stepfun-fixture-key",
         `${locale}: StepFun discovery used the wrong route or credentials`);
-      const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+      const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('.provider-models-row input[type="checkbox"]')]
         .find((input) => input.closest("label")?.textContent?.includes("step-5-preview"));
-      await until(() => Boolean(stepfunCheckbox()), "StepFun discovered model");
-      // Exercise explicit selection even when the recommendation preselected it.
-      if (stepfunCheckbox()!.checked) click(stepfunCheckbox());
+      await until(() => Boolean(stepfunCheckbox()?.checked && !stepfunCheckbox()!.disabled),
+        "StepFun recommendation selected");
+      // Wait for committed selection state between the two user interactions.
+      await frame();
       click(stepfunCheckbox());
-      assert(stepfunCheckbox()!.checked, `${locale}: StepFun model was not selected`);
-      await until(() => !control("settings.saveProvider").disabled, "StepFun save enabled");
+      await until(() => !stepfunCheckbox()?.checked && control("settings.saveProvider").disabled,
+        "StepFun model deselected");
+      await frame();
+      click(stepfunCheckbox());
+      await until(() => Boolean(stepfunCheckbox()?.checked) && !control("settings.saveProvider").disabled,
+        "StepFun model selected and save enabled");
       click(control("settings.saveProvider"));
       await until(() => creates.length === beforeStepfunCreate + 1, "StepFun saved");
       const savedStepfun = creates.at(-1)!;
@@ -277,23 +286,19 @@ globalThis.providerApiStyleProbe = async () => {
           `${locale}: new custom form offers the account format ${style}`);
       }
       await closeApiStyleMenu();
-      const noKeyControl = labeledSwitch(i18n.t("settings.noApiKeyRequired"));
-      assert(noKeyControl && noKeyControl.getAttribute("aria-checked") === "false",
-        `${locale}: custom endpoint must default to API-key authentication`);
+      assert(!document.querySelector('[role="switch"]'),
+        `${locale}: custom endpoint still exposes a no-key switch`);
       const identityInputs = [...document.querySelectorAll<HTMLInputElement>(
         ".provider-setup-custom-identity-row input",
       )];
       assert(identityInputs.length === 2, `${locale}: custom identity fields are missing`);
       setValue(identityInputs[0]!, "Local Ollama");
       setValue(identityInputs[1]!, "http://127.0.0.1:11434/v1");
-      click(noKeyControl);
-      assert(noKeyControl.getAttribute("aria-checked") === "true",
-        `${locale}: no-API-key mode did not turn on`);
-      const disabledKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
-      assert(disabledKeyInput?.disabled && disabledKeyInput.value === "",
-        `${locale}: no-API-key mode did not clear and disable the API-key input`);
-      assert(document.documentElement.innerText.includes(i18n.t("settings.noApiKeyHint")),
-        `${locale}: no-API-key behavior was not explained`);
+      const optionalKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
+      assert(optionalKeyInput && !optionalKeyInput.disabled && optionalKeyInput.value === "",
+        `${locale}: optional API-key input is not available`);
+      assert(rowHints().includes(i18n.t("settings.apiKeyOptionalHint")),
+        `${locale}: optional API-key behavior was not explained`);
       const beforeLocalDiscovery = discoveries.length;
       await until(() => discoveries.length > beforeLocalDiscovery, "local no-auth discovery");
       const localProbe = discoveries.at(-1)!;
@@ -332,13 +337,21 @@ globalThis.providerApiStyleProbe = async () => {
         baseUrl: "http://127.0.0.1:9000/v1",
       };
       render({ provider: editableKeyProvider });
-      const editNoKeyControl = labeledSwitch(i18n.t("settings.noApiKeyRequired"));
-      assert(editNoKeyControl && editNoKeyControl.getAttribute("aria-checked") === "false",
-        `${locale}: API-key provider edit opened in the wrong mode`);
-      click(editNoKeyControl);
-      const disabledEditKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
-      assert(disabledEditKeyInput?.disabled,
-        `${locale}: switched no-auth edit did not disable the API-key field`);
+      assert(rowHints().includes(i18n.t("settings.apiKeyKeepHint")),
+        `${locale}: editing did not explain saved-key preservation`);
+      const beforeKeepUpdate = updates.length;
+      click(control("settings.saveProvider"));
+      await until(() => updates.length === beforeKeepUpdate + 1, "saved key preserved");
+      const keepUpdate = updates.at(-1)!;
+      assert(!("authKind" in keepUpdate) && !("secretValue" in keepUpdate),
+        `${locale}: blank edit changed the stored authentication`);
+      render({ provider: editableKeyProvider });
+      click(control("settings.clearApiKey"));
+      const clearedKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
+      assert(clearedKeyInput && !clearedKeyInput.disabled && clearedKeyInput.value === "",
+        `${locale}: clearing a saved key disabled the input`);
+      assert(rowHints().includes(i18n.t("settings.apiKeyOptionalHint")),
+        `${locale}: clearing a saved key did not explain the no-key behavior`);
       const beforeNoAuthUpdate = updates.length;
       click(control("settings.saveProvider"));
       await until(() => updates.length === beforeNoAuthUpdate + 1, "provider changed to no-auth");
@@ -391,12 +404,14 @@ globalThis.providerApiStyleProbe = async () => {
         assert(!control("settings.saveProvider").disabled, "supported copy is blocked");
         click(control("settings.saveProvider")); await pause();
         const created = creates.at(-1)!;
-        assert(created.apiStyle === "anthropic_messages" && created.authKind === "api_key_and_base_url",
-          "copy did not persist the explicitly chosen protocol");
+        assert(created.apiStyle === "anthropic_messages" && created.authKind === "none",
+          "copy did not persist the chosen protocol and automatic no-key authentication");
         assert(!created.secretValue && !("id" in created), "copy retained source identity or credential");
         assert(JSON.stringify(original) === before, "edit/copy mutated source object");
         results.push(`${locale}:${style}:edit-change-copy-cancel`);
       }
+      await verifyReasoningEffort({ render, fixture, i18n, updates, click, control, until, frame });
+      results.push(`${locale}:reasoning-effort-auto-send-omit-save-reopen-protocol-switch`);
       for (const [vendorKey, baseUrl, modelId] of [
         ["deepseek", "https://api.deepseek.com", "deepseek-v4-flash"],
         ["xai", "https://api.x.ai/v1", "grok-4.7"],

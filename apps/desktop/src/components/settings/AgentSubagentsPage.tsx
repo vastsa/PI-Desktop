@@ -4,6 +4,7 @@ import type { SubagentDefinition, UserSubagentRecord } from "@pi-desktop/shared"
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import { useHostCollection } from "../../hooks/use-host-collection";
+import { useRowBusy } from "../../hooks/use-row-busy";
 import {
   AgentCapabilityPage,
   CapabilityButton,
@@ -71,7 +72,7 @@ export function AgentSubagentsPage() {
     showToast(error instanceof Error ? error.message : String(error), { variant: "error" }),
   );
   const [search, setSearch] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const rowBusy = useRowBusy();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<SubagentEditorState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -83,9 +84,8 @@ export function AgentSubagentsPage() {
    * row's request never blanks the list or freezes the others.
    */
   const toggle = async (subagent: UserSubagentRecord) => {
-    if (busyId === subagent.id) return;
+    if (!rowBusy.begin(subagent.id)) return;
     const next = !subagent.enabled;
-    setBusyId(subagent.id);
     setSubagents((current) => ({
       ...current,
       owned: current.owned.map((row) =>
@@ -109,7 +109,7 @@ export function AgentSubagentsPage() {
       }));
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(subagent.id);
     }
   };
 
@@ -120,9 +120,8 @@ export function AgentSubagentsPage() {
    */
   const toggleBuiltin = async (builtin: BuiltinSubagentRow) => {
     const handle = builtin.name;
-    if (busyId === `builtin:${handle}`) return;
+    if (!rowBusy.begin(`builtin:${handle}`)) return;
     const next = !builtin.enabled;
-    setBusyId(`builtin:${handle}`);
     setSubagents((current) => ({
       ...current,
       builtins: current.builtins.map((row) =>
@@ -146,12 +145,12 @@ export function AgentSubagentsPage() {
       }));
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(`builtin:${handle}`);
     }
   };
 
   const openEdit = async (subagent: UserSubagentRecord) => {
-    setBusyId(subagent.id);
+    if (!rowBusy.begin(subagent.id)) return;
     try {
       const result = await api.readUserSubagent(subagent.id);
       setEditor({
@@ -161,7 +160,7 @@ export function AgentSubagentsPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(subagent.id);
     }
   };
 
@@ -218,7 +217,7 @@ export function AgentSubagentsPage() {
   };
 
   const remove = async (subagent: UserSubagentRecord) => {
-    setBusyId(subagent.id);
+    if (!rowBusy.begin(subagent.id)) return;
     try {
       await api.removeUserSubagent(subagent.id);
       await load();
@@ -228,7 +227,7 @@ export function AgentSubagentsPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(subagent.id);
       setArmed(null);
     }
   };
@@ -263,7 +262,7 @@ export function AgentSubagentsPage() {
     const handle = definition.name;
     const name = builtinDisplayName(handle, t);
     const canCopy = !ownedHandles.has(handle);
-    const busy = busyId === `builtin:${handle}`;
+    const busy = rowBusy.isBusy(`builtin:${handle}`);
     return (
       <CapabilityRow
         key={`builtin:${handle}`}
@@ -310,7 +309,7 @@ export function AgentSubagentsPage() {
 
   const renderRow = (subagent: UserSubagentRecord) => {
     const name = subagent.name || subagent.id;
-    const busy = busyId === subagent.id;
+    const busy = rowBusy.isBusy(subagent.id);
     const isArmed = armed === subagent.id;
     const items: CapabilityMenuItem[] = [
       {

@@ -235,7 +235,31 @@ window.menuProbe = async () => {
   }));
   await settle();
   check(submenuTrigger.getAttribute("aria-expanded") === "true", "hover opens the submenu");
-  check(submenuHost.querySelector('#sidebar-submenu-git [data-action="fork"]'), "hover shows child actions");
+  // The child panel is portaled to the body, so it is a sibling of the host
+  // rather than its descendant (#1896).
+  check(document.querySelector('#sidebar-submenu-git [data-action="fork"]'), "hover shows child actions");
+
+  // Travel from the menu onto its portaled child: the pointer leaves the root
+  // menu's subtree, but it is still inside the menu the user sees (#1896).
+  const forkRow = document.querySelector('#sidebar-submenu-git [data-action="fork"]');
+  submenuTrigger.dispatchEvent(new PointerEvent("pointerout", {
+    bubbles: true,
+    pointerType: "mouse",
+    relatedTarget: forkRow,
+  }));
+  await settle();
+  check(
+    document.querySelector("#sidebar-submenu-git") && submenuTrigger.getAttribute("aria-expanded") === "true",
+    "moving onto the portaled submenu keeps it open",
+  );
+  // Leaving both panels still closes it.
+  forkRow.dispatchEvent(new PointerEvent("pointerout", {
+    bubbles: true,
+    pointerType: "mouse",
+    relatedTarget: document.body,
+  }));
+  await settle();
+  check(!document.querySelector("#sidebar-submenu-git"), "leaving both panels closes the child menu");
 
   submenuTrigger.focus();
   submenuTrigger.dispatchEvent(new KeyboardEvent("keydown", {
@@ -251,13 +275,13 @@ window.menuProbe = async () => {
     cancelable: true,
   }));
   await settle();
-  check(!submenuHost.querySelector("#sidebar-submenu-git"), "Escape closes the child menu");
+  check(!document.querySelector("#sidebar-submenu-git"), "Escape closes the child menu");
   check(document.activeElement === submenuTrigger, "closing restores focus to its trigger");
 
   submenuTrigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
   await settle();
   check(submenuTrigger.getAttribute("aria-expanded") === "true", "click opens the submenu without hover");
-  submenuHost.querySelector('[data-action="reveal"]').click();
+  document.querySelector('#sidebar-submenu-git [data-action="reveal"]').click();
   check(JSON.stringify(selectedSubmenuActions) === JSON.stringify(["reveal"]), "child action executes");
   flushSync(() => submenuRoot.unmount());
   submenuHost.remove();

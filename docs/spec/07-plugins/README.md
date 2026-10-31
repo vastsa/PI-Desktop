@@ -24,3 +24,27 @@ this directory define the normative contracts and implementation boundaries.
 | [14-plugin-roadmap.md](14-plugin-roadmap.md) | Plugin roadmap |
 | [15-plugin-center.md](15-plugin-center.md) | Plugin center (publishing side) |
 | [16-trusted-extensions.md](16-trusted-extensions.md) | Trusted extensions (in-sidecar extension surface) |
+
+## Read the code behind the contract
+
+Use the [complete SDK index](../../plugin-development.md#13-complete-sdk-surface-and-source-map)
+for every callable method and the permission matrix for its gate. The SDK,
+installer, and runtime are independent enforcement layers; the guide calls out
+known differences instead of treating a permissive parser as authorization.
+
+| Area | Implementation evidence |
+|---|---|
+| Manifest, permission vocabulary, host API | `packages/plugin-sdk/src/index.ts` |
+| Renderer slots, actions, drafts, attachments | `packages/plugin-sdk/src/renderer.ts`, `renderer-composer.ts` |
+| File/network/theme/MCP rules | SDK policy helpers and their unit tests |
+| Templates, checks, packing, submission preparation | `packages/plugin-devkit/src` and its tests |
+| Install, registry, marketplace, ownership | `crates/host-core/src/plugins` |
+| Broker dispatch, callbacks, cleanup, events | `apps/desktop/electron/main/plugin-runtime.ts`, `plugin-host-process.mjs` |
+| Panel bridge and command search | `apps/desktop/electron/preload/plugin-panel.ts`, `apps/desktop/electron/main/ipc/market-ipc.ts` |
+| Trusted extension subset | `packages/agent-runtime/src/extensions` and spec 16 |
+| Representative host/user paths | `apps/desktop/test/plugin-*.test.mjs`, repository example plugins |
+
+Lifecycle proposals, background-audio types without a device backend, signing
+plans, and center-server architecture are explicitly distinguished from shipped
+runtime APIs. Review pages under `docs/plugin-plan` may describe unimplemented
+hooks; they are not an additional public API.

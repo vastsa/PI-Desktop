@@ -16,6 +16,7 @@
 import assert from "node:assert/strict";
 import { register } from "node:module";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
@@ -23,7 +24,7 @@ const { registerProviderIpc } = await import("../electron/main/ipc/provider-ipc.
 const { ModelsDevCatalog } = await import("../electron/main/models-dev-catalog.ts");
 const { IPC } = await import("@pi-desktop/shared");
 
-const catalogPath = new URL("../resources/models.dev/api.json", import.meta.url).pathname;
+const catalogPath = fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url));
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -205,7 +206,7 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
   // the owner's record instead of dropping to the generic seed.
   const deepseek = byId.get("deepseek-v4-flash");
   assert.equal(deepseek.catalogSource, "models.dev");
-  assert.equal(deepseek.contextWindow, 1_000_000);
+  assert.equal(deepseek.contextWindow, 1_048_576);
   assert.equal(deepseek.maxTokens, 393_216);
   // Xiaomi publishes the base id, so both the plain and the `-1m` alias read
   // the owner's record without rewriting the served wire ID.

@@ -44,7 +44,7 @@ discovered
 
 ## 3. 生命周期挂钩
 
-**今天实现：**运行时（`apps/desktop/electron/main/plugin-runtime.ts`）调用`onLoad`（当在load/enable上加载插件时）和`onUnload`（在unload/disable/reload/应用退出上调度到插件进程，预算5s——退出时为1.5s，然后进程停止）；卸载会删除插件注册的命令和工具。下面的其他挂钩在 API 中声明但尚未触发。
+**今天实现：**运行时（`apps/desktop/electron/main/plugin-runtime.ts`）调用`onLoad`（当在load/enable上加载插件时）和`onUnload`（在unload/disable/reload/应用退出上调度到插件进程，预算5s——退出时为1.5s，然后进程停止）；卸载会删除插件注册的命令和工具。下面的其他生命周期名称是提案，不是当前 `PluginModule` 的成员。
 
 **计划：**一旦完整生命周期落地，钩子将按以下顺序触发：
 
@@ -57,7 +57,7 @@ discovered
 7.`onUninstall`
 
 ### 调用约束
-- Hooks 必须能够超时（默认 5 秒，可配置）
+- 模块求值加 `onLoad` 共 15 秒；`onUnload` 为 5 秒，退出时为 1.5 秒。预算由宿主持有，不能通过清单修改
 - 钩子异常不得使主机崩溃
 - 如果`onLoad`失败，请输入`load_error`并自动回滚已注册的贡献点
 
@@ -126,7 +126,7 @@ discovered
 - 关闭面板
 - 停止常驻服务并断开 MCP 服务器的连接
 - 取消任何挂起的重启退避
-- 致电 `onUnload` / `onDisable`
+- 调用 `onUnload`，不会调用 `onDisable`
 - 继续作为残疾人
 
 ## 5. 启动恢复
@@ -204,10 +204,10 @@ rollback all registrations from this plugin
 
 卸载前：
 1.禁用+卸载
-2. 调用`onUninstall`
+2. 当前运行时不会调用 `onUninstall`
 3.删除已安装的文件
-4.清理插件私有数据（可能会询问用户是否保留）
+4. 默认清理插件私有数据，当前没有保留数据选项
 
 默认推荐：
 - 卸载时清理 settings/data（D016：卸载默认删除插件数据）
-- 提供“保留数据”高级选项（可以推迟）
+- 保留数据是未来提案；开发源码不删除，内置插件只能禁用，不能卸载

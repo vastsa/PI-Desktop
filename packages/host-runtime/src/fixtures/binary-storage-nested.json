@@ -1,0 +1,116 @@
+{
+  "original": {
+    "toolResult": {
+      "nested": {
+        "result": {
+          "nested": {
+            "result": {
+              "source": "中文😀",
+              "content": [
+                {
+                  "type": "image",
+                  "mimeType": "image/png",
+                  "data": "A/B="
+                }
+              ]
+            },
+            "text": "{\"source\":\"earlier\",\"source\":\"中文😀\",\"content\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":\"\\u0041\\/B=\"}]}"
+          },
+          "exponent": 1,
+          "fraction": 1
+        },
+        "text": "{\"nested\":{\"result\":{\"source\":\"中文😀\",\"content\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":\"A/B=\"}]},\"text\":\"{\\\"source\\\":\\\"earlier\\\",\\\"source\\\":\\\"中文😀\\\",\\\"content\\\":[{\\\"type\\\":\\\"image\\\",\\\"mimeType\\\":\\\"image/png\\\",\\\"data\\\":\\\"\\\\u0041\\\\/B=\\\"}]}\"},\"exponent\":1e0,\"fraction\":1.0}"
+      }
+    },
+    "content": "{\"nested\":{\"result\":{\"nested\":{\"result\":{\"source\":\"中文😀\",\"content\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":\"A/B=\"}]},\"text\":\"{\\\"source\\\":\\\"earlier\\\",\\\"source\\\":\\\"中文😀\\\",\\\"content\\\":[{\\\"type\\\":\\\"image\\\",\\\"mimeType\\\":\\\"image/png\\\",\\\"data\\\":\\\"\\\\u0041\\\\/B=\\\"}]}\"},\"exponent\":1,\"fraction\":1},\"text\":\"{\\\"nested\\\":{\\\"result\\\":{\\\"source\\\":\\\"中文😀\\\",\\\"content\\\":[{\\\"type\\\":\\\"image\\\",\\\"mimeType\\\":\\\"image/png\\\",\\\"data\\\":\\\"A/B=\\\"}]},\\\"text\\\":\\\"{\\\\\\\"source\\\\\\\":\\\\\\\"earlier\\\\\\\",\\\\\\\"source\\\\\\\":\\\\\\\"中文😀\\\\\\\",\\\\\\\"content\\\\\\\":[{\\\\\\\"type\\\\\\\":\\\\\\\"image\\\\\\\",\\\\\\\"mimeType\\\\\\\":\\\\\\\"image/png\\\\\\\",\\\\\\\"data\\\\\\\":\\\\\\\"\\\\\\\\u0041\\\\\\\\/B=\\\\\\\"}]}\\\"},\\\"exponent\\\":1e0,\\\"fraction\\\":1.0}\"}}"
+  },
+  "encoded": {
+    "toolResult": {
+      "nested": {
+        "result": {
+          "nested": {
+            "result": {
+              "source": "中文😀",
+              "content": [
+                {
+                  "type": "image",
+                  "mimeType": "image/png",
+                  "data": null
+                }
+              ]
+            },
+            "text": null
+          },
+          "exponent": 1,
+          "fraction": 1
+        },
+        "text": null
+      }
+    },
+    "content": null,
+    "binaryStorage": {
+      "version": 1,
+      "data": ["A/B="],
+      "refs": [
+        {
+          "path": ["toolResult", "nested", "result", "nested", "result", "content", 0, "data"],
+          "image": 0
+        }
+      ],
+      "texts": [
+        {
+          "path": ["content"],
+          "parts": [
+            "{\"nested\":{\"result\":{\"nested\":{\"result\":{\"source\":\"中文😀\",\"content\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":",
+            {
+              "image": 0
+            },
+            "}]},\"text\":",
+            {
+              "text": 2
+            },
+            "},\"exponent\":1,\"fraction\":1},\"text\":",
+            {
+              "text": 1
+            },
+            "}}"
+          ]
+        },
+        {
+          "path": ["toolResult", "nested", "text"],
+          "parts": [
+            "{\"nested\":{\"result\":{\"source\":\"中文😀\",\"content\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":",
+            {
+              "image": 0
+            },
+            "}]},\"text\":",
+            {
+              "text": 2
+            },
+            "},\"exponent\":1e0,\"fraction\":1.0}"
+          ]
+        },
+        {
+          "path": ["toolResult", "nested", "result", "nested", "text"],
+          "parts": [
+            "{\"source\":\"earlier\",\"source\":\"中文😀\",\"content\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":",
+            {
+              "image": 0,
+              "escapes": [
+                {
+                  "at": 0,
+                  "raw": "\\u0041"
+                },
+                {
+                  "at": 1,
+                  "raw": "\\/"
+                }
+              ]
+            },
+            "}]}"
+          ]
+        }
+      ]
+    }
+  }
+}

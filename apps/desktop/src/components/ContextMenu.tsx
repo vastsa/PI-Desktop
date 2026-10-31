@@ -315,6 +315,8 @@ export function ContextMenu({
 
   // Keyboard users land on the first item; Enter then runs it instead of
   // re-opening the menu.
+  // This viewport-fixed portal dismisses on page scroll, so focusing it must
+  // not scroll the underlying work surface.
   useEffect(() => {
     if (!state || !placement) return;
     const frame = requestAnimationFrame(() => {
@@ -322,7 +324,7 @@ export function ContextMenu({
         ?.querySelector<HTMLButtonElement>(
           '[role="menuitem"]:not(:disabled)',
         )
-        ?.focus();
+        ?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [placement, state]);
@@ -400,7 +402,7 @@ export function ContextMenu({
                     ?.querySelector<HTMLButtonElement>(
                       '[data-context-menu-submenu-item]:not(:disabled)',
                     )
-                    ?.focus();
+                    ?.focus({ preventScroll: true });
                 });
               }}
               onClick={() => {

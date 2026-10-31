@@ -35,6 +35,7 @@ import {
   MAX_RESUMABLE_LISTED_FILES,
   MAX_RESUMABLE_READ_LINES,
   normalizeSubagentName,
+  withoutReasoningReplayPlaceholder,
   type UiMessage,
 } from "@pi-desktop/shared";
 import { isRecord, timestampMs, toJsonObject, toJsonValue, usageToPi } from "./agent-messages.js";
@@ -258,10 +259,13 @@ export function chainRowsToMessages(
       // hand the model a stopReason the provider never agreed to.
       if (row.status === "error" || row.isError || row.error) continue;
       const content: AssistantMessage["content"] = [];
-      if (row.thinking?.trim()) {
+      // Same rule as session history: an echoed replay placeholder is not
+      // reasoning to hand back (#1945).
+      const thinking = withoutReasoningReplayPlaceholder(row.thinking ?? "");
+      if (thinking.trim()) {
         content.push({
           type: "thinking",
-          thinking: row.thinking,
+          thinking,
           ...(deepSeekCompletionsReplay
             ? { thinkingSignature: "reasoning_content" as const }
             : {}),
@@ -675,6 +679,13 @@ export function listedReadFiles(
   return { files: files.slice(0, limit), omitted: files.length - limit };
 }
 
+/**
+ * Render the resumable chains for a tool result.
+ *
+ * This text used to ride in the parent's system prompt, which made every
+ * settlement rewrite the request prefix providers cache on (ADR 0337). It is
+ * now carried by `TaskList`, so the parent reads it when it needs the ids.
+ */
 export function formatResumableList(chains: readonly ResumableChain[]): string {
   if (chains.length === 0) return "";
   const lines = [

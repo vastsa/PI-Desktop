@@ -120,15 +120,18 @@ async fn application_show_thinking_roundtrips_and_keeps_local_only_settings() ->
     let directory_b = tempfile::tempdir()?;
     let device_a = configure_test_device(directory_a.path(), &fixture.endpoint).await?;
     let device_b = configure_test_device(directory_b.path(), &fixture.endpoint).await?;
-    // The source device carries the explicit reasoning-display boolean (a
-    // false value must stay false), the legacy display mode, and a device-local
-    // permission mode that must never travel through a revision.
+    // The source device carries the explicit reasoning-display boolean and the
+    // command-folding preference (false values must stay false), the legacy
+    // display mode, and a device-local permission mode that must never travel
+    // through a revision.
     device_a.lock().await.db.set_setting(
         "app",
         &json!({
             "theme": "light",
             "showThinking": false,
             "thinkingDisplayMode": "detailed",
+            "transcriptDisplayMode": "command-first",
+            "keepCommandsExpanded": false,
             "defaultPermissionMode": "accept-edits",
         }),
     )?;
@@ -142,6 +145,8 @@ async fn application_show_thinking_roundtrips_and_keeps_local_only_settings() ->
         assert_eq!(settings["theme"], "light");
         // A false boolean survives capture and apply instead of reading as absent.
         assert_eq!(settings["showThinking"], false);
+        assert_eq!(settings["transcriptDisplayMode"], "command-first");
+        assert_eq!(settings["keepCommandsExpanded"], false);
         // The legacy field is still exported so older readers keep working.
         assert_eq!(settings["thinkingDisplayMode"], "detailed");
         // Local-only settings do not travel: the source value never appears.
@@ -154,6 +159,8 @@ async fn application_show_thinking_roundtrips_and_keeps_local_only_settings() ->
             "theme": "light",
             "showThinking": false,
             "thinkingDisplayMode": "detailed",
+            "transcriptDisplayMode": "command-first",
+            "keepCommandsExpanded": false,
             "defaultPermissionMode": "ask",
         }),
     )?;
@@ -164,6 +171,8 @@ async fn application_show_thinking_roundtrips_and_keeps_local_only_settings() ->
             "theme": "light",
             "showThinking": true,
             "thinkingDisplayMode": "detailed",
+            "transcriptDisplayMode": "flat",
+            "keepCommandsExpanded": true,
             "defaultPermissionMode": "accept-edits",
         }),
     )?;
@@ -173,6 +182,8 @@ async fn application_show_thinking_roundtrips_and_keeps_local_only_settings() ->
     let settings = app_settings(&state)?;
     assert_eq!(settings["showThinking"], true);
     assert_eq!(settings["thinkingDisplayMode"], "detailed");
+    assert_eq!(settings["transcriptDisplayMode"], "flat");
+    assert_eq!(settings["keepCommandsExpanded"], true);
     assert_eq!(settings["defaultPermissionMode"], "ask");
     Ok(())
 }

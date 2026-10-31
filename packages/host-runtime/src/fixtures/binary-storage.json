@@ -1,0 +1,113 @@
+{
+  "original": {
+    "id": "golden",
+    "content": " { \"details\": {\"images\":[{\"data\":\"\\u0041\\/B=\",\"mimeType\":\"image/png\",\"extra\":\"kept\"}]}, \"content\": [{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":\"A/B=\"}] }\n",
+    "toolResult": {
+      "content": [
+        {
+          "type": "image",
+          "mimeType": "image/png",
+          "data": "A/B="
+        }
+      ],
+      "details": {
+        "images": [
+          {
+            "mimeType": "image/png",
+            "data": "A/B=",
+            "extra": "kept"
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "unknown": [
+        1,
+        "kept"
+      ]
+    }
+  },
+  "encoded": {
+    "id": "golden",
+    "content": null,
+    "toolResult": {
+      "content": [
+        {
+          "type": "image",
+          "mimeType": "image/png",
+          "data": null
+        }
+      ],
+      "details": {
+        "images": [
+          {
+            "mimeType": "image/png",
+            "data": null,
+            "extra": "kept"
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "unknown": [
+        1,
+        "kept"
+      ]
+    },
+    "binaryStorage": {
+      "version": 1,
+      "data": [
+        "A/B="
+      ],
+      "refs": [
+        {
+          "path": [
+            "toolResult",
+            "content",
+            0,
+            "data"
+          ],
+          "image": 0
+        },
+        {
+          "path": [
+            "toolResult",
+            "details",
+            "images",
+            0,
+            "data"
+          ],
+          "image": 0
+        }
+      ],
+      "texts": [
+        {
+          "path": [
+            "content"
+          ],
+          "parts": [
+            " { \"details\": {\"images\":[{\"data\":",
+            {
+              "image": 0,
+              "escapes": [
+                {
+                  "at": 0,
+                  "raw": "\\u0041"
+                },
+                {
+                  "at": 1,
+                  "raw": "\\/"
+                }
+              ]
+            },
+            ",\"mimeType\":\"image/png\",\"extra\":\"kept\"}]}, \"content\": [{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":",
+            {
+              "image": 0
+            },
+            "}] }\n"
+          ]
+        }
+      ]
+    }
+  }
+}

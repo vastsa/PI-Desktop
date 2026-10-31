@@ -106,7 +106,7 @@ PluginManager
 
 ### 查询
 - 命令面板仅查询已启用+加载成功的贡献
-- Agent 查看已注册的工具；无论风险如何，Plan 均不会收到任何插件工具
+- Agent 可使用已注册工具；Plan/Goal 仅暴露运行时 `planSafeActions` 非空的工具，执行前再次校验 `args.action`
   或授予状态
 
 ### 注销
@@ -212,10 +212,9 @@ toast 加上 `pluginChanged` 到渲染器。
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`。`turnId` 是
    运行时回合身份，原样转发，以便插件工具上下文能与
    `session:turnEnded` 事件对应。
-3. Plan 调用在主机策略步骤失败并显示 `PLUGIN_DISABLED_IN_PLAN`；他们
-   永远不会达到 Electron 或插件运行时。 Agent 呼叫继续
-   Electron主要执行注册的插件工具JS并通过RPC应答
-   `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`。
+3. Plan/Goal 未声明 `planSafeActions` 时在宿主策略门拒绝；已允许的调用携带模式和操作列表，
+   桌面插件执行器在进入插件代码前拒绝缺失或未列出的 `args.action`。Agent 使用正常权限流程。
+   Electron 通过 `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }` 返回。
 4. host-core 解析待执行并返回一个标准
    `ToolsExecuteResult` 到 sidecar。调度最多等待 150 秒
    （`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`，高于 110 秒的插件工具预算，也高于最宽的

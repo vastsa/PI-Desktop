@@ -9,8 +9,8 @@
  * reintroducing tool-call pairs or multiple user prompts (ADR 0136 / D275).
  *
  * Replayed assistants must carry the live request's api/provider/model: pi-ai
- * `transformMessages` converts thinking to plain text when the assistant is from
- * a different model, which would drop reasoning_* on the wire.
+ * drops thinking from a different model, which would remove reasoning_* from
+ * the wire instead of retaining same-model replay.
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";

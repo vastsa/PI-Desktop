@@ -1,4 +1,10 @@
-import { session, shell, WebContentsView, type BrowserWindow } from "electron";
+import {
+  session,
+  shell,
+  WebContentsView,
+  type BrowserWindow,
+  type WebContents,
+} from "electron";
 import { join } from "node:path";
 import { getModuleDirectory } from "./module-path";
 import { parseAllowedExternalUrl } from "./safe-open-external";
@@ -14,6 +20,7 @@ import {
   scaleBoundsToDip,
   type PluginViewBounds,
 } from "./plugin-view-bounds";
+import { normalizePluginViewScale, pluginViewZoom } from "./plugin-view-scale";
 import {
   applyPluginEgressPolicy,
   pluginSessionPartition,
@@ -110,6 +117,13 @@ export class PluginViewHost {
   /** Last CSS-pixel rect from the renderer, so zoom changes can rescale. */
   private lastCssBounds: PluginViewBounds | null = null;
   private clock = 0;
+  /**
+   * Appearance → Font size multiplier the app is painting at (D343). A docked
+   * view repeats it as page zoom; see `plugin-view-scale.ts`.
+   */
+  private fontScale = 1;
+  /** Factor already pushed to the live pages, so a resize does not re-push it. */
+  private appliedZoom: number | null = null;
   private onBlockedRequest?: PluginPanelBlockedRequest;
   /**
    * Identity of the pages allowed to use the bridge, keyed by web contents. A
@@ -133,6 +147,12 @@ export class PluginViewHost {
       viewId: string;
       visible: boolean;
       bounds: PluginViewBounds;
+      /**
+       * Zoom the visible page is painting at. A chrome page that reports its
+       * guest hole in its own CSS pixels (`pi.browser`) needs this to convert
+       * back to DIP once the host applied the app's type scale.
+       */
+      scale: number;
     } | null,
   ) => void;
 
@@ -174,7 +194,9 @@ export class PluginViewHost {
       }
       const visible = this.visibleKey ? this.views.get(this.visibleKey) : null;
       visible?.view.setBounds(this.bounds);
-      this.emitSurface();
+      // The window zoom is part of the docked page zoom, so the pages follow it
+      // and the surface carries the new factor behind the browser guest rect.
+      this.resyncZoom();
     };
     try {
       contents.on("zoom-changed", onChange);
@@ -296,7 +318,31 @@ export class PluginViewHost {
     this.bounds = scaleBoundsToDip(this.lastCssBounds, this.currentZoomFactor());
     const visible = this.visibleKey ? this.views.get(this.visibleKey) : null;
     visible?.view.setBounds(this.bounds);
+    this.syncZoom();
     this.emitSurface();
+  }
+
+  /**
+   * Follow the app's Appearance type scale (D343). A docked view is its own web
+   * page, so `--font-scale` on the app document cannot reach it; the host
+   * repeats the same factor as that page's zoom. Live views are rescaled in
+   * place, so neither plugin state nor scroll position is lost.
+   */
+  setFontScale(scale: number): void {
+    const next = normalizePluginViewScale(scale);
+    if (next === this.fontScale) return;
+    this.fontScale = next;
+    this.resyncZoom();
+  }
+
+  /**
+   * Re-assert the composed zoom after the window's own zoom changed. Menu Zoom
+   * In / Out / Reset scale the app page only, so without this the docked pages
+   * would keep the old factor and drift out of proportion with the app.
+   */
+  resyncZoom(): void {
+    this.applyZoomToAll(this.viewZoom());
+    if (this.visibleKey) this.emitSurface();
   }
 
   private currentZoomFactor(): number {
@@ -304,6 +350,39 @@ export class PluginViewHost {
     if (!contents || contents.isDestroyed()) return 1;
     const zoom = Number(contents.getZoomFactor());
     return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  }
+
+  /** Zoom every docked page paints at: the app type scale times window zoom. */
+  private viewZoom(): number {
+    return pluginViewZoom(this.fontScale, this.currentZoomFactor());
+  }
+
+  /**
+   * Re-apply the factor only when it drifted. The renderer re-measures a zoomed
+   * window by reporting bounds again, so this is the path that catches a zoom
+   * whose `zoom-changed` never arrived (menu zoom, restored window) without
+   * poking every page on each resize frame.
+   */
+  private syncZoom(): void {
+    const zoom = this.viewZoom();
+    if (zoom === this.appliedZoom) return;
+    this.applyZoomToAll(zoom);
+  }
+
+  private applyZoomToAll(zoom: number): void {
+    this.appliedZoom = zoom;
+    for (const entry of this.views.values()) {
+      this.applyZoom(entry.view.webContents, zoom);
+    }
+  }
+
+  private applyZoom(wc: WebContents, zoom: number): void {
+    if (wc.isDestroyed()) return;
+    try {
+      wc.setZoomFactor(zoom);
+    } catch {
+      // A page being torn down rejects the change; its next load re-applies it.
+    }
   }
 
   /**
@@ -368,6 +447,20 @@ export class PluginViewHost {
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
   }
 
+  /**
+   * Detach the on-screen view without closing its page (renderer reload path).
+   *
+   * A renderer reload drops the React tree that owns plugin-view visibility.
+   * The native view would keep compositing above the fresh renderer as an
+   * orphan layer nothing can hide or close — its owning tab is gone and the
+   * new tree starts with an empty panel. Main therefore detaches on every
+   * main-frame navigation; the reloaded renderer re-attaches a view through
+   * the normal open/setVisible path when the user opens the tab again.
+   */
+  hideVisibleView(): void {
+    this.detachVisible();
+  }
+
   private detachVisible(): void {
     const entry = this.visibleKey ? this.views.get(this.visibleKey) : null;
     this.visibleKey = null;
@@ -396,6 +489,7 @@ export class PluginViewHost {
       viewId: this.visibleKey.slice(separator + 1),
       visible: true,
       bounds: this.bounds,
+      scale: this.viewZoom(),
     });
   }
 
@@ -448,6 +542,10 @@ export class PluginViewHost {
       if (allowed) void shell.openExternal(allowed);
       return { action: "deny" };
     });
+    // A page renders at 100% until the host can touch it, so set the factor now
+    // and again on each fresh document: the first paint is already sized.
+    this.applyZoom(wc, this.viewZoom());
+    wc.on("dom-ready", () => this.applyZoom(wc, this.viewZoom()));
     return view;
   }
 }

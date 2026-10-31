@@ -20,3 +20,4 @@ export * from "./live-work/feedback-scheduler.js";
 export * from "./live-work/result-summary.js";
 export * from "./fs-index.js";
 export * from "./chat-ref-resolve.js";
+export * from "./binary-storage.js";

@@ -1,5 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { decodeBinaryStorage, encodeBinaryStorage } from "@pi-desktop/host-runtime";
+import { ErrorCodes } from "@pi-desktop/shared";
 import type { HostProcess } from "./host-process";
 
 type MessageAppend = {
@@ -59,6 +61,7 @@ export class PersistenceOutbox {
   private entries: MessageAppend[] = [];
   private deadLetters: QuarantinedAppend[] = [];
   private flushing: Promise<void> | null = null;
+  private readonly mutationDrains = new Map<string, number>();
   private persistChain = Promise.resolve();
   private headRetry: {
     entry: MessageAppend;
@@ -77,6 +80,10 @@ export class PersistenceOutbox {
     this.now = options.now ?? Date.now;
     this.maxDeadLetters = options.maxDeadLetters ?? MAX_DEAD_LETTERS;
     this.loaded = this.load();
+    // Observe startup failures immediately while preserving rejection for every caller.
+    void this.loaded.catch((error: unknown) => {
+      this.logger("error", "session persistence outbox recovery failed", String(error));
+    });
   }
 
   async enqueue(
@@ -143,6 +150,28 @@ export class PersistenceOutbox {
     await this.dropSession(sessionId);
   }
 
+  /** ID-based mutations require every earlier target-session append to be durable. */
+  async prepareSessionMutation(
+    sessionId: string,
+    getHost: () => HostProcess | null,
+  ): Promise<void> {
+    // Register before awaiting an existing flush so its in-flight failure cannot
+    // discard a target append while this caller waits for a durable acknowledgement.
+    this.mutationDrains.set(sessionId, (this.mutationDrains.get(sessionId) ?? 0) + 1);
+    try {
+      await this.flush(getHost);
+      if (this.entries.some((entry) => entry.sessionId === sessionId)) {
+        throw Object.assign(new Error("Session mutation requires pending transcript appends to reach the host"), {
+          errorCode: ErrorCodes.HOST_UNAVAILABLE,
+        });
+      }
+    } finally {
+      const remaining = (this.mutationDrains.get(sessionId) ?? 1) - 1;
+      if (remaining) this.mutationDrains.set(sessionId, remaining);
+      else this.mutationDrains.delete(sessionId);
+    }
+  }
+
   size(): number {
     return this.entries.length;
   }
@@ -169,6 +198,14 @@ export class PersistenceOutbox {
           turnId: current.turnId,
         });
       } catch (error) {
+        if (this.mutationDrains.has(current.sessionId) && !isDuplicateMessageIdError(error)) {
+          this.logger("warn", "session persistence mutation drain paused", {
+            key: current.key,
+            sessionId: current.sessionId,
+            data: String(error),
+          });
+          return;
+        }
         // A duplicate message id means the host already has the row; drop it
         // and keep draining (D318/#560).
         if (isDuplicateMessageIdError(error)) {
@@ -268,20 +305,13 @@ export class PersistenceOutbox {
   private async loadEntries(): Promise<void> {
     try {
       const raw = await readFile(this.path, "utf8");
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        this.entries = parsed.filter((entry): entry is MessageAppend => {
-          return (
-            entry &&
-            typeof entry.key === "string" &&
-            typeof entry.sessionId === "string" &&
-            ("message" in entry || ("usage" in entry && typeof entry.turnId === "string"))
-          );
-        });
-      }
-    } catch (error: any) {
-      if (error?.code !== "ENOENT") {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("Invalid session persistence outbox: expected an array");
+      this.entries = parsed.map(decodeAppend);
+    } catch (error: unknown) {
+      if (!isMissingFile(error)) {
         this.logger("warn", "session persistence outbox load failed", String(error));
+        throw error;
       }
     }
   }
@@ -289,21 +319,20 @@ export class PersistenceOutbox {
   private async loadDeadLetters(): Promise<void> {
     try {
       const raw = await readFile(this.deadLetterPath, "utf8");
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        this.deadLetters = parsed.filter((entry): entry is QuarantinedAppend => {
-          return (
-            entry &&
-            typeof entry.key === "string" &&
-            typeof entry.sessionId === "string" &&
-            typeof entry.quarantinedAt === "string" &&
-            ("message" in entry || ("usage" in entry && typeof entry.turnId === "string"))
-          );
-        });
-      }
-    } catch (error: any) {
-      if (error?.code !== "ENOENT") {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("Invalid session persistence dead letters: expected an array");
+      this.deadLetters = parsed.map((value) => {
+        const entry = decodeAppend(value);
+        if (!("quarantinedAt" in entry) || typeof entry.quarantinedAt !== "string" ||
+            !("reason" in entry) || typeof entry.reason !== "string") {
+          throw new Error("Invalid session persistence dead letter entry");
+        }
+        return entry as QuarantinedAppend;
+      });
+    } catch (error: unknown) {
+      if (!isMissingFile(error)) {
         this.logger("warn", "session persistence outbox dead letter load failed", String(error));
+        throw error;
       }
     }
   }
@@ -319,7 +348,7 @@ export class PersistenceOutbox {
         }
         return;
       }
-      await writeFile(this.tempPath, `${JSON.stringify(this.entries)}\n`, "utf8");
+      await writeFile(this.tempPath, `${JSON.stringify(this.entries.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempPath, this.path);
     });
     this.persistChain = write.catch(() => undefined);
@@ -337,7 +366,7 @@ export class PersistenceOutbox {
         }
         return;
       }
-      await writeFile(this.tempDeadLetterPath, `${JSON.stringify(this.deadLetters)}\n`, "utf8");
+      await writeFile(this.tempDeadLetterPath, `${JSON.stringify(this.deadLetters.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempDeadLetterPath, this.deadLetterPath);
     });
     this.persistChain = write.catch(() => undefined);
@@ -367,4 +396,19 @@ function isPoisonMessageError(error: unknown): boolean {
  */
 function isForeignKeyError(error: unknown): boolean {
   return /FOREIGN KEY constraint failed/i.test(String(error));
+}
+
+function isMissingFile(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function decodeAppend(value: unknown): MessageAppend {
+  const entry = decodeBinaryStorage(value);
+  if (!entry || typeof entry !== "object" ||
+      !("key" in entry) || typeof entry.key !== "string" ||
+      !("sessionId" in entry) || typeof entry.sessionId !== "string" ||
+      !("message" in entry || ("usage" in entry && "turnId" in entry && typeof entry.turnId === "string"))) {
+    throw new Error("Invalid session persistence outbox entry");
+  }
+  return entry as MessageAppend;
 }

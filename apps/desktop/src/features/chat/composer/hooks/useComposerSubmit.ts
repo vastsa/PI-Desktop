@@ -12,8 +12,10 @@ import {
   resolveSlashDispatch,
 } from "../slash-dispatch";
 import { readEditorValue, type ComposerFileReference } from "../editor";
+import { nextSendableQueuedPrompt, type QueuedPrompt } from "../../../../lib/queued-prompts";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import type { ComposerDraftController } from "./useComposerDraft";
+import { submitWithLatestDraftRestore } from "./submit-with-latest-draft-restore.mjs";
 
 type UseComposerSubmitOptions = {
   value: string;
@@ -29,6 +31,9 @@ type UseComposerSubmitOptions = {
   t: TFunction;
   sendPrompt: AppState["sendPrompt"];
   steerPrompt: AppState["steerPrompt"];
+  sendQueuedNow: AppState["sendQueuedNow"];
+  /** This session's follow-ups; the steer shortcut promotes the first one. */
+  queuedPrompts: readonly QueuedPrompt[];
   showToast: AppState["showToast"];
   /** Record an accepted submission for ArrowUp recall. */
   recordHistory?: (snapshot: ComposerDraftSnapshot, sessionId: string) => void;
@@ -49,6 +54,7 @@ export type ComposerSubmitController = { submit: (steering?: boolean) => Promise
  * dependency so command dispatch and optimistic draft clearing remain
  * independent from editor rendering.
  */
+
 export function useComposerSubmit({
   value,
   draftKey,
@@ -63,6 +69,8 @@ export function useComposerSubmit({
   t,
   sendPrompt,
   steerPrompt,
+  sendQueuedNow,
+  queuedPrompts,
   showToast,
   recordHistory,
   draft,
@@ -74,7 +82,15 @@ export function useComposerSubmit({
     // arrives where the user put it instead of trailing the text.
     const inlineContent = serializeInlineComposerFileReferences(rawText, activeFileReferences);
     const serializedContent = serializeComposerFileReferences(rawText, activeFileReferences);
-    if (!serializedContent) return;
+    // A follow-up that was queued during the turn has already left the editor,
+    // so the steer shortcut would otherwise find no draft and do nothing. With
+    // the composer empty it sends the first waiting row now instead, which is
+    // the same promotion its own Send now button performs.
+    if (!serializedContent) {
+      const waiting = steering && !sendBlocked ? nextSendableQueuedPrompt(queuedPrompts) : undefined;
+      if (waiting) await sendQueuedNow(waiting.id);
+      return;
+    }
     if (sendBlocked || (steering && !steeringAllowed)) {
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
       return;
@@ -178,16 +194,19 @@ export function useComposerSubmit({
       return;
     }
     draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
-    const accepted = steering
-      ? await steerPrompt(inlineContent, submittedDraft)
-      : await sendPrompt(
-          inlineContent,
-          submittedDraft,
-          activeSessionId ?? undefined,
-          captureAcceptedSession,
-        );
-    if (!accepted) draft.restoreDraftForKey(submittedDraftKey, submittedDraft);
-    else remember();
+    const accepted = await submitWithLatestDraftRestore(
+      submittedDraftKey,
+      () => steering
+        ? steerPrompt(inlineContent, submittedDraft)
+        : sendPrompt(
+            inlineContent,
+            submittedDraft,
+            activeSessionId ?? undefined,
+            captureAcceptedSession,
+          ),
+      () => draft.restoreDraftForKey(submittedDraftKey, submittedDraft),
+    );
+    if (accepted) remember();
   };
 
   return { submit };

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type AnimationEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type AnimationEvent,
+  type CSSProperties,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type ToastItem, type ToastVariant } from "../stores/app-store";
@@ -132,12 +140,70 @@ function useToastHost(): HTMLElement | null {
   }, []);
   return host;
 }
+type ToastViewportBounds = {
+  center: number;
+  width: number;
+};
+
+function useToastViewportBounds(
+  anchorElement?: HTMLElement | null,
+): ToastViewportBounds | null {
+  const [bounds, setBounds] = useState<ToastViewportBounds | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorElement;
+    if (!anchor) {
+      setBounds(null);
+      return;
+    }
+    const update = () => {
+      const rect = anchor.getBoundingClientRect();
+      const next = { center: rect.left + rect.width / 2, width: rect.width };
+      setBounds((current) =>
+        current?.center === next.center && current.width === next.width ? current : next,
+      );
+    };
+    const observer = new ResizeObserver(update);
+    const layoutRoot = anchor.parentElement;
+    const observeLayout = () => {
+      observer.disconnect();
+      observer.observe(anchor);
+      for (const sibling of layoutRoot?.children ?? []) {
+        if (sibling !== anchor) observer.observe(sibling);
+      }
+      update();
+    };
+    const mutationObserver = new MutationObserver(observeLayout);
+    if (layoutRoot) mutationObserver.observe(layoutRoot, { childList: true });
+    observeLayout();
+    window.addEventListener("resize", update);
+    return () => {
+      mutationObserver.disconnect();
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorElement]);
+
+  return bounds;
+}
+
+type ToastHostProps = {
+  /** Optional viewport region whose top center owns the toast stack. */
+  anchorElement?: HTMLElement | null;
+};
 
 /** Global toast stack — mount once per shell, above dialogs (z-toast). */
-export function ToastHost() {
+export function ToastHost({ anchorElement }: ToastHostProps = {}) {
   const toasts = useAppStore((s) => s.toasts);
   const visibleToastIds = useRef<Set<number>>(new Set());
   const host = useToastHost();
+  const bounds = useToastViewportBounds(anchorElement);
+  const viewportStyle = bounds
+    ? ({
+        "--toast-viewport-center": `${bounds.center}px`,
+        "--toast-viewport-width": `${Math.max(0, bounds.width - 32)}px`,
+      } as CSSProperties)
+    : undefined;
 
   useEffect(() => {
     const nextVisibleIds = new Set<number>();
@@ -154,7 +220,7 @@ export function ToastHost() {
   // nothing rather than mounting the stack inside the shell it must outrank.
   if (!host) return null;
   return createPortal(
-    <div className="toast-viewport" aria-live="polite">
+    <div className="toast-viewport" aria-live="polite" style={viewportStyle}>
       {toasts.map((item) => (
         <ToastCard key={item.id} item={item} />
       ))}

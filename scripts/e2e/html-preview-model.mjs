@@ -23,7 +23,7 @@ export async function startHtmlPreviewModel() {
         if (pending.name === "BrowserPreview") {
           const content = typeof result.content === "string" ? result.content
             : result.content.map(part => part.text ?? "").join("");
-          assert.match(content, /Requested a new Browser tab/);
+          assert.match(content, /Opened a new Browser tab/);
           completed = true;
         }
         pending = undefined;

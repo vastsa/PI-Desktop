@@ -24,12 +24,17 @@ entitled to it.
 
 `ProviderSetupDialog` is a single form, not a wizard:
 
-- **Name**, **Base URL** and **API Key** are all on screen at once. An empty key
-  when editing means “keep the stored one”; `secretValue` is only sent when the
-  user typed something. Custom endpoints also offer an explicit **No API key
-  required** switch, defaulting off for new rows. When enabled, the key field is
-  disabled and cleared, and the row saves with `authKind: "none"` and no
-  secret. Named cloud services keep their existing authentication defaults.
+- **Name**, **Base URL** and **API Key** are all on screen at once. Custom
+  endpoint keys are optional, with no authentication-mode switch. An empty or
+  whitespace-only key on a row without a stored key saves `authKind: "none"`
+  without `secretValue`; a supplied key uses API-key authentication. Editing
+  with an empty key preserves the stored key. **Clear saved API key** is an
+  icon button beside the input on the same row, with a localized tooltip and
+  accessible name. It stages removal, keeps the input enabled, and stops
+  discovery from reusing that key;
+  Save applies the removal and no-auth mode unless a replacement key is typed.
+  Closing without saving changes no stored credential. Named cloud services
+  keep their existing authentication defaults.
 - The models section lists what the service returned. `useProviderModels`
   debounces edits by 600 ms, guards against out-of-order replies with a
   monotonic request sequence, and needs no API key so local and no-auth
@@ -77,6 +82,11 @@ entitled to it.
   API style is the selected gateway format and takes precedence over a model's
   published adapter; named and OAuth providers may keep a model-level wire API
   pin when their catalog requires it.
+- The built-in OpenCode Go preset also honors a models.dev Claude entry's
+  explicit `anthropic_messages` API and distinct Anthropic `baseUrl` together;
+  the runtime then reaches the catalog route's `/v1/messages` endpoint. Custom
+  endpoints and foreign relay matches keep their saved provider API and base
+  URL.
 - A custom model ID is always accepted, so a gateway without a `/models` route
   stays usable.
 
@@ -138,20 +148,22 @@ Only the ids a save dropped are touched — the rest of the discovered list is t
 service's answer, and a model the service still publishes is recorded again by
 the next probe, described by the service rather than by a stale answer.
 
-The answer also replaces the previous one. A probe that no longer publishes a
-model drops that model's row, so the pane stops painting a model the endpoint
-retired and a hand-typed id stops inheriting its old limits; a row whose source
-is not discovery — the user's own — is never dropped this way, and a configured
-binding stays visible in the chosen-model pane even when the service stops
-listing it. After a live refresh, the service-model pane displays only rows
-actually served, excluding configured-only rows marked `source: "user"`.
-Catalog enrichment preserves that origin independently of published metadata;
-cache, catalog and manual fallbacks still expose configured rows for editing.
-Cached rows carry
-no endpoint of their own, so a save that moves the base URL or the wire format
-drops the answer the previous endpoint produced, and the next probe records the
-new one. A failed or empty probe is not an answer: it never reaches the cache,
-so it can neither replace nor narrow what is stored.
+A complete, nonempty discovery answer updates endpoint-list membership
+atomically. Previously published configured models missing from that answer
+remain saved and editable, but carry `discoveryState: "unlisted"` through live
+results, offline fallback, and restart hydration. Composer excludes these rows
+from ordinary and recent model choices; it never changes a session's current
+model or the saved default automatically. A missing id is not proof of failed
+inference. Manually configured ids never discovered are unknown, not unlisted,
+and remain selectable. Republishing a model restores its normal choices.
+
+Unconfigured missing discovered rows are pruned, and user-owned rows remain
+untouched. The settings service-model pane excludes unlisted and configured-only
+rows; the chosen pane retains bindings for editing. Changing the endpoint or
+wire format clears old discovery state. Failed, empty, explicitly paginated,
+truncated, or malformed-row answers do not invalidate missing rows. Partial
+answers may add/update the rows they actually contain. Unknown server-side
+truncation cannot be inferred from a successful response alone.
 
 The picker never dumps the raw host error into the model list. A failed probe
 that leaves no rows shows a one-line "the list is missing" label in the empty

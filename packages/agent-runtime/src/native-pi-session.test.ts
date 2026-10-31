@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, PI_ATTRIBUTION, Type, type AssistantMessage } from "@earendil-works/pi-ai";
 import { NativePiSessionService } from "./native-pi-session.js";
 import {
   acquireNativePiSessionLease,
@@ -92,7 +92,13 @@ describe("NativePiSessionService", () => {
     );
     const outside = join(f.root, "outside.jsonl");
     writeFileSync(outside, sessionText("outside-id", f.project, "outside session"));
-    symlinkSync(outside, join(customDir, "escape.jsonl"));
+    // Windows without the symlink privilege cannot create the alias; the
+    // escape entry is then simply absent and the assertions below still hold.
+    try {
+      symlinkSync(outside, join(customDir, "escape.jsonl"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+    }
 
     const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
     const sessions = await service.list({ projectPaths: [f.project] });
@@ -151,7 +157,13 @@ describe("NativePiSessionService", () => {
     mkdirSync(customDir, { recursive: true });
     writeFileSync(join(f.project, ".pi", "settings.json"), `${JSON.stringify({ sessionDir: ".pi/sessions" })}\n`);
     writeFileSync(join(customDir, "local.jsonl"), sessionText("local-id", f.project, "project local session"));
-    symlinkSync(join(customDir, "local.jsonl"), join(customDir, "latest.jsonl"));
+    // Same Windows symlink-privilege caveat: without the alias the dedupe is
+    // exercised only on privileged runs, and one real row still lists.
+    try {
+      symlinkSync(join(customDir, "local.jsonl"), join(customDir, "latest.jsonl"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+    }
     const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
     const sessions = await service.list({ projectPaths: [f.project] });
     const matches = sessions.filter((session) => session.title === "project local session");
@@ -492,6 +504,33 @@ function fauxModelRuntime() {
 }
 
 describe("native continuation review regressions", () => {
+  it.each([true, false])("uses the native SDK telemetry preference for 1.4 attribution (%s)", async (enabled) => {
+    const f = await configuredFixture();
+    const settingsPath = join(f.agentDir, "settings.json");
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(settingsPath, JSON.stringify({ ...settings, enableInstallTelemetry: enabled }));
+    const identities: unknown[] = [];
+    vi.spyOn(ModelRuntime.prototype, "streamSimple").mockImplementation((_model, _context, options) => {
+      identities.push(options?.identity);
+      return fauxStream();
+    });
+    const service = new NativePiSessionService(f);
+    try {
+      const [summary] = await service.list();
+      expect(summary.capabilities?.canPrompt).toBe(true);
+      await service.prompt(summary.id, "check native client identity", () => {});
+      await expect.poll(() => identities).toHaveLength(1);
+      expect(identities).toHaveLength(1);
+      expect(identities[0]).toMatchObject({
+        userAgent: "detailed",
+        version: "1.4.0",
+        attribution: enabled ? PI_ATTRIBUTION : null,
+      });
+    } finally {
+      service.disposeAll();
+    }
+  });
+
   it("uses the real offline credential/catalog and reports missing exact auth/model", async () => {
     const f = await configuredFixture();
     const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
@@ -1280,8 +1319,14 @@ describe("independent native ownership, identity and tool regressions", () => {
     } finally { service.disposeAll(); }
   });
 
-  it("sends zero native tools to the model", async () => {
+  it.each([false, true])("sends zero native tools even with restored active tools: %s", async (restoreTools) => {
     const f = await configuredFixture();
+    if (restoreTools) {
+      SessionManager.open(f.file).appendMessage({
+        role: "system", content: "Previously active tools", timestamp: Date.now(),
+        toolsAdded: [{ name: "bash", description: "Native shell", parameters: Type.Object({ command: Type.String() }) }],
+      });
+    }
     const requests: unknown[] = [];
     vi.spyOn(ModelRuntime.prototype, "streamSimple").mockImplementation((_model, context) => { requests.push(context.tools ?? []); return fauxStream(); });
     const service = new NativePiSessionService(f);
@@ -1357,5 +1402,72 @@ describe("native settlement and reclaim boundaries", () => {
     writeFileSync(lockPath, JSON.stringify({ ...record, pid: 2147483647 }));
     writeFileSync(f.file, f.text.replace('"hello"', '"changed"'));
     expect((await service.list())[0].readOnlyReason).toBe("busy");
+  });
+});
+
+describe("native session list projection cache", () => {
+  it("reuses one file projection until the file identity changes", async () => {
+    const f = fixture();
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    // inMemory() is the parse/project step list() performs per file, so its
+    // call count is the observable "did this row get re-derived" signal.
+    const inMemory = vi.spyOn(SessionManager, "inMemory");
+    try {
+      const first = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(1);
+
+      const second = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(1);
+      expect(second).toEqual(first);
+
+      writeFileSync(
+        f.file,
+        `${f.text}${JSON.stringify({
+          type: "message",
+          id: "later",
+          parentId: "future",
+          timestamp: "2026-09-14T00:00:10.000Z",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "later answer" }],
+            provider: "test-provider",
+            model: "test-model",
+            stopReason: "stop",
+            timestamp: 4,
+            usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          },
+        })}\n`,
+      );
+      const appended = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(2);
+      expect(appended[0].messageCount).toBe(first[0].messageCount + 1);
+      expect(appended[0].updatedAt).toBe("2026-09-14T00:00:10.000Z");
+    } finally {
+      inMemory.mockRestore();
+      service.disposeAll();
+    }
+  });
+
+  it("recomputes ownership so a live lease is still busy under a cached projection", async () => {
+    const f = await configuredFixture();
+    const service = new NativePiSessionService(f);
+    const [free] = await service.list();
+    expect(free.readOnlyReason).toBeUndefined();
+    expect(free.capabilities?.canPrompt).toBe(true);
+
+    const lease = acquireNativePiSessionLease(f.file);
+    try {
+      // The file bytes did not change, so the cached projection is reused;
+      // `busy` must still come from the live lease, never from that cache.
+      const [busy] = await service.list();
+      expect(busy.readOnlyReason).toBe("busy");
+      expect(busy.capabilities?.canPrompt).toBe(false);
+    } finally {
+      lease.release();
+    }
+
+    const [released] = await service.list();
+    expect(released.readOnlyReason).toBeUndefined();
+    expect(released.capabilities?.canPrompt).toBe(true);
   });
 });

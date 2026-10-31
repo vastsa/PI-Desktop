@@ -39,7 +39,7 @@ const KNOWN_EXTS = new Set([
 ]);
 
 const FILE_TOKEN_RE =
-  /^(?:(?:[A-Za-z]:[\\/]|~[\\/]|\\\\|\/\/|[\\/])|(?:\.{1,2}[\\/])?)[\p{L}\p{N}_@+. -]+(?:[\\/][\p{L}\p{N}_@+. -]+)*(?::\d+(?::\d+)?)?$/u;
+  /^(?:(?:[A-Za-z]:[\\/]|~[\\/]|\\\\|\/\/|[\\/])|(?:\.{1,2}[\\/])?)[\p{L}\p{N}_@+. -]+(?:[\\/][\p{L}\p{N}_@+. -]+)*(?::\d+(?::\d+|-\d+)?|#[lL]\d+(?:-[lL]?\d+)?)?$/u;
 
 const AT_QUOTED_RE = /^@"([^"\n]+)"$/;
 const AT_UNQUOTED_RE = /^@(\/?[^\s]+)$/;
@@ -53,22 +53,23 @@ export function isHtmlFilePath(path: string): boolean {
 }
 
 function stripLineRef(path: string): string {
-  return path.replace(/:\d+(?::\d+)?$/, "");
+  return path.replace(/(?::\d+(?::\d+|-\d+)?|#[lL]\d+(?:-[lL]?\d+)?)$/u, "");
 }
 
-/** Trailing `:line[:col]` on a file token, if any. */
+/** Trailing line, column, range, or GitHub line anchor on a file token. */
 export function parseFileRefPosition(
   text: string,
 ): { line: number; column?: number } | null {
   const token = text.trim().replace(/[.,!?;:，。！？；：]+$/u, "");
-  const match = token.match(/:(\d+)(?::(\d+))?$/);
+  const match = token.match(/(?::(\d+)(?::(\d+)|-(\d+))?|#L(\d+)(?:-L?(\d+))?)$/iu);
   if (!match) return null;
-  const line = Number(match[1]);
+  const line = Number(match[1] ?? match[4]);
   if (!Number.isFinite(line) || line < 1) return null;
-  const column = match[2] !== undefined ? Number(match[2]) : undefined;
-  return column !== undefined && Number.isFinite(column) && column >= 1
-    ? { line, column }
-    : { line };
+  const column = match[2] ? Number(match[2]) : undefined;
+  if (column !== undefined && (!Number.isFinite(column) || column < 1)) return null;
+  const rangeEnd = match[3] ?? match[5];
+  if (rangeEnd !== undefined && (!Number.isFinite(Number(rangeEnd)) || Number(rangeEnd) < line)) return null;
+  return { line, ...(column !== undefined ? { column } : {}) };
 }
 
 function leafName(path: string): string {

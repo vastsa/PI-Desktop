@@ -61,6 +61,9 @@ type PluginSignature = {
 
 验证失败将拒绝安装/更新。
 
+第 4–5 节的签名与公钥管理属于规划。当前客户端校验包 SHA-256，读取目录的 trust/provenance，
+没有签名 CLI、签名校验门、内置签名公钥或用户可信公钥库；认证徽章不是密码学签名。
+
 ## 5. 发布者信任
 
 ```ts
@@ -154,11 +157,11 @@ P2目标：
 
 ```ts
 type PluginProvenance = {
-  sourceRepository: string   // 规范化的 https 仓库 URL
-  sourceRef: string          // refs/tags/<tag> 或 40 位 commit
-  sourceCommit: string       // 解析后的 40 位 commit
-  sourcePath?: string        // 插件在仓库中的目录
-  builder?: string           // 构建器标识与版本
+  sourceRepository: string   // canonical https repository URL
+  sourceRef: string          // refs/tags/<tag> or a 40-hex commit
+  sourceCommit: string       // resolved 40-hex commit
+  sourcePath?: string        // plugin directory inside the repository
+  builder?: string           // builder identity and version
   builtAt?: string
 }
 ```

@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  AssistantMessageFrameEncoder,
   LocalRequestError,
   normalizeContext,
-  reduceAssistantMessageFrames,
 } from "@earendil-works/pi-ai";
 import type {
   AssistantMessage,
-  AssistantMessageEvent,
-  AssistantMessageFrame,
   HostedSearchContent,
   Message,
   Model,
@@ -55,13 +51,6 @@ async function mistralRequest(content: AssistantMessage["content"]) {
   expect(fetches).toBe(1);
   return body!;
 }
-function encode(events: AssistantMessageEvent[]): AssistantMessageFrame[] {
-  const encoder = new AssistantMessageFrameEncoder();
-  return events.flatMap(event => {
-    const frame = encoder.encode(event);
-    return frame ? [frame] : [];
-  });
-}
 
 describe("hosted-search consumers", () => {
   describe("Mistral model switches", () => {
@@ -86,113 +75,11 @@ describe("hosted-search consumers", () => {
       expect(message?.tool_calls).toEqual([
         expect.objectContaining({ id: expect.any(String), type: "function", function: { name: "read", arguments: '{"path":"file"}' } }),
       ]);
-      expect(JSON.stringify(message?.content)).toContain("retained reasoning");
+      expect(JSON.stringify(message)).not.toContain("retained reasoning");
       expect(mixed.messages.filter(item => item.role === "tool")).toHaveLength(1);
     });
   });
 
-  describe("in-process assistant frames", () => {
-    for (const block of searches()) {
-      it(`round-trips ${block.phase} and the following text index`, () => {
-        const output = assistant([block, { type: "text", text: "answer" }]);
-        const frames = encode([
-          { type: "start", partial: output },
-          { type: "hosted_search_update", contentIndex: 0, partial: output },
-          { type: "text_start", contentIndex: 1, partial: output },
-          { type: "text_end", contentIndex: 1, content: "answer", partial: output },
-        ]);
-        expect(frames.map(frame => frame.type)).toEqual(["start", "hosted_search_update", "text_start", "text_end"]);
-        expect(reduceAssistantMessageFrames(frames)?.content).toEqual(output.content);
-      });
-    }
-    it("replaces snapshots without duplicating blocks and detaches nested wire data", () => {
-      const block = searches()[2]!;
-      const output = assistant([block]);
-      const encoder = new AssistantMessageFrameEncoder();
-      const start = encoder.encode({ type: "start", partial: output })!;
-      const first = encoder.encode({ type: "hosted_search_update", contentIndex: 0, partial: output })!;
-      expect(first).toBeDefined();
-      if (block.phase !== "web_search_call") throw new Error("unexpected fixture");
-      block.status = "completed";
-      block.wire!.status = "completed";
-      (block.wire!.action as { query: string }).query = "updated query";
-      const last = encoder.encode({ type: "hosted_search_update", contentIndex: 0, partial: output })!;
-      expect(reduceAssistantMessageFrames([start, first])?.content[0]).toMatchObject({ status: "in_progress", wire: { action: { query: "local query" } } });
-      const frames = [start, first, last, last];
-      const reduced = reduceAssistantMessageFrames(frames)!;
-      expect(reduced.content).toEqual([block]);
-      (reduced.content[0] as typeof block).wire!.status = "mutated";
-      expect(reduceAssistantMessageFrames(frames)?.content).toEqual([block]);
-    });
-    it("preserves multiple search rounds, pair IDs, and ordinary block deltas", () => {
-      const output = assistant([...searches(), { type: "text", text: "" }]);
-      const encoder = new AssistantMessageFrameEncoder();
-      const events: AssistantMessageEvent[] = [
-        { type: "start", partial: output },
-        ...[0, 1, 2].map(contentIndex => ({ type: "hosted_search_update" as const, contentIndex, partial: output })),
-        { type: "text_start", contentIndex: 3, partial: output },
-        { type: "text_delta", contentIndex: 3, delta: "answer", partial: output },
-        { type: "text_end", contentIndex: 3, content: "answer", partial: output },
-      ];
-      const frames = events.map(event => encoder.encode(event)).filter((frame): frame is AssistantMessageFrame => frame !== undefined);
-      expect(reduceAssistantMessageFrames(frames)?.content).toEqual([...searches(), { type: "text", text: "answer" }]);
-    });
-    it("rejects wrong block types, identities, and gaps instead of corrupting content", () => {
-      const output = assistant([searches()[2]!]);
-      const start = { type: "start" as const, partial: assistant([]) };
-      const frame: AssistantMessageFrame = { type: "hosted_search_update", contentIndex: 0, content: searches()[2]! };
-      expect(() => reduceAssistantMessageFrames([start, { ...frame, contentIndex: 1 } as AssistantMessageFrame])).toThrow(/gap/);
-      expect(() => reduceAssistantMessageFrames([start, { type: "text_start", contentIndex: 0, content: { type: "text", text: "safe" } }, frame])).toThrow();
-      expect(() => reduceAssistantMessageFrames([start, frame, { ...frame, content: { ...searches()[2]!, blockId: "other" } } as AssistantMessageFrame])).toThrow();
-      const encoder = new AssistantMessageFrameEncoder();
-      encoder.encode({ type: "start", partial: output });
-      encoder.encode({ type: "hosted_search_update", contentIndex: 0, partial: output });
-      output.content[0] = { ...searches()[2]!, blockId: "other" };
-      expect(() => encoder.encode({ type: "hosted_search_update", contentIndex: 0, partial: output })).toThrow();
-      output.content[0] = { type: "text", text: "safe" };
-      expect(() => encoder.encode({ type: "hosted_search_update", contentIndex: 0, partial: output })).toThrow();
-    });
-    it("does not persist parser scratch buffers or fabricate tool fields", () => {
-      const streamingBlock = { ...searches()[0]!, index: 0, inputJson: "scratch", partialJson: "scratch" };
-      const output = assistant([streamingBlock]);
-      const frames = encode([{ type: "start", partial: output }, { type: "hosted_search_update", contentIndex: 0, partial: output }]);
-      const reduced = reduceAssistantMessageFrames(frames)!;
-      expect(reduced.content[0]).toEqual(searches()[0]);
-      expect(reduced.content[0]).not.toHaveProperty("arguments");
-    });
-    it("preserves error-result wire and legacy fallback semantics", () => {
-      const blocks: HostedSearchContent[] = [
-        { type: "hostedSearch", phase: "web_search_tool_result", blockId: "s", isError: true, wire: { type: "web_search_tool_result_error", tool_use_id: "s", content: "unavailable" } },
-        { type: "hostedSearch", phase: "web_search_call", blockId: "legacy" },
-      ];
-      const output = assistant(blocks);
-      const frames = encode([
-        { type: "start", partial: output },
-        { type: "hosted_search_update", contentIndex: 0, partial: output },
-        { type: "hosted_search_update", contentIndex: 1, partial: output },
-      ]);
-      expect(reduceAssistantMessageFrames(frames)?.content).toEqual(blocks);
-    });
-    it("retains thinking and tool frame behavior after a search block", () => {
-      const search = searches()[2]!;
-      const thinking = { type: "thinking" as const, thinking: "", thinkingSignature: "sig" };
-      const toolCall = { type: "toolCall" as const, id: "tool", name: "read", arguments: {} };
-      const output = assistant([search, thinking, toolCall]);
-      const frames = encode([
-        { type: "start", partial: output },
-        { type: "hosted_search_update", contentIndex: 0, partial: output },
-        { type: "thinking_start", contentIndex: 1, partial: output },
-        { type: "thinking_delta", contentIndex: 1, delta: "reason", partial: output },
-        { type: "thinking_end", contentIndex: 1, content: "reason", partial: output },
-        { type: "toolcall_start", contentIndex: 2, partial: output },
-        { type: "toolcall_delta", contentIndex: 2, delta: '{"path":"file"}', partial: output },
-        { type: "toolcall_end", contentIndex: 2, toolCall: { ...toolCall, arguments: { path: "file" } }, partial: output },
-      ]);
-      expect(reduceAssistantMessageFrames(frames)?.content).toEqual([
-        search, { ...thinking, thinking: "reason" }, { ...toolCall, arguments: { path: "file" } },
-      ]);
-    });
-  });
 
   describe("usage anchors", () => {
     const response = assistant([{ type: "text", text: "answer" }], 10, 100);

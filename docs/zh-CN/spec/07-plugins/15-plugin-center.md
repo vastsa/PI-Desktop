@@ -3,12 +3,17 @@
 > **翻译说明：** 本页是与 [英文源规格](/spec/07-plugins/15-plugin-center) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 > 管理仓库：[vastsa/pi-plugin-center](https://github.com/vastsa/pi-plugin-center)
-> 分发仓库：[vastsa/pi-desktop-plugins](https://github.com/vastsa/pi-desktop-plugins)
+> 分发仓库：[AIUO-Net/pi-desktop-plugins](https://github.com/AIUO-Net/pi-desktop-plugins)
 > 决策记录：[ADR 0102](../../../adr/0102-publisher-owned-plugin-source-and-git-hosted-artifacts.md)
 > 客户端契约：[07-plugin-marketplace.md](07-plugin-marketplace.md)
 
 本文定义取代单仓库市场的分发系统，是插件中心服务的规范性方案；桌面客户端消费什么，
 仍以市场规范为准。
+
+实现范围：本仓库包含桌面客户端与 `packages/plugin-devkit/src/publish.ts`，后者只准备本地包和提交文件，
+不会上传。下文中心 API、worker、身份和签名描述独立服务的设计，不代表 SDK 方法或服务器运行证明。
+当前客户端默认读取 `https://plugins.aiuo.net/catalog.json`，并使用已记录的 `/api/v1` resolve/review 路由。
+源码见 `crates/host-core/src/plugins/marketplace`, `reviews.rs`, and `resolve.rs`。
 
 ## 1. 定位
 
@@ -28,8 +33,8 @@
 | 插件源码 | 发布者 | 发布者自己的 GitHub 仓库 |
 | 构建输入（commit、tree、path） | 插件中心（固定副本） | 中心数据库 + 快照存储 |
 | registry 与审查证据 | 插件中心 | `vastsa/pi-plugin-center` |
-| `.piplug` 制品 | 插件中心（发布） | `vastsa/pi-desktop-plugins/packages/` |
-| 目录 | 插件中心（生成） | `vastsa/pi-desktop-plugins/catalog.json` |
+| `.piplug` 制品 | 插件中心（发布） | `AIUO-Net/pi-desktop-plugins/packages/` |
+| 目录 | 插件中心（生成） | `AIUO-Net/pi-desktop-plugins/catalog.json` |
 | 分发镜像 | 插件中心 | 分发仓库的 CNB Git 镜像 |
 | 安装决定 | 用户 | 桌面端权限审查 |
 
@@ -50,7 +55,7 @@ vastsa/pi-plugin-center                 # 管理面
 ├─ scripts/                             # 目录生成与校验
 └─ api/ db/                             # 服务契约与迁移
 
-vastsa/pi-desktop-plugins               # 分发面，地址完全不变
+AIUO-Net/pi-desktop-plugins               # 分发面，地址完全不变
 ├─ catalog.json                         # 由插件中心生成
 ├─ packages/<pluginId>-<version>.piplug # 由插件中心发布
 └─ plugins/                             # 已移除——源码归发布者所有
@@ -71,7 +76,7 @@ https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/packages/<plu
 
 ```text
 中心目录              artifactBaseUrl = raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main
-本分发仓库            raw.githubusercontent.com/vastsa/pi-desktop-plugins/main
+本分发仓库            raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main
 CNB 镜像              cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/…
 ```
 

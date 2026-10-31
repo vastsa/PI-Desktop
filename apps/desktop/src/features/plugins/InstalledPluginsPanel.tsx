@@ -30,13 +30,12 @@ export function InstalledPluginsPanel({
   setInstalledQuery,
   rowMenu,
   setRowMenu,
-  busyId,
+  isPluginBusy,
   queueInstall,
   projects,
   currentProjectPath,
   run,
   refreshPlugins,
-  reloadingId,
   reloadPlugin,
   setSettingsPlugin,
   servicesByPlugin,
@@ -187,7 +186,7 @@ export function InstalledPluginsPanel({
                               <Button
                                 variant="primary"
                                 size="sm"
-                                disabled={busyId === plugin.id}
+                                disabled={isPluginBusy(plugin.id)}
                                 onClick={() =>
                                   queueInstall({
                                     id: plugin.id,
@@ -198,7 +197,7 @@ export function InstalledPluginsPanel({
                                   })
                                 }
                               >
-                                {busyId === plugin.id
+                                {isPluginBusy(plugin.id)
                                   ? t("plugins.updating")
                                   : t("plugins.updateTo", { version: update.version })}
                               </Button>
@@ -256,10 +255,7 @@ export function InstalledPluginsPanel({
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      disabled={
-                                        busyId === plugin.id ||
-                                        reloadingId === plugin.id
-                                      }
+                                      disabled={isPluginBusy(plugin.id)}
                                       onClick={() => {
                                         setRowMenu(null);
                                         void reloadPlugin(plugin.id);

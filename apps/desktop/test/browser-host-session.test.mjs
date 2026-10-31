@@ -69,39 +69,36 @@ test("BrowserPreview prepares a new resource tab without navigating or rewriting
   assert.equal(h.loads.length, 2, "switching back must reuse the page");
 });
 
-test("background navigation targets that session's last selected tab", async () => {
+test("background navigation runs in that session's last selected tab", async () => {
   const h = harness(); await open(h, "A", "a", "A.html");
   await open(h, "B", "b", "B.html");
   h.host.setChromeSession("A", "a");
-  await h.host.navigate({ url: "https://fixture.invalid/new-b" }, "B");
-  h.loads[1].finish(); // A late native state update cannot overwrite the queued URL.
-  assert.equal(h.host.getState().url, "A.html");
-  assert.equal(h.loads.length, 2);
-  h.host.setChromeSession("B", "b", "B.html");
+  const navigation = h.host.navigate({ url: "https://fixture.invalid/new-b" }, "B");
   h.roots.at(-1).resolve("/projects/B"); await settled();
   assert.equal(h.loads.at(-1).target, "https://fixture.invalid/new-b");
-  h.loads.at(-1).finish(); await settled();
-  assert.equal(h.host.getState().url, "https://fixture.invalid/new-b");
-  h.host.setChromeSession("D", "d", "old-d.html");
-  h.roots.at(-1).resolve("/projects/D"); await settled();
-  const pendingLoad = h.loads.at(-1);
-  h.host.setChromeSession("A", "a");
-  await h.host.navigate({ url: "https://fixture.invalid/new-d" }, "D");
-  pendingLoad.finish(); await settled();
-  h.host.setChromeSession("D", "d");
-  h.roots.at(-1).resolve("/projects/D"); await settled();
-  assert.equal(h.loads.at(-1).target, "https://fixture.invalid/new-d");
-  h.loads.at(-1).finish(); await settled();
-  await h.host.navigate({ url: "https://fixture.invalid/queued" }, "C");
-  await open(h, "C", "c", "old.html");
-  assert.equal(h.host.getState().url, "https://fixture.invalid/queued");
-  h.host.setChromeSession("E"); // A session may exist without a concrete resource tab.
-  h.host.setChromeSession("A", "a");
-  await h.host.navigate({ url: "https://fixture.invalid/first-e" }, "E");
-  await open(h, "E", "e", "old-e.html");
-  assert.equal(h.host.getState().url, "https://fixture.invalid/first-e");
-  h.host.setChromeSession("C", "blank");
-  assert.equal(h.host.getState(), null);
+  h.loads.at(-1).finish();
+  const state = await navigation;
+  assert.equal(state.sessionId, "B");
+  assert.equal(state.tabId, "b");
+  assert.equal(h.host.getState().url, "A.html");
+  h.host.setChromeSession("B", "b");
+  assert.equal(h.host.getState().url, state.url);
+  assert.equal(h.loads.length, 3, "selecting an already running page must not reload it");
+  h.host.dispose();
+});
+
+test("the first background navigation creates an isolated tab without UI mounting", async () => {
+  const h = harness(); await open(h, "A", "a", "A.html");
+  const navigation = h.host.navigate({ url: "https://fixture.invalid/first-c" }, "C");
+  assert.equal(h.roots.at(-1).sessionId, "C");
+  h.roots.at(-1).resolve("/projects/C"); await settled();
+  h.loads.at(-1).finish();
+  const state = await navigation;
+  assert.equal(state.sessionId, "C");
+  assert.equal(state.tabId, "plugin:pi.browser/browser");
+  assert.equal(h.host.getState().url, "A.html");
+  assert.equal(h.panes.at(-1).visible, false);
+  h.host.dispose();
 });
 
 test("a temporary preview uses its own scratch even while a project session is visible", async () => {
@@ -221,13 +218,9 @@ test("Browser reveal never steals focus from a different session", async () => {
   await assert.rejects(reveal, (error) => error?.code === "UNAVAILABLE");
 });
 
-test("plugin browser operations remain unavailable until the Browser view is visible", async () => {
+test("unscoped plugin browser operations still require a visible Browser view", async () => {
   const h = harness(); await open(h, "A", "a", "A.html");
   assert.equal(h.host.getStateForPlugin().url, "A.html");
-  const pendingNavigation = h.host.navigate({ url: "https://fixture.invalid/hidden" });
-  h.surface(false);
-  h.roots.at(-1).resolve("/projects/A");
-  await assert.rejects(pendingNavigation, (error) => error?.code === "UNAVAILABLE");
   h.surface(false);
   const unavailable = (error) => error?.code === "UNAVAILABLE";
 

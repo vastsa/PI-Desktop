@@ -96,8 +96,11 @@ test("plugin views reach the panel body and the empty state", () => {
   assert.doesNotMatch(panelSource, /openPluginView\(view\)/);
 });
 
-test("the native surface keeps its full and current bounds while the launcher is active", () => {
+test("the native surface stays visible while a plugin tab uses the native menu", () => {
   assert.match(panelSource, /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s);
+  assert.match(panelSource, /if \(activeTab\?\.kind === "plugin"\)\s*\{\s*openNativeTabMenu/);
+  assert.match(panelSource, /api\.openWorkPanelTabMenu\(/);
+  assert.doesNotMatch(panelSource, /tabContextMenu !== null/);
   assert.doesNotMatch(panelSource, /avoid: pluginSurface/);
   assert.doesNotMatch(panelSource, /menuOpen|work-panel-new-menu|placeWorkPanelMenu/);
   assert.doesNotMatch(viewTabSource, /occludedById/);
@@ -291,4 +294,30 @@ test("host panel events reach docked views as well as detached windows", () => {
   assert.match(mainSource, /plugins\.broadcastEvent\("workspace:changed"/);
   assert.match(mainSource, /plugins\.broadcastEvent\("appearance:changed"/);
   assert.match(mainSource, /function setCurrentWorkspacePath/);
+});
+
+test("docked views follow the app's type scale and the window zoom", () => {
+  const lifecycleSource = readMainModuleSync("bootstrap/app-lifecycle.ts");
+  const browserHostSource = read("electron/main/browser-host.ts");
+  // A docked view is its own page, so the Appearance type scale has to be
+  // republished as that page's zoom: the settings path feeds it in, a live view
+  // is rescaled in place, and a window zoom re-asserts the composed factor.
+  assert.match(
+    lifecycleSource,
+    /pluginViews\.setFontScale\(resolveFontScale\(\{ fontScale: settings\?\.fontScale \}\)\)/,
+  );
+  assert.match(lifecycleSource, /function resyncDockedPluginZoom\(target: BrowserWindow\)/);
+  assert.match(lifecycleSource, /resyncDockedPluginZoom\(target\);/);
+  assert.match(viewHostSource, /setFontScale\(scale: number\): void/);
+  assert.match(viewHostSource, /wc\.setZoomFactor\(zoom\)/);
+  // Every fresh document re-applies it, so a reload or a navigation cannot
+  // leave a plugin page at its author size.
+  assert.match(viewHostSource, /wc\.on\("dom-ready", \(\) => this\.applyZoom\(wc, this\.viewZoom\(\)\)\)/);
+  // The browser guest is placed from chrome CSS pixels, so the surface carries
+  // the factor the chrome is painting at.
+  assert.match(viewHostSource, /scale: this\.viewZoom\(\)/);
+  assert.match(
+    browserHostSource,
+    /scaleGuestHole\(this\.hole, this\.chrome\.scale\)/,
+  );
 });

@@ -9,16 +9,25 @@ JavaScript 包。上游包演进时，必须保持这一职责划分清晰。
 
 ## 2. 当前职责
 
+Sidecar 将 `@earendil-works/pi-agent-core`、`pi-ai` 与 `pi-coding-agent` 精确固定在
+`1.4.0`；Desktop 的 `pi-ai` 和 `pi-mcp` 开发依赖也使用同一版本。补丁行为与迁移
+记录见 `docs/project/pi-140-adoption.md`。
+
 - `@earendil-works/pi-agent-core` 提供 Agent 循环，以及稳定的 agent、event、tool
   类型。Agent Runtime 自行维护桌面专用的上下文投影、压缩和 prompt 模板展开。
 - `@earendil-works/pi-ai` 提供提供商传输、认证、消息类型、请求重试和 token 估算。
-  Hosted search 请求与估算行为继续由 PI-Desktop 的 pi-ai 补丁和契约测试覆盖。
+  Hosted search 请求与估算行为，以及为 Fast 模式让 `streamSimple` 转发 `serviceTier`
+  （ADR 0334），继续由 PI-Desktop 的 pi-ai 补丁和契约测试覆盖。
+- Agent Runtime 和 subagent 显式传入客户端身份：保留 pi-ai 的详细版本化
+  `User-Agent`，并以 `attribution: null` 关闭 pi-agent-core 默认的 Pi 归属请求头。
 - Rust `host-core` 仍然是 SQLite 和权威持久会话状态的唯一所有者。Node sidecar
   通过现有 RPC 契约请求持久化检查点和工具结果。
 - `@earendil-works/pi-coding-agent` 是过渡期依赖。生产代码仅在原生 Pi 会话续接及
 其 session-file manager 中使用；该路径仍使用包内 `AgentSession` 和原生会话行为。
 可信扩展由 `extensions/loader.ts` 提供小型兼容 shim。Desktop 常规 Agent 运行时、
 host-core 检查点压缩路径和持久会话存储不使用其 `AgentSession`。
+- 原生 Pi 会话使用 pi-coding-agent 的 SDK 身份，其归属请求头遵循该 SDK 的安装遥测设置。
+  Desktop 自有的主 Agent 和委派 Agent 使用上文的显式身份。
 
 不要重新引入已移除的 pi-agent-core harness、session、compaction 或 prompt-template
 API。桌面行为留在 `agent-runtime` 边界内；提供商操作使用 pi-ai 的公开 API。

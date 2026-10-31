@@ -52,7 +52,7 @@ This log freezes previously open questions into concrete decisions.
 | D656 | Quarantine appends the host keeps refusing instead of stalling the outbox | **Amend ADR 0041 / D318 / D444 / D597: an append whose `session.appendMessage` or `session.recordUsage` call fails with an error the outbox cannot classify as a duplicate message id, a `PERMISSION_DENIED:` poison row, or a foreign-key orphan is retried on a bounded backoff (5s, doubling to a 60s cap) instead of ending the flush. The fifth consecutive failure on that head moves it into an application-owned dead-letter file, `session-message-outbox.dead-letter.json`, with its payload, session id, quarantine timestamp, and host error; only the newest 256 quarantined appends are kept, and the oldest is discarded with a warn. The flush then continues with the next entry, so one refused append can no longer hold the FIFO head, fill the 1024-entry cap, or fail every session's writes. Quarantined appends are never replayed automatically, and `session.delete` drops that session's quarantined appends too. No protocol version, storage schema, or queued-outbox format change.** | A `stream did not contain valid UTF-8` append stayed at the FIFO head for 14.8 hours while `session.persistence.outbox.is.full` fired 5990 times, so every session's appends failed until restart. Only three error classes had a drain, and every other error was treated as transient forever (#1560). |
 | D657 | Let the embedded Browser open local files outside the workspace | **Amend ADR 0170: an explicit absolute path or `file:` URL may load any existing regular local file, and a local-file page may navigate to other existing local files. Relative inputs remain workspace-rooted; HTTP(S) pages retain only the prior in-workspace file-link allowance. Missing files, directories, and remote file authorities remain blocked. `BrowserPreview` and the sidecar keep their workspace-rooted resolver. The public `pi.browser.navigate` API follows this policy under the high-risk `browser.cdp` permission. See ADR 0328, E2E-059, `04-ux/08-component-spec.md`, and `05-security/01-security.md`.** | Users need to inspect local HTML outside a project, while workspace-scoped agent file tools and remote-page navigation must retain their existing boundary (#1627). |
 | D659 | Reopen archived projects in the sidebar | **Amend D093 / D455: successful explicit project activation clears the normalized path's renderer-local archived flag and persists it, so Open from Project archive, reopening the same folder through Add project, and opening a project session reveal the project in the home sidebar. Selecting a row for inspection and ordinary session refreshes do not alter archive state. No host/project/session storage or protocol change. See ADR 0294, E2E-264, and issue #1653.** | Reopening a project changed the active workspace but left its path-keyed archived presentation flag set, hiding it from the sidebar after the user explicitly reopened it. |
-| D661 | Segmented turn process and independent thinking preference | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
+| D661 | Segmented turn process and independent thinking preference *(amended by D668)* | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
 | D662 | Open scoped HTML files in the work-panel Browser from plugins | **Add `pi.fs.openInBrowser(pathFromRoot)` under `fs.read`. The host applies the plugin's normal read containment, protected-path, credential deny-list, declared scope, and registered project-folder checks; only existing `.html`, `.htm`, and `.xhtml` files qualify. After validation, Main asks the renderer to create a Browser resource tab for the active local session. The Browser plugin must be enabled. This grants no `browser.cdp`, changes no BrowserPreview or local-file navigation policy, and adds no host-core protocol or persisted-state change. See ADR 0330, `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`, `04-ux/08-component-spec.md`, and E2E-153.** | The File Manager needs an in-app HTML preview, while granting its plugin `browser.cdp` would also expose unrelated page inspection and control. |
 
 ## B. Secondary implementation defaults
@@ -81,7 +81,7 @@ This log freezes previously open questions into concrete decisions.
 | D023 | Provider coverage goal | **Universal market coverage** (not a tiny fixed vendor list) | Globalization + real coding workflows |
 | D024 | Coverage strategy | **pi-ai native providers + first-class OpenAI-compatible + custom providers** | Maximum reach without rewriting every SDK |
 | D308 | Zhipu / Z.AI named endpoint presets | **Amend D024 / ADR 0116: the add-provider Service select offers four OpenAI-compatible Zhipu endpoints — China and international standard API plus GLM Coding Plan — with locked published URLs and models.dev `vendorKey`s (`zhipuai`, `zhipuai-coding-plan`, `zai`, `zai-coding-plan`). No new apiStyle or wire adapter. Completions requests on those URLs use `thinkingFormat: "zai"` and `zaiToolStream: true`. Custom endpoint remains available.** | Users had to know which BigModel / Z.AI URL to paste, and `vendorKey: "custom"` could catalog-match the wrong API vs Coding Plan record. Named presets keep coverage on the existing OpenAI-compatible path. See ADR 0155 and E2E-005D. |
-| D389 | DeepSeek reasoning_content replay on aggregators | **Amend D024: Completions requests for DeepSeek-family models set `requiresReasoningContentOnAssistantMessages: true` and `supportsReasoningEffort: false` when the row `vendorKey`, base URL, model id, or catalog `family` identifies DeepSeek. Do not change `thinkingFormat` for that match. pi-ai still auto-detects official `deepseek.com` URLs.** | DeepSeek thinking mode 400s if any replayed assistant message omits `reasoning_content` or if a relay receives the unsupported generic `reasoning_effort` field. PI-Desktop stores a UUID as `model.provider`, so SiliconFlow, Volcengine, and custom gateways never match pi-ai's `provider === "deepseek"` check. See E2E-005E. |
+| D389 | DeepSeek reasoning_content replay on aggregators | **Amend D024: Completions requests for DeepSeek-family models set `requiresReasoningContentOnAssistantMessages: true` (and, off `deepseek.com`, `supportsReasoningEffort: false`; amended by D672) when the row `vendorKey`, base URL, model id, or catalog `family` identifies DeepSeek. Do not change `thinkingFormat` for that match. pi-ai still auto-detects official `deepseek.com` URLs.** | DeepSeek thinking mode 400s if any replayed assistant message omits `reasoning_content` or if a relay receives the unsupported generic `reasoning_effort` field. PI-Desktop stores a UUID as `model.provider`, so SiliconFlow, Volcengine, and custom gateways never match pi-ai's `provider === "deepseek"` check. See E2E-005E. |
 | D424 | DeepSeek reasoning across compaction | **Amend D389 / ADR 0136: restore thinkingSignature on history rebuild; store recent thinking in checkpoint `details.retainedReasoning` and replay after the summary; non-official DeepSeek Completions rows set `requiresNonEmptyReasoningReplay` so the pi-ai patch uses a documented placeholder instead of `""`. Official deepseek.com keeps empty-string fill.** | OpenCode / third-party DeepSeek V4.1 Flash 400s after compaction when empty reasoning is echoed (#296). |
 | D309 | Add-provider common path is Service + key | **Amend D308 / ADR 0116 / ADR 0155: a new add-provider dialog starts with only Service. Named endpoints (Zhipu / Z.AI, OpenCode Go) then show Service + API key and a host summary. Custom endpoint then shows Name, Base URL, and API key. Name (named) and API format (custom) stay in Advanced. OpenCode Go is a Service option. No stepper or vendor-card grid.** | Stacking Name, Base URL, and API format next to Service made a known service look like a generic gateway. The common path should be pick a service and paste a key. See ADR 0156 and E2E-005 / E2E-005B / E2E-005D. |
 | D310 | Custom API format stays beside the key; Service lists top models.dev vendors | **Amend D309 / ADR 0155 / ADR 0156: Custom endpoint shows Name + Base URL, then API key beside API format on the common path. Named Service options expand to models.dev-backed international and China first-party endpoints (OpenAI, Anthropic, Google, OpenRouter, Groq, xAI, Mistral, Together, Fireworks, OpenCode Go, Z.AI, DeepSeek, Qwen, Moonshot, Zhipu, SiliconFlow, Volcengine, MiniMax Anthropic Messages, MiniMax OpenAI-compatible, Kimi For Coding), each with a published URL and wire style. Named display names stay in Advanced.** | Custom gateways need the format next to the key, while named vendors should cover the usual domestic and international APIs without a closed allowlist. See E2E-005 / E2E-005B / E2E-005D. |
@@ -332,6 +332,14 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D602 | Crash dumps stay in the data directory | **Electron's Crashpad reporter starts local-only (`uploadToServer: false`) before `ready`. Dumps live under `<data_dir>/crash-dumps`, not the default Electron `userData` crashDumps path, so a `PI_DESKTOP_DATA_DIR` profile does not share dumps. The next lock-holding launch writes one `diagnostics` line for dumps newer than `crash-dumps.json`, classified by Crashpad `ptype`: `error` if any new dump is the browser/main process, `warn` for recovered renderer/GPU/utility crashes. Host-core and sidecar crashes stay on the supervisor path. No upload, no IPC, no schema change.** | A crash left a minidump nobody read. Crashpad also records recovered renderer crashes, so a next-launch `error` that said the previous run died was a lie; and dumps outside the data directory escaped `PI_DESKTOP_DATA_DIR` isolation. |
 | D619 | A copied formula is its TeX source | **Renderer only: a copy whose selection covers rendered math writes `text/plain` from the MathML `annotation` — `$…$` inline, `$$…$$` on its own lines, the delimiters `lib/latex-math.ts` normalizes `\(…\)` and `\[…\]` to, each run widened past any run inside the formula as a code span's fence is — instead of the two trees KaTeX paints. A cut that lands inside a formula grows to the whole formula. Only the formulas are rewritten: the reduced clone is read back through `Selection.toString()`, the serializer a copy itself runs, so prose, lists, tables and code blocks sharing the selection keep the platform's own reading — `user-select: none` chrome left behind included, which `innerText` would have written out. A selection with no formula in it, and a copy raised where the selection does not live, are left to the platform entirely. One flavour is written, `text/plain`: taking the event over drops the platform's `text/html` too and none is written back, because the reduced clone is app markup that would carry the `user-select: none` chrome the text reading drops, and because carrying the rendering instead would paste every formula twice — KaTeX's stylesheet is the only thing hiding the MathML tree and no stylesheet travels on the clipboard. One document `copy` listener owned by the shell, and the transcript's right-click Copy reads the same selection through the same module.** | A formula pasted as its glyphs, once per rendered tree, so it could not be carried into a LaTeX document or another Markdown editor (issue #414). ADR 0268 removed quoting on the grounds that the OS clipboard was the substitute; the clipboard had to actually carry the source. |
 | D620 | pi-ai built-in API-key services are named presets | **Add fifteen named endpoint presets — Ant Ling, Baseten, Cerebras, Hugging Face, Meta (`responses`), MiniMax (International), Moonshot AI (International), NVIDIA, OpenCode Zen, Vercel AI Gateway, Qwen Token Plan (`alibaba-token-plan`), Qwen Token Plan (China), Xiaomi Token Plan (China / Europe / Singapore) — to `NAMED_ENDPOINT_PRESETS`, each at its published host, with the pi-ai provider id kept as an alias wherever the models.dev key differs. Eight built-in providers remain exceptions with a recorded reason: Amazon Bedrock, Azure OpenAI, Cloudflare AI Gateway, Cloudflare Workers AI, Google Vertex AI (account- or region-scoped URLs), GitHub Copilot and OpenAI Codex (vendor-account rows), and Radius (`pi_messages` is account-only here). `packages/agent-runtime/src/pi-ai-provider-sync.test.ts` fails on a pi-ai upgrade that leaves a provider neither covered nor excepted. No protocol, storage, or IPC change.** | Every other pi-ai capability was already reachable, but the API-key half of the service catalog was hand-maintained and had drifted from the library's own provider list (ADR 0307). |
+| D668 | One process disclosure per turn, with three transcript display modes | **Amend D661 / the `turn-process-and-thinking-display` ADR. A turn renders exactly one top-level process disclosure holding every pre-answer row; the answer stays outside it. `AppSettings.transcriptDisplayMode` selects the layout: `flat` renders no nested activity groups, `command-first` renders `Bash`/run rows as standalone rows beside activity groups, and `fully-folded` (the default for absent or invalid values) keeps commands inside their groups and lets only ordinary assistant progress text split them. The mode is read while rendering, so switching repaints immediately - the projection cache is keyed by messages and compactions only. The disclosure header reports failed / stopped / running / finished with precedence in that order and never echoes the current item, and the disclosure shares one left edge with the levels it reveals. `transcriptDisplayMode` joins the portable application fields; `keepCommandsExpanded` is deprecated, retained only for persisted-settings compatibility, and no longer exposed or read for rendering. No host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | Chronological segmentation split one turn into several sibling disclosures above the answer, and the boolean command-folding preference could only express two layouts; a three-mode setting covers flat, command-first, and the released grouped view without changing what a tool received or stored. |
+| D669 | `@` queries search past a truncated file index | **Amend D124: while the 8000-entry `fs/index` snapshot is truncated, a non-empty `@` query is also searched over the root's full listing through the read-only Electron channel `pi-desktop/fs/search` once typing pauses, and its best 50 rows merge with the local matches. A complete index never searches. Remote sessions keep their snapshot. No host RPC, storage, or schema change.** | The shallowest-8000-entry index left a script several folders down matching no query at all, even though the truncation note invited the reader to refine it (issue #1781). |
+| D671 | Inline generative UI visualizations | **Amend D114: local sessions get a second host-owned contained root `<data_dir>/visualizations/<sessionId>/` for `.html` fragments only (Read/Write/Edit, auto-allowed like scratch, never in remote or contract sessions). A standalone `::visualize{"path","title"}` reply line renders the fragment inline through a sandboxed `pi-genui://session/<sid>/<file>` iframe (`sandbox="allow-scripts"`, strict CSP, no network). Builtin skill `pi-desktop/visualize`. No schema change.** | Interactive explanations need an embedded page; ADR gen-ui-inline-visualization. |
+| D674 | Per-turn changed-files summary under a finished reply | **A completed reply whose turn recorded workspace review changes renders one read-only `TurnChangesCard` below its answer and above `entryExtra`, built only from that turn's message-owned `details.review` records (no new capture, IPC, or persistence). Rows merge edits per path (`D` if the turn ends by deleting, else `A` if any edit created the file, else `M`; counts summed; rolled-back files stay listed and struck through). Up to four files use relaxed rows, more use dense rows, and rows past 12 fold into `+N more`. Clicking a row opens Review on that file's recorded changes; the per-call review rows and the Review tab are unchanged.** | Issue #1891, design 10 (adaptive density): the per-call review rows answer "what did this call change", and Review answers it for the whole session, but nothing answered "what did this turn change" without counting rows. |
+| D675 | Inline images are admitted by pixel size as well as bytes | **Amend D361: an image whose PNG/JPEG/GIF/WebP header reports a longest edge above `MAX_INLINE_IMAGE_EDGE_PX` (8000) is never inlined. Host Read refuses it with `TOOL_FAILED`; prompt attachments and restored history take the existing `@path` fallback; and the runtime's last provider view replaces any such image block (user or tool result) with a text notice naming its size. The probe reads headers only (no decoder); unknown dimensions keep the byte-only rule. No protocol, schema, or persisted-format change.** | Issue #1913: a 1.89 MB, 780 x 14182 full-page screenshot passed every byte check, the provider rejected it with a non-retriable 400, and replay made every later request in that session fail. Dropping is deterministic for the same bytes, so the request prefix and prompt caching stay stable; resampling would need an image decoder and is deferred. |
+| D676 | A completed turn the reader followed ends at its prompt | **Amend the stream-completion rule: when a turn completes while the transcript is visible and still following the stream, the renderer scrolls that turn's newest user message to 16px below the titlebar band the transcript reserves at its top (smooth unless reduced motion), releases follow mode, and shows jump-to-latest. Nothing moves when the prompt is already in view, the reply failed or was aborted, the pane is hidden or in a reading window, a disclosure position is held, or a new run starts before the move. Renderer only; no setting, IPC, or persistence change.** | Issue #1889: after a long reply the reader sat at its last line and had to scroll back up to find where it began. |
+| D677 | DeepSeek reasoning replay uses one field per row and never covers real reasoning | **Amend ADR 0256 decision 3: the pi-ai fill pass takes the reasoning field from the newest assistant row that has real reasoning, normalizes every assistant row to that single field (moving real reasoning from another field name, deleting the others), and fills the placeholder only on rows with no reasoning. History rebuild and the thinking panel drop a leading echo of the placeholder (`withoutReasoningReplayPlaceholder`); stored text is not rewritten. No schema, IPC, or setting change.** | Issue #1945: rebuilt rows are stamped `reasoning_content` while a relay streams `reasoning_text`; the fill pass picked `reasoning_content` and wrote the placeholder over the live row's real reasoning, the model echoed it as its own thinking (13.6% of assistant rows in affected sessions), and the echo was persisted and replayed. |
+| D678 | Radial context menu rebuilt and moved to General | **The opt-in transcript radial menu gets at-rest icon-and-label sectors (the hover-only hub label is gone), one filled highlight for the active sector with no focus rectangle, a recessed hub carrying the click-point dot, a 248 px disc with hairline separators and the composer shadow, and shared motion tokens for hover and reveal. A right-press started while the ring is open runs the sector it is released on; releasing in the hub dismisses without running; the release trailing the opening right-click is inert. The settings card moves from the AI tab to General after Sidebar and the settings-search index follows. Action vocabulary, per-direction defaults, `AppSettings.radialMenu`, persistence, and IPC are unchanged.** | The icon-only ring could not be read without hovering every sector, the sector fill and button background painted two highlights over one target, and the ring's switch sat in the AI tab although the surface is a transcript-interaction preference. |
 
 
 ## M0. Model catalog decisions
@@ -7778,3 +7786,318 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   default. Settings reads apply these defaults through renderer API
   normalization; no persisted schema or migration change is required. See
   `04-ux/01-ui-ia.md`, `04-ux/06-settings-ia.md`, and E2E-266.
+
+## 2026-10-16 — macOS paints an opaque native window surface (D665)
+
+- D665 supersedes the macOS `vibrancy: "sidebar"` + `transparent: true` window
+  backing from D348. A vibrancy material behind a transparent surface is
+  recomposited by WindowServer every frame the window stays dirty, which held an
+  idle focused window near 40% GPU on Apple Silicon (issue #1064). macOS now
+  paints the opaque background the other platforms already use, keeping the
+  `hiddenInset` titlebar, the inset traffic-light position, and the renderer's
+  sidebar tint and sheen.
+- The `window.setBackgroundColor` IPC no longer returns early on darwin, so a
+  granted `windowAppearance.backgroundColor` plugin theme is applied on macOS
+  like every other platform (ADR 0248): a theme change repaints the native
+  surface instead of being skipped. Native corner behavior is unchanged.
+- The bounded-animation contract that bounded idle indicators under #1064 stays
+  in force; only its stated rationale changes, because a dirty window is
+  recomposited on every platform. See ADR 0332, ADR 0248, ADR 0260,
+  `04-ux/08-component-spec.md`, `04-ux/07-ui-design-system.md`, and
+  `07-plugins/13-plugin-permissions-matrix.md`.
+- Covered by `apps/desktop/test/macos-opaque-window-surface.test.mjs`,
+  `apps/desktop/test/window-background.test.mjs`,
+  `apps/desktop/test/window-background-theme.test.mjs`, and
+  `apps/desktop/test/idle-status-animations.test.mjs`.
+
+## 2026-10-20 — macOS translucency is a window setting (D666, amended by D667)
+
+- D666 amends D665 / ADR 0332: the macOS main window still paints an opaque
+  native surface by default, and `AppSettings.macosWindowTranslucency` lets a
+  user opt back into the `sidebar` vibrancy material behind a transparent
+  backing. `macosWindowSurfaceOptions(translucent, color)` is the single surface
+  declaration; `mainWindowBackgroundOptions("darwin", color)` keeps the opaque
+  result so a platform-only caller never gets the material.
+- Electron fixes `transparent` when a window is created, so the preference is
+  read before `new BrowserWindow` and a change applies on the next launch. The
+  darwin-only Settings → General → Appearance row persists the choice and shows
+  a restart hint while it differs from the surface this process was created
+  with; no runtime window mutation, renderer reload, or relaunch is performed.
+- While the window is translucent, `window.setBackgroundColor` leaves the
+  surface to the material, so a plugin theme's
+  `windowAppearance.backgroundColor` is applied only on the opaque surface. The
+  renderer tint and sheen are unchanged in both modes, and no persisted-format
+  migration is required (D667 changed the absent-value meaning to translucent).
+- Covered by `apps/desktop/test/macos-window-translucency.test.mjs`,
+  `apps/desktop/test/macos-opaque-window-surface.test.mjs`, and
+  `apps/desktop/test/window-background.test.mjs`. See ADR 0332,
+  `04-ux/08-component-spec.md`, and `04-ux/07-ui-design-system.md`.
+
+## 2026-10-20 — macOS translucency stays the default (D667)
+
+- D667 amends D665 / D666 and ADR 0332: the macOS main window ships
+  **translucent** again — `vibrancy: "sidebar"`, `visualEffectState:
+  "followWindow"`, and a transparent `#00000000` backing — and
+  `AppSettings.macosWindowTranslucency` is the opt-out. Absent and `true` mean
+  the shipped material; only `false` paints the opaque surface that leaves
+  WindowServer's per-frame recomposition path (#1064). The store itself defaults
+  to translucent, so a boot that cannot read settings still paints the expected
+  window.
+- A translucent window owns its pixels: the post-creation
+  `applyMainWindowBackground` call now skips macOS windows created translucent,
+  in addition to the already-guarded `window.setBackgroundColor` and theme paths.
+  Without that guard the window was created with the material and then had an
+  opaque host colour painted over it, so the switch looked inert after a restart.
+  `window/control` `getState` keeps reporting the surface the process actually
+  created, which keeps the Settings restart hint honest.
+- No persisted migration: an absent value now means translucent, which restores
+  the pre-D665 appearance for every existing install, and an explicit `false`
+  keeps the opaque choice a user already made. See ADR 0332, ADR 0248,
+  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, and
+  `apps/desktop/test/macos-window-translucency.test.mjs`.
+
+## 2026-10-21 — One process disclosure per turn, with three transcript display modes (D668)
+
+- D668 amends D661 / the `turn-process-and-thinking-display` ADR: a turn now
+  renders exactly one top-level process disclosure containing every pre-answer
+  row. No run row is a sibling of that disclosure; the trailing answer, assistant
+  errors, stopped trailing text, and pending action surfaces stay outside it.
+- `AppSettings.transcriptDisplayMode` selects the layout. `flat` renders no
+  nested activity groups and lists rows in transcript order. `command-first`
+  keeps the groups but lifts `Bash`/run rows into standalone rows, with a normal
+  progress message or a command ending a group. `fully-folded`, the default for
+  absent or invalid values, keeps run rows inside their groups and lets only
+  ordinary assistant progress text split them. The mode is read while rendering,
+  so switching repaints immediately.
+- With `showThinking` on, Thinking rows default expanded in `flat` and
+  `command-first`; `fully-folded` keeps the released exception where only the
+  last active row opens while it is live. With the preference off, no completed
+  reasoning row renders and only a live whole-run TextShimmer `Thinking`
+  indicator remains while reasoning streams.
+- `keepCommandsExpanded` is deprecated and retained only for persisted-settings
+  compatibility; it is no longer exposed or read for rendering. The disclosure
+  header, left edge, and pane-owned disclosure memory are unchanged.
+- Covered by `apps/desktop/test/turn-process.test.mjs`,
+  `apps/desktop/test/transcript-display-modes-ui.test.mjs`,
+  `apps/desktop/test/transcript-display-mode-settings.test.mjs`, and
+  `apps/desktop/test/settings-roundtrip.test.mjs`. See the amended ADR,
+  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-19 — `@` queries search past a truncated file index (D669)
+
+- The `fs/index` snapshot keeps the shallowest 8000 entries, and the menu
+  fuzzy-filtered only that snapshot. In a large tree — a Unity project, where
+  every asset has a `.meta` sibling — scripts several folders deep were never
+  in it, so no query could reach them even though the truncation footnote
+  invited refining the query (issue #1781).
+- While the snapshot is truncated, a non-empty query is now also sent to
+  `fs/search` after a 150 ms typing pause. Main ranks it with the renderer's
+  scorer over the listing it already built for the index (`git ls-files`), or
+  over a deeper ignore-set walk (at most 200,000 entries or two seconds) when
+  the index came from the walk, and returns the best 50 rows. The menu merges
+  them with its local matches; an answer for an earlier query is dropped.
+- A complete index never searches, so small projects behave as before. The
+  footnote stays while the list may be incomplete. Remote sessions keep their
+  snapshot because the remote file protocol has no search operation. Bundling
+  a native lister (ripgrep, bfs) was not needed: git already lists the whole
+  repository, and searching 60,000 paths takes a few milliseconds.
+- Covered by `packages/host-runtime/src/fs-index.test.ts` and
+  `apps/desktop/test/composer-deep-file-search-user-path.test.mjs`. See
+  `03-runtime/01-ipc-protocol.md` §13c, `04-ux/08-component-spec.md` §11.8,
+  and E2E-COMPOSER-deep-file-mentions.
+
+## 2026-10-22 — Keep small activity groups and reasoning visible after settlement (D670)
+
+- D670 amends D661 / D668 and ADR `turn-process-and-thinking-display`: an
+  ordinary activity group stays open while active; after completion, groups with
+  at most four visible items remain open, larger ordinary groups start closed,
+  and Task topology groups remain open. The whole-turn process still closes on
+  completion by default.
+- With `showThinking` on, all visible Thinking rows default expanded in Flat,
+  Commands first, and Fully folded. Tool, search, and run-row payloads remain
+  collapsed until the user opens them. Explicit disclosure choices remain
+  authoritative; there is no protocol or persistence change.
+- Issue #1806 reproduced the group and reasoning collapse at turn settlement.
+  `pnpm test:e2e:transcript` covers active-to-completed groups, reasoning rows,
+  and closed payloads. See `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-22 — Inline generative UI visualizations (D671)
+
+- Models explain dynamic systems, tunable parameters, and spatial relations
+  better with a small interactive page than with prose or Mermaid, but the
+  transcript renders Markdown only.
+- Local sessions get `<data_dir>/visualizations/<sessionId>/`, a second
+  contained root next to scratch (D114). Write/Edit accept only `.html`
+  fragments there, without a permission prompt; the directory is removed with
+  its session and orphan directories are swept at startup, never by age.
+  Remote-workspace and contract sessions get neither the root nor the skill.
+- A standalone `::visualize{"path":"…","title":"…"}` line outside code blocks
+  becomes an inline card once the turn completes. Main serves the fragment
+  through `pi-genui://session/<sessionId>/<file>` inside a host shell with a
+  strict CSP (no network, no frames, no forms) and a sandboxed iframe
+  (`allow-scripts` only); the URL is derived from the path suffix, so data-dir
+  relocation does not break old references. Cards always load from the
+  owning session; forks copy the fragments they reference. Theme and height
+  travel by `postMessage`. WebRTC ICE is not blocked by Chromium yet and is a
+  documented residual risk.
+- The shell embeds a stylesheet and tooltip/tab runtime adapted from ZCode's
+  Apache-2.0 visualize kit, plus offline D3 7.9.0 and Floating UI served from
+  `pi-genui://assets` (pinned CDN URLs are rewritten; any other remote URL is
+  blocked). The skill is a condensed adaptation of ZCode's.
+- v1 has no widget state, follow-up messages, CDN access, icons, or tweak
+  panel.
+  See ADR `gen-ui-inline-visualization`, `03-runtime/03-tools-and-permissions.md`
+  §4b.1, `03-runtime/04-data-storage.md`, and E2E-GENUI-inline-visualization-card.
+
+## 2026-10-23 — Official DeepSeek endpoints send reasoning_effort again (D672)
+
+- D672 amends D389: only DeepSeek-family rows whose base URL is not
+  `deepseek.com` set `supportsReasoningEffort: false`. Official rows leave the
+  flag to pi-ai, which sends `reasoning_effort` next to
+  `thinking: {type: "enabled"}`.
+- DeepSeek documents `reasoning_effort` (low / high / max) for Chat
+  Completions. With the flag forced off, official requests carried only the
+  thinking toggle, so low, high, and max produced the same request (#1821).
+  The #1664 report concerned relays, which keep the suppression by default.
+  Verified against `api.deepseek.com`: low, high, and max arrive as sent and
+  the endpoint still returns 200 for `thinking: {type: "enabled"}` alone.
+- The per-model `supportsReasoningEffort` override from D671 / #1846 still wins
+  in both directions, and relays that reject the field keep the suppression.
+- No persisted format or protocol change. Covered by
+  `packages/shared/src/provider-presets.test.ts`, the captured-request test in
+  `packages/agent-runtime/src/provider-binding.test.ts`, and the official-wire
+  cases in `packages/agent-runtime/src/provider-reasoning-effort.test.ts`. See
+  `03-runtime/11-provider-model-system.md` and E2E-005E.
+
+## 2026-10-24 — Automatic transcript folding is deterministic (D673)
+
+- D673 amends the turn-process disclosure policy: every ordinary group of a turn
+  stays open while that turn is active, instead of folding as soon as it stops
+  owning the live segment. After the turn settles, groups with at most four
+  visible items, Task topology groups, and groups that still render a Thinking
+  row stay open; larger groups of plain tool rows start closed. Visible
+  reasoning is reader-requested content, so `Show thinking` is no longer
+  undermined by folding the group around it.
+- Disclosure ownership is split in two. An explicit header/rail choice belongs to
+  its own level and never pins an ancestor; a press, focus or selection is a
+  transient reading hold that defers an automatic close until the reader leaves.
+  Previously a pointer press or a nested toggle recorded the enclosing levels'
+  current state as permanent choices, which disabled automatic folding for the
+  rest of the pane's life and could pin a level closed. Search reveals still keep
+  their revealed ancestor path open.
+- The activity-group issue counter is one inline non-wrapping chip
+  (`activity-issue-count`), replacing the unstyled `turn-process-error` span that
+  wrapped its icon and localized count onto separate lines in narrow bands. The
+  top-level turn header still carries no issue count.
+- No persisted format or protocol change. Covered by
+  `apps/desktop/test/activity-group-folding.test.mjs` and the automatic-folding
+  scenario inside `pnpm test:e2e:transcript`. See ADR
+  `turn-process-and-thinking-display`, `04-ux/08-component-spec.md` §9,
+  `04-ux/09-interaction-patterns.md` §4.2, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-28 — Per-turn changed-files summary (D674)
+
+- D674 adds a read-only `TurnChangesCard` under every completed reply whose
+  turn recorded at least one workspace review change (issue #1891, design 10).
+  It mounts with the reply plugin slots, so it never appears while streaming or
+  after a failed turn, and `entryExtra` blocks stay beneath it.
+- The card reads only the turn's message-owned `details.review` records through
+  `reviewChangeFromMessage`; no capture, IPC, persistence, or host-core change.
+  Rows merge edits per path: `D` when the turn ends by deleting the file, else
+  `A` when any edit created it, else `M`; counts add up; a file whose every edit
+  was rolled back stays listed and struck through.
+- Adaptive density: up to four files use relaxed 25px rows; more switch to dense
+  21px rows with a directory count; rows past 12 fold into `+N more` with a link
+  to Review. The card is one `--ds-tile` surface with no border (D297).
+- Clicking a row opens the originating session's Review tab, scrolls to that
+  file's first recorded change, and expands it, through a transient renderer
+  focus request (`lib/review-focus-request.ts`) rather than app-store state.
+  The per-call review rows and the Review tab otherwise keep their behavior.
+- Covered by `apps/desktop/test/turn-changes-card.test.mjs`. See
+  `04-ux/08-component-spec.md` §4.4 and E2E-CHAT-turn-changed-files-summary.
+
+## 2026-10-28 — Pixel-size image admission (D675)
+
+- D675 adds a header-only pixel-size probe (`packages/shared/src/image-dimensions.ts`,
+  mirrored in `crates/host-core/src/tools/image_dimensions.rs`) for PNG, JPEG,
+  GIF, and WebP. An image whose longest edge exceeds 8000 px is not inlined
+  (issue #1913).
+- Host Read refuses such a file with `TOOL_FAILED` and a message naming its
+  size, so it never enters history. Prompt attachments and restored history
+  keep the image ref and send the existing `@path` fallback instead of bytes.
+- `convertToLlm` replaces any remaining oversized image block (older sessions,
+  plugin or MCP results) with `[Image omitted: WxH px exceeds the 8000 px
+  longest-edge limit for model input.]`, which recovers a session that already
+  fails every request. The same bytes always produce the same notice, so
+  prompt caching is unaffected.
+- Images whose dimensions cannot be read keep the previous byte-only rule.
+  Resampling an oversized image instead of dropping it needs a decoder and is
+  not part of this change.
+- Covered by `packages/shared/src/image-dimensions.test.ts`,
+  `packages/agent-runtime/src/image-admission.test.ts`,
+  `packages/agent-runtime/src/attachment-history.test.ts`,
+  `apps/desktop/test/prompt-inline-attachments.test.mjs`, and host-core
+  `tools::image_dimensions` / `read_refuses_images_past_the_pixel_limit` tests.
+
+## 2026-10-28 — Completed turns end at their prompt (D676)
+
+- D676 replaces "stream completion keeps a following reader at the bottom":
+  when a followed turn completes, its prompt scrolls to the top of the
+  viewport and jump-to-latest appears (issue #1889). A reader who scrolled
+  away keeps their position.
+- The move waits for the reply's final status, runs one frame after the
+  settled reply lays out, and is skipped for failed or aborted turns, a prompt
+  already in view, a hidden pane or reading window, a held disclosure
+  position, and a queued follow-up that starts first.
+- Logic lives in `apps/desktop/src/lib/turn-completion-scroll.ts` and the
+  `useTurnCompletionScroll` hook beside `useTranscriptScroll`. Covered by
+  `apps/desktop/test/turn-completion-scroll.test.mjs` and
+  `pnpm test:e2e:transcript-turn-completion`
+  (E2E-CHAT-completed-turn-scrolls-to-prompt).
+
+## 2026-10-28 — One DeepSeek reasoning field per replayed row (D677)
+
+- D677 amends ADR 0256 decision 3 (issue #1945). The pi-ai fill pass in
+  `patches/@earendil-works__pi-ai@1.3.0.patch` picks the reasoning field of the
+  newest assistant row with real reasoning instead of the first field in a
+  fixed list, and normalizes every assistant row to it. Real reasoning stored
+  under another field name moves there; the other fields are removed, so a
+  row never carries two (relays reject duplicate reasoning fields).
+- The placeholder now fills only rows with no reasoning at all, so a live row
+  with real reasoning is never sent the placeholder in the field the model
+  reads.
+- `withoutReasoningReplayPlaceholder` (shared) drops a leading echo of the
+  placeholder, and its observed `[reasoning retained for this turn]` rewrite,
+  from stored thinking in session and delegate history rebuild and in
+  `messageThinking`, which feeds the thinking panel. Existing transcripts are
+  not rewritten; the echo simply stops being shown or replayed.
+- Not changed: strict relays still receive the non-empty placeholder for rows
+  with no reasoning (#296), and official DeepSeek keeps `""`.
+- Covered by `reasoning-content-backfill.test.ts`, `runtime.test.ts`,
+  `provider-presets.test.ts`, and `apps/desktop/test/assistant-turns.test.mjs`.
+  See E2E-005E.
+
+## 2026-10-29 — Radial context menu rebuilt and moved to General (D678)
+
+- D678 reworks the opt-in transcript radial menu. Every sector shows its
+  action's icon and label at rest, so the ring reads without hovering; the
+  active sector fills as a single highlight (no button background, no focus
+  rectangle); the hub is a recessed well with the click-point dot; the disc
+  shrinks from 320 to 248 px with hairline separators and the composer shadow;
+  and hover and reveal motion follow the shared motion tokens.
+- The standard marking gesture joins click and keyboard: a right-press that
+  starts while the ring is open runs the sector it is released on, releasing
+  in the hub dismisses without running, and the release trailing the
+  right-click that opened the ring is inert.
+- The settings card moves from the AI tab to General (after Sidebar) with its
+  settings-search index; the action vocabulary, per-direction defaults,
+  `AppSettings.radialMenu` shape, persistence, and IPC are unchanged.
+- Covered by `apps/desktop/test/radial-menu.test.mjs`, the Chromium component
+  check `pnpm test:e2e:radial-menu`, and capture scenes `pi-radial` /
+  `pi-radial-dark`. See `04-ux/09-interaction-patterns.md` §1.11 and
+  E2E-CHAT-radial-background-menu.

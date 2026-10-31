@@ -250,9 +250,13 @@ test("send clears the composer before the round trip and restores a rejected dra
     /if \(!steering && !modelReady\) \{\s*showToast\(t\("errors\.MODEL_NOT_CONFIGURED"\), \{ variant: "error" \}\);\s*return;\s*\}/,
   );
   // Optimistic clear, restore on rejection. The clear must precede the await.
-  const clearAt = submit.indexOf("draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);\n    const accepted = steering");
+  const clearAt = submit.indexOf("draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);\n    const accepted = await submitWithLatestDraftRestore(");
   assert.ok(clearAt > 0, "draft must be cleared before awaiting sendPrompt");
-  assert.match(submit, /if \(!accepted\) draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/);
+  assert.match(
+    submit,
+    /submitWithLatestDraftRestore\(\s*submittedDraftKey,[\s\S]*?\(\) => draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\),\s*\);\s*if \(accepted\) remember\(\);/,
+  );
+  assert.doesNotMatch(submit, /if \(!accepted\) draft\.restoreDraftForKey/);
   assert.doesNotMatch(submit, /if \(accepted\) draft\.clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\);\s*\};/);
   const restore = draftHook.match(
     /const restoreDraftForKey = \(key: string, snapshot: ComposerDraftSnapshot\) => \{[\s\S]*?\n  \};/,
@@ -283,7 +287,7 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   );
   assert.match(
     submit,
-    /const submittedDraftRevision = draft\.draftRevision\(submittedDraftKey\);\s*const submittedDraft = draft\.draftSnapshot\(rawText\);[\s\S]*?draft\.clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\);\s*const accepted = steering\s*\?\s*await steerPrompt\(inlineContent, submittedDraft\)\s*:\s*await sendPrompt\(\s*inlineContent,\s*submittedDraft,\s*activeSessionId \?\? undefined,\s*captureAcceptedSession,\s*\);\s*if \(!accepted\) draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
+    /const submittedDraftRevision = draft\.draftRevision\(submittedDraftKey\);\s*const submittedDraft = draft\.draftSnapshot\(rawText\);[\s\S]*?draft\.clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\);\s*const accepted = await submitWithLatestDraftRestore\(\s*submittedDraftKey,\s*\(\) => steering\s*\?\s*steerPrompt\(inlineContent, submittedDraft\)\s*:\s*sendPrompt\(\s*inlineContent,\s*submittedDraft,\s*activeSessionId \?\? undefined,\s*captureAcceptedSession,\s*\),\s*\(\) => draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\),\s*\);\s*if \(accepted\) remember\(\);/,
   );
   assert.match(store, /draft\?: ComposerDraftSnapshot/);
   const sendPrompt = queueSlice.slice(
@@ -299,6 +303,20 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
     sendPrompt,
     /const accepted = await get\(\)\.enqueuePrompt\(content, draft, sessionId\);\s*if \(accepted\) onAccepted\?\.\(sessionId\);\s*return accepted/,
   );
+});
+
+test("the latest-submit restore guard wraps the asynchronous send (#1809)", () => {
+  const submit = submitHook.match(
+    /const submit = async \(steering = false\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+  assert.ok(submit.length > 0, "composer submit implementation not found");
+  const clearAt = submit.indexOf("draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);");
+  const guardAt = submit.indexOf("submitWithLatestDraftRestore(", clearAt);
+  const restoreAt = submit.indexOf("() => draft.restoreDraftForKey(submittedDraftKey, submittedDraft)", guardAt);
+  assert.ok(clearAt >= 0, "the draft is cleared optimistically");
+  assert.ok(guardAt > clearAt, "the ownership guard starts after the clear");
+  assert.ok(restoreAt > guardAt, "the restore is owned by the guarded send");
+  assert.match(submit, /if \(accepted\) remember\(\);/);
 });
 
 test("draft attachment routing keeps image chips structured and file chips textual", () => {

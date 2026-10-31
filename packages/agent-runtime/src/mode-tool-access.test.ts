@@ -81,6 +81,7 @@ it.each([
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     subagents: [{ name: "worker", description: "Inspect", tools: ["Read"], prompt: "Inspect only.", source: "user" }],
     host: { call: async <T>(method: string): Promise<T> => {
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
       if (method === "session.appendMessage") return undefined as T;
       hostCalls.push(method); throw new Error("blocked tools must never reach the host");
     }, onNotification: () => () => {} },

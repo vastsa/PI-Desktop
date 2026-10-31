@@ -14,6 +14,7 @@ import {
 } from "../../lib/session-panes";
 import {
   clearSessionAsks,
+  dropSessionAskDrafts,
 } from "../../lib/pending-asks";
 import {
   clearSessionPermissions,
@@ -174,6 +175,7 @@ function clearLocalSessionState(
       id,
     );
     const pendingAsks = clearSessionAsks(state.pendingAsks, id);
+    const askDrafts = dropSessionAskDrafts(state.askDrafts, state.pendingAsks, id);
     const latestTurnResults = withoutRecordKey(state.latestTurnResults, id);
     const planningStates = withoutRecordKey(state.planningStates, id);
     const pendingPlans = withoutRecordKey(state.pendingPlans, id);
@@ -202,6 +204,7 @@ function clearLocalSessionState(
       isRunning: state.activeSessionId === id ? false : state.isRunning,
       pendingPermissions,
       pendingAsks,
+      askDrafts,
       latestTurnResults,
       planningStates,
       pendingPlans,

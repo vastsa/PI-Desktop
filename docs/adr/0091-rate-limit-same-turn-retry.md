@@ -7,8 +7,8 @@
 
 ## Context
 
-A provider HTTP 429 is transient, but it can happen both before a response is
-established and after a stream has already started. The old implementation
+A provider HTTP 429 caused by a transient rate limit can happen both before a
+response is established and after a stream has already started. The old implementation
 split those cases between pi-ai's one setup retry and the runtime's one
 mid-stream replay. That exposed persistent but still-recoverable rate limits to
 the user too early, and made the effective budget depend on which phase failed.

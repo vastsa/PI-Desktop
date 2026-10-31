@@ -200,7 +200,13 @@ export class DelegationChainRegistry {
     return listed.sort((left, right) => right.lastActivityAt - left.lastActivityAt);
   }
 
-  promptBlock(options: {
+  /**
+   * The resumable chains as one text block. This rides in a `TaskList` result,
+   * never in the system prompt: the list changes every time a delegation
+   * settles, and a system-prompt change rewrites the request prefix that
+   * provider prompt caches key on (ADR 0337).
+   */
+  resumableBlock(options: {
     runningDelegationIds: ReadonlySet<string>;
   }): string {
     return formatResumableList(this.resumableList(options));

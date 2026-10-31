@@ -22,9 +22,17 @@
  * `web_search_call` from another model) no longer inflates the estimate while
  * same-model search history keeps counting. A caller that has no target model
  * passes none and keeps the conservative block-protocol estimate.
+ *
+ * Instruction history is charged the way the adapter sends it as well: see
+ * `requestTranscript`.
  */
 
-import type { Api } from "@earendil-works/pi-ai";
+import {
+  resolveTranscript,
+  type Api,
+  type Model,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import {
   hostedSearchReplayProjection,
   type HostedSearchReplayOptions,
@@ -249,6 +257,27 @@ export function estimateOutputCapInputTokens(
   }
   // CJK chars are ~1 token each; the chars/4 baseline charged them 0.25.
   return baseline + Math.ceil(cjkChars * 0.75);
+}
+
+/**
+ * The transcript the adapter puts on the wire. Unless the model declares
+ * mid-conversation system support, every adapter folds the later system
+ * messages into one leading message holding the current instructions and
+ * tools. Estimating the unfolded history charges each superseded instruction
+ * snapshot again: a long session with a large instruction section then
+ * starves the output budget to the provider's floor while the request itself
+ * is far from the window.
+ */
+export function requestTranscript(
+  model: Pick<Model<Api>, "compat">,
+  context: TranscriptContext,
+): TranscriptContext {
+  const compat = model.compat;
+  const midConversation =
+    compat !== undefined &&
+    "supportsMidConvoSystemMessages" in compat &&
+    compat.supportsMidConvoSystemMessages === true;
+  return resolveTranscript(context, midConversation);
 }
 
 /**

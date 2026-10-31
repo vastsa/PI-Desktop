@@ -547,7 +547,8 @@ pixel remains clickable. Termination is geometric: a region ends where the
 element's border box ends, so an element that only pads its content clear of
 the band still covers the controls with its rectangle. The open work-panel
 header uses a horizontally scrollable tab strip with a fixed `+` add trigger;
-each tab owns its close action and the header does not add a second `×` beside
+each tab owns its close action, and activating a tab scrolls its tab and close
+action into the visible strip. The header does not add a second `×` beside
 the native Windows close control. The band
 floats over the destination pages, so on Windows/Linux a page frame and any
 right-edge detail sheet start below it instead of placing their own header
@@ -751,12 +752,14 @@ plain status text:
 - Exit: 280ms opacity fade (`startup-splash-out`) once `ready` is true, revealing
   the already-mounted shell underneath
 - Reduced motion: near-zero enter/exit and a static full-width bar
-- macOS: the splash is the same glass as the sidebar (D304 / D348) — the
-  `--ds-sidebar-glass-tint` fill plus top/bottom sheen over the native
-  `sidebar` vibrancy, so the boot surface never flashes an opaque panel
-  ahead of the translucent sidebar. The mounted shell stays hidden under
-  the glass until the exit fade, then cross-fades in. Other platforms keep
-  the opaque `--ds-bg-primary` fill
+- macOS: the splash uses the same sidebar treatment as the app shell (D304 /
+  D348) — the `--ds-sidebar-glass-tint` fill plus top/bottom sheen over the
+  native `sidebar` vibrancy material, so the boot surface never flashes a
+  mismatched panel ahead of the sidebar. Turning off the macOS `Translucent
+  window` switch paints an opaque native surface (ADR 0332) under the same tint
+  and sheen, and the splash keeps following whichever surface the window has. The
+  mounted shell stays hidden under the splash until the exit fade, then
+  cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill
 
 This is boot-state feedback, not decorative chrome.
 
@@ -796,7 +799,7 @@ are also explicitly suppressed or collapsed to a static state.
 - No parallax
 - No continuous background animations (particles, waves); the bounded
   foreground mascot loop is the explicit empty-home exception
-- No shimmer/skeleton animations longer than 1s loop — use simple fade-in for loading states
+- No shimmer/skeleton animations longer than 1s loop — use simple fade-in for loading states. Exception: the transcript Thinking indicator's whole-run TextShimmer runs 1.2s with a 220ms fade (ADR turn-process-and-thinking-display); it is not a per-glyph loop and becomes static under reduced motion.
 - No bounce effects
 - No multi-second boot theatrical sequences; splash exits as soon as ready (+ min dwell)
 
@@ -1244,7 +1247,7 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 
 | Property | Value |
 |---|---|
-| Position | top-center viewport, 16px from the top edge, `width: min(360px, 100vw − 32px)` |
+| Position | 16px from the top edge; centered in the main-content safe area when the in-flow shell is visible, falling back to the viewport when no main-content anchor exists; `width: min(360px, safe area − 32px)` |
 | Surface | `bg-elevated-opaque` + 1px `border-subtle` + `shadow-dialog` (same family as floating menus) |
 | Radius | radius-md-plus |
 | Font | text-md, leading-compact-plus |
@@ -1456,7 +1459,7 @@ adjacent form inputs; dense surfaces may override that metric locally.
 - Floating composer plate: Codex elevated-primary (`#212121f5` / `color-mix(gray-800 96%, transparent)`) with standard elevation-prominent (`0 0 0 .5px` stroke + `0 3px 7.5px #0000000a` + `0 0 20px #0000000d`); no heavier night-only lift
 - Light workspace chips capsule: elevated gray `#f4f4f4` (not pure white-on-white)
 - Combined workspace chips: elevated translucent plate over main, not flat main gray
-- Stage Manager (macOS only): host re-asserts min bounds while collapsed (permanent watchdog). The watchdog does not run on Windows/Linux, so no platform re-layers its own window unprompted (D447)
+- Stage Manager (macOS only): host re-asserts min bounds while collapsed (permanent watchdog). The watchdog and temporary recovery pin are macOS-only; Windows/Linux bounds recovery stays at the normal window layer so switching to another app never leaves PI-Desktop above it (D447).
 
 ## Destination pages
 

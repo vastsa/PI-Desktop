@@ -100,9 +100,9 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `AGENT_SIDECAR_CRASHED` | 不 | Node agent sidecar 进程在回合中途死亡；所属回合以中止收尾并使用此代码，而不是无关的 Plan 审批代码（issue #1077） |
 | `AGENT_SIDECAR_OOM` | 不 | sidecar 在 JavaScript 堆触及配置上限后死亡，依据其 stderr 尾部的 V8 致命错误横幅判定；在输入缩小之前，同一回合会以同样方式失败（issue #1077） |
 | `MODEL_NOT_CONFIGURED` | 不 | 未选择可用模型，或提供商因未知而拒绝所选模型 |
-| `PROVIDER_ERROR` | 是的 | 上游提供商故障；可重试的故障（5xx 网关）最多获得四次同回合重试，而格式错误的 400/422 请求，以及适配器自身拒绝的请求选项（Google 适配器遇到自定义 `fetch`，issue #1072）都是终止的 |
+| `PROVIDER_ERROR` | 是的 | 上游提供商故障；可重试的 5xx 网关错误最多获得 10 次同回合重试，而格式错误的 400/422 请求、适配器拒绝的选项，以及明确的账单、信用额度、消费、用量或磁盘额度耗尽（包括 `insufficient_quota`）都是终止错误 |
 | `PROVIDER_UNAUTHORIZED` | 不 | bad/missing 提供商凭证 |
-| `PROVIDER_RATE_LIMITED` | 是的 | 供应商费率有限 |
+| `PROVIDER_RATE_LIMITED` | 是的 | Provider 的暂时性吞吐限流；运行时最多跨请求设置和流式传输重试 10 次。明确的账单或账户额度耗尽始终是终止的 `PROVIDER_ERROR`，即使 HTTP 状态为 429 |
 | `CONTEXT_TOO_LARGE` | 不 | 恢复后 prompt/context 仍超出安全模型预算、发生第二个提供程序溢出或禁用自动恢复 |
 | `CONTEXT_COMPACTION_FAILED` | 不 | 自动保留尾部恢复无法准备、持久或适合检查点，或手动检查点摘要生成/持久追加失败；受保护的下一个提供程序请求不会启动 |
 | `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；最多四次同回合重试可能会在终止事件之前发生 |
@@ -123,6 +123,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 |---|---|---|
 | `WORKSPACE_REQUIRED` | 不 | 无工作空间限制 |
 | `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策之前路径逃逸沙箱，或提示词附件位于其会话 scratch/project/attachment 根目录之外 |
+| `VISUALIZATION_HTML_ONLY` | 不 | 写入会话可视化目录的 Write/Edit 目标不是该目录下直接一层的 `.html` 片段 |
 | `WORKSPACE_PATH_DENIED` | 不 | 显式的 `Read`/`Write`/`Edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
 | `READ_PATH_IS_DIRECTORY` | 不 | `Read` 拿到的是目录；结果附带一条 `Glob` 建议 |
 | `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |
@@ -366,9 +367,11 @@ Node sidecar 将提供商 SDK 错误映射到：
 `Range of input length should be`、z.ai 的 `Prompt exceeds max length`、xAI 的
 `maximum prompt length is`、Groq、llama.cpp，以及 Bedrock 的
 `Input is too long for requested model`。`CONTEXT_TOO_LARGE` 不会进入任何重试
-预算，子代理会将其报告为 `SUBAGENT_CONTEXT_OVERFLOW`。限流措辞（包括 Bedrock 的
-`Throttling error: Too many tokens, please wait before trying again.`）优先判定，
-仍为 `PROVIDER_RATE_LIMITED`。
+预算，子代理会将其报告为 `SUBAGENT_CONTEXT_OVERFLOW`。明确的账单/账户耗尽代码和
+消息（包括 `insufficient_quota`、`credit_balance_exhausted`、组织用量限额以及组织/项目消费限额代码）
+即使 HTTP 状态为 429，也映射为终止的 `PROVIDER_ERROR`。吞吐限流措辞（包括 Bedrock 的
+`Throttling error: Too many tokens, please wait before trying again.`）仍映射为
+`PROVIDER_RATE_LIMITED`。
 
 精确的 `terminated` 提供商消息和等效的过早流关闭
 消息映射到 `STREAM_FAILED`。请求设置阶段或响应后的

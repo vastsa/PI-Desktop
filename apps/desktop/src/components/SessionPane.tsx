@@ -79,16 +79,17 @@ export const SessionPane = memo(function SessionPane({
           onLoadOlder={() => loadTranscriptPage(sessionId, "before")}
           searchTarget={searchTarget}
           readingWindow={transcript.historical}
+          liveTail={transcript.liveTail}
           onRestoreReading={restoreReading}
           hasMoreAfter={transcript.hasMoreAfter}
           onLoadNewer={() => loadTranscriptPage(sessionId, "after")}
           onReturnToLatest={() => returnToLatest(sessionId)}
           navigationLoading={transcript.loading}
           isRunning={isRunning}
-          pendingPermission={transcript.historical ? undefined : pendingPermission}
+          pendingPermission={transcript.liveTail ? pendingPermission : undefined}
           queuedPermissions={queuedPermissions}
-          askPending={transcript.historical ? false : askPending}
-          planningState={transcript.historical ? undefined : planningState}
+          askPending={transcript.liveTail ? askPending : false}
+          planningState={transcript.liveTail ? planningState : undefined}
           paneVisible={visible}
         />
       </TranscriptDisclosureProvider>

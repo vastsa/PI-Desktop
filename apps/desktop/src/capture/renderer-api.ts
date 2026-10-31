@@ -47,6 +47,7 @@ const CAPTURE_RIG_METHODS = [
   "setWorkPanelWidth",
   "seedTranscript",
   "seedReviewChanges",
+  "seedTurnChanges",
   "seedRunRows",
   "seedDelegationRows",
   "seedPlugins",
@@ -54,6 +55,7 @@ const CAPTURE_RIG_METHODS = [
   "seedPluginThemes",
   "seedNotifications",
   "seedSidebarStatuses",
+  "seedRadialMenu",
   "ensureVisualFixtures",
 ] as const satisfies readonly CaptureRigMethod[];
 

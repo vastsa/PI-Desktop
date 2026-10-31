@@ -5,6 +5,7 @@ import type {
   RacpProjectSummary,
   WorkspaceDiff,
   WorkspaceToolExecute, WorkspaceToolAbort, WorkspaceToolResult, CommandShellOption, WorkspaceFilesRequest,
+  WorkspacePluginFilesRequest, WorkspacePluginFilesResult,
 } from "@pi-desktop/shared";
 
 /**
@@ -88,6 +89,7 @@ export type RacpHostOperations = {
   workspace: RacpWorkspaceAccess;
   terminal?: RacpTerminalAccess;
   workspaceFiles?: { read(input: WorkspaceFilesRequest): Promise<unknown> };
+  workspacePluginFiles?: { read(input: WorkspacePluginFilesRequest): Promise<WorkspacePluginFilesResult> };
   workspaceTools?: {
     execute(input: WorkspaceToolExecute, owner: { deviceId: string; connectionId: string }): Promise<WorkspaceToolResult>;
     abort(input: WorkspaceToolAbort, owner: { deviceId: string; connectionId: string }): Promise<void>;

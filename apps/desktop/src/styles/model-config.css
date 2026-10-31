@@ -271,10 +271,20 @@
   min-width: 0;
 }
 
-.provider-setup-no-api-key-option {
-  display: grid;
-  gap: 4px;
-  margin-top: 2px;
+.provider-setup-key-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.provider-setup-key-control > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-setup-key-control > button {
+  flex-shrink: 0;
 }
 
 .provider-service-anchor {
@@ -1164,6 +1174,14 @@
   align-items: center;
   justify-self: end;
   gap: 12px;
+}
+
+.provider-chosen-reasoning-effort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .provider-chosen-thinking-default,

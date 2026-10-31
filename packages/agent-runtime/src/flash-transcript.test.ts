@@ -136,8 +136,8 @@ describe("Flash reasoning after Desktop session restoration", () => {
       if (sameModel) {
         expect(assistant).toMatchObject({ content: "answer", reasoning_content: "private plan" });
       } else {
-        expect(assistant?.content).toContain("private plan");
-        expect(assistant).not.toMatchObject({ reasoning_content: "private plan" });
+        expect(assistant?.content).toBe("answer");
+        expect(JSON.stringify(captured)).not.toContain("private plan");
       }
     } finally { await runtime.dispose(); }
   });

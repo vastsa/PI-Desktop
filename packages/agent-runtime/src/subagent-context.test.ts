@@ -236,6 +236,27 @@ describe("prepareDelegateTurnContext", () => {
     expect(outcome.kind).toBe("compacted");
     expect(prompts).toHaveLength(1);
   });
+
+  it("includes cached input in the delegate's usage anchor", async () => {
+    const taskBrief = "Read the permission flow.";
+    const messages: AgentMessage[] = [
+      userMessage(taskBrief),
+      { ...assistantToolCall("cached"), usage: {
+        ...ZERO_USAGE, input: 200, output: 10, cacheRead: 1_700, totalTokens: 210,
+      } },
+      toolResult("Read completed.", "cached"),
+    ];
+    const { factory, prompts } = summaryModels(() => summarySuccess("SUMMARY TEXT"));
+
+    const outcome = await prepareDelegateTurnContext({
+      messages, model: smallModel(), taskBrief, retentionMode: "active_turn",
+      summaryModels: factory, signal: new AbortController().signal,
+    });
+
+    expect(outcome.kind).toBe("compacted");
+    expect(prompts).toHaveLength(1);
+  });
+
   it("charges pending task, system prompt, and tool schemas against the budget", async () => {
     const taskBrief = "Read the permission flow.";
     const messages: AgentMessage[] = [
@@ -480,6 +501,46 @@ describe("degradedDelegateMessages", () => {
 
     expect(degraded?.map((message) => message.role)).toEqual(["user", "assistant"]);
     expect(degraded?.[1]).toEqual(assistantText("final answer"));
+  });
+
+  it("drops a tool result orphaned when its assistant row is skipped", () => {
+    const brief = userMessage("Survey the module.");
+    const older = assistantText("older note");
+    const failed = {
+      ...assistantToolCall("c1"),
+      stopReason: "error",
+    } as AssistantMessage;
+    const orphan = toolResult("ok", "c1");
+    const finalAnswer = assistantText("final");
+
+    const degraded = degradedDelegateMessages(
+      [brief, older, failed, orphan, finalAnswer],
+      "Survey the module.",
+      smallModel(),
+    );
+
+    // The skipped assistant takes tool call c1 with it. Its result is not a
+    // leading prefix — an older assistant was kept — so a provider would see
+    // an unmatched tool result.
+    expect(degraded).toEqual([brief, older, finalAnswer]);
+  });
+
+  it("keeps a retained assistant tool call when its result is cut from the suffix", () => {
+    const brief = userMessage("Survey the module.");
+    // The result is older than the assistant and does not fit, so the
+    // newest-first walk keeps the assistant and leaves the result out.
+    // pruneOrphanToolResults drops unmatched results only; it does not strip
+    // a tool call that stays on a retained assistant.
+    const result = toolResult("r".repeat(12_000), "kept");
+    const call = assistantToolCall("kept", "note");
+
+    const degraded = degradedDelegateMessages(
+      [brief, result, call],
+      "Survey the module.",
+      smallModel(),
+    );
+
+    expect(degraded).toEqual([brief, call]);
   });
 
   it("returns undefined when the brief alone crosses the hard limit", () => {

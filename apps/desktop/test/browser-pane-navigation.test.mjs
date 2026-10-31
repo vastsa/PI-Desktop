@@ -22,9 +22,19 @@ const electron = `data:text/javascript,${encodeURIComponent(`
     setVisible() {}
     setBounds() {}
   }
+  export class BrowserWindow {
+    contentView = new View();
+    destroyed = false;
+    constructor(options) { this.size = [options.width, options.height]; }
+    getContentSize() { return this.size; }
+    setContentSize(width, height) { this.size = [width, height]; }
+    isDestroyed() { return this.destroyed; }
+    destroy() { this.destroyed = true; }
+  }
   export class WebContentsView {
     static instances = [];
     constructor() {
+      this.bounds = { x: 0, y: 0, width: 0, height: 0 };
       this.webContents = Object.assign(new EventEmitter(), {
         url: "https://fixture.invalid/previous",
         mainFrame: { processId: 7, routingId: 11 },
@@ -45,6 +55,9 @@ const electron = `data:text/javascript,${encodeURIComponent(`
       });
       WebContentsView.instances.push(this);
     }
+    getBounds() { return this.bounds; }
+    setBounds(bounds) { this.bounds = bounds; }
+    setVisible() {}
   }
 `)}`;
 registerHooks({ resolve(specifier, context, next) {

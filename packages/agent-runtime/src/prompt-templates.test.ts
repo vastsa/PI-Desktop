@@ -35,6 +35,16 @@ describe("expandSlashInvocation", () => {
     );
   });
 
+  it.each(['""', "''"])("keeps an empty quoted argument %s without shifting later positions", (empty) => {
+    const template = { name: "defaults", content: "first=${1:-fallback}; second=$2; tail=${@:2}" };
+    const command = `/defaults ${empty} next last`;
+    expect(expandSlashInvocation(command, [template])).toEqual({
+      expanded: "first=fallback; second=next; tail=next last", command,
+    });
+    expect(expandSlashInvocation(`/defaults first ${empty}`, [template])?.expanded)
+      .toBe("first=first; second=; tail=");
+  });
+
   it("preserves pi's default placeholders without recursively expanding arguments", () => {
     const template = {
       name: "defaults",

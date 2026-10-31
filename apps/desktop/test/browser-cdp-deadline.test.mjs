@@ -55,6 +55,7 @@ function harness() {
       webContents: wc,
       invalidateNavigation: () => {},
       captureScreenshot: (run) => run(wc),
+      withStableViewport: (run) => run(wc),
       navigateAndWait(target) {
         const done = deferred();
         loads.push({ target, pane, finish() {

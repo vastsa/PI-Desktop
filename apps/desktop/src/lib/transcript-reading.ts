@@ -33,6 +33,19 @@ export const TRANSCRIPT_PAGE_SIZE = 100;
 export const TRANSCRIPT_SEARCH_PAGE_SIZE = 60;
 export const TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
 
+/** Reading ownership is independent of whether its range reaches live output. */
+export function isTranscriptAtLiveTail(
+  live: readonly UiMessage[],
+  messages: readonly UiMessage[],
+  view?: TranscriptView,
+): boolean {
+  if (view?.focus || view?.hasMoreAfter) return false;
+  // The canonical surface must show first-event waits even before it has rows.
+  if (!view) return true;
+  const tailId = live.at(-1)?.id;
+  return Boolean(tailId) && messages.at(-1)?.id === tailId;
+}
+
 export function transcriptViewFromSession(
   session: SessionDetail,
   focus: TranscriptSearchTarget | null = null,
@@ -107,9 +120,10 @@ function replaceReadingOverlap(
 /** Live output remains authoritative outside an explicit historical search. */
 export function transcriptViewMessages(live: UiMessage[], view?: TranscriptView): UiMessage[] {
   if (!view) return live;
-  // Search deliberately holds its historical snapshot. Do not index or merge
-  // the live transcript when it cannot contribute anything to this view.
-  if (view.focus || view.restored) return withNavigationParent(view.messages, view.parentMessage);
+  // Search holds its selected snapshot. Restoration only stays isolated while
+  // unread physical pages separate it from the live tail.
+  if (view.focus || (view.restored && view.hasMoreAfter))
+    return withNavigationParent(view.messages, view.parentMessage);
 
   const normalized = dedupeSessionMessages(live);
   const source = getSessionMessageSnapshot(normalized);
@@ -121,8 +135,15 @@ export function transcriptViewMessages(live: UiMessage[], view?: TranscriptView)
   const cached = projections.get(source.owner);
   let messages = cached && replaceReadingOverlap(cached, source, view.parentMessage);
   if (!messages) {
+    // The live cache can start before a short restored range. Joining at the
+    // first overlapping identity avoids prepending rows and moving the anchor;
+    // without overlap, do not invent continuity across an unknown gap.
+    const restoredStart = view.restored
+      ? normalized.findIndex((message) => getSessionMessageSnapshot(view.messages).positions.has(message.id))
+      : 0;
+    const liveTail = restoredStart < 0 ? EMPTY_TRANSCRIPT : normalized.slice(restoredStart);
     messages = withNavigationParent(
-      mergeLiveSessionMessages(view.messages, normalized).map((message) => {
+      mergeLiveSessionMessages(view.messages, liveTail).map((message) => {
         // A stale reading snapshot must not outrank the canonical row, even
         // when a previously streaming row has just completed.
         const index = source.positions.get(message.id);

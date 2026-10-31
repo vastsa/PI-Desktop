@@ -7,8 +7,10 @@ import {
   type UserSkillRecord,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { capabilityQuery, deriveProjectOverrides, type CapabilityOverride } from "../../lib/capability-scope";
 import { useAppStore } from "../../stores/app-store";
 import { useHostCollection } from "../../hooks/use-host-collection";
+import { useRowBusy } from "../../hooks/use-row-busy";
 import {
   AgentCapabilityPage,
   AgentProjectPicker,
@@ -41,6 +43,7 @@ import {
   IconFolderOpen,
   IconPencil,
   IconPlus,
+  IconRefresh,
   IconTrash,
 } from "../icons";
 import { SkillMarketPanel } from "./SkillMarketPanel";
@@ -64,33 +67,51 @@ type SkillCollection = {
   builtins: BuiltinSkillRecord[];
   global: UserSkillRecord[];
   project: UserSkillRecord[];
+  /** Stored per-project overrides on global rows, from the accepted fetch. */
+  globalOverrides: Record<string, CapabilityOverride>;
 };
 
-const EMPTY_SKILL_COLLECTION: SkillCollection = { builtins: [], global: [], project: [] };
+const EMPTY_SKILL_COLLECTION: SkillCollection = {
+  builtins: [],
+  global: [],
+  project: [],
+  globalOverrides: {},
+};
 
 export function AgentSkillsPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const { selectedProjectPath, setSelectedProjectPath, options } = useAgentProjects();
   const fetchSkills = useCallback(async (): Promise<SkillCollection> => {
-    const [builtins, global, project] = await Promise.all([
+    // The global list omits the selected project on purpose: its rows read the
+    // global default, the same scope the switch writes, so the two can never
+    // disagree (#1957). The project-scoped global query runs beside it only to
+    // surface stored overrides: the runtime gives them precedence, so a stale
+    // one written by the old UI must stay visible and resettable, not hidden.
+    const [builtins, global, project, globalEffective] = await Promise.all([
       api.listBuiltinSkills(),
-      api.listUserSkills({
-        level: "global",
-        ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-      }),
+      api.listUserSkills({ level: "global" }),
       selectedProjectPath
         ? api.listUserSkills({ level: "project", projectPath: selectedProjectPath })
         : Promise.resolve({ skills: [] as UserSkillRecord[] }),
+      selectedProjectPath
+        ? api.listUserSkills({ level: "global", projectPath: selectedProjectPath })
+        : Promise.resolve({ skills: [] as UserSkillRecord[] }),
     ]);
+    // The derived map rides inside the collection: useHostCollection only
+    // accepts the newest request, so a late stale fetch can never repaint the
+    // override badges of the project the reader has since switched to.
     return {
       builtins: builtins.builtins ?? [],
       global: global.skills ?? [],
       project: project.skills ?? [],
+      globalOverrides: selectedProjectPath
+        ? Object.fromEntries(deriveProjectOverrides(global.skills ?? [], globalEffective.skills ?? []))
+        : {},
     };
   }, [selectedProjectPath]);
   const {
-    data: { builtins: builtinSkills, global: globalSkills, project: projectSkills },
+    data: { builtins: builtinSkills, global: globalSkills, project: projectSkills, globalOverrides },
     setData: setSkills,
     loading,
     refreshing,
@@ -101,7 +122,7 @@ export function AgentSkillsPage() {
   const [filter, setFilter] = useState<CapabilityFilter>("all");
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const rowBusy = useRowBusy();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<SkillEditorState | null>(null);
   const [view, setView] = useState<"skills" | "market">("skills");
@@ -129,10 +150,8 @@ export function AgentSkillsPage() {
     }));
   };
 
-  const levelQuery = (level: AgentCapabilityLevel) => ({
-    level,
-    ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-  });
+  const levelQuery = (level: AgentCapabilityLevel) =>
+    capabilityQuery(level, selectedProjectPath);
 
   /**
    * The switch flips locally first and only reverts if the host refuses, so one
@@ -140,11 +159,12 @@ export function AgentSkillsPage() {
    */
   const toggle = async (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, skill.id);
-    if (busyId === key) return;
+    if (!rowBusy.begin(key)) return;
     const next = !skill.enabled;
-    setBusyId(key);
     patchRow(level, skill.id, { enabled: next });
     try {
+      // The switch writes the row's own level scope: a global skill records
+      // the global default, a project row records that project's override.
       await api.setUserSkillEnabled(skill.id, next, levelQuery(level));
       showToast(
         t(next ? "settings.capabilityEnabled" : "settings.capabilityDisabled", {
@@ -156,15 +176,39 @@ export function AgentSkillsPage() {
       patchRow(level, skill.id, { enabled: skill.enabled });
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
+    }
+  };
+
+  // A stored per-project override keeps runtime precedence over the global
+  // default, so it has to be visible and clearable, never just hidden. Writing
+  // the current default under the project's scope removes the key: the host
+  // drops a per-project entry whose value matches the default.
+  const resetProjectOverride = async (skill: UserSkillRecord) => {
+    if (!selectedProjectPath) return;
+    const key = rowKey("global", skill.id);
+    if (!rowBusy.begin(key)) return;
+    try {
+      await api.setUserSkillEnabled(skill.id, skill.enabled, {
+        level: "global",
+        projectPath: selectedProjectPath,
+      });
+      showToast(
+        t("settings.capabilityOverrideReset", { name: skill.name || skill.id }),
+        { variant: "success" },
+      );
+      await load();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      rowBusy.end(key);
     }
   };
 
   const toggleBuiltin = async (skill: BuiltinSkillRecord) => {
     const key = builtinRowKey(skill.id);
-    if (busyId === key) return;
+    if (!rowBusy.begin(key)) return;
     const next = !skill.enabled;
-    setBusyId(key);
     patchBuiltin(skill.id, { enabled: next });
     try {
       await api.setBuiltinSkillEnabled(skill.id, next);
@@ -178,7 +222,7 @@ export function AgentSkillsPage() {
       patchBuiltin(skill.id, { enabled: skill.enabled });
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
     }
   };
 
@@ -205,7 +249,7 @@ export function AgentSkillsPage() {
 
   const openEdit = async (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, skill.id);
-    setBusyId(key);
+    if (!rowBusy.begin(key)) return;
     try {
       const result = await api.readUserSkill(skill.id, levelQuery(level));
       setEditor({
@@ -216,7 +260,7 @@ export function AgentSkillsPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
     }
   };
 
@@ -260,7 +304,7 @@ export function AgentSkillsPage() {
 
   const remove = async (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, skill.id);
-    setBusyId(key);
+    if (!rowBusy.begin(key)) return;
     try {
       await api.removeUserSkill(skill.id, levelQuery(level));
       await load();
@@ -270,7 +314,7 @@ export function AgentSkillsPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
       setArmed(null);
     }
   };
@@ -283,7 +327,8 @@ export function AgentSkillsPage() {
       showToast(t("settings.selectProjectFirst"), { variant: "error" });
       return;
     }
-    setBusyId(sourceKind === "dir" ? "import-dir" : "import");
+    const importKey = sourceKind === "dir" ? "import-dir" : "import";
+    if (!rowBusy.begin(importKey)) return;
     try {
       const result = await api.importUserSkill({
         level,
@@ -316,7 +361,7 @@ export function AgentSkillsPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(importKey);
     }
   };
 
@@ -370,7 +415,7 @@ export function AgentSkillsPage() {
       return;
     }
     const key = rowKey(level, skill.id);
-    setBusyId(key);
+    if (!rowBusy.begin(key)) return;
     try {
       const result = await api.transferUserSkill({
         id: skill.id,
@@ -393,14 +438,14 @@ export function AgentSkillsPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
     }
   };
 
   const renderRow = (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, skill.id);
     const name = skill.name || skill.id;
-    const busy = busyId === key;
+    const busy = rowBusy.isBusy(key);
     const isArmed = armed === key;
     const items: CapabilityMenuItem[] = [
       {
@@ -435,6 +480,20 @@ export function AgentSkillsPage() {
             } satisfies CapabilityMenuItem,
           ]
         : []),
+      ...(level === "global" && selectedProjectPath && globalOverrides[skill.id]
+        ? [
+            {
+              key: "reset-override",
+              label: t("settings.capabilityOverrideResetItem"),
+              icon: <IconRefresh size={14} />,
+              disabled: busy,
+              onSelect: () => {
+                setMenuFor(null);
+                void resetProjectOverride(skill);
+              },
+            } satisfies CapabilityMenuItem,
+          ]
+        : []),
       {
         key: "remove",
         label: isArmed ? t("settings.capabilityRemoveConfirm") : t("extensions.skills.remove"),
@@ -464,6 +523,13 @@ export function AgentSkillsPage() {
                 ? t("settings.capabilityFilterGlobal")
                 : t("settings.capabilityFilterProject")}
             </span>
+            {level === "global" && selectedProjectPath && globalOverrides[skill.id] ? (
+              <span className="agent-capability-badge is-override">
+                {globalOverrides[skill.id] === "off"
+                  ? t("settings.capabilityOverrideOff")
+                  : t("settings.capabilityOverrideOn")}
+              </span>
+            ) : null}
             {skill.source === "imported" ? (
               <span className="agent-capability-badge">{t("settings.imported")}</span>
             ) : null}
@@ -507,7 +573,7 @@ export function AgentSkillsPage() {
   const renderBuiltinRow = (skill: BuiltinSkillRecord) => {
     const key = builtinRowKey(skill.id);
     const name = skill.name || skill.id;
-    const busy = busyId === key;
+    const busy = rowBusy.isBusy(key);
     return (
       <CapabilityRow
         key={key}
@@ -541,7 +607,7 @@ export function AgentSkillsPage() {
   const importButton = (level: AgentCapabilityLevel) => (
     <>
       <CapabilityButton
-        busy={busyId === "import"}
+        busy={rowBusy.isBusy("import")}
         title={
           level === "project"
             ? t("settings.capabilityImportToProject")
@@ -553,7 +619,7 @@ export function AgentSkillsPage() {
         {t("settings.importSkillFile")}
       </CapabilityButton>
       <CapabilityButton
-        busy={busyId === "import-dir"}
+        busy={rowBusy.isBusy("import-dir")}
         title={
           level === "project"
             ? t("settings.capabilityImportToProject")

@@ -8,7 +8,7 @@ const {
   assistantTurnResponseOutputIsEstimated, assistantTurnTools,
 } = await import("../src/lib/assistant-turns.ts");
 const { getAssistantTurnSummary, getAssistantTurnContent, messageContentFacts, reuseReferences } = await import("../src/lib/transcript-summary.ts");
-const { projectTurnProcess, visibleProcessSteps } = await import("../src/lib/turn-process.ts");
+const { projectTurnProcess } = await import("../src/lib/turn-process.ts");
 const { activitySummary, visibleActivityItems } = await import("../src/lib/activity-summary.ts");
 const { cachedActivitySummary, cachedVisibleActivityItems, cachedVisibleProcessSteps, activityTimingInputs } = await import("../src/lib/transcript-activity-summary.ts");
 const { collectDelegationStatuses, collectDelegationTimings, delegationTimingBounds } = await import("../src/lib/subagent-topology.ts");
@@ -113,7 +113,10 @@ test("activity summary and compact visibility preserve error, search and thinkin
     for (const compact of [false, true]) for (const active of [false, true]) {
       assert.deepEqual(cachedVisibleActivityItems(subset, compact, active), visibleActivityItems(subset, compact, active));
       const parts = [{ kind: "activity", items: subset }, { kind: "message", message: message("progress", "progress") }];
-      assert.equal(cachedVisibleProcessSteps(parts, compact, active), visibleProcessSteps(parts, compact, active));
+      assert.equal(
+        cachedVisibleProcessSteps(parts, compact, active),
+        1 + cachedVisibleActivityItems(subset, compact, active).length,
+      );
     }
   }
 });

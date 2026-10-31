@@ -49,9 +49,8 @@
 
 ## 3. 1 贡献主题CSS
 
-主题贡献 (`ui.theme`) 是插件创作内容的一种情况
-在主机渲染器内部运行，因此它会在主进程中穿过消毒剂
-在发送到 UI 之前：
+主题贡献（`ui.theme`）通过主进程清理器把 CSS 发送到宿主渲染器。
+另一个高风险权限 `renderer.extension` 会直接运行受信任的渲染器 JavaScript，不是沙盒：
 
 - 只检查浏览器实际生效的 CSS：先按等长空白遮蔽注释体与字符串字面量
   （每个被遮蔽字符对应一个空格，偏移仍指向原文），`url(...)` 参数按原样保留
@@ -59,7 +58,7 @@
 - 拒绝：`@import`、既非 `data:` URI 也非已声明主题资源的 `url()` 目标、
   解析器无法解析的 `url(`、`javascript:`、`expression(` 和标记序列
   （`<style`、`</style`、`<!--`）；空样式表也会被拒绝
-- 每个文件上限为 256KB，每个插件 8 个主题
+- 每个文件上限为 256 KiB，不限制每插件主题数量
 - 主题可声明 `assets`，使用白名单图片/字体扩展名：插件包内相对路径（在插件根目录内解析，拒绝
   路径穿越和 `node_modules`）或绝对路径；所有资源总量上限为 4MB。命中的 `url()`
   会被改写为 `plugin-asset://<pluginId>/<path>`，由宿主处理器提供；该处理器
@@ -68,8 +67,8 @@
   原始路径不会到达渲染器
 - `contributes.windowAppearance`（`#rrggbb` / `#rrggbbaa`）需要
   `ui.window.appearance`，且只在该插件的某个主题被选中时生效；离开该主题即恢复
-  宿主背景，因为颜色由实时主题目录推导而非记忆。macOS 保持 `vibrancy`，
-  永不下发颜色
+  宿主背景，因为颜色由实时主题目录推导。macOS 保持原生圆角，默认透明振动效果忽略颜色；
+  关闭 Translucent window 后会把颜色应用到不透明窗口
 - CSS 在加载时从磁盘读取并通过 IPC 整体交付；的
   渲染器将其注入到附加在后面的单个专用 `<style>` 元素中
   应用程序自己的样式表，因此它可以覆盖令牌但从不注入标记。
@@ -209,16 +208,11 @@ CSS 无法脚本化，但它可能会产生误导：主题仍然是第三方代�
 自我声明的风险水平。服务器的目录被完整注册——数量只受 §8.1 中的
 协议护栏约束——而每个插件最多接入 8 个服务器。
 
-Plan 是代理工具的附加主机策略边界：
-
-- Plan 中没有可见或可执行的插件工具；
-- 拒绝先于明显风险、declared/granted 权限、会话
-  grants，以及 `auto` 权限模式；
-- 直接伪造的 `tools.execute` 调用返回 `PLUGIN_DISABLED_IN_PLAN` 并且是
-  已审核；它不会转发到插件运行时；
-- 插件命令和面板仍可用作显式用户 UI 操作，
-  但它们不能成为模型可调用的 Plan 工具或默默地改变 Plan
-  状态。
+插件工具默认在 Plan/Goal 中隐藏并拒绝。运行时工具注册可通过非空 `planSafeActions`
+显式加入，只有 `args.action` 位于该列表时才允许执行。有 schema action enum 时会校验取值。
+清单描述符应与运行时注册保持一致，真正执行的工具由运行时注册决定。
+`risk: "low"`、会话授权和 `auto` 不能代替该声明。宿主策略与插件执行器都会校验，
+执行器对越界 action 返回 `PERMISSION_DENIED`。该列表是作者的只读承诺，不是副作用沙盒（ADR 0211）。
 
 ## 8. 网络和外部链接
 
@@ -370,7 +364,7 @@ PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Alt+Shift+W`；用户
 9. 声明绝对路径 `command` 的 MCP 服务器会在 manifest 校验时失败；非回环的
    明文 HTTP URL 只有在主机声明于 `manifest.net.domains` 且 UI 显示未加密连接
    警告时才可接受
-10. 低风险或授予的插件工具在 Plan 中仍然无法关闭
+10. 未声明 Plan 安全操作或 action 越界的插件工具，无论风险或授权如何，都在 Plan/Goal 中拒绝
 
 
 ## 11. 实施情况
@@ -422,7 +416,7 @@ PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Alt+Shift+W`；用户
 - 声明的清单权限在加载时自动授予
 - `userSelected` root 不跨重启保留，插件每个会话都得重新问一次
 
-### Fetch redirect policy (unreleased)
+### Fetch redirect policy
 
 The host owns the same redirect loop for default and injected single-hop
 transports. `error` refuses every 3xx with REDIRECT_DISALLOWED; `manual` returns

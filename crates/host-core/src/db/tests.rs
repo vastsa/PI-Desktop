@@ -122,18 +122,35 @@ fn v18_database_migrates_session_thinking_omit() {
     assert!(sql.contains("'omit'"), "{sql}");
 }
 
+/// Historical v22 databases lack provenance metadata to distinguish whether
+/// a title was an untouched placeholder or a deliberate manual rename to that
+/// same text. Schema v23 leaves pre-existing sessions classified as `legacy`
+/// with their original titles preserved, safely protecting deliberate renames
+/// (such as lowercase "new task") from being overwritten by subsequent prompts.
 #[test]
 fn v22_database_migrates_session_title_sources_without_losing_titles() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("pi.sqlite");
-    let (default_id, localized_id, manual_id) = {
+    let (default_id, lowercase_id, renamed_v22_id, manual_id) = {
         let db = Database::open(&path).unwrap();
+        // 1. Untouched session created with the default placeholder.
         let default_session =
             crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
-        // A v22 install wrote the active locale's placeholder into the title.
-        let localized_session =
-            crate::sessions::create_session(&db, Some("새 작업".into()), None, None, None, None)
+        // 2. Untouched session created with the lowercase placeholder.
+        let lowercase_session =
+            crate::sessions::create_session(&db, Some("new task".into()), None, None, None, None)
                 .unwrap();
+        // 3. Session that will be renamed while the fixture is at v22.
+        let renamed_session = crate::sessions::create_session(
+            &db,
+            Some("Initial task name".into()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // 4. Ordinary manual title.
         let manual_session = crate::sessions::create_session(
             &db,
             Some("A title chosen by the user".into()),
@@ -143,38 +160,158 @@ fn v22_database_migrates_session_title_sources_without_losing_titles() {
             None,
         )
         .unwrap();
+
+        // Downgrade fixture to schema v22 (no title_source column).
         db.conn()
             .execute_batch("ALTER TABLE sessions DROP COLUMN title_source;")
             .unwrap();
         db.conn().pragma_update(None, "user_version", 22).unwrap();
-        (default_session.id, localized_session.id, manual_session.id)
+        // Use the historical title-only rename: v22 has no title_source column.
+        db.conn()
+            .execute(
+                "UPDATE sessions SET title = 'new task' WHERE id = ?1",
+                params![renamed_session.id],
+            )
+            .unwrap();
+        (
+            default_session.id,
+            lowercase_session.id,
+            renamed_session.id,
+            manual_session.id,
+        )
     };
 
+    // Reopen walks the real v22 -> v23 migration.
     let db = Database::open(&path).unwrap();
     assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
     assert!(migration_backup_path(&path, 22).exists());
-    let sources: (String, String, String) = db
+
+    let sources: (String, String, String, String) = db
         .conn()
         .query_row(
             "SELECT
                 (SELECT title_source FROM sessions WHERE id = ?1),
                 (SELECT title_source FROM sessions WHERE id = ?2),
-                (SELECT title_source FROM sessions WHERE id = ?3)",
-            params![default_id, localized_id, manual_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                (SELECT title_source FROM sessions WHERE id = ?3),
+                (SELECT title_source FROM sessions WHERE id = ?4)",
+            params![default_id, lowercase_id, renamed_v22_id, manual_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .unwrap();
     assert_eq!(
         sources,
-        ("default".into(), "default".into(), "manual".into())
+        (
+            "legacy".into(),
+            "legacy".into(),
+            "legacy".into(),
+            "legacy".into()
+        )
     );
+
+    // Stored titles are preserved exactly as they were in v22.
+    let titles: (String, String, String) = db
+        .conn()
+        .query_row(
+            "SELECT
+                (SELECT title FROM sessions WHERE id = ?1),
+                (SELECT title FROM sessions WHERE id = ?2),
+                (SELECT title FROM sessions WHERE id = ?3)",
+            params![lowercase_id, renamed_v22_id, manual_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(titles.0, "new task");
+    assert_eq!(titles.1, "new task");
+    assert_eq!(titles.2, "A title chosen by the user");
+
+    // Because legacy rows are protected, automatic derivation refuses to overwrite them.
+    assert!(!crate::sessions::derive_session_title(&db, &renamed_v22_id, "Fix the login").unwrap());
     assert_eq!(
-        crate::sessions::get_session(&db, &manual_id)
+        crate::sessions::get_session(&db, &renamed_v22_id)
             .unwrap()
             .unwrap()
             .summary
             .title,
-        "A title chosen by the user"
+        "new task"
+    );
+
+    // Automatic title plugin CAS write also refuses legacy rows.
+    assert!(!crate::sessions::set_automatic_session_title(
+        &db,
+        &renamed_v22_id,
+        "new task",
+        "Plugin generated title",
+    )
+    .unwrap());
+    assert_eq!(
+        crate::sessions::get_session(&db, &renamed_v22_id)
+            .unwrap()
+            .unwrap()
+            .summary
+            .title,
+        "new task"
+    );
+
+    // Newly created sessions after upgrade correctly set default or manual.
+    let new_default = crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+    assert_eq!(
+        db.conn()
+            .query_row(
+                "SELECT title_source FROM sessions WHERE id = ?1",
+                params![new_default.id],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+        "default"
+    );
+    assert!(crate::sessions::derive_session_title(&db, &new_default.id, "New turn title").unwrap());
+    assert_eq!(
+        crate::sessions::get_session(&db, &new_default.id)
+            .unwrap()
+            .unwrap()
+            .summary
+            .title,
+        "New turn title"
+    );
+}
+
+#[test]
+fn manual_placeholder_title_is_never_overwritten_after_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+        // The user explicitly renamed the session to a placeholder title like "New task".
+        assert!(crate::sessions::rename_session(&db, &session.id, "New task").unwrap());
+        // Stamp as schema v23, simulating a database that already migrated past v22.
+        db.conn().pragma_update(None, "user_version", 23).unwrap();
+        session.id
+    };
+
+    // Reopen walks the real v23 -> v24 upgrade path.
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    let (title, source): (String, String) = db
+        .conn()
+        .query_row(
+            "SELECT title, title_source FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(source, "manual");
+    assert_eq!(title, "New task");
+
+    // The user-selected title must not be overwritten on the next prompt.
+    assert!(!crate::sessions::derive_session_title(&db, &session_id, "Fix the login").unwrap());
+    assert_eq!(
+        crate::sessions::get_session(&db, &session_id)
+            .unwrap()
+            .unwrap()
+            .summary
+            .title,
+        "New task"
     );
 }
 
@@ -288,6 +425,43 @@ fn worktree_registry_enforces_one_row_per_owner_and_unique_ports() {
         insert("f", Some("d2"), Some(41000)).is_err(),
         "shared port block"
     );
+}
+
+/// v27 adds the per-session `/fast` column (ADR 0334). Existing sessions keep
+/// their configuration, default to the normal tier, and a backup remains.
+#[test]
+fn v25_database_gains_session_fast_mode_defaulting_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session_with_thinking(
+            &db,
+            Some("Kept".into()),
+            None,
+            None,
+            None,
+            None,
+            Some("high".into()),
+        )
+        .unwrap();
+        db.conn()
+            .execute_batch("ALTER TABLE sessions DROP COLUMN fast_mode;")
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 25).unwrap();
+        session.id
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 25).exists());
+    let summary = crate::sessions::get_session(&db, &session_id)
+        .unwrap()
+        .unwrap()
+        .summary;
+    assert_eq!(summary.title, "Kept");
+    assert_eq!(summary.thinking_level, "high");
+    assert!(!summary.fast_mode);
 }
 
 /// v21 owns the session checklist. A real v20 database has neither the
@@ -1684,6 +1858,76 @@ fn project_group_update_switches_the_primary_root() {
 }
 
 #[test]
+fn project_group_update_allows_a_root_renamed_away_externally() {
+    // #1869: when a group folder is renamed (or unmounted) outside the app,
+    // editing the group must still be able to keep the stale root while its
+    // replacement is added, and must be able to drop the stale root afterwards.
+    let dir = tempfile::tempdir().unwrap();
+    let stale = dir.path().join("stale");
+    let replacement = dir.path().join("replacement");
+    std::fs::create_dir_all(&stale).unwrap();
+    std::fs::create_dir_all(&replacement).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group("Renamed away", &[stale.to_string_lossy().into()])
+        .unwrap();
+    let canonical_stale = crate::db::canonical_project_path(&stale.to_string_lossy()).unwrap();
+    let canonical_replacement =
+        crate::db::canonical_project_path(&replacement.to_string_lossy()).unwrap();
+
+    // The folder is renamed externally after the group stored it.
+    std::fs::remove_dir_all(&stale).unwrap();
+
+    // Keeping the stale root while adding and promoting its replacement must
+    // not be blocked by the on-disk directory check. The submission uses the
+    // stored spelling, exactly as the edit dialog echoes the root back.
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Renamed away",
+            &[
+                replacement.to_string_lossy().into(),
+                canonical_stale.clone(),
+            ],
+            Some(&canonical_replacement),
+        )
+        .expect("a root the group already owns may be missing on disk");
+    assert_eq!(updated.primary_path, canonical_replacement);
+    assert_eq!(updated.roots.len(), 2);
+    assert_eq!(updated.roots[0].path, canonical_replacement);
+    assert_eq!(updated.roots[1].path, canonical_stale);
+
+    // A later edit can drop the stale root entirely, healing the group.
+    let healed = db
+        .update_project_group(
+            &group.id,
+            "Renamed away",
+            &[replacement.to_string_lossy().into()],
+            Some(&canonical_replacement),
+        )
+        .expect("the stale root can be dropped from the group");
+    assert_eq!(healed.roots.len(), 1);
+    assert_eq!(healed.roots[0].path, canonical_replacement);
+    assert!(healed.detached_paths.contains(&canonical_stale));
+
+    // A folder that is new to the group must still exist on disk.
+    let missing = dir.path().join("missing");
+    assert!(db
+        .update_project_group(
+            &group.id,
+            "Renamed away",
+            &[
+                replacement.to_string_lossy().into(),
+                missing.to_string_lossy().into(),
+            ],
+            Some(&canonical_replacement),
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("not a directory"));
+}
+
+#[test]
 fn remove_project_from_group_detaches_even_with_chats_and_may_move_primary() {
     let dir = tempfile::tempdir().unwrap();
     let primary = dir.path().join("primary");
@@ -1983,5 +2227,33 @@ fn migrates_v21_to_v22_replaces_session_index() {
     assert!(
         new_index_exists,
         "idx_sessions_updated_id should be created"
+    );
+}
+
+#[test]
+fn v24_model_discovery_upgrade_preserves_rows_and_reopens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.conn().execute_batch("ALTER TABLE models DROP COLUMN discovery_state;
+            INSERT INTO providers(id, name, type, protocol, auth_kind, config_json, created_at, updated_at)
+            VALUES ('fixture', 'Fixture', 'openai_compatible', 'openai_compatible', 'none', '{}', 1, 1);
+            INSERT INTO models(provider_id, model_id, display_name, source, updated_at)
+            VALUES ('fixture', 'known', 'Known', 'discovered', 1), ('fixture', 'manual', 'Manual', 'user', 1);
+            PRAGMA user_version = 24;").unwrap();
+    }
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 24).exists());
+    let models = crate::providers::list_models(&db, Some("fixture")).unwrap();
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0].discovery_state.as_deref(), Some("published"));
+    assert!(models[1].discovery_state.is_none());
+    drop(db);
+    let db = Database::open(&path).unwrap();
+    assert_eq!(
+        crate::providers::list_models(&db, Some("fixture")).unwrap(),
+        models
     );
 }

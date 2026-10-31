@@ -9,6 +9,16 @@
 英文页面是规范源。本页保留协议字段、方法名、错误码和代码结构，便于
 中文读者检索；实现必须以英文规范中的完整定义为准。
 
+插件远程只读文件使用独立的 owner-only `workspace/pluginFiles`，由可选能力
+`workspacePluginFiles` 广播。封闭请求为
+`{ path, operation: "list" | "preview", ref, scope: string[] }`，不接受 Host key、
+写入或根外绝对 ref。工作区根必须位于文件夹选择器的浏览根内，或精确匹配已在该 Host
+注册的规范项目根；Host 继续校验受保护数据、规范路径包含关系、凭据拒绝列表，
+以及原始/规范相对路径的 scope。结果为 `list` 条目或带真实 size/mtimeMs 的
+`text`、`image`、`binary`、`tooLarge`；文本/图片上限为 512 KiB / 5 MiB。
+Desktop 从已准入项目绑定选择远程根，绑定或连接生命周期改变后拒绝过期结果。
+该操作不扩大既有 `workspace/files` 权限，不授予远程写入能力。
+
 ## 1. 边界与术语
 
 RACP 控制 Agent Host，不是 Electron IPC、`host.proxy`、Rust host-core

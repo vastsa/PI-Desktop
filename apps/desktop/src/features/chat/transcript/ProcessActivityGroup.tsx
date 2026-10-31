@@ -21,7 +21,11 @@ export function ProcessActivityGroup({
   const { t } = useTranslation();
   const detailsId = useId();
   const grouped = items.length > 1;
-  const open = !grouped || disclosure.open;
+  // A group below a collapsed whole-turn process is not expanded even when the
+  // user left it open: `disclosure.open` already folds in that gate, and the
+  // choice itself survives so reopening the process restores it.
+  const parentVisible = disclosure.parentVisible;
+  const open = (!grouped || disclosure.open) && parentVisible;
   const summary = useMemo(() => cachedActivitySummary(items), [items]);
   if (items.length === 0) return null;
   return (
@@ -39,14 +43,15 @@ export function ProcessActivityGroup({
           <span className={`tool-activity-label${active ? " running" : ""}`}>
             {t(summary.label, { count: summary.count })}
           </span>
+          {active ? <span className="activity-marker" aria-hidden /> : null}
           {summary.thinking > 0 && summary.tools > 0 ? (
             <span className="tool-activity-count">{t("chat.activityIncludesThinking")}</span>
           ) : null}
           {active ? <span className="tool-activity-count">{t("chat.running")}</span> : null}
           {summary.issues > 0 ? (
-            <span className="turn-process-error">
+            <span className="activity-issue-count">
               <IconCircleAlert size={14} aria-hidden />
-              {t("chat.activityFailures", { count: summary.issues })}
+              <span>{t("chat.activityFailures", { count: summary.issues })}</span>
             </span>
           ) : null}
           <span className="tool-activity-caret" aria-hidden><IconChevronRight size={12} /></span>

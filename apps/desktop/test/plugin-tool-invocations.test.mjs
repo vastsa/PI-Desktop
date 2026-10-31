@@ -53,6 +53,16 @@ const PLUGIN = `
         ctx.signal.addEventListener("abort", () => aborted.add(ctx.sessionId), { once: true });
         await pi.desktop.invoke({ operation: "session/get", args: [ctx.sessionId] });
         if (args.reveal) await pi.browser.reveal();
+        if (args.browser) {
+          await pi.browser.snapshot();
+          await pi.browser.click({ uid: "e1" });
+          await pi.browser.fill({ uid: "e1", text: ctx.sessionId });
+          await pi.browser.evaluate({ expression: "document.title" });
+          await pi.browser.screenshot();
+          await pi.browser.console({ limit: 10 });
+          await pi.browser.cdp({ method: "Page.enable" });
+          await pi.browser.getState();
+        }
         if (args.wait) {
           return new Promise((resolve) => {
             const finish = () => { aborted.add(ctx.sessionId); resolve({ aborted: true }); };
@@ -84,6 +94,7 @@ async function fixture(t, onInvoke) {
   writeFileSync(join(dir, "main.js"), PLUGIN);
   const calls = [];
   const reveals = [];
+  const browserCalls = [];
   const runtime = new PluginRuntime({
     hostEntry,
     spawnProcess({ entry }) {
@@ -101,6 +112,14 @@ async function fixture(t, onInvoke) {
     },
     browser: {
       async reveal(sessionId) { reveals.push(sessionId); },
+      async snapshot(sessionId) { browserCalls.push(["snapshot", sessionId]); return {}; },
+      async click(_uid, sessionId) { browserCalls.push(["click", sessionId]); },
+      async fill(_uid, _text, sessionId) { browserCalls.push(["fill", sessionId]); },
+      async evaluate(_expression, sessionId) { browserCalls.push(["evaluate", sessionId]); },
+      async screenshot(_input, sessionId) { browserCalls.push(["screenshot", sessionId]); return {}; },
+      console(_limit, sessionId) { browserCalls.push(["console", sessionId]); return {}; },
+      async cdp(_method, _params, sessionId) { browserCalls.push(["cdp", sessionId]); },
+      getState(sessionId) { browserCalls.push(["getState", sessionId]); return {}; },
     },
     getSessionContext: async (sessionId) => ({ sessionId, messages: [], truncated: false }),
   });
@@ -108,7 +127,7 @@ async function fixture(t, onInvoke) {
   await runtime.loadFromPath(dir, permissions);
   const tool = runtime.getTools().find((entry) => entry.name === "probe");
   assert.ok(tool);
-  return { id, runtime, tool, calls, reveals };
+  return { id, runtime, tool, calls, reveals, browserCalls };
 }
 
 test("browser.reveal reaches Main with the invoking session context", { timeout: 5000 }, async (t) => {
@@ -116,6 +135,19 @@ test("browser.reveal reaches Main with the invoking session context", { timeout:
   const result = await tool.execute({ reveal: true }, { sessionId: "session-b", turnId: "turn-b" });
   assert.equal(result.sessionId, "session-b");
   assert.deepEqual(reveals, ["session-b"]);
+});
+
+test("every Browser API forwards trusted invocation identity across the real plugin process", { timeout: 5000 }, async (t) => {
+  const { tool, browserCalls, reveals } = await fixture(t, async () => ({}));
+  await Promise.all([
+    tool.execute({ browser: true, sessionId: "spoofed-b" }, { sessionId: "A" }),
+    tool.execute({ browser: true, sessionId: "spoofed-a" }, { sessionId: "B" }),
+  ]);
+  const expected = ["snapshot", "click", "fill", "evaluate", "screenshot", "console", "cdp", "getState"];
+  assert.deepEqual(browserCalls.filter(([, id]) => id === "A").map(([method]) => method), expected);
+  assert.deepEqual(browserCalls.filter(([, id]) => id === "B").map(([method]) => method), expected);
+  assert.equal(browserCalls.length, expected.length * 2);
+  assert.deepEqual(reveals, []);
 });
 
 test("real plugin calls keep sender identity through concurrent out-of-order completion", { timeout: 5000 }, async (t) => {

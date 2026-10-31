@@ -253,6 +253,13 @@ function buildApi() {
       requestNotificationPermission: () => call("ui.requestNotificationPermission"),
       showNativeNotification: (input) => call("ui.showNativeNotification", [input]),
     },
+    // One line into the session's composer placeholder (ADR 0333). The shell
+    // answers whether it went on screen, so a plugin never has to guess before
+    // spending another completion.
+    composer: {
+      suggest: (input) => call("composer.suggest", [input ?? {}]),
+      clearSuggestion: (input) => call("composer.clearSuggestion", [input ?? {}]),
+    },
     project: {
       create: (input) => call("project.create", [input ?? {}]),
     },
@@ -264,6 +271,9 @@ function buildApi() {
     },
     workspace: {
       get: () => call("workspace.get"),
+    },
+    projects: {
+      list: () => call("projects.list"),
     },
     desktop: {
       listOperations: () => call("desktop.listOperations"),
@@ -277,13 +287,13 @@ function buildApi() {
           ...result,
           bytes: normalizeBytes(result?.bytes),
         })),
-      readPreview: (path) => call("fs.readPreview", [path]),
+      readPreview: (path, options) => call("fs.readPreview", options === undefined ? [path] : [path, options]),
       openDefault: (path) => call("fs.openDefault", [path]),
       openInBrowser: (path) => call("fs.openInBrowser", [path]),
       reveal: (path) => call("fs.reveal", [path]),
       writeText: (path, content) => call("fs.writeText", [path, content]),
       glob: (pattern) => call("fs.glob", [pattern]),
-      list: (path) => call("fs.list", [path]),
+      list: (path, options) => call("fs.list", options === undefined ? [path] : [path, options]),
       remove: (path) => call("fs.remove", [path]),
       requestDirectory: () => call("fs.requestDirectory"),
     },

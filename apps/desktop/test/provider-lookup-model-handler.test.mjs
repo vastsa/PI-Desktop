@@ -13,6 +13,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { ErrorCodes } from "../../../packages/shared/src/errors.ts";
 import { IPC } from "../../../packages/shared/src/protocol.ts";
@@ -39,7 +40,7 @@ function load(relative, imports) {
 
 async function fixtureCatalog() {
   const catalog = new modelsDev.ModelsDevCatalog({
-    catalogPath: new URL("../resources/models.dev/api.json", import.meta.url).pathname,
+    catalogPath: fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url)),
   });
   assert.equal(await catalog.ensureLoaded(), true);
   return catalog;

@@ -6,7 +6,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createTranscriptReadingRuntime } = await import(
   "../src/stores/runtime/transcript-reading-runtime.ts"
 );
-const { transcriptViewMessages, transcriptViewFromSession } = await import("../src/lib/transcript-reading.ts");
+const { isTranscriptAtLiveTail, transcriptViewMessages, transcriptViewFromSession } = await import("../src/lib/transcript-reading.ts");
 const { getSessionMessageSnapshot } = await import("../src/lib/session-transcript-updates.ts");
 const { mergeLiveSessionMessages, upsertLiveSessionMessage, projectMessageEnd, removeLiveSessionMessage } = await import("../src/lib/session-transcript.ts");
 const { buildTranscriptEntries } = await import("../src/lib/assistant-turns.ts");
@@ -72,6 +72,36 @@ function reader(read, overrides = {}) {
     visible: () => transcriptViewMessages(state.messages, state.transcriptViews.s),
   };
 }
+
+test("a canonical empty transcript can present its first-event wait, while empty reading ranges cannot", () => {
+  assert.equal(isTranscriptAtLiveTail([], []), true);
+  const view = { ...transcriptViewFromSession(page([], { hasMoreAfter: false }).session), restored: true };
+  assert.equal(isTranscriptAtLiveTail([], transcriptViewMessages([], view), view), false);
+  assert.equal(isTranscriptAtLiveTail([message("tail")], [], view), false);
+  const disconnected = { ...view, messages: [message("old")] };
+  assert.equal(isTranscriptAtLiveTail([], transcriptViewMessages([], disconnected), disconnected), false);
+  const unidentified = [message("")];
+  assert.equal(isTranscriptAtLiveTail(unidentified, unidentified, view), false);
+});
+
+test("live-tail identity survives a restored navigation parent's object copy", () => {
+  const live = [message("tail", "live")];
+  const copied = { ...live[0] };
+  const view = { ...transcriptViewFromSession(page([copied], { hasMoreAfter: false }).session),
+    restored: true, parentMessage: copied };
+  const visible = transcriptViewMessages(live, view);
+  assert.notEqual(visible.at(-1), live.at(-1), "exercise the real navigation-parent projection");
+  assert.equal(isTranscriptAtLiveTail(live, visible, view), true);
+  assert.equal(isTranscriptAtLiveTail(live, [{ ...copied }], view), true, "copied rows keep their wire identity");
+});
+
+test("unread gaps, explicit search and different tail identities remain historical", () => {
+  const live = [message("tail")];
+  const view = transcriptViewFromSession(page(live, { hasMoreAfter: false }).session);
+  assert.equal(isTranscriptAtLiveTail(live, live, { ...view, hasMoreAfter: true }), false);
+  assert.equal(isTranscriptAtLiveTail(live, live, { ...view, focus: { ...target("tail"), requestId: 1 } }), false);
+  assert.equal(isTranscriptAtLiveTail(live, [message("other")], view), false);
+});
 
 test("a search jump keeps complete focused text without changing live/model input", async () => {
   const calls = [];
@@ -575,4 +605,72 @@ test("selection revalidation cannot remove a restored range, but an explicit rew
   assert.equal(r.view().restored, true);
   r.set({ messages: [message("tail", "edited")] });
   assert.equal(r.view(), undefined);
+});
+
+test("a restored range joins live output only after paging closes the gap", async () => {
+  const calls = [];
+  const canonical = [message("cached-before"), message("tail", "streaming")];
+  const r = reader(async (_id, options) => {
+    calls.push(options);
+    return calls.length === 1
+      ? page([message("old")], { messageStart: 20, messageEnd: 80 })
+      : page([message("tail", "persisted")], {
+          messageStart: 80, messageEnd: 100, hasMoreAfter: false,
+        });
+  }, { messages: canonical, runningSessions: { s: true } });
+  await r.restoreTranscriptReading("s", bookmark, new AbortController().signal);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old"], "do not skip unloaded history");
+  await r.loadTranscriptPage("s", "after");
+  assert.equal(r.view().hasMoreAfter, false);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old", "tail"], "do not prepend cached rows on continuation");
+  assert.equal(r.visible().at(-1).content, "streaming");
+  r.set({ messages: [message("cached-before"), message("tail", "complete"), message("new")], runningSessions: {} });
+  assert.deepEqual(r.visible().map((row) => row.id), ["old", "tail", "new"]);
+  assert.equal(r.visible().find((row) => row.id === "tail").content, "complete");
+  assert.equal(r.get().messages.some((row) => row.id === "old"), false, "reading must not populate model input");
+});
+
+test("a restored range already at the tail uses canonical updates without adding older cached rows", () => {
+  const restored = { ...transcriptViewFromSession(page([message("tail", "persisted")], {
+    messageStart: 90, messageEnd: 100, hasMoreAfter: false,
+  }).session), restored: true };
+  const live = [message("before"), message("tail", "latest"), message("next")];
+  assert.deepEqual(transcriptViewMessages(live, restored).map((row) => [row.id, row.content]),
+    [["tail", "latest"], ["next", "next"]]);
+  const search = { ...restored, focus: { ...target("tail"), requestId: 1 } };
+  assert.deepEqual(transcriptViewMessages(live, search).map((row) => [row.id, row.content]),
+    [["tail", "persisted"]], "explicit search keeps its selected snapshot");
+});
+
+test("a bookmark inside the page being revalidated keeps that page instead of a narrower window", async () => {
+  // Returning to a retained session commits its page while `selectingSessionId`
+  // is still set and then swaps `messages` for the revalidated window. The
+  // bookmarked row is already in that page, so restoration must publish the page
+  // itself: reading a range around the anchor would both narrow the transcript
+  // and report `hasMoreAfter`, which paints the load-later affordance on a
+  // conversation nobody left.
+  const r = reader(async () => { throw new Error("unexpected read"); }, {
+    messages: [message("old"), message("tail")], selectingSessionId: "s",
+  });
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), true);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old", "tail"]);
+  assert.equal(r.view().restored, true);
+  assert.equal(r.view().hasMoreAfter, false);
+});
+
+test("a saved anchor does not supersede in-flight navigation when both rows are loaded", async () => {
+  const focused = {
+    ...transcriptViewFromSession(page([message("old"), message("target")]).session, {
+      ...target("target"), requestId: 7,
+    }),
+    loading: "target",
+  };
+  const r = reader(async () => { throw new Error("automatic restore must not read"); }, {
+    messages: [message("old"), message("target")],
+    selectingSessionId: "s",
+    transcriptViews: { s: focused },
+  });
+
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), false);
+  assert.equal(r.view(), focused, "explicit navigation keeps ownership of the reading view");
 });

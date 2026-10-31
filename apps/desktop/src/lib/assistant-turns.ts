@@ -4,7 +4,11 @@ import type {
   MessageUsage,
   UiMessage,
 } from "@pi-desktop/shared";
-import { addUsage, hostedSearchRounds } from "@pi-desktop/shared";
+import {
+  addUsage,
+  hostedSearchRounds,
+  withoutReasoningReplayPlaceholder,
+} from "@pi-desktop/shared";
 import { getToolAction, isDelegationStartTool } from "./tool-display";
 import { messageContentFacts } from "./transcript-summary";
 
@@ -65,7 +69,9 @@ export type TranscriptEntry =
 
 export function messageThinking(message: UiMessage): string {
   if (typeof message.thinking !== "string") return "";
-  return message.thinking.trim() ? message.thinking : "";
+  // An echoed replay placeholder is not the model's reasoning (#1945).
+  const thinking = withoutReasoningReplayPlaceholder(message.thinking);
+  return thinking.trim() ? thinking : "";
 }
 
 function isVisibleMessage(message: UiMessage): boolean {
@@ -86,10 +92,11 @@ function isDelegationStartActivity(item: AssistantActivityItem): boolean {
 }
 
 /**
- * A `Bash` call or a run alias renders as a standalone row outside any process
- * or activity-group disclosure (ADR turn-process-and-thinking-display).
- * Adjacent Bash rows each stay standalone, so a run item neither joins the
- * preceding segment nor absorbs the next one.
+ * A `Bash` call or a run alias is a run row (ADR
+ * turn-process-and-thinking-display). With commands expanded it renders as its
+ * own row inside the turn's process disclosure; with commands folded it stays in
+ * the activity group it ran among. Adjacent calls are still built as separate
+ * activity parts, so entry topology does not depend on the preference.
  */
 export function isStandaloneRunActivity(
   item: AssistantActivityItem,

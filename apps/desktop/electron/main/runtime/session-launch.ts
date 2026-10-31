@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  GEN_UI_DIRECTORY_NAME,
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
@@ -29,7 +30,7 @@ import {
   visionFromModelConfig,
   type UserSubagentDocument,
 } from "@pi-desktop/agent-runtime";
-import { builtinSkills } from "../builtin-skills";
+import { builtinSkills, effectiveDisabledBuiltinSkills, VISUALIZE_SKILL_ID } from "../builtin-skills";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import {
   catalogModelConfigFor,
@@ -229,6 +230,33 @@ export function createSessionLaunchRuntime({
       }
       throw error;
     }
+  }
+
+  /**
+   * Built-in ids this process treats as off for runtime consumers: the host's
+   * activation state plus the inline-visualization switch. The `/` menu and the
+   * on-demand `Skill` tool read this, so neither offers the `visualize` skill
+   * while the feature is off — and a switch takes effect without a relaunch.
+   */
+  async function runtimeDisabledBuiltinSkills(): Promise<string[]> {
+    const disabled = await disabledBuiltinSkills();
+    let visualizations = false;
+    if (runtimeState.host?.isAvailable()) {
+      try {
+        const settings = await runtimeState.host.call<{ inlineVisualizations?: boolean }>(
+          "settings.get",
+        );
+        visualizations = settings.inlineVisualizations === true;
+      } catch (error) {
+        // An unreadable switch keeps the feature off; it never turns it on.
+        if (!isHostUnavailable(error)) {
+          logger.app("plugin", "warn", "visualization switch failed", {
+            data: String(error),
+          });
+        }
+      }
+    }
+    return effectiveDisabledBuiltinSkills(disabled, visualizations);
   }
 
   /**
@@ -508,11 +536,18 @@ export function createSessionLaunchRuntime({
     // skills come first so a plugin's entry reads as a refinement of them, and
     // the user's own skills come last so they win a name clash in the model's
     // reading order.
+    // The inline-visualization switch owns the `visualize` skill: with the
+    // feature off it is withheld here, which also drops the directory below.
+    const disabledSkillIds = effectiveDisabledBuiltinSkills(
+      await disabledBuiltinSkills(),
+      settings.inlineVisualizations === true,
+    );
     const pluginSkills = [
       ...builtinSkills({
         workspacePath: projectPath,
         pluginPaths: plugins.listLoaded().map((loaded) => loaded.path),
-        disabledIds: await disabledBuiltinSkills(),
+        disabledIds: disabledSkillIds,
+        remote: Boolean(remoteWorkspace),
       }),
       ...plugins
         .getSkills()
@@ -706,9 +741,19 @@ export function createSessionLaunchRuntime({
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        // The session `/fast` switch only reaches a model the user allowed it
+        // for in model settings (ADR 0334).
+        fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
         ...(jevApiKey ? { jevApiKey } : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
+        // Remote-host tools write on that host; Main can only serve local files.
+        // The feature switch and a disabled visualize skill both withhold the
+        // directory, so the prompt never points the model at a skill it cannot
+        // load or at a card this build will not render.
+        ...(remoteWorkspace || disabledSkillIds.includes(VISUALIZE_SKILL_ID)
+          ? {}
+          : { visualizationsDir: join(dataDir, GEN_UI_DIRECTORY_NAME, sessionId) }),
         attachmentsDir: join(dataDir, "attachments"),
         projectPath,
         ...(remoteWorkspace ? { remoteWorkspace } : {}),
@@ -784,6 +829,7 @@ export function createSessionLaunchRuntime({
     activeUserSubagentDocuments,
     disabledBuiltinSubagents,
     disabledBuiltinSkills,
+    runtimeDisabledBuiltinSkills,
     loadUserSkillBody,
     resolveEffectiveCommandShell,
     resolveAgentRuntimeLaunch,

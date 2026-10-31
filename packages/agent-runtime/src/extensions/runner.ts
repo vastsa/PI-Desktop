@@ -552,7 +552,7 @@ export class TrustedExtensionRunner {
 
   /** Chain prompt replacements within this turn while keeping handler inputs isolated. */
   async emitBeforeAgentStart(prompt: string, systemPrompt: string): Promise<string | undefined> {
-    const payload = { type: "before_agent_start", prompt, systemPrompt, systemPromptOptions: {} };
+    const payload = { type: "before_agent_start", messageType: "user", prompt, systemPrompt, systemPromptOptions: {} };
     const result = await this.emit<{ systemPrompt?: string }>(
       "before_agent_start",
       payload,

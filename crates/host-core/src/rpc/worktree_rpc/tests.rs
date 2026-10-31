@@ -34,6 +34,7 @@ fn tool_options(
         bash_options: bash,
         allow_external_paths: false,
         hashline: None,
+        visualization_root: None,
     }
 }
 
@@ -112,7 +113,7 @@ async fn isolated_session_user_path_from_create_to_delete() {
     // external-path permission; isolation does not weaken containment.
     assert!(requires_external_path_permission(
         Some(&root.to_string_lossy()),
-        None,
+        &crate::workspace::ContainedRoots::new(),
         "Write",
         &json!({ "path": project.join("f.txt").to_string_lossy() }),
     ));

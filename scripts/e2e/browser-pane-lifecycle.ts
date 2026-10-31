@@ -64,7 +64,7 @@ export async function checkBrowserPaneLifecycle(
   stage("lifecycle-queue");
   show();
   host.setChromeSession("lifecycle", "first");
-  await host.navigate({ url }, "lifecycle");
+  await host.navigate({ url }, "lifecycle", "first");
   const first = panes.at(-1)!;
   const firstWc = first.getWebContents();
   assert(firstWc);
@@ -73,13 +73,13 @@ export async function checkBrowserPaneLifecycle(
   try {
     const queued = host.cdpCommand("Page.captureScreenshot", { format: "png" });
     host.setChromeSession("lifecycle", "second");
-    await host.navigate({ url: url + "/second" }, "lifecycle");
+    await host.navigate({ url: url + "/second" }, "lifecycle", "second");
     const second = panes.at(-1)!;
     assert.deepEqual(attached(), [second.getWebContents()!.id]);
     await host.screenshot();
     assert.equal(capture.count(), 1, "other pages do not start a queued capture");
     host.setChromeSession("another-session", "third");
-    await host.navigate({ url: url + "/third" }, "another-session");
+    await host.navigate({ url: url + "/third" }, "another-session", "third");
     assert.deepEqual(attached(), [panes.at(-1)!.getWebContents()!.id]);
     host.setChromeSession("lifecycle", "first");
     show({ x: 680, y: 110, width: 300, height: 360 });
@@ -129,7 +129,7 @@ export async function checkBrowserPaneLifecycle(
     assert(firstWc.isDestroyed());
     assert.deepEqual(attached(), []);
     host.setChromeSession("lifecycle", "replacement");
-    await host.navigate({ url: url + "/replacement" }, "lifecycle");
+    await host.navigate({ url: url + "/replacement" }, "lifecycle", "replacement");
     closing.release();
     await closing.result;
     await rejected;
@@ -146,7 +146,7 @@ export async function checkBrowserPaneLifecycle(
   liveWc.close();
   await closed;
   host.setChromeSession("lifecycle", "replacement");
-  await host.navigate({ url: url + "/recreated" }, "lifecycle");
+  await host.navigate({ url: url + "/recreated" }, "lifecycle", "replacement");
   assert.notEqual(live.getWebContents()!.id, liveWc.id);
   assert.deepEqual(attached(), [live.getWebContents()!.id]);
   assert.equal(window.contentView.children.length, 1, "destroyed guest must not leave an orphan container");

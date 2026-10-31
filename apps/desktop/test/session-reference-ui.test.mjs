@@ -73,6 +73,12 @@ const shared = load(new URL("../src/features/chat/transcript/shared.tsx", import
   "react-i18next": { useTranslation: () => ({ t, i18n: { language: locale } }) },
   "@pi-desktop/shared": await import("@pi-desktop/shared"),
   "./disclosure": {},
+  "./TextShimmer": {
+    TextShimmer: ({ text }) => React.createElement("span", null, text),
+  },
+  // The usage capsule has its own render contract; this fixture only proves
+  // the session-chip graph still loads and renders.
+  "./TurnUsageCapsule": { TurnUsageCapsule: () => null },
   "../../../hooks/use-preview-target": {
     useOpenChatFileRef: () => () => {},
     useOpenPreviewTarget: () => undefined,
@@ -100,7 +106,16 @@ const shared = load(new URL("../src/features/chat/transcript/shared.tsx", import
   "../../../lib/assistant-turns": { messageThinking: () => "" },
   "../../../lib/use-referenced-image-data-url": { useReferencedImageDataUrl: () => undefined },
   "../../../lib/chat-links": { isHtmlFilePath: () => false },
-  "../../../lib/context-usage": { calculateTokenRate: () => 0 },
+  "../../../lib/context-usage": {
+    calculateTokenRate: () => 0,
+    turnUsageBreakdown: () => ({
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 0,
+    }),
+  },
   "../../../stores/app-store": { useAppStore },
 });
 

@@ -202,7 +202,10 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-inline: contain;
-  scroll-padding-inline: 2px;
+  /* Reserve the close button's width at the inline end so a scrolled-to tab
+     never lands with its sibling close button clipped by the overflow edge
+     (issue #1762). */
+  scroll-padding-inline: 2px 24px;
 }
 
 .work-panel-tab-strip::-webkit-scrollbar {

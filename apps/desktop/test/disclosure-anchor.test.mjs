@@ -177,6 +177,7 @@ test("a scroll key is a gesture, and Space stays a button activation", () => {
   assert.equal(isScrollGestureInput("keydown", { key: "PageDown" }), true);
   assert.equal(isScrollGestureInput("keydown", { key: "Home" }), true);
   assert.equal(isScrollGestureInput("keydown", { key: " " }), true);
+  assert.equal(isScrollGestureInput("keydown", { key: " ", controlOwnsKey: true }), false);
   assert.equal(SCROLL_GESTURE_KEYS.has("ArrowDown"), true);
   assert.equal(isScrollGestureInput("keydown", { key: "a" }), false);
   assert.equal(isScrollGestureInput("keydown", {}), false);

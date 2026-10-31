@@ -99,9 +99,15 @@ input/output/cached breakdown). Data already exists in the runtime usage
 events.
 
 **Adopted in D103 (tokens-only first cut), placement amended by D347**:
-completed assistant turns show a model badge under the answer. The compact
-Codex-style context inspector lives in the composer toolbar next to the model
-picker and always mirrors the newest assistant turn that reported usage. The
+completed assistant turns show a model badge under the answer, followed by the
+turn usage capsule. The capsule keeps the visible turn's average generation
+speed and compact total tokens beside the model badge, and hovering or
+keyboard-focusing it opens the cache-read/input/output breakdown with exact
+counts and one exact total. Its total sums every assistant message in the
+visual turn, so it is a turn aggregate rather than a single request. The
+compact Codex-style context inspector lives in the composer toolbar next to
+the model picker and always mirrors the newest assistant turn that reported
+usage, remaining the last-request occupancy authority. The
 trigger shows remaining context percentage in a small ring; clicking it
 toggles a light summary panel with remaining/window counts and two unboxed
 turn/speed values. Provider input/output/cache/reasoning usage stays

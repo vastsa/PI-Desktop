@@ -55,7 +55,8 @@ The application categories are:
 - `provider` — provider/model discovery, retries, and cache failures, plus
   live voice call failures: one `live voice call failed` `warn` per root cause
   carrying `callId`, `adapterId`, `phase`, `stage`, `code`, `retriable` and the
-  Logger-redacted raw `reason`, and one `live voice microphone release
+  Logger-redacted raw `reason` (including Gemini WebSocket close code and UTF-8
+  reason), and one `live voice microphone release
   unconfirmed` `error` when a release could not be confirmed and the lease is
   quarantined. Call views carry the `code` only.
 - `persistence` — transcript and outbox persistence failures

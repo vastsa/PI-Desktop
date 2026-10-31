@@ -1162,6 +1162,32 @@
   justify-content: flex-end;
 }
 
+/* Segmented choices size to their labels, not the field-column cap. Wrap the
+   control below the title, then wrap whole options if the pane is narrower. */
+.settings-row:has(> .settings-row-control > .settings-segment) {
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.settings-row:has(> .settings-row-control > .settings-segment) > .settings-row-copy {
+  flex-basis: max-content;
+}
+
+.settings-row-control:has(> .settings-segment) {
+  max-width: 100%;
+}
+
+.settings-row-control > .settings-segment {
+  width: max-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.settings-row-control > .settings-segment > .settings-segment-item {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 /*
   A toggle is 20 px tall, while the field metric (select triggers, text inputs)
   resolves to ~38 px. Give the control column a matching minimum so toggle rows
@@ -2542,6 +2568,16 @@
   color: var(--ds-text-muted);
 }
 
+/*
+  A stored per-project override on a global row: the switch reads the global
+  default while this project keeps its own state, so the badge warns instead
+  of pretending the two agree (#1957).
+*/
+.agent-capability-badge.is-override {
+  background: color-mix(in oklab, var(--ds-warning) 13%, transparent);
+  color: var(--ds-warning);
+}
+
 /* Connection state is the only place capability rows carry color. */
 .agent-capability-status-dot {
   width: 5px;
@@ -3585,6 +3621,10 @@
   color: var(--ds-warning);
 }
 
+.mcpm-status.is-snapshot {
+  color: var(--ds-text-secondary);
+}
+
 .mcpm-badge.is-remote {
   background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
   color: var(--ds-text-muted);
@@ -4096,6 +4136,10 @@
 
 .sklm-status.is-error {
   color: var(--ds-warning);
+}
+
+.sklm-status.is-snapshot {
+  color: var(--ds-text-secondary);
 }
 
 .sklm-badge.is-remote {

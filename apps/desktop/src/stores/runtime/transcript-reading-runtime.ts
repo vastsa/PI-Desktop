@@ -70,10 +70,21 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
       if (signal.aborted || get().activeSessionId !== sessionId || !position.messageId) return false;
       const previous = get().transcriptViews[sessionId];
       const range = currentView(sessionId);
-      if (get().selectingSessionId !== sessionId &&
-        range.messages.some((message) => message.id === position.messageId)) return true;
       // A user navigation already in flight always wins over automatic restore.
       if (range.focus || range.loading) return false;
+      if (range.messages.some((message) => message.id === position.messageId)) {
+        // The page already holds the bookmark, so a bounded read around it would
+        // only narrow the transcript. Re-selecting a retained session commits
+        // that page while `selectingSessionId` is still set and then swaps
+        // `messages` for the revalidated window, so publish the page as the
+        // reading range: that keeps the bookmarked row, and the reader's
+        // offset, across the swap. Skipping the read also matters because a
+        // window around a bookmark in a tail page reports `hasMoreAfter`, which
+        // paints the load-later affordance on a conversation nobody left.
+        if (get().selectingSessionId === sessionId && !previous?.restored)
+          publish(sessionId, { ...range, restored: true });
+        return true;
+      }
       const pending: TranscriptView = { ...range, restored: true, loading: "target" };
       const rollback = () => {
         if (get().transcriptViews[sessionId] !== pending) return;

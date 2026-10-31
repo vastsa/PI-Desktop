@@ -12,24 +12,12 @@ fn migrate_v22_to_v23_tx(tx: &Transaction<'_>) -> Result<()> {
             "ALTER TABLE sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT 'legacy'
              CHECK (title_source IN ('legacy', 'default', 'manual', 'generated'));",
         )?;
-        // Older releases stored default and manually-entered titles in the
-        // same column. Preserve the distinction where it is observable: only
-        // known placeholders remain eligible for automatic replacement; every
-        // other pre-existing title is treated as manual. The list mirrors
-        // `sessions::PLACEHOLDER_TITLES` and covers the localized
-        // `chat.untitledTask` / `nav.newChat` labels the renderer writes.
-        tx.execute(
-            "UPDATE sessions SET title_source = CASE
-                 WHEN title IN ('', 'New task', 'New chat', '新建任务', '新对话',
-                                '新建任務', '新對話', '새 작업', '새 채팅',
-                                'Tarefa sem título', 'Nova conversa',
-                                'Yeni görev', 'Yeni sohbet', 'Neue Aufgabe',
-                                'Nouvelle tâche', 'Nueva tarea', 'Neuer Chat',
-                                'Nuevo chat', 'Nouvelle discussion') THEN 'default'
-                 ELSE 'manual'
-             END",
-            [],
-        )?;
+        // Historical v22 sessions lack provenance metadata to distinguish an
+        // untouched default placeholder from a deliberate manual rename to the
+        // same text (e.g. `new task`). All pre-existing titles remain `legacy`,
+        // safely protecting them from automatic replacement by first-prompt
+        // title derivation or title plugins. Newly created sessions after
+        // upgrade set `default` or `manual` as appropriate.
     }
     tx.pragma_update(None, "user_version", 23i64)?;
     Ok(())

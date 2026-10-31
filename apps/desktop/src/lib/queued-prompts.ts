@@ -63,6 +63,19 @@ export function isPromotedQueuedPrompt(
 }
 
 /**
+ * The row Send now can still move: not awaiting Host admission, not already
+ * promoted. The queue mirrors delivery order, so this is the row that would
+ * start next anyway.
+ */
+export function nextSendableQueuedPrompt(
+  queue: readonly QueuedPrompt[],
+): QueuedPrompt | undefined {
+  return queue.find(
+    (item) => !isPendingQueuedPrompt(item) && !isPromotedQueuedPrompt(item),
+  );
+}
+
+/**
  * Send now: promote one row behind the already promoted block. Click order is
  * priority order, and only the promoted block is ordered by priority.
  */

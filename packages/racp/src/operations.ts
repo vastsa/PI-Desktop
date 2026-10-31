@@ -3,6 +3,7 @@ import { RacpError } from "@pi-desktop/agent-host";
 import {
   RacpApprovalResponseSchema,
   WorkspaceToolExecuteSchema, WorkspaceToolAbortSchema, WorkspaceFilesRequestSchema,
+  WorkspacePluginFilesRequestSchema,
   RacpCursorSchema,
   RacpInputResponseSchema,
   RacpRequestContextSchema,
@@ -169,6 +170,12 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
       throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not offer workspace files");
     }
     return context.operations.workspaceFiles.read(check(WorkspaceFilesRequestSchema, params));
+  });
+  handlers.set("workspace/pluginFiles", async (context, params) => {
+    if (!context.operations.workspacePluginFiles || !context.capabilities.workspacePluginFiles) {
+      throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not offer plugin workspace reads");
+    }
+    return context.operations.workspacePluginFiles.read(check(WorkspacePluginFilesRequestSchema, params));
   });
   handlers.set("workspace/toolExecute", async (context, params) =>
     requireWorkspaceTools(context).execute(check(WorkspaceToolExecuteSchema, params), toolOwner(context)));

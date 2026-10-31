@@ -571,7 +571,7 @@
 .conversation-topbar .ct-title-wrap {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -580,17 +580,113 @@
   app-region: drag;
 }
 
+/*
+ * The project crumb names where the conversation lives, one step quieter than
+ * the task title it prefixes. It may truncate, but it never forces the title
+ * or the action lane out of the bar.
+ */
+.conversation-topbar .ct-project {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+}
+
+.conversation-topbar .ct-project > svg {
+  flex: 0 0 auto;
+}
+
+.conversation-topbar .ct-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-topbar .ct-sep {
+  flex: 0 0 auto;
+  color: var(--ds-border-strong);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+}
+
 .conversation-topbar .ct-title {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  margin: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ds-text-primary);
-  font-size: var(--text-base);
+  font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-compact);
+}
+
+/*
+ * Click-to-edit title. The button only exists to give the text real pointer and
+ * keyboard semantics; it must paint and measure exactly like the plain title,
+ * so every font/ink property is inherited and the ellipsis stays on the text.
+ */
+.conversation-topbar .ct-title-trigger {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* The title lane clips its children, so a ring would vanish; underline instead. */
+.conversation-topbar .ct-title-trigger:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--ds-accent);
+}
+
+/*
+ * The editor is deliberately boxless: the title keeps its own type metrics and
+ * only the caret marks the mode change. Inside the draggable bar the field
+ * must still opt into pointer events or the click never reaches it.
+ */
+.conversation-topbar .ct-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  appearance: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ds-text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-compact);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /*

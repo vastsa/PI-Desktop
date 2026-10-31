@@ -3,8 +3,11 @@
  *
  * Submenus open on mouse hover and on click (including touch); keyboard users
  * open them with ArrowRight/Enter and return with ArrowLeft/Escape. The child
- * panel is viewport-positioned beside its trigger so the root menu's scroll
- * area cannot clip it.
+ * panel is portaled to the body and viewport-positioned beside its trigger: as
+ * a DOM child of the root menu it would sit inside a scrollable fixed box, and
+ * any ancestor-side effect that creates a containing block (a theme's
+ * `backdrop-filter`, a `transform`, `contain`) would offset it by the menu's
+ * own position and stretch the menu's scroll area (#1896).
  */
 import {
   Fragment,
@@ -17,6 +20,7 @@ import {
   type RefObject,
 } from "react";
 import { IconChevronRight } from "./icons";
+import { portalToBody } from "../lib/portal-visibility";
 import type {
   SidebarMenuActionItem,
   SidebarMenuGroupItem,
@@ -113,12 +117,21 @@ export function SidebarMenuPanel({
     };
 
     reposition();
-    if (typeof ResizeObserver === "undefined" || !submenuRef.current) return;
-    const observer = new ResizeObserver(reposition);
-    observer.observe(submenuRef.current);
+    const root = rootMenuRef.current;
+    const submenu = submenuRef.current;
+    // The trigger moves with the menu's own scroll and with async content
+    // growth, so the submenu follows both instead of only its own size.
+    root?.addEventListener("scroll", reposition, { passive: true });
     window.addEventListener("resize", reposition);
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(reposition);
+      if (submenu) observer.observe(submenu);
+      if (root) observer.observe(root);
+    }
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
+      root?.removeEventListener("scroll", reposition);
       window.removeEventListener("resize", reposition);
     };
   }, [openSubmenuId, rootMenuRef]);
@@ -132,6 +145,20 @@ export function SidebarMenuPanel({
     });
     return () => cancelAnimationFrame(frame);
   }, [openSubmenuId, submenuPosition]);
+
+  const handleSubmenuPointerLeave = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse") return;
+    const related = event.relatedTarget;
+    // Crossing back into the root menu keeps the child open; the row the
+    // pointer lands on closes it if that row is not the submenu trigger.
+    if (
+      related instanceof Node &&
+      (submenuRef.current?.contains(related) || rootMenuRef.current?.contains(related))
+    ) {
+      return;
+    }
+    closeSubmenu(false);
+  };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -308,7 +335,15 @@ export function SidebarMenuPanel({
       onPointerLeave={(event) => {
         if (event.pointerType !== "mouse") return;
         const related = event.relatedTarget;
-        if (related instanceof Node && event.currentTarget.contains(related)) return;
+        // The submenu lives in its own portal, so its rows are not DOM
+        // descendants here. React's synthetic leave follows the React tree
+        // through portals, so this mostly guards native leave sources.
+        if (
+          related instanceof Node &&
+          (event.currentTarget.contains(related) || submenuRef.current?.contains(related))
+        ) {
+          return;
+        }
         closeSubmenu(false);
       }}
       style={{ top: position.top, left: position.left }}
@@ -321,29 +356,32 @@ export function SidebarMenuPanel({
           <p className="sidebar-menu-note" data-sidebar-menu-note={note.id}>{note.text}</p>
         </Fragment>
       ))}
-      {openSubmenuItem ? (
-        <div
-          ref={submenuRef}
-          id={`sidebar-submenu-${openSubmenuItem.id}`}
-          className="sidebar-row-menu sidebar-submenu"
-          role="menu"
-          aria-label={openSubmenuItem.label}
-          style={submenuPosition
-            ? { top: submenuPosition.top, left: submenuPosition.left }
-            : { top: -10000, left: -10000, visibility: "hidden" }}
-        >
-          {openSubmenuItem.items.map((item) => renderAction(item, {
-            keyPrefix: `${openSubmenuItem.id}-`,
-            inSubmenu: true,
-          }))}
-          {openSubmenuItem.notes?.map((note) => (
-            <Fragment key={note.id}>
-              {note.separatorBefore ? <div className="sidebar-menu-separator" role="separator" /> : null}
-              <p className="sidebar-menu-note" data-sidebar-menu-note={note.id}>{note.text}</p>
-            </Fragment>
-          ))}
-        </div>
-      ) : null}
+      {openSubmenuItem
+        ? portalToBody(
+            <div
+              ref={submenuRef}
+              id={`sidebar-submenu-${openSubmenuItem.id}`}
+              className="sidebar-row-menu sidebar-submenu"
+              role="menu"
+              aria-label={openSubmenuItem.label}
+              onPointerLeave={handleSubmenuPointerLeave}
+              style={submenuPosition
+                ? { top: submenuPosition.top, left: submenuPosition.left }
+                : { top: -10000, left: -10000, visibility: "hidden" }}
+            >
+              {openSubmenuItem.items.map((item) => renderAction(item, {
+                keyPrefix: `${openSubmenuItem.id}-`,
+                inSubmenu: true,
+              }))}
+              {openSubmenuItem.notes?.map((note) => (
+                <Fragment key={note.id}>
+                  {note.separatorBefore ? <div className="sidebar-menu-separator" role="separator" /> : null}
+                  <p className="sidebar-menu-note" data-sidebar-menu-note={note.id}>{note.text}</p>
+                </Fragment>
+              ))}
+            </div>,
+          )
+        : null}
     </div>
   );
 }

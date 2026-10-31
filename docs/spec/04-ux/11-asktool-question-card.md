@@ -96,8 +96,16 @@ applies on narrow screens; the card does not rely on page-level scrolling.
 
 ## Request transitions
 
-The question index, draft answers, and submission state belong to the displayed
-request. Switching chats or advancing the pending queue mounts a fresh card at
-question one with empty answers and enabled actions. State from the previous
-request must not leak into the destination request. Unsubmitted card drafts are
-local to the mounted card and are reset when it is replaced.
+The question index and draft answers belong to the request, not to the mounted
+card instance. They live in the app store keyed by `requestId`, so switching
+chats and returning to the same pending ask restores the open question and every
+answer the user had already entered (see
+[ADR asktool-draft-survives-session-switch](../../adr/asktool-draft-survives-session-switch.md)).
+A request with no stored draft opens at question one with empty answers and
+enabled actions.
+
+Drafts never leak between requests: they are keyed by `requestId` and dropped
+when the ask is resolved or dismissed, when its tool call completes, and when the
+session's pending asks are cleared. Submission state stays local to the mounted
+card. Drafts are renderer memory, like the pending ask itself, and do not survive
+an application restart.

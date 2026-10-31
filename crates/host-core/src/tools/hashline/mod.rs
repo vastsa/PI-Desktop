@@ -10,7 +10,7 @@ mod tag;
 
 pub use apply::{apply_edit, canonical_key, encode_success, record_post_write, ToolError};
 #[allow(unused_imports)]
-pub use parse::mv_dest;
+pub use parse::{mv_dest, parse_ops};
 pub use store::HashlineStore;
 pub use tag::{
     looks_binary_bytes, normalize_file, section_header, split_lines, strip_write_markup,

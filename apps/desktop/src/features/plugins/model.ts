@@ -73,6 +73,9 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "session.read.own": "medium",
   "session.update.own": "medium",
   "composer.transform": "medium",
+  // Writes user-facing text into a draft the user may send, but only when the
+  // draft is empty and only through an explicit Tab; it never reads the draft.
+  "composer.suggest": "medium",
   // Per-turn counters and session titles only, per the usage.read matrix row.
   "usage.read": "medium",
   // Two capabilities that reach outside PI-Desktop's own window or read its

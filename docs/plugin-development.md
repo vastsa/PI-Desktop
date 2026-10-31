@@ -2,7 +2,8 @@
 
 This guide is the shortest complete path from an empty folder to a tested
 `.piplug` package. It describes the plugin runtime that PI-Desktop ships today.
-The files under [`docs/spec/07-plugins`](spec/07-plugins/README.md) remain the
+The SDK types, host validators, runtime dispatch, and executable tests are the
+implementation evidence. The files under [`docs/spec/07-plugins`](spec/07-plugins/README.md) remain the
 normative contract when this guide and a specification differ.
 
 ## 1. What a plugin can add
@@ -24,6 +25,16 @@ A plugin can contribute one or more of these capabilities:
 | Service | Resident work supervised by the host | `contributes.services`, `background.service` permission |
 | Message bus | Typed-by-convention events between plugins | `contributes.bus`, bus permissions |
 | Renderer slot | UI drawn inside the app's own window: composer controls, message action bars, blocks below a reply, tool cards, code-block renderers, corner layers | `renderer`, `renderer.extension` permission, `packages/plugin-sdk/src/renderer.ts` |
+| Composer suggestion | One dismissible line offered to the input box, taken with Tab | `pi.composer.suggest`, `composer.suggest` permission |
+| Provider | API-key, no-auth, or OAuth model service | `contributes.providers`, `provider.register`; OAuth also needs `provider.oauth` |
+| Session import | Import, read, rename, and delete this plugin's own history | `contributes.sessionSources`, matching `session.*` grants |
+| Usage facts | Compute your own usage dashboard | `pi.usage.listTurns`, `usage.read` |
+| Composer transform | An explicit draft-text action with undo | `contributes.composerTransforms`, `onComposerTransform`, `composer.transform` |
+| Global shortcut | Invoke your command while the app is unfocused | `contributes.globalShortcuts`, `pi.keyboard`, `keyboard.globalShortcut` |
+| Trusted agent extension | pi ExtensionAPI hooks, tools, commands, and custom agents | `contributes.agentExtensions`, `agent.extension` |
+| Real-time connection | Host-owned, bounded WebSockets | `pi.net.websocket`, `net.websocket` |
+| Browser / desktop control | Reviewed browser or app operations | `pi.browser`, `browser.cdp`; `pi.desktop`, `desktop.control` |
+| Speech adapter | Add a speech protocol handled by the plugin process | `pi.speech`, `speech.adapter.register` |
 
 Plugin entry code runs in a dedicated Node process. Panels run in sandboxed,
 context-isolated Electron windows with no Node integration. Calls from either
@@ -44,8 +55,9 @@ For the recommended app-first path, you need:
 - a text editor.
 - To import a pi extension directory with npm dependencies, a system `npm` executable must be on `PATH`. Release builds ship no standalone Node/npm; without it, PI-Desktop reports a warning and the imported dependency cannot load.
 
-For the repository CLI path, you also need Node.js 22.19 or newer, pnpm 10 or
-newer, and a checkout of this repository. The devkit and SDK are currently
+For the repository CLI path, use the Node.js and pnpm versions declared in the
+root `package.json` (`engines` and `packageManager`) and a checkout of this
+repository. The devkit and SDK are currently
 private workspace packages, so do not assume that `npm install
 @pi-desktop/plugin-devkit` works outside this repository.
 
@@ -157,9 +169,13 @@ The following three files show the complete command-to-panel path.
 }
 ```
 
-`schemaVersion`, `id`, `name`, `version`, and `main` are required. Every file
-path is relative to the plugin root and must stay inside it. Declare only the
-permissions the plugin actually needs.
+`schemaVersion`, `id`, `name`, `version`, and `main` are required. Entry, view,
+and skill paths are relative to the plugin root and must stay
+inside it. Theme assets have a separately validated external-path route (§6.7).
+Plugin ids must match `^[a-z0-9]+(\.[a-z0-9_-]+)+$`; uppercase and undotted
+ids are rejected. `activationEvents` is descriptive metadata today, not a lazy
+activation scheduler: enabled plugins load at startup or explicit enable/load.
+Declare only the permissions the plugin actually needs.
 
 ### `main.js`
 
@@ -189,8 +205,11 @@ ES module. Module evaluation plus `onLoad` has a 15-second budget. `onUnload`
 has a 5-second budget and is best-effort, so release timers and subscriptions
 promptly.
 
-Only `onLoad` and `onUnload` are fired today. Other lifecycle names in the
-manifest are reserved for the planned full lifecycle.
+Only `onLoad` and `onUnload` are lifecycle hooks today. Export them from the
+entry module; there is no `entrypoints` manifest dispatcher. `onPanelInvoke`,
+`onRendererCall`, `onComposerTransform`, and `onProviderOAuth` are operation
+callbacks. `onInstall`, `onEnable`, `onDisable`, and `onUninstall` are not called.
+During app quit the unload budget is shortened to 1.5 seconds.
 
 `onProviderOAuth` is a separate operation callback for OAuth provider
 contributions, not a lifecycle hook. It handles login and refresh only for its
@@ -207,8 +226,10 @@ PI-Desktop hosts the panel in a frameless window on every platform. The host
 reserves exactly a transparent 46 CSS px drag band and renders a minimal fixed
 capsule in the top-right corner with minimize, maximize/restore, and close
 buttons. The panel title, toolbar, and all other visible UI belong to the
-plugin. Normal-flow content is automatically offset below the drag band, so do
-not add another 46px top padding to compensate. The drag band is not clickable
+plugin. New pages should declare `<meta name="pi-plugin-chrome" content="v2">` and
+apply `var(--pi-plugin-titlebar-height, 0px)` to their own top spacing once.
+Without this marker the host retains the legacy additive offset; do not add a
+second 46px spacer to those pages. The drag band is not clickable
 outside the capsule; development panels show a reminder for this constraint.
 
 If a panel uses `position: fixed` or `position: sticky` for a top toolbar,
@@ -257,7 +278,9 @@ permissions, settings, is identical to a panel.
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v2" />
     <title>My First Plugin</title>
+    <style>body { padding-top: var(--pi-plugin-titlebar-height, 0px); }</style>
   </head>
   <body>
     <h1>My First Plugin</h1>
@@ -326,8 +349,15 @@ await pi.agent.registerTool({
 
 Unregister it in `onUnload`. The host exposes it to the model under a
 plugin-namespaced name, applies the normal Agent permission policy, audits
-execution, and enforces a 110-second plugin-side timeout. Plugin tools are not
-available in Plan mode.
+execution, and enforces a 110-second plugin-side timeout. Tools are deferred
+behind `ToolSearch`. By default they are hidden and denied in Plan/Goal. A tool
+may opt in with `planSafeActions` on its **runtime registration**, naming its
+read-only `action` values; keep the manifest descriptor in sync. Registration
+checks the list against a schema action enum when present, and execution in
+Plan/Goal requires `args.action` to be in that list. Risk `low`, a session grant,
+or `auto` cannot substitute for it. See [the API contract](spec/07-plugins/03-plugin-api.md#agent).
+Use `context.signal` for cancellation and `context.sessionId` / `turnId` to
+associate async work with the invoking turn. Never substitute the visible session.
 
 ### 6.2 Skill
 
@@ -404,7 +434,9 @@ page generates controls for `string`, `number`, `boolean`, `select`, `json`, and
 ```
 
 Plugin shortcuts run only in the focused PI-Desktop window and are checked
-against the app shortcut map. Global registration is not supported yet. The
+against the app shortcut map. For OS-global bindings use the separate
+`contributes.globalShortcuts` and
+`pi.keyboard` surface with `keyboard.globalShortcut` (§6.17). The
 plugin receives `plugin:settingsChanged` after a user edit. Do not put
 credentials in `manifest.json` or source control.
 
@@ -414,7 +446,7 @@ These APIs require explicit permissions:
 
 | Permission | Plugin-process API | Panel bridge channel |
 |---|---|---|
-| `fs.read` | `pi.fs.readText`, `pi.fs.glob`, `pi.fs.list`, `pi.fs.requestDirectory` | `fs.readText`, `fs.glob`, `fs.list` |
+| `fs.read` | `pi.fs.readText`, `stat`, `readRange`, `readPreview`, `openDefault`, `openInBrowser`, `reveal`, `glob`, `list`, `requestDirectory` | The same `fs.*` names; dropped-file grants use `fs.registerDropped` |
 | `fs.write` | `pi.fs.writeText` | `fs.writeText` |
 | `fs.delete` | `pi.fs.remove` | Not exposed |
 | `clipboard.read` | `pi.clipboard.readText`, `pi.clipboard.getHistory` | `clipboard.readText`, `clipboard.getHistory` |
@@ -429,11 +461,14 @@ what they want instead of waiting on a whole-repo walk that is capped at 500
 matches. Both obey the same read scope.
 
 A file permission is only half the declaration: `manifest.fs` says which paths
-each mode may touch (see §6.5). Paths are relative to the mode's root. Absolute
+each mode may touch (see §6.5). Paths are relative to the mode's root. An Agent tool uses its calling session's
+project root; a panel uses the visible workspace or its view's browsed folder.
+Registered project-group roots support reviewed absolute-path file actions;
+this does not make arbitrary absolute paths valid for general file I/O. Absolute
 paths and `..` escapes are rejected, as is a symlink that leaves the root.
 `fs.remove` is non-recursive, moves the path to the OS trash, and cannot remove
-the root itself. `net.fetch` accepts HTTP(S) and only reaches hosts listed in
-`manifest.net.domains`; `openExternal` accepts HTTP(S) and `mailto:` URLs.
+the root itself. `net.fetch` accepts HTTP(S) and only reaches hosts allowed by
+`manifest.net.domains` or the separately reviewed `net.anyHost` grant; `openExternal` accepts HTTP(S) and `mailto:` URLs.
 
 `pi.ui.notify` shows an in-app Toast. Native notifications are opt-in: call
 `pi.ui.requestNotificationPermission()` before
@@ -446,10 +481,16 @@ Clicking a delivered notification restores and focuses the main window, but
 does not activate a session.
 
 The panel bridge also exposes `ui.showToast`, `ui.closePanel`,
-`plugin.getSettings`, and `workspace.get`. A channel the host does not implement
-itself is forwarded to your `onPanelInvoke(channel, payload)`, so a panel can
+`plugin.getSettings`, `workspace.get`, and `projects.list`. A channel the host
+does not implement itself is forwarded to your `onPanelInvoke(channel, payload)`, so a panel can
 talk to its own plugin over channels you define; a plugin that exports no
 `onPanelInvoke` gets `UNSUPPORTED` back.
+
+`pi.projects.list()` adds project-picker support without requiring an active
+session or a manifest permission. Entries use the decimal `projects.id` as
+`projectId`, include ungrouped projects, and always provide `primaryPath` and
+primary-first `roots`. A stopped or unavailable Host returns `[]`. See the
+[project API contract](spec/07-plugins/03-plugin-api.md#projects-workspace-fs).
 
 ### 6.5 File scope
 
@@ -517,8 +558,12 @@ loads answer to it too (a sandboxed panel still has a network stack), as do
 remote HTTP MCP servers you declare. `window.open` from a panel is refused
 outright.
 
-An omitted, empty, or malformed `net.domains` means **no egress at all**, even
-with `net.fetch` granted. Redirects are followed by hand and re-checked, so an
+Without `net.anyHost`, an omitted or empty `net.domains` means **no egress**,
+even with `net.fetch` granted; malformed declarations fail validation.
+`net.anyHost` is an install-time high-risk exception for user-entered endpoints,
+not a request-time prompt. It also covers WebSockets, panel traffic, and remote
+MCP, but still blocks cloud-metadata destinations and grants no fetch/socket API
+by itself. Redirects are followed by hand and re-checked, so an
 allowed host cannot bounce a request to one you did not declare. Bundle assets
 into the plugin rather than loading them from a CDN you would otherwise have to
 declare.
@@ -528,7 +573,7 @@ host never retries a request your plugin makes, so backoff after a rate limit is
 your own policy rather than a hidden host behaviour. A call that comes back
 `>= 400` is still audited, as `ok: false` with the delay the response advertised.
 
-### Fetch redirect policy (unreleased)
+### Fetch redirect policy
 
 Check host support before relying on a policy; old hosts can ignore unknown
 request fields. Never fall back to a raw network request.
@@ -589,7 +634,7 @@ For a light-base theme, explicitly use `:root[data-theme="light"]`.
 
 The host sanitizes CSS, rejects `@import` and `url()` targets other than `data:`
 URIs or declared theme assets,
-caps each stylesheet at 256 KiB, and allows eight themes per plugin. Optional
+caps each stylesheet at 256 KiB, and imposes no per-plugin theme-count cap. Optional
 `assets` accepts `png`, `jpg`, `jpeg`, `webp`, `avif`, `svg`, and `woff2` files,
 with a summed limit of 4 MiB. Paths may be package-relative (inside the plugin
 root, without traversal or `node_modules`) or absolute. Matching CSS URLs are
@@ -599,14 +644,27 @@ revokes them. The renderer never receives the raw filesystem path.
 Optional `contributes.windowAppearance.backgroundColor` supplies `light`/`dark`
 colors in `#rrggbb` or `#rrggbbaa` form and requires `ui.window.appearance` in
 addition to `ui.theme`. It applies only while that plugin's theme is selected;
-switching away restores the host background. macOS retains its vibrancy.
+switching away restores the host background. On macOS the default translucent
+window ignores the color; turning off **Translucent window** applies it to the
+opaque native surface. `cornerRadius` accepts integer 0..24 DIP: Windows 11
+uses square corners for 0 and its system-rounded preference for positive values.
+macOS keeps native corners.
 See the [manifest contract](spec/07-plugins/02-plugin-manifest-schema.md) for
 all theme and window-appearance fields.
 
+
+Runtime theme changes do not require reload: `pi.themes.upsert`, `remove`,
+`list`, and `pi.app.setTheme` use `ui.theme`. `pi.themes.setVariables(themeId,
+values)` accepts only that theme's declared typed variables (`length`, `number`,
+`color`, `select`), not arbitrary CSS or host-reserved tokens.
+`contributes.scenicThemes` adds a host-rendered Settings card selector with
+1..12 cards and requires both `ui.settings` and `ui.theme`. Arbitrary
+`settingsDestinations` HTML/JS entries are not a public contribution.
+
 ### 6.8 Work panel view
 
-A view is an interface docked in the app's right work panel, next to Review,
-Terminal, Browser, and Files. It is the same isolated page as `ui.panel` — you
+A view is an interface docked in the app's right work panel, alongside the
+host's other tool and resource tabs. It is the same isolated page as `ui.panel` — you
 can reuse the same HTML — but it is shown inside the main window instead of a
 separate one, which suits anything the user consults while reading the
 conversation: a change list, a file tree, an issue queue.
@@ -661,8 +719,9 @@ plugin restricted to certain projects does not offer its views in others.
 PI-Desktop's own file view is a bundled plugin built the same way —
 `apps/desktop/resources/plugins/pi.file-manager` is a complete, non-toy example
 of a view that reaches the workspace over the public bridge: `fs.openDefault`
-and `fs.reveal` for the two actions only the host can perform, and the plugin's
-own `onPanelInvoke` channels for everything it reads and writes itself.
+and `fs.reveal` for the two actions only the host can perform, and its plugin-owned
+`onPanelInvoke` operations. Custom channels must validate their own payloads;
+they are not automatically converted into permission-gated `pi.fs` calls.
 
 ### 6.9 MCP server
 
@@ -672,6 +731,10 @@ remote server requires `mcp.server.remote`:
 ```json
 {
   "contributes": {
+    "settings": [
+      { "key": "docsMode", "title": "Docs mode", "type": "string", "default": "public" },
+      { "key": "clientName", "title": "Client name", "type": "string", "default": "my-plugin" }
+    ],
     "mcpServers": [
       {
         "id": "docs",
@@ -680,7 +743,7 @@ remote server requires `mcp.server.remote`:
         "command": "bin/docs-server",
         "args": ["--stdio"],
         "env": {
-          "DOCS_TOKEN": { "setting": "docsToken" }
+          "DOCS_MODE": { "setting": "docsMode" }
         }
       },
       {
@@ -688,12 +751,13 @@ remote server requires `mcp.server.remote`:
         "transport": "http",
         "url": "https://mcp.example.com/tools",
         "headers": {
-          "Authorization": { "setting": "issuesAuthorization" }
+          "X-Client-Name": { "setting": "clientName" }
         }
       }
     ]
   },
-  "permissions": ["mcp.server.local", "mcp.server.remote"]
+  "permissions": ["mcp.server.local", "mcp.server.remote"],
+  "net": { "domains": ["mcp.example.com"] }
 }
 ```
 
@@ -705,7 +769,9 @@ a real interpreter on `PATH`, falling back to `py -3`. Remote URLs may use
 HTTP or HTTPS, and the host must be listed in `net.domains`; non-loopback HTTP is unencrypted, so use it only on a trusted
 network. Setting references read only this plugin's settings—the host
 environment and provider secrets are never forwarded. MCP tools follow the
-same Agent-only policy and namespacing as hand-written plugin tools.
+same deferred tool catalog and namespacing as hand-written plugin tools.
+Plugin MCP tools default to medium risk and are not Plan-safe merely because
+the server describes them as read-only.
 
 ### 6.10 Resident service and message bus
 
@@ -756,8 +822,7 @@ subscription; never put secrets in the payload.
 ### 6.11 Agent extension (pi ExtensionAPI module)
 
 A plugin can ship code that runs inside the agent process itself: a module
-written against the pi CLI `ExtensionAPI`, the same contract pi extensions
-use. It registers tools, slash commands, and hooks on every turn, tool call,
+written against the pi CLI `ExtensionAPI`, an explicit subset of the pi extension contract. It registers tools, slash commands, and hooks on every turn, tool call,
 and provider request. Declare the modules and the `agent.extension`
 permission:
 
@@ -815,7 +880,7 @@ What to know before you use it:
   ones (`setWidget`, `registerMessageRenderer`, `navigateTree`, and the
   other terminal-only surfaces) are inert and reported in the plugin row's
   details, never thrown.
-- **Existing pi extensions** need no changes: Plugins → overflow menu →
+- **Import existing pi extensions** against the supported-member table in spec 16: Plugins → overflow menu →
   "Import pi extension" wraps a file or directory in a generated plugin. If
   the directory declares production or optional dependencies, PI-Desktop first
   runs `npm install --package-lock-only --omit=dev --legacy-peer-deps --no-audit
@@ -901,6 +966,226 @@ only to code you trust.
 `examples/plugins/ui-slots-lab` mounts a sample on every slot.
 `packages/plugin-sdk/src/renderer.ts` carries the types and each slot's props,
 and the manifest side is [spec 07-plugins/02 §3.2](spec/07-plugins/02-plugin-manifest-schema.md).
+### 6.13 Model providers and OAuth
+
+Declare providers with `provider.register`. The host owns the provider row,
+API-key form, encrypted secret storage, and model requests; a plugin never
+receives a key entered into Add Service. The provider id becomes
+`plugin:<pluginId>:<id>`. Categories and descriptions accept strings or
+`{ en, "zh-CN" }` labels.
+
+```json
+{
+  "permissions": ["provider.register"],
+  "contributes": {
+    "providers": [{
+      "id": "example",
+      "name": "Example AI",
+      "category": "Example services",
+      "description": "Models from your Example account.",
+      "baseUrl": "https://api.example.com/v1",
+      "apiStyle": "chat_completions",
+      "authKind": "api_key",
+      "models": []
+    }]
+  }
+}
+```
+
+An empty model list is allowed only for an API-key provider with `baseUrl`:
+after key save the host discovers the endpoint's models. Otherwise declare
+1..64 models per provider. There is no per-plugin provider-count cap. Supported
+API styles are `chat_completions`, `opencode_go`, `responses`,
+`anthropic_messages`, `google_generative_ai`, `openai_codex_responses`, and
+`pi_messages`; auth kinds are `api_key`, `none`, and `oauth`.
+
+OAuth additionally requires `provider.oauth`, `baseUrl`, and
+`onProviderOAuth(request, { signal })`. Handle `login` and `refresh`, returning
+`{ accessToken, refreshToken?, expiresAt?, accountLabel?, headers? }`. Only a
+refresh receives that contribution's existing credential. Use
+`pi.providers.oauth.prompt(loginId, input)` / `.notify(loginId, event)` for
+host-rendered interaction; respond to cancellation. The host keeps refresh
+tokens out of the renderer and Agent Runtime. Use the host network gateway
+with separate `net.fetch` and egress declarations for token requests.
+Disabling a plugin retains and disables its provider rows; removing a provider
+declaration or uninstalling deletes its row and stored credential.
+
+### 6.14 Follow sessions, import history, and read usage
+
+Use `pi.session.getActive()` and `session:activated` for the selected session.
+No new permission is required, but activation scope still applies. The answer
+is `null` away from chat, or `{ sessionId, projectPath, activeTurn }`, where
+`activeTurn` is `null` or `{ turnId, startedAt }`. Treat snapshots as values
+that can become stale across an `await`.
+
+`session:turnEnded` carries `{ sessionId, turnId, reason }` with `completed`,
+`aborted`, or `error`. Delivery is once per settled host turn to a live plugin,
+without acknowledgement or replay. It does not prove every late tool has
+exited. Subscribe and unsubscribe with the same function reference.
+
+```js
+function onSession(snapshot) {
+  if (!snapshot) return;
+  console.log("Selected session", snapshot.sessionId);
+}
+
+async function onLoad() {
+  pi.events.on("session:activated", onSession);
+  onSession(await pi.session.getActive());
+}
+
+function onUnload() {
+  pi.events.off("session:activated", onSession);
+}
+
+module.exports = { onLoad, onUnload };
+```
+
+History management is a separate ownership boundary. Declare
+`contributes.sessionSources: [{ id: "archive", label: "Archive" }]`, then use:
+
+| Task | Methods | Permission |
+|---|---|---|
+| Import history | `session.import`, `session.importBatch` | `session.import` |
+| Read imported history | `session.list`, `get`, `listMessages` | `session.read.own` |
+| Rename imported session | `session.rename` | `session.update.own` |
+| Trash or purge imported session | `session.delete` | `session.delete.own` |
+| Create/reuse an explicit project binding | `project.create`; import with `projectId` | `project.create` |
+| Generate a default title | `session.getAutoTitleContext`, `setAutoTitle` | `session.autoTitle` |
+| Read completed-turn usage facts | `usage.listTurns` | `usage.read` |
+
+Import is idempotent on `(pluginId, source, externalId)`. Use strict RFC3339
+timestamps, monotonic message times, and the host-generated ids returned by
+import. Imported provider/model/path strings are historical metadata, not live
+bindings. Supply an existing `projectId` to bind a project; creating it does not
+activate the workspace. Host-owned `sessionsChanged` refreshes the UI.
+
+Reads and mutations address only this plugin's imported sessions. Batch `skip`
+continues per item; `fail` is atomic. `trash` preserves transcript/origin and
+`purge` deletes both. There is no general message-mutation or arbitrary
+session-rebinding API. Auto-title exposes only the bounded first prompt/reply
+for default-titled sessions and uses compare-and-set `expectedTitle`; a manual
+rename wins. Usage facts contain counters and identifiers, never message bodies.
+See [session contracts](spec/07-plugins/03-plugin-api.md) for payloads and limits.
+
+### 6.15 Model catalog and one-shot completions
+
+`pi.models.list()` (`models.list`) returns ready model bindings without
+credentials. Pass the returned `key` unchanged to `pi.agent.complete`
+(`agent.complete`); do not split a model id that may itself contain `/`.
+
+```js
+const models = await pi.models.list();
+const model = models.find((item) => item.isDefault) ?? models[0];
+if (!model) throw new Error("Configure a model first");
+const answer = await pi.agent.complete({
+  modelKey: model.key,
+  system: "Answer briefly.",
+  messages: [{ role: "user", content: "Explain this plugin's purpose." }],
+});
+await pi.ui.showToast(answer.text);
+```
+
+This spends the user's provider quota and uses no tools. The host owns auth,
+provider error classification, and bounded provider retries. It enforces a 90s
+budget and eight calls per plugin per rolling minute. `includeSessionContext`
+also needs `session.read` and an active invocation of this plugin's Agent tool;
+`session.getLlmContext()` has the same invocation-only rule. A background
+service, Composer transform, or selected-session snapshot does not grant a
+transcript read. Handle `TIMEOUT`, `RATE_LIMITED`, and classified provider
+failures rather than retrying indefinitely.
+
+### 6.16 Composer transforms and suggestions
+
+A transform is invoked by the user and receives only `{ id, text, modelKey? }`.
+Declare `contributes.composerTransforms` and `composer.transform`, then export:
+
+```js
+function onComposerTransform({ id, text }) {
+  if (id !== "trim") throw new Error("Unknown transform");
+  return text.trim();
+}
+
+module.exports = { onComposerTransform };
+```
+
+Declare `{ "id": "trim", "title": "Trim draft", "undoTitle": "Undo trim" }`
+in that contribution. Input and output each allow 100,000 characters. The host
+preserves file references, rejects stale edit/session results, and offers undo.
+The callback gets no transcript, attachment data, or separate file-path metadata.
+
+A suggestion is a separate `pi.composer` process API with `composer.suggest`.
+It offers a placeholder line while the draft is empty; it never sends text.
+
+```js
+const active = await pi.session.getActive();
+if (active) {
+  const result = await pi.composer.suggest({
+    sessionId: active.sessionId,
+    turnId: active.activeTurn?.turnId,
+    text: "Add a regression test for this change",
+    ttlMs: 120_000,
+  });
+  if (!result.shown) console.log("Suggestion refused", result.reason);
+}
+// On your own cancellation path:
+await pi.composer.clearSuggestion();
+```
+
+Text is folded to one line and cut at 200 characters; TTL defaults to 120s
+and clamps to 1..600s. The user takes it with Tab or dismisses it with Esc.
+Typing, pasting, adding an attachment, sending, switching session, a new turn,
+unload, renderer reload, and window close clear it. Normal refusals return
+`{ shown: false, reason }` (`session-not-visible`, `draft-not-empty`,
+`stale-turn`, `replaced`, `unsupported`); malformed input or a missing grant
+still throws. For work triggered by `session:turnEnded`, pass that event's
+`turnId` so a late completion cannot suggest for a newer turn.
+
+### 6.17 Global shortcuts, WebSockets, microphone, and speech
+
+Global shortcuts are separate from app-local `shortcut` settings. Declare an
+id and your own command under `contributes.globalShortcuts`, grant
+`keyboard.globalShortcut`, and register the command in `onLoad`. A `default`
+accelerator is registered after load; use `pi.keyboard.registerGlobalShortcut`
+for runtime changes. Check `registered` and `error` in the result; conflicts
+are returned as `registered: false`, not thrown. The host releases bindings on
+unload, disable, and crash. There are at most eight per plugin.
+
+WebSockets require `net.websocket` and the same egress policy as fetch. Use
+`pi.net.websocket.connect` / `send` / `close` and `pi.events` events
+`net:websocket:open`, `message`, `close`, `error` (each with the full prefix and
+owning `socketId`). Four sockets, 1 MiB frames, and 4 MiB queued sends are the
+host bounds. The host closes them with the plugin.
+
+`ui.microphone` grants audio-only `getUserMedia` inside an isolated panel;
+camera remains denied. Background `pi.audio.*` has types and permission gates
+but **no device backend**: authorized calls return/throw `UNSUPPORTED`.
+Do not build a working background recorder on that declaration alone.
+
+`pi.speech.registerAdapter` / `unregisterAdapter` (`speech.adapter.register`)
+adds a protocol handler. Return text, audio, or a host-executed HTTP plan.
+Built-in ids `openai_audio` and `openai_chat_audio` are reserved; a plan carrying
+a bound provider key must stay on that provider origin.
+
+### 6.18 Browser and desktop operations
+
+`fs.openInBrowser(path)` needs only `fs.read`, opens an existing readable HTML
+file in a work-panel resource tab, and grants no browser automation. Use
+`browser.cdp` only for `pi.browser.*` automation. Those calls are bound to the
+invoking tool session; a background session cannot retarget the visible page.
+CDP is allowlisted, and cookie/storage/target/network-interception methods stay
+denied. `browser.reveal()` is explicit presentation and need not precede a
+background navigation. Full-page captures are scaled to at most 1280×2048 and
+have a 30s capture deadline.
+
+`desktop.control` exposes `pi.desktop.listOperations()` and
+`pi.desktop.invoke({ operation, args, confirm? })` over a reviewed catalog,
+never arbitrary IPC. Dangerous operations require `confirm: true` **and** the
+user's answer in a host-owned native dialog. Session collaboration `spawn` and
+`send` additionally require an active plugin Agent tool invocation; the host
+supplies source session/turn identity. Read the [desktop-control contract](spec/07-plugins/03-plugin-api.md)
+before using operations that create, prompt, cancel, or delete sessions.
+
 ## 7. Permission design
 
 Permissions are both declared in `manifest.json` and granted by the user.
@@ -908,9 +1193,9 @@ Undeclared or ungranted API calls fail with `PERMISSION_DENIED`.
 
 | Risk | Permissions |
 |---|---|
-| Low | `ui.panel`, `ui.view`, `ui.theme`, `notify` |
-| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
-| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `renderer.extension`, `net.fetch`, `mcp.server.local`, `mcp.server.remote`, `audio.capture.background`, `net.websocket` |
+| Low | `ui.panel`, `ui.view`, `ui.theme`, `ui.settings`, `ui.window.appearance`, `notify` |
+| Medium | `ui.microphone`, `clipboard.read`, `clipboard.write`, `fs.read`, `composer.transform`, `composer.suggest`, `models.list`, `session.read.own`, `session.update.own`, `usage.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
+| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `agent.complete`, `agent.extension`, `renderer.extension`, `provider.register`, `provider.oauth`, `desktop.control`, `project.create`, `session.read`, `session.import`, `session.delete.own`, `session.autoTitle`, `net.fetch`, `net.anyHost`, `mcp.server.local`, `mcp.server.remote`, `browser.cdp`, `audio.capture.background`, `speech.adapter.register`, `net.websocket` |
 
 `keyboard.globalShortcut` and `net.websocket` are implemented. `pi.audio.*`
 exists and is callable, and its methods keep their permission gate, but this
@@ -921,12 +1206,14 @@ the refusal with real capture and playback.
 
 Two permissions carry a declared range as well as a name, and the user is shown
 both: `manifest.fs` for the file modes (§6.5) and `manifest.net.domains` for
-egress (§6.6). Both fail closed — an absent or empty declaration grants nothing,
-so a plugin that says nothing about them reaches nothing.
+egress (§6.6). Without the separately reviewed `net.anyHost` exception, an absent network
+range grants no egress. An absent file scope grants no standing reach;
+out-of-scope file operations still require host-owned consent.
 
 Ask for the smallest set possible. Adding a permission to a loaded development
-plugin does not take effect through hot reload: PI-Desktop stops the reload and
-asks the user to load the folder again so the new grant can be reviewed. Widening
+plugin does not take effect through hot reload: PI-Desktop stops automatic reload so the new grant can be reviewed. Use the
+plugin row's **More → Reload** action to explicitly review/reload the registered
+folder, or load the development folder again. Widening
 `manifest.fs` counts as adding a permission for this purpose. Removing
 permissions takes effect on reload.
 
@@ -978,7 +1265,8 @@ pnpm pi-plugin check ../my-first-plugin
 
 `check` reports blocking errors and non-blocking warnings. It validates the
 manifest, referenced files, permissions, path containment, symlinks, package
-size, and file count using the same rules as installation. Review warnings too,
+size, and file count before packing. A clean result does not prove runtime loading, compatibility,
+permission grants, or plugin-center approval; test the packed artifact too. Review warnings too,
 especially unused and high-risk permissions.
 
 Pack only with the devkit:
@@ -995,7 +1283,8 @@ The result is:
 
 The command prints the package SHA-256. A `.piplug` is a store-only
 (uncompressed) ZIP; normal `zip` defaults usually produce an archive the
-installer rejects. The devkit excludes `.git`, `node_modules`, and `dist`,
+installer rejects. The devkit excludes `.git`, `node_modules`, and root `dist`, and omits
+credential files (`.env`, `.env.*`, `.npmrc`, `*.pem`, `*.key`) with a warning. It
 rejects symlinks, and enforces a maximum of 2,000 files and 50 MiB.
 
 To test the exact artifact users receive:
@@ -1020,6 +1309,10 @@ from, so the plugin center can rebuild and compare the artifact:
 ```bash
 pnpm pi-plugin publish ../my-first-plugin [--out <dir>] [--ref <ref>] [--channel stable|beta] [--allow-dirty]
 ```
+
+`publish` prepares files locally; it does not upload or publish a version.
+Ignore `dist/` in the plugin repository before running it, because packing
+happens before the clean-worktree check.
 
 The command runs the same `check` and `pack` steps, then reads the `origin`
 remote and `HEAD` of the plugin's repository. SSH remotes are rewritten to the
@@ -1082,7 +1375,7 @@ for roadmap details.
 | `pluginBridge` is unavailable | HTML opened in a normal browser | Test bridge calls inside the PI-Desktop panel |
 | Tool never appears | Missing contribution, registration, or grant | Align `agentTools`, `registerTool`, and `agent.tool.register`; use Agent mode |
 | Skill never applies | Missing permission or weak metadata | Add `agent.prompt.inject` and specific `name`/`description` front matter |
-| Save reports `PERMISSION_DENIED` | Manifest widened permissions | Load the development folder again and review the new grant |
+| Save reports `PERMISSION_DENIED` | Manifest widened permissions or file scope | Use More → Reload or load the folder again to review the new grant |
 | Hot reload stops after a syntax error | Broken plugin is unloaded | Save the corrected file; the watcher remains active |
 | Package install rejects compression | Archive was made with a generic ZIP tool | Rebuild it with `pi-plugin pack` |
 | MCP server does not start | Invalid transport fields, command, URL, setting, or permission | Run `pi-plugin check`, then inspect logs by plugin id |
@@ -1099,3 +1392,64 @@ for roadmap details.
 - [Developer experience](spec/07-plugins/10-plugin-devex.md)
 - [Permissions](spec/07-plugins/13-plugin-permissions-matrix.md)
 - [Hello reference plugin](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
+
+## 13. Complete SDK surface and source map
+
+This inventory follows `PluginHostApi` in `packages/plugin-sdk/src/index.ts`.
+It is a method index, not a blanket grant. The permission matrix, invocation
+context, and availability restrictions above still apply; `pi.audio` remains
+unsupported. The panel bridge is a smaller surface listed in API spec §6.
+
+| Namespace | Methods |
+|---|---|
+| `pi.app` | `getVersion`, `getLocale`, `getAppearance`, `setTheme` |
+| `pi.themes` | `upsert`, `remove`, `list`, `setVariables` |
+| `pi.plugin` | `getId`, `getManifest`, `getSettings`, `setSettings`, `getDataPath` |
+| `pi.commands` | `register`, `unregister` |
+| `pi.speech` | `registerAdapter`, `unregisterAdapter` |
+| `pi.composer` | `suggest`, `clearSuggestion` |
+| `pi.ui` | `openPanel`, `closePanel`, `showToast`, `notify`, `getNotificationPermission`, `requestNotificationPermission`, `showNativeNotification`, `revealView` |
+| `pi.project` | `create` |
+| `pi.providers.oauth` | `prompt`, `notify` |
+| `pi.workspace` | `get` |
+| `pi.projects` | `list` |
+| `pi.desktop` | `listOperations`, `invoke` |
+| `pi.audio` | `getInputDevices`, `openInput`, `closeInput`, `getCaptureState`, `onInputFrame`, `offInputFrame`, `openOutput`, `writeOutput`, `stopOutput`, `closeOutput` |
+| `pi.keyboard` | `registerGlobalShortcut`, `unregisterGlobalShortcut`, `listGlobalShortcuts` |
+| `pi.fs` | `readText`, `stat`, `readRange`, `readPreview`, `openDefault`, `openInBrowser`, `reveal`, `writeText`, `glob`, `list`, `remove`, `requestDirectory` |
+| `pi.agent` | `registerTool`, `unregisterTool`, `complete` |
+| `pi.models` | `list` |
+| `pi.session` | `getLlmContext`, `getActive`, `getAutoTitleContext`, `setAutoTitle`, `list`, `get`, `listMessages`, `import`, `importBatch`, `rename`, `delete` |
+| `pi.usage` | `listTurns` |
+| `pi.services` | `register`, `unregister` |
+| `pi.bus` | `publish`, `subscribe` |
+| `pi.clipboard` | `readText`, `writeText`, `getHistory` |
+| `pi.shell` | `openExternal` |
+| `pi.browser` | `reveal`, `navigate`, `action`, `setBounds`, `setVisible`, `getState`, `openExternal`, `snapshot`, `screenshot`, `click`, `fill`, `evaluate`, `console`, `cdp` |
+| `pi.net` | `getCapabilities`, `fetch` |
+| `pi.net.websocket` | `connect`, `send`, `close` |
+| `pi.events` | `on`, `off` |
+
+Renderer modules use a different `pi`: `plugin.id` / `version`,
+`slots.register`, `ui.injectStyle`, `ui.openLayer`, `composer.subscribeDraft`,
+and `dispatch`. Draft subscriptions require `composer.readDraft` in
+`rendererActions`. Draft replacements use the captured `generation` as `expectedGeneration`,
+require a user input event while the Composer is unfocused, and preserve every
+host chip; inspect `renderer-composer.ts` rather than writing
+host store state. No renderer action sends a message.
+
+| Code / tests | What to verify |
+|---|---|
+| `packages/plugin-sdk/src/index.ts`, `renderer.ts`, `renderer-composer.ts` | Public types, contributions, permission vocabulary, renderer actions |
+| `packages/plugin-sdk/src/{fs-policy,net-policy,theme-css,theme-variables,mcp-config}.ts` | Scope, egress, CSS, variable, and MCP validation |
+| `packages/plugin-devkit/src/{templates,check,walk,pack,publish,cli}.ts` | Template files, checks, exclusions, archive format, submission preparation |
+| `crates/host-core/src/plugins/{manifest,validation,install,registry}.rs` | Actual install, persistence, compatibility, and uninstall rules |
+| `apps/desktop/electron/main/plugin-runtime.ts`, `plugin-host-process.mjs` | Broker dispatch, process callbacks, lifecycle, events, audit, and limits |
+| `apps/desktop/electron/preload/plugin-panel.ts` | Actual panel bridge and page-owned chrome |
+| `apps/desktop/test/plugin-*.test.mjs` | Host API, lifecycle, invocation scope, and representative plugin paths |
+| `examples/plugins/hello`, `ui-slots-lab`, `fetch-redirect`, `roundtable` | Working contributions and focused probes |
+
+`docs/plugin-plan` contains slot/API review pages and proposed runtime hooks.
+A draft page is not an implemented SDK export. Start with the current SDK and
+runtime when deciding whether a capability exists. The built-in authoring
+instructions are shipped at `apps/desktop/resources/skills/plugin-development.md`.

@@ -14,6 +14,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const {
   ENDED_VISIBLE_MS,
   EMPTY_VISIBILITY,
+  canDismiss,
   dismissTask,
   nextExpiryAt,
   observeTasks,
@@ -52,13 +53,13 @@ test("a task observed running shows, keeps a grace window after exit, then leave
   assert.deepEqual(selectVisibleTasks(state, ended, 5_000 + ENDED_VISIBLE_MS), []);
 });
 
-test("a row the user closed stays closed across later snapshots", () => {
+test("a row the user removed stays removed across later snapshots", () => {
   let state = observeTasks(EMPTY_VISIBILITY, [task("a", "running")], 0);
   const ended = [task("a", "exited", 0)];
   state = observeTasks(state, ended, 100);
   assert.equal(selectVisibleTasks(state, ended, 100).length, 1);
 
-  state = dismissTask(state, "a");
+  state = dismissTask(state, ended[0]);
   assert.deepEqual(selectVisibleTasks(state, ended, 100), []);
   state = observeTasks(state, ended, 200);
   assert.deepEqual(selectVisibleTasks(state, ended, 200), []);
@@ -74,13 +75,25 @@ test("the row whose output is open is not pulled away by the grace window", () =
   assert.equal(nextExpiryAt(state, ended, muchLater, "a"), null);
 });
 
-test("running tasks never expire and a dismissed running task stays hidden", () => {
+test("running tasks never expire, and a running task cannot be removed", () => {
   const running = [task("server", "running")];
-  let state = observeTasks(EMPTY_VISIBILITY, running, 0);
+  const state = observeTasks(EMPTY_VISIBILITY, running, 0);
   assert.equal(nextExpiryAt(state, running, 10 * ENDED_VISIBLE_MS), null);
 
-  state = dismissTask(state, "server");
-  assert.deepEqual(selectVisibleTasks(state, running, 0), []);
+  // Removal is a view action but must not make a live task unreachable: the
+  // state layer refuses it, so the row stays.
+  const afterRefusal = dismissTask(state, running[0]);
+  assert.equal(afterRefusal, state, "a refused removal must not change state");
+  assert.deepEqual(ids(selectVisibleTasks(afterRefusal, running, 0)), ["server"]);
+});
+
+test("removal is refused while a stopped task is still settling", () => {
+  // A task that has been signalled keeps `running` until the supervisor records
+  // the terminal state, so it must stay out of removal during that window.
+  const settling = [task("server", "running")];
+  const state = observeTasks(EMPTY_VISIBILITY, settling, 0);
+  assert.equal(canDismiss(state, settling[0]), false);
+  assert.equal(dismissTask(state, settling[0]), state);
 });
 
 test("expiry reports the earliest deadline among the rows still visible", () => {
@@ -96,8 +109,10 @@ test("expiry reports the earliest deadline among the rows still visible", () => 
 
 test("bookkeeping is pruned when the registry drops a task, so it cannot grow", () => {
   let state = observeTasks(EMPTY_VISIBILITY, [task("a", "running"), task("b", "running")], 0);
-  state = dismissTask(state, "a");
+  // A terminal row may be removed; that is what puts an id into `dismissed`.
+  state = dismissTask(state, task("a", "exited", 0));
   assert.deepEqual([...state.seenRunning].sort(), ["a", "b"]);
+  assert.deepEqual([...state.dismissed], ["a"]);
 
   state = observeTasks(state, [task("b", "running")], 10);
   assert.deepEqual([...state.seenRunning], ["b"]);

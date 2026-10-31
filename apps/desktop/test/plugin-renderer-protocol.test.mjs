@@ -11,7 +11,7 @@ test("plugin schemes are reserved together, in the only privileged registration"
   const schemes = await readMainModule("plugin-schemes.ts");
   assert.match(
     schemes,
-    /registerSchemesAsPrivileged\(\[\s*PLUGIN_ASSET_SCHEME_PRIVILEGES,\s*PLUGIN_RENDERER_SCHEME_PRIVILEGES,\s*\]\)/,
+    /registerSchemesAsPrivileged\(\[\s*PLUGIN_ASSET_SCHEME_PRIVILEGES,\s*PLUGIN_RENDERER_SCHEME_PRIVILEGES,\s*GEN_UI_SCHEME_PRIVILEGES,\s*\]\)/,
   );
   const startup = await readMainModule("bootstrap/startup.ts");
   assert.ok(

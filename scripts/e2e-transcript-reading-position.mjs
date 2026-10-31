@@ -50,7 +50,9 @@ app.whenReady().then(async () => {
     await window.loadFile(path.join(__dirname, "index.html"));
     const scrolling = await window.webContents.executeJavaScript("globalThis.transcriptReadingPositionProbe()");
     const session = scrolling.ok ? await window.webContents.executeJavaScript("globalThis.sessionReadingPositionProbe()") : null;
-    const result = { ok: scrolling.ok && session?.ok, scrolling, session };
+    const continuation = session?.ok ? await window.webContents.executeJavaScript("globalThis.transcriptContinuationProbe()") : null;
+    const liveTail = continuation?.ok ? await window.webContents.executeJavaScript("globalThis.transcriptLiveTailProbe()") : null;
+    const result = { ok: scrolling.ok && session?.ok && continuation?.ok && liveTail?.ok, scrolling, session, continuation, liveTail };
     console.log("READING_POSITION_PROBE " + JSON.stringify(result));
     app.exit(result.ok ? 0 : 1);
   } catch (error) { console.error(error); app.exit(1); }
@@ -60,7 +62,9 @@ app.whenReady().then(async () => {
   const child = spawn(electronBinary, [join(temp, "main.cjs")], { env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   for (const stream of [child.stdout, child.stderr]) stream.on("data", (data) => { output += data; });
-  const timer = setTimeout(() => child.kill("SIGKILL"), 45_000);
+  // Four renderer probes share this process; slower hidden Windows frames can
+  // exceed the old single-probe budget even when every assertion passes.
+  const timer = setTimeout(() => child.kill("SIGKILL"), 90_000);
   let code;
   try { code = await new Promise((resolve, reject) => {
     child.once("error", reject); child.once("close", resolve);
@@ -69,7 +73,7 @@ app.whenReady().then(async () => {
   assert(line, `No probe result (exit=${code}): ${output.slice(-4000)}`);
   const result = JSON.parse(line.slice("READING_POSITION_PROBE ".length));
   console.log(JSON.stringify(result));
-  assert.equal(code, 0, result.scrolling?.error ?? result.session?.error ?? output.slice(-4000));
+  assert.equal(code, 0, result.scrolling?.error ?? result.session?.error ?? result.continuation?.error ?? result.liveTail?.error ?? output.slice(-4000));
   assert.equal(result.ok, true);
 } finally {
   await rm(temp, { recursive: true, force: true });

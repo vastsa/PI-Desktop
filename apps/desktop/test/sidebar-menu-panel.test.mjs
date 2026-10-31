@@ -67,6 +67,41 @@ test("submenu flips left and clamps against viewport edges", () => {
   );
 });
 
+test("the submenu is portaled out of the scrollable root menu (#1896)", () => {
+  // As a DOM child of the fixed, scrollable root menu the child panel is only
+  // viewport-anchored while nothing on the menu creates a containing block: a
+  // theme's backdrop-filter (or a transform/contain) offsets it by the menu's
+  // own position and stretches the menu's scroll area. Portaling it to the
+  // body removes that dependency for good.
+  assert.match(panelSource, /openSubmenuItem\s*\n?\s*\?\s*portalToBody\(/);
+  assert.match(panelSource, /import \{ portalToBody \} from "\.\.\/lib\/portal-visibility"/);
+  const portalCall = panelSource.slice(
+    panelSource.indexOf("portalToBody("),
+    panelSource.indexOf("className=\"sidebar-row-menu sidebar-submenu\""),
+  );
+  assert.match(portalCall, /ref=\{submenuRef\}/);
+});
+
+test("pointer travel between the menu and its portal keeps the submenu open", () => {
+  // Both sides must recognize the other's element: the root menu no longer
+  // contains the child panel, so moving onto it would otherwise close it.
+  assert.match(
+    panelSource,
+    /event\.currentTarget\.contains\(related\) \|\| submenuRef\.current\?\.contains\(related\)/,
+  );
+  assert.match(panelSource, /onPointerLeave=\{handleSubmenuPointerLeave\}/);
+  assert.match(
+    panelSource,
+    /submenuRef\.current\?\.contains\(related\) \|\| rootMenuRef\.current\?\.contains\(related\)/,
+  );
+});
+
+test("the child panel follows its trigger through menu scroll and growth", () => {
+  assert.match(panelSource, /root\?\.addEventListener\("scroll", reposition/);
+  assert.match(panelSource, /observer\.observe\(root\)/);
+  assert.match(panelSource, /root\?\.removeEventListener\("scroll", reposition\)/);
+});
+
 /*
   The new menu vocabulary is product copy, so every shipped locale carries it;
   a missing key would silently fall back to English.

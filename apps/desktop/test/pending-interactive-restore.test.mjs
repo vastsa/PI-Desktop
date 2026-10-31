@@ -41,6 +41,7 @@ function harness({ sessions = DEFAULT_SESSIONS, pendingAsks = {}, pendingPermiss
     sessions,
     pendingAsks,
     pendingPermissions,
+    askDrafts: {},
     planningStates: {},
     planCheckpoints: {},
     pendingPlans: {},

@@ -52,7 +52,7 @@ type PluginManifestV1 = {
  };
  repository?: string;
  icon?: string; // relative path
- main?: string; // plugin runtime entry
+ main: string; // required plugin runtime entry
  renderer?: string; // module the host evaluates to mount UI slots (§3.2)
  rendererActions?: string[]; // actions a renderer component may dispatch, at most 16
  rendererCallMethods?: string[]; // onRendererCall methods plugin.call may reach, at most 32
@@ -64,14 +64,6 @@ type PluginManifestV1 = {
  engines?: {
  piDesktop?: string; // semver range
  };
- entrypoints?: {
- onInstall?: string;
- onLoad?: string;
- onEnable?: string;
- onDisable?: string;
- onUnload?: string;
- onUninstall?: string;
- };
  activationEvents?: string[]; // e.g. onCommand:xxx / onStartup
  /**
   * First-registration default for bundled plugins. Omitted means enabled.
@@ -82,6 +74,13 @@ type PluginManifestV1 = {
 };
 ```
 
+The SDK author type accepts a string or contact object, but the current Rust
+installer deserializes `author` as a string. Use a display string for installable
+packages. SDK validation is not an exact mirror of host installation: `main`
+is mandatory in both, while schema-version/metadata checks differ. Write
+`schemaVersion: 1` and use `check` plus actual artifact installation; do not
+interpret a permissive low-level parser as a supported compatibility contract.
+
 ## 3. UI config
 
 ```ts
@@ -89,6 +88,8 @@ type PluginUiConfig = {
  panel?: string; // html entry
  width?: number;
  height?: number;
+ shape?: "panel" | "widget";
+ alwaysOnTop?: boolean;
  resizable?: boolean;
  title?: string | {
    en: string;
@@ -208,17 +209,14 @@ type PluginCommandContrib = {
  title: string;
  keywords?: string[];
  category?: string;
- icon?: string;
- requires?: PluginPermission[]; // extra per-command perms
 };
 
 type PluginAgentToolContrib = {
  name: string; // tool name exposed to agent
  description: string;
- risk: "low" | "medium" | "high";
- schema: Record<string, unknown>; // JSON schema object
- timeoutMs?: number;
- permissions?: PluginPermission[];
+ risk?: "low" | "medium" | "high";
+ schema?: unknown; // JSON schema object
+ planSafeActions?: readonly string[]; // read-only action names for Plan/Goal
 };
 
 type PluginComposerTransformContrib = {
@@ -236,7 +234,7 @@ type PluginSettingContrib = {
  enum?: Array<{ label: string; value: string | number | boolean }>;
  /** Required for shortcut settings; invokes a declared plugin command. */
  command?: string;
- /** Fixed to plugin for now; global shortcut registration is not supported. */
+ /** App-local setting scope; OS-global shortcuts use globalShortcuts instead. */
  scope?: "plugin";
  secret?: boolean;
 };
@@ -391,6 +389,7 @@ type PluginPermission =
  | "agent.prompt.inject"
  | "agent.complete"
  | "composer.transform"
+| "composer.suggest"
  | "renderer.extension"
  | "provider.register"
  | "provider.oauth"
@@ -419,6 +418,14 @@ type PluginPermission =
 ```
 
 Unknown permission = validation failure.
+
+`pi.workspace.get()` reports the visible workspace; `pi.projects.list()` lists
+all durable project rows without selecting one. Both are read-only metadata
+and require no manifest permission. The list includes ungrouped projects with
+stable base-10 `projects.id` strings, display names, primary paths, and non-empty
+primary-first roots. Unavailable project lookup returns `[]`. See the
+[projects / workspace API](03-plugin-api.md#projects-workspace-fs) for ordering,
+group-root enrichment, and the distinction between project and group ids.
 
 `fs.read.workspace`, `fs.write.workspace` and `fs.delete.workspace` are the
 pre-scope names. They still validate, and the host rewrites them on load to the
@@ -570,24 +577,26 @@ grant the permission only to code you trust. See
 [03-plugin-api.md](03-plugin-api.md) and
 [13-plugin-permissions-matrix.md](13-plugin-permissions-matrix.md).
 
-## 6. activationEvents (optional)
+## 6. activationEvents (optional metadata)
 
-Examples:
+`activationEvents` may document intent such as `onStartup` or
+`onCommand:demo.hello.say`. The current runtime eagerly loads enabled plugins
+at restore/enable/development-load time; it does not implement an activation-event
+scheduler. Do not rely on this field to defer initialization or constrain scope.
+Use the host's activation-scope control for project eligibility.
 
-- `onStartup`
-- `onCommand:demo.hello.say`
-- `onAgentMode`
-- `onWorkspaceOpen`
-
-MVP may implement only:
-- `onStartup`
-- `onCommand:*`
+`engines.piDesktop` is author compatibility metadata; the marketplace catalog
+also carries host-version constraints. A local directory passing `check` does
+not prove runtime API availability. Feature-detect additive methods and test on
+the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
+`entrypoints` manifest contract.
 
 ## 7. Validation rules
 
 1. `schemaVersion` must be `1`
 2. `id` / `name` / `version` are required
-3. Whether a manifest that declares `ui.panel` needs the `ui.panel` permission implicitly (auto-filled) or by explicit declaration is an **open question** (tracked in [08-meta/open-questions.md](../08-meta/open-questions.md))
+3. Opening `ui.panel` requires the explicit declared and granted `ui.panel`
+   permission; a panel path does not implicitly grant it
 4. If `agentTools` are present, `agent.tool.register` must be declared
 5. Path fields must not use absolute paths or `..`
 6. `main` / `ui.panel` / skills / `views[].entry` paths must exist

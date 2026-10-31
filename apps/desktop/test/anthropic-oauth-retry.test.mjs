@@ -144,7 +144,7 @@ test("token requests identify the client instead of inheriting a browser User-Ag
     assert.equal((await signIn()).kind, "done");
     await oauth.resolveAuth(seed());
     assert.deepEqual(requests.map(req => req.body.grant_type), ["authorization_code", "refresh_token"]);
-    for (const req of requests) assert.match(req.headers["user-agent"], /^pi \(/);
+    for (const req of requests) assert.match(req.headers["user-agent"], /^pi\/1\.4\.0 \(/);
   });
 });
 

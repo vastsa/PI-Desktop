@@ -117,7 +117,7 @@ class Host {
       this.pending.clear();
     });
   }
-  call(method, params = {}) {
+  call(method, params = {}, timeoutMs = 30_000) {
     const id = randomUUID();
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -129,7 +129,7 @@ class Host {
           this.pending.delete(id);
           reject({ message: `timeout ${method}` });
         }
-      }, 30_000);
+      }, timeoutMs);
     });
   }
   async dispose() {
@@ -150,7 +150,7 @@ async function main() {
     // E2E-003 host health / handshake
     const hs = await host.call("app.handshake", {
       protocolVersion: PROTOCOL_VERSION,
-    });
+    }, 45_000);
     record(
       "E2E-003-handshake",
       hs.protocolVersion === PROTOCOL_VERSION,

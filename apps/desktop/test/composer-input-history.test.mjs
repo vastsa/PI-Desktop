@@ -274,7 +274,7 @@ test("accepted history uses sendPrompt's materialized session, not later global 
   assert.match(source, /if \(acceptedSessionId\) recordHistory\?\.\(submittedDraft, acceptedSessionId\);/);
   assert.match(
     source,
-    /if \(!accepted\) draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);\s*else remember\(\);/,
+    /const accepted = await submitWithLatestDraftRestore\(\s*submittedDraftKey,[\s\S]*?\(\) => draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\),\s*\);\s*if \(accepted\) remember\(\);/,
   );
   const blocked = source.slice(
     source.indexOf('dispatch.action === "blocked"'),
@@ -317,7 +317,7 @@ test("the composer wires recall, its exits, and the record point (AC3)", async (
   assert.match(hook, /loadHistory: \(\) => loadComposerInputHistory\(referenceSessionId\)/);
   assert.match(hook, /draft\.draftRevision\(draftKey\) !== appliedRevisionRef\.current/);
   assert.match(hook, /useEffect\(\(\) => \{\s*exitBrowsing\(\);\s*\}, \[draftKey\]\);/);
-  assert.match(composer, /onInput=\{\(source, caret\) => \{\s*inputHistory\.exitBrowsing\(\);/);
+  assert.match(composer, /onInput=\{\(source, caret, composing\) => \{\s*inputHistory\.exitBrowsing\(\);/);
   assert.match(composer, /onHistoryNavigate=\{inputHistory\.navigate\}/);
   assert.match(composer, /recordHistory: inputHistory\.record/);
   // Both submit entry points — the composer's Enter and the toolbar's Send —
