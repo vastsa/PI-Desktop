@@ -2,6 +2,12 @@
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/07-plugins/03-plugin-api) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
+## 主题变量
+
+`pi.themes.setVariables(themeId, values)` 需要 `ui.theme`。宿主只接受调用方自有主题中
+已声明变量的值，将其持久化到插件私有设置，并刷新当前激活的主题，无需选择新主题或
+重新加载渲染进程。它不接受样式表文本、URL、选择器、图片、字体或任意属性名。
+
 
 ## 1. 设计原则
 
@@ -287,6 +293,15 @@ pi.project.create(input: { path: string }): Promise<{
 
 ### 工作区/fs
 ```ts
+pi.projects.list(): Promise<PluginProjectInfo[]>
+
+type PluginProjectInfo = {
+  projectId: string; // Base-10 projects.id, no prefix; stable for this row's lifetime.
+  name: string;
+  primaryPath: string;
+  roots: Array<{ path: string; name: string; primary: boolean }>;
+}
+
 pi.workspace.get(): Promise<{
   path: string;
   name: string;
@@ -327,6 +342,20 @@ pi.fs.list(pathFromRoot: string, options?: { workspacePath: string }): Promise<A
 pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 ```
+
+`projects.list` 为持久化 `projects` 表中的每条记录返回一个条目，包括不属于任何项目组的
+记录。结果按 `lastOpenedAt` 降序排列，时间相同时按数值 id 升序排列，不受置顶状态影响。
+`projectId` 是不带前缀的十进制数据库主键字符串，始终非空；只要记录存在，重命名和重启
+都不会改变它。它不同于 `workspace.get` 返回的可选**项目组** id，而是 `project.create`
+返回的数值项目 id 的字符串形式。`name` 使用匹配的主项目组显示名称，没有匹配组时使用
+记录自身的名称。`primaryPath` 是该记录的路径。`roots` 始终以该路径开头并标记为主根，
+后面按项目组内的顺序列出以该路径为主根的项目组的其他根目录。次级文件夹的记录保留
+自己的身份和单一根目录。项目组查询失败时，每条记录只返回自己的主根；项目查询不可用
+或失败时返回 `[]`，并由宿主输出诊断。来自已被替换或已停止的 Host 的结果会被丢弃。
+远程身份仍是不透明的 `remote-project:` 路径，不会返回 Host 密钥或凭据。
+
+这些只读元数据不需要权限，也可以通过面板桥通道 `projects.list` 获取。该接口不会创建、
+打开或切换项目，也不会授予项目访问权限。文件系统和会话权限保持不变。
 
 `workspace.get` 回答主根——`path` 与其叶子 `name` 都保持不变——并在该文件夹属于某个项目组
 （ADR 0249）时额外给出 `projectId` 与 `roots`：项目组按自身顺序登记的全部文件夹，主文件夹在前，
@@ -432,6 +461,25 @@ type PluginModelInfo = {
 
 只返回已启用且已认证的 provider 行（API key、OAuth 或 `authKind: "none"`）。不含密钥。
 `models.list` 也是面板桥通道，选择器页面可以自行填充。宿主传输不可用时返回空列表，不记警告（D080）。
+
+### “添加服务”中的 provider 条目
+
+宿主在“设置 → 模型 → 添加服务”中展示清单声明但尚未配置的 API-key provider。
+这些条目只是 `contributes.providers` 的数据投影；插件不会在运行时注册选择器条目，
+也不会收到 API key。`category` 用于对条目分组，可以是普通字符串，也可以是
+`{ en, "zh-CN" }` 多语言标签。宿主通过现有的加密 provider 密钥存储保存密钥。
+配置完成的条目仍保留在 provider 列表中，但会从“添加服务”中隐藏。
+`provider.register` 授权已足够，不需要额外权限或插件 API 方法。
+
+卡片只显示 provider 名称。可选的 `description` 文案在悬停或键盘聚焦时以单句提示显示，
+搜索也会匹配该描述。选中后的密钥表单会显示端点和插件名称，供用户在保存前最后核对
+密钥的发送目标。
+
+只有使用 API key 且声明了 `baseUrl` 的 provider 才可以声明空的 `models` 列表。
+用户保存密钥后，宿主会请求该端点的模型列表并缓存结果。缓存的模型可供插件拥有的
+provider 条目使用，而端点和其他 provider 字段继续由清单定义。若未发现任何模型，
+密钥仍会保留，用户可以通过该 provider 的模型控件重试。每个插件的 provider 数量
+没有单独上限，清单受插件包已有的大小限制约束。
 
 ### provider OAuth（需要 `provider.oauth`）
 
@@ -986,6 +1034,21 @@ navigator.mediaDevices.getUserMedia({ audio: true })
 宿主的权限处理器为该面板放行 `media` 权限，并继续拒绝摄像头和其他所有
 设备权限。插件拿不到原生麦克风句柄或宿主密钥；浏览器的语音识别和语音合成
 仍由页面持有。面板应提供文本回退，并通过其无障碍状态播报权限或识别失败。
+
+## 场景化设置贡献
+
+`contributes.scenicThemes` 是声明式的展示贡献，不是插件页面 API。它为同一插件的主题
+及已声明的预览资源提供本地化卡片元数据。设置页的 DOM、样式、选择状态、焦点行为、
+滑块草稿值和“应用”操作均由宿主持有。插件不会获得设置页桥接接口、渲染进程 DOM
+访问权、任意 CSS、JavaScript、导航或操作能力。
+
+宿主通过现有的强类型主题变量边界持久化“应用”操作，且只针对已声明的
+`--nexus-backdrop-blur` 变量。`ui.panel` 窗口和 `contributes.views` 保留各自独立的
+原生视图实现。
+
+为场景化卡片声明的主题资源可以使用包内相对路径；宿主会在已安装的插件包内解析路径，
+再将匹配的 CSS `url()` 或卡片预览地址改写为 `plugin-asset:`。声明为绝对路径的资源
+继续走外部路径通道。两种通道都不会授予插件任意文件系统访问权（ADR 0288）。
 
 ### 音频（需要 `audio.capture.background` / `audio.playback.background`）
 
