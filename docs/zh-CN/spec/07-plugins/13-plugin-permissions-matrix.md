@@ -60,6 +60,12 @@
 | `agent.complete` | 高 | `pi.agent.complete` | 安装时确认 | 宿主代发一次性补全；消耗用户额度；`includeSessionContext` 还需要 `session.read` |
 | `speech.adapter.register` | 高 | `pi.speech.registerAdapter` / `unregisterAdapter` | 安装时确认 | 注册语音协议。handle 留在插件进程；HTTP 计划由宿主用绑定密钥代发且必须同 origin |
 
+「默认策略」一列是预期策略，当前宿主并未按权限逐项执行：安装与更新审核会列出全部
+声明的权限（更新新增的会标出），只要授权缺少任何一项声明的权限，安装器就会拒绝
+（`PLUGIN_PERMISSION_DENIED: missing grant for <permission>`）。首次使用时不会再次
+询问——`clipboard.*` 与 `shell.openExternal` 只检查已保存的授权。自动更新会跳过新增
+权限的更新（§5）。
+
 ## 2A. 权限是开关，manifest 承载范围
 
 有两种能力光靠一个权限名说不清楚：名字负责回答「插件能不能做」，
@@ -68,7 +74,7 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 
 | 字段 | 限定的范围 | 缺失或为空时 |
 |---|---|---|
-| `net.domains` | 主机掌握的每一条出网路径：面板 session、`pi.net.fetch`、远程 HTTP MCP 端点 | 完全不放行出网，无论 `net.fetch` 是否声明 |
+| `net.domains` | 主机掌握的每一条出网路径：面板 session、`pi.net.fetch`、`pi.net.websocket`、远程 HTTP MCP 端点 | 完全不放行出网，无论 `net.fetch` 是否声明 |
 | `fs.read` / `fs.write` / `fs.delete` | 该文件模式可以触碰哪些路径 | 没有常驻可达范围；每次访问都落到确认弹窗 |
 
 字段缺失时一律 fail closed，这正是它们可以省略的原因：manifest 什么都不说，
@@ -107,11 +113,14 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 - `fs.requestDirectory`（`userSelected` root）由 `fs.read` 把关；在用户选中的目录里
   写入或删除仍然需要 `fs.write` / `fs.delete`
 - 缺少权限的贡献未通过清单验证
-  （`themes`、`mcpServers`、`services`、`bus`）； `skills` 是例外，并且是
-  相反，在加载时跳过（参见
+  （`themes`、`views`、`providers` 及 OAuth provider、`agentExtensions`、
+  `composerTransforms`、`globalShortcuts`、`windowAppearance`、`mcpServers`、
+  `services`、`bus`）；`skills` 是例外，在加载时跳过；缺少 `ui.settings` 和
+  `ui.theme` 的 `scenicThemes` 不会显示（参见
   [02-plugin-manifest-schema.md](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) §7)
-- 生命周期与状态事件不需要权限：`workspace:changed`、`session:modelChanged`、
-  `session:turnEnded` 和 `plugin:settingsChanged` 走既有的插件事件通道，
+- 生命周期与状态事件不需要权限：`workspace:changed`、`appearance:changed`、
+  `session:modelChanged`、`session:turnEnded`、`session:activated` 和
+  `plugin:settingsChanged` 走既有的插件事件通道，
   订阅未知的事件名也不会报错
 
 ## 3A. Plan 操作状态规则
@@ -124,38 +133,35 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 
 ## 4. 权限显示副本
 
-英文是主要副本。 zh-CN 列保存本地化的示例字符串。
-文件权限从不单独展示：声明的范围会渲染在它旁边，
-所以「修改它列出的文件」后面紧跟着那份清单。
+下表文案取自 en 与 zh-CN 语言包（`packages/i18n/src/locales/`）中的
+`plugins.permissions.*`。安装与更新审核显示该标签，并在其下显示对应的
+`plugins.permissionHelp.*` 说明；插件页以标签 chip 显示。语言包没有条目时，
+标签回退为原始权限名。声明的文件范围显示在已安装插件行的「文件」一栏，
+所以「修改文件」后面紧跟着那份清单。
 
-| 许可 | 英文副本 | zh-CN 示例 |
+| 权限 | 英文文案 | zh-CN 文案 |
 |---|---|---|
-| `fs.read` | Read the files it lists | 读取它列出的文件 |
-| `clipboard.read` | Read the current clipboard and retained history | 读取当前剪贴板和保留的历史 |
-| `fs.write` | Modify the files it lists | 修改它列出的文件 |
-| `fs.delete` | Delete the files it lists, to the trash | 删除它列出的文件（进回收站） |
-| `notify` | 显示应用内和本机通知 | 显示应用内和系统通知 |
-| `agent.tool.register` | 为AI Agent提供可执行工具 | 向AI Agent提供可执行工具 |
-| `agent.prompt.inject` | 调整代理指令 | 调整智能体指令 |
-| `agent.extension` | 在 agent 内运行代码 | 在 agent 内运行代码 |
+| `fs.read` | Read files | 读取文件 |
+| `clipboard.read` | Read the clipboard and its history | 读取剪贴板及其历史 |
+| `fs.write` | Edit files | 修改文件 |
+| `fs.delete` | Delete files | 删除文件 |
+| `notify` | Show in-app and native notifications | 显示应用内和系统通知 |
+| `agent.tool.register` | Add tools for the agent | 为智能体添加工具 |
+| `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
+| `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
 | `renderer.extension` | Draw UI in chat slots | 在聊天插槽绘制界面 |
-| `net.fetch` | 访问网络 | 访问网络 |
-| `shell.openExternal` | 打开外部链接 | 打开外部链接 |
-| `ui.theme` | 提供一个主题 | 提供主题 |
-| `ui.settings` | Add a sandboxed Settings entry in Extensions | 在“扩展”中添加沙盒设置项 |
-| `ui.window.appearance` | 设置窗口背景 | 设置窗口背景 |
-| `mcp.server.local` | 运行本地 MCP 服务器 | 运行本地 MCP 服务 |
-| `mcp.server.remote` | 到达远程 MCP 服务器 | 连接远端 MCP 服务 |
-| `background.service` | 保持后台服务运行 | 保持后台服务运行 |
-| `bus.publish` | 向其他插件发送消息 | 向其他插件发送消息 |
-| `bus.subscribe` | 接收来自其他插件的消息 | 接收其他插件的消息 |
+| `net.fetch` | Use the network | 访问网络 |
+| `shell.openExternal` | Open external links | 打开外部链接 |
+| `ui.theme` | Provide a theme | 提供主题 |
+| `ui.window.appearance` | Customize window appearance | 自定义窗口外观 |
+| `mcp.server.local` | Run a local MCP server | 运行本地 MCP 服务 |
+| `mcp.server.remote` | Reach a remote MCP server | 连接远端 MCP 服务 |
+| `background.service` | Keep a background service running | 保持后台服务运行 |
+| `bus.publish` | Send messages to other plugins | 向其他插件发送消息 |
+| `bus.subscribe` | Receive messages from other plugins | 接收其他插件的消息 |
 | `browser.cdp` | Control the work-panel browser | 控制工作面板浏览器 |
 | `models.list` | List authenticated models | 列出已登录的模型 |
 | `session.read` | Read the current conversation sent to the model | 读取当前发给模型的对话 |
-| `session.import` | Import bounded session history into your declared sources | 导入受限的会话历史到已声明的数据源 |
-| `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
-| `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
-| `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
 | `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
 | `composer.transform` | Transform text in the Composer | 转换输入框中的文本 |
@@ -165,6 +171,17 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
 | `net.websocket` | Open real-time connections | 建立实时双向连接 |
+| `ui.panel` | Show a plugin panel | 显示插件面板 |
+| `ui.microphone` | Use the microphone | 使用麦克风 |
+| `clipboard.write` | Write to the clipboard | 写入剪贴板 |
+| `provider.register` | Add providers to the model list | 将服务添加到模型列表 |
+| `provider.oauth` | Sign in to a provider with OAuth | 通过 OAuth 登录 Provider |
+| `desktop.control` | Control the desktop | 控制桌面操作 |
+| `net.anyHost` | Access any network address | 访问任意网络地址 |
+| `session.autoTitle` | Read first-turn title context and update automatic titles | 读取首轮标题上下文并更新自动标题 |
+
+以下权限目前没有语言包条目，显示为原始权限名：
+`ui.settings`、`session.import`、`session.read.own`、`session.update.own`、`session.delete.own`、`ui.view`、`project.create`。
 
 ## 5. 添加升级权限
 

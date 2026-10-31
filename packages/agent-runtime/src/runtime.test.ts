@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -40,6 +40,7 @@ import {
 import { getGlobalDispatcher } from "undici";
 import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
 import { resolveBatchExecutionMode } from "./tool-execution-policy.js";
+import { BatchPlanner } from "./batch-planner.js";
 import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
@@ -423,6 +424,198 @@ describe("ordered read preparation", () => {
   });
 });
 
+function toolCall(id: string, name: string, args: Record<string, unknown>) {
+  return { type: "toolCall", id, name, arguments: args };
+}
+
+/**
+ * pi stream that answers each request with the next scripted tool batch and,
+ * once the script runs out, a final text reply. Records every request.
+ */
+function scriptedStream(batches: unknown[][], requests: AgentMessage[][] = []) {
+  let turn = 0;
+  return (_model: unknown, context: { messages: AgentMessage[] }) => {
+    requests.push([...context.messages]);
+    const calls = batches[turn++];
+    const reason = calls ? "toolUse" : "stop";
+    const message = assistantMessage({
+      content: calls ?? [{ type: "text", text: "done" }],
+      stopReason: reason,
+    }) as AssistantMessage;
+    const stream = createAssistantMessageEventStream();
+    queueMicrotask(() => {
+      stream.push({ type: "start", partial: message });
+      stream.push({ type: "done", reason, message });
+      stream.end(message);
+    });
+    return stream;
+  };
+}
+
+/** Host whose `tools.execute` responses are held until the test releases them. */
+function gatedHost(fileBatches = false) {
+  const entered: string[] = [];
+  const release = new Map<string, (result: unknown) => void>();
+  // External Host fixture with declared virtual identities. Real filesystem
+  // identity/admission is covered by Rust and the real-Host E2E suite.
+  const tickets = new Map<string, { batch: string; id: string; name: string; path: string;
+    tree: boolean; write: boolean; submitted: boolean; done: Promise<void>; finish: () => void }>();
+  const aborted = new Set<string>();
+  let draining = false;
+  const host = {
+    call: vi.fn(async (method: string, args: any) => {
+      if (method === "project.instructions.resolve") return { entries: [] };
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: fileBatches };
+      if (method === "tools.fileBatchRegister") {
+        const ticket = `ticket-${tickets.size}`;
+        let finish = () => {};
+        const done = new Promise<void>((resolve) => { finish = resolve; });
+        tickets.set(ticket, { batch: args.batchId, id: args.toolCallId, name: args.toolName,
+          path: String(args.args.path ?? "").replace(/^\/root\//, "").replace(/^\.\//, ""),
+          tree: ["Glob", "Grep"].includes(args.toolName) || /^(?:MV|REM)\b|@/m.test(args.args.ops ?? ""),
+          write: ["Write", "Edit"].includes(args.toolName), submitted: false, done, finish });
+        return { ticket };
+      }
+      if (method === "tools.fileBatchAbandon") {
+        const slot = tickets.get(args.ticket);
+        if (slot && !slot.submitted) slot.finish();
+        return { ok: true };
+      }
+      if (method === "tools.fileBatchClose") {
+        for (const slot of tickets.values()) if (slot.batch === args.batchId && !slot.submitted) slot.finish();
+        return { ok: true };
+      }
+      if (method === "tools.fileBatchSeal") return { ok: true };
+      if (method === "tools.abort") {
+        aborted.add(args.toolCallId);
+        const result = { ok: false, content: "TOOL_ABORTED", errorCode: "TOOL_ABORTED" };
+        release.get(args.toolCallId)?.(result);
+        for (const slot of tickets.values()) if (slot.id === args.toolCallId) slot.finish();
+        return { ok: true };
+      }
+      if (method !== "tools.execute") return undefined;
+      const slot = tickets.get(args.fileBatchTicket);
+      if (slot) {
+        slot.submitted = true;
+        const predecessors = [];
+        for (const prior of tickets.values()) {
+          if (prior === slot) break;
+          if (prior.batch === slot.batch && (prior.write || slot.write)
+            && (prior.tree || slot.tree || prior.path === slot.path)) predecessors.push(prior.done);
+        }
+        await Promise.all(predecessors);
+      }
+      if (aborted.has(args.toolCallId)) return { ok: false, content: "TOOL_ABORTED", errorCode: "TOOL_ABORTED" };
+      if (draining) return { ok: true, content: "cleanup" };
+      entered.push(args.toolCallId);
+      try { return await new Promise((resolve) => release.set(args.toolCallId, resolve)); }
+      finally { slot?.finish(); }
+    }),
+  };
+  const finish = (id: string, result: unknown = { ok: true, content: id }) => release.get(id)!(result);
+  const drain = () => {
+    draining = true;
+    for (const resolve of release.values()) resolve({ ok: true, content: "cleanup" });
+    for (const slot of tickets.values()) slot.finish();
+  };
+  return { host, entered, finish, drain };
+}
+
+function toolResults(request: AgentMessage[]) {
+  return request
+    .filter((message) => message.role === "toolResult")
+    .map((message: any) => ({
+      id: message.toolCallId as string,
+      isError: message.isError as boolean,
+      text: JSON.stringify(message.content),
+    }));
+}
+
+describe("batch turn release", () => {
+  it("releases a parent call that fails argument checks before reaching the Host", async () => {
+    const { host, entered, finish, drain } = gatedHost();
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, projectPath: "/root" });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      // Grep without `pattern` passes the schema (the alias makes it optional)
+      // and then throws in execute; the Write is ordered behind its tree claim.
+      toolCall("grep", "Grep", { path: "src" }),
+      toolCall("write", "Write", { path: "x.txt", content: "x" }),
+    ]], requests) };
+    try {
+      const pending = runtime.prompt("Search, then write.");
+      await vi.waitFor(() => expect(entered).toEqual(["write"]));
+      finish("write");
+      await pending;
+      const results = toolResults(requests[1]);
+      expect(results.map(({ id, isError }) => [id, isError])).toEqual([["grep", true], ["write", false]]);
+      expect(results[0].text).toContain("`pattern` is required");
+    } finally {
+      drain();
+      await runtime.dispose();
+    }
+  });
+
+  it("releases a parent call rejected by the mode guard after a mid-turn mode switch", async () => {
+    const { host, entered, finish, drain } = gatedHost();
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, projectPath: "/root" });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      toolCall("read-1", "Read", { path: "x.txt" }),
+      toolCall("write", "Write", { path: "x.txt", content: "x" }),
+      toolCall("read-2", "Read", { path: "x.txt" }),
+    ]], requests) };
+    try {
+      const pending = runtime.prompt("Read, write, read.");
+      await vi.waitFor(() => expect(entered).toEqual(["read-1"]));
+      runtime.setMode("plan");
+      finish("read-1");
+      await vi.waitFor(() => expect(entered).toEqual(["read-1", "read-2"]));
+      finish("read-2");
+      await pending;
+      const results = toolResults(requests[1]);
+      expect(results.map(({ id, isError }) => [id, isError])).toEqual([
+        ["read-1", false], ["write", true], ["read-2", false],
+      ]);
+      expect(results[1].text).toContain("not allowed in plan");
+    } finally {
+      drain();
+      await runtime.dispose();
+    }
+  });
+
+  it("releases a delegate call that fails argument checks before reaching the Host", async () => {
+    const { SubagentRun: RealSubagentRun } = await vi.importActual<typeof import("./subagent.js")>("./subagent.js");
+    const { host, entered, finish, drain } = gatedHost();
+    const writer = { name: "writer", description: "Write", tools: ["Grep", "Write"], prompt: "Write", source: "builtin" as const };
+    const runtime = createRuntime({ host, projectPath: "/root", subagents: [writer] });
+    subagentRuns.calls.length = 0;
+    try {
+      await runtimeTool(runtime, "Task").execute("task-writer", { agent: "writer", task: "Search, then write." });
+      const options = subagentRuns.calls[0];
+      const child = new RealSubagentRun({ ...options, signal: undefined }) as unknown as {
+        agent: { streamFunction: unknown };
+        run: () => Promise<{ status: string }>;
+      };
+      const requests: AgentMessage[][] = [];
+      child.agent.streamFunction = scriptedStream([[
+        toolCall("child-grep", "Grep", { path: "src" }),
+        toolCall("child-write", "Write", { path: "x.txt", content: "x" }),
+      ]], requests);
+      const running = child.run();
+      await vi.waitFor(() => expect(entered).toEqual(["child-write"]));
+      finish("child-write");
+      await expect(running).resolves.toMatchObject({ status: "completed" });
+      expect(toolResults(requests[1]).map(({ id, isError }) => [id, isError])).toEqual([
+        ["child-grep", true], ["child-write", false],
+      ]);
+    } finally {
+      drain();
+      await runtime.dispose();
+    }
+  });
+});
+
 /** Minimal pi-ai assistant message; overrides carry the shape under test. */
 function assistantMessage(overrides: {
   content: unknown[];
@@ -449,6 +642,263 @@ function assistantMessage(overrides: {
   };
 }
 
+describe("parallel file batches", () => {
+  it("owns the turn during capability negotiation and honors Stop before provider dispatch", async () => {
+    let release: (value: unknown) => void = () => {};
+    const capability = new Promise((resolve) => { release = resolve; });
+    const runtime = createRuntime({ host: { call: vi.fn((method: string) => method === "tools.fileBatchCapabilities" ? capability : Promise.resolve(undefined)) } });
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+    const pending = runtime.prompt("Wait for capabilities", undefined, "held-capability-turn");
+    expect(runtime.getStatus()).toMatchObject({ currentTurnId: "held-capability-turn", isRunning: true });
+    const stopping = runtime.abort();
+    release({ version: 1, supported: true });
+    await pending.catch(() => undefined);
+    await stopping;
+    expect(prompt).not.toHaveBeenCalled();
+    expect(runtime.getStatus().isRunning).toBe(false);
+    await runtime.dispose();
+  });
+  it.each([false, true])("keeps hard-link aliases ordered without Host identity support (write first: %s)", async (writeFirst) => {
+    const root = await mkdtemp(join(tmpdir(), "pi-batch-alias-"));
+    await writeFile(join(root, "actual.txt"), "before");
+    await link(join(root, "actual.txt"), join(root, "alias.txt"));
+    const calls = [
+      toolCall("read-alias", "Read", { path: "alias.txt" }),
+      toolCall("write-actual", "Write", { path: "actual.txt", content: "after" }),
+    ];
+    if (writeFirst) calls.reverse();
+    const batch = startBatch(calls, { projectPath: root, fileBatches: false });
+    try {
+      await vi.waitFor(() => expect(batch.entered).toContain(calls[0].id));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(batch.entered).toEqual([calls[0].id]);
+      batch.finish(calls[0].id);
+      await vi.waitFor(() => expect(batch.entered).toEqual(calls.map((call) => call.id)));
+      batch.finish(calls[1].id);
+      await batch.pending;
+    } finally {
+      await cleanup(batch);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  /** Starts a parent turn whose first request returns `calls` as one batch. */
+  function startBatch(calls: unknown[], options: { projectPath?: string; fileBatches?: boolean } = {}) {
+    const gate = gatedHost(options.fileBatches ?? true);
+    const requests: AgentMessage[][] = [];
+    const events: any[] = [];
+    const runtime = createRuntime({
+      host: gate.host,
+      projectPath: options.projectPath ?? "/root",
+      onEvent: (envelope) => { events.push((envelope as any).event); },
+    });
+    (runtime as any).models = { streamSimple: scriptedStream([calls], requests) };
+    const pending = runtime.prompt("Run the file batch.");
+    return { ...gate, runtime, requests, events, pending };
+  }
+
+  async function cleanup(batch: ReturnType<typeof startBatch>) {
+    batch.drain();
+    await batch.runtime.abort();
+    await batch.pending.catch(() => undefined);
+    await batch.runtime.dispose();
+  }
+
+  const editOps = { tag: "ABCD", ops: "PUT 1.=1:\n+x" };
+
+  it("starts [Read a, Read b, Read c, Edit d] together and keeps source-order results", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("read-b", "Read", { path: "b.ts" }),
+      toolCall("read-c", "Read", { path: "c.ts" }),
+      toolCall("edit-d", "Edit", { path: "d.ts", ...editOps }),
+    ]);
+    try {
+      await vi.waitFor(() => expect([...batch.entered].sort()).toEqual(["edit-d", "read-a", "read-b", "read-c"]));
+      for (const id of ["edit-d", "read-c", "read-b", "read-a"]) {
+        batch.finish(id);
+        await Promise.resolve();
+      }
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id }) => id)).toEqual(["read-a", "read-b", "read-c", "edit-d"]);
+    } finally { await cleanup(batch); }
+  });
+
+  it("holds only Edit a behind Read a in [Read a, Edit a, Read b, Write c]", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("edit-a", "Edit", { path: "a.ts", ...editOps }),
+      toolCall("read-b", "Read", { path: "b.ts" }),
+      toolCall("write-c", "Write", { path: "c.ts", content: "c" }),
+    ]);
+    try {
+      await vi.waitFor(() => expect([...batch.entered].sort()).toEqual(["read-a", "read-b", "write-c"]));
+      batch.finish("read-b");
+      batch.finish("write-c");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(batch.entered).not.toContain("edit-a");
+      batch.finish("read-a");
+      await vi.waitFor(() => expect(batch.entered.at(-1)).toBe("edit-a"));
+      batch.finish("edit-a");
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id }) => id)).toEqual(["read-a", "edit-a", "read-b", "write-c"]);
+    } finally { await cleanup(batch); }
+  });
+
+  it.each([
+    ["[Write x, Grep]", [
+      toolCall("first", "Write", { path: "x.ts", content: "x" }),
+      toolCall("second", "Grep", { pattern: "foo" }),
+    ]],
+    ["[Edit a with MV, Read b]", [
+      toolCall("first", "Edit", { path: "a.ts", tag: "ABCD", ops: "MV moved.ts" }),
+      toolCall("second", "Read", { path: "b.ts" }),
+    ]],
+    ["[Edit a with CUT @r, Edit b with PUT @r] (named register)", [
+      toolCall("first", "Edit", { path: "a.ts", tag: "ABCD", ops: "CUT 3.=5 @r" }),
+      toolCall("second", "Edit", { path: "b.ts", tag: "ABCD", ops: "PUT <1 @r" }),
+    ]],
+    ["[Read ./a.ts, Write a.ts] (Host-declared identity)", [
+      toolCall("first", "Read", { path: "./a.ts" }),
+      toolCall("second", "Write", { path: "a.ts", content: "a" }),
+    ]],
+  ] as const)("keeps %s in source order", async (_label, calls) => {
+    const batch = startBatch([...calls]);
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first"]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(batch.entered).toEqual(["first"]);
+      batch.finish("first");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first", "second"]));
+      batch.finish("second");
+      await batch.pending;
+    } finally { await cleanup(batch); }
+  });
+
+  it("sends absolute and relative spellings to the Host without inventing file identities", async () => {
+    const register = vi.spyOn(BatchPlanner.prototype, "register");
+    const batch = startBatch([
+      toolCall("first", "Read", { path: "/root/a.ts" }),
+      toolCall("second", "Write", { path: "a.ts", content: "a" }),
+    ], { projectPath: "/root" });
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first"]));
+      expect(register.mock.calls.map(([, , call]) => call)).toMatchObject([
+        { toolName: "Read", ordinal: 0, args: { path: "/root/a.ts" } },
+        { toolName: "Write", ordinal: 1, args: { path: "a.ts" } },
+      ]);
+      batch.finish("first");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["first", "second"]));
+      batch.finish("second");
+      await batch.pending;
+    } finally {
+      register.mockRestore();
+      await cleanup(batch);
+    }
+  });
+
+  it("aborts an Edit still waiting behind a running Read without reaching the Host", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("edit-a", "Edit", { path: "a.ts", ...editOps }),
+    ]);
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read-a"]));
+      await batch.runtime.abort();
+      await batch.pending.catch(() => undefined);
+      expect(batch.entered).toEqual(["read-a"]);
+      const edit = batch.events.find((event) => event.type === "tool_end" && event.toolCallId === "edit-a");
+      expect(edit.isError).toBe(true);
+      expect(JSON.stringify(edit.result)).toContain("TOOL_ABORTED");
+    } finally { await cleanup(batch); }
+  });
+
+  it("still runs Edit a after Read a fails", async () => {
+    const batch = startBatch([
+      toolCall("read-a", "Read", { path: "a.ts" }),
+      toolCall("edit-a", "Edit", { path: "a.ts", ...editOps }),
+    ]);
+    try {
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read-a"]));
+      batch.finish("read-a", { ok: false, content: "FILE_NOT_FOUND" });
+      await vi.waitFor(() => expect(batch.entered).toEqual(["read-a", "edit-a"]));
+      batch.finish("edit-a");
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id, isError }) => [id, isError])).toEqual([
+        ["read-a", true], ["edit-a", false],
+      ]);
+    } finally { await cleanup(batch); }
+  });
+
+  it("keeps a denied Write from affecting its same-batch sibling", async () => {
+    const batch = startBatch([
+      toolCall("write-a", "Write", { path: "a.ts", content: "a" }),
+      toolCall("write-b", "Write", { path: "b.ts", content: "b" }),
+    ]);
+    try {
+      // Both reach the Host before either result returns.
+      await vi.waitFor(() => expect([...batch.entered].sort()).toEqual(["write-a", "write-b"]));
+      batch.finish("write-a", { ok: false, denied: true, content: "Permission denied by the user." });
+      batch.finish("write-b");
+      await batch.pending;
+      expect(toolResults(batch.requests[1]).map(({ id, isError }) => [id, isError])).toEqual([
+        ["write-a", true], ["write-b", false],
+      ]);
+    } finally { await cleanup(batch); }
+  });
+
+  it("orders a delegate's [Read a, Edit a, Write b] without touching a concurrent parent batch", async () => {
+    const { SubagentRun: RealSubagentRun } = await vi.importActual<typeof import("./subagent.js")>("./subagent.js");
+    const writer = { name: "writer", description: "Edit", tools: ["Read", "Edit", "Write"], prompt: "Edit", source: "builtin" as const };
+    const gate = gatedHost(true);
+    const runtime = createRuntime({ host: gate.host, projectPath: "/root", subagents: [writer] });
+    (runtime as any).models = { streamSimple: scriptedStream([], []) };
+    await runtime.prompt("Initialize Host capabilities.");
+    const parentRequests: AgentMessage[][] = [];
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      toolCall("parent-read", "Read", { path: "p.ts" }),
+      toolCall("parent-write", "Write", { path: "q.ts", content: "q" }),
+    ]], parentRequests) };
+    subagentRuns.calls.length = 0;
+    let parent: Promise<unknown> | undefined;
+    try {
+      await runtimeTool(runtime, "Task").execute("task-writer", { agent: "writer", task: "Edit a." });
+      const child = new RealSubagentRun({ ...subagentRuns.calls[0], signal: undefined }) as unknown as {
+        agent: { streamFunction: unknown };
+        run: () => Promise<{ status: string }>;
+      };
+      const childRequests: AgentMessage[][] = [];
+      child.agent.streamFunction = scriptedStream([[
+        toolCall("child-read-a", "Read", { path: "a.ts" }),
+        toolCall("child-edit-a", "Edit", { path: "a.ts", ...editOps }),
+        toolCall("child-write-b", "Write", { path: "b.ts", content: "b" }),
+      ]], childRequests);
+      parent = runtime.prompt("Read and write in the parent.");
+      await vi.waitFor(() => expect([...gate.entered].sort()).toEqual(["parent-read", "parent-write"]));
+      const running = child.run();
+      await vi.waitFor(() => expect(gate.entered.slice(2).sort()).toEqual(["child-read-a", "child-write-b"]));
+      gate.finish("child-write-b");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(gate.entered).not.toContain("child-edit-a");
+      gate.finish("child-read-a");
+      // The child Edit waits only for its own batch's Read; the parent batch is still held.
+      await vi.waitFor(() => expect(gate.entered.at(-1)).toBe("child-edit-a"));
+      gate.finish("child-edit-a");
+      await expect(running).resolves.toMatchObject({ status: "completed" });
+      expect(toolResults(childRequests[1]).map(({ id }) => id)).toEqual(["child-read-a", "child-edit-a", "child-write-b"]);
+      gate.finish("parent-read");
+      gate.finish("parent-write");
+      await parent;
+      expect(toolResults(parentRequests[1]).map(({ id }) => id)).toEqual(["parent-read", "parent-write"]);
+    } finally {
+      await runtime.abort();
+      gate.drain();
+      await parent?.catch(() => undefined);
+      await runtime.dispose();
+    }
+  });
+});
+
 describe("Task/read batch execution policy", () => {
   const message = (...names: string[]) => assistantMessage({
     content: names.map((name, index) => ({
@@ -463,9 +913,13 @@ describe("Task/read batch execution policy", () => {
     [["Task", "Read"], "sequential"],
     [["Task", "Glob"], "sequential"],
     [["Task", "Grep"], "sequential"],
+    [["Task", "Write"], "sequential"],
+    [["Edit", "Task"], "sequential"],
     [["Task", "Task"], undefined],
     [["Read", "Read"], undefined],
     [["Read", "Glob", "Grep"], undefined],
+    [["Write", "Edit"], undefined],
+    [["Read", "Write"], undefined],
   ] as const)("resolves %j to %s", (names, expected) => {
     expect(resolveBatchExecutionMode(message(...names))).toBe(expected);
   });
@@ -690,6 +1144,48 @@ describe("Task/read mixed-batch safety", () => {
       batch.release("read-same")!({ ok: true, content: "updated" });
       await samePathRead;
       subagentRuns.resolveRun!(settled());
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("runs [Task, Write] one call at a time without waiting for the delegate to settle", async () => {
+    const batch = setupMixedBatch([
+      taskCall("task"),
+      { type: "toolCall", id: "write", name: "Write", arguments: { path: "notes.txt", content: "n" } },
+    ]);
+    try {
+      const pending = batch.runtime.prompt("Delegate, then write.");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["write"]));
+      // Sequential: the Write was only prepared after the Task call returned.
+      expect(toolIndex(batch.events, "tool_end", "task"))
+        .toBeLessThan(toolIndex(batch.events, "tool_start", "write"));
+      // Unlike a file read, the Write does not wait for the writable delegate.
+      expect(subagentRuns.instances[0].settled).toBe(false);
+      batch.release("write")!({ ok: true, content: "written" });
+      subagentRuns.resolveRun!(settled());
+      await pending;
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
+
+  it("runs [Write, Task] one call at a time", async () => {
+    const batch = setupMixedBatch([
+      { type: "toolCall", id: "write", name: "Write", arguments: { path: "notes.txt", content: "n" } },
+      taskCall("task"),
+    ]);
+    try {
+      const pending = batch.runtime.prompt("Write, then delegate.");
+      await vi.waitFor(() => expect(batch.entered).toEqual(["write"]));
+      await Promise.resolve();
+      expect(subagentRuns.instances).toEqual([]);
+      batch.release("write")!({ ok: true, content: "written" });
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+      expect(toolIndex(batch.events, "tool_end", "write"))
+        .toBeLessThan(toolIndex(batch.events, "tool_start", "task"));
+      subagentRuns.resolveRun!(settled());
+      await pending;
     } finally {
       await teardown(batch.runtime);
     }
@@ -8530,6 +9026,8 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         compaction: expect.objectContaining({
           summary: SUMMARY,
           throughMessageId: "recent-user",
+          // The compacted request estimate survives a reload (#2015).
+          details: expect.objectContaining({ contextTokens: 40_000 }),
         }),
       }),
     );
@@ -8545,6 +9043,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
           throughMessageId: "recent-user",
           generation: 1,
           summaryTokens: 7,
+          contextTokens: 40_000,
           summarized: true,
         },
       }),
@@ -9050,7 +9549,10 @@ describe("DesktopAgentRuntime subagents", () => {
     try {
       await taskTool(runtime).execute("granted", { agent: "explorer", task: "Search.", model: "new/new-model" });
       expect(subagentRuns.calls).toHaveLength(1);
-      host.call.mockRejectedValue(new Error("model is not enabled for delegation"));
+      host.call.mockImplementation(async (method: string) => {
+        if (method === "provider.resolveSubagentModel") throw new Error("model is not enabled for delegation");
+        return undefined;
+      });
       expect(runtimeMatches(runtime)).toBe(true);
       await runtime.prompt("Search again.");
       const denied = await taskTool(runtime).execute("revoked", { agent: "explorer", task: "Search.", model: "new/new-model" });
@@ -9062,7 +9564,8 @@ describe("DesktopAgentRuntime subagents", () => {
 
   it("discards an on-demand grant returned after its prompt ended (#841)", async () => {
     let resolveGrant: (value: RuntimeProviderConfig) => void = () => {};
-    const host = { call: vi.fn().mockImplementation(() => new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; })) };
+    const host = { call: vi.fn().mockImplementation((method: string) => method === "provider.resolveSubagentModel"
+      ? new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; }) : Promise.resolve(undefined)) };
     const runtime = createRuntime({ subagents: [explorer], host });
     const agent = (runtime as unknown as { agent: Agent }).agent;
     vi.spyOn(agent, "prompt").mockResolvedValue();
@@ -9082,7 +9585,7 @@ describe("DesktopAgentRuntime subagents", () => {
     } finally { await runtime.dispose(); }
   });
 
-  it("allows only Task and read/search tools to run in parallel", async () => {
+  it("keeps Write/Edit sequential until Host file batch support is negotiated", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
 

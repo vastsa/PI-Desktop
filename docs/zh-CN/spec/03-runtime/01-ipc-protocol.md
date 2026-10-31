@@ -590,6 +590,7 @@ type AgentEvent =
      willRetry: boolean; fallback?: "retained_tail";
      mark?: { id: string; throughMessageId: string;
               generation: number; summaryTokens: number;
+              contextTokens?: number;
               summarized: boolean;
               fallback?: "retained_tail" };
      error?: { code: string; message: string } }
@@ -620,7 +621,9 @@ type AgentEvent =
 只要安装了检查点，`compaction_end.mark` 就会出现。它是
 渲染器对该压缩的整体视图：`id`，`throughMessageId` 锚定
 转录本行位于 `generation` 之后（此会话有多少个检查点
-已安装）、`summaryTokens`（摘要的估计上下文成本）以及
+已安装）、`summaryTokens`（摘要的估计上下文成本）、`contextTokens`（检查点安装后
+下一次请求的估计大小；在之后的请求报告供应商用量前，输入框的上下文圆环显示它；
+此字段出现之前写入的检查点没有它）以及
 `summarized`（当窗口滚动且未向模型询问时，`false`
 总结）以及 `fallback`（摘要生成失败、检查点只带恢复说明和保留尾部时为
 `"retained_tail"`；转录行将其标为摘要生成失败，而不是 N tokens 的摘要）。记录本身不被携带——它的摘要和保留尾部被携带

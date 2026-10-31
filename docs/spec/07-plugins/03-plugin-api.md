@@ -346,6 +346,7 @@ pi.workspace.get(): Promise<{
   name: string;
   projectId?: string;
   roots?: Array<{ path: string; name: string; primary: boolean }>;
+  remote?: { path: string; readOnly: true }; // SSH projects only, see below
 } | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
@@ -1368,11 +1369,22 @@ type PluginApiError = {
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
  | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
+ | string // see below
  message: string
 }
 ```
 
-All API failures throw an error carrying a `code`.
+All API failures throw an error carrying a `code`. The list above is the common
+set, not a closed enum: the host forwards whatever code the failing layer set,
+and an error without one reaches the plugin as `PLUGIN_API_FAILED`. Other codes
+the desktop host currently throws include `INVALID_PARAMS` (input validation of
+the session, usage, project, and desktop APIs, alongside `INVALID_ARGUMENT`
+elsewhere), `UNAVAILABLE` (a host service such as the browser is missing),
+`PLUGIN_UNLOADED` (the plugin was unloaded or reloaded while the call ran),
+`CONFLICT` (a speech protocol already in use), `PROVIDER_ERROR` (a speech
+adapter returned empty output), `WORKSPACE_CHANGED`, `OPEN_FAILED`,
+`REVEAL_FAILED`, and `CONNECT_FAILED`. Branch on the codes you handle and treat
+the rest as a generic failure.
 
 ## 5. Events (host -> plugin)
 
@@ -1429,6 +1441,10 @@ Delivered today:
   snapshot in the payload is the answer, so a missed delivery is repaired by one
   `pi.session.getActive()` call. Needs no permission, and the selected session's
   turn id is the same identity `session:turnEnded` reports.
+
+- `net:websocket:open` / `net:websocket:message` / `net:websocket:close` /
+  `net:websocket:error` — sent only to the plugin that owns the socket; see
+  `net.websocket` under §3 `net`.
 
 A throwing handler is logged and does not affect other listeners or the plugin.
 

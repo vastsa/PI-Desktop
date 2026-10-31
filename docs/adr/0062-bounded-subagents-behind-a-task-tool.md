@@ -85,10 +85,16 @@ must never silently spend the expensive one.
 
 ### 4. Delegation is one Agent-mode tool, and parallel by construction
 
-Proposed amendment: [parallel read batches](parallel-read-batches.md) allows
-Read/Glob/Grep candidates, isolates delegate path-instruction preparation, and
-keeps Task mixed with those reads behind the delegate completion boundary. The
-original only-Task batch policy below is historical.
+Proposed amendment: [parallel file batches](parallel-read-batches.md) allows
+Read/Glob/Grep/Write/Edit candidates, isolates delegate path-instruction
+preparation, keeps a batch that mixes Task with those file tools sequential, and
+holds a read or search ordered after a writable Task behind the delegate
+completion boundary. The
+original only-Task batch policy below is historical. The
+[Host file admission amendment](host-file-batch-admission.md) replaces lexical
+file coordination on supported local Hosts, including delegate calls; legacy
+Hosts retain sequential writes and the original sidecar lock. Write quotas and
+Task's background contract are unchanged.
 
 The `Task` tool takes `agent`, `task` and an optional short `description`. The
 catalog of available delegates rides in the tool description rather than the

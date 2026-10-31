@@ -292,6 +292,7 @@ pi.workspace.get(): Promise<{
   name: string;
   projectId?: string;
   roots?: Array<{ path: string; name: string; primary: boolean }>;
+  remote?: { path: string; readOnly: true }; // 仅 SSH 项目，见下文
 } | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
@@ -1078,11 +1079,18 @@ type PluginApiError = {
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
  | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
+ | string // 见下文
  message: string
 }
 ```
 
-所有 API 失败都会引发携带 `code` 的错误。
+所有 API 失败都会引发携带 `code` 的错误。上面列出的是常见取值，不是封闭枚举：宿主
+会原样转发出错层设置的 code，没有 code 的错误到达插件时为 `PLUGIN_API_FAILED`。
+桌面宿主目前还会抛出 `INVALID_PARAMS`（session、usage、project、desktop API 的
+输入校验；其他 API 用 `INVALID_ARGUMENT`）、`UNAVAILABLE`（浏览器等宿主服务缺失）、
+`PLUGIN_UNLOADED`（调用期间插件被卸载或重载）、`CONFLICT`（speech 协议已被占用）、
+`PROVIDER_ERROR`（speech 适配器返回空结果）、`WORKSPACE_CHANGED`、`OPEN_FAILED`、
+`REVEAL_FAILED` 和 `CONNECT_FAILED`。只对自己处理的 code 分支，其余按通用失败处理。
 
 ## 5. 事件（主机 -> 插件）
 
@@ -1125,6 +1133,10 @@ pi.events.off(event, handler)
   一次 `pi.session.getActive()` 补齐。不需要权限，且其中回合 id 与
   `session:turnEnded` 报告的身份一致。
 
+- `net:websocket:open` / `net:websocket:message` / `net:websocket:close` /
+  `net:websocket:error` —— 只发给持有该 socket 的插件；见 §3 `net` 下的
+  `net.websocket`。
+
 抛出的处理程序会被记录下来，并且不会影响其他侦听器或插件。
 
 计划活动：无。
@@ -1153,6 +1165,17 @@ window.pluginBridge.on(event, handler)
 摆放原生内容」的 API（`pi.browser` 的 `browser.setBounds`）的矩形由宿主换算；
 把布局钉在固定窗口尺寸上的页面需要自行缩放这些值。独立 `ui.panel` 窗口与浮动
 挂件保持自己的基础尺寸：它们是独立窗口，而不是合成进应用内的表面。
+
+### 6.1 浮动挂件
+
+清单可以声明 `"ui": { "shape": "widget" }`。面板随后会以浮动挂件打开：同一个沙盒化、权限门控的页面，位于透明、无边框窗口中，没有 46px 拖拽带、没有控制胶囊，也没有矩形原生阴影。页面拥有自己的整个矩形，通常绘制一个比矩形更小的轮廓——例如一个圆形球体——因此宿主不得在该轮廓周围绘制边框。
+
+- `--pi-plugin-titlebar-height` 为 `0px`，并且无论页面声明什么 chrome 标记，旧式的附加顶部偏移也不会应用。
+- 放置方式会在页面脚本运行前发布为 `document.documentElement.dataset.piPluginPanelShape`：`panel`、`widget` 或 `view`。
+- 拖拽使用整窗拖拽映射：空白区域移动窗口，而标准控件（`button`、`input`、`a`、`[tabindex]`、……）以及每个标记了 `data-pi-plugin-no-drag` 的元素保持可点击。
+- 挂件没有胶囊，因此宿主在表面自己的上下文菜单后面提供一个等效菜单：关闭、最小化、始终置顶。插件仍然可以通过 `ui.closePanel()` 关闭自己的挂件。
+- `ui.width` / `ui.height` 会一直被尊重到 120×120（面板的最小尺寸仍为 360×280）。`ui.alwaysOnTop` 会把挂件固定在其他窗口之上，`ui.resizable` 对挂件默认为 `false`，对面板默认为 `true`。
+- 其他一切不变：相同的 preload、相同的 `pluginBridge` 通道、相同的权限门、相同的会话分区和出口策略。
 
 停靠视图还可以被指定一个要展示的对象。工作面板选项卡本来就携带的 `location`
 会投递给任何贡献视图——不再只限 `pi.browser`（它的地址栏保留自己的导航通道）：

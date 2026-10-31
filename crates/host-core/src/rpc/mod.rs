@@ -1,4 +1,5 @@
 mod config_sync_rpc;
+mod file_batches;
 mod gen_ui;
 mod plugin_reviews_rpc;
 mod remote_tools;
@@ -1935,6 +1936,10 @@ async fn handle_request(
             .map_err(config_sync_rpc_err);
     }
 
+    if method.starts_with("tools.fileBatch") {
+        return file_batches::handle(state, method, params).await;
+    }
+
     match method {
         "visualizations.readFragment" => gen_ui::read_fragment(state, params).await,
         "tools.remoteComplete" | "tools.workspaceExecute" | "tools.workspaceAbort" => {
@@ -2357,22 +2362,54 @@ async fn handle_request(
                 .get("snapshotId")
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| rpc_err(1002, "snapshotId required", "INVALID_PARAMS"))?;
+            let budget = {
+                let st = state.lock().await;
+                if remote_tools::session_remote_workspace(&st, session_id)?.is_some() {
+                    return Err(rpc_err(
+                        1002,
+                        "remote workspace rollback is unavailable",
+                        "CAPABILITY_UNAVAILABLE",
+                    ));
+                }
+                st.tool_budget.clone()
+            };
+            let permit = Arc::new(
+                budget
+                    .acquire_files(
+                        session_id,
+                        "Write",
+                        false,
+                        crate::file_resources::FileResources::fence(true),
+                        None,
+                    )
+                    .await
+                    .map_err(|e| rpc_err(1000, e.message(), e.code()))?,
+            );
+            let _rollback_lease = permit.clone();
+            let (data_dir, workspace_root) = {
+                let st = state.lock().await;
+                // Session/worktree state may have changed while admission waited.
+                (
+                    st.data_dir.clone(),
+                    resolve_tool_workspace(&st, session_id)?,
+                )
+            };
+            let session = session_id.to_string();
+            let snapshot = snapshot_id.to_string();
+            let root = workspace_root.clone();
+            let outcome = tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                review::rollback_change(
+                    &data_dir,
+                    &session,
+                    &snapshot,
+                    root.as_deref().map(Path::new),
+                )
+            })
+            .await
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let st = state.lock().await;
-            if remote_tools::session_remote_workspace(&st, session_id)?.is_some() {
-                return Err(rpc_err(
-                    1002,
-                    "remote workspace rollback is unavailable",
-                    "CAPABILITY_UNAVAILABLE",
-                ));
-            }
-            let workspace_root = resolve_tool_workspace(&st, session_id)?;
-            let outcome = review::rollback_change(
-                &st.data_dir,
-                session_id,
-                snapshot_id,
-                workspace_root.as_deref().map(std::path::Path::new),
-            )
-            .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
             if matches!(outcome.status, "rolledBack" | "alreadyRolledBack") {
                 if let Some(root) = workspace_root.as_deref() {
                     let resolved = std::path::Path::new(root).join(&outcome.path);
@@ -4044,6 +4081,25 @@ async fn handle_request(
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let _pending_file_call = if let Some(ticket) = p.file_batch_ticket.as_deref() {
+                Some(
+                    state
+                        .lock()
+                        .await
+                        .tool_budget
+                        .begin_file_call(
+                            ticket,
+                            &p.session_id,
+                            p.delegation_id.as_deref(),
+                            &p.tool_call_id,
+                            &p.tool_name,
+                            &p.args,
+                        )
+                        .map_err(|e| rpc_err(1002, e, "INVALID_PARAMS"))?,
+                )
+            } else {
+                None
+            };
             let execution_timeout_ms = tools::effective_timeout_ms(&p.tool_name, p.timeout_ms);
 
             let remote_workspace = {
@@ -4450,20 +4506,55 @@ async fn handle_request(
                 // stopped while its session's worktree is held for a merge.
                 let (tool_budget, own_worktree) = {
                     let st = state.lock().await;
-                    let own = matches!(
-                        crate::session_worktrees::delegate::tool_root(
-                            &st.db,
-                            &p.session_id,
-                            p.delegation_id.as_deref(),
-                        ),
-                        Ok(Some(_))
-                    );
+                    let own = if remote_workspace.is_none()
+                        && crate::file_resources::is_file_tool(&p.tool_name)
+                    {
+                        file_batches::verify_root(&st, &p, workspace_path.as_deref())?
+                    } else {
+                        matches!(
+                            crate::session_worktrees::delegate::tool_root(
+                                &st.db,
+                                &p.session_id,
+                                p.delegation_id.as_deref(),
+                            ),
+                            Ok(Some(_))
+                        )
+                    };
                     (st.tool_budget.clone(), own)
+                };
+                let file_resources = if remote_workspace.is_none()
+                    && crate::file_resources::is_file_tool(&p.tool_name)
+                {
+                    let root = workspace_path.clone().map(PathBuf::from);
+                    let roots = {
+                        let st = state.lock().await;
+                        local_contained_roots(&st.data_dir, &p.session_id, false)
+                    };
+                    let name = p.tool_name.clone();
+                    let args = p.args.clone();
+                    Some(
+                        tokio::task::spawn_blocking(move || {
+                            crate::file_resources::FileResources::resolve(
+                                root.as_deref(),
+                                &roots,
+                                &name,
+                                &args,
+                                external_path_permission,
+                            )
+                        })
+                        .await
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
+                    )
+                } else {
+                    None
                 };
                 let mut admission_cancellation = cancellation_receiver.clone();
                 let admitted = tokio::select! {
                     result = async {
-                        if own_worktree {
+                        if let Some(resources) = &file_resources {
+                            tool_budget.acquire_files(&p.session_id, &p.tool_name, own_worktree,
+                                resources.clone(), p.file_batch_ticket.clone()).await
+                        } else if own_worktree {
                             tool_budget
                                 .acquire_in_own_worktree(&p.session_id, &p.tool_name)
                                 .await
@@ -4476,8 +4567,8 @@ async fn handle_request(
                             .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"));
                     }
                 };
-                let _tool_permit = match admitted {
-                    Ok(permit) => permit,
+                let tool_permit = match admitted {
+                    Ok(permit) => Arc::new(permit),
                     Err(error) => {
                         tracing::warn!(
                             tool = %p.tool_name,
@@ -4505,6 +4596,28 @@ async fn handle_request(
                 };
 
                 let ws_path = workspace_path.map(PathBuf::from);
+                tracing::debug!(tool = %p.tool_name, admission_wait_ms = tool_permit.wait_ms,
+                    initial_wait_reason = tool_permit.initial_wait_reason, "tool admitted");
+                if let Some(resources) = &file_resources {
+                    let roots = {
+                        let st = state.lock().await;
+                        file_batches::verify_root(
+                            &st,
+                            &p,
+                            ws_path.as_deref().and_then(Path::to_str),
+                        )?;
+                        local_contained_roots(&st.data_dir, &p.session_id, false)
+                    };
+                    resources
+                        .validate(
+                            ws_path.as_deref(),
+                            &roots,
+                            &p.tool_name,
+                            &p.args,
+                            external_path_permission,
+                        )
+                        .map_err(|e| rpc_err(1000, e, "TOOL_FAILED"))?;
+                }
                 let (data_dir, hashline_store, worktree_env) = {
                     let st = state.lock().await;
                     (
@@ -4642,7 +4755,7 @@ async fn handle_request(
                     )
                     .await
                 } else {
-                    let execute = tools::execute_tool_with_path_access(
+                    let execute = tools::execute_tool_with_file_lease(
                         ws_path.as_deref(),
                         scratch_path.as_deref(),
                         &p.tool_name,
@@ -4654,6 +4767,8 @@ async fn handle_request(
                             hashline: Some(hashline_ctx),
                             visualization_root: visualization_path.as_deref(),
                         },
+                        Some(tool_permit.clone()),
+                        file_resources.clone(),
                     );
                     if matches!(p.tool_name.as_str(), "Read" | "Glob" | "Grep") {
                         let mut read_cancellation = cancellation_receiver.clone();
@@ -4756,6 +4871,8 @@ async fn handle_request(
                     "errorCode": result.error_code,
                     "prompted": prompted,
                     "permissionWaitMs": permission_wait_ms,
+                    "admissionWaitMs": tool_permit.wait_ms,
+                    "admissionInitialWaitReason": tool_permit.initial_wait_reason,
                     "overheadMs": overhead_ms,
                     "totalMs": total_ms
                 });

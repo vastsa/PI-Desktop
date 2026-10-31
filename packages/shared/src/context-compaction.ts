@@ -59,16 +59,31 @@ export function checkpointFallback(
   return value === "retained_tail" ? value : undefined;
 }
 
+/**
+ * Estimated context after the checkpoint, stamped into the same opaque
+ * `details` value as the generation so it survives a reload without a record
+ * schema change. Old checkpoints have none.
+ */
+export function checkpointContextTokens(details: unknown): number | undefined {
+  const value = (details as { contextTokens?: unknown } | null | undefined)
+    ?.contextTokens;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : undefined;
+}
+
 export function contextCompactionMark(
   record: ContextCompactionRecord,
 ): ContextCompactionMark {
   const fallback = checkpointFallback(record.details);
+  const contextTokens = checkpointContextTokens(record.details);
   return {
     id: record.id,
     throughMessageId: record.throughMessageId,
     generation: checkpointGeneration(record.details),
     summaryTokens: estimateSummaryTokens(record.summary ?? ""),
     summarized: checkpointSummarized(record.details),
+    ...(contextTokens !== undefined ? { contextTokens } : {}),
     ...(fallback ? { fallback } : {}),
   };
 }

@@ -164,6 +164,25 @@ export function calculateContextUsage(
 }
 
 /**
+ * Context occupancy for the composer ring. After a compaction and before the
+ * next request reports usage, the checkpoint's estimate replaces the last
+ * request's figure, which no longer describes the context (#2015).
+ */
+export function composerContextUsage(inspector: {
+  usage: MessageUsage;
+  contextWindow: number;
+  compactedContextTokens?: number;
+}): ContextUsage {
+  const tokens = inspector.compactedContextTokens;
+  return calculateContextUsage(
+    tokens !== undefined
+      ? { inputTokens: tokens, outputTokens: 0, totalTokens: tokens }
+      : inspector.usage,
+    inspector.contextWindow,
+  );
+}
+
+/**
  * Which figure the composer ring and its summary lead with (D398). Absent or
  * unrecognised values keep the remaining-capacity default, so a persisted
  * typo never blanks the trigger.

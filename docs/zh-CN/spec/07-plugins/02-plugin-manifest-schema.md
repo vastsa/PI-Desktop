@@ -235,6 +235,7 @@ type PluginThemeContrib = {
  assets?: string[]; // package-relative or absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
                     // relative paths resolve inside plugin root; traversal/node_modules are rejected;
                     // each matching `url()` is rewritten to `plugin-asset://`
+ variables?: PluginThemeVariableContrib[]; // typed values for `pi.themes.setVariables` (see Appearance extensions)
 };
 
 type PluginScenicThemesContrib = {
@@ -301,6 +302,7 @@ type PluginProviderContrib = {
  id: string; // ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$, unique within the plugin
  name: string; // display name in the native provider list
  category?: string | { en: string; "zh-CN": string }; // Add Service group; defaults to plugin name
+ description?: string | { en: string; "zh-CN": string }; // Add Service hover/focus introduction, ≤280 chars
  vendorKey?: string; // models.dev vendor key, default `custom`
  baseUrl?: string; // absolute http(s) URL
  apiStyle?: PluginProviderApiStyle; // wire style, default `chat_completions`
@@ -343,6 +345,7 @@ type PluginPermission =
  | "ui.panel"
  | "ui.view"
  | "ui.theme"
+ | "ui.settings"
  | "ui.window.appearance"
  | "clipboard.read"
  | "clipboard.write"
@@ -353,11 +356,13 @@ type PluginPermission =
  | "agent.tool.register"
  | "agent.prompt.inject"
  | "agent.complete"
+ | "agent.extension"
  | "composer.transform"
-| "composer.suggest"
+ | "composer.suggest"
  | "renderer.extension"
  | "provider.register"
  | "provider.oauth"
+ | "models.list"
  | "net.fetch"
  | "net.anyHost"
  | "shell.openExternal"
@@ -370,10 +375,12 @@ type PluginPermission =
  | "desktop.control"
  | "ui.microphone"
  | "project.create"
+ | "session.read"
  | "session.import"
  | "session.read.own"
  | "session.update.own"
  | "session.delete.own"
+ | "session.autoTitle"
  | "usage.read"
  | "audio.capture.background"
  | "audio.playback.background"
@@ -382,7 +389,9 @@ type PluginPermission =
  | "net.websocket";
 ```
 
-未知权限=验证失败。
+权威列表是 `@pi-desktop/plugin-sdk` 中的 `PLUGIN_PERMISSIONS`。未知权限名在
+`pi-plugin check` 中报错（`permission.unknown`）；`validateManifest()` 与宿主安装器
+不会拒绝它，但该字符串不匹配任何能力检查，因此不授予任何能力。
 
 `fs.read.workspace`、`fs.write.workspace`、`fs.delete.workspace` 是文件范围机制
 之前的旧权限名。它们仍然能通过校验，主机会在加载时把它们改写成最小安全等价物
@@ -450,7 +459,7 @@ type PluginNetDomains = string[]; // "api.example.com" or "*.example.com"
 不受影响；未持有该权限的插件同样零变化。它与其他权限一样在安装/更新
 确认页展示，请求时不再有任何弹窗。
 
-## 5. 1 总线主题语法
+## 5.1 总线主题语法
 
 主题最多是与 `[a-zA-Z0-9][a-zA-Z0-9_-]*` 匹配的点分隔段
 8段128个字符。 `contributes.bus.publish` 列出了具体主题；
@@ -509,15 +518,19 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
 
 ## 7. 验证规则
 
-1. `schemaVersion` 必须是 `1`
-2. 需要 `id` / `name` / `version`
+1. `schemaVersion` 必填且必须是数字。当前格式为 `1`，但不会校验具体取值
+2. 需要 `id` / `name` / `version` / `main`
 3. 打开 `ui.panel` 需要显式声明和用户授予 `ui.panel`，路径不会隐式授权
-4. 如果存在 `agentTools`，则必须声明 `agent.tool.register`。
+4. 如果存在 `agentTools`，则必须声明 `agent.tool.register`。缺少该权限时
+   `pi-plugin check` 报错（`permission.tools-missing`），安装器不会拒绝，
+   运行时调用 `pi.agent.registerTool` 会因未授权而失败。
    `composerTransforms` 需要 `composer.transform`；每个操作 id 必须匹配
    `[A-Za-z][A-Za-z0-9_-]{0,63}`，并在插件内保持唯一
 5. 路径字段不得使用绝对路径或 `..`
 6. `main` / `ui.panel` / 技能 / `views[].entry` 路径必须存在
-7.工具`name`仅允许`[a-zA-Z][a-zA-Z0-9_]*`
+7. 工具 `name` 应只使用 `[a-zA-Z][a-zA-Z0-9_]*`。该规则不做校验：宿主会把其他
+   字符替换为 `_` 作为面向智能体的工具名（`plugin_<pluginId>_<name>`），因此仅在
+   这些字符上不同的两个名字会冲突
 8. 贡献 ID（`themes`、`mcpServers`、`services`、`views`、`composerTransforms`）必须匹配
    `[a-zA-Z][a-zA-Z0-9_-]{0,63}` 并在自己的列表中保持唯一；
    `sessionSources` 允许额外使用 `.`
@@ -531,9 +544,13 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
    有效模式（§5.1）
 12. 需要权限的贡献在权限验证时失败
    缺少：`themes` → `ui.theme`，`views` → `ui.view`，`providers` →
-   `provider.register`，`composerTransforms` → `composer.transform`，stdio
-   服务器 → `mcp.server.local`，远程服务器 → `mcp.server.remote`、`services` → `background.service`、
+   `provider.register`，OAuth 提供方 → `provider.oauth`，`composerTransforms` →
+   `composer.transform`，`agentExtensions` → `agent.extension`，
+   `windowAppearance` → `ui.window.appearance`，stdio 服务器 → `mcp.server.local`，
+   远程服务器 → `mcp.server.remote`，`services` → `background.service`，
    `bus.publish` → `bus.publish`，`bus.subscribe` → `bus.subscribe`。
+   `scenicThemes` 不在校验阶段检查：缺少 `ui.settings` 或 `ui.theme` 时，宿主只是
+   不显示该设置入口。
 `skills` 是一个例外 - 它早于权限门，因此清单
    没有 `agent.prompt.inject` 仍然有效并且运行时只是跳过
    技能
@@ -615,7 +632,7 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
 }
 ```
 
-## 9. 1 示例：能力贡献
+## 9.1 示例：能力贡献
 
 ```json
 {
@@ -665,5 +682,7 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
 ## 10. 兼容性策略
 
 - 未来的 `schemaVersion: 2` 需要迁移器
-- 主机应拒绝过高的主要版本
-- 未知的可选字段可能会被忽略；未知所需的权限必须失败
+- 宿主应拒绝过高的主要版本；目前 SDK 与宿主都不会把 `schemaVersion` 与 `1`
+  比较（§7 第 1 条）
+- 未知的可选字段可能会被忽略。未知权限会让 `pi-plugin check` 失败，但安装时不会被
+  拒绝（§5）

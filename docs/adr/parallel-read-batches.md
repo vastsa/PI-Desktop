@@ -1,55 +1,59 @@
-# ADR: Ordered preparation and parallel read batches
+# ADR: Ordered preparation and parallel file batches
 
 - Status: Proposed
 - Date: 2026-10-12
+- Amended: 2026-10-30 by #1982; see [Host file admission](host-file-batch-admission.md)
 
 ## Context
 
-The runtime globally permits parallel execution but overrides every tool except
-Task to sequential. pi consequently serializes independent Read/Glob/Grep calls.
-Simply changing those flags is unsafe: file preflight currently changes the
-parent prompt, including when invoked through delegated tool closures.
+Independent Read/Glob/Grep calls were serialized. Simply changing execution
+flags was unsafe because preflight mutated the prompt in completion order and
+Task could start a writable delegate beside a parent read. The initial #1982
+amendment later tried lexical-path claims for Write/Edit; review demonstrated
+that different file names can reference the same object.
 
 ## Decision
 
-Use pi-agent-core's ordered preparation / concurrent execution /
-ordered result submission contract. Centralize the Read/Glob/Grep candidate
-allowlist and the batch rule that keeps Task mixed with those reads sequential;
-unknown tools default to sequential. Keep existing Host permission and capacity
-ownership. Do not introduce another batch executor.
+Use pi-agent-core's ordered preparation, concurrent execution and source-order
+result submission contract. Native path instruction preparation follows parent
+mode/extension checks; children only mutate their own prompt. Prepared argument
+identity keeps execution on the same normalized parameters. Direct calls retain
+preflight. Do not fork pi or add another executor.
 
-Move parent file preflight after mode and extension checks in beforeToolCall.
-Use a weak argument-identity map to bind canonical parameters to the validated
-call; unused records are collectible after cancellation or rejection. Direct
-invocations still run preflight. Delegate preparation has an explicit prompt
-sink, and AsyncLocalStorage preserves that sink for direct delegated executions
-without sharing mutable current-agent state. Delegate prompt updates use the
-same chronological system transcript sections as the parent.
+Read/Glob/Grep remain parallel candidates. A supported local Host allows
+Write/Edit to join; legacy and remote Hosts retain sequential writes. Task-only
+fan-out is preserved; Task mixed with any file tool keeps the entire batch
+sequential. Reads/searches after a writable Task still wait for that delegate's
+completion; Task itself returns its started notice immediately.
+
+Eligible parallel file calls register in source order, seal before dispatch,
+and carry Host tickets. The Host owns actual identity, conflicts, capacity and
+execution lease lifetime as specified in the companion ADR. Basename and
+lexical keys no longer authorize overlap. Outer executor cleanup includes
+argument failures, mode denials, cancellation and calls that never reach Host.
+Batch-end cleanup only abandons unstarted records, never active disk work.
 
 ## Consequences
 
-Independent reads/searches overlap without changing writes or Bash policy.
-Task-only batches retain fan-out, while a mixed Task/read batch is kept
-sequential: a read ordered before `Task` finishes before the delegate starts, and
-a read ordered after a writable `Task` in the same batch waits for that delegate
-to settle before dispatching to Host, while `Task` itself still returns its ADR
-0089 started notice immediately. Per-path shared-read / exclusive-write
-locking in `PathMutex` also prevents a parent `Read` from overlapping an
-in-flight shared-workspace delegate `Write` or `Edit` on the same file.
-Regression tests pin both model orders (read then `Task`, and `Task` then read),
-Task-only fan-out, read-only batches, same-path `Edit` vs `Read` serialization,
-and a failed delegate that still lets the parent read proceed. Delegate path
-rules now follow their own ordered calls instead of mutating the parent.
-Instruction resolution claims remain immutable, per-prompt cached promises;
-shared caching does not share the prompt mutation sink. Source-order results
-still come from pi.
+Independent known-file reads and writes may overlap while aliases keep source
+order. Uncertain paths, namespace changes, searches and registers conservatively
+coordinate through the Host file domain. Per-session write capacity remains
+one. Results still enter the model in source order. Task/Bash semantics and
+permissions are unchanged. Legacy PathMutex behavior remains only on the legacy
+path; the negotiated path uses the Host authority for participating parent,
+delegate and session calls.
 
-Existing running file RPCs drain on Stop; finer cancellation and Host-owned
-file resource leases belong to separate changes.
+Regression tests must distinguish RPC submission from actual file-body order.
+Real Host tests cover differently named links and reversed RPC arrival; a
+blocking-pool gate proves cancellation cannot release a running file lease.
+Local-provider E2E covers parent/delegate wiring, results, real-tag Edit,
+approvals, aliases and rollback. Performance measurements include metadata RPCs
+and do not claim the diagram's illustrative timings as observed throughput.
 
 ## Alternatives
 
-- Parallelize execute while retaining prompt updates there: completion order
-  would select sibling rules and delegates would still overwrite parent state.
-- Serialize all reads behind a prompt mutex: would preserve the bottleneck.
-- Fork pi's batch executor: duplicates an already-supported contract.
+- Completion-order preflight: sibling calls race to choose prompt instructions.
+- Sidecar lexical locks: miss aliases and other sessions.
+- Write-only Host capacity: does not exclude a read of the same file.
+- Waiting/releasing only inside the builtin body: validation/mode errors can
+  strand registered successors before reaching that body.

@@ -32,7 +32,8 @@ Each ADR includes:
 | s3-only-configuration-backup-sync | [S3-only encrypted configuration backup and synchronization](s3-only-configuration-backup-sync.md) | Accepted; supersedes WebDAV decisions in 0300 / 0301 |
 | remote-provider-import | [Explicit provider import into a running remote Host](remote-provider-import.md) | Accepted for the experimental SSH MVP |
 | remote-project-home-workflow | [Remote projects in the shared Chat home workflow](remote-project-home-workflow.md) | Accepted |
-| parallel-read-batches | [Ordered preparation and parallel read batches](parallel-read-batches.md) | Proposed |
+| parallel-read-batches | [Ordered preparation and parallel file batches](parallel-read-batches.md) | Proposed |
+| host-file-batch-admission | [Host file identities and ordered batch admission](host-file-batch-admission.md) | Proposed |
 | composer-mcp-invocations | [Composer MCP Invocations](composer-mcp-invocations.md) | Accepted |
 | chronological-system-transcript | [Preserve chronological model system state](chronological-system-transcript.md) | Accepted |
 | mcp-tool-approval-risk | [User MCP tools keep the normal approval path](mcp-tool-approval-risk.md) | Accepted |

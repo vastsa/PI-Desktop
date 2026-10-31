@@ -325,7 +325,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 
 前往 [英文 ADR 索引](/adr/README) 查看完整记录，或打开 [中文决策日志](/zh-CN/spec/08-meta/decisions-log) 按编号检索。
 
-## Tray session shortcuts
+## 托盘会话快捷方式
 
 定时任务的调度、存储、权限与桌面入口决策见
 [ADR: Desktop automations](/adr/scheduled-desktop-automations)。

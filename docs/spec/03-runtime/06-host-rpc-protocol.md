@@ -1497,3 +1497,27 @@ metadata. Approval/rejection remain digest-bound. Only the new S3 format is
 supported; there is no old-data detection or migration. Disconnect removes
 only current S3 credentials, keys and local sync metadata/staging; unrelated
 files and remote objects remain intact. See `22-config-sync.md`.
+
+
+## Host file batch admission (version 1)
+
+The sidecar proxy explicitly allows tools.fileBatchCapabilities, tools.fileBatchRegister,
+tools.fileBatchSeal, tools.fileBatchAbandon and tools.fileBatchClose. No wildcard
+method authorization is added. Capabilities takes sessionId and returns
+{version:1,supported:boolean}; remote-workspace sessions return supported:false.
+Register takes sessionId, optional delegationId, batchId, ordinal, toolCallId,
+toolName and args, and returns {ticket}. Only builtin file tool names are
+accepted. Seal/Close take sessionId/batchId; Abandon takes sessionId/ticket.
+The latter methods return {ok:true}. Metadata is bounded (512 calls, 128 per
+batch, 32 MiB retained arguments), process-local and never grants permission.
+
+The additive tools.execute field fileBatchTicket binds the actual request to a
+sealed single-use registration. Session/delegation, call/name and args must
+match; replay, tampering and pre-seal execution fail. Existing callers without
+tickets still receive Host resource exclusion but cannot claim batch source
+order. Runtime only opens write parallelism after the capability handshake.
+Permissions, roots, leases and resource identities are recomputed by Host;
+clients never supply authoritative identities. A changed workspace binding
+reports TOOL_CONTEXT_CHANGED; an identity/address change fails before writing.
+Close/expiry cannot release a running disk task; no failed/uncertain write is
+automatically replayed. See the Host file admission ADR for lifecycle and limits.

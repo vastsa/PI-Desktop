@@ -35,14 +35,14 @@ describe("delegate execution policy", () => {
     expect(run.agent.identity).toEqual(DESKTOP_AGENT_IDENTITY);
   });
 
-  it("preserves sequential policy for a same-name dynamic Read", () => {
+  it.each(["Read", "Write", "Edit"])("preserves sequential policy for a same-name dynamic %s", (name) => {
     const { run } = createRun({ tools: [{
-      name: "Read", label: "extension", description: "dynamic", parameters: Type.Object({}),
+      name, label: "extension", description: "dynamic", parameters: Type.Object({}),
       executionMode: "sequential", execute: async () => ({ content: [], details: {} }),
     }] });
     expect(run.agent.state.tools[0].executionMode).toBe("sequential");
   });
-  it("fails closed for mutations and unknown tools even when supplied a parallel hint", () => {
+  it("runs file tools in parallel batches but fails closed for Bash and unknown tools", () => {
     const { run } = createRun({ tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash", "plugin_unknown"].map((name) => ({
       name, label: name, description: name, parameters: Type.Object({}),
       executionMode: "parallel", execute: async () => ({ content: [], details: {} }),
@@ -50,7 +50,7 @@ describe("delegate execution policy", () => {
     expect(run.agent.toolExecution).toBe("parallel");
     expect(run.agent.state.tools.map((tool: any) => [tool.name, tool.executionMode])).toEqual([
       ["Read", "parallel"], ["Glob", "parallel"], ["Grep", "parallel"],
-      ["Write", "sequential"], ["Edit", "sequential"], ["Bash", "sequential"], ["plugin_unknown", "sequential"],
+      ["Write", "parallel"], ["Edit", "parallel"], ["Bash", "sequential"], ["plugin_unknown", "sequential"],
     ]);
     run.setSystemPrompt("child-only path rules");
     expect(run.agent.state.systemPrompt).toBe("child-only path rules");
@@ -385,6 +385,17 @@ describe("SubagentRun event forwarding", () => {
 
     expect(events).toEqual([]);
     expect(run.turns).toBe(1);
+  });
+
+  it("hands each finished turn's assistant message to onTurnEnd", () => {
+    const onTurnEnd = vi.fn();
+    const { run, events } = createRun({ onTurnEnd });
+    const message = assistantMessage({ content: [] });
+
+    run.handleEvent({ type: "turn_end", message, toolResults: [] });
+
+    expect(onTurnEnd).toHaveBeenCalledExactlyOnceWith(message);
+    expect(events).toEqual([]);
   });
 });
 

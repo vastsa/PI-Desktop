@@ -634,6 +634,23 @@ test("the panel and a new tab share the same launcher rows", async () => {
   assert.match(emptySource, /work-tab-empty-body/);
 });
 
+test("the launcher tool list scrolls when it outgrows the panel body", () => {
+  // The launcher sits in the flex tabpane; without min-height: 0 it grows past
+  // the pane and the rows below the fold become unreachable (issue #2026).
+  const launcher = globalStyles.match(/\.work-panel-launcher \{[^}]*\}/)?.[0] ?? "";
+  assert.match(launcher, /min-height: 0/);
+  const list = globalStyles.match(/\.work-panel-launcher-list \{[^}]*\}/)?.[0] ?? "";
+  assert.match(list, /min-height: 0/);
+  assert.match(list, /overflow-y: auto/);
+  // Rows are flex items of that list: without flex-shrink: 0 a constrained
+  // list first compresses them below their 40px height instead of scrolling.
+  const row = globalStyles.match(/\.work-panel-launcher-row \{[^}]*\}/)?.[0] ?? "";
+  assert.match(row, /flex-shrink: 0/);
+  // The title stays pinned; only the rows scroll.
+  const title = globalStyles.match(/\.work-panel-launcher-title \{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(title, /overflow-y/);
+});
+
 test("work panel empty states match the app's other empty-state proportions", () => {
   const icon = globalStyles.match(/\.work-tab-empty-icon \{[^}]*\}/)?.[0] ?? "";
   assert.match(icon, /width: 38px/);

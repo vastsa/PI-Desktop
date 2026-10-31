@@ -1111,6 +1111,10 @@ singleton without duplicating it:
 +---------------------------------------+
 ```
 
+The launcher is bounded by the panel body: the title stays pinned while the
+tool rows scroll inside the list when the data-driven set outgrows the
+available height, so every row remains reachable (#2026).
+
 ### 5.2.1 Light-theme surface
 
 - Panel body uses quiet inset paper (`#fafafa`); the 46px header band and tool

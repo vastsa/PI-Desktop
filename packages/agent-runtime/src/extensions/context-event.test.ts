@@ -47,6 +47,7 @@ it("emits context before every provider request without persisting the replaceme
     runtime = new DesktopAgentRuntime({
       host: {
         call: async <T>(method: string, params?: unknown): Promise<T> => {
+          if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
           if (method === "session.appendMessage") {
             persisted.push((params as { message: unknown }).message);
             return undefined as T;

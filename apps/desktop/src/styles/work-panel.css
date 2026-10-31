@@ -504,6 +504,7 @@
 .work-panel-launcher {
   display: flex;
   width: 100%;
+  min-height: 0;
   flex-direction: column;
   gap: 8px;
   padding: 14px 10px;
@@ -518,14 +519,19 @@
 
 .work-panel-launcher-list {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
 }
 
 .work-panel-launcher-row {
   display: flex;
   min-width: 0;
   height: 40px;
+  /* Rows are flex items of the scrollable list: keep them at their full 40px
+     so a constrained list scrolls instead of compressing the click targets. */
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 0 10px;

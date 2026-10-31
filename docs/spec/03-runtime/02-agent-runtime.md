@@ -1794,23 +1794,20 @@ merging to the user, and how to resolve a merge conflict).
 | tools | sequential by default |
 | `Task` calls in one assistant message | parallel; 10 running delegates per session (ADR 0089) |
 
-Tool concurrency is expressed through pi execution modes. In the parallel read batches,
-`Read`, `Glob` and `Grep` are parallel candidates; all other catalog tools remain
-sequential. Task-only batches retain parallel fan-out, while a batch that mixes
-`Task` with any of those file-reading tools is kept sequential: a read before
-`Task` finishes before the delegate starts, and a read after a writable `Task`
-waits for that delegate to settle before dispatching to Host, while `Task` stays
-non-blocking inside that batch too (ADR 0089). Parent and delegate path
-instruction updates happen during ordered preparation before parallel execution,
-and mutate only their own prompt.
-Delegates issue
-host calls independently, and host-core's one-mutation-per-session admission
-keeps writes from tearing but leaves two same-path mutations unordered, so the
-sidecar serializes `Write`/`Edit` calls (and coordinates `Read` against in-flight
-`Write`/`Edit` on the same workspace path) that target the same normalized path
-before they reach the host; calls on different paths never wait on each other.
-This is what keeps the per-path edit-recovery rules of
-`03-tools-and-permissions.md` §4d meaningful under fan-out.
+Tool concurrency uses pi's ordered preparation and source-order result contract.
+Read/Glob/Grep remain parallel; Write/Edit join only after the local Host
+file-batch capability handshake. Legacy and remote Hosts keep write batches
+sequential. Eligible batches register calls in source order and seal before
+execution. Host permission checks precede identity resolution; Host orders
+conflicting same-batch calls by source ordinal and atomically grants resources
+with capacity. Native file identities cover aliases across parent/delegate and
+session calls. Unknown identities and namespace changes fence conservatively.
+The actual blocking task retains its permit after transport cancellation.
+Supported calls bypass sidecar PathMutex; legacy calls retain it. Existing
+mutation-recovery rules remain in force. See `03-tools-and-permissions.md` §0
+and ADR `host-file-batch-admission` for identity, lifecycle and scope limits.
+Task-only fan-out and Task/file mixed-batch completion barriers are unchanged;
+parent and child path instruction preparation only updates their own prompt.
 
 Selecting another project tab affects only the visible shell workspace. It
 does not dispose, abort, or re-root a runtime belonging to another session.

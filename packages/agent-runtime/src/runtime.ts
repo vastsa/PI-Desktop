@@ -5,7 +5,8 @@ import {
 } from "./mutation-recovery.js";
 import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 import { resolveMcpToolSelection } from "./mcp-tool-selection.js";
-import { toolExecutionMode, withDynamicTaskExecutionMode } from "./tool-execution-policy.js";
+import { BatchPlanner, withBatchTurn } from "./batch-planner.js";
+import { TOOL_EXECUTION_SPECS, resolveBatchExecutionMode, toolExecutionMode, withDynamicTaskExecutionMode } from "./tool-execution-policy.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, restoredToolActivation, syncToolActivation, type ToolDeclarationPolicy } from "./fixed-tool-declarations.js";
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
@@ -1931,6 +1932,8 @@ export class DesktopAgentRuntime {
   private delegateWorktrees = new Map<string, string>();
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
+  /** Orders one parallel batch's calls by the resources they claim. */
+  private batchPlanner: BatchPlanner;
   /** Complete tool registry; only the active subset is sent to the provider. */
   private toolCatalog = new Map<string, AgentTool>();
   /** Tools intentionally omitted from the initial provider request. */
@@ -2121,6 +2124,7 @@ export class DesktopAgentRuntime {
     this.fastMode = opts.fastMode === true;
     this.jevApiKey = opts.jevApiKey;
     this.host = opts.host;
+    this.batchPlanner = new BatchPlanner(this.host, this.sessionId);
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
       this.cleanupActiveToolProgress();
@@ -2722,6 +2726,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const blocked = await this.extensionToolCall(context);
       if (blocked?.block) return blocked;
       await this.preparePathToolCall(context);
+      await this.registerBatchCall(context);
       return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
@@ -3675,6 +3680,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               toolCallId,
               toolName,
               args: params,
+              ...(this.batchPlanner.ticket(toolCallId) ? { fileBatchTicket: this.batchPlanner.ticket(toolCallId) } : {}),
               mode: this.mode,
               ...(isBash
                 ? {
@@ -3978,13 +3984,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // Direct/internal invocations retain preflight. pi invocations have
           // already committed instructions in the ordered preparation phase.
           if (!prepared) await this.loadPathInstructions(toolName, params, this.instructionExecution.getStore());
-          if (PATH_MUTATING_TOOLS.has(toolName)) {
+          if (!this.batchPlanner.supported && PATH_MUTATING_TOOLS.has(toolName)) {
             return this.writeLocks.run(
               this.pathLockKey(toolCallId, params),
               () => run(toolCallId, params, signal, onUpdate),
             );
           }
-          if (toolName === "Read") {
+          if (!this.batchPlanner.supported && toolName === "Read") {
             return this.writeLocks.read(
               this.pathLockKey(toolCallId, params),
               () => run(toolCallId, params, signal, onUpdate),
@@ -4173,20 +4179,24 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // The execution mode is decided here, in one place, so no tool can grow
       // an accidental parallel batch: unknown tools remain sequential.
       // pi runs a whole batch sequentially when it holds one sequential tool;
-      // the batch-level policy also keeps Task mixed with file reads behind
-      // the delegate completion boundary.
+      // the batch-level policy also keeps Task mixed with any file tool
+      // (Read/Glob/Grep/Write/Edit) sequential; only reads ordered after a
+      // writable Task wait for that delegate to settle.
       // The provider-facing schema is settled here too, at the single origin of
       // every tool, so the session agent and a delegated `Task` run send the
       // same declaration (#864).
       const builtin = this.builtinTools.has(tool);
+      const guarded = withModeExecutionGuard(
+        withExplicitRequired({
+          ...tool,
+          executionMode: builtin ? toolExecutionMode(tool.name, this.batchPlanner.supported) : "sequential",
+        }),
+        () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
+      );
+      // Batch ordering wraps the mode guard: a call the guard rejects must
+      // still release the calls ordered behind it in its batch.
       const catalogTool = withDynamicTaskExecutionMode(
-        withModeExecutionGuard(
-          withExplicitRequired({
-            ...tool,
-            executionMode: builtin ? toolExecutionMode(tool.name) : "sequential",
-          }),
-          () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
-        ),
+        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(guarded, this.batchPlanner) : guarded,
         () => this.agent?.state.messages.at(-1),
       );
       if (builtin) this.builtinTools.add(catalogTool);
@@ -5133,8 +5143,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             tools: scopedTools,
             beforeToolCall: async (context) => {
               await this.preparePathToolCall(context, applyInstructions, builtinToolNames);
+              await this.registerBatchCall(context, builtinToolNames, worktreeKey);
               return undefined;
             },
+            onTurnEnd: (message) => this.batchPlanner.settleBatch(message),
             onEvent: (envelope) => {
               this.noteDelegationActivity(record, envelope);
               this.onEvent(envelope);
@@ -6407,6 +6419,37 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       });
       return;
     }
+  }
+
+  /**
+   * Records what a prepared builtin call will touch so the batch can order it
+   * (`withBatchTurn`). Runs after every check that can block the call. Tools
+   * without claims are sequential, or Task, whose mixed batches pi already
+   * runs sequentially.
+   */
+  private async registerBatchCall(
+    context: BeforeToolCallContext,
+    builtinToolNames?: ReadonlySet<string>,
+    delegationId?: string,
+  ): Promise<void> {
+    const name = context.toolCall.name;
+    if (!this.batchPlanner.supported || !TOOL_EXECUTION_SPECS[name]?.file) return;
+    // pi prepares/executes sequential batches one call at a time. They must
+    // not seal a partial registration and later try to append to it.
+    const calls = context.assistantMessage.content.filter((block) => block.type === "toolCall");
+    if (resolveBatchExecutionMode(context.assistantMessage) === "sequential"
+      || calls.some((call) => context.context?.tools?.find((tool) => tool.name === call.name)?.executionMode !== "parallel")) return;
+    const selected = context.context?.tools?.find((tool) => tool.name === name);
+    const builtin = builtinToolNames ? builtinToolNames.has(name) : selected && this.builtinTools.has(selected);
+    const batch: unknown = context.assistantMessage;
+    if (!builtin || !isRecord(context.args) || !isRecord(batch)) return;
+    await this.batchPlanner.register(
+      batch,
+      context.args,
+      { toolName: name, toolCallId: context.toolCall.id,
+        ordinal: context.assistantMessage.content.findIndex((block) => block.type === "toolCall" && block.id === context.toolCall.id),
+        args: normalizeToolParams(name, context.args), delegationId },
+    );
   }
 
   private async preparePathToolCall(
@@ -7722,6 +7765,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     ) {
       return "oversized";
     }
+    // The composer would otherwise keep showing the last pre-compaction
+    // request's usage until another request reports one (#2015). The estimate
+    // rides in the opaque details so it survives a reload like the generation.
+    checkpoint = {
+      ...checkpoint,
+      details: {
+        ...(isRecord(checkpoint.details) ? checkpoint.details : {}),
+        contextTokens: compactedBudget.tokens,
+      },
+    };
     try {
       await this.host.call("session.appendCompaction", {
         sessionId: this.sessionId,
@@ -8846,6 +8899,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         break;
       case "turn_end":
+        this.batchPlanner.settleBatch(event.message);
         if (
           this.suppressOverflowRunEnd ||
           this.suppressProviderRetryRunEnd ||
@@ -9144,9 +9198,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
     const turnId = durableTurnId?.trim() || randomUUID();
-    return this.trackTurnOperation(turnId, () =>
-      this.promptTurn(input, userMessageId, turnId),
-    );
+    return this.trackTurnOperation(turnId, async () => {
+      try { return await this.promptTurn(input, userMessageId, turnId); }
+      finally { await this.batchPlanner.drain(); }
+    });
   }
 
   private async promptTurn(
@@ -9167,11 +9222,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.turnSubagentUsage = undefined;
     // Capabilities and path-scoped instruction claims belong to one prompt.
     this.subagentOverrideProviders = {};
-    this.resetDeferredToolsForPrompt();
-    if (selectedTools.length) {
-      this.activateDeferredTools(selectedTools);
-      this.setAgentTools(this.activeTools());
-    }
     this.pathInstructionClaims.clear();
     this.pendingUserMessageId = userMessageId;
     this.resetRunRecoveryState();
@@ -9189,6 +9239,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     try {
+      // Publish turn ownership before the first await. Status polling and Stop
+      // must include capability negotiation, not observe a falsely idle turn.
+      await this.batchPlanner.negotiate(Boolean(this.remoteWorkspace));
+      if (this.runCancelled || this.disposed) throw turnAbortedError("Turn aborted during Host capability negotiation");
+      this.rebuildToolCatalog();
+      this.resetDeferredToolsForPrompt();
+      if (selectedTools.length) this.activateDeferredTools(selectedTools);
+      this.setAgentTools(this.activeTools());
       const content = promptContent(modelInput);
       const incomingUserMessage: AgentMessage = {
         role: "user",

@@ -516,7 +516,7 @@ root 本身。`net.fetch` 接受 HTTP(S)，并且只能到达 `manifest.net.doma
 它放宽域名列表，覆盖 fetch、WebSocket、面板和远端 MCP，但仍拒绝云元数据地址，
 也不会单独授予 fetch 或 socket API。
 
-### Fetch redirect policy
+### Fetch 重定向策略
 
 依赖重定向策略前，必须先查询能力。旧宿主可能忽略未知字段，不能回退到原始网络请求。
 
