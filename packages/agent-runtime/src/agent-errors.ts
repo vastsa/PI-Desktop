@@ -115,7 +115,9 @@ function redactSensitiveErrorText(message: string): string {
 /**
  * Probe the HTTP status across SDK error shapes: `status`/`statusCode`
  * fields (walking the `cause` chain), then a leading "<status>:" or a
- * "(status)" / "status code NNN" marker in the message.
+ * "(status)" / "status code NNN" marker in the message. Gemini's
+ * `@google/genai` ApiError.message is the JSON body with no prefix, so the
+ * last probe reads a 400-599 `code` from that object.
  */
 function extractStatus(err: unknown, message: string): number | undefined {
   let current: any = err;
@@ -136,6 +138,50 @@ function extractStatus(err: unknown, message: string): number | undefined {
       const status = Number(match[1]);
       if (status >= 400 && status < 600) return status;
     }
+  }
+  return httpStatusFromJsonErrorBody(message);
+}
+
+/** Integer HTTP error status. Numeric strings and out-of-range codes are not. */
+function isHttpErrorStatus(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 400 &&
+    value <= 599
+  );
+}
+
+/** Google RPC status enums are UPPER_SNAKE, e.g. INVALID_ARGUMENT. */
+function isGoogleRpcStatus(value: unknown): boolean {
+  return typeof value === "string" && /^[A-Z][A-Z0-9_]*$/.test(value);
+}
+
+/**
+ * Read an HTTP status from a JSON error body when the message itself is that
+ * body. A 400-599 numeric `code` counts only when it sits on an `error`
+ * object, or beside a Google RPC `status`. A bare `"code": 123` is not one.
+ */
+function httpStatusFromJsonErrorBody(message: string): number | undefined {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const record = parsed as Record<string, unknown>;
+  const nested = record.error;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const error = nested as Record<string, unknown>;
+    if (isHttpErrorStatus(error.code)) return error.code;
+  }
+  if (isHttpErrorStatus(record.code) && isGoogleRpcStatus(record.status)) {
+    return record.code;
   }
   return undefined;
 }

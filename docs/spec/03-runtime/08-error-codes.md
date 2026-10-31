@@ -381,7 +381,11 @@ messages (including `insufficient_quota`, `credit_balance_exhausted`, and
 organization/project spend-limit codes) map to terminal `PROVIDER_ERROR` even
 when the HTTP status is 429. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
-stays `PROVIDER_RATE_LIMITED`.
+stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
+HTTP status in `error.code` (Gemini's `@google/genai` `ApiError.message`) is
+classified from that 400-599 code the same way as a `<status>:` message:
+400/422 stay terminal unless they report a context overflow, 404 is
+`MODEL_NOT_CONFIGURED`, and 429 / 5xx stay retryable.
 
 An exact `terminated` provider message and equivalent premature stream-close
 messages map to `STREAM_FAILED`. A message is `TURN_ABORTED` only for a

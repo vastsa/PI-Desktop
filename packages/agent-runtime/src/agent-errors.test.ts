@@ -297,6 +297,141 @@ describe("classifyAgentError", () => {
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
   });
 
+  // @google/genai ApiError.message is JSON.stringify(errorBody). pi-ai does
+  // not prefix "<status>:", and the Google adapter never records
+  // providerResponseStatus, so the main session and subagents classify this
+  // assistant message through classifyProviderError with no status argument.
+  it.each([
+    [
+      "400 INVALID_ARGUMENT",
+      {
+        error: {
+          code: 400,
+          message: "User location is not supported for the API use.",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 400 } },
+    ],
+    [
+      "404 NOT_FOUND",
+      {
+        error: {
+          code: 404,
+          message:
+            "models/gemini-3-pro-preview is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+          status: "NOT_FOUND",
+        },
+      },
+      {
+        code: "MODEL_NOT_CONFIGURED",
+        retriable: false,
+        details: { providerStatus: 404 },
+      },
+    ],
+    [
+      "429 RESOURCE_EXHAUSTED",
+      {
+        error: {
+          code: 429,
+          message: "Resource has been exhausted (e.g. check quota).",
+          status: "RESOURCE_EXHAUSTED",
+        },
+      },
+      {
+        code: "PROVIDER_RATE_LIMITED",
+        retriable: true,
+        details: { providerStatus: 429 },
+      },
+    ],
+    [
+      "429 billing exhaustion",
+      {
+        error: {
+          code: 429,
+          message:
+            "You exceeded your current quota, please check your plan and billing details.",
+          status: "RESOURCE_EXHAUSTED",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 429 } },
+    ],
+    [
+      "503 UNAVAILABLE",
+      {
+        error: {
+          code: 503,
+          message: "The service is currently unavailable.",
+          status: "UNAVAILABLE",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 503 } },
+    ],
+    [
+      "400 input token count",
+      {
+        error: {
+          code: 400,
+          message:
+            "The input token count exceeds the maximum number of tokens allowed.",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      {
+        code: "CONTEXT_TOO_LARGE",
+        retriable: false,
+        details: { providerStatus: 400 },
+      },
+    ],
+    [
+      "409 unknown 4xx",
+      {
+        error: {
+          code: 409,
+          message: "Resource already exists.",
+          status: "ALREADY_EXISTS",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 409 } },
+    ],
+  ])(
+    "classifies an unprefixed Gemini JSON %s body",
+    (_label, body, expected) => {
+      const errorMessage = JSON.stringify(body);
+      const message = { role: "assistant", stopReason: "error", errorMessage };
+      expect(classifyAgentError(errorMessage)).toMatchObject(expected);
+      expect(classifyAgentError(new Error(errorMessage))).toMatchObject(expected);
+      expect(classifyAgentError(message)).toMatchObject(expected);
+      expect(classifyProviderError(message)).toMatchObject(expected);
+    },
+  );
+
+  it("does not treat a non-HTTP JSON code as a provider status", () => {
+    const cases = [
+      JSON.stringify({ error: { code: 123, message: "not an http status" } }),
+      JSON.stringify({ code: 400, message: "plain code is not an http status" }),
+      JSON.stringify({
+        error: {
+          code: "400",
+          message: "string code is not an http status",
+          status: "INVALID_ARGUMENT",
+        },
+      }),
+    ];
+    for (const errorMessage of cases) {
+      const classified = classifyProviderError({
+        role: "assistant",
+        stopReason: "error",
+        errorMessage,
+      });
+      expect(classified).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+      expect(classified.details?.providerStatus).toBeUndefined();
+    }
+  });
+
   it("treats a request option an adapter refuses as non-retriable", () => {
     expect(
       classifyAgentError(
