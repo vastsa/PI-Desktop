@@ -48,16 +48,20 @@ const RATE_LIMIT_PATTERN =
 
 /**
  * Billing, spending, credit, and disk exhaustion are terminal, including
- * OpenAI's `insufficient_quota` type and explicit 429 error codes. Checked
- * before the status table because those conditions do not recover by backing
- * off. Generic "quota exceeded" wording remains eligible for rate-limit
- * classification below.
+ * OpenAI's `insufficient_quota` type, OpenRouter-style "insufficient credits"
+ * / "requires more credits" / "Payment Required" wording, and explicit 429
+ * error codes. Checked before the status table because those conditions do
+ * not recover by backing off. Generic "quota exceeded" wording remains
+ * eligible for rate-limit classification below. A bare "credits" is not
+ * exhaustion, and "insufficient credentials" must not match it either.
+ * HTTP 402 is terminal in the status table even when the body omits these
+ * phrases.
  */
 const EXHAUSTED_QUOTA_CODE_PATTERN =
   /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded)\b/i;
 
 const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
-  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b/i;
+  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b/i;
 
 /**
  * Whether a provider message reports a context overflow.
@@ -587,6 +591,8 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
 
   if (status !== undefined) {
     if (status === 401 || status === 403) return result("PROVIDER_UNAUTHORIZED", false);
+    // Payment Required. Credit exhaustion does not recover by re-sending.
+    if (status === 402) return result("PROVIDER_ERROR", false);
     if (status === 408) return result("TIMEOUT", true);
     if (status === 413) return result("CONTEXT_TOO_LARGE", false);
     if (status === 429) return result("PROVIDER_RATE_LIMITED", true);

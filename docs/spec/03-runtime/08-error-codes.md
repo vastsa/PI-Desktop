@@ -99,7 +99,7 @@ does not turn temporary thread pressure into a host process exit.
 | `AGENT_SIDECAR_CRASHED` | no | the Node agent sidecar process died mid-turn; the owning turn settles as aborted with this code instead of an unrelated plan-approval code (issue #1077) |
 | `AGENT_SIDECAR_OOM` | no | the sidecar died after its JavaScript heap hit the configured cap, diagnosed from the V8 fatal-error banner in its stderr tail; the same turn fails the same way until the input shrinks (issue #1077) |
 | `MODEL_NOT_CONFIGURED` | no | no usable model selected, or provider rejects the selected model as unknown |
-| `PROVIDER_ERROR` | yes | upstream provider failure; retryable 5xx gateway errors get up to ten same-turn retries, while malformed 400/422 requests, adapter-refused options, and explicit billing, credit, spend, usage, or disk exhaustion (including `insufficient_quota`) are terminal |
+| `PROVIDER_ERROR` | yes | upstream provider failure; retryable 5xx gateway errors get up to ten same-turn retries, while malformed 400/422 requests, adapter-refused options, HTTP 402, and explicit billing, credit, spend, usage, or disk exhaustion (including `insufficient_quota` and insufficient-credits wording) are terminal |
 | `PROVIDER_UNAUTHORIZED` | no | bad/missing provider credentials |
 | `PROVIDER_RATE_LIMITED` | yes | temporary provider throughput limit; runtime retries up to ten times across setup/stream. Explicit billing/account exhaustion remains terminal `PROVIDER_ERROR`, including when returned with HTTP 429 |
 | `CONTEXT_TOO_LARGE` | no | prompt/context still exceeds the safe model budget after recovery, the second provider overflow occurred, or automatic recovery is disabled |
@@ -377,9 +377,11 @@ exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
 Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
 replayed by either retry budget, and a delegate reports it as
 `SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
-messages (including `insufficient_quota`, `credit_balance_exhausted`, and
-organization/project spend-limit codes) map to terminal `PROVIDER_ERROR` even
-when the HTTP status is 429. Throughput rate-limit wording, including
+messages (including `insufficient_quota`, `credit_balance_exhausted`,
+organization/project spend-limit codes, `insufficient credits`, and
+`requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
+status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
+omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
 stays `PROVIDER_RATE_LIMITED`.
 

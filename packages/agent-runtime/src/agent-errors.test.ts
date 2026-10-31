@@ -398,6 +398,62 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // OpenRouter reports an empty balance as HTTP 402. Backing off cannot add
+  // credits, so the same-turn transient budget must not replay the request.
+  it.each([
+    "402 Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+    "402 Payment Required",
+    "402 status code (no body)",
+    "402: gateway said something unexpected",
+    "This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 1000.",
+    "Insufficient credits",
+    "Payment Required",
+    '429: {"error":{"message":"Insufficient credits"}}',
+  ])("treats HTTP 402 and credit-exhaustion wording as terminal: %s", (message) => {
+    expect(classifyAgentError(new Error(message))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("treats a structured HTTP 402 as a terminal provider error", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("Payment Required"),
+      { status: 402 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerStatus: 402 },
+    });
+  });
+
+  it("does not treat a bare credits mention or a 429 rate limit as credit exhaustion", () => {
+    expect(classifyAgentError(new Error("credits"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("credits remaining will reset"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    // "credentials" shares a prefix with "credits" and must stay out of the
+    // exhaustion matcher.
+    expect(classifyAgentError(new Error("insufficient credentials"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(
+      '429: {"error":{"type":"rate_limit_error","message":"credits remaining"}}',
+    )).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("429: Too many requests"))).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+  });
+
   it.each([
     "Rate limit exceeded",
     "Too many requests",
