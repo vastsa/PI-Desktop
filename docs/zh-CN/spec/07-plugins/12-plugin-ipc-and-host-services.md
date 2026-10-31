@@ -101,7 +101,9 @@ PluginManager
 
 ### 注册
 - 密钥必须是唯一的
-- 插件命令共享前缀：`plugin.<pluginId>.<commandId>`
+- 命令 ID 按原值保存；`plugin.<pluginId>.<commandId>` 是命名约定，宿主不会强制添加该前缀。
+  注册其他插件已占用的命令 ID 时，宿主返回 `CONFLICT` 错误；注销其他插件的命令时，
+  宿主返回 `PERMISSION_DENIED` 错误。插件仍可更新自己的命令，也可注销不存在的 ID。
 - 插件工具前缀策略：`plugin_<pluginIdSafe>_<toolName>`（在实现中修复）
 
 ### 查询

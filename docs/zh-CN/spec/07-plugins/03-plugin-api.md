@@ -108,6 +108,12 @@ pi.commands.register(def: {
 pi.commands.unregister(id: string): Promise<void>
 ```
 
+宿主按原值保存命令 ID，不会自动添加前缀。建议使用插件专属命名空间，避免 ID 冲突。
+插件可以更新自己注册的命令；若 ID 已由另一个已加载的插件占用，注册操作将以
+`CONFLICT` 错误拒绝。注销其他插件的命令将以 `PERMISSION_DENIED` 错误拒绝。
+注销不存在的 ID 会成功返回，不产生任何变更。禁用或卸载插件时，宿主会移除该插件的
+命令，并释放相应 ID。
+
 ### 输入框文本转换（`composer.transform`）
 
 插件可通过 `manifest.contributes.composerTransforms` 声明由用户主动触发的文本操作。

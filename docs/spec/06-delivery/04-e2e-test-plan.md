@@ -3880,6 +3880,24 @@ identify the platform validation still needed.
 - **Milestone**: M4
 - **Status**: Draft
 
+#### E2E-PLUGIN-command-ownership: Command registration respects plugin ownership
+
+- **Preconditions**: Two plugins run in separate plugin host processes.
+- **Steps**: 1) Register a command from one plugin. 2) Attempt to replace and
+  unregister it from the other plugin. 3) Update and unregister it from the
+  owner. 4) Repeat with a load-time collision and concurrent registrations.
+- **Expected**: Cross-plugin replacement rejects with `CONFLICT`; cross-plugin
+  removal rejects with `PERMISSION_DENIED`. Rejected calls leave the original
+  handler runnable. Same-owner updates preserve the ID; repeated removal is
+  harmless; released IDs can be reused. A failed plugin load or unloading a
+  losing registrant does not remove the winning command. Concurrent calls
+  admit exactly one owner.
+- **Specs linked**: `07-plugins/03-plugin-api.md`, `07-plugins/12-plugin-ipc-and-host-services.md`
+- **Acceptance**: G (plugin command isolation)
+- **Milestone**: M4
+- **Status**: Automated — `pnpm test:e2e:plugin-command-ownership` exercises
+  the public plugin API through real plugin host processes and the host broker.
+
 #### E2E-024: Plugin registers and calls agent tool
 
 - **Preconditions**: Plugin loaded; plugin declares an agent tool.
