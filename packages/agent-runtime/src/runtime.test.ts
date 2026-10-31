@@ -8088,6 +8088,126 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("records aliased path arguments on the checkpoint file lists", async () => {
+    const runtime = createRuntime();
+    const readAssistant = {
+      ...assistant,
+      content: [
+        {
+          type: "toolCall" as const,
+          id: "read-a",
+          name: "Read",
+          arguments: { file_path: "src/a.txt" },
+        },
+      ],
+      stopReason: "toolUse" as const,
+    };
+    const editAssistant = {
+      ...assistant,
+      timestamp: 3,
+      content: [
+        {
+          type: "toolCall" as const,
+          id: "edit-b",
+          name: "Edit",
+          arguments: { filepath: "src/b.ts" },
+        },
+      ],
+      stopReason: "toolUse" as const,
+    };
+    const writeAssistant = {
+      ...assistant,
+      timestamp: 5,
+      content: [
+        {
+          type: "toolCall" as const,
+          id: "write-c",
+          name: "Write",
+          arguments: { file: "src/c.ts" },
+        },
+      ],
+      stopReason: "toolUse" as const,
+    };
+    (runtime as any).fullEntries = [
+      {
+        type: "message",
+        id: "user-1",
+        seq: 0,
+        parentId: null,
+        timestamp: Date.parse("2026-07-28T00:00:00Z"),
+        message: { role: "user", content: "update the files", timestamp: 1 },
+      },
+      {
+        type: "message",
+        id: "read-assistant",
+        seq: 1,
+        parentId: "user-1",
+        timestamp: Date.parse("2026-07-28T00:00:01Z"),
+        message: readAssistant,
+      },
+      {
+        type: "message",
+        id: "edit-assistant",
+        seq: 2,
+        parentId: "read-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:03Z"),
+        message: editAssistant,
+      },
+      {
+        type: "message",
+        id: "write-assistant",
+        seq: 3,
+        parentId: "edit-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:05Z"),
+        message: writeAssistant,
+      },
+      {
+        type: "message",
+        id: "user-next",
+        seq: 4,
+        parentId: "write-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:06Z"),
+        message: { role: "user", content: "next", timestamp: 6 },
+      },
+    ];
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      entries.map((entry: any) => entry.message),
+    );
+    // Larger than the history, so the calls sit in pi's retained tail and the
+    // shaped preparation is what records them.
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      { ...budget, keepRecentTokens: 1_000_000 },
+      20_000,
+      "completed_turn",
+    );
+
+    expect(preparation.ok).toBe(true);
+    expect([...preparation.value.fileOps.read]).toEqual(["src/a.txt"]);
+    expect([...preparation.value.fileOps.edited]).toEqual(["src/b.ts"]);
+    expect([...preparation.value.fileOps.written]).toEqual(["src/c.ts"]);
+
+    (runtime as any).models = {
+      completeSimple: async () =>
+        assistantMessage({ content: [{ type: "text", text: "Older work." }] }),
+    };
+    const summary = await (runtime as any).generateCompaction(
+      preparation.value,
+      new AbortController().signal,
+    );
+    expect(summary.ok).toBe(true);
+    expect(summary.value.details.readFiles).toEqual(["src/a.txt"]);
+    expect(summary.value.details.modifiedFiles).toEqual(["src/b.ts", "src/c.ts"]);
+    expect(summary.value.summary).toContain(
+      "<read-files>\nsrc/a.txt\n</read-files>",
+    );
+    expect(summary.value.summary).toContain(
+      "<modified-files>\nsrc/b.ts\nsrc/c.ts\n</modified-files>",
+    );
+    await runtime.dispose();
+  });
+
   it("retains only the active user message and truncates it at the retention cap", async () => {
     const runtime = createRuntime();
     // Historical user messages are summarized. The active prompt is retained
