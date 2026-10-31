@@ -152,6 +152,10 @@ import {
   usageFromPi,
   usageToPi,
 } from "./agent-messages.js";
+import {
+  hostContentBlockText,
+  restoredToolResultContent,
+} from "./tool-result-content.js";
 import { withExplicitRequired } from "./tool-schema.js";
 import { buildSessionContext } from "./session-context.js";
 import {
@@ -1602,33 +1606,6 @@ function selectRetainedUserMessages(
 }
 
 /**
- * Model-visible text for one host tool content block. Besides plain `text`
- * blocks, MCP servers return file bodies as embedded text resources and large
- * payloads as resource links (github-mcp-server `get_file_contents` sends a
- * status line plus one of these), so dropping them next to a sibling text
- * block hides the actual result from the model. Binary resources and other
- * block kinds have no text to show and stay out of the text channel.
- */
-function hostContentBlockText(block: unknown): string | undefined {
-  if (!isRecord(block)) return undefined;
-  if (block.type === "text" && typeof block.text === "string") return block.text;
-  if (
-    block.type === "resource" &&
-    isRecord(block.resource) &&
-    typeof block.resource.text === "string"
-  ) {
-    return block.resource.text;
-  }
-  if (block.type === "resource_link" && typeof block.uri === "string") {
-    const name = typeof block.name === "string" && block.name.trim()
-      ? `${block.name.trim()}: `
-      : "";
-    return `[resource link] ${name}${block.uri}`;
-  }
-  return undefined;
-}
-
-/**
  * JSON text fallback for a host result that produced no text blocks. Image
  * `data` and resource `blob` bytes stay off the text channel; type, mimeType,
  * and uri remain so the model still sees what was attached.
@@ -1661,67 +1638,7 @@ export function toolResultFromUi(
   timestamp: number,
 ): ToolResultMessage {
   const raw: unknown = m.toolResult;
-  const blocks: ToolResultMessage["content"] = [];
-  const rawBlocks =
-    isRecord(raw) && Array.isArray(raw.content) ? raw.content : undefined;
-  if (rawBlocks) {
-    for (const b of rawBlocks) {
-      if (!isRecord(b)) continue;
-      // Same text rule as live execution: embedded MCP resources and resource
-      // links stay visible after a session restore. Binary resources have no
-      // text and stay out.
-      const blockText = hostContentBlockText(b);
-      if (blockText !== undefined) {
-        blocks.push({ type: "text", text: blockText });
-      } else if (
-        b.type === "image" &&
-        typeof b.data === "string" &&
-        typeof b.mimeType === "string"
-      ) {
-        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
-      }
-    }
-  } else if (Array.isArray(raw)) {
-    // Plugin tools may return a bare content-block array; restore its text
-    // and image blocks so a restart does not flatten them into JSON (#1360).
-    for (const b of raw) {
-      if (!isRecord(b)) continue;
-      const blockText = hostContentBlockText(b);
-      if (blockText !== undefined) {
-        blocks.push({ type: "text", text: blockText });
-      } else if (
-        b.type === "image" &&
-        typeof b.data === "string" &&
-        typeof b.mimeType === "string"
-      ) {
-        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
-      }
-    }
-  } else if (typeof raw === "string" && raw.trim()) {
-    blocks.push({ type: "text", text: raw });
-  } else if (raw !== undefined && raw !== null) {
-    // A host Read of an image file returns a top-level `images` array rather
-    // than content blocks; restore those as real image content so the model
-    // sees the picture across a restart, not just the JSON text (#1073).
-    const rawObject = isRecord(raw) ? raw : undefined;
-    const images = rawObject?.images;
-    if (rawObject && Array.isArray(images)) {
-      const rest = { ...rawObject };
-      delete rest.images;
-      blocks.push({ type: "text", text: safeJson(rest) });
-      for (const image of images) {
-        if (
-          isRecord(image) &&
-          typeof image.data === "string" &&
-          typeof image.mimeType === "string"
-        ) {
-          blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
-        }
-      }
-    } else {
-      blocks.push({ type: "text", text: safeJson(raw) });
-    }
-  }
+  const blocks = restoredToolResultContent(raw);
   const interrupted = m.toolStatus === "running";
   const rawRecord: Record<string, unknown> | undefined = isRecord(raw)
     ? raw
