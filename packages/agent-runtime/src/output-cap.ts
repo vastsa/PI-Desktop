@@ -172,7 +172,11 @@ function estimateMessageTokens(
     ) {
       const payload = stringifyForEstimate(b.arguments ?? b.input);
       chars += b.name.length + payload.length;
-      cjkChars += countCjkChars(b.name);
+      // JSON.stringify leaves Han unescaped, so the payload the chars/4
+      // baseline measured is the same string the correction has to see.
+      // A \uXXXX form would already be ASCII in that string; decoding it
+      // would charge the character twice.
+      cjkChars += countCjkChars(b.name) + countCjkChars(payload);
     } else if (b.type === "hostedSearch") {
       // 与适配器共用回放投影；搜索结果不是图片，也不是普通工具参数。
       // 投影会校验结构，失败必须保留为本地错误，不能按零成本继续请求。

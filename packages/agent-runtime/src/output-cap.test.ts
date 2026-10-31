@@ -30,6 +30,46 @@ describe("estimateOutputCapInputTokens", () => {
     expect(estimateOutputCapInputTokens(context)).toBe(1000);
   });
 
+  it("counts CJK inside tool-call arguments at ~1 token per char", () => {
+    // JSON.stringify leaves Han unescaped. "Write" (5) plus
+    // {"content":"<1000 中>"} (1014) is 1019 chars: baseline 255, and the
+    // correction adds ceil(1000 * 0.75) = 750.
+    const context: OutputCapContext = {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              name: "Write",
+              arguments: { content: "中".repeat(1000) },
+            },
+          ],
+        },
+      ],
+    };
+    expect(estimateOutputCapInputTokens(context)).toBe(1005);
+  });
+
+  it("leaves ASCII tool-call arguments on the chars/4 baseline", () => {
+    const context: OutputCapContext = {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              name: "Write",
+              arguments: { content: "a".repeat(1000) },
+            },
+          ],
+        },
+      ],
+    };
+    // Same name and JSON wrapper as the CJK case, so the correction adds 0.
+    expect(estimateOutputCapInputTokens(context)).toBe(255);
+  });
+
   it("counts image blocks via the wire-format estimate", () => {
     const context: OutputCapContext = {
       messages: [
@@ -296,6 +336,31 @@ describe("clampOutputToContext", () => {
     };
     const clamped = clampOutputToContext(LARGE_WINDOW_MODEL, context, 100_000);
     expect(clamped).toBe(1);
+  });
+
+  it("cuts the output budget when CJK tool arguments fill a 128k window", () => {
+    // 110k Han characters in a Write payload. chars/4 alone is 27505 and
+    // would leave a requested 32768 max_tokens untouched on a 128k window.
+    const model = { contextWindow: 128_000, maxTokens: 32_768 };
+    const context: OutputCapContext = {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              name: "Write",
+              arguments: { content: "中".repeat(110_000) },
+            },
+          ],
+        },
+      ],
+    };
+    const estimate = estimateOutputCapInputTokens(context);
+    const clamped = clampOutputToContext(model, context, 32_768);
+    expect(estimate).toBe(110_005);
+    expect(clamped).toBeLessThan(32_768);
+    expect(estimate + clamped + 4096).toBeLessThanOrEqual(128_000);
   });
 
   it("cuts the output budget for a CJK-heavy session near the window edge", () => {
