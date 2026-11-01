@@ -406,6 +406,65 @@ describe("classifyAgentError", () => {
     },
   );
 
+  // Gemini's native API and some OpenAI-compatible gateways reject a bad key
+  // with HTTP 400, not 401. The status table must still call that a
+  // credential failure. A 400 that only says "permission denied" or
+  // "unauthorized" stays a malformed request.
+  it("classifies an HTTP 400 API-key rejection as unauthorized", () => {
+    const errorMessage = JSON.stringify({
+      error: {
+        code: 400,
+        message: "API key not valid. Please pass a valid API key.",
+        status: "INVALID_ARGUMENT",
+        details: [
+          {
+            "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            reason: "API_KEY_INVALID",
+            domain: "googleapis.com",
+          },
+        ],
+      },
+    });
+    const expected = {
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+      details: { providerStatus: 400 },
+    };
+    const message = { role: "assistant", stopReason: "error", errorMessage };
+    expect(classifyAgentError(errorMessage)).toMatchObject(expected);
+    expect(classifyAgentError(new Error(errorMessage))).toMatchObject(expected);
+    expect(classifyAgentError(message)).toMatchObject(expected);
+    expect(classifyProviderError(message)).toMatchObject(expected);
+    expect(classifyAgentError(`400: ${errorMessage}`)).toMatchObject(expected);
+    expect(classifyProviderError({
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "400: API key not valid. Please pass a valid API key.",
+    })).toMatchObject(expected);
+    expect(classifyAgentError("400: Invalid API key")).toMatchObject(expected);
+    expect(classifyAgentError('400: {"reason":"API_KEY_INVALID"}')).toMatchObject(expected);
+    expect(classifyAgentError("422: invalid_api_key")).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+      details: { providerStatus: 422 },
+    });
+
+    for (const ordinary of [
+      "400: Invalid value at 'contents'",
+      "400: permission denied",
+      "422: unauthorized",
+      "400: unknown parameter",
+    ]) {
+      expect(classifyAgentError(ordinary)).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+    }
+    expect(classifyAgentError(
+      "400: The input token count exceeds the maximum number of tokens allowed.",
+    )).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
+  });
+
   it("does not treat a non-HTTP JSON code as a provider status", () => {
     const cases = [
       JSON.stringify({ error: { code: 123, message: "not an http status" } }),

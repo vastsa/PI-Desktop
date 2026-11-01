@@ -471,16 +471,32 @@ export function networkFailureDiagnostics(
 }
 
 /**
+ * Explicit API-key rejection. Safe on HTTP 400/422 as well as on a
+ * statusless message: Gemini's `@google/genai` ApiError reports a bad key
+ * as 400 `API key not valid` / `API_KEY_INVALID`, and some OpenAI-compatible
+ * gateways do the same.
+ *
+ * Broader words such as "unauthorized" and "permission denied" stay out of
+ * this pattern. On a 400 they can describe a bad parameter or a tool
+ * argument rather than a rejected credential, so only the statusless path
+ * below treats them as an auth failure.
+ */
+const API_KEY_REJECTION_PATTERN =
+  /invalid[ _]api[ _]key|api key not valid|API_KEY_INVALID/i;
+
+/**
  * Credential rejection worded without an HTTP status.
  *
- * Bare "authentication" is not enough. Keep the API-key / unauthorized
- * phrases, and keep "authentication" only beside an API key, bearer token,
- * or credentials — or as a short provider phrase such as "authentication
- * failed". Handshake, TLS/SSL, and certificate text is transport, so it
- * never counts.
+ * Bare "authentication" is not enough. Explicit API-key phrases live in
+ * `API_KEY_REJECTION_PATTERN`. This pattern keeps the broader
+ * "unauthorized" / "permission denied" words, which are only trusted when
+ * no status is present. "authentication" counts only beside an API key,
+ * bearer token, or credentials — or as a short provider phrase such as
+ * "authentication failed". Handshake, TLS/SSL, and certificate text is
+ * transport, so it never counts.
  */
 const STATUSLESS_CREDENTIAL_PATTERN =
-  /invalid[ _]api[ _]key|api key not valid|unauthorized|permission denied/i;
+  /unauthorized|permission denied/i;
 
 const AUTHENTICATION_WITH_CREDENTIAL_PATTERN =
   /(?:api[-_ ]?key|credentials|bearer).{0,48}\bauthentication\b|\bauthentication\b.{0,48}(?:api[-_ ]?key|credentials|bearer)/i;
@@ -489,6 +505,7 @@ const AUTHENTICATION_FAILURE_PATTERN =
   /\bauthentication[_ ](?:failed|failure|error)\b/i;
 
 function isStatuslessCredentialFailure(message: string): boolean {
+  if (API_KEY_REJECTION_PATTERN.test(message)) return true;
   if (STATUSLESS_CREDENTIAL_PATTERN.test(message)) return true;
   if (isTlsTransportText(message)) return false;
   return (
@@ -646,6 +663,12 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     if (status >= 500) return result("PROVIDER_ERROR", true);
     if (status === 400 || status === 422) {
       if (isContextOverflowMessage(rawMessage)) return result("CONTEXT_TOO_LARGE", false);
+      // Only an explicit API-key rejection is a credential failure here.
+      // "unauthorized" / "permission denied" stay PROVIDER_ERROR: a 400 often
+      // uses those words for a parameter or tool problem, not the key.
+      if (API_KEY_REJECTION_PATTERN.test(rawMessage)) {
+        return result("PROVIDER_UNAUTHORIZED", false);
+      }
       // Malformed request (wrong apiStyle, bad params) — retrying won't help.
       return result("PROVIDER_ERROR", false);
     }
