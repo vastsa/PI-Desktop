@@ -1,8 +1,10 @@
 import { memo, useId, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { ReviewChangeStatus, UiMessage } from "@pi-desktop/shared";
+import type { UiMessage } from "@pi-desktop/shared";
 import { IconChevronDown, IconChevronRight } from "../../../components/icons";
 import { Button, cx } from "../../../components/ui";
+import { ReviewFileIcon } from "../../../components/ReviewFileIcon";
+import { reviewFilePathLabel } from "../../../lib/review-history";
 import { requestReviewFocus } from "../../../lib/review-focus-request";
 import {
   summarizeTurnChanges,
@@ -15,14 +17,6 @@ import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
 import { useAppStore } from "../../../stores/app-store";
 import { disclosureKey, useAutomaticDisclosure } from "./disclosure";
 import "../../../styles/turn-changes.css";
-
-/* Same Git-style letters as the per-call review row, so status never relies
-   on color alone. */
-const STATUS_MARKS: Record<ReviewChangeStatus, string> = {
-  added: "A",
-  modified: "M",
-  deleted: "D",
-};
 
 function Counts({ additions, deletions }: { additions: number; deletions: number }) {
   return (
@@ -119,10 +113,8 @@ export const TurnChangesCard = memo(function TurnChangesCard({
                   title={label}
                   onClick={() => openReview(file.snapshotIds, true)}
                 >
-                  <span className="turn-changes-mark" aria-hidden>
-                    {STATUS_MARKS[file.status]}
-                  </span>
-                  <span className="turn-changes-path">{file.path}</span>
+                  <ReviewFileIcon path={file.path} />
+                  <span className="turn-changes-path" data-outside-path={reviewFilePathLabel(file.path) !== file.path || undefined}>{reviewFilePathLabel(file.path)}</span>
                   <Counts additions={file.additions} deletions={file.deletions} />
                 </button>
               </li>

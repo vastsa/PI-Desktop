@@ -14,6 +14,7 @@
 /** Keeps a floating surface off the window edge it would otherwise touch. */
 export const CONTEXT_MENU_MARGIN = 8;
 
+export type ContextMenuAnchor = { left: number; right: number; top: number; bottom: number };
 export type ContextMenuPoint = { x: number; y: number };
 export type ContextMenuSize = { width: number; height: number };
 export type ContextMenuPlacement = { top: number; left: number };
@@ -41,4 +42,18 @@ export function placeContextMenu(
     left: Math.round(clamp(point.x, margin, maxLeft)),
     top: Math.round(clamp(point.y, margin, maxTop)),
   };
+}
+
+/** Opt-in control menus are independent of where inside the button was clicked. */
+export function placeControlContextMenu(
+  anchor: ContextMenuAnchor,
+  surface: ContextMenuSize,
+  viewport: ContextMenuSize,
+): ContextMenuPlacement {
+  const gap = 4;
+  const below = viewport.height - CONTEXT_MENU_MARGIN - anchor.bottom - gap;
+  const above = anchor.top - gap - CONTEXT_MENU_MARGIN;
+  const top = surface.height > below && above > below
+    ? anchor.top - gap - surface.height : anchor.bottom + gap;
+  return placeContextMenu({ x: anchor.right - surface.width, y: top }, surface, viewport);
 }

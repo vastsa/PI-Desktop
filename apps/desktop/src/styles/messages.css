@@ -917,6 +917,14 @@
   text-align: left;
 }
 
+/* Keep the explicit outside-workspace prefix before the filename, even when
+   the normal path row uses RTL to preserve its basename on overflow. */
+.review-change-card-path[data-outside-path],
+.turn-changes-path[data-outside-path] {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .review-change-card-header:hover .review-change-card-path {
   color: var(--ds-text-primary);
 }
@@ -3899,3 +3907,11 @@
     opacity: 0.7;
   }
 }
+
+/* File-type identity is shared by native Review and the transcript summary. */
+.review-file-type { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 14px; width: 14px; height: 14px; color: var(--ds-text-muted); }
+.review-file-type > svg { display: block; width: 14px; height: 14px; }
+.review-file-type.is-markdown { color: var(--ds-success); }
+.review-file-type.is-json { color: var(--ds-warning); }
+.review-file-type.is-code, .review-file-type.is-python { color: var(--ds-text-secondary); }
+.turn-changes-row[data-rolled-back] .review-file-type { color: var(--ds-text-faint); }
