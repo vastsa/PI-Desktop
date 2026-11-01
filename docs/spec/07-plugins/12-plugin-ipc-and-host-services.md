@@ -6,6 +6,13 @@ Complete the plugin-related host services and UI IPC so implementation does not 
 
 ## 2. Main-process services
 
+The following is a logical responsibility map, not a list of exported classes.
+`PluginRuntime` implements the broker and contribution registries in
+`apps/desktop/electron/main/plugin-runtime.ts`; `ipc/plugin-ipc.ts`,
+`ipc/plugin-ui-ipc.ts`, and `ipc/market-ipc.ts` wire the renderer-facing handlers.
+Rust host-core owns the durable plugin registry, installation, and marketplace
+operations under `crates/host-core/src/plugins/`.
+
 ```text
 PluginManager
  ├─ PluginRegistryStore
@@ -27,9 +34,16 @@ PluginManager
 
 ## 3. UI IPC (additions)
 
+These are application-renderer invoke channels from `IPC.invoke` in
+`packages/shared/src/protocol.ts`, with the common `pi-desktop/` prefix omitted.
+They are not plugin-process APIs or panel bridge channel names. The handler
+registrations, rather than the conceptual services above, define what is callable.
+
 ### plugin domain
 - `plugin/list`
-- `plugin/detail`
+- `plugin/rendererCall`
+- `plugin/composerTransform`
+- `plugin/importExtension`
 - `plugin/loadDev` — open the folder picker and return what the folder
   *declares* as a permission review; nothing is registered yet
 - `plugin/loadDevConfirm` — the answer to that review: register the folder as a
@@ -37,52 +51,85 @@ PluginManager
   the ceiling every later hot reload is measured against
 - `plugin/reload` — resolve the registered plugin path, compare the manifest
   against the recorded approval, and either reload in Electron main or return a
-  review when the manifest now asks for more
+  review when the manifest adds permissions or widens file scope
 - `plugin/reloadConfirm` — the answer to that review: reload under the accepted
   permissions and refresh the development-plugin permission ceiling
+- `plugin/createFromTemplate` — scaffold files and return the same load review;
+  scaffolding does not grant permission to load the plugin
 - `plugin/installFromPath` ✅
 - `plugin/installFromPackage` ✅
 - `plugin/enable`
 - `plugin/disable`
+- `plugin/setScope`
 - `plugin/uninstall`
-- `plugin/reload`
-- `plugin/getLogs`
-- `plugin/getPermissions`
-- `plugin/grantPermissions`
-- `plugin/revokePermissions`
-- `plugin/openDataDir`
-- `plugin/openInstallDir`
+- `plugin/settings/get`
+- `plugin/settings/set`
 - `plugin/openPanel`
 - `plugin/setAutoUpdate`
 - `plugin/themes` ✅ — every loaded plugin's sanitized theme CSS, for the theme
   picker and the injected `<style>` element
+- `plugin/providerCatalog`
+- `plugin/scenicThemes/destinations`
+- `plugin/scenicThemes/setBlur`
 - `plugin/services` ✅ — resident service status (`starting` | `running` |
   `stopped` | `failed`) plus the restart count, for the Plugins page chips
+- `plugin/views`
+- `plugin/view/open`
+- `plugin/view/close`
+- `plugin/view/setBounds`
+- `plugin/view/setVisible`
+- `plugin/session/active`
+- `plugin/composer/suggestionResult`
+
+Plugin details and declared permissions are returned by `plugin/list`; there
+are no dedicated detail, log, permission-grant/revoke, or directory-opening
+invoke channels in this domain. The launcher uses its separate
+`pluginLauncher/toggle` and `pluginLauncher/dismiss` channels.
 
 ### commandPalette domain
 - `commandPalette/search`
 - `commandPalette/execute`
-- `commandPalette/listRecent`
+
+Search combines built-in, active-project plugin, and trusted-extension commands.
+Execution rechecks plugin activation scope. Built-in commands return an
+acknowledgement for renderer handling; trusted-extension commands use
+`extensions/commands/run` with a session, not `commandPalette/execute`.
 
 ### market domain (implemented)
+- `market/refresh`
 - `market/search`
 - `market/getDetail`
 - `market/install`
 - `market/checkUpdates`
 - `market/applyUpdates`
-- `market/listProviders` (single official provider for now)
+- `market/cancelInstall`
+- `market/reviewSummaries`
+- `market/reviewTickers`
+- `market/reviews`
+
+There is no marketplace-provider enumeration invoke channel. Search, detail,
+installation, updates, cancellation, and anonymous review reads delegate to
+host-core through `ipc/market-ipc.ts`.
 
 ## 4. Events (main → renderer)
 
-- `plugin/event/changed` (installed/enabled change)
-- `plugin/event/loadError`
-- `plugin/event/permissionRequired`
-- `market/event/updateAvailable`
+- `IPC.event.pluginChanged` — `pi-desktop/event/pluginChanged`
+- `IPC.event.pluginInstallProgress` — `pi-desktop/plugin/event/installProgress`
+- `IPC.event.pluginViewReveal` — `pi-desktop/plugin/view/event/reveal`
+- `IPC.event.pluginComposerSuggestion` — `pi-desktop/plugin/composer/event/suggestion`
+- `IPC.event.toast` — `pi-desktop/app/event/toast`, including runtime crash and
+  development reload feedback
+
+There are no separate load-error, permission-required, or update-available
+events in `IPC.event`. Development permission reviews are invoke responses;
+update discovery is the result of `market/checkUpdates`. Install/update progress
+is forwarded from the host's `plugin.installProgress` notification.
 
 The shipped `pluginChanged` event carries a `reason` so the renderer can decide
-what to refetch: `install`, `loadDev`, `enable`, `disable`, `uninstall`, `crash`,
-`service`, `restore`, `market.install`, `market.applyUpdates`, `themes` (runtime
-`themes.upsert` / `themes.remove`). `service` fires on every
+what to refetch. Reasons include `install`, `loadDev`, `reload`, `settings`,
+`scope`, `enable`, `disable`, `uninstall`, `crash`, `service`, `restore`,
+`market.install`, `market.applyUpdates`, and `themes` (runtime `themes.upsert` /
+`themes.remove` / `themes.setVariables`). `service` fires on every
 supervision transition and is the cheapest of them — only the service list needs
 a reload. `restore` fires once when startup recovery has loaded the enabled
 plugins, so a surface that listed them earlier still sees them.
@@ -93,7 +140,9 @@ only plugin `app.setTheme` (`{ theme }`). The renderer merges the patch into
 its store so the shell paints the new preference.
 
 Panel bridge fixed channels also include `app.setTheme`, `themes.upsert`,
-`themes.remove`, and `themes.list` (all require `ui.theme`).
+`themes.remove`, `themes.list`, and `themes.setVariables` (all require `ui.theme`).
+`projects.list` is read-only project metadata and needs no permission; it grants
+no file or session access.
 
 ## 4.1 Events (host → plugin process)
 
@@ -105,7 +154,7 @@ The broker also pushes one-way frames down to a plugin's `utilityProcess`:
 
 There is no reply frame and no backpressure: delivery is fire-and-forget so a
 wedged subscriber cannot stall the publisher. The child dispatches to the handler
-registered for `subscriptionId` and to any `pi.events.on` listener; a throwing
+registered for `subscriptionId` and to any `pi.events.on` listener; a synchronously throwing
 handler is logged, never fatal. This is the same channel that finally makes
 `pi.events.on` / `off` real (see
 [03-plugin-api.md](03-plugin-api.md) §5).
@@ -113,12 +162,12 @@ handler is logged, never fatal. This is the same channel that finally makes
 ## 5. ContributionRegistry behavior
 
 ### Registration
-- key must be unique
-- Command IDs are preserved as supplied; `plugin.<pluginId>.<commandId>` is
-  a naming convention, not an enforced prefix. The host rejects registration
-  of another plugin's command ID with `CONFLICT` and rejects removal of
-  another plugin's command with `PERMISSION_DENIED`. Same-owner updates and
-  unregistering an absent ID remain valid.
+- Command IDs are preserved as supplied and conventionally named
+   `plugin.<pluginId>.<commandId>`; the broker does not prepend or validate that
+   namespace. The host rejects registration of another plugin's command ID with
+   `CONFLICT`, and rejects removal of another plugin's command with
+   `PERMISSION_DENIED`. Same-owner updates, and unregistering an absent ID,
+   remain valid.
 - Plugin tool prefix policy: `plugin_<pluginIdSafe>_<toolName>` (fixed in the implementation)
 
 ### Query
@@ -133,16 +182,22 @@ handler is logged, never fatal. This is the same channel that finally makes
 
 ## 6. RuntimeBroker call chain
 
-Plugin API call:
+Plugin host API call:
 
 ```text
-plugin runtime
- → RPC to PluginRuntimeBroker
- → PermissionGateway.check
- → Host service execute
- → audit log
- → response
+plugin utilityProcess: pi.<namespace>.<method>(...args)
+ → { t: "call", id, api, args, invocationId? } to Electron main
+ → PluginRuntime.handleChildMessage → dispatchHostCall
+ → API-specific validation and permission checks
+ → host API / injected host service (audit where implemented)
+ → { t: "res", id, ok, value } or { t: "res", id, ok: false, error }
+ → resolve/reject the plugin's pending promise
 ```
+
+The reverse direction uses `sendToChild` for initialization, lifecycle hooks,
+commands, tools, and plugin callbacks. A panel calls `pi-plugin-panel-invoke`
+through preload; built-in bridge channels execute in main, while custom channels
+are forwarded to the plugin's `onPanelInvoke` as `panel.invoke` (30s budget).
 
 ### 6.1 Allowlist names and audit operations for the real-time capabilities
 
@@ -155,8 +210,8 @@ The broker's `HOST_API_ALLOWLIST` gains three implemented entries, all gated on
 
 Their audit operations are `keyboard.globalShortcut.register`,
 `keyboard.globalShortcut.unregister`, and `keyboard.globalShortcut.trigger` (a
-shortcut that fired). Register and trigger entries record the accelerator and
-command; no key events and no input text are ever recorded.
+shortcut that fired). Registration records the accelerator and command;
+trigger records the command. No key events or input text are recorded.
 
 The socket capability is implemented: `net.websocket.connect` /
 `net.websocket.send` / `net.websocket.close` are registered in the same
@@ -171,13 +226,16 @@ The audio names are registered in the same allowlist:
 `audio.getInputDevices`, `audio.openInput`, `audio.closeInput`,
 `audio.getCaptureState`, `audio.onInputFrame`, `audio.offInputFrame`,
 `audio.openOutput`, `audio.writeOutput`, `audio.stopOutput`, and
-`audio.closeOutput`. The permission gate runs first, so an ungranted call is
+`audio.closeOutput`. For requests that reach the broker, the permission gate
+runs first, so an ungranted call is
 refused with `PERMISSION_DENIED` under `audio.capture.background` /
 `audio.playback.background`, exactly like any other gated API. This host has no
 device backend yet, so every call that passes the gate is audited as an
 `UNSUPPORTED` refusal — `{ api: "audio.<method>", ok: false, errorCode: "UNSUPPORTED" }` —
-and rejected with that code; the two synchronous registration helpers
-`audio.onInputFrame` / `audio.offInputFrame` throw it synchronously. Reserved
+and rejected with that code. The plugin-process helpers `audio.onInputFrame` /
+`audio.offInputFrame` instead throw `UNSUPPORTED` locally and synchronously:
+they send no host request, perform no host permission check, and produce no
+host audit entry. Reserved
 audit-operation names for the device service: `audio.input.open` /
 `audio.input.close`, `audio.output.open` / `audio.output.stop` /
 `audio.output.close` (ADR 0257).
@@ -207,30 +265,43 @@ Panel bridge file channels are permission-gated as follows:
 
 | Channel | Required permission |
 |---|---|
-| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list`, `fs.requestDirectory` | `fs.read` |
 | `fs.registerDropped` | `fs.read` plus a real drop gesture |
 | `fs.writeText` | `fs.write` |
 
 ## 8. Failure isolation
 
-- Plugin API timeout: return TIMEOUT
-- runtime crash: mark load_error, clean up contributions
-- panel crash: only close the panel, do not unload the plugin (can prompt to reload)
+- Host-to-plugin requests that exceed their `sendToChild` budget reject with
+  `TIMEOUT` and send a cancellation frame. Plugin-to-host calls have no generic
+  timeout in the child proxy; individual host APIs own their execution budgets.
+- Initialization failure unloads the plugin and records `plugin.load.error`.
+  An unexpected process exit removes the live plugin and its contributions;
+  this path does not persist a `load_error` registry status.
+- Panel rendering is isolated from the plugin process. The panel/view hosts
+  have no `render-process-gone` handler that automatically closes or reloads a
+  crashed page. Initial panel loading is separately bounded at 15s; a load
+  timeout rejects with `PANEL_LOAD_TIMEOUT` and destroys the hidden window.
 
 **Implemented (2026-07-29, ADR 0008):** the broker lives in
-`electron/main/plugin-runtime.ts` and every plugin call is a request to the
-plugin's own `utilityProcess`. Budgets: load 15s, lifecycle hook 5s, command 30s,
-tool 110s (under host-core's 150s dispatch budget). On process exit the broker
+`apps/desktop/electron/main/plugin-runtime.ts`. Each plugin main module runs in
+its own `utilityProcess`; its host API calls travel back to the main-process
+broker. Host-to-plugin budgets: load 15s, lifecycle hook 5s, command 30s,
+tool 110s (under host-core's default 150s dispatch budget). App shutdown uses
+a 1.5s unload-hook budget and a 3s overall plugin-disposal budget. On unexpected
+process exit the broker
 rejects pending calls with `PLUGIN_CRASHED`, deregisters that plugin's commands
 and tools, closes its panel, writes a `plugin.crash` audit entry, and emits a
-toast plus `pluginChanged` to the renderer.
+toast plus `pluginChanged` to the renderer. Declared resident services may
+trigger supervised restarts with bounded backoff.
 
 ## 9. Acceptance
 
 1. The plugin list IPC works
 2. The command palette IPC can execute plugin commands
 3. Start/stop triggers contribution registration/deregistration
-4. The market IPC runs end-to-end under a mock provider (later milestone)
+4. The shipped marketplace IPC delegates to host-core; installation and updates
+   refresh enabled plugins, while cancellation and progress report the actual
+   host operation
 
 The title plugin uses two narrow plugin session RPC methods after the Electron
 broker enforces `session.autoTitle`:
@@ -264,10 +335,11 @@ permission gate and result envelope stay in host-core:
    use the normal permission flow. Electron answers through RPC
    `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`.
 4. host-core resolves the pending execution and returns a standard
-   `ToolsExecuteResult` to the sidecar. Dispatch waits up to 150s
+   `ToolsExecuteResult` to the sidecar. The default dispatch budget is 150s
    (`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`, above both the 110s plugin tool budget
    and the widest MCP leg — a 10s lazy handshake, a 30s `tools/list` traversal,
-   then the 100s call) and then maps to `TOOL_TIMEOUT`; an unknown/unloaded tool
+   then the 100s call); an explicit tool `timeoutMs` overrides that default.
+   A dispatch timeout maps to `TOOL_TIMEOUT`; an unknown/unloaded tool
    maps to `TOOL_NOT_FOUND`. The `tools.execute` transport has no deadline while
    waiting for the explicit permission decision; after approval, host-core's
    execution budget remains authoritative.
@@ -287,8 +359,9 @@ only step 3 differs internally, forwarding to the MCP client instead of plugin J
 Skills use a separate, simpler path. The catalog (id, name, description) is part
 of the base system prompt, the `Skill` schema is itself deferred behind
 `ToolSearch`, and its body is fetched by a local `Skill` tool that Electron main
-serves directly — the sidecar never holds skill text, and a skill document
-reaches the model only when it asks for it (D174/D185). The loaded result
+serves directly. Main reads the document and returns its body in the local-tool
+result; the catalog does not preload skill bodies into the model context. A
+skill document reaches the model only when requested (D174/D185). The loaded result
 includes the absolute `SKILL.md` location and a sentence naming its parent
 directory, so relative references such as `references/foo.md` and `SECRET.md`
 resolve against the document that was actually loaded. The catalog remains
