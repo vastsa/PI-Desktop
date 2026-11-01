@@ -101,7 +101,7 @@ function trimBase(url: string | undefined, fallback: string): string {
   return value;
 }
 
-function chatgptAccountId(token: string): string | undefined {
+export function chatgptAccountId(token: string): string | undefined {
   const part = token.split(".")[1];
   if (!part) return undefined;
   try {

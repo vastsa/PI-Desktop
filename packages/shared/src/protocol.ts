@@ -281,6 +281,13 @@ export const IPC = {
     providersSetSecret: "pi-desktop/providers/setSecret",
     providersTest: "pi-desktop/providers/testConnection",
     /**
+     * Subscription coding-plan usage (5h / weekly windows, balances) for the
+     * providers that expose a usage endpoint (Zhipu, DeepSeek, Kimi, MiniMax,
+     * ChatGPT Codex). Main resolves the credential itself; only percentages
+     * and timestamps cross to the renderer.
+     */
+    providersPlanQuota: "pi-desktop/providers/planQuota",
+    /**
      * Check a TypeSafe key before the Jev settings row keeps it.
      *
      * Jev is not a provider row, so `providersTest` cannot answer this: the
