@@ -222,6 +222,10 @@ export function createEventsSlice({
     },
 
     handleAgentEvent: (envelope) => {
+      const originalEvent = envelope.event;
+      if (envelope.turnId && (originalEvent.type === "message_start" || originalEvent.type === "message_update" || originalEvent.type === "message_end")) {
+        envelope = { ...envelope, event: { ...originalEvent, message: { ...originalEvent.message, turnId: envelope.turnId } } };
+      }
       if (envelope.event.type === "message_end") {
         const checkpoint = historyCheckpoints.get(envelope.sessionId);
         if (checkpoint) {
@@ -490,6 +494,11 @@ export function createEventsSlice({
 
       if (envelope.sessionId !== get().activeSessionId) {
         runtime.cacheBackgroundTranscriptEvent(envelope);
+        if (event.type === "tool_start" && envelope.turnId) {
+          const cached = runtime.sessionTranscriptCache.get(envelope.sessionId);
+          if (cached) runtime.cacheSessionTranscript(envelope.sessionId, cached.map(message =>
+            message.id === event.toolCallId ? { ...message, turnId: envelope.turnId } : message));
+        }
         if (event.type === "tool_end") {
           runtime.removeToolStart(event.toolCallId);
         }
@@ -585,6 +594,7 @@ export function createEventsSlice({
               ...state.messages,
               {
                 id: event.toolCallId,
+                turnId: envelope.turnId,
                 role: "tool",
                 content: "",
                 createdAt: new Date(envelope.ts).toISOString(),

@@ -161,9 +161,17 @@ destination, chat as the home surface, tools and permissions inline.
   rail (D095).
   Its left-of-input operating-mode chip is the sole active-session control for
   **Agent**, **Plan**, and **Goal**. Plan shows the same Agent's planning state;
-  Goal shows the same approval boundary for an outcome contract. Both keep the
-  permission-mode chip and expose their host-written immutable `.pi/plan/*.md`
-  or `.pi/goal/*.md` artifact opener after submission. The conversation top bar
+  Goal shows a single-line input-attached header with elapsed time and icon
+  controls, replacing visible TaskDock while a current Goal exists (todos remain).
+  Goal selection is one-shot: accepted startup returns the Composer to Agent.
+  Mode changes and immediate/queued user guidance never pause an active Goal;
+  explicit new Goal submission replaces unfinished work. Paused Goal resume
+  remains available after ordinary Agent tasks, regardless of input mode.
+  One Goal budget row below Default mode in Settings → AI has blankable Turns and
+  Tokens inputs. Details, edit/delete and total-budget recovery dialogs open on
+  demand outside the measured input dock.
+  Both keep the effective permission-mode selector. Plan and legacy Goal
+  approvals retain their immutable artifact opener. The conversation top bar
   retains only the task title and window actions; the Composer owns model and
   reasoning selection as well as mode control.
 - **Backend status capsule**: appears under the titlebar while the backend
@@ -524,7 +532,7 @@ shared capability contract:
   explicit activation does.
 - Backend degraded → status capsule (restarting) or fatal banner with Open
   logs (D080); composer submits are rejected with readable errors while down.
-  - Plan/Goal checkpoint → the originating session shows only the structured title
+  - Plan / legacy Goal checkpoint → the originating session shows only the structured title
   and an opener for its immutable `.pi/plan/*.md` artifact. The renderer retains the latest
   proposal/execution snapshot per session only for the current renderer
   lifetime, updated by live Host events; only a live `pending` row forms the

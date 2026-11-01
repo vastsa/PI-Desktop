@@ -229,3 +229,31 @@ test("background tool partials stay cache-only and update the first running matc
   assert.equal(h.get().retainedTranscripts, retained);
   assert.equal(h.writes(), 0);
 }));
+
+for (const sessionId of ["active", "background"]) {
+  test(`Goal rounds retain envelope identity in ${sessionId} event/cache projection without user input`, () => withFrames((flush) => {
+    const h = harness([], []);
+    const send = (turnId, event) => { h.get().handleAgentEvent({ sessionId, turnId, ts: 1, event }); flush(); };
+    send("round-one", { type: "message_start", message: message("answer-one", { status: "streaming" }) });
+    send("round-one", { type: "message_end", message: message("answer-one", { status: "complete" }) });
+    send("round-two", { type: "tool_start", toolCallId: "next-read", toolName: "Read", args: { path: "fixture.txt" } });
+    send("round-two", { type: "message_end", message: message("answer-two", { status: "complete" }) });
+    const rows = sessionId === "active" ? h.get().messages : h.runtime.sessionTranscriptCache.get(sessionId);
+    assert.equal(rows.find(row => row.id === "answer-one").turnId, "round-one");
+    assert.equal(rows.find(row => row.id === "next-read").turnId, "round-two");
+    assert.equal(rows.find(row => row.id === "answer-two").turnId, "round-two");
+    const projection = getTranscriptProjection(rows);
+    const turns = projection.entries.filter(entry => entry.kind === "assistant-turn");
+    assert.equal(turns.length, 2);
+    assert.equal(rows.filter(row => row.role === "user").length, 0);
+  }));
+}
+
+test("restoring a changed durable round id rebuilds grouping rather than replacing text in place", () => withFrames((flush) => {
+  const h = harness([message("one", { turnId: "first" }), message("two", { turnId: "first" })]);
+  assert.equal(getTranscriptProjection(h.get().messages).entries.length, 1);
+  h.get().handleAgentEvent({ sessionId: "active", turnId: "second", ts: 1,
+    event: { type: "message_end", message: message("two", { status: "complete" }) } });
+  flush();
+  assert.equal(getTranscriptProjection(h.get().messages).entries.length, 2);
+}));

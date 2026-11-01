@@ -1,5 +1,7 @@
 import { expandMcpInvocation } from "../composer-mcp";
-import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
+import { goalDispatchContext, isGoalReplacementAbort } from "../runtime/goal-dispatch";
+import { registerGoalIpc } from "./goal-ipc";
+import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type Mode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
@@ -184,7 +186,10 @@ export function registerAgentIpc({
     });
   });
 
+  registerGoalIpc(registrar, getAgentHostBridge);
+
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
+    const goalTurn = goalDispatchContext(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
     if (req.sessionId.startsWith("native-pi:")) {
@@ -257,6 +262,7 @@ export function registerAgentIpc({
         ? Math.floor(req.truncateBefore)
         : undefined;
     if (truncateFromMessageId || truncateBefore !== undefined) {
+      await agentHostBridge?.goals.pause(req.sessionId);
       cancelSessionTools(req.sessionId, "Session turn was replaced");
       // Host-owned cut: the kept prefix never crosses the JSON-RPC pipe
       // (issue #211). Abort any leftover running turn first so beginTurn
@@ -337,12 +343,20 @@ export function registerAgentIpc({
       providerId: launch.providerId,
       modelId: launch.modelId,
       ...(sessionMessage ? { sessionMessageId: sessionMessage.origin.messageId } : {}),
+      ...(goalTurn ? { goalTurn } : {}),
     });
     const durableTurnId = String(turn?.turnId ?? "").trim();
     if (!durableTurnId) {
       throw new Error("session.beginTurn returned no turn");
     }
     activeTurns.set(req.sessionId, durableTurnId);
+    try {
+      const execution = await host.call<{ mode: Mode }>("session.getTurnMode", { sessionId: req.sessionId, turnId: durableTurnId });
+      launch.sidecarParams.mode = execution.mode;
+    } catch (error) {
+      await finishTurn(req.sessionId, "error", ErrorCodes.INTERNAL, { turnId: durableTurnId });
+      throw error;
+    }
     recordTurnStart(req.sessionId, durableTurnId);
     activeTurnUsages.delete(req.sessionId);
 
@@ -450,6 +464,8 @@ export function registerAgentIpc({
       preparedAttachments,
     );
 
+    // Internal continuation is never recorded as a new user authorization.
+    const internalContinuation = goalTurn?.provenance === "goal-continuation";
     // Persist user message
     const revisionMeta = (req as any).__revisionMeta as
       | {
@@ -490,6 +506,7 @@ export function registerAgentIpc({
           }
         : {}),
     };
+    if (!internalContinuation) {
     try {
       await host.call("session.appendMessage", {
         sessionId: req.sessionId,
@@ -520,6 +537,8 @@ export function registerAgentIpc({
       event: { type: "message_end", message: userMessage },
     } satisfies AgentEventEnvelope);
 
+    }
+
     let result: { accepted: boolean; turnId: string };
     const isTrustedCompletionNotice =
       sessionMessage?.origin.kind === "completion" &&
@@ -540,6 +559,7 @@ export function registerAgentIpc({
           // Rust. The runtime must not replace it with a provider-local UUID.
           turnId: durableTurnId,
           content: modelContent,
+          ...(goalTurn ? { goalTurn } : {}),
           ...(mcpExpansion ? { mcpServerIds: mcpExpansion.mcpServerIds, mcpToolNames: mcpExpansion.mcpToolNames } : {}),
           ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
           attachments: [
@@ -565,7 +585,7 @@ export function registerAgentIpc({
               text: attachment.text,
             })),
           ],
-          userMessageId: userMessage.id,
+          ...(internalContinuation ? {} : { userMessageId: userMessage.id }),
           // Per-turn permission ceiling override (R1 leftover; spec §7.3). The
           // sidecar records it on the turn context; enforcement of a NARROWER
           // ceiling still routes through the session's stored mode until
@@ -652,6 +672,11 @@ export function registerAgentIpc({
     try {
     const abortedTurnId = activeTurns.get(req.sessionId);
     if (req.turnId && abortedTurnId !== req.turnId) return { ok: false, aborted: false };
+    try { if (!isGoalReplacementAbort(req)) await agentHostBridge?.goals.pause(req.sessionId); }
+    catch (error) {
+      await sidecar.call("agent.abort", { sessionId: req.sessionId });
+      throw error;
+    }
     logger.app("session", "info", "prompt aborted", { sessionId: req.sessionId });
     agentHostBridge?.markAborting(req.sessionId);
     // Lock the abort reason before the first await: the cancel RPC can take a
@@ -711,6 +736,11 @@ export function registerAgentIpc({
     const activeTurnId = activeTurns.get(req.sessionId);
     if (req.turnId && activeTurnId !== req.turnId) {
       return { requested: false };
+    }
+    try { await agentHostBridge?.goals.pause(req.sessionId); }
+    catch (error) {
+      await sidecar.call("agent.abort", { sessionId: req.sessionId });
+      throw error;
     }
     logger.app("session", "info", "prompt graceful stop requested", {
       sessionId: req.sessionId,

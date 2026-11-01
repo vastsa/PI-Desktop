@@ -69,7 +69,7 @@ function shape(message: UiMessage): MessageShape {
 
 function canReplace(previous: UiMessage, next: UiMessage): boolean {
   if (
-    previous.id !== next.id || previous.role !== next.role ||
+    previous.id !== next.id || previous.role !== next.role || previous.turnId !== next.turnId ||
     previous.parentToolCallId !== next.parentToolCallId ||
     previous.agentName !== next.agentName || previous.createdAt !== next.createdAt ||
     previous.toolCallId !== next.toolCallId || previous.toolName !== next.toolName ||

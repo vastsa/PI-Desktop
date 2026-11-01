@@ -1108,7 +1108,18 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 - After resolution: focus returns to composer
 - Full spec: [03-permission-ux.md](03-permission-ux.md)
 
-## 5A. Plan and Goal workflow
+## 5A. Plan and legacy Goal approval workflow
+
+Goal references in this section describe the historical approval flow and existing
+persisted approvals. New `EnterGoalMode`/`SubmitGoal` calls cannot create goals.
+New Goal work starts from a user send without approval and uses the independent
+[Goal lifecycle](../03-runtime/10-session-state-machine.md#autonomous-goal-lifecycle)
+and [Goal card](08-component-spec.md#115-interactions). Only the user owner may
+start/resume. Selecting a mode alone never executes, pauses or resumes a Goal.
+Successful Goal submission returns input to Agent. Ordinary queued or immediate
+guidance preserves autonomous continuation; explicit new Goal input replaces
+unfinished work after the retired execution drains.
+The legacy approve/reject/read/execute contract below is preserved.
 
 1. The user selects Plan or Goal while the session is idle, or the same Agent
    calls `EnterPlanMode` / `EnterGoalMode`; the host persists/validates the

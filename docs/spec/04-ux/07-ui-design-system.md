@@ -937,7 +937,8 @@ whitespace-plus-image pastes retain their chips.
 The composer renders only controls connected to the active pi session:
 
 - Agent / Plan / Goal updates the durable session mode and changes the next pi
-  toolset. Plan and Goal are contract states of the same Agent.
+  toolset. Plan is approval-gated; Goal is a user-started bounded autonomous
+  lifecycle of the same Agent. Mode selection alone starts no Goal work.
 - The model trigger shows only the active model ID. Its menu selects a
   configured provider/default-model pair for the active session and links to
   Agent.

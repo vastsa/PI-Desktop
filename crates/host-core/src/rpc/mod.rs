@@ -1,12 +1,15 @@
 mod config_sync_rpc;
 mod file_batches;
 mod gen_ui;
+mod goals_rpc;
 mod plugin_reviews_rpc;
 mod remote_tools;
 mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
+mod session_display;
 mod todos;
+mod turn_execution_rpc;
 mod window_corner_rpc;
 mod worktree_rpc;
 
@@ -1010,6 +1013,8 @@ fn effective_command_shell_id(settings: Option<&Value>) -> Option<String> {
 }
 
 fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
+    crate::goals::validate_default_budget(value)
+        .map_err(|_| rpc_err(1002, "defaultGoalBudget is invalid", "GOAL_INVALID_BUDGET"))?;
     let Some(object) = value.as_object() else {
         return Ok(());
     };
@@ -1481,8 +1486,8 @@ fn local_contained_roots(data_dir: &Path, session_id: &str, remote: bool) -> Con
 }
 
 /// Whether a Write/Edit lexically targets one of the session's contained roots
-/// and may skip the permission prompt. Never for remote workspaces or contract
-/// modes (their hard deny is not bypassed).
+/// and may skip the permission prompt. Never for remote workspaces or Plan
+/// (its hard deny is not bypassed).
 fn contained_write_auto_allowed(
     remote: bool,
     durable_mode: &str,
@@ -1491,7 +1496,7 @@ fn contained_write_auto_allowed(
     args: &Value,
 ) -> bool {
     !remote
-        && !sessions::is_contract_mode(durable_mode)
+        && durable_mode != "plan"
         && matches!(tool_name, "Write" | "Edit")
         && args
             .get("path")
@@ -2908,8 +2913,7 @@ async fn handle_request(
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let session = remote_tools::decorate_session(
                 &st.db,
-                serde_json::to_value(session)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
+                session_display::serialize(&st.db, session)?,
             )?;
             Ok(json!({ "session": session }))
         }
@@ -2934,6 +2938,7 @@ async fn handle_request(
             let thinking_level = thinking_level_param(&params)?;
             let fast_mode = fast_mode_param(&params)?;
             let st = state.lock().await;
+            let previous_goal = goals_rpc::before_configure(&st, id)?;
             let session = sessions::configure_session_with_fast_mode(
                 &st.db,
                 id,
@@ -2953,6 +2958,9 @@ async fn handle_request(
                 }
             })?
             .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
+            if let Some(goal) = goals_rpc::after_configure(&st, previous_goal)? {
+                goals_rpc::notify(&tx, &goal).await;
+            }
             let session = remote_tools::decorate_session(
                 &st.db,
                 serde_json::to_value(session)
@@ -3433,21 +3441,12 @@ async fn handle_request(
         }
 
         "session.beginTurn" => {
-            let session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
-            let provider = params.get("providerId").and_then(Value::as_str);
-            let model = params.get("modelId").and_then(Value::as_str);
-            let turn_id = match params.get("sessionMessageId").and_then(Value::as_str) {
-                Some(message_id) => crate::session_collaboration::begin_turn(
-                    &st.db, session_id, message_id, provider, model,
-                ),
-                None => sessions::begin_turn(&st.db, session_id, provider, model),
-            }
-            .map_err(session_collaboration_rpc_err)?;
-            Ok(json!({ "turnId": turn_id }))
+            turn_execution_rpc::begin(&st, &params)
+        }
+        "session.getTurnMode" => {
+            let st = state.lock().await;
+            turn_execution_rpc::get(&st, &params)
         }
         "session.recordUsage" => {
             let session_id = params
@@ -3515,6 +3514,8 @@ async fn handle_request(
                     rpc_err(1008, message, "AGENT_BUSY")
                 } else if message == "IDEMPOTENCY_CONFLICT" {
                     rpc_err(1008, message, "IDEMPOTENCY_CONFLICT")
+                } else if message.starts_with("INVALID_ARGUMENT:") {
+                    rpc_err(1002, message, "INVALID_PARAMS")
                 } else if message.starts_with("session not found") {
                     rpc_err(1007, message, "SESSION_NOT_FOUND")
                 } else {
@@ -3716,6 +3717,10 @@ async fn handle_request(
             Ok(json!({ "artifacts": artifacts }))
         }
 
+        "goals.get" | "goals.start" | "goals.control" | "goals.claimTurn"
+        | "goals.validateTurn" | "goals.report" | "goals.settleTurn" => {
+            goals_rpc::handle(&state, &tx, method, params).await
+        }
         "plans.pending" => {
             let session_id = params.get("sessionId").and_then(|v| v.as_str());
             let st = state.lock().await;
@@ -4177,9 +4182,7 @@ async fn handle_request(
                 if st.shutting_down {
                     return Err(rpc_err(1001, "host is shutting down", "HOST_SHUTTING_DOWN"));
                 }
-                sessions::session_mode(&st.db, &p.session_id)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                    .ok_or_else(|| rpc_err(1007, "session not found", "SESSION_NOT_FOUND"))?
+                turn_execution_rpc::mode(&st, &p.session_id, p.turn_id.as_deref())?
             };
 
             // Register before permission evaluation so tools.abort can cancel
@@ -4475,7 +4478,7 @@ async fn handle_request(
                     );
                     let error_code = if cancelled {
                         "TOOL_ABORTED"
-                    } else if sessions::is_contract_mode(&durable_mode)
+                    } else if durable_mode == "plan"
                         && !PermissionManager::plan_mode_allows(&p.tool_name)
                     {
                         match p.tool_name.as_str() {
@@ -4505,6 +4508,12 @@ async fn handle_request(
                     return Ok(denied_result);
                 }
 
+                // Approval can outlive Stop/replacement/settlement. It does not
+                // preserve a revoked Goal binding or grant future session access.
+                {
+                    let st = state.lock().await;
+                    turn_execution_rpc::mode(&st, &p.session_id, p.turn_id.as_deref())?;
+                }
                 if matches!(final_decision, PermissionDecision::AllowSession) {
                     let mut st = state.lock().await;
                     st.session_grants
@@ -4634,6 +4643,7 @@ async fn handle_request(
                 }
                 let (data_dir, hashline_store, worktree_env) = {
                     let st = state.lock().await;
+                    turn_execution_rpc::mode(&st, &p.session_id, p.turn_id.as_deref())?;
                     (
                         st.data_dir.clone(),
                         st.hashline.clone(),
@@ -4970,11 +4980,11 @@ async fn handle_request(
                 })
                 .filter(|items: &Vec<String>| !items.is_empty());
             let st = state.lock().await;
-            let Some(mode) = sessions::session_mode(&st.db, session_id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-            else {
-                return Err(rpc_err(1007, "session not found", "SESSION_NOT_FOUND"));
-            };
+            let mode = turn_execution_rpc::mode(
+                &st,
+                session_id,
+                params.get("turnId").and_then(Value::as_str),
+            )?;
             let session_pm = sessions::session_permission_mode(&st.db, session_id)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
                 .filter(|value| value != "inherit");
@@ -10562,7 +10572,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn goal_authorization_reuses_the_durable_contract_mode_hard_deny() {
+    async fn goals_authorization_allows_agent_operations_under_auto() {
         let data_dir = tempfile::tempdir().unwrap();
         let project = data_dir.path().join("project");
         fs::create_dir_all(&project).unwrap();
@@ -10578,7 +10588,7 @@ mod tests {
         )
         .unwrap();
         let session_id = session.id.clone();
-        // `auto` is the strongest permission mode; the deny must still win.
+        // Goal follows Agent permissions; auto permits a workspace write.
         sessions::configure_session_with_thinking(
             &app_state.db,
             &session_id,
@@ -10592,38 +10602,22 @@ mod tests {
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();
 
-        for (tool_name, args, expected) in [
-            (
-                "Write",
-                json!({ "path": "ignored.txt", "content": "no" }),
-                "WRITE_DISABLED_IN_PLAN",
-            ),
-            (
-                "Edit",
-                json!({ "path": "ignored.txt", "tag": "ABCD", "ops": "PUT 1.=1:\n+b\n" }),
-                "EDIT_DISABLED_IN_PLAN",
-            ),
-            ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
-            ("UnknownTool", json!({}), "TOOL_DISABLED_IN_PLAN"),
-        ] {
-            let result = handle_request(
-                state.clone(),
-                "tools.execute",
-                json!({
-                    "sessionId": session_id,
-                    "toolCallId": format!("goal-{tool_name}-call"),
-                    "toolName": tool_name,
-                    "args": args,
-                    // A sidecar claiming Agent cannot widen the durable mode.
-                    "mode": "agent"
-                }),
-                tx.clone(),
-            )
-            .await
-            .unwrap();
-            assert_eq!(result["errorCode"], expected, "{tool_name}");
-            assert_eq!(result["ok"], false);
-        }
+        let written = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId":session_id,"toolCallId":"goal-write","toolName":"Write",
+                "args":{"path":"goal.txt","content":"goal work"},"mode":"plan"
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(written["ok"], true, "{written}");
+        assert_eq!(
+            fs::read_to_string(project.join("goal.txt")).unwrap(),
+            "goal work"
+        );
 
         // Bash still follows the permission mode rather than the allowlist.
         #[cfg(windows)]

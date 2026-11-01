@@ -29,6 +29,7 @@ import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
 import { collectLiveDelegationEntries } from "../../../lib/live-delegation-entries";
 import { reuseReadonlyMap } from "../../../lib/assistant-turns";
 import { liveHistoryTurnId } from "../../../lib/turn-process";
+import { transcriptRuntimeIndicator } from "./runtime-status";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
 import { useTranscriptContinuation } from "../../../hooks/use-transcript-continuation";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
@@ -149,8 +150,8 @@ function TranscriptBody({
       sessionId && state.pendingPlans[sessionId]?.status === "pending",
     ),
   );
-  // Plan and Goal both project `planning`; the durable mode names which
-  // contract is being written, so the indicator can use that kind's copy.
+  // Plan and Goal both project `planning`, but only Plan presents the
+  // planning indicator; Goal runs use ordinary active-turn feedback.
   const planningKind = useAppStore(
     (state) =>
       proposalKindForMode(
@@ -236,15 +237,15 @@ function TranscriptBody({
     !pendingPermission &&
     !askPending &&
     !approvalPending;
-  const showRunActivity = showStatus && hasSpecializedActivity;
-  const showWorking =
-    showStatus &&
-    planningState !== "planning" &&
-    !hasSpecializedActivity;
-  const showPlanning =
-    showStatus &&
-    planningState === "planning" &&
-    !hasSpecializedActivity;
+  const statusIndicator = transcriptRuntimeIndicator({
+    showStatus,
+    mode: sessionSummary?.mode,
+    planningState,
+    hasSpecializedActivity,
+  });
+  const showRunActivity = statusIndicator === "activity";
+  const showWorking = statusIndicator === "working";
+  const showPlanning = statusIndicator === "planning";
 
   // The tail status lane is part of the layout for the whole running turn: the
   // indicators below mount and clear with the turn's phase, and a lane that

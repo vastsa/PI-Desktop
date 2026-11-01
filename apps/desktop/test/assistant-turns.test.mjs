@@ -8,6 +8,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
   assistantTurnContent,
+  assistantTurnTools,
+  assistantTurnResponseDuration,
   assistantTurnResponseOutputTokens,
   assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
@@ -548,4 +550,100 @@ test("an echoed reasoning replay placeholder is not shown as thinking (#1945)", 
   const turn = entries.find((entry) => entry.kind === "assistant-turn");
   assert.ok(turn);
   assert.equal(JSON.stringify(turn).includes('"kind":"thinking"'), false);
+});
+
+test("splits consecutive autonomous rounds by durable root turn id without user rows", () => {
+  const { entries } = buildTranscriptEntries([
+    message("round-1-start", "assistant", "I will inspect the implementation.", {
+      turnId: "goal-turn-1",
+      responseDurationMs: 1000,
+    }),
+    message("round-1-read", "tool", "source", {
+      turnId: "goal-turn-1",
+      toolName: "Read",
+      toolCallId: "read-1",
+    }),
+    message("round-1-end", "assistant", "The first issue is clear.", {
+      turnId: "goal-turn-1",
+      responseDurationMs: 1500,
+    }),
+    message("round-2-start", "assistant", "I will make the correction.", {
+      turnId: "goal-turn-2",
+      responseDurationMs: 2000,
+    }),
+    message("round-2-edit", "tool", "updated", {
+      turnId: "goal-turn-2",
+      toolName: "Edit",
+      toolCallId: "edit-2",
+    }),
+    message("round-2-end", "assistant", "The change is complete.", {
+      turnId: "goal-turn-2",
+      responseDurationMs: 3000,
+    }),
+  ]);
+
+  assert.deepEqual(entries.map((entry) => entry.kind), ["assistant-turn", "assistant-turn"]);
+  assert.deepEqual(entries.map((entry) => entry.id), ["round-1-start", "round-2-start"]);
+  assert.deepEqual(entries.map((entry) => entry.parts.map((part) => part.kind)), [
+    ["message", "activity", "message"],
+    ["message", "activity", "message"],
+  ]);
+  assert.match(assistantTurnContent(entries[0]), /I will inspect.*The first issue/s);
+  assert.match(assistantTurnContent(entries[1]), /I will make.*The change is complete/s);
+  assert.deepEqual(entries.map((entry) => assistantTurnTools(entry).map((tool) => tool.id)), [
+    ["round-1-read"],
+    ["round-2-edit"],
+  ]);
+  assert.deepEqual(entries.map(assistantTurnResponseDuration), [2500, 5000]);
+});
+
+test("turn id changes split while untagged legacy rows remain in their existing group", () => {
+  const { entries } = buildTranscriptEntries([
+    message("first", "assistant", "Round one", { turnId: "round-1" }),
+    message("legacy-tool", "tool", "legacy result", {
+      turnId: "",
+      toolName: "Read",
+      toolCallId: "legacy",
+    }),
+    message("legacy-followup", "assistant", "Still round one", { turnId: " " }),
+    message("second", "assistant", "Round two", { turnId: "round-2" }),
+    message("legacy-tail", "assistant", "Legacy tail"),
+  ]);
+
+  assert.deepEqual(entries.map((entry) => entry.kind), ["assistant-turn", "assistant-turn"]);
+  assert.deepEqual(entries[0].parts.map((part) => part.kind), ["message", "activity", "message"]);
+  assert.match(assistantTurnContent(entries[1]), /Round two.*Legacy tail/s);
+});
+
+test("unchanged transcript turn objects retain identity when a later round streams", () => {
+  const firstMessages = [
+    message("first", "assistant", "Finished", { turnId: "round-1" }),
+    message("second", "assistant", "Still streaming", { turnId: "round-2", status: "streaming" }),
+  ];
+  const previous = buildTranscriptEntries(firstMessages).entries;
+  const nextMessages = [firstMessages[0], { ...firstMessages[1], content: "Now finished" }];
+  const next = buildTranscriptEntries(nextMessages).entries;
+  const reused = reuseTranscriptEntries(previous, next);
+
+  assert.equal(reused[0], previous[0]);
+  assert.notEqual(reused[1], previous[1]);
+});
+
+test("delegate rows with their own turn id remain nested and do not split parent turns", () => {
+  const { entries } = buildTranscriptEntries([
+    message("task", "tool", "report", {
+      turnId: "parent-turn",
+      toolName: "Task",
+      toolCallId: "task-1",
+    }),
+    message("delegate-answer", "assistant", "delegate result", {
+      turnId: "delegate-turn",
+      parentToolCallId: "task-1",
+    }),
+    message("parent-answer", "assistant", "parent result", { turnId: "parent-turn" }),
+  ]);
+
+  assert.deepEqual(entries.map((entry) => entry.kind), ["assistant-turn"]);
+  assert.deepEqual(entries[0].parts.map((part) => part.kind), ["activity", "message"]);
+  assert.equal(entries[0].parts[0].items[0].delegate.items[0].message.id, "delegate-answer");
 });

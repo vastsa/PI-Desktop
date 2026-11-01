@@ -10,11 +10,13 @@ import {
   type TurnSteerRequest,
 } from "@pi-desktop/agent-host";
 import {
+  GoalCoordinator,
   createHostQueueStore,
   createHostSessionPort,
   listPendingToolRequests,
 } from "@pi-desktop/host-runtime";
 import type {
+  AgentPromptRequest, GoalBudget, GoalControlRequest,
   AgentEventEnvelope,
   AgentQueueChangedEvent,
   AgentQueuePushRequest,
@@ -26,6 +28,7 @@ import type {
   RacpPermissionMode,
 } from "@pi-desktop/shared";
 import { IPC, isGlobalPermissionMode } from "@pi-desktop/shared";
+import { goalDispatchRequest, goalReplacementAbortRequest } from "./runtime/goal-dispatch";
 
 type IpcInvoke = (channel: string, args: readonly unknown[]) => Promise<unknown>;
 
@@ -101,6 +104,7 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
     return host;
   };
 
+  const goals = new GoalCoordinator(options.getHost);
   const runtime: RuntimePort = {
     async prompt(request: TurnStartRequest) {
       try {
@@ -138,7 +142,7 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
             ? request.effectivePermissionMode
             : undefined;
         const result = (await options.invoke(options.channels.agentPrompt, [
-          {
+          goalDispatchRequest({
             sessionId: request.sessionId,
             content: request.content,
             ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
@@ -146,7 +150,7 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
             ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
             ...(request.attachments ? { attachments: request.attachments } : {}),
             ...(permissionModeOverride ? { permissionMode: permissionModeOverride } : {}),
-          },
+          }, request.goalTurn),
         ])) as { accepted?: boolean; turnId: string };
         return { turnId: result.turnId };
       } catch (error) {
@@ -202,10 +206,10 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         | undefined;
       return { requested: result?.requested ?? true };
     },
-    async abort(sessionId: string, turnId?: string) {
+    async abort(sessionId: string, turnId?: string, reason?: "goal-replaced") {
       abortingSessions.add(sessionId);
       try {
-        await options.invoke(options.channels.agentAbort, [{ sessionId, ...(turnId ? { turnId } : {}) }]);
+        await options.invoke(options.channels.agentAbort, [goalReplacementAbortRequest({ sessionId, ...(turnId ? { turnId } : {}) }, reason)]);
       } catch (error) {
         abortingSessions.delete(sessionId);
         throw error;
@@ -265,6 +269,7 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
 
   const agentHost = new AgentHost({
     runtime,
+    goals,
     sessions,
     approvals,
     queueStore,
@@ -336,6 +341,23 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
 
   return {
     agentHost,
+    goals: {
+      get: async (sessionId: string) => ({ goal: await goals.get(sessionId) }),
+      control: (request: GoalControlRequest) => forIpc(() => agentHost.controlGoal(DESKTOP_PRINCIPAL, request)),
+      async start(request: AgentPromptRequest & { budget?: GoalBudget }) {
+        if (request.sessionMessageId || request.voiceOrigin || request.truncateBefore !== undefined || request.truncateFromMessageId) {
+          throw new RacpError("FORBIDDEN", "Goal startup requires a direct user objective");
+        }
+        const result = await forIpc(() => agentHost.startGoal(DESKTOP_PRINCIPAL, {
+          sessionId: request.sessionId,
+          input: { text: request.content, userMessageId: request.messageId, attachments: request.attachments },
+          budget: request.budget,
+          context: { requestId: request.messageId ?? `goal-${Date.now()}` },
+        }));
+        return { accepted: true, turnId: result.turn.id };
+      },
+      pause: (sessionId: string) => agentHost.pauseGoal(sessionId),
+    },
     observeWorkTarget(sessionId: string): string | null {
       return agentHost.observeWorkTarget(sessionId).activeTurnId;
     },

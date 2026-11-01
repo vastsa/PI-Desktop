@@ -815,7 +815,8 @@ export function createSessionSlice({
         }));
         return;
       }
-      if (!sessionAllows(get().sessions.find((session) => session.id === sessionId), "canConfigureModel")) return;
+      const currentSession = get().sessions.find((session) => session.id === sessionId);
+      if (!sessionAllows(currentSession, "canConfigureModel")) return;
       if (get().pendingPlans[sessionId]?.status === "pending") return;
       if (
         get().runningSessions[sessionId] ||

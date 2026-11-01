@@ -1,3 +1,4 @@
+import type { GoalBudget, GoalControlRequest, GoalResult, GoalTurnContext, SessionGoal } from "@pi-desktop/shared";
 import type {
   AgentPromptAttachment,
   AskToolResolution,
@@ -43,6 +44,8 @@ export type TurnStartRequest = {
   effectivePermissionMode: RacpPermissionMode;
   idempotencyKey?: string;
   principal: Principal;
+  /** Host-private claim, never sourced from model or wire input. */
+  goalTurn?: GoalTurnContext;
 };
 
 /**
@@ -69,7 +72,7 @@ export interface RuntimePort {
   steer?(request: TurnSteerRequest): Promise<{ accepted: boolean }>;
   prompt(request: TurnStartRequest): Promise<{ turnId: string }>;
   stop(sessionId: string): Promise<{ requested: boolean }>;
-  abort(sessionId: string, turnId?: string): Promise<void>;
+  abort(sessionId: string, turnId?: string, reason?: "goal-replaced"): Promise<void>;
   respondInput(resolution: AskToolResolution): Promise<void>;
   /** Runtime-side busy state the event stream cannot see, e.g. a manual
    * compaction; a busy session queues instead of starting. */
@@ -80,6 +83,8 @@ export type QueuedTurnRecord = {
   id: string;
   sessionId: string;
   principalSubject: string;
+  /** Explicit owner startup identity; never inferred from the Composer mode. */
+  goalStartId?: string;
   content: string;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288). */
@@ -170,4 +175,17 @@ export class MemoryQueueStore implements QueueStore {
   async remove(id: string): Promise<boolean> {
     return this.records.delete(id);
   }
+}
+
+/** Persistence and policy; called only inside AgentHost session admission. */
+export interface GoalPort {
+  get(sessionId: string): Promise<SessionGoal | null>;
+  start(sessionId: string, objective: string, budget?: GoalBudget): Promise<SessionGoal>;
+  control(request: GoalControlRequest): Promise<GoalResult>;
+  claim(goal: SessionGoal, provenance: GoalTurnContext["provenance"]): Promise<GoalTurnContext | undefined>;
+  fail(sessionId: string, context: GoalTurnContext, error: unknown): Promise<void>;
+  /** Fail closed immediately, before any persistence await. */
+  inhibit(sessionId: string): void;
+  permit(sessionId: string): void;
+  isInhibited(sessionId: string): boolean;
 }

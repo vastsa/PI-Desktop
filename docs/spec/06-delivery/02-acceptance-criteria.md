@@ -43,7 +43,7 @@ MVP passes when:
 - [x] Tool paths resolve against the project root — auto:host-core tests (`workspace::tests`)
 
 ### E. Tools and permissions
-- [x] Plan and Goal deny Write/Edit/plugin tools under every permission mode —
+- [x] Plan denies Write/Edit/non-plan-safe plugin tools under every permission mode —
   auto:`test:e2e:plan` E2E-105 + host-core permission tests
 - [x] Plan and Goal Bash prompt under Ask/Accept edits and run without confirmation
   under explicit Auto — auto:`test:e2e:plan` E2E-105 + host-core permission tests
@@ -62,7 +62,7 @@ MVP passes when:
 ### M6. Plan checkpoint and shell execution
 - [x] One pi Agent owns Agent, planning, approval, and post-approval execution —
   auto:agent-runtime + `test:e2e:plan`/`test:e2e:plan-ui`
-- [x] Goal reuses the same host-owned approval pipeline, writes a distinct
+- [x] Historical legacy Goal reused the host-owned approval pipeline, writing a distinct
   `.pi/goal/*.md` artifact, and resumes in Agent mode to verify acceptance
   criteria — auto:agent-runtime + desktop/runtime contract coverage
 - [x] `EnterPlanMode` and UI/session Plan selection converge on the same state —
@@ -95,7 +95,7 @@ MVP passes when:
   auto:`test:e2e:plan` E2E-108/E2E-109
 - [x] Scheduled/unattended Plan/Goal runs fail before the provider request —
   auto:`test:e2e:plan` E2E-110
-- [x] Plan/Goal plugin tools remain denied despite low risk, grants, or Auto —
+- [x] Plan non-plan-safe plugin tools remain denied despite low risk, grants, or Auto —
   auto:`test:e2e:plan` E2E-105 + host-core policy tests
 - [x] Shell catalog selection persists a platform-valid ID, falls back to the
   first available platform shell when a later lookup is unavailable, rejects a
@@ -174,3 +174,13 @@ All steps passing = MVP functional acceptance.
 - Blocking: any failure in A/B/C/E/F/G or Security means MVP cannot be
   declared complete.
 - Non-blocking: UI details, copy, off-main-path bugs go to known issues.
+
+## Autonomous Goal acceptance
+
+New Goal work supersedes historical Goal creation/approval checks above. See
+[E2E-GOAL-autonomous-lifecycle](04-e2e-test-plan.md#e2e-goal-autonomous-lifecycle)
+for recorded loopback evidence and separately unexecuted control/permission/UI
+scenarios. User send starts without Plan approval; mode selection alone never
+executes. Ordinary Agent permissions remain in force, with default 20 execution
+turns, optional soft tokens, owner-only resume and no restart replay. Legacy
+approval data is retained and never automatically authorizes a goal.

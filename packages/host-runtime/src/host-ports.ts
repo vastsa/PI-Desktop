@@ -111,6 +111,7 @@ export type HostQueueEntry = {
   id: string;
   sessionId: string;
   principal: string;
+  goalStartId?: string;
   idempotencyKey?: string;
   inputHash: string;
   content: string;
@@ -131,6 +132,7 @@ export function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
     id: entry.id,
     sessionId: entry.sessionId,
     principalSubject: entry.principal,
+    ...(entry.goalStartId ? { goalStartId: entry.goalStartId } : {}),
     content: entry.content,
     ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
     ...(entry.userMessageId ? { userMessageId: entry.userMessageId } : {}),
@@ -158,6 +160,7 @@ export function createHostQueueStore(getHost: () => HostRpc | null): QueueStore 
         id: record.id,
         sessionId: record.sessionId,
         principal: record.principalSubject,
+        ...(record.goalStartId ? { goalStartId: record.goalStartId } : {}),
         ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
         inputHash: record.inputHash,
         content: record.content,

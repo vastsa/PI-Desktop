@@ -42,6 +42,7 @@ pub(crate) const PORTABLE_APPLICATION_FIELDS: &[&str] = &[
     "defaultProviderId",
     "defaultModelId",
     "defaultMode",
+    "defaultGoalBudget",
     "infiniteProviderRetry",
     "keybindings",
     "linkOpenTarget",
@@ -108,6 +109,7 @@ pub const DOMAIN_ADAPTERS: &[DomainAdapterSpec] = &[
             "keybindings",
             "display bindings",
             "provider/model bindings",
+            "defaultGoalBudget",
         ],
         secret_fields: &[],
         local_overlays: &[

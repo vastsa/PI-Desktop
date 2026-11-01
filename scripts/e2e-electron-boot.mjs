@@ -9,7 +9,7 @@
  * (target/debug or target/release, or PI_DESKTOP_HOST_BIN).
  */
 import { spawn } from "node:child_process";
-import { rmSync, existsSync, readFileSync } from "node:fs";
+import { rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createTempDataDir,
@@ -47,12 +47,20 @@ for (const preloadPath of [
 }
 
 const dataDir = createTempDataDir("pi-desktop-boot-");
+const home = join(dataDir, "isolated-home");
+for (const dir of [home, join(home, "AppData"), join(home, "LocalAppData"), join(dataDir, "chromium")]) mkdirSync(dir, { recursive: true });
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(electronBin, ["."], {
+const child = spawn(electronBin, [".", `--user-data-dir=${join(dataDir, "chromium")}`], {
   cwd: appDir,
   env: {
     ...env,
+    HOME: home,
+    USERPROFILE: home,
+    APPDATA: join(home, "AppData"),
+    LOCALAPPDATA: join(home, "LocalAppData"),
+    PI_DESKTOP_AGENTS_DIR: join(home, "agents"),
+    PI_CODING_AGENT_DIR: join(home, "agent"),
     PI_DESKTOP_DATA_DIR: dataDir,
     PI_DESKTOP_BOOT_PROBE: "1",
     PI_DESKTOP_START_MAXIMIZED: process.platform === "darwin" ? "0" : "1",
@@ -75,6 +83,7 @@ const timeout = setTimeout(() => {
 
 function cleanup(code) {
   clearTimeout(timeout);
+  if (process.env.PI_BOOT_PROBE_LOG) writeFileSync(process.env.PI_BOOT_PROBE_LOG, out);
   try {
     rmSync(dataDir, { recursive: true, force: true });
   } catch {}
@@ -122,8 +131,12 @@ child.on("close", (code) => {
     projectRemove.removed === false &&
     projectRemove.sessionsRemoved === 0;
   const ctrlRBlocked = probe?.ctrlRBlocked === true;
+  const sidecarReady = out.includes('[agent-sidecar] ready (host-proxy mode)') &&
+    out.includes('"event":"agent.sidecar.configured"');
+  const startupClean = !/"level":"(?:error|fatal)"|App threw an error|ERR_MODULE_NOT_FOUND|Cannot find module/.test(out);
   if (
     code === 0 &&
+    sidecarReady && startupClean &&
     probe?.ok &&
     probe.appName === "PI-Desktop" &&
     probe.platform === process.platform &&
@@ -150,6 +163,7 @@ child.on("close", (code) => {
         `{removed:${probe.projectRemove.removed}, sessionsRemoved:${probe.projectRemove.sessionsRemoved}}`,
     );
     console.log("PASS E2E-072-main-window-ctrl-r-blocked");
+    console.log("PASS built Desktop backend startup — sidecar ready/configured, no error/fatal startup diagnostics");
     cleanup(0);
   } else {
     console.error("FAIL boot-probe —", JSON.stringify(probe));

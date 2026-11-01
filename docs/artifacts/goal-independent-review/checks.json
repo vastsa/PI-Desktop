@@ -1,0 +1,90 @@
+{
+  "sourceEquivalentAcceptedCandidate": {
+    "localOnly": true,
+    "baseMain": "0ba8cfd57cdc6baa4c1dbf16a617eb933ad3e0ee",
+    "mergeInput": "e91a26555c42bbb3597dec6e5e78ebfbed371362",
+    "sourceDigest": "fda1d69f20a3e5b64479f6257f940f02b6aa1ad19fc5a0a224768b4da8e44ed5",
+    "agentHost": {
+      "passed": 101
+    },
+    "agentRuntime": {
+      "passed": 1762,
+      "skipped": 1
+    },
+    "hostRuntimeFull": {
+      "passed": 168,
+      "failed": 1,
+      "skipped": 3,
+      "failure": "unchanged fs-index 5s timeout"
+    },
+    "fsIndexUnchangedRetry": {
+      "passed": 3
+    },
+    "desktopAffected": {
+      "passed": 111,
+      "includesGoalTests": 38
+    },
+    "rustFilteredOverlapping": {
+      "goal": 77,
+      "migration": 40,
+      "queue": 16,
+      "plan": 19,
+      "permissions": 28,
+      "todo": 16,
+      "mode": 57,
+      "nativePlan": 3,
+      "scheduledTools": 10
+    },
+    "crossProcess": {
+      "passed": true,
+      "modelRequests": 9,
+      "primaryRealUserMessages": 6,
+      "additionalFailureUserMessages": 1
+    },
+    "actualDesktop": {
+      "passed": true,
+      "captures": 8,
+      "modelRequests": 6
+    },
+    "autonomousScenarioCount": 8,
+    "controlFixtures": 2,
+    "typescriptAndProductionBuild": true,
+    "rustFmtBuildClippy": true,
+    "strictClippyExistingWarnings": 3,
+    "configuredLintFiles": 135,
+    "expandedCleanModifiedFiles": 111,
+    "expandedInheritedFindings": 9,
+    "documentationPairs": 86,
+    "documentationPages": 605,
+    "cleanSiteBuild": true,
+    "architecture": true,
+    "styleTokens": true,
+    "diffCheck": true,
+    "realIndexUnchangedByArchitecture": true,
+    "unverified": [
+      "Linux/macOS",
+      "paid providers",
+      "release packaging/installation",
+      "remote CI for uncommitted candidate",
+      "forced-compaction Goal E2E"
+    ],
+    "delivery": {
+      "committed": false,
+      "pushed": false,
+      "prUpdated": false,
+      "dailyAppOverwritten": false
+    }
+  },
+  "freshSubmissionChecks": {
+    "agentHost": 101,
+    "runtimeGoal": 99,
+    "hostRuntimeTargeted": 31,
+    "desktopAffected": 111,
+    "rustGoal": 77,
+    "typecheck": true,
+    "productionElectron": true,
+    "rustFmtBuildStandardClippy": true,
+    "standardClippyExistingWarnings": 3
+  },
+  "evidencePolicy": "Selected actual built UI captures and summaries only; raw local logs and build outputs are not published."
+}

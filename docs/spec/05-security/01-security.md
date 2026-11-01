@@ -128,7 +128,7 @@ Tools from user-configured MCP servers (`mcp_<serverId>_<tool>`) are never
 low-risk by default: host-core classifies them `medium` and ignores any risk
 level the MCP server declares for itself. `ask` and `accept-edits` require
 approval (an `allow-session` grant covers the same tool name for the rest of
-that session, in memory only), `auto` auto-allows, and Plan/Goal still deny
+that session, in memory only), `auto` auto-allows in Agent/Goal, and Plan still denies
 them (D640, ADR `mcp-tool-approval-risk`).
 
 ## 4.1 Skill market egress

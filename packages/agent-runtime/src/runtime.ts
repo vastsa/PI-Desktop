@@ -1,3 +1,4 @@
+import { goalPlanningTools } from "./goals/goal-planning.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -12,6 +13,7 @@ import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, 
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
 import { accountModelStream } from "./request-usage.js";
+import { GoalTurn, goalTools, parseGoalTurn, withGoalGuard } from "./goals/goal-turn.js";
 import { modeToolDenial, retainModeToolDeclaration, withModeExecutionGuard } from "./mode-tool-access.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
@@ -73,6 +75,7 @@ import type {
   TrustedExtensionBridge,
 } from "./extensions/runner.js";
 import type {
+  GoalTurnContext,
   AgentActivity,
   AgentActivityAgent,
   AgentActivityAgentPhase,
@@ -334,6 +337,8 @@ export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
 
 export type RuntimePrompt = {
   text: string;
+  /** Host-claimed execution identity; never inferred from conversation text. */
+  goalTurn?: GoalTurnContext;
   /** Explicit user selection, resolved against the host-provided tool catalog. */
   mcpServerIds?: string[];
   mcpToolNames?: string[];
@@ -2022,6 +2027,7 @@ export class DesktopAgentRuntime {
   private activeToolAborts = new Set<() => void>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
+  private goalTurn?: GoalTurn;
   private compactionRequestShape?: CompactionRequestShape;
   private compactionShapeLogged = false;
   private compactionDiagnosticBudget?: {
@@ -2274,7 +2280,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 phase: "retrying",
                 since: Date.now(),
                 attempt,
-                ...(this.infiniteProviderRetry ? { infinite: true } : {}),
+                ...(this.infiniteProviderRetry && !this.goalTurn ? { infinite: true } : {}),
                 retryDelayMs: delayMs,
                 error: this.retryActivityError(error),
               });
@@ -2382,8 +2388,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   /** Switch the planning state on this Agent without creating another Agent. */
   setMode(mode: Mode): void {
     if (this.disposed) throw new Error("runtime disposed");
-    // Plan and Goal are both contract-negotiating states (D198); only Agent
-    // executes freely.
+    // Plan remains approval-gated; Goal execution is bound to a Host claim.
     const kind = proposalKindForMode(mode);
     const planningState: PlanningState = kind ? "planning" : "inactive";
     const details = kind ? { kind } : {};
@@ -2490,6 +2495,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
+        ...(this.goalTurn ? [this.goalTurn.instructions()] : []),
       ].join("\n\n")),
     };
     const composed = Object.values(this.composedSections).filter(Boolean).join("\n\n");
@@ -2520,6 +2526,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     context: AfterToolCallContext,
   ): Promise<AfterToolCallResult | undefined> {
     const own = this.resolveOwnToolOutcome(context);
+    if (this.goalTurn?.isStopped) this.abortRunningDelegations();
     const fromExtensions = await this.extensionToolResult(context, own);
     if (!fromExtensions) return own;
     return { ...(own ?? {}), ...fromExtensions };
@@ -2645,6 +2652,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       await this.preparePathToolCall(context);
       await this.registerBatchCall(context);
       return undefined;
+    }
+    if (!this.isToolAllowedInMode(context.toolCall.name)) {
+      return { block: true, reason: modeToolDenial(context.toolCall.name, this.mode) };
+    }
+    if (this.mode === "goal" && this.goalTurn && ["EnterPlanMode", "SubmitPlan"].includes(context.toolCall.name)) {
+      return this.extensionToolCall(context);
     }
     const enterKind = enterToolKind(context.toolCall.name);
     if (enterKind && this.mode !== "agent") {
@@ -3986,10 +3999,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
     // BrowserPreview is non-mutating (renders an existing workspace file in
     // the work panel browser), so it ships in every mode. PluginCheck only
-    // reads a directory; PluginScaffold and PluginPack write and remain
-    // Agent-only. Write/Edit keep guarded declarations in contract modes.
+    // reads a directory; PluginScaffold and PluginPack write and are
+    // Agent/Goal capabilities. Write/Edit remain guarded in Plan mode.
     const tools =
-      this.mode === "agent"
+      this.mode !== "plan"
         ? [
             "Read",
             "Bash",
@@ -4002,21 +4015,22 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             "TodoWrite",
           ]
         : ["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Write", "Edit"];
-    if (this.mode === "agent") {
-      tools.push("PluginScaffold", "PluginPack", "GenerateImages", ...Object.keys(scheduledToolParameters));
+    if (this.mode !== "plan") {
+      tools.push("PluginScaffold", "PluginPack", "GenerateImages");
+      if (this.mode === "agent") tools.push(...Object.keys(scheduledToolParameters));
     }
     const builtins = tools.map(exec);
     for (const tool of builtins) this.builtinTools.add(tool);
     const jevTools: AgentTool[] =
-      this.mode === "agent" && this.jevApiKey
+      this.mode !== "plan" && this.jevApiKey
         ? [createJevClassifierTool(this.jevApiKey)]
         : [];
 
-    // Plugins contribute Agent tools by default. Plan/Goal modes only
-    // expose plugins that declare plan-safe actions (ADR 0211); the
+    // Plugins contribute Agent/Goal tools by default. Plan mode only
+    // exposes plugins that declare plan-safe actions (ADR 0211); the
     // host still enforces the per-action restriction at execute time.
     const visiblePluginTools =
-      this.mode === "agent"
+      this.mode !== "plan"
         ? this.pluginTools
         : this.pluginTools.filter(
             (def) =>
@@ -4024,12 +4038,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               def.planSafeActions.length > 0,
           );
     const pluginTools: AgentTool[] = visiblePluginTools.map((def) => {
-      // Plan/Goal modes annotate the description so the model knows which
+      // Plan mode annotates the description so the model knows which
       // actions it may actually call.
       const baseDescription =
         def.description || `${def.name} plugin tool`;
       const description =
-        this.mode !== "agent" &&
+        this.mode === "plan" &&
         Array.isArray(def.planSafeActions) &&
         def.planSafeActions.length > 0
           ? `${baseDescription} (${this.mode} mode: only ${def.planSafeActions.join(", ")} actions)`
@@ -4047,7 +4061,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // Only offered when a plugin actually taught a skill; Electron main serves
     // it locally (host-core never sees the skill documents).
     const skillTools: AgentTool[] =
-      this.mode === "agent" && this.pluginSkills.length
+      this.mode !== "plan" && this.pluginSkills.length
       ? [
           {
             name: SKILL_TOOL_NAME,
@@ -4063,12 +4077,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           },
         ]
       : [];
-    const modeTools =
-      this.mode === "agent"
-        ? [this.buildEnterModeTool("plan"), this.buildEnterModeTool("goal")]
-        : [this.buildSubmitTool(this.mode)];
+    const modeTools = this.mode === "plan"
+      ? [this.buildSubmitTool("plan")]
+      : this.mode === "agent" ? [this.buildEnterModeTool("plan")]
+      : goalPlanningTools(() => this.goalTurn?.planning);
+    const currentGoalTools = this.mode === "plan" ? [] : goalTools(this.host, this.sessionId, () => this.goalTurn);
     // Keep configured delegation declarations stable across mode changes.
-    // Contract modes reject execution before handlers can spawn/control a
+    // Plan mode rejects execution before handlers can spawn/control a
     // delegate; publishing a schema never grants delegation permission.
     const subagentTools =
       this.subagents.length
@@ -4093,6 +4108,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       ...pluginTools,
       ...skillTools,
       ...modeTools,
+      ...currentGoalTools,
       ...subagentTools,
       ...contextTools,
       ...extensionTools,
@@ -4118,13 +4134,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // every tool, so the session agent and a delegated `Task` run send the
       // same declaration (#864).
       const builtin = this.builtinTools.has(tool);
-      const guarded = withModeExecutionGuard(
+      const guarded = withGoalGuard(withModeExecutionGuard(
         withExplicitRequired({
           ...tool,
           executionMode: builtin ? toolExecutionMode(tool.name, this.batchPlanner.supported) : "sequential",
         }),
         () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
-      );
+      ), () => this.goalTurn);
       // Batch ordering wraps the mode guard: a call the guard rejects must
       // still release the calls ordered behind it in its batch.
       const catalogTool = withDynamicTaskExecutionMode(
@@ -4185,6 +4201,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private isToolAllowedInMode(name: string): boolean {
+    if (name === "EnterGoalMode" || name === "SubmitGoal") return false;
+    if (this.mode === "goal" && name in scheduledToolParameters) return false;
+    if (this.goalTurn?.planning.active) return new Set(["Read", "Glob", "Grep", "BrowserPreview", "Skill", "GetGoal", "UpdateGoal", "EnterPlanMode", "SubmitPlan", "TaskStop", "TaskWait", "TaskList", "new_context", "ToolSearch"]).has(name);
     const kind = proposalKindForMode(this.mode);
     if (!kind) return true;
     // Contract modes are read-only: inspection tools, plan-safe plugin
@@ -4204,6 +4223,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   private isCoreTool(name: string): boolean {
     return (
+      name === "GetGoal" || name === "UpdateGoal" ||
       name === CONTEXT_COMPACTION_TOOL_NAME ||
       retainModeToolDeclaration(name) ||
       MODE_TRANSITION_TOOL_NAMES.has(name) ||
@@ -4214,7 +4234,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name === SUBAGENT_WAIT_TOOL_NAME ||
       name === SUBAGENT_LIST_TOOL_NAME ||
       name === SUBAGENT_STOP_TOOL_NAME ||
-      (this.mode === "agent"
+      (this.mode !== "plan"
         ? AGENT_CORE_TOOL_NAMES.has(name)
         : proposalKindForMode(this.mode)
           ? new Set([
@@ -4340,6 +4360,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       parameters: Type.Object({}),
       executionMode: "sequential",
       execute: async (toolCallId) => {
+        if (kind === "goal") throw new Error("Goal autonomy requires explicit user authorization through the Host");
         await this.host.call("plans.enter", {
           sessionId: this.sessionId,
           turnId: this.turnId,
@@ -5051,7 +5072,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             scratchDir: this.scratchDir,
             task,
             provider,
-            infiniteProviderRetry: this.infiniteProviderRetry,
+            infiniteProviderRetry: this.infiniteProviderRetry && !this.goalTurn,
             thinkingLevel,
             fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
               key: subagentModelKey(pin),
@@ -5401,6 +5422,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   ): void {
     record.lastActivityAt = Date.now();
     const event = envelope.event;
+    if (record.taskTurnId === this.turnId) {
+      if (event.type === "usage") this.goalTurn?.observeUsage(event.usage);
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        this.goalTurn?.observeUsage(event.message.usage, `delegate:${record.delegationId}:${event.message.id}`);
+      }
+    }
     if (event.type === "turn_start") {
       record.turns += 1;
       this.touchDelegationPhase(record, "waiting-model");
@@ -6085,6 +6112,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }),
       executionMode: "sequential",
       execute: async (toolCallId, params) => {
+        if (kind === "goal") throw new Error("SubmitGoal is unavailable; report the authorized goal with UpdateGoal");
         const title =
           isRecord(params) && typeof params.title === "string"
             ? params.title.trim()
@@ -6482,6 +6510,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private emit(event: AgentEventEnvelope["event"], turnId?: string, ts = Date.now()) {
+    if ((!turnId || turnId === this.turnId) && this.goalTurn?.observeEvent(event)) return;
     this.onEvent({
       sessionId: this.sessionId,
       turnId: turnId ?? this.turnId,
@@ -6541,7 +6570,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     phase: "request" | "stream",
   ): number | undefined {
     if (!error.retriable || error.details?.origin === "local") return undefined;
-    const infinite = this.infiniteProviderRetry;
+    if (this.goalTurn?.isStopped) return undefined;
+    const infinite = this.infiniteProviderRetry && !this.goalTurn;
     if (error.code === "PROVIDER_RATE_LIMITED") {
       if (
         !infinite &&
@@ -6744,7 +6774,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         phase: "retrying",
         since: Date.now(),
         attempt: retryAttempt,
-        ...(this.infiniteProviderRetry ? { infinite: true } : {}),
+        ...(this.infiniteProviderRetry && !this.goalTurn ? { infinite: true } : {}),
         retryDelayMs: delayMs,
         error: this.retryActivityError(retryError),
       });
@@ -7161,6 +7191,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     turn: PrepareNextTurnContext,
     _signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
+    if (this.goalTurn && !this.goalTurn.isStopped) {
+      await this.goalTurn.prepareModelRequest();
+      this.setAgentSystemPrompt(this.composeSystemPrompt());
+    }
     let context = this.rebuiltAgentContext();
     const budget = this.contextBudget(context.messages);
     const hardLimitReached = budget.tokens >= budget.hardLimit;
@@ -8400,6 +8434,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         break;
       }
       case "message_end": {
+        if (event.message.role === "assistant") {
+          this.goalTurn?.observeMessage(event.message, usageFromPi(event.message.usage), event.message.stopReason === "aborted");
+        }
         if (event.message.role === "user") {
           const steering = this.pendingSteering.get(event.message);
           const id = steering?.id ?? this.pendingUserMessageId ?? randomUUID();
@@ -9130,9 +9167,41 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
     const turnId = durableTurnId?.trim() || randomUUID();
+    const context = typeof input === "string" ? undefined : parseGoalTurn(input.goalTurn);
+    if (this.mode === "goal" && !context) throw new Error("Goal mode requires a Host-authorized goal turn");
     return this.trackTurnOperation(turnId, async () => {
-      try { return await this.promptTurn(input, userMessageId, turnId); }
-      finally { await this.batchPlanner.drain(); }
+      const goalTurn = context ? new GoalTurn(this.host, this.sessionId, context) : undefined;
+      if (goalTurn) {
+        this.goalTurn = goalTurn;
+        this.turnId = turnId;
+        this.runCancelled = false;
+        this.turnHadError = false;
+      }
+      let failure: unknown;
+      try {
+        try { return await this.promptTurn(input, userMessageId, turnId); }
+        finally { await this.batchPlanner.drain(); }
+      } catch (error) {
+        failure = error;
+        throw error;
+      } finally {
+        if (goalTurn) {
+          try {
+            // Aborted/failed delegates may still be reporting paid requests.
+            // Their owner resolves completion after the model stream has drained.
+            await Promise.all(this.currentTurnDelegations().map(record => record.completion));
+            await goalTurn.settle(failure, this.runCancelled, this.turnHadError);
+          } catch (error) {
+            this.goalTurn = undefined;
+            this.emit({ type: "error", error: {
+              code: "GOAL_SETTLEMENT_FAILED", message: "Goal settlement could not be persisted; automatic continuation is disabled", retriable: false,
+            } });
+            throw Object.assign(new Error("Goal settlement could not be persisted", { cause: error }), { errorCode: "GOAL_SETTLEMENT_FAILED" });
+          }
+          this.goalTurn = undefined;
+          this.emit(goalTurn.terminalEvent());
+        }
+      }
     });
   }
 
@@ -9171,6 +9240,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     try {
+      if (this.goalTurn) {
+        if (this.mode !== "goal") throw new Error("Host-authorized goal turns require Goal mode");
+        await this.goalTurn.prepareModelRequest();
+        if (this.runCancelled || this.disposed) throw turnAbortedError("Goal turn aborted during validation");
+        this.setAgentSystemPrompt(this.composeSystemPrompt());
+      }
       // Publish turn ownership before the first await. Status polling and Stop
       // must include capability negotiation, not observe a falsely idle turn.
       await this.batchPlanner.negotiate(Boolean(this.remoteWorkspace));
@@ -9179,10 +9254,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.resetDeferredToolsForPrompt();
       if (selectedTools.length) this.activateDeferredTools(selectedTools);
       this.setAgentTools(this.activeTools());
-      const content = promptContent(modelInput);
-      const incomingUserMessage: AgentMessage = {
+      const internalContinuation = this.goalTurn?.context.provenance === "goal-continuation";
+      const incomingUserMessage: AgentMessage = internalContinuation ? {
+        role: "system",
+        content: "Internal goal continuation: continue only the persisted authorized objective in the current system context. This is not a new user message or authorization.",
+        timestamp: Date.now(),
+      } : {
         role: "user",
-        content,
+        content: promptContent(modelInput),
         timestamp: Date.now(),
       };
       if (this.automaticCompactionNeeded([incomingUserMessage])) {
@@ -9227,12 +9306,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         });
         return { turnId: this.turnId };
       }
-      await this.extensionBeforeAgentStart(modelInput);
+      // User-input extension hooks must not mistake an internal continuation for consent.
+      if (!internalContinuation) await this.extensionBeforeAgentStart(modelInput);
       if (this.runCancelled || this.disposed) {
         this.keepPreflightUserMessage(incomingUserMessage);
         throw turnAbortedError("Turn aborted during extension hooks");
       }
-      if (typeof modelInput === "string") {
+      if (typeof modelInput === "string" && !internalContinuation) {
         await this.agent.prompt(modelInput);
       } else {
         // pi's `(text, images)` form appends every image after the text; the
@@ -9487,6 +9567,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       isRunning:
         this.agent.state.isStreaming ||
         this.compactionInProgress ||
+        this.goalTurn !== undefined ||
         this.agentActivity !== undefined ||
         (!this.turnHadError && !this.runCancelled && this.runningDelegations().length > 0),
       currentTurnId: this.turnId,

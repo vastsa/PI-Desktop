@@ -8,6 +8,7 @@ mod data_relocation;
 mod db;
 mod file_batches;
 mod file_resources;
+mod goals;
 mod keyboard;
 mod mcp_servers;
 mod network_policy;

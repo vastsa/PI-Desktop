@@ -3559,7 +3559,7 @@ describe("DesktopAgentRuntime live activity", () => {
 });
 
 describe("DesktopAgentRuntime deferred tool catalog", () => {
-  it("offers Jev only in Agent mode when an API key is supplied", async () => {
+  it("offers Jev in Agent and Goal but not Plan when an API key is supplied", async () => {
     type ToolResult = {
       content: Array<{ type: "text"; text: string }>;
       details: { activated: string[]; addedToolNames: string[] };
@@ -3615,7 +3615,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       const restricted = createRuntime({ mode, jevApiKey: "fixture-key" });
       try {
         const view = restricted as unknown as RuntimeTestView;
-        expect(view.agent.state.systemPrompt).not.toContain("JevClassify");
+        expect(view.agent.state.systemPrompt.includes("JevClassify")).toBe(mode === "goal");
         expect(view.agent.state.tools.map((tool) => tool.name)).not.toContain(
           "JevClassify",
         );
@@ -3666,7 +3666,8 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       "asktool",
       "Skill",
       "EnterPlanMode",
-      "EnterGoalMode",
+      "GetGoal",
+      "UpdateGoal",
       "new_context",
       "ToolSearch",
     ]);
@@ -4036,7 +4037,7 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
     await runtime.dispose();
   });
 
-  it("gives Goal mode the read-only core, guarded editing declarations, and SubmitGoal", async () => {
+  it("gives Goal mode Agent capabilities and Host-bound reporting without approval", async () => {
     const runtime = createRuntime({
       mode: "goal",
       pluginTools: [
@@ -4055,17 +4056,20 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
         "Read",
         "Glob",
         "Grep",
-        "BrowserPreview",
         "Bash",
-        "SubmitGoal",
+        "GetGoal",
+        "UpdateGoal",
       ]),
     );
     expect(goalTools).toEqual(expect.arrayContaining(["Write", "Edit"]));
     expect(goalTools).not.toContain("plugin_demo_run");
-    expect(goalTools).not.toContain("SubmitPlan");
+    expect(goalTools).toContain("SubmitPlan");
+    expect(goalTools).toContain("EnterPlanMode");
     expect(goalTools).not.toContain("EnterGoalMode");
-    expect(runtime.getStatus().planningState).toBe("planning");
-    expect(agent.state.systemPrompt).toContain("SubmitGoal");
+    expect(runtime.getStatus().planningState).toBe("inactive");
+    expect(agent.state.systemPrompt).toContain("UpdateGoal");
+    expect(agent.state.systemPrompt).toContain("plugin_demo_run");
+    expect(goalTools).not.toContain("SubmitGoal");
     expect(agent.state.systemPrompt).toContain("acceptance criteria");
 
     await runtime.dispose();
@@ -4178,7 +4182,7 @@ describe("DesktopAgentRuntime tool schema completeness (#864)", () => {
 });
 
 describe("DesktopAgentRuntime plan transitions", () => {
-  it.each(["plan", "goal"] as const)(
+  it.each(["plan"] as const)(
     "continues the %s user turn after a missing-workspace submission",
     async (kind) => {
       const host = {
@@ -4387,69 +4391,15 @@ describe("DesktopAgentRuntime plan transitions", () => {
     await runtime.dispose();
   });
 
-  it("routes the Goal contract through the same host approval with kind goal", async () => {
+  it("does not let model tools activate or submit Goal autonomy", async () => {
     const host = { call: vi.fn() };
-    const runtime = createRuntime({ host, turnId: "turn-1" });
-    const agent = (runtime as any).agent;
-
-    host.call.mockResolvedValueOnce({ ok: true, state: "planning" });
-    const enterTool = agent.state.tools.find(
-      (tool: any) => tool.name === "EnterGoalMode",
-    );
-    await enterTool.execute("enter-goal-call", {});
-    expect(runtime.getMode()).toBe("goal");
-    expect(host.call).toHaveBeenNthCalledWith(1, "plans.enter", {
-      sessionId: "session-1",
-      turnId: "turn-1",
-      toolCallId: "enter-goal-call",
-      kind: "goal",
-    });
-
-    const markdown = "# Goal\n\nCheckout works.\n\n## Acceptance criteria\n- tests pass\n";
-    const proposal = {
-      id: "proposal-goal-1",
-      sessionId: "session-1",
-      turnId: "durable-turn-1",
-      toolCallId: "submit-goal-call",
-      kind: "goal",
-      title: "Checkout works",
-      markdown,
-      plan: markdown,
-      question: "Approve this goal?",
-      artifact: {
-        relativePath: ".pi/goal/proposal-goal-1.md",
-        sha256: "def456",
-        sizeBytes: 42,
-      },
-      version: 1,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    host.call.mockResolvedValueOnce({ status: "pending", proposal });
-    const submitTool = agent.state.tools.find(
-      (tool: any) => tool.name === "SubmitGoal",
-    );
-    expect(submitTool.description).toContain("acceptance criteria");
-    const submitResult = await submitTool.execute("submit-goal-call", {
-      title: proposal.title,
-      markdown: proposal.markdown,
-      question: proposal.question,
-    });
-
-    expect(submitResult.terminate).toBe(true);
-    expect(runtime.getMode()).toBe("goal");
-    expect(runtime.getStatus().planningState).toBe("awaiting_approval");
-    expect(host.call).toHaveBeenLastCalledWith(
-      "plans.submit",
-      expect.objectContaining({
-        sessionId: "session-1",
-        toolCallId: "submit-goal-call",
-        kind: "goal",
-        markdown: proposal.markdown,
-      }),
-    );
-
+    const runtime = createRuntime({ host });
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    expect(agent.state.tools.some(tool => tool.name === "EnterGoalMode")).toBe(false);
+    runtime.setMode("goal");
+    expect(agent.state.tools.some(tool => tool.name === "SubmitGoal")).toBe(false);
+    expect(runtime.getStatus().planningState).toBe("inactive");
+    expect(host.call).not.toHaveBeenCalled();
     await runtime.dispose();
   });
 
@@ -9753,14 +9703,13 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
-  it("withholds undefined delegates but rejects declared Task execution in contract modes", async () => {
+  it("withholds undefined delegates but rejects declared Task execution in Plan mode", async () => {
     const withoutDefinitions = createRuntime();
     expect(taskTool(withoutDefinitions)).toBeUndefined();
     await withoutDefinitions.dispose();
 
-    // Plan and Goal are read-only contract negotiations (D198): a delegate
-    // with Bash or Edit would drive straight through them.
-    for (const mode of ["plan", "goal"] as const) {
+    // Plan remains read-only; Goal delegation is covered through real streams.
+    for (const mode of ["plan"] as const) {
       const runtime = createRuntime({ mode, subagents: [explorer] });
       expect(taskTool(runtime)).toBeDefined();
       await expect(taskTool(runtime).execute("blocked-task", { agent: "explorer", task: "Inspect." }))

@@ -716,13 +716,13 @@ type PlanningState =
 type PlanExecutionState = "queued" | "running" | "completed" | "interrupted";
 ```
 
-Plan and Goal are the two **contract modes** (D198). They share one durable
-approval table, one projected `PlanningState`, one approval surface, and one
-execution queue; a `kind` discriminator (`plan` | `goal`) on the proposal selects
-the prompt, the artifact directory, and the user-facing copy. `Agent` is the only
-mode with no kind, and is the only mode that executes freely. Because the
-projection is shared, `planning` and `awaiting_approval` are always read together
-with the kind to know which durable mode a session is in.
+Plan retains its approval pipeline. Autonomous Goal is a separate durable lifecycle,
+not a `PlanningState` or a new approval kind. A direct user send in Goal mode
+starts execution without Plan approval; selecting the mode alone starts nothing.
+The same pi Agent executes with ordinary Agent permissions. Existing `kind = goal`
+approval rows remain readable/resolvable/executable through the legacy pipeline;
+no migration or model tool may authorize a new autonomous goal. See
+[the lifecycle](10-session-state-machine.md#autonomous-goal-lifecycle).
 
 `Agent / inactive` enters `Plan / planning` either when the user selects Plan
 while idle or when the Agent calls `EnterPlanMode`. In Plan, the Agent can
@@ -733,7 +733,7 @@ submitted Markdown bytes in a new immutable
 structured title/question in `plan_approvals`, and moves the live state to
 `awaiting_approval`.
 
-Plan/Goal requests retain Write/Edit declarations and, when subagents are
+Plan requests retain Write/Edit declarations and, when subagents are
 configured, the Task/TaskWait/TaskList/TaskStop declarations. They are marked
 unavailable in the active mode. The execution allowlist remains unchanged:
 prohibited calls are blocked before extension call hooks and handlers, and a
@@ -743,7 +743,7 @@ no editing, delegation, fake user message or transcript deletion occurs.
 Other deferred/plugin tools keep their existing visibility rules. See
 [the declaration/permission decision](../../adr/plan-tool-declarations-and-execution-denials.md).
 
-Plan/Goal entry remains available without a project workspace. A submission
+Plan entry remains available without a project workspace. A Plan submission
 requires a persisted session workspace for its approval artifact.
 `PLAN_WORKSPACE_REQUIRED` from submission is a recoverable tool error: it
 explains how to bind a workspace and directs the agent to present the proposal
@@ -783,24 +783,64 @@ session has one active turn, one pending approval, and one queued/running
 execution; a second prompt or execution is rejected, while staged
 configuration is submitted only after the session is idle.
 
-`Agent / inactive` enters `Goal / planning` the same two ways, by user selection
-while idle or by the Agent calling `EnterGoalMode`. Goal has the identical tool
-surface as Plan, except that its submit tool is
-`SubmitGoal(title, markdown, question)` and its artifact is written to
-`.pi/goal/<unique-name>.md`. The submitted Markdown is a **goal contract** — the
-outcome to reach, the acceptance criteria that prove it was reached, and the
-boundaries that must not be crossed — not a list of implementation steps. A
-submit tool is rejected with `PLAN_KIND_MISMATCH` when the session's active kind
-is the other one, and with `PLAN_NOT_ACTIVE` when no contract is active.
+### Autonomous Goal execution
 
-Goal approval commits exactly what Plan approval commits: `mode = agent`, the
-explicit permission mode, an execution ID, and `execution_state = queued` on the
-same row. The queued execution instruction differs by kind. An approved plan is
-replayed as steps to follow; an approved goal instructs the Agent to choose its
-own approach, verify every acceptance criterion by running the checks the
-contract names, keep working while a criterion is unmet and an untried approach
-remains, stop early only when a boundary blocks it, and close with a
-criterion-by-criterion report of what was met and the evidence observed.
+`packages/shared/src/types/goals.ts` defines the independent contract;
+`crates/host-core/src/goals.rs` owns durable transitions. Shared `AgentHost` and
+`GoalCoordinator` own admission in Desktop and headless hosts. Only the user
+owner may start/resume. Admission prioritizes queued user work, then claims a
+Goal execution turn by revision CAS. A losing/stale claim cannot launch work.
+The final synchronous runtime handoff rechecks the stop fence, including after
+an awaited initial or queued claim. A stopped unused claim is settled; queued
+user input remains durable until handoff. Non-user collaboration and voice-origin
+inputs through ordinary turn ingress cannot acquire Goal authority: reject them
+before runtime/queue admission, without changing Agent/Plan collaboration.
+
+The default budget is 20 execution turns, including the initial user-started
+turn. Settings.defaultGoalBudget is resolved by Rust and snapshotted only at
+creation. Explicit maxTurns=null removes the turn cap; absent maxTokens removes
+the token cap. Both may be unlimited; existing finite budgets stay unchanged.
+A turn may contain several model requests and tools: neither requests nor
+tool calls are turns. Optional token limits are soft: reported parent and delegate
+usage is accumulated and settled idempotently before `agent_end`; the next
+admission checks the settled total. An in-flight request/turn may exceed the cap.
+
+Continuations carry host-owned provenance as system context, never a fabricated
+user transcript row. Header Pause persists pauseRequested, keeps the current
+claim valid and stops only after settlement. Composer Stop persists paused before
+requesting immediate runtime cancellation. Selecting a different input mode or
+sending ordinary queued/immediate guidance never pauses the Goal. Successful Goal
+submission returns input to Agent; explicit new Goal input replaces unfinished
+work with fresh identity/budget after retired execution drains. Live objective
+edits update the header immediately while activeScope preserves objective and
+criteria for every model/tool request in the current Host round. The next Host
+claim adopts the edit; old-scope completion cannot complete the edited scope.
+Already running operations cannot be undone; unsaved edits have no effect. Per-goal budget edits stage pendingBudget while a claim exists, apply
+at settlement before next admission, and never change global defaults or resume.
+The model may optionally EnterPlanMode within the authorized Goal, inspect without
+Write/Edit, Bash, plugin mutations or delegation, then SubmitPlan with its own
+review to continue execution without user Plan approval. This private phase never
+changes durable mode, scope, budget or ordinary execution permissions.
+Restart changes active goals to paused, clears interrupted claims, and never
+replays work. Resume is an explicit user action after settlement.
+
+`GetGoal` and `UpdateGoal` bind session/goal/turn identity in the host/runtime,
+not model arguments. Reports may update progress, outcomes, and active/blocked/
+completed status, but cannot create goals, widen scope, change budgets, or
+pause/resume/cancel. Completion requires exactly the stored criteria, each
+reported `met` with non-empty evidence. New completion additionally requires a
+version-1 audit of the exact original objective, nonempty requirement items all
+reported met with evidence, and empty remainingWork. The same model must inspect
+authoritative current-state evidence for the entire original scope before
+submitting; weak/missing/indirect evidence is unfinished, not success. Malformed
+reports are recoverable tool errors; stale/stopped claims remain denied. Neither
+a natural-language answer, todo state nor agent_end infers completed.
+This validates a **model report**, not
+independent host verification. Scheduled automation remains disallowed.
+
+Legacy `EnterGoalMode`/`SubmitGoal` cannot create new goals and host entry/submission
+rejects them with `PLAN_GOAL_ACTIVATION_DISABLED`. Existing approvals retain their
+original resolution and execution semantics; they are not promoted into this loop.
 
 ## 5c. Thinking capability and stream contract
 
@@ -1612,12 +1652,12 @@ execution activation rules:
 - Plan: `Read`, `Glob`, `Grep`, `BrowserPreview`, and `Bash`
 - both modes: `ToolSearch` when at least one deferred capability exists
 
-In Agent mode, `Glob` and `Grep` join `BrowserPreview`, plugin tools,
-and plugin-development helpers in the deferred set. Both contract modes keep
-their read/inspection core available, while the kind's submit tool
-(`SubmitPlan` or `SubmitGoal`) is exposed only during the planning state, and
-only for the active kind. Deferred tools are registered but their names and
-compact
+In Agent and Goal modes, ordinary tools share the same discovery and permission
+policy. Plan keeps its read/inspection core; `SubmitPlan` is exposed only in Plan
+planning. A bound autonomous Goal turn additionally has `GetGoal` and `UpdateGoal`.
+`EnterGoalMode` and `SubmitGoal` cannot activate new work. Deferred tools are
+registered but their names and compact
+
 one-line descriptions appear in an `# On-demand tools` catalog; parameter
 schemas do not. The catalog is bounded so a plugin with many tools cannot
 recreate the original prompt bloat.
@@ -1689,22 +1729,13 @@ must not describe Plan as a strict read-only security boundary.
 
 ### 7.2a Goal prompt requirements
 
-The Goal prompt tells the same Agent to negotiate a goal contract before any
-autonomous work. It asks for what to achieve rather than how: the outcome, the
-acceptance criteria, and the boundaries. It must not enumerate implementation
-steps, because the Agent decides those itself after approval. Every acceptance
-criterion must be objectively checkable by the Agent after execution — a command
-that must pass, or an observable behavior. The Agent inspects the workspace and
-asks about anything ambiguous first, then calls `SubmitGoal` immediately exactly
-once in the current turn with one complete Markdown snapshot.
-
-The one-submit rule, the historical-checkpoint rule, the revise-after-close rule,
-the no-chat-confirmation rule, and the host-writes-the-artifact rule are the same
-as Plan's, with `SubmitGoal` and `.pi/goal/*.md` in place of their Plan
-equivalents. The prompt additionally states that once approved, the contract is
-the standard the Agent works against: it pursues the goal autonomously, chooses
-its own approach, and stops only when every acceptance criterion is verified or a
-boundary blocks it.
+The Goal prompt describes the user-authorized objective, immutable criteria and
+boundaries, remaining execution-turn budget, and reported token usage. It asks
+the Agent to pursue the objective using ordinary permitted tools, report progress
+through `UpdateGoal`, and stop for a blocker or a criterion-by-criterion completion
+report. It must not ask for `SubmitGoal`, manufacture user consent, extend its own
+budget, or describe model-supplied evidence as independent host verification.
+The host, not the prompt or model, decides admission and continuation.
 
 ### 7.2b Subagent prompt composition (D201, ADR 0062)
 
