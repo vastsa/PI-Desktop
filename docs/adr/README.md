@@ -397,3 +397,4 @@ Each ADR includes:
 | 0337 | [Keep the request prefix stable across delegation settlements](0337-stable-prompt-prefix-across-delegation.md) | Accepted (supersedes ADR 0279 §9) |
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
+| subagent-fallback-thinking | [Per-fallback thinking levels for subagents](subagent-fallback-thinking.md) | Accepted for implementation |

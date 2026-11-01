@@ -7,6 +7,8 @@ import {
   MAX_SUBAGENT_MAX_TOKENS,
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_INHERIT_DENY_TOOLS,
+  formatSubagentFallbackPin,
+  parseSubagentFallbackEntry,
   mergeSubagentDefinitions,
   normalizeSubagentName,
   parseSubagentDefinition,
@@ -640,6 +642,18 @@ describe("definition fallback models", () => {
     }
     const legacy = parse("---\ndescription: Old document.\n---\nFinish.");
     expect(legacy.ok && legacy.definition.fallbackModels).toBeUndefined();
+  });
+
+  it("round-trips independent fallback thinking without changing legacy pins", () => {
+    const result = parse("---\ndescription: Fallback thinking.\nfallbackModels: [vendor/first|high, vendor/second, vendor/third|omit]\n---\nFinish.");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.definition.fallbackModels?.map(formatSubagentFallbackPin)).toEqual([
+      "vendor/first|high", "vendor/second", "vendor/third|omit",
+    ]);
+    expect(parseSubagentFallbackEntry("vendor/first|MAX")).toEqual({ pin: "vendor/first", thinkingLevel: "max" });
+    expect(parseSubagentFallbackEntry("vendor/first")).toEqual({ pin: "vendor/first" });
+    expect(parse("---\ndescription: Invalid suffix.\nfallbackModels: [vendor/first|unknown]\n---\nFinish.").ok).toBe(false);
   });
 
   it("rejects a malformed fallback rather than silently changing the requested chain", () => {
