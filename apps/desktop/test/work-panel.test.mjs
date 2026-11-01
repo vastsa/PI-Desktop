@@ -639,16 +639,26 @@ test("the launcher tool list scrolls when it outgrows the panel body", () => {
   // the pane and the rows below the fold become unreachable (issue #2026).
   const launcher = globalStyles.match(/\.work-panel-launcher \{[^}]*\}/)?.[0] ?? "";
   assert.match(launcher, /min-height: 0/);
+  assert.match(launcher, /flex: 1/);
+  assert.match(launcher, /overflow: hidden/);
   const list = globalStyles.match(/\.work-panel-launcher-list \{[^}]*\}/)?.[0] ?? "";
   assert.match(list, /min-height: 0/);
   assert.match(list, /overflow-y: auto/);
+  assert.match(list, /flex: 1/);
+  assert.match(list, /overflow-x: hidden/);
+  assert.match(list, /overscroll-behavior-y: contain/);
+  assert.match(list, /scrollbar-gutter: stable/);
   // Rows are flex items of that list: without flex-shrink: 0 a constrained
   // list first compresses them below their 40px height instead of scrolling.
   const row = globalStyles.match(/\.work-panel-launcher-row \{[^}]*\}/)?.[0] ?? "";
   assert.match(row, /flex-shrink: 0/);
   // The title stays pinned; only the rows scroll.
   const title = globalStyles.match(/\.work-panel-launcher-title \{[^}]*\}/)?.[0] ?? "";
+  assert.match(title, /flex: 0 0 auto/);
   assert.doesNotMatch(title, /overflow-y/);
+  // Overflow remains discoverable without hover; use the shared theme ink.
+  const thumb = globalStyles.match(/\.work-panel-launcher-list::-webkit-scrollbar-thumb \{[^}]*\}/)?.[0] ?? "";
+  assert.match(thumb, /var\(--ds-text-primary\) 16%, transparent/);
 });
 
 test("work panel empty states match the app's other empty-state proportions", () => {
