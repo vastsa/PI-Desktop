@@ -505,12 +505,15 @@
   display: flex;
   width: 100%;
   min-height: 0;
+  flex: 1;
   flex-direction: column;
   gap: 8px;
   padding: 14px 10px;
+  overflow: hidden;
 }
 
 .work-panel-launcher-title {
+  flex: 0 0 auto;
   padding: 0 8px 4px;
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
@@ -520,9 +523,24 @@
 .work-panel-launcher-list {
   display: flex;
   min-height: 0;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+/* A quiet, persistent thumb makes an overflowing tool list discoverable even
+   before hover. The shared scrollbar still renders only when needed. */
+.work-panel-launcher-list::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--ds-text-primary) 16%, transparent);
+}
+
+.work-panel-launcher-list::-webkit-scrollbar-thumb:hover,
+.work-panel-launcher-list::-webkit-scrollbar-thumb:active {
+  background: color-mix(in oklab, var(--ds-text-primary) 28%, transparent);
 }
 
 .work-panel-launcher-row {

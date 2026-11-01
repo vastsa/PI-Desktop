@@ -1111,9 +1111,14 @@ singleton without duplicating it:
 +---------------------------------------+
 ```
 
-The launcher is bounded by the panel body: the title stays pinned while the
-tool rows scroll inside the list when the data-driven set outgrows the
-available height, so every row remains reachable (#2026).
+The launcher fills and is bounded by the panel body: the title does not shrink
+or scroll, while the tool list uses the remaining height. Rows retain their
+40px hit targets and scroll independently when the data-driven set outgrows
+the available height, so every row remains reachable (#2026). The list reserves
+a stable scrollbar gutter and shows a quiet, theme-aware thumb whenever it
+overflows, even before hover; short lists have no scrollbar. Long labels stay
+ellipsized without horizontal scrolling, and wheel input at either end does
+not chain into the surrounding shell.
 
 ### 5.2.1 Light-theme surface
 
