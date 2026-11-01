@@ -1533,11 +1533,16 @@ automatically replayed. See the Host file admission ADR for lifecycle and limits
 ## Round review reader
 
 - `review.turns({sessionId, before?, limit?})` returns `turns` (newest user round
-  first, each with `id`, `userMessageId`, `createdAt`, `title`, `changeCount`) and
+  first, each with `id`, `userMessageId`, `createdAt`, `title`, `changeCount`,
+  `additions`, `deletions`) and
   optional `nextBefore`. Only rounds with valid successful Write/Edit review
   evidence are listed, including approved targets outside the workspace.
   Source `details.root` is preserved; workspace-relative and non-workspace
   absolute paths retain distinct identities. Limit is bounded to 100; title is a short excerpt.
+  Added/deleted totals sum deduplicated successful operation evidence, not a net
+  diff. Originally truncated/binary records or unsafe totals yield null for both
+  counts. Transport-only hunk trimming does not discard known counts. Older
+  Hosts may omit these additive fields; consumers show unknown.
 - `review.changes({sessionId, turnId?, snapshotId?, offset?, limit?})` returns
   `turnId`, `changes: [{message, root?}]`, and optional `nextOffset`. Without a
   selector it resolves the latest modified user round; a snapshot selector locates

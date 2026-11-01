@@ -8,6 +8,7 @@ import { readReviewContextLines, rememberReviewContextLines } from "../../lib/re
 import { useAppStore } from "../../stores/app-store";
 import { Button, Select } from "../ui";
 import { ReviewHistoryFile } from "./ReviewHistoryFile";
+import { ReviewTurnOption } from "./ReviewTurnOption";
 import { ReviewHistoryToolbar } from "./ReviewHistoryToolbar";
 
 type Selection = { turnId?: string; snapshotId?: string; focusSeq?: number };
@@ -79,8 +80,8 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
       <span className="review-history-label">{t("panel.review.historyTitle")}</span>
       <Select className="review-select review-history-round-select" value={selectedId || result.turnId || ""} aria-label={t("panel.review.historyTitle")}
         onChange={event => { setSelection({ turnId: event.target.value }); scroller.current?.scrollTo({ top: 0 }); }}>
-        {selectedId && !catalog.turns.some(turn => turn.id === selectedId) && <option value={selectedId}>{selectedId}</option>}
-        {catalog.turns.map(turn => <option key={turn.id} value={turn.id}>{new Date(turn.createdAt).toLocaleString()}</option>)}
+        {selectedId && !catalog.turns.some(turn => turn.id === selectedId) && <ReviewTurnOption turn={{ id: selectedId, createdAt: "" }} />}
+        {catalog.turns.map(turn => <ReviewTurnOption key={turn.id} turn={turn} />)}
       </Select>
       {catalog.nextBefore !== undefined && <Button size="sm" disabled={paging} onClick={() => void older()}>{t("panel.review.moreHistory")}</Button>}
     </div>}

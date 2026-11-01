@@ -2164,6 +2164,8 @@ sklm: {
       rollingBack: "Geri alınıyor…",
       rolledBack: "Geri alındı",
       historyTitle: "Conversation round",
+      unknownTotals: "Satır sayısı bilinmiyor",
+      recordedTotals: "Bu turda kaydedilen eklenen/silinen satırlar; net fark değildir",
       loadingHistory: "Loading review history…",
       historyError: "Could not load review history. Retry.",
       retryHistory: "Retry",

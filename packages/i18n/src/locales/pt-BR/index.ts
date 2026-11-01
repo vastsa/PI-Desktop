@@ -2120,6 +2120,8 @@ export const ptBR = {
       rollingBack: "Revertendo…",
       rolledBack: "Revertida",
       historyTitle: "Conversation round",
+      unknownTotals: "Contagem desconhecida",
+      recordedTotals: "Adições/exclusões registradas nesta rodada, não a diferença líquida",
       loadingHistory: "Loading review history…",
       historyError: "Could not load review history. Retry.",
       retryHistory: "Retry",

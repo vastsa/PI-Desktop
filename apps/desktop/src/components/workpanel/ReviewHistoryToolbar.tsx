@@ -24,7 +24,7 @@ export function ReviewHistoryToolbar({ history, onHistory, count, additions, del
         <span className="diff-count-add">+{additions}</span><span className="diff-count-del">−{deletions}</span>
       </span>
       <TooltipButton className="icon-btn review-settings-button" tooltip={t("panel.review.reviewSettings")} aria-haspopup="menu" aria-expanded={!!settingsMenu.contextMenu} onClick={event => {
-        settingsMenu.openContextMenu(event, { label: t("panel.review.reviewSettings"), items: [
+        settingsMenu.openContextMenu(event, { label: t("panel.review.reviewSettings"), anchor: "bottom-end", items: [
           { id: "review-wrap", label: t("panel.review.wordWrap"), checked: wrap, onSelect: onWrap },
           { id: "review-context", label: t("panel.review.contextDisplay"), submenu: ([1, 3, 5] as const).map(lines => ({
             id: `review-context-${lines}`, label: t("panel.review.contextLineOption", { count: lines }), checked: context === lines, onSelect: () => onContext(lines),

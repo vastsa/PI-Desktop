@@ -2170,6 +2170,8 @@ sklm: {
       rollingBack: "되돌리는 중…",
       rolledBack: "되돌림",
       historyTitle: "Conversation round",
+      unknownTotals: "줄 수 알 수 없음",
+      recordedTotals: "이 라운드에 기록된 작업의 추가/삭제 줄 합계이며 순변경은 아닙니다",
       loadingHistory: "Loading review history…",
       historyError: "Could not load review history. Retry.",
       retryHistory: "Retry",

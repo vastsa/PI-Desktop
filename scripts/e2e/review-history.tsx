@@ -121,10 +121,36 @@ window.reviewProbe = async () => {
   assert(settingsStyle.borderTopWidth === "0px", "Settings dots have no circular border");
   assert(getComputedStyle(headers()[0]).backgroundColor === "rgba(0, 0, 0, 0)", "File buttons have no permanent fill");
   checks.push("latest-skips-no-edit-round");
+  const assertAnchored = (button: HTMLElement) => {
+    const menu = document.querySelector<HTMLElement>('.context-menu.is-open')!;
+    const box = menu.getBoundingClientRect(), anchor = button.getBoundingClientRect();
+    assert(Math.abs(box.right - Math.min(anchor.right, innerWidth - 8)) <= 2, 'Menu right edge follows the trigger, not pointer position');
+    assert(Math.abs(box.top - (anchor.bottom + 4)) <= 2 || box.bottom <= anchor.top - 2, 'Menu opens below its trigger or flips above');
+    assert(box.left >= 7 && box.top >= 7 && box.bottom <= innerHeight - 7, 'Whole root menu stays inside viewport');
+    assert(document.elementFromPoint(box.left + box.width / 2, box.top + 12)?.closest('.context-menu'), 'Root menu is not obscured');
+  };
   const fileMenu = async (index = 0) => {
     document.querySelectorAll<HTMLButtonElement>('.review-file-menu-button')[index].click();
-    await until(() => !!document.querySelector('[data-context-menu-item="review-open-external"]'), "File menu opens");
+    await until(() => !!document.querySelector('.context-menu.is-open [data-context-menu-item="review-open-external"]'), "File menu opens");
+    assertAnchored(document.querySelectorAll<HTMLElement>('.review-file-menu-button')[index]);
   };
+  // The same button must not move its menu with different pointer coordinates.
+  for (const selector of ['.review-file-menu-button', '.review-settings-button']) {
+    let previous: { left: number; top: number } | undefined;
+    for (const fraction of [0.2, 0.8]) {
+      const trigger = document.querySelector<HTMLElement>(selector)!;
+      const anchor = trigger.getBoundingClientRect();
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: anchor.left + anchor.width * fraction, clientY: anchor.top + 3 }));
+      await until(() => !!document.querySelector('.context-menu.is-open'), 'Anchored menu opens at either pointer position');
+      assertAnchored(trigger);
+      const { left, top } = document.querySelector('.context-menu')!.getBoundingClientRect();
+      if (previous) assert(Math.abs(previous.left - left) < 1 && Math.abs(previous.top - top) < 1, 'Pointer offsets cannot move a review menu');
+      previous = { left, top };
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await until(() => !document.querySelector('.context-menu'), 'Escape dismisses the anchored menu');
+    }
+  }
+  checks.push('review-menu-stable-trigger-anchoring');
   await fileMenu();
   assert(document.querySelector<HTMLButtonElement>('[data-context-menu-item="review-open-internal"]')!.disabled, "Missing file manager disables internal open");
   assert(headers()[0].getAttribute('aria-expanded') === 'false', "Menu does not expand the file");
@@ -154,6 +180,9 @@ window.reviewProbe = async () => {
   await mode(true);
   await until(() => !!select('对话轮次'), "History adds its own row");
   const roundSelect = select("对话轮次");
+  const totals = [...roundSelect.options].map(option => [option.value, option.querySelector('.review-turn-counts')?.textContent]);
+  assert(totals.some(([id, text]) => id === seed.latest && text === '+1 −0'), 'Latest history option shows actual recorded +1/-0');
+  assert(totals.some(([id, text]) => id === seed.round && text === '+7 −3'), 'Older option totals include parent and delegate edits only once');
   assert(roundSelect.getBoundingClientRect().height <= 30, "History selector stays compact");
   assert(parseFloat(getComputedStyle(roundSelect).columnGap) >= 10, 'Native trigger reserves space before its arrow');
   for (const count of [1, 3]) {
@@ -190,7 +219,12 @@ window.reviewProbe = async () => {
   assert(!document.querySelector('.review-history-file-body')!.textContent?.includes('修改记录'), "No per-operation title");
   checks.push('one-file-one-copy-and-rollback-no-record-titles');
   assert(!document.querySelector(".review-history-root"), "No extra execution-root row in the diff");
-  assert(document.querySelectorAll(".review-line-number").length > 0, "Old and new line numbers render");
+  for (const row of document.querySelectorAll('.review-change-diff .diff-line:not(.hunk)')) {
+    assert(row.querySelectorAll('.review-line-number').length === 1, 'Inline diff has exactly one line-number gutter');
+    const gutter = row.querySelector('.review-line-number')!;
+    assert(gutter.getAttribute('data-side') === (row.classList.contains('del') ? 'old' : 'new'), 'Single gutter preserves the correct source coordinate');
+  }
+  assert(headers().every(header => header.querySelector('.review-file-type svg')), 'Each review heading has a file-type icon after its disclosure');
   await contextLines(5);
   await until(() => document.querySelector('.review-change-diff')?.textContent?.includes("line_025") === true, "5-line context is loaded from bounded history");
   assert(!document.querySelector('.review-change-diff')?.textContent?.includes("line_001"), "No full-file context is rendered");
@@ -211,6 +245,19 @@ window.reviewProbe = async () => {
   assert(scroller().getBoundingClientRect().width <= 420, "Narrow viewport applied");
   assert(headers()[0].getBoundingClientRect().right <= window.innerWidth + 1, "Narrow header fits");
   assert(Math.abs(headers()[0].getBoundingClientRect().top - scroller().getBoundingClientRect().top - parseFloat(getComputedStyle(scroller()).paddingTop)) <= 2, "Narrow sticky header is visible");
+  await fileMenu();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await until(() => !document.querySelector('.context-menu'), 'Narrow file menu closes');
+  document.querySelector<HTMLButtonElement>('.review-settings-button')!.click();
+  await until(() => !!document.querySelector('.context-menu.is-open'), 'Narrow settings menu opens');
+  assertAnchored(document.querySelector<HTMLElement>('.review-settings-button')!);
+  document.querySelector('[data-context-menu-item="review-context"]')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  await until(() => document.querySelectorAll('[data-context-menu-submenu-item]').length === 3, 'Narrow context submenu opens');
+  const sub = document.querySelector<HTMLElement>('.context-menu-submenu.is-open')!.getBoundingClientRect();
+  assert(sub.left >= 7 && sub.right <= innerWidth - 7, 'Narrow secondary menu stays visible');
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await frame();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await until(() => !document.querySelector('.context-menu'), 'Narrow settings menu closes');
   await action("screenshot", "review-narrow.png");
   checks.push("single-outer-scroll-normal-narrow-sticky-uncovered");
   await action("resize", 920); scroller().scrollTop = 0; await frame();

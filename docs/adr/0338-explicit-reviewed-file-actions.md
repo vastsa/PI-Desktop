@@ -39,7 +39,10 @@ reuse the shared native Select with review-only customizable-picker styles.
 Selected fills follow the sidebar color, and only the list's outer top/bottom
 option corners are rounded. The scope trigger is 24px high and the round field
 28px; both vertically center their text and arrow. Shared primitives, Command
-shell and other selectors keep their defaults.
+shell and other selectors keep their defaults. History options now include
+Host-recorded operation totals before the check (unknown when unavailable),
+without claiming a net diff. Review action menus opt into trigger-relative
+right/bottom placement; pointer-based context menus remain unchanged.
 
 ## Consequences
 

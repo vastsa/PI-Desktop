@@ -32,6 +32,8 @@ import { portalToBody } from "../lib/portal-visibility";
 import { IconCheck, IconChevronRight } from "./icons";
 import {
   placeContextMenu,
+  placeControlContextMenu,
+  type ContextMenuAnchor,
   type ContextMenuPlacement,
   type ContextMenuPoint,
 } from "../lib/context-menu";
@@ -67,12 +69,15 @@ export type ContextMenuRequest = {
    */
   label?: string;
   density?: "compact";
+  /** Opt-in ellipsis/action button alignment; right-click menus remain pointer-based. */
+  anchor?: "bottom-end";
   items: ContextMenuItem[];
 };
 
 export type ContextMenuState = ContextMenuRequest & {
   /** Where the pointer asked for the surface. */
   point: ContextMenuPoint;
+  anchorRect?: ContextMenuAnchor;
   /** Live selection at open time; empty when the caret was collapsed. */
   selection: string;
 };
@@ -183,7 +188,9 @@ export function useContextMenu() {
         target, is stored as empty so Copy still falls back.
       */
       const selection = snapshotSelection(event.currentTarget);
-      setState({ ...request, point: pointForEvent(event), selection });
+      const rect = request.anchor ? event.currentTarget.getBoundingClientRect() : undefined;
+      const anchorRect = rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } : undefined;
+      setState({ ...request, point: pointForEvent(event), anchorRect, selection });
     },
     [],
   );
@@ -215,11 +222,11 @@ export function ContextMenu({
       const menu = menuRef.current;
       if (!menu) return;
       const rect = menu.getBoundingClientRect();
-      const next = placeContextMenu(
-        request.point,
-        { width: rect.width, height: rect.height },
-        { width: window.innerWidth, height: window.innerHeight },
-      );
+      const surface = { width: rect.width, height: rect.height };
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const next = request.anchorRect
+        ? placeControlContextMenu(request.anchorRect, surface, viewport)
+        : placeContextMenu(request.point, surface, viewport);
       setPlacement((previous) =>
         previous && previous.top === next.top && previous.left === next.left
           ? previous

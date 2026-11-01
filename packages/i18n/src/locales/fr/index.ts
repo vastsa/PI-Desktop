@@ -2154,6 +2154,8 @@ sklm: {
       "rollingBack": "Restauration…",
       "rolledBack": "Restauration",
       historyTitle: "Conversation round",
+      unknownTotals: "Nombre de lignes inconnu",
+      recordedTotals: "Ajouts/suppressions enregistrés pour ce tour, pas une différence nette",
       loadingHistory: "Loading review history…",
       historyError: "Could not load review history. Retry.",
       retryHistory: "Retry",

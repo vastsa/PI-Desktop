@@ -15,6 +15,11 @@ export function numberedReviewHunks(hunks: readonly DiffHunk[]): { header: strin
   });
 }
 
+/** One unified gutter: removed lines use old coordinates; others use new. */
+export function reviewLineNumber(line: NumberedReviewLine): number | null {
+  return line.type === "del" ? line.oldLine : line.newLine;
+}
+
 export type ReviewFileGroup = {
   id: string; path: string; root?: string; entries: ReviewChangeEntry[];
   additions: number; deletions: number;

@@ -50,6 +50,9 @@ export type ReviewTurn = {
   createdAt: string;
   title: string;
   changeCount: number;
+  /** Deduplicated recorded operation totals, not a net diff; null/absent means unknown. */
+  additions?: number | null;
+  deletions?: number | null;
 };
 export type ReviewTurnsPage = { turns: ReviewTurn[]; nextBefore?: number };
 export type ReviewHistoryChange = { message: UiMessage; root?: string };

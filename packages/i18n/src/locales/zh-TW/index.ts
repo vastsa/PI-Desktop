@@ -2149,6 +2149,8 @@ sklm: {
       rollingBack: "正在回退…",
       rolledBack: "已回退",
       historyTitle: "对话轮次",
+      unknownTotals: "行數未知",
+      recordedTotals: "本輪已記錄操作的累計新增/刪除行數，非淨差",
       loadingHistory: "正在读取审阅记录…",
       historyError: "审阅记录读取失败，请重试。",
       retryHistory: "重试",

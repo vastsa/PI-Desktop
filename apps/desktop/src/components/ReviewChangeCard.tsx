@@ -9,7 +9,7 @@ import type {
   ReviewContextResult,
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import { numberedReviewHunks, reviewFilePathLabel } from "../lib/review-history";
+import { numberedReviewHunks, reviewFilePathLabel, reviewLineNumber } from "../lib/review-history";
 import { reviewChangeFromMessage } from "../lib/workspace-review";
 import { useAppStore } from "../stores/app-store";
 import { useCopy } from "./Markdown";
@@ -95,10 +95,10 @@ export function ReviewChangeDetails({ message, compact = false, contextLines = 3
               </div>
               {hunk.lines.map((line, lineIndex) => (
                 <div className={cx("diff-line", line.type)} key={lineIndex}>
-                  {numbered && <>
-                    <span className="review-line-number" data-side="old" aria-label={line.oldLine === null ? undefined : t("panel.review.oldLine", { line: line.oldLine })}>{line.oldLine}</span>
-                    <span className="review-line-number" data-side="new" aria-label={line.newLine === null ? undefined : t("panel.review.newLine", { line: line.newLine })}>{line.newLine}</span>
-                  </>}
+                  {numbered && <span className="review-line-number" data-side={line.type === "del" ? "old" : "new"}
+                    aria-label={reviewLineNumber(line) === null ? undefined : t(line.type === "del" ? "panel.review.oldLine" : "panel.review.newLine", { line: reviewLineNumber(line) })}>
+                    {reviewLineNumber(line)}
+                  </span>}
                   <span className="diff-line-sign" aria-hidden>
                     {line.type === "add" ? "+" : line.type === "del" ? "−" : " "}
                   </span>

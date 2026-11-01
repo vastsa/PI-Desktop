@@ -146,6 +146,16 @@ async fn review_rpc_latest_turn_late_delegate_dedup_roots_and_restart() {
         .await;
     assert_eq!(older["turns"][0]["id"], "u1");
     assert_eq!(older["turns"][0]["changeCount"], 3);
+    assert_eq!(page["turns"][0]["additions"], second.additions);
+    assert_eq!(page["turns"][0]["deletions"], second.deletions);
+    assert_eq!(
+        older["turns"][0]["additions"],
+        first.additions + late.additions + old.additions
+    );
+    assert_eq!(
+        older["turns"][0]["deletions"],
+        first.deletions + late.deletions + old.deletions
+    );
     assert!(older.get("nextBefore").is_none());
     let changes = f
         .call("review.changes", json!({"snapshotId":late.snapshot_id}))
@@ -282,6 +292,9 @@ async fn review_rpc_filters_invalid_evidence_and_marks_oversized_hunks() {
         true
     );
     assert!(serde_json::to_vec(&result).unwrap().len() < 32 * 1024);
+    let catalog = f.call("review.turns", json!({})).await;
+    assert_eq!(catalog["turns"][0]["additions"], review.additions);
+    assert_eq!(catalog["turns"][0]["deletions"], review.deletions);
     let orphan = f.capture(f.root.path(), "orphan", "orphan result\n");
     f.tool("orphan", json!(orphan), Some("missing-legacy-task"), None)
         .await;
@@ -770,5 +783,23 @@ async fn review_rollbacks_wait_for_active_host_file_mutations() {
         );
         assert_eq!(budget.snapshot().active, 0);
         assert_eq!(budget.snapshot().queued, 0);
+    }
+}
+
+#[tokio::test]
+async fn review_turn_totals_do_not_invent_binary_or_truncated_line_counts() {
+    let f = Fixture::new().await;
+    for (id, binary, truncated) in [("binary-round", true, false), ("large-round", false, true)] {
+        f.user(id, None).await;
+        let mut change = f.capture(f.root.path(), id, id);
+        change.binary = binary;
+        change.truncated = truncated;
+        f.tool(id, json!(change), None, None).await;
+    }
+    let page = f.call("review.turns", json!({})).await;
+    for turn in page["turns"].as_array().unwrap() {
+        assert_eq!(turn["changeCount"], 1);
+        assert!(turn["additions"].is_null());
+        assert!(turn["deletions"].is_null());
     }
 }

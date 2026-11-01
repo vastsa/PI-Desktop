@@ -19465,10 +19465,15 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   `apps/desktop/test/review-preferences.test.mjs`.
 - Expected: latest skips no-edit rounds; delegates belong to their original user
   round; all file records are accessible; old/new numbers and bounded immutable context
-  agree; no full after-image is cached; only the outer review scrolls; headers stick without toolbar overlap in
+  agree; one gutter uses old numbers for deletions and new numbers otherwise;
+  file-type glyphs match between Review and turn summaries; both ellipsis menus
+  retain trigger-relative placement across click points and fit narrow windows;
+  no full after-image is cached; only the outer review scrolls; headers stick without toolbar overlap in
   normal/narrow layouts; copy and conflict protection survive; history restores.
   Toggle checks trail labels, summary dots have no circle, history options contain
-  only date/time and fit a compact arrow-safe field, file headers have no idle
+  date/time plus true per-round recorded totals before the check and fit an
+  arrow-safe field. Unknown/binary/oversized counts are not shown as zero.
+  File headers have no idle
   fill, and no execution-root row appears. File menus disable internal open when
   the plugin is absent, open its loaded view when available, and pass the resolved
   current file and session to external open. The third action, Open folder,
@@ -19485,7 +19490,7 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   interior edges are square, and a single row has all four corners. Verify native
   ArrowUp/ArrowDown, Enter, Escape/focus retention and close-after-selection;
   the scope trigger is 24px high, the round field stays 28px high, and both
-  vertically center their text and arrow. Round labels show only date/time with
+  vertically center their text and arrow. Round labels show date/time and recorded totals with
   reserved trigger-arrow space.
   The long-file fixture has 3100 lines with local edits: unchanged head/tail do
   not consume the LCS matrix budget, while original hunk coordinates, 1/3/5-line

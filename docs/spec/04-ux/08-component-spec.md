@@ -4630,8 +4630,11 @@ menu with 1/3/5 (first-use default 3); the choice is profile-wide, remembered
 across sessions, panel reopening and application restarts. Invalid or missing
 preferences use 3, and unavailable storage never blocks the current selection.
 No context selector is shown in the main toolbar.
-Toggle checks appear on the right. History options show only date and time in
-a compact selector with reserved arrow space. File headings have no permanent
+Toggle checks appear on the right. History options show date/time on the left
+and Host-recorded added/deleted line totals on the right, before the check.
+Totals count each successful native operation once, including delegated evidence,
+and do not claim a net diff. Binary, originally truncated or missing counts show
+unknown instead of invented zeros. The selector reserves arrow space. File headings have no permanent
 button fill or border; execution roots are not rendered as extra diff rows.
 A separate file ellipsis offers Open internally (disabled without the loaded
 File Manager view; never auto-enables it), Open externally (OS default app),
@@ -4654,14 +4657,21 @@ blue). Only the first option's upper and last option's lower corners are rounded
 interior edges are square, including when an interior row is selected or hovered.
 A single option has all four outer corners. The scope trigger is 24px high; the
 round field stays 28px high. Both vertically center their text and arrow. Round
-labels show date/time only with reserved arrow space. Native keyboard selection,
+labels retain date/time and recorded counts with reserved arrow space. Native keyboard selection,
 Escape dismissal and focus remain browser-owned. Shared primitives and the AI
 Command shell selector are unchanged.
 Only file action menus opt into compact density. Recorded operations have no
 numbered title or dividing rule. One footer per file copies all its recorded
 hunks or requests a Host-preflighted file rollback; chat's inline actions remain
 unchanged. The copied sequence is not represented as a net diff.
-Diff rows show old/new line numbers, and Word wrap toggles wrapping without
+Review headings and turn-summary file rows share compact 14px file-type glyphs
+(Markdown, JSON, Python, code and document), while status stays in accessible
+labels. Both Review ellipsis menus anchor to the trigger right edge, 4px below;
+when space is insufficient they flip above and clamp within the viewport.
+Pointer position within a button cannot move the menu. They remain body portals,
+and ordinary right-click menus retain pointer placement.
+Diff rows have one line-number gutter: deletions use old coordinates, additions
+and context use new coordinates; EOF markers have no number. Word wrap toggles wrapping without
 introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain

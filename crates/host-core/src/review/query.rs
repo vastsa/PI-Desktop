@@ -53,6 +53,7 @@ struct Turn {
     title: String,
     changes: Vec<Value>,
     snapshots: HashSet<String>,
+    totals: Option<(u64, u64)>,
 }
 
 fn field<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
@@ -237,6 +238,7 @@ fn collect(db: &Database, session_id: &str, workspace_root: Option<&Path>) -> Re
                 title,
                 changes: Vec::new(),
                 snapshots: HashSet::new(),
+                totals: Some((0, 0)),
             });
             if let Some(turn) = indexed.get(&record.id) {
                 turn_users.entry(turn.clone()).or_insert(turns.len() - 1);
@@ -278,6 +280,19 @@ fn collect(db: &Database, session_id: &str, workspace_root: Option<&Path>) -> Re
                 project(db, session_id, record, block, raw, workspace_root)?
             {
                 if seen.insert(snapshot.clone()) {
+                    // Sum only deduplicated successful evidence. Original preview limits
+                    // mean unknown counts; transport-only hunk trimming does not.
+                    turns[turn].totals = turns[turn].totals.and_then(|(adds, dels)| {
+                        if raw.get("binary").and_then(Value::as_bool) == Some(true)
+                            || raw.get("truncated").and_then(Value::as_bool) == Some(true)
+                        {
+                            return None;
+                        }
+                        let additions = adds.checked_add(raw.get("additions")?.as_u64()?)?;
+                        let deletions = dels.checked_add(raw.get("deletions")?.as_u64()?)?;
+                        (additions <= 9_007_199_254_740_991 && deletions <= 9_007_199_254_740_991)
+                            .then_some((additions, deletions))
+                    });
                     turns[turn].snapshots.insert(snapshot);
                     turns[turn].changes.push(projected);
                 }
@@ -325,7 +340,9 @@ pub(crate) fn execute(
             .map(|turn| {
                 json!({
                     "id": turn.id, "userMessageId": turn.id, "createdAt": turn.created_at,
-                    "title": turn.title, "changeCount": turn.changes.len()
+                    "title": turn.title, "changeCount": turn.changes.len(),
+                    "additions": turn.totals.map(|totals| totals.0),
+                    "deletions": turn.totals.map(|totals| totals.1)
                 })
             })
             .collect();

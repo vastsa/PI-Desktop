@@ -2174,6 +2174,8 @@ sklm: {
       rollingBack: "Rolling back…",
       rolledBack: "Rolled back",
       historyTitle: "Conversation round",
+      unknownTotals: "Line counts unknown",
+      recordedTotals: "Recorded additions/deletions across this round’s operations, not a net diff",
       loadingHistory: "Loading review history…",
       historyError: "Could not load review history. Retry.",
       retryHistory: "Retry",

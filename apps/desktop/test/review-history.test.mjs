@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { numberedReviewHunks, groupReviewFiles, readReviewPages, reviewFilePathLabel } from "../src/lib/review-history.ts";
+import { reviewLineNumber, numberedReviewHunks, groupReviewFiles, readReviewPages, reviewFilePathLabel } from "../src/lib/review-history.ts";
 
 function entry(id, path = "a.ts", root) {
   return { root, message: { id, role: "tool", content: "", createdAt: "2026-10-30", toolName: "Edit", toolStatus: "success", toolResult: { details: { root: "workspace", review: { version: 1, snapshotId: id, messageId: id, path, operation: "edit", status: "modified", state: "active", additions: 1, deletions: 1, hunks: [], reversible: true } } } } };
@@ -52,4 +52,9 @@ test("outside-workspace path labels keep only three dots, slash and basename", (
   }
   assert.equal(reviewFilePathLabel("src/local.ts"), "src/local.ts");
   assert.equal(reviewFilePathLabel("src/../local.ts"), "src/../local.ts");
+});
+
+test("one inline gutter uses old numbers only for deletions, new numbers otherwise", () => {
+  const [hunk] = numberedReviewHunks([{ header: "@@ -8,2 +12,2 @@", lines: [{ type: "del", text: "old" }, { type: "add", text: "new" }, { type: "context", text: "same" }, { type: "context", text: "\\ No newline at end of file" }] }]);
+  assert.deepEqual(hunk.lines.map(reviewLineNumber), [8, 12, 13, null]);
 });
