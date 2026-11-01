@@ -137,7 +137,7 @@ fn refusal_wire(refusal: TodoRefusal) -> (&'static str, &'static str, bool) {
         TodoRefusal::SessionNotFound => ("NOT_FOUND", "session not found", false),
         TodoRefusal::SessionNotAgent => (
             "TOOL_DISABLED_IN_PLAN",
-            "TodoWrite requires Agent mode",
+            "TodoWrite requires Agent or Goal mode",
             true,
         ),
         TodoRefusal::TurnMissing => (
@@ -574,16 +574,15 @@ mod tests {
         // Another session's running turn cannot be borrowed.
         let other = harness.session("agent").await;
         let other_turn = harness.begin_turn(&other).await;
-        assert_refused(
-            &harness
-                .call(
-                    "tools.execute",
-                    write_call(&session_id, &other_turn, items(&["x"])),
-                )
-                .await
-                .unwrap(),
-            "TOOL_TURN_CANCELLED",
-        );
+        let foreign = harness
+            .call(
+                "tools.execute",
+                write_call(&session_id, &other_turn, items(&["x"])),
+            )
+            .await
+            .unwrap_err();
+        // Immutable execution authority rejects foreign turns before dispatch.
+        assert_eq!(foreign.data.unwrap()["errorCode"], "GOAL_TURN_STALE");
         assert!(harness.events().is_empty(), "no refusal emitted an event");
         assert_eq!(harness.snapshot(&session_id).await["revision"], json!(0));
 
@@ -598,9 +597,8 @@ mod tests {
         }
         assert!(harness.events().is_empty());
 
-        // Plan and Goal are denied no matter the permission mode, until the
-        // approved session switches to agent.
-        for mode in ["plan", "goal"] {
+        // Plan is denied until the approved session switches to agent.
+        for mode in ["plan"] {
             let contract = harness.session(mode).await;
             assert_refused(
                 &harness

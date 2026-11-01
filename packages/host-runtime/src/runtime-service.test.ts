@@ -22,6 +22,8 @@ class FakeHost implements RuntimeHostLink {
         return {} as T;
       case "session.get":
         return { session: { ...this.session, id: params.id, messages: this.messages.get(String(params.id)) ?? [] } } as T;
+      case "session.getTurnMode":
+        return { mode: this.calls.findLast(call => call.method === "session.beginTurn")?.params.goalTurn ? "goal" : this.session.mode } as T;
       case "session.beginTurn":
         this.turnCounter += 1;
         return { turnId: `turn-${this.turnCounter}` } as T;

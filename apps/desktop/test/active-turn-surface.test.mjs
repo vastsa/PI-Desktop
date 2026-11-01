@@ -40,17 +40,15 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(transcript, /aria-describedby=\{retryErrorDetailsId\}/);
   assert.match(transcript, /state\.agentStatuses\[sessionId\]\?\.activity/);
   assert.match(transcript, /const specializedActivity = agentActivity/);
-  assert.match(transcript, /!hasSpecializedActivity/);
-  assert.match(transcript, /const showWorking =/);
+  assert.match(transcript, /const statusIndicator = transcriptRuntimeIndicator/);
+  assert.match(transcript, /const showWorking = statusIndicator === "working"/);
   assert.match(transcript, /\{showWorking \? <WorkingIndicator \/> : null\}/);
   assert.match(transcript, /function PlanningIndicator\(/);
   assert.match(transcript, /data-testid="planning-indicator"/);
-  assert.match(transcript, /const showPlanning =/);
+  assert.match(transcript, /const showPlanning = statusIndicator === "planning"/);
   assert.match(transcript, /\{showPlanning \? <PlanningIndicator kind=\{planningKind\} \/> : null\}/);
-  assert.match(
-    transcript,
-    /planningState === "planning"[\s\S]*!hasSpecializedActivity/,
-  );
+  assert.match(transcript, /input\.mode === "plan" && input\.planningState === "planning"/);
+  assert.match(transcript, /input\.hasSpecializedActivity\) return "activity"/);
   const planningBlock =
     transcript.match(/function PlanningIndicator\([\s\S]*?\n\}/)?.[0] ?? "";
   assert.match(planningBlock, /working-indicator-mark/);

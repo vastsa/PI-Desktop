@@ -1,4 +1,5 @@
 import type {
+  GoalBudget, GoalControlRequest, GoalResult, GoalTurnContext,
   AgentEvent,
   AgentEventEnvelope,
   AgentPromptAttachment,
@@ -47,6 +48,7 @@ import {
   MemoryQueueStore,
   RandomIds,
   SystemClock,
+  type GoalPort,
   type Clock,
   type IdSource,
   type Principal,
@@ -61,6 +63,7 @@ import { TurnQueue } from "./turn-queue.js";
 
 export type AgentHostOptions = {
   runtime: RuntimePort;
+  goals?: GoalPort;
   sessions: SessionPort;
   approvals: ApprovalPort;
   queueStore?: QueueStore;
@@ -135,6 +138,7 @@ export type AttachResult = {
 };
 
 type TurnRecord = RacpTurn & {
+  goalTurn?: GoalTurnContext;
   /** A queued input consumed by another turn cannot be canceled retroactively. */
   deliveredIntoTurnId?: string;
   /** Only this input is reserved while runtime delivery is in flight. */
@@ -184,6 +188,10 @@ export class AgentHost {
   readonly policy: RacpPolicy;
 
   private readonly runtime: RuntimePort;
+  private readonly goals?: GoalPort;
+  private readonly autonomousSessions = new Set<string>();
+  private readonly userAdmissions = new Map<string, number>();
+  private readonly drainTasks = new Map<string, Promise<void>>();
   private readonly sessions: SessionPort;
   private readonly clock: Clock;
   private readonly ids: IdSource;
@@ -204,6 +212,7 @@ export class AgentHost {
 
   constructor(options: AgentHostOptions) {
     this.runtime = options.runtime;
+    this.goals = options.goals;
     this.sessions = options.sessions;
     this.clock = options.clock ?? new SystemClock();
     this.ids = options.ids ?? new RandomIds();
@@ -462,13 +471,133 @@ export class AgentHost {
 
   async startTurn(principal: Principal, params: StartTurnParams): Promise<StartTurnResult> {
     this.requireRole(principal, "turn/start");
-    return this.withAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params));
+    return this.withUserAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params));
+  }
+
+  /** Explicit user ingress. Merely changing session.mode never calls this. */
+  async startGoal(principal: Principal, params: StartTurnParams & { budget?: GoalBudget }): Promise<StartTurnResult> {
+    this.requireGoalOwner(principal);
+    return this.withUserAdmission(params.sessionId, async () => {
+      const goals = this.requireGoals();
+      await this.requireSession(params.sessionId);
+      if (params.input.sessionMessageId || params.input.voiceOrigin) {
+        throw racpError("FORBIDDEN", "A goal requires direct user input");
+      }
+      const key = params.idempotencyKey ?? params.context.idempotencyKey;
+      if (key && this.idempotency.has(`${principal.subject}|${key}`)) {
+        return this.startTurnAdmitted(principal, params);
+      }
+      const previous = await goals.get(params.sessionId);
+      const busy = this.isBusy(this.state(params.sessionId));
+      if (busy && !previous?.activeTurnId) {
+        throw racpError("AGENT_BUSY", "Finish the current non-Goal work before starting a goal");
+      }
+      // Persist replacement before interrupting the old runtime. Old claims keep
+      // their own accounting identity until settlement; the new claim waits.
+      const goal = await goals.start(params.sessionId, params.input.text, params.budget);
+      this.autonomousSessions.add(params.sessionId);
+      if (busy) {
+        const queued = await this.startTurnAdmitted(principal, params, true, undefined, goal.id);
+        await this.runtime.abort(params.sessionId, undefined, "goal-replaced");
+        return queued;
+      }
+      this.autonomousSessions.add(params.sessionId);
+      const claim = await goals.claim(goal, "user-goal");
+      if (!claim) throw racpError("CONFLICT", "The goal cannot start another turn");
+      return this.dispatchGoal(principal, params, claim);
+    });
+  }
+
+  async controlGoal(principal: Principal, request: GoalControlRequest): Promise<GoalResult> {
+    this.requireGoalOwner(principal);
+    const goals = this.requireGoals();
+    // Pause wins even if its persistence fails or admission is still in flight.
+    if (["pause", "stop", "cancel", "delete"].includes(request.action)) goals.inhibit(request.sessionId);
+    const result = await this.withAdmission(request.sessionId, async () => {
+      try {
+        return await goals.control(request);
+      } finally {
+        if (request.action === "stop" || request.action === "cancel" || request.action === "delete") {
+          await this.runtime.abort(request.sessionId);
+        }
+      }
+    });
+    if (request.action === "resume") {
+      this.autonomousSessions.add(request.sessionId);
+      await this.drain(request.sessionId);
+    }
+    return result;
+  }
+
+  /** Explicit Stop fence, also used by local non-Goal stop controls. */
+  async pauseGoal(sessionId: string): Promise<void> {
+    if (!this.goals) return;
+    this.goals.inhibit(sessionId);
+    const goal = await this.goals.get(sessionId);
+    if (goal?.status === "active") await this.goals.control({
+      sessionId, goalId: goal.id, expectedRevision: goal.revision, action: "stop",
+    });
+  }
+
+  private requireGoalOwner(principal: Principal): void {
+    if (!principal.roles.includes("owner") || !principal.pairedDevice) {
+      throw racpError("FORBIDDEN", "Only a paired user owner can authorize autonomous goals");
+    }
+  }
+
+  private requireGoals(): GoalPort {
+    if (!this.goals) throw racpError("AGENT_UNAVAILABLE", "Goal coordination is unavailable");
+    return this.goals;
+  }
+
+  private assertGoalDispatchAllowed(sessionId: string): void {
+    if (this.requireGoals().isInhibited(sessionId)) {
+      throw racpError("CONFLICT", "Goal dispatch was stopped before runtime admission");
+    }
+  }
+
+  private async dispatchGoal(principal: Principal, params: StartTurnParams, claim: GoalTurnContext): Promise<StartTurnResult> {
+    try {
+      return await this.startTurnAdmitted(principal, params, false, claim);
+    } catch (error) {
+      await this.requireGoals().fail(params.sessionId, claim, error);
+      throw error;
+    }
+  }
+
+  private async continueGoal(sessionId: string): Promise<void> {
+    const goals = this.goals;
+    if (!goals || !this.autonomousSessions.has(sessionId) || goals.isInhibited(sessionId) || this.userAdmissions.has(sessionId)) return;
+    try {
+      await this.requireSession(sessionId);
+      const goal = await goals.get(sessionId);
+      if (!goal || this.userAdmissions.has(sessionId) || this.queue.peek(sessionId)) return;
+      const claim = await goals.claim(goal, "goal-continuation");
+      if (!claim) return;
+      await this.dispatchGoal({ subject: "internal-goal", roles: ["owner"], pairedDevice: true }, {
+        sessionId, input: { text: "Continue the authorized goal using its persisted criteria and remaining budget." },
+        context: { requestId: claim.turnId },
+      }, claim);
+    } catch (error) {
+      goals.inhibit(sessionId);
+      const state = this.state(sessionId);
+      this.emit(state, "turn.activity", { goalError: error instanceof Error ? error.message : "Goal continuation failed" }, {});
+    }
+  }
+
+  private async withUserAdmission<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    this.userAdmissions.set(sessionId, (this.userAdmissions.get(sessionId) ?? 0) + 1);
+    try { return await this.withAdmission(sessionId, operation); }
+    finally {
+      const remaining = (this.userAdmissions.get(sessionId) ?? 1) - 1;
+      if (remaining) this.userAdmissions.set(sessionId, remaining); else this.userAdmissions.delete(sessionId);
+    }
   }
 
   /** Append to the shared Host queue even when no turn is currently running. */
   async enqueueTurn(principal: Principal, params: StartTurnParams): Promise<StartTurnResult> {
     this.requireRole(principal, "turn/start");
-    const result = await this.withAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params, true));
+    const result = await this.withUserAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params, true));
     await this.drain(params.sessionId);
     return {
       ...result,
@@ -481,6 +610,8 @@ export class AgentHost {
     principal: Principal,
     params: StartTurnParams,
     forceQueue = false,
+    goalTurn?: GoalTurnContext,
+    goalStartId?: string,
   ): Promise<StartTurnResult> {
     const summary = await this.requireSession(params.sessionId);
     if (
@@ -517,6 +648,15 @@ export class AgentHost {
     });
     const admission: RacpTurnAdmission = forceQueue ? "queue" : params.admission ?? "reject_if_busy";
     const busy = this.isBusy(state);
+    if (summary.mode === "goal" && !goalTurn && !goalStartId) {
+      // Collaboration and other autonomous ingress cannot become user Goal work,
+      // even when the caller uses the Desktop owner principal.
+      this.requireGoalOwner(principal);
+      if (params.input.sessionMessageId || params.input.voiceOrigin ||
+          !this.autonomousSessions.has(state.id) || (!busy && !forceQueue)) {
+        throw racpError("FORBIDDEN", "Goal work requires explicit user Goal admission");
+      }
+    }
     let turn: TurnRecord;
     if (busy || forceQueue) {
       if (admission === "reject_if_busy") {
@@ -526,6 +666,7 @@ export class AgentHost {
         id: this.ids.next("turn"),
         sessionId: state.id,
         principalSubject: principal.subject,
+        ...(goalStartId ? { goalStartId } : {}),
         content: params.input.text,
         ...(params.input.sessionMessageId ? { sessionMessageId: params.input.sessionMessageId } : {}),
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
@@ -547,6 +688,8 @@ export class AgentHost {
       this.emit(state, "turn.queued", { turn: this.toRacpTurn(state, turn) }, { turnId: turn.id });
       this.notifyQueue(state.id);
     } else {
+      // No await may separate this stop fence from the runtime handoff.
+      if (goalTurn) this.assertGoalDispatchAllowed(state.id);
       const started = await this.runtime.prompt({
         sessionId: state.id,
         content: params.input.text,
@@ -557,15 +700,19 @@ export class AgentHost {
         effectivePermissionMode,
         ...(idempotencyKey ? { idempotencyKey } : {}),
         principal,
+        ...(goalTurn ? { goalTurn } : {}),
       });
       turn = this.ensureTurn(state, started.turnId);
+      if (goalTurn) turn.goalTurn = goalTurn;
       if (!isTerminal(turn.status) && !isActive(turn.status)) turn.status = "running";
       turn.admission = admission;
       turn.effectivePermissionMode = effectivePermissionMode;
       turn.idempotencyKey = idempotencyKey;
       turn.principalSubject = principal.subject;
-      state.activeTurnId = turn.id;
-      state.status = "running";
+      if (!isTerminal(turn.status)) {
+        state.activeTurnId = turn.id;
+        state.status = "running";
+      }
     }
     if (idempotencyKey) this.rememberIdempotency(`${principal.subject}|${idempotencyKey}`, {
       turnId: turn.id,
@@ -896,6 +1043,15 @@ export class AgentHost {
   ): void {
     const state = this.state(sessionId);
     const turn = state.turns.get(this.resolveTurnId(state, turnId));
+    if (turn?.goalTurn && options.error &&
+        ["AGENT_SIDECAR_CRASHED", "AGENT_SIDECAR_OOM"].includes(options.error.code)) {
+      const claim = turn.goalTurn;
+      turn.goalTurn = undefined;
+      this.goals?.inhibit(sessionId);
+      void this.requireGoals().fail(sessionId, claim, new Error(options.error.message)).catch((error: unknown) => {
+        this.emit(state, "turn.activity", { goalError: error instanceof Error ? error.message : "Goal crash settlement failed" }, {});
+      });
+    }
     if (turn && isActive(turn.status)) {
       this.closeTurn(state, turn, {
         status,
@@ -911,8 +1067,8 @@ export class AgentHost {
   }
 
   /** Let the queue of an idle session run, e.g. after the runtime became free. */
-  kick(sessionId: string): void {
-    void this.drain(sessionId);
+  kick(sessionId: string): Promise<void> {
+    return this.drain(sessionId);
   }
 
   // -------------------------------------------------------------------------
@@ -936,6 +1092,8 @@ export class AgentHost {
       meta: { turnId?: string; parentToolCallId?: string; nestedParentToolCallId?: string; agentName?: string };
     },
   ): void {
+    if (turn && isTerminal(turn.status)) return;
+    if (turn && state.activeTurnId && state.activeTurnId !== turn.id) return;
     if (turn) {
       turn.status = outcome.status;
       turn.endedAt = outcome.endedAt;
@@ -974,13 +1132,41 @@ export class AgentHost {
         const head = this.queue.peek(sessionId);
         const headTurn = head ? this.ensureTurn(state, head.id) : undefined;
         if (headTurn?.deliveryPending) return;
-        if (headTurn?.deliveredIntoTurnId) {
+        if (headTurn && (headTurn.deliveredIntoTurnId || headTurn.runtimeTurnId || isTerminal(headTurn.status))) {
           if (!(await this.removeDeliveredInput(state, headTurn.id))) return;
           continue;
         }
-        const record = await this.queue.shift(sessionId);
+        if (!head) { await this.continueGoal(sessionId); return; }
+        // Existing user input wins, but remains subject to the same persisted
+        // Goal claim, pause fence and budget as an automatic continuation.
+        let goalTurn: GoalTurnContext | undefined;
+        const summary = await this.requireSession(sessionId);
+        if (head.goalStartId || summary.mode === "goal") {
+          if (!this.goals || !this.autonomousSessions.has(sessionId) ||
+              this.goals.isInhibited(sessionId) || head.sessionMessageId || head.voiceOrigin) return;
+          const goal = await this.goals.get(sessionId);
+          if (!goal) return;
+          if (head.goalStartId && head.goalStartId !== goal.id) {
+            // An explicitly replaced startup must never start a later Goal.
+            const stale = this.ensureTurn(state, head.id);
+            stale.status = "canceled";
+            await this.removeDeliveredInput(state, head.id);
+            continue;
+          }
+          goalTurn = await this.goals.claim(goal, "user-goal");
+          if (!goalTurn) return;
+          try { this.assertGoalDispatchAllowed(sessionId); }
+          catch (error) {
+            await this.goals.fail(sessionId, goalTurn, error);
+            return;
+          }
+        }
+        // Keep Goal input durable and in order until the synchronous handoff;
+        // an asynchronous dequeue before the fence could lose stopped user work.
+        const record = goalTurn ? head : await this.queue.shift(sessionId);
         if (!record) return;
         const turn = this.ensureTurn(state, record.id);
+        if (goalTurn) turn.goalTurn = goalTurn;
         this.startingQueuedTurns.set(sessionId, turn);
         try {
           const started = await this.runtime.prompt({
@@ -993,15 +1179,18 @@ export class AgentHost {
             effectivePermissionMode: record.effectivePermissionMode,
             ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
             principal: { subject: record.principalSubject, roles: ["controller"] },
+            ...(goalTurn ? { goalTurn } : {}),
           });
           turn.runtimeTurnId = started.turnId;
           this.runtimeAliases.set(started.turnId, turn.id);
-          if (!isActive(turn.status)) turn.status = "running";
+          if (goalTurn) await this.removeDeliveredInput(state, turn.id);
+          if (!isTerminal(turn.status) && !isActive(turn.status)) turn.status = "running";
           turn.queuePosition = undefined;
           turn.startedAt = turn.startedAt ?? new Date(this.clock.now()).toISOString();
-          state.activeTurnId = turn.id;
-          state.status = "running";
-          this.renumberQueue(state);
+          if (!isTerminal(turn.status)) {
+            state.activeTurnId = turn.id;
+            state.status = "running";
+          }
           this.renumberQueue(state);
           this.notifyQueue(sessionId);
           // The rest of the promoted block joins this turn as user input, so the
@@ -1010,6 +1199,7 @@ export class AgentHost {
           void this.deliverPromotedBlock(state, started.turnId);
           return;
         } catch (error) {
+          if (goalTurn) await this.requireGoals().fail(sessionId, goalTurn, error);
           turn.status = "failed";
           turn.endedAt = new Date(this.clock.now()).toISOString();
           turn.error = {
@@ -1019,6 +1209,7 @@ export class AgentHost {
             traceId: "",
           };
           this.emit(state, "turn.failed", { turn: this.toRacpTurn(state, turn) }, { turnId: turn.id });
+          if (goalTurn) await this.removeDeliveredInput(state, turn.id);
           this.renumberQueue(state);
           this.notifyQueue(sessionId);
         } finally {
@@ -1027,7 +1218,15 @@ export class AgentHost {
       }
   }
 
-  private async drain(sessionId: string): Promise<void> {
+  private drain(sessionId: string): Promise<void> {
+    const existing = this.drainTasks.get(sessionId);
+    if (existing) { this.drainPending.add(sessionId); return existing; }
+    const task = Promise.resolve().then(() => this.drainLoop(sessionId)).finally(() => this.drainTasks.delete(sessionId));
+    this.drainTasks.set(sessionId, task);
+    return task;
+  }
+
+  private async drainLoop(sessionId: string): Promise<void> {
     if (this.draining.has(sessionId)) {
       // The pass already running may have decided to stop before this request
       // arrived — the session was still busy, or the queue had not been written
@@ -1058,7 +1257,7 @@ export class AgentHost {
     for (let attempt = 0; attempt < PROMOTED_DELIVERY_ATTEMPTS; attempt += 1) {
       const head = await this.withAdmission(state.id, async () => {
         const record = this.queue.peek(state.id);
-        if (!record || record.priority === undefined) return undefined;
+        if (!record || record.priority === undefined || record.goalStartId) return undefined;
         if (this.activeRuntimeTurnId(state) !== runtimeTurnId) return undefined;
         const active = state.turns.get(state.activeTurnId!);
         const externalDesktopTurn = active?.principalSubject === undefined && active?.runtimeTurnId === undefined;
@@ -1401,7 +1600,7 @@ export class AgentHost {
     const alias = this.runtimeAliases.get(runtimeTurnId);
     if (alias) return alias;
     // prompt() can emit events before returning its runtime id. The starting
-    // record has already left the queue; the new head belongs to another turn.
+    // record owns these events, whether dequeue has completed or is deferred.
     const starting = this.startingQueuedTurns.get(state.id);
     if (starting && !starting.runtimeTurnId && !state.turns.has(runtimeTurnId)) {
       starting.runtimeTurnId = runtimeTurnId;

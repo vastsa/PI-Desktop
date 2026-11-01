@@ -5,48 +5,66 @@
 
 ## 0. 持久运行模式与实时规划状态
 
-每个会话仅保留一种操作模式：`agent | plan | goal`。那里
-是一
-pi Agent。实时计划状态和执行状态是 host/runtime 投影。
-Plan 和 Goal 是**合约模式**：两者在执行之前协商提案
-并共享一项预测、一项批准行和一项硬否认 (**D198**)。 `kind`
-(`plan | goal`) 是区分它们的地方，下图读起来是一样的
-将 Goal/Plan 替换为 Plan/Goal：
+每个会话持久化 `agent | plan | goal`，并使用同一个 pi Agent。Plan 保留
+`planning -> awaiting_approval -> Agent queued/running` 流程；拒绝、到期或中断提案
+都不授予执行权限。已有的旧版 Goal 审批保留相同的处理和执行路径。
+新 Goal 工作使用下述独立生命周期，而不是 `PlanningState`。
 
-```text
-Agent / inactive
-  -- user selects Plan while idle OR Agent calls EnterPlanMode --> Plan / planning
-  -- user selects Goal while idle OR Agent calls EnterGoalMode --> Goal / planning
-Plan | Goal / planning
-  -- SubmitPlan | SubmitGoal (title, markdown, question) --> awaiting_approval
-Plan | Goal / awaiting_approval
-  -- approve(permission mode) --> Agent / queued, same Agent continues
-  -- reject | expiry | abort | crash | persistence failure
-       --> same contract mode / planning
-Agent / queued
-  -- dispatcher starts --> Agent / running
-Agent / running
-  -- complete | fail | abort --> Agent / inactive
-```
+## 自主 Goal 生命周期
 
-两种合约模式都保留了权限模式选择器。他们的 `Bash` 政策是
-`ask` 或
-`accept-edits` = 确认，`auto` = 不确认，所以是合约模式
-表达协商意图，但不是严格的只读安全配置文件。
-Write/Edit 和
-在每个 Plan 或 Goal 权限模式下，插件工具仍被主机策略拒绝。
+| 状态 | 含义 / 退出条件 |
+|---|---|
+| `active` | 用户已授权工作；准入流程可领取下一个执行轮 |
+| `paused` | 用户暂停、显式中止或重启；需要用户明确恢复 |
+| `blocked` | 已报告阻塞或执行失败；需要用户明确恢复 |
+| `completed` | 全部已存储标准达成，且版本化模型审计已被接受；终态 |
+| `budget_exhausted` | 下次准入时预算不足；用户可提供足够预算后恢复 |
+| `cancelled` | 用户明确取消；终态 |
 
-这些类型的区别仅在于合同内容和排队执行内容
-指令要求：Plan 建议执行有序步骤，而 Goal
-提出目标陈述、验收标准和界限，及其
-执行持续进行——选择自己的方法——直到每次接受
-标准被验证或边界阻止它。
+只有用户所有者明确启动或恢复，才授权执行。仅选择 Goal 模式不会执行；
+直接在 Goal 模式发送可启动工作，无需 Plan 审批。默认预算为包含初始轮的
+20 个执行轮，不是 20 次工具调用或模型请求。仅在创建目标时快照
+settings.defaultGoalBudget。显式 maxTurns=null 表示无限轮次；没有 maxTokens
+表示无限 Token。已有有限预算即使在默认值改变后也保持不变；
+修改设置或设为无限预算都不产生新的执行授权。
+可选 Token 上限是软限制，在下一次准入时使用已结算的父级和委派用量检查；
+正在执行的工作可能超出上限。
 
-仅允许通过 UI/session API 进行模式和配置更改
-空闲时。批准不是通用工具权限：它是单独的
-主机拥有的状态转换。主机重启会中断每个待批准的任务
-和 queued/running 执行字段，无重放；一个已经批准的
-中断将持久会话保留在 Agent 中。
+共享的 `AgentHost`/`GoalCoordinator` 准入流程串行处理用户队列与 Goal 续跑，
+用户工作优先。Rust revision CAS 和唯一轮次 claim 防止重复启动。
+`goal_turns` 在 `agent_end` 前记录幂等结算；续跑的系统上下文不新增用户转录行。
+目标栏暂停持久化 pauseRequested，让本轮正常结束后再停，不取消当前运行。
+输入框 Stop 和取消先持久化停止状态，再立即中断运行时。切换输入模式不会暂停或恢复目标。
+已接受的目标启动消息是授权，不是普通可撤回提示词；输入框 Stop 保留该消息，不对目标启动快照尝试草稿恢复。普通消息的恢复行为不变。
+发送目标成功后输入模式返回智能体；普通消息和立即发送均不影响续跑。暂停后可执行普通 Agent 任务，再从目标栏恢复，无需切换输入模式。
+Host 持久化实际执行轮次的模式与 Goal claim 绑定，Plan 权限不跟随输入偏好变化。启动时暂停 active 目标并清除中断的 claim，不重放。
+恢复不能与尚未结算的 claim 竞争；completed/cancelled 目标不能恢复。
+
+用户所有者可用 revision CAS 编辑正在运行的非终态目标；打开、关闭或保存编辑器均不暂停或恢复。
+保存替换目标和验收标准，清除旧报告及审计，保留当前 claim、生命周期、预算、用量与耗时。
+目标栏立即显示保存的内容；当前 Host 轮次通过 activeScope 保持原目标和标准，包括同轮后续模型请求和工具。
+下一 Host 轮次才采用新范围，旧轮次的完成报告不能完成编辑后的新目标；尚未保存的内容不影响执行。删除先持久化逻辑墓碑再中断运行，
+只移除当前 Goal 展示，不删除聊天、todo 或 claim。迟到报告不能复活目标；
+迟到用量只结算原 claim。显式发送新目标原子替换未完成旧目标，保留旧 claim 和用量。
+新目标可先持久化，待旧运行和所有 claim 结算后才领取新轮次。队列 goalStartId 保留新目标的显式启动身份，不是执行授权。
+通知携带移除身份和 revision，防止迟到加载复活已删目标或清除新目标。
+Host 持有的活动耗时排除暂停和离线时间，导航后保留；
+恢复可能丢失尚未检查点化的崩溃尾段，而不会虚构耗时。
+
+`GetGoal`/`UpdateGoal` 由 Host 绑定活动 session/goal/turn。报告不能修改范围和预算，
+也不授予暂停、恢复、取消或创建权限。完成报告必须恰好覆盖全部已存储标准，
+每项为 `met` 且证据非空；Host 还要求针对精确原始目标的版本 1 审计，
+要求项非空、全部报告达成并带证据，且没有剩余工作。当前模型必须对完整范围的
+权威当前状态证据进行审计，不能重新定义成功。结构校验失败的报告可以修正，
+但不会完成 Goal。Host 校验的是结构，**不是模型证据的真实性或语义覆盖完整性**。
+
+Goal 使用 Agent 的普通 Write/Edit、Task 和插件策略，包括路径、沙箱、权限、
+授权和拒绝检查；Plan 的硬拒绝保持不变。仍拒绝计划或无人值守方式创建 Goal。
+旧版 `EnterGoalMode` 和 `SubmitGoal` 创建入口禁用；已有审批不会被自动授权，
+也不会迁移为 `session_goals`。
+
+以下其余审批不变量和工件规则适用于 Plan 与已有的**旧版 Goal 审批**，
+不适用于新的自主 Goal 执行。
 
 ## 1. 会话状态
 
@@ -198,15 +216,10 @@ accept_prompt
    fork only a completed assistant prefix outside its running turn
 7. 消息范围的分叉排除后面的行并且从没有源运行时开始
    或提供商缓存状态
-8. Plan、Goal 和 Agent 使用 1 个 pi Agent； Composer-左模式芯片、UI
-   条目，以及
-   `queued`/reject/expiry/interruption 收敛于相同的规划状态，并且
-批准恢复
-   Agent 模式下的 Agent
-9. 合约模式策略仅通过选择的权限模式允许Bash
-   和
-   在 Goal 中拒绝 Write/Edit/plugins，无论 `auto` 或会话授权如何
-   与 Plan 完全相同
+8. Plan、Goal 和 Agent 使用同一个 pi Agent。Plan 审批恢复 Agent 执行；
+   新 Goal 仅在用户授权下，通过独立生命周期启动或恢复。
+9. Plan 保留模式硬拒绝；Goal 遵循普通 Agent 权限策略。
+   旧版审批处理不授予自主循环权限。
 10. SubmitPlan/SubmitGoal 使用以下命令写入精确唯一的 `.pi/<kind>/*.md` 工件
     hash/size，
     保持 title/question 结构化，并且只有 approve/reject 可以解析其
@@ -217,3 +230,13 @@ accept_prompt
 12. Goal 执行在结束前报告每个接受标准的结果
     转牌圈，并且 scheduled/unattended Goal 跑路被拒绝
     `PLAN_REQUIRES_INTERACTIVE_SESSION` 与 Plan 完全相同
+
+## Goal 实时控制与内部规划
+
+目标栏暂停保留本轮 claim；结算前不认领下一轮。输入框 Stop 立即暂停并中断。
+预算操作独立于恢复：本轮运行时存为 pendingBudget，用量与 claim 结算后、下一轮准入前生效；
+空闲时立即生效，不修改全局默认值，也不授权恢复。重启清理中断 claim 时应用待生效预算，仍暂停且不重放。
+
+模型可自行调用 EnterPlanMode，在当前 Goal 内部只读规划，禁止 Write/Edit、Bash、插件修改和委托；
+再以 SubmitPlan 提交具体计划与自检后直接执行，不经过用户确认。此阶段不创建 plans 审批记录，
+不改变持久模式、范围、预算或普通执行权限。不同根 Host turnId 分为独立助手轮次，无伪造用户消息。

@@ -393,7 +393,7 @@ async fn rejects_dotdot_and_symlink_escapes_from_the_visualization_root() {
 }
 
 #[test]
-fn visualization_writes_skip_prompts_except_remote_and_contract_modes() {
+fn visualization_writes_use_agent_permissions_in_goal_but_not_plan_or_remote() {
     let f = fixture();
     let roots = local_contained_roots(&f.data_dir, "s1", false);
     let args = json!({ "path": f.visualization.join("a.html").to_string_lossy() });
@@ -406,8 +406,11 @@ fn visualization_writes_skip_prompts_except_remote_and_contract_modes() {
     assert!(!contained_write_auto_allowed(
         false, "plan", &roots, "Write", &args
     ));
-    assert!(!contained_write_auto_allowed(
+    assert!(contained_write_auto_allowed(
         false, "goal", &roots, "Write", &args
+    ));
+    assert!(!contained_write_auto_allowed(
+        true, "goal", &roots, "Write", &args
     ));
     assert!(!contained_write_auto_allowed(
         true, "agent", &roots, "Write", &args

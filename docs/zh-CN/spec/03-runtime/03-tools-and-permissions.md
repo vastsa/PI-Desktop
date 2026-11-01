@@ -74,9 +74,9 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | 默认模式 | Agent |
 | Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
 | Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
-| Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
-| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
-| 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
+| Goal 工具 | 普通 Agent 工具加上绑定的 GetGoal / UpdateGoal；不提供计划自动化工具 |
+| Plan 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
+| 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 本地权限确认 | 无自动截止时间；必须明确决定或取消 |
 | 允许会话范围 | 工具名称 |
 | 重击风格 | 非交互式；具有流输出的选定主机目录外壳 |
@@ -98,8 +98,9 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | `BrowserPreview` | 低 | 在随应用打包的浏览器插件中打开与工作区相关的预览（若 `pi.browser` 被禁用则失败） |
 | `EnterPlanMode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Plan |
 | `SubmitPlan` | 低 | 在新的 `.pi/plan/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
-| `EnterGoalMode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Goal |
-| `SubmitGoal` | 低 | 在新的 `.pi/goal/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
+| `EnterGoalMode` | 低 | 旧版入口已禁用，不能授权新目标 |
+| `SubmitGoal` | 低 | 旧版提交已禁用；已有审批仍可读取、处理和执行 |
+| `GetGoal` / `UpdateGoal` | 低 | 仅限绑定目标的读取和报告；不授予启动、恢复、范围或预算权限 |
 | `Write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
 | `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
 | `Bash` | 高 | 执行命令 |
@@ -110,9 +111,8 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 
 ### 2. 1 延期辅助工具（D185、ADR 0048）
 
-按照 pi 的编码代理默认值，第一个 Agent 请求仅激活
-`Read`、`Bash`、`Edit` 和 `Write`； `Glob` 和 `Grep` 按需加载。
-Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/skill:<skill-id>`
+第一个 Agent 请求包含 `Read`、`Bash`、`Edit`、`Write`、`Glob` 和 `Grep`，
+避免常规项目探索需要额外的发现轮次。Plan 保留读取和检查核心；Goal 使用普通 Agent 工具。`Skill` 有意不作延迟：`/skill:<skill-id>`
 调用会指示模型调用它，而模式中不存在的工具根本无法被调用，因此只要技能目录非空，
 它就会随第一个请求一起发送（D404、ADR 0230）。运行时还注册功能
 无需预先发送其完整模式：
@@ -248,10 +248,9 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
 - **权限。** `Write`/`Edit`，其 `path` 在词汇上位于
   会话的临时根自动允许，无需权限卡 - 他们不能
   触摸项目。词法检查仅跳过提示；执行仍在
-  经过完整的解析器，因此它不是逃逸向量。 Plan 和 Goal 可以
-  不公开 Write/Edit，因此临时自动允许规则无法使这些工具
-  两者均可使用。契约模式 Bash 调用仍可能创建或变异
-  当其权限模式允许时，擦除数据。
+  经过完整的解析器，因此它不是逃逸向量。Plan 拒绝 Write/Edit 执行；
+  Goal 遵循普通 Agent 策略。合约模式的 Bash 调用在权限模式允许时，
+  仍可能创建或修改 scratch 数据。
 - **工件。** 成功的暂存写入不会记录在
   `artifacts` 表；工件驱动的文件选项卡代表工作区
   仅可交付成果，而文件界面仍可浏览活动的
@@ -273,8 +272,9 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
   需要）。
 - 项目切换不会重定向或取消后台会话的工具；
   会话 A 和 B 分别保留在项目 A 和 B 的沙箱中。
-- Temporary/path-less 会话没有工作空间根目录，即使是另一个项目
-  是可见的。如果没有会话项目，高风险工具将不可用。
+- Temporary/path-less 会话仅以自身的 scratch 目录为工作区根，即使另一个项目
+  可见或最近使用过，也绝不继承该项目。Plan 工件提交仍要求持久项目根；
+  Goal 不会获得其他会话的工作区权限。高风险工具仅在临时会话自己的 scratch 根内操作。
 - 无法解析为持久会话的旧调用可能会使用选定的
   仅在兼容性窗口期间托管工作区。
 - 会话 lookup/storage 错误使工具请求失败；它绝不能是
@@ -301,7 +301,7 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
 - **内容。** `Write`/`Edit` 只接受以 `.html` 结尾的单层文件名；该根目录下的其他目标
   返回工具错误。允许 `Read`。
 - **权限。** 在该根目录内的 `Write`/`Edit` 与 scratch 条件相同，免确认自动允许。
-  Plan 和 Goal 不提供 Write/Edit，因此合约模式无法写入这里。结果带
+  Plan 拒绝 Write/Edit 执行；Goal 在这里使用普通 Agent 权限。结果带
   `root: "visualization"`，不记为工件，也不做审核快照。
 - **生命周期。** 首次写入时延迟创建。随 `session.delete` 删除。启动清理只删除会话已
   不存在的目录，从不按时间删除。
@@ -539,7 +539,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 这与用户已接受的插件 manifest 中的风险不同。在 `ask` 和 `accept-edits` 下，
 MCP 工具调用会显示审批卡片，原因为 "MCP server tool requires approval"；
 `allow-session` 授权会在该会话内对该工具名不再提示（授权仅保存在内存中）。
-`auto` 自动允许，Plan/Goal 合约模式的硬拒绝仍然生效（D640，ADR `mcp-tool-approval-risk`）。
+`auto` 在 Agent 和 Goal 中自动允许；Plan 的硬拒绝仍然生效（D640，ADR `mcp-tool-approval-risk`）。
 
 ### 决策类型
 
@@ -645,13 +645,12 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 |---|---|---|---|---|---|
 | Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
 | Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
-| Goal | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
+| Goal | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
 
 ### 注释
-- 权限 UI 之前，Plan 和 Goal 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
+- 权限 UI 之前，Plan 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
   调用不能绕过矩阵。声明了非空列表的插件工具会被放行；运行器仍会拒绝列表外的任何动作（ADR 0211）。
-- Agent 模式使用权限卡或选定的自动策略
-  Write/Edit/Bash 和注册的插件工具。
+- Agent 和 Goal 对 Write/Edit/Bash 及已注册插件工具使用权限卡或选定的自动策略。
 - 当用户选择“自动”时，Plan 和 Goal Bash 可能会改变工作区或暂存状态；
   用户界面必须使这种权衡可见。
 - 仅针对活动会话记住每个 toolName 的允许会话
@@ -660,24 +659,24 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 ### 10. 1 Plan 和 Goal 控制工具
 
-`new_context` 在每种模式下都可用，无需确认：它只询问
-在下一回合边界压缩的运行时间，主机将在其上执行此操作
-一旦达到硬预算（参见
-[02-代理运行时](/zh-CN/spec/03-runtime/02-agent-runtime) §5.1)。提交
-工具仅在其自己的合同模式下可用，并且必须是其辅助批次中唯一的工具调用。它保留了
-类型目录下新的独特工件中的确切 Markdown 字节
-（`.pi/plan/*.md` 为 `SubmitPlan`，`.pi/goal/*.md` 为 `SubmitGoal`）
-在创建一项待批准之前通过 host-core。 `EnterPlanMode` 和
-`EnterGoalMode` 仅在 Agent 中可用，并且每个工具调用必须是唯一的
-在其批次中。主机验证持久模式、提案类型和
-任何转换之前的 active-turn/configuration 边界；可见的工具列表
-是指导，而不是安全边界。
+`new_context` 在每种模式下都可用，无需确认：它只请求在下一个回合边界压缩上下文，
+达到硬预算时运行时也会自行执行（参见
+[02-代理运行时](/zh-CN/spec/03-runtime/02-agent-runtime) §5.1）。
+`SubmitPlan` 仍仅限 Plan，必须是批次中唯一的工具调用，并持久化不可变审批工件。
+`EnterGoalMode` 和 `SubmitGoal` 不能创建新目标；Host 对入口和提交返回
+`PLAN_GOAL_ACTIVATION_DISABLED`。已有审批保留读取、处理和执行语义。
+只有用户所有者明确启动或恢复，才授权自主 Goal 工作。
+
+`GetGoal` 和 `UpdateGoal` 在模型参数之外绑定 session/goal/turn。模型可以报告
+active/blocked/completed、进展及标准结果和证据，不能修改范围或预算，
+不能暂停、恢复、取消或创建目标。完成要求全部已存储标准都报告为 met 且证据非空；
+这些证据由模型报告，不是 Host 的独立验证。
 
 ### 10. 2 委派和子代理工具范围（D201、ADR 0062）
 
-`Task` 仅在 Agent 模式下可用，并且仅当会话至少有
-一个子代理定义。 Plan 和 Goal 是只读合同协商，因此
-具有 `Bash`、`Edit` 或 `Write` 的代表将直接穿过它们。
+`Task` 在 Agent 和 Goal 中可用，前提是会话至少配置一个子代理定义。
+Plan 拒绝执行委派。Goal 委派保留普通子代理工具范围，
+委派用量计入父 Goal 的预算。
 
 定义声明其委托可以调用的工具。默认名称仅来自七个工作工具 `Read`、
 `Glob`、`Grep`、`BrowserPreview`、`Bash`、`Edit` 和 `Write`。未声明
@@ -724,21 +723,18 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 
 ## 11. 插件工具
 
-插件可通过 `agentTools` 贡献工具。Agent 模式能看到每一个已注册的
-插件工具。Plan 和 Goal 只看到 `planSafeActions` 列表
-非空的工具（ADR 0211 / D384）：
+插件可通过 `agentTools` 贡献工具。Agent 和 Goal 按普通权限策略使用已注册的
+插件工具；Plan 只看到 `planSafeActions` 列表非空的工具（ADR 0211 / D384）：
 
 1. 舱单声明
 2. 用户授予 `agent.tool.register`
 3.PluginManager将它们注册到ToolHost中
 4.执行经过统一的permission/audit/timeout包装器
 
-没有 `planSafeActions` 的插件工具在 Plan 和 Goal 中对模型隐藏。
-直接尝试返回 `PLUGIN_DISABLED_IN_PLAN` — `_IN_PLAN` 代码由两个合约共享
-模式而不是每种重复 - 并且作为合同模式政策进行审核
-否认。当列表存在时，host-core 放行该工具，plugin-runtime 拒绝列表外的任何 `action`，
-返回 `PERMISSION_DENIED`。对于 Agent，缺失或无效的插件风险默认为 `medium`，并且从不
-仅凭风险授予合同模式访问权限。
+没有 `planSafeActions` 的插件工具在 Plan 中对模型隐藏。直接在 Plan 中尝试调用会返回
+`PLUGIN_DISABLED_IN_PLAN`，并按合约模式策略拒绝记录审计。当列表存在时，host-core
+放行工具，plugin-runtime 对列表之外的任何 `action` 返回 `PERMISSION_DENIED`。
+Agent/Goal 中缺失或无效的插件风险默认为 `medium`；风险声明本身绝不授予 Plan 访问权限。
 
 命名：
 - 内部全名：`plugin.<pluginId>.<toolName>`
@@ -754,4 +750,4 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 
 ## 图片生成与编辑
 
-`GenerateImages` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。
+`GenerateImages` 是供 Agent/Goal 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。

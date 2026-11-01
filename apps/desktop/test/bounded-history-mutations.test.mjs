@@ -422,3 +422,18 @@ for (const { switchSession, evictCache } of [
     assert.deepEqual(h.state().messages, switchSession ? other : expected);
   });
 }
+
+
+test("Stop preserves an accepted Goal before first model output without draft-retraction errors", async () => {
+  const messages = [row("goal-start", "user")];
+  const submitted = { goalStart: true, messageCountBeforeSend: 0, draft: { text: "goal-start", fileReferences: [] } };
+  const h = harness({ state: { messages, isRunning: true, sessions: [{ id: "s", source: "desktop", mode: "agent" }] },
+    runtime: { loadFullSessionMessages: async () => messages, submittedComposerDrafts: new Map([["s", submitted]]) },
+    api: { retractPendingSessionPrompt: async () => assert.fail("Goal authorization must not be retracted like an ordinary prompt") } });
+  await h.actions.abort();
+  assert.equal(h.state().error, undefined);
+  assert.deepEqual(h.state().messages.map(message => message.id), ["goal-start"]);
+  assert.equal(h.state().composerPrefill, undefined);
+  assert.equal(await submitted.abortResolution, false);
+  assert.equal(h.state().isRunning, false);
+});

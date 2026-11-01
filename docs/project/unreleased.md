@@ -4,6 +4,22 @@
   `/compact` or an automatic compaction until another turn ran (#2015). The
   ring now shows the compacted context's estimated size as soon as the
   checkpoint is installed, and after reopening the session.
+- Refine autonomous Goal: one Goal budget row in Settings → AI with turn/token
+  inputs (non-cap values normalize to Unlimited on blur/Enter), compact height,
+  silent autosave and no helper/validation text, switches or advanced row. Inset
+  the Goal header behind Composer while retaining the original rounded input edge;
+  use compact nonzero d/h/m/s units, circle-ellipsis Details and one bottom Close in removal confirmation.
+  TaskDock is hidden without deleting AI todos; deletion restores it. Saved edits update the header immediately and execution scope on the next Host round, without pausing;
+  deletion preserves chat/tasks and safe late settlement. New completion reports
+  require the current model's full-scope audit, not independent host proof.
+  Existing permissions, finite budgets, historical approvals and restart pause remain.
+
+- Decouple autonomous Goal execution from Composer mode. Accepted Goal submission
+  returns to Agent; mode changes and immediate user guidance do not pause work.
+  Resume succeeds after ordinary Agent tasks. Explicit new Goals replace unfinished
+  ones safely, retaining old claim accounting and independent new budgets. Host
+  turn snapshots preserve Plan restrictions across input preference changes.
+
 - Fixed prompt cache misses after a conversation's agent runtime is rebuilt
   (#1972). Rebuilding happens after a restart or when the thinking level, mode,
   project rules, or model settings change. Assistant replies now keep the
@@ -37,3 +53,13 @@
   legend, and captions as top-level blocks instead of one wrapping element.
   Inline controls, block styling, and roots that lay themselves out keep their
   geometry; cards written earlier inside one wrapping element render as before.
+
+## Goal live refinement candidate
+
+- Separate autonomous execution rounds without synthetic user input; show natural
+  elapsed units and ordinary running feedback instead of legacy Goal planning.
+- Edit objectives without pausing, distinguish finish-round pause from immediate
+  Composer Stop, and edit per-goal limits for the next round independently of defaults.
+- Allow optional private Goal planning/self-review with no user approval stage,
+  retaining normal permissions and ordinary Plan approval. Schema v31 preserves
+  pending budget and finish-round pause intent. Local candidate awaits user review.

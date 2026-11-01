@@ -625,11 +625,20 @@ a usage tab.
     keys are written to the host secret store; subscription/OAuth logins are
     not imported. Re-importing an equivalent provider is skipped.
 
-The permission-mode selector remains available in the composer while the
-session is in Agent, Plan, or Goal. In Plan and Goal it controls Bash
-confirmation only: Ask and Accept edits prompt, while Auto may run a mutating
-Bash command without confirmation. The AI Defaults card must describe that both
-contract modes are intent boundaries, not strict read-only security profiles.
+Agent, Plan and Goal retain the effective selectable permission policy. Goal
+uses ordinary Agent permissions, not fixed Auto. Plan retains hard restrictions
+and permission-gated Bash. Selecting Goal as default never starts work.
+One **Goal budget** row lives directly below Default mode, with two inline inputs:
+Turns and Tokens. Only positive whole turns up to 10,000 and positive safe whole
+token counts are finite caps. Other input (including zero, blank, negative,
+fractional, malformed, unsafe or out-of-range values) normalizes per field to
+Unlimited on blur/Enter. There are no helpers, numeric validation text, switches,
+advanced disclosure, Save row or success/saving messages. Inputs match Default
+mode height; defaults remain 20 turns/no token cap. Save failures restore the
+persisted values and log a diagnostic; stale replies cannot replace newer settings.
+UI normalization uses maxTurns:null/omitted maxTokens; Host validation is unchanged.
+These defaults are snapshotted only for new goals. Current-goal budget adjustment
+belongs to an explicit stopped-goal resume dialog, never global propagation.
 
 ### Jev classifier
 
@@ -655,7 +664,7 @@ contract modes are intent boundaries, not strict read-only security profiles.
   and data-handling details, while the switch help icon explains Agent-mode
   availability. The setup form keeps the privacy notice visible before a key
   is stored.
-- The tool is on demand and unavailable in Plan and Goal modes. Removing the
+- The tool is on demand in configured Agent/Goal sessions, unavailable in Plan. Removing the
   key turns Jev off first, then deletes it.
 
 ### Agent capability destinations (Skills / MCP / Subagents)

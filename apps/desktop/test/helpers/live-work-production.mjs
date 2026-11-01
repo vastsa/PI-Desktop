@@ -44,6 +44,7 @@ export async function createProductionWorkHarness(t, server, options = {}) {
       }
       if (method === "settings.get") return {};
       if (method === "session.beginTurn") return { turnId: `durable-turn-${++durableTurnSequence}` };
+      if (method === "session.getTurnMode") return { mode: "agent" };
       if (method === "session.appendMessage") { persistedMessages.push(params.message); return {}; }
       if (method === "session.queueList") return { entries: [] };
       if (method === "session.queuePush") return {};

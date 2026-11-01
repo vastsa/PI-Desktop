@@ -1161,3 +1161,19 @@ tools.execute 增加可选 fileBatchTicket，绑定封存后的单次调用。�
 由 Host 决定，客户端不提供权威身份。工作区绑定变化返回 TOOL_CONTEXT_CHANGED；文件身份
 或地址变化在写入前失败。Close/过期不能释放运行中的磁盘任务，不自动重放失败或结果不明
 的写。生命周期和限制见 Host 文件准入 ADR。
+
+## Goal 实时控制扩展
+
+自主 Goal 的 goals 域独立于历史 plans 审批。goals.control 支持 pause、stop、resume、cancel、edit、budget、delete，
+所有操作保持 session/goal 身份与 expectedRevision CAS。edit 支持运行中非终态目标，替换目标和标准并清除旧报告，
+保留 claim、状态、预算、用量、耗时；打开编辑器不暂停。pause 让本轮完成后停止，stop 立即暂停并中断运行。
+保存后目标栏立即变化，activeScope 保持当前 Host 轮次的原目标与标准，下一轮才采用修改。模式切换和插话不暂停；Agent 任务后可直接恢复。
+goals.start 原子替换未完成旧目标，保留旧 claim/迟到用量，条件复位输入模式到 Agent。新轮次等待旧运行结算。
+session.beginTurn 可带可信 goalTurn 绑定；session.getTurnMode 返回实际轮次的不可变模式，调用方 mode 不是权限。
+队列 goalStartId 保留显式启动身份，不能授予 claim 或重启执行权限。
+budget（或兼容 resume）接受预算字段；有 claim 时保存 pendingBudget，在本轮结算后生效，空闲时立即生效。
+单目标预算不跟随全局默认值，不授权恢复。SessionGoal 另含 pauseRequested。模型报告工具不能执行这些控制。
+删除返回带身份和新版本的墓碑，不删除聊天、todo 或原 claim；迟到报告不能复活，迟到用量只结算原 claim。
+完成仍须精确覆盖标准和完整原目标的版本化审计；Host 校验结构，不独立验证模型证据的真实性。
+
+本文较早的 Goal 审批段落仅适用于已存在的 legacy Goal 审批，不描述新的自主 Goal。

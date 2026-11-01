@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+// User-owned goal controls through real Rust + sidecar + AgentHost. Loopback only.
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
+import { AgentHost } from '../packages/agent-host/dist/index.js';
+import { AgentSidecar, HostProcess, RuntimeService, GoalCoordinator, createHostSessionPort, createHostQueueStore } from '../packages/host-runtime/dist/index.js';
+assert(process.env.PI_HOST_CORE_BINARY && process.env.PI_SCRATCH_DIR);
+const binary=resolve(process.env.PI_HOST_CORE_BINARY);
+const root=await mkdtemp(join(process.env.PI_SCRATCH_DIR,'goal-controls-'));
+const data=join(root,'data'),home=join(root,'home'),workspace=join(root,'workspace');
+for(const p of [data,home,workspace])await mkdir(p,{recursive:true});
+const env={HOME:home,USERPROFILE:home,APPDATA:join(home,'AppData'),PI_DESKTOP_DATA_DIR:data};
+const held=new Set(),requests=[];let fixtureError;
+const server=createServer(async(req,res)=>{try{
+ assert.equal(req.url,'/v1/chat/completions');let body='';for await(const chunk of req){body+=chunk;assert(body.length<2_000_000);}requests.push(JSON.parse(body));assert(requests.length<=2,'Unexpected autonomous continuation');
+ res.writeHead(200,{'content-type':'text/event-stream'});res.flushHeaders();held.add(res);res.on('close',()=>held.delete(res));
+}catch(e){fixtureError=e;res.writeHead(500);res.end('Fixture failure');}});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const baseUrl=`http://127.0.0.1:${server.address().port}/v1`;
+const user={subject:'fixture-user',roles:['owner'],pairedDevice:true};
+let host,sidecar,runtime,agentHost;const notifications=[],errors=[];
+const open=()=>new HostProcess({binaryPath:binary,dataDir:data,env,onStderr(){}});
+const wait=async(fn,label)=>{const until=Date.now()+20000;while(Date.now()<until){if(fixtureError)throw fixtureError;const v=await fn();if(v)return v;await delay(50);}throw Error('Timeout '+label);};
+const get=async(id)=>(await host.call('goals.get',{sessionId:id})).goal;
+const control=async(goal,action,extra={})=>agentHost.controlGoal(user,{sessionId:goal.sessionId,goalId:goal.id,expectedRevision:goal.revision,action,...extra});
+try{
+ host=open();await host.handshake();await host.call('workspace.set',{path:workspace});
+ const {session}=await host.call('session.create',{title:'Goal control fixture',projectPath:workspace,mode:'goal'});
+ sidecar=new AgentSidecar({launch:{command:process.execPath,args:[fileURLToPath(new URL('../packages/agent-runtime/dist/sidecar.js',import.meta.url))],cwd:workspace,env:{...process.env,...env}},onStderr(){}});sidecar.setHost(host);
+ const goals=new GoalCoordinator(()=>host),commandShell=(await host.call('commandShells.list')).effective;
+ runtime=new RuntimeService({getHost:()=>host,getSidecar:()=>sidecar,pauseGoal:id=>agentHost.pauseGoal(id),log:(level,message,data)=>{if(level==='error')errors.push({message,data});},launch:{async resolve(sessionId){return {providerId:'fixture',modelId:'goal-fixture',projectPath:workspace,sidecarParams:{sessionId,commandShell,mode:'goal',projectPath:workspace,thinkingLevel:'off',scratchDir:join(root,'scratch'),provider:{id:'fixture',name:'Loopback fixture',modelId:'goal-fixture',baseUrl,apiStyle:'chat_completions',apiKey:'local-not-a-secret',authKind:'api_key',supportsReasoning:false,supportedThinkingLevels:['off']}}};}}});
+ agentHost=new AgentHost({runtime,goals,sessions:createHostSessionPort(()=>host),queueStore:createHostQueueStore(()=>host),approvals:{async resolveTool(id,decision){await host.call('permissions.resolve',{requestId:id,decision});},async resolveContract(){throw Error('No approval expected');},async listPendingTools(){return [];}}});
+ runtime.attachHost(host);runtime.attachSidecar(sidecar);runtime.onEvent(event=>agentHost.ingest(event));runtime.onTurnEnded(info=>{agentHost.endTurn(info.sessionId,info.turnId,info.reason==='completed'?'completed':'failed');void agentHost.kick(info.sessionId);});
+ host.onNotification((method,payload)=>{if(method==='goals.changed')notifications.push(payload);});await agentHost.start();
+ const first=await agentHost.startGoal(user,{sessionId:session.id,input:{text:'Inspect the original export objective',userMessageId:randomUUID()},context:{requestId:'controls-start'},budget:{maxTurns:null}});
+ await wait(()=>requests.length===1,'first active request');let goal=await get(session.id);const oldGoalId=goal.id,oldClaim=goal.activeTurnId;
+ await control(goal,'edit',{objective:'Inspect the hot-edited export objective'});
+ assert.equal((await get(session.id)).status,'active');
+ assert.equal((await get(session.id)).activeTurnId,oldClaim);
+ const todoArgs={todos:[{content:'Synthetic retained checklist item',status:'in_progress'}]};
+ const todo=await host.call('tools.execute',{sessionId:session.id,turnId:first.turn.id,toolCallId:randomUUID(),toolName:'TodoWrite',args:todoArgs,mode:'goal'});assert.equal(todo.ok,true);
+ await control(await get(session.id),'stop');await wait(async()=>!(await get(session.id)).activeTurnId,'pause settlement');goal=await get(session.id);
+ const usage={rounds:goal.roundsStarted,tokens:goal.tokenUsage,budget:goal.budget};
+ const edited=await control(goal,'edit',{objective:'Verify the revised export objective and preserve citations'});goal=edited.goal;
+ assert(goal);assert.equal(goal.status,'paused');assert.equal(goal.objective,'Verify the revised export objective and preserve citations');assert.deepEqual(goal.criteria,[goal.objective]);assert.deepEqual(goal.outcomes,[]);assert.equal(goal.audit,undefined);assert.equal(goal.roundsStarted,usage.rounds);assert.deepEqual(goal.budget,usage.budget);assert.equal(goal.tokenUsage,usage.tokens);
+ await assert.rejects(host.call('goals.report',{sessionId:session.id,goalId:oldGoalId,turnId:oldClaim,status:'completed',progressSummary:'stale',outcomes:[],audit:{version:1,objective:'Inspect the original export objective',items:[{requirement:'old',outcome:'met',evidence:'old'}],remainingWork:[]}}));
+ assert.equal(requests.length,1,'Editing must not resume');assert.deepEqual((await host.call('todos.get',{sessionId:session.id})).todos.map(t=>t.content),['Synthetic retained checklist item']);
+ await control(goal,'resume');await wait(()=>requests.length===2,'second active request');goal=await get(session.id);assert(goal.activeTurnId);assert.equal(goal.roundsStarted,2);
+ const deleted=await control(goal,'delete');assert.equal(deleted.goal,null);assert.equal(deleted.goalId,goal.id);assert(deleted.revision>goal.revision);assert.equal(await get(session.id),null);
+ await wait(async()=>{const history=(await host.call('session.get',{id:session.id})).session;return history.status!=='running'&&!(await agentHost.workSnapshot(session.id)).activeTurnId;},'deleted runtime stops');
+ await agentHost.kick(session.id);assert.equal(requests.length,2);assert.equal(await get(session.id),null);
+ assert(notifications.some(n=>n.goal===null&&n.goalId===goal.id),'Missing ordered removal notification');const tombstone=notifications.findIndex(n=>n.goal===null&&n.goalId===goal.id);
+ assert(notifications.slice(tombstone+1).every(n=>n.goal?.id!==goal.id),'Late settlement resurrected deleted goal');
+ const detail=(await host.call('session.get',{id:session.id})).session;assert.equal(detail.messages.filter(m=>m.role==='user').length,1);assert.equal((await host.call('todos.get',{sessionId:session.id})).todos.length,1);
+ await runtime.dispose();runtime=undefined;await sidecar.dispose();sidecar=undefined;await host.dispose();host=open();await host.handshake();assert.equal(await get(session.id),null);assert.equal((await host.call('todos.get',{sessionId:session.id})).todos.length,1);
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({result:'PASS',modelRequests:requests.length,userMessages:1,editRemainsPaused:true,deleteSurvivesRestart:true,lateReportsRejected:true,todosRetained:true,chatRetained:true,notifications:notifications.length},null,2));
+}finally{await runtime?.dispose();await sidecar?.dispose();await host?.dispose();for(const response of held)response.destroy();await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

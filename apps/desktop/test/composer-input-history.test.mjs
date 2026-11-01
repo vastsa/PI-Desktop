@@ -291,7 +291,7 @@ test("sendPrompt returns the accepted session for Home history recording", async
   assert.ok(sendPrompt.length > 0, "sendPrompt implementation not found");
   assert.match(
     sendPrompt,
-    /await api\.prompt\(\{[\s\S]*?\}\);[\s\S]*?onAccepted\?\.\(startedIn\);\s*return true/,
+    /await submitUserPrompt\(api, current, \{[\s\S]*?\}\);[\s\S]*?onAccepted\?\.\(startedIn\);\s*return true/,
   );
   assert.match(
     sendPrompt,

@@ -712,12 +712,12 @@ fn every_kind_publishes_into_its_own_artifact_directory() {
 }
 
 #[test]
-fn goal_contract_round_trips_through_its_own_kind() {
+fn historical_goal_contract_round_trips_through_its_own_kind() {
     let (dir, db) = test_db();
     let root = dir.path().join("workspace");
     fs::create_dir_all(&root).unwrap();
     let manager = PlanManager;
-    let session = goal_session(&db, &root);
+    let session = plan_session(&db, &root);
     let turn = live_turn(&db, &session.id);
     let proposal = manager
         .submit(
@@ -727,13 +727,29 @@ fn goal_contract_round_trips_through_its_own_kind() {
                 session_id: &session.id,
                 turn_id: &turn,
                 tool_call_id: "goal-call-1",
-                kind: KIND_GOAL,
+                kind: KIND_PLAN,
                 title: "Ship checkout",
                 markdown: "# Goal\n## Acceptance criteria\n- tests pass",
                 question: "Approve this goal?",
             },
         )
         .unwrap();
+    // Seed an already persisted historical Goal, not a new model activation.
+    let (artifact, _) = publish_artifact(
+        &root,
+        KIND_GOAL,
+        "Ship checkout",
+        "# Goal
+## Acceptance criteria
+- tests pass",
+    )
+    .unwrap();
+    db.conn().execute("UPDATE plan_approvals SET kind='goal',artifact_relative_path=?2,artifact_sha256=?3,artifact_size_bytes=?4 WHERE request_id=?1",
+        params![proposal.id, artifact.relative_path, artifact.sha256, artifact.size_bytes as i64]).unwrap();
+    db.conn()
+        .execute("UPDATE sessions SET mode='goal' WHERE id=?1", [&session.id])
+        .unwrap();
+    let proposal = get_proposal(&db, &proposal.id).unwrap().unwrap();
     assert_eq!(proposal.kind, KIND_GOAL);
     assert!(proposal
         .artifact
@@ -828,7 +844,7 @@ fn submitting_the_other_contract_kind_is_rejected() {
             )
             .unwrap_err()
             .to_string(),
-        "PLAN_KIND_MISMATCH"
+        "PLAN_GOAL_ACTIVATION_DISABLED"
     );
     // Neither rejected submission may leave an artifact behind.
     assert!(!root.join(".pi").join("goal").exists());
@@ -836,55 +852,46 @@ fn submitting_the_other_contract_kind_is_rejected() {
 }
 
 #[test]
-fn entering_goal_mode_writes_the_goal_mode_and_kind() {
+fn model_cannot_enter_or_submit_an_autonomous_goal() {
     let (dir, db) = test_db();
     let root = dir.path().join("workspace");
     fs::create_dir_all(&root).unwrap();
-    let session = sessions::create_session(
-        &db,
-        Some("Agent".into()),
-        Some("agent".into()),
-        None,
-        None,
-        Some(root.to_string_lossy().into_owned()),
-    )
-    .unwrap();
+    let session =
+        sessions::create_session(&db, None, Some("agent".into()), None, None, None).unwrap();
     let turn = live_turn(&db, &session.id);
-
-    PlanManager
-        .enter(&db, &session.id, &turn, "enter-goal-call", KIND_GOAL)
-        .unwrap();
-
+    assert_eq!(
+        PlanManager
+            .enter(&db, &session.id, &turn, "enter-goal-call", KIND_GOAL)
+            .unwrap_err()
+            .to_string(),
+        "PLAN_GOAL_ACTIVATION_DISABLED"
+    );
     assert_eq!(
         sessions::session_mode(&db, &session.id).unwrap().as_deref(),
-        Some("goal")
+        Some("agent")
     );
-    let audit_payload: String = db
-            .conn()
-            .query_row(
-                "SELECT payload_json FROM audit_log WHERE kind = 'plan_entered' ORDER BY id DESC LIMIT 1",
-                [],
-                |row| row.get(0),
+    let goal = goal_session(&db, &root);
+    let turn = live_turn(&db, &goal.id);
+    assert_eq!(
+        PlanManager
+            .submit(
+                &db,
+                PlanSubmitParams {
+                    workspace_root: &root,
+                    session_id: &goal.id,
+                    turn_id: &turn,
+                    tool_call_id: "new-goal",
+                    kind: KIND_GOAL,
+                    title: "Goal",
+                    markdown: "# Goal",
+                    question: "Approve?"
+                }
             )
-            .unwrap();
-    let audit_payload: serde_json::Value = serde_json::from_str(&audit_payload).unwrap();
-    assert_eq!(audit_payload["kind"], "goal");
-
-    // A second entry is refused whatever kind it asks for.
-    assert_eq!(
-        PlanManager
-            .enter(&db, &session.id, &turn, "enter-plan-call", KIND_PLAN)
             .unwrap_err()
             .to_string(),
-        "PLAN_ALREADY_ACTIVE"
+        "PLAN_GOAL_ACTIVATION_DISABLED"
     );
-    assert_eq!(
-        PlanManager
-            .enter(&db, &session.id, &turn, "enter-bogus-call", "sprint")
-            .unwrap_err()
-            .to_string(),
-        "PLAN_INVALID_ARGUMENT"
-    );
+    assert!(!root.join(".pi/goal").exists());
 }
 
 #[path = "history_tests.rs"]

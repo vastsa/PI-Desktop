@@ -10152,3 +10152,15 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   event/result agreement, batch rejection and delegate restoration.
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
+
+
+### E2E-GOAL-independent-input
+
+- 使用隔离的真实 Host、sidecar、Desktop 和本机模型夹具，不调用付费服务。
+- 从目标输入发送后自动回到 Agent；在当前执行期间切换 Plan、Goal、Agent，目标身份、claim 和状态保持不变。
+- 保存编辑后目标栏立即更新，当前 Host 轮内后续模型与工具仍使用 activeScope；下一 Host 轮采用修改。旧范围完成报告不得完成修改后的目标。
+- 普通排队消息与立即发送均不暂停，指导信息可进入当前轮，目标继续自主运行。
+- 目标栏暂停完成本轮后停；完成普通 Agent 任务后直接恢复，不出现 GOAL_MODE_REQUIRED。
+- 显式新目标分别替换运行中与暂停的旧目标，新身份使用新预算和计数；旧运行先结算，不并发派发，不生成伪造用户消息。
+- 输入框 Stop 立即中断并暂停；网络／余额等无法继续的失败保持安全停止，不允许因移除模式限制而绕过 Plan 或权限边界。
+- 实际构建界面验证窄窗、浅深主题、输入可达和目标栏不覆盖；截图必须标明隔离夹具。

@@ -1004,7 +1004,7 @@ pending action cards remain reachable outside a hidden process. See
 |---|---|
 | Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206). An open project underlines the project name, including before its first session exists; the control opens a searchable switcher of the sidebar's open projects, with clone-git-project and open-project actions. |
 | Streaming | Auto-scroll follows while pinned; new tokens append |
-| Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It remains visible through thinking, tool execution, completed-tool gaps, and partial answers until the turn ends. Runtime phases take precedence over the Planning/Goal or Working fallback. Pending permissions, questions, and plan/goal approvals suppress the row; history reading never shows live status; no large generic progress card is rendered. The row lives in the reserved tail lane, so it appears and clears mid-turn without changing the transcript's content height. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. The tooltip mixes the error tint over `--ds-bg-elevated-opaque` so transcript text does not show through. |
+| Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It remains visible through thinking, tool execution, completed-tool gaps, and partial answers until the turn ends. Runtime phases take precedence over the Planning (Plan only) or Working (Agent/Goal) fallback. Pending permissions, questions, and plan/goal approvals suppress the row; history reading never shows live status; no large generic progress card is rendered. The row lives in the reserved tail lane, so it appears and clears mid-turn without changing the transcript's content height. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. The tooltip mixes the error tint over `--ds-bg-elevated-opaque` so transcript text does not show through. |
 | Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped review rows without an extra success card; a completed turn that wrote workspace files also shows the per-turn changed-files summary below (D674). Failed turns can continue through one localized prompt without losing the transcript. |
 | Session switch | A first-opened session paints at its latest record; a revisited pane paints at its own retained position. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
 | Turn start (send / retry / regenerate) | Re-pins and positions the latest content before paint, even if the user had scrolled up; the later persisted user-message event does not flash the transcript at its top, and the composer collapse / indicator layout clamps during the send never release follow mode |
@@ -1640,7 +1640,10 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
 Scrollable container rendering the ordered sequence of user messages, assistant
 turns, lightweight tool activity rows, and permission cards for a session.
 Provider-level assistant fragments separated by tool calls remain distinct in
-storage but compose into one assistant turn until the next user message.
+storage but compose into one assistant turn until the next user message or a
+changed nonempty root Host turnId. Goal continuations create separate assistant
+sections without fabricated user rows. Delegated rows never create root turns;
+legacy untagged history retains its existing grouping.
 
 ### 7.2 Anatomy
 
@@ -1670,7 +1673,7 @@ storage but compose into one assistant turn until the next user message.
 | Turn completion | A completed turn the user followed scrolls its prompt to the top and releases follow mode; failed, aborted, short, and manually scrolled turns keep their position (D676) |
 | Thinking-only streaming | Transcript opens; the latest thinking disclosure opens unless the user has taken it over; no empty answer bubble; the tail status continues to identify the running turn |
 | Running fallback | Compact animated-dot Working row throughout the running turn when no specific runtime phase or planning state is known, including pauses after partial output or completed tools |
-| Running planning | Compact animated-dot Planning / Goal row in that same slot throughout the planning turn; a runtime phase takes precedence, and pending user interaction or turn completion hides it. The Composer mode chip pulses |
+| Running planning | Compact animated-dot Planning row in that same slot only for a Plan turn; Goal uses the ordinary Working fallback; a runtime phase takes precedence, and pending user interaction or turn completion hides it. The Composer mode chip pulses |
 | Idle | Scrollable; no auto-scroll |
 | Permission pending | PermissionCard inserted inline; transcript continues after resolution |
 | Context checkpoint | Existing transcript remains visible; compaction adds one divider row after the message it covers and one warning toast |
@@ -2917,7 +2920,10 @@ fields. It is never a JSON dump.
 
 ---
 
-## 10A. ContractApprovalCard (Plan / Goal)
+## 10A. ContractApprovalCard (Plan / legacy Goal)
+
+Goal references here describe persisted legacy approvals only. New autonomous
+goals use GoalSessionPanel / GoalStatusBar, described in section 11.5.
 
 ### 10A.1 Purpose
 
@@ -3027,9 +3033,9 @@ reasoning-level control.
   updates the chip immediately and does not start that pulse until the
   in-flight turn actually projects `planning`.
 - The permission chip remains visible in Agent, Plan, and Goal for a stable
-  toolbar rhythm. Agent and Plan expose the effective selectable permission;
-  Goal displays the localized Auto label as a disabled, non-opening chip while
-  the approval card remains the separate place for choosing execution policy.
+  toolbar rhythm. All modes expose effective selectable permission; Goal never
+  forces Auto. Plan and legacy Goal approvals retain their separate
+  approval-time execution policy.
   The permission menu stays 120px wide; its Chinese Composer short label for
   Accept edits is `允许编辑` / `允許編輯` so the option remains single-line
   beside its selection indicator.
@@ -3159,10 +3165,10 @@ reasoning-level control.
 | Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop only with an empty draft | Send queues text or attachments; Stop when both are empty |
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
 | Permission pending | textarea disabled (per [03-permission-ux.md](03-permission-ux.md) §7) | Send disabled; Stop remains active whenever the running empty-draft condition is met |
-| Plan / Goal / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
-| Plan / Goal / awaiting approval | approval surface shows only the title and artifact opener for the exact `.pi/<kind>/*.md` approval; draft is preserved read-only and composer controls remain blocked for that session | approve or reject |
+| Plan / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
+| Plan / legacy Goal / awaiting approval | approval surface shows only the title and artifact opener for the exact `.pi/<kind>/*.md` approval; draft is preserved read-only and composer controls remain blocked for that session | approve or reject |
 | Plan / queued or running | Agent badge remains selected; queue/running state is visible; draft and next-turn controls remain editable | Stop; Send queues the next prompt; no replay control |
-| Plan / Goal / planning after rejected, expired, or interrupted proposal | contract chip remains visible and editable | send a later prompt; submit a new contract; no execution action |
+| Plan / legacy Goal / planning after rejected, expired, or interrupted proposal | contract chip remains visible and editable | send a later prompt; submit a new contract; no execution action |
 | No workspace | textarea active, warning banner "No project — tools limited" | Send enabled |
 
 ### 11.5 Interactions
@@ -3386,17 +3392,61 @@ reasoning-level control.
 - The combined menu closes on outside mousedown or Escape. In a submenu,
   Up/Down moves the highlighted row, Enter selects from the model search/list,
   and Left returns to the root.
-- The permission chip remains visible beside the mode selector. Agent and Plan
-  show the effective Ask / Accept edits / Auto posture. Goal keeps the same
-  geometry but is fixed to the localized Auto label and cannot open a menu;
-  its approval card remains the separate place for choosing execution policy.
-  The control does not imply that Write/Edit/plugin tools are available.
-- Goal shares the Plan approval surface (D198). The bar reads its copy from the
-  proposal's `kind`, so a goal contract shows the matching approval label and
-  artifact opener while the layout and remembered permission split-button stay
-  identical. The bar sits in the transparent composer dock, so it paints
-  `--ds-bg-composer` with `--ds-shadow-composer` like queued prompt rows rather
-  than the in-flow `--ds-tile` wash.
+- All modes show the effective selectable Ask / Accept edits / Auto policy.
+  Goal uses ordinary Agent permissions, never a path/sandbox bypass.
+- Persisted legacy Goal approvals keep Plan's shared approval layout, kind-based
+  copy, artifact opener and remembered permission. They do not create autonomous
+  goals.
+- `GoalSessionPanel` renders no setup card before a goal exists. Existing goals
+  use a one-line `GoalStatusBar` attached to the input shell, not a standalone
+  task-style card: state, ellipsized objective, elapsed time and accessible
+  Edit / Pause or Resume / Delete / Details icon controls. A current Goal hides
+  TaskDock presentation only; underlying todos remain available to the AI and
+  reappear after deletion. Goal mode without a Goal does not hide tasks.
+- Default budgets live immediately below Default mode in Settings → AI: one
+  Goal budget row with Turns and Tokens inputs, matching Default mode height.
+  Finite caps are positive whole turns up to 10,000 and positive safe whole tokens;
+  every other input normalizes per dimension to Unlimited on blur/Enter. No helper,
+  validation, saving/saved text, switches or advanced row. Defaults stay 20/no token
+  cap. Failed saves restore persisted values and log a diagnostic. Host validation
+  and existing-goal budgets stay unchanged.
+- Goal details use a circle-with-three-dots icon (CircleEllipsis) and open a bounded,
+  accessible dialog outside the measured dock:
+  full objective, status/reason, usage, stored budget, progress, criteria and audit
+  evidence. Evidence is model-reported, not independently host-verified.
+- Pause/Resume stay directly accessible. Budget exhaustion opens an explicit
+  adjust-total-budget-and-resume dialog; finite caps must exceed usage, and
+  unlimited is permitted. Ordinary resume retains the goal budget. Dismissal
+  never changes the goal or starts work. A running claim must settle before
+  resume. Independent budget editing remains available in Details during a live
+  claim and persists limits for the next round. Closing a dialog and deleting a Goal are distinct actions.
+- Edit never pauses the Goal; save preserves lifecycle/claim and usage/budget/time,
+  and clears old criteria/report/audit for the new objective. The header reflects
+  saved edits immediately; execution adopts them only on the next Host round.
+  Goal submission returns the Composer to Agent, without pausing the Goal.
+  Mode selection and Send now never pause; new Goal sends replace unfinished
+  Goals. Resume after ordinary Agent work does not require changing input mode.
+  Header Pause finishes
+  the current round; Composer Stop immediately interrupts the round and Goal.
+  Delete confirmation removes only the current Goal, retaining chat/todo history.
+  Ordered goalId/revision tombstones fence delayed loads and notifications.
+- Remove confirmation has one bottom Close beside its confirmation action, with
+  no header Close. Escape/Close preserve the Goal and return focus safely.
+- Elapsed time uses host checkpoints plus an active timestamp, excludes paused
+  and offline time and does not reset on navigation. Legacy time is not invented;
+  an uncheckpointed hard-crash tail may be lost. Visible text uses compact
+  nonzero units with spaces, such as `20s`, `5m`, `7h 59m 59s` or
+  `1d 10h 5m 8s`; zero is `0s`, with no leading-zero padding.
+- The bar remains in the Composer's measured stack for home and docked modes.
+  The header is inset 14px on each side and tucks behind the input without gaps;
+  the input retains its original complete rounded top edge as a visible divider.
+  No competing dock-height owner. Dialogs must not expand the dock or hide input.
+  Narrow views preserve state and controls while ellipsizing the objective.
+  Pending controls prevent duplicate actions; errors expose Reload. Dialogs
+  support Escape, focus containment and return, dark/light and keyboard access.
+- Switching away pauses an active Goal; switching back does not resume it.
+  Selecting Goal or editing settings alone never executes. Agent/Plan permission
+  selection and historical contract approval remain unchanged.
 
 ### 11.6 Accessibility
 

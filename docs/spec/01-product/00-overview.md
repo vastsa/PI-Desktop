@@ -32,8 +32,8 @@ PI-Desktop =
 6. Ship as a global product with English as default language
 7. Let the same Agent inspect a task, submit a structured Plan, and continue in
    Agent only after a separate user approval
-8. Let the same Agent negotiate an approved Goal contract and then pursue its
-   acceptance criteria autonomously in Agent mode
+8. Let a user start a bounded autonomous Goal directly, monitor reported criteria
+   and evidence, and pause, resume, or cancel it without Plan approval
 9. Make project sessions, imports, extensions, and scheduled prompts practical
    for daily local work
 10. Synchronize explicitly selected portable configuration through a
@@ -67,9 +67,10 @@ PI-Desktop =
 2. Configure provider/API key
 3. Open a project workspace
 4. Create a session and send a task
-5. Choose Agent, Plan, or Goal; optionally inspect the project and submit a
-   Markdown checkpoint
-6. Approve or reject the checkpoint and choose the execution permission mode
+5. Choose Agent, Plan, or Goal. Plan submits an approval checkpoint; Goal starts
+   from a direct user send with a default budget of 20 execution turns
+6. Approve/reject a Plan, or monitor and control a Goal using its status card;
+   both preserve the selected tool permission policy
 7. Approve local tool execution when required
 8. Review diffs, command output in the transcript, browser previews, and files in the work panel
 9. Restart the app; interrupted contract work is not replayed
@@ -92,3 +93,5 @@ PI-Desktop =
 - Tools/permissions: `../03-runtime/03-tools-and-permissions.md`
 - Milestones: `../06-delivery/01-mvp-milestones.md`
 - Plugins: `../07-plugins/01-plugin-system.md`
+
+For budgets, reports and recovery, see [Run an autonomous goal](../../autonomous-goals.md).

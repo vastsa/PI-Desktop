@@ -1305,3 +1305,10 @@ content. The durable transcript is unchanged and completed tools are not
 re-executed. Other malformed context remains subject to strict validation.
 Tool token estimates are optional telemetry: an invalid call identity must not
 prevent the corresponding terminal tool event from being delivered.
+
+自主 Goal 使用独立生命周期，不是下述旧 Goal 审批流程；旧流程只为已有记录保持兼容。
+目标栏暂停让当前轮次正常结束；输入框 Stop 立即暂停目标并中断。切换输入模式、普通排队消息和立即发送均不暂停目标。保存编辑后目标栏立即更新；activeScope 冻结当前 Host 执行轮内的目标和标准，下一 Host 轮次才采用修改，旧范围不能完成修改后的目标。未保存的编辑无效，已开始的操作不能追溯撤销。
+成功提交目标后输入模式返回 Agent；显式提交新目标会替换未完成目标，旧执行结算后才启动新身份。暂停后完成普通 Agent 任务可直接从目标栏恢复，无需切回 Goal。
+每个 Goal 创建时快照全局预算，之后可独立修改；运行中的修改保存为 pendingBudget，在本轮结算后而非目标完成后生效。
+模型可选择 EnterPlanMode 进入内部只读规划（不执行 Write/Edit、Bash、插件修改或委托），
+SubmitPlan 附自检后自行执行，无用户确认，不创建 plans 审批记录、不增加权限。普通用户 Plan 审批不变。

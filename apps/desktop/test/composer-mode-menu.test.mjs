@@ -3,6 +3,7 @@ import test from "node:test";
 import { composerToolbar } from "./helpers/composer-toolbar.mjs";
 import { readComposerModule, readComposerSource } from "./helpers/source-contracts.mjs";
 import { slotSsr } from "./helpers/slot-ssr.mjs";
+import { fileURLToPath } from "node:url";
 
 /*
  * The operating mode is a compact chip that opens one menu. It used to advance
@@ -16,7 +17,17 @@ const modePicker = await readComposerModule("ComposerModePicker.tsx");
 const composerSource = await readComposerSource();
 
 async function toolbar(t, overrides = {}) {
-  const ssr = await slotSsr(t);
+  // Exercise this candidate's browser-safe voice module without requiring an
+  // unrelated native voice package build or using another worktree's dist.
+  const ssr = await slotSsr(t, { plugins: [{
+    name: "candidate-voice-live",
+    enforce: "pre",
+    resolveId(id) {
+      if (id === "@pi-desktop/voice-runtime/live") {
+        return fileURLToPath(new URL("../../../packages/voice-runtime/src/live/index.ts", import.meta.url));
+      }
+    },
+  }] });
   return (await composerToolbar(t, ssr, overrides))();
 }
 

@@ -66,6 +66,11 @@ const HOST_PROXY_ALLOWED = new Set([
   "plans.submit",
   "plans.pending",
   "plans.abort",
+  // Runtime observation and settlement only; user authorization stays in AgentHost.
+  "goals.get",
+  "goals.validateTurn",
+  "goals.report",
+  "goals.settleTurn",
   "project.instructions.resolve",
   "provider.resolveAuth",
   "provider.resolveSubagentModel",

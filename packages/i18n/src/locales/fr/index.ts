@@ -1,6 +1,7 @@
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const fr = {
+  autonomousGoal: en.autonomousGoal,
   "worktree": {
     "menu": { "group": "Git" },
     "newIsolatedSession": "Nouvelle session isolée",
