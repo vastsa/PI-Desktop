@@ -288,6 +288,7 @@ type PluginWindowAppearanceContrib = {
  backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
  cornerRadius?: number; // integer 0..24 DIP, Windows main window only; default 12
 };
+```
 
 `cornerRadius` belongs to the contributing plugin and applies while any of its
 declared themes is selected. It does not change macOS/Linux native corners.
@@ -299,6 +300,7 @@ preference; Windows chooses the exact radius. Earlier Windows builds retain the
 requested DIP radius. On Windows 11, an 8-digit background is composited over
 the resolved built-in theme color so the top-level window remains opaque.
 
+```ts
 type PluginSkillContrib = {
  id?: string; // defaults to the file name without its extension
  path: string; // relative path to the skill document
