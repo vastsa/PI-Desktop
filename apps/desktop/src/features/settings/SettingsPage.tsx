@@ -36,6 +36,7 @@ import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../compo
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
+import { SessionMessageDeliveryRow } from "../../components/settings/SessionMessageDeliveryRow";
 import { ShowThinkingRow } from "../../components/settings/ShowThinkingRow";
 import { TranscriptDisplayModeRow } from "../../components/settings/TranscriptDisplayModeRow";
 import { RadialMenuSettings } from "../../components/settings/RadialMenuSettings";
@@ -603,6 +604,7 @@ export function SettingsPage() {
                     onChange={() => void saveSettings({ smoothStreaming: !(settings.smoothStreaming !== false) })}
                   />
                 </SettingsRow>
+                <SessionMessageDeliveryRow settings={settings} saveSettings={saveSettings} />
                 <SettingsRow
                   title={t("settings.inlineVisualizations")}
                   description={t("settings.inlineVisualizationsDesc")}

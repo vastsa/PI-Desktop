@@ -111,6 +111,7 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
+  sessionMessagesInCurrentTurn?: boolean;
   /** Session `/fast` switch AND the model's opt-in, resolved by main (ADR 0334). */
   fastMode?: boolean;
   /** Opt-in TypeSafe classifier credential resolved by Electron main. */
@@ -267,6 +268,7 @@ async function runtimeFor(
     reusable.setPluginSkills(pluginSkills);
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
+    reusable.setSessionMessagesInCurrentTurn(params.sessionMessagesInCurrentTurn === true);
     reusable.setFastMode(params.fastMode === true);
     reusable.setMode(mode);
     return reusable;
@@ -315,6 +317,7 @@ async function runtimeFor(
     commandShell: params.commandShell,
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
+    sessionMessagesInCurrentTurn: params.sessionMessagesInCurrentTurn === true,
     fastMode: params.fastMode === true,
     jevApiKey: params.jevApiKey,
     history,
@@ -504,6 +507,9 @@ async function handle(method: string, params: any): Promise<unknown> {
       });
       return { accepted: true, turnId };
     }
+    case "agent.collaborationContext":
+      return { accepting: runtimes.get(String(params.sessionId ?? ""))
+        ?.acceptsSessionMessages(String(params.expectedTurnId ?? "")) ?? false };
     case "agent.steeringContext":
     case "agent.steer": {
       const runtime = runtimes.get(String(params.sessionId ?? ""));

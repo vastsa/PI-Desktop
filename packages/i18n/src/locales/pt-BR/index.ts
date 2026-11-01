@@ -865,6 +865,8 @@ export const ptBR = {
     sidebarSessionTime: "Horário da sessão",
     keepAwakeWhileRunning: "Manter o computador ativo",
     keepAwakeWhileRunningDesc: "Impede a suspensão por inatividade enquanto o PI-Desktop estiver aberto. A tela pode apagar; a suspensão manual e ao fechar a tampa continuam funcionando.",
+    sessionMessagesInCurrentTurn: "Receber mensagens de colaboração no turno atual",
+    sessionMessagesInCurrentTurnDesc: "Desativado por padrão. Aplica-se aos novos turnos do agente: recebe mensagens antes da próxima solicitação ao modelo, sem interromper ferramentas. As mensagens já na fila permanecem inalteradas.",
     imageModel: "Modelo de imagens",
     imageModelUnset: "Sem configurar",
     imageModelUnavailable: "Atualmente indisponível",
