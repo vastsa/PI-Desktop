@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const hook = pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")).href;
 register(hook);
+const { posixOnly } = await import("./helpers/platform-guard.mjs");
 const { buildImportPayload, importProvidersOverSsh } = await import("../electron/main/remote/remote-provider-sync.ts");
 const { createSystemSshTransport } = await import("../electron/main/remote/ssh-transport.ts");
 const { startAdminSocket } = await import("../../pi-host/src/admin-socket.ts");
@@ -28,7 +29,7 @@ const provider = (id = "local") => ({
 const ssh = { host: "fixture.example", remotePort: 4567, version: "fixture" };
 const selection = (providers = [provider()]) => ({ providers, providerIds: providers.map((row) => row.id), setDefault: true, getSecret: async () => KEY });
 
-test("selected providers flow through SSH stdin, the CLI, the live socket and host RPC; repeated import stays idempotent", { timeout: 15_000 }, async (t) => {
+test("selected providers flow through SSH stdin, the CLI, the live socket and host RPC; repeated import stays idempotent", { ...posixOnly, timeout: 15_000 }, async (t) => {
   const dir = await mkdtemp(join(process.cwd(), "desktop-provider-sync-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const rows = new Map();

@@ -44,6 +44,7 @@ test("assistant error messages expose readable provider details and one Continue
   assert.match(component, /errors\.action\.continue/);
   assert.match(component, /chat\.continueCurrentTaskPrompt/);
   assert.match(component, /setSettingsTab\("agent"\)/);
+});
 
 // Issue #234: the localized NETWORK_ERROR summary cannot tell DNS from TLS from
 // a dropped socket, so both failure surfaces render the transport errno next to
@@ -61,7 +62,6 @@ test("network failures show the transport errno beside the error code", async ()
   assert.match(card, /error\.details/);
   assert.match(card, /networkCode/);
   assert.match(activityGroup, /retryError\.networkCode/);
-});
 });
 
 test("dismissing an assistant error hides its card without changing transcript data", async () => {
