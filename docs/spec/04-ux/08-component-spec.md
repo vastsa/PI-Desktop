@@ -1962,6 +1962,9 @@ Single message render — either user (plaintext) or assistant (markdown streami
   page of the primary folder in the side browser, and nothing plus a report when
   the reference matches no file. Local markdown images render
   inline via the same contained data-URL channel, with a chip fallback.
+  Right-clicking a loaded inline image offers Copy image (PNG bytes on the
+  system clipboard, reported by toast) and Download image (saved under the
+  referenced file's name) before the file actions.
   Unprefixed relative paths
   resolve from the workspace root; `./` and `../` resolve from the workspace
   root in chat, and from the viewed file's directory when previewing a

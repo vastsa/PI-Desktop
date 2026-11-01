@@ -43,13 +43,14 @@ import {
   IconCircleAlert,
   IconCode,
   IconCopy,
+  IconDownload,
   IconExternal,
   IconGlobe,
   IconImage,
   IconWorkflow,
 } from "./icons";
 import { TooltipButton } from "./ui";
-import { ContextMenu, useContextMenu } from "./ContextMenu";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { MarkdownTable } from "./MarkdownTable";
 import { markdownTableData } from "../lib/markdown-table";
 import { PluginBlockRenderer } from "./PluginBlockRenderer";
@@ -68,6 +69,8 @@ import {
 } from "../lib/latex-math";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
+import { copyImageDataUrlToClipboard } from "../lib/image-clipboard";
+import { imageDownloadName } from "../lib/image-download-name";
 import { absoluteImagePath, remarkLocalImagePaths } from "../lib/markdown-image-paths";
 import { remarkNormalizeWrappedMarkdownLinkDestinations } from "../lib/markdown-link-destinations";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
@@ -443,7 +446,10 @@ const MarkdownFileMenuContext = createContext<OpenMarkdownFileMenu | null>(null)
 
 type OpenMarkdownFileMenu = (
   event: React.MouseEvent<HTMLElement>,
-  target: ChatFileMenuTarget,
+  /** `null` offers only `leadingItems`, for content with no file actions. */
+  target: ChatFileMenuTarget | null,
+  /** Actions on the content itself, listed before the file actions. */
+  leadingItems?: ContextMenuItem[],
 ) => void;
 
 function extractCode(children: ReactNode): { code: string; lang: string } | null {
@@ -728,14 +734,31 @@ function MarkdownImage({
   // streaming src flips between remote and local. Remote images pass null.
   const dataUrl = useReferencedImageDataUrl(isRemote ? null : localRef);
 
+  const { t } = useTranslation();
+
   /*
     A file the renderer can already show is still a file whose folder the user
     may want, so a local image carries the same menu its chip fallback does.
+    A loaded image also offers to copy the picture itself, as a browser does.
   */
+  const fileTarget = localToolsAllowed && localRef ? { path: localRef, baseDir } : null;
+  const copyItems: ContextMenuItem[] = dataUrl
+    ? [{
+        id: "copy-image",
+        label: t("settings.copyGeneratedImage"),
+        icon: <IconCopy size={14} />,
+        onSelect: () => void copyMarkdownImage(dataUrl, t),
+      }, {
+        id: "download-image",
+        label: t("settings.downloadImage"),
+        icon: <IconDownload size={14} />,
+        onSelect: () => downloadMarkdownImage(dataUrl, localRef ?? source),
+      }]
+    : [];
   const onLocalContextMenu =
-    localToolsAllowed && localRef && openFileMenu
+    openFileMenu && (fileTarget || copyItems.length > 0)
       ? (event: React.MouseEvent<HTMLElement>) =>
-          openFileMenu(event, { path: localRef, baseDir })
+          openFileMenu(event, fileTarget, copyItems)
       : undefined;
   if (isRemote) {
     return (
@@ -778,6 +801,24 @@ function MarkdownImage({
     );
   }
   return <img {...rest} src={source} alt={alt ?? ""} />;
+}
+
+async function copyMarkdownImage(dataUrl: string, t: (key: string) => string) {
+  const { showToast } = useAppStore.getState();
+  try {
+    await copyImageDataUrlToClipboard(dataUrl);
+    showToast(t("chat.copied"));
+  } catch {
+    showToast(t("chat.copyFailed"), { variant: "error" });
+  }
+}
+
+/** Saves the shown bytes under the referenced file's own name. */
+function downloadMarkdownImage(dataUrl: string, reference: string) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = imageDownloadName(reference);
+  link.click();
 }
 
 function Table({
@@ -980,7 +1021,17 @@ export const Markdown = memo(function Markdown({
     closeContextMenu: closeFileMenu,
   } = useContextMenu();
   const openMarkdownFileMenu = useCallback<OpenMarkdownFileMenu>(
-    (event, target) => openFileMenu(event, { items: fileMenuItems(target) }),
+    (event, target, leadingItems = []) => {
+      const fileItems = target ? fileMenuItems(target) : [];
+      openFileMenu(event, {
+        items: [
+          ...leadingItems,
+          ...fileItems.map((item, index) =>
+            index === 0 && leadingItems.length > 0 ? { ...item, separatorBefore: true } : item,
+          ),
+        ],
+      });
+    },
     [fileMenuItems, openFileMenu],
   );
   const { t } = useTranslation();
