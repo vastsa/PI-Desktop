@@ -95,3 +95,18 @@ candidate reruns are kept separately from this gallery.
 
 See the [user guide](../../autonomous-goals.md) and
 [lifecycle specification](../../spec/03-runtime/10-session-state-machine.md).
+
+
+## CI contract follow-up
+
+The first publication run exposed two legacy migration-fixture failures, stale
+Main RPC test doubles, and a transcript probe that inferred Planning without a
+Plan session. The follow-up changes tests only, not production migrations or
+execution policy. The v25 single-step test retains exact schema/data/file/backup
+checks and separately checks full-open core data and immutable backups. The v15
+fixture removes the trigger absent from that schema. Main doubles now implement
+session.getTurnMode and assert its execution mode reaches the runtime. The real
+transcript probe explicitly checks Agent/Goal Working and Plan Planning, including
+runtime-activity priority. The 42 affected Main tests and the 4/12 Rust module
+suites passed locally after reproducing their failures. Current remote checks are
+shown on PR #1999; the earlier failed run is not represented as green.

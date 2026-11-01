@@ -316,8 +316,15 @@ export async function transcriptStatusProbe() {
       );
     }
     activity(undefined);
-    await render({ planningState: "planning" });
-    oneStatus("planning-indicator", "planning remains visible after output");
+    for (const inputMode of ["agent", "goal", "plan"] as const) {
+      flushSync(() => useAppStore.setState({ sessions: [{
+        id: sessionId, title: "Runtime mode fixture", mode: inputMode,
+        createdAt, updatedAt: createdAt,
+      }] }));
+      await render({ planningState: "planning" });
+      oneStatus(inputMode === "plan" ? "planning-indicator" : "working-indicator",
+        `${inputMode}: mode-specific status remains visible after output`);
+    }
     activity({ phase: "waiting-model", since: Date.now() });
     oneStatus(
       "run-activity-indicator",
