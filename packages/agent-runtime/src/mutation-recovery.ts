@@ -63,10 +63,17 @@ export function isPatchCommand(command: unknown): boolean {
     /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?apply_patch(?:\s|$)/m.test(
       command,
     ) ||
-    /\bgit(?:\s+\S+)*\s+apply(?:\s|$)/m.test(command) ||
+    isGitApplyCommand(command) ||
     /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?patch(?:\s|$)/m.test(
       command,
     )
+  );
+}
+
+/** `git apply` in command position; only git global options may sit between them. */
+function isGitApplyCommand(command: string): boolean {
+  return /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?git(?:\s+(?:-[Cc]\s+[^\s;&|]+|-[^\s;&|]+))*\s+apply(?:\s|$)/m.test(
+    command,
   );
 }
 
