@@ -1154,7 +1154,7 @@ checks; these modes grant no additional network access. Policy refusals are
 audited without response bodies or headers.
 
 Before using the option on a potentially older host, query
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: string[] }>` and require
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>` and require
 the desired mode. This read-only query needs no network permission and performs
 no network I/O. A missing method, rejected query, or absent mode means
 unsupported: do not send the request. Older hosts may silently ignore unknown
@@ -1555,7 +1555,9 @@ which handles these built-in channels before falling back to `onPanelInvoke`:
 `plugin.setSettings`, `fs.remove`, and arbitrary Electron IPC are not exposed. A
 channel the host does not implement itself is forwarded to the plugin's
 `onPanelInvoke(channel, payload)`, so a plugin may define its own panel ↔ main
-channels; a plugin that exports no `onPanelInvoke` gets `UNSUPPORTED` from its own
+channels. Electron main brokers every custom channel call before the handler
+executes in the plugin's child process; the panel never calls the child directly.
+A plugin that exports no `onPanelInvoke` gets `UNSUPPORTED` from its own
 process. The `skill.list` / `read` / `create` / `update` / `remove` / `setEnabled`
 operations used by the bundled skill manager are plugin-owned `onPanelInvoke`
 channels, not general host bridge APIs.

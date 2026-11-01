@@ -993,7 +993,7 @@ pi.net.fetch(input: {
 这些模式不会授予额外网络访问权。策略拒绝会被审计，但不记录响应正文或响应头。
 
 在可能较旧的宿主使用该选项前，应查询
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: string[] }>`，确认其中包含所需模式。
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>`，确认其中包含所需模式。
 该只读查询无需网络权限，不执行网络 I/O。方法缺失、查询被拒绝或缺少所需模式都表示不支持，
 此时不要发送请求。旧宿主可能静默忽略未知 fetch 选项，所以只传入 `redirect` **不等于能力检测**。
 当前源码已实现该查询，较旧宿主可能不会公布它。本次没有引入仅限同源的模式。
@@ -1317,10 +1317,11 @@ window.pluginBridge.on(event, handler)
 | `session.getActive` | 无 |
 | `ui.revealView` | `ui.view` |
 
-`plugin.setSettings`、`fs.remove` 和任意 Electron IPC 未暴露。主机自己
-没有实现的通道会被转发到插件的 `onPanelInvoke(channel, payload)`，
-因此插件可以自定义面板 ↔ 插件进程通道；没有导出 `onPanelInvoke` 的插件
-会从自己的进程收到 `UNSUPPORTED`。内置技能管理器使用的 `skill.list` / `read` /
+`plugin.setSettings`、`fs.remove` 和任意 Electron IPC 未暴露。宿主未内置实现的通道会转发给
+插件的 `onPanelInvoke(channel, payload)`，因此插件可以定义自己的面板 ↔ 主进程通道。
+每次自定义通道调用均由 Electron 主进程校验并代理，再由插件子进程执行处理器；面板不能
+直接调用子进程。未导出 `onPanelInvoke` 的插件会从自身进程返回 `UNSUPPORTED`。
+内置技能管理器使用的 `skill.list` / `read` /
 `create` / `update` / `remove` / `setEnabled` 是它自己的 `onPanelInvoke` 操作，不是通用宿主桥 API。
 
 ### 面板事件（主机 -> 面板）
