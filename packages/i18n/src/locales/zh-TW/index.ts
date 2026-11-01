@@ -2432,8 +2432,8 @@ sklm: {
       listAria: "評價",
     },
     capabilities: {
-      panel: "面板",
-      views: "工作面板檢視",
+      panel: "獨立面板視窗",
+      views: "側邊面板檢視",
       commands: "命令",
       tools: "智慧體工具",
       agentExtension: "Agent 擴充",
