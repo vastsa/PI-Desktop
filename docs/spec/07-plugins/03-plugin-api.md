@@ -130,6 +130,13 @@ pi.commands.register(def: {
 pi.commands.unregister(id: string): Promise<void>
 ```
 
+Command IDs are stored as supplied; the host does not add a prefix. Use a
+plugin-specific namespace to avoid collisions. A plugin may replace its own
+command, but registering an ID owned by another loaded plugin rejects with
+`CONFLICT`. Unregistering another plugin's command rejects with
+`PERMISSION_DENIED`. Unregistering an absent ID succeeds without changes.
+Disabling or unloading a plugin removes its commands and releases their IDs.
+
 ### Composer text transforms (`composer.transform`)
 
 A plugin may contribute explicit, user-invoked text actions through

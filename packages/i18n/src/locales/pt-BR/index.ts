@@ -1474,6 +1474,8 @@ export const ptBR = {
     inlineVisualizationsDesc: "Mostra os cartões HTML interativos que o agente escreve no diretório de visualizações da sessão. Desativado por padrão: o prompt não anuncia diretório de visualizações, a habilidade visualize fica oculta e as linhas de referência existentes permanecem escondidas.",
     preventScreenSleep: "Impedir suspensão da tela",
     preventScreenSleepDesc: "Mantém a tela ligada enquanto o app está em execução. Usa as APIs de gerenciamento de energia do sistema em todas as plataformas.",
+    scheduledTasks: "Tarefas agendadas",
+    scheduledTasksDesc: "Ao desativar, oculta as tarefas agendadas e impede novas execuções. As tarefas existentes e o histórico são mantidos.",
     windowTranslucency: "Janela translúcida",
     windowTranslucencyDesc: "Mantém a janela do macOS translúcida sobre o desfoque da área de trabalho, que é o padrão. Usa mais GPU enquanto a janela está visível; desative para uma janela opaca com a menor carga ociosa. A alteração vale após reiniciar.",
     windowTranslucencyRestart: "Reiniciar para aplicar",

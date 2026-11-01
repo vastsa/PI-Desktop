@@ -1495,6 +1495,8 @@ sklm: {
     inlineVisualizationsDesc: "在对话中显示智能体写入会话可视化目录的交互式 HTML 卡片。默认关闭：不向模型提供可视化目录，同时隐藏 visualize 技能，历史引用行也不再显示。",
     preventScreenSleep: "阻止屏幕休眠",
     preventScreenSleepDesc: "应用运行时保持屏幕常亮，跨平台使用系统电源管理接口。",
+    scheduledTasks: "定时任务",
+    scheduledTasksDesc: "关闭后隐藏定时任务入口并停止启动新任务，已有任务和历史记录保留。",
     windowTranslucency: "窗口透明效果",
     windowTranslucencyDesc: "让 macOS 窗口保持透明并显示桌面模糊背景（默认开启）。窗口可见时会占用更多 GPU；关闭后使用不透明窗口，空闲占用最低。修改后需重启生效。",
     windowTranslucencyRestart: "重启后生效",

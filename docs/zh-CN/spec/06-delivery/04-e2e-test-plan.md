@@ -1574,6 +1574,21 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M4
 - **状态**：草案
 
+#### E2E-PLUGIN-command-ownership：命令注册遵循插件归属
+
+- **前提条件**：两个插件分别运行在独立的插件宿主进程中。
+- **步骤**：1）由一个插件注册命令。2）尝试通过另一个插件覆盖并注销该命令。
+  3）由所属插件更新并注销命令。4）验证加载期间发生 ID 冲突和并发注册的情况。
+- **预期**：跨插件覆盖命令返回 `CONFLICT` 错误，跨插件注销返回 `PERMISSION_DENIED`
+  错误；调用被拒绝后，原命令仍可正常执行。所属插件更新命令时保留原 ID，重复注销不产生
+  副作用，释放后的 ID 可被重新使用。插件加载失败或未成功注册命令的插件被卸载时，不会
+  移除已成功注册的命令。并发注册同一 ID 时，仅一个插件能够成功取得该命令的归属权。
+- **关联规范**：`07-plugins/03-plugin-api.md`、`07-plugins/12-plugin-ipc-and-host-services.md`
+- **验收项**：G（插件命令隔离）
+- **里程碑**：M4
+- **状态**：已自动化；`pnpm test:e2e:plugin-command-ownership` 通过真实插件宿主进程和
+  宿主代理，验证公开插件 API 的调用行为。
+
 #### E2E-024：插件注册并调用代理工具
 
 - **先决条件**：插件已加载；插件声明一个代理工具。
@@ -5966,6 +5981,7 @@ eleven-tool-round desktop paths are verified by
 | 品质（侧边栏菜单定位） | E2E-021c |
 | 品质（项目排序） | E2E-253 |
 | 品质（工作面板标签关闭按钮可见性） | E2E-WORK-PANEL-active-tab-close-visibility |
+| Quality (turn changed-files disclosure) | E2E-CHAT-turn-changed-files-summary |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-130-kernel-upgrade |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-140-kernel-upgrade |
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |

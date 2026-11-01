@@ -1505,6 +1505,8 @@ sklm: {
     inlineVisualizationsDesc: "Aracının oturumun görselleştirme dizinine yazdığı etkileşimli HTML kartlarını gösterir. Varsayılan olarak kapalı: istem görselleştirme dizinini bildirmez, visualize becerisi gizlenir ve mevcut referans satırları gösterilmez.",
     preventScreenSleep: "Ekran uykusunu engelle",
     preventScreenSleepDesc: "Uygulama çalışırken ekranı açık tutar. Tüm platformlarda sistem güç yönetimi API'lerini kullanır.",
+    scheduledTasks: "Zamanlanmış görevler",
+    scheduledTasksDesc: "Kapatıldığında zamanlanmış görevler gizlenir ve yeni çalıştırmalar durur. Mevcut görevler ve geçmiş korunur.",
     windowTranslucency: "Saydam pencere",
     windowTranslucencyDesc: "macOS penceresini masaüstü bulanıklığı üzerinde saydam tutar; varsayılan budur. Pencere görünürken daha fazla GPU kullanır; en düşük boşta yük için kapatın. Değişiklik yeniden başlatmadan sonra uygulanır.",
     windowTranslucencyRestart: "Uygulamak için yeniden başlatın",

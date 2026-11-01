@@ -1414,6 +1414,14 @@ ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
 the scheduled RPC domain handlers. List is low risk; mutations require normal
 approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.
 
+`AppSettings.scheduledTasksEnabled` is an optional boolean, enabled when absent.
+When false, `tools.list` omits all four tools and stale calls are rejected.
+The Host returns no ids from `scheduled.due` and rejects `scheduled.run`,
+create/update/delete with `INVALID_PARAMS` before admission or mutation.
+Read/import/finish-run operations remain available so saved data and in-flight
+completion are preserved. Re-enabling retains per-task enable states and the
+existing no-catch-up due-time policy; no schema or protocol version changes.
+
 The Host rechecks durable session mode and derives project scope from the
 calling session, never the foreground workspace or model-supplied paths.
 Create binds that scope; list filters it; update/delete require matching scope.

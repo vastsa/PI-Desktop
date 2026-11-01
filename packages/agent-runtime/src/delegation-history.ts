@@ -18,7 +18,9 @@
  * rows stay transcript-only, tool rows attach to the assistant above them, an
  * orphan tool row gets a synthesized carrier) but is parameterized by the
  * delegate's own provider: a pinned delegation model is not the session model,
- * and api/replay details depend on the binding.
+ * and api/replay details depend on the binding. Tool-result content blocks
+ * come from `restoredToolResultContent`, shared with the parent's
+ * `toolResultFromUi`.
  */
 
 import { estimateTokens } from "./pi-runtime-estimates.js";
@@ -39,6 +41,7 @@ import {
   type UiMessage,
 } from "@pi-desktop/shared";
 import { isRecord, timestampMs, toJsonObject, toJsonValue, usageToPi } from "./agent-messages.js";
+import { restoredToolResultContent } from "./tool-result-content.js";
 import type { ContextBudgetLimits } from "./context-budget.js";
 import {
   apiBindingForProviderModel,
@@ -432,31 +435,7 @@ function truncateSeededMessages(
 
 function toolResultFromUi(m: UiMessage, timestamp: number): ToolResultMessage {
   const raw = m.toolResult;
-  const blocks: ToolResultMessage["content"] = [];
-  const rawBlocks =
-    isRecord(raw) && Array.isArray(raw.content) ? raw.content : undefined;
-  if (rawBlocks) {
-    for (const block of rawBlocks) {
-      if (!isRecord(block)) continue;
-      if (block.type === "text" && typeof block.text === "string") {
-        blocks.push({ type: "text", text: block.text });
-      } else if (
-        block.type === "image" &&
-        typeof block.data === "string" &&
-        typeof block.mimeType === "string"
-      ) {
-        blocks.push({
-          type: "image",
-          data: block.data,
-          mimeType: block.mimeType,
-        });
-      }
-    }
-  } else if (typeof raw === "string" && raw.trim()) {
-    blocks.push({ type: "text", text: raw });
-  } else if (raw !== undefined && raw !== null) {
-    blocks.push({ type: "text", text: safeJson(raw) });
-  }
+  const blocks = restoredToolResultContent(raw);
   if (blocks.length === 0) {
     blocks.push({
       type: "text",
@@ -502,14 +481,6 @@ function toolResultFromUi(m: UiMessage, timestamp: number): ToolResultMessage {
       m.isError === true,
     timestamp,
   };
-}
-
-function safeJson(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 export type RebuiltTaskCall = {

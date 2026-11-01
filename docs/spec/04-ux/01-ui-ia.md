@@ -303,6 +303,11 @@ destination, chat as the home surface, tools and permissions inline.
   focus.
 
 ### 3.3 Scheduled
+Settings → General → Scheduled tasks controls this feature, on by default
+(`scheduledTasksEnabled` absent or true). Off hides the footer and search page
+entries and prevents new runs without deleting tasks or run history. The
+settings switch remains searchable so the feature can be re-enabled.
+
 A task column beside the selected task's page, with an explicit create/edit form, a cadence dropdown, time,
 next occurrence, saved project, per-task permission/model selection, a per-task conversation mode (a new conversation per run, or one conversation every run continues), pause/resume and delete confirmation. Hourly
 schedules repeat at one-hour intervals without a time selector. An interval

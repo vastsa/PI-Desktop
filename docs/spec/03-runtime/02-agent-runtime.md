@@ -670,7 +670,11 @@ checkpoint's `readFiles` / `modifiedFiles` and the `<read-files>` section of a
 summary were always empty (D618). Codex-shaped compaction folds pi's retained
 tail into that same summary, and the runtime records file operations from the
 folded tail as well, so a file touched only inside the recent-token window
-still appears in the checkpoint lists and summary tags.
+still appears in the checkpoint lists and summary tags. The stored tool call keeps
+the argument spelling the model sent, because `normalizeToolParams` folds
+alias names only when the call executes (D273). The collector therefore reads
+the path from `path` or from the same aliases (`file_path`, `filepath`,
+`filePath`, `filename`, `fileName`, `file`), with the same precedence.
 
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of
