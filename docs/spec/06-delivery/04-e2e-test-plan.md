@@ -10839,6 +10839,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| C / E / Quality — Subagent delegation catalog on the Models page | [E2E-268](#e2e-268-models-page-states-and-edits-the-subagent-delegation-catalog) |
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | C / Quality — Continue after malformed tool output | E2E-RUNTIME-malformed-tool-call-continue-recovery |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
@@ -19202,6 +19203,47 @@ host-created files. The full app's file-preview viewer is covered separately.
   `apps/desktop/test/main-wiring-contract.test.mjs`; the interactive Electron
   scenario remains a manual validation run.
 
+### E2E-268: Models page states and edits the subagent delegation catalog
+
+- **Preconditions**: Two AI services are configured and enabled with
+  credentials, the first with two models and the second with one; exactly one
+  model carries "Available for AI delegation". A parent Agent-mode session can
+  delegate a task.
+- **Steps**:
+  1. Open Settings → Models and read the **Subagent models** row at the bottom.
+  2. Open the second service's model editor from the row's Advanced action, tick
+     "Available for AI delegation", save, and re-read the list.
+  3. Start a parent turn and inspect the delegation model summary the Task tool
+     receives.
+  4. Return to the row, remove that model with its × action, and re-read the
+     list.
+  5. Turn the second service off and re-read the list.
+  6. Toggle "Available for AI delegation" in the first service's own model
+     dialog and return to the Models page.
+- **Expected**: The row lists exactly the opted-in models as `provider · model`
+  and shows its empty-state line when none is opted in; a model joins the list
+  only through that editor's tick. Adding writes
+  `availableForSubagents` on that service's binding and the next parent turn
+  lists the model in the delegation catalog; removing it drops the model from the
+  catalog and leaves no `false` behind on the stored binding. A service that is
+  off or holds no credential keeps its listed models visible and removable,
+  annotated with the reason they are idle, while its models stay out of the
+  catalog. The provider dialog and the row show the same flag in both
+  directions, so neither surface can drift. A plugin-owned service row renders
+  read-only. The row is hidden while no service has a configured model, and a
+  refused save reports the error instead of silently keeping the old value.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/11-provider-model-system.md` §7, `04-ux/06-settings-ia.md`
+  (Model configuration), D278, ADR subagent-model-opt-in, issue #1736.
+- **Acceptance**: C / E / Quality — the catalog the parent agent may pick from is
+  reviewable and editable in one place on the Models page without adding a
+  second stored selection, and every row states why an opted-in model is not in
+  effect.
+- **Milestone**: Post-MVP model configuration.
+- **Status**: Unit coverage in `apps/desktop/test/subagent-delegation.test.mjs`
+  (candidate construction, grouping, read-only and blocked states, and the exact
+  provider write). The interactive save → next-turn catalog path remains Draft
+  and is run only when requested in a capable environment.
 ### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
 
 - **Preconditions**: A ChatGPT subscription (Codex) account and a Responses

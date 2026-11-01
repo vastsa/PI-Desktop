@@ -452,9 +452,18 @@ a usage tab.
 
 ### Model configuration (`agent` tab)
 - The model configuration page groups its sections in this order: **AI
-  services** (including model-catalog status and refresh), **Jev**, then the
-  image-generation model selector. The sections use one consistent vertical
-  spacing rhythm.
+  services** (including model-catalog status and refresh), **Jev**, the
+- **Subagent models** is one settings row, below the image-generation selector.
+  It lists only the models that carry the `availableForSubagents` opt-in — the
+  delegation catalog the parent agent sees — as `provider · model` entries with a
+  remove action each, or an empty-state line when none does. Adding is the row's
+  own control: a menu beside the list offers exactly the configured models that
+  as `provider · model` entries with the same Advanced action and remove control
+  a service's own model list has, or an empty-state line when none does.
+  Advanced opens that service's model editor — where the opt-in is ticked — so
+  adding a model happens in the model editor, never from this row. It reads and
+  writes `ModelBinding.availableForSubagents`, never a second
+  The row is hidden while no service has a configured model.
 - **Defaults** card: a compact settings row shows the provider name and exact
   model ID beneath the Default model label. A quiet Change action opens the
   picker without duplicating the current value. The picker groups model-level
