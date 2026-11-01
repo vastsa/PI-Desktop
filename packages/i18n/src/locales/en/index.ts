@@ -497,6 +497,8 @@ export const en = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "≈ {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/s",
     usageSessionTime: "Total session time",
     usageNetworkRequest: "Network request",
     usageNetworkRequestHelp: "Time from sending a model request to its first response event; includes network and provider-side waiting. Older messages without separate timing are not included.",
