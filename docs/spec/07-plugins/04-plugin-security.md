@@ -478,8 +478,9 @@ user types. A plugin may only map an accelerator to one of its own registered
 commands, and an accelerator the OS reserves, that PI-Desktop itself currently
 spends (the plugin-launcher and window-toggle bindings, `Alt+Space` and
 `Alt+Shift+W` by default; a user rebinding one frees it for plugins), or that
-another plugin holds is refused with
-`LIMIT_EXCEEDED` (at most 8 per plugin) instead of being taken over. A trigger
+  another plugin holds is refused instead of being taken over. Registration
+  reports `SHORTCUT_CONFLICT`, `SHORTCUT_UNAVAILABLE`, or `INVALID_ACCELERATOR`
+  as applicable; `LIMIT_EXCEEDED` enforces at most 8 shortcuts per plugin. A trigger
 runs exactly that one command. Register, unregister, and trigger are audited
 with the plugin id and the result — a registration and a trigger also name the
 accelerator and command — and typed input is never recorded. Every entry is
