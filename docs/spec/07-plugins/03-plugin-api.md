@@ -916,9 +916,11 @@ the target session and history.
 A named `spawn` `modelKey` is an AI-driven delegation choice and needs that
 model's own `ModelBinding.availableForSubagents` opt-in; the host answers
 `PERMISSION_DENIED` for a model the user has not enabled, before creating a
-worker. Omitting `modelKey` still inherits — the first enabled model, else the
-default — and naming the default model's own key is that same inheritance
-rather than a selection (ADR subagent-model-opt-in).
+worker. Explicitly naming the default model's own key is treated as inheritance
+rather than a selection. Omitting `modelKey` selects the first ready model
+enabled for AI delegation; if none exists, the call fails with
+`MODEL_NOT_CONFIGURED` instead of falling back to the default model
+(ADR subagent-model-opt-in).
 
 `list` returns at most 100 non-deleted Agent sessions that can receive a
 message, including sessions created independently of Session Orchestrator. Each
