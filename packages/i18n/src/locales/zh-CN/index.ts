@@ -1,6 +1,8 @@
+import { autonomousGoalZhCN } from "../../autonomous-goal.js";
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const zhCN = {
+  autonomousGoal: autonomousGoalZhCN,
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "新建隔离会话",

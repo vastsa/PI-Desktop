@@ -123,7 +123,7 @@ handler is logged, never fatal. This is the same channel that finally makes
 
 ### Query
 - The command palette only queries contributions that are enabled + loaded successfully
-- Agent sees registered tools; Plan/Goal sees only tools with non-empty
+- Agent and Goal see registered tools; Plan sees only tools with non-empty
   runtime `planSafeActions`, and execution rechecks `args.action` against them
 
 ### Deregistration
@@ -258,9 +258,9 @@ permission gate and result envelope stay in host-core:
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`. `turnId` is
    the runtime turn identity, forwarded unchanged so the plugin tool context can
    be matched against the `session:turnEnded` event.
-3. Plan/Goal calls without `planSafeActions` fail at the host policy gate.
+3. Plan calls without `planSafeActions` fail at the host policy gate.
    Admitted calls carry mode and the allowed actions; the desktop plugin runner
-   rejects missing or unlisted `args.action` before plugin code. Agent calls
+   rejects missing or unlisted `args.action` before plugin code. Agent/Goal calls
    use the normal permission flow. Electron answers through RPC
    `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`.
 4. host-core resolves the pending execution and returns a standard

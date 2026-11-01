@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
+const { composerSessionPolicy } = await import("../src/features/chat/composer/session-policy.ts");
 const composerSource = await readComposerSource();
 const styles = await loadStyles();
 
@@ -76,12 +77,18 @@ test("mode selector reserves the longest localized label width", () => {
   assert.match(styles, /\.composer-mode-chip-label\s*\{[\s\S]*?text-overflow:\s*ellipsis;/);
 });
 
-test("mode chip cross-fades on switch and pulses while planning is live", () => {
+test("mode chip cross-fades on switch and only Plan projects live planning", () => {
+  for (const mode of ["agent", "plan", "goal"]) {
+    const input = { mode, permissionMode: "ask", defaultPermissionMode: "ask", isRunning: true, planningState: "planning" };
+    assert.equal(composerSessionPolicy(input).planningLive, mode === "plan");
+    assert.equal(composerSessionPolicy({ ...input, isRunning: false }).planningLive, false);
+    assert.equal(composerSessionPolicy({ ...input, planningState: "awaiting_approval" }).planningLive, false);
+  }
   assert.match(composerSource, /data-planning=\{planningLive \? "true" : undefined\}/);
   assert.match(composerSource, /className="composer-mode-chip-face"/);
   assert.match(
     composerSource,
-    /const planningLive =\s*isRunning &&\s*planningState === "planning" &&\s*\(mode === "plan" \|\| mode === "goal"\)/,
+    /const \{ planningLive, composerPermissionMode \} = composerSessionPolicy\(/,
   );
   assert.match(
     styles,

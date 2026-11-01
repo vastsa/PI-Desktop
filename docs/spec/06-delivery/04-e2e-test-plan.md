@@ -1412,6 +1412,17 @@ identify the platform validation still needed.
 - **Acceptance**: A (bridge normal)
 - **Milestone**: M1
 - **Status**: Automated (`scripts/e2e-electron-boot.mjs` — sandboxed preload bridge + IPC round-trip)
+- **Build regression**: `apps/desktop/test/rollup-namespace.test.mjs` bundles an
+  external Node namespace re-export reached through a dynamic import with the
+  compiler resolved by Desktop's Vite. Both Node syntax checking and runtime
+  namespace access must pass. Rollup 4.62.2 emitted `child_process: *`; the
+  workspace pins the verified compiler fix at 4.66.0.
+- **Isolation and backend evidence**: The boot runner supplies an explicit
+  `--user-data-dir` plus isolated HOME/USERPROFILE, APPDATA/LOCALAPPDATA and
+  agent/skills roots. It requires sidecar ready/configured diagnostics and
+  rejects error/fatal or module-load diagnostics. `PI_BOOT_PROBE_LOG` optionally
+  preserves the controlled startup output before profile cleanup. The runner
+  must not attach to an existing Desktop or use a live model endpoint.
 
 #### E2E-003: Rust host healthcheck responds
 
@@ -2080,7 +2091,7 @@ identify the platform validation still needed.
   click/fill, screenshot and navigation. 5) Switch to a second session and call
   Browser; verify it uses that session's own page. 6) Continue the first session's
   Browser actions while the second session is visible; reload the shell and
-  return to the first page. 7) In Plan/Goal, exercise the read-only Browser
+  return to the first page. 7) In Plan, exercise the read-only Browser
   actions and verify mutating actions remain denied. 8) Disable
   `pi.browser`. 9) Call `BrowserPreview` and click an http(s) transcript link.
   10) From a third-party or test caller, send
@@ -2090,7 +2101,7 @@ identify the platform validation still needed.
   operations run in the background without opening the panel, borrowing another
   page, or changing focus. Shell reload retains the native page and form data;
   its side-panel tabs can be restored. ToolSearch activates the Browser tool.
-  Plan/Goal allow navigate/snapshot/screenshot/console; click/fill/evaluate/cdp
+  Plan allows navigate/snapshot/screenshot/console; click/fill/evaluate/cdp
   remain denied. Disable
   hides the view and tools; `BrowserPreview` errors; http(s) chips use
   `openExternal`. Cookie CDP is denied. Guest bounds stay inside the plugin
@@ -2913,9 +2924,9 @@ identify the platform validation still needed.
   Send a prompt that would normally require Write/Edit and observe behavior. 3)
   Click the same Composer chip to return to Agent. 4) Begin a turn and try to
   toggle mode mid-run or while a pending Plan approval is visible.
-- **Expected**: The Composer chip updates the active session `mode` (Plan and
-  Goal hard-deny Write/Edit and plugin tools while Bash follows the selected
-  permission mode; Agent allows its normal tools per permission settings). The
+- **Expected**: The Composer chip updates session `mode`: Plan denies Write/Edit and
+  non-plan-safe plugins; Agent and Goal use ordinary permissions. Selecting
+  Goal alone does not execute; switching away pauses active Goal work. The
   chip is disabled while a turn or active pending approval exists and re-enables
   after the session returns idle/planning. No top-bar mode control is rendered.
 - **Specs linked**: `04-ux/08-component-spec.md` (§2, §11),
@@ -3380,8 +3391,8 @@ identify the platform validation still needed.
 #### E2E-019c: Permission modes govern high-risk approval (D115/D132)
 
 - **Preconditions**: Agent mode; project open; global default `ask`.
-- **Steps**: 1) With a newly inherited session and global default Ask every time, open the composer menu — expect Ask every time to be selected with no global-default/inherit label — then ask the Agent to write a workspace file and expect a permission card. 2) Switch the session chip to Accept edits; repeat — expect no card for Write/Edit but still a card for Bash. 3) Switch to Auto — expect no card for Bash either. 4) Create another inherited session after setting the global default to Accept edits in Settings — expect the composer chip and menu selection to display Accept edits directly and Write/Edit to be auto-allowed. 5) Switch the session to Plan, then Goal, with Auto set — expect Write/Edit/plugin denied but Bash allowed without confirmation.
-- **Expected**: Effective mode = session override → global default → ask; Plan and Goal Write/Edit/plugin hard denies outrank every mode while their Bash follows the selected mode; the composer chip and menu always display the effective mode without default/inherit provenance.
+- **Steps**: 1) With a newly inherited session and global default Ask every time, open the composer menu — expect Ask every time to be selected with no global-default/inherit label — then ask the Agent to write a workspace file and expect a permission card. 2) Switch the session chip to Accept edits; repeat — expect no card for Write/Edit but still a card for Bash. 3) Switch to Auto — expect no card for Bash either. 4) Create another inherited session after setting the global default to Accept edits in Settings — expect the composer chip and menu selection to display Accept edits directly and Write/Edit to be auto-allowed. 5) Switch to Plan with Auto — expect Write/Edit/non-plan-safe plugins denied and Bash allowed. Switch to Goal — ordinary Agent policy applies; verify explicit denial under Ask still stops the tool.
+- **Expected**: Effective mode = session override → global default → ask; Plan hard denies outrank every mode; Goal uses ordinary Agent policy and Bash follows the selected mode; the composer chip and menu always display the effective mode without default/inherit provenance.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md §6`, `03-runtime/04-data-storage.md`, `08-meta/decisions-log.md` (D115/D132)
 - **Acceptance**: E (permission modes resolve and enforce host-side)
 - **Milestone**: M5
@@ -4250,8 +4261,8 @@ window; opening a normal panel afterward must still work.
   the server's self-declared annotation. Allow-once covers only that call;
   allow-session suppresses further cards for the same `mcp_<serverId>_<tool>`
   name in that session only, and does not cover other tools of the server.
-  `auto` runs the tool without a card. Plan and Goal deny it even with a
-  session grant.
+  `auto` runs the tool without a card in Agent and Goal. Plan denies it even
+  with a session grant.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
   `05-security/01-security.md`, D640, ADR `mcp-tool-approval-risk`
 - **Acceptance**: E (tools & permissions) + Security
@@ -7970,9 +7981,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `provider-retry.test.ts`, `runtime.test.ts`, `subagent.test.ts`.
   Other scenario variants remain Draft.
 
-#### E2E-1174: Return a paired tool denial in Plan/Goal
+#### E2E-1174: Return a paired tool denial in Plan
 
-- Seed earlier tool-call history, then switch an Agent session to Plan or Goal.
+- Seed earlier tool-call history, then switch an Agent session to Plan.
   A loopback Responses gateway emits Edit, Write or Task only if that tool is
   declared in the request; an undeclared name would cause a 502.
 - Verify all six mode/tool combinations reach the normal tool-result path:
@@ -7980,7 +7991,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   preserves old call/result pairs, and adds no synthetic user correction.
 - Assert that no host call occurs and no delegate starts. The tool event is an
   error while the model can continue with a read-only answer.
-- A handler reference retained from Agent must refuse execution after Plan/Goal
+- A handler reference retained from Agent must refuse execution after Plan
   is entered; switching back to Agent restores the normal permission path.
 - Automation: `mode-tool-access.test.ts` runs real runtime/SDK loops against a
   loopback HTTP/SSE fixture; `runtime.test.ts` covers catalog/mode transitions.
@@ -8118,7 +8129,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 #### E2E-PLAN-WORKSPACE: Missing workspace does not strand a contract turn
 
 - **Preconditions**: Isolated host, active global workspace, temporary session
-  without a persisted project workspace; repeat for Plan and Goal.
+  without a persisted project workspace; exercise Plan submission.
 - **Steps**: Enter the contract from Agent mode and submit. In the runtime,
   submit from a workspace-less contract session, receive the tool error, deliver
   a final explanation, and repeat on
@@ -8539,7 +8550,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   request-changes controls. Host/app restart recovery is exercised separately
   by E2E-108 and E2E-109.
 - **Expected**: Agent is the default; the left-of-input Composer chip is the
-  sole active-session Agent/Plan/Goal control; Plan and Goal show
+  sole active-session Agent/Plan/Goal control; Plan and legacy Goal approvals show
   Ask/Accept edits/Auto, the submitted title, an artifact opener,
   remembered approval mode, approve/reject only, shell catalog/fallback status,
   and localized failed-closed states. No
@@ -8799,7 +8810,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     keeps its other three delegates; an unknown agent and an unresolvable model
     pin each fail as a `Task` tool error naming the cause, with no fallback to
     the session provider and no turn failure.
-  - `Task` is absent from the catalog in Plan and Goal.
+  - Plan retains configured Task declarations but denies execution; Goal permits
+    ordinary Agent delegation with its existing scope/permission checks.
   - After reload the card is collapsed by default; re-expanding preserves node
     order, attribution, outcome and nested content exactly as they appeared
     live.
@@ -8963,9 +8975,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M5
 - **Status**: Unit-covered (`runtime.test.ts`); full provider/UI journey Draft
 
-#### E2E-146a: Approved Plan/Goal progress text continues once
+#### E2E-146a: Approved Plan / legacy Goal progress text continues once
 
-- **Preconditions**: A project-bound session has an approved Plan or Goal and a
+- **Preconditions**: A project-bound session has an approved Plan or persisted legacy Goal and a
   deterministic provider fixture. One fixture ends with short forward-looking
   progress text and no tool call; a second ends with a normal final report;
 - **Steps**:
@@ -9973,34 +9985,17 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Status**: Unit/source-contract covered; full cross-platform UI journey Draft
   (run only in a capable environment when this surface changes)
 
-#### E2E-121: Goal approval resumes autonomous acceptance-criteria execution
+#### E2E-121: Legacy Goal approval compatibility
 
-- **Preconditions**: A project-bound session has a configured provider and is
-  idle in Agent mode; the workspace permits host artifact creation and has no
-  prior test goal artifact.
-- **Steps**: 1) Switch the session to Goal and let the Agent call
-  `EnterGoalMode`, then `SubmitGoal(title, markdown, question)`. 2) Inspect the
-  exact Markdown bytes in the new `.pi/goal/*.md` artifact and the matching
-  `plan_approvals` row. 3) Confirm the shared approval card exposes only
-  Approve/Reject and that Goal denies Write/Edit/plugin tools while Bash follows
-  the selected permission mode. 4) Approve with Ask and observe the same Agent
-  resume in Agent mode. 5) Inspect the final response for criterion-by-criterion
-  verification or an explicit boundary, then reload the session.
-- **Expected**: Goal uses the Plan approval pipeline without a second planner;
-  the artifact is immutable and the row records `kind = goal`, path, hash,
-  size, and execution state. Approval is a separate user decision, transitions
-  the session to Agent, and starts autonomous work only after approval. The
-  transcript remains reviewable after reload and no scheduled/unattended Goal
-  run can bypass the approval boundary.
-- **Specs linked**: `03-runtime/02-agent-runtime.md`,
-  `03-runtime/03-tools-and-permissions.md`, `03-runtime/04-data-storage.md`,
-  `03-runtime/06-host-rpc-protocol.md`, `03-runtime/10-session-state-machine.md`,
-  `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`, D198
-- **Acceptance**: C (conversation & stream), E (tools & permissions),
-  F (persistence), H (diagnostics), Security
-- **Milestone**: M6+
-- **Status**: Unit/source-contract covered (`packages/agent-runtime` and
-  host-core Goal tests); full UI journey Draft (run only in a capable environment when this surface changes)
+- Seed an existing `kind = goal` approval/artifact; do not create it with new
+  `EnterGoalMode`/`SubmitGoal` calls, which are rejected.
+- Verify read/history, explicit approve/reject, and approved execution retain the
+  old semantics. Migration never creates a `session_goals` row or authorizes a
+  loop. Restart interrupts legacy pending/queued/running execution without replay.
+- This replaces the obsolete new-Goal approval journey. Historical test results
+  do not establish autonomous Goal coverage; see E2E-GOAL-autonomous-lifecycle.
+- **Status**: Compatibility scenario; execution of this revised scenario is not
+  claimed by this documentation update.
 
 #### E2E-122: Plugins request and deliver native notifications
 
@@ -11069,8 +11064,8 @@ This test plan spec is accepted when:
 ### US-UI-04 Composer without workspace context
 - With a git workspace open, composer does not show project, Local, or branch
   labels above the prompt surface.
-- Operating-mode selector switches between Agent, Plan, and Goal; both contract
-  modes keep the permission-mode chip and explain their Bash tradeoff.
+- Operating-mode selector switches between Agent, Plan, and Goal; all modes
+  keep the effective permission chip. Goal has independent lifecycle controls.
 
 ### US-UI-05 Locale chrome
 - On a zh-CN system locale, sidebar labels render in Chinese (项目 / 临时会话),
@@ -11919,9 +11914,9 @@ This test plan spec is accepted when:
   label (English "Agent" / zh-CN "智能体") plus its caret; the adjacent Thinking
   and permission controls, send button, and composer shell do not move or
   resize.
-- In Goal, expect the permission chip to remain visible with the same geometry,
-  show Full auto / 全自动, and stay disabled without opening a permission menu.
-  The Plan/Goal approval card remains the separate execution-policy control.
+- In Goal, expect the same permission-chip geometry with selectable effective
+  Ask / Accept edits / Auto, not fixed disabled Auto. New Goal work uses its
+  independent status card; legacy approvals retain the old approval surface.
 - **Specs linked**: `04-ux/08-component-spec.md` §11.3
 - **Milestone**: M5
 - **Status**: Partially automated (renderer style/source contract)
@@ -13382,15 +13377,15 @@ This test plan spec is accepted when:
      workspace-relative path and run a bounded Bash command.
   4. Inspect the tool results and filesystem, then switch back to the project
      and confirm the project root and git status are unchanged.
-  5. Enter Plan or Goal in the temporary session and confirm submission still
+  5. Enter Plan in the temporary session and confirm submission still
      fails with the existing project-root requirement.
 - **Expected**: A path-less session binds every native tool to its own
   `scratch/<sessionId>` directory, never to the visible or recently active
   project. Relative paths work inside that scratch root, containment and
   permission rules remain active, and no project artifact is created. The
   temporary hero is localized and has no project switcher; the project hero and
-  the no-project generic hero are unchanged by the temporary session. Plan/Goal
-  retain their project-root boundary.
+  the no-project generic hero are unchanged by the temporary session. Plan
+  submission retains its project-root boundary; Goal preserves tool path isolation.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` §4/§4b,
   `03-runtime/10-session-state-machine.md`, `04-ux/01-ui-ia.md`,
   `04-ux/02-i18n-english-first.md`, ADR 0124
@@ -18935,7 +18930,7 @@ preload, API normalization, store events, ToolRow, and Markdown renderer.
 3. Complete execution, submit/reject a revision, and read both newest/older
    pages: retain both exact bodies and statuses, mark only the older Plan
    superseded, and leave unrelated sessions/Goal untouched.
-4. Submit/reject Goal and check localized Chinese status.
+4. Seed an existing legacy Goal approval, reject it, and check localized Chinese status.
 5. Continue chat, append a compaction checkpoint, restart host and renderer:
    both versions remain readable; no historical card has approval controls.
 
@@ -18993,8 +18988,8 @@ host-created files. The full app's file-preview viewer is covered separately.
   copy appears on demand from the heading help control. AI services stay above
   Jev, followed by image generation. An enabled Agent launch reads the key and
   passes it ephemerally to the sidecar.
-  `JevClassify` appears in the Agent's deferred catalog only with a key and
-  never in Plan or Goal. Closing the dialog cancels an in-flight check the same
+  `JevClassify` appears in Agent/Goal deferred catalogs only with a key and
+  never in Plan. Closing the dialog cancels an in-flight check the same
   way a refused key does: nothing stored, nothing enabled. The fixture receives
   the TypeSafe System One payload and bearer header; the tool returns bounded
   structured answers and usage.
@@ -19421,6 +19416,173 @@ their separate platform acceptance.
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
 
+## E2E-GOAL-autonomous-lifecycle
+
+- **Browser interaction**: `node --test apps/desktop/test/goal-interaction.test.mjs`
+  covers budget editing, attached controls, pause/edit/resume/remove, retained
+  TaskDock state, and theme/width variants with isolated fixture data. It uses
+  PI_SCRATCH_DIR when supplied, otherwise a unique OS temporary directory.
+  Headless Linux unit runs skip this display-dependent test; the Electron E2E
+  job explicitly runs it under Xvfb with PI_SCRATCH_DIR set to runner.temp.
+
+- **Entry**: After building this candidate's host-core, shared, agent-host,
+  host-runtime and agent-runtime outputs, run
+  `PI_HOST_CORE_BINARY=<candidate-host-core> node scripts/e2e-autonomous-goal.mjs`.
+- **Boundary**: Real isolated Rust host/SQLite and Node sidecar using shared
+  AgentHost/GoalCoordinator admission; only the model endpoint is a loopback
+  fixture. No production profile, live provider or paid API is used.
+- **Expected**: One user Goal send starts without a pending Plan approval. The
+  fixture completes in two execution turns and three model requests; only one
+  user transcript row exists. Completed goals do not restart on repeated kicks.
+  Reopening the host pauses a separately interrupted active goal, clears its
+  claim, preserves its turn count, and does not replay it.
+- **Local evidence**: The uncommitted candidate was exercised with the default
+  completion scenario and `GOAL_E2E_SCENARIO=turn-budget`, `token-budget`, and
+  `pause`. All four passed. See the versioned source manifest, counts and
+  limitations in [the public feature proposal](../../artifacts/goal-proposal/README.md).
+  These results do not establish a later integration commit, paid providers or
+  a running Desktop instance.
+
+### E2E-GOAL-controls-and-budgets
+
+- **Scenario**: Select Goal with no send: no execution. Configure the default
+  20-turn budget, a smaller limit, or explicit unlimited in Settings → AI below
+  Default mode, then send an objective. Observe the compact single-line bar.
+  Defaults affect only new goals. Test finite/unlimited turn and token dimensions
+  independently and together, including more than 20 unlimited execution turns.
+  Multiple tool calls/provider requests in one turn consume one execution turn.
+  Parent/delegate usage settles once before the next admission; an optional token
+  cap blocks the next admission after reported usage reaches it, with possible
+  in-flight overshoot. Queue user work and verify it wins over continuation.
+- Pause during execution, repeat the action, then switch away: durable pause must
+  precede cancellation, and no later continuation may launch. Switch back: no
+  implicit resume. Resume only as owner after settlement, optionally increasing
+  budget. Cancel, then attempt resume: rejected. Completed is equally terminal.
+- Delay initial dispatch and queued claims while issuing Pause/Cancel: the stop
+  fence must prevent a new runtime handoff and preserve queued user input.
+  Collaboration messages to idle/busy Goal sessions must fail at admission,
+  without acquiring a claim or creating a failed runtime turn; Agent/Plan
+  collaboration remains unchanged.
+- Inject duplicate/stale claims, late settlement and late model reports: no
+  duplicate execution/accounting or cross-session mutation. Restart active work:
+  paused, interrupted claim cleared, counters retained, no replay.
+- **Status**: Acceptance scenario documented; no execution result claimed here.
+
+### E2E-GOAL-permissions-and-report-authority
+
+- With controlled tools, compare Agent and Goal Write/Edit, Task and plugin calls
+  under Ask, Accept edits and Auto; retain path/sandbox gates and explicit denial.
+  Plan still denies unavailable tools. Scheduled Goal activation remains rejected.
+- Attempt model-driven start/resume, altered goal/session IDs, scope/budget changes,
+  or pause via UpdateGoal: reject. Missing/duplicate/unknown criteria, unmet or
+  unverified outcomes, and empty evidence must not produce completed status.
+  Exact all-met non-empty criteria reports require a version-1 audit of the
+  original entire objective, nonempty unique requirement checks all met with
+  evidence, and empty remainingWork before completing. Missing audit/uncertain
+  evidence/remaining work is rejected without mutation; correcting the report
+  within the same turn succeeds. Plain final prose, todo completion and turn
+  endings remain active. Audit is visibly current-model-reported, not host proof.
+- Verify legacy approvals retain read/resolve/execute behavior but neither migration
+  nor legacy entry/submit calls can authorize an autonomous goal.
+- **Status**: Acceptance scenario documented; no execution result claimed here.
+
+### E2E-GOAL-localized-card
+
+- Render the real input-attached Goal header, one Settings → AI Goal budget row
+  with Turns/Tokens inputs, bounded details/audit and adjust-total-budget dialogs.
+  Cover active, paused, budget-exhausted and completed fixtures in light/dark
+  desktop and narrow layouts, including English and zh-CN.
+  Inspect labels, report disclosure, budget validation, pending/disabled controls,
+  Reload error recovery, focus and no horizontal overflow. All six status labels
+  must remain available; blocked and cancelled are also lifecycle states.
+- Exercise user send -> active -> pause -> explicit resume -> completed with real
+  service wiring. Effective permission selection remains available in Goal.
+- Run `scripts/render-goal-pages.mjs` against the built candidate with isolated
+  Rust data and a loopback model fixture. Cover home/chat, all states, mode and
+  permission menus, Plan approval, errors, light/dark and narrow layouts. Assert
+  the bar remains one line and does not overlap Composer. Opening dialogs must
+  not grow the dock. Confirm focus containment/Escape/return, disabled invalid
+  settings/resume budgets, blank-as-unlimited inputs, persistence of defaults,
+  old-goal isolation and dismiss-without-execution. No next-objective
+  budget card appears in chat, including after completed/cancelled.
+- **Evidence**: [Public UI photographs and proposal](../../artifacts/goal-proposal/README.md).
+  Synthetic page data does not establish real-provider task success; the
+  process fixture and live paid-provider acceptance are distinct checks.
+
+
+### E2E-GOAL-compact-unlimited-audit
+
+- Entry: `PI_HOST_CORE_BINARY=<candidate-host> GOAL_E2E_SCENARIO=<scenario> node scripts/e2e-autonomous-goal.mjs`.
+- Scenarios: completion, turn-budget, token-budget, finite-both, unlimited,
+  settings-default, audit-recovery, pause. Real Rust/sidecar/AgentHost wiring;
+  only the model endpoint is a controlled loopback fixture.
+- Assert defaults are snapshotted, settings never change old budgets, >20 turns
+  works when unlimited, plain completion prose cannot stop, malformed audit can
+  be corrected in the same turn, valid persisted audit stops continuation, one
+  user row remains one row, and restart never replays unfinished work.
+- Page entry: `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/render-goal-pages.mjs`.
+  Current captures and interaction checks go to `docs/artifacts/goal-inset/`;
+  earlier polish/attached/compact revisions retain separate historical artifacts.
+- Unit/contract coverage includes settings sync/import validation and legacy
+  v28-to-v29 data, finite caps, old terminal reports without fabricated audit,
+  stopped-report races, ordinary Agent/Plan permissions and historical approvals.
+- Record new candidate evidence separately from earlier card-layout screenshots.
+  Loopback/synthetic data does not establish real paid-provider task success.
+
+### E2E-GOAL-attached-controls
+
+- **Preconditions**: Built candidate, isolated Rust data/profile, controlled
+  loopback model; no daily-app attachment or real provider.
+- **Steps**: Run `PI_HOST_CORE_BINARY=<candidate-host> node scripts/e2e-goal-controls.mjs`.
+  Start a Goal, retain real todos, reject edit while running, pause/settle, edit,
+  explicitly resume, then delete during execution and restart.
+- **Expected**: Edit resets scope evidence but preserves usage/budget/time and
+  stays paused. Delete exposes an ordered null/goalId/revision result, stops
+  continuation, rejects old reports and never resurrects/falls back to an older
+  Goal. Chat/todos and original claim settlement remain intact.
+- **UI steps**: Run the actual-page runner. Verify one row/two compact inputs,
+  zero/blank unlimited, silent autosave/reopen and no switches. Seed five todos:
+  visible before Goal, hidden
+  whenever current Goal exists, restored after deletion, still stored throughout.
+  Capture actual held running requests (dark/light/full/close-up), edit, paused
+  save, explicit resume, delete confirmation, removal, details and narrow layout.
+- **Timing**: Controlled-clock tests cover accumulation, subsecond preservation,
+  pause/resume, backward-clock clamp, mode change, restart and deletion. Real
+  running captures wait for host active time instead of fabricating a duration.
+- **Specs / acceptance**: Goal state machine, storage v30, Host RPC, settings IA
+  and Composer component spec; this scenario extends autonomous-lifecycle
+  traceability for owner controls. Candidate-local verification only; latest-main
+  integration, release/platform and paid-provider acceptance remain separate.
+- **Milestone / status**: Post-MVP Goal candidate; executable scenarios and
+  fresh evidence are recorded in the attached-UI artifact report.
+
+### E2E-GOAL-polished-details
+
+- **Preconditions**: Existing local Goal candidate, isolated profile/database,
+  built Desktop and controlled loopback model. No real provider or daily app.
+- **Steps**: Run the page runner above. Save zero, blank and finite budgets via
+  blur/Enter, reopen settings, inspect per-field invalid-to-unlimited normalization.
+  Start Goal, pause/edit/resume/remove and retain the task data. Capture running
+  and paused full pages/composer close-ups, both join corners in dark/light and
+  wide/narrow layouts, budget row alongside Default mode and one-close removal.
+- **Expected**: Header inset 14px on each side, tightly tucked behind the intact
+  original rounded input plate; no detached endpoints. Circle-ellipsis opens details
+  without execution. Budget inputs match Default mode height within 2 CSS px.
+  Non-cap drafts become Unlimited per field at the UI boundary. No helper, numeric
+  validation, saving/saved text, popup or toast. Save failure restores persisted
+  values and logs a diagnostic; stale replies do not replace newer values. Timer uses
+  `00h00m00s`, freezes while paused and survives view changes. Removal has exactly
+  one bottom Close and no header Close; Escape/Close preserve state/focus.
+- **Automation**: Goal component/service/user-path/browser tests cover finite caps,
+  invalid/zero/blank normalization, failure rollback/stale replies, timer zero and
+  rollover in both languages, deterministic paused time, keyboard/focus and
+  deletion lifecycle. Actual page assertions check settings persistence,
+  geometry/visibility and normal control behavior without mock production UI.
+- **Specs / traceability**: Settings IA and Composer component spec; extends
+  E2E-GOAL-attached-controls for local Goal UX acceptance (post-MVP).
+- **Evidence / status**: Fresh commands, results, source/build hashes, individual
+  photographs and remaining gates live in the Goal inset artifact report. Old
+  polish/card/compact/attached images are historical, not current acceptance evidence.
 ### E2E-PLUGIN-PROJECTS: Enumerate durable projects without switching workspace
 
 - **Preconditions**: An isolated Host profile with a standalone project and a

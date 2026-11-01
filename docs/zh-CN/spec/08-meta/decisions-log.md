@@ -13,6 +13,7 @@
 
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
+| autonomous-goal-lifecycle | 用户拥有的自主 Goal | **对新目标取代 D198：用户直接发送、默认 20 个执行轮、可选软 Token 上限、六种持久状态、共享准入/CAS、普通 Agent 权限、绑定的模型报告、不允许计划激活或重启重放。Schema v28 增加独立 goals/turns；旧版审批的读取、处理和执行保持不变，且绝不自动授权。见 [ADR](../../../adr/autonomous-goal-lifecycle.md)。** | 将用户授权与旧版审批分离；模型报告不是独立验证。 |
 | D001 | Electron ↔ Rust 运输 | **Rust sidecar + stdio JSON-RPC (NDJSON)** | 简单隔离，可调试，后期可更换 |
 | D002 | SQLite 所有权 | **Rust host-core 独家拥有 SQLite** | 单写入者，权限边界更清晰 |
 | D003 | 默认模式 | **Agent** | 产品是座席桌面，不是纯聊天 |
@@ -1402,6 +1403,9 @@ D193 和 D194。
   `03-runtime/04-data-storage.md` 和 E2E-102。
 
 ## 2026-08-06 — Goal 模式加入 Plan 作为合约模式
+
+历史说明：对于新建 Goal，已由 `autonomous-goal-lifecycle` 取代。
+旧版审批保留读取、处理和执行契约，但不自动授予自主执行权限。
 
 - 会话现在保留三种操作模式之一：`agent`、`plan` 或
   `goal`。 Composer 左芯片周期 Agent → Plan → Goal → Agent，并且

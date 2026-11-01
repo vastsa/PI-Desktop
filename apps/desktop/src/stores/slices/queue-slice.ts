@@ -1,3 +1,4 @@
+import { submitUserPrompt } from "../../features/goals/submit-user-prompt";
 import i18n from "i18next";
 import { formatFileInsert } from "@pi-desktop/shared";
 import type {
@@ -468,7 +469,7 @@ export function createQueueSlice({
             runtime.submittedComposerDrafts.delete(startedIn);
             return false;
           }
-          await api.prompt({
+          await submitUserPrompt(api, current, {
             sessionId,
             content,
             messageId: optimisticMessage.id,
@@ -488,6 +489,7 @@ export function createQueueSlice({
           runtime.submittedComposerDrafts.delete(startedIn);
           runtime.retractOptimisticUserMessage(startedIn, optimisticMessage);
           const messageError = messageErrorFromUnknown(error);
+          if (current?.mode === "goal") get().showToast(messageError.message, { variant: "error" });
           const errorRow = assistantErrorMessage(messageError);
           set((state) => {
             return {

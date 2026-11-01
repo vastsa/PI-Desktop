@@ -1,0 +1,463 @@
+{
+  "candidate": "b9bde9372d37987ba35e72a88f294679f8f96669",
+  "upstreamMain": "4eea56e7f6caa9e7212b18de4988275a6e0f90aa",
+  "originalTask": "088c21fe47dc37df46769a6ae02fce6d77937760",
+  "mergeBase": "68868dfc8f7d040481ba2432c2178399386d2a9d",
+  "incomingCommits": 66,
+  "overlappingFiles": [
+    "apps/desktop/src/components/Composer.tsx",
+    "apps/desktop/src/features/settings/SettingsPage.tsx",
+    "crates/host-core/src/sessions.rs",
+    "docs/adr/README.md",
+    "docs/project/unreleased.md",
+    "docs/spec/03-runtime/02-agent-runtime.md",
+    "docs/spec/03-runtime/03-tools-and-permissions.md",
+    "docs/spec/03-runtime/04-data-storage.md",
+    "docs/spec/04-ux/06-settings-ia.md",
+    "docs/spec/04-ux/08-component-spec.md",
+    "docs/spec/04-ux/09-interaction-patterns.md",
+    "docs/spec/06-delivery/04-e2e-test-plan.md",
+    "docs/spec/08-meta/decisions-log.md",
+    "packages/agent-runtime/src/runtime.test.ts",
+    "packages/agent-runtime/src/runtime.ts",
+    "packages/i18n/src/locales/de/index.ts",
+    "packages/i18n/src/locales/en/index.ts",
+    "packages/i18n/src/locales/es/index.ts",
+    "packages/i18n/src/locales/fr/index.ts",
+    "packages/i18n/src/locales/ko/index.ts",
+    "packages/i18n/src/locales/pt-BR/index.ts",
+    "packages/i18n/src/locales/tr/index.ts",
+    "packages/i18n/src/locales/zh-CN/index.ts",
+    "packages/i18n/src/locales/zh-TW/index.ts"
+  ],
+  "conflictsResolved": [
+    "docs/adr/README.md",
+    "docs/project/unreleased.md"
+  ],
+  "jsTsPassed": {
+    "shared": 670,
+    "agentRuntime": 1682,
+    "agentHost": 93,
+    "hostRuntime": 168,
+    "racp": 28,
+    "desktop": 266
+  },
+  "jsTsTotalPassed": 2907,
+  "jsTsSkipped": 4,
+  "rustRelevant": {
+    "passed": 214,
+    "failed": 0,
+    "filteredOut": 920
+  },
+  "rustFull": {
+    "passed": 1114,
+    "failed": 19,
+    "ignored": 1,
+    "failures": [
+      "background_tasks::windows_tests::stop_terminates_the_command_the_runner_launched",
+      "data_relocation::tests::handles_legacy_schema_without_upgrading_or_creating_missing_tables",
+      "data_relocation::tests::project_capability_overrides_follow_the_moved_project_without_changing_globals",
+      "data_relocation::tests::refuses_colliding_project_capability_keys_without_losing_an_override",
+      "rpc::remote_tools::tests::denied_remote_write_and_cancelled_read_never_run_locally",
+      "rpc::remote_tools::tests::remote_read_dispatch_is_local_approval_then_relay_never_local_runner",
+      "rpc::worktree_rpc::tests::a_path_beyond_260_characters_is_created_and_removed",
+      "rpc::worktree_rpc::tests::isolated_session_user_path_from_create_to_delete",
+      "rpc::worktree_rpc::tests::sync_from_project_through_rpc",
+      "session_worktrees::delegate::tests::a_conflict_is_kept_for_the_subagent_and_merges_after_resolution",
+      "session_worktrees::delegate::tests::parallel_subagents_merge_back_into_the_session",
+      "session_worktrees::lifecycle::tests::syncing_brings_another_sessions_resolution_into_the_session",
+      "session_worktrees::lifecycle::tests::the_conflict_badge_clears_when_the_conflict_is_resolved",
+      "session_worktrees::lifecycle::tests::uncommitted_project_changes_are_not_carried_over",
+      "session_worktrees::merge::tests::a_tag_named_like_the_owner_branch_is_ignored",
+      "session_worktrees::merge::tests::attribute_driven_conflicts_need_an_explicit_add",
+      "session_worktrees::merge::tests::conflicts_stay_in_the_worktree_and_resolve_on_retry",
+      "session_worktrees::merge::tests::dirty_project_files_refuse_the_merge_without_changes",
+      "session_worktrees::merge::tests::preview_then_merge_lands_session_commits_and_uncommitted_work"
+    ]
+  },
+  "upstreamBaseline": {
+    "revision": "4eea56e7f6caa9e7212b18de4988275a6e0f90aa",
+    "representativeTestsFailedIdentically": 8,
+    "scope": "6 non-Git Windows failures plus one worktree and one RPC CRLF representative; not all 19 individually rerun on baseline"
+  },
+  "builds": [
+    "shared",
+    "i18n",
+    "agent-runtime",
+    "agent-host",
+    "host-runtime",
+    "racp",
+    "Electron Main/Preload/Renderer",
+    "Rust host"
+  ],
+  "typechecks": [
+    "Desktop",
+    "pi-host"
+  ],
+  "checks": [
+    "style tokens",
+    "architecture",
+    "rustfmt",
+    "related Biome",
+    "clippy (3 existing warnings)",
+    "git diff --check",
+    "PR base ancestry"
+  ],
+  "goalScenarios": {
+    "completion": {
+      "result": "PASS",
+      "scenario": "completion",
+      "finalStatus": "completed",
+      "goalTurns": 2,
+      "modelRequests": 3,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTurns": 20
+      },
+      "auditAccepted": true,
+      "restartStatus": "paused",
+      "tokenUsage": 45
+    },
+    "turn-budget": {
+      "result": "PASS",
+      "scenario": "turn-budget",
+      "finalStatus": "budget_exhausted",
+      "goalTurns": 1,
+      "modelRequests": 1,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTurns": 1
+      },
+      "auditAccepted": false,
+      "restartStatus": "paused",
+      "tokenUsage": 15
+    },
+    "token-budget": {
+      "result": "PASS",
+      "scenario": "token-budget",
+      "finalStatus": "budget_exhausted",
+      "goalTurns": 1,
+      "modelRequests": 1,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTokens": 1,
+        "maxTurns": null
+      },
+      "auditAccepted": false,
+      "restartStatus": "paused",
+      "tokenUsage": 15
+    },
+    "finite-both": {
+      "result": "PASS",
+      "scenario": "finite-both",
+      "finalStatus": "budget_exhausted",
+      "goalTurns": 1,
+      "modelRequests": 1,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTokens": 1,
+        "maxTurns": 4
+      },
+      "auditAccepted": false,
+      "restartStatus": "paused",
+      "tokenUsage": 15
+    },
+    "unlimited": {
+      "result": "PASS",
+      "scenario": "unlimited",
+      "finalStatus": "completed",
+      "goalTurns": 21,
+      "modelRequests": 22,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTurns": null
+      },
+      "auditAccepted": true,
+      "restartStatus": "paused",
+      "tokenUsage": 330
+    },
+    "audit-recovery": {
+      "result": "PASS",
+      "scenario": "audit-recovery",
+      "finalStatus": "completed",
+      "goalTurns": 1,
+      "modelRequests": 3,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": true,
+      "expectedToolValidationErrors": 1,
+      "budget": {
+        "maxTurns": 20
+      },
+      "auditAccepted": true,
+      "restartStatus": "paused",
+      "tokenUsage": 45
+    },
+    "settings-default": {
+      "result": "PASS",
+      "scenario": "settings-default",
+      "finalStatus": "budget_exhausted",
+      "goalTurns": 1,
+      "modelRequests": 1,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTokens": 1,
+        "maxTurns": null
+      },
+      "auditAccepted": false,
+      "restartStatus": "paused",
+      "tokenUsage": 15
+    },
+    "pause": {
+      "result": "PASS",
+      "scenario": "pause",
+      "finalStatus": "paused",
+      "goalTurns": 1,
+      "modelRequests": 1,
+      "userMessages": 1,
+      "noUnexpectedContinuation": true,
+      "correctedToolError": false,
+      "expectedToolValidationErrors": 0,
+      "budget": {
+        "maxTurns": 20
+      },
+      "auditAccepted": false,
+      "restartStatus": "paused",
+      "tokenUsage": 0
+    }
+  },
+  "processChecks": {
+    "controls": "PASS",
+    "checkpointLifecycle": "PASS",
+    "reviewStatePersistence": "PASS",
+    "DesktopBoot": "PASS",
+    "800SessionResponsiveness": "PASS",
+    "ctrlRBlocked": "PASS",
+    "preloadRoundtrip": "PASS"
+  },
+  "screenshots": {
+    "actualCaptures": 61,
+    "publicSelected": 14,
+    "provenance": "Actual built Desktop, isolated Rust data, controlled loopback model; synthetic objectives/audits; not real-provider success",
+    "geometry": {
+      "28-budget-invalid-unlimited": {
+        "width": 1442,
+        "height": 1042,
+        "theme": "dark",
+        "leftDelta": null,
+        "rightDelta": null,
+        "shellTopRadius": "20px",
+        "attachmentGap": null,
+        "overlap": 0,
+        "scrollWidth": 1442
+      },
+      "05-running-dark": {
+        "width": 1442,
+        "height": 1042,
+        "theme": "dark",
+        "leftDelta": -13.98809814453125,
+        "rightDelta": 14.01788330078125,
+        "shellTopRadius": "20px",
+        "attachmentGap": 3.0517578125e-05,
+        "overlap": -3.0517578125e-05,
+        "scrollWidth": 1442
+      },
+      "06-running-closeup": {
+        "width": 775.9851684570312,
+        "height": 159.9136962890625,
+        "theme": "dark"
+      },
+      "31-running-dark-left": {
+        "width": 96,
+        "height": 112,
+        "theme": "dark"
+      },
+      "32-paused-dark": {
+        "width": 1442,
+        "height": 1042,
+        "theme": "dark",
+        "leftDelta": -13.98809814453125,
+        "rightDelta": 14.01788330078125,
+        "shellTopRadius": "20px",
+        "attachmentGap": 3.0517578125e-05,
+        "overlap": -3.0517578125e-05,
+        "scrollWidth": 1442
+      },
+      "33-paused-dark-closeup": {
+        "width": 775.9851684570312,
+        "height": 159.9136962890625,
+        "theme": "dark"
+      },
+      "10-details": {
+        "width": 1442,
+        "height": 1042,
+        "theme": "dark",
+        "leftDelta": -13.98809814453125,
+        "rightDelta": 14.01788330078125,
+        "shellTopRadius": "20px",
+        "attachmentGap": 3.0517578125e-05,
+        "overlap": -3.0517578125e-05,
+        "scrollWidth": 1442
+      },
+      "11-delete-confirm": {
+        "width": 1442,
+        "height": 1042,
+        "theme": "dark",
+        "leftDelta": -13.98809814453125,
+        "rightDelta": 14.01788330078125,
+        "shellTopRadius": "20px",
+        "attachmentGap": 3.0517578125e-05,
+        "overlap": -3.0517578125e-05,
+        "scrollWidth": 1442
+      },
+      "12-deleted-tasks-restored": {
+        "width": 1442,
+        "height": 1042,
+        "theme": "dark",
+        "leftDelta": null,
+        "rightDelta": null,
+        "shellTopRadius": "20px",
+        "attachmentGap": null,
+        "overlap": 0,
+        "scrollWidth": 1442
+      },
+      "34-running-light-composer": {
+        "width": 775.9851684570312,
+        "height": 159.9136962890625,
+        "theme": "light"
+      },
+      "34-running-light-right": {
+        "width": 96,
+        "height": 112,
+        "theme": "light"
+      },
+      "36-paused-light-closeup": {
+        "width": 775.9851684570312,
+        "height": 159.9136962890625,
+        "theme": "light"
+      },
+      "40-running-narrow-dark-composer": {
+        "width": 573.0238647460938,
+        "height": 159.9136962890625,
+        "theme": "dark"
+      },
+      "40-running-narrow-light-composer": {
+        "width": 573.0238647460938,
+        "height": 159.9136962890625,
+        "theme": "light"
+      }
+    },
+    "budgetMetrics": [
+      {
+        "label": "dark-wide",
+        "modeHeight": 30.982145309448242,
+        "inputs": [
+          {
+            "height": 30.997026443481445,
+            "width": 126.01190948486328,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 127,
+            "client": 126
+          },
+          {
+            "height": 30.997026443481445,
+            "width": 119.46429443359375,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 120,
+            "client": 119
+          }
+        ]
+      },
+      {
+        "label": "dark-narrow",
+        "modeHeight": 30.982145309448242,
+        "inputs": [
+          {
+            "height": 30.997026443481445,
+            "width": 126.01190948486328,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 127,
+            "client": 126
+          },
+          {
+            "height": 30.997026443481445,
+            "width": 119.46429443359375,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 120,
+            "client": 119
+          }
+        ]
+      },
+      {
+        "label": "light-narrow",
+        "modeHeight": 30.982145309448242,
+        "inputs": [
+          {
+            "height": 30.997026443481445,
+            "width": 126.01190948486328,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 127,
+            "client": 126
+          },
+          {
+            "height": 30.997026443481445,
+            "width": 119.46429443359375,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 120,
+            "client": 119
+          }
+        ]
+      },
+      {
+        "label": "light-wide",
+        "modeHeight": 30.982145309448242,
+        "inputs": [
+          {
+            "height": 30.997026443481445,
+            "width": 126.01190948486328,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 127,
+            "client": 126
+          },
+          {
+            "height": 30.997026443481445,
+            "width": 119.46429443359375,
+            "centerDifference": 8.106231689453125e-06,
+            "font": "12.5px",
+            "scroll": 120,
+            "client": 119
+          }
+        ]
+      }
+    ]
+  },
+  "historicalArtifactsUnchanged": 556,
+  "hostBinarySha256": "2e0a09da493ae231424fef836d1bf6753ee3eb6aeefcc38725eedcdacce86d20",
+  "buildOutputCount": 1984,
+  "buildOutputDigest": "9be4ee4aa914681f40ac75cb864f457062c59670e26710df6da63abc83601300"
+}

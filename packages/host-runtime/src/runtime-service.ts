@@ -72,6 +72,8 @@ export type RuntimeServiceOptions = {
     projectPath?: string;
   }) => Promise<{ content: string; command?: string } | null>;
   checkpointIntervalMs?: number;
+  /** Persist the autonomous pause before stopping the execution engine. */
+  pauseGoal?: (sessionId: string) => Promise<void>;
 };
 
 type FinishTurnOptions = { turnId: string; recoverInflight?: boolean };
@@ -338,6 +340,8 @@ export class RuntimeService implements RuntimePort {
       status: "complete",
       ...(command ? { command } : {}),
     };
+    const internalContinuation = request.goalTurn?.provenance === "goal-continuation";
+    if (!internalContinuation) {
     try {
       await host.call("session.appendMessage", { sessionId, message: userMessage, turnId });
     } catch (error) {
@@ -349,6 +353,7 @@ export class RuntimeService implements RuntimePort {
     this.emit({ sessionId, turnId, ts: this.now(), event: { type: "message_start", message: userMessage } });
     this.emit({ sessionId, turnId, ts: this.now(), event: { type: "message_end", message: userMessage } });
 
+    }
     let result: { accepted: boolean; turnId: string };
     try {
       result = await sidecar.call<{ accepted: boolean; turnId: string }>("agent.prompt", {
@@ -359,7 +364,8 @@ export class RuntimeService implements RuntimePort {
         content,
         ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
         attachments: [],
-        userMessageId: userMessage.id,
+        ...(internalContinuation ? {} : { userMessageId: userMessage.id }),
+        ...(request.goalTurn ? { goalTurn: request.goalTurn } : {}),
         // Per-turn permission ceiling override (R1 leftover; spec §7.3). Only
         // forwarded when the effective mode differs from the session's stored
         // mode — a widening request has already been refused upstream so any
@@ -416,6 +422,8 @@ export class RuntimeService implements RuntimePort {
 
   async stop(sessionId: string): Promise<{ requested: boolean }> {
     const sidecar = this.requireSidecar();
+    try { await this.options.pauseGoal?.(sessionId); }
+    catch (error) { await sidecar.call("agent.abort", { sessionId }); throw error; }
     this.options.log("info", "prompt graceful stop requested", { sessionId });
     // The runtime owns the boundary decision: agent_end arrives after the
     // current reply/tool batch completes and finishes it as a completed turn.
@@ -427,6 +435,8 @@ export class RuntimeService implements RuntimePort {
     const sidecar = this.requireSidecar();
     const abortedTurnId = this.activeTurns.get(sessionId);
     if (turnId && abortedTurnId !== turnId) return;
+    try { await this.options.pauseGoal?.(sessionId); }
+    catch (error) { await sidecar.call("agent.abort", { sessionId }); throw error; }
     this.options.log("info", "prompt aborted", { sessionId });
     // Lock the abort reason before the first await: the cancel RPC can take a
     // while, and a terminal event arriving in that window must not settle the

@@ -43,6 +43,7 @@ import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { ThemeRow } from "../../components/settings/ThemeRow";
+import { GoalBudgetRow } from "./GoalBudgetRow";
 import { MacosWindowTranslucencyRow } from "../../components/settings/MacosWindowTranslucencyRow";
 import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
 import { ProjectsPage } from "../../pages/ProjectsPage";
@@ -565,6 +566,7 @@ export function SettingsPage() {
                     role="group"
                   />
                 </SettingsRow>
+                <GoalBudgetRow settings={settings} saveSettings={saveSettings} />
                 <CommandShellRow settings={settings} saveSettings={saveSettings} />
                 <LinkOpenTargetRow settings={settings} saveSettings={saveSettings} />
                 <ShowThinkingRow settings={settings} saveSettings={saveSettings} />

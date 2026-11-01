@@ -1,6 +1,7 @@
 mod config_sync_rpc;
 mod file_batches;
 mod gen_ui;
+mod goals_rpc;
 mod plugin_reviews_rpc;
 mod remote_tools;
 mod scheduled_rpc;
@@ -1010,6 +1011,8 @@ fn effective_command_shell_id(settings: Option<&Value>) -> Option<String> {
 }
 
 fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
+    crate::goals::validate_default_budget(value)
+        .map_err(|_| rpc_err(1002, "defaultGoalBudget is invalid", "GOAL_INVALID_BUDGET"))?;
     let Some(object) = value.as_object() else {
         return Ok(());
     };
@@ -1481,8 +1484,8 @@ fn local_contained_roots(data_dir: &Path, session_id: &str, remote: bool) -> Con
 }
 
 /// Whether a Write/Edit lexically targets one of the session's contained roots
-/// and may skip the permission prompt. Never for remote workspaces or contract
-/// modes (their hard deny is not bypassed).
+/// and may skip the permission prompt. Never for remote workspaces or Plan
+/// (its hard deny is not bypassed).
 fn contained_write_auto_allowed(
     remote: bool,
     durable_mode: &str,
@@ -1491,7 +1494,7 @@ fn contained_write_auto_allowed(
     args: &Value,
 ) -> bool {
     !remote
-        && !sessions::is_contract_mode(durable_mode)
+        && durable_mode != "plan"
         && matches!(tool_name, "Write" | "Edit")
         && args
             .get("path")
@@ -2934,6 +2937,7 @@ async fn handle_request(
             let thinking_level = thinking_level_param(&params)?;
             let fast_mode = fast_mode_param(&params)?;
             let st = state.lock().await;
+            let previous_goal = goals_rpc::before_configure(&st, id)?;
             let session = sessions::configure_session_with_fast_mode(
                 &st.db,
                 id,
@@ -2953,6 +2957,9 @@ async fn handle_request(
                 }
             })?
             .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
+            if let Some(goal) = goals_rpc::after_configure(&st, previous_goal)? {
+                goals_rpc::notify(&tx, &goal).await;
+            }
             let session = remote_tools::decorate_session(
                 &st.db,
                 serde_json::to_value(session)
@@ -3716,6 +3723,10 @@ async fn handle_request(
             Ok(json!({ "artifacts": artifacts }))
         }
 
+        "goals.get" | "goals.start" | "goals.control" | "goals.claimTurn"
+        | "goals.validateTurn" | "goals.report" | "goals.settleTurn" => {
+            goals_rpc::handle(&state, &tx, method, params).await
+        }
         "plans.pending" => {
             let session_id = params.get("sessionId").and_then(|v| v.as_str());
             let st = state.lock().await;
@@ -4475,7 +4486,7 @@ async fn handle_request(
                     );
                     let error_code = if cancelled {
                         "TOOL_ABORTED"
-                    } else if sessions::is_contract_mode(&durable_mode)
+                    } else if durable_mode == "plan"
                         && !PermissionManager::plan_mode_allows(&p.tool_name)
                     {
                         match p.tool_name.as_str() {
@@ -10562,7 +10573,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn goal_authorization_reuses_the_durable_contract_mode_hard_deny() {
+    async fn goals_authorization_allows_agent_operations_under_auto() {
         let data_dir = tempfile::tempdir().unwrap();
         let project = data_dir.path().join("project");
         fs::create_dir_all(&project).unwrap();
@@ -10578,7 +10589,7 @@ mod tests {
         )
         .unwrap();
         let session_id = session.id.clone();
-        // `auto` is the strongest permission mode; the deny must still win.
+        // Goal follows Agent permissions; auto permits a workspace write.
         sessions::configure_session_with_thinking(
             &app_state.db,
             &session_id,
@@ -10592,38 +10603,22 @@ mod tests {
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();
 
-        for (tool_name, args, expected) in [
-            (
-                "Write",
-                json!({ "path": "ignored.txt", "content": "no" }),
-                "WRITE_DISABLED_IN_PLAN",
-            ),
-            (
-                "Edit",
-                json!({ "path": "ignored.txt", "tag": "ABCD", "ops": "PUT 1.=1:\n+b\n" }),
-                "EDIT_DISABLED_IN_PLAN",
-            ),
-            ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
-            ("UnknownTool", json!({}), "TOOL_DISABLED_IN_PLAN"),
-        ] {
-            let result = handle_request(
-                state.clone(),
-                "tools.execute",
-                json!({
-                    "sessionId": session_id,
-                    "toolCallId": format!("goal-{tool_name}-call"),
-                    "toolName": tool_name,
-                    "args": args,
-                    // A sidecar claiming Agent cannot widen the durable mode.
-                    "mode": "agent"
-                }),
-                tx.clone(),
-            )
-            .await
-            .unwrap();
-            assert_eq!(result["errorCode"], expected, "{tool_name}");
-            assert_eq!(result["ok"], false);
-        }
+        let written = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId":session_id,"toolCallId":"goal-write","toolName":"Write",
+                "args":{"path":"goal.txt","content":"goal work"},"mode":"plan"
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(written["ok"], true, "{written}");
+        assert_eq!(
+            fs::read_to_string(project.join("goal.txt")).unwrap(),
+            "goal work"
+        );
 
         // Bash still follows the permission mode rather than the allowlist.
         #[cfg(windows)]

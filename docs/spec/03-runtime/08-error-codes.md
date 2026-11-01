@@ -544,9 +544,38 @@ Examples:
 
 1. Every IPC failure returns `AppError.code`
 2. No raw untyped string-only failures on main paths
-3. Plan/Goal hard-denies use explicit tool-specific codes; Bash is never denied
-   by either contract mode solely because of the operating mode and instead
-   follows permission policy
+3. Plan hard-denies use explicit tool-specific codes; Goal uses ordinary Agent
+   permission policy. Bash follows permission policy in all three modes.
+   New legacy Goal entry/submission returns `PLAN_GOAL_ACTIVATION_DISABLED`;
+   autonomous lifecycle errors use `GOAL_*` codes.
+
+### Autonomous Goal report and budget errors
+
+- `GOAL_INVALID_BUDGET`: malformed saved/default or explicit budget, absent
+  required maxTurns in an explicit object, or out-of-range finite cap. Null
+  maxTurns is explicit unlimited; it is not the same as omitting the key.
+- `GOAL_INVALID_AUDIT`: objective/version/uniqueness/bounds inconsistent with the
+  bound original goal. `GOAL_COMPLETION_UNVERIFIED`: missing audit or incomplete
+  criteria/requirement evidence/remaining work. No state is committed on refusal.
+- Report-content refusals (`INVALID_PARAMS`, `GOAL_INVALID_TEXT`,
+  `GOAL_INVALID_OUTCOMES`, `GOAL_COMPLETION_UNVERIFIED`, `GOAL_INVALID_AUDIT` with
+  trusted RPC code 1002) permit same-turn correction after claim revalidation.
+  Do not infer recoverability from error prose or allow stale/stopped authority.
+- `GOAL_COUNTER_OVERFLOW`: safe wire accounting/revision limits would overflow;
+  the mutation is rejected atomically, not rounded or represented as fake infinity.
+- Settings/config synchronization validates defaultGoalBudget on capture/apply;
+  malformed payloads remain visible failures (`CONFIG_SYNC_INVALID` at its edge).
+- Control errors: `GOAL_TURN_IN_FLIGHT` blocks edit until settlement;
+  `GOAL_NOT_EDITABLE` requires stopped work; `GOAL_TERMINAL` rejects terminal
+  edit/resume. `GOAL_STALE_REVISION` rejects stale CAS and `GOAL_NOT_FOUND`
+  rejects cross-session/removed identities. `GOAL_OBJECTIVE_REQUIRES_EDIT` and
+  `GOAL_BUDGET_REQUIRES_RESUME` reject misplaced fields. Invalid edit text uses
+  `GOAL_INVALID_TEXT`; missing/null/unknown structural fields use `INVALID_PARAMS`.
+  Every control still requires a paired owner (`FORBIDDEN` otherwise).
+- `GOAL_SETTLEMENT_FAILED` remains fail closed. A successful deleted-goal
+  settlement is confirmed by its matching goalId and newer safe revision;
+  bare-null, wrong-identity and stale tombstones are not settlement proof.
+
 4. Host numeric codes map to stable string codes
 5. Invalid shell settings, no-effective-shell/stale-pin, artifact-write,
    expiry, scheduled-rejection, and restart-interruption paths map to stable

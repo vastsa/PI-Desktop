@@ -168,6 +168,11 @@ jobs:
       - name: Build host-core
         run: cargo build -p host-core --locked
 
+      - name: Run Goal controls browser interaction E2E
+        env:
+          PI_SCRATCH_DIR: ${{ runner.temp }}
+        run: xvfb-run --auto-servernum node --test apps/desktop/test/goal-interaction.test.mjs
+
       - name: Run plugin project enumeration Host/process E2E
         run: pnpm test:e2e:plugin-projects
 

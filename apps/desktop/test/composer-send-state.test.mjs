@@ -8,6 +8,19 @@ import {
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { build } from "esbuild";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const compiled = await build({ stdin: { resolveDir: root, contents: `
+export { createQueueSlice } from './apps/desktop/src/stores/slices/queue-slice';
+export { createSessionRuntime } from './apps/desktop/src/stores/runtime/session-runtime';
+export { promptAttachmentsFromDraft, withoutRecordKey, viewingSessionIdForPrompt, messageErrorFromUnknown, assistantErrorMessage } from './apps/desktop/src/stores/helpers/store-helpers';
+export { IPC } from './packages/shared/src/index';
+` }, bundle: true, write: false, platform: "node", format: "esm", nodePaths: [path.join(root, "apps/desktop/node_modules")],
+  alias: { "@pi-desktop/shared": path.join(root, "packages/shared/src/index.ts") } });
+const { createQueueSlice, createSessionRuntime, IPC, ...sendHelpers } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -296,8 +309,8 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   assert.match(sendPrompt, /return false;/);
   assert.match(
     sendPrompt,
-    // The prompt call carries the submitted content and attachment mapping.
-    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?onAccepted\?\.\(startedIn\);\s*return true/,
+    // Entry wiring; the behavioral test below verifies the actual IPC payload.
+    /await submitUserPrompt\(api, current, \{[\s\S]*?sessionId,[\s\S]*?content,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?onAccepted\?\.\(startedIn\);\s*return true/,
   );
   assert.match(
     sendPrompt,
@@ -370,20 +383,36 @@ test("draft attachment routing keeps image chips structured and file chips textu
   ]);
 });
 
-test("the user row is inserted before the host round trip and echoed under the same id (D288)", () => {
-  const sendPrompt = queueSlice.slice(
-    queueSlice.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted)"),
-  );
-  assert.ok(sendPrompt.length > 0, "sendPrompt not found");
-  const insertAt = sendPrompt.indexOf("insertOptimisticUserMessage(startedIn, optimisticMessage)");
-  const promptAt = sendPrompt.indexOf("await api.prompt({");
-  assert.ok(insertAt > 0, "sendPrompt should insert the optimistic user row");
-  assert.ok(promptAt > insertAt, "the row must be on screen before api.prompt is awaited");
-  assert.match(
-    sendPrompt.slice(promptAt),
-    /await api\.prompt\(\{[^}]*messageId: optimisticMessage\.id/,
-    "the renderer id travels with the prompt so the host echo lands on the same row",
-  );
+test("the user row and mapped attachments precede the host round trip in every mode (D288)", async () => {
+  const previousWindow = globalThis.window;
+  try {
+    for (const mode of ["agent", "plan", "goal"]) {
+      let state = { activeSessionId: "s", sessions: [{ id: "s", source: "desktop", mode, title: "Citations" }], messages: [],
+        pendingPlans: {}, runningSessions: {}, queuedPrompts: {}, retainedTranscripts: {}, retainedSessionIds: [], latestTurnResults: {}, sessionOutcomes: {},
+        rememberModel() {}, showToast: assert.fail };
+      const access = { get: () => state, set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; } };
+      const runtime = createSessionRuntime(access);
+      const slice = createQueueSlice({ ...access, runtime, ...sendHelpers, materializeDraftSession: assert.fail });
+      Object.assign(state, slice);
+      const image = { path: "/fixture/chart.png", name: "chart.png", kind: "image", mimeType: "image/png" };
+      let acknowledge; let sent; let accepted = false;
+      globalThis.window = { piDesktop: { invoke: (channel, payload) => {
+        assert.equal(channel, mode === "goal" ? IPC.invoke.goalsStart : IPC.invoke.agentPrompt);
+        assert.equal(state.messages.length, 1, "optimistic row already visible at the external IPC boundary");
+        assert.equal(state.messages[0].id, payload.messageId);
+        assert.equal(payload.content, "Trace the chart");
+        assert.deepEqual(payload.attachments, [image]);
+        sent = payload;
+        return new Promise((resolve) => { acknowledge = resolve; });
+      } } };
+      const sending = slice.sendPrompt("Trace the chart", { text: "Trace the chart", fileReferences: [image] }, "s", () => { accepted = true; });
+      assert.ok(sent); assert.equal(accepted, false);
+      acknowledge({ ok: true, data: { accepted: true, turnId: "turn" } });
+      assert.equal(await sending, true); assert.equal(accepted, true);
+      assert.equal(state.messages[0].id, sent.messageId);
+    }
+  } finally { globalThis.window = previousWindow; }
+  const sendPrompt = queueSlice.slice(queueSlice.indexOf("sendPrompt: async"));
   // The row is withdrawn when the send never reached the host, but only the
   // renderer's own object: a durable echo under the same id stays.
   assert.match(sendPrompt, /catch \(error\) \{\s*runtime\.submittedComposerDrafts\.delete\(startedIn\);\s*runtime\.retractOptimisticUserMessage\(startedIn, optimisticMessage\);/);

@@ -315,9 +315,10 @@ self-declared risk level. A server's catalog is registered whole — the count i
 bounded only by the protocol guards in §8.1 — while at most 8 servers per plugin
 are admitted.
 
-Plugin tools are hidden and denied in Plan/Goal by default. A runtime tool
+Goal uses ordinary Agent plugin permissions, including grants, sandbox and denial.
+Plugin tools are hidden and denied in Plan by default. A runtime tool
 registration may opt in with non-empty `planSafeActions`; only an `args.action`
-in that list may execute in those modes. The list is checked against the schema's
+in that list may execute in Plan. The list is checked against the schema's
 action enum when present. Keep the manifest descriptor and runtime registration
 in sync: the runtime registration drives the executable tool. Risk `low`, session
 grants, and `auto` do not substitute for the declaration. Host policy and the
@@ -518,7 +519,7 @@ The host should be able to:
    a non-loopback plain-HTTP URL is accepted only when its host is declared in
    `manifest.net.domains` and the UI shows the unencrypted-connection warning
 10. A plugin tool without plan-safe actions, or an action outside its list,
-    still fails closed in Plan/Goal regardless of risk or grants
+    still fails closed in Plan regardless of risk or grants
 
 
 ## 11. Implementation status

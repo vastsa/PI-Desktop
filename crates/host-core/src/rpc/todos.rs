@@ -137,7 +137,7 @@ fn refusal_wire(refusal: TodoRefusal) -> (&'static str, &'static str, bool) {
         TodoRefusal::SessionNotFound => ("NOT_FOUND", "session not found", false),
         TodoRefusal::SessionNotAgent => (
             "TOOL_DISABLED_IN_PLAN",
-            "TodoWrite requires Agent mode",
+            "TodoWrite requires Agent or Goal mode",
             true,
         ),
         TodoRefusal::TurnMissing => (
@@ -598,9 +598,8 @@ mod tests {
         }
         assert!(harness.events().is_empty());
 
-        // Plan and Goal are denied no matter the permission mode, until the
-        // approved session switches to agent.
-        for mode in ["plan", "goal"] {
+        // Plan is denied until the approved session switches to agent.
+        for mode in ["plan"] {
             let contract = harness.session(mode).await;
             assert_refused(
                 &harness

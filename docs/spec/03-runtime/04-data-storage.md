@@ -1,4 +1,47 @@
-# 04. Data Storage (Schema v27)
+# 04. Data Storage (Schema v30)
+
+## Autonomous Goal storage (schema v30; lifecycle introduced in v28)
+
+Rust exclusively owns `session_goals` and `goal_turns`; see
+[the lifecycle](10-session-state-machine.md#autonomous-goal-lifecycle).
+The v27 -> v28 migration creates a schema-27 backup and transactionally adds:
+
+- `session_goals`: session ownership, revision, six-state status, objective,
+  criteria JSON, progress summary, rounds started, token usage, budget JSON,
+  active turn ID, stop reason, and outcome/evidence JSON.
+- A partial unique index permits only one unfinished goal (or outstanding claim)
+  per session. Active turn IDs are unique.
+- `goal_turns`: unique turn ID, goal ownership, settled/interrupted flags and
+  reported tokens, enabling idempotent accounting and stale-claim rejection.
+- A session-mode trigger pauses active goals when mode changes away from Goal.
+
+The v28 -> v29 migration creates a schema-28 backup and transactionally adds
+nullable audit_json. NULL means a legacy report without an audit, not inferred
+success. Version-1 audits contain the exact original objective, requirement
+items/outcomes/evidence and remaining work. New completion requires the audit;
+existing terminal reports stay readable without fabricated records. Numeric
+budget_json values retain their old caps; explicit maxTurns:null is unlimited
+and absent maxTokens is unlimited tokens. Supplied budget objects require the
+maxTurns key. settings.defaultGoalBudget is validated and snapshotted only on
+new Goal creation, never propagated to existing goals. The schema gate prevents
+older binaries from treating the new format as their own; direct downgrade is
+unsupported, with pre-migration backups retained for a controlled recovery.
+
+The v29 -> v30 migration creates a schema-29 backup, adds a logical `deleted`
+flag and guarded `elapsed_ms` / nullable `active_since_ms`, and updates the mode
+fence. Removed goals and claims remain for late idempotent settlement. Current
+lookup never falls back through a removed latest goal to expose an older goal.
+Active time is checkpointed at domain transitions; paused/offline time is not
+added. Legacy rows start at zero. Restart discards an uncheckpointed active tail
+rather than counting unknown downtime; this is not billing-grade timing.
+
+On startup active goals become paused; interrupted claims clear without replay.
+Counters and evidence survive restart. `plan_approvals` and `.pi/goal` artifacts
+remain legacy approval data: no row is converted or autoauthorized. Approval
+read/resolve/execute behavior is retained; new legacy Goal entry/submission is
+rejected. References below to Goal artifacts/approvals describe this legacy path,
+not autonomous Goal storage. Shared types live in `types/goals.ts`, independently
+of `types/plans.ts`.
 
 
 ### Lossless tool-image storage (#1868)
@@ -773,18 +816,11 @@ CREATE INDEX idx_session_import_origins_plugin
   row while retaining the exact `project_id`, provider/model, mode, thinking,
   and permission configuration. No parent/child column is stored: the result
   is an independent session, not a durable navigation tree.
-- `mode` is the authoritative operating mode. `plan` and `goal` mean the same pi
-  Agent is negotiating a contract of that kind; neither ever selects another
-  runtime. A live `pending` row
-  in `plan_approvals` projects `awaiting_approval`; `execution_state` values
-  `queued`/`running` project post-approval execution. Otherwise a Plan or Goal
-  session is `planning` when its
-  Agent is active or ready. The row's `kind` is what tells the two apart, since
-  the projected state is shared. Terminal approval rows are historical
-  durable records, not renderer gates; reject, expiry, or pending interruption
-  returns live planning to editable state. The renderer may retain the latest
-  proposal/execution snapshot per session only for its current lifetime from
-  live Host events; `plans.pending` rehydrates only pending rows.
+- `mode` is authoritative: `plan` uses the approval projection; `goal` uses
+  `session_goals` for autonomous status. Both use the same runtime. Pending legacy
+  approvals still project their gate and queued/running execution. Terminal
+  approvals remain history; `plans.pending` rehydrates pending rows only. No
+  autonomous authority is inferred from an approval or from mode alone.
 - New sessions default to `agent`. Imported legacy `chat` values are normalized
   to `plan`; forked sessions copy the durable mode but never copy pending,
   queued, or running approval rows.

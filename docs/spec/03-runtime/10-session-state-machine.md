@@ -2,48 +2,71 @@
 
 ## 0. Durable operating mode versus live planning state
 
-Each session persists exactly one operating mode: `agent | plan | goal`. There
-is one
-pi Agent. Live planning state and execution status are host/runtime projections.
-Plan and Goal are **contract modes**: both negotiate a proposal before executing
-and share one projection, one approval row, and one hard deny (**D198**). `kind`
-(`plan | goal`) is what distinguishes them, and the diagram below reads the same
-with Goal/`SubmitGoal` substituted for Plan/`SubmitPlan`:
+Each session persists `agent | plan | goal` and uses the same pi Agent. Plan
+retains `planning -> awaiting_approval -> Agent queued/running`; rejecting,
+expiring, or interrupting a proposal grants no execution authority. Persisted
+legacy Goal approvals retain that same resolution/execution path. New Goal work
+uses the independent lifecycle below, not `PlanningState`.
 
-```text
-Agent / inactive
-  -- user selects Plan while idle OR Agent calls EnterPlanMode --> Plan / planning
-  -- user selects Goal while idle OR Agent calls EnterGoalMode --> Goal / planning
-Plan | Goal / planning
-  -- SubmitPlan | SubmitGoal (title, markdown, question) --> awaiting_approval
-Plan | Goal / awaiting_approval
-  -- approve(permission mode) --> Agent / queued, same Agent continues
-  -- reject | expiry | abort | crash | persistence failure
-       --> same contract mode / planning
-Agent / queued
-  -- dispatcher starts --> Agent / running
-Agent / running
-  -- complete | fail | abort --> Agent / inactive
-```
+## Autonomous Goal lifecycle
 
-Both contract modes retain the permission-mode selector. Their `Bash` policy is
-`ask` or
-`accept-edits` = confirmation and `auto` = no confirmation, so a contract mode
-expresses negotiating intent but is not a strict read-only security profile.
-Write/Edit and
-plugin tools remain denied by host policy in every Plan or Goal permission mode.
+| State | Meaning / exit |
+|---|---|
+| `active` | User-authorized work; admission may claim the next execution turn |
+| `paused` | User pause, mode switch, abort, or restart; explicit user resume required |
+| `blocked` | Reported blocker or execution failure; explicit user resume required |
+| `completed` | Every stored criterion met and versioned model audit accepted; terminal |
+| `budget_exhausted` | Next admission has no remaining allowance; user may resume with sufficient budget |
+| `cancelled` | Explicit user cancellation; terminal |
 
-The kinds differ only in what the contract says and what the queued execution
-instruction asks for: Plan proposes ordered steps to carry out, while Goal
-proposes a goal statement, acceptance criteria, and boundaries, and its
-execution keeps working — choosing its own approach — until every acceptance
-criterion is verified or a boundary blocks it.
+Only a user-owner start or resume authorizes execution. Goal-mode selection alone
+does not execute. Direct Goal-mode send starts without Plan approval. Default
+budget: 20 execution turns including the initial one, not 20 tool calls or model
+requests. Defaults are snapshotted from settings.defaultGoalBudget only when
+created. Explicit maxTurns=null is unlimited; no maxTokens is unlimited tokens.
+Existing finite goals retain their caps, even after defaults change. Neither
+setting edits nor unlimited budgets grant new execution authority.
+Optional token caps are soft and checked using settled parent/delegate
+usage at next admission; in-flight work can overshoot.
 
-Mode and configuration changes through the UI/session API are allowed only
-while idle. Approval is not a generic tool permission: it is a separate
-host-owned state transition. A host restart interrupts every pending approval
-and queued/running execution field without replay; an already-approved
-interruption keeps the durable session in Agent.
+Shared `AgentHost`/`GoalCoordinator` admission serializes user queues and Goal
+continuations with user work first. Rust revision CAS and unique turn claims
+prevent duplicate starts. `goal_turns` records idempotent settlement before
+`agent_end`; continuation system context does not add a user transcript row.
+Pause/cancel is persisted before runtime cancellation. Switching away from Goal
+pauses it; runtime configuration still respects the active-turn boundary. Startup
+pauses active goals and clears interrupted claims without replay. Resume cannot
+race an unsettled claim; completed/cancelled goals cannot resume.
+
+User-owner edit requires a stopped nonterminal goal and settled claim. It uses
+revision CAS, replaces the objective and criteria, clears old report/audit, keeps
+budget/usage/time and returns paused. Saving does not authorize execution.
+Delete persists a cancelled logical tombstone before aborting runtime work. It
+removes the current Goal presentation, not chat/todos/claims. A late report cannot
+revive it; late usage settles only its original claim. A replacement Goal cannot
+start until the old outstanding claim has settled. Notifications carry removal
+identity/revision so delayed loads cannot resurrect it or erase a newer Goal.
+Host-backed active time excludes paused/offline intervals; navigation preserves
+it. Recovery may lose a hard-crash tail instead of inventing elapsed duration.
+
+`GetGoal`/`UpdateGoal` are host-bound to the active session/goal/turn. Reports have
+no scope, budget, pause, resume, cancel, or creation authority. A completed report
+must cover exactly all stored criteria with `met` and non-empty evidence; the host
+also requires a version-1 audit of the exact original objective, nonempty
+requirement items all met with evidence, and no remaining work. The current
+model must audit authoritative current-state evidence over the full scope,
+without redefining success. Failed structural reports are correctable and do
+not complete the goal. The host validates that structure, **not the truth or
+semantic exhaustiveness of the model's evidence**.
+
+Goal uses Agent's ordinary Write/Edit, Task and plugin policy, including path,
+sandbox, permission, grant and rejection checks. Plan's hard denies are unchanged.
+Scheduled/unattended Goal creation remains rejected. Legacy `EnterGoalMode` and
+`SubmitGoal` creation is disabled; existing approval rows are never autoauthorized
+or migrated into `session_goals`.
+
+The remaining approval invariants and artifact rules below apply to Plan and
+persisted **legacy Goal approvals**, not new autonomous Goal execution.
 
 ## 1. Session status
 
@@ -229,15 +252,10 @@ transcript-file line first, index transaction second.
 8. a running session can queue removable FIFO prompts per session; Send now
    completes the current turn at the next boundary, while immediate Abort
    leaves the queue intact
-9. Plan, Goal, and Agent use one pi Agent; the Composer-left mode chip, UI
-   entry, and
-   `EnterPlanMode`/`EnterGoalMode` converge on the same planning state, and
-   approval resumes
-   that Agent in Agent mode
-10. Contract-mode policy permits Bash only through the selected permission mode
-   and
-   denies Write/Edit/plugins regardless of `auto` or session grants, in Goal
-   exactly as in Plan
+9. Plan, Goal, and Agent use one pi Agent. Plan approval resumes Agent execution;
+   new Goal starts/resumes only on user authority through its independent lifecycle.
+10. Plan retains hard mode denies; Goal follows ordinary Agent permission policy.
+   Legacy approval resolution does not grant autonomous-loop authority.
 11. SubmitPlan/SubmitGoal writes an exact unique `.pi/<kind>/*.md` artifact with
     hash/size,
     keeps title/question structured, and only approve/reject can resolve its

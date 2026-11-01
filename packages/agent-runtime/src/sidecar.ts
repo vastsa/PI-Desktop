@@ -1,3 +1,4 @@
+import { parseGoalTurn } from "./goals/goal-turn.js";
 import { parseMcpServerIds, parseMcpToolNames } from "./mcp-tool-selection.js";
 /**
  * Node pi agent sidecar.
@@ -449,6 +450,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       return testRuntimeIdentity(String(params.sessionId ?? ""));
     }
     case "agent.prompt": {
+      const goalTurn = parseGoalTurn(params.goalTurn);
       const sessionId = String(params.sessionId);
       const content = String(params.content ?? "");
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
@@ -483,6 +485,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       const prompt: RuntimePrompt = {
         text: content,
+        ...(goalTurn ? { goalTurn } : {}),
         mcpServerIds: parseMcpServerIds(params.mcpServerIds),
         mcpToolNames: parseMcpToolNames(params.mcpToolNames),
         attachments,
