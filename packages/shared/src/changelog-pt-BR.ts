@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-11-01",
+    highlights: [
+      "Clique com o botão direito em uma aba do painel de trabalho para fechá-la, fechar as outras ou fechar todas.",
+      "Execute chamadas independentes de Read, Glob e Grep em paralelo dentro de um mesmo turno.",
+      "Conversas e grupos de projetos abrem mais rápido: os resumos derivados do arquivo são armazenados em cache por identidade de arquivo.",
+      "O prompt de delegação permanece estável entre liquidações, então conversas retomadas são reproduzidas de forma consistente.",
+      "Turnos ao vivo restaurados continuam aparecendo como em execução em vez de parecerem concluídos.",
+      "A descoberta de modelos não remove mais silenciosamente um modelo salvo do compositor.",
+      "Escritas em segundo plano e aberturas externas recusadas são informadas em vez de falharem em silêncio.",
+      "Após um travamento que deixa uma linha truncada, a escrita do transcrito continua e o submenu lateral permanece na tela.",
+      "Ative o modo Fast da OpenAI por modelo nos Ajustes e envie /fast para usar o nível de serviço prioritário em uma conversa.",
+      "Use o motor de agente Pi 1.4.0, com chamadas de ferramenta malformadas recuperadas e resultados órfãos descartados.",
+      "Abra um menu de contexto radial opcional no fundo do transcrito.",
+      "As imagens de ferramentas são preservadas sem perda e escritas longas do histórico ficam limitadas.",
+      "No Windows, parar uma tarefa em segundo plano encerra toda a árvore de processos, então o servidor de desenvolvimento realmente para.",
+      "As visualizações de plugins são desanexadas ao recarregar, os menus de abas nativos ficam acima do navegador embutido e as páginas acopladas seguem o tamanho de texto do app.",
+      "A intenção de acompanhamento é salva antes da navegação, então a sessão continua recuperável após um steer na fila.",
+      "Execute mais chamadas independentes de ferramentas em paralelo; operações de arquivos conflitantes continuam sequenciais.",
+      "Veja imediatamente o tamanho do contexto compactado e preserve as assinaturas de raciocínio do provedor ao retomar uma sessão.",
+      "Ative ou desative tarefas agendadas nas configurações sem excluir os agendamentos salvos.",
+      "Os menus permanecem dentro da janela e as alterações de arquivos de cada turno aparecem em um resumo recolhido por padrão.",
+      "Mantenha estáveis a posição de leitura e o estado dos turnos ativos; evite comandos de barra duplicados com métodos de entrada chineses.",
+      "Informe corretamente erros de saldo e conexão do provedor e preserve o conteúdo das ferramentas ao retomar trabalho delegado.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-11-01",
+    highlights: [
+      "Çalışma paneli sekmesine sağ tıklayarak sekmeyi, diğer sekmeleri veya tümünü kapatın.",
+      "Aynı turda birbirinden bağımsız Read, Glob ve Grep araç çağrılarını paralel çalıştırın.",
+      "Oturumlar ve proje grupları daha hızlı açılır: dosya kimliğine göre önbelleğe alınan oturum özetleri.",
+      "Delegasyon istemi, oturumlar sonuçlandıkça sabit kalır; devam eden konuşmalar tutarlı biçimde yeniden oynatılır.",
+      "Geri yüklenen canlı turlar bitmiş görünmek yerine çalışıyor olarak kalır.",
+      "Model keşfi, kayıtlı bir modeli artık kompozörden sessizce kaldırmaz.",
+      "Reddedilen arka plan yazmaları ve harici açma istekleri sessiz bir hata yerine bildirilir.",
+      "Çökme sonrası yarım kalan satırdan sonra da transkript yazımı sürer; kenar çubuğu alt menüsü ekranda kalır.",
+      "Ayarlar'da model başına OpenAI Fast modunu açın, ardından tek bir konuşmada öncelikli hizmet katmanını kullanmak için /fast gönderin.",
+      "Pi 1.4.0 ajan motorunu kullanın; bozuk araç çağrıları kurtarılır ve öksüz araç sonuçları atılır.",
+      "Transkript arka planında isteğe bağlı radyal sağ tık menüsü açın.",
+      "Saklanan araç görselleri kayıpsız tutulur ve uzun geçmiş yazmaları sınırlandırılır.",
+      "Windows'ta arka plan görevinin tüm süreç ağacı sonlandırılır, böylece dev sunucusu gerçekten durur.",
+      "Yeniden yüklemede eklenti görünümleri ayrılır, yerel sekme menüleri gömülü tarayıcının üstünde kalır ve yerleşik eklenti sayfaları uygulama yazı boyutuyla ölçeklenir.",
+      "Gezinmeden önce takip niyeti kaydedilir; sıraya alınan yönlendirmeden sonra oturum kurtarılabilir kalır.",
+      "Daha fazla bağımsız araç çağrısını paralel çalıştırın; çakışan dosya işlemleri sıralı kalır.",
+      "Sıkıştırılmış bağlam boyutunu hemen görün ve oturum devam ederken sağlayıcının akıl yürütme imzalarını koruyun.",
+      "Kayıtlı zamanlamaları silmeden Ayarlar üzerinden zamanlanmış görevleri açın veya kapatın.",
+      "Menüler pencere içinde kalır; her turun dosya değişiklikleri varsayılan olarak daraltılmış bir özette gösterilir.",
+      "Konuşma okuma konumu ve canlı tur durumu kararlı kalır; Çince giriş yöntemleri yinelenen eğik çizgi komutları oluşturmaz.",
+      "Sağlayıcı kredi ve bağlantı hatalarını doğru bildirin; devredilen işe devam ederken araç içeriğini koruyun.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

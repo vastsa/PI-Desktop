@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-11-01",
+    highlights: [
+      "Un clic droit sur un onglet du panneau de travail le ferme, ferme les autres ou les ferme tous.",
+      "Exécutez en parallèle les appels Read, Glob et Grep indépendants au sein d'un même tour.",
+      "Les conversations et les groupes de projets s'ouvrent plus vite : les résumés tirés du fichier sont mis en cache par identité de fichier.",
+      "L'invite de délégation reste stable d'un règlement à l'autre, les conversations reprises se rejouent donc de façon cohérente.",
+      "Les tours en direct restaurés restent affichés comme en cours au lieu de paraître terminés.",
+      "La découverte de modèles ne retire plus silencieusement un modèle enregistré du composeur.",
+      "Les écritures en arrière-plan et les ouvertures externes refusées sont signalées au lieu d'échouer en silence.",
+      "Après un plantage laissant une ligne coupée, l'écriture du transcript reprend et le sous-menu latéral reste à l'écran.",
+      "Activez le mode Fast d'OpenAI par modèle dans les Réglages puis envoyez /fast pour utiliser le niveau de service prioritaire dans une conversation.",
+      "Utilisez le moteur d'agent Pi 1.4.0, avec récupération des appels d'outils malformés et suppression des résultats orphelins.",
+      "Ouvrez un menu contextuel radial optionnel sur le fond du transcript.",
+      "Les images d'outils sont conservées sans perte et les écritures d'historique longues sont bornées.",
+      "Sous Windows, arrêter une tâche d'arrière-plan termine tout l'arbre de processus : le serveur de développement s'arrête vraiment.",
+      "Les vues d'extension sont détachées au rechargement, les menus d'onglets natifs restent au-dessus du navigateur intégré et les pages ancrées suivent la taille de texte de l'application.",
+      "L'intention de suivi est enregistrée avant la navigation, une session reste donc récupérable après une insertion en file.",
+      "Exécutez davantage d’appels d’outils indépendants en parallèle ; les opérations de fichiers en conflit restent séquentielles.",
+      "Affichez immédiatement la taille du contexte compacté et conservez les signatures de raisonnement du fournisseur à la reprise d’une session.",
+      "Activez ou désactivez les tâches planifiées dans les paramètres sans supprimer les planifications enregistrées.",
+      "Les menus restent dans la fenêtre et les modifications de fichiers de chaque tour apparaissent dans un résumé replié par défaut.",
+      "La position de lecture et l’état des tours actifs restent stables ; les méthodes de saisie chinoises ne créent plus de commandes slash en double.",
+      "Signalez correctement les erreurs de crédit et de connexion du fournisseur et conservez le contenu des outils à la reprise d’un travail délégué.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

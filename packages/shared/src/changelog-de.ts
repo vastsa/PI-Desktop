@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-11-01",
+    highlights: [
+      "Rechtsklick auf einen Tab des Arbeitsbereichs schließt ihn, die anderen oder alle Tabs.",
+      "Unabhängige Read-, Glob- und Grep-Aufrufe laufen innerhalb einer Runde parallel.",
+      "Sitzungen und Projektgruppen öffnen schneller: sitzungsbezogene Zusammenfassungen werden nach Dateiidentität zwischengespeichert.",
+      "Der Delegations-Prompt bleibt über Abschlüsse hinweg stabil, sodass fortgesetzte Gespräche einheitlich wiederholt werden.",
+      "Wiederhergestellte laufende Runden erscheinen weiterhin als laufend statt als beendet.",
+      "Die Modellerkennung entfernt ein gespeichertes Modell nicht mehr stillschweigend aus dem Composer.",
+      "Abgelehnte Hintergrundschreibvorgänge und externe Öffnungen werden gemeldet statt still zu scheitern.",
+      "Nach einem Absturz mit abgerissener Zeile schreibt das Transkript weiter; das Seitenleisten-Untermenü bleibt im Bild.",
+      "OpenAI-Fast-Modus pro Modell in den Einstellungen aktivieren und /fast senden, um in einem Gespräch die prioritäre Dienststufe zu nutzen.",
+      "Die Pi-1.4.0-Agent-Engine verwenden; fehlerhafte Tool-Aufrufe werden wiederhergestellt, verwaiste Ergebnisse verworfen.",
+      "Ein optionales radiales Kontextmenü auf dem Hintergrund des Verlaufs öffnen.",
+      "Gespeicherte Tool-Bilder bleiben verlustfrei und lange Verlaufsschreibvorgänge sind begrenzt.",
+      "Unter Windows beendet das Stoppen einer Hintergrundaufgabe den gesamten Prozessbaum, der Dev-Server stoppt also wirklich.",
+      "Plugin-Ansichten werden beim Neuladen getrennt, native Tab-Menüs bleiben über dem eingebetteten Browser und angedockte Plugin-Seiten folgen der App-Schriftgröße.",
+      "Die Folgeabsicht wird vor der Navigation gespeichert, sodass Sitzungen nach einem eingereihten Steer weiterhin wiederherstellbar sind.",
+      "Mehr unabhängige Werkzeugaufrufe laufen parallel; konkurrierende Dateioperationen bleiben sequenziell.",
+      "Die komprimierte Kontextgröße wird sofort angezeigt; beim Fortsetzen bleiben die Reasoning-Signaturen des Anbieters erhalten.",
+      "Geplante Aufgaben lassen sich in den Einstellungen ein- oder ausschalten, ohne gespeicherte Zeitpläne zu löschen.",
+      "Menüs bleiben im Fenster; Dateiänderungen jeder Runde erscheinen in einer standardmäßig eingeklappten Zusammenfassung.",
+      "Leseposition und Status laufender Runden bleiben stabil; chinesische Eingabemethoden erzeugen keine doppelten Slash-Befehle.",
+      "Guthaben- und Verbindungsfehler werden korrekt gemeldet; beim Fortsetzen delegierter Arbeit bleiben Werkzeuginhalte erhalten.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
