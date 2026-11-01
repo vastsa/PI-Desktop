@@ -5981,6 +5981,7 @@ eleven-tool-round desktop paths are verified by
 | 品质（侧边栏菜单定位） | E2E-021c |
 | 品质（项目排序） | E2E-253 |
 | 品质（工作面板标签关闭按钮可见性） | E2E-WORK-PANEL-active-tab-close-visibility |
+| Quality (turn changed-files disclosure) | E2E-CHAT-turn-changed-files-summary |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-130-kernel-upgrade |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-140-kernel-upgrade |
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |
