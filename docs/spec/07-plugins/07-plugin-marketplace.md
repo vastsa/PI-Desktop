@@ -661,7 +661,7 @@ Installs always pass through checksum verification and permission review before 
 ## 14. Official marketplace repository
 
 The distribution repository
-([vastsa/pi-desktop-plugins](https://github.com/vastsa/pi-desktop-plugins)) holds the published
+([AIUO-Net/pi-desktop-plugins](https://github.com/AIUO-Net/pi-desktop-plugins)) holds the published
 `catalog.json` and the `packages/*.piplug` artifacts it references. Plugin sources are neither
 hosted nor reviewed there: the center packs, audits, records the SHA-256 and publishes from each
 publisher's own repository, then publishes the official catalog and package references
@@ -734,4 +734,4 @@ Authoring documentation lives with the host, and publishing happens on the cente
 - Host guide: `docs/plugin-development.md`
 - Publishing: [plugins.aiuo.net](https://plugins.aiuo.net) — console, or the publish skill over MCP
 - Built-in templates: `panel-basic`, `agent-tool-basic`, `skill-pack`, `full-demo`
-- Distribution-side contribution guide: `vastsa/pi-desktop-plugins` `CONTRIBUTING.md`
+- Distribution-side contribution guide: `AIUO-Net/pi-desktop-plugins` `CONTRIBUTING.md`

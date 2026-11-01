@@ -545,7 +545,7 @@ UI 必须使信任级别可见。
 
 ## 14. 官方市场存储库
 
-分发仓库（[vastsa/pi-desktop-plugins](https://github.com/vastsa/pi-desktop-plugins)）
+分发仓库（[AIUO-Net/pi-desktop-plugins](https://github.com/AIUO-Net/pi-desktop-plugins)）
 保存已发布的 `catalog.json` 及其引用的 `packages/*.piplug` 制品，不托管或审核插件源码。
 中心从各发布者自己的仓库打包、审核、记录 SHA-256 并发布，然后发布官方目录和安装包引用
 （[15-plugin-center.md](15-plugin-center.md)、
@@ -608,4 +608,4 @@ PI_DESKTOP_PLUGIN_MARKET_URL=https://raw.githubusercontent.com/<owner>/<repo>/<r
 - 宿主指南：`docs/plugin-development.md`
 - 发布：[plugins.aiuo.net](https://plugins.aiuo.net)，通过控制台或发布 skill 的 MCP 接口
 - 内置模板：`panel-basic`、`agent-tool-basic`、`skill-pack`、`full-demo`
-- 分发侧贡献指南：`vastsa/pi-desktop-plugins` 的 `CONTRIBUTING.md`
+- 分发侧贡献指南：`AIUO-Net/pi-desktop-plugins` 的 `CONTRIBUTING.md`
