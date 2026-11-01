@@ -3,7 +3,7 @@
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/02-agent-runtime) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
-## 1. Goal
+## 1. 目标
 
 应用决策：**D002/D003/D008/D158/D189/D190/D193/D194**。
 
@@ -27,7 +27,7 @@ crates/host-core (tool execution + permissions)
 
 ## 3. 核心对象
 
-### 3. 1 PiRuntime (Node)
+### 3.1 PiRuntime（Node）
 - 初始化 models/providers
 - 创建 Agent
 - 绑定工具桥
@@ -1259,7 +1259,7 @@ sidecar 从不直接读取工作区指令。改变的根链
 跟踪差距（MVP 后积压）：更丰富的系统提示组成 (§7) 和
 provider/model 目录发现超出当前有线路径。
 
-### Provider certificate trust（issue #714）
+### Provider 证书信任（issue #714）
 
 桌面 sidecar 使用 Node 的 `--use-system-ca` 启动，同时保留内置根证书和继承的
 `NODE_EXTRA_CA_CERTS`，并排除操作系统信任库中已过期的证书，因为平台证书库可能保留
@@ -1272,7 +1272,7 @@ System/Direct/Custom 代理路由保持不变。
 provider transport 重建。`EPROTO` 等协议错误继续使用原有重试行为。详见
 [证书信任 ADR](../../../adr/provider-system-certificates.md)。
 
-## Pi 1.1.0 execution boundary
+## Pi 1.1.0 执行边界
 
 Published model metadata and account entitlement come from one account-scoped
 Pi Models collection. Effective binding projection is shared by launch, delegates

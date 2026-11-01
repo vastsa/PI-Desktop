@@ -725,7 +725,7 @@ type AgentEvent =
      willRetry: boolean; fallback?: "retained_tail";
      mark?: { id: string; throughMessageId: string;
               generation: number; summaryTokens: number;
-              summarized: boolean;
+              contextTokens?: number; summarized: boolean;
               fallback?: "retained_tail" };
      error?: { code: string; message: string } }
  | { type: "error"; error: AppError }
@@ -778,7 +778,10 @@ distinguish (D203).
 `compaction_end.mark` is present whenever a checkpoint was installed. It is the
 renderer's whole view of that compaction: `id`, the `throughMessageId` anchor the
 transcript row sits after, `generation` (how many checkpoints this session has
-installed), `summaryTokens` (the summary's estimated context cost), and
+installed), `summaryTokens` (the summary's estimated context cost),
+`contextTokens` (the estimated size of the next request right after the
+checkpoint; the composer context ring shows it until a later request reports
+provider usage, and it is absent on checkpoints written before it existed), and
 `summarized` (`false` when the window rolled over without asking the model for a
 summary), and `fallback` (`"retained_tail"` when summary generation failed and
 the checkpoint carries only a recovery notice plus a retained tail; the row

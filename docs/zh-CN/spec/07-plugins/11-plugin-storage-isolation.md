@@ -23,7 +23,7 @@ Rust host-core 持有 registry、受管安装目录和所有 SQLite 访问；Ele
     └── packages/
 ```
 
-## 2. Registry
+## 2. 注册表
 
 `plugins/registry.json` 记录安装/开发/市场条目、启用状态、激活范围、授权、路径、版本、更新偏好与来源。
 该文件由宿主读写，不是插件 API，插件不应直接修改。它用于重启恢复；运行时加载和服务状态只是投影。

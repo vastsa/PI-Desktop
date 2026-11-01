@@ -348,8 +348,14 @@ outbound path the host owns answers to it.
 
 - **Panel sessions.** `sandbox: true` removes Node, not the network, so a panel
   was previously a full browser that never consulted `net.fetch`. The session now
-  runs a `webRequest` filter, refuses every device permission, and denies
-  `window.open`, which would otherwise mint a window outside the filtered session
+  runs a `webRequest` filter, refuses every device permission except an
+  audio-only microphone request from a plugin granted `ui.microphone` (§8.2), and
+  denies `window.open`, which would otherwise mint a window outside the filtered
+  session. The session is one persisted partition per plugin
+  (`persist:pi-plugin-<pluginId>`), shared by its panel window and its docked
+  views, and both get the same filter. `file:`, `data:`, `blob:`, `devtools:`,
+  `chrome-extension:`, and the read-only theme-asset scheme are not network
+  requests and pass the filter
 - **`pi.net.fetch`.** Checks the allowlist and follows redirects by hand, because
   an allowed host that 30x-es to an undeclared one would carry the request out.
   The host's shared hop loop owns both default and injected single-hop
@@ -371,8 +377,10 @@ outbound path the host owns answers to it.
   instead of being buffered, and a send queue above 4 MiB is refused rather
   than grown. Frames are addressed to the owning plugin only.
 
-An absent, empty, or malformed list means no egress at all, and a bare `*` is
-refused at install so nobody declares their way out. This is what makes a
+An absent, empty, or malformed list means no egress at all, and a bare `*`
+fails `validateManifest()` so nobody declares their way out: `pi-plugin check`
+reports it and the host refuses to load the plugin. The host-core installer
+does not read `net.domains`, so such a package installs and then fails to load. This is what makes a
 generous `fs.read` scope affordable (§6).
 
 Still open, tracked separately: `agent.prompt.inject` (skill text can ask a
@@ -561,7 +569,7 @@ present in the plugin API: the methods are gated by those permissions and an
 authorized call is refused with a coded `UNSUPPORTED` refusal that is audited,
 because this host has no device backend yet, so nothing reaches a device.
 `net.websocket` is implemented: connections are host-owned, allowlist-checked,
-bounded, and released with the plugin (§8.1).
+bounded, and released with the plugin (§8.0).
 
 Not enforced yet:
 
@@ -571,7 +579,9 @@ Not enforced yet:
   API it is supposed to use, not one that bypasses it (ADR 0008 D009)
 - CPU / memory limits
 - Signature verification (packages are only sha256-checked)
-- Declared manifest permissions are auto-granted at load time, subject to the
-  user unchecking them at install
+- Declared manifest permissions are granted as a whole. The install review has
+  no per-permission toggle, and the installer refuses a grant that leaves out
+  any declared permission (`PLUGIN_PERMISSION_DENIED: missing grant for
+  <permission>`); a load with no recorded grant takes the declared set
 - A `userSelected` root does not survive a restart, so a plugin has to ask again
   each session

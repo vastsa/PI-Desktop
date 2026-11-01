@@ -805,6 +805,8 @@ export const es = {
     "dismiss": "Descartar"
   },
   "settings": {
+    scheduledTasks: "Tareas programadas",
+    scheduledTasksDesc: "Al desactivar, se ocultan las tareas programadas y se detienen las nuevas ejecuciones. Se conservan las tareas existentes y el historial.",
     storage: {
       unavailableHint: "El directorio de almacenamiento no está disponible. Vuelve a conectar la unidad antes de iniciar; la aplicación no creará datos vacíos ni cambiará a otro directorio.",
       browserSource: "Origen de los datos del navegador",

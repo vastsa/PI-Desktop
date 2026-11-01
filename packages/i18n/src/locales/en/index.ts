@@ -1515,6 +1515,8 @@ sklm: {
     inlineVisualizationsDesc: "Show the interactive HTML cards the agent writes into the session's visualization directory. Off by default: the prompt advertises no visualization directory, the visualize skill is withheld, and existing reference lines stay hidden.",
     preventScreenSleep: "Prevent screen sleep",
     preventScreenSleepDesc: "Keep the display awake while the app is running. Uses system power management APIs on all platforms.",
+    scheduledTasks: "Scheduled tasks",
+    scheduledTasksDesc: "Turning this off hides scheduled tasks and stops new runs. Existing tasks and history are kept.",
     windowTranslucency: "Translucent window",
     windowTranslucencyDesc: "Keep the macOS window translucent over the desktop blur, which is the default. It costs more GPU while the window is visible; turn it off for an opaque window with the lowest idle load. A change applies after a restart.",
     windowTranslucencyRestart: "Restart to apply",

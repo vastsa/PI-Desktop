@@ -805,6 +805,8 @@ export const de = {
     "dismiss": "Verwerfen"
   },
   "settings": {
+    scheduledTasks: "Geplante Aufgaben",
+    scheduledTasksDesc: "Wenn deaktiviert, werden geplante Aufgaben ausgeblendet und keine neuen Ausführungen gestartet. Vorhandene Aufgaben und der Verlauf bleiben erhalten.",
     storage: {
       unavailableHint: "Das Speicherverzeichnis ist derzeit nicht verfügbar. Verbinden Sie das Laufwerk vor dem Start erneut. Die App erstellt keine leeren Daten und wechselt nicht in ein anderes Verzeichnis.",
       browserSource: "Quelle der Browserdaten",

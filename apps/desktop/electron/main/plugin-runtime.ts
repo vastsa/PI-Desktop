@@ -2748,6 +2748,10 @@ export class PluginRuntime {
         };
         const id = String(descriptor.id ?? "");
         if (!id) throw apiError("INVALID_ARGUMENT", "command.id is required");
+        const existing = this.commands.get(id);
+        if (existing && existing.pluginId !== pluginId) {
+          throw apiError("CONFLICT", `command is registered by another plugin: ${id}`);
+        }
         this.commands.set(id, {
           id,
           title: String(descriptor.title ?? id),
@@ -2767,7 +2771,12 @@ export class PluginRuntime {
         return { ok: true };
       }
       case "commands.unregister": {
-        this.commands.delete(String(args[0] ?? ""));
+        const id = String(args[0] ?? "");
+        const command = this.commands.get(id);
+        if (command && command.pluginId !== pluginId) {
+          throw apiError("PERMISSION_DENIED", `command belongs to another plugin: ${id}`);
+        }
+        this.commands.delete(id);
         return { ok: true };
       }
       case "keyboard.registerGlobalShortcut": {

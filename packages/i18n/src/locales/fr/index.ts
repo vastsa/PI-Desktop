@@ -805,6 +805,8 @@ export const fr = {
     "dismiss": "Ignorer"
   },
   "settings": {
+    scheduledTasks: "Tâches planifiées",
+    scheduledTasksDesc: "Désactiver masque les tâches planifiées et empêche de nouvelles exécutions. Les tâches existantes et leur historique sont conservés.",
     storage: {
       unavailableHint: "Le dossier de stockage est actuellement indisponible. Reconnectez le disque avant de démarrer ; l’application ne créera pas de données vides et ne changera pas de dossier.",
       browserSource: "Source des données du navigateur",

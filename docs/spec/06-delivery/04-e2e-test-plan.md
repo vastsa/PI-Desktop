@@ -40,6 +40,24 @@
 
 ## 1. Goals
 
+### E2E-SCHEDULED-settings-switch
+
+- **Preconditions:** Candidate Desktop, Host and reused local dependencies;
+  isolated profile/data/project and the local scheduled-model fixture.
+- **Steps:** With a saved task, open Settings → General, observe the default-on
+  Scheduled tasks switch, turn it off, return to the app and search.
+  Reload the renderer, verify the saved off state, re-enable and run the task.
+- **Expected:** The footer and page-search entry disappear while off; the
+  settings row remains searchable. New runs are rejected, task configuration
+  and history survive, reload preserves the choice and re-enabling restores
+  the same task and normal execution. Host tests also cover due admission,
+  stale tools, restart and completion of an already-admitted run while off.
+- **Coverage:** `node scripts/e2e-scheduled.mjs --settings-switch-only`,
+  `apps/desktop/test/scheduled-settings.test.mjs`, Host scheduled settings tests.
+- **Specs:** `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md` §3.3.
+- **Acceptance:** No data/schema migration; default-on backwards compatibility.
+- **Milestone:** Maintenance. **Status:** Automated.
+
 ### E2E-PROVIDER-retry-backoff-is-not-idle
 
 - **Entry:** Build shared and the production sidecar bundle, then run
@@ -3862,6 +3880,24 @@ identify the platform validation still needed.
 - **Milestone**: M4
 - **Status**: Draft
 
+#### E2E-PLUGIN-command-ownership: Command registration respects plugin ownership
+
+- **Preconditions**: Two plugins run in separate plugin host processes.
+- **Steps**: 1) Register a command from one plugin. 2) Attempt to replace and
+  unregister it from the other plugin. 3) Update and unregister it from the
+  owner. 4) Repeat with a load-time collision and concurrent registrations.
+- **Expected**: Cross-plugin replacement rejects with `CONFLICT`; cross-plugin
+  removal rejects with `PERMISSION_DENIED`. Rejected calls leave the original
+  handler runnable. Same-owner updates preserve the ID; repeated removal is
+  harmless; released IDs can be reused. A failed plugin load or unloading a
+  losing registrant does not remove the winning command. Concurrent calls
+  admit exactly one owner.
+- **Specs linked**: `07-plugins/03-plugin-api.md`, `07-plugins/12-plugin-ipc-and-host-services.md`
+- **Acceptance**: G (plugin command isolation)
+- **Milestone**: M4
+- **Status**: Automated — `pnpm test:e2e:plugin-command-ownership` exercises
+  the public plugin API through real plugin host processes and the host broker.
+
 #### E2E-024: Plugin registers and calls agent tool
 
 - **Preconditions**: Plugin loaded; plugin declares an agent tool.
@@ -4959,7 +4995,15 @@ window; opening a normal panel afterward must still work.
   still work without moving it.
   4) Click `+` twice and verify each creates and activates a separate New
   launcher tab. Confirm its body lists Review and each in-scope plugin view
-  exactly once. Open Browser and confirm its native surface opens at unchanged
+  exactly once. With 40 plugin views and long localized names, shrink the
+  window and narrow the panel: the New title stays pinned, the row list alone
+  scrolls, and 40px rows stay reachable by wheel, scrollbar, and Tab focus
+  (#2026). A quiet scrollbar thumb is visible before hover, its reserved
+  gutter prevents label shifts, and there is no horizontal overflow or scroll
+  chaining into the shell. Repeat with no explicit tab, a `+`-created New tab,
+  few/no plugins, and light/dark themes in English and Chinese. Activate the
+  last tool, close its view, and confirm the complete launcher returns.
+  Open Browser and confirm its native surface opens at unchanged
   bounds. Open its context menu and verify the native popup appears above Browser
   chrome while the page remains visible. With Browser active, right-click another
   tab and confirm it still uses the native menu. Repeat at 50% and 150% app zoom;
@@ -5060,9 +5104,10 @@ window; opening a normal panel afterward must still work.
   `work-panel-tabs.test.mjs`, `browser-tab-restore.test.mjs`,
   `work-panel.test.mjs`, `plugin-work-panel-views.test.mjs`,
   `plugin-view-navigation.test.mjs`, `work-panel-tab-menu.test.mjs`);
-  isolated Electron
-  tab-menu, Browser native-menu page visibility, and close geometry in
-  `scripts/e2e-work-panel-tab-close.mjs`; full UI scenario Draft
+  isolated Electron tab-menu, Browser native-menu page visibility, and close
+  geometry in `scripts/e2e-work-panel-tab-close.mjs`; launcher overflow,
+  native focus reveal, hit targets, and open/close user paths in
+  `node scripts/e2e-work-panel-launcher-overflow.mjs`; full UI scenario Draft
 
 #### E2E-057: Message-owned review history survives commits and rolls back safely
 
@@ -5108,14 +5153,23 @@ window; opening a normal panel afterward must still work.
 - **Preconditions**: A project-bound Agent session with a writable workspace.
 - **Steps**: 1) Ask the agent to create one file and edit another; watch the
   turn while it streams. 2) After the reply finishes, inspect the area below
-  the answer. 3) Ask for a change touching more than twelve files across
-  several directories. 4) Click a row, then the `View all N files in Review`
-  link. 5) Roll back one file's change in Review and return to the turn.
+  the answer: only the summary header is visible. Click it to expand, click
+  again to collapse, then focus it and repeat with Enter and Space. Confirm
+  hidden rows and the Review link cannot receive keyboard focus and the title
+  keeps its viewport anchor. 3) Ask for a change touching more than twelve files
+  across several directories; confirm its card starts collapsed independently.
+  Expand it. 4) Click a row, then the `View all N files in Review` link.
+  5) Roll back one file's change in Review and return to the turn.
   6) Ask a question that writes no files. 7) Switch sessions and come back.
 - **Expected**: No summary appears while a turn streams or after a failed
   turn. A finished turn that wrote workspace files shows one borderless
   `Changes this turn` card below its answer and above plugin `entryExtra`
-  blocks, with the file count and summed `+`/`−`. Each path appears once with
+  blocks. It starts collapsed with only its chevron, title, file count, and
+  summed `+`/`−` visible; directory counts remain visible for dense summaries.
+  The full-width header toggles with click, Enter, or Space, exposes its state
+  through ARIA, and leaves Review closed. Collapsed details occupy no space
+  and cannot receive focus. Each turn's explicit choice is independent and
+  survives ordinary rerenders. When expanded, each path appears once with
   its merged status letter and counts; up to four files use relaxed rows,
   more use dense rows with a directory count, and rows past 12 fold into
   `+N more`. A row click opens the session's Review tab scrolled to that file
@@ -5126,7 +5180,9 @@ window; opening a normal panel afterward must still work.
 - **Specs linked**: `04-ux/08-component-spec.md` §4.4, D674
 - **Acceptance**: D (workspace), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`turn-changes-card.test.mjs`); full UI scenario Draft
+- **Status**: Unit/SSR-covered (`turn-changes-card.test.mjs`); isolated Chromium
+  pointer, Enter/Space, independent disclosure, hidden-focus, and Review paths
+  covered by `turn-changes-disclosure-user-path.test.mjs`; full UI scenario Draft
 
 #### E2E-CHAT-completed-turn-scrolls-to-prompt: A finished reply reads from its prompt
 
@@ -7468,6 +7524,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     positioned immediately after the last message that checkpoint covers, and
     raises exactly one warning toast. Two checkpoints produce two rows, in
     order, and neither row replaces or hides a message.
+  - Once a checkpoint is installed, including the manual `/compact` in step 9,
+    the composer context ring drops to the checkpoint's estimated next-request
+    size without waiting for another turn; the provider usage rows in its
+    panel still describe the last real request. The next request's reported
+    usage replaces the estimate, and reopening the session after a restart
+    shows the same estimate (#2015; unit coverage in
+    `apps/desktop/test/compaction-context-usage.test.mjs`).
   - The `new_context` call appears as a normal tool activity row, returns
     immediately, and the checkpoint is created at the following turn boundary
     rather than mid-turn.
@@ -10816,6 +10879,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Quality (sidebar menu placement) | E2E-021c |
 | Quality (project ordering) | E2E-253 |
 | Quality (work-panel tab close visibility) | E2E-WORK-PANEL-active-tab-close-visibility |
+| Quality (turn changed-files disclosure) | E2E-CHAT-turn-changed-files-summary |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-130-kernel-upgrade |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-140-kernel-upgrade |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
@@ -19300,7 +19364,9 @@ their separate platform acceptance.
   including real protocol responses, bundled assets, the preloaded `viz`
   helpers (`viz.chart` sizing, `viz.render` charts and their date, year,
   re-render, and donut edge cases), a fragment script error shown in the
-  card, focus/guest Escape,
+  card, the fragment inside the kit's `#widget` container with its top-level
+  blocks spaced while inline controls, block styling, wrapped roots, and flex,
+  grid, and column roots keep their geometry, focus/guest Escape,
   viewport release, and unsandboxed callers through a real isolated Host.
   Native directory, FIFO, and ABA regressions run in `visualizations/files`;
   `gen-ui-file-safety.test.mjs` validates the private Host-to-Main boundary.

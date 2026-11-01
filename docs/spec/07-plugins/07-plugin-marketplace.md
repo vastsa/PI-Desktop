@@ -645,7 +645,7 @@ All download metadata must include `shasum`.
 5. Appears in Installed after install
 
 
-## 12. Implementation status
+## 13. Implementation status
 
 Desktop Extensions page now includes a Marketplace tab that calls:
 
@@ -658,7 +658,7 @@ Desktop Extensions page now includes a Marketplace tab that calls:
 Installs always pass through checksum verification and permission review before enable.
 
 
-## 13. Official marketplace repository
+## 14. Official marketplace repository
 
 The distribution repository
 ([vastsa/pi-desktop-plugins](https://github.com/vastsa/pi-desktop-plugins)) holds the published
@@ -711,7 +711,7 @@ PI_DESKTOP_PLUGIN_MARKET_URL=https://raw.githubusercontent.com/<owner>/<repo>/<r
 ```
 
 
-## 14. Marketplace detail UX
+## 15. Marketplace detail UX
 
 The Extensions destination opens details as a right-side sheet (scrim + Escape + outside
 click dismiss) that loads `market.getDetail` and shows:

@@ -175,6 +175,8 @@ export function createProviderCatalogRuntime({
         .infiniteProviderRetry === true,
       keepAwakeWhileRunning: (value as T & { keepAwakeWhileRunning?: unknown })
         .keepAwakeWhileRunning === true,
+      scheduledTasksEnabled: (value as T & { scheduledTasksEnabled?: unknown })
+        .scheduledTasksEnabled !== false,
       jevEnabled: (value as T & { jevEnabled?: unknown }).jevEnabled === true,
       transcriptDisplayMode:
         (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "flat" ||
@@ -197,6 +199,7 @@ export function createProviderCatalogRuntime({
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
       keepAwakeWhileRunning?: unknown;
+      scheduledTasksEnabled?: unknown;
       jevEnabled?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
@@ -226,6 +229,14 @@ export function createProviderCatalogRuntime({
       typeof value.keepAwakeWhileRunning !== "boolean"
     ) {
       throw Object.assign(new Error("keepAwakeWhileRunning is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "scheduledTasksEnabled") &&
+      typeof value.scheduledTasksEnabled !== "boolean"
+    ) {
+      throw Object.assign(new Error("scheduledTasksEnabled is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }

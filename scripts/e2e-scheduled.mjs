@@ -11,6 +11,7 @@ import { Host, resolveHostBinary } from "./e2e/host.mjs";
 import { resolveElectronBinary } from "./e2e/boot.mjs";
 import { waitFor } from "./e2e/wait.mjs";
 import { scheduledModelFixture } from "./e2e/scheduled-model.mjs";
+import { verifyScheduledSettingsSwitch } from "./e2e/scheduled-settings.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "pi-scheduled-e2e-"));
 const dataDir = join(root, "data"),
@@ -18,6 +19,8 @@ const dataDir = join(root, "data"),
   alternateProject = join(root, "project-alt");
 mkdirSync(project);
 mkdirSync(alternateProject);
+const home = join(root, "home");
+mkdirSync(home);
 // The Host canonicalizes the workspace path it is given, and macOS hands out
 // `TMPDIR` under the `/var` symlink, so compare resolved paths on both sides.
 const canonical = (value) => realpathSync(value).replaceAll("\\", "/").toLowerCase();
@@ -26,7 +29,7 @@ if (evidence) mkdirSync(evidence, { recursive: true });
 const model = scheduledModelFixture();
 const server = createServer(model.handler);
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
-const host = new Host(resolveHostBinary(), dataDir);
+const host = new Host(resolveHostBinary(), dataDir, { env: { HOME: home, USERPROFILE: home } });
 await host.start();
 await host.call("workspace.set", { path: project });
 const { provider } = await host.call("providers.create", {
@@ -69,6 +72,8 @@ const { appDir, electronBinary } = resolveElectronBinary();
 const port = Number(process.env.PI_SCHEDULED_CDP_PORT || 9378);
 const env = {
   ...process.env,
+  HOME: home,
+  USERPROFILE: home,
   PI_DESKTOP_DATA_DIR: dataDir,
   PI_DESKTOP_START_MAXIMIZED: "0",
   ELECTRON_RENDERER_URL: "",
@@ -217,6 +222,15 @@ try {
     await screenshot("failure.png");
     throw error;
   }
+  if (process.argv.includes("--settings-switch-only")) {
+    const { task } = await invoke("scheduledCreate", {
+      title: "Project review", prompt: "Reply OK", cadence: "manual", permissionMode: "auto",
+    });
+    await verifyScheduledSettingsSwitch({ task, invoke, evaluate, click, fill, key, send });
+    await click("Run now");
+    await waitFor(async () => (await invoke("scheduledListRuns")).runs[0]?.status === "completed", 30_000, "re-enabled task runs through the local model");
+    console.log("PASS re-enabled task executes through real Host and agent sidecar");
+  } else {
   await evaluate(`document.querySelector('[data-nav="scheduled"]').click()`);
   await waitFor(
     () => evaluate(`document.querySelector('.page-title')?.textContent === 'Scheduled'`),
@@ -379,6 +393,7 @@ try {
     "edit",
   );
   await screenshot("after-tasks.png");
+  await verifyScheduledSettingsSwitch({ task: { ...task, title: "Project review" }, invoke, evaluate, click, fill, key, send });
   await click("Run now");
   let runs;
   await waitFor(
@@ -463,6 +478,7 @@ try {
   console.log(
     "PASS scheduled user path: create, time, weekday dropdown/multiple selection, validation, keyboard, hourly interval, edit, pause/resume, manual run, transcript, automatic run, delete",
   );
+  }
   console.log(`Evidence: ${evidence ?? "not requested"}; isolated profile: ${root}`);
 } catch (error) {
   console.error(output.slice(-4000));

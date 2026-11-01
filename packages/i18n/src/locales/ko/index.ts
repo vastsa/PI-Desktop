@@ -1511,6 +1511,8 @@ sklm: {
     inlineVisualizationsDesc: "에이전트가 세션 시각화 디렉터리에 작성한 대화형 HTML 카드를 대화에 표시합니다. 기본적으로 꺼져 있습니다: 프롬프트에 시각화 디렉터리를 제공하지 않고 visualize 스킬을 숨기며 기존 참조 줄도 표시하지 않습니다.",
     preventScreenSleep: "화면 절전 방지",
     preventScreenSleepDesc: "앱이 실행되는 동안 화면이 꺼지지 않도록 합니다. 모든 플랫폼에서 시스템 전원 관리 API를 사용합니다.",
+    scheduledTasks: "예약 작업",
+    scheduledTasksDesc: "끄면 예약 작업이 숨겨지고 새 실행이 중지됩니다. 기존 작업과 기록은 유지됩니다.",
     windowTranslucency: "반투명 창",
     windowTranslucencyDesc: "macOS 창을 데스크톱 흐림 위에 반투명하게 유지합니다(기본값). 창이 보이는 동안 GPU를 더 사용하므로, 유휴 부하를 가장 낮추려면 끄세요. 변경 사항은 재시작 후 적용됩니다.",
     windowTranslucencyRestart: "적용하려면 재시작",

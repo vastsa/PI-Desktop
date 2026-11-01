@@ -114,7 +114,11 @@ handler is logged, never fatal. This is the same channel that finally makes
 
 ### Registration
 - key must be unique
-- Plugin commands share the prefix: `plugin.<pluginId>.<commandId>`
+- Command IDs are preserved as supplied; `plugin.<pluginId>.<commandId>` is
+  a naming convention, not an enforced prefix. The host rejects registration
+  of another plugin's command ID with `CONFLICT` and rejects removal of
+  another plugin's command with `PERMISSION_DENIED`. Same-owner updates and
+  unregistering an absent ID remain valid.
 - Plugin tool prefix policy: `plugin_<pluginIdSafe>_<toolName>` (fixed in the implementation)
 
 ### Query

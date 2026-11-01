@@ -1495,6 +1495,8 @@ sklm: {
     inlineVisualizationsDesc: "在對話中顯示智慧代理寫入工作階段視覺化目錄的互動式 HTML 卡片。預設停用：不向模型提供視覺化目錄，同時隱藏 visualize 技能，歷史引用行也不再顯示。",
     preventScreenSleep: "防止螢幕休眠",
     preventScreenSleepDesc: "應用程式執行時保持螢幕常亮，跨平台使用系統電源管理介面。",
+    scheduledTasks: "排程任務",
+    scheduledTasksDesc: "關閉後隱藏排程任務入口並停止啟動新任務，現有任務與歷史記錄會保留。",
     windowTranslucency: "視窗透明效果",
     windowTranslucencyDesc: "讓 macOS 視窗保持透明並顯示桌面模糊背景（預設開啟）。視窗可見時會佔用更多 GPU；關閉後使用不透明視窗，閒置佔用最低。修改後需重新啟動生效。",
     windowTranslucencyRestart: "重新啟動後生效",

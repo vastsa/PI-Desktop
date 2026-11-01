@@ -82,7 +82,7 @@ PluginManager
 重新加载。`restore` 在启动恢复把已启用的插件加载完之后发出一次，
 让早于它取过清单的界面仍能看到这些插件。
 
-## 4. 1 事件（主机→插件进程）
+## 4.1 事件（主机→插件进程）
 
 代理还将单向帧推送到插件的 `utilityProcess`：
 
@@ -101,7 +101,9 @@ PluginManager
 
 ### 注册
 - 密钥必须是唯一的
-- 插件命令共享前缀：`plugin.<pluginId>.<commandId>`
+- 命令 ID 按原值保存；`plugin.<pluginId>.<commandId>` 是命名约定，宿主不会强制添加该前缀。
+  注册其他插件已占用的命令 ID 时，宿主返回 `CONFLICT` 错误；注销其他插件的命令时，
+  宿主返回 `PERMISSION_DENIED` 错误。插件仍可更新自己的命令，也可注销不存在的 ID。
 - 插件工具前缀策略：`plugin_<pluginIdSafe>_<toolName>`（在实现中修复）
 
 ### 查询
