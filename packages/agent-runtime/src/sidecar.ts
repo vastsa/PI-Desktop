@@ -233,7 +233,7 @@ async function runtimeFor(
       errorCode: "AGENT_BUSY",
     });
   }
-  const reusable = existing?.matches({
+  const config = {
     mode,
     provider,
     thinkingLevel,
@@ -251,10 +251,15 @@ async function runtimeFor(
     remoteWorkspace: params.remoteWorkspace,
     workspaceRoot: params.workspaceRoot,
     commandShell: params.commandShell,
-  })
-    ? existing
-    : undefined;
+  };
+  // Name the first field that disagrees so a cache-invalidating rebuild can be
+  // attributed to its cause (#1948) instead of surfacing only as a reset.
+  const mismatch = existing?.firstMismatch(config) ?? null;
+  const reusable = existing && mismatch === null ? existing : undefined;
   if (existing && !reusable) {
+    console.error(
+      `[runtime] rebuilding ${sessionId}: runtime config mismatch (${mismatch ?? "unknown"})`,
+    );
     await existing.dispose();
     runtimes.delete(sessionId);
   }

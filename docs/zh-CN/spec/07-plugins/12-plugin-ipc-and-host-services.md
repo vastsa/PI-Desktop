@@ -147,11 +147,11 @@ host-core 的 `plugin.installProgress` 通知转发而来。
 ## 5. ContributionRegistry 行为
 
 ### 注册
-- 命令作者应选择唯一 ID，通常使用 `plugin.<pluginId>.<commandId>`。
-  子进程原样转发传入的 ID，调用代理不会自动添加或校验该命名空间。
-  注册同名命令会覆盖现有条目；注销操作直接删除指定 ID，不检查已注册命令的所属插件。
-  这是当前实现的行为，不能视为已强制执行的跨插件隔离保证。
-- 插件工具名称使用固定前缀：`plugin_<pluginIdSafe>_<toolName>`（由实现强制生成）
+- 命令 ID 按原值保存，约定使用 `plugin.<pluginId>.<commandId>` 形式；调用代理
+  不会自动添加或校验该命名空间。注册其他插件已占用的命令 ID 时，宿主返回
+  `CONFLICT` 错误；注销其他插件的命令时，宿主返回 `PERMISSION_DENIED` 错误。
+  插件仍可更新自己的命令，也可注销不存在的 ID。
+- 插件工具前缀策略：`plugin_<pluginIdSafe>_<toolName>`（在实现中修复）
 
 ### 查询
 - 命令面板仅查询已启用+加载成功的贡献

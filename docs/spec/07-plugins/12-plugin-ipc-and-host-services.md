@@ -162,12 +162,12 @@ handler is logged, never fatal. This is the same channel that finally makes
 ## 5. ContributionRegistry behavior
 
 ### Registration
-- Command authors should choose unique ids, conventionally
-  `plugin.<pluginId>.<commandId>`. The child forwards the supplied id unchanged;
-  the broker does not prepend or validate this namespace. Registration replaces
-  an existing command with the same id, and unregister deletes that id without
-  checking the registered command's owner. This is current behavior, not an
-  enforced cross-plugin isolation guarantee.
+- Command IDs are preserved as supplied and conventionally named
+   `plugin.<pluginId>.<commandId>`; the broker does not prepend or validate that
+   namespace. The host rejects registration of another plugin's command ID with
+   `CONFLICT`, and rejects removal of another plugin's command with
+   `PERMISSION_DENIED`. Same-owner updates, and unregistering an absent ID,
+   remain valid.
 - Plugin tool prefix policy: `plugin_<pluginIdSafe>_<toolName>` (fixed in the implementation)
 
 ### Query
