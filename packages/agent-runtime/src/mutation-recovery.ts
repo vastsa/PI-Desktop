@@ -61,23 +61,42 @@ export async function mutationFailureKey(path: string, projectPath?: string): Pr
  * Split a command into segments at shell operators (`||`, `&&`, `|`, `;`, `&`,
  * newline). Quote-aware: an operator inside a quoted span never splits, so
  * `printf "%s" "hello; patch notes"` stays one segment and its quoted `patch`
- * stays inert text. Every check runs on a segment after splitting: tokens
- * behind a pipe, `&&`, `;`, or a newline belong to a different process, so
- * `git log | grep apply` is not a patch and `kubectl apply` after `git pull`
- * is not a git patch (#1985).
+ * stays inert text. Heredoc bodies and comments are excluded too: the data
+ * lines after `<<tag` and everything behind an unquoted `#` are payload, not
+ * command positions, so `cat <<'EOF'\npatch notes\nEOF` and
+ * `printf x # ; patch notes` cannot invent a patch (#2016 review round two).
+ * Every check runs on a segment after splitting: tokens behind a pipe, `&&`,
+ * `;`, or a newline belong to a different process, so `git log | grep apply`
+ * is not a patch and `kubectl apply` after `git pull` is not a git patch
+ * (#1985).
  *
  * This is best-effort segmentation for the recovery guard, not a shell
- * parser: quotes and backslash escapes are modeled, shell grammar (command
- * substitution, unmatched quotes, heredoc bodies) is not. The failure mode is
- * deliberately asymmetric — a missed patch only skips recovery, so widening
- * this into real shell parsing is never worth the false positives.
+ * parser: quotes, backslash escapes, comments and heredocs are modeled,
+ * shell grammar like command substitution is not — an unmodeled construct
+ * must never invent a patch invocation, so in doubt the text is treated as
+ * inert. The failure mode stays asymmetric: a missed patch only skips
+ * recovery, and widening this into real shell parsing is never worth the
+ * false positives.
  */
 function splitCommandSegments(command: string): string[] {
   const segments: string[] = [];
   let current = "";
   let quote: '"' | "'" | null = null;
-  for (let index = 0; index < command.length; index += 1) {
+  /** When set, whole lines are heredoc payload until a line holding the tag. */
+  let heredocTag: string | null = null;
+  let index = 0;
+  while (index < command.length) {
     const char = command[index]!;
+    if (heredocTag !== null) {
+      // The body and its closing tag line are data; the closing line is not a
+      // command either. An unmatched tag consumes the rest — a real shell
+      // would read the same lines as stdin.
+      const lineEnd = command.indexOf("\n", index);
+      const line = lineEnd === -1 ? command.slice(index) : command.slice(index, lineEnd);
+      if (line.trim() === heredocTag) heredocTag = null;
+      index = lineEnd === -1 ? command.length : lineEnd + 1;
+      continue;
+    }
     if (quote) {
       current += char;
       // Inside double quotes a backslash escapes the next character; inside
@@ -87,28 +106,84 @@ function splitCommandSegments(command: string): string[] {
       } else if (char === quote) {
         quote = null;
       }
+      index += 1;
       continue;
     }
     if (char === '"' || char === "'") {
       quote = char;
       current += char;
+      index += 1;
       continue;
     }
     if (char === "\\") {
       current += char;
       if (index + 1 < command.length) current += command[++index]!;
+      index += 1;
       continue;
+    }
+    if (char === "#" && (current === "" || /\s$/.test(current))) {
+      // A word-boundary `#` comments out the rest of the line; the newline
+      // itself stays a segment boundary.
+      const lineEnd = command.indexOf("\n", index);
+      index = lineEnd === -1 ? command.length : lineEnd;
+      continue;
+    }
+    if (char === "<" && command[index + 1] === "<") {
+      if (command[index + 2] === "<") {
+        // Here-string: the word after it is an argument, not a body.
+        current += "<<<";
+        index += 3;
+        continue;
+      }
+      const tag = parseHeredocTag(command, index + 2);
+      if (tag !== null) {
+        heredocTag = tag.text;
+        index = tag.end;
+        continue;
+      }
     }
     if (char === "|" || char === ";" || char === "&" || char === "\n") {
       if ((char === "|" || char === "&") && command[index + 1] === char) index += 1;
       segments.push(current);
       current = "";
+      index += 1;
       continue;
     }
     current += char;
+    index += 1;
   }
   segments.push(current);
   return segments;
+}
+
+/** Read the tag after `<<` (or `<<-`). Null when there is no tag word. */
+function parseHeredocTag(command: string, start: number): { text: string; end: number } | null {
+  let index = start;
+  if (command[index] === "-") index += 1;
+  let text = "";
+  let quote: '"' | "'" | null = null;
+  while (index < command.length) {
+    const char = command[index]!;
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+        index += 1;
+        continue;
+      }
+      text += char;
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      index += 1;
+      continue;
+    }
+    if (/\s/.test(char) || ";|&<>".includes(char)) break;
+    text += char;
+    index += 1;
+  }
+  return text ? { text, end: index } : null;
 }
 
 /**
@@ -117,15 +192,20 @@ function splitCommandSegments(command: string): string[] {
  * one argument regardless of the whitespace and operators it contains, and
  * the quote characters themselves are not part of the argument. An unquoted
  * backslash escapes the next character; inside double quotes only `\"` and
- * `\\` are escapes. Same best-effort contract as the splitter above.
+ * `\\` are escapes. An empty quoted argument still yields a token — `git -C
+ * "" apply` passes an empty `-C` value, so token existence is kept separate
+ * from token text. Same best-effort contract as the splitter above.
  */
 function tokenizeSegment(segment: string): string[] {
   const tokens: string[] = [];
   let token = "";
+  /** Whether anything entered the current token, quotes included. */
+  let started = false;
   let quote: '"' | "'" | null = null;
   const endToken = () => {
-    if (token) tokens.push(token);
+    if (started) tokens.push(token);
     token = "";
+    started = false;
   };
   for (let index = 0; index < segment.length; index += 1) {
     const char = segment[index]!;
@@ -134,6 +214,7 @@ function tokenizeSegment(segment: string): string[] {
       // the argument the shell hands over.
       if (char === "'") quote = null;
       else token += char;
+      started = true;
       continue;
     }
     if (quote === '"') {
@@ -143,18 +224,22 @@ function tokenizeSegment(segment: string): string[] {
         (segment[index + 1] === '"' || segment[index + 1] === "\\")
       ) {
         token += segment[++index]!;
+        started = true;
         continue;
       }
       if (char === '"') quote = null;
       else token += char;
+      started = true;
       continue;
     }
     if (char === "'" || char === '"') {
       quote = char;
+      started = true;
       continue;
     }
     if (char === "\\") {
       if (index + 1 < segment.length) token += segment[++index]!;
+      started = true;
       continue;
     }
     if (/\s/.test(char)) {
@@ -162,6 +247,7 @@ function tokenizeSegment(segment: string): string[] {
       continue;
     }
     token += char;
+    started = true;
   }
   endToken();
   return tokens;

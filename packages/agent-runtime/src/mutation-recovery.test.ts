@@ -105,4 +105,26 @@ describe("isPatchCommand", () => {
     expect(isPatchCommand('echo "patch"; git log | grep apply')).toBe(false);
     expect(isPatchCommand('git log --grep "a|b"')).toBe(false);
   });
+
+  it("keeps empty quoted arguments as tokens", () => {
+    // #2016 review round two: `git -C "" apply` is a real patch (git accepts
+    // an empty -C value), so the empty argument must occupy the option-value
+    // slot instead of vanishing and promoting `apply` into it. The mirror
+    // control keeps an empty command word from promoting `patch`.
+    expect(isPatchCommand('git -C "" apply p.diff')).toBe(true);
+    expect(isPatchCommand('"" patch notes')).toBe(false);
+  });
+
+  it("treats heredoc bodies and comments as payload, not commands", () => {
+    // #2016 review round two: heredoc data lines and comments used to become
+    // command segments, so ordinary failures of these commands could still
+    // trigger the false termination.
+    expect(isPatchCommand("cat <<'EOF'\npatch notes\nEOF")).toBe(false);
+    expect(isPatchCommand('printf "%s" x # ; patch notes')).toBe(false);
+    expect(isPatchCommand("cat <<EOF\ngit apply p.diff\nEOF")).toBe(false);
+    // The command line that opens the heredoc still counts, with or without
+    // following body lines.
+    expect(isPatchCommand("patch <<'EOF'\nbody\nEOF")).toBe(true);
+    expect(isPatchCommand("apply_patch <<'EOF'\n*** Begin Patch\nEOF")).toBe(true);
+  });
 });
