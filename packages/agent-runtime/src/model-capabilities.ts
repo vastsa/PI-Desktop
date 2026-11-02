@@ -243,7 +243,7 @@ export function genericModelConfig(
     baseUrl,
     reasoning: false,
     modalities: { input: ["text"], output: ["text"] },
-    limit: { context: 128_000, input: 128_000, output: 8_192 },
+    limit: { context: 128_000, input: 128_000, output: 32_768 },
     cost: {
       input: 0,
       output: 0,
@@ -252,7 +252,7 @@ export function genericModelConfig(
     },
     input: ["text"],
     contextWindow: 128_000,
-    maxTokens: 8_192,
+    maxTokens: 32_768,
     supportedThinkingLevels: [],
   };
 }

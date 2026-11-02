@@ -78,7 +78,7 @@ export type RuntimeProviderConfig = {
 };
 
 export const DEFAULT_CONTEXT_WINDOW = 128_000;
-export const DEFAULT_MAX_TOKENS = 8_192;
+export const DEFAULT_MAX_TOKENS = 32_768;
 
 export type ApiBinding = {
   api: Api;

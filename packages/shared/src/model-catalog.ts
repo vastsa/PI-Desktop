@@ -147,7 +147,7 @@ export function sortThinkingLevels(levels: readonly ThinkingLevel[]): ThinkingLe
 }
 
 export const CATALOG_DEFAULT_CONTEXT_WINDOW = 128_000;
-export const CATALOG_DEFAULT_MAX_TOKENS = 8_192;
+export const CATALOG_DEFAULT_MAX_TOKENS = 32_768;
 
 /**
  * Resolve a model's effective context window.
