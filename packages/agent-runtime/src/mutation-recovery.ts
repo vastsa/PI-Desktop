@@ -70,6 +70,14 @@ export async function mutationFailureKey(path: string, projectPath?: string): Pr
  * is not a patch and `kubectl apply` after `git pull` is not a git patch
  * (#1985).
  *
+ * Heredoc bookkeeping follows the shell's ordering, not the tag's: every `<<`
+ * on the opening line is queued, and the queue is drained in tag order only
+ * once that line ends. So `cat <<A <<B` consumes both bodies instead of
+ * treating `<<B` as payload, and `cat <<EOF; git apply p.diff` still counts
+ * the patch on its opening line. A closing delimiter must be the whole line;
+ * `<<-` strips leading tabs from it and nothing else, so a space-prefixed
+ * ` EOF` stays payload (#2016 review round three).
+ *
  * This is best-effort segmentation for the recovery guard, not a shell
  * parser: quotes, backslash escapes, comments and heredocs are modeled,
  * shell grammar like command substitution is not — an unmodeled construct
@@ -78,22 +86,28 @@ export async function mutationFailureKey(path: string, projectPath?: string): Pr
  * recovery, and widening this into real shell parsing is never worth the
  * false positives.
  */
+type HeredocBody = { tag: string; stripTabs: boolean };
+
 function splitCommandSegments(command: string): string[] {
   const segments: string[] = [];
   let current = "";
   let quote: '"' | "'" | null = null;
-  /** When set, whole lines are heredoc payload until a line holding the tag. */
-  let heredocTag: string | null = null;
+  /** Tags found on the open line whose bodies follow it, in tag order. */
+  const queued: HeredocBody[] = [];
+  /** When set, whole lines are this heredoc's payload until its delimiter. */
+  let body: HeredocBody | null = null;
   let index = 0;
   while (index < command.length) {
     const char = command[index]!;
-    if (heredocTag !== null) {
-      // The body and its closing tag line are data; the closing line is not a
-      // command either. An unmatched tag consumes the rest — a real shell
-      // would read the same lines as stdin.
+    if (body !== null) {
+      // Body lines and the closing delimiter line are data, never commands.
+      // An unmatched tag consumes the rest: a real shell would read the same
+      // lines as stdin, and inventing a patch from them is the failure this
+      // guard exists to avoid.
       const lineEnd = command.indexOf("\n", index);
       const line = lineEnd === -1 ? command.slice(index) : command.slice(index, lineEnd);
-      if (line.trim() === heredocTag) heredocTag = null;
+      const delimiter = body.stripTabs ? line.replace(/^\t+/, "") : line;
+      if (delimiter === body.tag) body = queued.shift() ?? null;
       index = lineEnd === -1 ? command.length : lineEnd + 1;
       continue;
     }
@@ -137,7 +151,10 @@ function splitCommandSegments(command: string): string[] {
       }
       const tag = parseHeredocTag(command, index + 2);
       if (tag !== null) {
-        heredocTag = tag.text;
+        // Collect only: the body starts after this whole line ends, so a
+        // second redirect on the same line (`cat <<A <<B`) is queued instead
+        // of being swallowed as A's payload.
+        queued.push({ tag: tag.text, stripTabs: tag.stripTabs });
         index = tag.end;
         continue;
       }
@@ -147,6 +164,8 @@ function splitCommandSegments(command: string): string[] {
       segments.push(current);
       current = "";
       index += 1;
+      // The opening line is complete: its heredoc bodies follow, in tag order.
+      if (char === "\n" && queued.length > 0) body = queued.shift()!;
       continue;
     }
     current += char;
@@ -156,10 +175,22 @@ function splitCommandSegments(command: string): string[] {
   return segments;
 }
 
-/** Read the tag after `<<` (or `<<-`). Null when there is no tag word. */
-function parseHeredocTag(command: string, start: number): { text: string; end: number } | null {
+/**
+ * Read the tag after `<<` (or `<<-`). Null when there is no tag word.
+ *
+ * `stripTabs` reports the `<<-` form, whose delimiter line may carry leading
+ * tabs; every other form requires the tag to be the whole line.
+ */
+function parseHeredocTag(
+  command: string,
+  start: number,
+): { text: string; stripTabs: boolean; end: number } | null {
   let index = start;
-  if (command[index] === "-") index += 1;
+  let stripTabs = false;
+  if (command[index] === "-") {
+    stripTabs = true;
+    index += 1;
+  }
   let text = "";
   let quote: '"' | "'" | null = null;
   while (index < command.length) {
@@ -183,7 +214,7 @@ function parseHeredocTag(command: string, start: number): { text: string; end: n
     text += char;
     index += 1;
   }
-  return text ? { text, end: index } : null;
+  return text ? { text, stripTabs, end: index } : null;
 }
 
 /**

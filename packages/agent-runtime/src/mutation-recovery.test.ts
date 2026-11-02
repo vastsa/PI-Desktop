@@ -127,4 +127,30 @@ describe("isPatchCommand", () => {
     expect(isPatchCommand("patch <<'EOF'\nbody\nEOF")).toBe(true);
     expect(isPatchCommand("apply_patch <<'EOF'\n*** Begin Patch\nEOF")).toBe(true);
   });
+
+  it("matches heredoc delimiters exactly, stripping tabs only for <<-", () => {
+    // #2016 review round three: `line.trim()` accepted a space-prefixed
+    // delimiter, so ` EOF` ended the body early and the lines after it — the
+    // real payload — became commands.
+    expect(isPatchCommand("cat <<'EOF'\n EOF\nordinary text\npatch notes\nEOF")).toBe(false);
+    expect(isPatchCommand("cat <<EOF\n\tEOF\npatch -p1 < x.diff")).toBe(false);
+    // `<<-` is the one form whose delimiter may carry leading tabs.
+    expect(isPatchCommand("cat <<-EOF\n\tbody\n\tEOF\npatch -p1 < x.diff")).toBe(true);
+    expect(isPatchCommand("cat <<-'EOF'\n\tbody\n\tEOF\npatch notes")).toBe(true);
+    // `<<-` strips tabs only: a space-prefixed delimiter still does not close.
+    expect(isPatchCommand("cat <<-EOF\n body\n EOF\npatch notes\nEOF")).toBe(false);
+  });
+
+  it("queues every heredoc on the opening line before reading bodies", () => {
+    // #2016 review round three: one stored tag made the parser treat the
+    // second redirect as payload on the opening line, so `cat <<A <<B` never
+    // consumed B's body and ordinary text after A became commands.
+    expect(isPatchCommand("cat <<A <<B\nA\nordinary text\npatch notes\nB")).toBe(false);
+    expect(isPatchCommand("cat <<A <<B\nA\nB\npatch notes")).toBe(true);
+    // The opening line is not body: a patch after `;` on it still executes.
+    expect(isPatchCommand("cat <<EOF; git apply p.diff\nbody\nEOF")).toBe(true);
+    expect(isPatchCommand("cat <<A <<B; patch -p1 < x.diff\nA\nB")).toBe(true);
+    // Both spellings of the first tag still queue with a later one.
+    expect(isPatchCommand("cat <<-'A' <<\"B\"\n\tbody\n\tA\nB\npatch notes")).toBe(true);
+  });
 });
