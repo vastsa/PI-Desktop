@@ -160,6 +160,40 @@ describe("estimateOutputCapInputTokens", () => {
     expect(estimateOutputCapInputTokens(context)).toBe(2008);
   });
 
+  it("corrects CJK in context.tools the same way as system toolsAdded", () => {
+    const description = "测".repeat(4000);
+    const tools = [{
+      name: "lookup",
+      description,
+      parameters: { type: "object", properties: {} },
+    }];
+    const viaTools = estimateOutputCapInputTokens({ messages: [], tools });
+    const viaToolsAdded = estimateOutputCapInputTokens({
+      messages: [{ role: "system", content: "", toolsAdded: tools }],
+    });
+    // Serialized schema is 4083 chars: baseline ceil(4083 / 4) = 1021.
+    // 4000 Han chars add ceil(4000 * 0.75) = 3000. Subagent budgets pass
+    // schemas on context.tools, so that path must match toolsAdded.
+    expect(viaTools).toBe(viaToolsAdded);
+    expect(viaTools).toBe(4021);
+  });
+
+  it("estimates an ASCII tool schema the same on context.tools and toolsAdded", () => {
+    const description = "a".repeat(4000);
+    const tools = [{
+      name: "lookup",
+      description,
+      parameters: { type: "object", properties: {} },
+    }];
+    const viaTools = estimateOutputCapInputTokens({ messages: [], tools });
+    const viaToolsAdded = estimateOutputCapInputTokens({
+      messages: [{ role: "system", content: "", toolsAdded: tools }],
+    });
+    // Same 4083-char schema and no CJK, so both stay on the chars/4 baseline.
+    expect(viaTools).toBe(viaToolsAdded);
+    expect(viaTools).toBe(1021);
+  });
+
   it("treats a raw string content and empty content consistently", () => {
     expect(
       estimateOutputCapInputTokens({
