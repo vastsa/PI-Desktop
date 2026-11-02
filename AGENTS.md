@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-09-26.1
+Policy-Sync: 2026-09-26.2
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -87,6 +87,25 @@ If a delivery document conflicts with the branch / worktree / integration
 
 In particular, do not merge task code into local `main` merely because
 an older document describes local-main E2E integration.
+
+### File encoding: PowerShell scripts
+
+Every `.ps1` in this repository that contains non-ASCII text — Chinese
+comments, string literals, `#requires` lines — must be stored as **UTF-8 with
+BOM**. Pure-ASCII scripts need no BOM; UTF-16 is never acceptable.
+
+Windows PowerShell 5.1 decodes a BOM-less script with the system ANSI code page
+(936/GBK on Chinese Windows), *before* parsing. Non-ASCII bytes then become
+garbage, and the damage surfaces as misleading syntax errors hundreds of lines
+away — often inside an unrelated string or here-string. PowerShell 7 and most
+editors hide the problem, so it fails only on the host users actually run.
+
+Do not "fix" an encoding error with `-Encoding ASCII`; that turns every
+non-ASCII character into `?`. Data files a script hands to other tools are a
+different case: write those as UTF-8 **without** BOM.
+
+Enforced by `pnpm check:powershell-encoding`. Details and generating code
+snippets: skill `plugins/repo-conventions/skills/powershell-encoding.md`.
 
 ---
 

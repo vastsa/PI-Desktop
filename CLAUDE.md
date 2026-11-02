@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-09-26.1
+Policy-Sync: 2026-09-26.2
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -29,6 +29,10 @@ Reply to the user in the language they used (Chinese request → Chinese answer,
 ---
 
 ## Hard rules (do not negotiate)
+
+### Script encoding
+
+Every `.ps1` containing non-ASCII text (Chinese comments, literals) must be **UTF-8 with BOM**. Windows PowerShell 5.1 decodes a BOM-less script with the system ANSI code page (936/GBK) before parsing, so non-ASCII bytes become garbage and surface as misleading syntax errors far from the cause; PowerShell 7 and editors hide it. Pure-ASCII scripts need no BOM; UTF-16 is never acceptable. Never "fix" this with `-Encoding ASCII` (it yields `?`). Data files written for other tools are the opposite case: UTF-8 **without** BOM. Gate: `pnpm check:powershell-encoding`; details: `plugins/repo-conventions/skills/powershell-encoding.md`.
 
 ### Worktree isolation
 

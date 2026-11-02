@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "com.pi-desktop.repo-conventions",
+  "name": "Repo Conventions",
+  "version": "0.1.0",
+  "description": "Repository-wide engineering conventions for PI-Desktop contributors and AI agents (script encoding and file hygiene). Documentation only: no panel, tools, or runtime behavior.",
+  "main": "main.js",
+  "contributes": {
+    "skills": ["skills/powershell-encoding.md"]
+  },
+  "permissions": ["agent.prompt.inject"],
+  "engines": {
+    "piDesktop": ">=0.21.0"
+  },
+  "activationEvents": ["onStartup"]
+}
