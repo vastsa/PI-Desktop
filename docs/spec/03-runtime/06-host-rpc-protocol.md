@@ -182,6 +182,7 @@ Rules:
    notification-bearing `session.endTurn` result.
 5. Version 5 requires the host-owned `session.fork` snapshot operation; a
    version 4 host must be rejected before chat becomes interactive (ADR 0023).
+
 6. Version 6 adds durable model-context checkpoints through
    `session.appendCompaction`; a version 5 host must be rejected before the
    runtime claims automatic context protection (ADR 0030).
@@ -198,6 +199,26 @@ Rules:
    `a2a.task.event` / `a2a.push` notifications are gone. Handshake no longer
    advertises `"a2a"`. A v10 host or client is rejected before the UI becomes
    interactive, so a mixed pair cannot call a missing domain.
+
+### 3.1. The client waits for the handshake
+
+`HostProcess.call()` blocks every method except `app.handshake` until the
+handshake has been answered. Boot-time callers — the window chrome and the
+renderer's first reads — reach host-core inside the spawn window, and host-core
+answers them with `1001 UNAUTHORIZED "handshake required"`. Because nothing
+retried, a lost race left a red toast on every cold start and, for the renderer's
+first read, an empty model list that never recovered.
+
+The wait is bounded by `HANDSHAKE_WAIT_MS` (15s) so a host that never answers
+cannot wedge later calls, and the gate is released in `handshake()`'s `finally`
+and in `closeTransport()`, so a failed or dead transport hands the caller the
+real transport error rather than leaving it blocked. `app.handshake` itself never
+waits, otherwise the gate would deadlock against the call that settles it.
+
+Callers therefore no longer need their own retry: a call issued before the
+handshake is delayed, not failed. Retrying remains correct for callers that hold
+no `HostProcess` (see `host-handshake-retry.ts`, which the window chrome uses
+around its own boot sequence).
 
 Protocol v11 is paired with host-core storage schema v23. Schema v12 had added
 the A2A tables (`a2a_tasks`, `a2a_messages`, `a2a_artifacts`,
