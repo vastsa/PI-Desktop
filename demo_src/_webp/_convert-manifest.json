@@ -1,0 +1,23 @@
+﻿{
+    "tool":  "Convert-PngToWebp.ps1",
+    "createdAt":  "2026-11-02T17:41:19.3370764+08:00",
+    "outRoot":  "D:\\Code\\PI-Desktop-main\\demo_src\\_webp",
+    "options":  {
+                    "quality":  82,
+                    "lossless":  false
+                },
+    "files":  [
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\demo_src\\icons\\dark\\logo 大.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\demo_src\\_webp\\icons\\dark\\logo 大.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\demo_src\\icons\\g.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\demo_src\\_webp\\icons\\g.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\demo_src\\icon-transparent.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\demo_src\\_webp\\icon-transparent.webp"
+                  }
+              ]
+}

@@ -1,0 +1,39 @@
+﻿{
+    "tool":  "Convert-PngToWebp.ps1",
+    "createdAt":  "2026-11-02T17:40:49.5883750+08:00",
+    "outRoot":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp",
+    "options":  {
+                    "quality":  82,
+                    "lossless":  false
+                },
+    "files":  [
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\plain.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\plain.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\sub\\alpha.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\sub\\alpha.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\sub\\deep\\gray.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\sub\\deep\\gray.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\sub\\deep\\p_noalpha.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\sub\\deep\\p_noalpha.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\sub\\palette.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\sub\\palette.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\UPPER.PNG",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\UPPER.webp"
+                  },
+                  {
+                      "src":  "D:\\Code\\PI-Desktop-main\\testdata\\中文 目录\\图片 一.png",
+                      "dst":  "D:\\Code\\PI-Desktop-main\\testdata\\_webp\\中文 目录\\图片 一.webp"
+                  }
+              ]
+}
