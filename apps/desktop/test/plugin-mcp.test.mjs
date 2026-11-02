@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -256,13 +256,24 @@ test("a slow server times out instead of hanging the load", async () => {
     rootPath: dir,
     server: { id: "stub", transport: "stdio", command: "node", args: ["./server.mjs"] },
     values: { STUB_PID_FILE: pidFile },
-    connectTimeoutMs: 250,
+    connectTimeoutMs: 1_500,
   });
   await assert.rejects(client.connect(), (error) => {
     assert.equal(error.code, "TIMEOUT");
     return true;
   });
-  const pid = Number(readFileSync(pidFile, "utf8"));
+  // The child writes its pid on its first line of code, which can land after
+  // the 250 ms handshake budget on a cold Node start. Wait for the file the
+  // server is going to write instead of assuming it is already there.
+  let pid = Number.NaN;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (existsSync(pidFile)) {
+      pid = Number(readFileSync(pidFile, "utf8"));
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.ok(Number.isInteger(pid) && pid > 0, "the slow server never reported its pid");
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
       process.kill(pid, 0);
