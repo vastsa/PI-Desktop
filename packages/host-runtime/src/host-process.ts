@@ -65,6 +65,18 @@ function isHostOverloaded(error: unknown): boolean {
  * binary lives or which host embeds it, so Electron Main and the headless
  * `pi-host` drive the same transport.
  */
+/**
+ * Upper bound on how long a caller waits for the handshake before it gives up
+ * and takes the transport error instead. Boot-time callers (window chrome, the
+ * renderer's first reads) can fire before `app.handshake` lands; host-core
+ * rejects those with 1001 "handshake required" and the failure reads like a
+ * defect in whatever surface made the call.
+ */
+const HANDSHAKE_WAIT_MS = 15_000;
+
+/** The one method that must never wait for the handshake it performs. */
+const HANDSHAKE_METHOD = "app.handshake";
+
 export class HostProcess {
   private child: ChildProcessWithoutNullStreams;
   private pending = new Map<
@@ -80,6 +92,14 @@ export class HostProcess {
   private disposed = false;
   private available = true;
   private closed = false;
+  /** Set once `app.handshake` has answered, so later calls stop waiting. */
+  private handshakeSettled = false;
+  /**
+   * Optional because tests build instances with `Object.create(prototype)`,
+   * which skips field initializers. A missing gate means "do not wait".
+   */
+  private handshakeGate?: Promise<void>;
+  private resolveHandshakeGate?: () => void;
   private exitNotified = false;
   private exitObserved = false;
   private exitPromise: Promise<void>;
@@ -94,6 +114,9 @@ export class HostProcess {
   constructor(options: HostProcessOptions) {
     this.exitPromise = new Promise<void>((resolve) => {
       this.resolveExit = resolve;
+    });
+    this.handshakeGate = new Promise<void>((resolve) => {
+      this.resolveHandshakeGate = resolve;
     });
     this.binaryPath = options.binaryPath;
     this.diagnoseFailure = options.diagnoseFailure;
@@ -148,6 +171,9 @@ export class HostProcess {
     if (this.closed) return;
     this.available = false;
     this.closed = true;
+    // A dead transport will never answer the handshake; release waiters so they
+    // observe the transport error instead of sitting until the wait expires.
+    this.settleHandshakeGate();
     for (const [, p] of this.pending) {
       if (p.timer) clearTimeout(p.timer);
       p.reject(error);
@@ -272,6 +298,8 @@ export class HostProcess {
     params: unknown = {},
     timeoutOverrideMs?: number,
   ): Promise<T> {
+    // The handshake is the one call that cannot wait for itself.
+    if (method !== HANDSHAKE_METHOD) await this.waitForHandshake();
     for (const delayMs of [0, ...HOST_OVERLOAD_RETRY_DELAYS_MS]) {
       if (delayMs > 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
@@ -359,7 +387,40 @@ export class HostProcess {
   }
 
   async handshake(): Promise<void> {
-    await this.call("app.handshake", { protocolVersion: PROTOCOL_VERSION });
+    try {
+      await this.call("app.handshake", { protocolVersion: PROTOCOL_VERSION });
+    } finally {
+      // Release waiters on failure too: they take the real transport error
+      // instead of hanging on a handshake that will never answer.
+      this.settleHandshakeGate();
+    }
+  }
+
+  /**
+   * Block a caller until the handshake has been answered. Bounded so a host that
+   * never answers cannot wedge every later call, and tolerant of instances built
+   * without field initializers (tests) — no gate means nothing to wait for.
+   */
+  private async waitForHandshake(): Promise<void> {
+    if (this.handshakeSettled || !this.handshakeGate) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.handshakeGate,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, HANDSHAKE_WAIT_MS);
+        }),
+      ]);
+    } finally {
+      // The race does not cancel its loser; without this every call made before
+      // the handshake would leave a pending 15s timer behind.
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private settleHandshakeGate(): void {
+    this.handshakeSettled = true;
+    this.resolveHandshakeGate?.();
   }
 
   async dispose(): Promise<void> {
