@@ -2815,18 +2815,22 @@ identify the platform validation still needed.
 - **Steps**: 1) Click New Task (sidebar, top bar, or Cmd/Ctrl+N). 2) Observe
   the chat surface on the next frame, before the new sidebar row is required
   to exist. 3) Type in the composer during that interval. 4) Wait for the new
-  row and send.
+  row and send. Also send while creation is still pending, and overlap two
+  first-input materialization requests with the host response delayed.
 - **Expected**: A's transcript is gone on the first frame (empty home, idle
   Send). The composer does not stay on A's draft. After `session.create` the
   same empty session is selected, any text typed during the wait belongs to
   that session, and sending does not create a second row. Repeating New Task
   before sending reuses the row. The host is not asked to `session.list` or
-  `session.get` before the empty destination is visible.
+  `session.get` before the empty destination is visible. Overlapping inputs
+  share one creation and its session id; the first send does not invalidate
+  New Task navigation. Superseded creation returns no target to waiting inputs,
+  and a failed create releases the slot so retry can succeed.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` (§1.6),
   `04-ux/08-component-spec.md` (§11), ADR 0154
 - **Acceptance**: C (session creation), Quality
 - **Milestone**: M2
-- **Status**: Source-level regression covered (`session-create.test.mjs`,
+- **Status**: Source-level regression covered (`session-draft-materialization.test.mjs`, `session-create.test.mjs`,
   `session-switch-performance.test.mjs`); full UI scenario Draft
 
 
