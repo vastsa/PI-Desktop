@@ -24,9 +24,10 @@ export interface TurnOutcome {
 
 /**
  * - `clean` — the turn ran to a normal stop with nothing to flag.
- * - `suspicious` — the turn stopped normally but evidence suggests it did not
- *   actually accomplish what it claimed (failed tools, or a request for tool
- *   use that produced no results).
+ * - `suspicious` — the turn stopped normally but nothing in it succeeded: it
+ *   requested tools and got no results at all, or every tool result failed.
+ *   A turn that mixes failures with successes is the normal error-recovery
+ *   cycle and is reported as `clean`.
  * - `incomplete` — the provider did not end the turn normally: truncated by the
  *   token limit, erroring, or aborted.
  * - `conversational` — a normal stop with no tool involvement at all. Plain
@@ -58,7 +59,11 @@ export function classifyTurn(outcome: TurnOutcome): TurnVerdict {
     return "suspicious";
   }
 
-  if (outcome.failedToolCount > 0) {
+  // Only flag a turn where nothing succeeded. A turn that mixes failures with
+  // successes is the normal error-recovery cycle — a tool fails, the model
+  // reads the error and fixes it — so flagging it would bury the real signal
+  // (a turn that failed everything and still narrated a conclusion) in noise.
+  if (outcome.failedToolCount > 0 && outcome.failedToolCount === outcome.toolResultCount) {
     return "suspicious";
   }
 

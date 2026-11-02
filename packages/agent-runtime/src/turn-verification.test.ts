@@ -21,8 +21,15 @@ describe("classifyTurn", () => {
     expect(classifyTurn(outcome({ toolCallCount: 3, toolResultCount: 3 }))).toBe("clean");
   });
 
-  it("flags a normal stop that left tool failures behind", () => {
+  it("does not flag a turn that failed one tool and succeeded on another", () => {
+    // The normal error-recovery cycle: a tool fails, the model reads the error
+    // and fixes it in the same batch. Flagging this would bury the real signal.
     expect(classifyTurn(outcome({ toolCallCount: 2, toolResultCount: 2, failedToolCount: 1 })))
+      .toBe("clean");
+  });
+
+  it("flags a turn where every tool result failed", () => {
+    expect(classifyTurn(outcome({ toolCallCount: 2, toolResultCount: 2, failedToolCount: 2 })))
       .toBe("suspicious");
   });
 

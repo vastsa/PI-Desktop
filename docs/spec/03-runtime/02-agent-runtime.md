@@ -430,12 +430,18 @@ only way to notice them today is to read the whole conversation.
 `finishTurn` now classifies every completed turn from observable facts only —
 `stopReason`, requested tool calls, tool results, `isError` flags, and visible
 text length — into one of four verdicts: `conversational` (a normal stop with no
-tool involvement), `clean` (a normal stop whose tools all succeeded),
-`suspicious` (a normal stop that left tool failures behind, or requested tools
-and produced no results), and `incomplete` (`stopReason` of `error`, `aborted`,
+tool involvement), `clean` (a normal stop where at least one tool result
+succeeded, including a batch that mixed failures with successes), `suspicious`
+(a normal stop that requested tools and produced no results at all, or whose
+every tool result failed), and `incomplete` (`stopReason` of `error`, `aborted`,
 or `length`). `length` counts as `incomplete` rather than `suspicious`: pi fails
 every tool call from a truncated message, so the truncation is the cause and must
 not be double-counted.
+
+A mixed batch is deliberately *not* suspicious. A tool that fails and is then
+corrected is the ordinary error-recovery cycle, and flagging it would bury the
+signal this diagnostic exists for — a turn that failed everything and still
+narrated a conclusion.
 
 The verdict is a diagnostic, never a control signal. `suspicious` and
 `incomplete` are emitted as a `turn_verification` diagnostic that Electron main
