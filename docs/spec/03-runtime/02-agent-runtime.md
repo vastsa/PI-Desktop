@@ -881,6 +881,15 @@ contract names, keep working while a criterion is unmet and an untried approach
 remains, stop early only when a boundary blocks it, and close with a
 criterion-by-criterion report of what was met and the evidence observed.
 
+Both kinds open a checklist before the first tool call. A plan or goal is prose,
+so its steps reach the progress dock only if the Agent restates them as todos:
+the instruction requires a `TodoWrite` call that derives the steps from the
+approved Markdown, with exactly one item `in_progress` and the rest `pending`,
+updated as each step starts and finishes, and with nothing left `pending` or
+`in_progress` in the final report. Without it an approved execution is one
+opaque instruction and the dock stays empty for the whole run — the longest
+autonomous path in the product is also the one with no progress surface.
+
 ## 5c. Thinking capability and stream contract
 
 - Canonical levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`,

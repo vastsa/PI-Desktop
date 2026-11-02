@@ -9241,9 +9241,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             "<approved-goal-markdown>",
             execution.plan,
             "</approved-goal-markdown>",
+            // Without this the approved contract runs as one opaque instruction and
+            // the user watches an idle dock until the final report. The checklist is
+            // the only progress surface an autonomous run has.
+            "Open your work list before you start: call TodoWrite with the steps you intend to take, taken from the contract above, exactly one in_progress and the rest pending. Update it as each step starts and finishes so the user can follow the run.",
             "Choose your own approach with the normal Agent tools. Then verify every acceptance criterion yourself, running the checks the contract names rather than assuming they pass.",
             "Keep working while a criterion is still unmet and you have an untried approach. Stop early only if a boundary in the contract blocks you or a criterion cannot be verified; say which one and why.",
-            "Finish with a report that walks the acceptance criteria one by one, each marked met or unmet with the evidence you observed.",
+            "Finish with a report that walks the acceptance criteria one by one, each marked met or unmet with the evidence you observed. Leave no todo pending or in_progress when you report.",
           ].join("\n")
         : [
             "Execute the approved implementation plan now.",
@@ -9254,7 +9258,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             "<approved-plan-markdown>",
             execution.plan,
             "</approved-plan-markdown>",
-            "Implement the approved plan with the normal Agent tools, then report the result.",
+            // The plan is prose, so its steps reach the user only if the agent
+            // restates them where the dock can see them. One in_progress item is
+            // what makes the progress summary meaningful.
+            "Open your work list before you start: call TodoWrite with the steps you intend to take, taken from the approved plan above, exactly one in_progress and the rest pending. Update it as each step starts and finishes so the user can follow the run.",
+            "Implement the approved plan with the normal Agent tools, then report the result. Leave no todo pending or in_progress when you report.",
           ].join("\n");
     const internalId = `approved-${kind}:${execution.id}`;
     const internalMessage: AgentMessage = {
