@@ -264,6 +264,20 @@ export function createSidecarRuntime({
         data?: unknown;
       };
       if (
+        diagnostic.kind === "turn_verification" &&
+        typeof diagnostic.sessionId === "string" &&
+        diagnostic.data &&
+        typeof diagnostic.data === "object"
+      ) {
+        logger.app("session", "warn", "turn verification flagged", {
+          sessionId: diagnostic.sessionId,
+          ...(typeof diagnostic.turnId === "string" ? { turnId: diagnostic.turnId } : {}),
+          event: "session.turn.verification",
+          data: diagnostic.data,
+        });
+        return;
+      }
+      if (
         (diagnostic.kind === "compaction_failure" || diagnostic.kind === "compaction_shape") &&
         typeof diagnostic.sessionId === "string" &&
         typeof diagnostic.requestId === "string" &&

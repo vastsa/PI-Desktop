@@ -20,6 +20,7 @@ import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
+import { classifyTurn, describeTurn, type TurnVerdict } from "./turn-verification.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { rememberDescription, rememberParameters } from "./memory-tool.js";
@@ -37,6 +38,7 @@ import {
   Agent,
   type AgentContext,
   type AgentEvent,
+  type AgentTurnContext,
   type AgentLoopTurnUpdate,
   type AgentMessage,
   type AgentTool,
@@ -1063,13 +1065,21 @@ export type AgentRuntimeOptions = {
   subagentModelKeys?: string[];
 };
 
-export type AgentRuntimeDiagnostic = {
-  kind: "compaction_failure" | "compaction_shape";
-  sessionId: string;
-  turnId?: string;
-  requestId: string;
-  data: Record<string, unknown>;
-};
+export type AgentRuntimeDiagnostic =
+  | {
+      kind: "compaction_failure" | "compaction_shape";
+      sessionId: string;
+      turnId?: string;
+      requestId: string;
+      data: Record<string, unknown>;
+    }
+  | {
+      /** Observational verdict for a completed turn (see `turn-verification.ts`). */
+      kind: "turn_verification";
+      sessionId: string;
+      turnId?: string;
+      data: Record<string, unknown>;
+    };
 
 export type RuntimeMatchConfig = {
   mode: Mode;
@@ -2406,7 +2416,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // pi-agent-core 0.87 replaces shouldStopAfterTurn with finishTurn. A
       // queued renderer prompt ends a completed turn at the next boundary,
       // without treating an error or abort as a graceful stop.
-      finishTurn: async ({ message }) => {
+      finishTurn: async (turn) => {
+        this.recordTurnVerdict(turn);
+        const { message } = turn;
         if (!this.gracefulStopRequested) return;
         if (message.stopReason === "error" || message.stopReason === "aborted") return;
         this.gracefulStopRequested = false;
@@ -2426,6 +2438,41 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         this.logEventHandlerFailure(event, error);
       }),
     );
+  }
+
+  /**
+   * Record how the turn ended. Observational only: this never influences run
+   * scheduling, provider request count, or the turn_end / agent_end sequence.
+   * A verdict of `suspicious` or `incomplete` is reported as a
+   * `turn_verification` diagnostic so that a turn which claimed success without
+   * evidence is visible in the application log.
+   */
+  private recordTurnVerdict(turn: AgentTurnContext): void {
+    try {
+      const outcome = describeTurn({
+        message: turn.message,
+        toolResults: turn.toolResults ?? [],
+      });
+      const verdict: TurnVerdict = classifyTurn(outcome);
+      if (verdict !== "suspicious" && verdict !== "incomplete") return;
+      this.onDiagnostic({
+        kind: "turn_verification",
+        sessionId: this.sessionId,
+        ...(this.turnId ? { turnId: this.turnId } : {}),
+        data: {
+          verdict,
+          stopReason: outcome.stopReason,
+          toolCallCount: outcome.toolCallCount,
+          toolResultCount: outcome.toolResultCount,
+          failedToolCount: outcome.failedToolCount,
+          assistantTextLength: outcome.assistantTextLength,
+        },
+      });
+    } catch (error) {
+      // Classification must never break a turn.
+      const detail = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`[agent-runtime] turn verdict failed: ${detail}\n`);
+    }
   }
 
   private logEventHandlerFailure(event: AgentEvent, error: unknown): void {
@@ -7362,7 +7409,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private emitCompactionDiagnostic(
-    kind: AgentRuntimeDiagnostic["kind"],
+    kind: "compaction_failure" | "compaction_shape",
     requestId: string,
     data: Record<string, unknown>,
   ): void {

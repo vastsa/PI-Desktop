@@ -420,6 +420,36 @@ final report from being misclassified as progress.
 
 See E2E-146a.
 
+### 5e.2. Turn verification (observational)
+
+A turn can stop normally and still not have done what it claimed: a tool batch
+failed and the model narrated around it, or the batch was interrupted before any
+result reached the context. Nothing in the transcript marks those turns, so the
+only way to notice them today is to read the whole conversation.
+
+`finishTurn` now classifies every completed turn from observable facts only —
+`stopReason`, requested tool calls, tool results, `isError` flags, and visible
+text length — into one of four verdicts: `conversational` (a normal stop with no
+tool involvement), `clean` (a normal stop whose tools all succeeded),
+`suspicious` (a normal stop that left tool failures behind, or requested tools
+and produced no results), and `incomplete` (`stopReason` of `error`, `aborted`,
+or `length`). `length` counts as `incomplete` rather than `suspicious`: pi fails
+every tool call from a truncated message, so the truncation is the cause and must
+not be double-counted.
+
+The verdict is a diagnostic, never a control signal. `suspicious` and
+`incomplete` are emitted as a `turn_verification` diagnostic that Electron main
+logs as `session.turn.verification`; `clean` and `conversational` are silent.
+The classifier cannot add a provider request, reorder `turn_end` / `agent_end`,
+or retry a turn: `finishTurn` records the verdict before it evaluates the
+graceful-stop decision and returns no `AgentTurnDecision` of its own, and the
+classification runs inside `try/catch` so a malformed message degrades to
+"nothing to report" instead of failing the turn. Automatic retry on a flagged
+verdict is a separate, explicitly authorized change.
+
+See `packages/agent-runtime/src/turn-verification.ts` and
+`apps/desktop/test/turn-verification-wiring.test.mjs`.
+
 ### 5.1 Context checkpoint protection (D158/D203, ADR 0030/0049/0061/0064)
 
 The complete visible transcript and the model context are separate views of
