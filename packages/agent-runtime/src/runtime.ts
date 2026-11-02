@@ -20,7 +20,7 @@ import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
-import { classifyTurn, describeTurn, type TurnVerdict } from "./turn-verification.js";
+import { evaluateTurn, describeTurn, INITIAL_TURN_STATE, type TurnVerificationState, type TurnVerdict } from "./turn-verification.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { rememberDescription, rememberParameters } from "./memory-tool.js";
@@ -2105,6 +2105,8 @@ export class DesktopAgentRuntime {
   private pendingModelCompaction = false;
   /** One-shot request to finish the current turn at the next boundary. */
   private gracefulStopRequested = false;
+  /** Turn-verification state carried across turns within the current run. */
+  private turnVerificationState: TurnVerificationState = INITIAL_TURN_STATE;
   /** Codex's `claim_*` flags: one of each reminder per context window. */
   private contextReminderClaimed = false;
   private contextFallbackReminderClaimed = false;
@@ -2453,7 +2455,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         message: turn.message,
         toolResults: turn.toolResults ?? [],
       });
-      const verdict: TurnVerdict = classifyTurn(outcome);
+      const evaluation = evaluateTurn(outcome, this.turnVerificationState);
+      this.turnVerificationState = evaluation.state;
+      const verdict: TurnVerdict = evaluation.verdict;
       if (verdict !== "suspicious" && verdict !== "incomplete") return;
       this.onDiagnostic({
         kind: "turn_verification",
@@ -9085,6 +9089,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.acceptingSteering = true;
     this.pendingUserMessageId = undefined;
     this.gracefulStopRequested = false;
+    this.turnVerificationState = INITIAL_TURN_STATE;
     this.runCancelled = false;
     this.resetRunRecoveryState();
     this.turnEpoch += 1;

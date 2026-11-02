@@ -6,6 +6,14 @@
  * ended. Returning an `AgentTurnDecision` from here would change the number of
  * provider requests and the `turn_end` / `agent_end` event sequence, which is a
  * separate, explicitly authorized change.
+ *
+ * Detection is run-scoped, not turn-scoped. pi reports `stopReason: "toolUse"`
+ * on every turn that requested tools and then continues the loop with the
+ * results, so a turn carrying tool results is always mid-flight and can never be
+ * the turn where the model claimed an outcome. A false completion only becomes
+ * visible on the *terminal* turn (`stopReason: "stop"`), and only in
+ * combination with what the turn before it did. That is why the evaluator
+ * carries state between turns instead of classifying each one in isolation.
  */
 
 /** Facts about one completed turn, reduced to the fields worth classifying. */
@@ -22,52 +30,78 @@ export interface TurnOutcome {
   assistantTextLength: number;
 }
 
-/**
- * - `clean` — the turn ran to a normal stop with nothing to flag.
- * - `suspicious` — the turn stopped normally but nothing in it succeeded: it
- *   requested tools and got no results at all, or every tool result failed.
- *   A turn that mixes failures with successes is the normal error-recovery
- *   cycle and is reported as `clean`.
- * - `incomplete` — the provider did not end the turn normally: truncated by the
- *   token limit, erroring, or aborted.
- * - `conversational` — a normal stop with no tool involvement at all. Plain
- *   question/answer turns land here; they are never suspicious.
- */
-export type TurnVerdict = "clean" | "suspicious" | "incomplete" | "conversational";
+/** State carried from one turn to the next within a single run. */
+export interface TurnVerificationState {
+  /** The most recent tool batch failed every call it made. */
+  lastBatchAllFailed: boolean;
+}
+
+export const INITIAL_TURN_STATE: TurnVerificationState = { lastBatchAllFailed: false };
 
 /**
- * Classify a completed turn from observable facts only.
- *
- * `stopReason === "length"` is treated as incomplete rather than suspicious:
- * pi fails every tool call from a truncated message, so a length stop already
- * surfaces as failed tools and should not be double-counted.
+ * - `pending` — the turn requested tools and the loop continues. Never flagged:
+ *   the model has not claimed any outcome yet.
+ * - `suspicious` — the model stopped speaking on a turn whose preceding tool
+ *   batch failed every call, i.e. it answered without recovering.
+ * - `incomplete` — the provider did not end the turn normally: truncated by the
+ *   token limit, erroring, or aborted.
+ * - `conversational` — a normal stop with no tool involvement at all.
+ * - `clean` — a normal stop that was not preceded by an all-failed batch.
  */
-export function classifyTurn(outcome: TurnOutcome): TurnVerdict {
+export type TurnVerdict =
+  | "pending"
+  | "suspicious"
+  | "incomplete"
+  | "conversational"
+  | "clean";
+
+/** Verdict for this turn plus the state the next turn should start from. */
+export interface TurnEvaluation {
+  verdict: TurnVerdict;
+  state: TurnVerificationState;
+}
+
+/**
+ * Evaluate one turn and return the state the next turn should start from.
+ *
+ * `length` counts as `incomplete` rather than `suspicious`: pi fails every tool
+ * call from a truncated message, so the truncation is the cause and must not be
+ * double-counted.
+ */
+export function evaluateTurn(
+  outcome: TurnOutcome,
+  state: TurnVerificationState = INITIAL_TURN_STATE,
+): TurnEvaluation {
   const { stopReason } = outcome;
 
   if (stopReason === "error" || stopReason === "aborted" || stopReason === "length") {
-    return "incomplete";
+    return { verdict: "incomplete", state: INITIAL_TURN_STATE };
+  }
+
+  // A batch counts as failed when nothing in it succeeded. A batch that mixes
+  // failures with successes is the ordinary error-recovery cycle, and a turn
+  // that asked for tools but produced no results was interrupted mid-batch.
+  const allToolsFailed =
+    outcome.toolResultCount > 0
+      ? outcome.failedToolCount === outcome.toolResultCount
+      : outcome.toolCallCount > 0;
+
+  // Mid-flight: the model asked for tools, so it has concluded nothing yet.
+  if (stopReason === "toolUse" || stopReason === "pending") {
+    return { verdict: "pending", state: { lastBatchAllFailed: allToolsFailed } };
+  }
+
+  // Terminal turn: the model stopped speaking. This is the only place where a
+  // preceding all-failed batch means it answered without recovering.
+  if (state.lastBatchAllFailed) {
+    return { verdict: "suspicious", state: INITIAL_TURN_STATE };
   }
 
   if (outcome.toolCallCount === 0 && outcome.toolResultCount === 0) {
-    return "conversational";
+    return { verdict: "conversational", state: INITIAL_TURN_STATE };
   }
 
-  // A turn that requested tools but produced no results stopped mid-flight:
-  // the tool batch was interrupted before any result reached the context.
-  if (outcome.toolCallCount > 0 && outcome.toolResultCount === 0) {
-    return "suspicious";
-  }
-
-  // Only flag a turn where nothing succeeded. A turn that mixes failures with
-  // successes is the normal error-recovery cycle — a tool fails, the model
-  // reads the error and fixes it — so flagging it would bury the real signal
-  // (a turn that failed everything and still narrated a conclusion) in noise.
-  if (outcome.failedToolCount > 0 && outcome.failedToolCount === outcome.toolResultCount) {
-    return "suspicious";
-  }
-
-  return "clean";
+  return { verdict: "clean", state: INITIAL_TURN_STATE };
 }
 
 /** Build a {@link TurnOutcome} from the pi turn context, without classifying it. */

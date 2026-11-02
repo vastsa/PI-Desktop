@@ -427,31 +427,36 @@ failed and the model narrated around it, or the batch was interrupted before any
 result reached the context. Nothing in the transcript marks those turns, so the
 only way to notice them today is to read the whole conversation.
 
-`finishTurn` now classifies every completed turn from observable facts only —
+`finishTurn` now evaluates every completed turn from observable facts only —
 `stopReason`, requested tool calls, tool results, `isError` flags, and visible
-text length — into one of four verdicts: `conversational` (a normal stop with no
-tool involvement), `clean` (a normal stop where at least one tool result
-succeeded, including a batch that mixed failures with successes), `suspicious`
-(a normal stop that requested tools and produced no results at all, or whose
-every tool result failed), and `incomplete` (`stopReason` of `error`, `aborted`,
-or `length`). `length` counts as `incomplete` rather than `suspicious`: pi fails
-every tool call from a truncated message, so the truncation is the cause and must
-not be double-counted.
+text length. Evaluation is run-scoped rather than turn-scoped, because pi reports
+`stopReason: "toolUse"` on every turn that requested tools and then continues the
+loop with the results: a turn that carries tool results is always mid-flight and
+can never be the turn where the model claimed an outcome. Verdicts are therefore
+`pending` (a `toolUse` turn — the model has claimed nothing yet, never flagged),
+`incomplete` (`stopReason` of `error`, `aborted`, or `length`), `suspicious` (a
+terminal stop whose preceding tool batch failed every call, i.e. the model
+answered without recovering), `conversational` (a terminal stop with no tool
+involvement), and `clean` (any other terminal stop). `length` counts as
+`incomplete` rather than `suspicious`: pi fails every tool call from a truncated
+message, so the truncation is the cause and must not be double-counted.
 
-A mixed batch is deliberately *not* suspicious. A tool that fails and is then
-corrected is the ordinary error-recovery cycle, and flagging it would bury the
-signal this diagnostic exists for — a turn that failed everything and still
-narrated a conclusion.
+The evaluator carries one bit between turns within a run — "the last tool batch
+failed every call" — and the runtime clears it at run start. Without that state a
+per-turn rule flags the ordinary error-recovery cycle (a tool fails, the model
+reads the error and fixes it) on the intermediate turn, which is a false positive
+by construction rather than a threshold problem. A batch that mixes failures with
+successes never sets the bit.
 
 The verdict is a diagnostic, never a control signal. `suspicious` and
 `incomplete` are emitted as a `turn_verification` diagnostic that Electron main
-logs as `session.turn.verification`; `clean` and `conversational` are silent.
-The classifier cannot add a provider request, reorder `turn_end` / `agent_end`,
-or retry a turn: `finishTurn` records the verdict before it evaluates the
-graceful-stop decision and returns no `AgentTurnDecision` of its own, and the
-classification runs inside `try/catch` so a malformed message degrades to
-"nothing to report" instead of failing the turn. Automatic retry on a flagged
-verdict is a separate, explicitly authorized change.
+logs as `session.turn.verification`; every other verdict is silent. The evaluator
+cannot add a provider request, reorder `turn_end` / `agent_end`, or retry a turn:
+`finishTurn` records the verdict before it evaluates the graceful-stop decision
+and returns no `AgentTurnDecision` of its own, and the evaluation runs inside
+`try/catch` so a malformed message degrades to "nothing to report" instead of
+failing the turn. Automatic retry on a flagged verdict is a separate, explicitly
+authorized change.
 
 See `packages/agent-runtime/src/turn-verification.ts` and
 `apps/desktop/test/turn-verification-wiring.test.mjs`.
