@@ -206,7 +206,7 @@ atomically and must not be inside the selected source.
 This is an explicit local import, not a pi CLI package manager. It never
 automatically imports `~/.pi`, does not read the CLI's installed package
 registry, and does not run npm lifecycle scripts. The Skills page separately
-discovers global npm skill candidates as described below. When dependencies
+discovers global npm skill candidates. When dependencies
 are declared, the bounded installer accepts only registry version specs and
 registry-resolved npm lockfiles, rejects unsafe package locations and nested
 dependency specs, disables git resolution, and isolates npm's config/cache from
@@ -250,7 +250,7 @@ never in Electron main, the renderer, or a plugin host process.
   does not load the full coding-agent runtime as a fallback.
   `TRUSTED_EXTENSION_KERNEL_VERSION` remains the legacy marker exposed as
   `VERSION` by this shim. It describes the compatibility subset modeled on the
-  0.87.1 API and deliberately does not mirror the installed 1.0.0 package.
+  0.87.1 API and deliberately does not mirror the installed package release.
 
 ### 4.3 Runner per session
 
@@ -553,4 +553,4 @@ runtime, main, and renderer tracks in parallel.
 |---|---|
 | Should v2 custom entries persist to host-core and take part in compaction? | Persist; excluded from compaction summaries |
 | Should v3 read the pi CLI's `settings.json` enabled paths as discovery hints? | Read-only hints, never written |
-| Should extension tools be selectable per project like plugin tools? | Scope from §3.2 is the only gate |
+| Should extension tools be selectable per project like plugin tools? | The plugin activation scope in §2, item 4 is the only gate |
