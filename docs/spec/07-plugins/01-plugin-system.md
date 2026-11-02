@@ -182,7 +182,9 @@ Developer mode can load a local path directly, without copying it into `installe
 ```
 
 ### Field constraints
-- `schemaVersion` is required and must be `1`; the Rust host (`crates/host-core/src/plugins.rs`) rejects manifests without it
+- `schemaVersion` is required; the current format is `1`. The Rust host
+  (`crates/host-core/src/plugins/manifest.rs`) rejects a missing field but does
+  not currently compare its value with `1` (manifest spec §7).
 - `id` is globally unique; reverse-domain naming is recommended
 - `version` follows semver
 - `permissions` must be declared explicitly
@@ -411,8 +413,11 @@ The global command palette supports:
 
 - Searching plugin commands
 - Keyword triggers
-- Recently used
-- Grouping by category
+- Case-insensitive substring matching over title, category, and keywords
+
+Commands are merged into global search's Commands section. There is no
+command-specific recently-used ranking, and category participates in matching
+without grouping the display. See [09-plugin-command-palette.md](09-plugin-command-palette.md).
 
 Interaction flow:
 
@@ -461,7 +466,7 @@ Hooks:
 - `onUnload`
 - `onUninstall`
 
-**Implemented today:** the runtime (`apps/desktop/electron/main/plugin-runtime.ts`) invokes `onLoad` (when a plugin is loaded on load/enable) and `onUnload` (in the plugin process, before it is stopped, 5s budget); unloading tears down the plugin's registered commands and tools. The other hooks are declared in the API but not yet fired.
+**Implemented today:** the runtime (`apps/desktop/electron/main/plugin-runtime.ts`) invokes `onLoad` (when a plugin is loaded on load/enable) and `onUnload` (in the plugin process, before it is stopped, 5s budget); unloading tears down the plugin's registered commands and tools. The other hooks are historical plans, absent from the public `PluginModule` type and not fired.
 
 **Planned:** once the full lifecycle lands, hooks fire in this order: install → enable → load → (running) → unload → disable → uninstall. See [05-plugin-lifecycle.md](05-plugin-lifecycle.md) for the detailed sequence.
 
