@@ -434,12 +434,12 @@ text length. Evaluation is run-scoped rather than turn-scoped, because pi report
 loop with the results: a turn that carries tool results is always mid-flight and
 can never be the turn where the model claimed an outcome. Verdicts are therefore
 `pending` (a `toolUse` turn — the model has claimed nothing yet, never flagged),
-`incomplete` (`stopReason` of `error`, `aborted`, or `length`), `suspicious` (a
-terminal stop whose preceding tool batch failed every call, i.e. the model
-answered without recovering), `conversational` (a terminal stop with no tool
-involvement), and `clean` (any other terminal stop). `length` counts as
-`incomplete` rather than `suspicious`: pi fails every tool call from a truncated
-message, so the truncation is the cause and must not be double-counted.
+`incomplete` (`stopReason` of `error`, `aborted`, or `length`), `candidate` (a
+terminal stop whose preceding tool batch failed every call), `conversational` (a
+terminal stop with no tool involvement), and `clean` (any other terminal stop).
+`length` counts as `incomplete` rather than `suspicious`: pi fails every tool call
+from a truncated message, so the truncation is the cause and must not be
+double-counted.
 
 The evaluator carries one bit between turns within a run — "the last tool batch
 failed every call" — and the runtime clears it at run start. Without that state a
@@ -447,6 +447,31 @@ per-turn rule flags the ordinary error-recovery cycle (a tool fails, the model
 reads the error and fixes it) on the intermediate turn, which is a false positive
 by construction rather than a threshold problem. A batch that mixes failures with
 successes never sets the bit.
+
+#### 5e.2.1. The reply decides, and only a model can read it
+
+A `candidate` turn is structurally identical whether the model reported the
+failure or papered over it: "the tool failed, then the model stopped speaking"
+describes both. Observed sessions confirm the two are indistinguishable from
+structure alone — an agent that answered *"读不到：…不存在（FILE_NOT_FOUND）"* and
+one that answered *"读取失败，所以我不会回复「已完成」"* produce the same verdict
+input. Reporting on that input alone flagged honest reports as false completions
+in every observed case.
+
+So a `candidate` turn is confirmed by a semantic judge: the runtime sends the
+reply text to a one-shot completion through the session's own provider
+(`completeOneShot`) and asks for a single word, `CLAIMS` or `HONEST`. Only an
+unambiguous `CLAIMS` emits a `suspicious` diagnostic; `HONEST`, an unparsable
+answer, a provider error, or a timeout of
+`TURN_VERDICT_JUDGE_TIMEOUT_MS` all stay silent. A missed report is cheaper than
+the noise this diagnostic exists to remove.
+
+The judge runs **off the turn boundary**: `finishTurn` is awaited by the pi loop,
+so the call is fire-and-forget (`void this.classifyTurnReply(...)`) and its output
+is capped at `TURN_VERDICT_JUDGE_MAX_TOKENS`. A slow judge therefore delays
+nothing and its result only ever adds a log line. This costs one small extra
+provider request per candidate turn; candidate turns require an all-failed tool
+batch, so they are rare by construction.
 
 The verdict is a diagnostic, never a control signal. `suspicious` and
 `incomplete` are emitted as a `turn_verification` diagnostic that Electron main

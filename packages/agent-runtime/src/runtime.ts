@@ -20,7 +20,18 @@ import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
-import { evaluateTurn, describeTurn, INITIAL_TURN_STATE, type TurnVerificationState, type TurnVerdict } from "./turn-verification.js";
+import {
+  buildVerdictPrompt,
+  describeTurn,
+  evaluateTurn,
+  extractAssistantText,
+  INITIAL_TURN_STATE,
+  parseVerdictReply,
+  type TurnOutcome,
+  type TurnVerificationState,
+  type TurnVerdict,
+} from "./turn-verification.js";
+import { completeOneShot } from "./one-shot-complete.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { rememberDescription, rememberParameters } from "./memory-tool.js";
@@ -502,6 +513,10 @@ export const ASK_TOOL_NAME = "asktool";
  * be re-read by id without re-running it.
  */
 const MAX_RETAINED_DELEGATIONS = 100;
+/** Wall-clock cap for the turn-verification judge; a slow answer is dropped. */
+const TURN_VERDICT_JUDGE_TIMEOUT_MS = 12_000;
+/** One word out; the judge has no reason to generate prose. */
+const TURN_VERDICT_JUDGE_MAX_TOKENS = 8;
 const DELEGATION_MODEL_OPT_IN_GUIDANCE =
   'To authorize a model override, open Settings → Models, edit the service or account, expand its model Advanced settings, enable "Available for AI delegation", and save. Use an exact key from the delegation catalog; never guess a provider/model key.';
 const DELEGATION_DEFAULT_MODEL_GUIDANCE =
@@ -2457,25 +2472,75 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       });
       const evaluation = evaluateTurn(outcome, this.turnVerificationState);
       this.turnVerificationState = evaluation.state;
-      const verdict: TurnVerdict = evaluation.verdict;
-      if (verdict !== "suspicious" && verdict !== "incomplete") return;
-      this.onDiagnostic({
-        kind: "turn_verification",
-        sessionId: this.sessionId,
-        ...(this.turnId ? { turnId: this.turnId } : {}),
-        data: {
-          verdict,
-          stopReason: outcome.stopReason,
-          toolCallCount: outcome.toolCallCount,
-          toolResultCount: outcome.toolResultCount,
-          failedToolCount: outcome.failedToolCount,
-          assistantTextLength: outcome.assistantTextLength,
-        },
-      });
+
+      if (evaluation.verdict === "incomplete") {
+        this.emitTurnVerdict("incomplete", outcome);
+        return;
+      }
+      if (evaluation.verdict !== "candidate") return;
+
+      // A failed batch followed by a terminal reply is structurally identical
+      // whether the model reported the failure or papered over it; only the
+      // reply text can tell them apart. Ask a model off the turn boundary —
+      // `finishTurn` is awaited by the loop and must not wait on a request.
+      const reply = extractAssistantText(turn.message.content);
+      if (!reply) return;
+      void this.classifyTurnReply(reply, outcome);
     } catch (error) {
       // Classification must never break a turn.
       const detail = error instanceof Error ? error.message : String(error);
       process.stderr.write(`[agent-runtime] turn verdict failed: ${detail}\n`);
+    }
+  }
+
+  private emitTurnVerdict(verdict: TurnVerdict, outcome: TurnOutcome): void {
+    this.onDiagnostic({
+      kind: "turn_verification",
+      sessionId: this.sessionId,
+      ...(this.turnId ? { turnId: this.turnId } : {}),
+      data: {
+        verdict,
+        stopReason: outcome.stopReason,
+        toolCallCount: outcome.toolCallCount,
+        toolResultCount: outcome.toolResultCount,
+        failedToolCount: outcome.failedToolCount,
+        assistantTextLength: outcome.assistantTextLength,
+      },
+    });
+  }
+
+  /**
+   * Ask a model whether the reply claims success. Any answer other than an
+   * unambiguous CLAIMS leaves the turn unreported: a missed log line is cheaper
+   * than the noise this diagnostic exists to avoid.
+   */
+  private async classifyTurnReply(reply: string, outcome: TurnOutcome): Promise<void> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TURN_VERDICT_JUDGE_TIMEOUT_MS);
+    try {
+      const result = await completeOneShot(
+        this.provider,
+        {
+          messages: [
+            { role: "user", content: buildVerdictPrompt(reply), timestamp: Date.now() },
+          ],
+        },
+        "off",
+        {
+          signal: abort.signal,
+          maxOutputTokens: TURN_VERDICT_JUDGE_MAX_TOKENS,
+          sessionId: this.sessionId,
+        },
+      );
+      if (this.disposed) return;
+      if (parseVerdictReply(result.text) !== "claims") return;
+      this.emitTurnVerdict("suspicious", outcome);
+    } catch (error) {
+      // A judge that cannot answer (timeout, provider error) stays silent.
+      const detail = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`[agent-runtime] turn verdict judge failed: ${detail}\n`);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
