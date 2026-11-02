@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use crate::file_batches::{BatchCall, FileBatches};
+use crate::file_resources::FileResources;
 use tokio::sync::Notify;
 
 pub const MAX_IN_FLIGHT_TOOLS: usize = 16;
@@ -64,7 +66,12 @@ impl AdmissionError {
 pub struct ToolPermit {
     budget: ToolBudget,
     request: Request,
+    pub wait_ms: u64,
+    pub initial_wait_reason: &'static str,
 }
+
+#[cfg(test)]
+mod file_tests;
 
 impl Drop for ToolPermit {
     fn drop(&mut self) {
@@ -73,6 +80,21 @@ impl Drop for ToolPermit {
         state.dispatch();
         drop(state);
         self.budget.released.notify_waiters();
+    }
+}
+
+/// Owns a submitted ticket across permission, validation and admission failures.
+/// Once running, only ToolPermit (also held by the disk task) may settle it.
+pub struct PendingFileCall {
+    budget: ToolBudget,
+    ticket: String,
+}
+
+impl Drop for PendingFileCall {
+    fn drop(&mut self) {
+        let mut state = self.budget.lock();
+        state.batches.finish(&self.ticket, false);
+        state.dispatch();
     }
 }
 
@@ -146,6 +168,8 @@ struct Request {
     /// Runs in a subagent's own worktree (ADR 0329), so holding the session
     /// for work in the session worktree does not need to stop it.
     own_worktree: bool,
+    resources: Option<Arc<FileResources>>,
+    ticket: Option<String>,
 }
 
 #[derive(Default)]
@@ -161,6 +185,8 @@ struct WaitingRequest {
     request: Request,
     ready: Arc<Notify>,
     granted: bool,
+    queued_at: Instant,
+    initial_wait_reason: &'static str,
 }
 
 #[derive(Default)]
@@ -176,6 +202,8 @@ struct BudgetState {
     /// Sessions whose exclusive permit is being awaited; their new calls wait
     /// too, so steady traffic cannot keep the session from ever going quiet.
     exclusive_pending: HashMap<String, usize>,
+    batches: FileBatches,
+    file_holders: Vec<Arc<FileResources>>,
 }
 
 impl ToolClass {
@@ -190,7 +218,37 @@ impl ToolClass {
 }
 
 impl BudgetState {
+    fn wait_reason(&self, request: &Request) -> &'static str {
+        if let Some(resources) = &request.resources {
+            if request
+                .ticket
+                .as_deref()
+                .is_some_and(|t| !self.batches.can_run(t, resources))
+            {
+                return "source_order";
+            }
+            if self.file_holders.iter().any(|r| r.conflicts(resources))
+                || !self.can_pass_waiters(request, self.waiting.len())
+            {
+                return "resource";
+            }
+        }
+        "capacity"
+    }
     fn can_admit(&self, request: &Request) -> bool {
+        if let Some(resources) = &request.resources {
+            if self
+                .file_holders
+                .iter()
+                .any(|held| held.conflicts(resources))
+                || request
+                    .ticket
+                    .as_deref()
+                    .is_some_and(|ticket| !self.batches.can_run(ticket, resources))
+            {
+                return false;
+            }
+        }
         if self.active >= MAX_IN_FLIGHT_TOOLS
             || self.classes[request.class as usize] >= request.class.limit()
         {
@@ -210,6 +268,12 @@ impl BudgetState {
     }
 
     fn reserve(&mut self, request: &Request) {
+        if let Some(resources) = &request.resources {
+            self.file_holders.push(resources.clone());
+        }
+        if let Some(ticket) = &request.ticket {
+            self.batches.start(ticket);
+        }
         self.active += 1;
         self.classes[request.class as usize] += 1;
         let usage = self.sessions.entry(request.session_id.clone()).or_default();
@@ -223,6 +287,18 @@ impl BudgetState {
     }
 
     fn release(&mut self, request: &Request) {
+        if let Some(resources) = &request.resources {
+            if let Some(index) = self
+                .file_holders
+                .iter()
+                .position(|held| Arc::ptr_eq(held, resources))
+            {
+                self.file_holders.remove(index);
+            }
+        }
+        if let Some(ticket) = &request.ticket {
+            self.batches.finish(ticket, true);
+        }
         self.active -= 1;
         self.classes[request.class as usize] -= 1;
         let usage = self
@@ -246,7 +322,10 @@ impl BudgetState {
         // must not prevent unrelated runnable work from using spare capacity.
         for index in 0..self.waiting.len() {
             let entry = &self.waiting[index];
-            if entry.granted || !self.can_admit(&entry.request) {
+            if entry.granted
+                || !self.can_admit(&entry.request)
+                || !self.can_pass_waiters(&entry.request, index)
+            {
                 continue;
             }
             let request = entry.request.clone();
@@ -257,6 +336,38 @@ impl BudgetState {
             // notify_one retains a notification if acquire has not yet awaited.
             entry.ready.notify_one();
         }
+    }
+
+    fn can_pass_waiters(&self, request: &Request, before: usize) -> bool {
+        let Some(resources) = &request.resources else {
+            return true;
+        };
+        self.waiting.iter().take(before).all(|entry| {
+            entry.granted
+                || match &entry.request.resources {
+                    Some(prior) => {
+                        // An unready DAG successor cannot become a fairness
+                        // barrier for another batch: that batch could otherwise
+                        // block the successor's own predecessor and form a cycle.
+                        if entry
+                            .request
+                            .ticket
+                            .as_deref()
+                            .is_some_and(|ticket| !self.batches.can_run(ticket, prior))
+                        {
+                            return true;
+                        }
+                        // Source-order predecessors must pass a later call that arrived
+                        // first; otherwise RPC arrival fairness would deadlock the DAG.
+                        let source_predecessor = match (&request.ticket, &entry.request.ticket) {
+                            (Some(ours), Some(theirs)) => self.batches.precedes(ours, theirs),
+                            _ => false,
+                        };
+                        source_predecessor || !resources.conflicts(prior)
+                    }
+                    None => true,
+                }
+        })
     }
 }
 
@@ -284,6 +395,8 @@ impl QueueGuard {
         ToolPermit {
             budget: self.budget.clone(),
             request: entry.request,
+            wait_ms: entry.queued_at.elapsed().as_millis() as u64,
+            initial_wait_reason: entry.initial_wait_reason,
         }
     }
 }
@@ -327,6 +440,72 @@ impl ToolBudget {
         Self::default()
     }
 
+    pub fn register_file_call(&self, call: BatchCall) -> Result<String, &'static str> {
+        self.lock().batches.register(call)
+    }
+
+    pub fn seal_file_batch(&self, batch: &str, session: &str) -> Result<(), &'static str> {
+        self.lock().batches.seal(batch, session)
+    }
+
+    pub fn close_file_batch(&self, batch: &str, session: &str) -> Result<(), &'static str> {
+        let mut state = self.lock();
+        state.batches.close(batch, session)?;
+        state.dispatch();
+        Ok(())
+    }
+
+    pub fn abandon_file_call(&self, ticket: &str, session: &str) -> Result<(), &'static str> {
+        let mut state = self.lock();
+        state.batches.abandon(ticket, session)?;
+        state.dispatch();
+        Ok(())
+    }
+
+    pub fn begin_file_call(
+        &self,
+        ticket: &str,
+        session: &str,
+        delegation: Option<&str>,
+        id: &str,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Result<PendingFileCall, &'static str> {
+        self.lock()
+            .batches
+            .begin(ticket, session, delegation, id, name, args)?;
+        Ok(PendingFileCall {
+            budget: self.clone(),
+            ticket: ticket.into(),
+        })
+    }
+
+    pub async fn acquire_files(
+        &self,
+        session: &str,
+        name: &str,
+        own_worktree: bool,
+        resources: Arc<FileResources>,
+        ticket: Option<String>,
+    ) -> Result<ToolPermit, AdmissionError> {
+        if let Some(ticket) = &ticket {
+            let mut state = self.lock();
+            state.batches.classify(ticket, resources.clone());
+            state.dispatch();
+        }
+        self.acquire_request(
+            Request {
+                session_id: session.into(),
+                class: ToolClass::from_name(name),
+                own_worktree,
+                resources: Some(resources),
+                ticket,
+            },
+            QUEUE_WAIT,
+        )
+        .await
+    }
+
     fn lock(&self) -> MutexGuard<'_, BudgetState> {
         // Only bounded in-memory bookkeeping runs under this synchronous lock.
         // No filesystem operation, callback, or await is allowed here.
@@ -366,15 +545,27 @@ impl ToolBudget {
             session_id: session_id.to_string(),
             class: ToolClass::from_name(tool_name),
             own_worktree,
+            resources: None,
+            ticket: None,
         };
+        self.acquire_request(request, wait).await
+    }
+
+    async fn acquire_request(
+        &self,
+        request: Request,
+        wait: Duration,
+    ) -> Result<ToolPermit, AdmissionError> {
         let ready = Arc::new(Notify::new());
         let guard = {
             let mut state = self.lock();
-            if state.can_admit(&request) {
+            if state.can_admit(&request) && state.can_pass_waiters(&request, state.waiting.len()) {
                 state.reserve(&request);
                 return Ok(ToolPermit {
                     budget: self.clone(),
                     request,
+                    wait_ms: 0,
+                    initial_wait_reason: "none",
                 });
             }
             let queue_depth = state.queued + 1;
@@ -384,11 +575,14 @@ impl ToolBudget {
             let id = state.next_id;
             state.next_id = state.next_id.wrapping_add(1);
             state.queued += 1;
+            let initial_wait_reason = state.wait_reason(&request);
             state.waiting.push_back(WaitingRequest {
                 id,
                 request,
                 ready: ready.clone(),
                 granted: false,
+                queued_at: Instant::now(),
+                initial_wait_reason,
             });
             QueueGuard {
                 budget: self.clone(),

@@ -586,6 +586,13 @@ estimate and the calibrated message estimate. This is a hard floor before the
 first calibration sample and prevents counting overhead twice after an
 unanchored residual has learned it.
 
+For a usage anchor, the runtime takes the larger of the reported total and the
+request's input, output, cache-read and cache-write buckets. The inspector
+shows the bucket sum; reasoning is already included in output. This prevents a
+gateway's total that omits cached input from delaying compaction, while keeping
+the total-based guard when bucket details are incomplete. Billing totals remain
+unchanged.
+
 The calibration still measures the two errors separately — per-character bias
 as a scale-free ratio over the guessed tail, and an unanchored residual as a
 ratio only for observations taken at a comparable scale (0.5×–2× of the
@@ -663,7 +670,11 @@ checkpoint's `readFiles` / `modifiedFiles` and the `<read-files>` section of a
 summary were always empty (D618). Codex-shaped compaction folds pi's retained
 tail into that same summary, and the runtime records file operations from the
 folded tail as well, so a file touched only inside the recent-token window
-still appears in the checkpoint lists and summary tags.
+still appears in the checkpoint lists and summary tags. The stored tool call keeps
+the argument spelling the model sent, because `normalizeToolParams` folds
+alias names only when the call executes (D273). The collector therefore reads
+the path from `path` or from the same aliases (`file_path`, `filepath`,
+`filePath`, `filename`, `fileName`, `file`), with the same precedence.
 
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of
@@ -1787,23 +1798,20 @@ merging to the user, and how to resolve a merge conflict).
 | tools | sequential by default |
 | `Task` calls in one assistant message | parallel; 10 running delegates per session (ADR 0089) |
 
-Tool concurrency is expressed through pi execution modes. In the parallel read batches,
-`Read`, `Glob` and `Grep` are parallel candidates; all other catalog tools remain
-sequential. Task-only batches retain parallel fan-out, while a batch that mixes
-`Task` with any of those file-reading tools is kept sequential: a read before
-`Task` finishes before the delegate starts, and a read after a writable `Task`
-waits for that delegate to settle before dispatching to Host, while `Task` stays
-non-blocking inside that batch too (ADR 0089). Parent and delegate path
-instruction updates happen during ordered preparation before parallel execution,
-and mutate only their own prompt.
-Delegates issue
-host calls independently, and host-core's one-mutation-per-session admission
-keeps writes from tearing but leaves two same-path mutations unordered, so the
-sidecar serializes `Write`/`Edit` calls (and coordinates `Read` against in-flight
-`Write`/`Edit` on the same workspace path) that target the same normalized path
-before they reach the host; calls on different paths never wait on each other.
-This is what keeps the per-path edit-recovery rules of
-`03-tools-and-permissions.md` §4d meaningful under fan-out.
+Tool concurrency uses pi's ordered preparation and source-order result contract.
+Read/Glob/Grep remain parallel; Write/Edit join only after the local Host
+file-batch capability handshake. Legacy and remote Hosts keep write batches
+sequential. Eligible batches register calls in source order and seal before
+execution. Host permission checks precede identity resolution; Host orders
+conflicting same-batch calls by source ordinal and atomically grants resources
+with capacity. Native file identities cover aliases across parent/delegate and
+session calls. Unknown identities and namespace changes fence conservatively.
+The actual blocking task retains its permit after transport cancellation.
+Supported calls bypass sidecar PathMutex; legacy calls retain it. Existing
+mutation-recovery rules remain in force. See `03-tools-and-permissions.md` §0
+and ADR `host-file-batch-admission` for identity, lifecycle and scope limits.
+Task-only fan-out and Task/file mixed-batch completion barriers are unchanged;
+parent and child path instruction preparation only updates their own prompt.
 
 Selecting another project tab affects only the visible shell workspace. It
 does not dispose, abort, or re-root a runtime belonging to another session.

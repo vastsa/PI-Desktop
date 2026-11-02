@@ -46,6 +46,7 @@ function fixture(toolName: ToolName) {
       supportsReasoning: false, supportedThinkingLevels: ["off"] },
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     host: { async call<T>(method: string): Promise<T> {
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
       if (method === "tools.execute") { started.resolve(); return await execution.promise as T; }
       if (method === "tools.abort") { abortRequested.resolve(); return await cancellation.promise as T; }
       if (method === "session.appendMessage" || method === "project.instructions.resolve") return undefined as T;

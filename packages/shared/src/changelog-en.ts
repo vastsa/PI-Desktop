@@ -6,6 +6,7 @@ export const enEntries: ChangelogEntry[] = [
     date: "2026-10-24",
     highlights: [
       "Copy rendered Mermaid diagrams as SVG text or export them as standalone SVG files, including from README previews.",
+      "Let plugins list saved projects and their folders without switching the active session.",
       "Use the Pi 1.3.0 agent engine with safer tool-call validation and replay.",
       "Enable optional inline visualizations in Settings → AI to view interactive, sandboxed cards inside conversations.",
       "Keep session browser pages available while the work panel is hidden, another session is selected, or the interface reloads.",

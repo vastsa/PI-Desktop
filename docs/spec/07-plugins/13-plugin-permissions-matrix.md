@@ -57,6 +57,14 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `agent.complete` | high | `pi.agent.complete` | Confirm at install | Host-owned one-shot; spends user quota; `includeSessionContext` also needs `session.read` |
 | `speech.adapter.register` | high | `pi.speech.registerAdapter` / `unregisterAdapter` | Confirm at install | Registers a speech protocol. Handles stay in the guest; HTTP plans are executed by the host with the bound provider key and must stay on that origin. Built-in protocol ids are reserved |
 
+The Default policy column is the intended policy. The current host does not
+apply it per permission: the install and update review lists every declared
+permission, marking the ones an update adds, and the installer refuses a grant
+that leaves any declared permission out (`PLUGIN_PERMISSION_DENIED: missing
+grant for <permission>`). Nothing prompts again at first use — `clipboard.*`
+and `shell.openExternal` only check the stored grant. Auto-update skips any
+update that adds permissions (§5).
+
 ## 2A. A permission is the switch; the manifest carries the range
 
 Two capabilities are too coarse to be answered by a name alone, so the name says
@@ -66,7 +74,7 @@ install time.
 
 | Field | Bounds | Absent or empty means |
 |---|---|---|
-| `net.domains` | Every host-owned egress path: the panel session, `pi.net.fetch`, remote HTTP MCP endpoints | No egress at all, whatever `net.fetch` says |
+| `net.domains` | Every host-owned egress path: the panel session, `pi.net.fetch`, `pi.net.websocket`, remote HTTP MCP endpoints | No egress at all, whatever `net.fetch` says |
 | `fs.read` / `fs.write` / `fs.delete` | Which paths that file mode may touch | No standing reach; every access falls to a confirmation |
 
 Failing closed on an absent field is what makes the two safe to omit: a
@@ -110,12 +118,14 @@ plugin, so it carries three bounds the other modes do not:
 - `fs.requestDirectory` (the `userSelected` root) is gated on `fs.read`; writing
   or deleting inside the chosen directory still needs `fs.write` / `fs.delete`
 - A contribution whose permission is missing fails manifest validation
-  (`themes`, `mcpServers`, `services`, `bus`); `skills` is the exception and is
-  skipped at load time instead (see
-  [02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §7)
+  (`themes`, `views`, `providers` and OAuth providers, `agentExtensions`,
+  `composerTransforms`, `globalShortcuts`, `windowAppearance`, `mcpServers`,
+  `services`, `bus`); `skills` is the exception and is skipped at load time
+  instead, and `scenicThemes` without `ui.settings` and `ui.theme` is not shown
+  (see [02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §7)
 - Lifecycle and state events need no permission: `workspace:changed`,
-  `session:modelChanged`, `session:turnEnded`, and `plugin:settingsChanged`
-  arrive on the existing plugin event channel, and subscribing to an unknown
+  `appearance:changed`, `session:modelChanged`, `session:turnEnded`,
+  `session:activated`, and `plugin:settingsChanged` arrive on the existing plugin event channel, and subscribing to an unknown
   event name does not error
 
 ## 3A. Plan operating-state rule
@@ -132,25 +142,28 @@ sandbox (ADR 0211).
 
 ## 4. Permission display copy
 
-English is the primary copy. The zh-CN column holds the localized example strings.
-A file permission is never shown alone: the declared scope is rendered beside it,
-so "Modify the files it lists" is followed by the list.
+The copy below is the `plugins.permissions.*` entry in the en and zh-CN catalogs
+(`packages/i18n/src/locales/`). The install and update review shows this label
+with the matching `plugins.permissionHelp.*` line under it, and the Plugins page
+shows it as a chip; the label falls back to the raw permission key when the
+catalog has no entry.
+The declared file scope is shown beside the permissions on the installed
+plugin's row (Files), so "Edit files" is followed by the list.
 
-| Permission | English copy | zh-CN example |
+| Permission | English copy | zh-CN copy |
 |---|---|---|
-| `fs.read` | Read the files it lists | 读取它列出的文件 |
-| `clipboard.read` | Read the current clipboard and retained history | 读取当前剪贴板和保留的历史 |
-| `fs.write` | Modify the files it lists | 修改它列出的文件 |
-| `fs.delete` | Delete the files it lists, to the trash | 删除它列出的文件（进回收站） |
+| `fs.read` | Read files | 读取文件 |
+| `clipboard.read` | Read the clipboard and its history | 读取剪贴板及其历史 |
+| `fs.write` | Edit files | 修改文件 |
+| `fs.delete` | Delete files | 删除文件 |
 | `notify` | Show in-app and native notifications | 显示应用内和系统通知 |
-| `agent.tool.register` | Provide executable tools to the AI Agent | 向 AI Agent 提供可执行工具 |
+| `agent.tool.register` | Add tools for the agent | 为智能体添加工具 |
 | `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
 | `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
 | `renderer.extension` | Draw UI in chat slots | 在聊天插槽绘制界面 |
-| `net.fetch` | Access the network | 访问网络 |
+| `net.fetch` | Use the network | 访问网络 |
 | `shell.openExternal` | Open external links | 打开外部链接 |
 | `ui.theme` | Provide a theme | 提供主题 |
-| `ui.settings` | Add a sandboxed Settings entry in Extensions | 在“扩展”中添加沙盒设置项 |
 | `ui.window.appearance` | Customize window appearance | 自定义窗口外观 |
 | `mcp.server.local` | Run a local MCP server | 运行本地 MCP 服务 |
 | `mcp.server.remote` | Reach a remote MCP server | 连接远端 MCP 服务 |
@@ -160,10 +173,6 @@ so "Modify the files it lists" is followed by the list.
 | `browser.cdp` | Control the work-panel browser | 控制工作面板浏览器 |
 | `models.list` | List authenticated models | 列出已登录的模型 |
 | `session.read` | Read the current conversation sent to the model | 读取当前发给模型的对话 |
-| `session.import` | Import bounded session history into your declared sources | 导入受限的会话历史到已声明的数据源 |
-| `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
-| `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
-| `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
 | `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
 | `composer.transform` | Transform text in the Composer | 转换输入框中的文本 |
@@ -173,6 +182,17 @@ so "Modify the files it lists" is followed by the list.
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
 | `net.websocket` | Open real-time connections | 建立实时双向连接 |
+| `ui.panel` | Show a plugin panel | 显示插件面板 |
+| `ui.microphone` | Use the microphone | 使用麦克风 |
+| `clipboard.write` | Write to the clipboard | 写入剪贴板 |
+| `provider.register` | Add providers to the model list | 将服务添加到模型列表 |
+| `provider.oauth` | Sign in to a provider with OAuth | 通过 OAuth 登录 Provider |
+| `desktop.control` | Control the desktop | 控制桌面操作 |
+| `net.anyHost` | Access any network address | 访问任意网络地址 |
+| `session.autoTitle` | Read first-turn title context and update automatic titles | 读取首轮标题上下文并更新自动标题 |
+
+These permissions have no catalog entry today and are shown as their raw key:
+`ui.settings`, `session.import`, `session.read.own`, `session.update.own`, `session.delete.own`, `ui.view`, `project.create`.
 
 ## 5. Adding permissions on upgrade
 

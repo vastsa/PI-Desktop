@@ -6,7 +6,7 @@
 > 事实来源：`packages/shared/src/errors.ts` (`ErrorCodes`)。代码在
 > §3.7 被保留（在发布之前记录）；其他一切都是实时的。
 
-## 1. Goal
+## 1. 目标
 
 提供一种稳定的错误词汇表：
 

@@ -1,5 +1,9 @@
 # Unreleased changes
 
+- Fixed the composer context ring staying at the pre-compaction figure after
+  `/compact` or an automatic compaction until another turn ran (#2015). The
+  ring now shows the compacted context's estimated size as soon as the
+  checkpoint is installed, and after reopening the session.
 - Fixed prompt cache misses after a conversation's agent runtime is rebuilt
   (#1972). Rebuilding happens after a restart or when the thinking level, mode,
   project rules, or model settings change. Assistant replies now keep the
@@ -27,3 +31,9 @@
   card now says so and shows the error instead of staying blank, and the
   model's write result flags syntax errors and missing chart containers so it
   can fix them with one edit.
+- Fixed cramped inline visualizations. The visualization shell now places a
+  fragment in the kit's `#widget` container, which spaces its top-level blocks
+  12px apart, and the `visualize` skill asks for the title, controls, chart,
+  legend, and captions as top-level blocks instead of one wrapping element.
+  Inline controls, block styling, and roots that lay themselves out keep their
+  geometry; cards written earlier inside one wrapping element render as before.

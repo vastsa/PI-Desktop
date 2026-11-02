@@ -1143,3 +1143,21 @@ schedule，Manual 转 Hourly 继续使用现有默认间隔行为。
 保存和读取工作区绑定时统一使用现有项目路径规范化规则。在 Windows 上，
 斜杠方向、大小写、末尾分隔符和扩展路径前缀的差异不会再让同项目会话看不到任务。
 缺失的旧版绑定与显式 null 仍保持不同语义；其他项目的工具不能查询或修改绑定任务。
+
+
+## Host 文件批次准入（版本 1）
+
+sidecar 代理明确允许 tools.fileBatchCapabilities、tools.fileBatchRegister、
+tools.fileBatchSeal、tools.fileBatchAbandon、tools.fileBatchClose，不添加通配权限。
+Capabilities 接收 sessionId，返回 {version:1,supported:boolean}；远程工作区返回 false。
+Register 接收 sessionId、可选 delegationId、batchId、ordinal、toolCallId、toolName、args，
+返回 {ticket}，只接受内建文件工具名。Seal/Close 接收 sessionId/batchId，Abandon 接收
+sessionId/ticket，返回 {ok:true}。登记为进程内有界元数据：全局 512 调用、每批 128 调用、
+参数总计 32 MiB，不授予文件权限。
+
+tools.execute 增加可选 fileBatchTicket，绑定封存后的单次调用。会话/委派、调用/工具名、
+参数必须匹配；重放、改参、封存前执行均失败。无 ticket 的旧调用仍获得 Host 资源互斥，
+但不具有批内源序信息。runtime 只在能力握手成功后开放写并行。权限、根、租约、文件身份
+由 Host 决定，客户端不提供权威身份。工作区绑定变化返回 TOOL_CONTEXT_CHANGED；文件身份
+或地址变化在写入前失败。Close/过期不能释放运行中的磁盘任务，不自动重放失败或结果不明
+的写。生命周期和限制见 Host 文件准入 ADR。

@@ -52,6 +52,7 @@ async function writeThrough(args: Record<string, unknown>, hostOk = true) {
     visualizationsDir: DIR,
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     host: { call: async <T>(method: string, params?: unknown): Promise<T> => {
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
       if (method === "session.appendMessage") rows.push((params as { message: UiMessage }).message);
       else if (method === "tools.execute") {
         return (hostOk ? { ok: true, content: "Wrote file" } : { ok: false, content: "EACCES" }) as T;

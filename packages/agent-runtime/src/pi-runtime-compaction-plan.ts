@@ -113,6 +113,38 @@ function createFileOperations(): FileOperations {
   return { read: new Set(), written: new Set(), edited: new Set() };
 }
 
+/**
+ * Spellings of `path` kept on a stored `Read` / `Write` / `Edit` call.
+ *
+ * `path` plus `PATH_ARG_ALIASES` from runtime.ts, in that map's order (D273 /
+ * issue #454). This module cannot import the map: runtime.ts already imports
+ * the planner. `normalizeToolParams` folds an alias only when the call
+ * executes, and the runtime defines no `prepareArguments`, so the assistant
+ * message still carries the spelling the model sent.
+ */
+const FILE_OPERATION_PATH_KEYS = [
+  "path",
+  "file_path",
+  "filepath",
+  "filePath",
+  "filename",
+  "fileName",
+  "file",
+] as const;
+
+/**
+ * The path the call actually ran with: the first key that is present wins,
+ * the same precedence `normalizeToolParams` applies, and it only counts when
+ * it is a non-empty string.
+ */
+function fileOperationPath(args: unknown): string | undefined {
+  if (!args || typeof args !== "object") return undefined;
+  const record = args as Record<string, unknown>;
+  const key = FILE_OPERATION_PATH_KEYS.find((name) => record[name] !== undefined);
+  const value = key === undefined ? undefined : record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 /** Record one assistant message's Read/Write/Edit paths. Mutates `fileOps`. */
 export function collectMessageFileOperations(
   message: AgentMessage,
@@ -121,8 +153,7 @@ export function collectMessageFileOperations(
   if (message.role !== "assistant" || !Array.isArray(message.content)) return;
   for (const block of message.content) {
     if (!block || block.type !== "toolCall") continue;
-    const args = block.arguments;
-    const path = args && typeof args.path === "string" ? args.path : undefined;
+    const path = fileOperationPath(block.arguments);
     if (!path) continue;
     switch (block.name) {
       case "read": fileOps.read.add(path); break;

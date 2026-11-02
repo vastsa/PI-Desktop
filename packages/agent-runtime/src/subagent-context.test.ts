@@ -236,6 +236,27 @@ describe("prepareDelegateTurnContext", () => {
     expect(outcome.kind).toBe("compacted");
     expect(prompts).toHaveLength(1);
   });
+
+  it("includes cached input in the delegate's usage anchor", async () => {
+    const taskBrief = "Read the permission flow.";
+    const messages: AgentMessage[] = [
+      userMessage(taskBrief),
+      { ...assistantToolCall("cached"), usage: {
+        ...ZERO_USAGE, input: 200, output: 10, cacheRead: 1_700, totalTokens: 210,
+      } },
+      toolResult("Read completed.", "cached"),
+    ];
+    const { factory, prompts } = summaryModels(() => summarySuccess("SUMMARY TEXT"));
+
+    const outcome = await prepareDelegateTurnContext({
+      messages, model: smallModel(), taskBrief, retentionMode: "active_turn",
+      summaryModels: factory, signal: new AbortController().signal,
+    });
+
+    expect(outcome.kind).toBe("compacted");
+    expect(prompts).toHaveLength(1);
+  });
+
   it("charges pending task, system prompt, and tool schemas against the budget", async () => {
     const taskBrief = "Read the permission flow.";
     const messages: AgentMessage[] = [

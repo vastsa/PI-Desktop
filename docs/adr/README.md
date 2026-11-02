@@ -20,6 +20,7 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
+| plugin-projects-list | [Read-only durable project enumeration for plugins](plugin-projects-list.md) | Accepted |
 | append-only-review-state | [Append-only review state](append-only-review-state.md) | Implemented candidate |
 | lossless-tool-image-storage | [Lossless tool-image storage and bounded history mutations](lossless-tool-image-storage.md) | Implemented candidate |
 | plugin-remote-workspace-reads | [Plugin reads in remote workspaces](plugin-remote-workspace-reads.md) | Implemented candidate |
@@ -31,7 +32,8 @@ Each ADR includes:
 | s3-only-configuration-backup-sync | [S3-only encrypted configuration backup and synchronization](s3-only-configuration-backup-sync.md) | Accepted; supersedes WebDAV decisions in 0300 / 0301 |
 | remote-provider-import | [Explicit provider import into a running remote Host](remote-provider-import.md) | Accepted for the experimental SSH MVP |
 | remote-project-home-workflow | [Remote projects in the shared Chat home workflow](remote-project-home-workflow.md) | Accepted |
-| parallel-read-batches | [Ordered preparation and parallel read batches](parallel-read-batches.md) | Proposed |
+| parallel-read-batches | [Ordered preparation and parallel file batches](parallel-read-batches.md) | Proposed |
+| host-file-batch-admission | [Host file identities and ordered batch admission](host-file-batch-admission.md) | Proposed |
 | composer-mcp-invocations | [Composer MCP Invocations](composer-mcp-invocations.md) | Accepted |
 | chronological-system-transcript | [Preserve chronological model system state](chronological-system-transcript.md) | Accepted |
 | mcp-tool-approval-risk | [User MCP tools keep the normal approval path](mcp-tool-approval-risk.md) | Accepted |

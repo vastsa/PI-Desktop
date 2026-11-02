@@ -40,6 +40,24 @@
 
 ## 1. Goals
 
+### E2E-SCHEDULED-settings-switch
+
+- **Preconditions:** Candidate Desktop, Host and reused local dependencies;
+  isolated profile/data/project and the local scheduled-model fixture.
+- **Steps:** With a saved task, open Settings → General, observe the default-on
+  Scheduled tasks switch, turn it off, return to the app and search.
+  Reload the renderer, verify the saved off state, re-enable and run the task.
+- **Expected:** The footer and page-search entry disappear while off; the
+  settings row remains searchable. New runs are rejected, task configuration
+  and history survive, reload preserves the choice and re-enabling restores
+  the same task and normal execution. Host tests also cover due admission,
+  stale tools, restart and completion of an already-admitted run while off.
+- **Coverage:** `node scripts/e2e-scheduled.mjs --settings-switch-only`,
+  `apps/desktop/test/scheduled-settings.test.mjs`, Host scheduled settings tests.
+- **Specs:** `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md` §3.3.
+- **Acceptance:** No data/schema migration; default-on backwards compatibility.
+- **Milestone:** Maintenance. **Status:** Automated.
+
 ### E2E-PROVIDER-retry-backoff-is-not-idle
 
 - **Entry:** Build shared and the production sidecar bundle, then run
@@ -231,44 +249,40 @@
   compaction, and terminal Task snapshots through the real React rendering.
   The headless command does not replace the rendered Electron check above.
 
-### E2E-TOOLS-parallel-read-batches: ordered preparation and parallel reads
+### E2E-TOOLS-parallel-read-batches: ordered preparation and Host file admission
 
-- Isolate data/project paths; never run against production profiles.
-- A local provider fixture emits two Read calls. Gate real tool-execution
-  entrypoints until both enter, release them in reverse order, then inspect the
-  follow-up model request: results must retain source toolCallId order and final
-  sibling rules must follow preparation order. Repeat with a delegated reader
-  and verify parent instructions and permission scope are isolated.
-- Add Bash or Edit to the batch: all tools must execute sequentially. Stop
-  before execution must skip unstarted calls; running file calls must drain.
-- Add Task with a delegate that edits a fixture file alongside a parent Read;
-  the batch must stay sequential, Task keeps reporting a started delegation
-  (ADR 0089), and the parent Read must not enter Host until the writable
-  shared-workspace delegate settles its mutation. Task-only batches must still
-  fan out.
-- Automated coverage: runtime.test.ts uses the production Runtime and pi loop
-  with deterministic Host response barriers, including mixed Bash/Write/Edit
-  batches and Stop, plus the mixed Task/read regression in both model orders:
-  the Task result stays a started notice, the parent read waits for the writable
-  shared-workspace delegate's mutation to settle before entering Host, and a
-  failed delegate still releases the batch. `scripts/e2e-task-read-batches.mjs`
-  runs the same contract end to end with a real delegate loop: it asserts the
-  Host dispatch order `write:start`, `write:end`, `read:start`, `read:end`, that
-  the parent reads the written content, and that the Task tool result stays a
-  background acknowledgement. subagent.test.ts checks conservative policy
-  inheritance.
-- Run `node scripts/e2e-parallel-read-batches.mjs` after building agent-runtime,
-  shared and host-core. Set `PI_DESKTOP_HOST_BIN` when reusing a shared target.
-  It uses a local HTTP provider, real parent/delegate loops and a real Host in
-  temporary directories. A gated response proves overlapping Read dispatch;
-  actual Read/Glob/Grep results, source-order model results and parent prompt
-  isolation are checked. This does not measure blocking filesystem-body overlap,
-  production throughput or Electron UI behavior. UI-only project-edit E2E is
-  not evidence for agent Edit scheduling.
-- Run `node scripts/e2e-task-read-batches.mjs` under the same build and
-  `PI_DESKTOP_HOST_BIN` preconditions. Against the pre-fix implementation it
-  fails with `read:start` before `write:start`, which is the regression the
-  maintainer asked for.
+- Use isolated data/project paths and a local provider; no production profiles.
+- Run scripts/e2e-parallel-read-batches.mjs after building shared, agent-runtime
+  and the candidate Host. Set PI_DESKTOP_HOST_BIN when reusing a build cache.
+  It drives real parent/delegate pi loops through the real Host: independent
+  read dispatch, ordered results, prompt isolation, mixed Read/Write dispatch,
+  a successful real-tag Edit, differently named hard-link Read/Write in both
+  source orders, individual review rollback and simultaneous ask-mode approvals.
+  File symbolic links run where the OS grants creation; otherwise record an
+  explicit skip and retain hard-link coverage. This is dispatch/content evidence,
+  not a production throughput or Electron UI measurement.
+- Run scripts/e2e-task-read-batches.mjs for both Task/read model orders. Task
+  returns its started notice; the later parent read waits for the writable
+  shared-workspace delegate to settle. Task-only fan-out remains available.
+- Rust file_batches/file_resources/tool_budget::file_tests cover actual native
+  identities, cross-root aliases, unknown/missing targets, structural/register
+  fences, independent resources, queue fairness and cancellation. Native RPC
+  tests reverse tools.execute arrival and assert actual read contents in both
+  hard-link orders, permission-mode denial, changed arguments and ticket replay.
+- tools::file_lease_tests gates a real spawn_blocking body, drops the outer
+  future and proves a conflicting write cannot acquire until that body finishes.
+  Closing/abandoning metadata must not release running work. Snapshot/finalize
+  and later rollback participate in the same Host file domain.
+- Runtime/pi integration tests cover parent/delegate registration, preparation
+  order, validation/mode failures, Stop and model result order. Protocol adapter
+  tests cover sealing, cleanup, remote/legacy fallback and equal provider IDs in
+  independent asynchronous executors. host-runtime/file-batch-bridge.test.ts
+  verifies the explicit allowlist through a real stdio child.
+- Unknown capability/remote workspaces must retain whole-batch sequential writes;
+  no local filesystem identity is used for a remote path. Resource and batch
+  waits consume no capacity, and uncertain writes are not replayed.
+- Specs: tools-and-permissions §0, agent-runtime concurrency, Host RPC file batch
+  protocol; ADRs parallel-read-batches and host-file-batch-admission.
 
 ### E2E-STORAGE-custom-location-and-maintenance
 
@@ -3866,6 +3880,24 @@ identify the platform validation still needed.
 - **Milestone**: M4
 - **Status**: Draft
 
+#### E2E-PLUGIN-command-ownership: Command registration respects plugin ownership
+
+- **Preconditions**: Two plugins run in separate plugin host processes.
+- **Steps**: 1) Register a command from one plugin. 2) Attempt to replace and
+  unregister it from the other plugin. 3) Update and unregister it from the
+  owner. 4) Repeat with a load-time collision and concurrent registrations.
+- **Expected**: Cross-plugin replacement rejects with `CONFLICT`; cross-plugin
+  removal rejects with `PERMISSION_DENIED`. Rejected calls leave the original
+  handler runnable. Same-owner updates preserve the ID; repeated removal is
+  harmless; released IDs can be reused. A failed plugin load or unloading a
+  losing registrant does not remove the winning command. Concurrent calls
+  admit exactly one owner.
+- **Specs linked**: `07-plugins/03-plugin-api.md`, `07-plugins/12-plugin-ipc-and-host-services.md`
+- **Acceptance**: G (plugin command isolation)
+- **Milestone**: M4
+- **Status**: Automated — `pnpm test:e2e:plugin-command-ownership` exercises
+  the public plugin API through real plugin host processes and the host broker.
+
 #### E2E-024: Plugin registers and calls agent tool
 
 - **Preconditions**: Plugin loaded; plugin declares an agent tool.
@@ -4963,7 +4995,15 @@ window; opening a normal panel afterward must still work.
   still work without moving it.
   4) Click `+` twice and verify each creates and activates a separate New
   launcher tab. Confirm its body lists Review and each in-scope plugin view
-  exactly once. Open Browser and confirm its native surface opens at unchanged
+  exactly once. With 40 plugin views and long localized names, shrink the
+  window and narrow the panel: the New title stays pinned, the row list alone
+  scrolls, and 40px rows stay reachable by wheel, scrollbar, and Tab focus
+  (#2026). A quiet scrollbar thumb is visible before hover, its reserved
+  gutter prevents label shifts, and there is no horizontal overflow or scroll
+  chaining into the shell. Repeat with no explicit tab, a `+`-created New tab,
+  few/no plugins, and light/dark themes in English and Chinese. Activate the
+  last tool, close its view, and confirm the complete launcher returns.
+  Open Browser and confirm its native surface opens at unchanged
   bounds. Open its context menu and verify the native popup appears above Browser
   chrome while the page remains visible. With Browser active, right-click another
   tab and confirm it still uses the native menu. Repeat at 50% and 150% app zoom;
@@ -5064,9 +5104,10 @@ window; opening a normal panel afterward must still work.
   `work-panel-tabs.test.mjs`, `browser-tab-restore.test.mjs`,
   `work-panel.test.mjs`, `plugin-work-panel-views.test.mjs`,
   `plugin-view-navigation.test.mjs`, `work-panel-tab-menu.test.mjs`);
-  isolated Electron
-  tab-menu, Browser native-menu page visibility, and close geometry in
-  `scripts/e2e-work-panel-tab-close.mjs`; full UI scenario Draft
+  isolated Electron tab-menu, Browser native-menu page visibility, and close
+  geometry in `scripts/e2e-work-panel-tab-close.mjs`; launcher overflow,
+  native focus reveal, hit targets, and open/close user paths in
+  `node scripts/e2e-work-panel-launcher-overflow.mjs`; full UI scenario Draft
 
 #### E2E-057: Message-owned review history survives commits and rolls back safely
 
@@ -5112,14 +5153,23 @@ window; opening a normal panel afterward must still work.
 - **Preconditions**: A project-bound Agent session with a writable workspace.
 - **Steps**: 1) Ask the agent to create one file and edit another; watch the
   turn while it streams. 2) After the reply finishes, inspect the area below
-  the answer. 3) Ask for a change touching more than twelve files across
-  several directories. 4) Click a row, then the `View all N files in Review`
-  link. 5) Roll back one file's change in Review and return to the turn.
+  the answer: only the summary header is visible. Click it to expand, click
+  again to collapse, then focus it and repeat with Enter and Space. Confirm
+  hidden rows and the Review link cannot receive keyboard focus and the title
+  keeps its viewport anchor. 3) Ask for a change touching more than twelve files
+  across several directories; confirm its card starts collapsed independently.
+  Expand it. 4) Click a row, then the `View all N files in Review` link.
+  5) Roll back one file's change in Review and return to the turn.
   6) Ask a question that writes no files. 7) Switch sessions and come back.
 - **Expected**: No summary appears while a turn streams or after a failed
   turn. A finished turn that wrote workspace files shows one borderless
   `Changes this turn` card below its answer and above plugin `entryExtra`
-  blocks, with the file count and summed `+`/`−`. Each path appears once with
+  blocks. It starts collapsed with only its chevron, title, file count, and
+  summed `+`/`−` visible; directory counts remain visible for dense summaries.
+  The full-width header toggles with click, Enter, or Space, exposes its state
+  through ARIA, and leaves Review closed. Collapsed details occupy no space
+  and cannot receive focus. Each turn's explicit choice is independent and
+  survives ordinary rerenders. When expanded, each path appears once with
   its merged status letter and counts; up to four files use relaxed rows,
   more use dense rows with a directory count, and rows past 12 fold into
   `+N more`. A row click opens the session's Review tab scrolled to that file
@@ -5130,7 +5180,9 @@ window; opening a normal panel afterward must still work.
 - **Specs linked**: `04-ux/08-component-spec.md` §4.4, D674
 - **Acceptance**: D (workspace), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`turn-changes-card.test.mjs`); full UI scenario Draft
+- **Status**: Unit/SSR-covered (`turn-changes-card.test.mjs`); isolated Chromium
+  pointer, Enter/Space, independent disclosure, hidden-focus, and Review paths
+  covered by `turn-changes-disclosure-user-path.test.mjs`; full UI scenario Draft
 
 #### E2E-CHAT-completed-turn-scrolls-to-prompt: A finished reply reads from its prompt
 
@@ -7472,6 +7524,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     positioned immediately after the last message that checkpoint covers, and
     raises exactly one warning toast. Two checkpoints produce two rows, in
     order, and neither row replaces or hides a message.
+  - Once a checkpoint is installed, including the manual `/compact` in step 9,
+    the composer context ring drops to the checkpoint's estimated next-request
+    size without waiting for another turn; the provider usage rows in its
+    panel still describe the last real request. The next request's reported
+    usage replaces the estimate, and reopening the session after a restart
+    shows the same estimate (#2015; unit coverage in
+    `apps/desktop/test/compaction-context-usage.test.mjs`).
   - The `new_context` call appears as a normal tool activity row, returns
     immediately, and the checkpoint is created at the following turn boundary
     rather than mid-turn.
@@ -10836,6 +10895,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Quality (sidebar menu placement) | E2E-021c |
 | Quality (project ordering) | E2E-253 |
 | Quality (work-panel tab close visibility) | E2E-WORK-PANEL-active-tab-close-visibility |
+| Quality (turn changed-files disclosure) | E2E-CHAT-turn-changed-files-summary |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-130-kernel-upgrade |
 | C / E / G / Quality — Pi kernel upgrade | E2E-PI-140-kernel-upgrade |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
@@ -18271,6 +18331,26 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status:** Unit-covered (`context-calibration.test.ts`, including the CJK and
   boundary cases); desktop E2E pending
 
+### E2E-CONTEXT-reported-occupancy-drives-compaction
+
+- **Preconditions:** A production sidecar, isolated Host fixture and localhost
+  Responses gateway. The gateway reports cached input separately from a total
+  that omits it; no real provider credentials are used.
+- **Steps:** Send a turn whose input, output and cache buckets exceed the
+  automatic threshold, then send another prompt. Repeat with ordinary
+  under-budget usage and with an incomplete bucket breakdown whose reported
+  total exceeds the threshold.
+- **Expected:** The first session summarizes and persists one checkpoint before
+  the next provider request, which includes the summary and new prompt. The
+  under-budget session continues without a checkpoint. A larger reported total
+  still triggers the guard when bucket details are missing; billing totals
+  remain unchanged.
+- **Automation:** `node scripts/e2e-context-usage-compaction.mjs` after building
+  shared and the production sidecar bundle. The real Agent-loop tests in
+  `context-usage-compaction.test.ts` also cover restored sessions and compaction
+  between a tool result and the next request.
+- **Specs:** `03-runtime/02-agent-runtime.md` §5.1.
+
 ### E2E-RUNTIME-unique-tool-call-ids-per-request
 
 - **Preconditions:** A session transcript that carries the same tool call twice
@@ -18549,6 +18629,11 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Scenario:** Workspace identity.
 - **Expected:** Stored workspace bindings use the existing project canonicalization contract on both write and read. On Windows, slash direction, case, trailing separators and extended path prefixes do not hide a task from its own project's conversation. The distinction between missing legacy bindings and explicit null remains unchanged. Foreign-project tools cannot list or mutate bound tasks.
 - **Automation:** `node --experimental-strip-types scripts/e2e-scheduled-paths.mjs` uses an isolated real Host and SQLite profile. Inference is not sent to a live provider.
+### E2E-SCHEDULED-cancelled-quit-keeps-runner
+
+- **Scenario:** Cancelled quit and automatic runs (issue #2048, D363).
+- **Expected:** An explicit quit that the user cancels in the quit confirmation leaves the app running with no `app shutdown` lifecycle entry and no scheduled-runner stop. A task that becomes due afterwards still runs automatically, and its `nextRunAt` advances. A later quit prompts again; Confirm runs the ordered shutdown, the process exits with code 0, and the runtime log records `scheduled runner stopped` exactly once. Only the shutdown handler listens to `before-quit`; services that must survive a cancelled quit stop through `onConfirmedQuit`.
+- **Automation:** `pnpm test:e2e:scheduled-quit-cancel` (`scripts/e2e-scheduled-quit-cancel.mjs`) drives the built desktop, preload, real Host SQLite and agent sidecar over CDP in an isolated profile, clicking the in-app confirmation with real pointer input. Only the model is a local SSE fixture; the due instant is set through `configJson.nextRunAt` instead of waiting for the wall clock. Requires `apps/desktop/out` and a host-core debug binary.
 
 ### E2E-MARKDOWN-table-actions
 
@@ -19300,7 +19385,9 @@ their separate platform acceptance.
   including real protocol responses, bundled assets, the preloaded `viz`
   helpers (`viz.chart` sizing, `viz.render` charts and their date, year,
   re-render, and donut edge cases), a fragment script error shown in the
-  card, focus/guest Escape,
+  card, the fragment inside the kit's `#widget` container with its top-level
+  blocks spaced while inline controls, block styling, wrapped roots, and flex,
+  grid, and column roots keep their geometry, focus/guest Escape,
   viewport release, and unsandboxed callers through a real isolated Host.
   Native directory, FIFO, and ABA regressions run in `visualizations/files`;
   `gen-ui-file-safety.test.mjs` validates the private Host-to-Main boundary.
@@ -19354,3 +19441,27 @@ their separate platform acceptance.
   event/result agreement, batch rejection and delegate restoration.
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
+
+### E2E-PLUGIN-PROJECTS: Enumerate durable projects without switching workspace
+
+- **Preconditions**: An isolated Host profile with a standalone project and a
+  multi-folder group, plus a session with no project. A plugin with no granted
+  permissions registers a command that calls `pi.projects.list()`.
+- **Steps**:
+  1. Run the command through the plugin process and read the same list through
+     the panel bridge's `projects.list` channel.
+  2. Compare the entries with the Host's durable `projects.list` rows and group
+     roots, and verify that the visible workspace remains unset.
+  3. Restart the Host and run the command again.
+  4. Stop the Host and run the command again.
+- **Expected**: Exactly one entry per durable row, including ungrouped and
+  secondary-folder rows; non-empty decimal database ids; most recently opened
+  first regardless of pins; every entry has its own primary path first in
+  non-empty roots. A primary group row includes its additional roots in order.
+  Identities survive restart. No workspace is opened or switched, no filesystem
+  grant is added, and a stopped Host returns `[]`. No Host credentials appear.
+- **Automation**: `pnpm test:e2e:plugin-projects` runs a real isolated Rust Host
+  and plugin child process without provider calls. The companion
+  `apps/desktop/test/plugin-projects.test.mjs` covers pin-independent ordering,
+  group lookup failure, missing project providers, failed/malformed lookup,
+  rename identity, and stale results after Host replacement.

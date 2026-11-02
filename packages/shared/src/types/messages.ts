@@ -46,7 +46,7 @@ export type UsageOperation = Omit<MessageUsage, "operations" | "aggregation"> & 
   operationId: string;
 };
 
-export { addUsage, withUsageIdentity } from "../message-usage.js";
+export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
   kind: "image" | "file" | "session";

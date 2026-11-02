@@ -136,6 +136,12 @@ export type ContextCompactionStatus = {
   generation: number;
   /** Estimated tokens the summary itself occupies in the model context. */
   summaryTokens: number;
+  /**
+   * Estimated tokens of the whole next request right after this checkpoint
+   * was installed. The composer shows it until a newer request reports
+   * provider usage (#2015). Absent on checkpoints written before it existed.
+   */
+  contextTokens?: number;
 };
 
 /**

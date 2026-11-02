@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ContextCompactionRecord } from "./types.js";
 import {
+  checkpointContextTokens,
   checkpointFallback,
   checkpointGeneration,
   compactionRecordId,
@@ -46,7 +47,26 @@ describe("checkpointSummarized", () => {
   });
 });
 
+describe("checkpointContextTokens", () => {
+  it("reads the post-compaction estimate stamped inside the details value", () => {
+    expect(checkpointContextTokens({ contextTokens: 18_400 })).toBe(18_400);
+  });
+
+  it("is absent on checkpoints written before the estimate existed", () => {
+    expect(checkpointContextTokens(undefined)).toBeUndefined();
+    expect(checkpointContextTokens({ generation: 2 })).toBeUndefined();
+    expect(checkpointContextTokens({ contextTokens: 0 })).toBeUndefined();
+    expect(checkpointContextTokens({ contextTokens: "18400" })).toBeUndefined();
+  });
+});
+
 describe("contextCompactionMark", () => {
+  it("carries the post-compaction context estimate for the composer (#2015)", () => {
+    expect(
+      contextCompactionMark(record({ details: { generation: 2, contextTokens: 18_400 } })),
+    ).toMatchObject({ generation: 2, contextTokens: 18_400 });
+  });
+
   it("describes one compaction for its transcript row and the inspector", () => {
     expect(contextCompactionMark(record({ details: { generation: 3 } }))).toEqual({
       id: "checkpoint-1",

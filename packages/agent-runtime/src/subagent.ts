@@ -169,6 +169,8 @@ export type SubagentRunOptions = {
   tools: AgentTool[];
   /** Ordered preparation owned by this delegate, never the parent's prompt state. */
   beforeToolCall?: (context: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
+  /** After pi ends one turn of this delegate, its tool batch included. */
+  onTurnEnd?: (message: AgentMessage) => void;
   onEvent: (envelope: AgentEventEnvelope) => void;
   /**
    * Result of the parent's own `afterToolCall` bookkeeping for one call, so a
@@ -314,7 +316,7 @@ export class SubagentRun {
               ...tool,
               executionMode:
                 tool.executionMode === "parallel"
-                  ? toolExecutionMode(tool.name)
+                  ? toolExecutionMode(tool.name, true)
                   : "sequential",
             },
             () => this.agent?.state.messages.at(-1),
@@ -833,6 +835,9 @@ export class SubagentRun {
     switch (event.type) {
       case "turn_start":
         this.turns += 1;
+        break;
+      case "turn_end":
+        this.opts.onTurnEnd?.(event.message);
         break;
       case "message_start": {
         if (event.message.role !== "assistant") break;

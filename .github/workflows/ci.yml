@@ -168,6 +168,9 @@ jobs:
       - name: Build host-core
         run: cargo build -p host-core --locked
 
+      - name: Run plugin project enumeration Host/process E2E
+        run: pnpm test:e2e:plugin-projects
+
       - name: Run inline GenUI interaction and isolation E2E
         run: xvfb-run --auto-servernum pnpm test:e2e:gen-ui
 

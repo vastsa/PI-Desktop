@@ -3,6 +3,17 @@ import type { MessageUsage, MessageUsageCost, UsageOperation, UsageProvenance } 
 const tokenKeys = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens", "totalTokens"] as const;
 const costKeys = ["input", "output", "cacheRead", "cacheWrite", "total"] as const;
 
+function positiveTokenCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+/** One request's input, output and cache occupancy; reasoning is already in output. */
+export function contextOccupancyTokens(usage: MessageUsage): number {
+  const buckets = positiveTokenCount(usage.inputTokens) + positiveTokenCount(usage.outputTokens) +
+    positiveTokenCount(usage.cacheReadTokens) + positiveTokenCount(usage.cacheWriteTokens);
+  return buckets > 0 ? buckets : positiveTokenCount(usage.totalTokens);
+}
+
 /** Attribute old token-only rows at ingress, before either persistence or rollup. */
 export function withUsageIdentity(
   usage: MessageUsage | undefined,

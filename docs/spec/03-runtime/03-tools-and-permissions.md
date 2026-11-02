@@ -5,39 +5,94 @@
 
 ## 0. Frozen policy summary
 
-### Parallel read batches
+### Parallel file batches
 
-Read, Glob and Grep are the first parallel batch candidates. Task-only batches
-retain their existing parallel fan-out; a batch that mixes Task with Read, Glob
-or Grep is kept sequential: a read ordered before Task finishes before the
-delegate starts, and a read ordered after a writable Task waits for that
-delegate to settle before dispatching to Host. Task keeps its ADR 0089 contract
-inside that batch: it reports a started delegation and the parent converges with
-TaskWait. Any other sequential tool (including Write, Edit, Bash and unknown
-tools) makes its entire assistant batch sequential. This is a per-agent batch
-rule, not application-wide exclusion or a Shell safety lock. Only the selected
-builtin executor receives this allowlist and native path preparation. Same-name
-dynamic tools remain sequential. Delegates retain their startup catalog's policy
-and provenance across later parent catalog rebuilds.
+Read, Glob and Grep are parallel candidates. Write and Edit join them only
+when the runtime negotiates version 1 of the actual local Host file-batch
+protocol. Capability is fixed for that runtime/connection, including background
+delegates. Legacy Hosts and remote workspaces retain Write/Edit as sequential,
+so pi serializes any batch containing a write. No sidecar filesystem lookup is
+used to classify a remote path.
 
-The pinned pi-agent-core prepares all parallel calls in source order before
-launching their execution bodies. Path instruction resolution and prompt updates
-occur during that preparation, after existing parent mode/extension checks.
-Execution consumes the same normalized arguments. Direct internal invocations
-retain preflight. Child preflight updates the child's system transcript only;
-it never replaces parent instructions. Sibling instruction chains replace one
-another according to preparation order, regardless of completion order.
+Task-only fan-out is unchanged. Task mixed with any file tool remains a whole-
+batch sequential boundary. Reads/searches ordered after a writable Task wait
+for the delegate to settle; writes only wait for the Task call to return its
+started notice. Bash, TodoWrite, unknown, plugin and MCP tools keep their
+existing sequential policy. Only the selected builtin executor receives native
+preparation and file-batch bindings; same-name dynamic tools remain sequential.
 
-Permissions, Host capacities, mutation recovery, Hashline validation and tool
-result IDs remain authoritative. Completion events may arrive out of order;
-model tool results remain in source order. Alongside the mixed Task/read batch
-barrier, `PathMutex` coordinates shared reads against exclusive `Write`/`Edit`
-calls on the same normalized workspace path so a parent `Read` does not overlap
-an in-flight delegate mutation on that file. Stop skips unstarted calls; already
-started file RPCs drain through their existing Host lifecycle. Host file
-cancellation and resource coordination are separate follow-up work.
+For an eligible parallel batch, preparation validates arguments and loads path
+instructions in source order, then registers each file call with Host. A record
+contains session/delegation, a fresh batch ID, the original ordinal, tool call
+ID, tool name and normalized arguments. Host returns an opaque, single-use
+ticket. Registration performs no file lookup, grants no permission and takes
+no execution capacity. After preparation finishes, executors share one batch
+seal operation before submitting `tools.execute` with their ticket. Sequential
+batches do not register a partial batch. Tickets are bound to the exact call;
+changed arguments, cross-owner use, replay and execution before sealing fail.
+They are carried in asynchronous execution context, not a global call-ID map,
+so independent delegates cannot overwrite each other's bindings.
 
-See [the ADR](../../adr/parallel-read-batches.md).
+Host first applies the existing mode and permission checks. Only approved calls
+resolve trusted file resources through the session/delegation tool root and
+existing external-path resolver. A pending approval holds neither an active
+lease nor capacity. Until a potentially conflicting earlier call is classified
+or terminal, a later same-batch call waits conservatively. Once both identities
+are known, only conflicting predecessors enforce source order; predecessor
+failure or denial does not cascade. There is no model source order across
+independent batches/sessions, only active resource exclusion and queue fairness.
+
+| Tool / target | Host resource declaration |
+|---|---|
+| Existing regular-file Read | shared object identity and resolved address |
+| Existing regular-file Write / ordinary Edit | exclusive object identity and resolved address |
+| Glob / Grep | shared across the Host file coordination domain |
+| Missing target, unknown identity, unsupported filesystem | shared domain for a read; exclusive domain for a write |
+| Edit MV / REM or a named CUT/PUT register | exclusive domain |
+| Review rollback | exclusive domain, with the existing post-tool hash guard |
+
+Unix identities use dev/ino from an open file on a supported local filesystem;
+Windows uses volume serial plus FILE_ID_INFO on a local disk. The handle stays
+alive while the identity is queued or active. Hard links and symbolic links
+must conflict even with different basenames or roots. Roots determine permission
+and address resolution, not separate namespaces for physical file IDs. File
+names, file size, lexical keys and realpath alone cannot prove independence.
+The global domain includes approved external paths. Two shared declarations do
+not conflict. A domain declaration conflicts with every exclusive declaration;
+otherwise equal object identities or resolved addresses conflict when either
+side is exclusive. Unknown identity never falls back to presumed independence.
+
+ToolBudget grants all resources and execution capacity together. Waiting for a
+predecessor/resource does not occupy a capacity slot. Later conflicting calls
+cannot bypass an exclusive resource waiter; an earlier source-order call can
+bypass a later waiter from its own batch to avoid a queue/DAG deadlock. Existing
+limits remain: 16 total, 8 reads, 2 writes, 4 per session, 1 write per session.
+The bounded admission wait still returns HOST_OVERLOADED after 30 seconds.
+Audit/debug diagnostics record total admission wait and its initial reason
+(source_order, resource or capacity); these are not disjoint duration segments.
+
+Identity/address is revalidated under the granted lease before review snapshots
+and in the actual blocking file task. A changed binding fails without writing
+or automatic replay. Namespace changes and missing-target writes use an
+exclusive domain fence. Snapshot, execution, Hashline state and final review
+snapshot share the lease; later rollback also acquires it without holding the
+AppState mutex while waiting. Cancelling an RPC future does not stop
+spawn_blocking: the blocking task retains the permit until its body ends.
+Unstarted calls are abandoned; a batch close cannot release active disk work.
+Registry limits are 512 calls globally, 128 per batch and 32 MiB of retained
+arguments. Unused metadata expires after 15 minutes; submitted/running calls
+are not expired through a pending permission decision or disk operation.
+
+Host resources replace sidecar PathMutex around calls on the supported path;
+the legacy path retains its original locking. Existing permission, Hashline,
+mutation-recovery and model result semantics remain in force. Parent/delegate
+path instructions still mutate only their own prompt. pi submits tool results
+in source order, irrespective of completion order. The guarantee covers file
+tools and rollback coordinated by one Host process; arbitrary external writers,
+Bash and another Host instance are not participants in this lease protocol.
+
+See [ordered preparation](../../adr/parallel-read-batches.md) and
+[Host file admission](../../adr/host-file-batch-admission.md).
 
 | Topic | Decision |
 |---|---|

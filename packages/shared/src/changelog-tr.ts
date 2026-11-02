@@ -6,6 +6,7 @@ export const trEntries: ChangelogEntry[] = [
     date: "2026-10-24",
     highlights: [
       "README önizlemeleri dahil Mermaid diyagramlarını SVG metni olarak kopyalayın veya bağımsız SVG dosyaları olarak dışa aktarın.",
+      "Eklentiler, etkin oturumu değiştirmeden kayıtlı projeleri ve klasörlerini listeleyebilir.",
       "Daha güvenli araç çağrısı doğrulaması ve geçmiş yeniden oynatımı için Pi 1.3.0 motoruna geçin.",
       "Konuşmalarda etkileşimli, korumalı kartlar görmek için Ayarlar → AI bölümünde isteğe bağlı satır içi görselleştirmeleri açın.",
       "Çalışma paneli gizliyken, başka oturum seçiliyken veya arayüz yenilenirken oturumun tarayıcı sayfaları kullanılabilir kalır.",

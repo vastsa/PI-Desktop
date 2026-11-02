@@ -66,6 +66,11 @@ export function useAppShellRuntime() {
   const handlePlansChanged = useAppStore((s) => s.handlePlansChanged);
   const abort = useAppStore((s) => s.abort);
   const settings = useAppStore((s) => s.settings);
+  useEffect(() => {
+    if (page === "scheduled" && settings?.scheduledTasksEnabled === false) {
+      useAppStore.getState().setPage("chat", { record: false });
+    }
+  }, [page, settings?.scheduledTasksEnabled]);
   const workPanelOpen = useAppStore((s) => s.workPanelOpen);
   const workPanelWidth = useAppStore((s) => s.workPanelWidth);
   const workPanelYieldedWidth = useAppStore((s) => s.workPanelYieldedWidth);

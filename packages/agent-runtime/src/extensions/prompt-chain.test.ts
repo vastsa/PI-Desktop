@@ -42,6 +42,7 @@ it.each([
     runtime = new DesktopAgentRuntime({
       host: {
         call: async <T>(method: string): Promise<T> => {
+          if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
           if (method === "session.appendMessage") return undefined as T;
           throw new Error(`Unexpected host call: ${method}`);
         },
