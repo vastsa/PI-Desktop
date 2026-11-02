@@ -10,6 +10,8 @@ const {
   segmentTurnProcess,
   turnProcessTiming,
   turnProcessPhase,
+  turnHasStreamingRows,
+  liveHistoryTurnId,
 } = await import("../src/lib/turn-process.ts");
 const { cachedActivitySummary, cachedVisibleProcessSteps } = await import(
   "../src/lib/transcript-activity-summary.ts"
@@ -504,6 +506,40 @@ test("a failed child never turns a completed turn into failed or stopped", () =>
   );
 });
 
+test("an idle turn whose rows never settled is not reported as completed", () => {
+  // A sidecar crash or a lost host leaves the last rows streaming forever: the
+  // idle turn must not claim an outcome the transcript never recorded (#1923).
+  const streamingAnswer = {
+    kind: "message",
+    message: message("t1", "assistant", "", { status: "streaming" }),
+  };
+  assert.deepEqual(
+    turnProcessPhase({ parts: [streamingAnswer], isActive: false, failed: false }),
+    { kind: "unsettled" },
+  );
+  // A tool that never answered reads the same way while nothing drives it.
+  const hungTool = {
+    kind: "activity",
+    items: [{ kind: "tool", message: message("tool1", "tool", "", { toolName: "Bash", status: "streaming" }) }],
+  };
+  assert.deepEqual(
+    turnProcessPhase({ parts: [hungTool], isActive: false, failed: false }),
+    { kind: "unsettled" },
+  );
+  // While the turn is live the same rows are just work in progress.
+  assert.deepEqual(
+    turnProcessPhase({ parts: [streamingAnswer], isActive: true, failed: false }),
+    { kind: "running", phase: undefined },
+  );
+  // Rows recorded before statuses existed carry no signal either way: a
+  // settled turn stays completed rather than rewriting history.
+  const legacy = { kind: "message", message: message("t2", "assistant", "done") };
+  assert.deepEqual(
+    turnProcessPhase({ parts: [legacy], isActive: false, failed: false }),
+    { kind: "completed" },
+  );
+});
+
 test("the header count comes from the production activity summary", () => {
   const entry = turn([
     message("user", "user", "Run"),
@@ -609,5 +645,137 @@ test("settings writes validate the thinking preference without changing other pr
   assert.throws(
     () => validateSettingsWrite({ ...settings, thinkingDisplayMode: "unknown" }),
     /thinkingDisplayMode is invalid/,
+  );
+});
+
+test("the last assistant-turn of the current run is the live turn when it is not the tail", () => {
+  // A steering message renders after the live turn, so the tail entry is not
+  // the turn; the history list must not read the running turn as inactive (#1949).
+  const steered = buildTranscriptEntries([
+    message("user", "user", "Inspect"),
+    message("intro", "assistant", "Checking", { status: "complete" }),
+    tool("read", "Read", { status: "streaming" }),
+    message("steer", "user", "also check the config", { steering: true }),
+  ]);
+  const steeredTail = steered.entries.at(-1);
+  const steeredHistory = steered.entries.slice(0, -1);
+  assert.equal(steeredTail.kind, "message");
+  assert.equal(steeredTail.message.id, "steer");
+  const steeredTurn = steeredHistory.find((entry) => entry.kind === "assistant-turn");
+  assert.equal(steeredTurn.kind, "assistant-turn");
+  assert.equal(liveHistoryTurnId(steeredHistory, steeredTail), steeredTurn.id);
+  // Marked live, the same rows read as work in progress, not as an outcome.
+  assert.deepEqual(
+    turnProcessPhase({ parts: steeredTurn.parts, isActive: true, failed: false }),
+    { kind: "running", phase: undefined },
+  );
+
+  // When the tail entry is the turn itself, the tail already renders active.
+  const settled = buildTranscriptEntries([
+    message("u2", "user", "go"),
+    message("a2", "assistant", "done", { status: "complete" }),
+  ]);
+  assert.equal(
+    liveHistoryTurnId(settled.entries.slice(0, -1), settled.entries.at(-1)),
+    undefined,
+  );
+
+  // Settled rows behind a trailing message do not claim liveness: the turn
+  // may genuinely have finished.
+  const finished = buildTranscriptEntries([
+    message("u3", "user", "go"),
+    message("a3", "assistant", "done", { status: "complete" }),
+    message("steer3", "user", "one more", { steering: true }),
+  ]);
+  assert.equal(
+    liveHistoryTurnId(finished.entries.slice(0, -1), finished.entries.at(-1)),
+    undefined,
+  );
+
+  // An ordinary user message ends the run even while a previous turn's rows
+  // are stuck streaming: a fresh prompt after a crash must not reopen the
+  // abandoned turn as running while the new request has produced no rows yet.
+  const crashedThenFresh = buildTranscriptEntries([
+    message("u4", "user", "go"),
+    message("a4", "assistant", "partial answer", { status: "streaming" }),
+    message("u5", "user", "start over"),
+  ]);
+  const freshHistory = crashedThenFresh.entries.slice(0, -1);
+  const freshTurn = freshHistory.find((entry) => entry.kind === "assistant-turn");
+  assert.equal(freshTurn.kind, "assistant-turn");
+  assert.equal(turnHasStreamingRows(freshTurn.parts), true);
+  assert.equal(
+    liveHistoryTurnId(freshHistory, crashedThenFresh.entries.at(-1)),
+    undefined,
+  );
+
+  // A system row renders after the running turn's rows when a system update
+  // lands during a tool call; it stays inside the run, so the walk reaches
+  // the turn instead of stopping at the row.
+  const systemTailed = buildTranscriptEntries([
+    message("u8", "user", "go"),
+    message("a8", "assistant", "partial answer", { status: "streaming" }),
+    message("sys8", "system", "model config updated mid-turn"),
+  ]);
+  const systemHistory = systemTailed.entries.slice(0, -1);
+  const systemTurn = systemHistory.find((entry) => entry.kind === "assistant-turn");
+  assert.equal(systemTurn.kind, "assistant-turn");
+  assert.equal(
+    liveHistoryTurnId(systemHistory, systemTailed.entries.at(-1)),
+    systemTurn.id,
+  );
+
+  // modelSystem rows never render: the projection filters them from the
+  // entries, so they cannot end the walk either way.
+  const modelSystemTailed = buildTranscriptEntries([
+    message("u9", "user", "go"),
+    message("a9", "assistant", "partial answer", { status: "streaming" }),
+    message("ms9", "system", "hidden model system note", { modelSystem: true }),
+    message("steer9", "user", "keep going", { steering: true }),
+  ]);
+  const msHistory = modelSystemTailed.entries.slice(0, -1);
+  assert.equal(
+    msHistory.some((entry) => entry.kind === "message" && entry.message.id === "ms9"),
+    false,
+  );
+  const msTurn = msHistory.find((entry) => entry.kind === "assistant-turn");
+  assert.equal(
+    liveHistoryTurnId(msHistory, modelSystemTailed.entries.at(-1)),
+    msTurn.id,
+  );
+
+  // A turn left streaming behind a later ordinary prompt keeps the unsettled
+  // reading: the later run's boundary excludes it (#1923).
+  const crashedThenNew = buildTranscriptEntries([
+    message("u6", "user", "go"),
+    message("a6", "assistant", "partial answer", { status: "streaming" }),
+    message("u7", "user", "start over"),
+    message("a7", "assistant", "recovered", { status: "complete" }),
+    message("steer7", "user", "and now", { steering: true }),
+  ]);
+  assert.equal(
+    liveHistoryTurnId(crashedThenNew.entries.slice(0, -1), crashedThenNew.entries.at(-1)),
+    undefined,
+  );
+});
+
+test("turnHasStreamingRows reads both message and activity rows", () => {
+  assert.equal(
+    turnHasStreamingRows([
+      { kind: "message", message: message("m", "assistant", "", { status: "streaming" }) },
+    ]),
+    true,
+  );
+  assert.equal(
+    turnHasStreamingRows([
+      { kind: "activity", items: [{ kind: "tool", message: tool("t", "Bash", { status: "streaming" }) }] },
+    ]),
+    true,
+  );
+  assert.equal(
+    turnHasStreamingRows([
+      { kind: "message", message: message("m2", "assistant", "done") },
+    ]),
+    false,
   );
 });

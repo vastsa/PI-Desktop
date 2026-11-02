@@ -473,6 +473,26 @@ export function SettingsPage() {
                 </SettingsRow>
               </SettingsCard>
 
+              <SettingsCard title={t("settings.scheduledTasks")}>
+                <SettingsRow
+                  title={t("settings.scheduledTasks")}
+                  description={t("settings.scheduledTasksDesc")}
+                >
+                  <SettingsToggle
+                    checked={settings.scheduledTasksEnabled !== false}
+                    label={t("settings.scheduledTasks")}
+                    onChange={() => void saveSettings({
+                      scheduledTasksEnabled: settings.scheduledTasksEnabled === false,
+                    })}
+                  />
+                </SettingsRow>
+              </SettingsCard>
+
+              <RadialMenuSettings
+                settings={settings}
+                saveSettings={saveSettings}
+              />
+
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />
 
               <StorageSettingsSection />
@@ -605,11 +625,6 @@ export function SettingsPage() {
                   saveSettings={saveSettings}
                 />
               </SettingsCard>
-
-              <RadialMenuSettings
-                settings={settings}
-                saveSettings={saveSettings}
-              />
 
             </div>
           )}

@@ -23,7 +23,7 @@ const API_STYLES = new Set(["auto", "chat_completions", "responses", "anthropic_
 const EXCLUDED_VENDORS = new Set(["claude-cli", "codex", "openai-codex", "github-copilot", "google-antigravity", "google-gemini-cli", "ollama", "lmstudio", "lm-studio", "local"]);
 const RESERVED_HEADERS = new Set(["authorization", "proxy-authorization", "x-api-key", "api-key", "x-goog-api-key", "cookie", "set-cookie", "host", "content-type", "content-length", "connection", "transfer-encoding", "te", "trailer", "upgrade", "keep-alive", "chatgpt-account-id", "x-opencode-session"]);
 const INPUT_FIELDS = ["name", "vendorKey", "type", "protocol", "baseUrl", "authKind", "models", "defaultModelId", "secretValue", "apiStyle", "headers", "supportsReasoning", "supportedThinkingLevels", "contextWindow", "maxOutputTokens", "temperature"];
-const MODEL_FIELDS = ["id", "alias", "contextWindow", "contextWindowSource", "maxTokens", "maxTokensSource", "thinkingLevels", "defaultThinkingLevel", "thinkingProtocol", "supportsReasoningEffort", "supportsImages", "supportsDocuments", "availableForSubagents", "nativeWebSearch"];
+const MODEL_FIELDS = ["id", "alias", "contextWindow", "contextWindowSource", "maxTokens", "maxTokensSource", "thinkingLevels", "defaultThinkingLevel", "thinkingProtocol", "supportsReasoningEffort", "supportsImages", "supportsDocuments", "availableForSubagents", "nativeWebSearch", "fastModeAllowed"];
 
 function invalid(): never {
   // Never include input values, unknown field names, parser diagnostics or causes.
@@ -85,7 +85,7 @@ function validateModel(value: unknown): ModelBinding {
   for (const key of ["supportsImages", "supportsDocuments", "supportsReasoningEffort"] as const) {
     if (value[key] !== undefined && value[key] !== null && typeof value[key] !== "boolean") invalid();
   }
-  for (const key of ["availableForSubagents", "nativeWebSearch"] as const) {
+  for (const key of ["availableForSubagents", "nativeWebSearch", "fastModeAllowed"] as const) {
     if (value[key] !== undefined && typeof value[key] !== "boolean") invalid();
   }
   return value as ModelBinding;

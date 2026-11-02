@@ -10,6 +10,7 @@ import { DisclosureAnchorContext } from "../../apps/desktop/src/lib/disclosure-a
 import { useTranscriptScroll } from "../../apps/desktop/src/features/chat/transcript/hooks/useTranscriptScroll";
 import { ToolRow } from "../../apps/desktop/src/features/chat/transcript/ToolRow";
 import { useFollowScroll } from "../../apps/desktop/src/hooks/use-follow-scroll";
+import { probeScrollInputOwnership } from "./scroll-input-ownership";
 
 declare global {
   var transcriptDisclosureProbe: () => Promise<unknown>;
@@ -672,9 +673,88 @@ globalThis.transcriptDisclosureProbe = async () => {
       `pending collapse work moved the rapidly expanded title by ${rapidExpanded.titleTop - rapid.atExpansion.titleTop}px: ${JSON.stringify({ rapidBefore, atExpansion: rapid.atExpansion, rapidExpanded })}`,
     );
 
+    // A minimap navigation can still be animating when the reader takes over.
+    // Exercise the browser-owned animation separately from queued follow rAFs.
+    const interruption = mount(<TranscriptFixture sessionId="scroll-interruption" messages={[
+      message("interrupt-user", "user", "Read history"), toolRowMessage("interrupt-tool"),
+    ]} />);
+    const interruptScroller = interruption.querySelector<HTMLElement>(".thread-scroll")!;
+    const interruptContent = interruption.querySelector<HTMLElement>(".thread-content")!;
+    const interruptTitle = interruption.querySelector<HTMLElement>(".tool-row-header")!;
+    await waitForLayout({ label: "interruption mount", scroller: interruptScroller,
+      content: interruptContent, title: interruptTitle,
+      expected: () => interruptTitle.isConnected, direction: "initial" });
+    const beforeDisclosureNavigation = geometry(interruptScroller, interruptTitle);
+    await waitForLayout({ label: "interruption disclosure", scroller: interruptScroller,
+      content: interruptContent, title: interruptTitle,
+      expected: () => interruptTitle.getAttribute("aria-expanded") === "true", direction: "grow",
+      trigger: () => {
+        interruptScroller.scrollTo({ top: 0, behavior: "smooth" });
+        interruptTitle.click();
+      } });
+    assert(Math.abs(geometry(interruptScroller, interruptTitle).titleTop - beforeDisclosureNavigation.titleTop) < 2,
+      "a pending navigation moved the manually toggled disclosure title");
+    assert(interruptScroller.scrollTop > 0, "interruption fixture has no scroll range");
+    interruptScroller.scrollTo({ top: 0, behavior: "smooth" });
+    const interruptedTop = interruptScroller.scrollTop;
+    interruptScroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -1 }));
+    // Interrupt before yielding: hidden Linux windows can finish a smooth
+    // navigation between two rAF callbacks, so waiting for a mid-point races it.
+    // Synthetic input has no native default scroll. Any later movement is the
+    // old animation, which the production input handler must relinquish.
+    for (let frame = 0; frame < 6; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      assert(Math.abs(interruptScroller.scrollTop - interruptedTop) < 2,
+        `interrupted navigation moved the reader: ${interruptedTop} -> ${interruptScroller.scrollTop}`);
+    }
+    const interruptionResult = { interruptedTop, finalTop: interruptScroller.scrollTop };
+    // Space activates a focused disclosure button; it does not scroll its
+    // ancestor. A synthetic key has no default activation, isolating ownership.
+    interruptScroller.scrollTo({ top: 0, behavior: "smooth" });
+    interruptTitle.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    const controlDeadline = performance.now() + 5000;
+    while (interruptScroller.scrollTop > 1 && performance.now() < controlDeadline) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    assert(interruptScroller.scrollTop <= 1,
+      `button Space cancelled transcript navigation at ${interruptScroller.scrollTop}`);
+    const nestedInterruption = mount(<FollowFixture tool={toolRowMessage("interrupt-dock")} />);
+    const nestedScroller = nestedInterruption.querySelector<HTMLElement>(".subagent-run-rows")!;
+    const nestedContent = nestedInterruption.querySelector<HTMLElement>("[data-layout-content]")!;
+    const nestedTitle = nestedInterruption.querySelector<HTMLElement>(".tool-row-header")!;
+    await waitForLayout({ label: "nested interruption mount", scroller: nestedScroller,
+      content: nestedContent, title: nestedTitle,
+      expected: () => nestedTitle.isConnected, direction: "initial" });
+    const beforeNestedDisclosureNavigation = geometry(nestedScroller, nestedTitle);
+    await waitForLayout({ label: "nested interruption disclosure", scroller: nestedScroller,
+      content: nestedContent, title: nestedTitle,
+      expected: () => nestedTitle.getAttribute("aria-expanded") === "true", direction: "grow",
+      trigger: () => {
+        nestedScroller.scrollTo({ top: 0, behavior: "smooth" });
+        nestedTitle.click();
+      } });
+    assert(Math.abs(geometry(nestedScroller, nestedTitle).titleTop - beforeNestedDisclosureNavigation.titleTop) < 2,
+      "a pending nested navigation moved the manually toggled disclosure title");
+    const nestedTop = nestedScroller.scrollTop;
+    assert(nestedTop > 0, "nested fixture has no scroll range");
+    nestedScroller.scrollTo({ top: 0, behavior: "smooth" });
+    nestedScroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -1 }));
+    for (let frame = 0; frame < 6; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      assert(Math.abs(nestedScroller.scrollTop - nestedTop) < 2,
+        `interrupted nested navigation moved the reader: ${nestedTop} -> ${nestedScroller.scrollTop}`);
+    }
+    const nestedInterruptionResult = { interruptedTop: nestedTop, finalTop: nestedScroller.scrollTop };
+    const inputOwnership = {
+      transcript: probeScrollInputOwnership(interruptScroller),
+      nested: probeScrollInputOwnership(nestedScroller),
+    };
     assert(renderErrors.length === 0, `React render errors: ${renderErrors.map(String).join("; ")}`);
     return {
       ok: true,
+      inputOwnership,
+      interruption: interruptionResult,
+      nestedInterruption: nestedInterruptionResult,
       process: { before: processBefore, collapsed: processCollapsed, expanded: processExpanded },
       rapid: { before: rapidBefore, expanded: rapidExpanded },
       transcript: { before, expanded, collapsed },

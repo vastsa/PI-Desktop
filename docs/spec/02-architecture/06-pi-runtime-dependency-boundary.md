@@ -19,7 +19,8 @@ in `docs/project/pi-140-adoption.md`.
   prompt-template expansion, and session-context projection.
 - `@earendil-works/pi-ai` supplies provider transports, auth, message types,
   request retries, and token estimation. Hosted-search request and estimation
-  behavior remains covered by PI-Desktop's pi-ai patch and contract tests.
+  behavior, and forwarding `serviceTier` through `streamSimple` for Fast mode
+  (ADR 0334), remain covered by PI-Desktop's pi-ai patch and contract tests.
 - Agent Runtime and subagents pass an explicit client identity: pi-ai keeps its
   detailed versioned `User-Agent`, while `attribution: null` suppresses
   pi-agent-core's default Pi attribution headers for OpenRouter, NVIDIA, and

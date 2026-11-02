@@ -128,7 +128,7 @@ try {
   let hasDiskCache = false;
   try {
     const cache = await readFile(layoutPath, "utf8");
-    assert.ok(cache.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 2\n"));
+    assert.ok(cache.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 3\n"));
     hasDiskCache = true;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -239,7 +239,7 @@ try {
     if (error.code !== "ENOENT") throw error;
   }
   if (hasDiskCache) {
-    assert.ok(rebuiltCache?.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 2\n"));
+    assert.ok(rebuiltCache?.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 3\n"));
   }
 
   const damagedSession = await host.call("session.create", {

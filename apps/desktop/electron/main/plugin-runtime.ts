@@ -71,6 +71,7 @@ import {
   type PluginProviderOAuthRequest,
   type PluginProviderContrib,
   type PluginRevealViewInput,
+  type PluginProjectInfo,
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginComposerTransformInput,
@@ -322,6 +323,8 @@ export type PluginHostServices = {
    * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
    */
   getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
+  /** Durable project metadata only; unavailable hosts resolve to an empty list. */
+  listProjects?: () => Promise<PluginProjectInfo[]>;
   /**
    * The project the tool session behind this call belongs to, when the host
    * tracks one. Additive: an fs call falls back to `getWorkspacePath` -- the
@@ -583,6 +586,7 @@ const HOST_API_ALLOWLIST = new Set([
   "desktop.listOperations",
   "desktop.invoke",
   "workspace.get",
+  "projects.list",
   "fs.readText",
   "fs.stat",
   "fs.readRange",
@@ -2575,6 +2579,8 @@ export class PluginRuntime {
         return { ok: true };
       case "workspace.get":
         return api.workspace.get();
+      case "projects.list":
+        return api.projects.list();
       case "models.list":
         this.assertPermission(loaded, "models.list");
         return this.dispatchHostCall(loaded, "models.list", []);
@@ -2742,6 +2748,10 @@ export class PluginRuntime {
         };
         const id = String(descriptor.id ?? "");
         if (!id) throw apiError("INVALID_ARGUMENT", "command.id is required");
+        const existing = this.commands.get(id);
+        if (existing && existing.pluginId !== pluginId) {
+          throw apiError("CONFLICT", `command is registered by another plugin: ${id}`);
+        }
         this.commands.set(id, {
           id,
           title: String(descriptor.title ?? id),
@@ -2761,7 +2771,12 @@ export class PluginRuntime {
         return { ok: true };
       }
       case "commands.unregister": {
-        this.commands.delete(String(args[0] ?? ""));
+        const id = String(args[0] ?? "");
+        const command = this.commands.get(id);
+        if (command && command.pluginId !== pluginId) {
+          throw apiError("PERMISSION_DENIED", `command belongs to another plugin: ${id}`);
+        }
+        this.commands.delete(id);
         return { ok: true };
       }
       case "keyboard.registerGlobalShortcut": {
@@ -5638,6 +5653,9 @@ export class PluginRuntime {
           if (!path) return null;
           return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
         },
+      },
+      projects: {
+        list: async () => this.services.listProjects?.() ?? [],
       },
       desktop: {
         listOperations: async () => {

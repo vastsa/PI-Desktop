@@ -1014,23 +1014,35 @@ pub(crate) fn migrate_v21_to_v22(conn: &Connection, path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Schema v27 adds the durable memory store (ADR 0371): the `memories` table,
+/// Schema v28 adds the durable memory store (ADR 0371): the `memories` table,
 /// its keyword index and the indexes that back recall and listing. It follows
-/// v26, the lossless tool-image envelope, because v26 was already stamped by
-/// shipped releases before the memory store landed.
-pub(crate) fn migrate_v26_to_v27_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+/// v27, the per-session Fast mode switch (ADR 0334), and re-asserts that v27
+/// column: a database stamped 27 by the pre-merge memory build carries the
+/// memory tables without it, and both flavours must converge here.
+pub(crate) fn migrate_v27_to_v28_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let has_fast_mode: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'fast_mode')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_fast_mode {
+        tx.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN fast_mode INTEGER NOT NULL DEFAULT 0
+             CHECK (fast_mode IN (0, 1));",
+        )?;
+    }
     tx.execute_batch(MEMORIES_DDL)?;
-    tx.pragma_update(None, "user_version", 27i64)?;
+    tx.pragma_update(None, "user_version", 28i64)?;
     Ok(())
 }
 
-pub(crate) fn migrate_v26_to_v27(conn: &Connection, path: &Path) -> Result<()> {
-    let backup = create_migration_backup(conn, path, 26)?;
+pub(crate) fn migrate_v27_to_v28(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 27)?;
     let tx = conn.unchecked_transaction()?;
-    migrate_v26_to_v27_tx(&tx)?;
+    migrate_v27_to_v28_tx(&tx)?;
     tx.commit().with_context(|| {
         format!(
-            "commit schema v26 to v27 memory migration; backup {} remains",
+            "commit schema v27 to v28 memory migration; backup {} remains",
             backup.display()
         )
     })?;

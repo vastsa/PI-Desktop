@@ -189,6 +189,14 @@
   line-height: var(--leading-compact);
 }
 
+/* Fast mode stays visible at every width: it changes what each turn costs. */
+.composer-model-thinking-fast {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ds-text-secondary);
+}
+
 .composer-model-thinking-chevron {
   flex: 0 0 auto;
   color: var(--ds-text-faint);

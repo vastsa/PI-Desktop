@@ -147,8 +147,10 @@ export type ScrollInputType =
 export type ScrollInputContext = {
   /** Pressed key, for a `keydown`. */
   key?: string;
-  /** The key event came from a text field, which owns its own key input. */
+  /** The key event came from a field/select that owns its own key input. */
   editable?: boolean;
+  /** The focused control consumes this key as activation or selection. */
+  controlOwnsKey?: boolean;
   /**
    * A nearer, scrollable owner sits between the event target and this one, so
    * that owner consumes the input (`overscroll-behavior: contain` keeps it
@@ -196,7 +198,7 @@ export function isScrollGestureInput(
   if (context.nestedOwner) return false;
   if (type === "pointerdown") return context.pointerOnScrollSurface === true;
   if (type === "keydown") {
-    if (context.editable) return false;
+    if (context.editable || context.controlOwnsKey) return false;
     return context.key !== undefined && SCROLL_GESTURE_KEYS.has(context.key);
   }
   return true;

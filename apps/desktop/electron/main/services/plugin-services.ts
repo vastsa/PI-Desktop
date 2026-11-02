@@ -59,6 +59,7 @@ import type { ClipboardHistory } from "../clipboard-history";
 import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
 import { createPluginSessionContext } from "./plugin-session-context";
+import { createPluginProjectLister } from "./plugin-projects";
 import { createComposerSuggestionRelay } from "./composer-suggestion";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
@@ -715,6 +716,11 @@ export function createPluginServices({
      * (ADR 0263) instead of the bare primary path.
      */
     getWorkspaceInfo: () => pluginWorkspaceInfo(getWorkspacePath()),
+    listProjects: createPluginProjectLister(getHost, (operation) => {
+      logger.app("plugin", "warn", "plugin.projects.unavailable", {
+        code: "HOST_UNAVAILABLE", data: { operation },
+      });
+    }),
     openInBrowser: async (fullPath) => {
       const preview = await browserHost.previewFile();
       if (!preview.ok) {

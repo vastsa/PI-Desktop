@@ -46,7 +46,7 @@ export type UsageOperation = Omit<MessageUsage, "operations" | "aggregation"> & 
   operationId: string;
 };
 
-export { addUsage, withUsageIdentity } from "../message-usage.js";
+export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
   kind: "image" | "file" | "session";
@@ -170,7 +170,42 @@ export type UiMessage = {
    * searched.
    */
   hostedSearch?: HostedSearch;
+  /**
+   * Opaque provider replay data for an assistant row: the signatures pi-ai
+   * keeps on thinking/text blocks. Never shown; the runtime uses it to send a
+   * restored history byte-for-byte as the live one, so a rebuilt runtime keeps
+   * the prompt cache and the model's own reasoning.
+   */
+  providerReplay?: AssistantProviderReplay;
 };
+
+/**
+ * Per-block replay metadata for one assistant message, in content order.
+ * `length` is the UTF-16 length of the block's text; the texts themselves are
+ * already stored as `thinking` and `content` (concatenated), so only the
+ * boundaries and signatures are kept here.
+ *
+ * `toolCalls` keeps the signature a provider attached to a function call
+ * (Gemini's `thoughtSignature`), keyed by call id. The calls themselves are
+ * rebuilt from their tool rows, which carry the same id.
+ */
+export type AssistantProviderReplay = {
+  version: 1;
+  blocks: AssistantProviderReplayBlock[];
+  toolCalls?: AssistantProviderReplayToolCall[];
+};
+
+/**
+ * A text block's `signature` is pi-ai's `textSignature`: the Responses message
+ * id or a Gemini thought signature. A thinking block's is the thinking
+ * signature, redacted payload, encrypted reasoning item, or Completions
+ * reasoning field name.
+ */
+export type AssistantProviderReplayBlock =
+  | { type: "thinking"; length: number; signature?: string; redacted?: true }
+  | { type: "text"; length: number; signature?: string };
+
+export type AssistantProviderReplayToolCall = { id: string; signature: string };
 
 /**
  * Normalized provider-hosted web search activity for one assistant message.

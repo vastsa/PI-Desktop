@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUsage, withUsageIdentity, type MessageUsage } from "./types.js";
+import { addUsage, contextOccupancyTokens, withUsageIdentity, type MessageUsage } from "./types.js";
 
 const parent: MessageUsage = {
   inputTokens: 200,
@@ -13,6 +13,24 @@ const subagent: MessageUsage = {
   cacheReadTokens: 10,
   totalTokens: 160,
 };
+
+describe("contextOccupancyTokens", () => {
+  it("uses the request buckets even when the reported total disagrees", () => {
+    expect(contextOccupancyTokens({
+      inputTokens: 20_000, outputTokens: 100, cacheReadTokens: 60_000,
+      cacheWriteTokens: 200, reasoningTokens: 50, totalTokens: 20_100,
+    })).toBe(80_300);
+    expect(contextOccupancyTokens({ inputTokens: 10, outputTokens: 5, totalTokens: 999 })).toBe(15);
+  });
+
+  it("uses a total-only report and normalizes individual token counts", () => {
+    expect(contextOccupancyTokens({ inputTokens: 0, outputTokens: 0, totalTokens: 123 })).toBe(123);
+    expect(contextOccupancyTokens({
+      inputTokens: -5, outputTokens: 10.6, cacheReadTokens: 2.4,
+      cacheWriteTokens: Number.NaN, totalTokens: 999,
+    })).toBe(13);
+  });
+});
 
 describe("addUsage", () => {
   it("returns the other side when one argument is missing", () => {

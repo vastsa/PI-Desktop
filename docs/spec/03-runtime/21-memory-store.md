@@ -174,11 +174,14 @@ an unknown `id`.
 
 ## 8. Migration
 
-Schema version 26 → 27 (`migrate_v26_to_v27_tx`) creates the table, indexes and
+Schema version 27 → 28 (`migrate_v27_to_v28_tx`) creates the table, indexes and
 FTS table from `MEMORIES_DDL`, the same DDL the fresh schema uses, so a fresh
-database and an upgraded one cannot drift. A backup of the previous version is
-written by `create_migration_backup` before the transaction commits. v26 is the
-lossless tool-image envelope, and a v25 database walks both steps in one launch.
+database and an upgraded one cannot drift. The step also re-asserts
+`sessions.fast_mode` (schema v27, ADR 0334) when it is missing, because a
+database stamped 27 by the pre-merge memory build carries the memory tables
+without that column. A backup of the previous version is written by
+`create_migration_backup` before the transaction commits, and a v26 database
+walks v26 → v27 → v28 in one launch.
 
 ## 9. Not specified here (later stages)
 

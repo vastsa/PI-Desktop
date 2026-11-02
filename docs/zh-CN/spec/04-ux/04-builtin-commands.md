@@ -4,7 +4,7 @@
 
 ## 1. 目标
 
-定义无需插件即可使用的五条第一方命令。它们也会出现在输入框的 `/` 菜单中。
+定义无需插件即可使用的六条第一方命令。它们也会出现在输入框的 `/` 菜单中。
 
 快捷键：**Cmd/Ctrl + Shift + P**（D014）
 
@@ -16,7 +16,7 @@ builtin.<domain>.<action>
 
 ## 3. 核心内置目录
 
-内置 registry 有意只包含以下五条命令。插件命令会动态扩展可搜索的命令列表；
+内置 registry 有意只包含以下六条命令。插件命令会动态扩展可搜索的命令列表；
 应用导航、项目管理、设置、插件管理和诊断不属于内置命令契约。
 
 | id | 标题 | 关键词 | 类别 | 风险 | 行为 |
@@ -26,10 +26,11 @@ builtin.<domain>.<action>
 | `builtin.mode.agent` | 切换到 Agent | mode、agent | Session | 低 | 将空闲会话模式设为 Agent |
 | `builtin.mode.plan` | 切换到 Plan | mode、plan、planning | Session | 低 | 将空闲会话模式设为 Plan |
 | `builtin.mode.goal` | 切换到 Goal | mode、goal、objective、autonomous | Session | 低 | 将空闲会话模式设为 Goal |
+| `builtin.session.fast` | 切换 Fast 模式 | fast、speed、priority、service tier | Session | 中 | 切换会话的 OpenAI 优先服务档位（ADR 0334） |
 
 ## 4. 可见性与执行规则
 
-- 五个 ID 构成完整的第一方 registry。移除的 ID 不会出现在命令面板结果中，
+- 六个 ID 构成完整的第一方 registry。移除的 ID 不会出现在命令面板结果中，
   也不再有渲染器 dispatch case；插件命令仍可独立发现。
 - `New Task` 使用当前项目或临时分组。若该组最新会话为空则选中复用；否则
   在第一帧露出空首页并创建持久空会话。同一分组内该操作是幂等的。
@@ -38,6 +39,12 @@ builtin.<domain>.<action>
 - 模式命令使用与 Composer Agent/Plan/Goal 芯片相同的活动会话配置路径，立即更新
   空闲会话。没有活动会话时，它们更新下一个会话使用的持久化默认值；正在运行的会话
   或待审批会话不会被修改。
+- `Toggle Fast mode` 通过同一条配置路径翻转会话持久化的 `fastMode`（ADR 0334）。
+  没有活动会话时，它记录在新任务草稿上，创建出的会话会带上该开关。所选模型必须在
+  「设置 → 模型 → 高级」中允许 Fast 模式，且走 Responses 协议（Codex 订阅或 OpenAI
+  Responses）；否则无论开启还是关闭，都只弹出警告指向该设置，不保存任何状态。未配置
+  模型上残留的开关在启动时不生效。远程会话拒绝该命令。风险为中，
+  因为优先档位会更快消耗订阅额度，或按更高的 token 单价计费。
 - `SubmitPlan` 和 `SubmitGoal` 是模型工具，不是命令面板命令。没有 Chat 模式或
   request-changes 别名。
 - 原有的应用、项目、设置、插件和日志操作（仍适用时）通过各自的专用界面提供，
@@ -55,7 +62,7 @@ type CommandExecutionResult =
 
 ## 6. 验收
 
-1. 内置 registry 恰好包含五个唯一且带前缀的 ID。
+1. 内置 registry 恰好包含六个唯一且带前缀的 ID。
 2. 命令面板搜索可匹配每条命令的标题和关键词。
 3. 模式切换命令立即更新空闲会话模式；Plan、Goal 和 Agent 使用同一个 pi Agent。
 4. Compact 在空闲时可用，在活动回合/检查点期间返回 `AGENT_BUSY`。
@@ -74,9 +81,10 @@ type CommandExecutionResult =
 | `/agent-mode` | `builtin.mode.agent` |
 | `/plan-mode` | `builtin.mode.plan` |
 | `/goal-mode` | `builtin.mode.goal` |
+| `/fast` | `builtin.session.fast` |
 
 别名与模板和插件命令名称共享一个命名空间；冲突时优先使用内置别名，其次是项目模板、
-用户模板和插件命令。选择别名会插入 `/alias `；单独发送 `/new` 或 `/compact` 时，
+用户模板和插件命令。选择别名会插入 `/alias `；单独发送 `/new`、`/compact` 或 `/fast` 时，
 会在本地执行，不会创建空提示。Agent/Plan/Goal 别名支持附带提示词：
 `/agent-mode <prompt>`、`/plan-mode <prompt>` 或 `/goal-mode <prompt>` 会切换空闲会话
 （或下一个会话默认值），并通过正常提示路径发送 `<prompt>`。不带正文的模式别名仍然

@@ -172,8 +172,10 @@ The following three files show the complete command-to-panel path.
 `schemaVersion`, `id`, `name`, `version`, and `main` are required. Entry, view,
 and skill paths are relative to the plugin root and must stay
 inside it. Theme assets have a separately validated external-path route (§6.7).
-Plugin ids must match `^[a-z0-9]+(\.[a-z0-9_-]+)+$`; uppercase and undotted
-ids are rejected. `activationEvents` is descriptive metadata today, not a lazy
+The devkit’s `pi-plugin check` and `pi-plugin pack` require ids to match `^[a-z0-9]+(\.[a-z0-9_-]+)+$`; uppercase and undotted
+ids are rejected by those commands. Direct development loading does not enforce
+this pattern: runtime manifest validation currently requires only a non-empty id.
+`activationEvents` is descriptive metadata today, not a lazy
 activation scheduler: enabled plugins load at startup or explicit enable/load.
 Declare only the permissions the plugin actually needs.
 
@@ -481,10 +483,16 @@ Clicking a delivered notification restores and focuses the main window, but
 does not activate a session.
 
 The panel bridge also exposes `ui.showToast`, `ui.closePanel`,
-`plugin.getSettings`, and `workspace.get`. A channel the host does not implement
-itself is forwarded to your `onPanelInvoke(channel, payload)`, so a panel can
+`plugin.getSettings`, `workspace.get`, and `projects.list`. A channel the host
+does not implement itself is forwarded to your `onPanelInvoke(channel, payload)`, so a panel can
 talk to its own plugin over channels you define; a plugin that exports no
 `onPanelInvoke` gets `UNSUPPORTED` back.
+
+`pi.projects.list()` adds project-picker support without requiring an active
+session or a manifest permission. Entries use the decimal `projects.id` as
+`projectId`, include ungrouped projects, and always provide `primaryPath` and
+primary-first `roots`. A stopped or unavailable Host returns `[]`. See the
+[project API contract](spec/07-plugins/03-plugin-api.md#projects-workspace-fs).
 
 ### 6.5 File scope
 
@@ -1406,6 +1414,7 @@ unsupported. The panel bridge is a smaller surface listed in API spec §6.
 | `pi.project` | `create` |
 | `pi.providers.oauth` | `prompt`, `notify` |
 | `pi.workspace` | `get` |
+| `pi.projects` | `list` |
 | `pi.desktop` | `listOperations`, `invoke` |
 | `pi.audio` | `getInputDevices`, `openInput`, `closeInput`, `getCaptureState`, `onInputFrame`, `offInputFrame`, `openOutput`, `writeOutput`, `stopOutput`, `closeOutput` |
 | `pi.keyboard` | `registerGlobalShortcut`, `unregisterGlobalShortcut`, `listGlobalShortcuts` |

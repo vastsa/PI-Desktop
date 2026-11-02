@@ -3,8 +3,8 @@ import test from "node:test";
 import { register } from "node:module";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
 import { fileURLToPath } from "node:url";
+import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const {
@@ -87,6 +87,11 @@ test("shell wraps the fragment between the kit stylesheet/host runtime and the k
   assert.ok(fragment > html.indexOf("<body>"));
   assert.ok(html.indexOf("<body>") > html.indexOf("pi-genui:size"));
   assert.ok(html.indexOf('id="pi-desktop-visualization-tabs"') > fragment);
+  // The fragment sits inside the kit's #widget container, which spaces its
+  // top-level blocks; the kit runtime stays outside it.
+  const widget = html.indexOf('<div id="widget">');
+  assert.ok(widget > html.indexOf("<body>") && widget < fragment);
+  assert.ok(html.indexOf("</div>", fragment + '<div id="viz">hello</div>'.length) < html.indexOf('id="pi-desktop-visualization-tabs"'));
   assert.doesNotMatch(html, /__INLINE_VISUALIZATION_FRAGMENT__/);
   assert.doesNotMatch(html, /zcode-visualization|window\.zcode/);
   // No remote script URL survives; bundled libraries load from pi-genui://assets.

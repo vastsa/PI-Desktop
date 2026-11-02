@@ -128,6 +128,7 @@ export function TurnProcess({
   const label = (() => {
     if (phase.kind === "failed") return t("chat.processFailed");
     if (phase.kind === "stopped") return t("chat.processStopped");
+    if (phase.kind === "unsettled") return t("chat.processUnsettled");
     if (phase.kind === "completed") return t("chat.processCompleted");
     // Live: only stages with their own settled wording get their own label. The
     // rest describe an instant at the start of a request, and naming them would

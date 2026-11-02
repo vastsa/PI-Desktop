@@ -19,7 +19,12 @@ use super::{sniff_line_kind, swap_into_place, transcript_path};
 const LAYOUT_CACHE_MIN_LEN: u64 = 2 * 1024 * 1024;
 const LAYOUT_CACHE_MAX_LAG: u64 = 4 * 1024 * 1024;
 const LAYOUT_CACHE_MAGIC: &str = "PI-DESKTOP-TRANSCRIPT-LAYOUT";
-const LAYOUT_CACHE_VERSION: &str = "2";
+const LAYOUT_CACHE_VERSION: &str = "3";
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static SCANNED_LINES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 /// A stable identity available on filesystems that expose one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -77,11 +82,47 @@ impl FileIdentity {
 pub struct TranscriptLayout {
     /// Byte offset of each message line, in file order.
     pub message_offsets: Vec<u64>,
+    /// Parsed identities parallel to message offsets. Invalid rows keep None so
+    /// point reads still expose their decoding errors instead of hiding them.
+    pub(super) message_ids: Vec<Option<String>>,
     /// Byte offset of each compaction line, in file order.
     pub compaction_offsets: Vec<u64>,
+    /// Byte offset of each append-only tool review state line.
+    pub tool_review_state_offsets: Vec<u64>,
     /// Byte length of the file prefix this layout describes.
     pub file_len: u64,
     pub(crate) identity: FileIdentity,
+    pub(super) modification_stamp: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct MessageIdentity {
+    id: String,
+}
+
+pub(super) fn modification_stamp(_path: &Path, metadata: &fs::Metadata) -> Option<String> {
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Some(format!(
+            "{modified}:{}:{}",
+            metadata.ctime(),
+            metadata.ctime_nsec()
+        ))
+    }
+    #[cfg(windows)]
+    {
+        let changed = super::binary_integrity::change_time(&File::open(_path).ok()?).ok()?;
+        Some(format!("{modified}:{changed}"))
+    }
+    #[cfg(not(any(unix, windows)))]
+    Some(modified.to_string())
 }
 
 impl TranscriptLayout {
@@ -115,6 +156,42 @@ fn layout_key(data_dir: &Path, session_id: &str) -> LayoutKey {
     LayoutKey {
         data_dir: data_dir.to_path_buf(),
         session_id: session_id.to_string(),
+    }
+}
+
+/// Extend a cached prefix's generation proof only for an append made by this
+/// writer to the generation it already described. Unknown mutations force a
+/// rescan, even when they also grow the file.
+pub(super) fn note_append(path: &Path, before: &fs::Metadata, before_stamp: Option<&str>) {
+    let Some((data_dir, session_id)) = path.parent().and_then(Path::parent).zip(
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".jsonl")),
+    ) else {
+        return;
+    };
+    let Ok(mut guard) = layout_cache().lock() else {
+        return;
+    };
+    let Some(layout) = guard.get_mut(&layout_key(data_dir, session_id)) else {
+        return;
+    };
+    let after = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            layout.modification_stamp = None;
+            tracing::warn!(%error, "failed to refresh transcript layout generation after append");
+            return;
+        }
+    };
+    if before_stamp.is_some()
+        && layout.modification_stamp.as_deref() == before_stamp
+        && layout.identity == file_identity(path, before)
+        && layout.identity == file_identity(path, &after)
+    {
+        layout.modification_stamp = modification_stamp(path, &after);
+    } else {
+        layout.modification_stamp = None;
     }
 }
 
@@ -236,23 +313,31 @@ fn refresh_with_identity(
     identity: FileIdentity,
 ) -> Result<TranscriptLayout> {
     let path = transcript_path(data_dir, session_id)?;
-    let mut base =
-        if identity.is_available() && base.identity == identity && base.file_len <= length {
-            base
-        } else {
-            TranscriptLayout::empty(identity.clone())
-        };
+    let stamp = modification_stamp(&path, &fs::metadata(&path)?);
+    let mut base = if identity.is_available()
+        && base.identity == identity
+        && base.file_len <= length
+        && stamp.is_some()
+        && base.modification_stamp == stamp
+    {
+        base
+    } else {
+        TranscriptLayout::empty(identity.clone())
+    };
 
     if !identity.is_available() {
         // Without a reliable identity, no existing offsets can be trusted.
-        base = TranscriptLayout::empty(identity);
+        base = TranscriptLayout::empty(identity.clone());
     } else if base.file_len == 0 {
         base = load_layout_cache(data_dir, session_id, &identity, length)?
             .unwrap_or_else(|| TranscriptLayout::empty(identity.clone()));
     }
 
     if length == base.file_len {
-        return Ok(base);
+        if stamp.is_some() && base.modification_stamp == stamp {
+            return Ok(base);
+        }
+        base = TranscriptLayout::empty(identity);
     }
     let base_len = base.file_len;
     let layout = scan_layout(&path, base)?;
@@ -299,6 +384,8 @@ fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLa
         if read == 0 {
             break;
         }
+        #[cfg(test)]
+        SCANNED_LINES.with(|lines| lines.set(lines.get() + 1));
         // A torn append is excluded until its newline arrives.
         if !raw.ends_with(b"\n") {
             break;
@@ -307,8 +394,16 @@ fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLa
         // contains bytes from a character that was torn during a crash.
         let line = String::from_utf8_lossy(&raw);
         match sniff_line_kind(line.trim_end()) {
-            Some("message") => layout.message_offsets.push(offset),
+            Some("message") => {
+                layout.message_offsets.push(offset);
+                layout.message_ids.push(
+                    serde_json::from_str::<MessageIdentity>(&line)
+                        .ok()
+                        .map(|identity| identity.id),
+                );
+            }
             Some("compaction") => layout.compaction_offsets.push(offset),
+            Some("tool_review_state") => layout.tool_review_state_offsets.push(offset),
             _ => {}
         }
         offset += read as u64;
@@ -317,6 +412,7 @@ fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLa
         }
     }
     layout.file_len = offset;
+    layout.modification_stamp = modification_stamp(path, &reader.get_ref().metadata()?);
     Ok(layout)
 }
 
@@ -356,19 +452,32 @@ fn load_layout_cache(
     let Some(file_len) = tokens.next().and_then(|token| token.parse::<u64>().ok()) else {
         return Ok(None);
     };
-    if file_len < LAYOUT_CACHE_MIN_LEN || file_len > current_len {
+    if file_len < LAYOUT_CACHE_MIN_LEN || file_len != current_len {
         return Ok(None);
     }
-    let (Some(message_count), Some(compaction_count)) = (tokens.next(), tokens.next()) else {
+    let Some(stamp) = tokens.next() else {
         return Ok(None);
     };
-    let (Some(message_count), Some(compaction_count)) = (
+    let transcript = transcript_path(data_dir, session_id)?;
+    if modification_stamp(&transcript, &fs::metadata(&transcript)?).as_deref() != Some(stamp) {
+        return Ok(None);
+    }
+    let (Some(message_count), Some(compaction_count), Some(review_state_count)) =
+        (tokens.next(), tokens.next(), tokens.next())
+    else {
+        return Ok(None);
+    };
+    let (Some(message_count), Some(compaction_count), Some(review_state_count)) = (
         message_count.parse::<usize>().ok(),
         compaction_count.parse::<usize>().ok(),
+        review_state_count.parse::<usize>().ok(),
     ) else {
         return Ok(None);
     };
-    let Some(offset_count) = message_count.checked_add(compaction_count) else {
+    let Some(offset_count) = message_count
+        .checked_add(compaction_count)
+        .and_then(|count| count.checked_add(review_state_count))
+    else {
         return Ok(None);
     };
     let Ok(file_len_usize) = usize::try_from(file_len) else {
@@ -381,9 +490,12 @@ fn load_layout_cache(
     }
     let mut layout = TranscriptLayout {
         message_offsets: Vec::with_capacity(message_count),
+        message_ids: Vec::with_capacity(message_count),
         compaction_offsets: Vec::with_capacity(compaction_count),
+        tool_review_state_offsets: Vec::with_capacity(review_state_count),
         file_len,
         identity: cached_identity,
+        modification_stamp: Some(stamp.to_string()),
     };
     for index in 0..offset_count {
         let Some(offset) = tokens.next().and_then(|token| token.parse::<u64>().ok()) else {
@@ -391,9 +503,31 @@ fn load_layout_cache(
         };
         if index < message_count {
             layout.message_offsets.push(offset);
-        } else {
+        } else if index < message_count + compaction_count {
             layout.compaction_offsets.push(offset);
+        } else {
+            layout.tool_review_state_offsets.push(offset);
         }
+    }
+    for _ in 0..message_count {
+        let Some(token) = tokens.next() else {
+            return Ok(None);
+        };
+        let id = if token == "-" {
+            None
+        } else {
+            let Some(encoded) = token.strip_prefix('+') else {
+                return Ok(None);
+            };
+            let Some(id) = hex::decode(encoded)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+            else {
+                return Ok(None);
+            };
+            Some(id)
+        };
+        layout.message_ids.push(id);
     }
     let transcript = transcript_path(data_dir, session_id)?;
     let (Some(checksum_label), Some(checksum)) = (tokens.next(), tokens.next()) else {
@@ -414,49 +548,30 @@ fn load_layout_cache(
 }
 
 fn offsets_are_valid(layout: &TranscriptLayout) -> bool {
-    if layout
-        .message_offsets
-        .windows(2)
-        .any(|pair| pair[0] >= pair[1])
-        || layout
-            .compaction_offsets
-            .windows(2)
-            .any(|pair| pair[0] >= pair[1])
-    {
-        return false;
-    }
-    let mut messages = layout.message_offsets.iter().copied().peekable();
-    let mut compactions = layout.compaction_offsets.iter().copied().peekable();
+    let groups = [
+        &layout.message_offsets,
+        &layout.compaction_offsets,
+        &layout.tool_review_state_offsets,
+    ];
+    let mut positions = [0; 3];
     let mut previous = None;
     loop {
-        let next_message = messages.peek().copied();
-        let next_compaction = compactions.peek().copied();
-        let next = match (next_message, next_compaction) {
-            (None, None) => break,
-            (Some(message), Some(compaction)) if message == compaction => return false,
-            (Some(message), Some(compaction)) if message < compaction => {
-                messages.next();
-                message
-            }
-            (Some(_), Some(compaction)) => {
-                compactions.next();
-                compaction
-            }
-            (Some(message), None) => {
-                messages.next();
-                message
-            }
-            (None, Some(compaction)) => {
-                compactions.next();
-                compaction
-            }
+        let next = groups
+            .iter()
+            .enumerate()
+            .filter_map(|(index, offsets)| {
+                offsets.get(positions[index]).map(|offset| (*offset, index))
+            })
+            .min();
+        let Some((offset, group)) = next else {
+            return true;
         };
-        if next >= layout.file_len || previous.is_some_and(|offset| offset >= next) {
+        if offset >= layout.file_len || previous.is_some_and(|previous| previous >= offset) {
             return false;
         }
-        previous = Some(next);
+        positions[group] += 1;
+        previous = Some(offset);
     }
-    true
 }
 
 fn prefix_ends_on_line_boundary(path: &Path, file_len: u64) -> Result<bool> {
@@ -480,6 +595,12 @@ fn offsets_look_like_scan(path: &Path, layout: &TranscriptLayout) -> Result<bool
                 .compaction_offsets
                 .first()
                 .map(|offset| (*offset, "compaction")),
+        )
+        .chain(
+            layout
+                .tool_review_state_offsets
+                .first()
+                .map(|offset| (*offset, "tool_review_state")),
         );
     for (offset, kind) in head {
         if offset >= layout.file_len {
@@ -514,14 +635,33 @@ fn layout_cache_digest(layout: &TranscriptLayout) -> String {
         FileIdentity::Unavailable => digest.update(b"unavailable"),
     }
     digest.update(layout.file_len.to_le_bytes());
+    digest.update(
+        layout
+            .modification_stamp
+            .as_deref()
+            .unwrap_or_default()
+            .as_bytes(),
+    );
     digest.update((layout.message_offsets.len() as u64).to_le_bytes());
     digest.update((layout.compaction_offsets.len() as u64).to_le_bytes());
+    digest.update((layout.tool_review_state_offsets.len() as u64).to_le_bytes());
     for offset in layout
         .message_offsets
         .iter()
         .chain(&layout.compaction_offsets)
+        .chain(&layout.tool_review_state_offsets)
     {
         digest.update(offset.to_le_bytes());
+    }
+    for id in &layout.message_ids {
+        match id {
+            Some(id) => {
+                digest.update([1]);
+                digest.update((id.len() as u64).to_le_bytes());
+                digest.update(id.as_bytes());
+            }
+            None => digest.update([0]),
+        }
     }
     hex::encode(digest.finalize())
 }
@@ -530,9 +670,15 @@ fn store_layout_cache(data_dir: &Path, session_id: &str, layout: &TranscriptLayo
     if layout.file_len < LAYOUT_CACHE_MIN_LEN || !layout.identity.is_available() {
         return Ok(());
     }
+    let Some(stamp) = layout.modification_stamp.as_deref() else {
+        return Ok(());
+    };
     let path = transcript_path(data_dir, session_id)?;
     let metadata = fs::metadata(&path)?;
-    if metadata.len() != layout.file_len || file_identity(&path, &metadata) != layout.identity {
+    if metadata.len() != layout.file_len
+        || file_identity(&path, &metadata) != layout.identity
+        || modification_stamp(&path, &metadata).as_deref() != Some(stamp)
+    {
         return Ok(());
     }
     let cache = layout_cache_path(data_dir, session_id)?;
@@ -542,13 +688,19 @@ fn store_layout_cache(data_dir: &Path, session_id: &str, layout: &TranscriptLayo
         writeln!(writer, "{LAYOUT_CACHE_MAGIC} {LAYOUT_CACHE_VERSION}")?;
         layout.identity.write_tokens(&mut writer)?;
         writeln!(writer, "{}", layout.file_len)?;
+        writeln!(writer, "{stamp}")?;
         writeln!(
             writer,
-            "{} {}",
+            "{} {} {}",
             layout.message_offsets.len(),
-            layout.compaction_offsets.len()
+            layout.compaction_offsets.len(),
+            layout.tool_review_state_offsets.len()
         )?;
-        for offsets in [&layout.message_offsets, &layout.compaction_offsets] {
+        for offsets in [
+            &layout.message_offsets,
+            &layout.compaction_offsets,
+            &layout.tool_review_state_offsets,
+        ] {
             for (index, offset) in offsets.iter().enumerate() {
                 if index % 8 == 7 {
                     writeln!(writer, "{offset}")?;
@@ -558,6 +710,12 @@ fn store_layout_cache(data_dir: &Path, session_id: &str, layout: &TranscriptLayo
             }
             if !offsets.is_empty() && offsets.len() % 8 != 0 {
                 writeln!(writer)?;
+            }
+        }
+        for id in &layout.message_ids {
+            match id {
+                Some(id) => writeln!(writer, "+{}", hex::encode(id))?,
+                None => writeln!(writer, "-")?,
             }
         }
         writeln!(writer, "checksum {}", layout_cache_digest(layout))?;

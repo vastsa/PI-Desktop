@@ -27,7 +27,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_session_todo_active
 pub(crate) const SESSION_TODO_DDL: &str = session_todo_ddl!();
 
 /// `memories` table, its keyword index, and the supporting indexes in one
-/// place, so the fresh schema and the v26 -> v27 migration cannot drift
+/// place, so the fresh schema and the v27 -> v28 migration cannot drift
 /// (ADR 0371). Retrieval is keyword-first: the FTS5 table stores a *copy* of
 /// the text rather than external content, because the write path normalises
 /// CJK text to one token per ideograph (see `memory::normalise_search_text`).
@@ -90,7 +90,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     };
 }
 
-/// Same DDL as the fresh schema, exposed for the v26 -> v27 migration.
+/// Same DDL as the fresh schema, exposed for the v27 -> v28 migration.
 pub(crate) const MEMORIES_DDL: &str = memories_ddl!();
 
 pub(crate) const SCHEMA_LATEST: &str = concat!(
@@ -166,6 +166,7 @@ CREATE TABLE sessions (
                                           'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit'
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
+  fast_mode   INTEGER NOT NULL DEFAULT 0 CHECK (fast_mode IN (0, 1)),
   source      TEXT,
   deleted_at  INTEGER,
   pinned      INTEGER NOT NULL DEFAULT 0,

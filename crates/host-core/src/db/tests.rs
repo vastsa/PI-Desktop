@@ -1,5 +1,39 @@
 use super::*;
 
+/// Regression: a database stamped 27 by the pre-merge memory build carries the
+/// memory tables but no `sessions.fast_mode` column, while a 27 from the merged
+/// line carries the column and no memory tables. The v27 -> v28 step must
+/// converge both flavours instead of assuming 27 always means the Fast mode
+/// switch.
+#[test]
+fn the_v27_to_v28_migration_adds_the_missing_fast_mode_column() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY);
+         PRAGMA user_version = 27;",
+    )
+    .unwrap();
+    let tx = conn.unchecked_transaction().unwrap();
+    super::migrations::migrate_v27_to_v28_tx(&tx).unwrap();
+    tx.commit().unwrap();
+    let has_fast_mode: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'fast_mode')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(has_fast_mode, "v27 -> v28 must add sessions.fast_mode");
+    let memories: i64 = conn
+        .query_row("SELECT count(*) FROM memories", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(memories, 0, "migration must leave an empty memory store");
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 28);
+}
+
 #[test]
 fn project_memory_is_path_scoped_and_bounded() {
     let dir = tempfile::tempdir().unwrap();
@@ -425,6 +459,43 @@ fn worktree_registry_enforces_one_row_per_owner_and_unique_ports() {
         insert("f", Some("d2"), Some(41000)).is_err(),
         "shared port block"
     );
+}
+
+/// v27 adds the per-session `/fast` column (ADR 0334). Existing sessions keep
+/// their configuration, default to the normal tier, and a backup remains.
+#[test]
+fn v25_database_gains_session_fast_mode_defaulting_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session_with_thinking(
+            &db,
+            Some("Kept".into()),
+            None,
+            None,
+            None,
+            None,
+            Some("high".into()),
+        )
+        .unwrap();
+        db.conn()
+            .execute_batch("ALTER TABLE sessions DROP COLUMN fast_mode;")
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 25).unwrap();
+        session.id
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 25).exists());
+    let summary = crate::sessions::get_session(&db, &session_id)
+        .unwrap()
+        .unwrap()
+        .summary;
+    assert_eq!(summary.title, "Kept");
+    assert_eq!(summary.thinking_level, "high");
+    assert!(!summary.fast_mode);
 }
 
 /// v21 owns the session checklist. A real v20 database has neither the

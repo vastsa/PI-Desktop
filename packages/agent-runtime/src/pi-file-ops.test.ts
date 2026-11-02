@@ -5,10 +5,14 @@ import { describe, expect, it } from "vitest";
 
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
 
-function toolCallMessage(name: string, path: string, id = "call-1"): AgentMessage {
+function toolCallWithArguments(
+  name: string,
+  args: Record<string, unknown>,
+  id = "call-1",
+): AgentMessage {
   return {
     role: "assistant",
-    content: [{ type: "toolCall", id, name, arguments: { path } }],
+    content: [{ type: "toolCall", id, name, arguments: args }],
     api: "openai-completions",
     provider: "local",
     model: "local-model",
@@ -23,6 +27,10 @@ function toolCallMessage(name: string, path: string, id = "call-1"): AgentMessag
     stopReason: "toolUse",
     timestamp: 2,
   } as AgentMessage;
+}
+
+function toolCallMessage(name: string, path: string, id = "call-1"): AgentMessage {
+  return toolCallWithArguments(name, { path }, id);
 }
 
 function userMessage(text: string, timestamp: number): AgentMessage {
@@ -144,5 +152,98 @@ describe("pi's file-op collection through the adapter", () => {
     const preparation = preparationOf(entries, true);
 
     expect(toolCallNames(preparation!.messagesToSummarize)).toEqual(["read", "edit"]);
+  });
+
+  it("records Read, Write, and Edit paths sent under argument aliases", () => {
+    // Models keep the spelling they sent. Strong models send `file_path`;
+    // weaker ones send `filepath` / `file` (D273 / issue #454). The stored
+    // tool call is not folded, so the checkpoint collector has to read them.
+    const entries = [
+      messageEntry("u1", userMessage("touch the files", 1), 1),
+      messageEntry("a1", toolCallWithArguments("Read", { file_path: "src/a.txt" }), 2),
+      messageEntry("a2", toolCallWithArguments("Edit", { filepath: "src/b.ts" }, "call-2"), 3),
+      messageEntry("a3", toolCallWithArguments("Write", { file: "src/c.ts" }, "call-3"), 4),
+      messageEntry("u2", userMessage("latest question", 5), 5),
+    ];
+
+    const preparation = preparationOf(entries, true);
+
+    expect(preparation).toBeDefined();
+    expect([...preparation!.fileOps.read]).toEqual(["src/a.txt"]);
+    expect([...preparation!.fileOps.edited]).toEqual(["src/b.ts"]);
+    expect([...preparation!.fileOps.written]).toEqual(["src/c.ts"]);
+  });
+
+  it("uses the key the call ran with: path first, then aliases in normalizeToolParams order", () => {
+    const entries = [
+      messageEntry("u1", userMessage("touch the files", 1), 1),
+      messageEntry(
+        "a1",
+        toolCallWithArguments("Read", {
+          file: "from-file",
+          fileName: "from-fileName",
+          filename: "from-filename",
+          filepath: "from-filepath",
+          filePath: "from-filePath",
+          file_path: "from-file_path",
+          path: "src/canonical.txt",
+        }),
+        2,
+      ),
+      messageEntry(
+        "a2",
+        toolCallWithArguments("Write", {
+          path: "",
+          file_path: "src/not-used.ts",
+          file: "src/ignored.ts",
+        }, "call-2"),
+        3,
+      ),
+      messageEntry(
+        "a3",
+        toolCallWithArguments("Edit", {
+          filepath: "src/lower.ts",
+          filePath: "src/camel.ts",
+        }, "call-3"),
+        4,
+      ),
+      messageEntry(
+        "a4",
+        toolCallWithArguments("Read", {
+          filename: "src/name.ts",
+          fileName: "src/nameCamel.ts",
+          file: "src/bare.ts",
+        }, "call-4"),
+        5,
+      ),
+      messageEntry(
+        "a5",
+        toolCallWithArguments("Read", {
+          fileName: "src/only-fileName.ts",
+          file: "src/bare.ts",
+        }, "call-5"),
+        6,
+      ),
+      messageEntry("a6", toolCallWithArguments("Read", { file: "src/only-file.ts" }, "call-6"), 7),
+      messageEntry(
+        "a7",
+        toolCallWithArguments("Write", { path: "", file_path: "", file: 12 }, "call-7"),
+        8,
+      ),
+      messageEntry("u2", userMessage("latest question", 9), 9),
+    ];
+
+    const preparation = preparationOf(entries, true);
+
+    expect(preparation).toBeDefined();
+    expect([...preparation!.fileOps.read]).toEqual([
+      "src/canonical.txt",
+      "src/name.ts",
+      "src/only-fileName.ts",
+      "src/only-file.ts",
+    ]);
+    // `path: ""` wins over `file_path` at execution too, so nothing was written.
+    expect([...preparation!.fileOps.written]).toEqual([]);
+    expect([...preparation!.fileOps.edited]).toEqual(["src/lower.ts"]);
   });
 });

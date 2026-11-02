@@ -87,7 +87,7 @@ function Fixture() {
       inputBlocked={false} pasting={false} enterToSend={false} runActive={false}
       composerAc={completions.ac} onPaste={noop} onAcceptCompletion={completions.acceptCompletion}
       onSubmit={noop} onInsertNewline={noop} onHistoryNavigate={() => false}
-      onInput={(source, caret) => completions.handleInput(source, caret)}
+      onInput={(source, caret, composing) => completions.handleInput(source, caret, composing)}
       onCompositionStart={() => draft.setComposing(true)}
       onCompositionEnd={() => draft.setComposing(false)}
       onSettledInput={() => draft.setComposing(false)} onFocus={noop} onBlur={noop} />

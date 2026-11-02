@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Plugins können gespeicherte Projekte und ihre Ordner auflisten, ohne die aktive Sitzung zu wechseln.",
       "Die Pi-1.3.0-Engine verbessert die Validierung von Tool-Aufrufen und die sichere Wiedergabe des Verlaufs.",
       "Optionale Inline-Visualisierungen unter Einstellungen → KI zeigen interaktive, isolierte Karten direkt im Gespräch.",
       "Browserseiten einer Sitzung bleiben bei verborgenem Arbeitsbereich, Sitzungswechsel und Neuladen der Oberfläche verfügbar.",

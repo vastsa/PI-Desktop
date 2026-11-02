@@ -300,6 +300,7 @@ type ModelBinding = {
   thinkingLevels: ThinkingLevel[]
   defaultThinkingLevel: SessionThinkingLevel | null
   availableForSubagents?: boolean // opt-in for AI-driven delegation
+  fastModeAllowed?: boolean // opt-in for the session /fast switch (ADR 0334)
 }
 
 type SelectedModelRef = {
@@ -327,6 +328,16 @@ type ThinkingLevel =
 当前对话以及旧版运行时消费方的有效模型。对话级别的模型切换与跨数组路由仍属
 后续工作。只有 `defaultModelId` 的旧版提供商，在主机读取时会被具体化为一条
 回退 binding，并在下一次提供商写入时升级为 `models`。
+
+`ModelBinding.fastModeAllowed`（布尔值，默认 false，ADR 0334）：允许会话的 `/fast`
+开关为该模型请求 OpenAI 优先服务档位（`service_tier: "priority"`）。模型设置只在
+Responses 协议上启用该勾选框：`openai_codex_responses`（ChatGPT 订阅，优先档位会更快
+消耗订阅额度）和 `responses`（按优先档位更高的 token 单价计费；中转服务可能忽略或
+另行计费）。只有当会话开关打开且保存的 binding 允许时，启动器才向 sidecar 发送
+`fastMode: true`；运行时只在解析后的协议为 `openai-codex-responses` 或
+`openai-responses` 的主回合请求中加入该字段。子代理、压缩和一次性请求保持默认档位。
+可信扩展把运行时切换到它自己的模型时会清除该开关，因为该模型没有可供选择加入的
+binding；下一次启动会按会话保存的 binding 重新应用。
 
 `ModelBinding.availableForSubagents`（布尔值，默认 false）：这是一个选择加入
 的标志，让该模型可用于 AI 驱动的子代理委托。启用后，该模型会出现在注入父

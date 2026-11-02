@@ -103,6 +103,7 @@ export function SearchDialog({
   // Settings search mirrors the rail: developer-only destinations stay out of
   // the result list while developer mode is off.
   const developerMode = useAppStore((s) => s.settings?.developerMode === true);
+  const scheduledTasksEnabled = useAppStore((s) => s.settings?.scheduledTasksEnabled !== false);
 
   const query = useSessionSearchState((state) => state.query);
   const setQuery = useSessionSearchState((state) => state.setQuery);
@@ -224,8 +225,12 @@ export function SearchDialog({
     if (commandsOnly) return [];
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return PAGE_ENTRIES.filter((entry) => t(entry.labelKey).toLowerCase().includes(q));
-  }, [commandsOnly, query, t]);
+    return PAGE_ENTRIES.filter(
+      (entry) =>
+        (entry.page !== "scheduled" || scheduledTasksEnabled) &&
+        t(entry.labelKey).toLowerCase().includes(q),
+    );
+  }, [commandsOnly, query, t, scheduledTasksEnabled]);
 
   const settingsHits = useMemo<SettingsSearchHit[]>(
     () =>

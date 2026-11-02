@@ -19,10 +19,18 @@ import { useComposerCompletions } from "../../apps/desktop/src/features/chat/com
 import { ComposerInput } from "../../apps/desktop/src/features/chat/composer/ComposerInput";
 import { ComposerAutocomplete } from "../../apps/desktop/src/components/ComposerAutocomplete";
 import { api } from "../../apps/desktop/src/lib/api";
-import { setEditorCaret } from "../../apps/desktop/src/features/chat/composer/editor";
+import { editorSelectionRange, setEditorCaret } from "../../apps/desktop/src/features/chat/composer/editor";
 
 declare global {
   var composerImeStackProbe: () => Promise<unknown>;
+  var composerImeSetDraft: (text: string) => void;
+  var composerImeState: () => {
+    value: string;
+    dom: string;
+    caret: number;
+    composing: boolean;
+    open: boolean;
+  };
 }
 
 api.composerCommands = async () => ({
@@ -55,7 +63,7 @@ function Fixture() {
     composerPrefill: null,
     clearComposerPrefill: noop,
     t,
-    invalidatePromptEnhancement: noop,
+    invalidateComposerTransforms: noop,
     inputBlocked: false,
   });
   const completions = useComposerCompletions({
@@ -67,10 +75,14 @@ function Fixture() {
     fileReferencesRef: draft.fileReferencesRef,
     applyEditorDraft: draft.applyEditorDraft,
     handleInput: draft.handleInput,
-    invalidatePromptEnhancement: noop,
+    invalidateComposerTransforms: noop,
   });
   draftValue = draft.value;
   draftComposing = draft.composing;
+  globalThis.composerImeSetDraft = (text) => {
+    draft.setComposing(false);
+    draft.applyEditorDraft(text, [], text.length);
+  };
   acState = {
     open: completions.ac.open,
     hasItems: completions.ac.hasItems,
@@ -93,7 +105,7 @@ function Fixture() {
         onSubmit={noop}
         onInsertNewline={noop}
         onHistoryNavigate={() => false}
-        onInput={(source, caret) => completions.handleInput(source, caret)}
+        onInput={(source, caret, composing) => completions.handleInput(source, caret, composing)}
         onCompositionStart={() => draft.setComposing(true)}
         onCompositionEnd={() => draft.setComposing(false)}
         onSettledInput={() => draft.setComposing(false)}
@@ -120,6 +132,14 @@ const settle = async () => {
 };
 
 const editor = () => document.querySelector<HTMLElement>(".composer-input")!;
+
+globalThis.composerImeState = () => ({
+  value: draftValue,
+  dom: editor().textContent ?? "",
+  caret: editorSelectionRange(editor()).start,
+  composing: draftComposing,
+  open: acState.open,
+});
 
 /**
  * Replace the editor text and fire the events an IME fires.

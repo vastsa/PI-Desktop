@@ -269,9 +269,14 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
       case IPC.invoke.sessionConfigure: {
         const remoteSessionId = remoteIdFor(args);
         const config = (args[1] ?? {}) as Partial<
-          Pick<SessionSummary, "mode" | "providerId" | "modelId" | "thinkingLevel" | "permissionMode">
+          Pick<SessionSummary, "mode" | "providerId" | "modelId" | "thinkingLevel" | "permissionMode" | "fastMode">
         >;
-        if (config.providerId !== undefined || config.modelId !== undefined || config.thinkingLevel !== undefined) {
+        if (
+          config.providerId !== undefined ||
+          config.modelId !== undefined ||
+          config.thinkingLevel !== undefined ||
+          config.fastMode !== undefined
+        ) {
           throw capabilityUnavailable("remote sessions use the Host model configuration");
         }
         const { session } = await client.request<{ session: RacpSession }>("session/configure", {

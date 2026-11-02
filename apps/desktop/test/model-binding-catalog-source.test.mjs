@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { ModelsDevCatalog } from "../electron/main/models-dev-catalog.ts";
-import { fileURLToPath } from "node:url";
 
 const runtimeModule = new URL("../electron/main/runtime/provider-catalog.ts", import.meta.url);
 // The production bundler resolves this extensionless TypeScript import.

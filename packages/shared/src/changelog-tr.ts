@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Eklentiler, etkin oturumu değiştirmeden kayıtlı projeleri ve klasörlerini listeleyebilir.",
       "Daha güvenli araç çağrısı doğrulaması ve geçmiş yeniden oynatımı için Pi 1.3.0 motoruna geçin.",
       "Konuşmalarda etkileşimli, korumalı kartlar görmek için Ayarlar → AI bölümünde isteğe bağlı satır içi görselleştirmeleri açın.",
       "Çalışma paneli gizliyken, başka oturum seçiliyken veya arayüz yenilenirken oturumun tarayıcı sayfaları kullanılabilir kalır.",

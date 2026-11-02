@@ -2,7 +2,7 @@ import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { ComposerModelList } from "./ComposerModelList";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
-import { IconBot, IconChevronDown } from "../../../components/icons";
+import { IconBot, IconChevronDown, IconZap } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 import { ThinkingLevelSlider } from "./ThinkingLevelSlider";
@@ -15,6 +15,8 @@ export type ComposerModelPickerProps = {
   modelLabel: string;
   thinkingLabel: string;
   thinkingLevel: string;
+  /** The selected model asks for OpenAI's priority tier (ADR 0334). */
+  fastMode?: boolean;
   selectedProviderId?: string;
   selectedModelId?: string;
   controlsBlocked: boolean;
@@ -29,6 +31,7 @@ export function ComposerModelPicker({
   modelLabel,
   thinkingLabel,
   thinkingLevel,
+  fastMode = false,
   selectedProviderId,
   selectedModelId,
   controlsBlocked,
@@ -54,6 +57,7 @@ export function ComposerModelPicker({
     commitThinkingLevel,
     onMenuKeyDown,
   } = controller;
+  const fastSuffix = fastMode ? ` · ${t("chat.fastModeBadge")}` : "";
 
   return (
     <AnchoredMenu
@@ -72,8 +76,8 @@ export function ComposerModelPicker({
           ref={ref}
           type="button"
           className={`icon-btn composer-model-thinking-chip ${open ? "active" : ""}`}
-          tooltip={`${modelLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
-          ariaLabel={`${t("chat.model")}: ${modelLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
+          tooltip={`${modelLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}${fastSuffix}`}
+          ariaLabel={`${t("chat.model")}: ${modelLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}${fastSuffix}`}
           aria-haspopup="menu"
           aria-expanded={open}
           disabled={controlsBlocked}
@@ -93,6 +97,11 @@ export function ComposerModelPicker({
           <span className="composer-model-thinking-model">{modelLabel}</span>
           {thinkingLevel !== "off" ? (
             <span className="composer-model-thinking-level">{thinkingLabel}</span>
+          ) : null}
+          {fastMode ? (
+            <span className="composer-model-thinking-fast" aria-hidden="true">
+              <IconZap size={12} />
+            </span>
           ) : null}
           <IconChevronDown size={12} aria-hidden="true" className="composer-model-thinking-chevron" />
         </TooltipButton>

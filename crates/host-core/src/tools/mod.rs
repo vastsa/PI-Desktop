@@ -23,11 +23,15 @@ use crate::workspace::{
     resolve_tool_path_with_external, simple_canonicalize, ContainedRoots, ToolRoot,
 };
 
+#[cfg(test)]
+mod file_lease_tests;
 mod grep_rg;
 pub mod hashline;
 pub mod ignore_rules;
 mod image_dimensions;
 pub mod shell;
+#[cfg(windows)]
+mod windows_process_tree;
 
 pub use hashline::{HashlineContext, HashlineStore};
 
@@ -192,12 +196,29 @@ impl ProcessOwnership {
     }
 
     #[cfg(windows)]
-    fn terminate(&self, _pid: u32) -> Result<(), String> {
+    fn terminate(&self, pid: u32) -> Result<(), String> {
         let Some(job) = self.job else {
             return Err("shell runner process ownership is unavailable".into());
         };
-        if unsafe { TerminateJobObject(job, 1) == 0 } {
-            Err("TerminateJobObject failed for the shell runner".into())
+        let mut job_error = if unsafe { TerminateJobObject(job, 1) == 0 } {
+            Some("TerminateJobObject failed for the shell runner".to_string())
+        } else {
+            None
+        };
+
+        // When a shell is spawned on Windows, child processes created by the
+        // shell (and their descendants) might escape the Job Object if they
+        // were spawned before or concurrently with AssignProcessToJobObject.
+        // To guarantee clean termination of the entire tree, take a snapshot of
+        // processes and explicitly terminate any descendants of `pid`.
+        let tree_error = if pid != 0 {
+            terminate_windows_process_tree(pid).err()
+        } else {
+            None
+        };
+
+        if let Some(err) = job_error.take().or(tree_error) {
+            Err(err)
         } else {
             Ok(())
         }
@@ -263,6 +284,11 @@ impl Drop for ProcessOwnership {
     fn drop(&mut self) {
         self.close_now();
     }
+}
+
+#[cfg(windows)]
+fn terminate_windows_process_tree(root_pid: u32) -> Result<(), String> {
+    windows_process_tree::terminate_tree(root_pid)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -623,6 +649,9 @@ pub struct ToolsExecuteParams {
     pub tool_call_id: String,
     pub tool_name: String,
     pub args: Value,
+    /// Host-issued source-order binding, not a permission or resource claim.
+    #[serde(default)]
+    pub file_batch_ticket: Option<String>,
     #[serde(rename = "mode")]
     pub _mode: String,
     #[serde(default)]
@@ -1131,6 +1160,10 @@ async fn run_file_tool(
     args: &Value,
     allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
+    lease: Option<(
+        Arc<crate::tool_budget::ToolPermit>,
+        Arc<crate::file_resources::FileResources>,
+    )>,
 ) -> Result<Value, hashline::ToolError> {
     let workspace = workspace.map(Path::to_path_buf);
     let tool_name = tool_name.to_string();
@@ -1139,6 +1172,22 @@ async fn run_file_tool(
     #[cfg(test)]
     let test_rg = grep_rg::current_test_rg();
     tokio::task::spawn_blocking(move || {
+        // Dropping the transport future does not stop this closure. It must
+        // retain the lease until the actual filesystem body has returned.
+        let _file_lease = lease;
+        #[cfg(test)]
+        file_lease_tests::pause(workspace.as_deref());
+        if let Some((_, resources)) = &_file_lease {
+            resources
+                .validate(
+                    workspace.as_deref(),
+                    &roots,
+                    &tool_name,
+                    &args,
+                    allow_external_paths,
+                )
+                .map_err(|e| hashline::ToolError::new("TOOL_FAILED", e))?;
+        }
         // The test rg override is thread-local; carry it onto the blocking
         // thread for the duration of the body.
         #[cfg(test)]
@@ -1173,6 +1222,18 @@ pub async fn execute_tool_with_path_access(
     tool_name: &str,
     args: &Value,
     options: ToolExecutionOptions<'_>,
+) -> ToolsExecuteResult {
+    execute_tool_with_file_lease(workspace, scratch, tool_name, args, options, None, None).await
+}
+
+pub async fn execute_tool_with_file_lease(
+    workspace: Option<&Path>,
+    scratch: Option<&Path>,
+    tool_name: &str,
+    args: &Value,
+    options: ToolExecutionOptions<'_>,
+    file_lease: Option<Arc<crate::tool_budget::ToolPermit>>,
+    resources: Option<Arc<crate::file_resources::FileResources>>,
 ) -> ToolsExecuteResult {
     let ToolExecutionOptions {
         timeout_ms: requested_timeout_ms,
@@ -1226,6 +1287,7 @@ pub async fn execute_tool_with_path_access(
                 args,
                 allow_external_paths,
                 hashline.as_ref(),
+                file_lease.zip(resources),
             )
             .await
         }

@@ -22,7 +22,14 @@ const CONTROL_SELECTOR = [
   "[role='radio']",
 ].join(", ");
 
-const EDITABLE_SELECTOR = "input, textarea, [contenteditable='true']";
+const EDITABLE_SELECTOR = "input, textarea, select, [contenteditable='true']";
+const SPACE_ACTIVATION_SELECTOR =
+  "button, summary, [role='button'], [role='checkbox'], [role='switch'], [role='radio']";
+
+/** Retire browser-owned navigation only after input ownership is established. */
+export function stopSmoothScroll(scroller: HTMLElement | null): void {
+  if (scroller) scroller.scrollTo({ top: scroller.scrollTop, behavior: "instant" });
+}
 
 /**
  * Reads what one DOM input event means for `owner`, a marked scroll container
@@ -54,6 +61,8 @@ export function readScrollInputContext(
     context.editable =
       target instanceof Element &&
       target.closest(EDITABLE_SELECTOR) !== null;
+    context.controlOwnsKey = event.key === " " && target instanceof Element &&
+      target.closest(SPACE_ACTIVATION_SELECTOR) !== null;
     return context;
   }
   if (event.type === "pointerdown") {

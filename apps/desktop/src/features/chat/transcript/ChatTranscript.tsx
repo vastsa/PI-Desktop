@@ -28,6 +28,7 @@ import {
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
 import { collectLiveDelegationEntries } from "../../../lib/live-delegation-entries";
 import { reuseReadonlyMap } from "../../../lib/assistant-turns";
+import { liveHistoryTurnId } from "../../../lib/turn-process";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
 import { useTranscriptContinuation } from "../../../hooks/use-transcript-continuation";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
@@ -225,6 +226,13 @@ function TranscriptBody({
   const liveDelegationsRef = useRef(rawLiveDelegations);
   const liveDelegations = reuseReadonlyMap(liveDelegationsRef.current, rawLiveDelegations);
   liveDelegationsRef.current = liveDelegations;
+  // The running turn is not always the tail entry: a steering message or a
+  // system row can render after it, and the history list defaults every entry
+  // to inactive. Row state identifies the live turn instead (#1949).
+  const liveTurnId = useMemo(
+    () => (transcriptRunning ? liveHistoryTurnId(historyEntries, tailEntry) : undefined),
+    [historyEntries, tailEntry, transcriptRunning],
+  );
   const hasSpecializedActivity = specializedActivity !== undefined;
   // Existing output does not mean the turn has finished: a text stream can
   // pause, and completed tool rows can outlive their activity. Keep one tail
@@ -316,7 +324,7 @@ function TranscriptBody({
           return {
             id,
             label,
-            icon: <IconCopy size={18} />,
+            icon: <IconCopy size={16} />,
             disabled: !copyable,
             onSelect: () => void copyConversation(),
           };
@@ -324,7 +332,7 @@ function TranscriptBody({
           return {
             id,
             label,
-            icon: <IconTextSelect size={18} />,
+            icon: <IconTextSelect size={16} />,
             onSelect: () => selectText(contentRef.current),
           };
         case "copy-last-answer": {
@@ -332,7 +340,7 @@ function TranscriptBody({
           return {
             id,
             label,
-            icon: <IconChat size={18} />,
+            icon: <IconChat size={16} />,
             disabled: !lastAnswer,
             onSelect: () => void copyText(lastAnswer),
           };
@@ -341,14 +349,14 @@ function TranscriptBody({
           return {
             id,
             label,
-            icon: <IconArrowUp size={18} />,
+            icon: <IconArrowUp size={16} />,
             onSelect: () => scrollRef.current?.scrollTo({ top: 0 }),
           };
         case "scroll-bottom":
           return {
             id,
             label,
-            icon: <IconArrowDown size={18} />,
+            icon: <IconArrowDown size={16} />,
             onSelect: () => {
               onReturnToLatest?.();
               jumpToLatest();
@@ -358,7 +366,7 @@ function TranscriptBody({
           return {
             id,
             label,
-            icon: <IconBrowser size={18} />,
+            icon: <IconBrowser size={16} />,
             disabled: !sessionId || isRemoteSession(sessionSummary),
             onSelect: () => openWorkPanelTab(browserPluginTab()),
           };
@@ -370,7 +378,7 @@ function TranscriptBody({
             label: workPanelOpen
               ? t("chat.radialMenuCloseWorkPanel")
               : label,
-            icon: <IconPanel size={18} />,
+            icon: <IconPanel size={16} />,
             disabled: !sessionId || isRemoteSession(sessionSummary),
             onSelect: () => (workPanelOpen ? collapseWorkPanel() : openWorkPanel()),
           };
@@ -379,7 +387,7 @@ function TranscriptBody({
           return {
             id,
             label,
-            icon: <IconFolder size={18} />,
+            icon: <IconFolder size={16} />,
             disabled: !path || isRemoteSession(sessionSummary),
             onSelect: () => {
               if (!path) return;
@@ -393,7 +401,7 @@ function TranscriptBody({
           };
         }
         default:
-          return { id, label, icon: <IconChat size={18} />, disabled: true, onSelect: () => {} };
+          return { id, label, icon: <IconChat size={16} />, disabled: true, onSelect: () => {} };
       }
     });
   };
@@ -485,7 +493,7 @@ function TranscriptBody({
             // view, which is exactly the jitter this avoids.
             <div className="transcript-hydration-spacer" aria-hidden />
           ) : null}
-          <TranscriptHistory entries={historyEntries} isRunning={isRunning} liveDelegations={liveDelegations} />
+          <TranscriptHistory entries={historyEntries} isRunning={isRunning} liveDelegations={liveDelegations} liveTurnId={liveTurnId} />
           {tailEntry ? (
             <TranscriptTail
               entry={tailEntry}

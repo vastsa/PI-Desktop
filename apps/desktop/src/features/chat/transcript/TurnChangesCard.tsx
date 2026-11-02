@@ -1,7 +1,8 @@
-import { memo, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewChangeStatus, UiMessage } from "@pi-desktop/shared";
-import { cx } from "../../../components/ui";
+import { IconChevronDown, IconChevronRight } from "../../../components/icons";
+import { Button, cx } from "../../../components/ui";
 import { requestReviewFocus } from "../../../lib/review-focus-request";
 import {
   summarizeTurnChanges,
@@ -12,6 +13,7 @@ import {
 import { toolWorkPanelTab } from "../../../lib/work-panel-tabs";
 import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
 import { useAppStore } from "../../../stores/app-store";
+import { disclosureKey, useAutomaticDisclosure } from "./disclosure";
 import "../../../styles/turn-changes.css";
 
 /* Same Git-style letters as the per-call review row, so status never relies
@@ -46,6 +48,12 @@ export const TurnChangesCard = memo(function TurnChangesCard({
   const openTabForSession = useAppStore((state) => state.openWorkPanelTabForSession);
   const openTab = useAppStore((state) => state.openWorkPanelTab);
   const summary = useMemo(() => summarizeTurnChanges(tools), [tools]);
+  const bodyId = useId();
+  const disclosure = useAutomaticDisclosure(
+    false,
+    undefined,
+    disclosureKey("turn-changes", sessionId, tools[0]?.id ?? bodyId),
+  );
   const { files } = summary;
   if (files.length === 0) return null;
 
@@ -72,7 +80,18 @@ export const TurnChangesCard = memo(function TurnChangesCard({
 
   return (
     <section className="turn-changes-card" aria-label={t("chat.turnChangesLabel")}>
-      <div className="turn-changes-head">
+      <Button
+        ref={disclosure.titleRef}
+        type="button"
+        variant="ghost"
+        className="turn-changes-head"
+        aria-expanded={disclosure.open}
+        aria-controls={bodyId}
+        onClick={disclosure.toggle}
+      >
+        <span className="turn-changes-chevron" aria-hidden>
+          {disclosure.open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+        </span>
         <span className="turn-changes-title">{t("chat.turnChangesTitle")}</span>
         <span className="turn-changes-meta">
           {t("chat.toolChipFiles", { count: files.length })}
@@ -84,48 +103,50 @@ export const TurnChangesCard = memo(function TurnChangesCard({
         >
           <Counts additions={summary.additions} deletions={summary.deletions} />
         </span>
-      </div>
-      <ul className={cx("turn-changes-body", dense && "is-dense")}>
-        {visible.map((file) => {
-          const label = rowLabel(file);
-          return (
-            <li key={file.path}>
-              <button
-                type="button"
-                className="turn-changes-row"
-                data-status={file.status}
-                data-rolled-back={file.rolledBack || undefined}
-                aria-label={label}
-                title={label}
-                onClick={() => openReview(file.snapshotIds, true)}
-              >
-                <span className="turn-changes-mark" aria-hidden>
-                  {STATUS_MARKS[file.status]}
-                </span>
-                <span className="turn-changes-path">{file.path}</span>
-                <Counts additions={file.additions} deletions={file.deletions} />
-              </button>
+      </Button>
+      <div ref={disclosure.bodyRef} id={bodyId} hidden={!disclosure.open} {...disclosure.bodyEvents}>
+        <ul className={cx("turn-changes-body", dense && "is-dense")}>
+          {visible.map((file) => {
+            const label = rowLabel(file);
+            return (
+              <li key={file.path}>
+                <button
+                  type="button"
+                  className="turn-changes-row"
+                  data-status={file.status}
+                  data-rolled-back={file.rolledBack || undefined}
+                  aria-label={label}
+                  title={label}
+                  onClick={() => openReview(file.snapshotIds, true)}
+                >
+                  <span className="turn-changes-mark" aria-hidden>
+                    {STATUS_MARKS[file.status]}
+                  </span>
+                  <span className="turn-changes-path">{file.path}</span>
+                  <Counts additions={file.additions} deletions={file.deletions} />
+                </button>
+              </li>
+            );
+          })}
+          {hidden > 0 ? (
+            <li className="turn-changes-more">
+              <span aria-hidden>···</span>
+              {t("chat.turnChangesMore", { count: hidden })}
             </li>
-          );
-        })}
+          ) : null}
+        </ul>
         {hidden > 0 ? (
-          <li className="turn-changes-more">
-            <span aria-hidden>···</span>
-            {t("chat.turnChangesMore", { count: hidden })}
-          </li>
+          <div className="turn-changes-foot">
+            <button
+              type="button"
+              className="turn-changes-view-all"
+              onClick={() => openReview(files.flatMap((file) => file.snapshotIds), false)}
+            >
+              {t("chat.turnChangesViewAll", { count: files.length })}
+            </button>
+          </div>
         ) : null}
-      </ul>
-      {hidden > 0 ? (
-        <div className="turn-changes-foot">
-          <button
-            type="button"
-            className="turn-changes-view-all"
-            onClick={() => openReview(files.flatMap((file) => file.snapshotIds), false)}
-          >
-            {t("chat.turnChangesViewAll", { count: files.length })}
-          </button>
-        </div>
-      ) : null}
+      </div>
     </section>
   );
 });

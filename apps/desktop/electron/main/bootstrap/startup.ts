@@ -1,5 +1,6 @@
 import { app, BrowserWindow, crashReporter, Menu, safeStorage } from "electron";
 import { createScheduledRunner } from "../runtime/scheduled-runner";
+import { onConfirmedQuit } from "./confirmed-quit";
 import {
   APP_NAME,
   APP_VERSION,
@@ -316,7 +317,14 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       report: (error) => logger.app("runtime", "warn", "scheduled task dispatch failed", { data: String(error) }),
     });
     scheduledRunner.start();
-    app.once("before-quit", () => scheduledRunner.stop());
+    logger.app("runtime", "info", "scheduled runner started");
+    // Stop only on a committed quit: a cancelled quit confirmation keeps the
+    // app running, and a runner stopped from `before-quit` would stay silent
+    // until restart (issue #2048).
+    onConfirmedQuit(() => {
+      scheduledRunner.stop();
+      logger.app("runtime", "info", "scheduled runner stopped", { data: "app-quit" });
+    });
     if (!bootError && state.agentHostBridge) {
       // Restore the persisted turn queue now that host-core answers. Restored
       // entries stay held until a controller attaches (D375).

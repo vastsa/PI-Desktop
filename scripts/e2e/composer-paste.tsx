@@ -64,7 +64,7 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
     composerPrefill: null,
     clearComposerPrefill: noop,
     t,
-    invalidatePromptEnhancement: noop,
+    invalidateComposerTransforms: noop,
     inputBlocked: false,
   });
   controller = draft;
@@ -118,7 +118,7 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
         onSubmit={(steering) => { latestSubmission = submitFromComposer(steering); }}
         onHistoryNavigate={inputHistory.navigate}
         onInsertNewline={draft.insertNewlineInEditor}
-        onInput={(source, caret) => { inputHistory.exitBrowsing(); draft.handleInput(source, caret); }}
+        onInput={(source, caret, composing) => { inputHistory.exitBrowsing(); draft.handleInput(source, caret, composing); }}
         onCompositionStart={noop}
         onCompositionEnd={noop}
         onSettledInput={() => draft.setComposing(false)}

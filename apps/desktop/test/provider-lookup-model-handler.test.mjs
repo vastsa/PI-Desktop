@@ -13,11 +13,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { ErrorCodes } from "../../../packages/shared/src/errors.ts";
 import { IPC } from "../../../packages/shared/src/protocol.ts";
 import * as modelsDev from "../electron/main/models-dev-catalog.ts";
-import { fileURLToPath } from "node:url";
 
 /** Minimal CJS loader for the main-process module under test. */
 function load(relative, imports) {

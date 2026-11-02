@@ -1088,12 +1088,10 @@ describe("stream idle watchdog", () => {
     }
   });
 
-  it("clamps a positive override up to the retry backoff floor", () => {
+  it("clamps a positive override up to the supported idle minimum", () => {
     const previous = process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
     try {
-      // The watchdog wraps the retry adapter, so a budget under the largest
-      // retry delay would end a turn that is backing off exactly as the
-      // provider asked it to. `0` still disables it outright.
+      // Keep the existing positive minimum; `0` still disables the watchdog.
       process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "1000";
       expect(streamIdleTimeoutMs()).toBe(STREAM_IDLE_TIMEOUT_FLOOR_MS);
       expect(STREAM_IDLE_TIMEOUT_FLOOR_MS).toBeGreaterThan(1_000);

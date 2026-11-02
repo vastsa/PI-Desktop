@@ -342,8 +342,10 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     }
     // Empty assistant bubbles are dropped by default so provider retries do
     // not grow the transcript. Keep structured failures and tool-call rows
-    // durable, plus rows reserved by accepted steering and the first completed
-    // reply to a Host-verified completion notice (D446), tracked by turn ID.
+    // durable, plus rows reserved by accepted steering, the first completed
+    // reply to a Host-verified completion notice (D446), tracked by turn ID,
+    // and call-only replies whose function calls carry provider signatures
+    // that a rebuilt runtime must replay (#1972).
     const empty =
       !(event.message.content || "").trim() &&
       !(event.message.thinking || "").trim();
@@ -356,7 +358,10 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
       event.message.status === "complete" &&
       messageTurnId !== undefined &&
       completionNoticeTurns.delete(messageTurnId);
-    if (empty && !carriesTool && !event.message.error && !reservedForSteering && !isCompletionNoticeReply) {
+    if (
+      empty && !carriesTool && !event.message.error && !reservedForSteering &&
+      !isCompletionNoticeReply && !event.message.providerReplay
+    ) {
       return;
     }
     void persistenceOutbox

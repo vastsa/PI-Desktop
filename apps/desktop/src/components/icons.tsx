@@ -102,6 +102,7 @@ import {
   Workflow,
   Wrench,
   X,
+  Zap,
   type LucideIcon,
   type LucideProps,
 } from "lucide-react";
@@ -194,6 +195,7 @@ export const IconDatabase = icon(Database);
 export const IconCheck = icon(Check);
 export const IconBell = icon(Bell);
 export const IconBot = icon(Bot);
+export const IconZap = icon(Zap);
 export const IconCheckCheck = icon(CheckCheck);
 export const IconShield = icon(Shield);
 export const IconChevronDown = icon(ChevronDown);

@@ -80,7 +80,7 @@ export function useComposerCompletions({
   referenceSessionId: string;
   fileReferencesRef: RefObject<ComposerFileReference[]>;
   applyEditorDraft: (text: string, references: ComposerFileReference[], caret: number) => void;
-  handleInput: (source: string, caret: number) => string;
+  handleInput: (source: string, caret: number, composing?: boolean) => string;
   invalidateComposerTransforms: () => void;
 }) {
   const host = useComposerAutocomplete({ value, cursor, composing, enabled });
@@ -225,8 +225,8 @@ export function useComposerCompletions({
   };
 
   /** The draft's input handler, noting what the user typed. */
-  const handleTypedInput = (source: string, caret: number) => {
-    setTypedValue(handleInput(source, caret));
+  const handleTypedInput = (source: string, caret: number, composing = false) => {
+    setTypedValue(handleInput(source, caret, composing));
   };
 
   return { ac, acceptCompletion, handleInput: handleTypedInput };

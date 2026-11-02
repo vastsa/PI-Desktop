@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Real React/Chromium regression for #929: after a Chinese IME leaves "/、" in
- * the composer, deleting it and typing "/" again must reopen the slash menu.
+ * Real React/Chromium regressions: native composition must produce "/", not
+ * "/、", and deleting text after a missing compositionend must reopen the menu.
  *
- * The probe drives `useComposerAutocomplete` itself, so a red result is the
- * real hook refusing to reopen, not a stub standing in for it.
+ * Mount production input, draft and completion wiring; drive native Chromium
+ * composition through CDP as well as the lost-end event sequence from #929.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -59,13 +59,65 @@ try {
     `
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
+const assert = require("node:assert/strict");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: false, width: 1040, height: 760, webPreferences: { backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const window = new BrowserWindow({ show: false, width: 1040, height: 760, webPreferences: { offscreen: true, backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   window.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await window.loadFile(path.join(__dirname, "index.html"));
     const result = await window.webContents.executeJavaScript("globalThis.composerImeStackProbe()");
+    assert.equal(result.ok, true, "existing IME recovery and completion paths must pass");
+    window.webContents.debugger.attach("1.3");
+    const js = expression => window.webContents.executeJavaScript(expression);
+    const input = (method, params) => window.webContents.debugger.sendCommand("Input." + method, params);
+    const state = () => js("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(globalThis.composerImeState()))))");
+    const reset = async (text = "") => {
+      await js("globalThis.composerImeSetDraft(" + JSON.stringify(text) + ")");
+      await state();
+    };
+    const expectText = (snapshot, expected, label) => {
+      assert.equal(snapshot.dom, expected, label + " DOM: " + JSON.stringify(snapshot));
+      assert.equal(snapshot.value, expected, label + " draft: " + JSON.stringify(snapshot));
+    };
+    const composed = async (prefix, candidate, committed, expected) => {
+      await reset(prefix);
+      await input("imeSetComposition", { text: candidate, selectionStart: candidate.length, selectionEnd: candidate.length });
+      const pending = await state();
+      expectText(pending, prefix + candidate, "pending composition must keep the native text");
+      assert.equal(pending.composing, true);
+      await input("insertText", { text: committed });
+      const settled = await state();
+      expectText(settled, expected, "committed composition");
+      assert.equal(settled.caret, expected.length, "committed composition must retain the caret");
+      assert.equal(settled.composing, false);
+      return settled;
+    };
+    const slash = await composed("", "、", "、", "/");
+    assert.equal(slash.open, true, "committed comma must open the slash menu");
+    await composed("", "ni", "你", "你");
+    await composed("你好", "、", "、", "你好、");
+    await composed("、原文", "ni", "你", "、原文你");
+    await reset();
+    await input("imeSetComposition", { text: "、", selectionStart: 1, selectionEnd: 1 });
+    await state();
+    await input("imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 });
+    const cancelled = await state();
+    assert.equal(cancelled.dom, "", "cancelled composition must leave no visible text");
+    assert.equal(cancelled.value.trim(), "", "cancelled composition must leave a blank draft");
+    assert.equal(cancelled.composing, false);
+    for (const text of ["/", "、"]) {
+      await reset();
+      await input("insertText", { text });
+      expectText(await state(), "/", "direct trigger " + text);
+    }
+    await reset();
+    await input("imeSetComposition", { text: "n", selectionStart: 1, selectionEnd: 1 });
+    await state();
+    await reset("、保留");
+    await input("insertText", { text: "你" });
+    expectText(await state(), "、保留你", "a draft replacement must release the old composition origin");
+    result.nativeComposition = true;
     console.log("COMPOSER_IME_STACK_PROBE " + JSON.stringify(result));
     app.exit(result && result.ok ? 0 : 1);
   } catch (error) {
@@ -109,7 +161,7 @@ app.whenReady().then(async () => {
       `  step ${String(step.label).padEnd(20)} draft=${JSON.stringify(step.draftValue)} composing=${step.composing} -> open=${step.open} hasItems=${step.hasItems} mode=${step.mode} query=${JSON.stringify(step.query)}`,
     );
   }
-  console.log("COMPOSER_IME_STACK_PROBE " + JSON.stringify({ ok: result.ok }));
+  console.log("COMPOSER_IME_STACK_PROBE " + JSON.stringify({ ok: result.ok, nativeComposition: result.nativeComposition }));
   assert.equal(code, 0, output.slice(-6000));
   assert.equal(result.ok, true, "the slash menu did not reopen after the IME draft was cleared");
 } finally {

@@ -51,7 +51,7 @@ impl Generation {
 }
 
 #[cfg(windows)]
-fn change_time(file: &File) -> Result<i64> {
+pub(super) fn change_time(file: &File) -> Result<i64> {
     use std::{mem::size_of, os::windows::io::AsRawHandle};
     use windows_sys::Win32::{
         Foundation::HANDLE,

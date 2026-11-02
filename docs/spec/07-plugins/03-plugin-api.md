@@ -130,6 +130,13 @@ pi.commands.register(def: {
 pi.commands.unregister(id: string): Promise<void>
 ```
 
+Command IDs are stored as supplied; the host does not add a prefix. Use a
+plugin-specific namespace to avoid collisions. A plugin may replace its own
+command, but registering an ID owned by another loaded plugin rejects with
+`CONFLICT`. Unregistering another plugin's command rejects with
+`PERMISSION_DENIED`. Unregistering an absent ID succeeds without changes.
+Disabling or unloading a plugin removes its commands and releases their IDs.
+
 ### Composer text transforms (`composer.transform`)
 
 A plugin may contribute explicit, user-invoked text actions through
@@ -330,13 +337,23 @@ hold `project.create` when it supplies a project id. Omitting `projectId` keeps
 the imported session unbound; `projectPath` remains historical source metadata
 and never creates a project by itself.
 
-### workspace / fs
+### projects / workspace / fs
 ```ts
+pi.projects.list(): Promise<PluginProjectInfo[]>
+
+type PluginProjectInfo = {
+  projectId: string; // Base-10 projects.id, no prefix; stable for this row's lifetime.
+  name: string;
+  primaryPath: string;
+  roots: Array<{ path: string; name: string; primary: boolean }>;
+}
+
 pi.workspace.get(): Promise<{
   path: string;
   name: string;
   projectId?: string;
   roots?: Array<{ path: string; name: string; primary: boolean }>;
+  remote?: { path: string; readOnly: true }; // SSH projects only, see below
 } | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
@@ -372,6 +389,25 @@ pi.fs.list(pathFromRoot: string, options?: { workspacePath: string }): Promise<A
 pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 ```
+
+`projects.list` returns one entry per durable `projects` row, including rows
+without a group, ordered by `lastOpenedAt` descending (numeric id ascending on
+ties), independently of pinning. `projectId` is the base-10 database primary key
+without a prefix, always non-empty and stable across rename and restart while
+that row exists. It is distinct from the optional **group** id reported by
+`workspace.get`; it is the string form of `project.create`'s numeric project id.
+`name` uses the matching primary group's display name, falling back to the row's
+name. `primaryPath` is that row's path. `roots` always starts with that path marked
+primary, followed by any additional roots of the group whose primary matches
+the row, in group order. Secondary-folder rows keep their own identity and
+single root. Group lookup failure falls back to single roots; unavailable or
+failed project lookup returns `[]`, with a host diagnostic. A result from a
+replaced or stopped Host is discarded. Remote identities remain opaque
+`remote-project:` paths; no Host keys or credentials are returned.
+
+This read-only metadata needs no permission and is also available through the
+panel bridge channel `projects.list`. It never creates, opens, switches, or
+grants access to a project. Filesystem and session permissions are unchanged.
 
 `workspace.get` answers with the primary root — `path` and its leaf `name`,
 both unchanged — plus, when that folder belongs to a project group (ADR 0249),
@@ -880,9 +916,11 @@ the target session and history.
 A named `spawn` `modelKey` is an AI-driven delegation choice and needs that
 model's own `ModelBinding.availableForSubagents` opt-in; the host answers
 `PERMISSION_DENIED` for a model the user has not enabled, before creating a
-worker. Omitting `modelKey` still inherits — the first enabled model, else the
-default — and naming the default model's own key is that same inheritance
-rather than a selection (ADR subagent-model-opt-in).
+worker. Explicitly naming the default model's own key is treated as inheritance
+rather than a selection. Omitting `modelKey` selects the first ready model
+enabled for AI delegation; if none exists, the call fails with
+`MODEL_NOT_CONFIGURED` instead of falling back to the default model
+(ADR subagent-model-opt-in).
 
 `list` returns at most 100 non-deleted Agent sessions that can receive a
 message, including sessions created independently of Session Orchestrator. Each
@@ -1116,7 +1154,7 @@ checks; these modes grant no additional network access. Policy refusals are
 audited without response bodies or headers.
 
 Before using the option on a potentially older host, query
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: string[] }>` and require
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>` and require
 the desired mode. This read-only query needs no network permission and performs
 no network I/O. A missing method, rejected query, or absent mode means
 unsupported: do not send the request. Older hosts may silently ignore unknown
@@ -1340,11 +1378,22 @@ type PluginApiError = {
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
  | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
+ | string // see below
  message: string
 }
 ```
 
-All API failures throw an error carrying a `code`.
+All API failures throw an error carrying a `code`. The list above is the common
+set, not a closed enum: the host forwards whatever code the failing layer set,
+and an error without one reaches the plugin as `PLUGIN_API_FAILED`. Other codes
+the desktop host currently throws include `INVALID_PARAMS` (input validation of
+the session, usage, project, and desktop APIs, alongside `INVALID_ARGUMENT`
+elsewhere), `UNAVAILABLE` (a host service such as the browser is missing),
+`PLUGIN_UNLOADED` (the plugin was unloaded or reloaded while the call ran),
+`CONFLICT` (a speech protocol already in use), `PROVIDER_ERROR` (a speech
+adapter returned empty output), `WORKSPACE_CHANGED`, `OPEN_FAILED`,
+`REVEAL_FAILED`, and `CONNECT_FAILED`. Branch on the codes you handle and treat
+the rest as a generic failure.
 
 ## 5. Events (host -> plugin)
 
@@ -1401,6 +1450,10 @@ Delivered today:
   snapshot in the payload is the answer, so a missed delivery is repaired by one
   `pi.session.getActive()` call. Needs no permission, and the selected session's
   turn id is the same identity `session:turnEnded` reports.
+
+- `net:websocket:open` / `net:websocket:message` / `net:websocket:close` /
+  `net:websocket:error` — sent only to the plugin that owns the socket; see
+  `net.websocket` under §3 `net`.
 
 A throwing handler is logged and does not affect other listeners or the plugin.
 
@@ -1486,7 +1539,7 @@ which handles these built-in channels before falling back to `onPanelInvoke`:
 | `ui.showToast`, `ui.closePanel` | None beyond the loaded panel |
 | `ui.notify` | `notify` |
 | `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
-| `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
+| `plugin.getSettings`, `workspace.get`, `projects.list`, `app.getAppearance` | None |
 | `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list`, `themes.setVariables` | `ui.theme` |
 | `models.list` | `models.list` |
 | `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list`, `fs.requestDirectory`, `fs.registerDropped` | `fs.read` |
@@ -1502,7 +1555,9 @@ which handles these built-in channels before falling back to `onPanelInvoke`:
 `plugin.setSettings`, `fs.remove`, and arbitrary Electron IPC are not exposed. A
 channel the host does not implement itself is forwarded to the plugin's
 `onPanelInvoke(channel, payload)`, so a plugin may define its own panel ↔ main
-channels; a plugin that exports no `onPanelInvoke` gets `UNSUPPORTED` from its own
+channels. Electron main brokers every custom channel call before the handler
+executes in the plugin's child process; the panel never calls the child directly.
+A plugin that exports no `onPanelInvoke` gets `UNSUPPORTED` from its own
 process. The `skill.list` / `read` / `create` / `update` / `remove` / `setEnabled`
 operations used by the bundled skill manager are plugin-owned `onPanelInvoke`
 channels, not general host bridge APIs.

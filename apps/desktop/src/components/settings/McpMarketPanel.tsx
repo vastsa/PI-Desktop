@@ -5,12 +5,12 @@ import {
   allowInsecureUserEndpoints,
   BUILTIN_MCP_CATALOG,
   DEFAULT_MARKET_SOURCE,
-  GLOBAL_SCOPE,
   isSafeMarketSourceUrl,
   mergeRegistryEntries,
   resolveCatalogEntry,
   sanitizeMarketSources,
   validateMcpCatalogFile,
+  type AgentCapabilityLevel,
   type MarketSource,
   type McpCatalogCategory,
   type McpCatalogEntry,
@@ -102,10 +102,14 @@ function loadSources(allowInsecureHttp = false): MarketSource[] {
  * of its own, and the exact command is on screen before anything is saved.
  */
 export function McpMarketPanel({
+  level,
+  projectPath,
   installedIds,
   onBack,
   onInstalled,
 }: {
+  level: AgentCapabilityLevel;
+  projectPath?: string;
   installedIds: readonly string[];
   onBack: () => void;
   onInstalled: (id: string) => void;
@@ -286,10 +290,18 @@ export function McpMarketPanel({
 
   const install = async () => {
     if (!installFor || saving) return;
+    if (level === "project" && !projectPath) {
+      showToast(t("settings.selectProjectFirst"), { variant: "error" });
+      return;
+    }
     setSaving(true);
     try {
       const input = resolveCatalogEntry(installFor, values);
-      await api.upsertMcpServer({ ...input, level: "global", scope: GLOBAL_SCOPE });
+      await api.upsertMcpServer({
+        ...input,
+        level,
+        ...(level === "project" ? { projectPath } : {}),
+      });
       showToast(t("settings.mcpMarket.installSuccess", { name: installFor.name }), {
         variant: "success",
       });

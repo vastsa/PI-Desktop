@@ -129,6 +129,21 @@ test("an empty assistant message that still carries a tool row is persisted", ()
   assert.equal(f.enqueued.length, 1);
 });
 
+test("an empty call-only reply with provider replay data is persisted (#1972)", () => {
+  // Gemini signs a function call on its own; a rebuilt runtime can only send
+  // that signature back if the reply row that carries it is durable.
+  const f = fixture();
+  f.persistAssistant({
+    id: "m3-signed",
+    content: "",
+    thinking: "",
+    status: "complete",
+    providerReplay: { version: 1, blocks: [], toolCalls: [{ id: "call-1", signature: "sig" }] },
+  });
+  assert.equal(f.enqueued.length, 1);
+  assert.deepEqual(f.enqueued[0].message.providerReplay.toolCalls, [{ id: "call-1", signature: "sig" }]);
+});
+
 test("an empty assistant message with an error payload stays durable", () => {
   const f = fixture();
   f.persistAssistant({
