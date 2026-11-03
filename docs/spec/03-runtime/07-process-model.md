@@ -272,6 +272,15 @@ path, or an update install still enters the normal shutdown sequence above;
 destroying the tray happens during `before-quit` so shutdown cannot be
 intercepted by a stale shell affordance.
 
+`before-quit` alone is not a shutdown signal: the first explicit quit is held
+for the D363 confirmation, and Cancel keeps the app running. Only the shutdown
+handler listens to `before-quit`. Long-lived main-process services that must
+survive a cancelled quit — the scheduled-task runner and the voice service —
+register through `onConfirmedQuit` (`electron/main/bootstrap/confirmed-quit.ts`)
+and stop only once the quit is committed. A service that stopped from its own
+`before-quit` listener stayed stopped after Cancel until the next restart
+(issue #2048).
+
 On macOS the app runs under the regular (foreground) activation policy for its
 whole lifetime, so it is always listed in the Dock and Cmd+Tab: Main never
 transforms the process type, and the always-on-top plugin launcher joins every

@@ -74,6 +74,15 @@ separate cancellation path. `abort()` resolves only after the named active
 operation has completed its cancellation cleanup, so the same runtime can
 accept a follow-up prompt as soon as the abort request returns.
 
+On a headless Host, prompt and approved-plan admission share a per-session
+operation queue with immediate abort and its durable settlement. An abort
+received during launch resolution, turn creation, transcript append, or sidecar
+history restoration waits for that admission before canceling its runtime.
+The abort intent for an already-active turn is recorded before waiting, so a
+racing terminal event cannot report completion instead. A delayed abort keeps
+its original turn identity and cannot cancel a later turn. Other sessions can
+continue admitting work independently.
+
 ### 4.0 Active-turn steering
 
 `steer` validates the current turn identity before changing any state, then
