@@ -10,10 +10,9 @@
 - 卸载默认删除插件数据（D016）
 - MVP (D018) 中不允许使用插件设置机密
 - 运行时目标仍然是单独的进程； M4 可以使用主机管理的沙盒运行时 (D009)
-- 每个扩展都带有 `enabled` 以及激活范围；两个插件和
-  用户自己的 MCP 服务器和技能是全局的或仅限于指定项目 (D192)
-- 用户 MCP 工具使用前缀 `mcp_<serverId>_<toolName>`，与 D015 不相交
-  插件命名空间 (D193)
+- 每个扩展都带有 `enabled` 和激活范围；插件以及用户自己的 MCP 服务器和技能均可设为
+  全局生效或仅在指定项目中生效（D192）
+- 用户 MCP 工具使用前缀 `mcp_<serverId>_<toolName>`，与 D015 的插件命名空间互不重叠（D193）
 
 插件工具默认在 Plan/Goal 中隐藏并拒绝。运行时工具注册可通过非空 `planSafeActions`
 显式加入，只有 `args.action` 位于该列表时才允许执行。有 schema action enum 时会校验取值。
@@ -32,7 +31,7 @@
 
 用一句话来说：
 
-> **PI-Desktop 是主持人；插件是功能包。**
+> **PI-Desktop 是宿主，插件是能力包。**
 
 ## 2. 设计目标
 
@@ -59,25 +58,23 @@
 1. **命令插件**：注册命令面板操作
 2. **面板插件**：打开插件UI面板（iframe / webview沙盒页面）
 3. **AgentTool插件**：为代理提供新的工具
-4. **技能插件**：提供可加载的技能documents/flows
+4. **技能插件**：提供可加载的技能文档 / 工作流
 5. **主题插件**：提供覆盖设计令牌的 CSS 文件
 
 ### 超出 MVP 范围（已实现）
 6. **工作面板视图插件**：在应用的工作面板中停靠隔离的 HTML 视图
 7. **MCP 服务器插件**：声明 stdio 或远程 HTTP MCP 服务器，其工具
    加入代理工具集
-8. **后台服务插件**：让受监督的驻地工人保持活力
-9. **插件间消息总线**：声明主题上的 publish/subscribe
+8. **后台服务插件**：运行由宿主监督的常驻工作进程
+9. **插件间消息总线**：对已声明的主题发布消息或订阅消息
 
 ### 稍后
 - 计费/签名插件
 - 企业私有插件源
 
-**当前实现：** Plugins页面可以浏览和安装包
-来自官方市场提供商。每个插件自动更新是可选的并且
-拒绝静默权限扩展。这不是功能沙盒运行时：
-插件主进程保留原始 Node 内置程序，因此市场包是
-在实施计划的沙箱之前，不受限制的用户特权代码。
+**当前实现：** 插件页面可以浏览并安装官方市场提供的包。自动更新由用户逐插件选择启用，
+且不会静默扩大权限。当前运行时尚未实现能力沙箱：插件入口进程仍可使用原始 Node 内置 API，
+因此在计划中的沙箱落地之前，市场插件包仍是以用户权限运行、不受能力限制的代码。
 
 ## 4. 插件形状
 
@@ -180,7 +177,8 @@ my-plugin/
 ```
 
 ### 字段限制
-- `schemaVersion` 为必填项，且必须为 `1`； Rust 主机 (`crates/host-core/src/plugins.rs`) 会拒绝没有它的清单
+- `schemaVersion` 为必填项，当前格式为 `1`；Rust 宿主（`crates/host-core/src/plugins/manifest.rs`）
+  拒绝缺少该字段的 manifest，但目前不校验它是否等于 `1`（见 manifest 规格 §7）
 - `id`全球独一无二；建议使用反向域名命名
 - `version` 遵循 semver
 - `permissions` 必须显式声明
@@ -199,23 +197,22 @@ Host Main (PI-Desktop)
  └─ Plugin Panel (Renderer iframe/webview)
 ```
 
-### 6.1 主机主
+### 6.1 宿主主进程 {#_6-1-主机主}
 - 安装/卸载/启用/禁用
 - 验证清单
 - 权限管理
 - 路由命令和工具调用
 
-### 6.2 插件运行时（受限）
-插件逻辑在受限环境中运行；它不等同于完整的 Electron 主要权限。
+### 6.2 插件运行时（独立进程） {#_6-2-插件运行时-受限}
+插件无法获得活的 Electron Main 对象。`pi.*` 调用经过宿主代理，但原始 Node 内置 API
+仍以当前用户权限运行；进程隔离不等于操作系统能力沙箱。
 
-**今天实施（ADR 0008）：**每个插件的主模块都在自己的中运行
-`utilityProcess` (`electron/main/plugin-host-process.mjs`) 并到达主机
-仅通过 JSON RPC 到 `electron/main/plugin-runtime.ts` 中的经纪商，其中
-强制执行 API 白名单和权限网关。插件代码永远不会得到
-主机对象并且不能 `require` 主机模块。
+**当前实现（ADR 0008）：** 每个插件主模块运行在独立的 `utilityProcess`
+（`electron/main/plugin-host-process.mjs`）中，通过 JSON RPC 调用
+`electron/main/plugin-runtime.ts` 内的代理。代理执行 API 白名单与权限网关检查，插件代码
+不会拿到宿主对象。导入宿主私有模块不属于受支持的插件契约。
 
-仍然开放：插件进程内的功能沙箱（原始 Node 内置
-可以到达）和 CPU/memory 限制。
+尚未实现：插件进程内的能力沙箱（当前仍可访问原始 Node 内置 API），以及 CPU / 内存限制。
 
 ### 6.3 插件面板用户界面
 - 在专用的沙盒 `BrowserWindow` 中加载插件页面，并为每个插件使用隔离的会话分区
@@ -237,7 +234,10 @@ Host Main (PI-Desktop)
   `top: var(--pi-plugin-titlebar-height, 46px)`，而不是 `top: 0`。
   插件自己的工具栏可以使用 `-webkit-app-region: drag`，其中的交互控件
   使用 `-webkit-app-region: no-drag`。
-- 需要全出血绘制到主机拖拽带下方的面板，可以声明
+- 当前面板页面声明 `<meta name="pi-plugin-chrome" content="v2">`，并使用公开变量自行设置
+  顶部间距。宿主不会再给这些页面加内边距，避免重复安全区域；未声明标记的页面保留历史
+  附加偏移，以兼容旧页面。
+- 需要铺满宿主拖拽带下方区域的面板，可以声明
   `<meta name="pi-plugin-chrome" content="v3">`。主机保留相同的 46px
   胶囊几何尺寸，但只把页面空白区域切成原生拖拽片段；标准控件以及标记
   `data-pi-plugin-no-drag` 的元素会在拖拽图中形成点击空洞，因此元素存在的
@@ -247,13 +247,16 @@ Host Main (PI-Desktop)
   `html`/`body` 视口上。Windows 的经典滚动条会把重复的根级预留显示成插件
   表面右侧额外的空白侧栏。
 - 插件负责自己的标题、工具栏以及所有其他可见面板界面
+- 宿主 preload 为停靠和独立插件面板文档应用全局滚动条契约：宽 6px、无轨道，仅在交互时
+  显示。Browser 访客页中加载的外部页面由页面自行控制样式，宿主不改写其样式。
 - 在 preload 自己拥有的闭合 Shadow DOM 中渲染主机胶囊，防止插件 CSS 重写控件
 - 只能调用插件preload公开的安全API
-- 默认情况下无法访问主机 DOM/主机存储
+- 默认情况下无法访问宿主 DOM 或宿主状态存储（store）
 
 ## 7. 托管 API（可通过插件调用）
 
-命名空间：`pi.plugin.*`
+注入的全局对象为 `pi`，`plugin` 只是其中一个命名空间。完整方法索引见
+[开发指南](/zh-CN/plugin-development#_13-完整-sdk-接口与源码索引)。
 
 ### 基础知识
 - `pi.app.getVersion()`
@@ -263,15 +266,20 @@ Host Main (PI-Desktop)
 - `pi.commands.register(command)`
 - `pi.ui.openPanel(options?)`
 - `pi.ui.showToast(message)`
-- `pi.ui.notify(title, body)`
+- `pi.ui.notify({ title, body })`
 - `pi.ui.getNotificationPermission()`
 - `pi.ui.requestNotificationPermission()`
 - `pi.ui.showNativeNotification({ title, body? })`
 
-### 工作区（需要许可）
+### 工作区元数据与文件范围 {#工作区-需要许可}
+
+元数据读取无需权限；文件操作需要其声明的相应授权。
+
 - `pi.workspace.get()`
+- `pi.projects.list()` —— 只读持久化项目元数据，包含未分组记录
 - `pi.fs.readText(path)`
 - `pi.fs.openDefault(path)` // 使用系统关联应用打开选中的文件
+- `pi.fs.openInBrowser(path)` // 在工作面板 Browser 中打开 HTML 文件
 - `pi.fs.reveal(path)` // 在系统文件管理器中显示选中的文件
 - `pi.fs.writeText(path, content)` // 高风险
 - `pi.fs.glob(pattern)`
@@ -292,13 +300,15 @@ Host Main (PI-Desktop)
 技能以声明方式贡献（`contributes.skills` + `agent.prompt.inject`），
 不由插件调用：主机将目录放在系统提示符中，并且
 模型通过内置 `Skill` 工具 (D174) 按需加载正文；没有命令式 `appendSystemHint` 宿主 API。
+正文加载时，工具结果还标明 `SKILL.md` 所在位置和解析相对引用时应使用的目录；
+技能目录仍只包含元数据。
 
 ### 后台服务（需要 `background.service`）
 - `pi.services.register({ id, start, stop? })`
 - `pi.services.unregister(id)`
 
-登记为本地记账；代理仅在以下情况下启动服务
-清单声明了它并授予了权限，并监督重新启动。
+注册只在本地记录处理器；仅当 manifest 声明该服务且权限已授予时，代理才启动服务，
+并监督崩溃后的重启。
 
 ### 消息总线（需要许可）
 - `pi.bus.publish(topic, payload)` // `bus.publish`
@@ -313,12 +323,10 @@ Host Main (PI-Desktop)
 - `pi.shell.openExternal(url)` // 默认确认
 - `pi.net.fetch(input)`
 
-`pi.ui.notify` 是一个应用内 Toast。本机插件通知使用
-Electron 主进程通知 API 并共享清单 `notify`
-许可。 `requestNotificationPermission()` 返回尽力而为的原生
-权限状态（`granted`、`denied`、`unknown` 或 `unsupported`）之后
-执行简短的本机探测。这些通知不是持久任务
-收件箱记录，单击时不会激活会话。
+`pi.ui.notify` 显示应用内 Toast。插件的原生通知使用 Electron 主进程的通知 API，
+并共用清单中的 `notify` 权限。`requestNotificationPermission()` 执行一次简短的原生探测后，
+尽力返回原生权限状态（`granted`、`denied`、`unknown` 或 `unsupported`）。
+这些通知不是持久化的任务收件箱记录，点击通知也不会激活会话。
 
 ### 明确不直接提供
 - 任意主机内部 Electron 对象
@@ -364,11 +372,9 @@ Electron 主进程通知 API 并共享清单 `notify`
 （`fs.read.workspace` 等）仍然可以加载，并会被降级为最小安全等价物（ADR 0088）。
 
 ### 授权时机
-1.安装或升级审核时显示声明的权限列表
-2. 只有授予的权限才会传递给代理运行时；缺少补助金
-   相应的 `pi.*` 调用失败
-3、用户可以在插件管理页面撤销权限；重新加载是
-   正在运行的插件需要观察更改的授权集
+1. 安装或升级审核时展示声明的权限列表
+2. 仅将已授予权限传给代理运行时；缺少授权会使对应的 `pi.*` 调用失败
+3. 用户可在插件管理页撤销权限；正在运行的插件需重新加载，才能使用变更后的授权集
 
 越界文件访问和危险桌面操作使用宿主原生确认，原始 Node API 仍没有操作系统能力沙盒。
 
@@ -378,8 +384,10 @@ Electron 主进程通知 API 并共享清单 `notify`
 
 - 搜索插件命令
 - 关键词触发
-- 最近使用过
-- 按类别分组
+- 按标题、分类和关键词进行不区分大小写的子串匹配
+
+命令已合并到全局搜索的“命令”区域；当前不提供命令专属的最近使用排序。
+分类参与匹配，但不形成分组展示。详见 [09-plugin-command-palette.md](/zh-CN/spec/07-plugins/09-plugin-command-palette)。
 
 交互流程：
 
@@ -399,16 +407,16 @@ User opens the command palette
 
 插件注册工具后：
 
-1.PluginManager验证schema和权限
-2. ToolHost对工具进行包装
-3、每次调用都先经过权限和审核
+1. PluginManager 验证 schema 和权限
+2. ToolHost 对工具进行包装
+3. 每次调用都先经过权限检查和审计
 4. 实际执行落在插件运行时
 5. 结果在返回给代理之前进行归一化
 
-包裹层必须添加：
+包装层必须添加：
 - 超时
 - 参数验证
-- 误差标准化
+- 错误归一化
 - 审计日志记录
 - 禁用开关
 
@@ -428,9 +436,11 @@ discover → validate → install → enable → load → running
 - `onUnload`
 - `onUninstall`
 
-**今天实现：**运行时（`apps/desktop/electron/main/plugin-runtime.ts`）调用`onLoad`（当load/enable上加载插件时）和`onUnload`（在插件进程中，停止之前，5s预算）；卸载会删除插件注册的命令和工具。其他钩子在 API 中声明，但尚未触发。
+**当前实现：** 运行时（`apps/desktop/electron/main/plugin-runtime.ts`）在加载 / 启用插件时
+调用 `onLoad`，停止插件进程前在其中调用 `onUnload`，预算为 5 秒。卸载运行时会移除插件注册的
+命令和工具。其他 Hook 属于历史规划，目前既不在公开 `PluginModule` 类型中，也不会触发。
 
-**计划：**一旦完整生命周期落地，钩子将按以下顺序触发：安装→启用→加载→（运行）→卸载→禁用→卸载。有关详细序列，请参阅 [05-plugin-lifecycle.md](/zh-CN/spec/07-plugins/05-plugin-lifecycle)。
+**计划：** 完整生命周期落地后，钩子将按以下顺序触发：安装 → 启用 → 加载 →（运行）→ 卸载运行时（unload）→ 禁用 → 卸载插件（uninstall）。详细顺序见 [05-plugin-lifecycle.md](/zh-CN/spec/07-plugins/05-plugin-lifecycle)。
 
 失败政策：
 - 加载失败：标记错误，不影响主机启动
@@ -466,20 +476,15 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 
 ### 12.1 激活范围控制
 
-一个控制器可用于所有三种类型 (D192)。这是一个三段轨道有序
-通过扩大影响范围 - **关闭 → 这些项目 → 无处不在** - 如此扩大和
-缩小是在相反方向上相同的手势，加上一个摘要芯片
-当中间段处于活动状态时打开项目选择器。
+同一控件适用于三类扩展（D192）。三个分段按生效范围递增排列：
+**关闭 → 指定项目 → 所有项目**。扩大和缩小范围使用方向相反的相同手势；
+中间分段生效时，可点击摘要标签打开项目选择器。
 
-控制编码规则：
-- 选择“这些项目”，没有任何选择，但种子当前开放
-  项目，所以常见情况是一键点击。
-- 切换到“无处不在”或“关闭”会保留项目列表，因此可以返回
-  恢复它。
-- 已确定范围但不再出现在最近列表中的项目仍会出现在
-  选择器，否则范围将永远无法撤消。
-- 具有空列表的项目范围扩展会发出警告，而不是默默执行
-  什么也没有。
+控件遵循以下规则：
+- 选择“指定项目”且尚未选择任何项目时，默认加入当前打开的项目，因此常见情况只需一次点击。
+- 切换到“所有项目”或“关闭”会保留项目列表，切回“指定项目”时可恢复原有选择。
+- 已在生效范围内、但不再出现在最近项目列表中的项目仍会显示在选择器中，确保用户能取消选择。
+- 选择项目范围却未包含任何项目时，显示明确警告，避免扩展悄无声息地不生效。
 
 ### 12.2 设置 > 智能体中的 MCP 管理
 
@@ -488,7 +493,7 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 - 新增和编辑复用 `McpEditorSheet`，包含 stdio/HTTP 卡片、环境变量/请求头行、
   校验、重名拦截和测试连接。
 - 启用状态存于应用本地；运行时过滤关闭项前，项目记录先遮蔽全局记录。
-- 用户 MCP 工具在传输断开或保存的连接被编辑后仍可路由。下一次调用会
+- 此前已向模型公开的用户 MCP 工具，在传输断开或保存的连接被编辑后仍可路由。下一次调用会
   对当前保存的服务器重新握手，并在派发前用新列表校验该工具；不必再做
   一次 `ToolSearch`。未知名称不会触发发现。
 - 恢复前、后都会检查启用状态和项目作用域。删除服务器或销毁运行时会丢掉
@@ -497,26 +502,31 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
   而不是每次调用都反复连接。已移除的工具返回 `TOOL_NOT_FOUND`。恢复从不
   重放失败的 `tools/call`，因为那次调用可能已经产生过副作用。
 
-- Streamable HTTP `202 Accepted` acknowledgements for notifications and client
-  responses are not JSON-RPC replies. Any acknowledgement body is discarded,
-  including plain-text `Accepted`; ordinary request replies still follow the
-  JSON/SSE parsing and response-size limits.
-- A streamable-HTTP server may write its JSON-RPC reply and keep the SSE stream
-  open afterwards — keep-alives, or a session it ends on its own schedule. Each
-  `text/event-stream` event is dispatched as it arrives, so a handshake or a
-  `tools/list` page completes on its reply instead of on the end of the stream.
-  The request budget still bounds the exchange: a server that never replies
-  still times out, and a stream left open past its request is aborted.
-- The MCP row shows “Authorization required” only when runtime status explicitly
-  reports `authRequired`. Missing credentials, an untested connection, and
-  non-authentication failures do not imply OAuth is required. A stored OAuth
-  credential does not hide a subsequent authentication failure. Manual OAuth
-  authorization remains available from the HTTP server menu.
+- Streamable HTTP 对通知和客户端响应返回的 `202 Accepted` 确认不是 JSON-RPC 回复。
+  所有确认正文（包括纯文本 `Accepted`）都会丢弃；普通请求的回复仍遵循 JSON/SSE 解析
+  和响应大小限制。
+- Streamable HTTP 服务器可以先返回 JSON-RPC 回复，再继续保持 SSE 流开启，用于保活或
+  由服务器自行安排结束的会话。每个 `text/event-stream` 事件到达即分发，因此握手或
+  `tools/list` 分页在收到对应回复时就完成，无需等待流结束。交互仍受请求预算约束：
+  从不回复的服务器会超时，超过请求存活期仍未关闭的流会被中止。
+- MCP 条目仅在运行时明确报告 `authRequired` 时显示“需要授权”。缺少凭据、连接尚未测试
+  或非认证失败都不代表必须 OAuth。已保存 OAuth 凭据也不能掩盖后续认证失败。
+  HTTP 服务器菜单仍提供手动 OAuth 授权。
 
 ### 12.3 设置 > 智能体中的技能管理
 
 - 技能页面使用 `~/.agents/skills` 和 `<project>/.agents/skills` 下的全局/项目栏。
-- 每栏只有一个原生单文件“导入”操作；主机会物理复制文件并扫描 frontmatter。
+- 页面在用户自有的全局和项目分组上方，单列**内置技能**分组。每项都有默认开启的全局启用
+  开关，用户无需编辑或删除打包文档就能停用它。
+- 停用内置技能后，它不再出现在有效会话目录或输入框的 `/skill:<id>` 条目中。过时的直接
+  `Skill` 加载会报告技能已停用。激活状态保存在独立的
+  `<data>/agent-capabilities/skill-builtins.json` 中，不会被用户文档扫描时的清理过程移除。
+- 内置技能激活只控制技能目录及按需加载文档，不禁用或注销与技能关联的 Agent 工具；
+  工具的启用状态独立管理。
+- 每栏有原生单文件导入和文件夹导入操作，后者可一次选择多个 `<name>/SKILL.md` 文件夹。
+  宿主逐个独立导入所选文件夹，保留同级资源；部分失败会报告，但不回滚已成功导入项。
+  若上次成功导入源目录的父目录仍存在，下次文件夹选择器从该父目录打开；取消或全部失败
+  不改变这个本机偏好值。
 - 导入或扫描 `SKILL.md` 时，若 frontmatter 名称不是 ASCII slug，则用父目录名作为
   id；折叠 YAML 描述仍进入目录。可读文档不会因为标题是非 ASCII 而被丢掉。
 - 描述作为目录摘要，模型调用 `Skill` 时才读取正文 (D174、D194)。
@@ -525,9 +535,9 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 
 提供：
 
-1.插件模板：`npm create pi-desktop-plugin`
-2.清单模式验证器
-3.开发者热重载（watch目录）
+1. 插件模板：`npm create pi-desktop-plugin`
+2. 清单 schema 验证器
+3. 开发者热重载（监听目录变化）
 4. 插件示例：
  - 你好面板
  - 工作区欢迎工具
@@ -548,7 +558,7 @@ Plugins → Load Development Plugin → choose directory
 
 | 生态系统对象 | 关系 |
 |---|---|
-| 圆周率技能 | 可以通过技能插件分发/管理 |
+| pi 技能 | 可以通过技能插件分发/管理 |
 | pi 扩展 | 由插件以 `contributes.agentExtensions` 加 `agent.extension` 授权贡献；pi CLI 扩展可导入为开发插件（D387 / D388、ADR 0214 / 0215、[16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions)） |
 | MCP | 插件在 `contributes.mcpServers` 中声明 MCP 服务器；他们的工具加入代理的工具集中 |
 | Agent 工具 | 最重要的插件扩展界面之一 |
@@ -559,12 +569,12 @@ Plugins → Load Development Plugin → choose directory
 
 ## 15. 安全基线（不可协商）
 
-1.插件默认没有权限
-2.插件无法直接访问主机渲染器状态
-3.插件默认无法读写工作区之外的文件
-4.插件网络功能默认关闭
-5.插件更新/安装需要完整性验证（稍后签名）
-6.主机核心进程不执行插件注入的任意Electron主代码
+1. 插件默认没有权限
+2. 插件无法直接访问宿主渲染器状态
+3. 插件默认无法读写工作区之外的文件
+4. 插件网络功能默认关闭
+5. 插件更新 / 安装需要完整性验证（签名支持后续提供）
+6. 宿主核心进程不执行插件注入的任意 Electron 主进程代码
 
 ## 16. 分阶段推出
 
@@ -582,7 +592,7 @@ Plugins → Load Development Plugin → choose directory
 - 插件设置存储
 
 ### P2
-- 压缩安装
+- ZIP 包安装
 - 插件日志中心
 - 开发人员热重载
 - 更多官方示例
@@ -599,7 +609,7 @@ Plugins → Load Development Plugin → choose directory
 
 - 插件目录
 - 清单
-- 插件管理器界面
+- PluginManager 接口
 - 至少一个内置/示例插件路径
 
 即：
@@ -610,10 +620,10 @@ Plugins → Load Development Plugin → choose directory
 
 1. 用户可以从本地目录加载插件
 2. 插件命令出现在命令面板中
-3.插件可以打开自己的面板页面
-4.插件可以注册低风险代理工具并成功调用
+3. 插件可以打开自己的面板页面
+4. 插件可以注册低风险 Agent 工具并成功调用
 5. 禁用插件会立即停用其命令和工具
-6.插件崩溃不会导致主机退出
+6. 插件崩溃不会导致宿主退出
 
 ## 19. 示例
 
