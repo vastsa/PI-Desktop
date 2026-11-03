@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Use seu próprio vídeo como animação de inicialização: coloque um na pasta \"startup\" e a interface aparece com um fade ao terminar.",
       "Plugins podem listar projetos salvos e suas pastas sem trocar a sessão ativa.",
       "O motor Pi 1.3.0 melhora a validação de chamadas de ferramentas e a reprodução segura do histórico.",
       "Ative as visualizações inline opcionais em Configurações → IA para ver cartões interativos isolados nas conversas.",

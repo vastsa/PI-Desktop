@@ -168,6 +168,16 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     created, so the row shows a restart hint while the stored value differs from
     the surface this process launched with instead of pretending to change the
     live window. Other platforms do not render the row.
+  - **Startup animation** (D679 / ADR 0338): one switch, plus an **End early
+    when ready** sub-switch gated by it. The animation itself is a file, not a
+    value, so the row's other job is making the folder findable: its detail line
+    names the video the next launch would play — or says none was found — and
+    carries the action that opens `<dataDir>/startup/`, creating it on the way.
+    Both preferences persist under `AppSettings.startupAnimation` (`enabled`
+    absent means on, so dropping a file in is sufficient; `skipWhenReady` absent
+    plays the video out) and are read before the main window is created, so like
+    the row above they apply on the next launch. The status is re-scanned per
+    open, because a user who just dropped a file in has not restarted yet.
   - **Auto language detection** resolves the OS locale through the main process
     (`app.getLocale()`) rather than the renderer's `navigator.language`, and the
     Auto option shows the detected language inline (e.g. "Currently 简体中文")
