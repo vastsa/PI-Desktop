@@ -13256,7 +13256,7 @@ describe("DesktopAgentRuntime delegation wait settlement safety", () => {
     }
   });
 
-  it("lets user Stop interrupt auto-resume even if a delegate ignores abort", async () => {
+  it("interrupts auto-resume but keeps Stop pending until an uncooperative delegate retires", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     subagentRuns.calls.length = 0;
     subagentRuns.instances.length = 0;
@@ -13271,9 +13271,16 @@ describe("DesktopAgentRuntime delegation wait settlement safety", () => {
       const resume = (runtime as any).resumeAfterDelegations();
       await Promise.resolve();
 
-      await runtime.abort();
+      let acknowledged = false;
+      const stopping = runtime.abort().then(() => { acknowledged = true; });
       await resume;
+      expect(acknowledged).toBe(false);
+      expect(runtime.getStatus().isRunning).toBe(true);
+      subagentRuns.resolveRun!({ agentName: "explorer", status: "aborted", report: "", turns: 0, toolCalls: 0 });
+      await stopping;
+      expect(runtime.getStatus().isRunning).toBe(false);
     } finally {
+      (subagentRuns.resolveRun as ((result: unknown) => void) | undefined)?.({ agentName: "explorer", status: "aborted", report: "", turns: 0, toolCalls: 0 });
       subagentRuns.ignoreAbort = false;
       subagentRuns.deferred = false;
       await runtime.dispose();
