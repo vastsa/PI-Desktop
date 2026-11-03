@@ -33,6 +33,8 @@ export const SESSION_TRANSCRIPT_PAGE_SIZE = 100;
 export const SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
 
 export type SubmittedComposerDraft = {
+  /** Explicit Goal authorization is preserved by Stop, never prompt-retracted. */
+  goalStart?: boolean;
   messageCountBeforeSend: number;
   draft: ComposerDraftSnapshot;
   abortResolution?: Promise<boolean>;

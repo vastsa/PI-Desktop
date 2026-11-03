@@ -156,3 +156,13 @@ describe("ApprovalBroker", () => {
     expect(broker.list("s1")).toHaveLength(1);
   });
 });
+
+
+it("owner Goal pause denies only pending tools for its session and remembers cancellation", async () => {
+  const port = new FakeApprovalPort(), broker = new ApprovalBroker(port, new FixedClock());
+  port.pending = [{ ...toolRequest, createdAt: "" }, { ...toolRequest, requestId: "foreign", sessionId: "other", createdAt: "" }];
+  await broker.denyPendingToolsForPause("s1", 4);
+  expect(port.tool).toEqual([{ requestId: "req_1", decision: "deny" }]);
+  expect(broker.result("req_1")).toMatchObject({ status: "canceled", decision: "deny", revision: 4 });
+  expect(broker.result("foreign")).toBeUndefined();
+});

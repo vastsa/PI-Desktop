@@ -16,6 +16,7 @@ pub use history_mutations::{
     activate_message_revision_canonical, delete_message, retract_pending_prompt,
 };
 mod model_system;
+pub(crate) mod turn_execution;
 mod usage;
 pub use usage::record_usage;
 
@@ -54,8 +55,8 @@ pub fn is_valid_mode(mode: &str) -> bool {
     MODES.contains(&mode)
 }
 
-/// Plan and Goal negotiate a contract before executing (D198), so they share one
-/// tool allowlist and one hard deny. Agent is the only executing mode.
+/// Legacy contract classification, also used to forbid scheduled automation.
+/// Operational tool hard denial applies only to Plan; Goal is Agent-capable.
 pub fn is_contract_mode(mode: &str) -> bool {
     matches!(mode, "plan" | "goal")
 }

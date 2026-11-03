@@ -9,6 +9,8 @@ import {
   type AgentStatus,
   type AskToolResolution,
   type Risk,
+  type GoalTurnContext,
+  type Mode,
   type UiMessage,
 } from "@pi-desktop/shared";
 
@@ -72,6 +74,8 @@ export type RuntimeServiceOptions = {
     projectPath?: string;
   }) => Promise<{ content: string; command?: string } | null>;
   checkpointIntervalMs?: number;
+  /** Persist the autonomous pause before stopping the execution engine. */
+  pauseGoal?: (sessionId: string) => Promise<void>;
 };
 
 type FinishTurnOptions = { turnId: string; recoverInflight?: boolean };
@@ -313,7 +317,14 @@ export class RuntimeService implements RuntimePort {
     const launch = await this.options.launch.resolve(sessionId, session, settings ?? {});
     sidecar.setProjectInstructionRoot(sessionId, launch.projectPath);
 
-    const turnId = await this.beginTurn(sessionId, launch.providerId, launch.modelId, sessionMessage?.origin.messageId);
+    const turnId = await this.beginTurn(sessionId, launch.providerId, launch.modelId, sessionMessage?.origin.messageId, request.goalTurn);
+    try {
+      const execution = await host.call<{ mode: Mode }>("session.getTurnMode", { sessionId, turnId });
+      launch.sidecarParams.mode = execution.mode;
+    } catch (error) {
+      await this.finishTurn(sessionId, "error", errorCodeOf(error), { turnId });
+      throw error;
+    }
 
     let content = sessionMessage?.content ?? request.content;
     let command: string | undefined;
@@ -338,6 +349,8 @@ export class RuntimeService implements RuntimePort {
       status: "complete",
       ...(command ? { command } : {}),
     };
+    const internalContinuation = request.goalTurn?.provenance === "goal-continuation";
+    if (!internalContinuation) {
     try {
       await host.call("session.appendMessage", { sessionId, message: userMessage, turnId });
     } catch (error) {
@@ -349,6 +362,7 @@ export class RuntimeService implements RuntimePort {
     this.emit({ sessionId, turnId, ts: this.now(), event: { type: "message_start", message: userMessage } });
     this.emit({ sessionId, turnId, ts: this.now(), event: { type: "message_end", message: userMessage } });
 
+    }
     let result: { accepted: boolean; turnId: string };
     try {
       result = await sidecar.call<{ accepted: boolean; turnId: string }>("agent.prompt", {
@@ -359,7 +373,8 @@ export class RuntimeService implements RuntimePort {
         content,
         ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
         attachments: [],
-        userMessageId: userMessage.id,
+        ...(internalContinuation ? {} : { userMessageId: userMessage.id }),
+        ...(request.goalTurn ? { goalTurn: request.goalTurn } : {}),
         // Per-turn permission ceiling override (R1 leftover; spec §7.3). Only
         // forwarded when the effective mode differs from the session's stored
         // mode — a widening request has already been refused upstream so any
@@ -414,8 +429,15 @@ export class RuntimeService implements RuntimePort {
     }
   }
 
+  async requestGoalPause(sessionId: string, turnId: string): Promise<{ requested: boolean }> {
+    if (this.activeTurns.get(sessionId) !== turnId) return { requested: false };
+    return this.requireSidecar().call("agent.pauseGoal", { sessionId, expectedTurnId: turnId });
+  }
+
   async stop(sessionId: string): Promise<{ requested: boolean }> {
     const sidecar = this.requireSidecar();
+    try { await this.options.pauseGoal?.(sessionId); }
+    catch (error) { await sidecar.call("agent.abort", { sessionId }); throw error; }
     this.options.log("info", "prompt graceful stop requested", { sessionId });
     // The runtime owns the boundary decision: agent_end arrives after the
     // current reply/tool batch completes and finishes it as a completed turn.
@@ -423,7 +445,7 @@ export class RuntimeService implements RuntimePort {
     return { requested: result?.requested ?? false };
   }
 
-  async abort(sessionId: string, turnId?: string): Promise<void> {
+  async abort(sessionId: string, turnId?: string, reason?: "goal-replaced"): Promise<void> {
     const id = sessionId.trim();
     const requestedTurnId = turnId ?? this.activeTurns.get(id);
     // Preserve an already-running turn's abort reason before waiting for the
@@ -436,6 +458,8 @@ export class RuntimeService implements RuntimePort {
       const abortedTurnId = this.activeTurns.get(id);
       if (requestedTurnId && abortedTurnId !== requestedTurnId) return;
       const sidecar = this.requireSidecar();
+      try { if (reason !== "goal-replaced") await this.options.pauseGoal?.(id); }
+      catch (error) { await sidecar.call("agent.abort", { sessionId: id }); throw error; }
       this.options.log("info", "prompt aborted", { sessionId: id });
       this.lockAbortReason(id, abortedTurnId);
       try {
@@ -529,12 +553,13 @@ export class RuntimeService implements RuntimePort {
   }
 
   /** Open a durable turn row and take ownership of the session for it. */
-  async beginTurn(sessionId: string, providerId: string, modelId: string, sessionMessageId?: string): Promise<string> {
+  async beginTurn(sessionId: string, providerId: string, modelId: string, sessionMessageId?: string, goalTurn?: GoalTurnContext): Promise<string> {
     const turn = await this.requireHost().call<{ turnId?: string }>("session.beginTurn", {
       sessionId,
       providerId,
       modelId,
       ...(sessionMessageId ? { sessionMessageId } : {}),
+      ...(goalTurn ? { goalTurn } : {}),
     });
     const turnId = String(turn?.turnId ?? "").trim();
     if (!turnId) throw new Error("session.beginTurn returned no turn");

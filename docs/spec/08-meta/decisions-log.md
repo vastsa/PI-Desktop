@@ -10,6 +10,7 @@ This log freezes previously open questions into concrete decisions.
 
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
+| autonomous-goal-lifecycle | User-owned autonomous Goal | **Supersedes D198 for new goals: direct user send, default 20 execution turns, optional soft token cap, six durable states, shared admission/CAS, ordinary Agent permissions, bound model reports, no scheduled activation or restart replay. Schema v28 adds independent goals/turns; legacy approval read/resolve/execute remains unchanged and never autoauthorizes. See [ADR](../../adr/autonomous-goal-lifecycle.md).** | Separate user authority from legacy approvals; model reports are not independent verification. |
 | D001 | Electron ↔ Rust transport | **Rust sidecar + stdio JSON-RPC (NDJSON)** | Simple isolation, debuggable, replaceable later |
 | D002 | SQLite ownership | **Rust host-core owns SQLite exclusively** | Single writer, clearer privilege boundary |
 | D003 | Default mode | **Agent** | Product is an agent desktop, not pure chat |
@@ -1532,6 +1533,9 @@ D193, and D194.
   `03-runtime/04-data-storage.md`, and E2E-102.
 
 ## 2026-08-06 — Goal mode joins Plan as a contract mode
+
+Historical: superseded for new Goal creation by `autonomous-goal-lifecycle`.
+The legacy approval read/resolve/execute contract is retained, not autoauthorized.
 
 - Sessions now persist one of three operating modes: `agent`, `plan`, or
   `goal`. The Composer-left chip cycles Agent → Plan → Goal → Agent, and

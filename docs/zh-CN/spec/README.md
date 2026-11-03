@@ -1,5 +1,11 @@
 # PI-Desktop 规格
 
+> Goal approval sections in this translation describe the legacy workflow. For
+> current autonomous Goal behavior and schema v28, see the
+> [English lifecycle](../../spec/03-runtime/10-session-state-machine.md#autonomous-goal-lifecycle)
+> and [user guide](../../autonomous-goals.md). Legacy approvals are retained, not
+> migrated or automatically authorized.
+
 > **翻译说明：** 本页是与 [英文源规格](/spec/README) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 

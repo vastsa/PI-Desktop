@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 
 import { AgentHost, type ApprovalPort } from "@pi-desktop/agent-host";
 import {
+  GoalCoordinator,
   AgentSidecar,
   HostProcess,
   PlanExecutionDispatcher,
@@ -57,7 +58,8 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
   const getSidecar = () => state.sidecar;
 
   const launch = createHeadlessLaunchResolver({ getHost, dataDir: config.dataDir, log: (level, message, data) => log(level, message, data) });
-  const runtime = new RuntimeService({ getHost, getSidecar, launch, log });
+  const goals = new GoalCoordinator(getHost);
+  const runtime: RuntimeService = new RuntimeService({ getHost, getSidecar, launch, log, pauseGoal: (id) => agentHost.pauseGoal(id) });
 
   const approvals: ApprovalPort = {
     async resolveTool(requestId, decision) {
@@ -87,6 +89,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
   };
   const agentHost = new AgentHost({
     runtime,
+    goals,
     sessions: createHostSessionPort(getHost),
     approvals,
     queueStore: createHostQueueStore(getHost),
@@ -246,6 +249,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     ...createHostOperations({
       getHost,
       runtime,
+      stopGoal: async (id) => { try { await agentHost.pauseGoal(id); } finally { await runtime.abort(id); } },
       browseRoot: config.browseRoot,
       dataDir: config.dataDir,
       disposeSession: async (sessionId) => {
