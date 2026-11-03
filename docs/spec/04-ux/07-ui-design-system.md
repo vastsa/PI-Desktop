@@ -724,6 +724,18 @@ CSS custom properties on `:root` (D146):
 Interactive surfaces should reference these variables instead of hard-coded
 millisecond literals when practical.
 
+One duration sits outside this scale, and only one:
+
+| Token | CSS variable | Duration | Usage |
+|---|---|---|---|
+| `startup-reveal` | `--motion-startup-reveal` | 1000ms | Boot-animation reveal only (§8.3.1, D679) |
+
+The scale above is sized for in-flow UI feedback — a control answering a
+click. The reveal is the end of a cinematic the user supplied, so it is sized
+in that register instead. It is used by `.startup-animation` and nothing else,
+and it must stay matched to `STARTUP_ANIMATION_REVEAL_MS` in
+`@pi-desktop/shared`. New surfaces do not reference it.
+
 ### 8.2 Easing
 
 CSS custom properties on `:root` (D146):
@@ -762,6 +774,32 @@ plain status text:
   cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill
 
 This is boot-state feedback, not decorative chrome.
+
+#### 8.3.1 User-supplied startup animation (D679 / ADR 0338)
+
+A video in `<dataDir>/startup/` replaces the splash above for that launch
+(`StartupAnimation`, `data-testid="startup-animation"`). Without such a file
+the splash is unchanged, which is what every existing installation gets.
+
+- One layer, opaque `#000` for its whole life: the video sits on it, and once
+  the video is gone the same black is the mask the shell fades in from, so there
+  is no seam between the last frame and the mask. Literal black rather than
+  `--ds-bg-primary` so a video's own letterboxing and fades meet the same colour
+  under either theme.
+- `object-fit: cover`; the frame is filled and the edges are cropped, so the
+  settings copy tells the user to keep the subject centred.
+- The element is inert and silent: `muted`, `playsInline`, no controls, no
+  picture-in-picture, not focusable, `aria-hidden`. Accessible status copy comes
+  from `app.starting`, as the splash's does.
+- Sequence: play → opaque black hold until `ready` → `--motion-startup-reveal`
+  (1000ms) opacity fade with `pointer-events: none`, so the shell takes input
+  for the whole fade rather than after it.
+- A hold longer than 3s adds the splash's indeterminate bar, so an opaque mask
+  is not mistaken for a hang.
+- Reduced motion does not play it at all — a shorter cinematic is still a
+  cinematic, and the OS request is the opt-out.
+- Unlike the glass splash, this surface is opaque, so it needs no macOS rule
+  hiding the mounted shell beneath it.
 
 ### 8.4 Overlay / floating surface enter
 

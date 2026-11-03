@@ -1,4 +1,4 @@
-# ADR 0338: Explicit actions on reviewed files
+# ADR 0339: Explicit actions on reviewed files
 
 - Status: Accepted
 - Date: 2026-10-30

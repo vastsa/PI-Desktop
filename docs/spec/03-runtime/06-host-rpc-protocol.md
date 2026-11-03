@@ -1567,4 +1567,4 @@ links and the current file are checked before one restoration; conflicts leave
 both content and states untouched. Success persists each affected review state.
 The old `review.rollback` contract remains unchanged. Both rollback methods
 participate in Host file-resource exclusion and re-resolve the session root after
-admission. Both new operations reject remote workspaces. See [ADR 0338](../../adr/0338-explicit-reviewed-file-actions.md).
+admission. Both new operations reject remote workspaces. See [ADR 0339](../../adr/0339-explicit-reviewed-file-actions.md).
