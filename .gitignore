@@ -78,6 +78,12 @@ worktrees
 !/apps/desktop/resources/plugins/pi.browser/
 !/apps/desktop/resources/plugins/pi.file-manager/
 !/apps/desktop/resources/plugins/pi.prompt-enhancement/
+# The plugin host writes a `package.json` into a plugin folder that ships none,
+# so Node resolves the plugin's submodules as CommonJS
+# (`plugin-host-process.mjs`, `ensureCommonJsPackage`). The released
+# `pi.prompt-enhancement` folder has no such file; the tracked copy stays
+# exactly the released file set.
+/apps/desktop/resources/plugins/pi.prompt-enhancement/package.json
 /.plugin-packages/
 
 # Python install artefacts
