@@ -1395,6 +1395,21 @@ adapter returned empty output), `WORKSPACE_CHANGED`, `OPEN_FAILED`,
 `REVEAL_FAILED`, and `CONNECT_FAILED`. Branch on the codes you handle and treat
 the rest as a generic failure.
 
+Additional host-originated errors:
+
+| Code | Trigger and meaning |
+|---|---|
+| `PLUGIN_INVALID_RESULT` | `onComposerTransform` returned a non-string, or the host received a string whose JavaScript `length` exceeds 100,000 UTF-16 code units. Return a string within that bound. |
+| `PLUGIN_TOOL_ABORTED` | A plugin tool invocation is cancelled, finished, unknown/expired, or no longer belongs to the calling plugin process. Pending and late host calls in that invocation are refused. An explicit Error abort reason may retain its own code. |
+| `SPEECH_PROTOCOL_UNSUPPORTED` | `runSpeechAdapter` found no registered adapter for the binding's protocol. An invalid adapter reply instead uses `INVALID_ARGUMENT`; empty text/audio uses `PROVIDER_ERROR`. The code is also documented in the [shared registry](../03-runtime/08-error-codes.md) and [speech specification](../03-runtime/20-speech.md). |
+
+Implementation evidence: `apps/desktop/electron/main/plugin-runtime.ts`
+(`MAX_COMPOSER_TRANSFORM_TEXT_LENGTH`, `runComposerTransform`,
+`runSpeechAdapter`, `sendToChild`), `plugin-tool-invocations.ts`
+(`run`, `assertActive`, `finish`) and `plugin-host-process.mjs`
+(`toolAbortedError`, `cancelInvocation`, `composer.transform`) in the same
+directory. The codes extend the open set above; no new SDK enum is introduced.
+
 ## 5. Events (host -> plugin)
 
 ```ts
