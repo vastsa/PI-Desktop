@@ -57,6 +57,7 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
         if (method === "skills.disabledBuiltins") return { disabled: disabledSkills };
         if (method === "skills.active") return { skills: [] };
         if (method === "mcp.active") return { servers: [] };
+        if (method === "memory.entries") return { entries: [] };
         if (method === "agents.active") return { subagents: [] };
         if (method === "agents.disabledBuiltins") return { disabled: [] };
         if (method === "secrets.getForRuntime") {
@@ -146,16 +147,28 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
     assert.equal("jevApiKey" in plan.sidecarParams, false);
     assert.deepEqual(keyReads, []);
 
+    // Only the Jev failure belongs to this assertion: every launch above also
+    // logged its memory snapshot, and this test is about the secret read.
+    logs.length = 0;
     failJevSecretRead = true;
     const unavailable = await launch("agent", true);
     assert.equal("jevApiKey" in unavailable.sidecarParams, false);
     assert.equal(JSON.stringify(logs).includes("private fixture detail"), false);
-    assert.deepEqual(logs, [[
-      "session",
-      "warn",
-      "Jev API key could not be loaded",
-      { sessionId: "session-fixture" },
-    ]]);
+    assert.deepEqual(logs, [
+      // The launch always reports its memory snapshot first, empty or not.
+      [
+        "runtime",
+        "info",
+        "memory snapshot loaded",
+        { sessionId: "session-fixture", data: { memory: 0, user: 0 } },
+      ],
+      [
+        "session",
+        "warn",
+        "Jev API key could not be loaded",
+        { sessionId: "session-fixture" },
+      ],
+    ]);
   } finally {
     if (priorHome === undefined) delete process.env.HOME;
     else process.env.HOME = priorHome;

@@ -136,10 +136,11 @@ test("the sync card reports each phase with a readable fraction", () => {
   assert.match(syncPage, /settings\.configSync\.progressTitle/);
   assert.match(syncPage, /settings\.configSync\.progress\.objects/);
   assert.match(syncPage, /settings\.configSync\.progress\.bytes/);
-  assert.match(
-    progressModel,
-    /import type \{ ConfigSyncPhase, ConfigSyncProgress \} from "@pi-desktop\/shared";/,
-  );
+  // The model must keep pulling both shared types; the import also carries the
+  // shared byte formatter, so assert the binding rather than one exact line.
+  assert.match(progressModel, /import \{[^}]*\} from "@pi-desktop\/shared";/);
+  assert.match(progressModel, /type ConfigSyncPhase/);
+  assert.match(progressModel, /type ConfigSyncProgress/);
   assert.match(progressModel, /^export const CONFIG_SYNC_PHASE_KEYS/m);
   for (const phase of [
     "capture",
