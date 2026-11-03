@@ -6,6 +6,7 @@ export const zhCNEntries: ChangelogEntry[] = [
     date: "2026-10-24",
     highlights: [
       "在 README 预览和聊天中，将 Mermaid 图表复制为 SVG 文本或导出为独立的 SVG 文件。",
+      "把视频放进 startup 文件夹即可当作启动动画；播放结束后主界面渐显。",
       "插件可列出已保存的项目及其文件夹，无需切换当前会话。",
       "升级至 Pi 1.3.0 引擎，改进工具调用校验与历史回放安全性。",
       "可在设置 → AI 中启用内联可视化，在对话中查看交互式沙箱卡片。",
