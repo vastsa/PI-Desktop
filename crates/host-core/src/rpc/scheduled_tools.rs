@@ -49,11 +49,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     let summary = sessions::session_summary(&st.db, &p.session_id)
         .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
         .ok_or_else(|| rpc_err(1007, "session not found", "SESSION_NOT_FOUND"))?;
-    if sessions::session_mode(&st.db, &p.session_id)
-        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-        .as_deref()
-        != Some("agent")
-    {
+    if super::turn_execution_rpc::mode(st, &p.session_id, p.turn_id.as_deref())? != "agent" {
         return Err(rpc_err(
             1002,
             "scheduled tools require Agent mode",

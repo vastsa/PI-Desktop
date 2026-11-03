@@ -85,6 +85,12 @@ function isVisibleMessage(message: UiMessage): boolean {
   );
 }
 
+/** A durable root turn id; absent/empty ids retain legacy grouping behavior. */
+function rootTurnId(message: UiMessage): string | undefined {
+  const turnId = (message as UiMessage & { turnId?: unknown }).turnId;
+  return typeof turnId === "string" && turnId.trim() ? turnId : undefined;
+}
+
 /** A `Task` start call belongs on the delegation card; parent thinking, workspace
  * tools, and lifecycle rows (TaskWait/TaskList/TaskStop) do not (D319). */
 function isDelegationStartActivity(item: AssistantActivityItem): boolean {
@@ -308,7 +314,15 @@ export function buildTranscriptEntries(
     }
   };
 
+  let lastRootTurnId: string | undefined;
   for (const message of visible) {
+    const currentRootTurnId = rootTurnId(message);
+    if (currentRootTurnId) {
+      if (lastRootTurnId && currentRootTurnId !== lastRootTurnId) {
+        turn = undefined;
+      }
+      lastRootTurnId = currentRootTurnId;
+    }
     appendMessage(message);
     const marks = anchored.get(message.id);
     if (!marks) continue;

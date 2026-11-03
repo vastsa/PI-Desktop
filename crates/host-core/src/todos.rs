@@ -77,7 +77,7 @@ pub struct NormalizedTodos {
 pub enum TodoRefusal {
     /// Unknown session, or a row already marked deleted.
     SessionNotFound,
-    /// The durable mode is not `agent` (Plan/Goal never own a checklist).
+    /// The durable mode is Plan (Agent and Goal may own a checklist).
     SessionNotAgent,
     /// The call carried no `turnId`.
     TurnMissing,
@@ -321,7 +321,10 @@ fn replace_tx(
     if deleted_at.is_some() {
         return Err(TodoWriteError::Refused(TodoRefusal::SessionNotFound));
     }
-    if crate::sessions::normalize_mode(Some(&mode)) != "agent" {
+    let mode = crate::sessions::turn_execution::execution_mode(tx, session_id, turn_id)
+        .map_err(|_| TodoWriteError::Refused(TodoRefusal::TurnNotRunning))?
+        .unwrap_or(mode);
+    if crate::sessions::normalize_mode(Some(&mode)) == "plan" {
         return Err(TodoWriteError::Refused(TodoRefusal::SessionNotAgent));
     }
 
@@ -665,7 +668,7 @@ mod tests {
             refusal(replace_for_turn(&db, "missing", Some(&turn), &payload).unwrap_err()),
             TodoRefusal::SessionNotFound
         );
-        // Plan and Goal never write a checklist.
+        // Plan never writes a checklist; Goal uses Agent capabilities.
         for mode in ["plan", "goal"] {
             let planned = sessions::create_session(
                 &db,
@@ -677,12 +680,12 @@ mod tests {
             )
             .unwrap();
             let planned_turn = sessions::begin_turn(&db, &planned.id, None, None).unwrap();
-            assert_eq!(
-                refusal(
-                    replace_for_turn(&db, &planned.id, Some(&planned_turn), &payload).unwrap_err()
-                ),
-                TodoRefusal::SessionNotAgent
-            );
+            let written = replace_for_turn(&db, &planned.id, Some(&planned_turn), &payload);
+            if mode == "plan" {
+                assert_eq!(refusal(written.unwrap_err()), TodoRefusal::SessionNotAgent);
+            } else {
+                assert_eq!(written.unwrap().todos.len(), 1);
+            }
         }
         // Missing, unknown, foreign, and ended turns are all refusals.
         assert_eq!(

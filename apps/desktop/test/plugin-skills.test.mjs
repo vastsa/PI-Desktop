@@ -163,20 +163,20 @@ test("plugin dev tools resolve paths inside the workspace and report failures", 
   assert.match(devToolsSrc, /loadPlugin\(target\.path, permissions\)/);
 });
 
-test("only PluginCheck is available outside agent mode", () => {
+test("mutating plugin dev tools are declared for Agent and Goal, not Plan", () => {
   const builderEnd = agentRuntimeSrc.indexOf(
     "const builtins = tools.map(exec)",
   );
   const builderStart = agentRuntimeSrc.lastIndexOf("const tools =", builderEnd);
   assert.ok(builderStart >= 0 && builderEnd > builderStart);
   const builder = agentRuntimeSrc.slice(builderStart, builderEnd);
-  const agentBranchStart = builder.indexOf('if (this.mode === "agent")');
-  assert.ok(agentBranchStart >= 0);
-  const nonAgentBranch = builder.slice(0, agentBranchStart);
-  assert.match(nonAgentBranch, /"PluginCheck"/);
-  assert.doesNotMatch(nonAgentBranch, /PluginScaffold|PluginPack/);
+  const writableBranchStart = builder.indexOf('if (this.mode !== "plan")');
+  assert.ok(writableBranchStart >= 0);
+  const declarations = builder.slice(0, writableBranchStart);
+  assert.match(declarations, /"PluginCheck"/);
+  assert.doesNotMatch(declarations, /PluginScaffold|PluginPack/);
   assert.match(
-    builder.slice(agentBranchStart),
+    builder.slice(writableBranchStart),
     /tools\.push\("PluginScaffold", "PluginPack"/,
   );
 });

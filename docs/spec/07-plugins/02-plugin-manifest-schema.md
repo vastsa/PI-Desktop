@@ -216,7 +216,7 @@ type PluginAgentToolContrib = {
  description: string;
  risk?: "low" | "medium" | "high";
  schema?: unknown; // JSON schema object
- planSafeActions?: readonly string[]; // read-only action names for Plan/Goal
+ planSafeActions?: readonly string[]; // read-only action names for Plan
 };
 
 type PluginComposerTransformContrib = {

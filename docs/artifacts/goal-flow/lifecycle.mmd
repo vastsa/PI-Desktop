@@ -1,0 +1,30 @@
+flowchart TD
+  user["User submits objective in Goal mode<br/>No proposal approval · default 20 execution turns"] --> persist["Rust persists active goal<br/>Immutable objective + criteria + budget"]
+  persist --> admit{"Host admission<br/>Active, authorized and idle?"}
+  admit -- no --> hold["Wait without model work"]
+  admit -- yes --> budget{"Budget remains?"}
+  budget -- no --> exhausted["budget_exhausted<br/>No next execution turn"]
+  budget -- yes --> claim["CAS claim one execution turn<br/>Queued user input before automatic continuation"]
+  claim --> run["Runtime executes under ordinary permissions<br/>Paths, sandbox and plugin checks unchanged"]
+  run -- "Permission required" --> permission{"User grants tool action?"}
+  permission -- yes --> run
+  permission -- no --> denied["Denied action stays denied<br/>Choose a permitted alternative or report blocked"]
+  denied --> settle
+  run -- "Turn finishes" --> settle["Persist report + deduplicated parent/delegate usage<br/>Release claim before terminal event"]
+  settle --> outcome{"Persisted goal state?"}
+  outcome -- active --> admit
+  outcome -- "All criteria met with evidence" --> completed["completed<br/>Model-reported evidence, not independent proof"]
+  outcome -- "Unrecovered failure or boundary" --> blocked["blocked<br/>Visible reason · no automatic retry"]
+  run -. "User pauses / stops / switches mode" .-> paused["paused<br/>Persist stop before cancelling current work"]
+  persist -. "Host restarts" .-> paused
+  run -. "User cancels" .-> cancelled["cancelled<br/>Terminal · never auto-resume"]
+  paused --> resume["Explicit user resume<br/>Wait for settlement, validate revision and budget"]
+  blocked --> resume
+  exhausted --> resume
+  resume --> admit
+  completed --> endstate["Stop autonomous work"]
+  cancelled --> endstate
+  classDef terminal fill:#e8f4ec,stroke:#31664a,color:#183d2a
+  classDef boundary fill:#fff1d7,stroke:#9a7025,color:#593f13
+  class completed,cancelled,endstate terminal
+  class paused,blocked,exhausted,permission boundary

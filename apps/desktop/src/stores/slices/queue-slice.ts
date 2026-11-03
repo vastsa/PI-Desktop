@@ -1,3 +1,4 @@
+import { submitUserPrompt } from "../../features/goals/submit-user-prompt";
 import i18n from "i18next";
 import { formatFileInsert } from "@pi-desktop/shared";
 import type {
@@ -382,7 +383,7 @@ export function createQueueSlice({
         }
         if (!sessionId) throw new Error(i18n.t("errors.noActiveSession"));
         if (get().pendingPlans[sessionId]?.status === "pending") return false;
-        if (get().runningSessions[sessionId]) {
+        if (get().runningSessions[sessionId] && get().sessions.find((session) => session.id === sessionId)?.mode !== "goal") {
           // Native Pi children have no Desktop prompt queue. Reject the send
           // here so the caller restores the draft instead of round-tripping a
           // queue item the backend refuses.
@@ -403,6 +404,7 @@ export function createQueueSlice({
             ? get().messages.length
             : runtime.sessionTranscriptCache.get(startedIn)?.length ?? 0;
         const submission: SubmittedComposerDraft = {
+          goalStart: get().sessions.find((session) => session.id === startedIn)?.mode === "goal",
           messageCountBeforeSend,
           draft: draft
             ? {
@@ -468,13 +470,20 @@ export function createQueueSlice({
             runtime.submittedComposerDrafts.delete(startedIn);
             return false;
           }
-          await api.prompt({
+          await submitUserPrompt(api, current, {
             sessionId,
             content,
             messageId: optimisticMessage.id,
             viewingSessionId: isRemoteSession(current) ? null : viewingSessionIdForPrompt(get(), sessionId),
             attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
           });
+          // Goal is a one-shot start action. Do not overwrite a newer mode
+          // selection made while the request was awaiting Host admission.
+          if (current?.mode === "goal" && get().sessions.find((session) => session.id === startedIn)?.mode === "goal") {
+            const pending = runtime.pendingSessionConfigurations.get(startedIn);
+            if (pending?.mode === "goal") runtime.pendingSessionConfigurations.set(startedIn, { ...pending, mode: "agent" });
+            set((state) => ({ sessions: state.sessions.map((session) => session.id === startedIn && session.mode === "goal" ? { ...session, mode: "agent" } : session) }));
+          }
           const submitted = runtime.submittedComposerDrafts.get(startedIn);
           if (submitted?.abortResolution && (await submitted.abortResolution)) {
             return false;
@@ -488,6 +497,7 @@ export function createQueueSlice({
           runtime.submittedComposerDrafts.delete(startedIn);
           runtime.retractOptimisticUserMessage(startedIn, optimisticMessage);
           const messageError = messageErrorFromUnknown(error);
+          if (current?.mode === "goal") get().showToast(messageError.message, { variant: "error" });
           const errorRow = assistantErrorMessage(messageError);
           set((state) => {
             return {

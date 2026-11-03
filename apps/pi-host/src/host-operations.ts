@@ -44,6 +44,7 @@ export type HostOperationsDeps = {
   runtime: Pick<RuntimeService, "compact" | "isBusy">;
   /** `pi-host` boots the sidecar's session cleanup on delete; the runtime link is optional at boot. */
   disposeSession?: (sessionId: string) => Promise<void>;
+  stopGoal?: (sessionId: string) => Promise<void>;
   revokeDevice?: (deviceId: string) => Promise<boolean>;
   /** Root the folder picker may not leave; defaults to the user's home directory. */
   browseRoot?: string;
@@ -119,8 +120,9 @@ export function createSessionCatalog(deps: HostOperationsDeps): RacpSessionCatal
     },
     async configure(sessionId, input) {
       const host = requireHost(getHost);
-      if (deps.runtime.isBusy(sessionId)) throw new RacpError("CONFLICT", "the session has an active turn");
       const current = await get(host, sessionId);
+      if (current.mode === "goal" && input.mode && input.mode !== "goal") await deps.stopGoal?.(sessionId);
+      if (deps.runtime.isBusy(sessionId)) throw new RacpError("CONFLICT", "the session has an active turn");
       await host
         .call("session.configure", {
           id: sessionId,

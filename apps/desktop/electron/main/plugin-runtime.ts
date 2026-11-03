@@ -2966,10 +2966,10 @@ export class PluginRuntime {
           schema: descriptor.schema,
           planSafeActions,
           execute: async (toolArgs, ctx) => {
-            // Plan/Goal mode only allows declared plan-safe actions. The
+            // Plan mode only allows declared plan-safe actions. The
             // runtime normally hides unsafe tools from the model, but the
             // host must still reject a stray call (ADR 0211).
-            if (ctx?.mode === "plan" || ctx?.mode === "goal") {
+            if (ctx?.mode === "plan") {
               const allowed = planSafeActions;
               if (allowed.length === 0) {
                 throw apiError(

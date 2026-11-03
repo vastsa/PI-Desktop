@@ -1,3 +1,5 @@
+import { GoalSessionPanel } from "../features/goals/GoalSessionPanel";
+import { composerSessionPolicy } from "../features/chat/composer/session-policy";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import { inheritedSessionModelBinding } from "../lib/session-model";
 import {
@@ -10,7 +12,6 @@ import {
 import { useTranslation } from "react-i18next";
 import type {
   Mode,
-  PermissionMode,
 } from "@pi-desktop/shared";
 import {
   initialThinkingLevelForBinding,
@@ -38,7 +39,6 @@ import {
   COMPOSER_MIN_HEIGHT_PX,
   PLACEHOLDER_KEYS,
   cssPixels,
-  isPermissionMode,
   isThinkingLevel,
   thinkingLevelForProvider,
   thinkingProviderForModel,
@@ -321,27 +321,13 @@ export function Composer({
   const mode: Mode = activeSession
     ? activeSession.mode
     : (draftConfiguration?.mode ?? settings?.defaultMode ?? "agent");
-  const planningLive =
-    isRunning &&
-    planningState === "planning" &&
-    (mode === "plan" || mode === "goal");
-  // Permission mode (D115/D132): inherited sessions still resolve through the
-  // global setting, but the composer presents only the effective mode.
-  const globalPermissionMode: PermissionMode =
-    settings?.defaultPermissionMode ?? "ask";
-  const sessionPermissionMode: PermissionMode = activeSession
-    ? isPermissionMode(activeSession.permissionMode)
-      ? activeSession.permissionMode
-      : "inherit"
-    : isPermissionMode(draftConfiguration?.permissionMode)
-      ? draftConfiguration.permissionMode
-      : "inherit";
-  const effectivePermissionMode: Exclude<PermissionMode, "inherit"> =
-    sessionPermissionMode === "inherit"
-      ? (globalPermissionMode as Exclude<PermissionMode, "inherit">)
-      : sessionPermissionMode;
-  const composerPermissionMode: Exclude<PermissionMode, "inherit"> =
-    mode === "goal" ? "auto" : effectivePermissionMode;
+  const { planningLive, composerPermissionMode } = composerSessionPolicy({
+    mode,
+    permissionMode: activeSession ? activeSession.permissionMode : draftConfiguration?.permissionMode,
+    defaultPermissionMode: settings?.defaultPermissionMode,
+    isRunning,
+    planningState,
+  });
   const recentModels = useAppStore((s) => s.recentModels);
   const selectedModel = remoteSession ? { providerId: activeSession?.providerId, modelId: activeSession?.modelId } : inheritedSessionModelBinding({
     draft: activeSession ?? draftConfiguration,
@@ -533,10 +519,9 @@ export function Composer({
       data-composer-dock={variant}
     >
       <div className="composer-stack">
-        {/* One container for todo and background tasks: the tabs live in the
-            header, so the gate now covers both the way it already covered the
-            todo dock. */}
-        {activeSessionId && localToolsAllowed ? <TaskDock sessionId={activeSessionId} /> : null}
+        <GoalSessionPanel
+          taskDock={activeSessionId && localToolsAllowed ? <TaskDock sessionId={activeSessionId} /> : null}
+          beforeComposer={<>
         {planCheckpoint?.status === "pending" ? (
           <PlanApprovalBar proposal={planCheckpoint} />
         ) : null}
@@ -561,6 +546,8 @@ export function Composer({
           insertDroppedDirectoryPaths={insertDroppedDirectoryPaths}
           dismissDroppedDirectories={dismissDroppedDirectories}
         />
+          </>}
+        >
         <div
           ref={composerShellRef}
           className={`composer-shell${inputBlocked ? " is-gated" : ""}${
@@ -653,6 +640,7 @@ export function Composer({
             workSessionLabel={activeSessionSummary?.title}
           />
         </div>
+        </GoalSessionPanel>
       </div>
     </div>
   );
