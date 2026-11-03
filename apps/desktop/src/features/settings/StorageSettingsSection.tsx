@@ -7,6 +7,12 @@ import { SettingsCard, SettingsRow } from "./primitives";
 
 type StorageAction = "migrate" | "cache" | "backup";
 
+/**
+ * IEC units and locale-formatted digits, unlike `formatBytes` in
+ * `@pi-desktop/shared`, which renders `KB` / `MB` / `GB` with fixed ASCII
+ * fractions. Storage figures are compared against Finder and Explorer, so
+ * this keeps its own formatter rather than inheriting the shared one.
+ */
 function formatSize(bytes: number, language: string): string {
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
   const size = Math.max(0, bytes);
