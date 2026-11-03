@@ -185,6 +185,7 @@ function createRuntime(
     customSystemPrompt: import("./custom-system-prompt.js").CustomSystemPrompt;
     projectInstructions: import("./project-instructions.js").ProjectInstructions;
     projectMemory: string;
+    memoryEntries: { memory: string[]; user: string[] };
     pluginTools: PluginToolDef[];
     subagents: SubagentDefinition[];
     subagentProviders: Record<string, RuntimeProviderConfig>;
@@ -222,6 +223,7 @@ function createRuntime(
     subagentModelKeys: overrides.subagentModelKeys,
     projectInstructions: overrides.projectInstructions,
     projectMemory: overrides.projectMemory,
+    memoryEntries: overrides.memoryEntries,
     pluginSkills: overrides.pluginSkills,
     onEvent: overrides.onEvent ?? vi.fn(),
   });
@@ -233,6 +235,44 @@ function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   if (!tool) throw new Error(`Runtime tool not found: ${name}`);
   return tool;
 }
+
+
+describe("entry-list memory snapshot (ADR 0378)", () => {
+  const compose = (runtime: DesktopAgentRuntime): string =>
+    (runtime as unknown as { composeSystemPrompt(): string }).composeSystemPrompt();
+
+  it("keeps the snapshot out of the system prompt", () => {
+    // The block rides with the user message instead: the transcript's system
+    // messages are rebuilt from section keys, and a system-prompt change
+    // rewrites the provider prompt cache.
+    const runtime = createRuntime({
+      memoryEntries: {
+        memory: ["PowerShell scripts must be UTF-8 with BOM"],
+        user: ["prefers Chinese replies"],
+      },
+    });
+    expect(compose(runtime)).not.toContain("PowerShell scripts must be UTF-8 with BOM");
+  });
+
+  it("retires a runtime whose snapshot differs from the requested one", () => {
+    // The snapshot is baked into the system prompt at construction, so a runtime
+    // built before a write must not be reused: it would keep serving the old,
+    // empty list while the store already holds entries.
+    const runtime = createRuntime({ memoryEntries: { memory: [], user: [] } });
+    const matches = (
+      runtime as unknown as {
+        matches(config: Record<string, unknown>): boolean;
+      }
+    ).matches({
+      mode: "agent",
+      provider: provider,
+      thinkingLevel: "medium",
+      commandShell: commandShell,
+      memoryEntries: { memory: ["a new note"], user: [] },
+    });
+    expect(matches).toBe(false);
+  });
+});
 
 describe("Pi 1.4 client identity", () => {
   it("forwards the desktop identity through a user prompt to the provider adapter", async () => {

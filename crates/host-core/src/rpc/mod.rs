@@ -5468,6 +5468,23 @@ async fn handle_request(
             let skill = st.user_skills.update(&id, input).map_err(skill_err)?;
             Ok(json!({ "skill": skill }))
         }
+        "skills.writeFile" => {
+            let id = require_id(&params)?;
+            let path = params
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let content = params
+                .get("content")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "content required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            let written = st
+                .user_skills
+                .write_resource(&id, None, None, path, content)
+                .map_err(skill_err)?;
+            Ok(json!({ "path": written }))
+        }
         "skills.read" => {
             let id = require_id(&params)?;
             let level = params

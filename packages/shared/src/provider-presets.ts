@@ -544,6 +544,31 @@ export function withoutReasoningReplayPlaceholder(thinking: string): string {
   return thinking.replace(ECHOED_REASONING_REPLAY_PLACEHOLDER, "");
 }
 
+/**
+ * `<thinking>…</thinking>` blocks a model writes into its own reply text around
+ * an echoed replay placeholder (#1945).
+ *
+ * A strict DeepSeek-compatible relay needs non-empty `reasoning_content` on
+ * every historical assistant message, so a turn whose thinking was never
+ * retained is replayed with {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. Some
+ * models read that as their previous reasoning, continue it, and emit it inside
+ * literal `<thinking>` tags at the head of the **reply text**. Markdown hides
+ * the unknown tags but keeps their contents, so the placeholder surfaced to
+ * users as a stray line, repeated once per replayed turn.
+ *
+ * Only a leading run of blocks whose body is *nothing but* the placeholder is
+ * removed. A tag wrapping authored text is left alone: dropping a model's real
+ * words would be far worse than showing a stray tag. The stored row is not
+ * rewritten here — this is a projection applied where text is read.
+ */
+const ECHOED_PLACEHOLDER_TEXT_PREFIX =
+  /^(?:\s*<thinking(?:\s[^>]*)?>\s*(?:\[reasoning (?:not )?retained for this turn\]\s*)+<\/thinking>)+\s*/i;
+
+/** Reply text without a leading echo of {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. */
+export function withoutEchoedReasoningPlaceholderText(text: string): string {
+  return text.replace(ECHOED_PLACEHOLDER_TEXT_PREFIX, "");
+}
+
 export type DeepSeekRequestCompat = {
   requiresReasoningContentOnAssistantMessages: true;
   /**

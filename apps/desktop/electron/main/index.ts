@@ -62,6 +62,8 @@ import { registerApplicationActivation } from "./bootstrap/app-activation";
 import { createHostRuntime } from "./runtime/host";
 import { createSidecarRuntime } from "./runtime/sidecar";
 import { createEventPersistence } from "./runtime/event-persistence";
+import { createSkillReviewService } from "./skill-review-service";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { createPlanRuntime } from "./runtime/plans";
 import { createRuntimeLifecycle } from "./runtime/lifecycle";
 import {
@@ -730,6 +732,60 @@ const {
   dispatchExecutionForProposal,
 } = planRuntime;
 
+// Post-turn memory extraction is gone (ADR 0378): the agent writes its own
+// entry-list memory through the `memory` tool, the way Hermes does. Keeping a
+// second, model-driven extraction pass meant two stores, only one of which the
+// prompt ever read — and a model call on every tool-using turn.
+
+// Skill review is the in-core replacement for the skill-learning plugin: same
+// passive shape as extraction, but it writes through `skills.*` RPCs (ADR 0377).
+const skillReview = createSkillReviewService({
+  settings: async () => {
+    const host = getHost();
+    if (!host) throw new Error("host unavailable");
+    return host.call<AppSettings>("settings.get");
+  },
+  session: async (sessionId) => {
+    const host = getHost();
+    if (!host) return undefined;
+    const response = await host.call<{ session?: Record<string, unknown> }>("session.get", {
+      id: sessionId,
+    });
+    return response?.session as never;
+  },
+  resolveLaunch: (sessionId, session, settings, options) =>
+    resolveAgentRuntimeLaunch(sessionId, session, settings, options as never),
+  vendorOAuth,
+  host: () => getHost(),
+  logger: {
+    app: (category, level, event, data) =>
+      logger.app(category as never, level as never, event, data as never),
+  },
+  /**
+   * A background pass the user cannot see is indistinguishable from one that
+   * never ran, so every applied review ends in a toast naming what changed.
+   */
+  onReviewed: ({ ops }) => {
+    // Main has no react-i18next instance; the catalogs are the supported path
+    // here (same as the application menu).
+    const dict = catalogs[resolveLocale(mainState.updaterLocale)] as unknown as {
+      settings?: Record<string, string>;
+    };
+    const settingsStrings = dict.settings ?? {};
+    const read = (key: string, fallback: string): string => settingsStrings[key] ?? fallback;
+    const label = (action: string) =>
+      action === "create"
+        ? read("skillReviewCreated", "created")
+        : read("skillReviewPatched", "patched");
+    const parts = ops.map((op) => `'${op.name}' ${label(op.action)}`).join(" · ");
+    const notice = read("skillReviewNotice", "Self-improvement review: {{detail}}").replace(
+      "{{detail}}",
+      parts,
+    );
+    sendToRenderer(IPC.event.toast, { message: notice });
+  },
+});
+
 const eventPersistence = createEventPersistence({
   runtimeState,
   steeringReplies,
@@ -751,6 +807,7 @@ const eventPersistence = createEventPersistence({
   transcriptRewrite: sessionCoordination,
   finishApprovedExecution,
   emitAgentEvent: (envelope) => emitAgentEvent(envelope),
+  scheduleSkillReview: (request) => skillReview.schedule(request),
 });
 const { persistAgentEvent } = eventPersistence;
 

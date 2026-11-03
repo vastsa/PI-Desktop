@@ -30,6 +30,8 @@ pub(super) async fn handle(
         "memory.forget" => forget(state, params).await,
         "memory.tidy" => tidy(state, params).await,
         "memory.stats" => stats(state, params).await,
+        "memory.entries" => entries(state, params).await,
+        "memory.writeEntries" => write_entries(state, params).await,
         other => Err(rpc_err(
             1003,
             format!("unknown memory method: {other}"),
@@ -177,6 +179,50 @@ async fn recall(state: Arc<Mutex<AppState>>, params: Value) -> Result<Value, Jso
         })
         .map_err(internal)?;
     Ok(json!({ "memories": hits }))
+}
+
+fn memory_target(params: &Value) -> Result<crate::memory_entries::MemoryTarget, JsonRpcError> {
+    let value = required_str(params, "target")?;
+    crate::memory_entries::MemoryTarget::parse(value)
+        .ok_or_else(|| invalid(format!("unknown memory target: {value}")))
+}
+
+/// Entries for one target, in stored order (ADR 0378).
+async fn entries(state: Arc<Mutex<AppState>>, params: Value) -> Result<Value, JsonRpcError> {
+    let target = memory_target(&params)?;
+    let st = state.lock().await;
+    let entries = st.db.memory_entries(target).map_err(internal)?;
+    Ok(json!({ "target": target.as_str(), "entries": entries }))
+}
+
+/// Replace one target's whole entry list.
+///
+/// A whole-list write keeps the batch semantics honest: the caller already holds
+/// the list (it is in the model's prompt), frees space and spends it in one
+/// call, and the host validates only the final result — the same contract as
+/// `applyMemoryBatch` in `@pi-desktop/agent-runtime`. A budget violation is the
+/// model's mistake, so it reports as invalid params rather than an internal
+/// failure.
+async fn write_entries(state: Arc<Mutex<AppState>>, params: Value) -> Result<Value, JsonRpcError> {
+    let target = memory_target(&params)?;
+    let items = params
+        .get("entries")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("entries must be an array of strings"))?;
+    let mut requested = Vec::with_capacity(items.len());
+    for item in items {
+        requested.push(
+            item.as_str()
+                .ok_or_else(|| invalid("entries must be an array of strings"))?
+                .to_string(),
+        );
+    }
+    let st = state.lock().await;
+    let written = st
+        .db
+        .write_memory_entries(target, &requested)
+        .map_err(|error| invalid(error.to_string()))?;
+    Ok(json!({ "target": target.as_str(), "entries": written }))
 }
 
 async fn list(state: Arc<Mutex<AppState>>, params: Value) -> Result<Value, JsonRpcError> {

@@ -383,3 +383,21 @@ test("a durable-only new user row stays ahead of a live streaming tail (D317)", 
     ["keep", "prompt", "answer"],
   );
 });
+
+test("a live row drops the echoed reasoning placeholder before it reaches the transcript", () => {
+  // A strict DeepSeek-compatible relay replays a placeholder for turns whose
+  // thinking was never retained; the model reads it as its own reasoning and
+  // emits it inside <thinking> tags at the head of its reply (#1945).
+  const echoed =
+    "<thinking>[reasoning not retained for this turn]</thinking>\n" +
+    "<thinking>[reasoning not retained for this turn]</thinking>\n" +
+    "real answer";
+  const [row] = upsertLiveSessionMessage([], message("answer", { content: echoed }));
+  assert.strictEqual(row.content, "real answer");
+});
+
+test("a live row keeps a thinking tag that wraps the model's own words", () => {
+  const authored = "<thinking>I should check the encoding first.</thinking>\nreal answer";
+  const [row] = upsertLiveSessionMessage([], message("answer", { content: authored }));
+  assert.strictEqual(row.content, authored);
+});

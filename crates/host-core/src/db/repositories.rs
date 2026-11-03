@@ -213,6 +213,11 @@ impl Database {
             25 => {
                 super::tool_image_storage_migration::migrate(&conn, path)?;
             }
+            // Versions whose steps live in the chained `if migrated_version ==`
+            // pass below. They must not fall through to `other`, which reports a
+            // *newer* database: a v26/v27/v28 file is older and upgradable, and
+            // silently refusing it would lock a user out of their transcript.
+            26 | 27 | 28 => {}
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -290,7 +295,16 @@ impl Database {
         // The memory store is the step after the v26 Fast mode switch, so a v26
         // database walks both migrations in the same launch.
         if migrated_version == 27 {
-            migrate_v27_to_v28(&conn, path)?;
+        if migrated_version == 27 {
+migrate_v27_to_v28(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        // Repairs stored reply text that carried the replayed reasoning
+        // placeholder (ADR 0378, #1945). A text repair rather than a schema
+        // change, but it rewrites rows, so it keeps the usual backup and bump.
+        if migrated_version == 28 {
+            super::migrations::migrate_v28_to_v29(&conn, path)?;
+        }
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

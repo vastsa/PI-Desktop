@@ -138,6 +138,8 @@ type RuntimeParams = {
   customSystemPrompt?: CustomSystemPrompt;
   projectInstructions?: ProjectInstructions;
   projectMemory?: string;
+  /** Frozen entry-list memory read when the session launched (ADR 0378). */
+  memoryEntries?: { memory: string[]; user: string[] };
   compactionSettings?: ContextCompactionSettings;
   attachmentsDir?: string;
   userMessageId?: string;
@@ -247,6 +249,7 @@ async function runtimeFor(
     projectInstructions: params.projectInstructions,
     customSystemPrompt: params.customSystemPrompt,
     projectMemory: params.projectMemory,
+    memoryEntries: params.memoryEntries,
     projectPath: params.projectPath,
     remoteWorkspace: params.remoteWorkspace,
     workspaceRoot: params.workspaceRoot,
@@ -332,6 +335,7 @@ async function runtimeFor(
     customSystemPrompt: params.customSystemPrompt,
     projectInstructions: params.projectInstructions,
     projectMemory: params.projectMemory,
+    memoryEntries: params.memoryEntries,
     scratchDir:
       typeof params.scratchDir === "string" && params.scratchDir
         ? params.scratchDir

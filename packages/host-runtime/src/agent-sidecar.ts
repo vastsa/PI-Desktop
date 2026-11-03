@@ -70,6 +70,13 @@ const HOST_PROXY_ALLOWED = new Set([
   "provider.resolveAuth",
   "provider.resolveSubagentModel",
   "app.health",
+  // Durable memory (ADR 0371 / 0378). The agent reads and writes its own note
+  // list, and per-turn recall asks the store for hits. Without these the sidecar
+  // cannot reach the memory store at all: the `memory` tool fails on its first
+  // read, and recall silently returns nothing because it is best-effort.
+  "memory.entries",
+  "memory.writeEntries",
+  "memory.recall",
   // Trusted extensions (D387): answered by the embedding host, plus the
   // session methods the ExtensionAPI reaches (spec 16 §10.1).
   "extensions.commands.publish",

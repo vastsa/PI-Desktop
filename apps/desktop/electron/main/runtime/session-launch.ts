@@ -467,6 +467,36 @@ export function createSessionLaunchRuntime({
     // pi-compatible SYSTEM.md / APPEND_SYSTEM.md (issue #542): resolved once
     // per launch; a change retires the runtime through the reuse match.
     const customSystemPrompt = await loadCustomSystemPrompt(localInstructionRoot);
+    // Entry-list memory (ADR 0378): read once per launch and frozen into the
+    // system prompt. A write during this session lands in the store but does not
+    // change this snapshot, which is what keeps the request prefix (and the
+    // provider's prompt cache) stable across turns.
+    let memoryEntries: { memory: string[]; user: string[] } | undefined;
+    try {
+      const readEntries = async (target: "memory" | "user"): Promise<string[]> => {
+        const result = await runtimeState.host!.call<{ entries?: string[] }>(
+          "memory.entries",
+          { target },
+        );
+        return Array.isArray(result.entries) ? result.entries : [];
+      };
+      const [memory, user] = await Promise.all([readEntries("memory"), readEntries("user")]);
+      if (memory.length > 0 || user.length > 0) memoryEntries = { memory, user };
+      // Logged on every launch, empty or not: a silent read is how a broken
+      // snapshot looks exactly like a session that simply has no notes yet.
+      logger.app("runtime", "info", "memory snapshot loaded", {
+        sessionId,
+        data: { memory: memory.length, user: user.length },
+      });
+    } catch (error) {
+      // A launch must not fail because memory could not be read, but the failure
+      // has to be visible: without this line the only symptom is an agent that
+      // forgets everything, which reads as a model problem.
+      logger.app("runtime", "warn", "memory snapshot unavailable", {
+        sessionId,
+        data: String(error),
+      });
+    }
     let projectMemory: string | undefined;
     if (projectPath) {
       try {
@@ -761,6 +791,7 @@ export function createSessionLaunchRuntime({
         customSystemPrompt,
         projectInstructions,
         projectMemory,
+        ...(memoryEntries ? { memoryEntries } : {}),
         provider: {
           id: provider.id,
           name: provider.name,

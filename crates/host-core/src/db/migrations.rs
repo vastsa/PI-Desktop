@@ -32,6 +32,23 @@ impl Database {
             [],
         );
 
+        // Entry-list memory (ADR 0378). `IF NOT EXISTS` is what lets this be an
+        // addition rather than a migration: the table is new, so no existing row
+        // is rewritten, no schema version moves, and a database created before
+        // this feature simply gains an empty table. It is also why a *fresh*
+        // database gets it — the base schema above predates the memory store, so
+        // tables added after it exist only through this path or a migration.
+        let _ = self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS memory_entries (
+               target     TEXT NOT NULL CHECK (target IN ('memory', 'user')),
+               ordinal    INTEGER NOT NULL,
+               content    TEXT NOT NULL,
+               updated_at INTEGER NOT NULL,
+               PRIMARY KEY (target, ordinal)
+             ) WITHOUT ROWID",
+            [],
+        );
+
         // The write path asks one question about a message over and over: does
         // the last copy of this id still sit in the transcript as a provisional,
         // streaming assistant row? The index row already mirrors that copy — it
@@ -1047,4 +1064,242 @@ pub(crate) fn migrate_v27_to_v28(conn: &Connection, path: &Path) -> Result<()> {
         )
     })?;
     Ok(())
+}
+
+/// The non-empty stand-in a strict DeepSeek-compatible relay is fed for a turn
+/// whose thinking was never retained. Mirrors
+/// `DEEPSEEK_REASONING_REPLAY_PLACEHOLDER` in `@pi-desktop/shared`.
+const REASONING_REPLAY_PLACEHOLDERS: [&str; 2] = [
+    "[reasoning not retained for this turn]",
+    "[reasoning retained for this turn]",
+];
+
+/// Bytes consumed by one leading `<thinking>…</thinking>` block whose body is
+/// nothing but echoed replay placeholder(s), or `None` when the text does not
+/// start with one.
+///
+/// A block that wraps authored text returns `None`: dropping a model's real
+/// words would be far worse than leaving a stray tag in a stored row.
+fn echoed_placeholder_block_len(text: &str) -> Option<usize> {
+    let mut rest = text.trim_start().strip_prefix("<thinking")?;
+    if !rest.starts_with('>') {
+        rest = &rest[rest.find('>')?..];
+    }
+    let mut body = rest.strip_prefix('>')?.trim_start();
+    let mut matched = false;
+    loop {
+        let Some(after) = REASONING_REPLAY_PLACEHOLDERS
+            .iter()
+            .find_map(|placeholder| body.strip_prefix(placeholder))
+        else {
+            break;
+        };
+        body = after.trim_start();
+        matched = true;
+    }
+    if !matched {
+        return None;
+    }
+    let tail = body.strip_prefix("</thinking>")?;
+    Some(text.len() - tail.len())
+}
+
+/// Reply text without a leading run of echoed-placeholder `<thinking>` blocks,
+/// or `None` when there is nothing to strip.
+fn without_echoed_placeholder_text(text: &str) -> Option<String> {
+    let mut rest = text;
+    let mut stripped = false;
+    while let Some(consumed) = echoed_placeholder_block_len(rest) {
+        rest = &rest[consumed..];
+        stripped = true;
+    }
+    if !stripped {
+        return None;
+    }
+    Some(rest.trim_start().to_string())
+}
+
+/// Schema v29 repairs stored reply text that carried the replayed reasoning
+/// placeholder (#1945).
+///
+/// A strict DeepSeek-compatible relay needs non-empty `reasoning_content` on
+/// every historical assistant message, so turns whose thinking was never
+/// retained are replayed with a placeholder. Models read that as their own
+/// previous reasoning, continued it, and emitted it inside literal
+/// `<thinking>` tags at the head of their **reply text**. Markdown hides the
+/// unknown tag but keeps the body, so users saw a stray
+/// "[reasoning not retained for this turn]" line once per replayed turn.
+///
+/// The write path now strips it before storing, and the renderer strips it on
+/// the live stream, so this migration only rewrites rows written before either
+/// fix. It is a text repair, not a schema change, but it rewrites rows — hence
+/// the usual backup and version bump. The `messages_au` trigger keeps the FTS
+/// index in sync with every `UPDATE OF text`.
+pub(crate) fn migrate_v28_to_v29_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let mut statement = tx.prepare(
+        "SELECT mid, text FROM messages
+          WHERE text LIKE '%<thinking>%' AND text LIKE '%retained for this turn]%'",
+    )?;
+    let candidates: Vec<(i64, String)> = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(statement);
+    for (mid, text) in candidates {
+        let Some(repaired) = without_echoed_placeholder_text(&text) else {
+            continue;
+        };
+        if repaired != text {
+            tx.execute(
+                "UPDATE messages SET text = ?1 WHERE mid = ?2",
+                params![repaired, mid],
+            )?;
+        }
+    }
+    tx.pragma_update(None, "user_version", 29i64)?;
+    Ok(())
+}
+
+pub(crate) fn migrate_v28_to_v29(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 28)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v28_to_v29_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v28 to v29 echoed reasoning placeholder repair; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    const BLOCK: &str = "<thinking>[reasoning not retained for this turn]</thinking>";
+
+    #[test]
+    fn strips_a_leading_run_of_echoed_blocks() {
+        assert_eq!(
+            without_echoed_placeholder_text(&format!("{BLOCK}\nreal answer")).as_deref(),
+            Some("real answer")
+        );
+        assert_eq!(
+            without_echoed_placeholder_text(&format!("{BLOCK}\n{BLOCK}\nreal answer")).as_deref(),
+            Some("real answer")
+        );
+        assert_eq!(
+            without_echoed_placeholder_text(&format!(
+                "{BLOCK}\n{BLOCK}\n{BLOCK}\nreal answer"
+            ))
+            .as_deref(),
+            Some("real answer")
+        );
+        // A row that is nothing but the artifact becomes empty.
+        assert_eq!(without_echoed_placeholder_text(BLOCK).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn strips_the_models_rewritten_placeholder() {
+        assert_eq!(
+            without_echoed_placeholder_text(
+                "<thinking>[reasoning retained for this turn]</thinking>\nreal answer"
+            )
+            .as_deref(),
+            Some("real answer")
+        );
+    }
+
+    #[test]
+    fn keeps_authored_text_and_late_echoes() {
+        // A block wrapping the model's own words is not a placeholder echo.
+        let authored = "<thinking>I should check the encoding first.</thinking>\nreal answer";
+        assert_eq!(without_echoed_placeholder_text(authored), None);
+        // An echo after real text is not the leading artifact.
+        let late = format!("real answer\n{BLOCK}");
+        assert_eq!(without_echoed_placeholder_text(&late), None);
+        assert_eq!(without_echoed_placeholder_text("real answer"), None);
+    }
+
+    fn seeded_database(path: &Path) {
+        let db = Database::open(path).unwrap();
+        db.conn()
+            .execute_batch(&format!(
+                "INSERT INTO sessions(id,title,title_source,provider_id,model_id,last_seq,created_at,updated_at)
+                   VALUES ('s','Session','manual',NULL,NULL,2,1,1);
+                 INSERT INTO turns(id,session_id,status,started_at,ended_at)
+                   VALUES ('t','s','completed',1,2);
+                 INSERT INTO messages(id,session_id,turn_id,seq,role,text,created_at)
+                   VALUES ('echoed','s','t',0,'assistant','{BLOCK}\n{BLOCK}\nreal answer',1);
+                 INSERT INTO messages(id,session_id,turn_id,seq,role,text,created_at)
+                   VALUES ('authored','s','t',1,'assistant','<thinking>my own words</thinking>\nkept',2);
+                 PRAGMA user_version=28;"
+            ))
+            .unwrap();
+    }
+
+    fn text_of(conn: &Connection, id: &str) -> String {
+        conn.query_row("SELECT text FROM messages WHERE id = ?1", [id], |row| {
+            row.get(0)
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn migration_repairs_echoed_rows_and_leaves_authored_rows_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        seeded_database(&path);
+        let db = Database::open(&path).unwrap();
+        // `open` already ran the repair, so the version is the latest one.
+        assert_eq!(
+            db.conn()
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            SCHEMA_VERSION
+        );
+        assert_eq!(text_of(db.conn(), "echoed"), "real answer");
+        // A tag wrapping authored text is preserved verbatim.
+        assert_eq!(
+            text_of(db.conn(), "authored"),
+            "<thinking>my own words</thinking>\nkept"
+        );
+        // The FTS trigger followed the update: the artifact is gone from the index.
+        assert_eq!(
+            db.conn()
+                .query_row(
+                    "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH '\"not retained\"'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.conn()
+                .query_row(
+                    "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH 'answer'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn migration_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        seeded_database(&path);
+        let db = Database::open(&path).unwrap();
+        let repaired = text_of(db.conn(), "echoed");
+        // A second pass over already-repaired text changes nothing.
+        let tx = db.conn().unchecked_transaction().unwrap();
+        migrate_v28_to_v29_tx(&tx).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(text_of(db.conn(), "echoed"), repaired);
+    }
 }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { usageForEvent, ownsUsageTurn, applyMessageUpdate, tagMessageToolLineage, toolCallLineage, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
+import { usageForEvent, ownsUsageTurn, applyMessageUpdate, tagMessageToolLineage, toolCallLineage, withoutEchoedReasoningPlaceholderText, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import type { FinishTurn } from "./plans";
 import type { RuntimeState } from "./context";
 import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
@@ -8,6 +8,20 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { SessionCoordination } from "./session-coordination";
 
 export type EventPersistenceDependencies = {
+  /**
+   * Post-turn memory extraction is gone (ADR 0378). The agent writes its own
+   * entry-list memory through the `memory` tool, the way Hermes does, so a second
+   * model call per turn only bought a parallel store nobody read.
+   */
+  /**
+   * Passive observer that decides whether a finished turn taught something
+   * reusable. Optional for the same reason as extraction (ADR 0377).
+   */
+  scheduleSkillReview?: (request: {
+    sessionId: string;
+    usedTools: boolean;
+    toolCallCount: number;
+  }) => void;
   runtimeState: RuntimeState;
   steeringReplies: Set<string>;
   /** Host-verified completion notice turns awaiting their first settled reply. */
@@ -61,6 +75,7 @@ export function createEventPersistence({
   transcriptRewrite,
   finishApprovedExecution,
   emitAgentEvent,
+  scheduleSkillReview,
 }: EventPersistenceDependencies): {
   subagentTagged: (message: UiMessage, envelope: AgentEventEnvelope) => UiMessage;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
@@ -71,6 +86,12 @@ export function createEventPersistence({
   flush: () => Promise<void>;
 } {
   const inflightSnapshots = new Map<string, UiMessage>();
+  // Whether the turn in flight ran a tool. Extraction only reviews those turns:
+  // a chat-only turn rarely produces something worth remembering (ADR 0376).
+  const turnUsedTools = new Set<string>();
+  // How many tools this turn ran. Skill review uses it as its gate: a two-tool
+  // turn rarely distils into a procedure worth a completion (ADR 0377).
+  const turnToolCalls = new Map<string, number>();
   const pendingWrites = new Set<Promise<void>>();
   function trackWrite(write: Promise<void>): void {
     pendingWrites.add(write);
@@ -111,7 +132,20 @@ export function createEventPersistence({
     };
   }
 function subagentTagged(message: UiMessage, envelope: AgentEventEnvelope): UiMessage {
-  return tagMessageToolLineage(message, envelope);
+  return storableMessage(tagMessageToolLineage(message, envelope));
+}
+
+/**
+ * A model that reads the replayed placeholder as its own reasoning continues it
+ * inside literal `<thinking>` tags at the head of its reply text (#1945).
+ * Markdown hides the tag and keeps the body, so the placeholder reached users as
+ * a stray line once per replayed turn. Strip it before the row is stored: the
+ * stored transcript should not carry a provider-compat artifact at all.
+ */
+function storableMessage(message: UiMessage): UiMessage {
+  if (typeof message.content !== "string" || !message.content) return message;
+  const content = withoutEchoedReasoningPlaceholderText(message.content);
+  return content === message.content ? message : { ...message, content };
 }
 
 
@@ -184,6 +218,8 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     return;
   }
   if (event.type === "tool_start") {
+    turnUsedTools.add(envelope.sessionId);
+    turnToolCalls.set(envelope.sessionId, (turnToolCalls.get(envelope.sessionId) ?? 0) + 1);
     activeToolCalls.set(activeToolCallKey(envelope.sessionId, event.toolCallId), {
       toolName: event.toolName,
       args: event.args,
@@ -229,6 +265,12 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
         errorCode: event.error.code,
       });
     }
+    // Fire and forget: the turn is finished, and a failure here must never be
+    // visible as a turn failure.
+    const usedTools = turnUsedTools.delete(envelope.sessionId);
+    const toolCallCount = turnToolCalls.get(envelope.sessionId) ?? 0;
+    turnToolCalls.delete(envelope.sessionId);
+    scheduleSkillReview?.({ sessionId: envelope.sessionId, usedTools, toolCallCount });
     const turnFinalization = finishTurn(
       envelope.sessionId,
       event.error.code === "TURN_ABORTED" ? "aborted" : "error",
@@ -254,6 +296,12 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     // regenerate branch archive below on its behalf.
     if (isStaleTerminalEvent(envelope)) return;
     completionNoticeTurns.delete(envelope.turnId ?? turnId ?? "");
+    // A normally completed turn is the common case: schedule here as well as on
+    // the error branch, otherwise skill review never fires in practice.
+    const usedTools = turnUsedTools.delete(envelope.sessionId);
+    const toolCallCount = turnToolCalls.get(envelope.sessionId) ?? 0;
+    turnToolCalls.delete(envelope.sessionId);
+    scheduleSkillReview?.({ sessionId: envelope.sessionId, usedTools, toolCallCount });
     const turnFinalization = finishTurn(envelope.sessionId, "completed", undefined, {
       turnId: envelope.turnId ?? "",
     });
@@ -359,7 +407,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     // and call-only replies whose function calls carry provider signatures
     // that a rebuilt runtime must replay (#1972).
     const empty =
-      !(event.message.content || "").trim() &&
+      !(storableMessage(event.message).content || "").trim() &&
       !(event.message.thinking || "").trim();
     const carriesTool =
       Boolean(event.message.toolName) || Boolean(event.message.toolCallId);

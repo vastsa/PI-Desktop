@@ -35,7 +35,7 @@ import {
 import { completeOneShot } from "./one-shot-complete.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
-import { rememberDescription, rememberParameters } from "./memory-tool.js";
+import { createMemoryTool } from "./memory-agent-tool.js";
 import { createJevClassifierTool } from "./jev-classifier-tool.js";
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
@@ -271,6 +271,7 @@ import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
 import type { CustomSystemPrompt } from "./custom-system-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
+import { memorySnapshotContext, type MemorySnapshot } from "./memory-prompt.js";
 import { memoryContextPrefix, prependMemoryContext } from "./memory-context.js";
 import {
   pluginSkillsPrompt,
@@ -1054,6 +1055,12 @@ export type AgentRuntimeOptions = {
   projectInstructions?: ProjectInstructions;
   /** Durable project context loaded from host-owned project memory. */
   projectMemory?: string;
+  /**
+   * Frozen entry-list memory (ADR 0378), read when the session launched. It is
+   * snapshotted rather than re-read per turn so the system prompt stays stable
+   * and the provider prompt cache keeps working.
+   */
+  memoryEntries?: MemorySnapshot;
   /** Persisted transcript to seed the agent with (session isolation: each
    * session's agent carries only its own history). */
   history?: UiMessage[];
@@ -1128,6 +1135,8 @@ export type RuntimeMatchConfig = {
   customSystemPrompt?: CustomSystemPrompt;
   projectInstructions?: ProjectInstructions;
   projectMemory?: string;
+  /** Frozen entry-list memory (ADR 0378), read when the session launched. */
+  memoryEntries?: MemorySnapshot;
   projectPath?: string;
   /** Remote tool root. Model requests and runtime state remain on this machine. */
   remoteWorkspace?: { hostKey: string; path: string };
@@ -1921,6 +1930,7 @@ export class DesktopAgentRuntime {
   private builtinTools = new WeakSet<AgentTool>();
   private instructionExecution = new AsyncLocalStorage<(instructions: ProjectInstructions | undefined) => void>();
   private projectMemory?: string;
+  private memoryEntries?: MemorySnapshot;
   /** Per-prompt claims prevent repeated path-resolution RPCs for one directory. */
   private pathInstructionClaims = new Map<
     string,
@@ -2120,6 +2130,7 @@ export class DesktopAgentRuntime {
     this.baseProjectInstructions = opts.projectInstructions;
     this.projectInstructions = opts.projectInstructions;
     this.projectMemory = opts.projectMemory?.trim() || undefined;
+    this.memoryEntries = opts.memoryEntries;
     this.compactionEnabled = compactionEnabled(opts.compactionSettings);
     this.compactionStrategy = resolveCompactionStrategy(opts.compactionStrategy);
 
@@ -2902,6 +2913,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // prompt recomposes from the fresh content.
       ["customSystemPrompt", safeJson(this.customSystemPrompt ?? null) === safeJson(config.customSystemPrompt ?? null)],
       ["projectMemory", (this.projectMemory ?? "") === (config.projectMemory?.trim() ?? "")],
+      // A changed memory snapshot must retire the runtime: it is baked into the
+      // prompt at construction, so reusing a runtime built before a write would
+      // keep serving the old, empty list and the agent would answer "I have no
+      // memory" while the store holds entries.
+      ["memoryEntries", safeJson(this.memoryEntries ?? null) === safeJson(config.memoryEntries ?? null)],
       ["projectPath", (this.projectPath ?? "") === (config.remoteWorkspace?.path ?? config.projectPath?.trim() ?? "")],
       ["remoteWorkspace", safeJson(this.remoteWorkspace ?? null) === safeJson(config.remoteWorkspace ?? null)],
       ["workspaceRoot", (this.workspaceRoot ?? "") === (config.workspaceRoot?.trim() ?? "")],
@@ -3496,8 +3512,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           return `${commandShellToolDescription(this.commandShell, this.scratchDir)} Use Edit or Write instead of apply_patch, git apply, or patch; do not retry a failed shell patch command repeatedly.`;
         case "TodoWrite":
           return todoWriteDescription;
-        case "Remember":
-          return rememberDescription;
         case ASK_TOOL_NAME:
           return `Ask the user one or more questions. Keep each question to ${MAX_ASK_TOOL_QUESTION_CHARS} characters or fewer. Use Markdown in question text and option labels when formatting helps (for example, emphasis, inline code, or lists); the desktop card renders it safely. Plain strings and existing { label, description? } options are accepted; descriptions remain plain text and answers return the selected source label. The card always provides a custom user-input option.`;
         case "PluginScaffold":
@@ -3515,7 +3529,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const parameters: Record<string, Parameters<typeof Type.Object>[0]> = {
       GenerateImages: imageGenerationParameters,
       TodoWrite: todoWriteParameters,
-      Remember: rememberParameters,
       Read: {
         path: pathParam(
           "Existing regular file only, never a directory; workspace-relative or explicitly approved.",
@@ -4184,7 +4197,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             "BrowserPreview",
             "PluginCheck",
             "TodoWrite",
-            "Remember",
           ]
         : ["Read", "Glob", "Grep", "AstSearch", "BrowserPreview", "Bash", "Write", "Edit"];
     if (this.mode === "agent") {
@@ -4196,6 +4208,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.mode === "agent" && this.jevApiKey
         ? [createJevClassifierTool(this.jevApiKey)]
         : [];
+    // Entry-list memory (ADR 0378). Built here rather than in host-core because
+    // the edit semantics (which entry did the model mean, and does the batch fit
+    // the budget) live in `memory-store.ts`; the host only persists the result.
+    const memoryTools: AgentTool[] =
+      this.mode === "agent" ? [createMemoryTool(this.host)] : [];
 
     // Plugins contribute Agent tools by default. Plan/Goal modes only
     // expose plugins that declare plan-safe actions (ADR 0211); the
@@ -4274,6 +4291,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return [
       ...builtins,
       ...jevTools,
+      ...memoryTools,
       askTool,
       ...pluginTools,
       ...skillTools,
@@ -9429,7 +9447,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         this.keepPreflightUserMessage(incomingUserMessage);
         throw turnAbortedError("Turn aborted during extension hooks");
       }
-      const memoryPrefix = await this.recalledMemoryContext(modelInput);
+      // Durable notes travel with the user message, not the system prompt
+      // (ADR 0378). Two reasons: the transcript system messages are rebuilt from
+      // section keys, and a system-prompt change rewrites the provider prompt
+      // cache. This also means a note written this turn is visible next turn.
+      const snapshotPrefix = memorySnapshotContext(this.memoryEntries);
+      const recallPrefix = await this.recalledMemoryContext(modelInput);
+      const memoryPrefix = [snapshotPrefix, recallPrefix].filter(Boolean).join("\n\n") || undefined;
       if (typeof modelInput === "string") {
         await this.agent.prompt(memoryPrefix ? `${memoryPrefix}\n\n${modelInput}` : modelInput);
       } else {

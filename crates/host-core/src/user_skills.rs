@@ -384,6 +384,33 @@ fn directory_skill_root(path: &Path, skills_dir: &Path) -> Option<PathBuf> {
     Some(dir.to_path_buf())
 }
 
+/// Accept only `references/<name>.md`-style resource paths.
+///
+/// The review loop writes model-produced paths, so this is a security boundary,
+/// not a convenience: `..`, absolute paths and anything outside `references/`
+/// are rejected rather than normalised into something surprising.
+fn normalize_resource_path(raw: &str) -> Result<String> {
+    let trimmed = raw.trim().replace('\\', "/");
+    let trimmed = trimmed.trim_start_matches('/');
+    if trimmed.is_empty() {
+        bail!("SKILL_INVALID: resource path is required");
+    }
+    let parts: Vec<&str> = trimmed.split('/').filter(|part| !part.is_empty()).collect();
+    if parts.iter().any(|part| *part == "." || *part == "..") {
+        bail!("SKILL_INVALID: resource path may not traverse");
+    }
+    if parts.len() < 2 || parts[0] != "references" {
+        bail!("SKILL_INVALID: resource path must be references/<name>.md");
+    }
+    if !parts
+        .last()
+        .is_some_and(|part| part.to_ascii_lowercase().ends_with(".md"))
+    {
+        bail!("SKILL_INVALID: resource path must end with .md");
+    }
+    Ok(parts.join("/"))
+}
+
 /// Where an arriving skill document should land, and under which display name.
 struct SkillPlacement {
     name: String,
@@ -984,7 +1011,58 @@ impl UserSkillRegistry {
             .ok_or_else(|| anyhow::anyhow!("SKILL_INVALID: created skill was not found"))
     }
 
-    /// Import a Markdown skill from an external location. `input.shape` picks
+    /// Write one sibling resource inside a skill's own directory.
+    ///
+    /// A skill document may ship resources next to its `SKILL.md`
+    /// (`references/<topic>.md`). That is how the background review appends what
+    /// a session taught without rewriting the whole document — the same shape
+    /// the imported Anthropic packages use, and the reason a review can be
+    /// incremental instead of all-or-nothing.
+    ///
+    /// A flat `<id>.md` skill is promoted to `<id>/SKILL.md` first: a loose
+    /// document has nowhere to keep siblings without dropping files next to
+    /// every other skill in the same folder. The id is the directory name in the
+    /// directory shape, so the promotion keeps the skill's identity.
+    pub fn write_resource(
+        &mut self,
+        id: &str,
+        level: Option<CapabilityLevel>,
+        project_path: Option<&str>,
+        relative_path: &str,
+        content: &str,
+    ) -> Result<String> {
+        let Some(record) = self.find(id, level, project_path)? else {
+            bail!("SKILL_INVALID: no skill with id {id}");
+        };
+        let relative = normalize_resource_path(relative_path)?;
+        if content.len() > MAX_SKILL_RESOURCE_BYTES {
+            bail!("SKILL_INVALID: resource exceeds {MAX_SKILL_RESOURCE_BYTES} bytes");
+        }
+        let skills_dir = capability_dir(CapabilityLevel::Global, None, "skills")?;
+        let document = PathBuf::from(&record.path);
+        let root = match directory_skill_root(&document, &skills_dir) {
+            Some(dir) => dir,
+            None => {
+                let parent = document
+                    .parent()
+                    .ok_or_else(|| anyhow::anyhow!("SKILL_INVALID: skill has no parent directory"))?;
+                let target_dir = parent.join(&record.id);
+                fs::create_dir_all(&target_dir)?;
+                fs::rename(&document, target_dir.join("SKILL.md"))
+                    .with_context(|| format!("promote {}", document.display()))?;
+                target_dir
+            }
+        };
+        let destination = root.join(&relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&destination, content)
+            .with_context(|| format!("write {}", destination.display()))?;
+        Ok(relative)
+    }
+
+    /// Import a Markdown skill from an external location.
     /// between the single-file (`<id>.md`) form and the Anthropic-style
     /// directory form (`<name>/SKILL.md` plus resources); when absent, a
     /// directory source is treated as `"dir"` and a regular file as `"file"`.

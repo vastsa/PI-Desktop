@@ -957,3 +957,109 @@ fn directory_skill_package_rejects_traversal() {
     assert!(error.contains("SKILL_INVALID"));
     assert!(!app.path().join("outside.txt").exists());
 }
+
+#[test]
+fn write_resource_promotes_a_flat_skill_and_adds_a_reference() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        let record = registry
+            .create(input("Review", "global", None))
+            .unwrap();
+        assert!(record.path.ends_with("review.md"), "starts flat: {}", record.path);
+
+        let written = registry
+            .write_resource(
+                &record.id,
+                None,
+                None,
+                "references/pitfalls.md",
+                "# Pitfalls\n\nA 200 with an HTML body is not success.",
+            )
+            .unwrap();
+        assert_eq!(written, "references/pitfalls.md");
+
+        let root_dir = home.path().join("skills").join(&record.id);
+        assert!(
+            root_dir.join("SKILL.md").is_file(),
+            "the document was promoted into the directory shape"
+        );
+        assert!(
+            !home.path().join("skills").join("review.md").exists(),
+            "the flat document must not survive the promotion"
+        );
+        let reference = root_dir.join("references").join("pitfalls.md");
+        assert!(reference.is_file());
+        assert!(fs::read_to_string(&reference).unwrap().contains("200 with an HTML body"));
+
+        // The id is the directory name in this shape, so it must not change.
+        let listed = registry.list(CapabilityLevel::Global, None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, record.id);
+    });
+}
+
+#[test]
+fn write_resource_accepts_a_directory_skill_without_rewriting_it() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        let mut shape = input("Review", "global", None);
+        shape.shape = Some("dir".into());
+        let record = registry.create(shape).unwrap();
+        let document = PathBuf::from(&record.path);
+        assert!(document.ends_with("SKILL.md"));
+        let before = fs::read_to_string(&document).unwrap();
+
+        registry
+            .write_resource(&record.id, None, None, "references/notes.md", "note")
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&document).unwrap(), before, "SKILL.md untouched");
+        assert!(document.parent().unwrap().join("references/notes.md").is_file());
+    });
+}
+
+#[test]
+fn write_resource_rejects_paths_outside_references() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        let record = registry.create(input("Review", "global", None)).unwrap();
+
+        for bad in [
+            "../escape.md",
+            "references/../../escape.md",
+            "/etc/passwd",
+            "notes.md",
+            "references/deep.txt",
+            "",
+        ] {
+            assert!(
+                registry
+                    .write_resource(&record.id, None, None, bad, "x")
+                    .is_err(),
+                "must reject {bad:?}"
+            );
+        }
+        assert!(
+            !home.path().join("skills").join("escape.md").exists(),
+            "no traversal artefact may be created"
+        );
+    });
+}
+
+#[test]
+fn write_resource_reports_an_unknown_skill() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        assert!(registry
+            .write_resource("nope", None, None, "references/x.md", "x")
+            .is_err());
+    });
+}

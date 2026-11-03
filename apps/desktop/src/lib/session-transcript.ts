@@ -1,6 +1,6 @@
 import { preservePlanHistory } from "./plan-history";
 import type { AgentEvent, MessageAttachment, UiMessage } from "@pi-desktop/shared";
-import { formatPromptPathText, locateInlinePromptPaths } from "@pi-desktop/shared";
+import { formatPromptPathText, locateInlinePromptPaths, withoutEchoedReasoningPlaceholderText } from "@pi-desktop/shared";
 import {
   getSessionMessageSnapshot,
   registerSessionMessageAppend,
@@ -92,7 +92,7 @@ export function projectMessageEnd(
   const failed =
     event.message.status === "error" || event.message.status === "aborted";
   const empty =
-    !(event.message.content || "").trim() &&
+    !(withoutEchoedPlaceholderContent(event.message).content || "").trim() &&
     !(event.message.thinking || "").trim();
   return failed && empty && !event.message.error
     ? removeLiveSessionMessage(next, event.message.id)
@@ -128,6 +128,19 @@ export function dedupeSessionMessages(messages: UiMessage[]): UiMessage[] {
 }
 
 /**
+ * Live text straight off the model can still carry the echoed replay
+ * placeholder inside `<thinking>` tags (#1945). The persisted row is stripped
+ * before it is stored, but the stream reaches the renderer first, so the same
+ * projection is applied here — one turn in progress must not look different
+ * from the same turn after a reload.
+ */
+function withoutEchoedPlaceholderContent(message: UiMessage): UiMessage {
+  if (typeof message.content !== "string" || !message.content) return message;
+  const content = withoutEchoedReasoningPlaceholderText(message.content);
+  return content === message.content ? message : { ...message, content };
+}
+
+/**
  * Apply one live event message to a renderer-owned session snapshot without
  * rebuilding the whole transcript when the row is unchanged.
  */
@@ -135,12 +148,13 @@ export function upsertLiveSessionMessage(
   messages: UiMessage[],
   message: UiMessage,
 ): UiMessage[] {
+  const incoming = withoutEchoedPlaceholderContent(message);
   const normalized = dedupeSessionMessages(messages);
-  const index = getSessionMessageSnapshot(normalized).positions.get(message.id);
-  if (index === undefined) return registerSessionMessageAppend(normalized, [...normalized, message]);
-  if (normalized[index] === message) return normalized;
+  const index = getSessionMessageSnapshot(normalized).positions.get(incoming.id);
+  if (index === undefined) return registerSessionMessageAppend(normalized, [...normalized, incoming]);
+  if (normalized[index] === incoming) return normalized;
   const next = normalized.slice();
-  next[index] = preservePlanHistory(message, normalized[index]);
+  next[index] = preservePlanHistory(incoming, normalized[index]);
   return registerSessionMessageReplacement(normalized, next, index);
 }
 

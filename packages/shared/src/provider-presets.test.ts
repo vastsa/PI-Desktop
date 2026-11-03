@@ -10,6 +10,7 @@ import {
   matchNamedPreset,
   matchZhipuPreset,
   normalizeEndpointUrl,
+  withoutEchoedReasoningPlaceholderText,
   withoutReasoningReplayPlaceholder,
   zhipuRequestCompat,
 } from "./provider-presets.js";
@@ -395,5 +396,39 @@ describe("withoutReasoningReplayPlaceholder", () => {
     expect(withoutReasoningReplayPlaceholder("real plan")).toBe("real plan");
     const mention = `the relay sent ${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER} earlier`;
     expect(withoutReasoningReplayPlaceholder(mention)).toBe(mention);
+  });
+});
+
+describe("withoutEchoedReasoningPlaceholderText", () => {
+  const block = `<thinking>${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}</thinking>`;
+
+  it("drops the leading thinking blocks a model echoed into its reply", () => {
+    expect(withoutEchoedReasoningPlaceholderText(`${block}\nreal answer`)).toBe("real answer");
+    expect(withoutEchoedReasoningPlaceholderText(`${block}\n${block}\nreal answer`)).toBe(
+      "real answer",
+    );
+    expect(withoutEchoedReasoningPlaceholderText(`${block}\n${block}\n${block}\nreal answer`)).toBe(
+      "real answer",
+    );
+    expect(withoutEchoedReasoningPlaceholderText(block)).toBe("");
+  });
+
+  it("drops the model's rewritten placeholder too", () => {
+    expect(
+      withoutEchoedReasoningPlaceholderText(
+        "<thinking>[reasoning retained for this turn]</thinking>\nreal answer",
+      ),
+    ).toBe("real answer");
+  });
+
+  it("keeps a block that wraps authored text", () => {
+    const authored = "<thinking>I should check the encoding first.</thinking>\nreal answer";
+    expect(withoutEchoedReasoningPlaceholderText(authored)).toBe(authored);
+  });
+
+  it("keeps an echo that is not at the start, and keeps plain text", () => {
+    const late = `real answer\n${block}`;
+    expect(withoutEchoedReasoningPlaceholderText(late)).toBe(late);
+    expect(withoutEchoedReasoningPlaceholderText("real answer")).toBe("real answer");
   });
 });
