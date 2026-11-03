@@ -184,6 +184,7 @@ providers?: PluginProviderContrib[]; // Host-owned provider rows; needs `provide
   views?: PluginViewContrib[];
   sessionSources?: PluginSessionSourceContrib[];
   globalShortcuts?: PluginGlobalShortcutContrib[]; // needs `keyboard.globalShortcut`
+  launcherTriggers?: PluginLauncherTriggerContrib[]; // claims launcher input; needs `ui.panel` (spec 18)
 };
 
 type PluginCommandContrib = {
@@ -240,6 +241,22 @@ type PluginGlobalShortcutContrib = {
  command: string; // must be declared in contributes.commands
  default?: string; // accelerator the host registers after load; omitted means `pi.keyboard` registers it later
 };
+
+/** One launcher input pattern a plugin claims (spec 18). */
+type PluginLauncherTriggerContrib = {
+ id: string; // [a-zA-Z][a-zA-Z0-9_-]{0,63}, unique within the plugin
+ pattern: string; // 1..200 characters, matched against the whole launcher input
+ flags?: string; // no repeats, only `i` / `s` / `m` / `u`
+ title?: string | { en: string; "zh-CN": string }; // non-empty, at most 120 characters
+};
+
+`launcherTriggers` 认领插件启动器窗口（`Alt+Space` / `⌥+Space`）中的输入，规格见
+[18-plugin-launcher.md](18-plugin-launcher.md)。模式匹配整段去除首尾空白的输入，
+因此声明算术形状的插件不会与只是包含其中某个字符的查询竞争。最多 8 条；非空列表
+需要 `ui.panel`，因为命中会打开该插件的面板。模式的组若被量词修饰、而组内已含量词
+或分支，或括号不配对、方括号不配对、以悬空转义结尾、为空、超过 200 字符，都会被
+拒绝。宿主不编译模式（Rust 与 JavaScript 的正则语法不同），只证明声明不会爆炸；
+渲染端把无法编译的模式视为惰性。
 
 type PluginThemeContrib = {
  id: string; // ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
@@ -612,6 +629,11 @@ OAuth 贡献使用宿主管理的服务商账号界面。`onProviderOAuth` 处�
     `rendererCallMethods`（最多 32 条）是非空名字列表，且必须先有 `renderer` 才能声明。
     三者中声明任何一个都需要 `renderer.extension` 权限（§3.2）
 
+20. `contributes.launcherTriggers` 最多允许 8 条，且需要 `ui.panel`。`id` 匹配
+   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` 且唯一；`pattern` 非空且不超过 200 字符；
+   `flags` 是不重复的 `i` / `s` / `m` / `u` 子集；`title` 若存在，必须是非空字符串
+   或同时提供 `en` 与 `zh-CN`，各不超过 120 字符。模式若在已被量词修饰的组内再含量词
+   或分支、括号不配对、方括号不配对，或以悬空转义结尾，则清单被拒绝
 ## 8. 示例：最小插件
 
 ```json

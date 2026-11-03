@@ -19487,3 +19487,55 @@ their separate platform acceptance.
   `apps/desktop/test/plugin-projects.test.mjs` covers pin-independent ordering,
   group lookup failure, missing project providers, failed/malformed lookup,
   rename identity, and stale results after Host replacement.
+
+### E2E-268: Plugin launcher grid, triggers, and local applications
+
+- **Preconditions**: An isolated Host profile with a panel plugin that declares
+  one launcher trigger (for example `^\d+\s*[\+\-\*/]\s*\d+$`, so `1+1` matches
+  it) and whose panel renders the text it received through
+  `window.pluginBridge.consumeLauncherPayload()`. A second panel plugin with a
+  Latin name, and at least two installed applications, one of them Chinese with
+  a `wx` / `weixin` / `微信` spelling chain. Run on Windows and macOS.
+- **Steps**:
+  1. Press `Alt+Space` (`⌥+Space` on macOS) with an empty input. Read the grid:
+     group titles, rows, tiles per row, and the two header actions.
+  2. Type the trigger expression `1+1` and inspect the first tile and its detail
+     line; press `Enter` and read the opened panel.
+  3. Reopen the launcher and type a pinyin initial such as `wx`, then `weixin`,
+     then `微信`; confirm the same application is the matching tile each time.
+  4. Type `pi` and confirm the plugin named `PI-Desktop` is listed with a name
+     match, and that the same item is reachable by pinyin and initials.
+  5. Drag the panel's edge to a larger and then a smaller size; count the tiles
+     per row at each width. Quit and restart the application, then reopen the
+     launcher.
+  6. Type a query that matches more than 24 items. Read the header action and
+     the window height.
+  7. Disable one plugin that was in recents/pins, reopen the launcher, and check
+     the empty-input view and a query that used to match it.
+  8. Paste 500 characters of garbage into the search field.
+  9. Pin an application, quit, restart, and reopen the launcher with an empty
+     input.
+- **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
+  `Pinned` with one row of eight; the recents header reports the true number of
+  remembered items and the pinned header offers `All →`. Step 2 lists the
+  trigger plugin as the **first** tile with a `receives 1+1` detail line, ahead
+  of name matches, and the panel shows `1+1` exactly once (a second read returns
+  `null`). Step 3 reaches the same application through all three spellings with
+  a `pinyin`/`initials` detail line. Step 4 lists `PI-Desktop` once by name.
+  Step 5 keeps eight columns per row at every width between the minimum and
+  maximum, and the dragged size is restored after the restart. Step 6 keeps the
+  window at its current size, reports the dropped count in the header, and asks
+  the user to keep typing. Step 7 removes the disabled plugin from recents,
+  pins, and matches while every other tile still opens. Step 8 keeps the panel
+  responsive (no frozen input, no unhandled error) and reports no match, because
+  input longer than 256 characters is never matched against a trigger. Step 9
+  still shows the pinned application in the `Pinned` row.
+- **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
+  coverage for these rules: `launcher-search.test.mjs` (ranking order, section
+  caps, overflow total, trigger whole-input matching and the 256-character
+  limit), `launcher-store.test.mjs` (pins, aliases, recents, legacy migration
+  and pruning), `local-apps.test.mjs` (discovery, bounds, dropped targets,
+  opaque-id launch) and `plugin-launcher-state.test.mjs` (clamping and
+  re-centring). Rust `plugins` tests cover the manifest rules. The rendered
+  Electron journey above — grouped grid, resize, restart, and the panel payload
+  round trip — is Draft until a launcher E2E script exists.

@@ -652,7 +652,7 @@ export class PluginPanelHost {
    * The page reads it through `pluginBridge.consumeLauncherPayload()`, whose
    * first call wins and returns null afterwards. An open without a payload
    * sends nothing, so a plugin cannot read input the user typed for another
-   * time or for another plugin (docs/spec/07-plugins/17-plugin-launcher.md §5).
+   * time or for another plugin (docs/spec/07-plugins/18-plugin-launcher.md §5).
    */
   private deliverLaunch(
     request: PluginPanelOpenRequest,

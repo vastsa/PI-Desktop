@@ -11,7 +11,7 @@
  *    `app:<slug>` id; `launch` resolves that id against the host's own scan, so
  *    a compromised renderer cannot ask for an arbitrary executable.
  *
- * Docs: docs/spec/07-plugins/17-plugin-launcher.md
+ * Docs: docs/spec/07-plugins/18-plugin-launcher.md
  */
 import type { BrowserWindow } from "electron";
 import {

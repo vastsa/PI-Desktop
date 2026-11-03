@@ -887,7 +887,7 @@ const liveCallService = createLiveCallService({
  * is asynchronous, while IPC registration is synchronous. This handle awaits
  * that wiring on first use, warms the first scan in the background so the first
  * `Alt+Space` already has application tiles, and reports "still scanning" until
- * it exists (docs/spec/07-plugins/17-plugin-launcher.md §4).
+ * it exists (docs/spec/07-plugins/18-plugin-launcher.md §4).
  */
 let localAppsCatalog: LocalAppCatalog | null = null;
 const localAppsReady = createDefaultLocalAppDeps().then((deps) => {

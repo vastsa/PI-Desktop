@@ -6,7 +6,7 @@
  * which OS applications the machine actually has, and what a click is allowed to
  * open. The renderer receives *display and matching* metadata and an opaque
  * item id — never an executable path, so it can only ask the host to launch an
- * item the host itself discovered (docs/spec/07-plugins/17-plugin-launcher.md).
+ * item the host itself discovered (docs/spec/07-plugins/18-plugin-launcher.md).
  */
 
 /** What a launcher tile opens. */
@@ -97,7 +97,7 @@ export type LauncherOpenAppRequest = {
 /**
  * Open a plugin panel from the launcher, optionally handing it the input that
  * triggered it. `payload` is delivered to the plugin exactly once, only to the
- * plugin the user chose (docs/spec/07-plugins/17-plugin-launcher.md §5).
+ * plugin the user chose (docs/spec/07-plugins/18-plugin-launcher.md §5).
  */
 export type LauncherOpenPluginRequest = {
   pluginId: string;

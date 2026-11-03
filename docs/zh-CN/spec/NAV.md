@@ -102,6 +102,7 @@
 - [15-plugin-center.md](/zh-CN/spec/07-plugins/15-plugin-center)
 - [16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions)
 - [17-plugin-glossary.md](/zh-CN/spec/07-plugins/17-plugin-glossary)
+- [18-plugin-launcher.md](/zh-CN/spec/07-plugins/18-plugin-launcher)
 
 ## 8. 元数据
 - [README.md](/zh-CN/spec/08-meta/README)
