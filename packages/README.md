@@ -1,6 +1,6 @@
 # packages
 
-- `shared` — IPC/protocol contracts
+- `shared` — IPC/protocol contracts; `formatBytes(1536)` → `1.5 KB` (binary steps, `KB`/`MB`/`GB` labels, per-unit `decimals`)
 - `i18n` — English source catalog
 - `plugin-sdk` — plugin author types/helpers
 - `agent-runtime` — pi sidecar + runtime wrapper
