@@ -739,6 +739,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   second rather than after it.
 - A boot that outlasts the video shows the splash's indeterminate bar after 3s
   of black, so an opaque mask is not mistaken for a hang.
+- Either `loadeddata` or `playing` acknowledges a decoded first frame; a
+  playing video must not hit the missing-first-frame timeout when `loadeddata`
+  was missed. The first-frame timeout also checks the actual video ref for
+  HAVE_CURRENT_DATA in case both initial events raced their handlers. The total
+  playback bound remains active.
 - Four bounds end the animation, and each runs the same reveal: no first frame
   within 2s, 15s of total playback, a `<video>` `error`, or `Escape`. The
   startup watchdog's bounds are unchanged and outrank it — at 30s the boot

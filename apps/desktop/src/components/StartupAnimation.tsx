@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { STARTUP_ANIMATION_URL } from "@pi-desktop/shared";
 import type { StartupAnimationEndReason } from "../lib/startup-animation";
@@ -18,12 +19,14 @@ import { cx } from "./ui";
  */
 export function StartupAnimation({
   playing,
+  videoRef,
   revealing,
   holdingLong,
   onFirstFrame,
   onAnimationEnd,
 }: {
   playing: boolean;
+  videoRef?: RefObject<HTMLVideoElement | null>;
   revealing: boolean;
   holdingLong: boolean;
   onFirstFrame: () => void;
@@ -41,6 +44,7 @@ export function StartupAnimation({
     >
       {playing ? (
         <video
+          ref={videoRef}
           className="startup-animation-video"
           src={STARTUP_ANIMATION_URL}
           autoPlay
@@ -52,6 +56,7 @@ export function StartupAnimation({
           tabIndex={-1}
           aria-hidden
           onLoadedData={onFirstFrame}
+          onPlaying={onFirstFrame}
           onEnded={() => onAnimationEnd("ended")}
           onError={() => onAnimationEnd("error")}
         />
