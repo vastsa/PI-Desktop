@@ -379,7 +379,7 @@ Each ADR includes:
 | 0321 | [Pin an acceptable address for mixed direct DNS answers](0321-skill-market-direct-dns-pinning.md) | Accepted (D648; amends ADR 0272) |
 | 0322 | [Plugin providers appear in Add Service](0322-plugin-providers-in-add-service.md) | Accepted for implementation (D650; amends ADR 0259) |
 | 0323 | [Make Session Title Generation a Standalone Plugin](0323-plugin-owned-session-titles.md) | Accepted (D652, amended by D654; supersedes ADR 0186) |
-| 0324 | [Make Composer Prompt Enhancement an Optional Plugin](0324-plugin-owned-composer-prompt-enhancement.md) | Accepted (D653; supersedes ADR 0121) |
+| 0324 | [Make Composer Prompt Enhancement an Optional Plugin](0324-plugin-owned-composer-prompt-enhancement.md) | Accepted (D653; supersedes ADR 0121; default-install clause superseded by ADR 0378) |
 | 0325 | [Smooth Windows main-window corner compositing](0325-windows-window-corner-compositing.md) | Proposed (implementation candidate; Windows E2E pending) |
 | 0326 | [Verified SSH Host installation and daily startup](0326-verified-ssh-host-installation.md) | Accepted for experimental implementation (amends ADR 0292; Linux SSH qualification and publication pending) |
 | 0327 | [Automatic remote Host version realignment](0327-remote-host-version-realignment.md) | Accepted for experimental implementation (amends ADR 0326 item 6; Linux SSH qualification pending) |
@@ -399,3 +399,4 @@ Each ADR includes:
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
 | 0371 | [Durable agent memory lives in host-core SQLite, keyword-first](0371-memory-store.md) | Accepted for implementation |
 | 0377 | [Skill learning in core](0377-skill-learning-in-core.md) | Accepted |
+| 0378 | [Ship prompt enhancement with the application image](0378-bundled-prompt-enhancement.md) | Accepted (supersedes the default-install clause of ADR 0324) |

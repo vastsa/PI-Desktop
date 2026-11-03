@@ -8101,3 +8101,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   check `pnpm test:e2e:radial-menu`, and capture scenes `pi-radial` /
   `pi-radial-dark`. See `04-ux/09-interaction-patterns.md` §1.11 and
   E2E-CHAT-radial-background-menu.
+
+## 2026-11-03 — Prompt enhancement ships with the application image (D679)
+
+- D679 tracks the released `pi.prompt-enhancement` plugin (1.3.0, byte-identical
+  to the marketplace package) in `apps/desktop/resources/plugins` and
+  un-ignores that path, so every build this repository produces ships the
+  Composer enhancement action as a bundled plugin (ADR 0378).
+- The host contract from ADR 0324 is unchanged:
+  `contributes.composerTransforms` with `composer.transform`, the draft-only
+  data boundary, the 100,000-character limit, the plugin-call timeout, the
+  permission and manifest checks on every invocation, the audit trail, and the
+  one-step undo. The plugin still owns its settings panel, its model, and its
+  reasoning level.
+- Consequences: the plugin is enabled on first launch and can be disabled but
+  not uninstalled (ADR 0241); `composer.transform`, `agent.complete`,
+  `models.list`, and `ui.panel` are granted at launch for it instead of through
+  an install-time review; the legacy-settings migration now triggers on the
+  first load of the bundled plugin rather than on a user install.
+- Covered by `scripts/verify-bundled-plugins.mjs`, which starts host-core against
+  the image's plugin directory and reports every manifest accepted (`rows: 3`,
+  `bundled: 3`, `broken: 0`). See `04-ux/12-prompt-enhancement.md`,
+  `04-ux/06-settings-ia.md`, `03-runtime/04-data-storage.md`, and ADR 0378.

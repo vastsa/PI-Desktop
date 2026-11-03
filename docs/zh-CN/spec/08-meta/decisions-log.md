@@ -5653,3 +5653,19 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 由 `apps/desktop/test/radial-menu.test.mjs`、Chromium 组件检查
   `pnpm test:e2e:radial-menu`，以及截图场景 `pi-radial`、`pi-radial-dark` 覆盖。见
   `04-ux/09-interaction-patterns.md` 第 1.11 节与 E2E-CHAT-radial-background-menu。
+
+## 2026-11-03 — 提示词增强随应用镜像发货（D679）
+
+- D679 将发行版 `pi.prompt-enhancement`（1.3.0，与市场包逐字节一致）纳入
+  `apps/desktop/resources/plugins` 并取消该路径的忽略，使本仓库产出的每个构建都以随包
+  插件形式带上输入框增强操作（ADR 0378）。
+- ADR 0324 的宿主契约不变：`contributes.composerTransforms` 与
+  `composer.transform`、仅草稿的数据边界、100,000 字符上限、插件调用超时、每次调用的
+  权限与 manifest 校验、审计记录、单步撤销。插件仍自己拥有设置面板、模型与推理等级。
+- 影响：插件首次启动即启用，可禁用但不能卸载（ADR 0241）；`composer.transform`、
+  `agent.complete`、`models.list`、`ui.panel` 在启动时即为该插件授权，而不再经过安装期
+  确认；旧设置迁移的触发点从“用户安装”变为“随包插件首次加载”。
+- 由 `scripts/verify-bundled-plugins.mjs` 覆盖：它以宿主二进制起临时实例并校验镜像目录，
+  全部 manifest 通过（`rows: 3`、`bundled: 3`、`broken: 0`）。见
+  `04-ux/12-prompt-enhancement.md`、`04-ux/06-settings-ia.md`、
+  `03-runtime/04-data-storage.md` 与 ADR 0378。

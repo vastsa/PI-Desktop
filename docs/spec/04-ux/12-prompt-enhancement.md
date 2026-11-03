@@ -2,10 +2,11 @@
 
 ## 1. Scope
 
-Composer text transforms are opt-in plugin contributions. The host ships no
-built-in prompt-enhancement action or settings card, and does not install the
-prompt-enhancement plugin by default. Users install that plugin explicitly
-from its separate repository or a configured plugin catalog.
+Composer text transforms are plugin contributions. The host ships no built-in
+prompt-enhancement action or settings card; the standalone
+`pi.prompt-enhancement` plugin is bundled with the application image and enabled
+on first launch (ADR 0378). Users can still install or update the plugin from
+its separate repository or a configured plugin catalog.
 
 A plugin declares one or more `contributes.composerTransforms` entries and the
 `composer.transform` permission. Each entry supplies the action label and
@@ -39,8 +40,10 @@ draft or another session's draft.
 
 The standalone `pi.prompt-enhancement` plugin contributes the former
 enhancement action. Its implementation and settings live in the plugin
-repository; the host provides only the generic Composer transform contract.
-Installing and granting the plugin is required before the action appears.
+repository; the host provides only the generic Composer transform contract. The
+plugin ships bundled with the application image (ADR 0378), so the action
+appears once the plugin is loaded and its declared permissions are granted; a
+user who installs or updates it from the catalog gets the same contract.
 
 On the first load of this plugin, Electron copies valid legacy host preferences
 to the plugin's private settings before the plugin's `onLoad` callback. Existing
@@ -50,6 +53,6 @@ private migration marker prevents re-import after a user later clears a plugin
 setting. The host leaves legacy values intact for rollback and downgrade
 compatibility; they are not used by Composer or Settings after migration.
 
-The migration does not run for other plugins and does not make the plugin
-available by default. If the plugin is not installed, the host has no prompt
-enhancement action or related settings UI.
+The migration does not run for other plugins. A bundled plugin can be disabled
+but not uninstalled (ADR 0241); while the plugin is disabled or absent, the host
+has no prompt enhancement action or related settings UI.

@@ -308,10 +308,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   is remaining. The threshold controls when a text-only paste becomes a
   temporary session-scratch file; it defaults to 600 characters and accepts
   integer values from 1 through 1,000,000.
-- Composer text actions are contributed by explicitly installed plugins and
-  appear only while their plugin is enabled and its `composer.transform`
-  permission is granted. The host does not include a prompt-enhancement card or
-  install the standalone `pi.prompt-enhancement` plugin by default. Plugin-owned
+- Composer text actions are contributed by plugins and appear only while their
+  plugin is enabled and its `composer.transform` permission is granted. The host
+  includes no prompt-enhancement card; the standalone `pi.prompt-enhancement`
+  plugin ships bundled with the application image (ADR 0378). Plugin-owned
   settings are edited on the Plugins page; the one-time migration of legacy
   prompt-enhancement preferences is specified in
   `04-ux/12-prompt-enhancement.md`.

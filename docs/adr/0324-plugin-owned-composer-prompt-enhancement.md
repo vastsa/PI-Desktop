@@ -1,6 +1,7 @@
 # ADR 0324: Make Composer Prompt Enhancement an Optional Plugin
 
-- Status: Accepted
+- Status: Accepted (the default-install clause is superseded by ADR 0378; the
+  extension point, data boundary, and migration stand)
 - Date: 2026-10-08
 - Supersedes: ADR 0121
 
@@ -33,8 +34,11 @@ plugin behind the existing permission and audit boundaries.
   call auditing. Return text to the Composer with one-step undo and stale-draft
   and stale-session protection.
 - Keep prompt enhancement in the separate `vastsa/pi-prompt-enhancement`
-  repository. The host neither bundles nor enables it by default; a user must
-  install it and grant its declared permissions. The plugin owns its settings
+  repository. *(The default-install clause is superseded by ADR 0378: the
+  plugin now ships bundled with the application image, enabled on first launch.
+  Everything else in this bullet stands: the repository owns the
+  implementation, and the plugin's declared permissions gate the action.)*
+  The plugin owns its settings
   and its model request, using separately granted plugin APIs as needed.
 - On the first load of `pi.prompt-enhancement`, copy valid legacy model,
   thinking, and enabled custom-template values into unset plugin settings

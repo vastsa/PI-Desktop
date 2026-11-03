@@ -1,0 +1,80 @@
+{
+  "activationEvents": [
+    "onStartup"
+  ],
+  "author": "vastsa",
+  "categories": [
+    "productivity"
+  ],
+  "changelog": "1.3.0 — settings moved into the plugin's own panel (host model list, reasoning level, editable built-in template, localized copy).",
+  "contributes": {
+    "commands": [
+      {
+        "category": "Prompt Enhancement",
+        "id": "enhancement.configure",
+        "keywords": [
+          "prompt",
+          "enhance",
+          "model",
+          "settings",
+          "提示词",
+          "增强",
+          "模型"
+        ],
+        "title": "Prompt Enhancement: Settings"
+      }
+    ],
+    "composerTransforms": [
+      {
+        "id": "enhance",
+        "title": {
+          "en": "Enhance prompt",
+          "zh-CN": "增强提示词"
+        },
+        "undoTitle": {
+          "en": "Undo prompt enhancement",
+          "zh-CN": "撤销提示词增强"
+        }
+      }
+    ]
+  },
+  "description": "Rewrite the current Composer draft as a clearer prompt when you choose to run it, configured from the plugin's own settings panel.",
+  "engines": {
+    "piDesktop": ">=0.1.0"
+  },
+  "homepage": "https://github.com/vastsa/pi-prompt-enhancement",
+  "i18n": {
+    "en": {
+      "name": "Prompt Enhancement",
+      "description": "Rewrite the current Composer draft as a clearer prompt when you choose to run it, configured from the plugin's own settings panel.",
+      "safetyNotes": "Sends the draft text to the selected model provider after you click the action. Does not read conversation history or file attachments. Reads the host's ready model list (no credentials) to fill the settings panel's model choice."
+    },
+    "zh-CN": {
+      "name": "提示词增强",
+      "description": "按需将当前输入框草稿改写成更清晰的提示词，模型等选项在插件自己的设置面板里配置。",
+      "safetyNotes": "点击操作后会把草稿文本发送给所选模型提供商；不会读取会话历史或文件附件。为填充设置面板的模型选项，会读取宿主已就绪的模型列表（不含凭据）。"
+    }
+  },
+  "id": "pi.prompt-enhancement",
+  "license": "LGPL-3.0-only",
+  "main": "main.js",
+  "name": "Prompt Enhancement",
+  "permissions": [
+    "composer.transform",
+    "agent.complete",
+    "models.list",
+    "ui.panel"
+  ],
+  "safetyNotes": "Sends the draft text to the selected model provider after you click the action. Does not read conversation history or file attachments. Reads the host's ready model list (no credentials) to fill the settings panel's model choice.",
+  "schemaVersion": 1,
+  "ui": {
+    "height": 660,
+    "panel": "panel/index.html",
+    "title": {
+      "en": "Prompt Enhancement",
+      "zh-CN": "提示词增强"
+    },
+    "width": 560
+  },
+  "version": "1.3.0"
+}

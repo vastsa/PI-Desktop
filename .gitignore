@@ -71,10 +71,13 @@ worktrees
 # scripts/sync-bundled-plugins.mjs. They ship inside the installer via
 # extraResources but are not versioned here: 100+ MiB of assets with their own
 # release cadence, regenerable from the catalog. The two first-party plugins
-# stay tracked.
+# stay tracked, and so does the vendored `pi.prompt-enhancement` release, whose
+# Composer action is part of the shipped product and must not depend on a
+# marketplace download.
 /apps/desktop/resources/plugins/*
 !/apps/desktop/resources/plugins/pi.browser/
 !/apps/desktop/resources/plugins/pi.file-manager/
+!/apps/desktop/resources/plugins/pi.prompt-enhancement/
 /.plugin-packages/
 
 # Python install artefacts

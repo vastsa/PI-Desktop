@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title></title>
+    <style>
+      :root { color-scheme: light dark; font: 14px/1.45 system-ui, sans-serif; }
+      body { margin: 0; padding: 24px; color: CanvasText; background: Canvas; }
+      main { max-width: 640px; margin: 0 auto; }
+      h1 { margin: 0 0 6px; font-size: 21px; }
+      .intro { margin: 0 0 22px; color: color-mix(in srgb, CanvasText 70%, transparent); }
+      label { display: block; margin: 18px 0 6px; font-weight: 600; }
+      select, textarea { box-sizing: border-box; width: 100%; padding: 9px 10px; color: inherit; background: Canvas; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; }
+      textarea { min-height: 190px; resize: vertical; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .hint { margin: 5px 0 0; color: color-mix(in srgb, CanvasText 65%, transparent); font-size: 12px; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .actions { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+      button { border: 0; border-radius: 8px; padding: 9px 16px; color: white; background: #2563eb; font: inherit; font-weight: 600; cursor: pointer; }
+      button:disabled { opacity: .55; cursor: default; }
+      .label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 6px; }
+      .label-row > label { margin: 0; }
+      .label-actions { display: inline-flex; flex: 0 0 auto; gap: 6px; }
+      button.ghost { padding: 4px 10px; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 6px; background: transparent; color: inherit; font-size: 12px; font-weight: 500; }
+      button.ghost:hover { background: color-mix(in srgb, CanvasText 8%, transparent); }
+      #status { min-height: 1.4em; color: color-mix(in srgb, CanvasText 70%, transparent); }
+      #status[data-error="true"] { color: #dc2626; }
+      @media (max-width: 520px) { body { padding: 16px; } .row { grid-template-columns: 1fr; gap: 0; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="heading"></h1>
+      <p id="intro" class="intro"></p>
+      <div class="row">
+        <div>
+          <label id="model-label" for="model"></label>
+          <select id="model"></select>
+          <p id="model-hint" class="hint"></p>
+        </div>
+        <div>
+          <label id="thinking-label" for="thinking"></label>
+          <select id="thinking"></select>
+          <p id="thinking-hint" class="hint"></p>
+        </div>
+      </div>
+      <div class="label-row">
+        <label id="template-label" for="template"></label>
+        <span class="label-actions">
+          <button id="insert-draft" class="ghost" type="button"></button>
+          <button id="restore-template" class="ghost" type="button"></button>
+        </span>
+      </div>
+      <textarea id="template" maxlength="8000" spellcheck="false"></textarea>
+      <p id="template-hint" class="hint"></p>
+      <p id="template-error" class="hint" role="alert" hidden></p>
+      <div class="actions">
+        <button id="save" type="button"></button>
+        <span id="status" role="status" aria-live="polite"></span>
+      </div>
+    </main>
+    <script>
+      const bridge = window.pluginBridge;
+      const DRAFT = "{{draft}}";
+      const TEMPLATE_MAX = 8000;
+      const THINKING_VALUES = ["off", "minimal", "low", "medium", "high", "max"];
+      const copy = {
+        en: {
+          heading: "Prompt Enhancement",
+          intro: "Choose the model and reasoning effort used when the Composer's Enhance prompt action rewrites a draft.",
+          model: "Enhancement model",
+          follow: "Follow the Composer model",
+          modelHint: "The list is the host's own ready model list. A model the host no longer reports falls back to the Composer model.",
+          thinking: "Reasoning effort",
+          thinkingHint: "A level the chosen model does not support falls back to off.",
+          template: "User template",
+          templateHint: `The built-in template is shown below: edit it to override, and the action uses your text instead. A custom template must contain ${DRAFT} and stay within 8,000 characters.`,
+          templateError: `${DRAFT} is required in a custom template (maximum 8,000 characters).`,
+          insertDraft: `Insert ${DRAFT}`,
+          restoreTemplate: "Restore built-in",
+          save: "Save",
+          loading: "Loading settings…",
+          saved: "Settings saved.",
+          loadError: "Could not load the settings or the host model list.",
+          saveError: "Could not save the settings.",
+          thinkingLabels: ["Off", "Minimal", "Low", "Medium", "High", "Max"],
+          defaultLabel: "default",
+          unavailable: "(unavailable — the Composer model is used)",
+          showing: (shown, total) => `Showing the first ${shown} of ${total} models.`,
+        },
+        zh: {
+          heading: "提示词增强",
+          intro: "设置输入框里「增强提示词」改写草稿时使用的模型与推理等级。",
+          model: "增强模型",
+          follow: "跟随输入框模型",
+          modelHint: "列表来自 PI-Desktop 已就绪的模型；宿主已不再提供的模型会回退为输入框模型。",
+          thinking: "推理等级",
+          thinkingHint: "所选模型不支持该等级时会回退为关闭。",
+          template: "用户模板",
+          templateHint: `下面是内置模板：直接编辑即覆盖，不动则继续用内置模板。自定义模板必须包含 ${DRAFT}，且不超过 8,000 个字符。`,
+          templateError: `自定义模板必须包含 ${DRAFT}，且不超过 8,000 个字符。`,
+          insertDraft: `插入 ${DRAFT}`,
+          restoreTemplate: "恢复内置模板",
+          save: "保存",
+          loading: "正在加载设置…",
+          saved: "设置已保存。",
+          loadError: "无法加载设置或宿主模型列表。",
+          saveError: "无法保存设置。",
+          thinkingLabels: ["关闭", "最少", "低", "中", "高", "最大"],
+          defaultLabel: "默认",
+          unavailable: "（不可用，将使用输入框模型）",
+          showing: (shown, total) => `仅显示前 ${shown} 个，共 ${total} 个模型。`,
+        },
+      };
+      const fields = {
+        heading: document.getElementById("heading"),
+        intro: document.getElementById("intro"),
+        modelLabel: document.getElementById("model-label"),
+        modelHint: document.getElementById("model-hint"),
+        model: document.getElementById("model"),
+        thinkingLabel: document.getElementById("thinking-label"),
+        thinkingHint: document.getElementById("thinking-hint"),
+        thinking: document.getElementById("thinking"),
+        templateLabel: document.getElementById("template-label"),
+        templateHint: document.getElementById("template-hint"),
+        templateError: document.getElementById("template-error"),
+        template: document.getElementById("template"),
+        insertDraft: document.getElementById("insert-draft"),
+        restoreTemplate: document.getElementById("restore-template"),
+        save: document.getElementById("save"),
+        status: document.getElementById("status"),
+      };
+      let locale = copy.en;
+      let modelKeys = new Set();
+      let defaultTemplate = "";
+
+      function setLocale(value) {
+        const code = String(value || "en").toLowerCase();
+        locale = code.startsWith("zh") ? copy.zh : copy.en;
+        document.documentElement.lang = locale === copy.zh ? "zh-CN" : "en";
+        fields.heading.textContent = locale.heading;
+        fields.intro.textContent = locale.intro;
+        fields.modelLabel.textContent = locale.model;
+        fields.modelHint.textContent = locale.modelHint;
+        fields.thinkingLabel.textContent = locale.thinking;
+        fields.thinkingHint.textContent = locale.thinkingHint;
+        fields.templateLabel.textContent = locale.template;
+        fields.templateHint.textContent = locale.templateHint;
+        fields.save.textContent = locale.save;
+        fields.insertDraft.textContent = locale.insertDraft;
+        fields.restoreTemplate.textContent = locale.restoreTemplate;
+        fillThinkingLevels(fields.thinking.value);
+        updateTemplateValidation();
+      }
+
+      function fillThinkingLevels(selected) {
+        fields.thinking.replaceChildren();
+        THINKING_VALUES.forEach((value, index) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = locale.thinkingLabels[index];
+          fields.thinking.append(option);
+        });
+        fields.thinking.value = THINKING_VALUES.includes(selected) ? selected : "off";
+      }
+
+      /** The host's ready models, plus the pinned one even if it is gone. */
+      function fillModels(models, selected) {
+        fields.model.replaceChildren();
+        const follow = document.createElement("option");
+        follow.value = "";
+        follow.textContent = locale.follow;
+        fields.model.append(follow);
+        modelKeys = new Set();
+        (Array.isArray(models) ? models : []).forEach((model) => {
+          if (!model || typeof model.key !== "string") return;
+          const option = document.createElement("option");
+          option.value = model.key;
+          const suffix = [model.providerName, model.isDefault ? locale.defaultLabel : ""].filter(Boolean);
+          option.textContent = suffix.length ? `${model.label || model.key} · ${suffix.join(" · ")}` : String(model.label || model.key);
+          fields.model.append(option);
+          modelKeys.add(model.key);
+        });
+        if (selected && !modelKeys.has(selected)) {
+          const option = document.createElement("option");
+          option.value = selected;
+          option.textContent = `${selected} ${locale.unavailable}`;
+          fields.model.append(option);
+        }
+        fields.model.value = selected || "";
+      }
+
+      function templateProblem() {
+        const value = fields.template.value;
+        if (value.trim() && !value.includes(DRAFT)) return locale.templateError;
+        if (value.length > TEMPLATE_MAX) return locale.templateError;
+        return "";
+      }
+
+      function updateTemplateValidation() {
+        const problem = templateProblem();
+        fields.templateError.textContent = problem;
+        fields.templateError.hidden = !problem;
+        fields.save.disabled = Boolean(problem);
+      }
+
+      function showStatus(message, isError = false) {
+        fields.status.textContent = message;
+        fields.status.dataset.error = String(isError);
+      }
+
+      async function load() {
+        showStatus(locale.loading);
+        try {
+          const result = await bridge.invoke("settings.load");
+          const settings = result?.settings || {};
+          defaultTemplate = String(result?.defaultTemplate || "");
+          fillModels(result?.models, String(settings.modelKey || ""));
+          fillThinkingLevels(String(settings.thinkingLevel || "off"));
+          fields.template.value = String(settings.userTemplate || defaultTemplate);
+          updateTemplateValidation();
+          const total = Number(result?.modelCount || 0);
+          const shown = Array.isArray(result?.models) ? result.models.length : 0;
+          showStatus(result?.truncated && total > shown ? locale.showing(shown, total) : "");
+        } catch {
+          showStatus(locale.loadError, true);
+        }
+      }
+
+      fields.template.addEventListener("input", updateTemplateValidation);
+      fields.insertDraft.addEventListener("click", () => {
+        const start = fields.template.selectionStart ?? fields.template.value.length;
+        const end = fields.template.selectionEnd ?? start;
+        const value = fields.template.value;
+        fields.template.value = `${value.slice(0, start)}${DRAFT}${value.slice(end)}`;
+        fields.template.selectionStart = start + DRAFT.length;
+        fields.template.selectionEnd = fields.template.selectionStart;
+        fields.template.focus();
+        updateTemplateValidation();
+      });
+      fields.restoreTemplate.addEventListener("click", () => {
+        fields.template.value = defaultTemplate;
+        updateTemplateValidation();
+      });
+      fields.save.addEventListener("click", async () => {
+        if (templateProblem()) {
+          updateTemplateValidation();
+          return;
+        }
+        fields.save.disabled = true;
+        showStatus("");
+        try {
+          const result = await bridge.invoke("settings.save", {
+            modelKey: fields.model.value,
+            thinkingLevel: fields.thinking.value,
+            userTemplate: fields.template.value,
+          });
+          const saved = result?.settings || {};
+          fields.template.value = String(saved.userTemplate || defaultTemplate);
+          showStatus(locale.saved);
+        } catch {
+          showStatus(locale.saveError, true);
+        } finally {
+          updateTemplateValidation();
+        }
+      });
+
+      /** The host reports its active language tag in `locale`. */
+      function localeOf(appearance) {
+        const value = String(appearance?.locale ?? appearance?.language ?? "").trim();
+        return value && !/^(auto|system)$/i.test(value) ? value : navigator.language || "en";
+      }
+
+      bridge.on("appearance:changed", (appearance) => setLocale(localeOf(appearance)));
+      bridge
+        .invoke("app.getAppearance")
+        .then((appearance) => setLocale(localeOf(appearance)))
+        .catch(() => setLocale(navigator.language));
+      void load();
+    </script>
+  </body>
+</html>

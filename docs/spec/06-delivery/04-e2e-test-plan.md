@@ -4579,8 +4579,9 @@ window; opening a normal panel afterward must still work.
   and the docked composer prompt row has no leading
   brand icon or reserved icon slot and its text aligns directly with the input
   gutter. The right Composer toolbar shows a Bot model × reasoning chip and
-  the single submit slot; an installed plugin may contribute text actions
-  between them. Without such a plugin no prompt-enhancement action appears.
+  the single submit slot; a plugin may contribute text actions
+  between them, which the bundled `pi.prompt-enhancement` plugin does. With
+  that plugin disabled, no prompt-enhancement action appears.
   The footer Settings and Plugins actions are compact icon buttons;
   Plugins sits immediately to the right of Settings and exposes a localized
   accessible name. Every scoped session-creation control uses the dedicated
@@ -4850,9 +4851,10 @@ window; opening a normal panel afterward must still work.
   Native range dragging
   follows immediately; arrow keys retain focus and update the selection.
   With reduced motion enabled, the target is shown without a transition.
-- **Expected**: The chip is in the right toolbar with a Bot icon; any
-  explicitly installed plugin text actions appear after it and before
-  Send/Abort. The host has no built-in prompt-enhancement action. Off omits the
+- **Expected**: The chip is in the right toolbar with a Bot icon; plugin text
+  actions appear after it and before
+  Send/Abort, including the bundled `pi.prompt-enhancement` action. The host
+  has no built-in prompt-enhancement action. Off omits the
   level text. The single anchored menu replaces its root
   with an in-place back row and submenu, never opens tabs or a second popover,
   and always reopens at the root. Model search filters sticky provider groups;
@@ -15133,8 +15135,8 @@ are withdrawn with ADR 0165.
   text and optional model key, but no image bytes, attachment metadata, file
   reference token, session id, or conversation history. The file and image
   chips remain in place and removable through the transform and its one-step
-  undo. The transform does not create a transcript row. Without the plugin, no
-  prompt-enhancement action appears.
+  undo. The transform does not create a transcript row. With the plugin
+  disabled, no prompt-enhancement action appears.
 - **Specs linked**: `04-ux/12-prompt-enhancement.md`,
   `07-plugins/02-plugin-manifest-schema.md`,
   `07-plugins/03-plugin-api.md`,
@@ -15146,30 +15148,30 @@ are withdrawn with ADR 0165.
   transcript row. Attachment sending is covered by the separate Composer send
   E2E.
 
-#### E2E-259: Installing the prompt-enhancement plugin migrates preferences once
+#### E2E-259: Loading the bundled prompt-enhancement plugin migrates preferences once
 
 - **Preconditions**: The profile contains legacy host prompt-enhancement
-  settings and has no `pi.prompt-enhancement` plugin data. The standalone plugin
-  is available from a configured catalog or repository; a Composer session is
-  ready.
-- **Steps**: 1) With the plugin absent, inspect the Composer and Settings and
-  confirm there is no prompt-enhancement action or settings card. 2) Install the
-  plugin explicitly and grant its requested permissions. 3) Inspect the
+  settings and has no `pi.prompt-enhancement` plugin data. The plugin ships
+  bundled with the application image (ADR 0378); a Composer session is ready.
+- **Steps**: 1) Disable the bundled plugin, inspect the Composer and Settings,
+  and confirm there is no prompt-enhancement action or settings card. 2) Enable
+  the plugin and grant its requested permissions. 3) Inspect the
   plugin-owned settings and confirm valid legacy model, thinking, and enabled
   custom-template values were copied before the plugin loaded. 4) Transform a
   draft, undo it, and send it; confirm the action does not create a transcript
   row. 5) Clear a migrated plugin value, reload the plugin, and confirm the
-  migration does not restore it. 6) Uninstall the plugin and confirm legacy host
+  migration does not restore it. 6) Disable the plugin and confirm legacy host
   values remain.
-- **Expected**: Installing the plugin is the only path that exposes the action.
+- **Expected**: Enabling the plugin with `composer.transform` granted is the
+  only path that exposes the action; a marketplace install takes the same path.
   Existing plugin settings win over legacy values; invalid or inactive custom
   templates are skipped. A private marker makes migration one-time. Clearing a
-  plugin setting does not cause a later import, and uninstalling the plugin does
+  plugin setting does not cause a later import, and disabling the plugin does
   not delete legacy host values. Plugin transforms preserve draft/session race
   safety and attachment chip positions.
 - **Specs linked**: `04-ux/12-prompt-enhancement.md`,
   `04-ux/06-settings-ia.md`, `03-runtime/04-data-storage.md`,
-  `07-plugins/03-plugin-api.md`, ADR 0324
+  `07-plugins/03-plugin-api.md`, ADR 0378
 - **Acceptance**: C (conversation & stream), Quality, compatibility
 - **Milestone**: M6+
 - **Status**: Migration and plugin-runtime integration tests cover the copy,

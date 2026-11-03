@@ -505,7 +505,7 @@ nor change the database schema.
 The settings blob may still contain legacy prompt-enhancement keys from an
 earlier release. They are retained for rollback and downgrade compatibility,
 but the host no longer reads or writes them as active preferences. When the
-user installs and grants the standalone `pi.prompt-enhancement` plugin, Electron
+bundled `pi.prompt-enhancement` plugin first loads, Electron
 copies valid legacy values into that plugin's private settings once (see
 `04-ux/12-prompt-enhancement.md`). The migration marker is also stored in the
 plugin's private data directory; the host settings schema does not change.
