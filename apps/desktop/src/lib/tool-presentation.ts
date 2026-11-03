@@ -1,4 +1,4 @@
-import type { UiMessage } from "@pi-desktop/shared";
+import { formatBytes as formatByteSize, type UiMessage } from "@pi-desktop/shared";
 import {
   delegationLifecycleKind,
   getToolAction,
@@ -259,12 +259,6 @@ function codeBlock(
   };
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatReadLineRange(details: Record<string, unknown>): string | null {
   const offset = numberAt(details, "offset");
   const lineCount = numberAt(details, "lineCount");
@@ -523,7 +517,12 @@ export function toolResultChips(message: ToolPresentationMessage): ToolChip[] {
     if (lineRange !== null) chips.push({ role: "lines", text: lineRange });
   } else {
     const bytes = numberAt(details, "bytes") ?? numberAt(details, "fileBytes");
-    if (bytes !== null) chips.push({ role: "size", text: formatBytes(bytes) });
+    if (bytes !== null) {
+      chips.push({
+        role: "size",
+        text: formatByteSize(bytes, { decimals: { KB: 1, MB: 1 } }),
+      });
+    }
   }
   if (details.truncated === true) chips.push({ role: "truncated" });
   if (details.root === "scratch") chips.push({ role: "scratch" });

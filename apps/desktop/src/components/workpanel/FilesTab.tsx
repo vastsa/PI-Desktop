@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { FsEntry, FsReadResult } from "@pi-desktop/shared";
+import { formatBytes, type FsEntry, type FsReadResult } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Markdown } from "../Markdown";
@@ -82,9 +82,7 @@ function isMp4(path: string, mimeType?: string): boolean {
 }
 
 function formatSize(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return formatBytes(size, { decimals: { KB: 1, MB: 1 } });
 }
 
 function useThemeMode(): "light" | "dark" {

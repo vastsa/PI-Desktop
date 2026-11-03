@@ -9,7 +9,11 @@
  * — is pure transformation, so it lives here rather than in the page hook that
  * owns the subscription.
  */
-import type { PluginInstallMirror, PluginInstallProgress } from "@pi-desktop/shared";
+import {
+  formatBytes as formatByteSize,
+  type PluginInstallMirror,
+  type PluginInstallProgress,
+} from "@pi-desktop/shared";
 
 /** What the dialog asks the host for, and what a retry asks for again. */
 export type PluginInstallRequest = {
@@ -162,8 +166,8 @@ export function withInstallProgress(
  */
 export function formatTransfer(bytes: number): string {
   const value = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
-  if (value < 1024) return `${Math.round(value)} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`;
-  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  return formatByteSize(value, {
+    roundBytes: true,
+    decimals: { KB: 1, MB: 2, GB: 2 },
+  });
 }

@@ -8,7 +8,11 @@
  * figure line and the text a screen reader reads is pure transformation, so it
  * lives here rather than in the page that owns the subscription.
  */
-import type { ConfigSyncPhase, ConfigSyncProgress } from "@pi-desktop/shared";
+import {
+  formatBytes as formatBytesShared,
+  type ConfigSyncPhase,
+  type ConfigSyncProgress,
+} from "@pi-desktop/shared";
 
 /** The catalog key naming each phase. */
 export const CONFIG_SYNC_PHASE_KEYS: Record<ConfigSyncPhase, string> = {
@@ -45,10 +49,10 @@ export type ConfigSyncProgressView = {
  */
 export function formatBytes(bytes: number): string {
   const value = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
-  if (value < 1024) return `${Math.round(value)} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`;
-  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  return formatBytesShared(value, {
+    roundBytes: true,
+    decimals: { KB: 1, MB: 2, GB: 2 },
+  });
 }
 
 /** A report's own count, or 0 when the host sent nothing usable. */

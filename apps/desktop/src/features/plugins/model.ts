@@ -1,7 +1,8 @@
-import type {
-  MarketPluginSummary,
-  PluginCapability,
-  PluginSummary,
+import {
+  formatBytes as formatByteSize,
+  type MarketPluginSummary,
+  type PluginCapability,
+  type PluginSummary,
 } from "@pi-desktop/shared";
 
 export type TabId = "installed" | "market";
@@ -158,9 +159,7 @@ export function orderPermissions(permissions: readonly string[] | undefined): st
 
 export function formatBytes(size?: number): string {
   if (!size || size <= 0) return "—";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+  return formatByteSize(size, { decimals: { KB: 1, MB: 2 } });
 }
 
 export function formatDate(value: string | undefined, locale: string): string {
