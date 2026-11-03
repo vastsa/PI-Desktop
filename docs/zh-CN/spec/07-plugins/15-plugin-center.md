@@ -7,13 +7,14 @@
 > 决策记录：[ADR 0102](../../../adr/0102-publisher-owned-plugin-source-and-git-hosted-artifacts.md)
 > 客户端契约：[07-plugin-marketplace.md](07-plugin-marketplace.md)
 
-本文定义取代单仓库市场的分发系统，是插件中心服务的规范性方案；桌面客户端消费什么，
-仍以市场规范为准。
+本文定义取代单仓库市场的分发系统，是插件中心服务的规范性方案；桌面客户端读取的数据与
+接口契约仍以市场规范为准。
 
 实现范围：本仓库包含桌面客户端与 `packages/plugin-devkit/src/publish.ts`，后者只准备本地包和提交文件，
-不会上传。下文中心 API、worker、身份和签名描述独立服务的设计，不代表 SDK 方法或服务器运行证明。
-当前客户端默认读取 `https://plugins.aiuo.net/catalog.json`，并使用已记录的 `/api/v1` resolve/review 路由。
-源码见 `crates/host-core/src/plugins/marketplace`, `reviews.rs`, and `resolve.rs`。
+不会上传。下文的中心 API、工作进程（Worker）、身份与签名章节描述的是独立服务的设计，
+不代表 SDK 方法，也不能证明服务器已经运行。当前客户端默认读取
+`https://plugins.aiuo.net/catalog.json`，并使用所述 `/api/v1` 下载解析 / 评论路由。
+详见市场契约及源码 `crates/host-core/src/plugins/marketplace`、`reviews.rs` 和 `resolve.rs`。
 
 ## 1. 定位
 
@@ -23,7 +24,7 @@
 2. 这些字节由什么源码产生，能否在安装前展示给用户？
 3. 这个版本是否适合发布，是谁做的决定？
 
-校验、授权、安装、隔离和运行时仍然由客户端负责。插件中心绝不会因此获得在用户机器上
+校验、权限审核、安装、隔离和运行时仍然由客户端负责。插件中心绝不会因此获得在用户机器上
 运行客户端本来不会接受的代码的能力。
 
 ## 2. 归属模型
@@ -32,7 +33,7 @@
 |---|---|---|
 | 插件源码 | 发布者 | 发布者自己的 GitHub 仓库 |
 | 构建输入（commit、tree、path） | 插件中心（固定副本） | 中心数据库 + 快照存储 |
-| registry 与审查证据 | 插件中心 | `vastsa/pi-plugin-center` |
+| 注册表与审查证据 | 插件中心 | `vastsa/pi-plugin-center` |
 | `.piplug` 制品 | 插件中心（发布） | `AIUO-Net/pi-desktop-plugins/packages/` |
 | 目录 | 插件中心（生成） | `AIUO-Net/pi-desktop-plugins/catalog.json` |
 | 分发镜像 | 插件中心 | 分发仓库的 CNB Git 镜像 |
@@ -58,7 +59,7 @@ vastsa/pi-plugin-center                 # 管理面
 AIUO-Net/pi-desktop-plugins               # 分发面，地址完全不变
 ├─ catalog.json                         # 由插件中心生成
 ├─ packages/<pluginId>-<version>.piplug # 由插件中心发布
-└─ plugins/                             # 已移除——源码归发布者所有
+└─ plugins/                             # 已移除——源码保存在发布者自己的仓库
 ```
 
 插件中心绝不把插件源码写进这两个仓库中的任何一个。`plugins/` 存放过本项目自己的示例插件，
@@ -71,8 +72,9 @@ AIUO-Net/pi-desktop-plugins               # 分发面，地址完全不变
 https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/packages/<pluginId>-<version>.piplug
 ```
 
-目录条目声明 `artifactBaseUrl`，`url` 保持相对路径 `packages/<pluginId>-<version>.piplug`，
-客户端据此按目录声明的基址解析——不管目录是从哪个主机取到的：
+目录声明 `artifactBaseUrl`，包条目的 `url` 保持为相对路径
+`packages/<pluginId>-<version>.piplug`。无论目录由哪个主机提供，客户端都按目录声明的基址
+解析安装包地址：
 
 ```text
 中心目录              artifactBaseUrl = raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main
@@ -80,9 +82,9 @@ https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/packages/<plu
 CNB 镜像              cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/…
 ```
 
-由于镜像是 Git 镜像，安装包与目录一起移动并保持逐字节一致，会话中途切换源既不会跨提供方，
-也不会让校验和失效。目录声明 `artifactBaseUrl` 正是为了在「目录所在主机并不托管安装包」时
-依然成立；不声明时会退回按目录自身所在目录解析，可能把下载请求打到错误的域名。
+由于使用 Git 镜像，安装包与目录会同步更新并保持逐字节一致。即使提供目录的主机并不托管
+安装包，声明 `artifactBaseUrl` 仍可确保安装包 URL 指向预期主机；不声明时，客户端会以目录
+文件所在的目录为基址，可能将下载请求发往错误的主机。
 
 ### 3.3 用什么替代 WORM
 
@@ -147,41 +149,41 @@ CNB 镜像              cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/…
 
 | 组件 | 负责 | 禁止 |
 |---|---|---|
-| Next.js | 页面、表单、SEO、状态展示 | 连数据库、持有密钥、决定发布 |
+| Next.js | 页面、表单、SEO、状态展示 | 访问数据库、持有密钥、决定发布 |
 | 中心 API | 身份、归属、提交、查询 | 执行插件代码、直接构建、直接发布 |
 | PostgreSQL | 账号、绑定、版本、审查、审计 | 充当队列或对象存储 |
-| Redis | 队列、租约、幂等锁 | 充当事实源 |
-| Worker | 编排快照、构建、扫描、审查、判定 | 绕过状态机或覆盖历史 attempt |
-| 隔离 runner | 安装依赖、构建、测试、扫描 | 触及生产密钥、宿主机或白名单外网络 |
-| Release publisher | 上传资产、镜像、重建目录 | 发布 evaluator 未批准的版本 |
+| Redis | 队列、租约、幂等锁 | 充当权威数据源 |
+| 工作进程（Worker） | 编排快照、构建、扫描、审查、判定 | 绕过状态机或覆盖历史尝试记录 |
+| 隔离执行器（runner） | 安装依赖、构建、测试、扫描 | 访问生产机密、宿主机或白名单之外的网络 |
+| 发布执行器（Release publisher） | 上传制品、同步镜像、重新生成目录 | 发布策略评估器未批准的版本 |
 
-API 进程绝不执行发布者提供的代码。所有运行不可信输入的环节都在隔离 runner 中进行。
+API 进程绝不执行发布者提供的代码。所有需要执行不可信输入的环节均在隔离执行器中进行。
 
 ## 5. 身份与归属
 
 单个 GitHub App 同时承担登录和仓库访问。
 
-- **OAuth（PKCE + state，短期 user token）** 证明是谁在提交。
-- **Installation** 证明该账号授予了哪些仓库、授予到什么范围。
-- **Webhook** 投递 installation、repository、push、release 和成员关系变化，使被撤销
-  的安装立即停止后续提交。
+- **OAuth（PKCE + state，短期用户令牌）** 证明提交者身份。
+- **GitHub App 安装实例（installation）** 证明该账号授予了哪些仓库的访问权及其权限范围。
+- **Webhook** 传递安装实例、仓库、推送、版本发布及成员关系的变化，确保安装实例撤销后
+  立即停止接受后续提交。
 
 申请的权限都是只读：仓库元数据、仓库内容，以及固定源码所需的 commit/tag/release
-读取。不申请写权限、不申请 secrets、不申请组织管理。新增 scope 必须有 ADR。
+读取权限。不申请写权限、机密访问权或组织管理权限。新增权限范围必须有 ADR。
 
 归属校验在提交入队之前完成，绝不在之后补：
 
 1. 会话的 GitHub 账号与请求身份一致。
-2. installation 仍然存在且仍覆盖目标仓库。
+2. 安装实例仍存在，且仍覆盖目标仓库。
 3. 账号持有 `admin`、`maintain` 或明确允许的角色。
 4. 提交的规范化 URL 与 GitHub 返回的 owner/name 完全一致。
-5. 账号、installation、仓库的绑定连同校验时间和权限证据 hash 一起持久化。
+5. 账号、安装实例和仓库的绑定关系，连同校验时间及权限证据的哈希值一起持久化。
 
 失败返回 `SOURCE_OWNERSHIP_DENIED` 或 `SOURCE_OWNERSHIP_UNAVAILABLE`。仅仅登录永远
 不够。
 
-个人访问令牌不是受支持的发布凭证。GitHub App 私钥只存在于密钥管理系统；installation
-token 按需换取，缓存不超过其有效期。
+个人访问令牌不是受支持的发布凭证。GitHub App 私钥仅存于密钥管理系统；安装访问令牌
+按需换取，缓存时间不超过其有效期。
 
 ## 6. 提交状态机
 
@@ -202,12 +204,11 @@ published → yanked
 
 规则：
 
-- 只有服务端推进状态，使用带行版本号的条件更新，因此并发 worker 不会同时推进同一个
-  release。
-- `published`、`canceled`、`yanked` 对该 release 是终态。重试创建新的 attempt，绝不
-  复活终态。
-- 每次重试创建新的 `review_attempt`，并保留上一次 attempt 的输入、输出和 hash。
-- 队列重复投递按提交键幂等；崩溃 worker 的租约可恢复，且不会重复发布。
+- 只有服务端能推进状态，并使用带行版本号的条件更新，避免并发工作进程同时推进同一版本。
+- `published`、`canceled`、`yanked` 是该版本的终态。重试会创建新的尝试记录，
+  不会重新激活已结束的状态。
+- 每次重试创建新的 `review_attempt`，并保留前一次尝试的输入、输出和哈希值。
+- 队列重复投递按提交键保证幂等；工作进程崩溃后可恢复租约，不会重复发布。
 - 未完成的确定性门禁不能被 AI 报告标记为通过。
 
 ## 7. 源码固定
@@ -231,11 +232,11 @@ published → yanked
 }
 ```
 
-- 只接受规范化的 HTTPS GitHub URL。不带 query、fragment、凭证或非 GitHub 主机。
-- `ref` 是完整 40 位 commit SHA 或 `refs/tags/<tag>`。annotated tag 继续解析到 commit。
-- worker 自己重新解析 commit、tree 和 archive。客户端提供的 hash 是用来比对的输入，
-  绝不是被信任的取值。
-- 快照记录仓库、提交的 ref、解析后的 commit、tree SHA、archive SHA-256 和抓取时间。
+- 只接受规范化的 HTTPS GitHub URL；拒绝查询参数、片段、凭据或非 GitHub 主机。
+- `ref` 必须是完整的 40 位十六进制 commit SHA，或 `refs/tags/<tag>`。
+  附注标签会继续解析到对应提交。
+- 工作进程自行重新解析提交、目录树与归档。客户端提供的哈希值仅用于比对，不能直接信任。
+- 快照记录仓库、提交的 ref、解析后的 commit、tree SHA、归档 SHA-256 和抓取时间。
 - 解包拒绝绝对路径、`..` 穿越、符号链接、硬链接、设备文件和重复路径，并限制总大小、
   单文件大小、文件数和目录深度。
 
@@ -243,43 +244,43 @@ published → yanked
 
 | 模式 | 发布者提供 | 中心执行 |
 |---|---|---|
-| `publisher-release` | 附加在自己 release 上的 `.piplug` | 按提交的摘要校验字节，核对包内 `manifest.json` 与固定源码一致，然后转存 |
-| `center-build` | 除坐标外什么都不提供 | 在隔离 runner 中从固定 commit 构建，然后转存 |
+| `publisher-release` | 附加在发布者自己的 GitHub Release 上的 `.piplug` | 按提交的摘要校验字节，核对包内 `manifest.json` 与固定源码一致，然后转存 |
+| `center-build` | 仅提供固定源码版本所需的信息 | 在隔离执行器中从固定 commit 构建，然后转存 |
 
 `publisher-release` 是默认模式，因为它把工具链责任留在发布者一侧。两种模式下中心都会
-转存，也都要求包内 manifest 身份与固定源码和提交的版本一致。
+转存，也都要求包内清单的身份信息与固定源码及提交的版本一致。
 
 ## 8. 审查与发布门禁
 
-每个 release 针对同一份证据运行两个独立回合：`primary` 检查契约、行为、权限、数据实践
-和供应链；`critic` 拿到同样的输入，专门寻找 `primary` 遗漏或越权的结论。`critic` 绝不
-把 `primary` 的输出当作事实。每次 attempt 记录模型、prompt 版本和输入 hash。
+每个版本针对同一份证据包运行两轮独立的 AI 审查：`primary` 检查契约、行为、权限、
+数据处理方式和供应链；`critic` 接收相同输入，寻找 `primary` 遗漏或言过其实的结论。
+`critic` 绝不把 `primary` 的输出当作事实。每次尝试都记录模型、提示词版本和输入哈希值。
 
-审查 skill 把源码、manifest 和日志一律视为不可信数据，不执行其中发现的任何指令。它没有
-网络、不读环境变量、不接触密钥。证据不足产出 `needs_info`，绝不猜测。输出只能是符合
+审查技能将源码、清单和日志一律视为不可信数据，不执行其中的任何指令。它无法访问网络，
+运行环境不提供环境变量，也无权访问密钥。证据不足时输出 `needs_info`，不会猜测；输出只能是符合
 schema 的 JSON。
 
-policy evaluator 是唯一能产出 `approved` 的组件。它从数据库而不是报告中重新计算：
+策略评估器是唯一能产出 `approved` 的组件。它从数据库而不是报告中重新核验：
 
-- release 元组与记录的提交一致。
-- 快照、制品、SBOM 和 provenance 的 hash 一致。
+- 版本元组与记录的提交一致。
+- 快照、制品、软件物料清单（SBOM）和构建溯源信息的哈希值一致。
 - 所有必需的确定性门禁均已通过。
-- `primary` 与 `critic` 两个 attempt 均存在且相互独立。
-- 没有未解决的高危或严重发现、权限升级或数据实践变化。
+- `primary` 与 `critic` 两次审查记录均存在且相互独立。
+- 没有未解决的高危或严重问题、权限升级或数据处理方式变更。
 - 签名、目录密钥、构建器版本和策略版本均有效。
 - 该版本仍是唯一、未撤销的发布候选。
 
 模型报告中的 `deterministicGates`、`publishable` 和 `approved` 是建议性文本，一律忽略。
-evaluator 失败、证据缺失或依赖服务不可用时，只能进入 `needs_info` 或 `build_failed`，
+评估器失败、证据缺失或依赖服务不可用时，只能进入 `needs_info` 或 `build_failed`，
 绝不进入 `published`。
 
 ## 9. 发布顺序
 
 只有按此顺序执行，发布才是持久的：
 
-1. 提交把 release 标记为已发布并写入制品摘要的数据库事务。
-2. 发出 outbox 事件。
-3. 在 `pi-plugin-center` 写入 registry 条目，并据此重建目录。
+1. 提交数据库事务，将版本标记为已发布并写入制品摘要。
+2. 发出事务发件箱（outbox）事件。
+3. 在 `pi-plugin-center` 写入注册表条目，并据此重新生成目录。
 4. 把安装包与重建后的 `catalog.json` 以**同一个** commit 提交进 `pi-desktop-plugins`。
 5. 由 CNB Git 镜像复制该 commit。
 
@@ -329,11 +330,11 @@ POST /v2/webhooks/github
 **桌面客户端读取生成出来的目录，并调用一条下载路由。** 官方插件渠道的每次安装或更新
 都通过 `POST /api/v1/download/resolve` 解析，发送插件 ID、用户选定版本时的版本号，以及
 稳定的设备标识（`deviceId`），让平台能够对下载去重，并按设备而不是按来源地址限流。
-该路由的字节兄弟 `GET /download/{id}/{version}` 供市场页面与控制台使用，不是客户端的
-路径。浏览与检查更新仍然只需要静态文件；当 resolve 请求无法到达平台时，安装会回退到
-目录自身的包地址，因此该 API 不可用不会让已发布插件无法安装。客户端给 resolve 请求
-三秒时限；超时、限流或 `NO_DOWNLOAD_SOURCE` 会回退到目录地址，并继续校验目录摘要。
-尚未发布、已归档或无此版本等明确发布拒绝仍会直接报错。客户端一侧的契约——
+对应的制品字节下载接口 `GET /download/{id}/{version}` 供市场网页与控制台使用，
+桌面客户端不使用它。浏览与检查更新仍然只需要静态文件。客户端为 resolve 请求设置
+三秒时限；超时、限流或返回 `NO_DOWNLOAD_SOURCE` 时，回退到目录自身的安装包 URL，
+并继续校验目录中的摘要。这可避免缓慢的 API 阻塞安装，同时保留对尚未发布、已归档或
+不存在版本的明确拒绝。客户端一侧的契约——
 渠道、镜像、摘要校验以及标识的派生方式——见
 [07-plugin-marketplace.md](/zh-CN/spec/07-plugins/07-plugin-marketplace)。
 
@@ -360,7 +361,7 @@ GET  /api/v1/plugins/{pluginId}/reviews?cursor=&limit=&sentiment=&sort=
 | 层级 | 含义 | 谁能设置 |
 |---|---|---|
 | `verified` | 经中心审核、身份已确认的发布者 | 中心运营方 |
-| `community` | 归属已校验、自动审查通过的发布者 | policy evaluator |
+| `community` | 归属已校验、自动审查通过的发布者 | 策略评估器 |
 | `unknown` | 中心未审核的自定义或企业源 | 客户端默认值 |
 
 发布者无法声明任何层级。目录生成时从数据库写入层级；插件元数据里提交的取值会被丢弃。
@@ -383,27 +384,27 @@ GET  /api/v1/plugins/{pluginId}/reviews?cursor=&limit=&sentiment=&sort=
 ### 阶段 0 —— 契约（本次变更）
 
 - ADR 0102、本文档，以及市场规范中的目录 v2 契约。
-- registry entry、catalog、submission 和 review report 的 JSON Schema。
+- 注册表条目、目录、提交和审查报告的 JSON Schema。
 - 插件中心仓库脚手架：schema、目录生成器、校验脚本、发布工作流、API 契约、
   数据库迁移。
-- 客户端：目录 v2 解析、下载域名白名单、撤回强制、`minPiDesktop` 强制、溯源采集与
+- 客户端：目录 v2 解析、下载域名白名单、执行撤回限制与 `minPiDesktop` 版本要求、溯源采集与
   展示、`pi-plugin publish`。
 
 验收：客户端能从分发仓库提供的 v2 目录完成安装，并拒绝白名单之外主机提供的安装包。
 
 ### 阶段 1 —— 身份与固定
 
-GitHub App OAuth、installation 绑定、归属校验、webhook、源码快照。验收：用户无法提交
+GitHub App OAuth、安装实例绑定、归属校验、Webhook、源码快照。验收：用户无法提交
 自己不控制的仓库，且每个被接受的输入都固定到 commit。
 
 ### 阶段 2 —— 构建与审查
 
-隔离 runner、确定性打包、SBOM 与 provenance、两轮 AI 审查、schema 校验。验收：同一输入
+隔离执行器、确定性打包、SBOM 与构建溯源信息、两轮 AI 审查、schema 校验。验收：同一输入
 复现同一制品摘要，且任何模型输出都无法伪造门禁。
 
 ### 阶段 3 —— 策略、签名与目录版次
 
-policy evaluator、签名密钥、目录版次与回滚、客户端签名校验。验收：只有已批准的 release
+策略评估器、签名密钥、目录版次与回滚、客户端签名校验。验收：只有已批准的版本
 能进入已发布目录，且版次可回滚。
 
 ### 阶段 4 —— 发布者控制台与 SEO
@@ -413,7 +414,7 @@ policy evaluator、签名密钥、目录版次与回滚、客户端签名校验�
 
 ### 阶段 5 —— 韧性
 
-备份与恢复演练、runner 逃逸演练、令牌撤销、目录回滚、限流、告警。
+备份与恢复演练、执行器逃逸演练、令牌撤销、目录回滚、限流、告警。
 
 ## 14. 明确不做
 
@@ -426,12 +427,12 @@ policy evaluator、签名密钥、目录版次与回滚、客户端签名校验�
 
 ## 15. "插件中心已上线"的验收
 
-- 归属校验在真实安装环境通过集成测试。
-- API、worker、runner、数据库、队列和密钥管理均为生产实例。
-- 两轮审查与可信 policy evaluator 已启用。
-- 构建可复现，制品可依据 provenance 验证。
+- 归属校验针对真实的 GitHub App 安装实例通过集成测试。
+- API、工作进程、隔离执行器、数据库、队列和密钥管理系统均为生产实例。
+- 两轮审查与可信策略评估器已启用。
+- 构建可复现，制品可依据构建溯源信息验证。
 - 目录具备版次、签名和回滚路径。
 - 公开页面只暴露已批准、已发布的版本，且撤回能够传播。
 - 审计、指标、备份、恢复和一次安全演练均已完成。
 
-在此之前，任何本地装置、静态样例或人工步骤都只是开发验证，不得被描述为发布能力。
+在此之前，任何本地测试夹具、静态样例或人工步骤都只是开发验证，不得被描述为发布能力。

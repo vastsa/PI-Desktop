@@ -15,7 +15,7 @@
 2. 权限驱动
 3. 异步优先
 4. 可审计
-5、不要暴露主机内部对象
+5. 不暴露宿主内部对象
 
 ## 2. 运行时注入的对象
 
@@ -26,6 +26,10 @@ declare const pi: PluginHostApi;
 ```
 
 ## 3. API 概述（MVP）
+
+> 状态说明：下列各节均已**交付**并由 `PluginRuntime` 执行约束，除非标题或正文明确标为
+> **计划中（Planned）**。计划中的接口会在实现前提前记录，供插件作者了解方向；
+> 在实现之前调用会抛出 `UNSUPPORTED`（各接口状态见 §9）。
 
 ### 应用程序
 ```ts
@@ -98,7 +102,7 @@ pi.plugin.getDataPath(): Promise<string> // plugin-private directory
 `description` / `enum[].label` 是作者语言纯字符串，宿主不会在这些字段上解析 locale
 map。需要本地化设置页的插件使用自己的面板/视图并读取 `pi.app.getLocale`，
 主题设置通过数据型 `scenicThemes` 交给宿主渲染；`settingsDestinations` 不是已实现的公开贡献
-（ADR 0280）。快捷键仅属于插件域：只有在 PI-Desktop 窗口聚焦且插件激活范围匹配当前项目时，
+（ADR 0287）。快捷键仅属于插件域：只有在 PI-Desktop 窗口聚焦且插件激活范围匹配当前项目时，
 才会调用声明的命令；本版本不会注册操作系统全局快捷键。用户编辑后，主机会向插件发送
 `plugin:settingsChanged`，便于刷新内存中的配置。
 
@@ -249,17 +253,15 @@ pi.ui.showNativeNotification(input: {
 type PluginNotificationPermission = "granted" | "denied" | "unknown" | "unsupported"
 ```
 
-`ui.notify` 仍然是应用内 Toast。本机交付可通过以下方式选择加入
-`ui.showNativeNotification` 并由相同的清单 `notify` 保护
-许可。 `requestNotificationPermission` 执行平台原生
-通过显示简短的确认通知来进行权限探测； Electron 确实
-不暴露跨平台只读通知权限API，所以
-`unknown` 在第一次探测之前以及操作系统执行探测操作时返回
-不报告结果。本机交付是尽力而为：操作系统策略可能会抑制
-横幅而不更改持久任务通知收件箱。点击已交付的插件通知会恢复并聚焦主窗口，
-但不会激活会话或创建持久任务通知。
+`ui.notify` 仍是应用内 Toast。原生通知需显式调用 `ui.showNativeNotification`，并受同一项
+manifest `notify` 权限约束。`requestNotificationPermission` 通过显示一条简短的确认通知，
+执行平台原生权限探测。Electron 没有跨平台的只读通知权限查询 API，因此首次探测前，以及
+操作系统未报告结果时，返回 `unknown`。原生通知仅尽力投递；操作系统策略可能抑制通知横幅，
+但不会改变持久任务通知收件箱。点击已送达的插件通知只会恢复并聚焦主窗口，不会激活会话
+或创建持久任务通知。
 
-### 项目（需要 `project.create`）
+`pi.ui.revealView` 在会话的工作面板中展示插件自己的 `contributes.views`，是替代直接操作
+宿主内部导航的受支持接口：
 
 ```ts
 pi.ui.revealView(input?: {
@@ -267,23 +269,6 @@ pi.ui.revealView(input?: {
   location?: string // the same opaque subject a view already receives
   sessionId?: string // the session whose panel shows it; defaults to the active one
 }): Promise<void>
-```
-
-该方法创建或复用宿主持久项目记录，但不会切换当前工作区。返回的
-`projectId` 可以显式传给 `pi.session.import()` 或
-`pi.session.importBatch()` 的单项。插件传入项目 id 时必须持有
-`project.create`；省略 `projectId` 的导入会保持未绑定，`projectPath` 只是历史来源
-元数据，本身不会创建项目。
-
-`pi.ui.revealView` 在某个会话的工作面板中显示插件自己的 `contributes.views`，
-这是替代插件直接读写宿主导航的受支持接口：
-
-```ts
-pi.project.create(input: { path: string }): Promise<{
-  projectId: number
-  path: string
-  name: string
-}>
 ```
 
 和视图本身一样需要 `ui.view`。宿主解析视图并拒绝不能唯一对应一个已声明视图的
@@ -296,6 +281,21 @@ pi.project.create(input: { path: string }): Promise<{
 
 `pi.ui.openPanel()` 打开独立窗口，`pi.browser.reveal()` 激活 Browser，
 `pi.fs.openDefault` / `pi.fs.reveal` 把文件交给操作系统；三者都不是它。
+
+### 项目（需要 `project.create`）
+
+```ts
+pi.project.create(input: { path: string }): Promise<{
+  projectId: number
+  path: string
+  name: string
+}>
+```
+
+该方法创建或复用宿主持久化的项目记录，不会切换当前工作区。返回的 `projectId` 可以显式
+传给 `pi.session.import()` 或 `pi.session.importBatch()` 的单项。插件传入项目 ID 时必须
+持有 `project.create`；省略 `projectId` 的导入会保持未绑定状态，`projectPath` 只是历史来源
+元数据，本身不会创建项目。
 
 ### 工作区/fs
 ```ts
@@ -313,7 +313,7 @@ pi.workspace.get(): Promise<{
   name: string;
   projectId?: string;
   roots?: Array<{ path: string; name: string; primary: boolean }>;
-  remote?: { path: string; readOnly: true }; // 仅 SSH 项目，见下文
+  remote?: { path: string; readOnly: true }; // SSH projects only, see below
 } | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
@@ -332,6 +332,7 @@ pi.fs.readPreview(pathFromRoot: string, options?: { workspacePath: string }): Pr
   content?: string     // UTF-8 when kind is "text"
   dataUrl?: string     // data URL when kind is "image"
   size: number
+  mtimeMs?: number     // Remote previews include the Host's file timestamp.
 }>
 pi.fs.openDefault(pathFromRoot: string): Promise<void>
 pi.fs.openInBrowser(pathFromRoot: string): Promise<void>
@@ -388,14 +389,27 @@ SSH 项目的 `workspace.get` 保留不透明的 `remote-project:` 身份，并�
 
 `fs.openDefault` 使用操作系统默认关联应用打开一个已存在的文件。它与
 `fs.readText` 使用相同的 `fs.read` 根目录、符号链接、受保护路径、拒绝列表和范围检查；
-目录会被拒绝。主机会记录这次操作。路径默认相对根目录；只有「本项目已注册的另一个文件夹根」
-之内的绝对路径才会被接受，而且**只有这个动作与 `fs.reveal` 接受**（其他模式一律不接受
+目录会被拒绝。主机会记录这次操作。路径默认相对根目录；只有「本项目已注册的文件夹根」
+之内的绝对路径才会被接受，而且只有 `fs.openDefault`、`fs.openInBrowser` 与 `fs.reveal` 接受（其他模式一律不接受
 绝对路径），该根随即成为这次请求的包含基点（ADR 0249 §5、ADR 0264）——这正是视图用来指
 名「非主文件夹里的文件」的形状。
+
+`fs.openInBrowser` 在当前本地会话的内置工作面板 Browser 中，以新的资源标签页打开一个
+已存在的 `.html`、`.htm` 或 `.xhtml` 文件。它与 `fs.openDefault` 使用相同的 `fs.read`
+根目录、符号链接、受保护路径、拒绝列表和范围检查；目录及其他文件类型会被拒绝。
+绝对路径仅在位于当前项目已登记的文件夹根内时有效，并以匹配的文件夹作为路径包含检查的基准。
+Browser 插件必须已启用。这种由宿主介导的预览不会授予 `browser.cdp`，也不会向调用方暴露
+Browser 操作或页面内容。Browser 自身继续遵循既有的本地文件导航策略（ADR 0328）。
 
 `fs.reveal` 在操作系统文件管理器中显示一个已存在且可读取的文件，并在平台支持时选中它。
 它使用相同的 `fs.read` 检查，拒绝目录，并记录成功和失败。路径的接受方式与 `fs.openDefault`
 完全一致：默认相对根目录，落在本项目另一个已注册文件夹根之内时可以是绝对路径（ADR 0264）。
+
+`fs.stat` 返回一个已存在且可读取文件的大小和修改时间，不加载正文。`fs.readRange` 返回
+最多 8 MiB 的字节及文件总大小。两者与 `fs.readText` 使用相同的根目录、符号链接、受保护路径、
+拒绝列表、范围、用户确认和审计约束；偏移和长度必须是非负安全整数。偏移位于文件末尾或
+超出末尾时返回空字节数组。`grantId` 仅能用于宿主签发的拖放文件授权，并且必须提供匹配的
+绝对路径。
 
 路径相对于该模式的 root —— 工作区，或者当该模式声明
 `root: "userSelected"` 时，用户通过 `requestDirectory()` 选中的目录。
@@ -412,7 +426,7 @@ SSH 项目的 `workspace.get` 保留不透明的 `remote-project:` 身份，并�
 受保护路径不会出现，`node_modules` 之类的重目录会被跳过。目录始终返回，
 因此即使范围很窄也能得到可导航的树；单次调用最多返回 1000 个条目。
 
-###代理
+### Agent {#agent}
 ```ts
 pi.agent.registerTool(tool: {
  name: string
@@ -568,7 +582,7 @@ type PluginLlmContext = {
 
 插件不能传入 session id。身份来自进行中的 `plugins.execute` 会话（D333 / D336）。
 在工具执行之外调用会以 `INVALID_ARGUMENT` 失败。子代理行会被省略。插件自己
-正在飞行的工具调用会从尾部剥掉。compaction 摘要替换检查点之前的历史。
+正在执行的工具调用会从尾部剥离。压缩摘要替换检查点之前的历史。
 合计内容上限 200k 字符。
 
 ### 会话跟随（不需要额外权限）
@@ -711,7 +725,7 @@ P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定
 
 面向用户仍可见的未删除会话，提供只读的**已完成回合事实行**。宿主只提供
 每个 turn 一行的扁平事实——计数与标识符；绝不包含消息正文、转录投影或任何
-写路径。**刻意不提供仪表盘形状**：连续天数、热力图、分模型占比、高消耗
+写路径。**刻意不提供仪表盘形状**：连续天数、热力图、分模型占比和会话
 排名都是插件在这些事实行之上自己的计算——日后调整指标口径也不会变成
 SDK 的破坏性变更。
 
@@ -787,9 +801,14 @@ Session ID，并复用该会话的项目、模型、上下文和权限配置；`
 
 `spawn` 中显式指定的 `modelKey` 属于 AI 自动调度的模型选择，需要该模型自身的
 `ModelBinding.availableForSubagents` 许可；对用户未勾选的模型，宿主在创建 worker 之前
-返回 `PERMISSION_DENIED`。省略 `modelKey` 仍然是继承——先取已勾选的模型，否则取默认
-模型——显式写出默认模型自己的键同样按继承处理，而不是一次选择
-（ADR subagent-model-opt-in）。
+返回 `PERMISSION_DENIED`。显式写出默认模型自己的键按继承处理，而不是一次模型选择。
+省略 `modelKey` 时选择第一个已就绪且启用了 AI 委派的模型；没有可用项时返回
+`MODEL_NOT_CONFIGURED`，不会回退到默认模型（ADR subagent-model-opt-in）。
+
+`list` 最多返回 100 个未删除且可接收消息的 Agent 会话，包括并非由 Session Orchestrator
+创建的会话。每项只包含会话 ID、标题、状态、更新时间、可读的 Provider/模型标签及有界的
+创建关联，不包含转录内容、项目路径、凭据或消息预览。调用方可将返回的会话 ID 传给 `send`；
+权威详情仍应通过 `status` / `result` 读取。
 
 `spawn` 和 `send` 仅在插件当前 Agent 工具调用期间有效。broker 注入 `pluginId`、来源
 `sessionId`、来源 `turnId` 和调用身份；插件参数不能提供或覆盖这些字段。面向用户的插件
@@ -818,8 +837,16 @@ pi.agent.complete(input: {
 
 宿主解析凭据，并发起 `tools: []` 的一次性补全；插件拿不到密钥。独立提示词增强插件会在
 `onComposerTransform` 回调中使用此 API。`includeSessionContext: true` 还需要 `session.read` 以及进行中的
-工具会话。system ≤ 32 KiB；消息合计 ≤ 200k 字符；每个插件每滚动 60 秒 8 次
-（`RATE_LIMITED`）；预算 90 秒（`TIMEOUT`）。
+工具会话。宿主会序列化该上下文；若 `messages` 为空，会追加 `Please respond to the request.`。
+system ≤ 32 KiB；消息合计 ≤ 200k 字符；每个插件每滚动 60 秒 8 次（`RATE_LIMITED`）；
+预算 90 秒（`TIMEOUT`）。Provider 返回 429 或其他暂时性错误时，宿主在同一次调用内按共享的
+Provider 重试预算重试（ADR 0206），并遵循 `Retry-After` 响应头。模型返回空内容时为
+`INVALID_ARGUMENT`。
+
+如果最终仍失败，插件收到的是宿主分类后的错误码，而不是统一的泛化错误：重试预算耗尽后为
+`PROVIDER_RATE_LIMITED`，其他分类包括 `PROVIDER_UNAUTHORIZED`、`CONTEXT_TOO_LARGE`、
+`NETWORK_ERROR`，便于插件调整请求节奏并报告原因。代理会转发出错服务给出的错误码，
+遵循其他宿主边界相同的 `data.errorCode` → `errorCode` → `code` 优先顺序。
 
 ### 剪贴板/外壳
 ```ts
@@ -861,30 +888,48 @@ pi.browser.console(input?: { limit?: number }): Promise<{ messages: unknown[] }>
 pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 ```
 
-当前访客页是宿主拥有的 `WebContentsView`（`persist:work-browser`），各资源标签保留自己的页面。
-后台会话导航保留给该会话上次选中的标签；尚无标签时由首个标签消费，不导航或返回其他会话的页面。
-`setBounds` 相对调用插件视图的内容区，并被夹紧，因此访客页不能盖住聊天/输入框。
-`cdp` 默认拒绝；cookie、storage、target 和网络拦截方法以 `PERMISSION_DENIED` 失败。
-代理调用的会话身份来自进行中的 `plugins.execute` `sessionId`，而不是插件参数（D333 / ADR 0170）。
-页面操作（`navigate`、`action`、`openExternal`、`getState`、snapshot、screenshot 和 CDP 调用）
-仅在 Browser 视图可见时可用。视图隐藏时调用会以 `UNAVAILABLE` 失败；应通过 `BrowserPreview`
-请求宿主显示 Browser 视图后再继续。
+`navigate` 在当前主框架的导航提交后返回，包括重定向；不等待较慢的图片或子框架。
+`browser:state` 会立即报告加载状态，导航失败时可包含 `loadError`。后台的
+`browser/event/state` 更新保持渲染器页面元数据的会话归属；共享的插件界面事件
+`browser:state` 只包含当前选中展示的页面。后台事件不能改变地址栏目标，也不能对其他页面
+发起边界或可见性更新。可选的 `sessionId` 和 `tabId` 标识由宿主管理的工作面板目标；
+插件不能通过导航参数选择这些身份。
+持有高风险 `browser.cdp` 权限时，`navigate` 可以通过绝对路径或 `file:` URL 打开已存在的
+本地文件；相对路径仍受工作区范围约束。本地文件页面可继续导航到其他已存在的本地文件，
+网页则只保留此前在工作区内导航到本地文件的权限。
+
+当前访客页是宿主管理的 `WebContentsView`（`persist:work-browser`），每个资源标签保留自己的
+页面。Agent 导航会立即作用于调用会话已连接的页面，即使面板隐藏或当前显示其他会话，
+也绝不会导航到或返回另一个会话的页面。`setBounds` 相对于调用插件视图的内容区，并会被
+约束在允许的边界内，避免访客页覆盖聊天区或输入框。`cdp` 默认拒绝；Cookie、存储、目标管理
+和网络拦截方法会以 `PERMISSION_DENIED` 失败。Agent 调用的会话身份来自进行中的
+`plugins.execute` `sessionId`，而非插件参数（D333 / ADR 0170）。
+宿主将每个 Agent 页面操作绑定到可信的在途工具会话。首次导航或 `BrowserPreview` 建立页面
+连接；切换浏览其他侧面板标签不会改变既有连接的目标。目标关闭后返回 `UNAVAILABLE`，
+直到另一次导航或预览连接页面。不带调用上下文的插件 UI 调用仍要求目标页面可见。
+内置 Browser 工具不会在操作前调用 `reveal()`；显式 `reveal()` 仍需等待调用会话的可见标签，
+不会从后台会话抢占焦点。
+渲染器重载仅分离展示层，Main 保留存活页面、输入状态、历史和 CDP；会话级元数据会恢复
+侧面板标签，但不会展开已折叠面板。关闭标签或会话、禁用插件、销毁窗口或退出应用时，会释放
+相应页面。此处没有引入重启后的 DOM 恢复，也不允许跨会话共享页面。
+隐藏的访客页暂存于按需创建、不可见且启用沙箱的承载窗口，使 Chromium 的输入和截图组件
+保持连接，无需可见窗口或原生焦点。展示时，同一视图会移回侧面板；最后一个暂存页面关闭后
+释放承载窗口。仅供宿主使用的焦点模拟和页面相对目标坐标不会扩大原始 CDP 权限。
+指针或截图操作会固定每个页面的视口，临时关闭节流，并在完成后恢复。`BrowserPreview`
+仍限定在其会话的工作区或临时目录根内，加载不依赖渲染器挂载。
+
+整页 `screenshot` 按比例缩放，输出像素不超过 1280×2048。视口截图和原始
+`Page.captureScreenshot` CDP 调用保留既有尺寸。
 
 截图（包括原始 `Page.captureScreenshot` CDP 调用）有 30 秒的宿主端期限。超时会以 `TIMEOUT` 失败，
 宿主会分离卡住的 CDP 会话并释放该页面的截图队列，使后续截图可以重新连接并继续。其他 CDP 方法
 沿用现有超时行为。
 
 `getHistory` 返回由主机明确记录的条目，按最新优先排列，文本和图片按捕获时间混排。
-通过 `writeText` 写入的内容，以及 Composer 用户主动粘贴事件提供的内容会被记录；主机
+通过 `writeText` 写入的内容，以及 Composer 用户主动 `paste` 事件提供的内容会被记录；主机
 不会在后台轮询或重新读取系统剪贴板。连续相同内容会合并并刷新时间戳。历史只保留在
 内存中，最多保留 30 天、500 条和 256 MiB；单条文本最多 100 KiB UTF-8 字节，图片
 最多 50 MiB。图片统一返回 PNG 字节及像素尺寸。没有粘贴过的复制内容不会被记录。
-
-`navigate` 在当前主框架导航提交（含重定向）时返回，不等待慢图片或子框架。
-`browser:state` 立即报告加载状态，导航失败时可带 `loadError`。
-可选的 `sessionId`、`tabId` 标识宿主管理的工作面板目标；插件不能通过导航参数指定这些身份。
-拥有高风险 `browser.cdp` 权限后，`navigate` 可以通过绝对路径或 `file:` URL 打开任意已存在的本地文件。
-相对路径仍以工作区为根。本地文件页面可导航到其他已存在的本地文件；网页仍只能通过文件链接访问工作区内文件。
 
 ### 服务（需要 `background.service`）
 ```ts
@@ -897,11 +942,9 @@ pi.services.register(service: {
 pi.services.unregister(id: string): Promise<void>
 ```
 
-注册是本地簿记：它记录处理程序，以便经纪人可以
-打电话给他们。主机在卸载前调用 `onLoad` 和 `stop` 之后调用 `start`，并且
-根据 [05-plugin-lifecycle.md](/zh-CN/spec/07-plugins/05-plugin-lifecycle) 重新启动崩溃的插件。
-`start` 在一个进程内是幂等的——在已经运行的进程上进行第二次启动
-服务是无操作的。
+注册只在本地记录处理器，以便宿主代理调用。宿主在 `onLoad` 之后调用 `start`，卸载前调用
+`stop`，并按 [05-plugin-lifecycle.md](/zh-CN/spec/07-plugins/05-plugin-lifecycle) 重启崩溃的插件。
+同一进程内 `start` 是幂等的；对已经运行的服务再次启动不会产生效果。
 
 ### 总线（需要 `bus.publish` / `bus.subscribe`）
 ```ts
@@ -922,8 +965,8 @@ type PluginBusMessage = {
 ```
 
 `topic` 必须出现在 `contributes.bus.publish` 中； `pattern` 必须出现在
-`contributes.bus.subscribe`。发布者被排除在自己的扇出之外。帽子
-威胁模型位于 [04-plugin-security.md](/zh-CN/spec/07-plugins/04-plugin-security) §5.1 中。
+`contributes.bus.subscribe` 中。发布者不会收到自己发布的消息。资源上限及威胁模型见
+[04-plugin-security.md](/zh-CN/spec/07-plugins/04-plugin-security) §5.1。
 
 ### 网
 ```ts
@@ -937,31 +980,23 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
-`redirect` is optional: omitted or `follow` preserves the existing policy (up to
-five followed 3xx responses with Location, relative to the current URL, each
-checked against the granted egress policy). Existing method/header/body handling
-is unchanged; this is not a promise of browser Fetch redirect rewriting.
-`manual` returns the first response's status, headers (including Location) and
-body without visiting its target. `error` rejects **any 300–399 response** with
-`REDIRECT_DISALLOWED`, even without Location; it never visits the target. Other
-statuses, including 429, remain normal responses. In follow mode a 3xx without
-Location is returned unchanged; a loop exceeds the five-hop cap with
-`UNAVAILABLE`. One timeout covers the whole chain and response body (`TIMEOUT`).
-Invalid redirect values fail with `INVALID_ARGUMENT` before network I/O.
+`redirect` 为可选项。省略或设为 `follow` 时保留既有策略：最多跟随五次带 Location 的 3xx
+响应，相对地址以当前 URL 为基准，每一跳都重新校验已授予的出网策略。方法、请求头和正文
+处理方式保持不变，不代表承诺实现浏览器 Fetch 的重定向改写规则。
+`manual` 返回首次响应的状态码、响应头（含 Location）和正文，不访问目标。
+`error` 对**任何 300–399 响应**都以 `REDIRECT_DISALLOWED` 拒绝，即使没有 Location，
+也绝不访问目标。其他状态码（包括 429）仍作为普通响应返回。`follow` 下没有 Location 的
+3xx 原样返回；循环重定向超过五跳上限时返回 `UNAVAILABLE`。整个重定向链及响应正文共用
+一个超时预算（`TIMEOUT`）。非法重定向值会在网络 I/O 前以 `INVALID_ARGUMENT` 拒绝。
 
-The host owns redirect handling for both the default and injected single-hop
-transport. Every followed hop still passes the existing permission/egress
-checks; these modes grant no additional network access. Policy refusals are
-audited without response bodies or headers.
+默认传输和注入的单跳传输都由宿主统一处理重定向。每次跟随仍经过既有权限及出网检查，
+这些模式不会授予额外网络访问权。策略拒绝会被审计，但不记录响应正文或响应头。
 
-Before using the option on a potentially older host, query
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: string[] }>` and require
-the desired mode. This read-only query needs no network permission and performs
-no network I/O. A missing method, rejected query, or absent mode means
-unsupported: do not send the request. Older hosts may silently ignore unknown
-fetch options, so passing `redirect` alone is **not** capability detection.
-This API is unreleased; released 0.17.0 and older do not advertise it.
-No same-origin-only mode is introduced by this change.
+在可能较旧的宿主使用该选项前，应查询
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>`，确认其中包含所需模式。
+该只读查询无需网络权限，不执行网络 I/O。方法缺失、查询被拒绝或缺少所需模式都表示不支持，
+此时不要发送请求。旧宿主可能静默忽略未知 fetch 选项，所以只传入 `redirect` **不等于能力检测**。
+当前源码已实现该查询，较旧宿主可能不会公布它。本次没有引入仅限同源的模式。
 
 `fetch` 原样返回上游响应 —— `status`、`headers`、`bodyText` —— 所以 `429`
 是插件能读到的数据（`Retry-After` 也在里面），而不是被主机藏起来的错误。宿主
@@ -1010,6 +1045,10 @@ pi.desktop.invoke(input: {
   confirm?: boolean
 }): Promise<unknown>
 ```
+
+已审核目录包含 `session/open(sessionId)`，允许插件 UI 打开已有的持久会话。由插件发起的
+`session/create` 和 `agent/prompt` 只刷新会话状态，不改变渲染器当前活动会话；
+`session/open` 则是显式导航。
 
 这是第一方插件通往与可选启用的本地 MCP 控制平面共用同一份已审查操作目录的
 网关（ADR 0203 / D370）。两份目录的差异仅在于标记为 plugin-only 的操作：六个
@@ -1073,7 +1112,7 @@ navigator.mediaDevices.getUserMedia({ audio: true })
 而不是注册一个永远不会触发的处理器。不会有任何东西接触设备，也不会产生
 任何帧。`onInputFrame` 是注册回调 —— 它不是事件名 —— 帧形状见
 `packages/plugin-sdk/src/index.ts` 中的 `PluginAudioInputFrame`。等设备服务
-落地后，权限和这个表面都保持不变，只有拒绝会被真实行为取代：设备由宿主
+落地后，权限和这套接口都保持不变，只有拒绝会被真实行为取代：设备由宿主
 持有，插件只交换 PCM16 帧，永远拿不到设备句柄、`MediaStream`、操作系统
 设备路径或 Node 流，每个插件只允许一条输入流，禁用、卸载或崩溃会停止采集
 并丢弃已排队的播放。
@@ -1148,7 +1187,7 @@ type PluginApiError = {
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
  | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
- | string // 见下文
+ | string // see below
  message: string
 }
 ```
@@ -1168,11 +1207,12 @@ pi.events.on(event, handler)
 pi.events.off(event, handler)
 ```
 
-主机将事件作为单向帧推送到插件进程。今天交付：
+宿主通过单向帧向插件进程推送事件。`pi.events` 不是独立通道，而是 `pi.bus.subscribe`
+使用的同一条插件级总线流的别名（`plugin-host-process.mjs`）；因此 `on` 处理器只会看到
+宿主实际发给本插件的全部帧。当前已投递：
 
-- `bus.message` — 公交车交付，以 `PluginBusMessage` 作为单一
-  论点。 `pi.bus.subscribe` 是接收这些信息的正常方式； `events.on`
-查看插件持有的每个订阅的原始流。
+- `bus.message` —— 总线投递，以 `PluginBusMessage` 为唯一参数。通常使用 `pi.bus.subscribe`
+  接收；`events.on` 可以看到插件所持有的全部订阅的原始事件流。
 - `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在缓存的工作区路径变化时发送：
   主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0263）。
   一次运行中的第一个工作区可能先不带文件夹发送一次、再带文件夹重发一次，因为项目组记录是在那次推送
@@ -1193,8 +1233,7 @@ pi.events.off(event, handler)
   重载或宿主退出竞态的投递不作保证。收到该事件**并不**意味着该回合的所有在途
   工具都已退出——迟到结果仍可能到达——因此插件必须按 `turnId` 串行化或以其他方式
   限定清理范围。该事件同样不需要新权限：它走既有的插件事件通道，订阅未知的事件名
-  也不会报错。目前尚无任何已发布宿主会发出该事件（0.14.8 也尚未包含），因此依赖它
-  的插件必须按真正包含该事件的发布版本要求，而不能假定 0.14.7 或 0.14.8。
+  也不会报错。依赖该事件的插件必须确认其支持的宿主版本；历史宿主可能不发送这一增量事件。
 
 - `session:activated` —— 载荷是 `PluginActiveSession` 对象或 `null`，在该快照变化时
   发送：用户切到另一个会话（或离开聊天）、选中会话的项目变化、或它的运行回合开始
@@ -1206,21 +1245,21 @@ pi.events.off(event, handler)
   `net:websocket:error` —— 只发给持有该 socket 的插件；见 §3 `net` 下的
   `net.websocket`。
 
-抛出的处理程序会被记录下来，并且不会影响其他侦听器或插件。
+处理器抛出的异常会记录到日志，不影响其他监听器或插件。
 
-计划活动：无。
+计划中的事件：无。
 
 ## 6. 面板桥 API
 
-面板UI不直接获取完整的`pi`；相反：
+面板 UI 不直接获取完整的 `pi`，而是使用以下桥接接口：
 
 ```ts
 window.pluginBridge.invoke(channel, payload?)
 window.pluginBridge.on(event, handler)
 ```
 
-同一个桥同时服务插件的两种表面：独立的 `ui.panel` 窗口，以及停靠在工作面板中的
-`contributes.views` 表面（ADR 0104）。通道列表、权限门与 preload 完全相同，
+同一个桥同时服务插件的两种界面形式：独立的 `ui.panel` 窗口，以及停靠在工作面板中的
+`contributes.views` 视图（ADR 0104）。通道列表、权限门与 preload 完全相同，
 因此同一份 HTML 入口在两种放置方式下都能工作。差别只在于 chrome 与下面这个
 视图 `location`：停靠视图没有窗口控制胶囊、没有拖拽带，其
 `--pi-plugin-titlebar-height` 为 `0px` 而非 `46px`。
@@ -1235,6 +1274,10 @@ window.pluginBridge.on(event, handler)
 把布局钉在固定窗口尺寸上的页面需要自行缩放这些值。独立 `ui.panel` 窗口与浮动
 挂件保持自己的基础尺寸：它们是独立窗口，而不是合成进应用内的表面。
 
+独立面板页面采用当前窗口装饰契约时，声明 `<meta name="pi-plugin-chrome" content="v2">`，
+并使用公开变量设置正常文档流中的顶部间距。宿主保留页面自行设置的间距；未声明该标记的页面
+继续通过历史的附加偏移机制获得兼容支持。
+
 ### 6.1 浮动挂件
 
 清单可以声明 `"ui": { "shape": "widget" }`。面板随后会以浮动挂件打开：同一个沙盒化、权限门控的页面，位于透明、无边框窗口中，没有 46px 拖拽带、没有控制胶囊，也没有矩形原生阴影。页面拥有自己的整个矩形，通常绘制一个比矩形更小的轮廓——例如一个圆形球体——因此宿主不得在该轮廓周围绘制边框。
@@ -1243,7 +1286,7 @@ window.pluginBridge.on(event, handler)
 - 放置方式会在页面脚本运行前发布为 `document.documentElement.dataset.piPluginPanelShape`：`panel`、`widget` 或 `view`。
 - 拖拽使用整窗拖拽映射：空白区域移动窗口，而标准控件（`button`、`input`、`a`、`[tabindex]`、……）以及每个标记了 `data-pi-plugin-no-drag` 的元素保持可点击。
 - 挂件没有胶囊，因此宿主在表面自己的上下文菜单后面提供一个等效菜单：关闭、最小化、始终置顶。插件仍然可以通过 `ui.closePanel()` 关闭自己的挂件。
-- `ui.width` / `ui.height` 会一直被尊重到 120×120（面板的最小尺寸仍为 360×280）。`ui.alwaysOnTop` 会把挂件固定在其他窗口之上，`ui.resizable` 对挂件默认为 `false`，对面板默认为 `true`。
+- `ui.width` / `ui.height` 最小可设为 120×120（面板的最小尺寸仍为 360×280）。`ui.alwaysOnTop` 会把挂件固定在其他窗口之上，`ui.resizable` 对挂件默认为 `false`，对面板默认为 `true`。
 - 其他一切不变：相同的 preload、相同的 `pluginBridge` 通道、相同的权限门、相同的会话分区和出口策略。
 
 停靠视图还可以被指定一个要展示的对象。工作面板选项卡本来就携带的 `location`
@@ -1261,7 +1304,7 @@ window.pluginBridge.on(event, handler)
 | `ui.showToast`, `ui.closePanel` | 已加载面板之外无需新增权限 |
 | `ui.notify` | `notify` |
 | `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
-| `plugin.getSettings`, `workspace.get`, `app.getAppearance` | 无 |
+| `plugin.getSettings`, `workspace.get`, `projects.list`, `app.getAppearance` | 无 |
 | `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list`, `themes.setVariables` | `ui.theme` |
 | `models.list` | `models.list` |
 | `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list`, `fs.requestDirectory`, `fs.registerDropped` | `fs.read` |
@@ -1274,10 +1317,11 @@ window.pluginBridge.on(event, handler)
 | `session.getActive` | 无 |
 | `ui.revealView` | `ui.view` |
 
-`plugin.setSettings`、`fs.remove` 和任意 Electron IPC 未暴露。主机自己
-没有实现的通道会被转发到插件的 `onPanelInvoke(channel, payload)`，
-因此插件可以自定义面板 ↔ 主进程通道；没有导出 `onPanelInvoke` 的插件
-会从自己的进程收到 `UNSUPPORTED`。内置技能管理器使用的 `skill.list` / `read` /
+`plugin.setSettings`、`fs.remove` 和任意 Electron IPC 未暴露。宿主未内置实现的通道会转发给
+插件的 `onPanelInvoke(channel, payload)`，因此插件可以定义自己的面板 ↔ 主进程通道。
+每次自定义通道调用均由 Electron 主进程校验并代理，再由插件子进程执行处理器；面板不能
+直接调用子进程。未导出 `onPanelInvoke` 的插件会从自身进程返回 `UNSUPPORTED`。
+内置技能管理器使用的 `skill.list` / `read` /
 `create` / `update` / `remove` / `setEnabled` 是它自己的 `onPanelInvoke` 操作，不是通用宿主桥 API。
 
 ### 面板事件（主机 -> 面板）
@@ -1298,23 +1342,23 @@ window.pluginBridge.on(event, handler)
   运行回合发生变化时发给停靠视图。独立 `ui.panel` 窗口属于应用级、不属于某个会话，
   因此它是唯一不会收到该事件的表面。
 
-## 7. 通话审计
+## 7. 调用审计 {#_7-通话审计}
 
 必须记录以下任何调用以供审核：
 
 - fs.writeText
-- fs.remove、fs.requestDirectory，以及每一次被拒绝的 fs 调用（连同路径与
+- fs.stat、fs.readRange、fs.remove、fs.requestDirectory，以及每一次被拒绝的 fs 调用（连同路径与
   `errorCode`），还有每一次同意的答复及其被问的原因（`scope` / `rate`）
 - fs.openDefault（记录 root-relative 路径以及系统打开是否成功）
+- fs.openInBrowser（记录 root-relative 路径以及 Browser 是否接受打开操作）
 - fs.reveal（记录 root-relative 路径以及文件管理器显示是否成功）
 - fs.readPreview（记录 root-relative 路径以及分类后的 `kind`）
-- 在agent.registerTool之后执行（包括从插件发现的工具）
-  MCP 服务器）
-- 网络获取
+- agent.registerTool 注册后的工具执行（包括从插件 MCP 服务器发现的工具）
+- net.fetch
 - shell.openExternal
-- clipboard.read/write（可能是样品）
+- clipboard.read/write（可能采用采样记录）
 - clipboard.getHistory（记录返回的条目数）
--bus.publish/bus.subscribe/bus.unsubscribe（带有主题和扇出大小）
+- bus.publish / bus.subscribe / bus.unsubscribe（记录主题和扇出数量）
 - browser.navigate / evaluate / cdp / openExternal
 - 服务启动/停止/重新启动
 - models.list（返回行数）
@@ -1325,11 +1369,11 @@ window.pluginBridge.on(event, handler)
 - provider.oauth（插件 id、声明的 provider id、操作、结果/错误码——绝不记录凭据内容）
 
 日志字段：
-- 插件ID
-- API
-- TS
-- 会话 ID？
-- 好的/错误代码
+- pluginId
+- api
+- ts
+- sessionId?
+- ok / errorCode
 - status / retryAfter（仅 `net.fetch`：已完成调用的上游状态码，以及失败调用所
   声明的 `Retry-After` —— 绝不记录整个头部集合或响应体）
 
@@ -1344,7 +1388,7 @@ window.pluginBridge.on(event, handler)
 桌面插件运行时现在实现本地和市场插件使用的 MVP 主机 API 表面：
 
 - `app.*`、`plugin.*`、`commands.*`、`ui.*`、`workspace.*`
-- `fs.readText` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
+- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.openInBrowser` / `fs.reveal` /
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`，
   范围由 `manifest.fs` 限定（ADR 0088）
 - `agent.registerTool` / `unregisterTool` / `agent.complete`
@@ -1367,13 +1411,17 @@ window.pluginBridge.on(event, handler)
 自己的审计条目（`audio.<method>`、`ok: false`）；`onInputFrame` /
 `offInputFrame` 无法 reject，因此同步抛出同一个错误码。不会打开任何设备。
 
-本机插件通知使用 Electron 主进程通知界面；
-他们不会在任务通知收件箱中创建持久行，并且不会
-单击激活会话。
+原生插件通知使用 Electron 主进程的通知接口，不会在任务通知收件箱中创建持久化记录，
+点击通知也不会激活会话。
 
-声明性贡献没有故意与 `pi.*` 对应：技能、主题、
-MCP 服务器由主机从清单中读取，因此插件无法添加
-一个在运行时。
+技能和 MCP 服务器通过 manifest 贡献，没有通用的运行时注册 API。主题还支持受权限约束的
+`pi.themes` 运行时注册表，Provider 仍由 manifest 管理。输入框、会话导入/读取/更新/删除、
+用量、项目及桌面 API 各自遵循独立的授权要求。
 
-所有高风险入口点都会断言声明+授予的权限并发出审核日志行。
-插件面板不再接收完整的 `pi` 对象；他们使用 `window.pluginBridge.invoke`。
+所有高风险入口均检查已声明且已授予的权限，并输出审计日志。插件面板不接收完整的 `pi`
+对象，而是使用 `window.pluginBridge.invoke`。
+
+渲染器 ES 模块可导入 `react/jsx-runtime` 或 `react/jsx-dev-runtime` 使用自动 JSX。
+宿主会在执行插件入口前，通过 import map 暴露这两个运行时以及 `react`、`react-dom`、
+`react-dom/client`。因此在生产和开发构建中，编译后的 JSX、Hook 和上下文都使用宿主的
+同一个 React 实例。

@@ -25,7 +25,7 @@
 - 开发人员可以依赖它
 - 未来版本可以迁移
 
-架构版本：`1`
+清单格式版本：`1`
 
 ## 2. 根对象
 
@@ -135,7 +135,7 @@ locale 声明。扩展页、插件启动器和市场（从 catalog 条目读取�
 
 - `composerControl` —— 输入区工具栏上的附加控件
 - `composerTrigger` —— 输入区某个触发符背后的条目列表（是数据不是组件：列表由宿主绘制）
-- `userAction` / `assistantAction` —— 消息操作栏左右两侧的附加项
+- `userAction` / `assistantAction` —— 消息操作栏中的附加项
 - `entryExtra` —— 助手回复下方的附加区块
 - `toolCard` —— 插件自有 Agent 工具调用的卡片
 - `blockRenderer` —— 形如 `<pluginId>:<lang>` 的代码块的渲染器
@@ -270,17 +270,16 @@ type PluginWindowAppearanceContrib = {
  backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
  cornerRadius?: number; // integer 0..24 DIP, Windows main window only; default 12
 };
+```
 
-`cornerRadius` belongs to the contributing plugin and applies while any of its
-declared themes is selected. It does not change macOS/Linux native corners.
-Removing the theme or its `ui.window.appearance` grant restores the Windows
-main-window default of 12 DIP (`--radius-md`). Invalid or fractional values
-reject the manifest. On Windows build 22000 and later, 0 requests square
-corners and every positive value requests the same native DWM rounded
-preference; Windows chooses the exact radius. Earlier Windows builds retain the
-requested DIP radius. On Windows 11, an 8-digit background is composited over
-the resolved built-in theme color so the top-level window remains opaque.
+`cornerRadius` 属于提供贡献的插件，在该插件声明的任一主题被选中时生效，不改变 macOS/Linux
+的原生圆角。移除主题或撤销其 `ui.window.appearance` 授权后，Windows 主窗口恢复默认的
+12 DIP（`--radius-md`）。无效值或小数值会导致 manifest 被拒绝。Windows 构建 22000 及以后，
+0 请求直角，所有正数都请求相同的原生 DWM 圆角偏好，具体半径由 Windows 决定；更早的
+Windows 构建保留请求的 DIP 半径。Windows 11 会将八位十六进制背景色合成到解析后的内置
+主题颜色上，使顶层窗口保持不透明。
 
+```ts
 type PluginSkillContrib = {
  id?: string; // defaults to the file name without its extension
  path: string; // relative path to the skill document
@@ -346,7 +345,7 @@ type PluginProviderModelContrib = {
  defaultThinkingLevel?: string;
 };
 ```
-`thinkingLevels` 可选。宿主会裁剪条目、丢弃未知规范档位、去重，并保留剩余的声明顺序。
+`thinkingLevels` 可选。宿主会去除条目前后空白、丢弃未知规范档位、去重，并保留剩余的声明顺序。
 缺失或不可用的列表会变成空绑定。只有当 `defaultThinkingLevel` 命中该模型列表中的归一化档位
 时才会保留；否则会被丢弃，普通绑定归一化会选择第一个可用档位。
 清单校验会拒绝非数组的 `thinkingLevels`、其中任何非字符串条目，或非字符串的
@@ -406,6 +405,12 @@ type PluginPermission =
 权威列表是 `@pi-desktop/plugin-sdk` 中的 `PLUGIN_PERMISSIONS`。未知权限名在
 `pi-plugin check` 中报错（`permission.unknown`）；`validateManifest()` 与宿主安装器
 不会拒绝它，但该字符串不匹配任何能力检查，因此不授予任何能力。
+
+`pi.workspace.get()` 报告可见工作区；`pi.projects.list()` 列出所有持久化项目记录，不会选中
+其中某个项目。两者都只读取元数据，无需 manifest 权限。列表包含未分组项目，每项提供
+稳定的十进制 `projects.id` 字符串、显示名称、主路径，以及非空且主根优先的根目录列表。
+项目查询不可用时返回 `[]`。排序、项目组根目录补充，以及项目 ID 与项目组 ID 的区别，见
+[项目 / 工作区 API](/zh-CN/spec/07-plugins/03-plugin-api#工作区-fs)。
 
 `fs.read.workspace`、`fs.write.workspace`、`fs.delete.workspace` 是文件范围机制
 之前的旧权限名。它们仍然能通过校验，主机会在加载时把它们改写成最小安全等价物
@@ -475,10 +480,9 @@ type PluginNetDomains = string[]; // "api.example.com" or "*.example.com"
 
 ## 5.1 总线主题语法
 
-主题最多是与 `[a-zA-Z0-9][a-zA-Z0-9_-]*` 匹配的点分隔段
-8段128个字符。 `contributes.bus.publish` 列出了具体主题；
-`contributes.bus.subscribe` 列出 `*` 与一个段完全匹配的模式
-`**` 匹配一个或多个尾随段（仅最后一个段）。
+主题由点号分隔的路径段组成，每段匹配 `[a-zA-Z0-9][a-zA-Z0-9_-]*`，最多 8 段，总长不超过
+128 个字符。`contributes.bus.publish` 列出具体主题；`contributes.bus.subscribe` 列出匹配
+模式，其中 `*` 精确匹配一段，`**` 匹配一个或多个尾随段，且只能作为最后一段。
 
 ```json
 {
@@ -499,36 +503,55 @@ type PluginNetDomains = string[]; // "api.example.com" or "*.example.com"
 - 声明的 `id` 匹配 `[a-zA-Z][a-zA-Z0-9_-]{0,63}` 且在插件内唯一；行 id 为
   `plugin:<pluginId>:<declaredId>`
 - `name` 必填，是设置页显示的名称
-- `category` 可选，用作“添加服务”分组；可填写普通字符串或同时提供 `en` 与 `zh-CN`
+- `category` 可选，用作“添加服务”分组；可填写非空普通字符串或同时提供 `en` 与 `zh-CN`
   的本地化名称，每个名称最多 128 个字符。省略时使用插件名称
-- `description` 可选，是“添加服务”中悬停或键盘聚焦时显示的一句话简介；可填写普通字符串
+- `description` 可选，是“添加服务”中悬停或键盘聚焦时显示的一句话简介；可填写非空普通字符串
   或同时提供 `en` 与 `zh-CN` 的本地化内容，每条最多 280 个字符
 - `baseUrl` 可选，但必须是绝对 `http(s)` URL
 - `apiStyle` 可选，默认 `chat_completions`；可取值是 provider 配置中除 `auto`
   以外的风格
 - `authKind` 可选，为 `api_key`（默认）、`none` 或 `oauth`
 - OAuth provider 需要 `provider.register` 和独立高风险权限 `provider.oauth`，还需要
-  绝对 HTTP(S) `baseUrl` 及插件主模块导出的 `onProviderOAuth`；`oauth` 元数据可设置
-  `loginLabel` 和 `isSubscription`
+  绝对 HTTP(S) `baseUrl` 及插件主模块导出的 `onProviderOAuth`。可选的 `oauth.loginLabel`
+  必须是非空字符串，上限 128 个字符；`oauth.isSubscription` 必须是布尔值。宿主为每项
+  Provider 贡献保存一份加密凭据
 - `models` 最多 64 条，id 唯一且长度为 1..256。仅当 provider 使用 API Key 且配置了
   `baseUrl` 时，才允许为空；用户保存 Key 后，宿主会发现并缓存该端点提供的模型
+
+`thinkingLevels` 为可选项。宿主会去除条目前后空白、丢弃未知的规范档位、去重，并保持剩余
+声明顺序。缺失或不可用的列表会生成空绑定。只有 `defaultThinkingLevel` 指向该模型列表中
+归一化后的档位时才会保留；否则丢弃该值，由常规绑定归一化选择第一个可用档位。
 
 非空的 `contributes.providers` 需要高风险权限 `provider.register`
 （[13-plugin-permissions-matrix.md](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)）。
 声明会在每次插件加载时重新读取，并对其自身字段具有权威；禁用插件会保留这些行并
 将其关闭，而删除声明或卸载插件会连同已存凭据一起删除该行。
 
-OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通过
-`pi.providers.oauth.prompt` / `notify` 显示登录提示和进度；OAuth 回调只收到该插件
-自身 provider 的凭据。刷新令牌保留在 Electron 主进程与宿主密钥库内，Agent Runtime
-只接收请求所需的访问令牌。每个 provider 声明目前只支持一个账号；宿主插件进程不是
-操作系统沙箱，因此授予 `provider.oauth` 表示信任该插件处理此 provider 的凭据。
+使用 API key 且声明了 `baseUrl` 的 Provider，在插件已加载、持有 `provider.register`，且
+该 Provider 尚未保存密钥时，会出现在宿主的**添加服务**选择器中。条目按 `category` 分组，
+省略该字段时按插件名称分组。选择条目会打开宿主管理的密钥表单，并通过既有 Provider
+密钥存储路径保存。配置完成后，该 Provider 保留在 Provider 列表中，同时从“添加服务”移除，
+避免把同一条记录重复显示为添加操作。OAuth 和无需认证的贡献不出现在此选择器中。
+已有的插件 Provider 记录同步与凭据保留规则不变；分类只是展示元数据，不授予能力。
+
+OAuth 贡献使用宿主管理的服务商账号界面。`onProviderOAuth` 处理 `login` 和 `refresh`；
+`pi.providers.oauth.prompt` 和 `.notify` 提供宿主渲染的交互。回调只有在 `provider.oauth`
+获授权时，才能读取自身 Provider 贡献的凭据。模型请求通过常规 Host 认证解析器获取访问令牌，
+刷新令牌绝不进入渲染器或 Agent Runtime。回调使用 Host 网络 API 时，出网仍需 `net.fetch`
+和已声明的网络域名。插件入口代码不是操作系统沙箱，仍可使用原始 Node API，因此只应向
+可信代码授予权限。参见 [03-plugin-api.md](/zh-CN/spec/07-plugins/03-plugin-api) 和
+[13-plugin-permissions-matrix.md](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)。
+
 ## 6. activationEvents（可选元数据）
 
-`activationEvents` 可描述 `onStartup` 等意图；当前运行时在启动恢复、启用和加载开发目录时直接加载，
-没有延迟激活调度器。项目资格由宿主激活范围控制。
-`engines.piDesktop` 是作者兼容元数据，不能代替最低版本测试与新增方法检测。
-从 `main` 导出生命周期函数，没有 `entrypoints` 清单分发器。
+`activationEvents` 可记录 `onStartup` 或 `onCommand:demo.hello.say` 等意图。当前运行时会在
+恢复、启用或加载开发目录时直接加载已启用插件，没有激活事件调度器；不能依赖该字段延迟
+初始化或限定范围。是否可用于某个项目，应通过宿主的激活范围控制。
+
+`engines.piDesktop` 是作者声明的兼容性元数据，市场目录还会包含宿主版本约束。
+本地目录通过 `check` 不代表运行时 API 一定可用。应检测增量新增的方法，并在声明支持的
+最低宿主版本上实际测试。生命周期函数 `onLoad` / `onUnload` 从 `main` 导出；
+不存在 `entrypoints` manifest 契约。
 
 ## 7. 验证规则
 
@@ -548,16 +571,14 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
 8. 贡献 ID（`themes`、`mcpServers`、`services`、`views`、`composerTransforms`）必须匹配
    `[a-zA-Z][a-zA-Z0-9_-]{0,63}` 并在自己的列表中保持唯一；
    `sessionSources` 允许额外使用 `.`
-9. `themes[].path` 必须存在且以 `.css` 结尾； `themes[].base` 可能只是
+9. `themes[].path` 必须存在且以 `.css` 结尾；`themes[].base` 只能是
    `light` 或 `dark`
-10. `mcpServers[]` 必须准确设置一个传输字段：`stdio` 要求
-   `command`（裸路径名称或插件相对，从不绝对）并拒绝 `url`/`headers`；
+10. `mcpServers[]` 只能设置一种传输方式对应的字段：`stdio` 要求
+    `command`（`PATH` 中的裸命令名或插件相对路径，不能使用绝对路径）并拒绝 `url`/`headers`；
    `http` 需要绝对的 `http` 或 `https` `url`，并拒绝
    `command`/`args`/`env`。非回环 HTTP 不加密，必须声明在 `net.domains` 中。
-11. `bus.publish` 条目必须是具体主题，`bus.subscribe` 条目必须是具体主题
-   有效模式（§5.1）
-12. 需要权限的贡献在权限验证时失败
-   缺少：`themes` → `ui.theme`，`views` → `ui.view`，`providers` →
+11. `bus.publish` 条目必须是具体主题，`bus.subscribe` 条目必须是有效模式（§5.1）
+12. 需要权限的贡献在缺少相应权限时校验失败：`themes` → `ui.theme`，`views` → `ui.view`，`providers` →
    `provider.register`，OAuth 提供方 → `provider.oauth`，`composerTransforms` →
    `composer.transform`，`agentExtensions` → `agent.extension`，
    `windowAppearance` → `ui.window.appearance`，stdio 服务器 → `mcp.server.local`，
@@ -565,9 +586,8 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
    `bus.publish` → `bus.publish`，`bus.subscribe` → `bus.subscribe`。
    `scenicThemes` 不在校验阶段检查：缺少 `ui.settings` 或 `ui.theme` 时，宿主只是
    不显示该设置入口。
-`skills` 是一个例外 - 它早于权限门，因此清单
-   没有 `agent.prompt.inject` 仍然有效并且运行时只是跳过
-   技能
+    `skills` 是例外：它早于权限门出现，因此未声明 `agent.prompt.inject` 的 manifest
+    仍可通过校验，运行时仅跳过这些技能
 13. 设置的 key 必须唯一。`shortcut` 设置必须带 `command`，只能用 `plugin`
     作用域，并按「修饰键 + 按键」或 F 键校验。在安全的插件密钥存储出现之前，
     secret 一律拒绝
@@ -578,10 +598,10 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
     `userSelected`
 15. `net.domains` 条目必须是裸主机名，可选前缀 `*.`；裸 `*` 会被拒绝
 16. `views[].title` 必填；使用本地化对象时必须同时提供 `en` 与 `zh-CN`。
-    `views[].icon` **不**按 token 列表校验：未知 token 会降级为字母瓷砖，
+    `views[].icon` **不**按 token 列表校验：未知 token 会显示为字母方块，
     为一个纯外观细节拒绝插件并不合理。打包检查会改为给出警告
 17. `sessionSources` id 必须匹配 `[a-zA-Z][a-zA-Z0-9._-]{0,63}` 且不能重复；
-    本地化 label 必须同时提供 `en` 和 `zh-CN`
+    label 可省略；使用本地化 label 时必须同时提供 `en` 和 `zh-CN`
 18. `contributes.globalShortcuts` 最多允许 8 条，且需要
    `keyboard.globalShortcut`。每个 `id` 匹配
    `[a-zA-Z][a-zA-Z0-9._-]{0,63}` 且唯一；`command` 必须声明在
@@ -690,8 +710,7 @@ OAuth 登录使用宿主自有的账号界面和加密凭据存储。宿主通�
 }
 ```
 
-`{ "setting": "<key>" }`读取插件自身的设置；宿主环境是
-从未通过（D018）。
+`{ "setting": "<key>" }` 读取插件自身的设置；绝不透传宿主环境（D018）。
 
 ## 10. 兼容性策略
 
