@@ -2,23 +2,69 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-// A turn the user aborted must not be recorded as a completed plan execution.
+// A plan execution the user stopped must be recorded as `interrupted`, never
+// `completed`.
 //
-// pi emits `agent_end` immediately after an `error` event. Both handlers derive
-// the execution id from `pendingExecutionFinishes`, and the error handler used to
-// populate that map only after an async finalizer resolved. The `agent_end`
-// handler therefore saw an empty map, settled the execution as `completed`, and
-// the later `interrupted` write lost both the first-writer-wins guard and
-// `finish_execution`'s conflict check in the host — leaving a user-aborted plan
-// in the execution history as if it had finished.
+// A user abort emits no error event at all: it locks the abort reason and lets
+// `agent_end` land, and `agent_end` unconditionally settled the execution as
+// `completed`. Observed in a real session — abort at 02:25:55, turn row
+// `aborted`, execution_state `completed`, the two records disagreeing about the
+// same event.
 //
-// These assertions pin the ordering, not the surrounding machinery: the status
-// claim must happen synchronously, before `finishTurn` is awaited.
+// `finishTurn` is the single funnel every end path passes through and it already
+// freezes the abort-aware reason, so the execution is claimed there,
+// synchronously, before any await.
 
 const source = await readFile(
   new URL("../electron/main/runtime/event-persistence.ts", import.meta.url),
   "utf8",
 );
+const plansSource = await readFile(
+  new URL("../electron/main/runtime/plans.ts", import.meta.url),
+  "utf8",
+);
+
+const finishTurnBody = (() => {
+  const at = plansSource.indexOf("function finishTurn(");
+  assert.ok(at > 0, "finishTurn should exist");
+  return plansSource.slice(at, at + 4200);
+})();
+
+test("finishTurn claims the execution from the frozen abort-aware reason", () => {
+  const reasonAt = finishTurnBody.indexOf("const reason = peekAbortReason");
+  const claimAt = finishTurnBody.indexOf("pendingExecutionFinishes.set(executionId");
+  const awaitAt = finishTurnBody.indexOf("const runFinalization = async");
+
+  assert.ok(reasonAt > 0, "finishTurn reads the frozen reason");
+  assert.ok(claimAt > 0, "finishTurn must claim the execution settlement");
+  assert.ok(reasonAt < claimAt, "the claim must read the frozen reason first");
+  assert.ok(
+    claimAt < awaitAt,
+    "the claim must be synchronous: a later agent_end would otherwise win the first-writer-wins guard",
+  );
+});
+
+test("the claim only settles this turn's own execution", () => {
+  assert.match(finishTurnBody, /approvedExecutionIdsBySession\.get\(id\)/);
+  assert.match(finishTurnBody, /approvedExecutionTurns\.get\(executionId\)\?\.turnId/);
+  assert.match(finishTurnBody, /executionTurnId === turnId/);
+});
+
+test("the claim never emits a status finish_execution rejects", () => {
+  // host-core accepts only `completed` and `interrupted`. hostTurnStatus maps an
+  // erroring turn to `failed`, which finish_execution rejects outright.
+  const claimBlock = finishTurnBody.slice(
+    finishTurnBody.indexOf("pendingExecutionFinishes.set(executionId"),
+  );
+  assert.match(
+    claimBlock,
+    /status: reason === "completed" \? "completed" : "interrupted"/,
+  );
+  assert.ok(
+    !/status: hostTurnStatus\(reason\)/.test(claimBlock),
+    "hostTurnStatus maps error to `failed`, which finish_execution rejects",
+  );
+});
 
 test("the error handler claims the interrupted status before the async finalizer", () => {
   const errorBranchAt = source.indexOf('if (event.type === "error") {');
@@ -43,11 +89,13 @@ test("the claim carries the abort code so the history explains itself", () => {
   assert.match(branch, /errorCode: event\.error\.code/);
 });
 
-test("agent_end still settles a normal execution as completed", () => {
+test("agent_end still settles a run with no claimed execution as completed", () => {
   const agentEndAt = source.indexOf('if (event.type === "agent_end") {');
   assert.ok(agentEndAt > 0);
   const branch = source.slice(agentEndAt, agentEndAt + 1200);
-  // Unchanged: a run that reaches agent_end without a prior error is complete.
+  // Unchanged fallback: a run that reaches agent_end with nothing claimed in the
+  // map is complete. A claimed (aborted) execution never gets here, because the
+  // derivation below returns no execution id for it.
   assert.match(branch, /finishApprovedExecution\(executionId, "completed"\)/);
 });
 

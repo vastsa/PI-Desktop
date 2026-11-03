@@ -184,6 +184,27 @@ function finishTurn(
   // start while this one unwinds, and everything keyed by the session alone is
   // then its data.
   const reason = peekAbortReason(id, turnId) ?? status;
+  // Settle this turn's approved execution from the same frozen reason. The
+  // settlement used to depend on whichever terminal event happened to arrive,
+  // and a user abort emits no error event at all: `agent_end` then wrote
+  // `completed` for an execution whose turn row was correctly `aborted`. Claiming
+  // it here — synchronously, before any await — makes every end path agree and
+  // lets `finishApprovedExecution`'s first-writer-wins guard reject the later
+  // `completed` write.
+  const executionId = approvedExecutionIdsBySession.get(id);
+  if (executionId) {
+    // Only the execution this turn owns; a previous turn's row must not be
+    // restated by a newer turn's end.
+    const executionTurnId = approvedExecutionTurns.get(executionId)?.turnId;
+    if (!executionTurnId || executionTurnId === turnId) {
+      // `finish_execution` accepts only `completed` and `interrupted`, so an
+      // erroring turn settles as interrupted: it certainly did not complete.
+      pendingExecutionFinishes.set(executionId, {
+        status: reason === "completed" ? "completed" : "interrupted",
+        errorCode,
+      });
+    }
+  }
   const turnUsage = activeTurnUsages.get(id);
   activeTurnUsages.delete(id);
   const runId = scheduledRunsBySession.get(id);

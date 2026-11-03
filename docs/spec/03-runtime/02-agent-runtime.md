@@ -832,13 +832,17 @@ already committed and a queued/running execution is interrupted, durable mode
 remains Agent and the execution is not replayed.
 
 An interrupted execution must be recorded as `interrupted`, never `completed`.
-pi emits `agent_end` immediately after an `error` event, and both handlers settle
-the same execution, so the terminal status is claimed synchronously by the error
-handler before its async turn finalizer runs. Without that ordering `agent_end`
-derives an execution id from an empty map, settles the row as `completed`, and
-the later `interrupted` write loses both the first-writer-wins guard and
-`finish_execution`'s `PLAN_EXECUTION_CONFLICT` check — leaving a user-aborted plan
-in the history as if it had finished.
+`finishTurn` is the single funnel every turn end passes through and it already
+freezes the abort-aware reason, so it claims this turn's execution settlement
+there — synchronously, before any await, and only for the execution whose
+`turnId` matches. That claim is what makes every end path agree: a user abort
+emits no error event at all (it locks the abort reason and lets `agent_end`
+land), so relying on the terminal event let `agent_end` write `completed` for a
+row whose turn was correctly `aborted`. The first-writer-wins guard in
+`finishApprovedExecution` then rejects the later write, and `agent_end`'s
+execution-id derivation returns nothing for an already-claimed row. The claim
+emits only `completed` or `interrupted`; an erroring turn settles as
+`interrupted`, because `finish_execution` rejects `failed`.
 
 
 Historical SubmitPlan/SubmitGoal rows render read-only contract cards with an
