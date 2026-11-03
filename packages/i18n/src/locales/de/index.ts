@@ -367,6 +367,8 @@ export const de = {
     "sessionTranscriptEmpty": "Der Verlauf dieser Sitzung konnte nicht gelesen werden. Bitte die Sitzung erneut öffnen.",
     "fileMenu": "Dateiverweise",
     "removeFileReference": "Dateiverweis {{name}} entfernen",
+    directoryReference: "Ordner",
+    directoryPasteUnavailable: "Der vollständige Pfad des kopierten Ordners ist nicht verfügbar. Ziehen Sie den Ordner in das Eingabefeld.",
     "removePluginMark": "{{name}} entfernen",
     "pluginTriggerMenu": "Plugin-Vorschläge",
     "messageAttachments": "Anhänge in dieser Nachricht",

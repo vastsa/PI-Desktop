@@ -1,5 +1,18 @@
 # 01. IPC Protocol
 
+### composer/readClipboardDirectories
+
+An additive main-window-only Electron channel accepting no source paths. During
+an explicit native file paste, main captures at most 20 paths / 1 MiB of native
+metadata, resolves file/directory metadata and returns null if no directory is
+present. Otherwise it returns ordered items (`{kind: "directory", path, name}` or
+`{kind: "file", name}`) and an optional sender-bound one-shot token for regular
+files through `composer/importFiles`. MCP/plugin callers cannot invoke it.
+Directories remain prompt/draft metadata, never binary attachments, file previews
+or recursive snapshots. History retains their absolute paths without reading
+contents or granting access. Other clipboard text is never read by this channel.
+
+
 ## 1. Goal
 
 Define a stable contract between the renderer and main.

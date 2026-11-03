@@ -366,6 +366,8 @@ export const ptBR = {
     sessionTranscriptEmpty: "Não foi possível ler o histórico desta sessão. Reabra-a para tentar novamente.",
     fileMenu: "Referências a arquivos",
     removeFileReference: "Remover referência de arquivo {{name}}",
+    directoryReference: "Pasta",
+    directoryPasteUnavailable: "O caminho completo da pasta copiada não está disponível. Arraste a pasta para o campo de entrada.",
     removePluginMark: "Remover {{name}}",
     pluginTriggerMenu: "Sugestões de plugins",
     messageAttachments: "Anexos desta mensagem",

@@ -34,7 +34,7 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.doesNotMatch(composer, /const token = `@\$\{displayName\}`/);
   assert.match(composer, /sourceValue\.slice\(0, selectionStart\) \+/);
   assert.match(composer, /writeComposerDraft\(sessionId, \{/);
-  assert.match(composer, /if \(isLargeTextPaste \|\| files\.length\) \{/);
+  assert.match(composer, /if \(isLargeTextPaste \|\| files\.length \|\| nativeFilePaste\) \{/);
   assert.match(composer, /file\.arrayBuffer\(\)/);
   assert.match(
     composer,

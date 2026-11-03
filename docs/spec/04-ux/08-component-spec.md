@@ -1,5 +1,21 @@
 # 08. Component Spec
 
+### Copied directory references
+
+Native folder paste inserts atomic folder cards at the captured caret, with a
+folder icon, ellipsized name, localized Folder type, full-path tooltip and
+accessible remove button. Mixed folders/files preserve native order. The source
+draft/session owns pending results; newer edits survive. Directory-only clipboard
+selections work even when Chromium provides no File object. Ordinary text/image/
+file paste and the directory-drop open-project/insert-path choice remain.
+
+Normal send and steering include escaped `<dir>absolute/path</dir>` markers and
+one instruction: "The user provided these local directories for the current task.
+Inspect their structure and read relevant files as needed to fulfill the request."
+Removing a card removes its hint. Pasting neither reads/copies a directory tree nor
+changes tool permissions. See [directory reference ADR](../../adr/composer-pasted-directory-references.md).
+
+
 > Layout and IA reference: [01-ui-ia.md](01-ui-ia.md)  
 > Design tokens and foundations: [07-ui-design-system.md](07-ui-design-system.md)  
 > Interaction behavior: [09-interaction-patterns.md](09-interaction-patterns.md)

@@ -1,3 +1,4 @@
+import { readComposerDraft, readComposerDraftRevision } from "../../../../lib/composer-draft-cache";
 import {
   useState,
   useRef,
@@ -230,19 +231,27 @@ export function useComposerAttachments({
     const files = preferClipboardText(text, pastedFiles, api.getDroppedFilePath)
       ? []
       : pastedFiles;
+    const hasNativeFileTypes = event.clipboardData.types?.includes("Files");
+    const nativeFilePaste = hasNativeFileTypes || !text;
     const textLength = Array.from(text).length;
     const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
-    if (isLargeTextPaste || files.length) {
+    if (isLargeTextPaste || files.length || nativeFilePaste) {
       event.preventDefault();
       const editor = event.currentTarget;
-      const { start: selectionStart, end: selectionEnd } = editorSelectionRange(editor);
-      const sourceValue = readEditorValue(editor);
+      let { start: selectionStart, end: selectionEnd } = editorSelectionRange(editor);
+      let sourceValue = readEditorValue(editor);
       const sourceSessionId = activeSessionId;
       const sourceDraftKey = draftKey;
-      const previousReferences = snapshotReferences(sourceSessionId ?? "");
+      let previousReferences = snapshotReferences(sourceSessionId ?? "");
+      const sourceRevision = readComposerDraftRevision(sourceDraftKey);
       setPasting(true);
       try {
-        const payload = files.length
+        const native = !isLargeTextPaste ? await api.readClipboardDirectories() : null;
+        if (!native && !files.length && !isLargeTextPaste) {
+          if (hasNativeFileTypes) throw new Error(t("chat.directoryPasteUnavailable"));
+          return;
+        }
+        const payload = native ? [] : files.length
           ? await Promise.all(
               files.map(async (file) => ({
                 name: file.name || undefined,
@@ -268,7 +277,31 @@ export function useComposerAttachments({
         if (!sessionId) sessionId = (await materializeDraftSession()) ?? "";
         if (!sessionId) throw new Error("session unavailable");
 
-        const result = await api.pasteFiles(sessionId, payload);
+        let result;
+        if (native) {
+          const imported = native.token ? await api.importFiles(sessionId, native.token) : { files: [] };
+          let index = 0;
+          result = { files: native.items.map(item => item.kind === "directory"
+            ? { path: item.path, name: item.name, kind: "directory" as const, mimeType: undefined }
+            : imported.files[index++]) };
+        } else {
+          result = await api.pasteFiles(sessionId, payload);
+        }
+        if (native && readComposerDraftRevision(sourceDraftKey) !== sourceRevision) {
+          if (useAppStore.getState().activeSessionId === sourceSessionId) {
+            sourceValue = readEditorValue(editor);
+            const selection = editorSelectionRange(editor);
+            selectionStart = selection.start;
+            selectionEnd = selection.end;
+            previousReferences = snapshotReferences(sourceSessionId ?? "");
+          } else {
+            const latest = readComposerDraft(sourceDraftKey);
+            sourceValue = latest?.text ?? sourceValue;
+            selectionStart = selectionEnd = sourceValue.length;
+            previousReferences = latest?.fileReferences ?? previousReferences;
+          }
+        }
+        if (native && sourceSessionId && !useAppStore.getState().sessions.some(session => session.id === sourceSessionId)) return;
         const chips = result.files.map((file) => {
           const token = nextChipToken();
           return {
@@ -304,7 +337,7 @@ export function useComposerAttachments({
         } else if (sourceDraftKey === HOME_DRAFT_KEY) {
           deleteComposerDraft(HOME_DRAFT_KEY);
         }
-        showToast(
+        if (!native) showToast(
           t,
           files.length ? "chat.filesPasted" : "chat.largeTextPasted",
           files.length

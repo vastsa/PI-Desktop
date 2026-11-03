@@ -374,6 +374,8 @@ export const en = {
     sessionTranscriptEmpty: "This session's history could not be read. Reopen the session to try again.",
     fileMenu: "File references",
     removeFileReference: "Remove file reference {{name}}",
+    directoryReference: "Folder",
+    directoryPasteUnavailable: "The copied folder's full path is unavailable. Drag the folder into the composer instead.",
     removePluginMark: "Remove {{name}}",
     pluginTriggerMenu: "Plugin suggestions",
     messageAttachments: "Attachments in this message",

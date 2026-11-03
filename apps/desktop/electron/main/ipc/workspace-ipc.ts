@@ -1,3 +1,5 @@
+import { clipboard } from "electron";
+import { readComposerClipboardDirectories } from "../composer-clipboard-directories";
 import { BrowserWindow, dialog, shell, type OpenDialogOptions } from "electron";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
@@ -632,7 +634,12 @@ export function registerWorkspaceIpc({
     },
   );
 
-  handleWithEvent(
+  handleWithEvent(IPC.invoke.composerReadClipboardDirectories, async (event) => {
+  assertMainWindowSender(event);
+  return readComposerClipboardDirectories(clipboard, paths => rememberComposerPickerSelection(paths, event.sender.id));
+});
+
+handleWithEvent(
     IPC.invoke.composerPasteFiles,
     async (event, input: { sessionId?: unknown; files?: unknown } = {}) => {
       assertMainWindowSender(event);
