@@ -1200,6 +1200,21 @@ type PluginApiError = {
 `PROVIDER_ERROR`（speech 适配器返回空结果）、`WORKSPACE_CHANGED`、`OPEN_FAILED`、
 `REVEAL_FAILED` 和 `CONNECT_FAILED`。只对自己处理的 code 分支，其余按通用失败处理。
 
+宿主还会产生以下错误：
+
+| 错误码 | 触发条件与含义 |
+|---|---|
+| `PLUGIN_INVALID_RESULT` | `onComposerTransform` 返回非字符串，或宿主收到的字符串按 JavaScript `length` 计算超过 100,000 个 UTF-16 码元。应返回不超过该长度的字符串。 |
+| `PLUGIN_TOOL_ABORTED` | 插件工具调用已取消、已结束、未知／已过期，或已不属于调用方插件进程。该调用中待完成及迟到的宿主请求会被拒绝。若中止原因为显式 Error，则可能保留其自身错误码。 |
+| `SPEECH_PROTOCOL_UNSUPPORTED` | `runSpeechAdapter` 找不到绑定协议对应的已注册适配器。适配器响应结构无效时使用 `INVALID_ARGUMENT`，文本／音频为空时使用 `PROVIDER_ERROR`。此码也见于[共享注册表](../03-runtime/08-error-codes.md)和[语音规格](../03-runtime/20-speech.md)。 |
+
+实现依据：`apps/desktop/electron/main/plugin-runtime.ts` 中的
+`MAX_COMPOSER_TRANSFORM_TEXT_LENGTH`、`runComposerTransform`、
+`runSpeechAdapter`、`sendToChild`，同目录 `plugin-tool-invocations.ts` 中的
+`run`、`assertActive`、`finish`，以及 `plugin-host-process.mjs` 中的
+`toolAbortedError`、`cancelInvocation`、`composer.transform`。
+这些错误码补充上面的开放集合，不引入新的 SDK 枚举。
+
 ## 5. 事件（主机 -> 插件）
 
 ```ts
