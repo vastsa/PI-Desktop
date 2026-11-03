@@ -97,7 +97,7 @@ html[data-surface="plugin-launcher"] #root {
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium-plus);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-wide);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -188,7 +188,7 @@ html[data-surface="plugin-launcher"] #root {
 }
 
 .plugin-launcher-icon-app {
-  border-radius: 50%;
+  border-radius: var(--radius-full);
 }
 
 .plugin-launcher-icon img {
@@ -202,7 +202,7 @@ html[data-surface="plugin-launcher"] #root {
 .plugin-launcher-monogram {
   font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-semibold);
-  line-height: 1;
+  line-height: var(--leading-tighter);
 }
 
 .plugin-launcher-tile-name {
@@ -255,7 +255,7 @@ html[data-surface="plugin-launcher"] #root {
   background: transparent;
   color: var(--ds-text-faint);
   font-size: var(--text-xs);
-  line-height: 1;
+  line-height: var(--leading-tighter);
   opacity: 0;
   cursor: pointer;
 }

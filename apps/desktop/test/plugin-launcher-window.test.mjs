@@ -84,7 +84,7 @@ test("the launcher grid is eight fixed columns with square plugins and round app
     /\.plugin-launcher-grid \{[\s\S]*grid-template-columns: repeat\(8, minmax\(0, 1fr\)\)/,
   );
   assert.match(styles, /\.plugin-launcher-icon-plugin \{[\s\S]*border-radius: var\(--radius-sm\)/);
-  assert.match(styles, /\.plugin-launcher-icon-app \{[\s\S]*border-radius: 50%/);
+  assert.match(styles, /\.plugin-launcher-icon-app \{[\s\S]*border-radius: var\(--radius-full\)/);
 });
 
 test("the launcher window is resizable and remembers its size", () => {
