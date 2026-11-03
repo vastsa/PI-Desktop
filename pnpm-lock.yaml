@@ -504,6 +504,9 @@ importers:
       '@pi-desktop/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      '@pi-desktop/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
