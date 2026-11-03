@@ -643,7 +643,24 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     if (status === 413) return result("CONTEXT_TOO_LARGE", false);
     if (status === 429) return result("PROVIDER_RATE_LIMITED", true);
     if (status === 404) return result("MODEL_NOT_CONFIGURED", false);
-    if (status >= 500) return result("PROVIDER_ERROR", true);
+    // Gateways wrap an upstream context overflow as 500/502/503. Ollama's MLX
+    // runner returns HTTP 500 for "input length (N tokens) exceeds the model's
+    // maximum context length (M tokens)", which pi-ai's LiteLLM rule does not
+    // match ("(M)" or " of M tokens", not "(M tokens)"). Re-sending that prompt
+    // fails the same way, so it is terminal. A throttle that also says "too
+    // many tokens" stays retryable: `CONTEXT_PATTERN` would undo the rate-limit
+    // exclusion inside `isContextOverflow`, and the statusless branch already
+    // probes `RATE_LIMIT_PATTERN` first. 400/422 skip that probe because both
+    // of their outcomes are terminal.
+    if (status >= 500) {
+      if (
+        !RATE_LIMIT_PATTERN.test(rawMessage) &&
+        isContextOverflowMessage(rawMessage)
+      ) {
+        return result("CONTEXT_TOO_LARGE", false);
+      }
+      return result("PROVIDER_ERROR", true);
+    }
     if (status === 400 || status === 422) {
       if (isContextOverflowMessage(rawMessage)) return result("CONTEXT_TOO_LARGE", false);
       // Malformed request (wrong apiStyle, bad params) — retrying won't help.
