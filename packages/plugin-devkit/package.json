@@ -21,7 +21,8 @@
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@pi-desktop/plugin-sdk": "workspace:*"
+    "@pi-desktop/plugin-sdk": "workspace:*",
+    "@pi-desktop/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

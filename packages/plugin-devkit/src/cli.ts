@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
+import { formatBytes as formatByteSize } from "@pi-desktop/shared";
 import { check } from "./check.js";
 import { pack } from "./pack.js";
 import { publish } from "./publish.js";
@@ -41,9 +42,7 @@ function parseArgs(argv: string[]): Flags {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return formatByteSize(bytes, { decimals: { KB: 1, MB: 2 } });
 }
 
 async function runInit(flags: Flags): Promise<number> {
