@@ -726,6 +726,8 @@ export const es = {
     reasoningShort: "Razonamiento",
     manageModels: "Gestionar modelos",
     "searchModels": "Buscar modelos",
+    planQuotaTag5h: "5 h",
+    planQuotaTagWeekly: "Sem.",
     planQuotaWindow5h: "Cada 5 horas",
     planQuotaWindowWeekly: "Cuota semanal",
     planQuotaWindowMcpMonthly: "MCP mensual",

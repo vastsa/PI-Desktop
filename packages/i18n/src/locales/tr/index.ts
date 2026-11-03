@@ -735,6 +735,8 @@ export const tr = {
     reasoningShort: "Akıl yürütme",
     manageModels: "Modelleri yönet",
     searchModels: "Model ara",
+    planQuotaTag5h: "5 sa",
+    planQuotaTagWeekly: "Hf.",
     planQuotaWindow5h: "Her 5 saatte",
     planQuotaWindowWeekly: "Haftalık kota",
     planQuotaWindowMcpMonthly: "MCP aylık",

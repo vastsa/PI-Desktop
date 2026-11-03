@@ -15,6 +15,7 @@ import type { ProviderPlanQuotaResult, ProviderPublic } from "@pi-desktop/shared
 import {
   fetchProviderPlanQuota,
   planQuotaBadgeTone,
+  planQuotaCompactSummary,
   planQuotaPanelItem,
   planQuotaResetRows,
   planQuotaSummaryParts,
@@ -69,9 +70,45 @@ export function PlanQuotaBadge({ provider }: { provider: ProviderPublic }) {
 }
 
 /**
- * The same quota as label/value rows for the context-usage inspector popover
- * ("每 5 小时  68%"). Mounted only while the popover is open, so the poll
- * stops when the panel closes; rows carry the reset time as their tooltip.
+ * The tightest quota display ("5H 95% · 周 5%") for rows that already carry a
+ * provider name — recent-model entries. Plain muted text, no chip, and it
+ * shares the TTL cache with every other surface.
+ */
+export function PlanQuotaCompact({ provider }: { provider: ProviderPublic }) {
+  const { t } = useTranslation();
+  const [quota, setQuota] = useState<ProviderPlanQuotaResult | null>(null);
+  const supported = supportsProviderPlanQuota(provider);
+
+  useEffect(() => {
+    if (!supported) return;
+    let cancelled = false;
+    const load = () => {
+      void fetchProviderPlanQuota(provider).then((result) => {
+        if (!cancelled) setQuota(result);
+      });
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supported, provider, provider.updatedAt]);
+
+  if (!supported || !quota?.supported || quota.windows.length === 0) return null;
+  const summary = planQuotaCompactSummary(quota.windows, t);
+  if (!summary) return null;
+  return (
+    <span
+      className="composer-model-quota"
+      title={planQuotaTooltipLines(quota.windows, t).join("\n")}
+    >
+      {summary}
+    </span>
+  );
+}
+
+/**
+ * The same quota as label/value rows for the context-usage inspector popover.
+ * Mounted only while the popover is open, so the poll stops when it closes.
  */
 export function PlanQuotaSection({ provider }: { provider: ProviderPublic }) {
   const { t } = useTranslation();

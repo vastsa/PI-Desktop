@@ -735,6 +735,8 @@ export const ko = {
     reasoningShort: "추론",
     manageModels: "모델 관리",
     searchModels: "모델 검색",
+    planQuotaTag5h: "5시간",
+    planQuotaTagWeekly: "주",
     planQuotaWindow5h: "5시간마다",
     planQuotaWindowWeekly: "주간 한도",
     planQuotaWindowMcpMonthly: "MCP 월간",

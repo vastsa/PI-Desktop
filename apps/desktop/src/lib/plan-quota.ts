@@ -234,6 +234,29 @@ export function planQuotaPanelItem(
   });
 }
 
+/**
+ * The tightest form for a row that already shows a provider name ("5H 95% ·
+ * 周 5%"). Short tags only; drops everything the badge would repeat.
+ */
+export function planQuotaCompactSummary(
+  windows: readonly ProviderPlanQuotaWindow[],
+  t: TFunction,
+): string {
+  const primary = windows.filter((window) => window.kind === "5h" || window.kind === "weekly");
+  const shown = primary.length > 0 ? primary : windows.slice(0, 2);
+  return shown
+    .map((window) => {
+      const tag =
+        window.kind === "5h"
+          ? t("chat.planQuotaTag5h")
+          : window.kind === "weekly"
+            ? t("chat.planQuotaTagWeekly")
+            : planQuotaWindowLabel(window, t);
+      return `${tag} ${remainingOf(window)}`;
+    })
+    .join(" · ");
+}
+
 /** Badge tone flips to warning while any shown window is running out. */
 export function planQuotaBadgeTone(
   windows: readonly ProviderPlanQuotaWindow[],

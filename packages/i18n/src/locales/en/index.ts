@@ -738,6 +738,8 @@ export const en = {
     reasoningShort: "Reasoning",
     manageModels: "Manage models",
     searchModels: "Search models",
+    planQuotaTag5h: "5H",
+    planQuotaTagWeekly: "Wk",
     planQuotaWindow5h: "Every 5 hours",
     planQuotaWindowWeekly: "Weekly quota",
     planQuotaWindowMcpMonthly: "MCP monthly",

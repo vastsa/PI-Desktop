@@ -725,6 +725,8 @@ export const ptBR = {
     reasoningShort: "Raciocínio",
     manageModels: "Gerenciar modelos",
     searchModels: "Pesquisar modelos…",
+    planQuotaTag5h: "5 h",
+    planQuotaTagWeekly: "Sem.",
     planQuotaWindow5h: "A cada 5 horas",
     planQuotaWindowWeekly: "Cota semanal",
     planQuotaWindowMcpMonthly: "MCP mensal",
