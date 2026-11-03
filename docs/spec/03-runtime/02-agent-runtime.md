@@ -831,6 +831,15 @@ once with a new complete Markdown snapshot to create a new artifact. If approval
 already committed and a queued/running execution is interrupted, durable mode
 remains Agent and the execution is not replayed.
 
+An interrupted execution must be recorded as `interrupted`, never `completed`.
+pi emits `agent_end` immediately after an `error` event, and both handlers settle
+the same execution, so the terminal status is claimed synchronously by the error
+handler before its async turn finalizer runs. Without that ordering `agent_end`
+derives an execution id from an empty map, settles the row as `completed`, and
+the later `interrupted` write loses both the first-writer-wins guard and
+`finish_execution`'s `PLAN_EXECUTION_CONFLICT` check — leaving a user-aborted plan
+in the history as if it had finished.
+
 
 Historical SubmitPlan/SubmitGoal rows render read-only contract cards with an
 expandable exact Markdown snapshot, authoritative approval status, an artifact

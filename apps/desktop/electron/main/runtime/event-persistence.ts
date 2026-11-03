@@ -217,6 +217,18 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     // finalizer below would still settle a turn this event does not own.
     if (isStaleTerminalEvent(envelope)) return;
     completionNoticeTurns.delete(envelope.turnId ?? turnId ?? "");
+    // Claim the terminal status synchronously, before the async finalizer runs.
+    // pi emits `agent_end` right after an error, and its handler derives its own
+    // executionId from this map: an empty map there settles the execution as
+    // `completed`, and the `interrupted` write below then loses both the
+    // first-writer-wins guard here and `finish_execution`'s conflict check in the
+    // host. A turn the user aborted must not be recorded as a completed plan.
+    if (executionId) {
+      pendingExecutionFinishes.set(executionId, {
+        status: "interrupted",
+        errorCode: event.error.code,
+      });
+    }
     const turnFinalization = finishTurn(
       envelope.sessionId,
       event.error.code === "TURN_ABORTED" ? "aborted" : "error",
