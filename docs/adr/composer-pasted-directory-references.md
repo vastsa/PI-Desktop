@@ -1,4 +1,4 @@
-# Composer pasted directory references
+# ADR: Composer pasted directory references
 
 - Status: Accepted
 - Date: 2026-11-03
@@ -16,7 +16,10 @@ file metadata. Directories become typed draft references and atomic removable
 folder cards with a name, localized Folder label and full-path tooltip. Mixed
 regular files use the existing sender-bound one-shot import capability. Main
 captures the selection before filesystem awaits and accepts no renderer paths.
-The bridge is main-window-only and blocked from MCP/plugin callers.
+The bridge is main-window-only and blocked from MCP/plugin callers. macOS reads
+raw pasteboard types, Linux reads native file URI lists, and Windows reads the
+complete native FileDropList in a bounded STA PowerShell invocation. Native raw
+formats are not gated on Electron's normalized MIME enumeration.
 
 Directory references serialize as escaped `<dir>absolute/path</dir>` markers plus
 one instruction to inspect directory structure and read relevant files as needed

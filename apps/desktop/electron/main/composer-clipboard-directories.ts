@@ -1,53 +1,55 @@
 import { execFileSync } from "node:child_process";
-import { basename, isAbsolute } from "node:path";
+import { basename, isAbsolute, join, win32 } from "node:path";
 import { realpath, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 type NativeClipboard = {
-  availableFormats(): string[];
   readBuffer(format: string): Buffer;
 };
 
 const MAX_ITEMS = 20;
 const MAX_METADATA_BYTES = 1024 * 1024;
 
+function windowsClipboardPaths(): string[] {
+  // CF_HDROP is a built-in format, not the custom format named "CF_HDROP".
+  const command = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); Add-Type -AssemblyName System.Windows.Forms; ConvertTo-Json -Compress -InputObject @([System.Windows.Forms.Clipboard]::GetFileDropList())";
+  const executable = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const value: unknown = JSON.parse(execFileSync(executable, ["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-Command", command], {
+    encoding: "utf8", windowsHide: true, timeout: 2000, maxBuffer: MAX_METADATA_BYTES,
+  }));
+  if (!Array.isArray(value) || !value.every(path => typeof path === "string")) throw new Error("invalid clipboard file list");
+  return value;
+}
+
 /** Read native file metadata only during an explicit Composer paste. */
-export function nativeClipboardPaths(clipboard: NativeClipboard): string[] {
-  const formats = clipboard.availableFormats();
+export function nativeClipboardPaths(
+  clipboard: NativeClipboard,
+  platform: NodeJS.Platform = process.platform,
+  readWindowsPaths: () => string[] = windowsClipboardPaths,
+): string[] {
   const read = (format: string) => {
-    if (!formats.includes(format)) return Buffer.alloc(0);
+    // availableFormats exposes normalized MIME names, not native pasteboard types.
     const bytes = clipboard.readBuffer(format);
     if (bytes.length > MAX_METADATA_BYTES) throw new Error("clipboard file metadata is too large");
     return bytes;
   };
   let paths: string[] = [];
-  const macList = read("NSFilenamesPboardType");
-  if (macList.length && process.platform === "darwin") {
+  const macList = platform === "darwin" ? read("NSFilenamesPboardType") : Buffer.alloc(0);
+  if (platform === "win32") paths = readWindowsPaths();
+  else if (macList.length) {
     const value: unknown = JSON.parse(execFileSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", "-"], {
-      input: macList, maxBuffer: MAX_METADATA_BYTES,
+      input: macList, maxBuffer: MAX_METADATA_BYTES, timeout: 1000,
     }).toString("utf8"));
     if (!Array.isArray(value) || !value.every(path => typeof path === "string")) throw new Error("invalid clipboard file list");
     paths = value;
   } else {
-    // DROPFILES contains a 20-byte header followed by a NUL-separated list.
-    const drop = read("CF_HDROP");
-    if (drop.length) {
-      if (drop.length < 20) throw new Error("invalid clipboard file list");
-      const offset = drop.readUInt32LE(0);
-      if (offset < 20 || offset >= drop.length) throw new Error("invalid clipboard file list");
-      paths = drop.subarray(offset).toString(drop.readUInt32LE(16) ? "utf16le" : "latin1").split("\0").filter(Boolean);
-    } else {
-      const wide = read("FileNameW");
-      if (wide.length) paths = wide.toString("utf16le").split("\0").filter(Boolean);
-      else {
-        const uris = read("text/uri-list").toString("utf8") || read("x-special/gnome-copied-files").toString("utf8") || read("public.file-url").toString("utf8");
-        paths = uris.split(/[\r\n\0]+/).filter(line => line.startsWith("file:")).map(uri => fileURLToPath(uri));
-      }
-    }
+    const uris = read("text/uri-list").toString("utf8") || read("x-special/gnome-copied-files").toString("utf8") || read("public.file-url").toString("utf8");
+    paths = uris.split(/[\r\n\0]+/).filter(line => line.startsWith("file:")).map(uri => fileURLToPath(uri));
   }
   paths = [...new Set(paths)];
   if (paths.length > MAX_ITEMS) throw new Error(`too many pasted items (maximum ${MAX_ITEMS})`);
-  if (paths.some(path => !isAbsolute(path) || path.includes("\0"))) throw new Error("invalid clipboard file path");
+  const absolute = platform === "win32" ? win32.isAbsolute : isAbsolute;
+  if (paths.some(path => !absolute(path) || path.includes("\0"))) throw new Error("invalid clipboard file path");
   return paths;
 }
 

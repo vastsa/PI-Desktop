@@ -5,7 +5,8 @@
 Native folder paste inserts atomic folder cards at the captured caret, with a
 folder icon, ellipsized name, localized Folder type, full-path tooltip and
 accessible remove button. Mixed folders/files preserve native order. The source
-draft/session owns pending results; newer edits survive. Directory-only clipboard
+draft/session owns pending results; newer edits survive. A home paste cancels if
+its workspace/session navigation changes before a durable owner is created. Directory-only clipboard
 selections work even when Chromium provides no File object. Ordinary text/image/
 file paste and the directory-drop open-project/insert-path choice remain.
 

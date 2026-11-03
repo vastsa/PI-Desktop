@@ -242,6 +242,7 @@ export function useComposerAttachments({
       let sourceValue = readEditorValue(editor);
       const sourceSessionId = activeSessionId;
       const sourceDraftKey = draftKey;
+      const sourceWorkspacePath = useAppStore.getState().workspace?.path ?? "";
       let previousReferences = snapshotReferences(sourceSessionId ?? "");
       const sourceRevision = readComposerDraftRevision(sourceDraftKey);
       setPasting(true);
@@ -273,6 +274,10 @@ export function useComposerAttachments({
                 },
               ];
             })();
+        if (!sourceSessionId) {
+          const current = useAppStore.getState();
+          if (current.activeSessionId || (current.workspace?.path ?? "") !== sourceWorkspacePath) return;
+        }
         let sessionId = sourceSessionId;
         if (!sessionId) sessionId = (await materializeDraftSession()) ?? "";
         if (!sessionId) throw new Error("session unavailable");

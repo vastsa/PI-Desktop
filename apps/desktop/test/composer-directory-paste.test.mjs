@@ -17,17 +17,18 @@ function extract(source, name) {
   return result;
 }
 
-function harness(native, { files = [], text = "", items = [], paused } = {}) {
+function harness(native, { files = [], text = "", items = [], paused, sourceSessionId = "source" } = {}) {
   const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
   const editor = read("../src/features/chat/composer/editor.ts");
   const hook = read("../src/features/chat/composer/hooks/useComposerAttachments.ts");
-  const drafts = [], errors = [], writes = [], imported = [], transfers = [];
+  const drafts = [], errors = [], writes = [], imported = [], transfers = [], created = [];
   let revision = 0;
-  let activeSessionId = "source";
+  let activeSessionId = sourceSessionId;
+  let workspacePath = "/synthetic/project";
   const element = { textContent: "before after" };
   const context = {
     inputBlocked: false, attachmentsAllowed: true, activeSessionId,
-    draftKey: "source", largePasteThreshold: 1000,
+    draftKey: sourceSessionId ?? "home", largePasteThreshold: 1000,
     ref: { current: element }, valueRef: { current: element.textContent },
     previousWorkspacePathRef: { current: "/synthetic/project" },
     snapshotReferences: () => [], invalidateComposerTransforms() {},
@@ -62,14 +63,16 @@ function harness(native, { files = [], text = "", items = [], paused } = {}) {
     readComposerDraftRevision: () => revision,
     readComposerDraft: () => undefined,
     deleteComposerDraft() {}, HOME_DRAFT_KEY: "home",
-    useAppStore: { getState: () => ({ activeSessionId, sessions: [{ id: "source" }] }) },
+    useAppStore: { getState: () => ({ activeSessionId, workspace: { path: workspacePath }, sessions: [{ id: "source" }, { id: "created" }] }) },
+    materializeDraftSession: async () => { created.push(workspacePath); activeSessionId = "created"; return "created"; },
   };
   const code = extract(editor, "clipboardFiles") + "\n" + extract(editor, "preferClipboardText") + "\nmodule.exports = " + extract(hook, "pasteClipboardFiles");
   vm.runInNewContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, environment);
   return {
-    drafts, errors, writes, imported, transfers,
+    drafts, errors, writes, imported, transfers, created,
     edit(text) { element.textContent = text; revision++; },
     switchSession() { activeSessionId = "other"; },
+    switchProject() { workspacePath = "/synthetic/other-project"; },
     paste: () => environment.module.exports({ currentTarget: element, preventDefault() {}, clipboardData: { files, items, types: ["Files"], getData: () => text } }),
   };
 }
@@ -134,4 +137,26 @@ test("ordinary native files keep their existing byte attachment flow", async () 
   assert.equal(run.drafts[0].references[0].kind, "file");
   assert.equal(run.transfers.length, 1);
   assert.equal(new TextDecoder().decode(run.transfers[0][0].data), "notes");
+});
+
+for (const navigate of ["switchSession", "switchProject"]) {
+  test(`pending home folder paste cannot materialize in a destination after ${navigate}`, async () => {
+    let resume;
+    const paused = new Promise(resolve => { resume = resolve; });
+    const run = harness({ items: [folder], token: null }, { paused, sourceSessionId: null });
+    const pending = run.paste();
+    run[navigate]();
+    resume();
+    await pending;
+    assert.deepEqual(run.created, []);
+    assert.deepEqual(run.writes, []);
+    assert.deepEqual(run.drafts, []);
+  });
+}
+
+test("home folder paste materializes only its original unchanged workspace", async () => {
+  const run = harness({ items: [folder], token: null }, { sourceSessionId: null });
+  await run.paste();
+  assert.deepEqual(run.created, ["/synthetic/project"]);
+  assert.equal(run.drafts[0].references[0].sessionId, "created");
 });

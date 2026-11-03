@@ -29,7 +29,19 @@ test("native URI file lists preserve order and decode spaces/unicode without rea
 test("native file lists enforce metadata and selection bounds", () => {
   assert.throws(() => nativeClipboardPaths(clipboard({ "text/uri-list": "x".repeat(1024 * 1024 + 1) })), /too large/);
   assert.throws(() => nativeClipboardPaths(clipboard({ "text/uri-list": Array.from({ length: 21 }, (_, i) => `file:///tmp/${i}`).join("\n") })), /too many/);
-  assert.throws(() => nativeClipboardPaths(clipboard({ CF_HDROP: Buffer.alloc(2) })), /invalid/);
+  assert.throws(() => nativeClipboardPaths(clipboard({ "text/uri-list": "file:///tmp/a%00b" })), /null|invalid|encoded/i);
+});
+
+test("Windows uses the complete native FileDropList instead of custom CF_HDROP or one FileNameW", () => {
+  const paths = ["C:\\first folder", "C:\\notes.txt", "D:\\中文"];
+  assert.deepEqual(nativeClipboardPaths({ readBuffer: () => assert.fail("Windows must use its native file list") }, "win32", () => paths), paths);
+  assert.throws(() => nativeClipboardPaths(clipboard({}), "win32", () => ["relative"]), /invalid clipboard file path/);
+});
+
+test("normalized MIME enumeration does not hide raw Finder file URLs", () => {
+  const native = clipboard({ "public.file-url": "file:///tmp/synthetic-folder" });
+  native.availableFormats = () => ["text/uri-list"];
+  assert.deepEqual(nativeClipboardPaths(native), ["/tmp/synthetic-folder"]);
 });
 
 test("macOS Finder file-list metadata is decoded in full", { skip: process.platform !== "darwin" }, () => {
