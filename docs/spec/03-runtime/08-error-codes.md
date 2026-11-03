@@ -387,7 +387,9 @@ stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
 HTTP status in `error.code` (Gemini's `@google/genai` `ApiError.message`) is
 classified from that 400-599 code the same way as a `<status>:` message:
 400/422 stay terminal unless they report a context overflow, 404 is
-`MODEL_NOT_CONFIGURED`, and 429 / 5xx stay retryable.
+`MODEL_NOT_CONFIGURED`, 429 stays retryable, and 5xx stay retryable unless
+the body reports a context overflow that is not a rate limit, which is
+terminal `CONTEXT_TOO_LARGE`.
 
 An exact `terminated` provider message and equivalent premature stream-close
 messages map to `STREAM_FAILED`. A message is `TURN_ABORTED` only for a
