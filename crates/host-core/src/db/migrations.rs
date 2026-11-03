@@ -1031,12 +1031,10 @@ pub(crate) fn migrate_v21_to_v22(conn: &Connection, path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Schema v28 adds the durable memory store (ADR 0371): the `memories` table,
-/// its keyword index and the indexes that back recall and listing. It follows
-/// v27, the per-session Fast mode switch (ADR 0334), and re-asserts that v27
-/// column: a database stamped 27 by the pre-merge memory build carries the
-/// memory tables without it, and both flavours must converge here.
-pub(crate) fn migrate_v27_to_v28_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+/// The additive half of the v27 -> v28 step: Fast mode's column and the memory
+/// tables. Every statement tolerates a database that already carries part of the
+/// shape, which is what lets the open-time repair below reuse it.
+fn converge_fast_mode_and_memories_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     let has_fast_mode: bool = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'fast_mode')",
         [],
@@ -1049,7 +1047,32 @@ pub(crate) fn migrate_v27_to_v28_tx(tx: &rusqlite::Transaction<'_>) -> Result<()
         )?;
     }
     tx.execute_batch(MEMORIES_DDL)?;
+    Ok(())
+}
+
+/// Schema v28 adds the durable memory store (ADR 0371): the `memories` table,
+/// its keyword index and the indexes that back recall and listing. It follows
+/// v27, the per-session Fast mode switch (ADR 0334), and re-asserts that v27
+/// column: a database stamped 27 by the pre-merge memory build carries the
+/// memory tables without it, and both flavours must converge here.
+pub(crate) fn migrate_v27_to_v28_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    converge_fast_mode_and_memories_tx(tx)?;
     tx.pragma_update(None, "user_version", 28i64)?;
+    Ok(())
+}
+
+/// Repair a database whose stamp is already the newest one but whose shape is
+/// not.
+///
+/// The version chain cannot see this case: a stamp of 28 or 29 skips every step,
+/// so a database written by the pre-merge memory build — memory tables present,
+/// `sessions.fast_mode` absent — opened by the merged line fails on the first
+/// query that names the column. The convergence is additive and idempotent, so
+/// it runs on every open instead of behind a version gate.
+pub(crate) fn converge_current_shape(conn: &Connection) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    converge_fast_mode_and_memories_tx(&tx)?;
+    tx.commit()?;
     Ok(())
 }
 

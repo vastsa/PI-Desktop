@@ -36,6 +36,41 @@ fn the_v27_to_v28_migration_adds_the_missing_fast_mode_column() {
     assert_eq!(version, 28);
 }
 
+/// Regression: a profile written by the pre-merge memory build carries the
+/// newest version stamp and the memory tables but no `sessions.fast_mode`. The
+/// chain skips every step for a current stamp, so the shape has to be converged
+/// outside it — otherwise the first session query fails with
+/// `no such column: s.fast_mode`.
+#[test]
+fn a_current_stamp_without_fast_mode_converges() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY);
+         PRAGMA user_version = 29;",
+    )
+    .unwrap();
+    let has_fast_mode = |c: &Connection| -> bool {
+        c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'fast_mode')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    };
+    assert!(
+        !has_fast_mode(&conn),
+        "the fixture must start without the column"
+    );
+
+    super::migrations::converge_current_shape(&conn).unwrap();
+    assert!(has_fast_mode(&conn), "the repair adds the missing column");
+
+    // Idempotent: opening an already-converged database must not fail or double
+    // anything, which is what lets it run on every open.
+    super::migrations::converge_current_shape(&conn).unwrap();
+    assert!(has_fast_mode(&conn));
+}
+
 #[test]
 fn project_memory_is_path_scoped_and_bounded() {
     let dir = tempfile::tempdir().unwrap();

@@ -302,6 +302,12 @@ impl Database {
         if migrated_version == 28 {
             super::migrations::migrate_v28_to_v29(&conn, path)?;
         }
+        // A stamp is not proof of shape. The memory branch stamped v28/v29 with
+        // the memory tables but no `sessions.fast_mode`, while the merged line put
+        // Fast mode in v28; a profile touched by both carries the newest stamp and
+        // still fails on the first query that names the column, because the chain
+        // above skips every step for a current version.
+        super::migrations::converge_current_shape(&conn)?;
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;
         crate::session_collaboration::recover(&db)?;
