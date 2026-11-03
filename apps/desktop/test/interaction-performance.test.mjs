@@ -71,7 +71,7 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
-    /const renderedProjection =\s*readingWindow \|\| firstCommit \|\| paneRevealed \? projection : deferredProjection/,
+    /const renderedProjection =\s*readingWindow \|\| historyPending \|\| firstCommit \|\| paneRevealed \? projection : deferredProjection/,
   );
   assert.match(transcript, /getTranscriptProjection\(messages, compactions\)/);
   assert.match(transcript, /useDeferredValue\(projection\)/);

@@ -46,8 +46,11 @@ reference-equal, and that runs on every streamed token.
    fetch an older page. Mounting what is already loaded is strictly cheaper than
    an IPC round trip, so it goes first.
 3. Window growth and a fetched page take the **same pre-paint scroll anchor**.
-   Both add height above the reading position, so `prependHeightRef` is captured
-   for both and corrected in the same layout effect.
+   The pane-local history paging hook captures the visible message's viewport
+   offset for both. It holds input during the transaction and restores that
+   anchor before paint, through committed projection and late row layout.
+   This replaces the old `prependHeightRef` total-height delta: deferred DOM,
+   tail updates and intrinsic-size estimates made that delta unreliable.
 4. The window **resets per session** and is clamped to the loaded history, so a
    grown budget inherited from the previous session for one frame cannot
    over-mount.

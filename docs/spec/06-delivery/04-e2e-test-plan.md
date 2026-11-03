@@ -13474,6 +13474,35 @@ This test plan spec is accepted when:
   `conversation-minimap.test.mjs`, `interaction-performance.test.mjs`); rendered
   desktop journey and the low-memory Windows measurement pending
 
+#### E2E-CHAT-history-loading-holds-viewport
+
+- **Preconditions**: A built Desktop checkout and existing compatible Electron
+  dependencies. Use the isolated synthetic fixture, never a live user profile.
+- **Steps**:
+  1. Start `node scripts/e2e-transcript-history-loading.mjs --manual` and click
+     **Load earlier (hold)**. Note the visible turn and its viewport offset.
+  2. Continuously roll the wheel upward, then downward while the page is held.
+     Click **Complete page**. Repeat without scrolling during the held interval.
+  3. Repeat with **Fail page**. Confirm the indicator ends and new input can
+     scroll or retry, without an automatic loop at the unchanged boundary.
+  4. While loading, return to latest; complete the old page and confirm it does
+     not pull the viewport back. Verify nested scrolling, editable keys, title
+     activation and zoom still belong to their original controls.
+- **Expected**: The visible message remains at its viewport offset during
+  loading, committed projection, delayed row measurements and label removal.
+  Transcript-directed wheel/touch/scroll-key input is discarded, not queued;
+  ordinary scrolling resumes on settlement. Page IO remains single-flight;
+  explicit navigation, hide and unmount release the hold and restore styles.
+- **Automation**: `node scripts/e2e-transcript-history-loading.mjs`, also run by
+  `e2e-transcript-render.mjs`. Production React and styles, native Electron wheel
+  bursts, per-frame anchor samples with 2 CSS-pixel rounding tolerance, tail
+  updates, delayed row geometry, rejection, hide/reveal and latest navigation.
+  Manual procedures: `tests/history-loading-scroll-test-cases.md`.
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §9.1, ADR 0130.
+- **Acceptance**: C (conversation), Quality.
+- **Status**: Isolated Windows Electron regression covered; other OS/hardware
+  combinations and the user's existing conversations require manual validation.
+
 #### E2E-160: Dragging the window across displays keeps the dropped position
 
 - **Preconditions**: PI-Desktop is open on a machine with two displays arranged
