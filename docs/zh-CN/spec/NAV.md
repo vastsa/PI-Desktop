@@ -49,6 +49,7 @@
 - [live-voice.md](/zh-CN/spec/03-runtime/live-voice)
 - [live-work-session.md](/zh-CN/spec/03-runtime/live-work-session)
 - [21-image-generation.md](/zh-CN/spec/03-runtime/21-image-generation)
+- [21-memory-store.md](/zh-CN/spec/03-runtime/21-memory-store)
 - [22-config-sync.md](/zh-CN/spec/03-runtime/22-config-sync)
 - [svg-attachment-input.md](/zh-CN/spec/03-runtime/svg-attachment-input)
 

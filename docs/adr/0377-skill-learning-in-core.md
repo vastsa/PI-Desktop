@@ -2,14 +2,14 @@
 
 - Status: Accepted
 - Date: 2026-11-02
-- Amends: [ADR 0373](0373-flat-skill-library.md), [ADR 0374](0374-skill-curation.md)
-- Related: [ADR 0371](0371-memory-store.md), [ADR 0376](0376-memory-extraction-proposals.md)
+- Amends: the flat skill library and the curation pass (records not in this tree)
+- Related: [ADR 0371](0371-memory-store.md), the memory-extraction design (record not in this tree)
 
 ## Context
 
 The skill library is a core surface: `user_skills.rs` owns storage under
-`~/.agents/skills`, ADR 0373 made it a single flat global library, and ADR 0374
-added curation. Sixteen `skills.*` RPCs already cover create, read, update,
+`~/.agents/skills`, it is a single flat global library, and a curation pass was
+added on top. Sixteen `skills.*` RPCs already cover create, read, update,
 import, archive, restore, curate and transfer.
 
 What core never had was a way for the library to grow on its own. That lived in
@@ -32,7 +32,7 @@ Two problems with leaving it there:
 Skill learning becomes a core capability. The plugin is not shipped and not
 installed alongside it — one implementation, one writer.
 
-The pipeline is the same passive shape as memory extraction (ADR 0376):
+The pipeline is the same passive shape as the memory-extraction design:
 
 1. `event-persistence.ts` counts the tools a turn ran and, on either terminal
    branch, calls `scheduleSkillReview({ sessionId, usedTools, toolCallCount })`

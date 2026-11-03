@@ -95,6 +95,7 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | `new_context` | 低 | 在下一个回合边界处启动一个新的上下文窗口；不接受任何参数并且不改变环境状态 |
 | `Glob` | 低 | 按模式列出文件 |
 | `Grep` | 低 | 内容搜索；本机有 `rg` 时优先用，否则进程内搜索；为每个文件生成 `tag` |
+| `AstSearch` | 低 | 在工作区内的 TypeScript、Tsx、JavaScript、Html 与 Css 文件上做结构化（AST）搜索 |
 | `BrowserPreview` | 低 | 在随应用打包的浏览器插件中打开与工作区相关的预览（若 `pi.browser` 被禁用则失败） |
 | `EnterPlanMode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Plan |
 | `SubmitPlan` | 低 | 在新的 `.pi/plan/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
