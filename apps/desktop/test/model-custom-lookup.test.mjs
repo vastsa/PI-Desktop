@@ -47,7 +47,7 @@ test("a lookup hit seeds the row with the published limits and thinking levels",
   const seed = customModelSeedBinding("Claude-Opus-4.6", null);
   // Before the answer: the generic seed.
   assert.equal(seed.contextWindow, 128_000);
-  assert.equal(seed.maxTokens, 8_192);
+  assert.equal(seed.maxTokens, 32_768);
 
   const next = applyCustomModelLookup([seed], seed, published);
   assert.equal(next.length, 1);
@@ -68,7 +68,7 @@ test("a record published under another spelling of the id upgrades the row", () 
     A deployment appends a route or a marker of its own, so the host answers with
     the id the model is published under — `mimo-v2.5` for a row added as
     `test/mimo-v2.5`. The picker used to drop that answer and leave the row on the
-    generic 128k / 8.2k seed until the provider was saved and re-read.
+    generic 128k / 32.8k seed until the provider was saved and re-read.
   */
   const seeded = customModelSeedBinding("test/mimo-v2.5", null);
   const hit = {
@@ -88,7 +88,7 @@ test("a miss keeps the generic seed and never drops the row", () => {
   const next = applyCustomModelLookup([seed], seed, null);
   assert.equal(next[0], seed);
   assert.equal(next[0].contextWindow, 128_000);
-  assert.equal(next[0].maxTokens, 8_192);
+  assert.equal(next[0].maxTokens, 32_768);
   assert.deepEqual(next[0].thinkingLevels, []);
 });
 
