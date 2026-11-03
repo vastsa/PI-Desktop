@@ -2067,6 +2067,11 @@ describe("DesktopAgentRuntime configuration matching", () => {
       { command: "cat <<'EOF'\n EOF\nordinary text\npatch notes\nEOF" },
       { command: "cat <<A <<B\nA\nordinary text\npatch notes\nB" },
       { command: "cat <<EOF\n\tEOF\npatch -p1 < x.diff" },
+      // Spaced and escaped redirection words name the same delimiter (#2016
+      // review round five); both bodies stay stdin.
+      { command: "cat << EOF\npatch notes\nEOF" },
+      { command: "cat <<\\EOF\npatch notes\nEOF" },
+      { command: 'cat <<""\npatch notes' },
     ];
     for (const [index, args] of payloadOnly.entries()) {
       for (let attempt = 1; attempt <= 5; attempt += 1) {

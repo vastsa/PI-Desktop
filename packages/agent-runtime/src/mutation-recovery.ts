@@ -176,10 +176,17 @@ function splitCommandSegments(command: string): string[] {
 }
 
 /**
- * Read the tag after `<<` (or `<<-`). Null when there is no tag word.
+ * Read the redirection word after `<<` (or `<<-`). Null when there is none.
+ *
+ * The word is resolved the way the shell resolves it, because that spelling is
+ * what a closing line must match: spaces or tabs may separate it from `<<`,
+ * quotes and backslashes are removed (`<<\EOF` and `<<'EOF'` both mean `EOF`),
+ * and an empty quoted word (`<<""`) is still a word — its body ends at an
+ * empty line. Whether a word exists is tracked apart from its text for exactly
+ * that case (#2016 review round five).
  *
  * `stripTabs` reports the `<<-` form, whose delimiter line may carry leading
- * tabs; every other form requires the tag to be the whole line.
+ * tabs; every other form requires the delimiter to be the whole line.
  */
 function parseHeredocTag(
   command: string,
@@ -191,30 +198,69 @@ function parseHeredocTag(
     stripTabs = true;
     index += 1;
   }
+  // `<< EOF` is the same redirection as `<<EOF`; only spaces and tabs, since a
+  // word cannot start on the next line.
+  while (index < command.length && (command[index] === " " || command[index] === "\t")) {
+    index += 1;
+  }
   let text = "";
+  /** Whether a redirection word exists; an empty quoted word still counts. */
+  let hasWord = false;
   let quote: '"' | "'" | null = null;
   while (index < command.length) {
     const char = command[index]!;
-    if (quote) {
-      if (char === quote) {
+    if (quote === "'") {
+      if (char === "'") {
         quote = null;
         index += 1;
         continue;
       }
+      hasWord = true;
+      text += char;
+      index += 1;
+      continue;
+    }
+    if (quote === '"') {
+      if (
+        char === "\\" &&
+        index + 1 < command.length &&
+        (command[index + 1] === '"' || command[index + 1] === "\\")
+      ) {
+        hasWord = true;
+        text += command[++index]!;
+        index += 1;
+        continue;
+      }
+      if (char === '"') {
+        quote = null;
+        index += 1;
+        continue;
+      }
+      hasWord = true;
       text += char;
       index += 1;
       continue;
     }
     if (char === '"' || char === "'") {
       quote = char;
+      hasWord = true;
+      index += 1;
+      continue;
+    }
+    // An unquoted backslash escapes the next character and is dropped, so
+    // `<<\EOF` names the delimiter `EOF` and its closing line is `EOF`.
+    if (char === "\\") {
+      hasWord = true;
+      if (index + 1 < command.length) text += command[++index]!;
       index += 1;
       continue;
     }
     if (/\s/.test(char) || ";|&<>".includes(char)) break;
+    hasWord = true;
     text += char;
     index += 1;
   }
-  return text ? { text, stripTabs, end: index } : null;
+  return hasWord ? { text, stripTabs, end: index } : null;
 }
 
 /**

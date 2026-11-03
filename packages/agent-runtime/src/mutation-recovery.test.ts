@@ -141,6 +141,24 @@ describe("isPatchCommand", () => {
     expect(isPatchCommand("cat <<-EOF\n body\n EOF\npatch notes\nEOF")).toBe(false);
   });
 
+  it("reads the heredoc redirection word the way the shell does", () => {
+    // #2016 review round five: `<< EOF` (a space before the word) and
+    // `<<\EOF` (an escaped word) both name the same delimiter, and an empty
+    // quoted word is still a word. Missing any of them made payload become
+    // commands, or a real following patch disappear into a body.
+    expect(isPatchCommand("cat << EOF\npatch notes\nEOF")).toBe(false);
+    expect(isPatchCommand("cat <<\tEOF\npatch notes\nEOF")).toBe(false);
+    expect(isPatchCommand("cat << EOF\nbody\nEOF\npatch -p1 < x.diff")).toBe(true);
+    expect(isPatchCommand("cat <<-  EOF\n\tbody\n\tEOF\npatch notes")).toBe(true);
+    expect(isPatchCommand("cat <<\\EOF\nhello\nEOF\npatch -p1 < x.diff")).toBe(true);
+    expect(isPatchCommand("cat <<'EOF'\nhello\nEOF\npatch -p1 < x.diff")).toBe(true);
+    expect(isPatchCommand('cat <<"EOF"\nhello\nEOF\npatch -p1 < x.diff')).toBe(true);
+    // An empty quoted word: the body ends at an empty line, so text before it
+    // is payload and text after it is a command.
+    expect(isPatchCommand('cat <<""\npatch notes')).toBe(false);
+    expect(isPatchCommand('cat <<""\n\npatch notes')).toBe(true);
+  });
+
   it("queues every heredoc on the opening line before reading bodies", () => {
     // #2016 review round three: one stored tag made the parser treat the
     // second redirect as payload on the opening line, so `cat <<A <<B` never
