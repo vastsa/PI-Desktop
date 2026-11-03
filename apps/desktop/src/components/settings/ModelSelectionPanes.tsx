@@ -8,7 +8,13 @@
  * guarantee lives here once instead of in a convention two files had to
  * remember.
  */
-import { useEffect, useMemo, useState, type Ref } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
@@ -38,7 +44,7 @@ import {
   matchPresetIndex,
 } from "../../lib/model-limit-presets";
 import { api } from "../../lib/api";
-import { Badge, Button, Field, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
+import { Badge, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconGripVertical, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
 import { ReasoningEffortSelect } from "./ReasoningEffortSelect";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
@@ -232,8 +238,6 @@ export type ModelSelectionPanesProps = {
    * limits; absent fields only widen the catalog search.
    */
   lookupContext?: CustomModelLookupContext;
-  /** Attached to the hand-typed id field, so a caller can focus it. */
-  customModelInputRef?: Ref<HTMLInputElement>;
   /** The chosen list is exactly what the recommendation picked. */
   autoPicked?: boolean;
 };
@@ -253,7 +257,6 @@ export function ModelSelectionPanes({
   imageModelIds,
   lookupContext,
   onImageModelChange,
-  customModelInputRef,
   autoPicked = false,
 }: ModelSelectionPanesProps) {
   const { t } = useTranslation();
@@ -276,7 +279,17 @@ export function ModelSelectionPanes({
   const [modelQuery, setModelQuery] = useState("");
   const [chosenQuery, setChosenQuery] = useState("");
   const [customModelId, setCustomModelId] = useState("");
+  const [customModelName, setCustomModelName] = useState("");
   const [customModelError, setCustomModelError] = useState("");
+  /**
+   * The hand-typed row is a draft until its id resolves.
+   *
+   * DSH's Add model appends an empty, immediately editable row, so the fields
+   * being typed belong to this pane and not to the saved binding list: an
+   * id-less binding would be stored before the user named it.
+   */
+  const [customDraftOpen, setCustomDraftOpen] = useState(false);
+  const customDraftInputRef = useRef<HTMLInputElement | null>(null);
   // Keep selections scannable; advanced settings stay folded until requested.
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
   // Renaming happens in the field that already shows the model, so while it has
@@ -428,15 +441,43 @@ export function ModelSelectionPanes({
   };
 
   /**
-   * A hand-typed id is matched against the discovered rows first, then against
-   * the model library through the host. The row lands immediately with the
-   * generic seed, so a slow or failed lookup still leaves exactly one usable
-   * row; a published record upgrades that same row when it arrives.
+   * Open the hand-typed row where it will live.
+   *
+   * DSH's Add model appends an empty editable row first and validates it in
+   * place, which is why the id is asked for by that row rather than by a
+   * separate field that has to be kept in step with the list.
    */
-  const addCustomModel = () => {
+  const openCustomDraft = () => {
+    setCustomModelId("");
+    setCustomModelName("");
+    setCustomModelError("");
+    setCustomDraftOpen(true);
+  };
+
+  const cancelCustomDraft = () => {
+    setCustomDraftOpen(false);
+    setCustomModelId("");
+    setCustomModelName("");
+    setCustomModelError("");
+  };
+
+  /** Focus follows the row, which only exists while it is being drafted. */
+  useEffect(() => {
+    if (customDraftOpen) customDraftInputRef.current?.focus();
+  }, [customDraftOpen]);
+
+  /**
+   * Resolve the drafted row into a binding.
+   *
+   * The id is the only required field. A blank row is a cancelled one unless
+   * the user asked to commit it (Enter), so the required message is reserved
+   * for a deliberate commit and a stray click away never shouts at the user.
+   */
+  const commitCustomDraft = ({ requireId = false }: { requireId?: boolean } = {}) => {
     const id = customModelId.trim();
     if (!id) {
-      setCustomModelError(t("settings.customModelRequired"));
+      if (requireId) setCustomModelError(t("settings.customModelRequired"));
+      else cancelCustomDraft();
       return;
     }
     if (models.some((binding) => binding.id.toLowerCase() === id.toLowerCase())) {
@@ -444,18 +485,36 @@ export function ModelSelectionPanes({
       return;
     }
     const discovered = rows.find((row) => row.id.toLowerCase() === id.toLowerCase());
-    const binding = discovered?.info
+    const seed = discovered?.info
       ? bindingForCustomModelInfo(id, discovered.info)
       : customModelSeedBinding(id);
+    // The row's second field is the alias: it starts empty and the row falls
+    // back to the id, so only a real rename is stored (host-core caps at 60
+    // Unicode scalars, hence the code-point clamp rather than UTF-16 units).
+    const name = [...customModelName].slice(0, 60).join("").trim();
+    const binding = name === "" || name === id ? seed : { ...seed, alias: name };
     setModels((current) => [...current, binding]);
     // Expand the stored wire id, not a catalog spelling that may differ.
     setExpandedModelId(binding.id);
-    setCustomModelId("");
-    setCustomModelError("");
     keepAddedModelVisible([binding]);
+    setCustomDraftOpen(false);
+    setCustomModelId("");
+    setCustomModelName("");
+    setCustomModelError("");
     // A discovered row already carries the published record, so only the
     // not-yet-known id needs the extra lookup.
     if (!discovered?.info) void enrichCustomModel(binding);
+  };
+
+  /** Enter commits the drafted row; Escape drops it. */
+  const draftKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitCustomDraft({ requireId: true });
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelCustomDraft();
+    }
   };
 
   // A failed probe leaves an empty pane: the pane says the list is missing and
@@ -638,9 +697,9 @@ export function ModelSelectionPanes({
         {autoPicked && models.length > 0 ? (
           <div className="provider-models-summary-hint">{t("settings.modelsAutoPicked")}</div>
         ) : null}
-        {models.length === 0 ? (
+        {models.length === 0 && !customDraftOpen ? (
           <div className="provider-chosen-empty">{t("settings.noModelsChosen")}</div>
-        ) : visibleChosen.length === 0 ? (
+        ) : visibleChosen.length === 0 && !customDraftOpen ? (
           <div className="provider-chosen-empty">{t("settings.noChosenModelMatches")}</div>
         ) : (
           <ul className="provider-chosen-list">
@@ -1126,36 +1185,80 @@ export function ModelSelectionPanes({
                 </li>
               );
             })}
+            {customDraftOpen ? (
+              /*
+                The drafted row is a member of the list, not a detached field:
+                leaving it with an id typed commits it, leaving it empty drops
+                it. Blur only ends the row when focus lands outside it, so
+                moving between its own two fields keeps the draft alive.
+              */
+              <li className="provider-chosen-row provider-chosen-draft">
+                <div
+                  className="provider-chosen-row-head"
+                  role="group"
+                  aria-label={t("settings.customModel")}
+                  onBlur={(event) => {
+                    const next = event.relatedTarget;
+                    if (next instanceof Node && event.currentTarget.contains(next)) return;
+                    commitCustomDraft();
+                  }}
+                >
+                  <Input
+                    ref={customDraftInputRef}
+                    className="provider-chosen-draft-field font-mono"
+                    type="text"
+                    value={customModelId}
+                    placeholder={t("settings.customModelPlaceholder")}
+                    aria-label={t("settings.customModelId")}
+                    onChange={(event) => {
+                      setCustomModelId(event.target.value);
+                      if (customModelError) setCustomModelError("");
+                    }}
+                    onKeyDown={draftKeyDown}
+                  />
+                  <Input
+                    className="provider-chosen-draft-field font-mono"
+                    type="text"
+                    value={customModelName}
+                    placeholder={t("settings.modelAlias")}
+                    aria-label={t("settings.modelAlias")}
+                    onChange={(event) => setCustomModelName(event.target.value)}
+                    onKeyDown={draftKeyDown}
+                  />
+                  <TooltipButton
+                    type="button"
+                    className="provider-chosen-remove"
+                    ariaLabel={t("settings.removeModel")}
+                    tooltip={t("settings.removeModel")}
+                    onClick={cancelCustomDraft}
+                  >
+                    <IconClose size={12} />
+                  </TooltipButton>
+                </div>
+                {customModelError ? (
+                  <p className="provider-chosen-draft-error" role="alert">
+                    {customModelError}
+                  </p>
+                ) : null}
+              </li>
+            ) : null}
           </ul>
         )}
 
         <div className="provider-custom-model">
-          <Field
-            label={t("settings.customModel")}
-            hint={customModelError || t("settings.customModelHint")}
+          {/* DSH's Add model is one small control that appends the editable
+              row above; the hint rides on its title so the pane carries no
+              second copy of the field the row already provides. */}
+          <button
+            type="button"
+            className="provider-custom-model-add"
+            disabled={busy || customDraftOpen}
+            title={t("settings.customModelHint")}
+            onClick={openCustomDraft}
           >
-            <div className="provider-custom-model-row">
-              <Input
-                ref={customModelInputRef}
-                value={customModelId}
-                placeholder={t("settings.customModelPlaceholder")}
-                className="font-mono text-sm"
-                onChange={(event) => {
-                  setCustomModelId(event.target.value);
-                  if (customModelError) setCustomModelError("");
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  addCustomModel();
-                }}
-              />
-              <Button variant="secondary" disabled={busy} onClick={addCustomModel}>
-                <IconPlus size={14} />
-                {t("settings.addCustomModel")}
-              </Button>
-            </div>
-          </Field>
+            <IconPlus size={14} aria-hidden />
+            {t("settings.addCustomModel")}
+          </button>
         </div>
       </div>
     </div>

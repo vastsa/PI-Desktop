@@ -1864,6 +1864,7 @@ export const ptBR = {
     noModelMatches: "Nenhum modelo correspondente.",
     customModel: "Personalizado",
     addCustomModel: "Adicionar modelo personalizado",
+    customModelId: "ID do modelo",
     customModelPlaceholder: "Insira o ID do modelo, ex.: my-model-v2",
     customModelRequired: "Um nome de modelo é obrigatório.",
     modelAlreadyAdded: "Modelo já adicionado",

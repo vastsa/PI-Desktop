@@ -1908,6 +1908,7 @@ sklm: {
     noModelMatches: "일치하는 모델이 없습니다.",
     customModel: "사용자 지정",
     addCustomModel: "사용자 지정 모델 추가",
+    customModelId: "모델 ID",
     customModelPlaceholder: "모델 ID를 입력하세요(예: my-model-v2)",
     customModelRequired: "먼저 모델 ID를 입력하세요",
     modelAlreadyAdded: "모델이 이미 추가됨",

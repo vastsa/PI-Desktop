@@ -1887,6 +1887,7 @@ sklm: {
     noModelMatches: "没有匹配的模型。",
     customModel: "自定义",
     addCustomModel: "添加自定义模型",
+    customModelId: "模型 ID",
     customModelPlaceholder: "输入模型 ID，如 my-model-v2",
     customModelRequired: "请先输入模型 ID",
     modelAlreadyAdded: "该模型已添加",

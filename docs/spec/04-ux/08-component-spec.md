@@ -4231,10 +4231,15 @@ default nor provider configuration. OAuth accounts remain in their separate sect
   hand-typed id — keeps that field only while the filter still shows it; an
   emptied list drops the filter, so a new row never arrives out of view and no
   query is stranded in a field the user can no longer clear.
-- Adding a custom model validates non-empty and duplicate IDs, adds it to the
-  top-level option list, selects it, and applies 128,000 context / 8,192 max
-  output / no thinking defaults. Removing its selection does not delete the
-  custom option.
+- Adding a custom model opens an empty editable row as the last member of the
+  configured list (DSH's Add model) instead of asking for the ID in a detached
+  field first: the row carries the ID and the same display-name field a
+  configured row has, takes focus when it opens, and starts with 128,000 context
+  / 32,768 max output / no thinking defaults. Enter commits it; Escape, the
+  row's remove control, or focus leaving it with an empty ID drops it without a
+  message, while committing an empty ID reports that an ID is required and an
+  ID already configured is refused in the row's own line. Removing its selection
+  does not delete the custom option.
 - Model IDs and names are selectable text inside the otherwise non-selectable
   shell. A click that carries a text selection does not toggle the row
   checkbox, so drag-to-copy and click-to-toggle coexist (ADR 0192).

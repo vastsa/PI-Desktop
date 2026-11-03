@@ -1316,21 +1316,71 @@
 
 
 .provider-custom-model {
+  display: flex;
   flex: none;
   margin-top: 2px;
   padding: 8px;
   font-size: var(--text-sm);
 }
 
-.provider-custom-model-row {
-  display: flex;
+/*
+  DSH's Add model: one small bordered control that appends an editable row to
+  the list above, so the id is typed where the row will live instead of into a
+  detached field that has to be kept in step with the list.
+*/
+.provider-custom-model-add {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  align-self: flex-start;
+  margin: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-2xs);
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  cursor: pointer;
 }
 
-.provider-custom-model-row > :first-child {
-  flex: 1;
+.provider-custom-model-add:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.provider-custom-model-add:disabled {
+  cursor: default;
+  color: var(--ds-text-faint);
+}
+
+.provider-custom-model-add:focus-visible {
+  outline: 2px solid var(--ds-accent-soft);
+  outline-offset: 1px;
+}
+
+/* The drafted row wears the same tile as a configured one: it is the row it
+   is about to become, so only its fields are sized here. */
+.provider-chosen-draft-field {
+  flex: 1 1 0;
   min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: var(--text-2xs);
+}
+
+.provider-chosen-draft .provider-chosen-row-head {
+  gap: 4px;
+}
+
+/* Rejection is the row's own line, not a detached hint under the pane. */
+.provider-chosen-draft-error {
+  margin: 0;
+  padding: 0 6px 6px;
+  color: var(--ds-error);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
 }
 
 /* ------------------------------------------------ vendor account dialog */

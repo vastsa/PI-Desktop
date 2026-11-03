@@ -1496,7 +1496,7 @@ identify the platform validation still needed.
 #### E2E-PROVIDER-custom-model-limits: A hand-typed custom model id takes its limits from the model library
 
 - **Preconditions**: App running; the models.dev snapshot ships with the build; a provider editor is open.
-- **Steps**: 1) Type a model id the snapshot publishes into the add-model field and add it; confirm the new row's context window, max output tokens and thinking levels match the published record instead of 128,000 / 8,192 with none. 2) Type an id the snapshot does not publish and add it; confirm the row keeps the generic 128,000 / 8,192 seed and no thinking levels. 3) Add an id while the service list is unreachable; confirm the row still appears exactly once and stays editable. 4) Add an id and edit its limits immediately, before the lookup answers; confirm the typed values survive.
+- **Steps**: 1) Choose Add custom model, type a model id the snapshot publishes into the row it opens, and commit it with Enter; confirm the new row's context window, max output tokens and thinking levels match the published record instead of 128,000 / 32,768 with none. 2) Choose Add custom model again, type an id the snapshot does not publish, and commit it; confirm the row keeps the generic 128,000 / 32,768 seed and no thinking levels. 3) Choose Add custom model and commit an id while the service list is unreachable; confirm the row still appears exactly once and stays editable. 4) Add an id and edit its limits immediately, before the lookup answers; confirm the typed values survive.
 - **Expected**: `providers.lookupModel` answers a hand-typed id from the local snapshot only — no provider network request and no host call — and a hit seeds the binding the way a picked model is seeded (published context window, max output tokens, thinking levels, `contextWindowSource: "catalog"`) while the stored id stays exactly what the user typed. A miss, a failed call, or an id the current discovery already described leaves the previous behavior intact: one usable row, the generic seed, and no stalled or duplicated list.
   A record published under another spelling of that id — a route prefix, a dated
   stamp, a marker the deployment appends — is a hit too: the row is upgraded in
@@ -1513,7 +1513,17 @@ identify the platform validation still needed.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (multi-model provider configuration)
 - **Milestone**: M2
-- **Status**: Documented; covered by `apps/desktop/test/model-custom-lookup.test.mjs`, `apps/desktop/test/provider-lookup-model-handler.test.mjs`, and `apps/desktop/test/provider-endpoint-metadata.test.mjs`
+- **Status**: Documented; covered by `apps/desktop/test/model-custom-lookup.test.mjs`, `apps/desktop/test/provider-lookup-model-handler.test.mjs`, `apps/desktop/test/provider-endpoint-metadata.test.mjs`, and — for the drafted row the id is typed in — `apps/desktop/test/custom-provider-no-api-key-user-path.test.mjs`
+
+#### E2E-PROVIDER-add-model-row: A hand-typed model is added by the row it becomes
+
+- **Preconditions**: App running; a provider editor or an account editor is open on the Models panes; at least one model is already configured.
+- **Steps**: 1) Without touching the add control, confirm no model-ID field is on screen; then choose Add custom model and confirm an editable row appears as the last configured row and takes focus. 2) Type a model ID and press Enter; confirm the row is committed, that the drafted row is gone, and that exactly one configured row carries the typed ID as its name. 3) Choose Add custom model again, type that same ID in a different letter case, and press Enter; confirm the row stays open with its refusal in the row and the configured models unchanged. 4) Type another ID and confirm the refusal clears. 5) Clear the ID and move focus out of the row; confirm the row disappears with no message and the configured models are unchanged. 6) Choose Add custom model once more and press Escape; confirm the row disappears.
+- **Expected**: Add custom model is the only entry into a hand-typed model, and it appends the row in place, so the ID is typed where the row will live instead of into a detached field that has to stay in step with the list. Committing needs a non-empty, not-yet-configured ID, matched case-insensitively; the ID is the only required field, and the row's second field names the model the way a configured row does. A blank row ends as a cancelled one rather than an error, a refusal leaves the row editable with its message in the row, and focus moving between the row's own fields keeps the draft while focus leaving it ends the draft. The empty-list placeholders stand down while a row is being drafted, and the control that opens a row cannot open a second one while the first is unfinished.
+- **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`
+- **Acceptance**: B (multi-model provider configuration)
+- **Milestone**: M2
+- **Status**: Documented; covered by `apps/desktop/test/provider-model-config.test.mjs` and `apps/desktop/test/custom-provider-no-api-key-user-path.test.mjs`
 
 #### E2E-PROVIDER-configured-models-search: The chosen pane's search narrows the configured list
 

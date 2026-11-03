@@ -96,6 +96,9 @@ function setValue(input, value) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
+// The drafted row is a member of the same list, so "configured" excludes it.
+const configuredRows = () =>
+  document.querySelectorAll(".provider-chosen-list > li:not(.provider-chosen-draft)").length;
 
 const rootNode = createRoot(document.getElementById("root"));
 function mount(element) { flushSync(() => rootNode.render(element)); }
@@ -146,13 +149,58 @@ window.customProviderNoApiKeyProbe = async () => {
     "the custom endpoint was not probed without an API key",
   );
   const modelField = document.querySelector('input[placeholder^="Enter a model ID"]');
-  check(modelField, "the custom model input was missing");
-  setValue(modelField, "no-auth-chat");
+  check(!modelField, "the hand-typed id field is visible before Add custom model is used");
+  // The row is added in place (DSH's Add model): one control opens an editable
+  // row in the chosen list, and the id is typed there.
   flushSync(() => button("Add custom model").click());
+  const draftField = await waitFor(
+    () => document.querySelector('input[placeholder^="Enter a model ID"]'),
+    "Add custom model did not open an editable row",
+  );
+  check(document.activeElement === draftField, "the opened row did not take focus");
+  setValue(draftField, "no-auth-chat");
+  flushSync(() => draftField.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   await waitFor(
-    () => document.querySelector(".provider-chosen")?.innerText.includes("no-auth-chat"),
+    () => configuredRows() === 1,
     "the model was not added to the custom provider",
   );
+  // The committed row names the model through its alias field, which is the
+  // field the row shows; an input value is not part of the pane's text.
+  check([...document.querySelectorAll(".provider-chosen-alias-input")]
+    .some((input) => input.value === "no-auth-chat"),
+    "the committed row does not carry the hand-typed id");
+  check(!document.querySelector('input[placeholder^="Enter a model ID"]'),
+    "the drafted row stayed open after its id was committed");
+  check(configuredRows() === 1,
+    "committing the drafted row did not leave exactly one configured model");
+  // A second row refuses an id that is already configured, in the row's line.
+  flushSync(() => button("Add custom model").click());
+  const duplicateField = await waitFor(
+    () => document.querySelector('input[placeholder^="Enter a model ID"]'),
+    "the drafted row did not reopen",
+  );
+  setValue(duplicateField, "  NO-AUTH-CHAT  ");
+  flushSync(() => duplicateField.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  const refusal = await waitFor(() => document.querySelector('[role="alert"]'),
+    "a duplicate id was accepted");
+  check(refusal.textContent.trim() === "Model already added",
+    "the duplicate id was not reported in the drafted row");
+  check(document.querySelector('input[placeholder^="Enter a model ID"]'),
+    "the refused row was closed instead of staying editable");
+  check(configuredRows() === 1, "the refused id was stored");
+  // Typing again clears the refusal, and leaving an empty row drops it
+  // silently: no id, no row, no message.
+  flushSync(() => setValue(duplicateField, ""));
+  check(!document.querySelector('[role="alert"]'), "editing the id kept the stale refusal");
+  const outside = document.querySelector(".provider-chosen-search");
+  duplicateField.dispatchEvent(
+    new FocusEvent("focusout", { bubbles: true, relatedTarget: outside }));
+  await waitFor(() => !document.querySelector('input[placeholder^="Enter a model ID"]'),
+    "an empty drafted row was not dropped");
+  check(!document.querySelector('[role="alert"]'), "dropping an empty row reported an error");
+  check(configuredRows() === 1, "dropping an empty row changed the configured models");
   // A whitespace-only key has the same meaning as an empty key.
   flushSync(() => setValue(keyField(), "   "));
   flushSync(() => button("Save provider").click());
@@ -246,6 +294,9 @@ window.customProviderNoApiKeyProbe = async () => {
 
   return {
     discoveryOmittedApiKey: !Object.hasOwn(discoveryCall.input, "apiKey"),
+    draftRowOpensInPlace: true,
+    duplicateIdRefusedInRow: true,
+    emptyDraftDropsSilently: true,
     savedAuthKind: noAuthProvider.authKind,
     selectedModel: noAuthProvider.models?.[0]?.id,
     noAuthReopenPreserved: true,
@@ -333,7 +384,9 @@ app.whenReady().then(async () => {
       stream.setEncoding("utf8");
       stream.on("data", (chunk) => { output += chunk; });
     }
-    const timer = setTimeout(() => child.kill("SIGKILL"), 45_000);
+    // The probe drives the drafted add-model row, its refusal and its cancel,
+    // so it needs more room than a single toggle; the timer only catches hangs.
+    const timer = setTimeout(() => child.kill("SIGKILL"), 90_000);
     let code;
     try {
       code = await new Promise((resolve, reject) => {
@@ -349,6 +402,9 @@ app.whenReady().then(async () => {
     assert(line, output.slice(-6000));
     assert.deepEqual(JSON.parse(line.slice("CUSTOM_PROVIDER_NO_API_KEY_PROBE ".length)), {
       discoveryOmittedApiKey: true,
+      draftRowOpensInPlace: true,
+      duplicateIdRefusedInRow: true,
+      emptyDraftDropsSilently: true,
       savedAuthKind: "none",
       selectedModel: "no-auth-chat",
       noAuthReopenPreserved: true,

@@ -177,22 +177,6 @@
   gap: 10px 12px;
 }
 
-.provider-custom-model-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.provider-custom-model-row .field-input {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.provider-custom-model-row .btn {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
 .provider-model-config-section {
   display: flex;
   flex-direction: column;
@@ -882,14 +866,6 @@
 }
 
 @media (max-width: 460px) {
-  .provider-custom-model-row {
-    flex-direction: column;
-  }
-
-  .provider-custom-model-row .btn {
-    width: 100%;
-  }
-
   .provider-model-card-limits {
     grid-template-columns: 1fr;
   }

@@ -1912,6 +1912,7 @@ sklm: {
     noModelMatches: "No matching models.",
     customModel: "Custom",
     addCustomModel: "Add custom model",
+    customModelId: "Model ID",
     customModelPlaceholder: "Enter a model ID, e.g. my-model-v2",
     customModelRequired: "Enter a model ID first",
     modelAlreadyAdded: "Model already added",

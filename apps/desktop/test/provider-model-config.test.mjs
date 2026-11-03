@@ -253,6 +253,39 @@ test("model ids are matched case-insensitively across picking and hand entry", (
   assert.match(pickerSource, /settings\.modelAlreadyAdded/);
 });
 
+test("a hand-typed model is added by the row it becomes, DSH-style", () => {
+  // DSH's Add model appends an empty, immediately editable row and validates
+  // it there. The pane therefore asks for the id in the row itself instead of
+  // in a detached field that has to be kept in step with the list.
+  assert.match(pickerSource, /className="provider-custom-model-add"/);
+  assert.match(pickerSource, /onClick=\{openCustomDraft\}/);
+  assert.match(pickerSource, /const \[customDraftOpen, setCustomDraftOpen\] = useState\(false\)/);
+  assert.match(pickerSource, /className="provider-chosen-row provider-chosen-draft"/);
+  assert.match(pickerSource, /settings\.customModelId/);
+  assert.match(pickerSource, /settings\.customModelPlaceholder/);
+  // Enter commits the draft, Escape drops it, and focus leaving the row for
+  // anything outside it ends the draft too — moving between its own two fields
+  // does not, or typing the name would close the row it is typed into.
+  assert.match(pickerSource, /event\.key === "Enter"/);
+  assert.match(pickerSource, /event\.key === "Escape"/);
+  assert.match(pickerSource, /event\.currentTarget\.contains\(next\)/);
+  // An empty row is a cancelled one; the required message is reserved for a
+  // deliberate commit, and a duplicate id is rejected in the row's own line.
+  assert.match(
+    pickerSource,
+    /if \(requireId\) setCustomModelError\(t\("settings\.customModelRequired"\)\)/,
+  );
+  assert.match(pickerSource, /settings\.modelAlreadyAdded/);
+  assert.match(pickerSource, /provider-chosen-draft-error/);
+  assert.match(pickerSource, /role="alert"/);
+  // The detached field and its button are gone, not duplicated beside the row.
+  assert.doesNotMatch(pickerSource, /provider-custom-model-row/);
+  assert.doesNotMatch(pickerSource, /customModelInputRef/);
+  assert.match(styles, /\.provider-custom-model-add\s*\{/);
+  assert.match(styles, /\.provider-chosen-draft-field\s*\{/);
+  assert.match(styles, /\.provider-chosen-draft-error\s*\{[\s\S]*?color: var\(--ds-error\)/);
+});
+
 test("provider edits retain legacy defaults for non-chat consumers", () => {
   assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
   assert.match(pageSource, /settings\.defaultProviderId === saved\.id && firstModelId/);
@@ -316,8 +349,8 @@ test("the chosen pane narrows a long configured list with its own search", () =>
   assert.match(filterSource, /export function hidesAddedBinding/);
   assert.match(pickerSource, /filterChosenModels\(models, chosenQuery, rows\)/);
   // "Nothing matches" is a different message from "nothing chosen yet".
-  assert.match(pickerSource, /models\.length === 0 \? \(/);
-  assert.match(pickerSource, /visibleChosen\.length === 0 \? \(/);
+  assert.match(pickerSource, /models\.length === 0 && !customDraftOpen \? \(/);
+  assert.match(pickerSource, /visibleChosen\.length === 0 && !customDraftOpen \? \(/);
   assert.match(pickerSource, /settings\.noModelsChosen/);
   assert.match(pickerSource, /settings\.noChosenModelMatches/);
   // Every add path — checkbox, select-all, hand-typed — asks that same rule

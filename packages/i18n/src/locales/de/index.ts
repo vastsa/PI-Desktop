@@ -1892,6 +1892,7 @@ sklm: {
     "noModelMatches": "Keine passenden Modelle.",
     "customModel": "Benutzerdefiniert",
     "addCustomModel": "Benutzerdefiniertes Modell hinzufügen",
+    "customModelId": "Modell-ID",
     "customModelPlaceholder": "Geben Sie eine Modell-ID ein, z. B. my-model-v2",
     "customModelRequired": "Geben Sie zuerst eine Modell-ID ein",
     "modelAlreadyAdded": "Modell wurde bereits hinzugefügt",

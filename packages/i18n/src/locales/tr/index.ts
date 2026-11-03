@@ -1902,6 +1902,7 @@ sklm: {
     noModelMatches: "Eşleşen model yok.",
     customModel: "Özel",
     addCustomModel: "Özel model ekle",
+    customModelId: "Model kimliği",
     customModelPlaceholder: "Bir model kimliği girin, örn. my-model-v2",
     customModelRequired: "Önce bir model kimliği girin",
     modelAlreadyAdded: "Model zaten eklendi",
