@@ -1153,6 +1153,42 @@
   line-height: var(--leading-body);
 }
 
+/*
+ * Boot animation status line (D679). The file name and the folder action sit
+ * in the detail slot rather than the control slot: the control slot is capped
+ * at 240px and already holds the switch, and this is row metadata plus the one
+ * action that makes the folder findable.
+ */
+.startup-animation-status {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.startup-animation-status-file {
+  /* A user's file name can be arbitrarily long; the row must not grow with it. */
+  overflow: hidden;
+  max-width: 28ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-inline-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ds-text-link, var(--ds-text-primary));
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-inline-action:hover {
+  color: var(--ds-text-primary);
+}
+
 .settings-row-control {
   flex: 0 0 auto;
   min-width: 0;
