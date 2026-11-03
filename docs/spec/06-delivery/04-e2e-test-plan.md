@@ -7086,6 +7086,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - After ready: splash exits with a short fade (or instantly under reduced motion) and the main shell (or settings page) is interactive underneath.
   - If the initial state never arrives, the splash is replaced rather than held: the boot surface gains logs, diagnostics, and quit at 30s (`STARTUP_SLOW_HINT_MS`) without reporting a failure, and at 180s (`STARTUP_STALLED_MS`) becomes the recovery surface, which also offers a retry (`data-testid="startup-recovery"`); every action works without a backend, the renderer-drawn window controls stay above the surface on Windows/Linux, and quit goes through `pi-desktop/app/quit`.
   - On macOS the splash uses the same glass tint and sheen as the sidebar over native `sidebar` vibrancy; the mounted shell stays hidden until the splash exit fade, then cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill.
+  - Use a six-second playable fixture with skip-when-ready off. Observe advancing
+    playback beyond the two-second first-frame bound and through at least 5.75s
+    before reveal. A `playing` event must retire the first-frame timeout even
+    if `loadeddata` was missed. The native fixture also suppresses that event
+    in a fresh test renderer to exercise this path deterministically; it resets
+    only the temporary window’s one-play mark before that test reload. Keep
+    corrupt-media recovery coverage.
   - With a video in `<dataDir>/startup/` (D679): `data-testid="startup-animation"` replaces the splash in the first painted frame, plays over opaque black with no controls and no audio, then holds the same black until bootstrap finishes, then fades out over about a second with the shell already clickable during the fade. A boot slower than the video shows an indeterminate bar after 3s of black. `Escape` jumps straight to that fade.
   - An unplayable file never holds the launch: the animation ends within 2s (no first frame) or on `error`, and the reveal runs exactly as it does after a clean finish.
   - The animation is not played under reduced motion, on a renderer reload, or on a window reopened from the tray or Dock; the brand splash is used instead. Settings → General → Appearance names the resolved file, offers the folder, and applies a toggled switch on the next launch only.
