@@ -3683,7 +3683,7 @@ IPC 请求无法关闭。
   - 退出并外部单击关闭菜单而不创建任何内容。
 
 #### E2E-076：出现启动画面，然后返回主 shell
-- **状态**：部分自动化（`startup-splash-motion.test.mjs` 涵盖启动标记、运动标记、简化运动和目录键；`macos-sidebar-vibrancy.test.mjs` 覆盖 darwin 玻璃启动页与 shell 交叉淡入；全窗口计时仍为草稿）
+- **状态**：部分自动化（`startup-splash-motion.test.mjs` 涵盖启动标记、运动标记、简化运动和目录键；`macos-sidebar-vibrancy.test.mjs` 覆盖 darwin 玻璃启动页与 shell 交叉淡入；`startup-animation.test.mjs` 与 `packages/shared/src/startup-animation.test.ts` 覆盖 D679 动画的边界、状态机、选片、界面与启动界面优先级；`pnpm test:e2e:startup-animation` 用生成的视频启动真实应用，断言 `pi-startup:` 解码、播放推进、渐显，以及不可播放文件仍会交出主界面；全窗口计时仍为草稿）
 - **优先级**：P1
 - **封面**：A，品质/US-UI 外壳抛光
 - **先决条件**：应用程序启动路径可用（开发或打包）。
@@ -3694,14 +3694,21 @@ IPC 请求无法关闭。
   4. 如果可用，请对 OS `prefers-reduced-motion: reduce` 重复此操作。
   5. 在 macOS 上，将启动面与 shell 出现后的侧边栏玻璃态对比。
   6. 在 `bootstrap` 一直被搁置、超过看门狗界限时重复一次，在 30 秒与超过 180 秒时观察启动表面（issue #831）。
+  7. 把一个可播放的短视频放进 `<dataDir>/startup/` 后重新启动（D679）。
+  8. 换成不可播放的文件（例如改名的文本文件）后重新启动。
+  9. 保留该动画，分别在 `prefers-reduced-motion: reduce` 下启动、重载渲染器、以及关闭窗口后从托盘或 Dock 重新打开。
 - **预期**：
 - 准备之前：带有品牌标志、外壳名称、标语和可访问的启动状态 (`data-testid="startup-splash"`) 的全窗口启动画面。
   - 准备好后：启动画面会短暂淡出（或立即减少运动）退出，并且主外壳（或设置页面）在下面是交互式的。
   - 如果初始状态始终没有到达，启动画面不是被一直保留而是被替换：启动表面在 30 秒（`STARTUP_SLOW_HINT_MS`）时加上日志、诊断与退出且不报告失败，在 180 秒（`STARTUP_STALLED_MS`）时变成恢复表面，并额外提供重试（`data-testid="startup-recovery"`）；每个操作都不依赖后端，Windows/Linux 上渲染器绘制的窗口控制按钮保持在该表面之上，退出走 `pi-desktop/app/quit`。
   - macOS 上启动页与侧边栏使用同一套玻璃 tint/sheen，叠在原生 `sidebar` vibrancy 之上；已挂载的 shell 在退出淡出前保持隐藏，再交叉淡入。其他平台仍为不透明的 `--ds-bg-primary`。
+  - `<dataDir>/startup/` 中有视频时（D679）：首个绘制帧里 `data-testid="startup-animation"` 取代启动画面，在不透明黑底上播放，无控件无声音，播完后同一层黑色继续遮住窗口直到引导完成，然后在约一秒内淡出，淡出期间主界面已可点击。启动比视频慢时，黑幕满 3 秒后出现不确定进度条。`Escape` 直接跳到该淡出。
+  - 不可播放的文件绝不会劫持启动：动画在 2 秒内（无首帧）或 `error` 时结束，渐显与正常播完完全一致。
+  - 减少运动、渲染器重载，以及从托盘或 Dock 重新打开的窗口都不播放动画，改用品牌启动画面。设置 → 常规 → 外观 会显示选中的文件、提供打开文件夹的动作，开关改动只在下次启动生效。
+  - 启动被搁置超过看门狗边界时，恢复界面取代动画——绝不会被留在不透明遮罩后面。
   - 没有简单的无品牌“开始...”居中文本作为唯一的启动 UI。
   - Overlay/dialog 输入动作使用共享令牌；减少的运动可以保持状态变化，而无需装饰持续时间。
-- **链接规格**：`04-ux/07-ui-design-system.md` §8、`04-ux/02-i18n-english-first.md`、决策日志 D146 / D304 / D348
+- **链接规格**：`04-ux/07-ui-design-system.md` §8、`04-ux/02-i18n-english-first.md`、`04-ux/09-interaction-patterns.md` 第 1.12 节、ADR 0338、决策日志 D146 / D304 / D348 / D679
 - **验收**：A（应用程序启动），质量
 - **里程碑**：M5
 #### E2E-099：品牌标志遵循活跃主题

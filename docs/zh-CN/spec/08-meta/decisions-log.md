@@ -5653,3 +5653,38 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 由 `apps/desktop/test/radial-menu.test.mjs`、Chromium 组件检查
   `pnpm test:e2e:radial-menu`，以及截图场景 `pi-radial`、`pi-radial-dark` 覆盖。见
   `04-ux/09-interaction-patterns.md` 第 1.11 节与 E2E-CHAT-radial-background-menu。
+
+## 2026-11-03 — 用户自备启动动画（D679）
+
+- D679 把启动界面交给用户。`<dataDir>/startup/` 中的视频会替代该次启动的品牌启动
+  画面：先播到最后一帧，再用播放时那同一层不透明黑色遮住窗口，直到外壳拿到首批状态，
+  然后在 1000ms 内把黑色淡出（`--motion-startup-reveal`，运动梯度之外唯一的时长）。
+  淡出一开始遮罩就不再接收事件，所以主界面与窗口控件在整整一秒里都可操作。
+- 选片只读文件系统且不创建任何目录：条目按 realpath 限制在该目录内，排序为
+  `webm` > `mp4` > `m4v` > `mov`，同类按文件名决定；点号开头、非普通文件、空文件以及
+  超过 64 MB 的条目都会排除。没有该目录的安装行为不变——同样的启动画面、同样的最短
+  停留、同样的看门狗边界。
+- 字节通过 `pi-startup://animation` 提供：host 自有协议，只有一个不带路径的 URL
+  （`standard`、`secure`、`stream`，不开 CORS），在唯一一次
+  `registerSchemesAsPrivileged` 调用中注册；CSP 只新增 `media-src pi-startup:`。没有
+  任何文件系统路径到达渲染器。描述符随窗口创建参数传递（与界面语言同一机制），因此首帧
+  之前就可同步读取。
+- 三个边界让界面始终可恢复，且逐级小于下一级：首帧 2s、整段动画 15s、看门狗的卡死边界
+  180s。`Escape` 可跳过。无论正常结束、出错、超时还是跳过，都走同一套渐显。
+- 任何时刻只挂载一个启动界面，优先级为 恢复界面 > 启动动画 > 品牌启动画面。动画每次
+  启动只播一次，且只给进程的第一个窗口（托盘或 Dock 重新打开不重播；`sessionStorage`
+  阻止重载重播）；`prefers-reduced-motion: reduce` 下完全不播放；
+  `PI_DESKTOP_CAPTURE=1` 下直接跳过。
+- `AppSettings.startupAnimation` 只存选片无法决定的两个选择：`enabled`（缺省为开）和
+  `skipWhenReady`（缺省把视频播完）。两者都在创建窗口之前读取，因此改动在下次启动生效。
+  常规 → 外观 新增该开关、受其管辖的 `skipWhenReady` 开关、一行说明下次启动将播放哪个
+  文件，以及一个打开并创建该文件夹的动作。
+- 未改动：品牌启动画面及其 420ms 停留与 280ms 淡出、看门狗边界与恢复界面、窗口创建
+  选项、插件契约。插件提供启动动画明确不在范围内——那等于把首帧交给不可信来源，需要
+  单独立 ADR。
+- 由 `packages/shared/src/startup-animation.test.ts` 与
+  `apps/desktop/test/startup-animation.test.mjs` 覆盖。见 ADR 0338、
+  `04-ux/09-interaction-patterns.md` 第 1.12 节与 E2E-076。
+- `pnpm test:e2e:startup-animation` 用生成的 VP9 片段启动真实应用，断言源码检查无法
+  覆盖的部分：Chromium 能在页面 CSP 下解码经 `pi-startup:` 提供的字节、播放会推进、
+  渐显会交出可交互的主界面，以及不可播放的文件会在约一秒内交出主界面而不是占住窗口。
