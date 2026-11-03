@@ -186,7 +186,7 @@ test("the task column reports each task's own last outcome", async () => {
 
     assert.match(html, /Nightly dependency check/);
     assert.match(html, /Daily · 09:05/, "cadence and its clock share one line");
-    assert.match(html, /Failed/, "the failing task reports its own outcome");
+    assert.match(html, /Session error/, "the failing task reports its own outcome");
     assert.match(html, /1m 12s/, "and how long it took");
     assert.match(html, /PR sweep/);
     assert.match(html, /Not run yet/, "a task that never ran says so");
@@ -222,7 +222,7 @@ test("the task page reads facts, history, and the selected run in place", async 
     );
 
     assert.match(html, /Nightly dependency check/);
-    assert.match(html, /Last run[\s\S]*?Failed/, "the facts lead with the last outcome");
+    assert.match(html, /Last run[\s\S]*?Session error/, "the facts lead with the last outcome");
     assert.match(html, /1m 12s/);
     assert.match(html, /~/u, "the project path is shortened");
     assert.match(html, /Auto/, "the task's own permission mode is shown");
