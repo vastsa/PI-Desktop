@@ -26,7 +26,8 @@ let output = "";
 for (const stream of [child.stdout, child.stderr]) {
   stream.on("data", (data) => { output += data; });
 }
-const timeout = setTimeout(() => child.kill(), 45_000);
+let timedOut = false;
+const timeout = setTimeout(() => { timedOut = true; child.kill(); }, 45_000);
 let code;
 try {
   code = await new Promise((resolve, reject) => {
@@ -36,5 +37,6 @@ try {
 } finally { clearTimeout(timeout); }
 console.log(`Browser capture artifacts retained at ${artifacts}`);
 console.log(output.trim());
+assert.equal(timedOut, false, "native browser capture/resize exceeded the 45s fixture deadline");
 assert.equal(code, 0, "native browser capture/resize regression failed");
 assert.match(output, /BROWSER_CAPTURE_RESIZE {"ok":true/);
