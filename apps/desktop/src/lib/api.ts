@@ -31,6 +31,8 @@ import type {
   PendingInteractiveRequests,
   AgentInstructionFile,
   AppSettings,
+  StartupAnimationDescriptor,
+  StartupAnimationStatus,
   JevKeyCheckResult,
   CommandShellCatalog,
   AppVersionInfo,
@@ -338,6 +340,11 @@ declare global {
       platform: NodeJS.Platform;
       /** Authoritative OS locale passed from the main process at window creation. */
       locale?: string;
+      /**
+       * Boot animation the main process resolved for this window, or null to
+       * keep the brand splash. Available before the first paint (D679).
+       */
+      startupAnimation?: StartupAnimationDescriptor | null;
       /** Resolve a native dropped File to its source path. */
       getDroppedFilePath?: (file: File) => string | null;
     };
@@ -584,6 +591,23 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     throw Object.assign(new Error("inlineVisualizations is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "startupAnimation")) {
+    const startupAnimation = value.startupAnimation;
+    if (
+      !startupAnimation ||
+      typeof startupAnimation !== "object" ||
+      Array.isArray(startupAnimation) ||
+      Object.entries(startupAnimation).some(
+        ([key, field]) =>
+          (key !== "enabled" && key !== "skipWhenReady") ||
+          typeof field !== "boolean",
+      )
+    ) {
+      throw Object.assign(new Error("startupAnimation is invalid"), {
+        errorCode: "INVALID_PARAMS",
+      });
+    }
   }
   for (const key of [
     "sidebarRunningIndicators",
@@ -1607,6 +1631,12 @@ export const api = {
   executeCommand: (commandId: string) =>
     invoke(IPC.invoke.commandPaletteExecute, commandId),
   openLogs: () => invoke(IPC.invoke.logOpenFolder),
+  /** What the next launch would play as its boot animation (D679). */
+  startupAnimationStatus: () =>
+    invoke<StartupAnimationStatus>(IPC.invoke.startupAnimationStatus),
+  /** Reveal the folder a startup animation is dropped into, creating it first. */
+  openStartupAnimationFolder: () =>
+    invoke(IPC.invoke.startupAnimationOpenFolder),
   /**
    * Quit the application. Used by the surfaces that own the window before the
    * shell has data; the main process runs the same ordered shutdown as the Quit

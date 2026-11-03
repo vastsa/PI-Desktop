@@ -6,10 +6,12 @@ import { getModuleDirectory } from "../module-path";
 import {
   APP_NAME,
   builtinWindowBackground,
+  encodeStartupAnimationArgument,
   IPC,
   MAC_TRAFFIC_LIGHT_POSITION,
   type CloseBehavior,
 } from "@pi-desktop/shared";
+import type { ResolvedStartupAnimation } from "../startup-animation";
 import type { BrowserHost } from "../browser-host";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -88,6 +90,20 @@ export type WindowLifecycleState = {
    * `settings.macosWindowTranslucency` is.
    */
   macosWindowTranslucency: boolean;
+  /**
+   * Boot animation this launch resolved from the data directory, or null to
+   * keep the brand splash. Held for the whole process because the
+   * `pi-startup:` handler reads it per request, not once.
+   */
+  startupAnimation: ResolvedStartupAnimation | null;
+  /**
+   * Whether a window has already been created with the animation.
+   *
+   * The animation is a launch moment, so it plays for the first window of the
+   * process only: reopening from the tray or the Dock after the window was
+   * closed replays nothing.
+   */
+  startupAnimationPlayed: boolean;
   pluginLauncherWindow: BrowserWindow | null;
   host: HostProcess | null;
 };
@@ -185,6 +201,13 @@ export async function createWindow({
   const initialWindowBackground = builtinWindowBackground(
     nativeTheme.shouldUseDarkColors ? "dark" : "light",
   );
+  // Only the first window of the process plays the animation (D679). Claiming
+  // it here, before `new BrowserWindow`, is what keeps a reopened window — and
+  // a second window racing this one — on the brand splash instead.
+  const startupAnimation = windowState.startupAnimationPlayed
+    ? null
+    : windowState.startupAnimation;
+  if (startupAnimation) windowState.startupAnimationPlayed = true;
   const windows11NativeCorners = usesWindows11NativeCorners(
     process.platform,
     process.getSystemVersion(),
@@ -241,7 +264,15 @@ export async function createWindow({
       // Preload runs in a sandbox and cannot import Electron's main-only `app`
       // module. Pass the display locale at process creation so it remains
       // available synchronously before the renderer's first paint.
-      additionalArguments: [`--pi-desktop-locale=${app.getLocale()}`],
+      additionalArguments: [
+        `--pi-desktop-locale=${app.getLocale()}`,
+        // The boot animation has to be on screen in the renderer's first
+        // frame, so the descriptor travels as a creation argument like the
+        // locale does; an IPC round-trip would land after the first paint.
+        ...(startupAnimation
+          ? [encodeStartupAnimationArgument(startupAnimation.descriptor)]
+          : []),
+      ],
     },
   });
   const window = windowState.mainWindow;
