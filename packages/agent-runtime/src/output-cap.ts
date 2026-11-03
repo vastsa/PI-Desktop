@@ -271,9 +271,11 @@ export function estimateOutputCapInputTokens(
     cjkChars += countCjkChars(context.systemPrompt);
   }
   if (context.tools?.length) {
-    baseline += Math.ceil(
-      stringifyForEstimate(context.tools).length / CHARS_PER_TOKEN,
-    );
+    // Same formula as system toolsAdded. Subagent budgets pass schemas here,
+    // and chars/4 under-counts CJK in the serialized schema.
+    const serialized = stringifyForEstimate(context.tools);
+    baseline += Math.ceil(serialized.length / CHARS_PER_TOKEN);
+    cjkChars += countCjkChars(serialized);
   }
   // CJK chars are ~1 token each; the chars/4 baseline charged them 0.25.
   return baseline + Math.ceil(cjkChars * 0.75);
