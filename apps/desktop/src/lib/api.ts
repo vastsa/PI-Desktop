@@ -60,9 +60,11 @@ import type {
   OnboardingState,
   OAuthLoginEvent,
   OAuthRespondInput,
-  OAuthStartResult,
   OAuthVendor,
+  OAuthStartResult,
   PluginSummary,
+  LauncherCatalog,
+  LauncherOpenPluginRequest,
   PluginPermissionReview,
   PluginSettingDefinition,
   PluginServiceStatus,
@@ -1506,6 +1508,12 @@ export const api = {
   openPluginPanel: (id: string) => invoke(IPC.invoke.pluginOpenPanel, id),
   togglePluginLauncher: () => invoke(IPC.invoke.pluginLauncherToggle),
   dismissPluginLauncher: () => invoke(IPC.invoke.pluginLauncherDismiss),
+  /** Everything the launcher can show: launchable plugins plus installed apps. */
+  launcherCatalog: () => invoke<LauncherCatalog>(IPC.invoke.pluginLauncherCatalog),
+  launcherOpenApp: (appId: string) =>
+    invoke(IPC.invoke.pluginLauncherOpenApp, { appId }),
+  launcherOpenPlugin: (request: LauncherOpenPluginRequest) =>
+    invoke(IPC.invoke.pluginOpenPanel, request),
   listPluginThemes: () => invoke<PluginTheme[]>(IPC.invoke.pluginThemes),
   listPluginProviderCatalog: () =>
     invoke<PluginProviderCatalogMeta[]>(IPC.invoke.pluginProviderCatalog),

@@ -58,14 +58,40 @@ test("launcher renderer supports keyboard selection and has no window controls",
     renderer,
     /rendererSurface === "plugin-launcher" \? \([\s\S]*?<ErrorBoundary>\s*<PluginLauncher \/>/,
   );
+  // An IME composition never opens a tile: Enter confirms the candidate first.
   assert.match(launcher, /event\.nativeEvent\.isComposing/);
-  assert.match(launcher, /event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/);
+  assert.match(launcher, /event\.nativeEvent\.keyCode === 229/);
+  // Two-dimensional movement: rows move by the column count, tiles by one.
+  assert.match(launcher, /event\.key === "ArrowDown"[\s\S]*moveActive\(LAUNCHER_COLUMNS\)/);
+  assert.match(launcher, /event\.key === "ArrowUp"[\s\S]*moveActive\(-LAUNCHER_COLUMNS\)/);
+  assert.match(launcher, /event\.key === "ArrowRight"[\s\S]*moveActive\(1\)/);
+  assert.match(launcher, /event\.key === "ArrowLeft"[\s\S]*moveActive\(-1\)/);
   assert.match(launcher, /event\.key === "Enter"/);
   assert.match(launcher, /event\.key === "Escape"/);
-  assert.match(launcher, /api\.openPluginPanel\(plugin\.id\)/);
+  // Opening goes through the launcher channels, which can carry a payload.
+  assert.match(launcher, /api\.launcherOpenPlugin\(/);
+  assert.match(launcher, /api\.launcherOpenApp\(/);
   assert.match(launcher, /loadPromiseRef/);
   assert.match(launcher, /inputRef\.current\?\.focus\(\)/);
   assert.doesNotMatch(launcher, /requestAnimationFrame\(\(\) => inputRef/);
   assert.doesNotMatch(launcher, /WindowControls|window-controls/);
   assert.match(styles, /html\[data-surface="plugin-launcher"\][\s\S]*background: transparent/);
+});
+
+test("the launcher grid is eight fixed columns with square plugins and round apps", () => {
+  assert.match(
+    styles,
+    /\.plugin-launcher-grid \{[\s\S]*grid-template-columns: repeat\(8, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(styles, /\.plugin-launcher-icon-plugin \{[\s\S]*border-radius: var\(--radius-sm\)/);
+  assert.match(styles, /\.plugin-launcher-icon-app \{[\s\S]*border-radius: 50%/);
+});
+
+test("the launcher window is resizable and remembers its size", () => {
+  assert.match(main, /resizable: true/);
+  assert.match(main, /minWidth: PLUGIN_LAUNCHER_MIN_WIDTH/);
+  assert.match(main, /resolveLauncherBounds\(/);
+  assert.match(main, /writeLauncherWindowState\(dataDir/);
+  assert.match(main, /window\.on\("resize", \(\) => schedulePluginLauncherBounds/);
+  assert.match(main, /window\.on\("move", \(\) => schedulePluginLauncherBounds/);
 });

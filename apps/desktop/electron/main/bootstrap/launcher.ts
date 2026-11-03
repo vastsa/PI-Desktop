@@ -14,6 +14,15 @@ import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { WindowLifecycleState } from "./window";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
+import {
+  PLUGIN_LAUNCHER_MAX_HEIGHT,
+  PLUGIN_LAUNCHER_MAX_WIDTH,
+  PLUGIN_LAUNCHER_MIN_HEIGHT,
+  PLUGIN_LAUNCHER_MIN_WIDTH,
+  readLauncherWindowState,
+  resolveLauncherBounds,
+  writeLauncherWindowState,
+} from "../plugin-launcher-state";
 
 export type LauncherState = {
   creationPromise: Promise<BrowserWindow> | null;
@@ -29,6 +38,8 @@ export type LauncherDependencies = {
   logger: Pick<Logger, "app">;
   safeOpenExternal: (rawUrl: unknown) => Promise<void>;
   toggleMainWindow: () => void;
+  /** Where `plugin-launcher-state.json` lives (ADR 0090 shell-state rule). */
+  dataDir: string;
 };
 
 /**
@@ -57,20 +68,49 @@ export function createLauncher({
   logger,
   safeOpenExternal,
   toggleMainWindow,
+  dataDir,
 }: LauncherDependencies) {
+  /** Debounced write of the panel's own size and position. */
+  let persistBoundsTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const PLUGIN_LAUNCHER_WIDTH = 620;
-  const PLUGIN_LAUNCHER_HEIGHT = 440;
+  function launcherWorkArea() {
+    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  }
 
+  /**
+   * Bounds to open with: the size the user dragged to, kept only when the saved
+   * position still lands inside the display the panel is opening on. A display
+   * that was unplugged must not leave the panel off-screen (ADR 0090).
+   */
   function pluginLauncherBounds() {
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    const { x, y, width, height } = display.workArea;
-    return {
-      x: Math.round(x + (width - PLUGIN_LAUNCHER_WIDTH) / 2),
-      y: Math.round(y + (height - PLUGIN_LAUNCHER_HEIGHT) / 2),
-      width: PLUGIN_LAUNCHER_WIDTH,
-      height: PLUGIN_LAUNCHER_HEIGHT,
-    };
+    return resolveLauncherBounds(
+      readLauncherWindowState(dataDir),
+      launcherWorkArea(),
+    );
+  }
+
+  function persistPluginLauncherBounds(window: BrowserWindow): void {
+    if (window.isDestroyed() || window.isMinimized() || window.isFullScreen()) {
+      return;
+    }
+    writeLauncherWindowState(dataDir, window.getBounds());
+  }
+
+  function flushPluginLauncherBounds(window: BrowserWindow): void {
+    if (persistBoundsTimer) {
+      clearTimeout(persistBoundsTimer);
+      persistBoundsTimer = null;
+    }
+    persistPluginLauncherBounds(window);
+  }
+
+  function schedulePluginLauncherBounds(window: BrowserWindow): void {
+    if (persistBoundsTimer) clearTimeout(persistBoundsTimer);
+    persistBoundsTimer = setTimeout(() => {
+      persistBoundsTimer = null;
+      persistPluginLauncherBounds(window);
+    }, 400);
+    persistBoundsTimer.unref?.();
   }
 
   function createPluginLauncherWindow(): Promise<BrowserWindow> {
@@ -87,7 +127,13 @@ export function createLauncher({
         frame: false,
         transparent: true,
         backgroundColor: "#00000000",
-        resizable: false,
+        // The user drags this panel wider to fit their own grid; the eight
+        // columns stay aligned from the minimum width up.
+        resizable: true,
+        minWidth: PLUGIN_LAUNCHER_MIN_WIDTH,
+        minHeight: PLUGIN_LAUNCHER_MIN_HEIGHT,
+        maxWidth: PLUGIN_LAUNCHER_MAX_WIDTH,
+        maxHeight: PLUGIN_LAUNCHER_MAX_HEIGHT,
         minimizable: false,
         maximizable: false,
         fullscreenable: false,
@@ -129,11 +175,17 @@ export function createLauncher({
         if (devOrigin && url.startsWith(devOrigin)) return;
         event.preventDefault();
       });
+      window.on("resize", () => schedulePluginLauncherBounds(window));
+      window.on("move", () => schedulePluginLauncherBounds(window));
       window.on("blur", () => {
         if (!window.isDestroyed() && !window.webContents.isDevToolsOpened()) {
+          // Persist before hiding: the panel is only ever hidden, never closed,
+          // so a size the user dragged stays until shutdown flushes again.
+          flushPluginLauncherBounds(window);
           window.hide();
         }
       });
+      window.on("close", () => flushPluginLauncherBounds(window));
       window.on("closed", () => {
         if (state.pluginLauncherWindow === window) state.pluginLauncherWindow = null;
       });
