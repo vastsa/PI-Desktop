@@ -428,6 +428,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D236 | One desktop instance per data directory | **Electron main takes `app.requestSingleInstanceLock()` during module evaluation — after `app.setName`, because the lock lives under the name-derived `userData` path, and before the logger, the persistence outbox, or any other data-directory access. A launch that does not take the lock calls `app.quit()` and boots nothing: the readiness and `before-quit` handlers both return early, so it creates no window, tray, child process, or log line inside the running instance's data directory. The lock holder answers `second-instance` by restoring and focusing its main window through the same path as the tray's Show action, which recreates a window that was closed or hidden into the tray. The lock is requested only when `PI_DESKTOP_DATA_DIR` is unset, so E2E harnesses, the capture rig, and deliberate side-by-side profiles keep the current start-anytime behavior. No IPC channel, host protocol, or storage schema changes.** | A second launch booted a complete second app: another host-core over the single-writer `pi.sqlite` (D002), another outbox and log tree in the same directory, another tray, launcher-chord registration, and updater, leaving two shells divergent over one database. Relaunching the app is a request to see the one already running, and scoping the lock to the installation keeps isolated-data-directory runs launchable (ADR 0094). |
 | D367 | Host-owned plugin session import and ownership API | **`pi.session` gains `import`, `importBatch`, `list`, `get`, `listMessages`, `rename`, and `delete`; `contributes.sessionSources` is required for every source; host-core generates ids and scopes every operation to `(pluginId, source, externalId)` ownership; imports never activate project/provider/model bindings. Schema v14 adds `session_import_origins` and `sessions.deleted_at`; protocol v11 is unchanged. Trash keeps the transcript for owner-only purge.** | External-history plugins need durable import/read/update/delete, and the in-flight `session.getLlmContext` and core `session.import` boundaries are not safe plugin ownership boundaries (ADR 0200, E2E-214 / E2E-215) |
 | D368 | Explicit plugin project ids and host-owned session refresh | **Permission-gated `pi.project.create({ path })` creates or reuses a project and returns its host-generated id without activating the workspace; import items may bind an existing `projectId`, omitted ids stay unbound, and historical origin paths never become tool roots. Electron main emits `pi-desktop/session/event/changed` after successful plugin imports, renames, and deletes; the renderer reuses `refreshSessions()`, skipped imports emit nothing, and closed project tabs are not reopened.** | Exposing `workspace.set` to plugins would change the user's active workspace, and plugin writes need a host-owned renderer refresh path (ADR 0201, E2E-216) |
+| D680 | Plugin session scope: `.all` grants and message-level writes | **`pi.session` gains `session.read.all`, `session.update.all`, and `session.delete.all`, which carry `list`/`get`/`listMessages`, `rename`, and `delete` over every live session instead of only the calling plugin's imports. `.all` is a separate grant, never a widening of `.own`, and it wins when a manifest declares both. Electron main resolves the scope from the grants and sends `scope` to host-core, which enforces exactly that and treats an absent value as `own`; `list` becomes a `LEFT JOIN` on the origin sidecar, `get`/messages report the real `originKind`, `source`, `externalId`, model binding, and `origin` instead of the import projection, and the `trash`/`purge` statements follow the scope instead of an embedded `EXISTS`. Message-level writes arrive as `appendMessage`/`replaceMessages` (`session.update.all`) and `deleteMessage`/`truncateFrom` (`session.delete.all`), delegating to the existing host-core transcript operations, refusing a rewrite with `TURN_RUNNING` while a turn owns the session, and sharing a 60/min budget. `rename` now claims the manual title source. Every session call audits the authorising scope; `sessionsChanged` names the changed session.** | The ADR 0200 ownership filter made a legitimate "read the user's own conversation" capability inexpressible, so ADR 0323 had to invent a narrower title permission and ADR 0333's shipped suggestion flow cannot read the session it runs on; widening `.own` instead would silently expand grants users reviewed as "only the sessions this plugin imported" (ADR 0339) |
 | D370 | Local MCP control plane for desktop operations | *(amended by D372)* **An opt-in Streamable HTTP MCP server inside Electron Main binds to `127.0.0.1`, authenticates with a persistent random bearer token, validates supplied Origins against loopback hostnames, writes a mode-restricted connection manifest, and delegates to the same registered IPC handlers the renderer uses. Named tools cover the project/session/Agent flow; `pi_desktop_invoke` reaches a risk-tagged operation catalog; dangerous operations require `confirm: true`; successful external mutations reuse the renderer session-change event. Local-only and fail-soft at startup.** | An external Agent needs to drive the running desktop without a second permission or persistence implementation and without touching the deferred remote Gateway / WebUI boundary (ADR 0203, E2E-220) |
 | D372 | Tightened local MCP control-plane boundary | **Amend D370 / ADR 0203: the first-version catalog is the project/session/Agent/workspace flow plus reviewed reads; secret-shaped arguments are stripped; `session/configure` is dangerous; listen addresses are asserted loopback; protocol versions are negotiated rather than echoed; results including `structuredContent` are bounded; renderer session refresh is mutation-only.** | The first catalog still exposed native pickers, secret-write provider/OAuth/MCP paths, and unconfirmed `session/configure`, and treated session reads as renderer mutations (E2E-220) |
 | D377 | Plugin desktop control requires native user consent | **A `dangerous` desktop operation invoked through `pi.desktop.invoke` needs the plugin's `confirm: true` and then the user's answer to a host-owned native dialog that shows only the catalog operation id, description, and a bounded argument preview; dismissal, Deny, and a host without a dialog service fail with `PERMISSION_DENIED`. `read`/`write` operations and the MCP contract (D372) are unchanged.** | The controller's `confirm` flag is set by the caller, so a plugin (or a model behind it) could delete sessions or switch a session to `auto` with no human in the loop, and any plugin-drawn confirmation card can be relabeled by a prompt-injected transcript (ADR 0208, E2E-236) |
@@ -8148,3 +8149,43 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   over `pi-startup:` under the page CSP, playback advances, the reveal hands
   over an interactive shell, and an unplayable file yields the shell in about a
   second rather than holding the window.
+
+## 2026-10-20 — Plugin session scope: `.all` grants and message-level writes (D680)
+
+- D680 / ADR 0339 opens `pi.session` beyond the ADR 0200 import boundary. Three
+  new permissions — `session.read.all`, `session.update.all`,
+  `session.delete.all` — carry the existing verbs over every live session,
+  including the conversations the user created in this app.
+- `.all` is an addition, not a widening. An installed plugin keeps exactly the
+  reach its user reviewed; a manifest may declare both, and `.all` wins.
+- The ownership predicate stops being a second, implicit permission. Electron
+  main resolves the scope from the granted permissions and sends it; host-core
+  enforces exactly that, treats an absent `scope` as `own`, and rejects an
+  unknown value with `INVALID_PARAMS`.
+- The queries that only worked because the boundary was narrow are fixed:
+  `list` left-joins the origin sidecar, `get` and messages report the real
+  `originKind` / `source` / `externalId` / model binding / `origin` instead of
+  the import projection, and the `trash` and `purge` statements follow the
+  scope instead of an embedded `EXISTS`.
+- Message-level writes exist for the first time: `appendMessage` and
+  `replaceMessages` under `session.update.all`, `deleteMessage` and
+  `truncateFrom` under `session.delete.all`. They delegate to the host-core
+  transcript operations, so revision archiving, inflight checkpoints, and the
+  JSONL rewrite path are unchanged.
+- A rewrite is refused with `TURN_RUNNING` while a turn owns the session.
+  `appendMessage` is exempt, because appending is how a turn's own rows land.
+- `rename` claims the manual title source, so an installed `session.autoTitle`
+  plugin cannot replace a title the user's plugin chose.
+- Every session call now audits the scope that authorised it. Before this
+  change `list`/`get`/`listMessages`/`rename`/`delete` emitted no audit entry.
+- `sessionsChanged` carries the changed `sessionId`, and the shell re-reads an
+  open transcript when that id is active and no turn is running.
+- Not changed: `.own` semantics, the import contract and its limits, the
+  `session.autoTitle` boundary, database schema, and persisted formats. The
+  delete rate limit stays at 20/minute; the four message writes share a
+  60/minute budget.
+- Covered by the `plugin_sessions` and `plugin_session` host-core tests,
+  `apps/desktop/test/plugin-session-access.test.mjs`, and
+  `apps/desktop/test/plugin-session-api.test.mjs`. See ADR 0339, ADR 0200's
+  amendment, ADR 0323's corrected alternative, `03-plugin-api.md` §plugin-owned
+  and host-wide sessions, `13-plugin-permissions-matrix.md` §2, and E2E-268.

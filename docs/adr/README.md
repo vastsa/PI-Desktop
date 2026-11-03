@@ -398,3 +398,4 @@ Each ADR includes:
 | 0338 | [A user-supplied video owns the boot surface, served over a host-owned scheme](0338-user-supplied-startup-animation.md) | Accepted (D679) |
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
+| 0339 | [Let a granted plugin reach every session, not only its imports](0339-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
