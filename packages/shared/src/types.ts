@@ -5,6 +5,7 @@
  */
 export * from "./types/common.js";
 export * from "./types/plans.js";
+export * from "./types/goals.js";
 export * from "./types/models.js";
 export * from "./types/permissions.js";
 export * from "./types/messages.js";

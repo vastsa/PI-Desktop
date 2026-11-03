@@ -10159,3 +10159,22 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   event/result agreement, batch rejection and delegate restoration.
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
+
+
+### E2E-GOAL-independent-input
+
+- 使用隔离的真实 Host、sidecar、Desktop 和本机模型夹具，不调用付费服务。
+- 从目标输入发送后自动回到 Agent；在当前执行期间切换 Plan、Goal、Agent，目标身份、claim 和状态保持不变。
+- 保存编辑后目标栏立即更新，当前 Host 轮内后续模型与工具仍使用 activeScope；下一 Host 轮采用修改。旧范围完成报告不得完成修改后的目标。
+- 普通排队消息与立即发送均不暂停，指导信息可进入当前轮，目标继续自主运行。
+- 目标栏暂停立即生效并通过狭窄的最多三次后续模型请求收尾（不等待整轮结束）；完成普通 Agent 任务后直接恢复，不出现 GOAL_MODE_REQUIRED。
+- 显式新目标分别替换运行中与暂停的旧目标，新身份使用新预算和计数；旧运行先结算，不并发派发，不生成伪造用户消息。删除不是 Stop：所有者成功删除将 Goal 设为墓碑，设置会话输入偏好为 agent，抑制自主续跑，仅允许已绑定的在运行 Goal 对话在普通 Agent 权限下完成（不相关运行中的 Agent/Plan 对话保持运行且执行策略不变；Plan 保持 Plan）。撤销的 claim 维持撤销，墓碑精确结算一次迟到用量，无 Goal 报告、复活或新准入。UI 与 maxTurns 预算使用 roundsCompleted（schema 33），活动 claim 预留单个槽位；roundsCompleted 在成功结算时递增一次（普通一次 Host/Agent 对话 = 1），错误、中止、恢复或内部模型/工具/compaction 迭代不递增；roundsStarted 保留为启动/预留诊断。错误进入 blocked、中止进入 paused 防止无限自动重试。迁移保守回填经证实的已完成绑定轮次。执行验证尚在进行中，不断言 compaction 额外 claim 根因或测试通过。
+- 输入框 Stop 立即中断并暂停；网络／余额等无法继续的失败保持安全停止，不允许因移除模式限制而绕过 Plan 或权限边界。
+- 实际构建界面验证窄窗、浅深主题、输入可达和目标栏不覆盖；截图必须标明隔离夹具。
+
+
+### E2E-GOAL-pause-steering-and-fifo
+
+- 隔离真实 Host/sidecar 和本机模型：当前 Goal 轮运行时普通消息仅排队；本轮结束而目标未完成时先发送消息，其后再自动续跑目标。
+- 点击目标栏暂停立即持久化并显示 paused，不等待整轮结束。固定系统 steering 通知模型简短交接，正常一次回复结束；不配合夹具最多三次后续模型请求被运行时终止，不生成假用户消息、不自动恢复。
+- 实际构建界面验证排队浮条消失、模型仍被扣住时的暂停截图、无“本轮结束后暂停”文案、收尾后恢复和立即 Stop。暂停时收尾 claim 不授权原生工具；报告不能恢复/完成，重启不重放。

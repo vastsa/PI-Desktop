@@ -59,6 +59,7 @@ function promptFixture(commandService, projectPath = "/repo", remoteWorkspace) {
     if (method === "settings.get") return {};
     if (method === "session.get") return { session: { id: "target", projectPath, remoteWorkspace, messages: [] } };
     if (method === "session.beginTurn") return { turnId: "turn-1" };
+    if (method === "session.getTurnMode") return { mode: "agent" };
     if (method === "session.appendMessage") return {};
     assert.fail(`unexpected RPC ${method}`);
   } };
@@ -104,6 +105,9 @@ test("menu selection reaches runtime with MCP instructions and preserves the vis
   assert.match(row.content, /Documentation/);
   assert.deepEqual(fixture.sidecarCalls[0].params.mcpServerIds, ["docs"]);
   assert.equal(fixture.sidecarCalls[0].params.content, row.content);
+  assert.equal(fixture.sidecarCalls[0].params.mode, "agent", "launch uses the Host execution snapshot");
+  assert.deepEqual(fixture.calls.find(call => call.method === "session.getTurnMode").params,
+    { sessionId: "target", turnId: "turn-1" });
   assert.equal(fixture.released(), true);
 });
 

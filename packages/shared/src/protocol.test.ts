@@ -119,10 +119,10 @@ describe("Plan protocol contracts", () => {
     expect(normalizeMode(undefined)).toBe("agent");
   });
 
-  it("pairs each contract mode with its proposal kind and back (D198)", () => {
+  it("keeps legacy Goal kinds while only Plan creates approval proposals", () => {
     expect(PROPOSAL_KINDS).toEqual(["plan", "goal"]);
     expect(proposalKindForMode("plan")).toBe("plan");
-    expect(proposalKindForMode("goal")).toBe("goal");
+    expect(proposalKindForMode("goal")).toBeNull();
     // Agent negotiates no contract, so it has no kind.
     expect(proposalKindForMode("agent")).toBeNull();
     expect(modeForProposalKind("goal")).toBe("goal");

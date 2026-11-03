@@ -512,3 +512,12 @@ transcript 保留稳定错误码、传输 errno 和原始 details，但使用本
 单个存储块无法回放属于另一种情况：网关丢弃 id 时本应用本身就会存下仅供展示的块，
 因此该消息的整条 replay 降级为“没有 replay”，而不是让之后每一轮请求都失败。
 回合继续执行，展示轮次不变；诊断只记录块数与阶段，不复制搜索内容、结果或凭据。
+
+### 自主 Goal 实时控制错误
+
+GOAL_TURN_IN_FLIGHT 阻止未结算时恢复，不再阻止热编辑；GOAL_TERMINAL 拒绝终态编辑、恢复和预算修改。
+GOAL_STALE_REVISION 拒绝旧 CAS，GOAL_NOT_FOUND 拒绝跨会话或已移除身份。
+GOAL_OBJECTIVE_REQUIRES_EDIT 与 GOAL_BUDGET_REQUIRES_BUDGET_OR_RESUME 拒绝放错操作的字段。
+无效预算仍为 GOAL_INVALID_BUDGET；缺少显式预算对象的必填 maxTurns 与 maxTurns:null（无限）不同。
+GOAL_INVALID_AUDIT、GOAL_COMPLETION_UNVERIFIED 保持完成审计的结构边界；失败不提交状态。
+只有配对所有者可控制目标，模型不能借报告修改预算或恢复。

@@ -99,9 +99,9 @@ See [ordered preparation](../../adr/parallel-read-batches.md) and
 | Default mode | Agent |
 | Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
 | Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
-| Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
-| Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
+| Goal tools | Ordinary Agent tools plus bound GetGoal / UpdateGoal; no scheduled automation tools |
+| Plan hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
 | Bash style | non-interactive; selected host catalog shell with streamed output |
@@ -123,8 +123,9 @@ Let the agent get things done, but stay under control by default.
 | `BrowserPreview` | low | Open a workspace-relative preview in the bundled Browser plugin (fails if `pi.browser` is disabled) |
 | `EnterPlanMode` | low | Move the same Agent from Agent to Plan after host validation |
 | `SubmitPlan` | low | Preserve exact Markdown bytes in a new `.pi/plan/*.md` artifact and request approval |
-| `EnterGoalMode` | low | Move the same Agent from Agent to Goal after host validation |
-| `SubmitGoal` | low | Preserve exact Markdown bytes in a new `.pi/goal/*.md` artifact and request approval |
+| `EnterGoalMode` | low | Legacy entry disabled; cannot authorize a new goal |
+| `SubmitGoal` | low | Legacy submission disabled; existing approvals remain readable/resolvable/executable |
+| `GetGoal` / `UpdateGoal` | low | Bound goal read/report only; no start/resume, scope or budget authority |
 | `Write` | high | Create/overwrite files; returns the post-write `tag` |
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
@@ -138,7 +139,7 @@ Let the agent get things done, but stay under control by default.
 The first Agent request includes `Read`, `Bash`, `Edit`, `Write`, `Glob`, and
 `Grep`. Keeping workspace listing and content search in the initial schema
 avoids a discovery round trip for routine project exploration (the amendment
-to ADR 0048 records this change). Plan and Goal keep their read/inspection core.
+to ADR 0048 records this change). Plan keeps its read/inspection core; Goal uses ordinary Agent tools.
 `Skill` is deliberately not deferred: a `/skill:<skill-id>` invocation instructs the
 model to call it, and a tool absent from the schema cannot be called at all, so
 it ships with the first request whenever the skill catalog is non-empty (D404,
@@ -171,8 +172,8 @@ structured classifier call, not a chat model or workspace operation. The Agent
 must supply its JSON state and typed questions; those values go directly to
 TypeSafe when the tool is called. The tool validates JSON shape and bounds the
 payload to 24 KiB, uses the pi-ai `jev-latest` classifier with a 45-second
-timeout, and returns only structured answers and reported usage. Plan and Goal
-never receive the tool. The settings disclosure warns users not to pass secrets
+timeout, and returns only structured answers and reported usage. Plan never
+receives the tool; configured Agent and Goal sessions can discover it. The settings disclosure warns users not to pass secrets
 or personal information.
 
 An explicit composer MCP selection carries exact server IDs to the runtime.
@@ -343,9 +344,8 @@ as binary content.
 - **Permissions.** `Write`/`Edit` whose `path` is lexically inside the
   session's scratch root auto-allow without a permission card — they cannot
   touch the project. The lexical check only skips the prompt; execution still
-  goes through the full resolver, so it is not an escape vector. Plan and Goal do
-  not expose Write/Edit, so the scratch auto-allow rule cannot make those tools
-  available in either. A contract-mode Bash call may still create or mutate
+  goes through the full resolver, so it is not an escape vector. Plan denies
+  Write/Edit execution; Goal follows ordinary Agent policy. A contract-mode Bash call may still create or mutate
   scratch data when its permission mode allows it.
 - **Artifacts.** Successful scratch writes are not recorded in the
   `artifacts` table; artifact-driven file tabs represent workspace
@@ -370,8 +370,8 @@ as binary content.
   sessions A and B remain sandboxed to projects A and B respectively.
 - A Temporary/path-less session uses only its own scratch directory as its
   workspace root, even if another project is visible or recently active. It
-  never inherits that project. Plan and Goal still require a persisted project
-  root, so this binding does not expand contract-mode execution. High-risk
+  never inherits that project. Plan artifact submission still requires a persisted
+  project root; Goal does not acquire another session's workspace authority. High-risk
   tools operate only inside the temporary session's scratch root.
 - Legacy calls that do not resolve to a durable session may use the selected
   host workspace only during the compatibility window.
@@ -405,8 +405,8 @@ visualization lives as long as its session:
   `.html`; anything else in this root fails with a tool error. `Read` is
   allowed.
 - **Permissions.** `Write`/`Edit` inside the root auto-allow without a card,
-  under the same conditions as scratch. Plan and Goal expose no Write/Edit, so
-  contract modes cannot write here. Results carry `root: "visualization"`, are
+  under the same conditions as scratch. Plan denies Write/Edit execution; Goal
+  uses ordinary Agent permissions here. Results carry `root: "visualization"`, are
   not recorded as artifacts, and are not review-snapshotted.
 - **Lifecycle.** Created lazily on the first write. Deleted with
   `session.delete`. The startup sweep removes only safe session directories
@@ -722,8 +722,8 @@ self-declared by an MCP server is not trusted, unlike the risk in a plugin
 manifest the user accepted. Under `ask` and `accept-edits` an MCP tool call
 shows an approval card with reason "MCP server tool requires approval"; an
 `allow-session` grant suppresses further prompts for that tool name in that
-session (grants are in-memory only). `auto` auto-allows it, and the Plan/Goal
-contract-mode hard deny still applies (D640, ADR `mcp-tool-approval-risk`).
+session (grants are in-memory only). `auto` auto-allows it in Agent and Goal;
+Plan's hard deny still applies (D640, ADR `mcp-tool-approval-risk`).
 
 ### Decision Types
 
@@ -832,12 +832,12 @@ for the current key-log policy.
 |---|---|---|---|---|---|
 | Agent | allow | allow | permission policy | permission policy | registered risk policy |
 | Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
-| Goal | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
+| Goal | allow | allow | permission policy | permission policy | registered risk policy |
 
 ### Notes
-- Plan and Goal hard-deny Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
+- Plan hard-denies Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
   call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).
-- Agent mode uses permission cards or the selected automatic policy for
+- Agent and Goal use permission cards or the selected automatic policy for
   Write/Edit/Bash and registered plugin tools.
 - Plan and Goal Bash may mutate workspace or scratch state when the user selected Auto;
   the UI must make that tradeoff visible.
@@ -845,26 +845,35 @@ for the current key-log policy.
 - Session grants follow `sessionId` across project-tab switches and are never
   inherited by another session or Temporary conversation
 
+Execution policy uses the immutable Host turn mode and validated Goal claim, not
+the current Composer preference or a sidecar mode field. Changing input mode
+never changes already-running Plan restrictions or pauses an authorized Goal.
+
 ### 10.1 Plan and Goal control tools
 
 `new_context` is available in every mode and needs no confirmation: it only asks
 the runtime to compact at the next turn boundary, which the host would do on its
 own once the hard budget is reached (see
-[02-agent-runtime](02-agent-runtime.md) §5.1). A submit
-tool is available only in its own contract mode and must be the only tool call in its assistant batch. It preserves
-the exact Markdown bytes in a new unique artifact under the kind's directory
-(`.pi/plan/*.md` for `SubmitPlan`, `.pi/goal/*.md` for `SubmitGoal`)
-through host-core before creating one pending approval. `EnterPlanMode` and
-`EnterGoalMode` are available only in Agent, and each must be the only tool call
-in its batch. The host validates the durable mode, the proposal kind, and the
-active-turn/configuration boundary before any transition; the visible tool list
-is guidance, not the security boundary.
+[02-agent-runtime](02-agent-runtime.md) §5.1). User Plan `SubmitPlan` remains a
+single-call batch tool that persists an immutable approval artifact. Within an
+authorized Goal, optional internal planning is read-only (including no Bash);
+SubmitPlan records the model's own review and returns to execution without user
+approval, mode changes or new permission.
+`EnterGoalMode` and `SubmitGoal` cannot create new goals; host entry/submission
+returns `PLAN_GOAL_ACTIVATION_DISABLED`. Old approvals retain read/resolve/execute
+semantics. Only user-owner start/resume authorizes autonomous Goal work.
+
+`GetGoal` and `UpdateGoal` bind session/goal/turn outside model arguments. The model
+may report active/blocked/completed, progress, and criterion outcomes/evidence.
+It cannot alter scope or budgets, pause/resume/cancel, or create a goal. Completed
+requires exactly all stored criteria marked met with non-empty evidence, which
+is model-reported evidence, not independent host verification.
 
 ### 10.2 Delegation and subagent tool scope (D201, ADR 0062)
 
-`Task` is available in Agent mode only, and only when the session has at least
-one subagent definition. Plan and Goal are read-only contract negotiations, so a
-delegate with `Bash`, `Edit` or `Write` would drive straight through them.
+`Task` is available in Agent and Goal when the session has at least one subagent
+definition. Plan denies delegation execution. Goal delegation preserves ordinary
+subagent tool scope and includes delegate usage in the parent Goal budget.
 
 A definition declares the tools its delegate may call. By default those names
 are drawn only from the seven working tools `Read`, `Glob`, `Grep`,
@@ -928,8 +937,8 @@ session's root unchanged.
 
 ## 11. Plugin Tools
 
-Plugins can contribute tools via `agentTools`. Agent mode sees every registered
-plugin tool. Plan and Goal see only tools whose `planSafeActions` list is
+Plugins can contribute tools via `agentTools`. Agent and Goal see registered
+plugin tools under ordinary permission policy. Plan sees only tools whose `planSafeActions` list is
 non-empty (ADR 0211 / D384):
 
 1. manifest declaration
@@ -937,13 +946,12 @@ non-empty (ADR 0211 / D384):
 3. PluginManager registers them into the ToolHost
 4. execution goes through the unified permission/audit/timeout wrapper
 
-A plugin tool without `planSafeActions` is hidden from the model in Plan and
-Goal. A direct attempt returns `PLUGIN_DISABLED_IN_PLAN` — the `_IN_PLAN` codes
-are shared by both contract modes rather than duplicated per kind — and is
+A plugin tool without `planSafeActions` is hidden from the model in Plan.
+A direct Plan attempt returns `PLUGIN_DISABLED_IN_PLAN` and is
 audited as a contract-mode policy denial. When the list is present, host-core
 admits the tool and the plugin-runtime rejects any `action` outside the list
 with `PERMISSION_DENIED`. Missing or invalid plugin risk defaults to `medium`
-for Agent and never grants contract-mode access by itself.
+for Agent/Goal and never grants Plan access by itself.
 
 Naming:
 - Internal full name: `plugin.<pluginId>.<toolName>`
@@ -959,7 +967,7 @@ Naming:
 
 ## Image generation and editing
 
-`GenerateImages` is a high-risk Agent-only capability, authorized by host-core
-before the trusted desktop executes the request. Plan/Goal remain denied even
+`GenerateImages` is a high-risk Agent/Goal capability, authorized by host-core
+before the trusted desktop executes the request. Plan remains denied even
 under Auto. See [image generation](21-image-generation.md) for cancellation,
 limits and result semantics.

@@ -229,6 +229,8 @@ export type AppState = {
   }) => Promise<void>;
   forkSession: (id: string) => Promise<void>;
   forkAssistantMessage: (messageId: string) => Promise<void>;
+  /** Capture input intent before owner removal; commit only after accepted deletion. */
+  prepareGoalRemoval: (sessionId: string) => () => void;
   configureActiveSession: (config: {
     mode: Mode;
     providerId?: string;
