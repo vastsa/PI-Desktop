@@ -7067,7 +7067,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - Escape and outside click dismiss the menu without creating anything.
 
 #### E2E-076: Startup splash appears then yields to the main shell
-- **Status**: Partially automated (`startup-splash-motion.test.mjs` covers splash markup, motion tokens, reduced-motion, and catalog keys; `macos-sidebar-vibrancy.test.mjs` covers the darwin glass splash and shell cross-fade; full window timing remains Draft)
+- **Status**: Partially automated (`startup-splash-motion.test.mjs` covers splash markup, motion tokens, reduced-motion, and catalog keys; `macos-sidebar-vibrancy.test.mjs` covers the darwin glass splash and shell cross-fade; `startup-animation.test.mjs` and `packages/shared/src/startup-animation.test.ts` cover the D679 animation's bounds, phase machine, discovery, surface, and boot-surface ranking; `pnpm test:e2e:startup-animation` boots the real app against a generated video and asserts `pi-startup:` decoding, advancing playback, the reveal, and that an unplayable file still yields the shell; full window timing remains Draft)
 - **Priority**: P1
 - **Covers**: A, Quality / US-UI shell polish
 - **Preconditions**: App launch path available (dev or packaged).
@@ -7078,11 +7078,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   4. Repeat with OS `prefers-reduced-motion: reduce` when available.
   5. On macOS, compare the splash surface with the sidebar glass after the shell appears.
   6. Repeat with `bootstrap` held unanswered past the watchdog bounds, and observe the boot surface at 30s and after 180s (issue #831).
+  7. Drop a short playable video into `<dataDir>/startup/` and relaunch (D679).
+  8. Replace it with an unplayable file (for example a renamed text file) and relaunch.
+  9. With the animation present, relaunch under `prefers-reduced-motion: reduce`, then reload the renderer, then close the window and reopen it from the tray or Dock.
 - **Expected**:
   - Before ready: full-window splash with brand mark, shell name, tagline, and accessible starting status (`data-testid="startup-splash"`).
   - After ready: splash exits with a short fade (or instantly under reduced motion) and the main shell (or settings page) is interactive underneath.
   - If the initial state never arrives, the splash is replaced rather than held: the boot surface gains logs, diagnostics, and quit at 30s (`STARTUP_SLOW_HINT_MS`) without reporting a failure, and at 180s (`STARTUP_STALLED_MS`) becomes the recovery surface, which also offers a retry (`data-testid="startup-recovery"`); every action works without a backend, the renderer-drawn window controls stay above the surface on Windows/Linux, and quit goes through `pi-desktop/app/quit`.
   - On macOS the splash uses the same glass tint and sheen as the sidebar over native `sidebar` vibrancy; the mounted shell stays hidden until the splash exit fade, then cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill.
+  - With a video in `<dataDir>/startup/` (D679): `data-testid="startup-animation"` replaces the splash in the first painted frame, plays over opaque black with no controls and no audio, then holds the same black until bootstrap finishes, then fades out over about a second with the shell already clickable during the fade. A boot slower than the video shows an indeterminate bar after 3s of black. `Escape` jumps straight to that fade.
+  - An unplayable file never holds the launch: the animation ends within 2s (no first frame) or on `error`, and the reveal runs exactly as it does after a clean finish.
+  - The animation is not played under reduced motion, on a renderer reload, or on a window reopened from the tray or Dock; the brand splash is used instead. Settings → General → Appearance names the resolved file, offers the folder, and applies a toggled switch on the next launch only.
+  - A boot held past the watchdog bounds replaces the animation with the recovery surface — it is never left behind the opaque mask.
   - No plain unbranded “Starting…” centered text as the only boot UI.
   - Overlay/dialog enter motion uses shared tokens; reduced motion keeps state changes without decorative duration.
   - If a non-settings bootstrap request fails while the settings read is still
@@ -7090,7 +7097,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     settings request itself fails, the active section shows a loading/failure
     state and retry action rather than a blank content pane; retrying after the
     local service recovers restores the controls without leaving Settings.
-- **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, decisions-log D146 / D304 / D348
+- **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, `04-ux/09-interaction-patterns.md` §1.12, ADR 0338, decisions-log D146 / D304 / D348 / D679
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5
 
