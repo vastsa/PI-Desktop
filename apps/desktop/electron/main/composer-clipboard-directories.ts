@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { basename, isAbsolute, join, win32 } from "node:path";
+import { basename, join, posix, win32 } from "node:path";
 import { realpath, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -44,11 +44,11 @@ export function nativeClipboardPaths(
     paths = value;
   } else {
     const uris = read("text/uri-list").toString("utf8") || read("x-special/gnome-copied-files").toString("utf8") || read("public.file-url").toString("utf8");
-    paths = uris.split(/[\r\n\0]+/).filter(line => line.startsWith("file:")).map(uri => fileURLToPath(uri));
+    paths = uris.split(/[\r\n\0]+/).filter(line => line.startsWith("file:")).map(uri => fileURLToPath(uri, { windows: false }));
   }
   paths = [...new Set(paths)];
   if (paths.length > MAX_ITEMS) throw new Error(`too many pasted items (maximum ${MAX_ITEMS})`);
-  const absolute = platform === "win32" ? win32.isAbsolute : isAbsolute;
+  const absolute = platform === "win32" ? win32.isAbsolute : posix.isAbsolute;
   if (paths.some(path => !absolute(path) || path.includes("\0"))) throw new Error("invalid clipboard file path");
   return paths;
 }
@@ -57,12 +57,13 @@ export function nativeClipboardPaths(
 export async function readComposerClipboardDirectories(
   clipboard: NativeClipboard,
   rememberFiles: (paths: string[]) => string,
+  capturePaths: () => string[] = () => nativeClipboardPaths(clipboard),
 ): Promise<{
   items: Array<{ kind: "directory"; path: string; name: string } | { kind: "file"; name: string }>;
   token: string | null;
 } | null> {
   // Capture before yielding so later clipboard changes cannot replace this selection.
-  const paths = nativeClipboardPaths(clipboard);
+  const paths = capturePaths();
   const entries = await Promise.all(paths.map(async path => {
     const canonical = await realpath(path);
     const metadata = await stat(canonical);
