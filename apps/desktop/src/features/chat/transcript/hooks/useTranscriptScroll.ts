@@ -356,7 +356,8 @@ export function useTranscriptScroll({
   useEffect(() => cancelFollowScroll, [cancelFollowScroll]);
 
   const loadOlder = useCallback(() => {
-    if (!paneVisibleRef.current || !hasMoreBefore || !onLoadOlder) return;
+    if (!paneVisibleRef.current) return;
+    if (!hasMoreBefore || !onLoadOlder) return;
     preserveHistory(onLoadOlder, windowSize, true);
   }, [hasMoreBefore, onLoadOlder, preserveHistory, windowSize]);
 
