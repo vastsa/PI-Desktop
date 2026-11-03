@@ -423,7 +423,7 @@ fn opening_a_v25_database_migrates_instead_of_failing() {
         .conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 28, "v25 database must be migrated to v28");
+    assert_eq!(version, 29, "v25 database must be migrated to v29");
     let rows: i64 = db
         .conn
         .query_row("SELECT count(*) FROM memories", [], |row| row.get(0))
@@ -431,7 +431,7 @@ fn opening_a_v25_database_migrates_instead_of_failing() {
     assert_eq!(rows, 0, "migration must leave an empty memory store");
 }
 
-/// Regression: a database already stamped at v26 must migrate to v28. v26 is a
+/// Regression: a database already stamped at v26 must migrate to v29. v26 is a
 /// pure version stamp, so the same number can come from the merged line or from
 /// a build that created the memory store before the merge; both must open, and
 /// the second one must not fail on tables that already exist.
@@ -459,8 +459,8 @@ fn opening_a_v26_database_migrates_instead_of_failing() {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(
-            version, 28,
-            "v26 database (memories present: {memories_already_present}) must be migrated to v28"
+            version, 29,
+            "v26 database (memories present: {memories_already_present}) must be migrated to v29"
         );
         let rows: i64 = db
             .conn

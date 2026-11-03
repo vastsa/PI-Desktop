@@ -217,6 +217,14 @@ impl Database {
             // pass below. They must not fall through to `other`, which reports a
             // *newer* database: a v26/v27/v28 file is older and upgradable, and
             // silently refusing it would lock a user out of their transcript.
+            //
+            // v26 is the lossless tool-image envelope, a version stamp with no
+            // table changes. A database can also already sit at 26 because the
+            // memory branch stamped it there before the two lines merged, which
+            // is equivalent: MEMORIES_DDL is IF NOT EXISTS, so the migration
+            // chain below is safe for either flavour. v27 is the session Fast
+            // mode switch, or the memory store when the file came from a
+            // pre-merge memory build; v28 converges both.
             26 | 27 | 28 => {}
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
@@ -224,16 +232,6 @@ impl Database {
                 archive_legacy_db(path, legacy)?;
                 return Self::open(path);
             }
-            // v26 is the lossless tool-image envelope, a version stamp with no
-            // table changes. A database can also already sit at 26 because the
-            // memory branch stamped it there before the two lines merged, which
-            // is equivalent: MEMORIES_DDL is IF NOT EXISTS, so the migration
-            // chain below is safe for either flavour. Without this arm in-place
-            // upgrades of v26 data are refused as "newer than supported".
-            // v27 is the session Fast mode switch, or the memory store when the
-            // file came from a pre-merge memory build; v28 converges both.
-            26 => {}
-            27 => {}
             SCHEMA_VERSION => {}
             other => {
                 return Err(anyhow!(
@@ -295,8 +293,7 @@ impl Database {
         // The memory store is the step after the v26 Fast mode switch, so a v26
         // database walks both migrations in the same launch.
         if migrated_version == 27 {
-        if migrated_version == 27 {
-migrate_v27_to_v28(&conn, path)?;
+            migrate_v27_to_v28(&conn, path)?;
             migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         }
         // Repairs stored reply text that carried the replayed reasoning
@@ -304,7 +301,6 @@ migrate_v27_to_v28(&conn, path)?;
         // change, but it rewrites rows, so it keeps the usual backup and bump.
         if migrated_version == 28 {
             super::migrations::migrate_v28_to_v29(&conn, path)?;
-        }
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

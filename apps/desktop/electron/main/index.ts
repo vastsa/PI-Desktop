@@ -21,6 +21,7 @@ import {
   isActiveInProject,
   type ActivationScope,
   type AgentEventEnvelope,
+  type AppSettings,
   type CloseBehavior,
   type KeybindingOverrides,
   type PlanExecutionFinishStatus,
