@@ -228,11 +228,12 @@ export function useComposerAttachments({
     if (isInputBlocked) return;
     const text = event.clipboardData.getData("text/plain");
     const pastedFiles = clipboardFiles(event.clipboardData);
-    const files = preferClipboardText(text, pastedFiles, api.getDroppedFilePath)
+    const preferText = preferClipboardText(text, pastedFiles, api.getDroppedFilePath);
+    const files = preferText
       ? []
       : pastedFiles;
     const hasNativeFileTypes = event.clipboardData.types?.includes("Files");
-    const nativeFilePaste = hasNativeFileTypes || !text;
+    const nativeFilePaste = !preferText && (hasNativeFileTypes || !text);
     const textLength = Array.from(text).length;
     const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
     if (isLargeTextPaste || files.length || nativeFilePaste) {

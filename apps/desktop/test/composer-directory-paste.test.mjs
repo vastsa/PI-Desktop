@@ -22,6 +22,7 @@ function harness(native, { files = [], text = "", items = [], paused, sourceSess
   const editor = read("../src/features/chat/composer/editor.ts");
   const hook = read("../src/features/chat/composer/hooks/useComposerAttachments.ts");
   const drafts = [], errors = [], writes = [], imported = [], transfers = [], created = [];
+  const nativeReads = [], textInsertions = [];
   let revision = 0;
   let activeSessionId = sourceSessionId;
   let workspacePath = "/synthetic/project";
@@ -46,7 +47,8 @@ function harness(native, { files = [], text = "", items = [], paused, sourceSess
     showErrorToast: error => errors.push(error.message),
     api: {
       getDroppedFilePath: () => null,
-      readClipboardDirectories: async () => { if (paused) await paused; return native; },
+      readClipboardDirectories: async () => { nativeReads.push(true); if (paused) await paused; return native; },
+      recordClipboardPaste: async () => {},
       importFiles: async (session, token) => {
         imported.push({ session, token });
         return { files: [{ path: "/synthetic/scratch/notes.txt", name: "notes.txt", kind: "file" }] };
@@ -62,6 +64,8 @@ function harness(native, { files = [], text = "", items = [], paused, sourceSess
     writeComposerDraft: (key, snapshot) => writes.push({ key, snapshot }),
     readComposerDraftRevision: () => revision,
     readComposerDraft: () => undefined,
+    document: { execCommand: (_command, _showUi, text) => { textInsertions.push(text); return true; } },
+    insertClipboardText: (_editor, text) => { textInsertions.push(text); return true; },
     deleteComposerDraft() {}, HOME_DRAFT_KEY: "home",
     useAppStore: { getState: () => ({ activeSessionId, workspace: { path: workspacePath }, sessions: [{ id: "source" }, { id: "created" }] }) },
     materializeDraftSession: async () => { created.push(workspacePath); activeSessionId = "created"; return "created"; },
@@ -69,7 +73,7 @@ function harness(native, { files = [], text = "", items = [], paused, sourceSess
   const code = extract(editor, "clipboardFiles") + "\n" + extract(editor, "preferClipboardText") + "\nmodule.exports = " + extract(hook, "pasteClipboardFiles");
   vm.runInNewContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, environment);
   return {
-    drafts, errors, writes, imported, transfers, created,
+    drafts, errors, writes, imported, transfers, created, nativeReads, textInsertions,
     edit(text) { element.textContent = text; revision++; },
     switchSession() { activeSessionId = "other"; },
     switchProject() { workspacePath = "/synthetic/other-project"; },
@@ -159,4 +163,12 @@ test("home folder paste materializes only its original unchanged workspace", asy
   await run.paste();
   assert.deepEqual(run.created, ["/synthetic/project"]);
   assert.equal(run.drafts[0].references[0].sessionId, "created");
+});
+
+test("Word text plus a generated image keeps text paste without a native file read", async () => {
+  const run = harness(null, { text: "Copied text from Word", files: [new File([], "image.png", { type: "image/png" })] });
+  await run.paste();
+  assert.deepEqual(run.errors, []);
+  assert.deepEqual(run.nativeReads, []);
+  assert.deepEqual(run.textInsertions, ["Copied text from Word"]);
 });
