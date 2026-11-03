@@ -1,6 +1,7 @@
 /*
-  App chrome — startup splash, sidebar frame (header/body/brand), titlebar and
-  native window controls, the conversation top bar, and the notification center.
+  App chrome — startup splash and boot animation, sidebar frame
+  (header/body/brand), titlebar and native window controls, the conversation
+  top bar, and the notification center.
 */
 
 /*
@@ -165,7 +166,99 @@
   }
 }
 
+/*
+ * Boot animation (D679) — the user's own video as the boot surface.
+ *
+ * Opaque black for its whole life, including the fade: the video sits on this
+ * layer, and once the video is gone the same black is the mask the shell fades
+ * in from. One layer rather than two means no seam between the last frame and
+ * the mask. The fill is literal black, not `--ds-bg-primary`, so a video's own
+ * letterboxing and fades meet the same colour under either theme.
+ *
+ * No macOS counterpart to the splash's child-hiding rule is needed: that rule
+ * exists because the splash is glass and the mounted shell bleeds through its
+ * tint. This layer is opaque, so there is nothing to bleed.
+ */
+.startup-animation {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+  opacity: 1;
+  /* The window has no chrome yet, so the surface itself has to be draggable. */
+  -webkit-app-region: drag;
+  transition: opacity var(--motion-startup-reveal) var(--motion-ease-out);
+}
+
+.startup-animation.is-revealing {
+  opacity: 0;
+  /* The shell underneath takes input for the whole fade, not after it. */
+  pointer-events: none;
+}
+
+/*
+ * `cover` (D679): a user's export almost never matches the window aspect, and
+ * a filled frame is what reads as a launch sequence. The trade is that the
+ * edges are cropped, which is why the setting copy says to keep the subject
+ * centred.
+ */
+.startup-animation-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Safari/Chromium paint a 1px seam at the edges of a scaled video. */
+  transform: scale(1.002);
+  pointer-events: none;
+}
+
+/*
+ * Progress affordance for a boot that outlasted the video. Absent for the
+ * first `STARTUP_ANIMATION_HOLD_HINT_MS` of black so a normal launch stays a
+ * clean cut, and borrowed from the splash so a slow boot looks the same
+ * whichever surface covered it.
+ */
+.startup-animation-track {
+  position: absolute;
+  bottom: 48px;
+  width: 120px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, #fff 8%, transparent);
+  animation: startup-splash-in var(--motion-duration-slow) var(--motion-ease-out) both;
+}
+
+.startup-animation-bar {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in oklab, #fff 55%, transparent);
+  animation: startup-bar 1.1s var(--motion-ease-standard) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /*
+   * The animation is not played at all under reduced motion (the renderer
+   * never mounts this surface), so these rules only cover a preference that
+   * changes mid-boot: the reveal becomes instant and the bar stops.
+   */
+  .startup-animation {
+    transition-duration: 0.01ms;
+  }
+  .startup-animation-track {
+    animation: none;
+  }
+  .startup-animation-bar {
+    animation: none;
+    width: 100%;
+    transform: none;
+    opacity: 0.55;
+  }
   .startup-splash,
   .startup-splash.is-exiting,
   .startup-splash-mark,
