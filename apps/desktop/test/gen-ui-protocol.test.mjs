@@ -292,7 +292,7 @@ test("scheme privileges: standard + secure only, registered in the single privil
   const schemes = await readMainModule("plugin-schemes.ts");
   assert.match(
     schemes,
-    /registerSchemesAsPrivileged\(\[\s*PLUGIN_ASSET_SCHEME_PRIVILEGES,\s*PLUGIN_RENDERER_SCHEME_PRIVILEGES,\s*GEN_UI_SCHEME_PRIVILEGES,\s*\]\)/,
+    /registerSchemesAsPrivileged\(\[\s*PLUGIN_ASSET_SCHEME_PRIVILEGES,\s*PLUGIN_RENDERER_SCHEME_PRIVILEGES,\s*GEN_UI_SCHEME_PRIVILEGES,\s*STARTUP_ANIMATION_SCHEME_PRIVILEGES,\s*\]\)/,
   );
   const startup = await readMainModule("bootstrap/startup.ts");
   const install = startup.indexOf("installGenUiProtocol({ getHost });");

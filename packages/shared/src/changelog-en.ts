@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Use your own video as the startup animation by dropping one into the startup folder; the interface fades in after it plays.",
       "Let plugins list saved projects and their folders without switching the active session.",
       "Use the Pi 1.3.0 agent engine with safer tool-call validation and replay.",
       "Enable optional inline visualizations in Settings → AI to view interactive, sandboxed cards inside conversations.",

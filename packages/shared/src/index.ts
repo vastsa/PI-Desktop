@@ -62,6 +62,7 @@ export * from "./gen-ui.js";
 export * from "./image-generation.js";
 export * from "./font-size.js";
 export * from "./chat-content-width.js";
+export * from "./startup-animation.js";
 export * from "./radial-menu.js";
 export * from "./racp.js";
 export * from "./trusted-extensions.js";
