@@ -10,7 +10,7 @@ window titles, no captured pixels, and no credentials.
 |---|---|---|
 | Contracts, settings, error codes | `packages/shared/src/computer-use.ts`, `errors.ts`, `protocol.ts` | Implemented, unit-covered |
 | Refusals, grant broker, platform contract | `crates/host-core/src/computer/` | Implemented, unit-covered |
-| macOS backend (`AXUIElement`, `CGWindowList`, `CGEventPostToPid`) | `crates/host-core/src/computer/macos.rs` | Implemented, compiled, **no device run** |
+| macOS backend (`AXUIElement`, `CGWindowList`, `CGEventPostToPid`) | `crates/host-core/src/computer/macos/` (`mod.rs` behaviour, `ffi.rs` C surface) | Implemented, compiled, **no device run** |
 | Windows and Linux backends | `crates/host-core/src/computer/backend.rs` | Explicit unsupported backend; stage 2 |
 | `computer.*` RPC and audit | `crates/host-core/src/rpc/computer_rpc.rs` | Implemented, not covered by an RPC-level test |
 | Bounded loop and action schema | `packages/computer-use/` | Implemented, unit-covered |
