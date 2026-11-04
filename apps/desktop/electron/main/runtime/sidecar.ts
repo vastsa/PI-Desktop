@@ -579,9 +579,10 @@ export function createSidecarRuntime({
     // Fake-IP tolerance belongs to the network policy, not to the proxy switch.
     allowFakeIp: () => relaxedNetworkPolicyEnabled(),
   }));
-  // Granted native application control (ADR 0342). The host authorises the
-  // call through `tools.execute` before this handler runs, and the loop here
-  // holds no grant of its own: it re-reads the live one on every observation.
+  // Granted native application control (ADR 0342, ADR 0344). The host
+  // authorises the call through `tools.execute` before this handler runs, and
+  // the loop here holds no grant of its own: it asks the host for the desktop
+  // grant and re-reads the live one on every observation.
   s.setLocalTool("Computer", createComputerUseTool({
     getHost: () => runtimeState.host,
     overlay: computerCursorOverlay,

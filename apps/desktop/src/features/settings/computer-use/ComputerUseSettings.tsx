@@ -4,7 +4,6 @@ import {
   COMPUTER_USE_DEFAULTS,
   type AppSettings,
   type ComputerCaptureMode,
-  type ComputerInputPolicy,
   type ComputerUseSettings as ComputerUseSettingsValue,
   type ProviderPublic,
   needsAccessibilityRequest,
@@ -16,12 +15,16 @@ import { api } from "../../../lib/api";
 import { useComputerPermission } from "../../computer-use/use-computer-permission";
 
 /**
- * Computer use settings (ADR 0342).
+ * Computer use settings (ADR 0342, ADR 0344).
  *
  * The three things only the user can decide live here: whether the capability
- * exists at all, which model may drive it, and whether a run may take pixels
- * of the window. Nothing here hands anything over — a grant is always minted
- * later, per target, from the indicator.
+ * exists at all, which model may drive it, and whether a run may take pixels.
+ * The switch is the consent — the agent mints its own desktop-scope grant once
+ * it is on — so the row says what that means rather than implying a later
+ * per-window decision that no longer exists.
+ *
+ * There is no input-approval row: `confirm-each` has no approval card behind it
+ * yet, and a control that narrows nothing would misrepresent the capability.
  */
 export function ComputerUseSettings({
   t,
@@ -64,6 +67,9 @@ export function ComputerUseSettings({
 
   const selectedModel = value.model ? `${value.model.providerId}\u0000${value.model.modelId}` : "";
   const unsupported = capabilities?.backend === "unsupported";
+  const accessibility = capabilities?.applicationAccessibility ?? capabilities?.accessibility;
+  const backendPermissionMissing = capabilities?.applicationAccessibility === "granted"
+    && capabilities.accessibility !== "granted";
 
   const patch = (next: Partial<ComputerUseSettingsValue>) =>
     void saveSettings({ computerUse: { ...value, ...next } });
@@ -77,6 +83,8 @@ export function ComputerUseSettings({
           onChange={() => patch({ enabled: !value.enabled })}
         />
       </SettingsRow>
+      {/* The scope is no longer a choice, so it has to be a statement. */}
+      <p className="settings-hint">{t("computerUse.scopeNote")}</p>
 
       {/* Readable before enabling: a platform without a backend should say so
           rather than let the user turn on a feature that cannot act. */}
@@ -96,11 +104,11 @@ export function ComputerUseSettings({
                   aria-busy={requesting}
                   onClick={() => { void requestPermission(); }}
                 >
-                  {requesting ? t("computerUse.requestingPermission") : t(`computerUse.permission.${capabilities.accessibility}`)}
+                  {requesting ? t("computerUse.requestingPermission") : t(`computerUse.permission.${accessibility}`)}
                 </Button>
               ) : (
-                <Badge tone={capabilities.accessibility === "granted" ? "neutral" : "warning"}>
-                  {t(`computerUse.permission.${capabilities.accessibility}`)}
+                <Badge tone={accessibility === "granted" ? "neutral" : "warning"}>
+                  {t(`computerUse.permission.${accessibility}`)}
                 </Badge>
               )}
             </>
@@ -110,10 +118,15 @@ export function ComputerUseSettings({
         </div>
       </SettingsRow>
       {(waiting || errorCode) && (
-        <p className="computer-use-picker-error" role="status">
+        <p className="computer-use-status-error" role="status">
           {errorCode
             ? t("computerUse.permissionRequestFailed", { code: errorCode })
             : t("computerUse.permissionPending")}
+        </p>
+      )}
+      {backendPermissionMissing && (
+        <p className="computer-use-status-error" role="status">
+          {t("computerUse.backendPermissionMissing")}
         </p>
       )}
 
@@ -135,18 +148,6 @@ export function ComputerUseSettings({
             />
           </SettingsRow>
           {!value.model && <div className="settings-hint">{t("computerUse.modelMissing")}</div>}
-
-          <SettingsRow title={t("computerUse.inputPolicy")} description={t("computerUse.inputPolicyDesc")}>
-            <SettingsMenuSelect
-              label={t("computerUse.inputPolicy")}
-              value={value.defaultInputPolicy ?? COMPUTER_USE_DEFAULTS.inputPolicy}
-              onChange={(next) => patch({ defaultInputPolicy: next as ComputerInputPolicy })}
-              options={[
-                { id: "confirm-each", label: t("computerUse.policyConfirmEach") },
-                { id: "autonomous-in-scope", label: t("computerUse.policyAutonomous") },
-              ]}
-            />
-          </SettingsRow>
 
           <SettingsRow title={t("computerUse.capture")} description={t("computerUse.captureDesc")}>
             <SettingsMenuSelect

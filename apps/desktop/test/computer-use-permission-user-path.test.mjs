@@ -29,6 +29,20 @@ let reads = [];
 let requests = [];
 let requestCount = 0;
 let readCount = 0;
+const permissionTimers = new Map();
+const nativeSetInterval = window.setInterval.bind(window);
+const nativeClearInterval = window.clearInterval.bind(window);
+let timerId = -1;
+window.setInterval = (callback, delay, ...args) => {
+  if (delay !== 1000) return nativeSetInterval(callback, delay, ...args);
+  const id = timerId--;
+  permissionTimers.set(id, callback);
+  return id;
+};
+window.clearInterval = (id) => {
+  if (!permissionTimers.delete(id)) nativeClearInterval(id);
+};
+Object.defineProperty(document, "hidden", { configurable: true, value: false });
 window.piDesktop = {
   on() { return () => {}; },
   async invoke(channel) {
@@ -80,12 +94,18 @@ window.computerPermissionProbe = async () => {
   reply();
   await until(() => !!button() && !button().disabled, "request button did not recover");
   check(message()?.textContent.includes("System Settings"), "still-missing permission has no manual-grant guidance");
+  await until(() => permissionTimers.size === 1, "permission follow-up timer missing");
+  capabilities.applicationAccessibility = "granted";
+  const beforePoll = readCount;
+  [...permissionTimers.values()][0]();
+  await until(() => document.body.textContent.includes("Accessibility granted"), "app grant did not update without a focus event");
+  check(readCount > beforePoll && !button(), "authorized app remained actionable");
+  check(message()?.textContent.includes("backend"), "backend denial was hidden behind the app grant");
+  await until(() => permissionTimers.size === 0, "granted app kept polling");
   capabilities.accessibility = "granted";
-  const beforeFocus = readCount;
   window.dispatchEvent(new Event("focus"));
-  await until(() => document.body.textContent.includes("Accessibility granted"), "returning from System Settings did not refresh permission");
-  check(readCount > beforeFocus && !button(), "granted permission remained actionable");
-  check(!message(), "waiting guidance remained after granting permission");
+  await until(() => !message(), "backend recovery did not clear the diagnostic");
+  delete capabilities.applicationAccessibility;
 
   capabilities.accessibility = "denied";
   window.dispatchEvent(new Event("focus"));
@@ -133,10 +153,19 @@ window.computerPermissionProbe = async () => {
   window.dispatchEvent(new Event("focus"));
   await until(() => !!button(), "unmount reset missing");
   flushSync(() => button().click());
+  reply();
+  await until(() => permissionTimers.size === 1, "bounded polling did not start");
+  for (let tick = 0; tick < 60; tick += 1) {
+    [...permissionTimers.values()][0]();
+    await settle();
+  }
+  check(permissionTimers.size === 0, "polling did not expire after 60 ticks");
+  flushSync(() => button().click());
   flushSync(() => rootNode.unmount());
   const afterUnmount = readCount;
   window.dispatchEvent(new Event("focus"));
   reply();
+  check(permissionTimers.size === 0, "unmounted settings retained a poll timer");
   await settle();
   check(readCount === afterUnmount, "unmounted settings retained focus listeners");
   return { passed: true, requestCount };
@@ -195,6 +224,6 @@ app.whenReady().then(async () => {
     assert.equal(code, 0, output.slice(-6000));
     const line = output.split(/\r?\n/).find((item) => item.startsWith("COMPUTER_PERMISSION_PROBE "));
     assert.ok(line, output.slice(-6000));
-    assert.deepEqual(JSON.parse(line.slice("COMPUTER_PERMISSION_PROBE ".length)), { passed: true, requestCount: 6 });
+    assert.deepEqual(JSON.parse(line.slice("COMPUTER_PERMISSION_PROBE ".length)), { passed: true, requestCount: 7 });
   } finally { await rm(temp, { recursive: true, force: true }); }
 });

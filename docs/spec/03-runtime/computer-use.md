@@ -2,19 +2,23 @@
 
 > Status: Stage 1 implemented, device-unverified. This page is the
 > authoritative contract for the capability described in
-> [ADR 0342](../../adr/0342-os-computer-use-capability.md). The agent is the
-> only caller; the spoken entry point is specified here and built in stage 3.
-> The refusals, the loop, and the tool's own paths are unit-covered; no real
-> application has been driven, and Windows and Linux report
+> [ADR 0342](../../adr/0342-os-computer-use-capability.md) and amended by
+> [ADR 0344](../../adr/0344-computer-use-whole-desktop-grant.md). The agent is
+> the only caller; the spoken entry point is specified here and built in
+> stage 3. The refusals, the loop, and the tool's own paths are unit-covered;
+> no real application has been driven, and Windows and Linux report
 > `COMPUTER_PLATFORM_UNSUPPORTED` until stage 2. See
 > [computer-use evidence](../../implementation/computer-use-evidence.md).
 
 ## Scope
 
-Computer Use lets the agent read and operate a native application the user has
-explicitly handed to it. It is disabled by default, it is separate from the
-embedded `Browser` tool, and it never operates the whole desktop at once: every
-call runs against one user-picked scope.
+Computer Use lets the agent read and operate the native applications on the
+user's machine. It is disabled by default and it is separate from the embedded
+`Browser` tool. Enabling it in Settings is the authorisation: from then on the
+agent may start a desktop-wide grant itself, work in one window at a time, and
+move between windows the host does not refuse (ADR 0344). The user is not asked
+which window, and the capability's bounds are the refusals, the action budget,
+the idle expiry, and Stop.
 
 The spoken entry point is deliberately not wired in stage 1. When it lands,
 Live Voice gains no authority of its own — a spoken request becomes a work
@@ -27,32 +31,34 @@ delegation, not per-frame teleoperation.
 | Surface | Owner | Reach |
 |---|---|---|
 | `Browser` tool (`pi.browser`, ADR 0170) | Bundled plugin over allowlisted CDP | The embedded `WebContentsView` guest only |
-| `Computer` tool (this page) | Electron main, gated by host-core | One granted native window or application |
+| `Computer` tool (this page) | Electron main, gated by host-core | Every native window the host does not refuse, one bound at a time |
 | Live Voice | Electron main and renderer | Audio, transcript, and work delegation; no input synthesis |
 
 ## Ownership and process model
 
 ```text
-Renderer (picker, indicator, cursor overlay)
+Renderer (indicator with Stop, cursor overlay)
   → Preload IPC → Electron Main
-       Computer tool handler, bounded loop, bound-model call,
-       scope-cropped capture, overlay driver
+       Computer tool handler, automatic grant request, bounded loop,
+       bound-model call, scope-cropped capture, overlay driver
     → Rust host-core `computer.*`
-       targets, accessibility, synthesis, grant broker, re-validation, audit
+       targets, accessibility, synthesis, grant broker, window binding,
+       re-validation, Stop cooldown, audit
 ```
 
 host-core owns target enumeration, accessibility inspection, event synthesis,
-the grant broker, the action budget, the per-action re-validation, and the audit
-record. It is the only component that can refuse. The loop and the capture sit
-in Electron main because the loop needs a model provider and the capture needs
-Chromium, and host-core carries neither ([05-host-core-rust](05-host-core-rust.md) §3).
+the grant broker, which window a grant is bound to, the action budget, the
+per-action re-validation, and the audit record. It is the only component that
+can refuse. The loop and the capture sit in Electron main because the loop needs
+a model provider and the capture needs Chromium, and host-core carries neither
+([05-host-core-rust](05-host-core-rust.md) §3).
 
 The renderer never receives a native window handle, a native element reference,
-or an input primitive; it receives the picker's display list, the indicator's
-grant view, and the overlay's draw commands. The agent sidecar reaches the tool
-exclusively through `tools.execute` on the existing `host.proxy` allowlist — no
-new proxy method is added, and `computer.*` is not a plugin host API and does
-not appear in the plugin permissions matrix.
+or an input primitive; it receives the indicator's grant view and the overlay's
+draw commands, and it cannot mint a grant or enumerate windows at all. The agent
+sidecar reaches the tool exclusively through `tools.execute` on the existing
+`host.proxy` allowlist — no new proxy method is added, and `computer.*` is not a
+plugin host API and does not appear in the plugin permissions matrix.
 
 `Computer` follows the `GenerateImages` shape: host-core classifies it `high`
 and performs the permission evaluation through `tools.execute`, and the handler
@@ -60,34 +66,52 @@ in main runs only after the host authorises the call.
 
 ## Grant and scope
 
-A **scope grant** is the unit of authority. Only the user mints one, and only
-through the host-driven picker.
+A **scope grant** is the unit of authority. Since ADR 0344 the `Computer` tool
+handler mints it automatically, with no target, on the first call of a session
+that has no live grant.
 
 | Field | Meaning |
 |---|---|
 | `grantId` | Identity of this grant; appears in every tool result and audit row |
-| `target` | Exactly one window, or one application's windows, chosen in the picker |
-| `revision` | Incremented whenever the measured target geometry or identity changes |
-| `inputPolicy` | `confirm-each` or `autonomous-in-scope` |
-| `capture` | `a11y-only` or `a11y-and-pixels` |
+| `scope` | `desktop` (automatic, rebindable) or `window` (pinned to one window) |
+| `target` | The one window bound right now — never the whole scope |
+| `revision` | Incremented whenever the bound window's geometry or identity changes, including every rebind |
+| `inputPolicy` | `autonomous-in-scope` (default) or `confirm-each` (specified, not built) |
+| `capture` | `a11y-only` (default) or `a11y-and-pixels` |
 | `actionBudget` | Remaining input actions before the grant closes |
 | `idleExpiry` | Wall-clock bound; a grant with no action closes itself |
 
 Rules:
 
-- The model cannot name, enumerate, request by title, or widen a target. There
-  is no "list windows" and no "switch target" action. A call that resolves
-  outside the granted scope is an error, not a prompt to expand.
+- A `desktop` grant starts bound to the frontmost window the host does not
+  refuse, and may be rebound to any other window the host does not refuse. A
+  `window` grant is pinned: a rebind request is a scope violation. Nothing in
+  the UI mints a `window` grant today.
+- Binding runs the full refusal set — self-target, denylist, elevation — against
+  a fresh enumeration, and always moves the revision, so every `uid` and
+  coordinate `basis` from the previous window stops validating. `computer.act`
+  never binds; it acts on the window the last inspection described or refuses.
+- If the bound window disappears, a `desktop` grant falls back to the frontmost
+  usable window and an action already in flight is refused with
+  `COMPUTER_STALE_REVISION`, even when the caller pinned no revision. A `window`
+  grant is revoked instead: nothing it described still exists.
+- The model may ask to switch to a window the host listed, and may not invent
+  one. It cannot widen the scope, raise a budget, or disable a refusal, and a
+  refused window reported to it is a step, not a retry loop.
 - There is at most one active grant per desktop instance, mirroring the single
   Live Voice call slot. A grant belongs to the session and turn chain that owns
   it; a subagent inherits the active grant and cannot create a second one.
-- Creating a grant is an explicit desktop-UI decision with no automatic
-  deadline (ADR 0310). Permission mode `auto` does not mint grants, and a
-  spoken request cannot: a call may ask for one, which raises the card in the
-  main window while the floating call bar reports that the app needs attention.
-- The user can always revoke: the indicator's Stop, the global shortcut, closing
-  the target, or disabling the feature. Revocation is immediate and terminates
-  an in-flight action's remaining steps.
+- Enabling the feature is the user's decision and has no automatic deadline
+  (ADR 0310). Every permission mode behaves the same way. When the spoken path
+  lands (stage 3) it adds no authority of its own: a spoken request becomes a
+  work request on a session, and that session's turn gets the same automatic
+  grant and the same refusals as a typed one.
+- The user can always revoke: the indicator's Stop, closing the target, or
+  disabling the feature. Stop revokes the grant **and** aborts the turn that
+  holds it, and host-core refuses an agent-minted grant with
+  `COMPUTER_STOPPED_BY_USER` for 30 seconds afterwards — otherwise the next
+  tool call in the same turn would simply mint another grant. A user-minted
+  grant clears the cooldown immediately.
 - Grants are never persisted. A restart, a renderer reload, or a window
   navigation leaves no grant behind.
 
@@ -108,6 +132,10 @@ A user-editable application denylist sits on top of these. Its built-in
 credential-surface entries — the platform keychain and credential UI, and the
 OS authentication dialogs — cannot be removed.
 
+These refusals define the desktop scope rather than punching holes in it: "the
+whole desktop" means every window the host does not refuse, re-checked on every
+bind, so a refused window never becomes reachable by waiting or by switching.
+
 ## Tool contract
 
 `Computer` is a builtin high-risk tool, not a plugin tool, so its blast radius
@@ -118,8 +146,8 @@ back.
 
 The agent calls it with one natural-language `instruction` and an optional
 `maxSteps`; `observeOnly` returns a description of the scope without acting. It
-takes no `uid`, no coordinate, and no target: addressing is the inner loop's
-job, and the target is the grant's. The result is a bounded summary naming what
+takes no `uid`, no coordinate, and no window: addressing is the inner loop's
+job, and which window is bound is the host's. The result is a bounded summary naming what
 changed, how many steps ran, and why the loop stopped — not a step-by-step
 transcript.
 
@@ -129,10 +157,10 @@ Underneath, main drives these host operations. They are not agent-facing.
 |---|---|---|
 | `computer.capabilities` | low | Backend identity, fidelity, per-platform OS permission state, session type |
 | `computer.requestPermission` | low | Ask the OS for Accessibility from the trusted Settings window; returns capabilities, never a scope grant; unsupported backends refuse |
-| `computer.listTargets` | low | Pickable windows for the picker only; refused targets are listed with their reason, never silently dropped |
-| `computer.grantCreate` / `grantRevoke` / `grantDescribe` | low | Mint, revoke, and read the single active grant; minting requires the user's picker choice |
-| `computer.inspect` | low | Structured accessibility tree of the scope: role, name, value presence, enabled, focused, bounds, per-grant opaque `uid`, declared fidelity |
-| `computer.act` | high | One validated action addressed by `uid`, or by coordinates against a `basis`, after re-measuring the scope |
+| `computer.listTargets` | low | Every enumerable window, with refused ones carrying their reason, never silently dropped; main shows it to the loop, never to the renderer |
+| `computer.grantCreate` / `grantRevoke` / `grantDescribe` | low | Mint, revoke, and read the single active grant; `origin: agent` is subject to the Stop cooldown, and an absent `targetId` mints the desktop scope |
+| `computer.inspect` | low | Structured accessibility tree of the bound window: role, name, value presence, enabled, focused, bounds, per-grant opaque `uid`, declared fidelity; an optional `targetId` binds another window first |
+| `computer.act` | high | One validated action addressed by `uid`, or by coordinates against a `basis`, after re-measuring the bound window |
 
 `computer.act` supports `click`, `double_click`, `right_click`, `set_value`,
 `press_keys`, `scroll`, and `select`. Each is dispatched through the platform
@@ -172,20 +200,25 @@ their computer, and what that costs.
 
 The loop is a pure module in `packages/computer-use`, independent of Electron:
 
-1. Observe: the accessibility tree for the scope, plus a scope-cropped capture
-   when the grant allows pixels, plus the grant view.
+1. Observe: the accessibility tree for the bound window, the host's window list
+   with its refusals, a scope-cropped capture when the grant allows pixels, and
+   the grant view.
 2. Decide: one request to the bound model, which must answer with exactly one
-   action against a strict schema, or `done`, or `ask`.
+   action against a strict schema, or `switch`, or `done`, or `ask`.
 3. Validate: the schema, then the `uid` against the current tree, the
    coordinates against the measured geometry, the grant revision, and the
    remaining budget. Anything outside the schema is a refusal, not an attempt.
-4. Act: one `computer.act`, then observe again.
+4. Act: one `computer.act`, then observe again. A `switch` instead re-observes
+   through the host with a `targetId`: it spends a loop step, never an action
+   budget, and a refusal from the host is recorded as that step rather than
+   ending the run.
 
 The loop stops on `done`, on the step limit (the call's `maxSteps` clamped by
 the grant's action budget), on revocation, on expiry, or on repeated failure of
 the same step. Model prose never reaches a tool result unparsed: the summary is
-assembled from what the loop actually did. Nothing in the model's answer can
-widen the scope, change the target, raise the budget, or disable a refusal.
+assembled from what the loop actually did, and a switch is never counted as
+work done on the machine. Nothing in the model's answer can widen the scope,
+reach a refused window, raise the budget, or disable a refusal.
 
 ## The agent's cursor is drawn, not stolen
 
@@ -205,22 +238,24 @@ the grant.
 
 ## Permission flow
 
-The permission mode governs the grant, not each keystroke.
+The Settings switch governs the capability; the permission mode does not narrow
+it (ADR 0344).
 
 | Stage | `ask` | `accept-edits` | `auto` |
 |---|---|---|---|
-| Create a grant | confirm (desktop UI) | confirm (desktop UI) | confirm (desktop UI) |
-| Inspect, capture, and describe the scope in an active grant | allow | allow | allow |
-| An input action under `confirm-each` | confirm per step | confirm per step | confirm per step |
-| An input action under `autonomous-in-scope` | unavailable | allow | allow |
+| Create a grant | automatic, on the agent's first call | automatic | automatic |
+| Inspect, capture, switch window, and describe the scope | allow | allow | allow |
+| An input action under `autonomous-in-scope` (default) | allow | allow | allow |
+| An input action under `confirm-each` | not implemented | not implemented | not implemented |
+| A new grant within 30s of Stop | `COMPUTER_STOPPED_BY_USER` | same | same |
 | Plan / Goal | hard deny | hard deny | hard deny |
 
-`confirm-each` is the default and the only input policy available under `ask`.
-`autonomous-in-scope` requires explicit opt-in at grant time. Both policies stay
-inside the action budget, the idle expiry, the per-action scope re-validation,
-and the kill switch. An `allow-session` grant for `Computer` does not exist: the
-scope grant already is the session-scoped decision, and a tool-name grant would
-outlive the target it was approved for.
+`autonomous-in-scope` is the default under every mode. `confirm-each` stays in
+the settings contract but has no approval card behind it, so Settings does not
+offer it: a control that narrows nothing would misdescribe the capability. Runs
+stay inside the action budget, the idle expiry, the per-action re-validation,
+and Stop. An `allow-session` grant for `Computer` does not exist: the scope
+grant already is the session-scoped decision.
 
 ## Platform support
 
@@ -244,8 +279,14 @@ never a no-op reported as success.
 
 ## Settings and UX surface
 
-- Computer Use is off by default. Enabling it does not create a grant, request
-  an OS permission, capture a frame, or enumerate a window.
+- Computer Use is off by default. Enabling it does not itself request an OS
+  permission, capture a frame, or enumerate a window — but it does authorise the
+  agent to start a desktop-wide grant on its next `Computer` call, so the row
+  says that instead of describing a later handover.
+- Settings states the scope rather than offering it: one window at a time, the
+  agent may switch, PI-Desktop's own windows and credential surfaces are never
+  reachable, and Stop ends the run. There is no input-approval row while
+  `confirm-each` has no card behind it.
 - The model binding is explicit. Settings offers the provider rows the user
   already configured; an enabled feature with no binding is a visible
   unconfigured state, not a silent fallback to the conversation model.
@@ -255,8 +296,11 @@ never a no-op reported as success.
   presented as a broken feature.
 - On macOS, missing Accessibility is a keyboard-accessible button in Settings,
   available even while Computer Use is off. Only clicking it invokes
-  `pi-desktop/computer/permission/request` → `computer.requestPermission` →
-  `AXIsProcessTrustedWithOptions` with the OS prompt option. If still untrusted,
+  `pi-desktop/computer/permission/request`. Main checks and prompts the app's
+  own TCC identity using `systemPreferences.isTrustedAccessibilityClient`.
+  The host's `computer.requestPermission` remains a backend-only API; desktop
+  settings does not prompt through the differently-attributed Rust process.
+  If still untrusted,
   main opens the fixed Accessibility pane in System Settings; the user must
   enable the switch. This never grants trust automatically or hands over a
   target. macOS cannot distinguish an unrequested grant from a denied grant
@@ -268,26 +312,41 @@ never a no-op reported as success.
   unmount removes listeners and discards pending results. Granted and unsupported
   permission states remain labels, not request buttons. The request IPC rejects
   non-main-window senders, and no `host.proxy` allowlist entry is added.
-- The target picker is host-driven and shows the display list only while it is
-  open. It is the only way to choose a target.
-- The grant indicator is visible for the whole life of a grant, names the
-  target, shows the remaining budget and the capture mode, and carries Stop. It
-  stays visible while the app is in the background.
-- The grant card states, before approval, which capture mode is being approved
-  and that `a11y-and-pixels` means screenshots of the target may enter the
-  session transcript.
-- The cursor overlay appears with the first action of a grant and closes with
-  the grant.
+- Desktop capabilities add optional `applicationAccessibility`, queried afresh in
+  main. `accessibility` retains its existing meaning: the backend's OS trust.
+  Settings uses the app state when present, falling back to the backend field for
+  older hosts. If the app is granted but the backend is not, show the granted
+  badge with an explicit backend-permission diagnostic. The main-process reading
+  is display-only: it is never sent to host-core as authority and cannot bypass
+  its inspection, grant, or input checks. Adhoc builds can have distinct app and
+  executable-path identities in TCC; a checked app entry is not evidence that
+  the backend can act.
+- After a request remains ungranted, poll capabilities once per second for up
+  to 60 ticks while the page is visible. Never prompt from a poll. Stop the
+  timer on app authorization or unmount. Focus/visibility rechecks remain active
+  after polling expires, and pending requests are never duplicated.
+- There is no target picker and no grant card. The renderer cannot enumerate
+  windows or mint a grant, so neither surface exists to be bypassed.
+- The grant indicator is visible for the whole life of a grant, names the window
+  bound right now and follows every rebind, shows the remaining budget and the
+  capture mode, and carries Stop. It stays visible while the app is in the
+  background, and it is absent whenever no grant is live.
+- Stop revokes the grant and aborts the turn that holds it when that turn
+  belongs to the session on screen. It never aborts another session's work.
+- The cursor overlay appears with the first observation of a grant, re-frames
+  the window on a switch, and closes with the grant.
 
-Component-level wording for the picker, the indicator, the grant card, the
-overlay, and the doctor view lands with the implementing change.
+Component-level wording for the indicator, the overlay, and the doctor view
+lands with the implementing change.
 
 ## Audit and privacy
 
-Every grant and every action is audited through the existing `audit.*` sink:
-grant identity, target identity, action kind, element role and `uid`, and
-outcome. Typed text is recorded as a length, never as a value. Pixels are never
-written to the audit log.
+Every grant, rebind, and action is audited through the existing `audit.*` sink:
+grant identity, scope, who minted it (`agent` or `user`), target identity,
+action kind, element role and `uid`, and outcome. A rebind appends
+`computer.grant.rebound` with the application it moved to, so the trail shows
+which applications a desktop grant actually touched. Typed text is recorded as a
+length, never as a value. Pixels are never written to the audit log.
 
 Screenshots that reach the model are tool images on the existing lossless
 tool-image storage path, cropped to the granted scope and downscaled; under
@@ -314,6 +373,10 @@ answer outside the action schema, and timeout.
   coordinate clamping, budget and expiry closure, single-grant exclusivity,
   Plan/Goal denial, the unsupported-platform path, the missing-binding path,
   and a model answer outside the action schema.
+- The desktop scope adds: the frontmost-usable bind, a desktop with no usable
+  window, a rebind re-applying every refusal, a window grant refusing a rebind,
+  the closed-window fallback refusing the in-flight action, and the Stop
+  cooldown refusing an agent-minted grant while allowing a user-minted one.
 - The loop is covered without a provider: the model call is injected, so the
   schema, the validation, the step limits, and the stop conditions are unit
   tested against scripted answers including malformed and adversarial ones.

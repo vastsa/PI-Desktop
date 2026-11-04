@@ -384,12 +384,12 @@ test("icon failures and oversized icons never fail the scan", async () => {
   assert.equal(state.iconRequests, 3);
 });
 
-test("the icon budget is 32 KiB so a large native icon still fits", () => {
+test("the icon budget is 32 KiB and startup uses the stable small native icon", () => {
   assert.equal(LOCAL_APP_MAX_ICON_BYTES, 32_768);
-  // The small variant reads as a blurry square on the launcher's tiles.
+  // The large lookup triggered a native startup SIGTRAP on macOS.
   assert.match(
     readMainModuleSync("local-apps.ts"),
-    /app\.getFileIcon\(target, \{ size: "large" \}\)/,
+    /app\.getFileIcon\(target, \{ size: "small" \}\)/,
   );
 });
 

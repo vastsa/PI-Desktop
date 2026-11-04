@@ -1,5 +1,23 @@
 # 04. E2E Test Plan
 
+## E2E-COMPOSER-DIRECTORY-PASTE: Native folder cards and lazy context
+
+- **Preconditions**: Synthetic folders/files with spaces, Unicode and XML-significant names.
+- **Steps**: Copy and paste single/multiple folders and mixed files in home and
+  session composers. Remove cards by mouse/keyboard, undo/redo and restore drafts
+  from history. Edit or switch sessions while metadata resolves; delete the owner.
+  Send and steer with folder cards. Repeat ordinary text/image/file pastes.
+- **Expected**: Localized folder cards expose full paths and removal. Selection
+  order and source ownership survive, preserving newer edits. Removed cards send
+  no hint. Both send paths carry escaped dir markers and one inspect/read-as-needed
+  instruction. No directory arrayBuffer, traversal, recursive copy, Project change
+  or filesystem grant occurs. Unavailable paths fail without partial references.
+- **Status**: Parser/handler/editor/serialization tests cover deterministic cases.
+  `pnpm test:e2e:composer-paste` uses synthetic file-list metadata to verify
+  folder insertion and removal across the Electron preload bridge. Native OS
+  clipboard verification remains a manual scenario.
+
+
 > Scope: MVP acceptance scenarios plus current shipped product increments for PI-Desktop
 > Status: Accepted (protocol/Electron automation is active; full desktop Playwright remains planned)
 > Cross-references: [acceptance-criteria](02-acceptance-criteria.md) · [milestones](01-mvp-milestones.md) · [ai-development-workflow](03-ai-development-workflow.md) · [change-checklist](05-change-checklist.md)
@@ -1141,7 +1159,9 @@ The minimum selection is:
 
 - Cross-cutting runtime, host, or IPC: `pnpm test:e2e`.
 - Electron startup, preload, or window lifecycle: `pnpm test:e2e` and
-  `pnpm test:e2e:boot`.
+  `pnpm test:e2e:boot`. For packaged-startup regressions, also run
+  `node scripts/e2e-electron-boot.mjs <packaged-executable>` against the
+  installed-layout artifact with an isolated profile.
 - Session-list refresh or model capability lookup: `pnpm test:e2e` and
   `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
 - Settings/composer/plugin search theme surfaces: `pnpm build:js` followed by
@@ -2847,19 +2867,24 @@ identify the platform validation still needed.
 - **Steps**: 1) Click New Task (sidebar, top bar, or Cmd/Ctrl+N). 2) Observe
   the chat surface on the next frame, before the new sidebar row is required
   to exist. 3) Type in the composer during that interval. 4) Wait for the new
-  row and send.
+  row and send. Also send while creation is still pending, and overlap two
+  first-input materialization requests with the host response delayed.
 - **Expected**: A's transcript is gone on the first frame (empty home, idle
   Send). The composer does not stay on A's draft. After `session.create` the
   same empty session is selected, any text typed during the wait belongs to
   that session, and sending does not create a second row. Repeating New Task
   before sending reuses the row. The host is not asked to `session.list` or
-  `session.get` before the empty destination is visible.
+  `session.get` before the empty destination is visible. Overlapping inputs
+  share one creation and its session id; the first send does not invalidate
+  New Task navigation. Superseded creation returns no target to waiting inputs,
+  and a failed create releases the slot so retry can succeed.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` (§1.6),
   `04-ux/08-component-spec.md` (§11), ADR 0154
 - **Acceptance**: C (session creation), Quality
 - **Milestone**: M2
-- **Status**: Source-level regression covered (`session-create.test.mjs`,
-  `session-switch-performance.test.mjs`); full UI scenario Draft
+- **Status**: `pnpm test:e2e:composer-paste` covers first Send, oversized
+  paste, and navigation cancellation with a delayed create reply over the
+  Electron preload bridge. Source-level tests also cover create failure and retry.
 
 
 #### Composer file-reference undo regression
@@ -8051,7 +8076,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   support aborting during the wait. A builtin subagent uses a
   fixture with the same responses. Billing/account-exhaustion fixtures also
   return HTTP 429 with `insufficient_quota`, `credit_balance_exhausted`,
-  organization usage-limit, and spend-limit codes.
+  organization usage-limit, spend-limit, and OpenCode Zen
+  `FreeUsageLimitError` codes.
 - **Steps**:
   1. Start an Agent turn with a setup-429 fixture whose next request succeeds.
   2. Repeat with a mid-stream-429 fixture whose next request succeeds.
@@ -8074,8 +8100,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - Explicit billing/account exhaustion is terminal `PROVIDER_ERROR` even
     when returned with HTTP 429, including `insufficient_quota`,
     `credit_balance_exhausted`, organization usage-limit, and organization/
-    project spend-limit codes. It starts no retry and consumes neither retry
-    budget.
+    project spend-limit codes, and OpenCode Zen's `FreeUsageLimitError`.
+    It retains the provider's message and status, starts no retry, and
+    consumes neither retry budget.
   - Setup and mid-stream failures share one budget of ten retries after the
     initial attempt. A persistent fixture therefore makes eleven provider
     attempts, never multiplies attempts through nested pi-ai retries, and
@@ -19695,7 +19722,7 @@ their separate platform acceptance.
   rendered Electron journey above — grouped grid, content height, resize,
   restart, and the panel payload round trip — is Draft until a launcher E2E
   script exists.
-## Computer use (ADR 0342)
+## Computer use (ADR 0342, ADR 0344)
 
 Native-control scenarios remain landing gates for
 [03-runtime/computer-use](../03-runtime/computer-use.md). Their underlying
@@ -19712,13 +19739,18 @@ The permission-request UI below has isolated fixture automation.
   retry, a stale capabilities read, focus during a pending request, unsupported
   platform, and unmount during a request.
 - **Expected**: Opening Settings or toggling the feature never requests OS
-  permission. Explicit click alone sends `computer.requestPermission`; while
-  pending, the button is busy/disabled and duplicate clicks are ignored. Missing
-  trust opens only the fixed macOS Accessibility pane and explains that the user
-  must enable it. Errors are visible and retryable. Focus/visibility refreshes
-  without prompting; stale results and unmounted listeners cannot update UI.
-  Granted/unsupported states are labels. Non-main senders are rejected before
-  OS calls; opening failure propagates; no grant, capture, or input is dispatched.
+  permission. Explicit click alone requests the app's own TCC trust in main;
+  while pending, the button is busy/disabled and duplicate clicks are ignored.
+  Missing app trust opens only the fixed macOS Accessibility pane and explains
+  that the user must enable it. Errors are visible and retryable. Focus and
+  visibility refreshes never prompt. Controlled one-second polling after a
+  request detects authorization without a focus event, stops on authorization
+  or unmount, and expires after 60 ticks. Stale reads cannot replace newer state.
+  An app-level grant updates the badge even when the Rust child still reports
+  denied: show a backend-permission diagnostic instead of another request.
+  Backend recovery clears the diagnostic without granting any authority from UI.
+  Granted/unsupported states are labels. Non-main senders are rejected before OS
+  calls; opening failure propagates; no grant, capture, or input is dispatched.
 - **Automation**: `node --test apps/desktop/test/computer-use-permission-user-path.test.mjs
   apps/desktop/test/computer-use-permission-ipc.test.mjs`; shared capability
   selection tests and host-core unsupported-backend tests cover platform gating.
@@ -19726,31 +19758,67 @@ The permission-request UI below has isolated fixture automation.
 - **Status**: Fixture automation PASS; actual macOS TCC prompt/switch NOT RUN.
   Native OS approval remains a manual system decision.
 
-### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
+### E2E-COMPUTER-USE-desktop-grant-is-automatic-and-stoppable
 
-- **Preconditions**: Isolated desktop profile, computer use enabled, OS
-  permissions granted on the platform under test, one fixture target
-  application, no provider account needed.
-- **Steps**: Ask the agent to operate the target before any grant exists. Mint a
-  grant through the picker, run `describe_scope`, `inspect`, and one `act`.
-  Press Stop in the indicator mid-task. Mint a second grant from another session
-  while the first is active. Let a grant idle past its expiry, and exhaust an
-  action budget.
-- **Expected**: The first request fails `COMPUTER_NO_GRANT` without an OS prompt
-  or capture. The grant appears in the indicator with target, budget, and
-  capture mode, and stays visible while the app is backgrounded. Stop terminates
-  the remaining steps immediately. The second grant is refused
-  `COMPUTER_GRANT_IN_USE`. Idle expiry and budget exhaustion close the grant with
-  their own codes, and no grant survives a restart.
+- **Preconditions**: Isolated desktop profile, computer use enabled with a model
+  bound, OS permissions granted on the platform under test, two fixture target
+  applications, one PI-Desktop window in front, no provider account needed.
+- **Steps**: Ask the agent to operate an application with no grant in existence.
+  Watch the indicator, run `inspect` and one `act`. Press Stop mid-task and have
+  the agent immediately call `Computer` again. Wait out the cooldown and call
+  again. Ask from a second session while the first grant is active. Let a grant
+  idle past its expiry, and exhaust an action budget. Restart the app.
+- **Expected**: No picker appears and the user is never asked which window: the
+  first call mints a desktop grant bound to the frontmost window that is not
+  PI-Desktop's, with no OS prompt and no capture under `a11y-only`. The
+  indicator names that window, shows budget and capture mode, follows every
+  rebind, and stays visible while the app is backgrounded. Stop revokes the
+  grant, aborts the owning turn, and the immediate re-call fails
+  `COMPUTER_STOPPED_BY_USER` without touching the screen; after the cooldown a
+  new grant is minted normally. The second session is refused
+  `COMPUTER_GRANT_IN_USE`. Idle expiry and budget exhaustion close the grant
+  with their own codes, and no grant survives the restart.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [03-tools-and-permissions](../03-runtime/03-tools-and-permissions.md).
-- **Automation**: `computer::tests::only_one_grant_is_active_per_instance`,
+- **Automation**: `computer::tests::a_desktop_grant_binds_the_frontmost_usable_window`,
+  `a_desktop_grant_refuses_when_every_window_is_refused`,
+  `a_user_stop_blocks_the_agents_next_mint_but_not_the_users`,
+  `only_one_grant_is_active_per_instance`,
   `another_session_cannot_use_the_active_grant`,
   `an_idle_grant_expires_and_stays_expired`, and
   `the_budget_closes_the_grant_and_refuses_the_next_action` in host-core;
-  `apps/desktop/test/computer-use-service.test.mjs` covers the no-grant and
-  wrong-session refusals the agent would hit.
-- **Status**: NOT RUN — needs a real window and the picker.
+  `apps/desktop/test/computer-use-service.test.mjs` covers the automatic mint,
+  the Stop refusal, and the wrong-session refusal the agent would hit.
+- **Status**: NOT RUN — needs a real window and a real turn to abort.
+
+### E2E-COMPUTER-USE-window-switching-stays-inside-the-refusals
+
+- **Preconditions**: Isolated desktop profile with an active desktop grant, two
+  fixture applications, a PI-Desktop window, a window from the built-in
+  credential denylist, and one fixture window that can be closed on demand.
+- **Steps**: Have the agent read the window list, switch to the second fixture
+  application, inspect it, and act. Attempt a switch to the PI-Desktop window,
+  to the denylisted window, and to an id that no longer exists. Act using a
+  `uid` read before the switch. Close the bound window mid-task and act.
+- **Expected**: The observation lists the windows the host enumerated with
+  refusals attached, and no renderer surface enumerates anything. A permitted
+  switch rebinds the grant, moves the revision, re-frames the drawn cursor, and
+  spends a step but no action budget. The refused switches fail
+  `COMPUTER_SELF_TARGET_REFUSED`, `COMPUTER_TARGET_DENYLISTED`, and
+  `COMPUTER_SCOPE_VIOLATION`, leave the bound window unchanged, and are reported
+  to the model as steps rather than ending the run. A pre-switch `uid` fails
+  `COMPUTER_STALE_REVISION`. The closed window rebinds to the frontmost usable
+  window while the in-flight action is refused, and the audit log shows one
+  `computer.grant.rebound` per move with application identity only.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [05-security/01-security](../05-security/01-security.md) §13.
+- **Automation**: `computer::tests::binding_another_window_moves_the_revision`,
+  `a_rebind_re_applies_every_refusal`, `a_window_grant_refuses_a_rebind`, and
+  `a_desktop_grant_whose_window_closes_rebinds_and_refuses_the_action` in
+  host-core; `packages/computer-use` loop tests cover the switch step, the
+  refused-switch recovery, and the terminal-grant case;
+  `apps/desktop/test/computer-use-service.test.mjs` pins the host call shape.
+- **Status**: NOT RUN — needs real windows to switch between.
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -19769,7 +19837,7 @@ The permission-request UI below has isolated fixture automation.
   image, tool result, or log. The built-in denylist entry cannot be removed.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [05-security/01-security](../05-security/01-security.md) §13.
-- **Automation**: `computer::tests::our_own_windows_are_never_pickable`,
+- **Automation**: `computer::tests::our_own_windows_are_never_targetable`,
   `a_renamed_self_process_is_still_refused`,
   `built_in_credential_surfaces_cannot_be_allowlisted`, and
   `secure_input_refuses_both_inspection_and_action` in host-core.
@@ -19795,20 +19863,23 @@ The permission-request UI below has isolated fixture automation.
   `a_coordinate_action_without_a_basis_is_refused` in host-core.
 - **Status**: NOT RUN — needs a real window that moves mid-step.
 
-### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
+### E2E-COMPUTER-USE-voice-request-adds-no-authority-of-its-own
 
 - **Preconditions**: Isolated desktop profile, a Live Voice fixture adapter with
-  a bound work session, computer use enabled with no active grant, no real
-  provider account or microphone.
+  a bound work session, no real provider account or microphone. One run with
+  computer use disabled, one with it enabled.
 - **Steps**: Deliver a spoken request that asks the agent to operate an
-  application. Repeat after a user mints a grant in the desktop UI. Repeat with
-  the session in Plan and in Goal.
-- **Expected**: The first request produces a desktop-UI grant request, not a
-  grant: the card appears in the main window, the call bar reports that the app
-  needs attention, and no capture or synthesis happens before the user decides.
-  After a grant exists, the request runs as an ordinary Agent turn under the
-  session's policy, with progress spoken through the existing work-feedback
-  channel. Plan and Goal deny the tool before permission evaluation.
+  application, with the feature disabled and then enabled. Repeat with the
+  session in Plan and in Goal. Press Stop during a spoken run and repeat the
+  spoken request immediately.
+- **Expected**: With the feature disabled the request fails
+  `COMPUTER_DISABLED`; voice cannot enable it, and nothing is captured or
+  synthesized. With it enabled the request runs as an ordinary Agent turn under
+  the session's policy and the same automatic desktop grant the typed path gets
+  (ADR 0344) — voice adds no authority and skips no refusal — with progress
+  spoken through the existing work-feedback channel. Plan and Goal deny the tool
+  before permission evaluation. A spoken retry inside the Stop cooldown fails
+  `COMPUTER_STOPPED_BY_USER`.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [live-voice](../03-runtime/live-voice.md),
   [live-work-session](../03-runtime/live-work-session.md).
@@ -19820,9 +19891,10 @@ The permission-request UI below has isolated fixture automation.
 
 - **Preconditions**: One run per supported platform plus a Wayland session and a
   platform with the OS permission denied.
-- **Steps**: Enable the feature and open the doctor view on each platform. Mint a
-  grant and act. On Windows, target a window owned by a higher-integrity
-  process. On Wayland, attempt input and then capture. On a platform with Screen
+- **Steps**: Enable the feature and open the doctor view on each platform. Have
+  the agent call `Computer` so a grant is minted, and act. On Windows, bind a
+  window owned by a higher-integrity process. On Wayland, attempt input and then
+  capture. On a platform with Screen
   Recording or Accessibility denied, attempt inspection and capture.
 - **Expected**: The doctor view distinguishes "not requested", "denied", and
   "unsupported on this platform". Input on Wayland fails

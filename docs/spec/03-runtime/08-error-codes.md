@@ -364,6 +364,7 @@ means the host will retry, and it never widens a scope.
 | `COMPUTER_NOT_CONFIGURED` | no | computer use is enabled but no model binding is configured |
 | `COMPUTER_ACTION_REJECTED` | no | the bound model answered outside the action schema, or named an element, coordinate, or target the validation refused |
 | `COMPUTER_NO_GRANT` | no | no active scope grant owns this session and turn chain |
+| `COMPUTER_STOPPED_BY_USER` | yes | the user stopped computer use; an agent-minted grant is refused until the cooldown ends (ADR 0344) |
 | `COMPUTER_GRANT_IN_USE` | no | another session or turn chain holds the single active grant |
 | `COMPUTER_GRANT_EXPIRED` | no | the grant hit its idle expiry, was revoked, or its target closed |
 | `COMPUTER_BUDGET_EXHAUSTED` | no | the grant's remaining input-action budget reached zero |
@@ -409,7 +410,8 @@ exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
 Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
 replayed by either retry budget, and a delegate reports it as
 `SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
-messages (including `insufficient_quota`, `credit_balance_exhausted`,
+messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
+`credit_balance_exhausted`,
 organization/project spend-limit codes, `insufficient credits`, and
 `requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
 status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body

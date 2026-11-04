@@ -5,6 +5,7 @@ import { createQueueSlice } from "../../apps/desktop/src/stores/slices/queue-sli
 import type { SessionRuntime } from "../../apps/desktop/src/stores/runtime/session-runtime";
 import { useComposerSubmit } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerSubmit";
 import { verifyComposerSubmission } from "./composer-submission";
+import "./composer-draft-race";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
@@ -76,6 +77,7 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
   const submitController = useComposerSubmit({
     value: draft.value, draftKey: draft.draftKey, activeSessionId: sessionId || null,
     thinkingLevel: "off", modelReady: true, sendBlocked: false, pasting: false,
+    invalidateComposerTransforms: noop,
     activeFileReferences: draft.activeFileReferences, t, draft,
     recordHistory: inputHistory.record,
     sendPrompt: (...args) => historySendPrompt(...args),
@@ -235,6 +237,18 @@ globalThis.composerPasteProbe = async () => {
     selection.addRange(range);
   };
   try {
+    useAppStore.setState({ sessions: [{
+      id: "paste-a", title: "Folder paste fixture", source: "desktop", mode: "agent",
+      permissionMode: "inherit", thinkingLevel: "off", messageCount: 0,
+      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+    }] });
+    const directoryEditor = await paste("", [], true);
+    const directoryChip = directoryEditor.querySelector(".composer-chip");
+    assert(directoryChip?.textContent?.includes("copied folder"), "native folder metadata did not render a chip");
+    assert(controller.fileReferences[0]?.kind === "directory", "folder chip must own a directory reference");
+    flushSync(() => directoryChip?.querySelector<HTMLButtonElement>(".composer-chip-remove")?.click());
+    assert(controller.fileReferences.length === 0, "folder chip could not be removed");
+
     // Settings replaces ChatSurface, then remounts the composer in the same
     // workspace. Exercise the real draft hook and DOM across that lifecycle.
     render("paste-a", "/project-a");
@@ -981,6 +995,7 @@ globalThis.composerPasteProbe = async () => {
     await verifyComposerSubmission(imageReference.path, i18n);
     return {
       ok: true,
+      nativeDirectoryMetadata: true,
       fullComposerSubmissionAndOverflow: true,
       mixedShortText: true,
       multilineAndUndoRedo: true,
@@ -1128,6 +1143,7 @@ globalThis.composerHistoryProbe = async (phase) => {
         latestTurnResults: {},
         sessionOutcomes: {},
         isRunning: false,
+        rememberModel: noop,
       } as unknown as AppState;
       const queueRuntime = {
         beginNavigationIntent: () => 1,

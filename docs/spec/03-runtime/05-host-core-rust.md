@@ -131,10 +131,13 @@ notification.list
     the active plugin invocation, target permission ceilings are rechecked at
     turn admission, callbacks are at-most-once, and restart recovery never
     replays an interrupted delivery
-11. Computer use runs only inside a user-minted scope grant the host owns: the
-    target is never request-supplied, the grant revision and geometry are
-    re-validated before every synthesis, PI-Desktop's own windows and a secure
-    input state are refused unconditionally, and grants are never persisted
+11. Computer use runs only inside a scope grant the host owns: the window is
+    resolved from the host's own enumeration and never from a request-supplied
+    handle, binding another window re-applies every refusal and moves the
+    revision, the grant revision and geometry are re-validated before every
+    synthesis, PI-Desktop's own windows and a secure input state are refused
+    unconditionally, a user Stop blocks the agent's next automatic grant for a
+    cooldown, and grants are never persisted
 
 ## 7. Packaging
 

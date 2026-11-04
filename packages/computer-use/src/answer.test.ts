@@ -45,6 +45,23 @@ describe("extractJsonObject", () => {
 });
 
 describe("parseLoopAnswer", () => {
+  it("parses a window switch and refuses a malformed one", () => {
+    expect(parseLoopAnswer('{"kind":"switch","window":"88:4","note":"the inbox"}')).toEqual({
+      ok: true,
+      answer: { kind: "switch", window: "88:4", note: "the inbox" },
+    });
+    for (const text of [
+      '{"kind":"switch"}',
+      '{"kind":"switch","window":"  "}',
+      '{"kind":"switch","window":"88:4","targetId":"77:12"}',
+      // A switch carries a window and nothing else: it must not smuggle an
+      // action past the per-step validation.
+      '{"kind":"switch","window":"88:4","action":{"kind":"click","uid":"0.1#ab"}}',
+    ]) {
+      expect(parseLoopAnswer(text), text).toMatchObject({ ok: false });
+    }
+  });
+
   it("parses the three answer kinds", () => {
     expect(parseLoopAnswer('{"kind":"done","summary":"dark mode is on"}')).toEqual({
       ok: true,
