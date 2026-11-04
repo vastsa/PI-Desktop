@@ -6,6 +6,7 @@ import {
   PLUGIN_PANEL_CHROME_PAINT_THROUGH_VERSION,
   PLUGIN_PANEL_EMBEDDED_ARGUMENT,
   PLUGIN_PANEL_WIDGET_ARGUMENT,
+  PLUGIN_PANEL_LAUNCH_EVENT,
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
   PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL,
   PLUGIN_PANEL_WINDOW_STATE_CHANNEL,
@@ -16,6 +17,28 @@ import {
 // built-in window palette from the same table main and the panel host use.
 import { builtinWindowBackground } from "@pi-desktop/shared/theme";
 
+/**
+ * The launcher hands a panel the input that summoned it only after the page has
+ * loaded, so the event cannot race the document. Stashing it here lets the page
+ * ask for it whenever its own bootstrap is ready; `consumeLauncherPayload` then
+ * clears the stash so one typed input is delivered exactly once.
+ */
+let launcherPayload: { triggerId: string; payload: string } | null = null;
+ipcRenderer.on(`pi-plugin-panel-event:${PLUGIN_PANEL_LAUNCH_EVENT}`, (
+  _event,
+  incoming: { triggerId?: unknown; payload?: unknown },
+) => {
+  if (
+    typeof incoming?.triggerId !== "string" ||
+    typeof incoming?.payload !== "string"
+  ) {
+    return;
+  }
+  launcherPayload = {
+    triggerId: incoming.triggerId,
+    payload: incoming.payload,
+  };
+});
 const bridge = {
   invoke: async (channel: string, payload?: Record<string, unknown>) => {
     return ipcRenderer.invoke("pi-plugin-panel-invoke", channel, payload ?? {});
@@ -28,6 +51,17 @@ const bridge = {
     const wrapped = (_evt: Electron.IpcRendererEvent, ...args: unknown[]) => handler(...args);
     ipcRenderer.on(`pi-plugin-panel-event:${event}`, wrapped);
     return () => ipcRenderer.removeListener(`pi-plugin-panel-event:${event}`, wrapped);
+  },
+  /**
+   * The launcher input that summoned this panel, or null.
+   *
+   * Reading it clears it, so a panel cannot read input the user typed for
+   * another time or for another plugin.
+   */
+  consumeLauncherPayload: (): { triggerId: string; payload: string } | null => {
+    const current = launcherPayload;
+    launcherPayload = null;
+    return current;
   },
   /** Resolve a real dropped File without exposing Node or Electron to the page. */
   getDroppedFilePath: (file: File): string | null => {

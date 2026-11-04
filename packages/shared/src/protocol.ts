@@ -14,6 +14,9 @@ export const APP_MENU_COMMANDS = [
   "openHelp",
   "openLogs",
   "checkForUpdates",
+  /** Brings the main window forward on the plugin market page (launcher empty
+   * state, and any other surface that wants to send the user shopping). */
+  "openPluginMarket",
 ] as const;
 
 export type AppMenuCommand = (typeof APP_MENU_COMMANDS)[number];
@@ -351,6 +354,12 @@ export const IPC = {
     pluginOpenPanel: "pi-desktop/plugin/openPanel",
     pluginLauncherToggle: "pi-desktop/pluginLauncher/toggle",
     pluginLauncherDismiss: "pi-desktop/pluginLauncher/dismiss",
+    pluginLauncherCatalog: "pi-desktop/pluginLauncher/catalog",
+    pluginLauncherOpenApp: "pi-desktop/pluginLauncher/openApp",
+    /** Content-driven window height, measured by the panel itself. */
+    pluginLauncherContentHeight: "pi-desktop/pluginLauncher/contentHeight",
+    /** Close the panel, focus the main window, and open the plugin market. */
+    pluginLauncherOpenMarket: "pi-desktop/pluginLauncher/openMarket",
     pluginThemes: "pi-desktop/plugin/themes",
     pluginProviderCatalog: "pi-desktop/plugin/providerCatalog",
     pluginScenicThemesDestinations: "pi-desktop/plugin/scenicThemes/destinations",

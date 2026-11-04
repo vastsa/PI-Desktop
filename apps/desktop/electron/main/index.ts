@@ -7,6 +7,11 @@ import {
 } from "electron";
 import { join } from "node:path";
 import {
+  createDefaultLocalAppDeps,
+  createLocalAppCatalog,
+  type LocalAppCatalog,
+} from "./local-apps";
+import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
   disposeSystemProxyRelay,
@@ -585,6 +590,7 @@ const createdLauncher = createLauncher({
   logger,
   safeOpenExternal,
   toggleMainWindow,
+  dataDir,
 });
 launcherRuntime = createdLauncher;
 const {
@@ -893,6 +899,30 @@ const liveCallService = createLiveCallService({
   onCallView: (view) => liveVoiceWidget.publish(view),
 });
 
+/**
+ * Installed applications for the plugin launcher.
+ *
+ * The scanning adapter needs real filesystem and Electron access, whose wiring
+ * is asynchronous, while IPC registration is synchronous. This handle awaits
+ * that wiring on first use, warms the first scan in the background so the first
+ * `Alt+Space` already has application tiles, and reports "still scanning" until
+ * it exists (docs/spec/07-plugins/18-plugin-launcher.md §4).
+ */
+let localAppsCatalog: LocalAppCatalog | null = null;
+const localAppsReady = createDefaultLocalAppDeps().then((deps) => {
+  const catalog = createLocalAppCatalog(deps);
+  localAppsCatalog = catalog;
+  void catalog.refresh().catch(() => undefined);
+  return catalog;
+});
+const localApps: LocalAppCatalog = {
+  list: async () => (await localAppsReady).list(),
+  refresh: async () => (await localAppsReady).refresh(),
+  launch: async (appId) => (await localAppsReady).launch(appId),
+  isScanning: () => localAppsCatalog?.isScanning() ?? true,
+  diagnostics: () => localAppsCatalog?.diagnostics() ?? [],
+};
+
 function registerIpc() {
   return registerIpcHandlers({
     restartForStorage: () => {
@@ -920,6 +950,9 @@ function registerIpc() {
       pluginServices.composerSuggestion.settle(answer),
     getPluginLauncherWindow: () => mainState.pluginLauncherWindow,
     togglePluginLauncher,
+    /** Same delivery path as the application menu, so readiness and focus are
+     * handled once instead of by the launcher IPC. */
+    openPluginMarket: () => dispatchApplicationMenuCommand("openPluginMarket"),
     safeOpenExternal,
     updater,
     dataDir,
@@ -930,6 +963,7 @@ function registerIpc() {
     persistenceOutbox,
     logger,
     plugins,
+    localApps,
     speech,
     sessionCapabilityContext,
     enrichSession,
