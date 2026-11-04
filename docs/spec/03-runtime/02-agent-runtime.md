@@ -553,7 +553,11 @@ and every record written before the marker existed — is normalized to its late
 user message only, so a restart cannot restore a sequence of
 executable-looking old requests. Dropping an assistant message also drops its
 tool calls, and the fallback drops the results of calls it did not keep, so no
-orphaned tool call or unmatched result can reach the provider. The retained tail
+orphaned tool call or unmatched result can reach the provider. Assistant
+thinking shares the same character budget as text. Answer text is reserved
+first; a thinking block that has to be shortened drops its provider signature,
+so the replay is not a mutated signed trace. A block that still fits keeps its
+signature, and redacted thinking is left unchanged. The retained tail
 is re-estimated with the summary before persistence and before continuation, so
 an oversized request still cannot pass the guard. A fallback also records
 `details.failureReason` — `no_new_history`, `summary_budget`,
