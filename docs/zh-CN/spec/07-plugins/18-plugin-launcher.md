@@ -31,26 +31,34 @@
 
 | 区域 | 行数 | 磁贴数 | 头部动作 |
 |---|---|---|---|
-| `Recently used`（空输入） | 2 | 16 | `Show all {count} →`——`count` 是真实的已记住条目数 |
-| `Pinned`（空输入） | 1 | 8 | `All →`——把两个区域都展开为完整列表 |
+| `Recently used`（空输入） | 2 | 16 | `Show all {count} →`——`count` 是真实的已记住条目数；`All plugins →`——全部插件列表 |
+| `Pinned`（空输入） | 1 | 8 | 无 |
 | 匹配结果（有输入） | 3 | 24 | `{count} more — keep typing to narrow it down` |
+| 全部插件（视图） | — | 所有已安装插件 | 无 |
 
 每行都是八列；列数不随结果数量变化，因此网格不会在输入或缩放时重排。
 
-`Show all {count} →` / `All →` 会进入展开视图，此时该动作变为 `Collapse`。输入非空时只显示命中视图：头部动作报告匹配总数，因此被裁掉的磁贴会被明确说明，而不是静默截断。
+`Show all {count} →` 会进入展开视图，此时该动作变为 `Collapse`。没有任何固定项时固定区整块不渲染（连标题也不显示），且它从不带头部动作——固定区始终只有一行。
 
-空状态：目录加载中显示 `Loading plugins…`；后台应用扫描未结束时显示 `Looking for installed applications…`；没有可启动项时显示 `No plugins with panels are ready to open.`；查询无命中时显示 `No matching plugins`。
+`All plugins →` 会用单个网格替换最近使用与固定两区，列出所有已安装**插件**（不含本机应用）。最近使用过的插件排在前面，其余按目录顺序；窗口达到高度上限后网格继续滚动，且其中每个磁贴都能用 `Enter` 打开或固定。继续输入会回到命中视图，`Esc` 先退出该视图再关闭面板。
+
+输入非空时只显示命中视图：头部动作报告匹配总数，因此被裁掉的磁贴会被明确说明，而不是静默截断。
+
+空状态：目录加载中显示 `Loading plugins…`；后台应用扫描未结束时显示 `Looking for installed applications…`；没有可启动项时显示 `No plugins with panels are ready to open.`；查询无命中时显示 `No matching plugins`。查询无命中——以及既无最近使用也无固定项时——还会提供 `Browse the plugin market`，点击后关闭面板、聚焦主窗口并打开插件市场页（§12）。
 
 ## 4. 磁贴
 
-每个磁贴显示图标、名称和一行详情：
+每个磁贴都只有同样的三部分：
 
-- 命中原因——`name {value}`、`pinyin {value}`、`initials {value}`、`alias {value}`、`about {value}`、`pinned`、`recent`，或声明触发器时的 `receives {value}`（插件将收到的文本）；
-- 来源标签：`Plugin` 或 `App`。
+- 图标——应用使用平台图标；插件、以及读不到图标的应用使用首字母色块；`<img>` 加载失败也回退到色块，不会留下空洞；
+- 名称，放不下时以省略号截断；
+- 与名称同一行的类型徽标——`Plugin` 或 `App`。
 
-插件使用方形磁贴，应用使用圆形磁贴，各自显示字母组合或图标。因此同名插件与应用会同时列出并且在视觉上可区分，而不是被去重。
+磁贴不再解释命中的原因：没有第二行，因此每个磁贴高度一致，八列网格保持对齐。`title` 提示为 `名称 · 类型`（应用还会附上可执行文件名），绝不包含启动载荷。
 
-每个磁贴有一个条目菜单按钮，其无障碍标签为 `More actions for {name}`（§8）。
+插件使用方形磁贴，应用使用圆形磁贴。因此同名插件与应用会同时列出并且在视觉上可区分，而不是被去重。
+
+每个磁贴右上角有一个图钉，带 `aria-pressed` 与 `Pin to panel` / `Unpin` 标签。它只在悬停、激活或聚焦时显示，已固定的磁贴常显，且不进入 Tab 序列——面板只由搜索框驱动。
 
 ## 5. 匹配与排序
 
@@ -60,14 +68,14 @@
 
 1. 整段输入命中声明触发器（§6）
 2. 名称完全一致
-3. 别名完全一致
-4. 名称前缀（别名前缀与该档同级）
-5. 拼音前缀
-6. 首字母前缀
-7. 名称子串
-8. 拼音／首字母子串
-9. 别名子串
-10. 描述子串
+3. 名称前缀
+4. 拼音前缀
+5. 首字母前缀
+6. 名称子串
+7. 拼音／首字母子串
+8. 描述子串
+
+排序档位是内部的：它只决定磁贴顺序，从不渲染，因为磁贴没有详情行。触发器命中独占该条目，因此同时按模式与名称命中的插件只出现一次，并排在所有名称匹配之前。
 
 同分时依次比较：最近使用（越新越前）、插件先于应用、名称、目录顺序，因此同一份目录与状态每次都会产生相同顺序。
 
@@ -84,7 +92,7 @@
 - 长于 200 字符的模式永不被编译；
 - 无法编译的模式是惰性的——它不匹配任何内容，也不会破坏面板。
 
-触发器命中排在所有名称匹配之前，并把插件将收到的文本作为详情行（`receives {value}`）显示。这正是插件可以声明算术或类命令形状（`1+1`）而不与任何只是包含 `1` 的名称竞争的原因。
+触发器命中排在所有名称匹配之前。这正是插件可以声明算术或类命令形状（`1+1`）而不与任何只是包含 `1` 的名称竞争的原因。面板不再显示插件将收到的文本——载荷只随打开请求投递（§7）。
 
 ## 7. 载荷投递
 
@@ -103,19 +111,22 @@
 - `consumeLauncherPayload()` 读取即清空，第二次调用返回 `null`。载荷绝不会投递给第二个插件，也绝不会重放。
 - 长于 `LAUNCHER_PAYLOAD_MAX_LENGTH`（512）的载荷会被丢弃：面板以无载荷方式打开，而不是让打开失败。
 
-## 8. 固定、别名与最近使用
+## 8. 固定与最近使用
 
 条目级偏好存放在渲染端的 `localStorage` 中，键为 `pi.desktop.launcher.state`（`apps/desktop/src/lib/launcher-store.ts`）。首次读取会迁移旧面板的 `pi.desktop.pluginLaunchHistory` 键，因此升级后仍保留原有顺序。
 
 | 条目 | 上限 |
 |---|---|
 | 最近使用 | 每项一条，最多 60 条 |
-| 固定 | 24 |
-| 别名 | 每项 6 个，每个 32 字符 |
+| 固定 | 8（恰好一行） |
 
-每次读取都是防御性的：无法解析的记录被丢弃，存储的 id 会按实时目录裁剪，因此被禁用或卸载的插件会从最近使用、固定和匹配结果中消失。把插件从启动器隐藏只是启动器范围的偏好——插件仍会加载，其命令仍然可用。
+固定就是点击磁贴上的图钉，面板没有条目菜单。也不存在重命名能力：磁贴显示插件或操作系统声明的名称。
 
-存储按渲染端 origin 隔离，而启动器窗口与主窗口共享同一 origin，因此在一个窗口中写入的固定和别名会通过普通 `storage` 事件同步到另一个窗口。
+固定位已满时会拒绝新的固定，而不是静默挤掉较早的固定：底部提示 `All 8 pin slots are taken`，固定区抖动一次（`prefers-reduced-motion: reduce` 时不动画）。取消固定即可腾出位置。
+
+每次读取都是防御性的：无法解析的记录被丢弃，存储的 id 会按实时目录裁剪；旧版本或新版本写入的未知字段——例如已废弃的 `aliases`——会被忽略并保留原样，读取时绝不回写。因此被禁用或卸载的插件会从最近使用、固定和匹配结果中消失。把插件从启动器隐藏只是启动器范围的偏好——插件仍会加载，其命令仍然可用。
+
+存储按渲染端 origin 隔离，而启动器窗口与主窗口共享同一 origin，因此在一个窗口中写入的固定项会通过普通 `storage` 事件同步到另一个窗口。
 
 ## 9. 本机应用
 
@@ -125,14 +136,15 @@
 - macOS：`/Applications`、`/System/Applications` 及其 `Utilities` 子目录下的应用包。
 - Linux：`/usr/share/applications`、`/usr/local/share/applications` 与 `~/.local/share/applications` 下的 freedesktop `.desktop` 条目。
 
-上限：扫描结果缓存 5 分钟，最多 600 条，只为前 200 条提取图标（每个 data URL 不超过 4 KiB），目标已不存在的条目会被丢弃。
+上限：扫描结果缓存 5 分钟，最多 600 条，只为前 200 条提取图标。图标取平台的 `large` 变体，每个 data URL 不超过 32 KiB，并按条目 id 与图标路径缓存跨扫描复用；条目消失时其缓存图标也会被清理，因此重复扫描不会重复付出同一次查询。目标已不存在的条目会被丢弃。
 
-渲染端只会收到显示名称、可执行文件名、来源标签（`start-menu` / `app-bundle` / `desktop-entry`）、小图标和不透明的 `app:<slug>` id——永远没有路径。打开磁贴时发送该 id；`pi-desktop/pluginLauncher/openApp` 会在宿主自己的扫描结果中解析它，并在启动前重新检查目标仍然存在，因此该界面无法被变成“启动我指定的任意程序”。ADR 0339 记录了这个决定。
+渲染端只会收到显示名称、可执行文件名、来源标签（`start-menu` / `app-bundle` / `desktop-entry`）、图标和不透明的 `app:<slug>` id——永远没有路径。打开磁贴时发送该 id；`pi-desktop/pluginLauncher/openApp` 会在宿主自己的扫描结果中解析它，并在启动前重新检查目标仍然存在，因此该界面无法被变成“启动我指定的任意程序”。ADR 0339 记录了这个决定。
 
 ## 10. 窗口尺寸、位置与状态
 
-- 窗口可在 560×380 与 1280×940 DIP 之间缩放。最小宽度是八列仍能完整排布的最小宽度；最大值保证八列磁贴仍可扫读。
-- 尺寸与位置持久化在 `<data dir>/plugin-launcher-state.json`，由主进程尽力写入并做防抖（`apps/desktop/electron/main/plugin-launcher-state.ts`）。
+- 窗口宽度可在 560 与 1280 DIP 之间缩放；最小宽度是八列仍能完整排布的最小宽度，最大值保证八列磁贴仍可扫读。
+- 高度始终贴合内容。渲染端测量搜索行、结果内容的自然高度、底部栏以及面板内边距，并通过 `pi-desktop/pluginLauncher/contentHeight` 上报总高度；主进程将其钳制在 120–940 DIP 后设置内容尺寸，因此面板既不会带着空白打开，也不会裁掉一行。
+- 宽度与位置持久化在 `<data dir>/plugin-launcher-state.json`，由主进程尽力写入并做防抖（`apps/desktop/electron/main/plugin-launcher-state.ts`）。高度不是用户偏好：记住的高度只是首次测量到达前的起点。
 - 只有整个面板仍能落在即将打开的工作区内时，才会采用记住的位置；否则在該工作区重新居中。
 - 这是主进程的 shell 状态，遵循 ADR 0090 与 `window-state.json`：不涉及 host-core schema、迁移或用户数据。
 
@@ -143,7 +155,7 @@
 | `↑` / `↓` | 移动一行 |
 | `←` / `→` | 移动一个磁贴 |
 | `Enter` | 打开当前磁贴 |
-| `Esc` | 关闭面板 |
+| `Esc` | 先退出全部插件视图，否则关闭面板 |
 
 输入法合成进行中（`event.isComposing` 或 `keyCode === 229`）时任何按键都不生效，因此中文输入法的候选回车或方向键不会打开或移动磁贴。
 
@@ -153,17 +165,20 @@
 |---|---|---|
 | `pi-desktop/pluginLauncher/catalog` | 渲染端 → 主进程 | 插件 + 应用 + `appsScanning` |
 | `pi-desktop/pluginLauncher/openApp` | 渲染端 → 主进程 | 只接受不透明的 `app:<slug>` id |
+| `pi-desktop/pluginLauncher/contentHeight` | 渲染端 → 主进程 | 测量出的内容高度；只接受有限正数，并钳制到 120–940 DIP |
+| `pi-desktop/pluginLauncher/openMarket` | 渲染端 → 主进程 | 隐藏面板、聚焦主窗口、打开插件市场页 |
 | `pi-desktop/pluginLauncher/dismiss` | 渲染端 → 主进程 | 隐藏面板 |
 | `pi-desktop/pluginLauncher/toggle` | 主进程 → 渲染端 | 显示/隐藏请求 |
 | `pi-desktop/pluginLauncher/event/shown` | 主进程 → 渲染端 | 每次打开时重置面板 |
 | `pi-plugin-panel-event:launcher:payload` | 主进程 → 面板页面 | 见 §7 |
 
-目录与 `openApp` 处理器会校验发送方是启动器窗口自己的 `webContents`；其他发送方一律以 `PERMISSION_DENIED` 拒绝。二者都是仅主进程可用的能力：
+启动器的每个处理器都会校验发送方是启动器窗口自己的 `webContents`；其他发送方一律以 `PERMISSION_DENIED` 拒绝。它们都是仅主进程可用的能力：
 
 - 没有任何插件桥暴露这些通道，插件运行时也不存在启动应用的 API；
-- 启动器窗口自身与其他渲染界面一样启用 `contextIsolation`、`sandbox`，且不启用 Node 集成。
+- 启动器窗口自身与其他渲染界面一样启用 `contextIsolation`、`sandbox`，且不启用 Node 集成；
+- `contentHeight` 只接受有限正数并钳制到支持区间，因此被攻破的渲染端最多只能要求更大或更小的面板，无法要求一个用户救不回来的窗口。
 
-目录中只包含已启用、状态为 `ready`、声明了 `ui.panel` 并持有 `ui.panel` 权限的插件，因此即使某个插件的 id 仍留在本地历史里，被禁用的插件也无法从这里打开。
+`openMarket` 不自己导航 shell：它隐藏面板，并向编排层请求应用菜单的 `openPluginMarket` 命令，由后者把主窗口带到前台并落到插件市场页（`apps/desktop/electron/main/ipc/plugin-launcher-ipc.ts`、`apps/desktop/src/features/app/useAppShellRuntime.tsx`）。
 
 ## 13. 与全局搜索的关系
 
@@ -182,24 +197,29 @@
 |---|---|
 | 窗口、快捷键、边界持久化、预热 | `apps/desktop/electron/main/bootstrap/launcher.ts` |
 | 边界解析/钳制（纯函数） | `apps/desktop/electron/main/plugin-launcher-state.ts`、`apps/desktop/test/plugin-launcher-state.test.mjs` |
-| 目录与 `openApp` IPC、发送方校验、触发器净化 | `apps/desktop/electron/main/ipc/plugin-launcher-ipc.ts` |
-| 应用发现与启动 | `apps/desktop/electron/main/local-apps.ts`、`local-apps-platform.ts`、`local-app-parse.ts`、`apps/desktop/test/local-apps.test.mjs` |
-| 匹配、排序、区域划分 | `apps/desktop/src/lib/launcher-search.ts`、`apps/desktop/test/launcher-search.test.mjs` |
-| 固定、别名、最近使用、迁移 | `apps/desktop/src/lib/launcher-store.ts`、`apps/desktop/test/launcher-store.test.mjs` |
-| 界面渲染与键盘 | `apps/desktop/src/components/PluginLauncher.tsx`、`apps/desktop/src/components/launcher/` |
+| 目录、`openApp`、`contentHeight`、`openMarket` IPC、发送方校验、触发器净化 | `apps/desktop/electron/main/ipc/plugin-launcher-ipc.ts` |
+| 应用发现、图标预算与图标缓存 | `apps/desktop/electron/main/local-apps.ts`、`local-apps-platform.ts`、`local-app-parse.ts`、`apps/desktop/test/local-apps.test.mjs` |
+| 匹配、排序、区域划分、全部插件视图 | `apps/desktop/src/lib/launcher-search.ts`、`apps/desktop/test/launcher-search.test.mjs` |
+| 固定、最近使用、迁移 | `apps/desktop/src/lib/launcher-store.ts`、`apps/desktop/test/launcher-store.test.mjs` |
+| 内容高度换算与钳制（纯函数） | `apps/desktop/src/lib/launcher-height.ts`、`apps/desktop/electron/main/plugin-launcher-state.ts`、`apps/desktop/test/plugin-launcher-height.test.mjs` |
+| 界面渲染与键盘 | `apps/desktop/src/components/PluginLauncher.tsx`、`apps/desktop/src/components/launcher/LauncherTileButton.tsx`、`apps/desktop/src/styles/plugin-launcher.css` |
 | 载荷传输 | `apps/desktop/electron/main/plugin-panel-host.ts`、`apps/desktop/electron/preload/plugin-panel.ts` |
 | 触发器校验（宿主） | `crates/host-core/src/plugins/validation/launcher_triggers.rs` |
 | 共享契约 | `packages/shared/src/types/launcher.ts` |
 
 ## 15. 验收
 
-1. 空输入打开启动器时显示 `Recently used`（两行）与 `Pinned`（一行），每行八个磁贴，最近使用头部报告真实的已记住条目数。
-2. 声明了触发器的插件以第一个磁贴的形式收到输入，其面板显示相同文本。
+1. 空输入打开启动器时显示 `Recently used`（两行），若用户有固定项则显示 `Pinned`（一行），每行八个磁贴，最近使用头部报告真实的已记住条目数。
+2. 声明了触发器的插件以第一个磁贴的形式收到输入，只出现一次，其面板显示相同文本。
 3. `wx`、`weixin` 和 `微信` 都能到达同一个应用。
 4. 同名插件与应用都作为独立磁贴出现。
 5. `pi` 能按名称找到 PI-Desktop，也能按拼音和首字母找到同一项。
-6. 拖动窗口缩放时每行仍是八列，且新尺寸在重启后保留。
-7. 匹配超过 24 项的查询不会撑大窗口；头部报告被裁掉的数量并提示继续输入。
+6. 拖动加宽窗口时每行仍是八列并在重启后保留；高度始终匹配面板实际渲染的内容。
+7. 匹配超过 24 项的查询不会把窗口撑过上限；头部报告被裁掉的数量并提示继续输入。
 8. 禁用或卸载插件后，它从最近使用、固定和匹配中消失，且不会留下失效磁贴。
 9. 粘贴 500 字符的输入既不会卡住面板，也不会命中任何触发器。
 10. 固定的应用在重启后仍然处于固定状态。
+11. 固定满 8 项后，第 9 次固定会提示固定位已满、抖动固定区，且不会挤掉已有的固定项。
+12. `All plugins →` 列出所有已安装插件（不含应用），最近使用的插件在前，`Esc` 返回上一个视图。
+13. 查询无命中时提供 `Browse the plugin market`，点击后关闭面板并在主窗口打开插件市场页。
+14. 磁贴不再显示第二行文字，启动器内任何界面都不能重命名插件或应用。

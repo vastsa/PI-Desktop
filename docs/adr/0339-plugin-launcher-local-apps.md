@@ -57,8 +57,11 @@ app data directory, not host-core user data.
    discovered and the user can already see, and nothing else.
 4. Discovery is bounded and non-invasive. Main reads only well-known locations,
    never spawns a program to probe, caches the scan for 5 minutes, caps the list
-   at 600 entries, extracts icons for the first 200 entries (≤4 KiB each), and
-   drops an entry whose target is gone.
+   at 600 entries, asks the platform for a `large` icon for the first 200 entries
+   (each data URL ≤32 KiB, reused across scans through an id-keyed cache), and
+   drops an entry whose target is gone. A plugin tile never has a platform icon:
+   the launcher draws a letter tile for plugin panels, because `manifest.icon` is
+   author-declared but not consumed by the host.
 5. The launcher's size and position live in main-process shell state
    (`<data dir>/plugin-launcher-state.json`), not in host-core. It follows the
    `window-state.json` precedent from ADR 0090: best-effort, debounced,

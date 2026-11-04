@@ -19516,26 +19516,30 @@ their separate platform acceptance.
   9. Pin an application, quit, restart, and reopen the launcher with an empty
      input.
 - **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
-  `Pinned` with one row of eight; the recents header reports the true number of
-  remembered items and the pinned header offers `All →`. Step 2 lists the
-  trigger plugin as the **first** tile with a `receives 1+1` detail line, ahead
-  of name matches, and the panel shows `1+1` exactly once (a second read returns
-  `null`). Step 3 reaches the same application through all three spellings with
-  a `pinyin`/`initials` detail line. Step 4 lists `PI-Desktop` once by name.
-  Step 5 keeps eight columns per row at every width between the minimum and
-  maximum, and the dragged size is restored after the restart. Step 6 keeps the
-  window at its current size, reports the dropped count in the header, and asks
-  the user to keep typing. Step 7 removes the disabled plugin from recents,
-  pins, and matches while every other tile still opens. Step 8 keeps the panel
-  responsive (no frozen input, no unhandled error) and reports no match, because
-  input longer than 256 characters is never matched against a trigger. Step 9
-  still shows the pinned application in the `Pinned` row.
+  `Pinned` with one row of eight once the user has pins; the recents header
+  reports the true number of remembered items and offers `Show all {count} →`
+  plus `All plugins →`. Step 2 lists the trigger plugin as the **first** tile,
+  ahead of name matches and without a detail line, and the panel shows `1+1`
+  exactly once (a second read returns `null`). Step 3 reaches the same
+  application through all three spellings. Step 4 lists `PI-Desktop` once by
+  name. Step 5 keeps eight columns per row at every width, the panel height
+  always matches what it renders, and the dragged width is restored after the
+  restart. Step 6 keeps the window at its height cap, reports the dropped count
+  in the header, and asks the user to keep typing. Step 7 removes the disabled
+  plugin from recents, pins, and matches while every other tile still opens.
+  Step 8 keeps the panel responsive (no frozen input, no unhandled error) and
+  reports no match, because input longer than 256 characters is never matched
+  against a trigger. Step 9 still shows the pinned application in the `Pinned`
+  row.
 - **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
   coverage for these rules: `launcher-search.test.mjs` (ranking order, section
-  caps, overflow total, trigger whole-input matching and the 256-character
-  limit), `launcher-store.test.mjs` (pins, aliases, recents, legacy migration
-  and pruning), `local-apps.test.mjs` (discovery, bounds, dropped targets,
-  opaque-id launch) and `plugin-launcher-state.test.mjs` (clamping and
-  re-centring). Rust `plugins` tests cover the manifest rules. The rendered
-  Electron journey above — grouped grid, resize, restart, and the panel payload
-  round trip — is Draft until a launcher E2E script exists.
+  caps, overflow total, trigger whole-input matching, the 256-character limit
+  and the all-plugins view), `launcher-store.test.mjs` (pins and the eight-pin
+  cap, recents, legacy migration, retired fields read without error, and
+  pruning), `plugin-launcher-height.test.mjs` (content-height arithmetic and
+  clamping), `local-apps.test.mjs` (discovery, bounds, icon budget and icon
+  cache, dropped targets, opaque-id launch) and `plugin-launcher-state.test.mjs`
+  (clamping and re-centring). Rust `plugins` tests cover the manifest rules. The
+  rendered Electron journey above — grouped grid, content height, resize,
+  restart, and the panel payload round trip — is Draft until a launcher E2E
+  script exists.
