@@ -250,7 +250,8 @@ This does not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
-Successful workspace `Write`/`Edit` tool results carry the bounded
+Successful authorized `Write`/`Edit` tool results, including scratch,
+visualization and approved external paths, carry the bounded
 `details.review` record described in [03-tools-and-permissions](03-tools-and-permissions.md).
 The transcript JSONL is the durable index for the visible card; the previous
 bytes and hashes live outside the workspace in
@@ -512,6 +513,16 @@ plugin's private data directory; the host settings schema does not change.
 
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
+
+#### Renderer review display preference
+
+The native Review context-line choice is stored as `1`, `3` or `5` under
+renderer localStorage key `pi.desktop.reviewContextLines`. It is shared across
+conversations and projects in the same application profile, survives panel and
+application reopening, and is not synchronized across devices. Missing, invalid
+or unreadable values fall back to 3; failed writes do not block the current
+view. Reading the preference does not rewrite storage. This presentation-only
+key does not change database schemas, transcript evidence or saved context hunks.
 
 #### Renderer sidebar preferences (D093)
 
@@ -2053,3 +2064,20 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+## Round review reader
+
+New native review snapshots may include a bounded `contexts.json` containing
+only 1/3/5-line context hunks and optional execution-root/context-availability
+metadata. No complete after-image or full-file context cache is written. Existing `before` bytes
+and post-tool hashes retain their rollback roles. Extended context never reads
+current workspace bytes; legacy snapshots without the preview remain readable
+and report that extended context is unavailable. No database schema change or
+second capture store is introduced; normal session-owned cleanup applies.
+
+Preview computation removes identical line prefixes/suffixes before allocating
+its LCS matrix, then reattaches those equal lines to preserve original hunk
+coordinates and finite context. The existing 512 KiB-per-image, 4000-total-lines
+per side, 2,000,000-middle-cell, and context serialization caps are unchanged.
+This affects new captures only; missing historical previews are not reconstructed
+from current disk contents.

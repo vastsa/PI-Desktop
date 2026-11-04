@@ -184,6 +184,10 @@ export function createProviderCatalogRuntime({
         (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "fully-folded"
           ? (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode
           : "fully-folded",
+      autoCollapseSettledGroups:
+        (value as T & { autoCollapseSettledGroups?: unknown }).autoCollapseSettledGroups !== false,
+      autoCollapseThinking:
+        (value as T & { autoCollapseThinking?: unknown }).autoCollapseThinking !== false,
       radialMenu: normalizeRadialMenuPreferences(value.radialMenu),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
@@ -208,6 +212,8 @@ export function createProviderCatalogRuntime({
       startupAnimation?: unknown;
       transcriptDisplayMode?: unknown;
       radialMenu?: unknown;
+      autoCollapseSettledGroups?: unknown;
+      autoCollapseThinking?: unknown;
     };
     if (
       Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -256,6 +262,22 @@ export function createProviderCatalogRuntime({
       value.transcriptDisplayMode !== "fully-folded"
     ) {
       throw Object.assign(new Error("transcriptDisplayMode is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "autoCollapseSettledGroups") &&
+      typeof value.autoCollapseSettledGroups !== "boolean"
+    ) {
+      throw Object.assign(new Error("autoCollapseSettledGroups is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "autoCollapseThinking") &&
+      typeof value.autoCollapseThinking !== "boolean"
+    ) {
+      throw Object.assign(new Error("autoCollapseThinking is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }

@@ -151,6 +151,23 @@ export type AppSettings = {
    */
   transcriptDisplayMode?: TranscriptDisplayMode;
   /**
+   * Fold a settled activity group by default (issue #2094).
+   *
+   * `false` keeps every settled group open; absent and `true` fold them, so a
+   * completed turn expands to a compact list of what the agent did. There is no
+   * other tier: the old "groups of up to four rows stay open" rule is gone,
+   * because a switch labelled auto-collapse must not still collapse something.
+   */
+  autoCollapseSettledGroups?: boolean;
+  /**
+   * Fold reasoning that is no longer being generated (issue #2094).
+   *
+   * Only meaningful while `showThinking` renders reasoning rows. `false` keeps
+   * every rendered Thinking row open; absent and `true` fold all of them except
+   * the row the live turn is still streaming.
+   */
+  autoCollapseThinking?: boolean;
+  /**
    * @deprecated Replaced by `transcriptDisplayMode`. Retained for persisted
    * settings and older clients; current rendering no longer reads it.
    */

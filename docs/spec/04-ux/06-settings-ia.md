@@ -330,8 +330,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   reasoning is actively streaming, leaves only the whole-run TextShimmer
   `Thinking` indicator; a collapsed row shows that indicator without an excerpt.
   Stored reasoning is retained and reappears when the toggle is turned back on.
-  With it on, Thinking rows default expanded in Flat and Commands first, while
-  Fully folded keeps the released live-only auto-open exception. It affects
+  With it on, a Thinking row starts folded once it is no longer streaming; the row
+  the live turn is still generating stays open, and the **Auto-fold finished
+  thinking** sub-row below can keep every row open instead. It affects
   presentation only, not model reasoning configuration, and it does not control
   turn-process or activity-group folding: active processes start open and
   untouched completed processes fold by default regardless of the toggle. The
@@ -339,6 +340,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   for persisted-settings compatibility and is no longer exposed; an absent or
   unknown value shows reasoning and an explicit `compact` hides it. Settings
   search indexes the row.
+- **Auto-fold finished thinking** is an indented sub-row directly under **Show
+  thinking** and appears only while that toggle is on, because with it off no
+  completed reasoning row renders. It persists the optional
+  `autoCollapseThinking` boolean, absent and `true` both meaning fold: only
+  reasoning the live turn is still streaming stays open. Turning it off keeps
+  every rendered Thinking row open. Hiding the sub-row by turning **Show
+  thinking** off never writes a value, so the stored choice survives and comes
+  back with the parent. Settings search indexes both the row and its description.
 - **Transcript display** is a segmented control in Defaults immediately after
   **Show thinking**. It persists the optional `transcriptDisplayMode` field as
   `flat`, `command-first`, or `fully-folded`, with the labels **Flat**,
@@ -356,6 +365,16 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   standard 240px field-column cap. Labels stay on one line; when space is
   insufficient, the control moves below the title and whole options wrap
   within the available pane width without horizontal overflow.
+- **Auto-fold finished groups** is an indented sub-row directly under
+  **Transcript display**, and appears only for **Commands first** and **Fully
+  folded**; **Flat** renders no activity groups, so the row is hidden there and
+  has no effect. It persists the optional `autoCollapseSettledGroups` boolean,
+  absent and `true` both meaning fold: a group whose turn has settled starts
+  closed whatever its size, while a running turn, or a group that still owns a
+  running tool or delegation, stays open. Turning it off leaves every settled
+  group open - there is no size tier. Hiding the sub-row by switching to **Flat**
+  never writes a value, so the stored choice survives and returns with the mode.
+  Settings search indexes both the row and its description.
 - **Radial context menu** is a card in General after Sidebar with one switch
   (**Enable on the transcript background**) and four direction pickers
   (**Up**, **Right**, **Down**, **Left**). The switch is off when

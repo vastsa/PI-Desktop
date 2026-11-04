@@ -86,24 +86,6 @@
   outline-offset: -2px;
 }
 
-.turn-changes-mark {
-  width: 10px;
-  flex: 0 0 auto;
-  color: var(--ds-warning);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  text-align: center;
-}
-
-.turn-changes-row[data-status="added"] .turn-changes-mark {
-  color: var(--ds-success);
-}
-
-.turn-changes-row[data-status="deleted"] .turn-changes-mark {
-  color: var(--ds-error);
-}
-
 .turn-changes-path {
   min-width: 0;
   flex: 1;
@@ -119,10 +101,6 @@
 }
 
 /* Rolled-back files stay listed, struck through like the review row. */
-.turn-changes-row[data-rolled-back] .turn-changes-mark {
-  color: var(--ds-text-faint);
-}
-
 .turn-changes-row[data-rolled-back] .turn-changes-path {
   color: var(--ds-text-faint);
   text-decoration: line-through;
