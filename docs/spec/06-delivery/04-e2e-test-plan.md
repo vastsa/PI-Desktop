@@ -8070,7 +8070,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   support aborting during the wait. A builtin subagent uses a
   fixture with the same responses. Billing/account-exhaustion fixtures also
   return HTTP 429 with `insufficient_quota`, `credit_balance_exhausted`,
-  organization usage-limit, and spend-limit codes.
+  organization usage-limit, spend-limit, and OpenCode Zen
+  `FreeUsageLimitError` codes.
 - **Steps**:
   1. Start an Agent turn with a setup-429 fixture whose next request succeeds.
   2. Repeat with a mid-stream-429 fixture whose next request succeeds.
@@ -8093,8 +8094,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - Explicit billing/account exhaustion is terminal `PROVIDER_ERROR` even
     when returned with HTTP 429, including `insufficient_quota`,
     `credit_balance_exhausted`, organization usage-limit, and organization/
-    project spend-limit codes. It starts no retry and consumes neither retry
-    budget.
+    project spend-limit codes, and OpenCode Zen's `FreeUsageLimitError`.
+    It retains the provider's message and status, starts no retry, and
+    consumes neither retry budget.
   - Setup and mid-stream failures share one budget of ten retries after the
     initial attempt. A persistent fixture therefore makes eleven provider
     attempts, never multiplies attempts through nested pi-ai retries, and
