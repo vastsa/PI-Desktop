@@ -1062,6 +1062,37 @@ impl UserSkillRegistry {
         Ok(relative)
     }
 
+    /// Delete one sibling resource from a directory-shaped skill.
+    ///
+    /// The exact mirror of `write_resource`: same `references/<name>.md` path
+    /// rule and the same promotion-free lookup, so a model-produced path can
+    /// never reach outside the skill's own resource directory. Only the
+    /// resource goes; the skill document and every other resource stay.
+    pub fn remove_resource(
+        &mut self,
+        id: &str,
+        level: Option<CapabilityLevel>,
+        project_path: Option<&str>,
+        relative_path: &str,
+    ) -> Result<String> {
+        let Some(record) = self.find(id, level, project_path)? else {
+            bail!("SKILL_INVALID: no skill with id {id}");
+        };
+        let relative = normalize_resource_path(relative_path)?;
+        let skills_dir = capability_dir(CapabilityLevel::Global, None, "skills")?;
+        let document = PathBuf::from(&record.path);
+        let Some(root) = directory_skill_root(&document, &skills_dir) else {
+            bail!("SKILL_INVALID: skill has no sibling resources");
+        };
+        let destination = root.join(&relative);
+        if !destination.is_file() {
+            bail!("SKILL_INVALID: no resource at {relative}");
+        }
+        fs::remove_file(&destination)
+            .with_context(|| format!("remove {}", destination.display()))?;
+        Ok(relative)
+    }
+
     /// Import a Markdown skill from an external location.
     /// between the single-file (`<id>.md`) form and the Anthropic-style
     /// directory form (`<name>/SKILL.md` plus resources); when absent, a

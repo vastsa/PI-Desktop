@@ -36,6 +36,7 @@ import { completeOneShot } from "./one-shot-complete.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { createMemoryTool } from "./memory-agent-tool.js";
+import { createSkillManageTool } from "./skill-manage-tool.js";
 import { createJevClassifierTool } from "./jev-classifier-tool.js";
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
@@ -4213,6 +4214,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // the budget) live in `memory-store.ts`; the host only persists the result.
     const memoryTools: AgentTool[] =
       this.mode === "agent" ? [createMemoryTool(this.host)] : [];
+    // The write path for the skill library: Hermes' `skill_manage`, whose every
+    // action is a `skills.*` RPC. The library's read path already exists — the
+    // catalog lists the user's own skills and the `Skill` tool loads their
+    // documents; without this tool the library could only grow in the
+    // background review, never while the turn that learned it is still running.
+    const skillAuthoringTools: AgentTool[] =
+      this.mode === "agent" ? [createSkillManageTool(this.host)] : [];
 
     // Plugins contribute Agent tools by default. Plan/Goal modes only
     // expose plugins that declare plan-safe actions (ADR 0211); the
@@ -4292,6 +4300,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       ...builtins,
       ...jevTools,
       ...memoryTools,
+      ...skillAuthoringTools,
       askTool,
       ...pluginTools,
       ...skillTools,

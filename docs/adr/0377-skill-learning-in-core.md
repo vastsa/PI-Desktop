@@ -96,6 +96,6 @@ that never ran.
   lever.
 - Upstream divergence: this is a core feature the upstream does not have, so it
   is a permanent conflict hotspot when merging `upstream/main`.
-- The `skill_manage` tool is **not** ported. The loop is fully automatic, so the
-  agent does not need a tool to manage the library by hand; `skills.*` RPCs stay
-  available to the UI.
+- The `skill_manage` tool is ported **separately**: see [ADR 0379](0379-skill-authoring-is-a-core-tool.md).
+  The loop stays fully automatic, and the tool is the agent's own pen beside it
+  rather than a second owner of the store.

@@ -1023,6 +1023,71 @@ fn write_resource_accepts_a_directory_skill_without_rewriting_it() {
 }
 
 #[test]
+fn remove_resource_deletes_one_reference_and_keeps_the_rest() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        let mut shape = input("Review", "global", None);
+        shape.shape = Some("dir".into());
+        let record = registry.create(shape).unwrap();
+        let document = PathBuf::from(&record.path);
+        let before = fs::read_to_string(&document).unwrap();
+        registry
+            .write_resource(&record.id, None, None, "references/pitfalls.md", "old lesson")
+            .unwrap();
+        registry
+            .write_resource(&record.id, None, None, "references/notes.md", "keep me")
+            .unwrap();
+
+        let removed = registry
+            .remove_resource(&record.id, None, None, "references/pitfalls.md")
+            .unwrap();
+        assert_eq!(removed, "references/pitfalls.md");
+
+        let root = document.parent().unwrap();
+        assert!(
+            !root.join("references/pitfalls.md").exists(),
+            "the named reference goes"
+        );
+        assert!(
+            root.join("references/notes.md").is_file(),
+            "its sibling stays"
+        );
+        assert_eq!(
+            fs::read_to_string(&document).unwrap(),
+            before,
+            "SKILL.md is never touched by a resource delete"
+        );
+    });
+}
+
+#[test]
+fn remove_resource_refuses_a_path_outside_references() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        let mut shape = input("Review", "global", None);
+        shape.shape = Some("dir".into());
+        let record = registry.create(shape).unwrap();
+        let document = PathBuf::from(&record.path);
+
+        for attempt in ["../SKILL.md", "notes.md", "references/../SKILL.md"] {
+            let error = registry
+                .remove_resource(&record.id, None, None, attempt)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("SKILL_INVALID"), "{attempt}: {error}");
+        }
+        assert!(
+            document.is_file(),
+            "the document survives every refused call"
+        );
+    });
+}
+
+#[test]
 fn write_resource_rejects_paths_outside_references() {
     let home = tempdir().unwrap();
     let app = tempdir().unwrap();

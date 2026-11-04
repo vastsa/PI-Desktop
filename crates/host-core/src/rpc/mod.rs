@@ -5485,6 +5485,18 @@ async fn handle_request(
                 .map_err(skill_err)?;
             Ok(json!({ "path": written }))
         }
+        "skills.removeFile" => {
+            let id = require_id(&params)?;
+            let path = params
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            st.user_skills
+                .remove_resource(&id, None, None, path)
+                .map_err(skill_err)?;
+            Ok(json!({ "path": path }))
+        }
         "skills.read" => {
             let id = require_id(&params)?;
             let level = params

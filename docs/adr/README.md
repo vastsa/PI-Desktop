@@ -400,3 +400,4 @@ Each ADR includes:
 | 0371 | [Durable agent memory lives in host-core SQLite, keyword-first](0371-memory-store.md) | Accepted for implementation |
 | 0377 | [Skill learning in core](0377-skill-learning-in-core.md) | Accepted |
 | 0378 | [Ship prompt enhancement with the application image](0378-bundled-prompt-enhancement.md) | Accepted (supersedes the default-install clause of ADR 0324) |
+| 0379 | [Skill authoring is a core tool](0379-skill-authoring-is-a-core-tool.md) | Accepted (amends ADR 0377) |

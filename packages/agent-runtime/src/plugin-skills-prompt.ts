@@ -14,7 +14,9 @@ export const SKILL_TOOL_NAME = "Skill";
 const SKILLS_HEADER = [
   "# Skills",
   "",
-  `Plugins have taught you the following skills. Each entry is a set of instructions you can load with the \`${SKILL_TOOL_NAME}\` tool by passing its exact id. When a task matches a skill's description, load the skill first and follow it; do not guess at its content. Load each skill at most once per task.`,
+  `Skills available to you, from plugins and from your own library. Each entry is a set of instructions you can load with the \`${SKILL_TOOL_NAME}\` tool by passing its exact id. When a task matches a skill's description, load the skill first and follow it; do not guess at its content. Load each skill at most once per task.`,
+  "",
+  "When a turn teaches you something reusable — a procedure, a pitfall, a decision rule — record it before you finish, with `skill_manage`: `create` for a new skill, `patch` to extend one you already have, or `write_file` to add `references/<topic>.md` beside it. Capture the rule rather than the afternoon, and prefer patching an existing skill over creating a near-duplicate.",
 ].join("\n");
 
 export const SKILL_SECTION_PREFIX = "skill:";
