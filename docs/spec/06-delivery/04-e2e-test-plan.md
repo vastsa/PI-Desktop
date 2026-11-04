@@ -13533,6 +13533,12 @@ This test plan spec is accepted when:
   `e2e-transcript-render.mjs`. Production React and styles, native Electron wheel
   bursts, per-frame anchor samples with 2 CSS-pixel rounding tolerance, tail
   updates, delayed row geometry, rejection, hide/reveal and latest navigation.
+  The production `SessionPane` and real store path additionally paginate a small
+  tail across continuous assistant-answer boundaries, sample actual message
+  positions, and click the real latest button during/after Host reads for both
+  standalone rows and grouped answers. Only external Host IPC is controlled.
+  Run with normal animation; do not force reduced motion to hide smooth-scroll
+  races. Assert latest navigation stays at bottom without opening another page.
   Manual procedures: `tests/history-loading-scroll-test-cases.md`.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §9.1, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
@@ -19334,7 +19340,7 @@ host-created files. The full app's file-preview viewer is covered separately.
   as `own`. Every audited line names the scope that authorised it.
 - **Specs linked**: `07-plugins/03-plugin-api.md` §plugin-owned and host-wide
   sessions; `07-plugins/13-plugin-permissions-matrix.md` §2;
-  `07-plugins/04-plugin-security.md` §5; ADR 0339, ADR 0200 (amendment).
+  `07-plugins/04-plugin-security.md` §5; ADR 0340, ADR 0200 (amendment).
 - **Acceptance**: A plugin that declares the `.all` grants can read and rewrite
   the user's own conversations, the user sees the result in the open transcript,
   and a plugin that declares only `.own` keeps exactly the ADR 0200 reach.
