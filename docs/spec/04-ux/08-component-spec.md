@@ -4659,7 +4659,7 @@ remain in the title and stored evidence. Native review captures successful
 approved Write/Edit mutations inside and outside the workspace, never Bash or
 external-application changes. Outside snapshots do not grant rollback or general filesystem permissions.
 Their file menu omits internal open and offers only external open and folder
-reveal through explicit snapshot-bound user actions (ADR 0339). Other file-open
+reveal through explicit snapshot-bound user actions (ADR 0341). Other file-open
 surfaces retain their existing authorization.
 
 Both scope and historical round selectors reuse the shared native Select.
