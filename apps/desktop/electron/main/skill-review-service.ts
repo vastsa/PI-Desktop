@@ -5,7 +5,7 @@
  * This replaces the bundled `cn.star.skill-learning` plugin. Same shape as the
  * retired memory-extraction service had on purpose: fire-and-forget after the
  * turn has already finished, one pass per session at a time, every failure a log
- * line. Memory no longer works that way (ADR 0378) — the agent writes its own
+ * line. Memory no longer works that way (ADR 0380) — the agent writes its own
  * notes through the `memory` tool — but skill review still needs a pass over the
  * finished turn, because what a session taught is only visible in hindsight.
  *

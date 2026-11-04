@@ -15,15 +15,16 @@
  *   already has the whole skill CRUD surface, so no second file layout is
  *   invented here.
  *
- * Two things the plugin did that this module cannot do through RPC, and does
+ * One thing the plugin did that this module cannot do through RPC, and does
  * not pretend to:
  *
- * - `write_file` ops into `references/<topic>.md`. Core skills are a single
- *   `SKILL.md`; a referenced file has nowhere to live. Ops of that shape are
- *   dropped by {@link normalizeSkillReview}.
  * - The plugin's "thin draft rejected" guard. Core does not validate authoring
  *   quality, so the guide in the system prompt is the only lever. A model that
  *   ignores it writes a thin skill; that is a prompt problem, not a store one.
+ *
+ * Resource writes are no longer in that list: `write_file` maps to
+ * `skills.writeFile`, which writes `references/<topic>.md` beside the skill's
+ * `SKILL.md` (ADR 0377 added that write path).
  */
 
 /** Authoring bar, shared by the review prompt and the `/learn` command. */

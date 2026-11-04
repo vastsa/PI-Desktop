@@ -187,11 +187,12 @@ walks v26 → v27 → v28 in one launch.
 
 | Stage | Content |
 |---|---|
-| 2b | confidence decay; periodic tidy-up; automatic extraction after a completed turn |
+| 2b | confidence decay; periodic tidy-up (both on the scored store below) |
+| — | automatic extraction after a completed turn — **retired**: the agent writes its own memory (§9.3, ADR 0380) |
 | 3 | optional embeddings (`embedding` column + `sqlite-vec`) fused with BM25 via reciprocal rank |
 | — | markdown export/import so memories are readable by other agents |
 
-### 9.1 Stage 2a: recall injection and the `Remember` tool (implemented)
+### 9.1 Stage 2a: recall injection (implemented, scored store)
 
 - **Recall runs per turn** (`packages/agent-runtime/src/memory-context.ts`): the
   user prompt (first 2 000 chars) is sent to the host's optional
@@ -210,11 +211,10 @@ walks v26 → v27 → v28 in one launch.
   yield no block and never fail the turn; Agent mode only (Plan and Goal turns
   declare a denial-only tool set before any host action, and project
   instructions already carry their context).
-- **`Remember` tool** (`memory-tool.ts` + `rpc/memory_tool.rs`): the agent writes
-  one memory per call. Scope never comes from `args`; it defaults to the
-  session's project, can be `session` or `global`, and falls back to `session`
-  when the session has no project. Risk class is `low` (it only writes the
-  agent's own store). Stage 2a advertises it in Agent mode.
+- **The writing tool is not this store's.** `Remember`
+  (`memory-tool.rs`) is no longer declared to the agent: memory writes go to the
+  flat entry lists in §9.3, which is what the model can read and edit directly.
+  Recall below still reads *this* store, which is the gap §9.3 records.
 
 ### 9.2 Stage 2b: retention (implemented)
 
@@ -237,8 +237,39 @@ a pinned row.
   (`boot_maintenance → daily_memory_tidy`, throttled through
   `kv['memoryTidy']['lastRunAt']`). Failures are logged and ignored: retention is
   housekeeping, never a startup blocker.
-- Automatic extraction after a turn (stage 2c) is **not implemented**: it needs a
-  provider/model and a per-turn budget decision from the product owner. Until
-  then the agent writes memories through the `Remember` tool.
+- Automatic extraction after a turn (stage 2c) is **retired**, not pending: it
+  needed a provider/model and a per-turn budget decision nobody owned, and the
+  agent now writes its own memory while the turn still holds the context (§9.3,
+  ADR 0380).
 
 Stage 1 shipped storage, dedupe, supersession and recall only.
+
+### 9.3 The entry lists the agent actually writes (implemented, ADR 0380)
+
+The tool that writes memory is `memory`, not `Remember`
+(`packages/agent-runtime/src/memory-agent-tool.ts`), and it edits two flat entry
+lists instead of the scored store above:
+
+| | `memory` | `user` |
+|---|---|---|
+| Holds | the agent's own notes: how a project works, what failed and why, decisions and their reasons | who the user is: preferences, language, role, standing instructions |
+| Budget | `MEMORY_CHAR_LIMIT` 2 200 chars | `USER_CHAR_LIMIT` 1 375 chars |
+
+- **Actions**: `add` / `replace` / `patch` / `remove` / `batch`. `patch` replaces
+  one span inside one entry; `batch` applies several operations against the
+  *final* size, so pruning stale entries and adding new ones is one call.
+- **Where the edit semantics live**: the runtime (`memory-store.ts`) decides
+  "which entry did the model mean" and whether a batch fits the budget; the host
+  performs one atomic whole-list write per call (`memory.entries` /
+  `memory.writeEntries`).
+- **Injection**: both lists enter the system prompt as a snapshot frozen at
+  session start (`memory-prompt.ts`), and the tool's result echoes the new list,
+  because a frozen snapshot is otherwise a document the model cannot see.
+- **Risk class**: `low`; Agent mode only (Plan and Goal turns declare a
+  denial-only tool set before any host action).
+
+**Known gap**: recall (§9.1) still queries the scored store above, which nothing
+writes any more, so a note written by the tool reaches the next session through
+the snapshot but **not** through recall. Pointing recall at the entry lists — or
+retiring the scored store — is a separate change with its own compatibility
+question (project-scoped memory, ADR 0234).

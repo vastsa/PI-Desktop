@@ -1,5 +1,5 @@
 /**
- * The `memory` tool (ADR 0378), modelled on Hermes' `tools/memory_tool.py`.
+ * The `memory` tool (ADR 0380), modelled on Hermes' `tools/memory_tool.py`.
  *
  * The model edits memory the way a person edits a note file: it sees the entries
  * (they are in the system prompt), and it names an action plus enough text to
