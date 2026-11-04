@@ -410,7 +410,8 @@ exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
 Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
 replayed by either retry budget, and a delegate reports it as
 `SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
-messages (including `insufficient_quota`, `credit_balance_exhausted`,
+messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
+`credit_balance_exhausted`,
 organization/project spend-limit codes, `insufficient credits`, and
 `requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
 status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
