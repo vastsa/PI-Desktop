@@ -1,11 +1,13 @@
 {
   "//": "Plugins the marketplace sync must never bundle into apps/desktop/resources/plugins. Ids listed here are skipped by scripts/sync-bundled-plugins.mjs and any already-expanded copy is removed.",
+  "//cn.star.skill-learning": "Retired into core by ADR 0377: the app's own skill review owns the skill library now, so shipping the plugin again would put a second writer on ~/.agents/skills.",
   "excluded": [
     "cn.star.jianying-assistant",
     "icedly.moyu-games",
     "local.mi-note",
     "cn.star.grok-enhance",
     "hawchou.mumu-player",
-    "io.github.caopengfei.opencode-quota"
+    "io.github.caopengfei.opencode-quota",
+    "cn.star.skill-learning"
   ]
 }

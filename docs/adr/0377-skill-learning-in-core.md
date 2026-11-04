@@ -32,6 +32,13 @@ Two problems with leaving it there:
 Skill learning becomes a core capability. The plugin is not shipped and not
 installed alongside it — one implementation, one writer.
 
+The retirement is enforced by the bundle, not by the ADR alone:
+`scripts/bundled-plugins-excluded.json` lists `cn.star.skill-learning`, so
+`scripts/sync-bundled-plugins.mjs` neither fetches it into
+`apps/desktop/resources/plugins` nor leaves an earlier expanded copy behind.
+The plugin's source stays in the `plugins/` collection; only the bundled
+artefact is gone.
+
 The pipeline is the same passive shape as the memory-extraction design:
 
 1. `event-persistence.ts` counts the tools a turn ran and, on either terminal
@@ -73,8 +80,9 @@ that never ran.
 - The capability ships with the app and cannot be removed by disabling a plugin,
   which is what "core" is supposed to mean. Turning it off is a setting, not an
   uninstall.
-- Exactly one writer remains for `~/.agents/skills`. The plugin's
-  `skill-store.js` is gone from the tree.
+- Exactly one writer remains for `~/.agents/skills`: nothing this repository
+  builds carries the plugin's `skill-store.js`. Its source stays in the
+  `plugins/` collection as a market artefact.
 - A skill library grown this way becomes **few umbrella skills plus many
   `references/*.md`**. That is the intended shape: `SKILL.md` stays a stable
   index, lessons accumulate beside it.
