@@ -13551,6 +13551,12 @@ This test plan spec is accepted when:
   `e2e-transcript-render.mjs`. Production React and styles, native Electron wheel
   bursts, per-frame anchor samples with 2 CSS-pixel rounding tolerance, tail
   updates, delayed row geometry, rejection, hide/reveal and latest navigation.
+  The production `SessionPane` and real store path additionally paginate a small
+  tail across continuous assistant-answer boundaries, sample actual message
+  positions, and click the real latest button during/after Host reads for both
+  standalone rows and grouped answers. Only external Host IPC is controlled.
+  Run with normal animation; do not force reduced motion to hide smooth-scroll
+  races. Assert latest navigation stays at bottom without opening another page.
   Manual procedures: `tests/history-loading-scroll-test-cases.md`.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §9.1, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
