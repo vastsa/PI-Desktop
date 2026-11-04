@@ -46,6 +46,11 @@ export function SubagentModelsDialog({
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  // The page passes an inline arrow, so keying the focus effect on `onClose`
+  // would re-run it on every parent render (a removal toggles page state) and
+  // move the caret out of whatever field the user was in.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const selected = selectedSubagentModels(candidates);
   const targets = servicesWithAddableModels(candidates);
@@ -60,6 +65,9 @@ export function SubagentModelsDialog({
 
   // Focus on open, Escape to close, Tab stays inside, and the trigger gets the
   // focus back on close. Same contract as the other settings dialogs.
+  // Focus on open, Escape to close, Tab stays inside, and the trigger gets the
+  // focus back on close. Same contract as the other settings dialogs, installed
+  // once per mount.
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
@@ -69,7 +77,7 @@ export function SubagentModelsDialog({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (!busyRef.current) onClose();
+        if (!busyRef.current) onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -94,14 +102,14 @@ export function SubagentModelsDialog({
       document.body.style.overflow = previousOverflow;
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, [onClose]);
+  }, []);
 
   const dialog = (
     <OverlayBackdrop
       className="overlay project-create-dialog-overlay"
       role="presentation"
       onClick={(event) => {
-        if (event.target === event.currentTarget && !busyRef.current) onClose();
+        if (event.target === event.currentTarget && !busyRef.current) onCloseRef.current();
       }}
     >
       <div
@@ -204,26 +212,31 @@ export function SubagentModelsDialog({
                         )}
                       </span>
                     ) : null}
-                    <button
-                      type="button"
-                      className="provider-chosen-advanced-toggle"
-                      disabled={busy}
-                      onClick={() => onEdit(candidate.providerId)}
-                    >
-                      {t("settings.advanced")}
-                    </button>
                     {candidate.editable ? (
-                      <TooltipButton
-                        type="button"
-                        className="provider-chosen-remove"
-                        ariaLabel={t("settings.subagentModelRemove", { model: name(candidate) })}
-                        tooltip={t("settings.subagentModelRemove", { model: name(candidate) })}
-                        disabled={busy}
-                        onClick={() => onChange(candidate, false)}
-                      >
-                        <IconClose size={12} />
-                      </TooltipButton>
+                      <>
+                        <button
+                          type="button"
+                          className="provider-chosen-advanced-toggle"
+                          disabled={busy}
+                          onClick={() => onEdit(candidate.providerId)}
+                        >
+                          {t("settings.advanced")}
+                        </button>
+                        <TooltipButton
+                          type="button"
+                          className="provider-chosen-remove"
+                          ariaLabel={t("settings.subagentModelRemove", { model: name(candidate) })}
+                          tooltip={t("settings.subagentModelRemove", { model: name(candidate) })}
+                          disabled={busy}
+                          onClick={() => onChange(candidate, false)}
+                        >
+                          <IconClose size={12} />
+                        </TooltipButton>
+                      </>
                     ) : (
+                      // A plugin owns this row: it has no editor to open and
+                      // `providers.update` refuses it, so neither Advanced nor a
+                      // remove control is offered here.
                       <span className="model-subagent-note">
                         {t("settings.subagentModelPluginManaged")}
                       </span>

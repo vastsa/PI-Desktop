@@ -277,11 +277,11 @@ test("the empty state names where ticking happens, per service", async () => {
     provider({ id: "p3", name: "Acme", ownerPluginId: "acme.x", models: [binding("d")] }),
   ]);
   const targets = servicesWithAddableModels(candidates);
-  // Two services offer something to tick; the plugin-owned row is left out
-  // because `providers.update` refuses it.
+  // Two services offer something to tick; the plugin-declared one is left out
+  // because it has no editor to open at all.
   assert.deepEqual(
-    targets.map((target) => `${target.providerId}:${target.count}`),
-    ["p1:1", "p2:1"],
+    targets.map((target) => `${target.providerId}:${target.providerName}`),
+    ["p1:Anthropic", "p2:Local"],
   );
 });
 
@@ -299,20 +299,94 @@ test("duplicate model ids get a service-prefixed chip label", async () => {
   assert.deepEqual(labels, ["Anthropic · gpt-4o", "Azure · gpt-4o", "llama-3"]);
 });
 
-test("an OAuth account is routed to its own dialog, not the provider form", async () => {
+test("two logins to one vendor stay distinguishable by account", async () => {
+  const { subagentChipLabels } = await import(
+    "../src/components/settings/subagent-delegation.ts"
+  );
+  const account = (id, label) =>
+    provider({
+      id,
+      name: "Anthropic",
+      authKind: "oauth",
+      hasSecret: false,
+      hasOauth: true,
+      oauthAccountLabel: label,
+      models: [binding("claude-sonnet-4-6", { availableForSubagents: true })],
+    });
+  const selected = subagentModelCandidates([
+    account("p1", "work@acme.dev"),
+    account("p2", "home@acme.dev"),
+  ]).filter((entry) => entry.selected);
+  // The vendor name alone would render one label twice, so the account rides
+  // along and the two chips stay tellable apart.
+  assert.deepEqual(
+    selected.map((candidate) => candidate.providerName),
+    ["Anthropic · work@acme.dev", "Anthropic · home@acme.dev"],
+  );
+  assert.deepEqual(subagentChipLabels(selected), [
+    "Anthropic · work@acme.dev · claude-sonnet-4-6",
+    "Anthropic · home@acme.dev · claude-sonnet-4-6",
+  ]);
+});
+
+test("only a row with an editable owner gets an editor", async () => {
+  const { serviceEditorTarget } = await import(
+    "../src/components/settings/service-row-status.ts"
+  );
+  // An API service opens the provider form; a vendor login opens its account
+  // dialog. A plugin declares the row and `providers.update` refuses it, so it
+  // has no editor — account or not.
+  assert.deepEqual(serviceEditorTarget(provider()), { kind: "provider", providerId: "p1" });
+  assert.deepEqual(
+    serviceEditorTarget(provider({ authKind: "oauth", hasSecret: false, hasOauth: true })),
+    { kind: "account", providerId: "p1" },
+  );
+  assert.equal(serviceEditorTarget(provider({ ownerPluginId: "acme.x" })), null);
+  assert.equal(
+    serviceEditorTarget(
+      provider({ ownerPluginId: "acme.x", authKind: "oauth", hasSecret: false, hasOauth: true }),
+    ),
+    null,
+  );
   const page = await readFile(
     join(here, "../src/components/settings/ModelConfigPage.tsx"),
     "utf8",
   );
-  // Both entry points share one routing helper so the subagent list cannot
-  // send a subscription account to the provider form.
-  assert.match(page, /editService\(providers\.find/);
+  // Both entry points ask the same helper, so neither can open a dialog that
+  // cannot save the row it came from.
   assert.match(page, /onEdit=\{editService\}/);
-  const helperIndex = page.indexOf("const editService");
-  const helperBody = page.slice(helperIndex, helperIndex + 400);
-  assert.match(helperBody, /serviceRowKind\(provider\) === "account"/);
-  assert.match(helperBody, /setEditingAccountId/);
-  assert.match(helperBody, /setSetupFor/);
+  assert.match(page, /serviceEditorTarget\(provider\)/);
+  assert.match(page, /settings\.subagentModelServiceGone/);
+});
+
+test("the write pre-check matches model ids the way the write does", async () => {
+  const { providerHasSubagentModel } = await import(
+    "../src/components/settings/subagent-delegation.ts"
+  );
+  const models = [binding(" GPT-4o "), binding("claude-sonnet-4-6")];
+  // A stored id that differs only in case or surrounding whitespace is the same
+  // model: refusing it here would report a failed save the write itself allows.
+  assert.equal(providerHasSubagentModel(models, "gpt-4o"), true);
+  assert.equal(providerHasSubagentModel(models, "  GPT-4o"), true);
+  assert.equal(providerHasSubagentModel(models, "claude-sonnet-4-6"), true);
+  assert.equal(providerHasSubagentModel(models, "gpt-5.2"), false);
+});
+
+test("a plugin-owned row offers neither an editor nor a remove control", async () => {
+  const dialog = await readFile(
+    join(here, "../src/components/settings/SubagentModelsDialog.tsx"),
+    "utf8",
+  );
+  // Advanced and the remove control live inside the editable branch; a
+  // plugin-declared row falls through to the managed note instead, so the dialog
+  // cannot send it to a dialog that refuses to save.
+  const start = dialog.indexOf("{candidate.editable ? (");
+  assert.ok(start > 0, "the editable branch must exist");
+  const note = dialog.indexOf("model-subagent-note", start);
+  const branch = dialog.slice(start, note > start ? note : dialog.length);
+  assert.match(branch, /provider-chosen-advanced-toggle/);
+  assert.match(branch, /provider-chosen-remove/);
+  assert.match(branch, /disabled=\{busy\}/);
 });
 
 test("the dialog locks navigation while a removal is in flight", async () => {
@@ -322,13 +396,12 @@ test("the dialog locks navigation while a removal is in flight", async () => {
   );
   // Advanced and Close must refuse to navigate mid-save: an editor opened from
   // a stale snapshot would write back the model list the removal just changed.
-  const advancedBlock = dialog.slice(
-    dialog.indexOf("provider-chosen-advanced-toggle"),
-    dialog.indexOf("provider-chosen-advanced-toggle") + 250,
-  );
-  assert.match(advancedBlock, /disabled=\{busy\}/);
-  const closeBlocks = [...dialog.matchAll(/disabled=\{busy\}[\s\S]*?onClick=\{onClose\}/g)];
-  assert.ok(closeBlocks.length >= 2, "both close affordances must disable while busy");
+  const closeBlocks = [...dialog.matchAll(/disabled=\{busy\}/g)];
+  assert.ok(closeBlocks.length >= 3, "advanced, both close affordances and remove");
   // Escape also honours the lock.
-  assert.match(dialog, /if \(!busyRef\.current\) onClose\(\)/);
+  assert.match(dialog, /if \(!busyRef\.current\) onCloseRef\.current\(\)/);
+  // The focus effect installs once per mount: keying it on the page's inline
+  // `onClose` would move the caret out of the search field on every re-render.
+  assert.match(dialog, /const onCloseRef = useRef\(onClose\)/);
+  assert.match(dialog, /\}, \[\]\);/);
 });

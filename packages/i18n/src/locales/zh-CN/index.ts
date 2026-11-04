@@ -1875,6 +1875,7 @@ sklm: {
     subagentModelAdd: "在服务的模型设置里添加：高级 → 可供 AI 自动调度",
     subagentModelEdit: "编辑",
     subagentModelOpenService: "打开 {{provider}} 的模型设置",
+    subagentModelServiceGone: "该服务没有可打开的设置",
     subagentModelsMore: "另有 {{count}} 个",
     subagentModelRemove: "将 {{model}} 从子代理模型移除",
     subagentModelSelected: "该模型可供 AI 调度",
