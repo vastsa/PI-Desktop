@@ -393,6 +393,8 @@ export const tr = {
     sessionTranscriptEmpty: "Bu oturumun geçmişi okunamadı. Yeniden denemek için oturumu tekrar açın.",
     fileMenu: "Dosya başvuruları",
     removeFileReference: "{{name}} dosya başvurusunu kaldır",
+    directoryReference: "Klasör",
+    directoryPasteUnavailable: "Kopyalanan klasörün tam yolu alınamıyor. Klasörü giriş alanına sürükleyin.",
     removePluginMark: "{{name}} öğesini kaldır",
     pluginTriggerMenu: "Eklenti önerileri",
     messageAttachments: "Bu iletideki ekler",

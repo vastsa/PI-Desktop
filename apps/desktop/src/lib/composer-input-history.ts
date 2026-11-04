@@ -39,7 +39,7 @@ function readReference(value: unknown): HistoryReference | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   if (typeof row.path !== "string" || !row.path || typeof row.name !== "string") return null;
-  const kind = row.kind === "image" || row.kind === "file" ? row.kind : undefined;
+  const kind = row.kind === "image" || row.kind === "file" || row.kind === "directory" ? row.kind : undefined;
   return {
     path: row.path,
     name: row.name,

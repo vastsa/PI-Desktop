@@ -384,6 +384,8 @@ export const fr = {
     "sessionTranscriptEmpty": "L'historique de cette session n'a pas pu être lu. Rouvrez la session pour réessayer.",
     "fileMenu": "Références de fichiers",
     "removeFileReference": "Supprimer la référence de fichier {{name}}",
+    directoryReference: "Dossier",
+    directoryPasteUnavailable: "Le chemin complet du dossier copié est indisponible. Faites glisser le dossier dans la zone de saisie.",
     "removePluginMark": "Supprimer {{name}}",
     "pluginTriggerMenu": "Suggestions de plugins",
     "messageAttachments": "Pièces jointes à ce message",

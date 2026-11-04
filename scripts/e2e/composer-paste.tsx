@@ -237,6 +237,18 @@ globalThis.composerPasteProbe = async () => {
     selection.addRange(range);
   };
   try {
+    useAppStore.setState({ sessions: [{
+      id: "paste-a", title: "Folder paste fixture", source: "desktop", mode: "agent",
+      permissionMode: "inherit", thinkingLevel: "off", messageCount: 0,
+      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+    }] });
+    const directoryEditor = await paste("", [], true);
+    const directoryChip = directoryEditor.querySelector(".composer-chip");
+    assert(directoryChip?.textContent?.includes("copied folder"), "native folder metadata did not render a chip");
+    assert(controller.fileReferences[0]?.kind === "directory", "folder chip must own a directory reference");
+    flushSync(() => directoryChip?.querySelector<HTMLButtonElement>(".composer-chip-remove")?.click());
+    assert(controller.fileReferences.length === 0, "folder chip could not be removed");
+
     // Settings replaces ChatSurface, then remounts the composer in the same
     // workspace. Exercise the real draft hook and DOM across that lifecycle.
     render("paste-a", "/project-a");
@@ -983,6 +995,7 @@ globalThis.composerPasteProbe = async () => {
     await verifyComposerSubmission(imageReference.path, i18n);
     return {
       ok: true,
+      nativeDirectoryMetadata: true,
       fullComposerSubmissionAndOverflow: true,
       mixedShortText: true,
       multilineAndUndoRedo: true,

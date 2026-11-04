@@ -1,5 +1,9 @@
 # PI-Desktop Baseline Freeze
 
+> [Pasted directory references](../adr/composer-pasted-directory-references.md) add
+> folder cards and lazy dir prompt context without copying trees or granting access.
+
+
 - Baseline Version: `0.4.22`
 - Date: `2026-10-08`
 - Status: `Frozen for implementation details (indefinite local permission approvals + Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v16 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + edge-specific work-panel/chat resize ownership + models.dev chat model catalog + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font + ChatGPT-style logical project groups + categorized plugin providers in Add Service)`

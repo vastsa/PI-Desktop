@@ -1,5 +1,23 @@
 # 04. E2E Test Plan
 
+## E2E-COMPOSER-DIRECTORY-PASTE: Native folder cards and lazy context
+
+- **Preconditions**: Synthetic folders/files with spaces, Unicode and XML-significant names.
+- **Steps**: Copy and paste single/multiple folders and mixed files in home and
+  session composers. Remove cards by mouse/keyboard, undo/redo and restore drafts
+  from history. Edit or switch sessions while metadata resolves; delete the owner.
+  Send and steer with folder cards. Repeat ordinary text/image/file pastes.
+- **Expected**: Localized folder cards expose full paths and removal. Selection
+  order and source ownership survive, preserving newer edits. Removed cards send
+  no hint. Both send paths carry escaped dir markers and one inspect/read-as-needed
+  instruction. No directory arrayBuffer, traversal, recursive copy, Project change
+  or filesystem grant occurs. Unavailable paths fail without partial references.
+- **Status**: Parser/handler/editor/serialization tests cover deterministic cases.
+  `pnpm test:e2e:composer-paste` uses synthetic file-list metadata to verify
+  folder insertion and removal across the Electron preload bridge. Native OS
+  clipboard verification remains a manual scenario.
+
+
 > Scope: MVP acceptance scenarios plus current shipped product increments for PI-Desktop
 > Status: Accepted (protocol/Electron automation is active; full desktop Playwright remains planned)
 > Cross-references: [acceptance-criteria](02-acceptance-criteria.md) · [milestones](01-mvp-milestones.md) · [ai-development-workflow](03-ai-development-workflow.md) · [change-checklist](05-change-checklist.md)

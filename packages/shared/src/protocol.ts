@@ -441,6 +441,7 @@ export const IPC = {
     composerPickPhotos: "pi-desktop/composer/pickPhotos",
     composerImportFiles: "pi-desktop/composer/importFiles",
     composerPasteFiles: "pi-desktop/composer/pasteFiles",
+    composerReadClipboardDirectories: "pi-desktop/composer/readClipboardDirectories",
     clipboardRecordPaste: "pi-desktop/clipboard/recordPaste",
     composerCommands: "pi-desktop/composer/commands",
     workspaceDiff: "pi-desktop/workspace/diff",

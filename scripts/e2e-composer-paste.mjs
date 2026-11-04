@@ -50,6 +50,7 @@ try {
   await build({
     entryPoints: {
       writer: join(root, "apps/desktop/electron/main/composer-paste.ts"),
+      directories: join(root, "apps/desktop/electron/main/composer-clipboard-directories.ts"),
       reader: join(root, "packages/host-runtime/src/workspace-files.ts"),
       video: join(root, "apps/desktop/electron/main/open-attachment-video.ts"),
     },
@@ -81,9 +82,11 @@ try {
     `
 const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
 const { saveComposerPasteFiles } = require("./writer.cjs");
+const { nativeClipboardPaths, readComposerClipboardDirectories } = require("./directories.cjs");
 const { readOpenableFile, readOpenableImage, resolveRealOpenablePath } = require("./reader.cjs");
 const { openableMp4Path } = require("./video.cjs");
 app.setPath("userData", path.join(__dirname, "profile"));
@@ -92,6 +95,19 @@ const history = [];
 const opened = [];
 let completeOpens;
 const opensDone = new Promise(resolve => { completeOpens = resolve; });
+let directoryPastePending = true;
+ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async () => {
+  if (!directoryPastePending) return { ok: true, data: null };
+  directoryPastePending = false;
+  const clipboard = {
+    readBuffer: format => Buffer.from(format === "text/uri-list"
+      ? pathToFileURL(path.join(__dirname, "copied folder")).href : ""),
+  };
+  const data = await readComposerClipboardDirectories(clipboard, () => {
+    throw new Error("a folder-only paste must not create an import token");
+  }, () => nativeClipboardPaths(clipboard, "linux"));
+  return { ok: true, data };
+});
 ipcMain.handle("pi-desktop/composer/pasteFiles", async (_event, input) => {
   const files = await saveComposerPasteFiles(__dirname, input.sessionId, input.files);
   for (let i = 0; i < files.length; i++) {
@@ -236,6 +252,7 @@ app.whenReady().then(async () => {
     return;
   }
   await fs.mkdir(path.join(__dirname, "attachments"));
+  await fs.mkdir(path.join(__dirname, "copied folder"));
   await fs.writeFile(path.join(__dirname, "attachments", "a".repeat(64)), Buffer.alloc(512 * 1024 + 1));
   await fs.writeFile(path.join(__dirname, "attachments", "b".repeat(64)), Buffer.from([0, 1, 2, 0]));
   const window = new BrowserWindow({ show: false, webPreferences: {
@@ -277,6 +294,7 @@ app.whenReady().then(async () => {
     });
     await window.webContents.executeJavaScript('globalThis.composerPreviewPointer = input => new Promise(resolve => { globalThis.composerPreviewPointerDone = resolve; console.log("PI_PREVIEW_POINTER:" + JSON.stringify(input)); }); void 0');
     const result = await window.webContents.executeJavaScript("globalThis.composerPasteProbe()");
+    assert.equal(result.ok, true, JSON.stringify(result));
     await opensDone;
     assert.deepEqual(opened.map(path.extname), [".mp4", ".mp4", ".mp4"]);
     assert.equal(await fs.realpath(opened[0]), await fs.realpath(path.join(__dirname, "attachments", "a".repeat(64))));

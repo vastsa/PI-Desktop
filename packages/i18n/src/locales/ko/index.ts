@@ -393,6 +393,8 @@ export const ko = {
     sessionTranscriptEmpty: "이 세션의 기록을 읽지 못했습니다. 세션을 다시 열어 시도하세요.",
     fileMenu: "파일 참조",
     removeFileReference: "파일 참조 {{name}} 제거",
+    directoryReference: "폴더",
+    directoryPasteUnavailable: "복사한 폴더의 전체 경로를 가져올 수 없습니다. 폴더를 입력란으로 드래그하세요.",
     removePluginMark: "{{name}} 제거",
     pluginTriggerMenu: "플러그인 제안",
     messageAttachments: "이 메시지의 첨부 파일",

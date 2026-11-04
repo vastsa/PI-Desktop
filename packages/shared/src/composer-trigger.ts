@@ -186,13 +186,17 @@ export function serializeComposerFileReferences(
 ): string {
   const content = serializeInlineComposerFileReferences(draft, references);
   const paths = references
-    .filter((reference) => !reference.token && reference.kind !== "session")
+    .filter((reference) => !reference.token && reference.kind !== "session" && reference.kind !== "directory")
     .map((reference) => formatFileInsert(reference.path, "file"))
     .join("")
     .trim();
-  if (!content) return paths;
-  if (!paths) return content;
-  return `${content}\n${paths}`;
+  return [content, paths].filter(Boolean).join("\n");
+}
+
+/** XML escaping keeps directory names from breaking out of their data marker. */
+function directoryPromptReference(path: string): string {
+  const escaped = path.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<dir>${escaped}</dir>`;
 }
 
 /**
@@ -215,7 +219,9 @@ export function serializeInlineComposerFileReferences(
       ? send
       : reference.kind === "session"
         ? formatSessionLink(reference.path)
-        : formatFileInsert(reference.path, "file").trim();
+        : reference.kind === "directory"
+          ? directoryPromptReference(reference.path)
+          : formatFileInsert(reference.path, "file").trim();
     let index = content.indexOf(token);
     while (index !== -1) {
       const nextChar = content[index + token.length];
@@ -228,7 +234,13 @@ export function serializeInlineComposerFileReferences(
       index = content.indexOf(token, index + insert.length + separator.length);
     }
   }
-  return content.trim();
+  const directories = references.filter(reference => reference.kind === "directory" &&
+    (!reference.token || draft.includes(reference.token)));
+  const guidance = directories.length
+    ? "The user provided these local directories for the current task.\nInspect their structure and read relevant files as needed to fulfill the request."
+    : "";
+  const unpositioned = directories.filter(reference => !reference.token).map(reference => directoryPromptReference(reference.path)).join("\n");
+  return [content.trim(), guidance, unpositioned].filter(Boolean).join("\n");
 }
 
 /** Remove renderer-only inline reference tokens before a text transform. */
