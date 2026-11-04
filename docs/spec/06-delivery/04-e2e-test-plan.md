@@ -273,6 +273,13 @@
   future and proves a conflicting write cannot acquire until that body finishes.
   Closing/abandoning metadata must not release running work. Snapshot/finalize
   and later rollback participate in the same Host file domain.
+- Independent identified writes with validated tickets may use two session
+  slots. Per-file native gates must observe both blocking bodies before either
+  is released, and retain the cancelled body's lease. Budget regressions cover
+  legacy/coordinated admission in both orders, conservative waiter draining,
+  reversed source order, global limits and cancellation after reservation.
+  Runtime E2E must preserve distinct snapshots and rollback for both writes;
+  this is correctness evidence, not a wall-clock throughput claim.
 - Runtime/pi integration tests cover parent/delegate registration, preparation
   order, validation/mode failures, Stop and model result order. Protocol adapter
   tests cover sealing, cleanup, remote/legacy fallback and equal provider IDs in
@@ -7895,9 +7902,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   6. If the task uses a dedicated worktree outside the advertised workspace,
      verify its guarded Bash edit and resulting `git diff`.
 - **Expected**:
-  - Read/search calls may overlap, but only one `Write`/`Edit` executes for a
-    session at a time; queued mutations do not consume another global
-    mutation slot while waiting.
+  - Read/search calls may overlap. A session may execute two independent
+    identified local writes with validated batch tickets; conservative writes
+    remain exclusive within the session. Queued mutations consume no global
+    mutation capacity while waiting; total running writes stay bounded by two.
   - The stale-tag edit fails without changing the file and returns
     `EDIT_TAG_MISMATCH` carrying the live tag and current content at the
     anchors; the overlapping-range payload fails with `EDIT_RANGE_INVALID`

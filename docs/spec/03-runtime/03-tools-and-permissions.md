@@ -66,7 +66,13 @@ ToolBudget grants all resources and execution capacity together. Waiting for a
 predecessor/resource does not occupy a capacity slot. Later conflicting calls
 cannot bypass an exclusive resource waiter; an earlier source-order call can
 bypass a later waiter from its own batch to avoid a queue/DAG deadlock. Existing
-limits remain: 16 total, 8 reads, 2 writes, 4 per session, 1 write per session.
+limits remain: 16 total, 8 reads, 2 writes and 4 per session. Within a session,
+up to two writes may overlap only when both have validated batch tickets and
+trusted local file identities, subject to the existing conflict checks. All
+other mutations retain single-write admission and exclude coordinated writes
+in both arrival orders. An older source-ready conservative mutation waiter
+prevents later coordinated writes from continuously refilling that session;
+unready successors and source-predecessor bypass retain the DAG exceptions.
 The bounded admission wait still returns HOST_OVERLOADED after 30 seconds.
 Audit/debug diagnostics record total admission wait and its initial reason
 (source_order, resource or capacity); these are not disjoint duration segments.
