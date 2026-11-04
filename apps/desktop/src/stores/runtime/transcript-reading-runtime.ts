@@ -21,7 +21,11 @@ type ReadSession = (
 ) => Promise<{ session: SessionDetail | null }>;
 type ReadingActions = Pick<
   AppState,
-  "navigateTranscript" | "loadTranscriptPage" | "returnToLatestTranscript" | "restoreTranscriptReading"
+  | "navigateTranscript"
+  | "loadTranscriptPage"
+  | "returnToLatestTranscript"
+  | "prepareReturnToLatestTranscript"
+  | "restoreTranscriptReading"
 >;
 
 /** Read workflows publish renderer views and never write the runtime/model cache. */
@@ -57,6 +61,20 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
     });
   }
 
+  function prepareReturnToLatestTranscript(sessionId: string): () => void {
+    const current = get().transcriptViews[sessionId];
+    if (!current) return () => {};
+    const prepared: TranscriptView = { ...current, loading: null };
+    publish(sessionId, prepared);
+    return () => {
+      set((state) => {
+        if (state.transcriptViews[sessionId] !== prepared) return {};
+        const { [sessionId]: _released, ...transcriptViews } = state.transcriptViews;
+        return { transcriptViews };
+      });
+    };
+  }
+
   function reportError(sessionId: string, pending: TranscriptView, error: unknown) {
     if (get().transcriptViews[sessionId] !== pending) return;
     publish(sessionId, { ...pending, loading: null });
@@ -66,6 +84,7 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
 
   const actions: ReadingActions = {
     returnToLatestTranscript,
+    prepareReturnToLatestTranscript,
     restoreTranscriptReading: async (sessionId, position, signal) => {
       if (signal.aborted || get().activeSessionId !== sessionId || !position.messageId) return false;
       const previous = get().transcriptViews[sessionId];

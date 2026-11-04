@@ -213,19 +213,19 @@ test("the transcript bounds mounted history and escalates at the top", () => {
     /isHistoryRevealPosition\(el, pinnedRef\.current && !gesturing\)/,
   );
   const reachTop = transcript.match(
-    /const reachTop = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/,
+    /const reachTop = useCallback\(\(background = false\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/,
   )?.[1];
   assert.ok(reachTop, "reachTop must exist with a stable identity");
   assert.match(reachTop, /growTranscriptWindow\(windowSize, historyLengthRef\.current\)/);
-  assert.match(reachTop, /preserveHistory\(\(\) => setWindowSize\(grown\), windowSize\)/);
+  assert.match(reachTop, /preserveHistory\(\(\) => setWindowSize\(grown\), windowSize, false, background\)/);
   assert.match(reachTop, /setWindowSize\(grown\)/);
-  assert.match(reachTop, /loadOlder\(\)/);
+  assert.match(reachTop, /loadOlder\(background\)/);
 });
 
 test("mounting rows above the viewport is anchored like a fetched page", () => {
   // Both transitions use one viewport owner; the real DOM/native-wheel
   // behavior is exercised by e2e-transcript-history-loading.mjs.
-  assert.match(transcript, /preserveHistory\(onLoadOlder, windowSize, true\)/);
+  assert.match(transcript, /preserveHistory\(onLoadOlder, windowSize, true, background\)/);
   assert.match(transcript, /useTranscriptHistoryPaging\(\{/);
   assert.doesNotMatch(transcript, /prependHeightRef|el\.scrollTop \+= delta/);
 });

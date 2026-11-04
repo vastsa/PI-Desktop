@@ -53,6 +53,15 @@ export function isHistoryRevealPosition(
   return geometry.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX;
 }
 
+/** Ahead-loading is gesture-driven, never a reason to drain history at rest. */
+export function isHistoryPrefetchPosition(
+  geometry: TranscriptScrollerGeometry,
+  pinned = false,
+): boolean {
+  return !pinned && transcriptHasLayout(geometry) &&
+    geometry.scrollTop <= Math.min(2400, Math.max(HISTORY_REVEAL_THRESHOLD_PX, geometry.clientHeight * 3));
+}
+
 export type TranscriptScrollInput = {
   previousScrollTop: number;
   scrollTop: number;

@@ -7,12 +7,30 @@ import {
 import { readScrollInputContext, stopSmoothScroll } from "../../../../lib/scroll-input";
 import { isScrollGestureInput, type ScrollInputType } from "../../../../lib/transcript-scroll";
 
-type Hold = { position: TranscriptReadingPosition; settled: boolean; stableFrames: number; page: boolean; sourceHead?: string; scroller: HTMLDivElement; overflowY: string };
+type Hold = {
+  position: TranscriptReadingPosition;
+  settled: boolean;
+  stableFrames: number;
+  page: boolean;
+  background: boolean;
+  windowSize: number;
+  sourceHead?: string;
+  alignedHead?: string;
+  height: number;
+  top: number;
+  viewport: number;
+  scroller: HTMLDivElement;
+  overflowY: string;
+};
 
-/** One owner for page IO, mounted-window growth and their pre-paint anchor.
- * Input during a prepend is discarded, never replayed against the new history.
- * A pending IO operation remains single-flight even if navigation cancels its
- * viewport hold; its late result cannot claim a new pane or navigation target. */
+const layoutChanged = (held: Hold, sourceHead: string | undefined) =>
+  held.height !== held.scroller.scrollHeight || held.viewport !== held.scroller.clientHeight ||
+  held.alignedHead !== sourceHead;
+
+/** Single-flight page IO and pre-paint anchoring. Ahead-loading follows the
+ * reader's newest position without blocking input. Only the hard-edge fallback
+ * discards scroll input until its prepend settles. Cancelled IO cannot acquire
+ * a newer navigation target. */
 export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sourceHead, onStart, onPosition, onSettled }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   contentRef: RefObject<HTMLDivElement | null>;
@@ -36,7 +54,7 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
 
   const dropHold = useCallback(() => {
     const held = holdRef.current;
-    if (held) held.scroller.style.overflowY = held.overflowY;
+    if (held && !held.background) held.scroller.style.overflowY = held.overflowY;
     holdRef.current = null;
     cancelAnimationFrame(frameRef.current);
     frameRef.current = 0;
@@ -46,29 +64,55 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
     setPhase("idle");
   }, [dropHold]);
   const isHeld = useCallback(() => holdRef.current !== null, []);
+  const isLocked = useCallback(() => Boolean(holdRef.current && !holdRef.current.background), []);
+  const track = useCallback(() => {
+    const held = holdRef.current;
+    const scroller = scrollRef.current;
+    const content = contentRef.current;
+    if (!held?.background || !scroller || !content) return;
+    if (layoutChanged(held, sourceHeadRef.current)) {
+      // Keep intentional scrolling, but not the displacement caused by layout.
+      held.position = { ...held.position, offset: held.position.offset - (scroller.scrollTop - held.top),
+        scrollTop: scroller.scrollTop };
+    } else {
+      const position = captureTranscriptReadingPosition(scroller, content, false, held.windowSize);
+      if (position) held.position = position;
+    }
+    held.top = scroller.scrollTop;
+  }, [contentRef, scrollRef]);
   const restore = useCallback(() => {
     const held = holdRef.current;
     const scroller = scrollRef.current;
     const content = contentRef.current;
     if (!held || !scroller || !content) return false;
+    if (held.background) {
+      track();
+      if (!layoutChanged(held, sourceHeadRef.current)) return false;
+    }
     const before = scroller.scrollTop;
     restoreTranscriptReadingPosition(scroller, content, held.position);
+    held.height = scroller.scrollHeight;
+    held.viewport = scroller.clientHeight;
+    held.alignedHead = sourceHeadRef.current;
+    held.top = scroller.scrollTop;
     if (Math.abs(scroller.scrollTop - before) > 1) held.stableFrames = 0;
     callbacks.current.onPosition(scroller.scrollTop);
     return true;
-  }, [contentRef, scrollRef]);
+  }, [contentRef, scrollRef, track]);
 
-  const run = useCallback((action: () => void | Promise<void>, windowSize: number, page = false) => {
+  const run = useCallback((action: () => void | Promise<void>, windowSize: number, page = false, background = false) => {
     const scroller = scrollRef.current;
     const content = contentRef.current;
     if (holdRef.current || inFlightRef.current || autoBlockedRef.current || !scroller || !content) return;
-    stopSmoothScroll(scroller);
+    if (!background) stopSmoothScroll(scroller);
     const position = captureTranscriptReadingPosition(scroller, content, false, windowSize)
       ?? { pinned: false, offset: 0, scrollTop: scroller.scrollTop, windowSize };
-    const hold: Hold = { position, settled: false, stableFrames: 0, page, sourceHead: sourceHeadRef.current,
+    const hold: Hold = { position, settled: false, stableFrames: 0, page, background, windowSize,
+      sourceHead: sourceHeadRef.current, alignedHead: sourceHeadRef.current,
+      height: scroller.scrollHeight, top: scroller.scrollTop, viewport: scroller.clientHeight,
       scroller, overflowY: scroller.style.overflowY };
     holdRef.current = hold; // Synchronous: two scroll events cannot start two pages.
-    scroller.style.overflowY = "hidden";
+    if (!background) scroller.style.overflowY = "hidden";
     inFlightRef.current = true;
     callbacks.current.onStart();
     setPhase(page ? "page" : "mount");
@@ -145,7 +189,7 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
     const scroller = scrollRef.current;
     if (!scroller) return;
     const block = (event: Event) => {
-      if (!holdRef.current || (event instanceof WheelEvent && (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)))) return;
+      if (!isLocked() || (event instanceof WheelEvent && (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)))) return;
       const input = readScrollInputContext(event, scroller, contentRef.current);
       if (!isScrollGestureInput(event.type as ScrollInputType, input)) return;
       // Do not interfere with fields, title activation, nested docks or zoom.
@@ -158,7 +202,7 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
       for (const type of ["wheel", "touchmove", "keydown"]) scroller.removeEventListener(type, block, true);
       dropHold();
     };
-  }, [contentRef, dropHold, scrollRef]);
+  }, [contentRef, dropHold, isLocked, scrollRef]);
 
-  return { loadingOlder: phase === "page", pending: phase !== "idle", run, restore, isHeld, cancel, retry };
+  return { loadingOlder: phase === "page", pending: phase !== "idle", run, restore, isHeld, isLocked, track, cancel, retry };
 }

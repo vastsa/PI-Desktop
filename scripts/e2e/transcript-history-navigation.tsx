@@ -20,8 +20,8 @@ function assert(value: unknown, label: string): asserts value {
   if (!value) throw new Error(`Real history navigation: ${label}`);
 }
 
-declare global { var transcriptHistoryNavigationProbe: () => Promise<unknown>; }
-globalThis.transcriptHistoryNavigationProbe = async () => {
+declare global { var transcriptHistoryNavigationProbe: (reducedOnly?: boolean) => Promise<unknown>; }
+globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
   const i18n = createInstance();
   await i18n.init({ lng: "en", resources: { en: { translation: en } } });
   const originalState = useAppStore.getState();
@@ -65,33 +65,34 @@ globalThis.transcriptHistoryNavigationProbe = async () => {
   const scroller = () => host.querySelector<HTMLDivElement>(".thread-scroll")!;
   const busy = () => host.querySelector('.transcript-history-loading[aria-hidden="false"]') !== null;
   const bottom = () => Math.abs(scroller().scrollHeight - scroller().clientHeight - scroller().scrollTop) <= 2;
-  const render = () => flushSync(() => root.render(<I18nextProvider i18n={i18n}>
-    <div className="session-panes"><SessionPane key={id} sessionId={id} visible /></div>
+  const render = (visible = true) => flushSync(() => root.render(<I18nextProvider i18n={i18n}>
+    <div className="session-panes"><SessionPane key={id} sessionId={id} visible={visible} /></div>
   </I18nextProvider>));
-  const reset = async (name: string, role: "user" | "mixed" = "user") => {
+  const reset = async (name: string, role: "user" | "mixed" = "user", running = false, tailOnly = false) => {
     flushSync(() => root.render(null));
     for (const item of pending.splice(0)) item.resolve(item.response);
     id = `navigation-${name}`;
-    data = Array.from({ length: 280 }, (_, index) => ({ id: `${id}-${index}`,
+    const count = tailOnly ? 35 : 280;
+    data = Array.from({ length: count }, (_, index) => ({ id: `${id}-${index}`,
       role: role === "user" || index % 30 === 0 ? "user" : "assistant",
       content: `Message ${index}\n\n${"Stationary visible reading paragraph. ".repeat(80)}`,
-      createdAt, status: "complete" }));
+      createdAt, status: running && index === count - 1 ? "streaming" : "complete" }));
     summary = { id, title: id, mode: "agent", permissionMode: "ask", thinkingLevel: "off",
       providerId: "fixture", modelId: "fixture", createdAt, updatedAt: createdAt, messageCount: data.length };
     useAppStore.setState({ sessions: [summary], messages: [], activeSessionId: undefined, selectingSessionId: undefined,
       retainedSessionIds: [], retainedTranscripts: {}, transcriptViews: {}, sessionHistory: {}, sessionCompactions: {},
       providers: [], providerModels: {}, pendingPlans: {}, pendingAsks: {}, pendingPermissions: {}, planningStates: {},
-      runningSessions: {}, isRunning: false, workspace: undefined, queuedPrompts: {}, notifications: [], page: "chat",
+      runningSessions: running ? { [id]: true } : {}, isRunning: running, workspace: undefined, queuedPrompts: {}, notifications: [], page: "chat",
       settings: { ...originalState.settings, smoothStreaming: false } });
     await useAppStore.getState().selectSession(id);
     render();
     await until(() => Boolean(scroller()) && !host.querySelector('[data-transcript-settling="true"]') && bottom(), "cold pane follows latest");
     await frame();
   };
-  const begin = () => {
+  const begin = (top = 80) => {
     const el = scroller();
     el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -400 }));
-    el.scrollTo({ top: 80, behavior: "instant" });
+    el.scrollTo({ top, behavior: "instant" });
     const viewport = el.getBoundingClientRect();
     const row = [...el.querySelectorAll<HTMLElement>("[data-message-id]")].find(node => {
       const r = node.getBoundingClientRect(); return r.height > 0 && r.bottom > viewport.top + 20 && r.top < viewport.bottom;
@@ -120,6 +121,166 @@ globalThis.transcriptHistoryNavigationProbe = async () => {
   const results: unknown[] = [];
   const failures: string[] = [];
   try {
+    for (const tailOnly of [true, false]) for (const running of [false, true]) {
+      await reset(`motion-${tailOnly ? "tail" : "history"}-${running ? "running" : "idle"}`, "mixed", running, tailOnly);
+      const el = scroller();
+      const anchor = begin(tailOnly ? Math.max(121, (el.scrollHeight - el.clientHeight) / 2) : 80);
+      try {
+        if (!tailOnly) {
+          await until(() => pending.length === 1, "motion setup did not page");
+          await finish();
+        }
+        await until(() => Boolean(host.querySelector(".jump-latest-btn")), "latest control did not appear");
+        let blankFrames = 0;
+        const distance = () => Math.max(0, el.scrollHeight - el.clientHeight - el.scrollTop);
+        const start = distance();
+        const samples: number[] = [start];
+        let sampling = true;
+        const observers = new Set<ResizeObserver>();
+        const sample = () => {
+          if (!sampling) return;
+          samples.push(distance());
+          // rAF runs before auto content-visibility has laid out the new viewport.
+          // Inspect eligibility after that layout, still before this frame paints.
+          const observer = new ResizeObserver(() => {
+            observer.disconnect(); observers.delete(observer);
+            if (!sampling) return;
+            const viewport = el.getBoundingClientRect();
+            const painted = [...el.querySelectorAll<HTMLElement>("[data-message-id]")].some(node => {
+              const rect = node.getBoundingClientRect();
+              return rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom &&
+                node.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true });
+            });
+            if (!painted) blankFrames++;
+          });
+          observers.add(observer); observer.observe(el);
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+        host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
+        try {
+          await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), "smooth latest did not finish");
+          for (let n = 0; n < 5; n++) await frame();
+        } finally { sampling = false; for (const observer of observers) observer.disconnect(); }
+        const intermediateFrames = samples.filter(value => value > 2 && value < start - 2).length;
+        const reversal = Math.max(0, ...samples.slice(1).map((value, i) => value - samples[i]));
+        const result = { tailOnly, running, start, intermediateFrames, reversal, blankFrames, firstDistances: samples.slice(0, 8) };
+        console.log("LATEST_MOTION " + JSON.stringify(result));
+        assert(matchMedia("(prefers-reduced-motion: reduce)").matches || intermediateFrames >= 3,
+          `latest snapped instead of scrolling: ${JSON.stringify(result)}`);
+        assert(reversal <= 2, `latest moved away from bottom: ${JSON.stringify(result)}`);
+        assert(blankFrames === 0, `latest painted an empty viewport: ${JSON.stringify(result)}`);
+        results.push(result);
+      } catch (error) { failures.push(String(error)); console.log("LATEST_MOTION_ERROR " + String(error)); }
+      finally { anchor.stop(); }
+    }
+    if (reducedOnly) {
+      assert(matchMedia("(prefers-reduced-motion: reduce)").matches, "reduced motion emulation missing");
+      assert(failures.length === 0 && unexpected.length === 0, failures.join("\n"));
+      return { ok: true, reducedMotion: true, cases: results };
+    }
+    for (const action of ["interrupt", "growth", "complete", "hide", "unmount", "new-search"] as const) {
+      await reset(`lifecycle-${action}`, "mixed", action === "growth" || action === "complete");
+      const anchor = begin();
+      try {
+        await until(() => pending.length === 1, "lifecycle setup did not page");
+        await finish();
+        const el = scroller();
+        const oldTop = el.scrollTop;
+        host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
+        await until(() => el.scrollTop > oldTop + 20 && !bottom(), "trip did not enter an intermediate position");
+        if (action === "new-search") {
+          await useAppStore.getState().navigateTranscript({ sessionId: id, messageId: data[270].id, query: "Message 270" });
+          await until(() => useAppStore.getState().transcriptViews[id]?.focus?.messageId === data[270].id,
+            "new search did not replace latest intent");
+          for (let n = 0; n < 50; n++) await frame();
+          assert(useAppStore.getState().transcriptViews[id]?.focus?.messageId === data[270].id && !bottom(),
+            "obsolete latest arrival overrode the new search");
+        } else if (action === "interrupt") {
+          el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+          el.scrollTo({ top: el.scrollTop - 100, behavior: "instant" });
+          el.dispatchEvent(new Event("scroll", { bubbles: true }));
+          const stopped = el.scrollTop;
+          for (let n = 0; n < 50; n++) await frame();
+          assert(Math.abs(el.scrollTop - stopped) <= 2 && !bottom(), "reader input did not retire the trip");
+          assert(Boolean(useAppStore.getState().transcriptViews[id]), "interruption committed latest");
+        } else {
+          if (action === "growth") {
+            const live = useAppStore.getState().messages.map(message => ({ ...message, status: "complete" as const }));
+            useAppStore.setState({ messages: [...live, { ...data.at(-1)!, id: `${id}-new`,
+              content: "New live output. ".repeat(300), status: "streaming" }] });
+          } else if (action === "complete") {
+            useAppStore.setState({ isRunning: false, runningSessions: {},
+              messages: useAppStore.getState().messages.map(message => ({ ...message, status: "complete" })) });
+          } else if (action === "hide") {
+            render(false);
+            await until(() => !useAppStore.getState().transcriptViews[id], "hide did not commit accepted latest intent");
+            render();
+          } else if (action === "unmount") {
+            flushSync(() => root.render(null));
+            assert(!useAppStore.getState().transcriptViews[id], "unmount did not commit accepted latest intent");
+            render();
+          }
+          await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), `${action} lost latest`);
+          for (let n = 0; n < 15; n++) { await frame(); assert(bottom(), `${action} reversed accepted latest`); }
+        }
+        results.push({ lifecycle: action, ok: true });
+        console.log("LATEST_LIFECYCLE " + JSON.stringify({ action, ok: true }));
+      } catch (error) { failures.push(String(error)); console.log("LATEST_LIFECYCLE_ERROR " + action + " " + String(error)); }
+      finally { anchor.stop(); }
+    }
+    await reset("focused-disjoint", "mixed");
+    useAppStore.setState({ transcriptViews: { [id]: { messages: data.slice(0, 35), messageStart: 0,
+      messageEnd: 35, hasMoreBefore: false, hasMoreAfter: true, loading: null,
+      focus: { sessionId: id, messageId: data[0].id, query: "Message 0", requestId: 991 } } } });
+    await until(() => Boolean(host.querySelector(".transcript-search-target")), "search target did not mount");
+    {
+      const el = scroller();
+      const positions: number[] = [];
+      let sampling = true;
+      const sample = () => {
+        if (!sampling || !useAppStore.getState().transcriptViews[id]) return;
+        positions.push(el.scrollTop); requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+      const beforeReads = reads.length;
+      host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
+      try {
+        await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), "disjoint search failed to join live tail");
+        const reversal = Math.max(0, ...positions.slice(1).map((top, n) => positions[n] - top));
+        assert(reversal <= 2, `old search alignment reversed latest: ${reversal}`);
+        assert(reads.length === beforeReads, "explicit latest read unloaded intermediate history");
+        results.push({ focusedDisjoint: true, reversal });
+        console.log("LATEST_FOCUSED_DISJOINT " + JSON.stringify({ reversal }));
+      } catch (error) { failures.push(String(error)); console.log("LATEST_FOCUSED_DISJOINT_ERROR " + String(error)); }
+      finally { sampling = false; }
+    }
+    for (const role of ["user", "mixed"] as const) {
+      await reset(`prefetch-${role}`, role);
+      const anchor = begin(scroller().clientHeight * 2);
+      try {
+        await until(() => pending.length === 1, "history was not requested before reaching the top");
+        assert(scroller().scrollTop > scroller().clientHeight, "prefetch started too close to the edge");
+        assert(scroller().style.overflowY !== "hidden", "background prefetch locked scrolling");
+        const before = scroller().scrollTop;
+        const offsetBeforeScroll = anchor.measure();
+        scroller().dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100 }));
+        scroller().scrollTo({ top: before - 100, behavior: "instant" });
+        await frame();
+        await frame();
+        assert(Math.abs(anchor.measure() - offsetBeforeScroll - 100) <= 2,
+          `prefetch undid a newer reading point: before=${offsetBeforeScroll}, now=${anchor.measure()}`);
+        anchor.stop();
+        const offset = anchor.measure();
+        await finish();
+        const drift = Math.abs(anchor.measure() - offset);
+        const result = { role, prefetch: true, drift, top: scroller().scrollTop };
+        console.log("EARLY_HISTORY " + JSON.stringify(result));
+        assert(drift <= 2, `prefetched page moved the reading point: ${JSON.stringify(result)}`);
+        results.push(result);
+      } catch (error) { failures.push(String(error)); console.log("EARLY_HISTORY_ERROR " + String(error)); }
+      finally { anchor.stop(); }
+    }
     for (const role of ["user", "mixed"] as const) {
       await reset(`quiet-${role}`, role);
       const anchor = begin();

@@ -2368,9 +2368,9 @@ identify the platform validation still needed.
   output; switch away and reveal the running pane; inspect an unread history
   range and an explicit search at the tail; settle and abort the turn. While
   reading above the live tail, click return-to-latest and switch away in the
-  same task, before a native smooth-scroll event. Return first with the pane
-  retained, then repeat while a project switch actually unmounts the pane and
-  output continues in the background.
+  same task, before the return-to-latest animation advances a frame. Return
+  first with the pane retained, then repeat while a project switch actually
+  unmounts the pane and output continues in the background.
 - **Expected**: The restored live tail keeps a running process header while
   Stop is available. Content updates and pane reveal do not falsely show
   Finished. The restored range and scroll offset remain owned by the reader.
@@ -2379,10 +2379,11 @@ identify the platform validation still needed.
   An empty restored range stays historical, an ordinary empty canonical range
   shows the initial wait, and a restored navigation-parent copy with the same
   message id keeps the running presentation.
-  Return-to-latest synchronously records a pinned bookmark; both a retained
-  reveal and a fresh project remount follow the newest output without a second
-  click. The running header and Stop control stay consistent. Readers who did
-  not choose return-to-latest keep their existing historical reading position.
+  Return-to-latest synchronously records a pinned bookmark and commits any
+  prepared latest view on hide or unmount; both a retained reveal and a fresh
+  project remount follow the newest output without a second click. The running
+  header and Stop control stay consistent. Readers who did not choose
+  return-to-latest keep their existing historical reading position.
 - **Automation**: `node scripts/e2e-transcript-reading-position.mjs`
   (`transcriptLiveTailProbe`).
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.3 / §2.4
@@ -13516,35 +13517,60 @@ This test plan spec is accepted when:
 - **Preconditions**: A built Desktop checkout and existing compatible Electron
   dependencies. Use the isolated synthetic fixture, never a live user profile.
 - **Steps**:
-  1. Start `node scripts/e2e-transcript-history-loading.mjs --manual` and click
-     **Load earlier (hold)**. Note the visible turn and its viewport offset.
-  2. Continuously roll the wheel upward, then downward while the page is held.
-     Click **Complete page**. Repeat without scrolling during the held interval.
-  3. Repeat with **Fail page**. Confirm the indicator ends and new input can
-     scroll or retry, without an automatic loop at the unchanged boundary.
-  4. While loading, return to latest; complete the old page and confirm it does
-     not pull the viewport back. Verify nested scrolling, editable keys, title
-     activation and zoom still belong to their original controls.
-- **Expected**: The visible message remains at its viewport offset during
-  loading, committed projection, delayed row measurements and label removal.
-  Transcript-directed wheel/touch/scroll-key input is discarded, not queued;
-  ordinary scrolling resumes on settlement. Page IO remains single-flight;
-  explicit navigation, hide and unmount release the hold and restore styles.
+  1. Scroll upward into the ahead-loading band (`min(2400px, max(120px, 3 *
+     clientHeight))`, above the `120px` hard edge) while holding Host page IO;
+     continue scrolling upward during IO, then complete the page.
+  2. Start `node scripts/e2e-transcript-history-loading.mjs --manual` and click
+     **Load earlier (hold)** (or reach `<= 120px`). Note the visible turn and
+     its viewport offset, continuously roll the wheel upward and downward while
+     the page is held, then click **Complete page**. Repeat without scrolling.
+  3. Repeat with **Fail page** and an empty page. Confirm the indicator ends and
+     new input can scroll or retry, without an automatic loop at rest.
+  4. From both an ordinary tail and a paginated historical view (idle and
+     running), trigger return-to-latest with normal and reduced motion, and
+     interrupt an active trip with genuine main-scroller input vs horizontal,
+     zero-delta, or `Ctrl`+wheel input and nested/editable/row controls. While a
+     page is pending, return to latest, complete the old page, and also test
+     hiding/unmounting mid-trip.
+- **Expected**: Ahead-loading mounts cached withheld history before Host IO,
+  stays single-flight, does not set `overflow-y: hidden` or discard main scroll
+  input, tracks the newest actual message anchor across ongoing upward movement,
+  and keeps that message within `2px` when the page prepends; there is no
+  early-threshold observer or eager draining at rest. Only the `<= 120px` hard
+  edge, explicit earlier-history action, and underfilled `120px` observer briefly
+  lock `overflow-y` and discard main-scroller vertical wheel/touch/scroll-key
+  input through IO and three stable layout frames while preserving horizontal,
+  zero-delta, and `Ctrl`+wheel input, nested scrolling, editable fields, and
+  title activation. Return-to-latest runs one `180–420ms` cubic ease-out
+  viewport animation (immediate under reduced motion) while suppressing
+  competing follow/layout/turn-completion owners; preparing a historical view
+  clears `loading` on a new view identity while keeping current messages visible
+  until exact-identity arrival, commits on hide/unmount, cancels in place only
+  on genuine main-scroller input, and may skip unloaded intermediate ranges when
+  a disjoint search/history view joins the live tail. Runtime `isRunning` stays
+  real, and existing message/page/mounted-window/retained-pane caches remain
+  unchanged without idle TTL or memory reclamation.
 - **Automation**: `node scripts/e2e-transcript-history-loading.mjs`, also run by
-  `e2e-transcript-render.mjs`. Production React and styles, native Electron wheel
-  bursts, per-frame anchor samples with 2 CSS-pixel rounding tolerance, tail
-  updates, delayed row geometry, rejection, hide/reveal and latest navigation.
-  The production `SessionPane` and real store path additionally paginate a small
-  tail across continuous assistant-answer boundaries, sample actual message
-  positions, and click the real latest button during/after Host reads for both
-  standalone rows and grouped answers. Only external Host IPC is controlled.
-  Run with normal animation; do not force reduced motion to hide smooth-scroll
-  races. Assert latest navigation stays at bottom without opening another page.
-  Manual procedures: `tests/history-loading-scroll-test-cases.md`.
-- **Specs linked**: `04-ux/09-interaction-patterns.md` §9.1, ADR 0130.
+  `e2e-transcript-render.mjs`, plus `transcript-latest-navigation.test.mjs`,
+  `transcript-reading.test.mjs`, and `transcript-scroll.test.mjs`. The direct
+  fixture retains hard-edge native Electron wheel bursts, quiet loading, tail
+  updates, six delayed layout changes, rejection, empty pages, cached-window
+  growth, hide/reveal, input ownership, return-to-latest during IO, and native
+  wheel movement during unlocked ahead-loading. The `SessionPane` + real store
+  probe (`scripts/e2e/transcript-history-navigation.tsx`) adds four paired
+  return-to-latest motion cases (ordinary tail vs paginated history × idle vs
+  running, asserting `>= 3` intermediate frames, no reverse `> 2px`, and zero
+  empty visible-message frames) and ahead-read cases (standalone user rows and
+  mixed grouped answers moving the same visible message `100px` during pending
+  IO and keeping drift `<= 2px` after prepend) alongside the retained quiet
+  stability and pending/settled latest-button cases. Only external Host IPC is
+  controlled; run with normal motion enabled. Manual procedures:
+  `tests/history-loading-scroll-test-cases.md`.
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
-- **Status**: Isolated Windows Electron regression covered; other OS/hardware
-  combinations and the user's existing conversations require manual validation.
+- **Status**: Automated Electron fixture and unit regressions implemented; run
+  the candidate Electron gate per `AGENTS.md` §16 before landing, and validate
+  additional OS/hardware combinations and real conversations manually.
 
 #### E2E-160: Dragging the window across displays keeps the dropped position
 
