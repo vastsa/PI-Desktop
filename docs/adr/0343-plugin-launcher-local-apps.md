@@ -1,4 +1,4 @@
-# ADR 0339: The plugin launcher enumerates and opens local applications
+# ADR 0343: The plugin launcher enumerates and opens local applications
 
 - Status: Accepted
 - Date: 2026-11-05

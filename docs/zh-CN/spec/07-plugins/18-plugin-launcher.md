@@ -4,7 +4,7 @@
 
 > 状态：已为 issue #2085 实现（全局插件启动器重写）。
 > 范围：启动器界面、插件触发器贡献、本机应用发现，以及二者周围的 IPC 与安全边界。
-> 相关：[09-plugin-command-palette.md](09-plugin-command-palette.md)、[02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §4、ADR 0034、ADR 0072、ADR 0080、ADR 0090、ADR 0339。
+> 相关：[09-plugin-command-palette.md](09-plugin-command-palette.md)、[02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §4、ADR 0034、ADR 0072、ADR 0080、ADR 0090、ADR 0343。
 
 ## 1. 目的与非目标
 
@@ -138,7 +138,7 @@
 
 上限：扫描结果缓存 5 分钟，最多 600 条，只为前 200 条提取图标。图标取平台的 `large` 变体，每个 data URL 不超过 32 KiB，并按条目 id 与图标路径缓存跨扫描复用；条目消失时其缓存图标也会被清理，因此重复扫描不会重复付出同一次查询。目标已不存在的条目会被丢弃。
 
-渲染端只会收到显示名称、可执行文件名、来源标签（`start-menu` / `app-bundle` / `desktop-entry`）、图标和不透明的 `app:<slug>` id——永远没有路径。打开磁贴时发送该 id；`pi-desktop/pluginLauncher/openApp` 会在宿主自己的扫描结果中解析它，并在启动前重新检查目标仍然存在，因此该界面无法被变成“启动我指定的任意程序”。ADR 0339 记录了这个决定。
+渲染端只会收到显示名称、可执行文件名、来源标签（`start-menu` / `app-bundle` / `desktop-entry`）、图标和不透明的 `app:<slug>` id——永远没有路径。打开磁贴时发送该 id；`pi-desktop/pluginLauncher/openApp` 会在宿主自己的扫描结果中解析它，并在启动前重新检查目标仍然存在，因此该界面无法被变成“启动我指定的任意程序”。ADR 0343 记录了这个决定。
 
 ## 10. 窗口尺寸、位置与状态
 

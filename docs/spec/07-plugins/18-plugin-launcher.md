@@ -9,7 +9,7 @@
 > ADR [0072](../../adr/0072-global-plugin-launcher.md),
 > ADR [0080](../../adr/0080-prewarm-global-plugin-launcher.md),
 > ADR [0090](../../adr/0090-user-configurable-close-behavior-close-to-tray.md),
-> ADR [0339](../../adr/0339-plugin-launcher-local-apps.md).
+> ADR [0343](../../adr/0343-plugin-launcher-local-apps.md).
 
 ## 1. Purpose and non-goals
 
@@ -238,7 +238,7 @@ The renderer receives a display name, an executable name, a source tag
 `pi-desktop/pluginLauncher/openApp` resolves it against the host's own scan and
 re-checks that the target still exists before launching, so the surface cannot be
 turned into "start any program I name".
-ADR [0339](../../adr/0339-plugin-launcher-local-apps.md) records this decision.
+ADR [0343](../../adr/0343-plugin-launcher-local-apps.md) records this decision.
 
 ## 10. Window size, position, and state
 
