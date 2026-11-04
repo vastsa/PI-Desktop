@@ -27,6 +27,7 @@ import {
   modelConfigWithBinding,
   optionalProviderHeaders,
   resolveSubagentProviders,
+  skillCatalogBudget,
   visionFromModelConfig,
   type UserSubagentDocument,
 } from "@pi-desktop/agent-runtime";
@@ -593,6 +594,14 @@ export function createSessionLaunchRuntime({
         description: skill.description,
       })),
     ];
+    // The catalog is paid for on every turn: one line per skill in the system
+    // prompt, for the life of the session. Report when it grows past the budget
+    // instead of trimming — a skill the model cannot see is worse than a costly
+    // one, and the numbers here are the only place the cost is visible.
+    const skillBudget = skillCatalogBudget(pluginSkills);
+    if (skillBudget.over) {
+      logger.app("session", "warn", "skill catalog over budget", { data: skillBudget });
+    }
     // Subagents (ADR 0062): definitions are re-read per launch so editing
     // `~/.agents/subagents` or the registry takes effect on the next prompt, and every
     // pinned model is resolved here because credentials and the models.dev catalog

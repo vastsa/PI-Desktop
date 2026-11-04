@@ -1,5 +1,6 @@
 export * from "./host-client.js";
 export * from "./skill-review.js";
+export * from "./skill-catalog-budget.js";
 export * from "./custom-system-prompt.js";
 export * from "./model-capabilities.js";
 export * from "./mode-prompts.js";

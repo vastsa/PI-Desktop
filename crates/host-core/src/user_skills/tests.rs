@@ -1128,3 +1128,76 @@ fn write_resource_reports_an_unknown_skill() {
             .is_err());
     });
 }
+
+#[test]
+fn creating_a_near_duplicate_is_refused_with_a_patch_hint() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        registry.create(input("Add npm script", "global", None)).unwrap();
+
+        // `npm-script` is a token subset of `add-npm-script`: one lesson split
+        // across two skills, which nothing would ever notice again.
+        let error = registry
+            .create(input("npm script", "global", None))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("overlaps"), "{error}");
+        assert!(error.contains("add-npm-script"), "{error}");
+        assert!(error.contains("patch that skill"), "{error}");
+
+        // The plural is the same word: this is the same duplicate attempted a
+        // second way, and it must be refused the same way.
+        let error = registry
+            .create(input("npm scripts", "global", None))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("overlaps"), "{error}");
+
+        assert_eq!(registry.list(CapabilityLevel::Global, None).unwrap().len(), 1);
+    });
+}
+
+#[test]
+fn two_variants_of_one_procedure_are_not_duplicates() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        // No umbrella present: a shared `deploy` token is not enough to call
+        // these duplicates, and neither contains the other.
+        registry.create(input("Deploy iOS", "global", None)).unwrap();
+        registry.create(input("Deploy Android", "global", None)).unwrap();
+        assert_eq!(registry.list(CapabilityLevel::Global, None).unwrap().len(), 2);
+    });
+
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        // Two versions with no umbrella are likewise distinct skills.
+        registry.create(input("Deploy iOS 17", "global", None)).unwrap();
+        registry.create(input("Deploy iOS 18", "global", None)).unwrap();
+        assert_eq!(registry.list(CapabilityLevel::Global, None).unwrap().len(), 2);
+    });
+}
+
+#[test]
+fn a_versioned_variant_under_an_umbrella_goes_into_that_skill() {
+    let home = tempdir().unwrap();
+    let app = tempdir().unwrap();
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = UserSkillRegistry::new(app.path());
+        registry.create(input("Deploy iOS", "global", None)).unwrap();
+
+        // The umbrella already owns the topic; a version belongs in a reference
+        // under it, not in a second skill beside it.
+        let error = registry
+            .create(input("Deploy iOS 17", "global", None))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("overlaps"), "{error}");
+        assert!(error.contains("deploy-ios"), "{error}");
+    });
+}

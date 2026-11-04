@@ -361,6 +361,40 @@ fn with_fresh_frontmatter(bom: &str, text: &str, value: &str) -> String {
     )
 }
 
+/// Comparable tokens of a skill id: lowercase, split on separators, and a
+/// trailing plural `s` dropped so `scripts` and `script` are the same word.
+fn skill_tokens(id: &str) -> HashSet<String> {
+    id.split(['-', '_', '.', ' '])
+        .map(|part| part.trim().to_ascii_lowercase())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            if part.len() > 3 && part.ends_with('s') && !part.ends_with("ss") {
+                part.trim_end_matches('s').to_string()
+            } else {
+                part
+            }
+        })
+        .collect()
+}
+
+/// True when one id's tokens contain the other's — the shape of `npm-script`
+/// beside `add-npm-script`, or `review` beside `code-review`.
+///
+/// Deliberately containment and not similarity: `deploy-ios` and
+/// `deploy-android` share a token and are two legitimate skills; two versions of
+/// one procedure (`deploy-ios-17` / `deploy-ios-18`) are likewise legitimately
+/// distinct because neither token set contains the other.
+fn skill_ids_overlap(left: &str, right: &str) -> bool {
+    if left.eq_ignore_ascii_case(right) {
+        return false; // the exact-match check owns that case
+    }
+    let (left, right) = (skill_tokens(left), skill_tokens(right));
+    if left.is_empty() || right.is_empty() {
+        return false;
+    }
+    left.is_subset(&right) || right.is_subset(&left)
+}
+
 /// The directory a `<skill>/SKILL.md` document owns, when the document really is
 /// the directory shape.
 ///
@@ -971,6 +1005,24 @@ impl UserSkillRegistry {
             .any(|record| record.id == id || record.name.eq_ignore_ascii_case(&name))
         {
             bail!("SKILL_INVALID: a skill with this name already exists at this level");
+        }
+        // A near-duplicate is the expensive kind: `npm-script` beside
+        // `add-npm-script` splits one lesson across two skills, and nothing
+        // notices later because the ids differ. An exact match is caught above;
+        // a token container is caught here. Containment rather than similarity:
+        // `deploy-ios` and `deploy-android` share a token but neither contains
+        // the other, and two variants of a real procedure are a legitimate pair.
+        if let Some(existing) = self
+            .list(level, project_path.as_deref())?
+            .into_iter()
+            .find(|record| skill_ids_overlap(&record.id, &id))
+        {
+            bail!(
+                "SKILL_INVALID: '{name}' overlaps the existing skill '{}' ({}); \
+                 patch that skill instead of creating a second one",
+                existing.id,
+                existing.name
+            );
         }
         if self.list(level, project_path.as_deref())?.len() >= MAX_SKILLS {
             bail!("SKILL_INVALID: at most {MAX_SKILLS} skills");
