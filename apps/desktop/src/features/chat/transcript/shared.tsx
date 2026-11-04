@@ -354,6 +354,7 @@ export const TOOL_ACTION_KEYS: Record<ToolAction, string> = {
   delegate: "chat.toolDelegated",
   todo: "chat.todo.updated",
   use: "chat.toolUsed",
+  skill: "chat.toolSkill",
 };
 
 /**
@@ -385,6 +386,7 @@ export const TOOL_RUNNING_KEYS: Record<ToolAction, string> = {
   delegate: "chat.toolDelegating",
   todo: "chat.todo.updating",
   use: "chat.toolUsing",
+  skill: "chat.toolSkillRunning",
 };
 
 export function ToolActionIcon({ action }: { action: ToolAction }) {
@@ -409,6 +411,8 @@ export function ToolActionIcon({ action }: { action: ToolAction }) {
       return <IconBranch {...props} />;
     case "delegate":
       return <IconBot {...props} />;
+    case "skill":
+      return <IconSparkles {...props} />;
     default:
       return <IconWrench {...props} />;
   }

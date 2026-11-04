@@ -616,6 +616,8 @@ export const de = {
     "toolFetched": "Abgerufen",
     "toolDelegated": "Delegiert",
     "toolUsed": "Verwendet",
+    "toolSkill": "Fertigkeit",
+    "toolSkillRunning": "Fertigkeit wird aktualisiert",
     "toolReading": "Lesen",
     "toolListing": "Auflisten",
     "toolSearching": "Suchen",

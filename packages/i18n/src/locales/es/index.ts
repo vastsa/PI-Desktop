@@ -616,6 +616,8 @@ export const es = {
     "toolFetched": "Obtenido",
     "toolDelegated": "Delegado",
     "toolUsed": "Usado",
+    "toolSkill": "Habilidad",
+    "toolSkillRunning": "Actualizando habilidad",
     "toolReading": "Lectura",
     "toolListing": "Listado",
     "toolSearching": "Búsqueda",

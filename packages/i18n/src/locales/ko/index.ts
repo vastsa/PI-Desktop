@@ -625,6 +625,8 @@ export const ko = {
     toolFetched: "가져옴",
     toolDelegated: "위임함",
     toolUsed: "사용됨",
+    toolSkill: "스킬",
+    toolSkillRunning: "스킬 업데이트 중",
     toolReading: "읽는 중",
     toolListing: "목록 확인 중",
     toolSearching: "검색 중",

@@ -102,3 +102,27 @@ test("formats processing time in the compact transcript style", () => {
   assert.equal(formatToolDuration(3_665), "1h 1m 5s");
   assert.equal(formatToolDuration(5_400), "1h 30m");
 });
+
+test("a skill action is its own row and names the skill, not the document", () => {
+  // The write tool and the read tool both belong to the library, so both get the
+  // skill row instead of a generic "used a tool" one.
+  assert.equal(getToolAction("skill_manage"), "skill");
+  assert.equal(getToolAction("Skill"), "skill");
+  assert.equal(getToolAction("plugin_skill_manage"), "skill");
+
+  const body = "---\nname: add-npm-script\ndescription: Use when adding a script.\n---\n## When to Use\n…";
+  assert.equal(
+    getToolSummary("skill_manage", { action: "create", name: "add-npm-script", body }),
+    "add-npm-script",
+    "the collapsed row would otherwise carry a whole SKILL.md",
+  );
+  assert.equal(
+    getToolSummaryKey("skill_manage", { action: "patch", name: "s", old_string: "a" }),
+    "name",
+  );
+  assert.equal(getToolSummary("Skill", { name: "loadbox-log-triage" }), "loadbox-log-triage");
+
+  // Nothing else changed shape: a normal tool keeps its own action.
+  assert.equal(getToolAction("Bash"), "run");
+  assert.equal(getToolAction("Read"), "read");
+});

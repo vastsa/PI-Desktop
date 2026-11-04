@@ -625,6 +625,8 @@ export const tr = {
     toolFetched: "Alındı",
     toolDelegated: "Devredildi",
     toolUsed: "Kullanılan",
+    toolSkill: "Yetenek",
+    toolSkillRunning: "Yetenek güncelleniyor",
     toolReading: "Okunuyor",
     toolListing: "Listeleniyor",
     toolSearching: "Aranıyor",

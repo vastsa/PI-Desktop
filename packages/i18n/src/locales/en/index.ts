@@ -628,6 +628,8 @@ export const en = {
     toolFetched: "Fetched",
     toolDelegated: "Delegated",
     toolUsed: "Used",
+    toolSkill: "Skill",
+    toolSkillRunning: "Updating skill",
     toolReading: "Reading",
     toolListing: "Listing",
     toolSearching: "Searching",

@@ -9,7 +9,8 @@ export type ToolAction =
   | "fork"
   | "delegate"
   | "todo"
-  | "use";
+  | "use"
+  | "skill";
 
 const SUMMARY_KEYS: Record<ToolAction, string[]> = {
   read: ["path", "file_path", "filePath"],
@@ -26,6 +27,10 @@ const SUMMARY_KEYS: Record<ToolAction, string[]> = {
   // it summarizes from the agent names in its own result roster instead (D268).
   delegate: ["description", "agent"],
   todo: [],
+  // A skill action's subject is the skill, never the document body: the body is
+  // an entire SKILL.md and would fill the collapsed row with prose. `skill` is
+  // what the read-side tool calls it.
+  skill: ["name", "skill"],
   use: [
     "command",
     "cmd",
@@ -110,6 +115,11 @@ export function getToolAction(toolName?: string): ToolAction {
     return "delegate";
   }
   if (bareToolName(toolName) === "todowrite") return "todo";
+  // Skill activity is its own row: it edits an agent capability, not a file in
+  // the workspace, and a generic "used a tool" row would hide that.
+  if (matches(["skill", "skills", "skillmanage", "skillsmanage", "skillview", "skillslist"])) {
+    return "skill";
+  }
   if (matches(["websearch", "searchquery", "fetch", "http", "browser"])) {
     return "fetch";
   }

@@ -615,6 +615,8 @@ export const ptBR = {
     toolFetched: "Obtido",
     toolDelegated: "Delegado",
     toolUsed: "Usado",
+    toolSkill: "Habilidade",
+    toolSkillRunning: "Atualizando habilidade",
     toolReading: "Lendo…",
     toolListing: "Listando…",
     toolSearching: "Pesquisando…",

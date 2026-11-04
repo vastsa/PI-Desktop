@@ -618,6 +618,8 @@ export const zhCN = {
     toolFetched: "获取",
     toolDelegated: "委派",
     toolUsed: "调用",
+    toolSkill: "技能",
+    toolSkillRunning: "正在写技能",
     toolReading: "正在读取",
     toolListing: "正在列出",
     toolSearching: "正在搜索",

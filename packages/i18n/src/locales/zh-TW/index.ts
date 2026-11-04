@@ -618,6 +618,8 @@ export const zhTW = {
     toolFetched: "獲取",
     toolDelegated: "委派",
     toolUsed: "呼叫",
+    toolSkill: "技能",
+    toolSkillRunning: "正在寫技能",
     toolReading: "正在讀取",
     toolListing: "正在列出",
     toolSearching: "正在搜尋",
