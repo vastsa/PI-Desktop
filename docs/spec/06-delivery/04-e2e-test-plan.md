@@ -4106,8 +4106,9 @@ identify the platform validation still needed.
 #### E2E-024H: Installed plugins surface state, risk, and failures
 
 - **Preconditions**: At least one enabled plugin, one disabled plugin, and one plugin whose load failed.
-- **Steps**: 1) Open Extensions → Installed while plugin changed events are arriving in a burst. 2) Read the tab and group counts. 3) Confirm the failed plugin sits under Needs attention with its error message. 4) Search by author and by permission. 5) Clear the search.
+- **Steps**: 1) Open Extensions → Installed while plugin changed events are arriving in a burst. 2) Read the tab and group counts. 3) Confirm the failed plugin sits under Needs attention with its error message. 4) Search by author and by permission. 5) Clear the search. 6) Inspect enabled panel-only, update-ready, settings-bearing, and disabled plugin cards.
 - **Expected**: The page remains usable during transient host backpressure: identical plugin and extension registry refreshes coalesce, and renderer-facing RPC calls retry explicit `HOST_OVERLOADED` responses with bounded backoff before surfacing an error. Plugins group as Needs attention / Updates available / Active / Turned off with counts; `status: "error" | "load_error"` renders the error message inline instead of being silent; each plugin is a card in an auto-filling grid, defaulting to a quiet name/id/version summary (plus a rating chip when the centre has one), while a Details disclosure reveals risk-tinted permission chips, capabilities, and resident service status; the single scope trigger opens explained Off / This project / Everywhere choices and the project picker; card icon actions expose hover/focus labels; the result count reflects the filtered subset and clearing restores every group.
+- **Card actions**: Installed cards never show an Open panel shortcut, even when enabled with a declared panel. A panel-only card keeps scope and overflow controls; an enabled update-ready card keeps its versioned update action; enabled declared settings remain reachable. Panel opening remains available through the plugin launcher.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `07-plugins/13-plugin-permissions-matrix.md`
 - **Acceptance**: G (installed plugin management)
 - **Status**: Documented
@@ -4121,7 +4122,7 @@ identify the platform validation still needed.
 - **Acceptance**: G (isolated panel)
 - **Status**: Documented
 
-Initial-load timeout check: Open a fixture panel from Extensions → Installed
+Initial-load timeout check: Open a fixture panel from the plugin launcher
 whose page load remains pending. After 15 seconds, the open request must report
 `PANEL_LOAD_TIMEOUT` through the initiating action and destroy the hidden
 window; opening a normal panel afterward must still work.
