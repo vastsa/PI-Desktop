@@ -434,6 +434,31 @@ Rules:
 - Transcript files are user data: removed only when their session is deleted,
   never by an age or orphan sweep (unlike `scratch/`).
 
+### Bundled tool packages and their enabled set (D681)
+
+The application image ships tool packages under `<resources>/tools/<id>/tool.json`.
+The directory is read-only at runtime: the user cannot add, edit or remove a
+package without a new build, and nothing in it is user data.
+
+The one piece of user state is `tools/state.json`:
+
+```json
+{ "disabled": ["local.example.package"] }
+```
+
+* Written by `toolPackages.setEnabled`, read by `toolPackages.list`. Both are
+  host RPCs; the renderer never touches either path.
+* Written with a sibling temp file + atomic rename, so an interrupted write
+  cannot leave an unparsable file that would take the whole Tools page down.
+* Absent means "every shipped package is enabled" — the file appears only after
+  the first toggle, so an upgrade never resurrects a stale disabled list.
+* Deleting it re-enables every package; it holds no content that cannot be
+  re-derived from the image, so it is safe to lose.
+* `PI_DESKTOP_BUILTIN_TOOLS_DIR` carries the resolved package directory from
+  Electron to host-core, exactly like `PI_DESKTOP_BUILTIN_PLUGINS_DIR` for
+  bundled plugins: only Electron knows whether the app runs from `resources/` or
+  a source checkout.
+
 ## 3. Connection bootstrap
 
 ```sql

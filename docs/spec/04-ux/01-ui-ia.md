@@ -397,6 +397,18 @@ route opens from a destination row above the session list — places to go read 
 rows where the conversation list begins, not as footer chips — and from global
 search, and it takes the page the way Extensions and Settings do.
 
+### 3.4.1 Tools
+
+The tool packages this build ships: one card per package, read from the
+bundled `resources/tools` directory by the host (03-runtime/04-data-storage §2),
+with the manifest's name, version, description and the tools it
+declares — each tool with its name and risk level. The card carries one
+switch: a disabled package is excluded without touching the image, and the
+setting is the user's, belonging to the data directory rather than the build.
+A package whose manifest cannot be read still gets a row that states why, so
+a broken package is visible instead of silently missing. The route sits
+directly below Artifacts, above the session list, and opens from global search.
+
 ### 3.5 Extensions
 
 The Extensions destination is a focused plugin surface with a compact header and

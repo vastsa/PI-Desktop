@@ -344,6 +344,7 @@
 | D677 | DeepSeek 推理回放每行只用一个字段，且永不覆盖真实推理 | **修订 ADR 0256 第 3 条：pi-ai 的补全过程从最新一条带真实推理的 assistant 行取推理字段，把每条 assistant 行归一到这一个字段（真实推理从其他字段名移过来，并删除其余字段），只在没有任何推理的行上填充占位符。历史重建与思考面板会去掉开头回显的占位符（`withoutReasoningReplayPlaceholder`）；不改写已存储的文本。不改变 schema、IPC 或设置。** | Issue #1945：重建行被标为 `reasoning_content`，而中转流式返回的是 `reasoning_text`；补全过程选了 `reasoning_content`，把占位符写在了 live 行真实推理之上、也就是模型读取的字段里，模型把它当作自己的思考复读（受影响会话中 13.6% 的 assistant 行），回显又被持久化并回放。 |
 | D678 | 环形右键菜单重做并移到「常规」 | **可选的转录背景环形菜单改为：每个扇区静止时就显示图标与动作名（悬停才出现的中心标签删除），当前扇区只有一层填充高亮、不再出现聚焦方框，hub 改为带落点圆点的凹陷圆孔，整环缩到 248px 并用发丝分隔线与输入框级阴影，悬停与展开动效走共享 motion token。菜单打开时按下右键，在哪个扇区松开就执行哪个动作；在中心圆上松开只关闭；打开菜单那次右键尾随的松开不触发任何动作。设置卡片从 AI 页移到常规页侧边栏卡之后，设置搜索索引同步迁移。动作词汇、按方向的默认值、`AppSettings.radialMenu` 结构、持久化与 IPC 均不变。** | 只有图标的环悬停前不可读，扇区填充与按钮底色在同一个目标上画了两层高亮，而且这个开关待在 AI 页里，但环形菜单是转录交互偏好。 |
 | D680 | 云同步与远程主机退出设置 | **从设置索引中移除 `sync` 与 `remoteHosts` 两个目的地：它们的导轨行、页面、搜索关键词索引、它们携带的打包/开发可见性规则、渲染层组件与特性模块、样式，以及锁定它们的测试一并删除。宿主侧配置同步服务、远程主机/SSH 服务、IPC/RPC 契约、`configSync.*` / `remoteHosts.*` 文案，以及创建项目对话框的远程来源保持不变。见 `04-ux/06-settings-ia.md`、`00-baseline.md` 与 `06-delivery/04-e2e-test-plan.md`。** | 本部署完全不用这两个界面；不可达的页面、实验性徽章与死样式只会让设置目录更宽，并让一条维护面继续存在。 |
+| D681 | 随包工具包有自己的页面 | **在应用外壳导轨的产物文件下方新增工具目的地：本构建 `resources/tools/<id>/tool.json` 下的工具包，每个一张卡片，给出名称、版本、说明、声明的工具与风险等级，以及一个启用开关。host-core 扫描该目录（`crates/host-core/src/tool_packages.rs`），并把启用集合持久化到 `<data>/tools/state.json`；`toolPackages.list` / `toolPackages.setEnabled` 是唯一入口，读不出来的工具包保留一行并写明原因。见 `04-ux/01-ui-ia.md` §3.4.1 与 `03-runtime/04-data-storage.md` §2。** | 工具包随镜像发布，需要一个可见、可切换的清单，但不需要插件的安装/更新/权限模型；独立的声明式清单把市场界面挡在外面。 |
 
 ## M0. 模型目录决策
 
@@ -5689,3 +5690,22 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   索引中，搜索其关键词无命中）与 `apps/desktop/test/remote-project-dialog-user-path.test.mjs`
   覆盖（远程项目仍通过对话框创建）。E2E 场景 E2E-REMOTE-HOST-settings-compact-inventory 随界面
   一并删除，E2E-REMOTE-HOST-ssh-password-authentication 标记为退役。
+
+## 2026-11-04 — 随包工具包拥有独立页面（D681）
+
+- 工具目的地在应用外壳导轨上紧随产物文件：本构建随包发布的工具包，一个包一张卡片。
+  工具包是 `resources/tools` 下带 `tool.json` 清单的目录（`schemaVersion`、`id`、
+  `name`、`version`、`description`、`author`、`tools[]` 含 `name`/`description`/`risk`）；
+  electron-builder 把该树复制到 `<resources>/tools`，`PI_DESKTOP_BUILTIN_TOOLS_DIR`
+  告诉 host-core 它落在哪里。
+- 两侧都由宿主拥有。`crates/host-core/src/tool_packages.rs` 扫描目录，并把启用集合
+  持久化到 `<data>/tools/state.json`（`{ "disabled": [id…] }`，临时文件 + 原子重命名）；
+  `toolPackages.list` 与 `toolPackages.setEnabled` 是唯一入口，渲染层仍然无法读写文件系统。
+  读不出来的清单、或带未知 `schemaVersion` 的清单，都会保留自己的行并写明原因，而不是消失。
+- 为什么不复用插件：随包插件携带运行时代码与市场生命周期；工具包只是声明式元数据加资源，
+  与镜像一同发布，没有安装、更新或权限模型。复用插件注册表会让一个纯镜像产物看起来像是
+  用户可安装的，并把市场界面拖进工具页。
+- 覆盖：`crates/host-core/src/tool_packages.rs` 单元测试（扫描、坏清单、开关持久化、重复 id、
+  空构建）、`apps/desktop/test/tool-packages-ipc.test.mjs`（通道注册与参数收敛）、
+  `apps/desktop/test/tools-page.test.mjs`（页面联合类型、导轨顺序、全局搜索、只能经宿主访问、
+  九套语言文案）。

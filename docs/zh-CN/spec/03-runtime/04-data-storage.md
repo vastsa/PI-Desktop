@@ -194,6 +194,28 @@ commit 不会删除历史审查证据。
 - 转录本文件是用户数据：仅在删除其会话时删除，
   绝不会被年龄或孤儿横扫（与 `scratch/` 不同）。
 
+### 随包工具包及其启用集合（D681）
+
+安装镜像在 `<resources>/tools/<id>/tool.json` 下随包发布工具包。该目录运行期只读：
+用户无法在不重新构建的情况下增加、修改或删除工具包，里面也没有任何用户数据。
+
+唯一属于用户的状态是 `tools/state.json`：
+
+```json
+{ "disabled": ["local.example.package"] }
+```
+
+* 由 `toolPackages.setEnabled` 写入，由 `toolPackages.list` 读取。两者都是宿主 RPC；
+  渲染层既不读也不写这两个路径。
+* 写入采用同级临时文件 + 原子重命名，因此中断的写入不会留下无法解析的文件、进而
+  拖垮整个工具页。
+* 文件不存在表示"随包的每个工具包都启用"——它只会在第一次切换后出现，升级因此
+  不会复活过期的禁用清单。
+* 删除它会重新启用所有工具包；其内容都能从镜像重新推导，丢失是安全的。
+* `PI_DESKTOP_BUILTIN_TOOLS_DIR` 把解析后的工具包目录从 Electron 传给 host-core，
+  与随包插件使用的 `PI_DESKTOP_BUILTIN_PLUGINS_DIR` 完全一致：只有 Electron 知道
+  应用是从 `resources/` 运行还是从源码检出运行。
+
 ## 3. 连接引导
 
 ```sql
