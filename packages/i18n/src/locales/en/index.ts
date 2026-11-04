@@ -2536,6 +2536,9 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "browser.cdp": "Control the work-panel browser",
       "usage.read": "Read usage statistics",
       "session.autoTitle": "Read first-turn title context and update automatic titles",
+      "session.read.all": "Read any conversation, including yours",
+      "session.update.all": "Rewrite any conversation, including its messages",
+      "session.delete.all": "Delete any conversation, including yours",
     },
     permissionHelp: {
       "ui.panel": "Lets the plugin show its own panel inside the app.",
@@ -2598,6 +2601,12 @@ importConfirm: "Imported extensions run inside the agent process with the same a
         "Lists completed-turn usage facts (paginated token counters and session titles). No message content is included.",
       "session.autoTitle":
         "Can read only the first prompt and reply for eligible sessions, then replace an automatic title if it has not been manually changed. It cannot read the full transcript.",
+      "session.read.all":
+        "Can list every session and read its title, project, model, and full message history, including the conversations you created yourself. It cannot change anything.",
+      "session.update.all":
+        "Can rename any session and append, replace, or remove its messages. It rewrites the stored transcript, so a conversation can change without you sending a message.",
+      "session.delete.all":
+        "Can move any session to the trash or delete it permanently, together with its transcript files. Rate-limited, but otherwise unrestricted.",
     },
   },
   /**

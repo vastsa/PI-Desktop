@@ -721,6 +721,29 @@ Projects 页面也会据此刷新持久项目索引；插件不需要、也不�
 5 次批量导入和 20 次删除。写入前会移除工具 `__pi*` 与 `piDesktop.*` 对象键。
 P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定、批量删除、标签）不属于本次接口。
 
+自 ADR 0339 起，同一组动词还有 `.all` 授权：`session.read.all`、
+`session.update.all`、`session.delete.all`。它们覆盖**所有活动会话**，包括用户
+在本应用中自己创建的对话。`.all` 是与 `.own` 并列的独立授权，不会放宽 `.own`；
+清单同时声明两者时 `.all` 生效。作用域由 Electron main 依据授权解析后传给
+host-core，插件不能自行指定（payload 里的 `scope` 会被丢弃），host-core 只执行
+收到的那个值，缺省视为 `own`。越界会话一律返回 `NOT_FOUND` 而非
+`PERMISSION_DENIED`，以免插件借错误码探测它看不到的会话。每次调用都会在审计中
+记录授权作用域。
+
+非导入会话按真实形态返回：`originKind` 为 `"created"`、`source` 为
+`"desktop"`、`externalId` 为 `null`、`modelId`/`providerId`/`bound.model` 取自
+会话行，消息的 `origin` 为 `"desktop"`；导入会话仍是 `"imported"`、其声明的
+来源 id 与 `"external"`。
+
+消息级写入只在 `.all` 下存在：`pi.session.appendMessage`、`replaceMessages`
+（`session.update.all`）与 `pi.session.deleteMessage`、`truncateFrom`
+（`session.delete.all`）。它们复用宿主已有的记录操作，因此在回合运行期间会以
+`TURN_RUNNING` 拒绝改写（`appendMessage` 例外，追加本身就是回合写入自身行的
+方式），并共用每分钟 60 次的写入预算。消息可携带可选 `id`，用同一 id 重试是
+幂等的；`deleteMessage` 删除用户提示时会连同其回复一并删除，目标不存在时返回
+`deleted: false` 而不是报错。`rename` 现在会占用手动标题来源，
+`session.autoTitle` 插件之后无法覆盖该标题。
+
 ### 用量（需要 `usage.read`）
 
 面向用户仍可见的未删除会话，提供只读的**已完成回合事实行**。宿主只提供
