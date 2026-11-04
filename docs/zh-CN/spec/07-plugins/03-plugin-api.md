@@ -721,7 +721,7 @@ Projects 页面也会据此刷新持久项目索引；插件不需要、也不�
 5 次批量导入和 20 次删除。写入前会移除工具 `__pi*` 与 `piDesktop.*` 对象键。
 P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定、批量删除、标签）不属于本次接口。
 
-自 ADR 0339 起，同一组动词还有 `.all` 授权：`session.read.all`、
+自 ADR 0340 起，同一组动词还有 `.all` 授权：`session.read.all`、
 `session.update.all`、`session.delete.all`。它们覆盖**所有活动会话**，包括用户
 在本应用中自己创建的对话。`.all` 是与 `.own` 并列的独立授权，不会放宽 `.own`；
 清单同时声明两者时 `.all` 生效。作用域由 Electron main 依据授权解析后传给

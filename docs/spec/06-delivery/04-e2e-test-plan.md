@@ -19352,7 +19352,7 @@ host-created files. The full app's file-preview viewer is covered separately.
   as `own`. Every audited line names the scope that authorised it.
 - **Specs linked**: `07-plugins/03-plugin-api.md` §plugin-owned and host-wide
   sessions; `07-plugins/13-plugin-permissions-matrix.md` §2;
-  `07-plugins/04-plugin-security.md` §5; ADR 0339, ADR 0200 (amendment).
+  `07-plugins/04-plugin-security.md` §5; ADR 0340, ADR 0200 (amendment).
 - **Acceptance**: A plugin that declares the `.all` grants can read and rewrite
   the user's own conversations, the user sees the result in the open transcript,
   and a plugin that declares only `.own` keeps exactly the ADR 0200 reach.
