@@ -63,22 +63,6 @@ window.piDesktop = {
       case IPC.invoke.sessionList: data = { sessions: [] }; break;
       case IPC.invoke.appGetOnboarding: data = {}; break;
       case IPC.invoke.updatesGetState: data = updateState; break;
-      case IPC.invoke.configSyncGetState:
-        data = {
-          configured: false,
-          enabled: false,
-          paused: false,
-          locked: false,
-          status: "notConfigured",
-          remoteMode: "strict",
-          categories: {},
-          includeSecrets: false,
-          includeMemory: false,
-          automaticSync: false,
-          pendingApprovals: [],
-          mappings: [],
-        };
-        break;
       case IPC.invoke.commandShellList: data = { choices: [], effective: null }; break;
       default: throw new Error(`Unexpected fixture IPC: ${channel}`);
     }
@@ -121,59 +105,38 @@ async function setSettingsSearch(value) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
   await settle();
 }
-async function checkCloudSyncVisibility() {
-  // The isolated renderer is a development build; packaged-build visibility is
-  // asserted by settings-developer-only-destinations.test.mjs.
-  await setSettingsSearch("Cloud sync");
-  const syncButton = navButton("Cloud sync");
-  assert(syncButton, "Cloud sync must appear in Settings search");
-  assert(
-    syncButton.querySelector(".settings-nav-experimental")?.textContent?.trim() === "Experimental",
-    "Cloud sync's rail entry must carry the Experimental badge",
-  );
-
-  flushSync(() => syncButton.click());
-  await settle();
-  assert(useAppStore.getState().settingsTab === "sync", "Cloud sync must open its page");
-  assert(
-    document.querySelector(".settings-section-title")?.textContent?.includes("Experimental"),
-    "Cloud sync's page title must carry the Experimental badge",
-  );
+async function checkRemovedDestinations() {
+  // D680 removed the Cloud sync and Remote Hosts destinations: neither the rail
+  // nor settings search may offer them, and both keep leaving the directory
+  // empty when searched for.
+  for (const query of ["Cloud sync", "Remote hosts"]) {
+    await setSettingsSearch(query);
+    assert(
+      document.querySelectorAll(".settings-nav-item").length === 0,
+      `${query} must not be a Settings destination any more`,
+    );
+    assert(
+      document.querySelector(".settings-nav-empty"),
+      `${query} must report an empty destination index`,
+    );
+  }
   await setSettingsSearch("");
+  const railLabels = [...document.querySelectorAll(".settings-nav-label")]
+    .map((node) => node.textContent?.trim());
+  for (const label of ["Cloud sync", "Remote hosts"]) {
+    assert(!railLabels.includes(label), `${label} must be absent from the rail`);
+  }
 
-  // Developer mode does not gate Cloud sync or Remote Hosts.
-  settings = { ...settings, developerMode: true };
-  flushSync(() => useAppStore.setState({ settings }));
-  await settle();
-  assert(navButton("Cloud sync"), "Cloud sync must stay in the rail with developer mode on");
-  settings = { ...settings, developerMode: false };
-  flushSync(() => useAppStore.setState({ settings }));
-  await settle();
-  assert(useAppStore.getState().settingsTab === "sync", "Cloud sync must stay selected");
-  assert(navButton("Cloud sync"), "Cloud sync must stay in the rail without developer mode");
-
-  await setSettingsSearch("Remote hosts");
-  const remoteButton = navButton("Remote hosts");
-  assert(remoteButton, "Remote hosts must appear in Settings search");
-  assert(
-    remoteButton.querySelector(".settings-nav-experimental")?.textContent?.trim() === "Experimental",
-    "Remote hosts must carry the Experimental badge",
-  );
-  flushSync(() => remoteButton.click());
-  await settle();
-  assert(useAppStore.getState().settingsTab === "remoteHosts", "Remote hosts must open");
-  assert(
-    document.querySelector(".settings-section-title")?.textContent?.includes("Experimental"),
-    "Remote hosts page title must carry the Experimental badge",
-  );
-  await setSettingsSearch("");
-
+  // Developer mode does not bring them back.
   for (const developerMode of [true, false]) {
     settings = { ...settings, developerMode };
     flushSync(() => useAppStore.setState({ settings }));
     await settle();
-    assert(useAppStore.getState().settingsTab === "remoteHosts");
-    assert(navButton("Remote hosts"), "Remote hosts must stay visible in every developer mode");
+    const labels = [...document.querySelectorAll(".settings-nav-label")]
+      .map((node) => node.textContent?.trim());
+    for (const label of ["Cloud sync", "Remote hosts"]) {
+      assert(!labels.includes(label), `${label} must stay absent with developer mode ${developerMode}`);
+    }
   }
 }
 async function scroll() {
@@ -304,7 +267,7 @@ window.settingsScrollProbe = async () => {
   );
   const checks = [];
   checks.push(await exerciseProxyDraftRestoration());
-  await checkCloudSyncVisibility();
+  await checkRemovedDestinations();
   for (const theme of ["light", "dark"]) {
     document.documentElement.dataset.theme = theme;
     await select("AI");

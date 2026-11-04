@@ -22,7 +22,6 @@ import {
   IconBrain,
   IconChevronLeft,
   IconFileText,
-  IconGlobe,
   IconInfo,
   IconKeyboard,
   IconPalette,
@@ -30,7 +29,6 @@ import {
   IconServer,
   IconSliders,
   IconSparkles,
-  IconCloudDown,
   IconMic,
 } from "../../components/icons";
 import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../components/ui";
@@ -51,7 +49,6 @@ import { ProjectsPage } from "../../pages/ProjectsPage";
 import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
 import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
 import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
-import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
 import { VoiceSettingsSection } from "./voice/VoiceSettingsSection";
 import {
   CommandShellRow,
@@ -64,7 +61,6 @@ import {
 import { AgentInstructionsSection, UpdatesRow } from "./agent-sections";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
 import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
-import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
 import { StorageSettingsSection } from "./StorageSettingsSection";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
@@ -245,8 +241,6 @@ export function SettingsPage() {
       subagents: <IconBot size={14} />,
       memory: <IconBrain size={14} />,
       projects: <IconArchive size={14} />,
-      sync: <IconCloudDown size={14} />,
-      remoteHosts: <IconGlobe size={14} />,
       voice: <IconMic size={14} />,
       about: <IconInfo size={14} />,
     };
@@ -660,10 +654,6 @@ export function SettingsPage() {
 
 
           {tab === "projects" && <ProjectsPage />}
-
-          {tab === "sync" && !tabHidden && <ConfigSyncPage />}
-
-          {tab === "remoteHosts" && !tabHidden && <RemoteHostsPage />}
 
           {tab === "about" && (
             <div className="settings-stack">

@@ -16,8 +16,6 @@ export type SettingsTabId =
   | "subagents"
   | "projects"
   | "memory"
-  | "sync"
-  | "remoteHosts"
   | "voice"
   | "about";
 
@@ -305,44 +303,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.archive",
       "project.restore",
       "project.delete",
-    ],
-  },
-  {
-    id: "sync",
-    labelKey: "settings.nav.sync",
-    titleKey: "settings.configSync.title",
-    group: "system",
-    experimentalBadgeKey: "settings.configSync.experimental",
-    keywordKeys: [
-      "settings.configSync.experimental",
-      "settings.configSync.connectionTitle",
-      "settings.configSync.endpoint",
-      "settings.configSync.statusTitle",
-      "settings.configSync.categoriesTitle",
-      "settings.configSync.approvalsTitle",
-      "settings.configSync.syncNow",
-    ],
-  },
-  {
-    id: "remoteHosts",
-    labelKey: "settings.nav.remoteHosts",
-    titleKey: "settings.remoteHosts.title",
-    group: "system",
-    experimentalBadgeKey: "settings.remoteHosts.experimental",
-    keywordKeys: [
-      "settings.remoteHosts.title",
-      "settings.remoteHosts.addTitle",
-      "settings.remoteHosts.addSsh",
-      "settings.remoteHosts.addPair",
-      "settings.remoteHosts.pair",
-      "settings.remoteHosts.fieldUrl",
-      "settings.remoteHosts.fieldPairingToken",
-      "settings.remoteHosts.sshHost",
-      "settings.remoteHosts.sshAuthMode",
-      "settings.remoteHosts.sshPassword",
-      "settings.remoteHosts.statusOnline",
-      "settings.remoteHosts.statusOffline",
-      "settings.remoteHosts.experimental",
     ],
   },
   {

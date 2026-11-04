@@ -44,14 +44,13 @@ function samePath(left: string, right: string) {
 export function ProjectCreateDialog() {
   const { t } = useTranslation();
   const open = useAppStore((state) => state.createProjectDialogOpen);
-  const initialRemoteHostKey = useAppStore((state) => state.createProjectDialogRemoteHostKey);
   if (open) {
-    return <ProjectCreateDialogContent initialRemoteHostKey={initialRemoteHostKey} />;
+    return <ProjectCreateDialogContent />;
   }
   return null;
 }
 
-function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHostKey?: string }) {
+function ProjectCreateDialogContent() {
   useBlockingOverlay();
   const { t } = useTranslation();
   const close = useAppStore((state) => state.closeProjectDialog);
@@ -60,7 +59,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
     (state) => state.createProjectFromGit,
   );
   const showToast = useAppStore((state) => state.showToast);
-  const [source, setSource] = useState<ProjectSource>(initialRemoteHostKey ? "remote" : "local");
+  const [source, setSource] = useState<ProjectSource>("local");
   const createProjectFromRemote = useAppStore((state) => state.createProjectFromRemote);
   const [remoteBrowseOpen, setRemoteBrowseOpen] = useState(false);
   const [remoteProject, setRemoteProject] = useState<RemoteProjectSelection | null>(null);
@@ -88,7 +87,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
   const projectName = resolveProjectName(name, defaultName);
 
   useEffect(() => {
-    setSource(initialRemoteHostKey ? "remote" : "local");
+    setSource("local");
     setName("");
     setFolders([]);
     setGitUrl("");
@@ -131,7 +130,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
       document.body.style.overflow = previousOverflow;
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, [close, initialRemoteHostKey]);
+  }, [close]);
 
   // The first folder or the repository name fills the field until the user
   // types their own name; an emptied field still falls back to it on submit.
@@ -348,7 +347,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
             </section>
 
             {source === "remote" ? (
-              <RemoteProjectPicker busy={busy} initialHostKey={initialRemoteHostKey} onChange={setRemoteProject} onBrowsingChange={setRemoteBrowseOpen} />
+              <RemoteProjectPicker busy={busy} onChange={setRemoteProject} onBrowsingChange={setRemoteBrowseOpen} />
             ) : source === "local" ? (
               <ProjectFolderPicker folders={folders} busy={busy} pickerBusy={folderPickerBusy}
                 onAdd={() => void addFolders()}

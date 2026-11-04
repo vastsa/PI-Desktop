@@ -34,23 +34,14 @@
   7. **MCP** — Lucide `Server`（智能体连接）
   8. **子智能体** — Lucide `Bot`（内置与自建的并行工作智能体）
   9. **项目** — Lucide `Archive`（持久项目索引）
-  10. **云同步** — Lucide `CloudDownload`（加密的可移植配置备份与双向同步；实验性，所有构建可见）
-  11. **远程主机** — Lucide `Globe`（SSH 引导与配对清单；实验性，所有构建可见）
-  12. **信息** — Lucide `Info`（版本、日志、更新、开发人员）
+  10. **信息** — Lucide `Info`（版本、日志、更新、开发人员）
   图标具有装饰性（通过 SVG 默认设置为 `aria-hidden`）并保持单色
   带有导轨标签；不要在此处重复使用 refresh/rotate 字形。
 - 目录仍是保持相同顺序的可搜索扁平列表。为便于扫描，目的地分为四个带标题
   的视觉分组：“偏好”（常规、AI、快捷键）、“智能体”（指令、模型、技能、
-  MCP、子智能体）、“工作区”（项目）和“系统”（云同步、远程主机、信息；
-  云同步和远程主机均为所有构建可见的实验性目的地）。标题使用柔和
+  MCP、子智能体）、“工作区”（项目）和“系统”（信息）。标题使用柔和
   的非交互文字，分组之间只使用留白，不绘制分割线；搜索过滤后，空分组及其
   标题一并隐藏。
-- **云同步**是所有构建均可用的实验性「系统」目的地：导轨行、页面和设置搜索命中
-  在开发版与打包版中都存在，导轨行和页面标题均带有实验性徽章
-  （`settings.configSync.experimental`）。开发者模式不影响可见性，同步行为本身不变。
-- **远程主机**是所有构建均可用的实验性目的地：导轨行、页面和设置搜索命中在开发版与
-  打包版中都存在，且不受 `AppSettings.developerMode` 影响。该行和页面标题均带有
-  实验性徽章（`settings.remoteHosts.experimental`）。
 - 不显示其他设置目的地或占位符导航行
 - 主表面上的主要内容窗格，带有大部分标题+升高
   圆形的行卡。其内容使用后可用的完整宽度
@@ -340,27 +331,6 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
 - 激活项目或项目会话返回聊天；归档和关闭仍使项目归档页保持打开
 - 明确打开已归档项目会清除渲染层归档状态，使其重新显示在主页侧边栏；仅选择详情行进行检查不会恢复项目
 
-### 云同步
-
-- **Connection**: S3 endpoint, region, private bucket, prefix, access key ID,
-  secret key, optional token, addressing style, device label and vault password.
-  Choose sync or backup mode and automatic runs. Conditional writes are required;
-  there is no WebDAV/append-only fallback. Legacy data remains without migration.
-- **可移植配置**：支持的类别默认选中；凭据和项目 memory 必须明确选择。预览显示 supported、excluded、secret-bearing、mapping-required 和 pending-approval 计数。
-- **Safety**: vault keys and exported secrets are never returned to the page.
-  Connection secrets stay transient; imports keep local approval and mappings.
-  Public HTTP and redirects are rejected; LAN HTTP follows Host network policy.
-  Disconnect preserves local configuration, legacy data and remote objects.
-- **状态与恢复**：显示已配置、已锁定、同步中、离线、不支持服务器、冲突、等待激活、暂停和错误等不同状态。用户可以立即同步、解锁、暂停本设备、批准/拒绝暂存项目以及断开连接。存在待处理状态时，页面不会根据旧的成功记录暗示已经收敛。
-- **Drafts and recovery**: cache only typed non-secret S3 choices under a new
-  versioned key; ignore old drafts. Blank credentials reuse the exact connection,
-  while explicit clearing/replacement clears the token. Never persist secrets or
-  passwords. Invalidate old history requests when the saved destination/mode
-  changes. Display the latest 30 revisions and disclose indefinite object
-  retention. Sync restore confirms immediate publication; backup restore is
-  local only. Unsaved mode edits do not change restore semantics. Password
-  changes do not revoke unlocked devices.
-
 ### 信息
 - app/host/protocol版本+开放日志
 - **问题反馈**行：一项操作在系统浏览器中打开 GitHub bug 表单。
@@ -374,7 +344,7 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
     `AppSettings.developerMode` 值是 `true`
   - 开发者模式开关解锁“打开控制台”按钮，每个按钮上按 F12
     平台、Windows/Linux 上的 Ctrl+Shift+I 以及 macOS 查看菜单开发人员
-工具项，以及导轨上的远程主机目的地
+工具项
   - 禁用开发者模式会关闭打开的控制台并禁用或删除
     每个入口点；设置搜索索引卡、交换机和控制台
     行动
@@ -400,16 +370,15 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
   侧边栏目标或独立的全局搜索页面
 - 返回应用程序从导轨固定的底部操作返回聊天外壳
 - 仅开发者可用的目的地作为一个整体加入或离开导轨、页面和设置搜索。
-  云同步和远程主机不受开发者模式限制，在所有构建中均可用，并在导轨行与页面标题
-  显示实验性徽章。
+- 云同步与远程主机没有设置目的地（D680）：导轨行、页面与设置搜索索引均已移除，
+  宿主侧配置同步与远程主机服务、IPC/RPC 契约，以及创建项目对话框的远程来源保持不变。
 
 ## 4. 验收
 
 1.打开设置隐藏编码应用侧边栏（全页接管）
 2. 导轨顶部显示搜索药丸，底部固定返回应用程序操作并与主侧边栏底部图标行同一条线，
    并精确显示常规、AI、快捷键、指令、模型、技能、MCP、
-   子智能体、项目、云同步、远程主机和信息，按此顺序排列；云同步与远程主机
-   均在打包版中显示实验性标签，并按偏好、智能体、工作区、系统分组。
+   子智能体、项目和信息，按此顺序排列，并按偏好、智能体、工作区、系统分组。
    没有用量设置目的地。
 3.外观是常规的一部分，没有独立的导轨目的地
 4. Providers 是 Agent 的一部分，没有独立的导轨目的地

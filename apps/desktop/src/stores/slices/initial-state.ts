@@ -36,7 +36,6 @@ export function createInitialState(): AppStateData {
     ),
     openProjectPaths: initialSidebarPreferences.openProjectPaths,
     createProjectDialogOpen: false,
-    createProjectDialogRemoteHostKey: undefined,
     activeProjectPath: undefined,
     projectMeta: initialSidebarPreferences.projectMeta,
     projectCollapsed: Object.fromEntries(

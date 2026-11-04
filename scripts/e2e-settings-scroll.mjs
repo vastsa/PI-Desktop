@@ -71,7 +71,10 @@ app.whenReady().then(async () => {
   const child = spawn(resolveElectronBinary(root).electronBinary, [join(temp, "main.cjs")], { env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => { output += chunk; });
-  const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+  // Hang guard only: the probe walks the full settings path (two themes, plugin
+  // destinations, language switches, segment measurements) and needs minutes on
+  // a software-rendered or loaded host.
+  const timer = setTimeout(() => child.kill("SIGKILL"), 600_000);
   let code;
   try { code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); }); }
   finally { clearTimeout(timer); }

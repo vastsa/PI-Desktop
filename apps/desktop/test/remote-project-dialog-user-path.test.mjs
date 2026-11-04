@@ -18,7 +18,6 @@ import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
 import { IPC } from "@pi-desktop/shared";
 import { ProjectCreateDialog } from "../../apps/desktop/src/components/ProjectCreateDialog";
-import { RemoteHostsPage } from "../../apps/desktop/src/components/settings/RemoteHostsPage";
 import { FilesTab } from "../../apps/desktop/src/components/workpanel/FilesTab";
 import { ProjectEditDialog } from "../../apps/desktop/src/components/ProjectEditDialog";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
@@ -68,17 +67,12 @@ function choose(node, value) { flushSync(() => { Object.getOwnPropertyDescriptor
 function input(node, value) { flushSync(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); }); }
 const picker = () => document.querySelector(".remote-folder-dialog");
 window.remoteProjectProbe = async () => {
- useAppStore.setState({ workspace: { path: "/local/app", name: "app" }, activeProjectPath: "/local/app", openProjectPaths: ["/local/app"], openProjects: [{ path: "/local/app", name: "app" }], sessions: [], page: "settings" });
- flushSync(() => view.render(React.createElement(React.Fragment, null, React.createElement(RemoteHostsPage), React.createElement(ProjectCreateDialog))));
- await until(() => document.querySelectorAll(".settings-remote-host-card").length === 3, "remote host inventory did not load");
- const hostCard = [...document.querySelectorAll(".settings-remote-host-card")].find((card) => card.textContent.includes("Server 2"));
- check(hostCard, "requested host card missing");
- const createButton = button("New project", hostCard);
- check(createButton, "host card has no new project action");
- createButton.click();
- await until(() => document.querySelector(".project-create-dialog") && document.querySelector("select")?.value === "h2", "new project did not preselect remote source and host");
+ useAppStore.setState({ workspace: { path: "/local/app", name: "app" }, activeProjectPath: "/local/app", openProjectPaths: ["/local/app"], openProjects: [{ path: "/local/app", name: "app" }], sessions: [], page: "settings", createProjectDialogOpen: true });
+ flushSync(() => view.render(React.createElement(ProjectCreateDialog)));
+ await until(() => document.querySelector('.project-create-dialog [data-project-source="remote"]'), "create dialog did not open");
+ document.querySelector('.project-create-dialog [data-project-source="remote"]').click();
+ await until(() => document.querySelector(".project-create-dialog select")?.value === "h1", "remote source did not list its hosts");
  check(document.querySelector('.project-create-dialog [data-project-source="remote"]')?.getAttribute("aria-pressed") === "true", "remote project source was not selected");
- check(!document.querySelector(".remote-host-workbench"), "remote host page still opens a session workbench");
  check(!calls.some((entry) => entry.channel === IPC.invoke.remoteHostSessions), "opening project management listed remote sessions");
  input(document.querySelector("#project-create-name"), "My server app");
  check(document.querySelector("#project-create-name").value === "My server app", "remote source lost editable local name");
@@ -178,7 +172,7 @@ window.remoteProjectProbe = async () => {
 };
 `;
 
-test("remote host page opens a preselected remote project and creates a local project", {
+test("the project create dialog opens a remote project and creates a local project", {
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Electron requires a display" : false,
 }, async () => {
   const temp = await mkdtemp(join(root, "apps/desktop/.remote-project-ui-"));

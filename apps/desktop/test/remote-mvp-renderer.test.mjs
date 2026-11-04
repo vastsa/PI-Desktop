@@ -21,7 +21,6 @@ await build({
     export { selectRemoteSession as selectRemote } from './apps/desktop/src/components/settings/RemoteHostSessions';
     export { sessionAllows, safeSessionSummary } from './apps/desktop/src/lib/remote-session-safety';
     export { sessionMatchesProject, projectPathsForNewSessions } from './apps/desktop/src/lib/sidebar-session-groups';
-    export { visibleSettingsNav } from './apps/desktop/src/lib/settings-search';
     export { IPC } from '@pi-desktop/shared';
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
@@ -47,7 +46,7 @@ await build({
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
 });
 const fixture = await import(pathToFileURL(output).href);
-const { api, createRemoteHostWorkflow, useAppStore, selectRemote, sessionAllows, safeSessionSummary, sessionMatchesProject, projectPathsForNewSessions, visibleSettingsNav, IPC } = fixture;
+const { api, createRemoteHostWorkflow, useAppStore, selectRemote, sessionAllows, safeSessionSummary, sessionMatchesProject, projectPathsForNewSessions, IPC } = fixture;
 test.after(() => rm(temp, { recursive: true, force: true }));
 const host = { hostKey: "ssh-fixture", label: "Build machine", transport: "ssh", connected: true, url: "ws://127.0.0.1:1" };
 const capabilities = { canPrompt: true, canStop: true, canRefresh: true, canReadWorkspace: true, canConfigureModel: false, canAttach: false, canSteer: false, canEditMessages: false, canUseLocalTools: false, canUseTerminal: false };
@@ -70,11 +69,6 @@ function defaultRead(channel) {
   if (channel === IPC.invoke.notificationAcknowledgeSessionOutcome) return { ok: true };
   return {};
 }
-
-test("packaged non-developer Settings exposes experimental Remote Hosts", () => {
-  const nav = visibleSettingsNav(false, false).find((item) => item.id === "remoteHosts");
-  assert.ok(nav); assert.equal(nav.experimentalBadgeKey, "settings.remoteHosts.experimental");
-});
 
 test("legacy history opens through the regular store without project or model transfer", async () => {
   initialize();

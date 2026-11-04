@@ -132,7 +132,6 @@ export type AppState = {
   openProjects: ProjectWorkspace[];
   openProjectPaths: string[];
   createProjectDialogOpen: boolean;
-  createProjectDialogRemoteHostKey?: string;
   activeProjectPath?: string;
   projectMeta: Record<string, ProjectMeta>;
   /** Kept as a flat map for lightweight consumers (Sidebar). */
@@ -281,7 +280,7 @@ export type AppState = {
     snapshotId: string,
   ) => Promise<ReviewRollbackResult | null>;
   abort: () => Promise<void>;
-  openProject: (options?: { remoteHostKey?: string }) => Promise<void>;
+  openProject: () => Promise<void>;
   closeProjectDialog: () => void;
   createProjectFromRemote: (input: {
     name: string;

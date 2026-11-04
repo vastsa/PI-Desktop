@@ -164,8 +164,8 @@ Voice is a regular Preferences destination in both development and packaged
 builds: no Experimental badge, no developer mode, no build gate. Live Voice
 remains off by default, and enabling the setting does
 not start microphone capture. Composer offers an Open settings action when
-setup or account recovery is needed. Cloud sync and Remote Hosts retain their
-separate development-only gates.
+setup or account recovery is needed. Cloud sync and Remote Hosts have no
+Settings destination (D680).
 
 Account-list loading, failure with explicit retry, and an empty compatible
 account list are distinct states. A loading failure never clears saved bindings.

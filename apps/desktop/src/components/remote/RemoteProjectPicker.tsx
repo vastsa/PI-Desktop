@@ -8,15 +8,14 @@ import { RemoteFolderDialog } from "./RemoteFolderDialog";
 
 export type RemoteProjectSelection = { hostKey: string; hostLabel: string; path: string };
 
-export function RemoteProjectPicker({ busy, initialHostKey, onChange, onBrowsingChange }: {
+export function RemoteProjectPicker({ busy, onChange, onBrowsingChange }: {
   busy: boolean;
-  initialHostKey?: string;
   onChange: (selection: RemoteProjectSelection | null) => void;
   onBrowsingChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [hosts, setHosts] = useState<RemoteHostSummary[]>([]);
-  const [hostKey, setHostKey] = useState(initialHostKey ?? "");
+  const [hostKey, setHostKey] = useState("");
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -32,12 +31,12 @@ export function RemoteProjectPicker({ busy, initialHostKey, onChange, onBrowsing
     void api.listRemoteHosts().then(({ hosts }) => {
       if (!active) return;
       setHosts(hosts);
-      setHostKey(hosts.find((host) => host.hostKey === initialHostKey)?.hostKey ?? hosts.find((host) => host.connected)?.hostKey ?? hosts[0]?.hostKey ?? "");
+      setHostKey(hosts.find((host) => host.connected)?.hostKey ?? hosts[0]?.hostKey ?? "");
     }).catch((error: unknown) => {
       if (active) setError(t(remoteHostErrorKey(error)));
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; selectionCallback.current(null); browsingCallback.current(false); };
-  }, [initialHostKey, t]);
+  }, [t]);
 
   useEffect(() => {
     selectionCallback.current(host && path.trim().startsWith("/") ? { hostKey, hostLabel: host.label, path: path.trim() } : null);

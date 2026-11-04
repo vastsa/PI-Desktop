@@ -182,8 +182,7 @@ destination, chat as the home surface, tools and permissions inline.
 - Create project uses one dialog with local folder, Git, and remote host sources.
   The project name is editable for every source and remains locally managed.
   Remote selection chooses a connected host and an absolute directory, without
-  a Host project catalog; Settings → Remote Hosts opens the same dialog with the
-  clicked host preselected. Browse opens a separate directory dialog with path
+  a Host project catalog. Browse opens a separate directory dialog with path
   entry, parent navigation, directory rows and explicit confirmation. Cancel
   returns to the project form and restores focus; stale host responses cannot
   replace the current selection. The same sidebar, switcher, archive and chat

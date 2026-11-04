@@ -1289,7 +1289,7 @@ Implementation: `components/ui.tsx → SegmentedControl<T>`.
 Tablist callers supply stable option `id` and `controls` values to connect
 each tab to its panel through `aria-controls` and the panel's
 `aria-labelledby`. These identifiers must not depend on translated labels.
-Import and Remote Hosts preserve these links when switching tabs or language.
+Import preserves these links when switching tabs or language.
 
 Every multi-option selector rendered as a row of equal buttons **must** use
 `SegmentedControl`. Inline `<div className="settings-segment">` with manual

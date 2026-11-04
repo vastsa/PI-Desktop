@@ -106,8 +106,8 @@ export function JevServiceForm({ onClose, onConfigured }: JevServiceFormProps) {
                 placeholder={t("settings.jevApiKeyPlaceholder")}
                 aria-label={t("settings.jevApiKey")}
                 autoComplete="new-password"
-                showLabel={t("settings.configSync.showPassword")}
-                hideLabel={t("settings.configSync.hidePassword")}
+                showLabel={t("settings.showPassword")}
+                hideLabel={t("settings.hidePassword")}
                 disabled={checking}
                 onChange={(event) => setKeyDraft(event.target.value)}
               />

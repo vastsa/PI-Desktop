@@ -340,6 +340,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D676 | A completed turn the reader followed ends at its prompt | **Amend the stream-completion rule: when a turn completes while the transcript is visible and still following the stream, the renderer scrolls that turn's newest user message to 16px below the titlebar band the transcript reserves at its top (smooth unless reduced motion), releases follow mode, and shows jump-to-latest. Nothing moves when the prompt is already in view, the reply failed or was aborted, the pane is hidden or in a reading window, a disclosure position is held, or a new run starts before the move. Renderer only; no setting, IPC, or persistence change.** | Issue #1889: after a long reply the reader sat at its last line and had to scroll back up to find where it began. |
 | D677 | DeepSeek reasoning replay uses one field per row and never covers real reasoning | **Amend ADR 0256 decision 3: the pi-ai fill pass takes the reasoning field from the newest assistant row that has real reasoning, normalizes every assistant row to that single field (moving real reasoning from another field name, deleting the others), and fills the placeholder only on rows with no reasoning. History rebuild and the thinking panel drop a leading echo of the placeholder (`withoutReasoningReplayPlaceholder`); stored text is not rewritten. No schema, IPC, or setting change.** | Issue #1945: rebuilt rows are stamped `reasoning_content` while a relay streams `reasoning_text`; the fill pass picked `reasoning_content` and wrote the placeholder over the live row's real reasoning, the model echoed it as its own thinking (13.6% of assistant rows in affected sessions), and the echo was persisted and replayed. |
 | D678 | Radial context menu rebuilt and moved to General | **The opt-in transcript radial menu gets at-rest icon-and-label sectors (the hover-only hub label is gone), one filled highlight for the active sector with no focus rectangle, a recessed hub carrying the click-point dot, a 248 px disc with hairline separators and the composer shadow, and shared motion tokens for hover and reveal. A right-press started while the ring is open runs the sector it is released on; releasing in the hub dismisses without running; the release trailing the opening right-click is inert. The settings card moves from the AI tab to General after Sidebar and the settings-search index follows. Action vocabulary, per-direction defaults, `AppSettings.radialMenu`, persistence, and IPC are unchanged.** | The icon-only ring could not be read without hovering every sector, the sector fill and button background painted two highlights over one target, and the ring's switch sat in the AI tab although the surface is a transcript-interaction preference. |
+| D680 | Cloud sync and Remote Hosts leave Settings | **Remove the `sync` and `remoteHosts` destinations from the Settings index: their rail rows, pages, search-keyword indexes, the packaged/development visibility rules they carried, their renderer components and feature modules, their styles, and the tests that pinned them are gone. The host-side configuration-sync service, the remote-host/SSH service, the IPC/RPC contracts, the `configSync.*` / `remoteHosts.*` locale strings, and the Create project dialog's remote source stay. See `04-ux/06-settings-ia.md`, `00-baseline.md`, and `06-delivery/04-e2e-test-plan.md`.** | Both surfaces are unused in this deployment; unreachable pages, Experimental badges, and dead styles only widened the settings directory and kept a maintenance surface alive. |
 
 
 ## M0. Model catalog decisions
@@ -8123,3 +8124,29 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   the image's plugin directory and reports every manifest accepted (`rows: 3`,
   `bundled: 3`, `broken: 0`). See `04-ux/12-prompt-enhancement.md`,
   `04-ux/06-settings-ia.md`, `03-runtime/04-data-storage.md`, and ADR 0378.
+
+## 2026-11-04 — Cloud sync and Remote Hosts leave Settings (D680)
+
+- D680 removes the two Settings destinations. `src/lib/settings-search.ts` no
+  longer declares `sync` or `remoteHosts`, so the rail, the search index, and
+  stale-tab fallback drop them together; `SettingsPage.tsx` renders only the
+  remaining destinations and no longer imports their pages.
+- The renderer surfaces are deleted rather than hidden: `ConfigSyncPage` with
+  its connection/scope/vault/error components, `RemoteHostsPage`, the four
+  `features/settings/config-sync-*` modules, their `settings.css` and
+  `remote-mvp.css` rules, and the tests that pinned them
+  (`config-sync-{error,form,preferences,progress,settings,user-path}`,
+  `settings-remote-hosts`, `remote-host-ssh-install-user-path`). The
+  `remote-mvp-ui` E2E driver keeps its remote-session scenarios, and the
+  remote-project probe now enters through the Create project dialog.
+- Unchanged: the host configuration-sync RPC surface and its vault, the
+  remote-host registry with SSH bootstrap/tunnel and RACP transport, the IPC
+  channels, the `configSync.*` / `remoteHosts.*` locale strings, and the Create
+  project dialog's remote source. `openProject({ remoteHostKey })` keeps its
+  contract even though its host-card caller is gone.
+- Covered by `apps/desktop/test/settings-developer-only-destinations.test.mjs`
+  (neither destination is in the index and searching their keys returns nothing)
+  and `apps/desktop/test/remote-project-dialog-user-path.test.mjs` (a
+  remote-bound project is still created through the dialog). E2E scenario
+  E2E-REMOTE-HOST-settings-compact-inventory is removed with the surface, and
+  E2E-REMOTE-HOST-ssh-password-authentication is retired.

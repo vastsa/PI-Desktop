@@ -38,10 +38,12 @@ only by a later product decision.
 
 ### Experimental desktop MVP (narrow acceptance slice)
 
-The desktop exposes Remote Hosts in all builds with an Experimental badge. This
-slice implements SSH install/pair/reconnect, explicit eligible-provider copy,
-remote project registration, Agent/Ask session creation/opening, text chat,
-tool/input responses, bounded transcript history, and read-only text/files/diffs.
+The desktop no longer exposes a Settings destination for Remote Hosts (D680), so
+this slice's host inventory and Add forms are reachable only through its host
+services; it implements SSH install/pair/reconnect, explicit eligible-provider
+copy, remote project registration, Agent/Ask session creation/opening, text
+chat, tool/input responses, bounded transcript history, and read-only
+text/files/diffs.
 Remote identity remains visible offline and never activates a local workspace.
 Unsupported remote operations fail closed; reconnect does not replay prompts.
 
@@ -172,11 +174,7 @@ Deliverables:
   desktop for a remote session;
 - the terminal: `terminal/open`, `terminal/input`, `terminal/resize`,
   `terminal/close`, `terminal.output`, and a bounded replay ring, running on
-  the remote machine; and
-- the Settings → Remote Hosts destination: a compact host inventory and one
-  Add form with SSH and Pair tabs, marked Experimental on the rail and page
-  title. The narrow MVP also exposes inline sessions and explicit model-copy
-  consent; the destination and search hits are available in packaged builds.
+  the remote machine.
 
 Design decisions (D375, recorded 2026-09-10):
 

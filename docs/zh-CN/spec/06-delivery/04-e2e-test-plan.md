@@ -1367,8 +1367,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   14) 恢复存档的项目，然后激活它。
   15) 归档一个项目会话，从项目归档中打开它，然后返回项目归档。
   16) 返回应用程序外壳并打开插件。
-- **预期**：导轨按顺序包含常规、AI、快捷键、指令、模型、技能、MCP、子智能体、项目、云同步、远程主机和信息，分别使用其语义 Lucide 图标；目的地按“偏好”（常规、AI、快捷键）、“智能体”（指令、模型、技能、MCP、子智能体）、“工作区”（项目）和“系统”（云同步、远程主机、信息）分组。组间使用留白而非分割线，搜索保持目的地结果扁平，并同时隐藏空分组及其标题。模型、技能和 MCP 页分别拥有内嵌的外部导入工作台；打开工作台不会扫描。设置没有会话导入面板，会话导入由插件 API 提供。外观保留在“常规”下，权限、默认项和命令 Shell 行位于全局 AI 下；可用的已选 Shell 由选择器表示，不重复显示“已配置”状态；默认、回退和无实际 Shell 状态仍明确展示；上下文管理没有设置卡；键盘快捷键和全局指令都有自己的目的地；“开发者”位于“信息”下；项目存档显示活动、关闭和存档的持久行，无需可见性切换，将它们分组在一个面板内始终可见的固定/所有项目/存档分组条 (D168/D267) 下，并带有每个部分的计数。该目的地不呈现英雄区块，也没有页面级计数器串：引导区是一条安静的说明行，每个分组条的计数与其呈现的行一致；按名称排序会重新排序每个部分内的行，而不隐藏任何行；搜索匹配项目字段和会话标题并报告匹配计数，会话标题结果扩展其所属项目，按最新活动和相对更新时间列出会话，并以八个批次显示历史记录；清除搜索将恢复完整索引。行菜单在 Escape 和外部按下时关闭。恢复使存档保持打开状态，激活返回以与侧栏中保留的恢复项目聊天。打开归档会话时，应用会先成功选择该会话，再清除它的归档状态；聊天页选中该会话，项目侧边栏重新显示它，返回项目归档后它也不再处于归档状态。主页侧边栏和全局页面结果没有独立的项目目标；设置搜索找到项目存档；插件仍然是一个独立的应用程序外壳目的地。
-  打包构建会从导轨和设置搜索中省略云同步；见 `04-ux/06-settings-ia.md`。
+- **预期**：导轨按顺序包含常规、AI、快捷键、指令、模型、技能、MCP、子智能体、项目和信息，分别使用其语义 Lucide 图标；目的地按“偏好”（常规、AI、快捷键）、“智能体”（指令、模型、技能、MCP、子智能体）、“工作区”（项目）和“系统”（信息）分组。组间使用留白而非分割线，搜索保持目的地结果扁平，并同时隐藏空分组及其标题。模型、技能和 MCP 页分别拥有内嵌的外部导入工作台；打开工作台不会扫描。设置没有会话导入面板，会话导入由插件 API 提供。外观保留在“常规”下，权限、默认项和命令 Shell 行位于全局 AI 下；可用的已选 Shell 由选择器表示，不重复显示“已配置”状态；默认、回退和无实际 Shell 状态仍明确展示；上下文管理没有设置卡；键盘快捷键和全局指令都有自己的目的地；“开发者”位于“信息”下；项目存档显示活动、关闭和存档的持久行，无需可见性切换，将它们分组在一个面板内始终可见的固定/所有项目/存档分组条 (D168/D267) 下，并带有每个部分的计数。该目的地不呈现英雄区块，也没有页面级计数器串：引导区是一条安静的说明行，每个分组条的计数与其呈现的行一致；按名称排序会重新排序每个部分内的行，而不隐藏任何行；搜索匹配项目字段和会话标题并报告匹配计数，会话标题结果扩展其所属项目，按最新活动和相对更新时间列出会话，并以八个批次显示历史记录；清除搜索将恢复完整索引。行菜单在 Escape 和外部按下时关闭。恢复使存档保持打开状态，激活返回以与侧栏中保留的恢复项目聊天。打开归档会话时，应用会先成功选择该会话，再清除它的归档状态；聊天页选中该会话，项目侧边栏重新显示它，返回项目归档后它也不再处于归档状态。主页侧边栏和全局页面结果没有独立的项目目标；设置搜索找到项目存档；插件仍然是一个独立的应用程序外壳目的地。
+  云同步与远程主机没有设置目的地（D680）；见 `04-ux/06-settings-ia.md`。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/01-ui-ia.md`、`03-runtime/11-provider-model-system.md`
 - **接受**：B（模型配置），F（项目存档与持久化）
 - **里程碑**：M5
@@ -6033,7 +6033,6 @@ eleven-tool-round desktop paths are verified by
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — 对话与流式（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | E — 工具与权限（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
-| D（界面表面）/ 品质 — 远程主机添加与配对表单折叠 | E2E-REMOTE-HOST-settings-compact-inventory |
 | E — 工具与权限（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
 | F — 持久化（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
 | 品质（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
@@ -6067,7 +6066,7 @@ eleven-tool-round desktop paths are verified by
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | 基线后本地自动化（MCP `pi_session_get` 超大 compaction） | E2E-MCP-session-get-projects-large-compaction |
-| MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232、E2E-REMOTE-HOST-settings-compact-inventory |
+| MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP 回归覆盖（插件工具调度） | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
@@ -6333,8 +6332,8 @@ eleven-tool-round desktop paths are verified by
 ### US-UI-24 设置全页 shell
 - 打开设置（页脚配置文件 → 设置）。
 - 预计**全页**设置（无应用程序 sidebar/nav）。左导轨有返回应用、搜索，以及常规、AI、
-  快捷键、指令、模型、技能、MCP、子智能体、项目、云同步、远程主机、信息，
-  按该顺序排列（云同步和远程主机在打包版均显示实验性标签）；内容窗格显示所选设置页或
+  快捷键、指令、模型、技能、MCP、子智能体、项目、信息，
+  按该顺序排列；内容窗格显示所选设置页或
   项目存档。
 - 返回应用程序外壳并期望插件保持独立
   侧边栏页脚目的地。
@@ -6439,8 +6438,8 @@ eleven-tool-round desktop paths are verified by
 - 全页外壳：`#f3f3f3` 上的轨道 ~260px，主 `#fff`；搜索药丸位于导轨顶部；返回应用程序
   固定在导轨底部，并与主外壳侧边栏底部图标行垂直居中于同一条线；带有图标的常规
   活动药丸。
-- 导轨顺序为常规、AI、快捷键、指令、模型、技能、MCP、子智能体、项目、云同步、
-  远程主机和信息；下方显示偏好、智能体、工作区和系统四个柔和标题，组间没有
+- 导轨顺序为常规、AI、快捷键、指令、模型、技能、MCP、子智能体、项目和
+  信息；下方显示偏好、智能体、工作区和系统四个柔和标题，组间没有
   分割线、重复目的地或占位符行。选中页面仍保留描述性标题，例如“模型配置”
   和“项目归档”。
 - 常规内容：大标题和一张带有工作信息的**外观**卡
@@ -6519,7 +6518,7 @@ eleven-tool-round desktop paths are verified by
 - 在约 1200×690 的窗口中打开浅色主题的“设置 → 常规”。
 - 侧栏宽度约 275 像素，背景为 `#f4f4f4`，常规项为唯一选中项，并显示返回和搜索。
 - 主题选择器可正常使用，且没有无效开关或打开目标行。
-- “常规”页显示外观卡片，“AI”页显示权限和默认值卡片。核心侧栏依次包含常规、AI、快捷键、指令、模型、技能、MCP、子智能体、项目、云同步、远程主机和信息；云同步与远程主机在所有构建中都显示实验性标签。开发版且开启开发者模式时，AI 与快捷键之间可能显示语音；插件扩展目的地位于核心分组之后。侧栏不再有“导入”入口。
+- “常规”页显示外观卡片，“AI”页显示权限和默认值卡片。核心侧栏依次包含常规、AI、快捷键、指令、模型、技能、MCP、子智能体、项目和信息。开发版且开启开发者模式时，AI 与快捷键之间可能显示语音；插件扩展目的地位于核心分组之后。侧栏不再有“导入”入口。
 - 在 800、1200 和 1600 像素宽度之间调整窗口；内容卡片填充
   每种尺寸都可用右窗格，无需更换导轨或引入
   水平滚动。
@@ -9351,9 +9350,9 @@ Follow the [current S3 acceptance scenario](/spec/06-delivery/04-e2e-test-plan#e
   同步/恢复忽略旧 vault 的 `projects` 实体，保留本机项目和云端历史。
 - Backup only uploads local snapshots; histories are mode-specific. Sync
   restore publishes with explicit acknowledgment; backup restore stays local.
-- The real settings-page test covers secret-free drafts, saved credential reuse,
+- The Host RPC surface covers secret-free drafts, saved credential reuse,
   explicit token clearing, mode selection, restore confirmation, stale history
-  responses and disconnect. Development-build-only visibility remains unchanged.
+  responses and disconnect; the Settings destination is gone (D680).
 - Live S3 is explicitly opt-in and authorized. Read credentials without logging
   or copying them; use a fresh random prefix, verify initial emptiness, clean
   only test-created objects and verify final emptiness. Never use the running
@@ -9362,7 +9361,7 @@ Follow the [current S3 acceptance scenario](/spec/06-delivery/04-e2e-test-plan#e
   the new S3 format is supported, without legacy detection or migration;
   unrelated data is not deleted. Recovery is not whole-filesystem atomicity.
 - Automation: `pnpm test:e2e:config-sync`, Rust `config_sync::` and
-  `user_skills::`, `config-sync-user-path.test.mjs`, `config-sync-ipc.test.mjs`.
+  `user_skills::`, `config-sync-ipc.test.mjs`.
   Full checkpoint-recovery fault injection is not claimed by these user paths.
 - Start a held manual sync, leave Settings, then return. Verify Host still
   reports `syncing`, duplicate actions remain disabled, and releasing the local
@@ -9729,8 +9728,8 @@ Follow the [current S3 acceptance scenario](/spec/06-delivery/04-e2e-test-plan#e
 - 在明暗两种主题下运行。
 - 自动化覆盖：`pnpm test:e2e:settings-scroll` 在隔离 Electron 中挂载真实的
   SettingsPage、store、翻译和构建后的 CSS，探针运行的是开发构建。仅 preload
-  数据使用 fixture；搜索导航调用 SearchDialog 使用的公开 store 入口。该测试还
-  检查开发版中云同步与远程主机的实验性标签；`settings-developer-only-destinations.test.mjs`
+  数据使用 fixture；搜索导航调用 SearchDialog 使用的公开 store 入口。
+  `settings-developer-only-destinations.test.mjs`
   另行验证打包版可见性、搜索结果及仅开发者目的地的回落行为。该测试覆盖渲染层交互，
   不覆盖 host 持久化或
   完整全局搜索弹窗。

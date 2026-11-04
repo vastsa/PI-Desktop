@@ -343,6 +343,7 @@
 | D676 | 读者跟随的已完成回合停在它的提示处 | **修订流完成规则：转录可见且仍在跟随流时回合完成，渲染层会把该回合最新的用户消息滚动到转录顶部预留的标题栏带下方 16px 处（除非减少动态效果，否则平滑滚动），退出跟随模式并显示“滚动到底部”。提示已在视野内、回复失败或被中止、面板隐藏或处于阅读窗口、披露位置被保持、或在移动前开始了新的运行时，都不移动。仅渲染层；不新增设置，不改变 IPC 或持久化。** | Issue #1889：长回复结束后读者停在最后一行，得自己往上滑才能找到回答的开头。 |
 | D677 | DeepSeek 推理回放每行只用一个字段，且永不覆盖真实推理 | **修订 ADR 0256 第 3 条：pi-ai 的补全过程从最新一条带真实推理的 assistant 行取推理字段，把每条 assistant 行归一到这一个字段（真实推理从其他字段名移过来，并删除其余字段），只在没有任何推理的行上填充占位符。历史重建与思考面板会去掉开头回显的占位符（`withoutReasoningReplayPlaceholder`）；不改写已存储的文本。不改变 schema、IPC 或设置。** | Issue #1945：重建行被标为 `reasoning_content`，而中转流式返回的是 `reasoning_text`；补全过程选了 `reasoning_content`，把占位符写在了 live 行真实推理之上、也就是模型读取的字段里，模型把它当作自己的思考复读（受影响会话中 13.6% 的 assistant 行），回显又被持久化并回放。 |
 | D678 | 环形右键菜单重做并移到「常规」 | **可选的转录背景环形菜单改为：每个扇区静止时就显示图标与动作名（悬停才出现的中心标签删除），当前扇区只有一层填充高亮、不再出现聚焦方框，hub 改为带落点圆点的凹陷圆孔，整环缩到 248px 并用发丝分隔线与输入框级阴影，悬停与展开动效走共享 motion token。菜单打开时按下右键，在哪个扇区松开就执行哪个动作；在中心圆上松开只关闭；打开菜单那次右键尾随的松开不触发任何动作。设置卡片从 AI 页移到常规页侧边栏卡之后，设置搜索索引同步迁移。动作词汇、按方向的默认值、`AppSettings.radialMenu` 结构、持久化与 IPC 均不变。** | 只有图标的环悬停前不可读，扇区填充与按钮底色在同一个目标上画了两层高亮，而且这个开关待在 AI 页里，但环形菜单是转录交互偏好。 |
+| D680 | 云同步与远程主机退出设置 | **从设置索引中移除 `sync` 与 `remoteHosts` 两个目的地：它们的导轨行、页面、搜索关键词索引、它们携带的打包/开发可见性规则、渲染层组件与特性模块、样式，以及锁定它们的测试一并删除。宿主侧配置同步服务、远程主机/SSH 服务、IPC/RPC 契约、`configSync.*` / `remoteHosts.*` 文案，以及创建项目对话框的远程来源保持不变。见 `04-ux/06-settings-ia.md`、`00-baseline.md` 与 `06-delivery/04-e2e-test-plan.md`。** | 本部署完全不用这两个界面；不可达的页面、实验性徽章与死样式只会让设置目录更宽，并让一条维护面继续存在。 |
 
 ## M0. 模型目录决策
 
@@ -5669,3 +5670,22 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   全部 manifest 通过（`rows: 3`、`bundled: 3`、`broken: 0`）。见
   `04-ux/12-prompt-enhancement.md`、`04-ux/06-settings-ia.md`、
   `03-runtime/04-data-storage.md` 与 ADR 0378。
+
+## 2026-11-04 — 云同步与远程主机退出设置（D680）
+
+- D680 移除这两个设置目的地。`src/lib/settings-search.ts` 不再声明 `sync` 与
+  `remoteHosts`，因此导轨、搜索索引与陈旧标签回落会一起去掉它们；`SettingsPage.tsx`
+  只渲染剩余目的地，不再引入它们的页面。
+- 渲染层界面是删除而不是隐藏：`ConfigSyncPage` 及其连接/范围/保险库/错误组件、
+  `RemoteHostsPage`、四个 `features/settings/config-sync-*` 模块、它们在
+  `settings.css` 与 `remote-mvp.css` 中的规则，以及锁定它们的测试
+  （`config-sync-{error,form,preferences,progress,settings,user-path}`、
+  `settings-remote-hosts`、`remote-host-ssh-install-user-path`）一并删除。
+  `remote-mvp-ui` E2E 驱动只保留远程会话场景，远程项目探针改从创建项目对话框进入。
+- 保持不变：宿主侧配置同步 RPC 面与其保险库、带 SSH 引导/隧道与 RACP 传输的远程主机注册表、
+  IPC 通道、`configSync.*` / `remoteHosts.*` 文案，以及创建项目对话框的远程来源。即使主卡片
+  调用方已消失，`openProject({ remoteHostKey })` 的契约仍保留。
+- 由 `apps/desktop/test/settings-developer-only-destinations.test.mjs` 覆盖（两个目的地都不在
+  索引中，搜索其关键词无命中）与 `apps/desktop/test/remote-project-dialog-user-path.test.mjs`
+  覆盖（远程项目仍通过对话框创建）。E2E 场景 E2E-REMOTE-HOST-settings-compact-inventory 随界面
+  一并删除，E2E-REMOTE-HOST-ssh-password-authentication 标记为退役。

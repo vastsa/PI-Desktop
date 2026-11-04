@@ -3611,9 +3611,7 @@ identify the platform validation still needed.
   14. Restore the archived project, then activate it.
   15. Archive one project session, open it from Projects, and return to Projects.
   16. Return to the app shell and open Plugins.
-- **Expected**: The rail contains exactly General, AI, Shortcuts, Instructions, Models, Skills, MCP, Subagents, Projects, Cloud sync, Remote Hosts, and Info in that order, each with its semantic Lucide icon (Sliders / Sparkles / Keyboard / FileText / Bot / BookOpen / Server / Bot / Archive / CloudDownload / Globe / Info). The flat directory is visually grouped under four muted, non-interactive headings — Preferences / 偏好 for General, AI, and Shortcuts; Agent / 智能体 for Instructions and Models; Workspace / 工作区 for Projects; About / 关于 for Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. Appearance remains in General, while Permissions, Defaults, and the Command shell row live under 全局 AI; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Projects shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267/D455) with per-section counts in a one-column workbench. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; a click selects a row without leaving Settings; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result selects its owning project, lists sessions in the inspector by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The inspector menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar. Opening an archived session succeeds before clearing its archived state, returns to chat with that session selected, and makes it visible in the project sidebar; returning to Project archive no longer shows that session as archived. The home sidebar and global page results have no standalone Projects destination; Settings search finds Projects; Plugins remains an independent app-shell destination.
-  Cloud sync and Remote Hosts appear in packaged Settings with Experimental
-  badges on their navigation rows and page titles; see `04-ux/06-settings-ia.md`.
+- **Expected**: The rail contains exactly General, AI, Shortcuts, Instructions, Models, Skills, MCP, Subagents, Projects, and Info in that order, each with its semantic Lucide icon (Sliders / Sparkles / Keyboard / FileText / Bot / BookOpen / Server / Bot / Archive / Info). The flat directory is visually grouped under four muted, non-interactive headings — Preferences / 偏好 for General, AI, and Shortcuts; Agent / 智能体 for Instructions and Models; Workspace / 工作区 for Projects; About / 关于 for Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. Appearance remains in General, while Permissions, Defaults, and the Command shell row live under 全局 AI; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Projects shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267/D455) with per-section counts in a one-column workbench. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; a click selects a row without leaving Settings; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result selects its owning project, lists sessions in the inspector by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The inspector menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar. Opening an archived session succeeds before clearing its archived state, returns to chat with that session selected, and makes it visible in the project sidebar; returning to Project archive no longer shows that session as archived. The home sidebar and global page results have no standalone Projects destination; Settings search finds Projects; Plugins remains an independent app-shell destination.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md`, `03-runtime/11-provider-model-system.md`
 - **Acceptance**: B (model configuration), F (project persistence)
 - **Milestone**: M4
@@ -10720,10 +10718,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   ETags and conditional PUT. No real model provider or running desktop instance.
   A live S3 run is separately opt-in and requires explicit authorization.
 - **Steps:**
-  1. In a packaged build, confirm Cloud sync appears in Settings navigation
-     and search with Experimental badges on its row and page title. Open the
-     destination and confirm only the new S3 setup is offered; old formats are
-     not detected, migrated or deleted.
+  1. Drive the Host configuration-sync RPC surface directly (the Settings
+     destination is gone, D680) and confirm only the new S3 setup is offered;
+     old formats are not detected, migrated or deleted.
   2. Confirm initial setup shows only required connection/password fields and
      automatic runs use the shared switch. Expand Advanced to edit region,
      prefix, addressing, device label and optional token; collapse/reopen it
@@ -10785,11 +10782,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   tested base/candidate and distinguish this run from a standalone SDK probe.
 - **Automation:** `pnpm test:e2e:config-sync` is the multi-Host harness.
   Rust `config_sync::` and `user_skills::` suites cover transport, merge,
-  application and resource safety. `config-sync-user-path.test.mjs` runs the
-  real settings page and shared checkbox with a mocked external IPC boundary,
-  actual styles and isolated Electron input, without network access;
-  `config-sync-ipc.test.mjs` covers Main notification shape. Visibility remains
-  covered by `settings-developer-only-destinations.test.mjs`.
+  application and resource safety. `config-sync-ipc.test.mjs` covers Main
+  notification shape. The Settings destination that used to drive this surface
+  is gone (D680); visibility rules no longer apply to it.
 - **Specs:** `03-runtime/22-config-sync.md`, `04-ux/06-settings-ia.md`,
   `03-runtime/14-secrets-storage.md`, `05-security/01-security.md`,
   `docs/adr/s3-only-configuration-backup-sync.md`.
@@ -10933,7 +10928,6 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — Conversation & stream (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | E — Tools & permissions (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
-| D (surfaces) / Quality — Remote-host Add and Pair form disclosure | E2E-REMOTE-HOST-settings-compact-inventory |
 | E — Tools & permissions (capability level move) | E2E-CAPABILITY-move-across-levels |
 | F — Persistence (capability level move) | E2E-CAPABILITY-move-across-levels |
 | Quality (capability level move) | E2E-CAPABILITY-move-across-levels |
@@ -10967,7 +10961,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |
-| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232, E2E-REMOTE-HOST-settings-compact-inventory |
+| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-context-every-request, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list, E2E-PLUGIN-provider-catalog-add-service |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
@@ -11259,9 +11253,8 @@ This test plan spec is accepted when:
 - Open Settings (footer profile → Settings).
 - Expect **full-page** Codex settings (no app sidebar/nav). Left rail has Back
   to app, search, and exactly General / AI / Shortcuts / Instructions / Models /
-  Skills / MCP / Subagents / Projects, Cloud sync / Remote Hosts / Info in that
-  order; packaged builds show both Cloud sync and Remote Hosts with Experimental
-  badges. The content pane shows the selected destination.
+  Skills / MCP / Subagents / Projects, and Info in that order. The content pane
+  shows the selected destination.
 - Return to the app shell and expect Plugins to remain an independent
   sidebar-footer destination.
 - Drag the empty 46px top band over either the rail or content pane; the native
@@ -11472,8 +11465,7 @@ This test plan spec is accepted when:
 - Expect the working theme selector without inert toggle or open-target rows.
 - Expect Appearance in General and Permissions + Defaults in AI. The rail
   contains General, AI, Shortcuts, Instructions, Models, Skills, MCP,
-  Subagents, Projects, Cloud sync and Remote Hosts (both Experimental in all
-  builds), and Info. Voice may appear between AI and
+  Subagents, Projects, and Info. Voice may appear between AI and
   builds with developer mode on; plugin-contributed destinations follow the
   core groups. There is no Import destination.
 - Resize between 800px, 1200px, and 1600px widths; the content cards fill the
@@ -15841,9 +15833,9 @@ browser milestones are scheduled.
 - **Preconditions**: Isolated Desktop profile, connected Host directory fixtures,
   a local provider fixture, and local/remote directories with the same basename.
   No user profile, production host, credentials or paid model calls.
-- **Steps**: Open Settings → Remote Hosts and click **New project** on the
-  intended host. Confirm the shared Create project dialog has Remote selected
-  and that host preselected. Browse through a separate folder dialog,
+- **Steps**: Open the shared Create project dialog, choose Remote, and select
+  the intended host. Confirm the dialog keeps Remote selected and uses that
+  host. Browse through a separate folder dialog,
   cancel/reopen, navigate parent/child and confirm a directory. Enter a custom
   name, create, rename and reopen the project. Start a normal local chat, choose
   a local model and send a request that invokes Read and Bash remotely. Approve
@@ -15960,8 +15952,9 @@ browser milestones are scheduled.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 
-- **Preconditions**: Settings → Remote Hosts is available with its Experimental
-  badge, independently of developer mode. A Linux test machine runs `sshd` with
+- **Preconditions**: The Settings → Remote Hosts destination is gone (D680), so
+  this scenario no longer has a UI entry point; the SSH install/pair services it
+  drove remain. A Linux test machine runs `sshd` with
   `PasswordAuthentication yes` and `PubkeyAuthentication no`, so the login is
   only reachable with a password; the user's local SSH agent holds no usable key
   for it. A GitHub Releases fixture serves the `pi-host` bundle for that platform
@@ -16005,47 +15998,9 @@ browser milestones are scheduled.
   `06-delivery/07-remote-control-rollout.md` §2
 - **Acceptance**: Security, D (surfaces), Quality
 - **Milestone**: Post-MVP (rollout R2b)
-- **Status**: Draft; remote harness with a password-only Linux SSH target
-  required. The chooser control is covered by
-  `apps/desktop/test/settings-remote-hosts.test.mjs`; the SSH credential seam is
-  covered offline by `apps/desktop/test/remote-host-ssh-password.test.mjs`.
-
-
-#### E2E-REMOTE-HOST-settings-compact-inventory
-
-- **Preconditions**: The desktop Settings window can open. No paired remote
-  host is required. Developer mode is off in persisted settings. The isolated
-  renderer harness can return a successful pair result without network access.
-- **Steps**: 1) Open Settings with developer mode off and confirm Remote Hosts
-  and its search hits are available. 2) Open the page and confirm the rail and
-  title carry the Experimental badge. 3) Confirm the SSH and Pair action row is
-  above the inventory and neither dialog is open. Open SSH; verify the dialog is
-  named, modal, and focuses its first field. Cancel and confirm focus returns to
-  SSH. Open Pair, submit the fixture pairing form, and confirm success closes
-  the dialog and clears the draft. Change language and confirm action labels
-  update. Reopen Pair, enter a draft, cancel, and confirm the dialog closes and
-  the draft clears. Open SSH password mode, enter a fixture password, cancel,
-  reopen, and confirm the password is empty. Press Escape and verify the dialog
-  closes and focus returns to SSH. 4) Toggle developer mode and confirm the
-  destination stays selected and available. 5) On a paired SSH host, open the
-  historical sessions browser and verify model-copy and remote-create controls
-  are absent. New workspace creation stays on Home.
-- **Expected**: Experimental availability is consistent across packaged and
-  development builds. Add actions precede inventory; the forms open in the
-  shared modal surface, one at a time. Cancel, Escape, backdrop dismissal, and
-  successful submission close the dialog and clear drafts; focus returns to the
-  initiating action. Existing pairing toasts remain. The inline browser
-  preserves existing remote histories; new SSH workspace projects use the
-  local model and project controls from Home.
-- **Specs linked**: `04-ux/06-settings-ia.md` §1, §3,
-  `06-delivery/07-remote-control-rollout.md` §2 R2,
-  `02-architecture/05-remote-agent-control.md` §5.2
-- **Acceptance**: D (surfaces), Quality
-- **Milestone**: Post-MVP (rollout R2b)
-- **Status**: Offline coverage in `settings-remote-hosts.test.mjs` and
-  `remote-mvp-renderer.test.mjs`; isolated Electron/Chromium interaction coverage
-  in `scripts/e2e-remote-mvp-ui.mjs`, including disclosure, success and cancel
-  paths. Real SSH acceptance is separate.
+- **Status**: Retired (D680) — the surface it exercised was removed with the
+  Settings destination. The SSH credential seam stays covered offline by
+  `apps/desktop/test/remote-host-ssh-password.test.mjs`.
 
 #### E2E-232: The outbound messaging integration relays events and commands
 
