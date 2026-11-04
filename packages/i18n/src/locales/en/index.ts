@@ -532,6 +532,8 @@ export const en = {
     cancelEdit: "Cancel",
     retryEdit: "Retry",
     retryingEdit: "Retrying…",
+    pinnedPromptJump: "Back to your latest message",
+    pinnedPromptAttachments: "{{count}} attachment(s)",
     deleteMessage: "Delete message",
     revisions: "Response versions",
     revisionPrev: "Previous version",

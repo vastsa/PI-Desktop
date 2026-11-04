@@ -195,6 +195,64 @@
   flex-direction: column;
 }
 
+/*
+  Pinned latest prompt. The answer to the newest prompt pushes that prompt off
+  the top of the transcript; while the row itself is out of view this strip
+  repeats one line of it, so the user can always see what they last asked.
+  Clicking it returns to the row. It floats inside `.thread-wrap` (position:
+  relative) so it never participates in the scroller's flow, and it resolves to
+  `--ds-raised` rather than a translucent plate because rows scroll beneath it.
+*/
+.transcript-pinned-prompt {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  justify-content: center;
+  max-width: min(680px, calc(100% - 28px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.transcript-pinned-prompt-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-full);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.transcript-pinned-prompt-button:hover {
+  border-color: var(--ds-border-strong, var(--ds-border-default));
+  color: var(--ds-text-primary);
+}
+
+.transcript-pinned-prompt-button:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+
+.transcript-pinned-prompt-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Destination pages have ordinary document scrolling. Keep this separate from
  * `.thread-scroll`, whose Composer reserve, follow behavior, and occlusion mask
  * are specific to the chat transcript. */

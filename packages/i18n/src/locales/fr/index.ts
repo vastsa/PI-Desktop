@@ -517,6 +517,8 @@ export const fr = {
     "cancelEdit": "Annuler",
     "retryEdit": "Réessayer",
     "retryingEdit": "Réessayer…",
+    "pinnedPromptJump": "Revenir à votre dernier message",
+    "pinnedPromptAttachments": "{{count}} pièce(s) jointe(s)",
     "deleteMessage": "Supprimer le message",
     "revisions": "Versions de réponse",
     "revisionPrev": "Version précédente",

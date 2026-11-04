@@ -529,6 +529,8 @@ export const tr = {
     cancelEdit: "İptal",
     retryEdit: "Yeniden dene",
     retryingEdit: "Yeniden deneniyor…",
+    pinnedPromptJump: "Son mesajına dön",
+    pinnedPromptAttachments: "{{count}} ek",
     deleteMessage: "İletiyi sil",
     revisions: "Yanıt sürümleri",
     revisionPrev: "Önceki sürüm",

@@ -522,6 +522,8 @@ export const zhCN = {
     cancelEdit: "取消",
     retryEdit: "重试",
     retryingEdit: "重试中…",
+    pinnedPromptJump: "回到我最新发送的消息",
+    pinnedPromptAttachments: "{{count}} 个附件",
     deleteMessage: "删除消息",
     revisions: "回复版本",
     revisionPrev: "上一版本",

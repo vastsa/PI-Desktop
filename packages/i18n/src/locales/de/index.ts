@@ -517,6 +517,8 @@ export const de = {
     "cancelEdit": "Abbrechen",
     "retryEdit": "Wiederholen",
     "retryingEdit": "Erneuter Versuch…",
+    "pinnedPromptJump": "Zurück zu deiner letzten Nachricht",
+    "pinnedPromptAttachments": "{{count}} Anhang/Anhänge",
     "deleteMessage": "Nachricht löschen",
     "revisions": "Antwortversionen",
     "revisionPrev": "Vorherige Version",

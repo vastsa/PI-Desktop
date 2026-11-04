@@ -342,6 +342,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D678 | Radial context menu rebuilt and moved to General | **The opt-in transcript radial menu gets at-rest icon-and-label sectors (the hover-only hub label is gone), one filled highlight for the active sector with no focus rectangle, a recessed hub carrying the click-point dot, a 248 px disc with hairline separators and the composer shadow, and shared motion tokens for hover and reveal. A right-press started while the ring is open runs the sector it is released on; releasing in the hub dismisses without running; the release trailing the opening right-click is inert. The settings card moves from the AI tab to General after Sidebar and the settings-search index follows. Action vocabulary, per-direction defaults, `AppSettings.radialMenu`, persistence, and IPC are unchanged.** | The icon-only ring could not be read without hovering every sector, the sector fill and button background painted two highlights over one target, and the ring's switch sat in the AI tab although the surface is a transcript-interaction preference. |
 | D680 | Cloud sync and Remote Hosts leave Settings | **Remove the `sync` and `remoteHosts` destinations from the Settings index: their rail rows, pages, search-keyword indexes, the packaged/development visibility rules they carried, their renderer components and feature modules, their styles, and the tests that pinned them are gone. The host-side configuration-sync service, the remote-host/SSH service, the IPC/RPC contracts, the `configSync.*` / `remoteHosts.*` locale strings, and the Create project dialog's remote source stay. See `04-ux/06-settings-ia.md`, `00-baseline.md`, and `06-delivery/04-e2e-test-plan.md`.** | Both surfaces are unused in this deployment; unreachable pages, Experimental badges, and dead styles only widened the settings directory and kept a maintenance surface alive. |
 | D681 | Bundled tool packages get their own page | **Add a Tools destination below Artifacts in the app-shell rail: the build's `resources/tools/<id>/tool.json` packages, rendered as one card each with name, version, description, declared tools and risk levels, and one enable switch. host-core scans the directory (`crates/host-core/src/tool_packages.rs`) and persists the enabled set in `<data>/tools/state.json`; `toolPackages.list` / `toolPackages.setEnabled` are the only surface, and a package that cannot be read keeps its row with the reason. See `04-ux/01-ui-ia.md` §3.4.1 and `03-runtime/04-data-storage.md` §2.** | Tool packages ship inside the image and need a visible, switchable roster without a plugin install/update/permission model; a separate declarative manifest keeps the marketplace surface out of it. |
+| D682 | The newest prompt stays readable while its answer scrolls | **A single-line strip at the transcript's top edge repeats the newest prompt the user sent once that row's bottom edge has passed the scrollport's top edge, and disappears as soon as any part of the row is visible again. It collapses whitespace, cuts on a word boundary, names the attachment count for an attachment-only prompt, never pins an agent-to-agent delivery, and yields the top edge to an open Find bar. Clicking it scrolls the row back into view. See `04-ux/09-interaction-patterns.md` §2.6.** | The reference client pins its human bubble to the top of the thread; a long answer otherwise pushes the question out of sight and the user has to scroll back to remember what they asked. |
 
 
 ## M0. Model catalog decisions
@@ -8177,3 +8178,30 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/tool-packages-ipc.test.mjs` (channel registration and
   parameter narrowing), and `apps/desktop/test/tools-page.test.mjs` (page union,
   rail order, global search, host-only access, all nine locale catalogs).
+
+## 2026-11-04 — The newest prompt stays readable while its answer scrolls (D682)
+
+- The reference client keeps the human bubble at the top of the thread while its
+  turn is on screen: the bubble is grouped with the turn and sticks. The
+  observable behavior worth copying is that the question never leaves view while
+  its answer streams, not the mechanism.
+- `ChatTranscript` now renders one strip (`features/chat/transcript/PinnedPrompt.tsx`)
+  inside `.thread-wrap`, above the scroller. It repeats the newest prompt the user
+  sent, one collapsed line, cut on a word boundary at 240 characters.
+- Visibility is measured against the row itself, not the scroll offset: the hook
+  resolves `[data-message-id]` inside the transcript content and compares that
+  row's bottom edge with the scrollport's top edge, coalescing scroll events into
+  one animation frame. When Find is open the strip stands down, because Find owns
+  the same top edge.
+- Not implemented as a sticky bubble: transcript rows are a flat list with
+  `content-visibility: auto`, and a sticky row pins against `.thread-content` —
+  the whole list — so it would hover over later turns instead of unpinning at the
+  end of its own turn. It would also need an opaque plate behind a deliberately
+  translucent bubble. A separate strip leaves every row's geometry untouched.
+- Agent-to-agent deliveries arrive on the `user` role; `latestUserPrompt` skips a
+  row carrying `sessionMessage`, so a relayed message is never quoted as the
+  user's question.
+- Covered by `apps/desktop/test/transcript-pinned-prompt.test.mjs`: which message
+  pins, the delivery exclusion, preview collapsing and truncation, the geometry
+  boundary, selector escaping, the rendered strip (including the attachment-only
+  case), the transcript wiring, and the two new keys in all nine catalogs.

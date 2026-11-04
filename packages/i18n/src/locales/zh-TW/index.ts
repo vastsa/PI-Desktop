@@ -522,6 +522,8 @@ export const zhTW = {
     cancelEdit: "取消",
     retryEdit: "重試",
     retryingEdit: "重試中…",
+    pinnedPromptJump: "回到我最新傳送的訊息",
+    pinnedPromptAttachments: "{{count}} 個附件",
     deleteMessage: "刪除訊息",
     revisions: "回覆版本",
     revisionPrev: "上一版本",

@@ -896,6 +896,25 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Partial message is preserved — not deleted
 - User sees "Stream interrupted" with retry option
 
+### 2.6 Pinned latest prompt
+
+- The newest prompt leaves the top of the transcript as soon as its answer
+  grows past one screen. A single-line strip then repeats that prompt at the
+  transcript's top edge — above the rows, below an open Find bar — so the user
+  can always see what they last asked without scrolling back for it.
+- The strip belongs to the row it repeats: it appears only once the row's bottom
+  edge has passed the scrollport's top edge, and disappears the moment any part
+  of the row is on screen again. Reaching the bottom of the transcript does not
+  hide it — there the prompt is genuinely gone from view.
+- It repeats the newest prompt the **user** sent. An agent-to-agent delivery
+  arrives on the user role but is not the user speaking, so it never pins.
+- One line, whitespace collapsed, cut on a word boundary and ellipsized; the
+  full prompt stays in its own row. A prompt that carried only attachments names
+  the attachment count instead of rendering an empty strip.
+- Clicking the strip scrolls that row back into view; it is a jump to the row,
+  not a jump to the newest output, so reading position stays under the user's
+  control.
+
 ## 3. Abort running agent
 
 ### 3.1 Trigger methods

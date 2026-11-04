@@ -529,6 +529,8 @@ export const ko = {
     cancelEdit: "취소",
     retryEdit: "다시 시도",
     retryingEdit: "다시 시도 중…",
+    pinnedPromptJump: "방금 보낸 메시지로 이동",
+    pinnedPromptAttachments: "첨부 {{count}}개",
     deleteMessage: "메시지 삭제",
     revisions: "응답 버전",
     revisionPrev: "이전 버전",

@@ -519,6 +519,8 @@ export const ptBR = {
     cancelEdit: "Cancelar",
     retryEdit: "Tentar novamente",
     retryingEdit: "Tentando novamente…",
+    pinnedPromptJump: "Voltar à sua última mensagem",
+    pinnedPromptAttachments: "{{count}} anexo(s)",
     deleteMessage: "Excluir mensagem",
     revisions: "Versões da resposta",
     revisionPrev: "Versão anterior",
