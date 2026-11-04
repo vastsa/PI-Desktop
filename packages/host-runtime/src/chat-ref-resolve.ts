@@ -5,8 +5,10 @@ import type {
   FsChatRefMatchKind,
   FsChatRefProjectRoot,
   FsChatRefRoot,
+  FsChatRefResolveResult,
 } from "@pi-desktop/shared";
 import { isAttachmentBlobRef, isIgnoredName, resolveRealPathWithinRoot } from "./workspace-files.js";
+import { resolveExternalFile } from "./external-files.js";
 import { getWorkspaceFileIndex } from "./fs-index.js";
 
 /**
@@ -242,6 +244,33 @@ export async function isChatRefOutsideRoots(ref: string, roots: ChatRefRoots): P
   return !rootList.some((root) =>
     root.realPath && relativeInside(root.realPath, targetPath) !== null,
   );
+}
+
+/**
+ * Complete an absolute reference that `isChatRefOutsideRoots` placed outside
+ * every managed root (ADR 0339). It names that exact file or nothing: a path
+ * with no regular file behind it reports a miss, and no same-name file is ever
+ * looked up anywhere else. A reference that is not an exact absolute path keeps
+ * reporting the access limit, since shorthand never searches outside the roots.
+ */
+export async function resolveExternalChatRef(ref: string): Promise<FsChatRefResolveResult> {
+  const parsed = parseChatRef(ref);
+  const cleaned = cleanRef(ref);
+  if (!parsed?.absolute || !isAbsolute(cleaned)) {
+    return { match: null, reason: "outside-allowed-roots" };
+  }
+  const external = await resolveExternalFile(cleaned);
+  if (external.kind === "file") {
+    return {
+      match: {
+        root: "external",
+        relativePath: basename(external.path),
+        absolutePath: external.path,
+        matchedBy: "exact-absolute",
+      },
+    };
+  }
+  return { match: null };
 }
 
 function segmentsOf(path: string): string[] {
