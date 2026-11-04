@@ -8111,15 +8111,20 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     removed. The caller's payload rewrite remains active, the repair consumes no
     transient retry budget or backoff, and both Chat Completions and Responses
     fixtures complete on their second request. A second opaque failure remains
-    terminal.
+    terminal. A 400/422 that names an output ceiling (`at most N completion
+    tokens`, `max_tokens: N > M, which is the maximum allowed number of output
+    tokens`, or `expected a value <= N`) gets one silent repair that clamps
+    those fields to that ceiling instead of removing them. Credit exhaustion
+    and context overflow do not take this repair.
   - If the turn is aborted after the first opaque failure, the repair request is
     not started and the result is `aborted`.
   - A mid-stream HTTP 429 is covered by E2E-149's separate ten-retry path; the
     two budgets do not draw from each other.
   - Authentication, model-selection, context, and descriptive
     malformed-request failures do not enter either provider replay path. The
-    opaque empty-body 400/422 case is the bounded repair exception described
-    above. Infinite mode changes no classification and only removes the retry
+    opaque empty-body 400/422 case and the explicit output-ceiling case are
+    the bounded repair exceptions described above. Infinite mode changes no
+    classification and only removes the retry
     ceiling for admitted network/transient failures; it remains abortable and
     is visibly marked with an unbounded retry indicator.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
