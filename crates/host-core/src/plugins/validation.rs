@@ -1,6 +1,7 @@
 use super::*;
 mod composer_transforms;
 mod contribution_ids;
+mod launcher_triggers;
 mod provider_catalog;
 
 use contribution_ids::is_contrib_id;
@@ -175,6 +176,7 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
             }
         }
     }
+    launcher_triggers::validate(map, manifest)?;
     composer_transforms::validate(map, manifest)?;
     if let Some(skills) = map.get("skills") {
         let entries = array_of(skills, "contributes.skills")?;

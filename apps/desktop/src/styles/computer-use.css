@@ -123,3 +123,21 @@
 .computer-use-picker-close:hover {
   background: var(--ds-tile);
 }
+
+.computer-use-platform-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.computer-use-permission-button {
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-warning) 16%, transparent);
+  color: var(--ds-warning);
+}
+
+.computer-use-permission-button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ds-warning) 24%, transparent);
+}

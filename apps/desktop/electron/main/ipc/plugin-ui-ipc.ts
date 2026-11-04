@@ -10,6 +10,7 @@ import { PluginViewHost, pluginViewKey } from "../plugin-view-host";
 import { PluginPanelHost } from "../plugin-panel-host";
 import type { PluginPanelTheme } from "../../shared/plugin-panel-chrome";
 import type { IpcRegistrar } from "./types";
+import { normalizeLauncherLaunch } from "./plugin-launcher-ipc";
 import { pluginProviderCatalogEntries } from "../plugin-provider-catalog";
 import { createSessionPushGate } from "../plugin-session-push-gate";
 import {
@@ -128,30 +129,53 @@ export function registerPluginUiIpc({
       return { ok: true };
     },
   );
-  handle(IPC.invoke.pluginOpenPanel, async (id: string) => {
-    const loaded = plugins.getLoaded(id);
-    if (!loaded) throw new Error("plugin not loaded");
-    const manifest = loaded.manifest;
-    if (!manifest.ui?.panel) throw new Error("plugin has no panel");
-    if (!(loaded.permissions.has("ui.panel"))) {
-      throw new Error("PERMISSION_DENIED: ui.panel");
-    }
-    const htmlPath = resolveInsidePluginRoot(loaded.path, manifest.ui.panel);
-    if (!htmlPath) throw new Error("plugin panel must stay inside the plugin");
-    await pluginPanels.open({
-      pluginId: id,
-      title: resolvePluginLocalizedString(manifest.ui.title, getUpdaterLocale(), manifest.name),
-      locale: getUpdaterLocale(),
-      theme: getPluginPanelTheme(),
-      shape: manifest.ui.shape,
-      alwaysOnTop: manifest.ui.alwaysOnTop,
-      resizable: manifest.ui.resizable,
-      width: manifest.ui.width ?? 480,
-      height: manifest.ui.height ?? 360,
-      htmlPath,
-    });
-    return { ok: true };
-  });
+  /**
+   * Open a plugin panel.
+   *
+   * The launcher passes an object so it can hand the plugin the input that
+   * summoned it; every other caller still passes the bare id, so the old shape
+   * keeps working unchanged (issue #2085).
+   */
+  handle(
+    IPC.invoke.pluginOpenPanel,
+    async (
+      request: string | { pluginId?: unknown; triggerId?: unknown; payload?: unknown },
+    ) => {
+      const pluginId =
+        typeof request === "string" ? request : String(request?.pluginId ?? "");
+      const loaded = plugins.getLoaded(pluginId);
+      if (!loaded) throw new Error("plugin not loaded");
+      const manifest = loaded.manifest;
+      if (!manifest.ui?.panel) throw new Error("plugin has no panel");
+      if (!(loaded.permissions.has("ui.panel"))) {
+        throw new Error("PERMISSION_DENIED: ui.panel");
+      }
+      const htmlPath = resolveInsidePluginRoot(loaded.path, manifest.ui.panel);
+      if (!htmlPath) throw new Error("plugin panel must stay inside the plugin");
+      const launch =
+        typeof request === "object" && request !== null
+          ? normalizeLauncherLaunch(request)
+          : undefined;
+      await pluginPanels.open({
+        pluginId,
+        title: resolvePluginLocalizedString(
+          manifest.ui.title,
+          getUpdaterLocale(),
+          manifest.name,
+        ),
+        locale: getUpdaterLocale(),
+        theme: getPluginPanelTheme(),
+        shape: manifest.ui.shape,
+        alwaysOnTop: manifest.ui.alwaysOnTop,
+        resizable: manifest.ui.resizable,
+        width: manifest.ui.width ?? 480,
+        height: manifest.ui.height ?? 360,
+        htmlPath,
+        ...(launch ? { launch } : {}),
+      });
+      return { ok: true };
+    },
+  );
 
   /**
    * Work panel views a plugin contributes (ADR 0104).

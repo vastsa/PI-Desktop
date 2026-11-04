@@ -10162,9 +10162,18 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 
 ## 电脑操作（ADR 0342）
 
-每一条都是 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
-所述能力的落地闸门。阶段 1 已实现，因此每条场景依赖的拒绝逻辑都有单测覆盖；
-场景本身需要驱动真实应用，状态仍全部为 `NOT RUN`。已有的自动化按场景列出。
+原生应用操作仍以 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
+为落地闸门；拒绝逻辑有单测覆盖，真实应用操作仍为 `NOT RUN`。
+下述权限申请界面已有隔离 fixture 自动化。
+
+### E2E-COMPUTER-USE-request-accessibility-from-settings
+
+- **前置条件**：隔离 Electron profile；在 IPC 与 Electron 边界模拟系统调用；功能关闭，不调用 Provider 或真实系统权限提示。
+- **步骤**：打开设置，键盘聚焦并连续点击未授权状态；完成申请但保持未授权。在外部开启权限后返回应用。覆盖权限拒绝、申请失败及重试、过期查询、申请中返回焦点、不支持平台与申请中卸载页面。
+- **预期**：打开设置或开启功能不会申请系统权限。只有显式点击发送 `computer.requestPermission`；等待中禁用按钮并显示忙碌，重复点击不重复申请。未授权时仅打开固定的 macOS 辅助功能设置页，并提示用户开启权限。错误可见且可重试。焦点/可见性恢复只刷新状态，不再次提示；过期结果和卸载后的监听不得更新界面。已授权或不支持状态仅显示标签。非主窗口来源在系统调用前被拒绝，系统设置打开失败传回；不会交接窗口、截屏或派发输入。
+- **自动化**：`node --test apps/desktop/test/computer-use-permission-user-path.test.mjs apps/desktop/test/computer-use-permission-ipc.test.mjs`；shared 能力筛选测试与 host-core 不支持后端测试覆盖平台门禁。
+- **规格**：[Computer Use](/zh-CN/spec/03-runtime/computer-use) 的设置与 UX 界面。
+- **状态**：fixture 自动化 PASS；真实 macOS TCC 提示/开关 NOT RUN。系统权限仍由用户手动确认。
 
 ### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
 

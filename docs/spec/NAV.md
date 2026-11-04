@@ -100,6 +100,7 @@
 - [15-plugin-center.md](07-plugins/15-plugin-center.md)
 - [16-trusted-extensions.md](07-plugins/16-trusted-extensions.md)
 - [17-plugin-glossary.md](07-plugins/17-plugin-glossary.md)
+- [18-plugin-launcher.md](07-plugins/18-plugin-launcher.md)
 
 ## 8. Meta
 - [README.md](08-meta/README.md)

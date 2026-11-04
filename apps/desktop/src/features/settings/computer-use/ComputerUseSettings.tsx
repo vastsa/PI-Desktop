@@ -3,17 +3,17 @@ import type { TFunction } from "i18next";
 import {
   COMPUTER_USE_DEFAULTS,
   type AppSettings,
-  type ComputerCapabilities,
   type ComputerCaptureMode,
   type ComputerInputPolicy,
   type ComputerUseSettings as ComputerUseSettingsValue,
   type ProviderPublic,
+  needsAccessibilityRequest,
 } from "@pi-desktop/shared";
-import { Badge, SettingsToggle } from "../../../components/ui";
+import { Badge, Button, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { SettingsCard, SettingsRow } from "../primitives";
 import { api } from "../../../lib/api";
-import { computerUseApi } from "../../computer-use/computer-use-api";
+import { useComputerPermission } from "../../computer-use/use-computer-permission";
 
 /**
  * Computer use settings (ADR 0342).
@@ -33,23 +33,8 @@ export function ComputerUseSettings({
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
 }) {
   const value: ComputerUseSettingsValue = settings.computerUse ?? { enabled: false };
-  const [capabilities, setCapabilities] = useState<ComputerCapabilities | null>(null);
+  const { capabilities, requesting, waiting, errorCode, requestPermission } = useComputerPermission();
   const [providers, setProviders] = useState<ProviderPublic[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void computerUseApi
-      .capabilities()
-      .then((result) => {
-        if (!cancelled) setCapabilities(result);
-      })
-      .catch(() => {
-        if (!cancelled) setCapabilities(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!value.enabled) return;
@@ -96,21 +81,41 @@ export function ComputerUseSettings({
       {/* Readable before enabling: a platform without a backend should say so
           rather than let the user turn on a feature that cannot act. */}
       <SettingsRow title={t("computerUse.platform")}>
-        <div className="settings-inline-status">
+        <div className="computer-use-platform-status">
           {capabilities ? (
             <>
               <Badge tone={unsupported ? "warning" : "neutral"}>
                 {unsupported ? t("computerUse.platformUnsupported") : capabilities.backend}
               </Badge>
-              <Badge tone={capabilities.accessibility === "granted" ? "neutral" : "warning"}>
-                {t(`computerUse.permission.${capabilities.accessibility}`)}
-              </Badge>
+              {needsAccessibilityRequest(capabilities) ? (
+                <Button
+                  size="sm"
+                  className="computer-use-permission-button"
+                  title={t("computerUse.requestPermission")}
+                  disabled={requesting}
+                  aria-busy={requesting}
+                  onClick={() => { void requestPermission(); }}
+                >
+                  {requesting ? t("computerUse.requestingPermission") : t(`computerUse.permission.${capabilities.accessibility}`)}
+                </Button>
+              ) : (
+                <Badge tone={capabilities.accessibility === "granted" ? "neutral" : "warning"}>
+                  {t(`computerUse.permission.${capabilities.accessibility}`)}
+                </Badge>
+              )}
             </>
           ) : (
             <span className="settings-hint">{t("computerUse.platformUnknown")}</span>
           )}
         </div>
       </SettingsRow>
+      {(waiting || errorCode) && (
+        <p className="computer-use-picker-error" role="status">
+          {errorCode
+            ? t("computerUse.permissionRequestFailed", { code: errorCode })
+            : t("computerUse.permissionPending")}
+        </p>
+      )}
 
       {value.enabled && (
         <>

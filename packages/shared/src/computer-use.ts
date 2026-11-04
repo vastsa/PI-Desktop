@@ -183,6 +183,13 @@ export type ComputerCapabilities = {
   inputUnsupportedReason?: string;
 };
 
+/** Only the macOS backend currently implements an explicit OS trust request. */
+export function needsAccessibilityRequest(capabilities: ComputerCapabilities): boolean {
+  return capabilities.platform === "darwin"
+    && capabilities.backend === "macos-ax"
+    && (capabilities.accessibility === "not-requested" || capabilities.accessibility === "denied");
+}
+
 export type ComputerGrantView = {
   grantId: string;
   /** Bumped whenever the measured target geometry or identity changes. */

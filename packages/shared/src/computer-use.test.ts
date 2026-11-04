@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import {
   COMPUTER_ACTION_BUDGET_LIMIT,
   COMPUTER_MAX_STEPS_LIMIT,
+  needsAccessibilityRequest,
+  type ComputerCapabilities,
   validateComputerToolArgs,
   validateComputerUseSettings,
 } from "./computer-use.js";
@@ -77,5 +79,19 @@ it("Computer tool args refuse addressing, targets, and runaway step counts", () 
     null,
   ]) {
     expect(() => validateComputerToolArgs(value), `accepted ${JSON.stringify(value)}`).toThrow(/Computer/);
+  }
+});
+
+it("OS permission requests are offered only for missing macOS Accessibility", () => {
+  const capabilities: ComputerCapabilities = {
+    platform: "darwin", backend: "macos-ax", fidelity: "full",
+    accessibility: "not-requested", capture: "not-requested",
+  };
+  expect(needsAccessibilityRequest(capabilities)).toBe(true);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "denied" })).toBe(true);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "granted" })).toBe(false);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "unsupported" })).toBe(false);
+  for (const platform of ["linux", "win32", "other"] as const) {
+    expect(needsAccessibilityRequest({ ...capabilities, platform, backend: "unsupported" })).toBe(false);
   }
 });

@@ -19640,13 +19640,91 @@ their separate platform acceptance.
   group lookup failure, missing project providers, failed/malformed lookup,
   rename identity, and stale results after Host replacement.
 
+### E2E-268: Plugin launcher grid, triggers, and local applications
+
+- **Preconditions**: An isolated Host profile with a panel plugin that declares
+  one launcher trigger (for example `^\d+\s*[\+\-\*/]\s*\d+$`, so `1+1` matches
+  it) and whose panel renders the text it received through
+  `window.pluginBridge.consumeLauncherPayload()`. A second panel plugin with a
+  Latin name, and at least two installed applications, one of them Chinese with
+  a `wx` / `weixin` / `微信` spelling chain. Run on Windows and macOS.
+- **Steps**:
+  1. Press `Alt+Space` (`⌥+Space` on macOS) with an empty input. Read the grid:
+     group titles, rows, tiles per row, and the two header actions.
+  2. Type the trigger expression `1+1` and inspect the first tile and its detail
+     line; press `Enter` and read the opened panel.
+  3. Reopen the launcher and type a pinyin initial such as `wx`, then `weixin`,
+     then `微信`; confirm the same application is the matching tile each time.
+  4. Type `pi` and confirm the plugin named `PI-Desktop` is listed with a name
+     match, and that the same item is reachable by pinyin and initials.
+  5. Drag the panel's edge to a larger and then a smaller size; count the tiles
+     per row at each width. Quit and restart the application, then reopen the
+     launcher.
+  6. Type a query that matches more than 24 items. Read the header action and
+     the window height.
+  7. Disable one plugin that was in recents/pins, reopen the launcher, and check
+     the empty-input view and a query that used to match it.
+  8. Paste 500 characters of garbage into the search field.
+  9. Pin an application, quit, restart, and reopen the launcher with an empty
+     input.
+- **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
+  `Pinned` with one row of eight once the user has pins; the recents header
+  reports the true number of remembered items and offers `Show all {count} →`
+  plus `All plugins →`. Step 2 lists the trigger plugin as the **first** tile,
+  ahead of name matches and without a detail line, and the panel shows `1+1`
+  exactly once (a second read returns `null`). Step 3 reaches the same
+  application through all three spellings. Step 4 lists `PI-Desktop` once by
+  name. Step 5 keeps eight columns per row at every width, the panel height
+  always matches what it renders, and the dragged width is restored after the
+  restart. Step 6 keeps the window at its height cap, reports the dropped count
+  in the header, and asks the user to keep typing. Step 7 removes the disabled
+  plugin from recents, pins, and matches while every other tile still opens.
+  Step 8 keeps the panel responsive (no frozen input, no unhandled error) and
+  reports no match, because input longer than 256 characters is never matched
+  against a trigger. Step 9 still shows the pinned application in the `Pinned`
+  row.
+- **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
+  coverage for these rules: `launcher-search.test.mjs` (ranking order, section
+  caps, overflow total, trigger whole-input matching, the 256-character limit
+  and the all-plugins view), `launcher-store.test.mjs` (pins and the eight-pin
+  cap, recents, legacy migration, retired fields read without error, and
+  pruning), `plugin-launcher-height.test.mjs` (content-height arithmetic and
+  clamping), `local-apps.test.mjs` (discovery, bounds, icon budget and icon
+  cache, dropped targets, opaque-id launch) and `plugin-launcher-state.test.mjs`
+  (clamping and re-centring). Rust `plugins` tests cover the manifest rules. The
+  rendered Electron journey above — grouped grid, content height, resize,
+  restart, and the panel payload round trip — is Draft until a launcher E2E
+  script exists.
 ## Computer use (ADR 0342)
 
-Every one of these is a landing gate for the capability described in
-[03-runtime/computer-use](../03-runtime/computer-use.md). Stage 1 is
-implemented, so the refusals each scenario depends on are covered by unit
-tests; the scenarios themselves drive a real application and are all
-`NOT RUN`. Automation that does exist is named per scenario.
+Native-control scenarios remain landing gates for
+[03-runtime/computer-use](../03-runtime/computer-use.md). Their underlying
+refusals are unit-covered, but driving real applications remains `NOT RUN`.
+The permission-request UI below has isolated fixture automation.
+
+### E2E-COMPUTER-USE-request-accessibility-from-settings
+
+- **Preconditions**: Isolated Electron fixture profile; OS calls mocked at IPC
+  and Electron boundaries; computer use disabled; no provider or real OS prompt.
+- **Steps**: Open Settings with missing Accessibility; focus and click its status
+  button twice. Complete the request while permission remains missing. Grant it
+  externally and return focus. Exercise denied permission, a failed request and
+  retry, a stale capabilities read, focus during a pending request, unsupported
+  platform, and unmount during a request.
+- **Expected**: Opening Settings or toggling the feature never requests OS
+  permission. Explicit click alone sends `computer.requestPermission`; while
+  pending, the button is busy/disabled and duplicate clicks are ignored. Missing
+  trust opens only the fixed macOS Accessibility pane and explains that the user
+  must enable it. Errors are visible and retryable. Focus/visibility refreshes
+  without prompting; stale results and unmounted listeners cannot update UI.
+  Granted/unsupported states are labels. Non-main senders are rejected before
+  OS calls; opening failure propagates; no grant, capture, or input is dispatched.
+- **Automation**: `node --test apps/desktop/test/computer-use-permission-user-path.test.mjs
+  apps/desktop/test/computer-use-permission-ipc.test.mjs`; shared capability
+  selection tests and host-core unsupported-backend tests cover platform gating.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md), Settings and UX surface.
+- **Status**: Fixture automation PASS; actual macOS TCC prompt/switch NOT RUN.
+  Native OS approval remains a manual system decision.
 
 ### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
 

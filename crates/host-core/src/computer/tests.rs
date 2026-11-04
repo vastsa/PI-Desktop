@@ -627,6 +627,7 @@ fn an_unsupported_platform_refuses_every_operation() {
         "refusing is the safe default"
     );
     assert_eq!(desktop.capabilities().fidelity, Fidelity::None);
+    assert_eq!(desktop.request_permission(), Err(DesktopError::Unsupported));
     assert_eq!(
         policy::list_targets(&desktop, &Denylist::default()).expect_err("targets"),
         Refusal::PlatformUnsupported

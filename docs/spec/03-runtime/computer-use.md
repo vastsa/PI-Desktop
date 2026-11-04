@@ -128,6 +128,7 @@ Underneath, main drives these host operations. They are not agent-facing.
 | Host operation | Risk | Behavior |
 |---|---|---|
 | `computer.capabilities` | low | Backend identity, fidelity, per-platform OS permission state, session type |
+| `computer.requestPermission` | low | Ask the OS for Accessibility from the trusted Settings window; returns capabilities, never a scope grant; unsupported backends refuse |
 | `computer.listTargets` | low | Pickable windows for the picker only; refused targets are listed with their reason, never silently dropped |
 | `computer.grantCreate` / `grantRevoke` / `grantDescribe` | low | Mint, revoke, and read the single active grant; minting requires the user's picker choice |
 | `computer.inspect` | low | Structured accessibility tree of the scope: role, name, value presence, enabled, focused, bounds, per-grant opaque `uid`, declared fidelity |
@@ -252,6 +253,21 @@ never a no-op reported as success.
   capture, accessibility bus, session type) and distinguishes "not requested",
   "denied", and "unsupported on this platform". A denied TCC grant must not be
   presented as a broken feature.
+- On macOS, missing Accessibility is a keyboard-accessible button in Settings,
+  available even while Computer Use is off. Only clicking it invokes
+  `pi-desktop/computer/permission/request` → `computer.requestPermission` →
+  `AXIsProcessTrustedWithOptions` with the OS prompt option. If still untrusted,
+  main opens the fixed Accessibility pane in System Settings; the user must
+  enable the switch. This never grants trust automatically or hands over a
+  target. macOS cannot distinguish an unrequested grant from a denied grant
+  through its trust query, so both report `not-requested` until granted.
+- Requests show busy/disabled feedback and cannot run twice concurrently.
+  Failures, including failure to open System Settings, are visible with an error
+  code and may be retried. Returning focus or making the page visible rechecks
+  capabilities without prompting. Stale reads cannot overwrite a request result;
+  unmount removes listeners and discards pending results. Granted and unsupported
+  permission states remain labels, not request buttons. The request IPC rejects
+  non-main-window senders, and no `host.proxy` allowlist entry is added.
 - The target picker is host-driven and shows the display list only while it is
   open. It is the only way to choose a target.
 - The grant indicator is visible for the whole life of a grant, names the

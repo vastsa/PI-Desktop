@@ -94,7 +94,7 @@ Domains:
 - `settings.*` (adapter level)
 - `secrets.*`
 - `audit.*`
-- `computer.*` (scope grants, accessibility inspection, synthesis, capture)
+- `computer.*` (scope grants, accessibility inspection, synthesis, capture, OS permission request)
 
 Example:
 

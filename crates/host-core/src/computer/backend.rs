@@ -84,6 +84,17 @@ pub struct RawInspection {
 pub trait Desktop: Send + Sync {
     fn capabilities(&self) -> Capabilities;
 
+    /// Ask the OS to grant the permission this backend needs, and report what
+    /// it says now.
+    ///
+    /// This is the one backend call a user can trigger directly, and it only
+    /// ever *asks*: macOS shows its own dialog, and the grant decision stays in
+    /// System Settings. A platform with no permission model refuses, so the
+    /// caller can tell "not grantable here" from "asked and still not allowed".
+    fn request_permission(&self) -> Result<PermissionState, DesktopError> {
+        Err(DesktopError::Unsupported)
+    }
+
     /// Every window the platform can enumerate, unfiltered. Policy removes and
     /// annotates entries; a backend never hides one, because a target the user
     /// can see but the picker silently dropped is indistinguishable from a bug.

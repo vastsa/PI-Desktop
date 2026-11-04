@@ -37,6 +37,32 @@ impl MacDesktop {
         unsafe { AXIsProcessTrusted() != 0 }
     }
 
+    /// Ask TCC to show its Accessibility prompt without granting trust ourselves.
+    fn prompt_for_trust(&self) -> Result<bool, DesktopError> {
+        // SAFETY: both keys and values are immutable framework constants. The
+        // dictionary borrows them and is released after the synchronous call;
+        // the prompt itself is asynchronous and does not change the return value.
+        unsafe {
+            let keys = [kAXTrustedCheckOptionPrompt];
+            let values = [kCFBooleanTrue];
+            let options = CFDictionaryCreate(
+                std::ptr::null(),
+                keys.as_ptr(),
+                values.as_ptr(),
+                1,
+                std::ptr::null(),
+                std::ptr::null(),
+            );
+            if options.is_null() {
+                return Err(DesktopError::Failed(
+                    "could not create Accessibility prompt options".into(),
+                ));
+            }
+            let options = CfOwned(options);
+            Ok(AXIsProcessTrustedWithOptions(options.as_ref()) != 0)
+        }
+    }
+
     /// The AX element for one window, re-resolved from the application each
     /// time: holding an `AXUIElementRef` across calls would mean acting on a
     /// window that may already be gone.
@@ -450,6 +476,17 @@ impl Desktop for MacDesktop {
             session_type: None,
             input_unsupported_reason: None,
         }
+    }
+
+    fn request_permission(&self) -> Result<PermissionState, DesktopError> {
+        if self.trusted() {
+            return Ok(PermissionState::Granted);
+        }
+        Ok(if self.prompt_for_trust()? {
+            PermissionState::Granted
+        } else {
+            PermissionState::NotRequested
+        })
     }
 
     fn list_targets(&self) -> Result<Vec<RawTarget>, DesktopError> {
