@@ -1514,6 +1514,15 @@ export const api = {
     invoke(IPC.invoke.pluginLauncherOpenApp, { appId }),
   launcherOpenPlugin: (request: LauncherOpenPluginRequest) =>
     invoke(IPC.invoke.pluginOpenPanel, request),
+  /**
+   * Ask for a window height that fits what the panel currently renders. The
+   * host clamps the value into the supported range and ignores nonsense.
+   */
+  launcherSetContentHeight: (height: number) =>
+    invoke(IPC.invoke.pluginLauncherContentHeight, { height }),
+  /** Leave the panel, focus the main window, and open the plugin market page. */
+  launcherOpenPluginMarket: () =>
+    invoke(IPC.invoke.pluginLauncherOpenMarket),
   listPluginThemes: () => invoke<PluginTheme[]>(IPC.invoke.pluginThemes),
   listPluginProviderCatalog: () =>
     invoke<PluginProviderCatalogMeta[]>(IPC.invoke.pluginProviderCatalog),

@@ -9,11 +9,15 @@
  * Ranking, best first:
  *   0 declared trigger (whole-input regex match) — a plugin asking for `1+1`
  *     outranks every name that merely contains `1`
- *   1 exact name      2 exact alias
+ *   1 exact name
  *   3 name prefix     4 pinyin prefix      5 initials prefix
- *   6 name substring  7 pinyin substring   8 alias substring  9 description
+ *   6 name substring  7 pinyin substring
+ *   9 description
  * Ties break on recency, then plugins before applications, then name, then
  * catalog order — so the order is stable across renders.
+ *
+ * The rank is internal: tiles carry name, icon and type only, so a match never
+ * has to be explained in a second text line.
  */
 import {
   LAUNCHER_TRIGGER_INPUT_MAX_LENGTH,
@@ -44,21 +48,23 @@ export const LAUNCHER_RECENT_TILES = LAUNCHER_COLUMNS * LAUNCHER_RECENT_ROWS;
 export const LAUNCHER_PINNED_TILES = LAUNCHER_COLUMNS * LAUNCHER_PINNED_ROWS;
 export const LAUNCHER_MATCH_TILES = LAUNCHER_COLUMNS * LAUNCHER_MATCH_ROWS;
 
-
-/** One grid cell. */
+/**
+ * One grid cell.
+ *
+ * `iconDataUrl` is only ever set for applications; plugins always render their
+ * monogram, because the host does not read a plugin's manifest icon yet.
+ */
 export type LauncherTile = {
   /** `plugin:<id>` or `app:<key>`. */
   id: string;
   kind: LauncherItemKind;
   name: string;
-  /** Second line: how it matched, or what the plugin will receive. */
-  detail: string;
-  reason: LauncherMatchReason;
   monogram: string;
   iconDataUrl?: string;
   executableName?: string;
   appSource?: LauncherAppSource;
   pluginId?: string;
+  /** Present only when a declared trigger claimed the whole input. */
   trigger?: { id: string; payload: string };
 };
 
@@ -69,7 +75,6 @@ type IndexedItem = {
   nameText: string;
   pinyin: string;
   initials: string;
-  aliases: AliasKeys[];
   description?: string;
   descriptionText: string;
   iconDataUrl?: string;
@@ -79,34 +84,6 @@ type IndexedItem = {
   triggers: LauncherTriggerMeta[];
   order: number;
 };
-
-/** One alias with every form the matcher compares against. */
-type AliasKeys = {
-  raw: string;
-  text: string;
-  pinyin: string;
-  initials: string;
-};
-
-function aliasKeys(raw: string): AliasKeys {
-  const tokens = launcherPinyinTokens(raw);
-  return {
-    raw,
-    text: normalizeLauncherText(raw),
-    pinyin: tokens.full,
-    initials: tokens.initials,
-  };
-}
-
-/** The first alias whose text, pinyin or initials satisfy `test`. */
-function aliasHit(
-  aliases: readonly AliasKeys[],
-  test: (form: string) => boolean,
-): AliasKeys | undefined {
-  return aliases.find(
-    (alias) => test(alias.text) || test(alias.pinyin) || test(alias.initials),
-  );
-}
 
 /** A launchable item plus everything the matcher needs, computed once. */
 export type LauncherIndex = {
@@ -119,7 +96,6 @@ function indexEntry(
   order: number,
   store: LauncherStoreSnapshot,
 ): IndexedItem {
-  const aliases = (store.aliases[entry.id] ?? []).map(aliasKeys);
   const tokens = launcherPinyinTokens(entry.name);
   const triggers =
     entry.kind === "plugin"
@@ -137,7 +113,6 @@ function indexEntry(
     nameText: normalizeLauncherText(entry.name),
     pinyin: tokens.full,
     initials: tokens.initials,
-    aliases,
     description: entry.kind === "plugin" ? entry.description : undefined,
     descriptionText: normalizeLauncherText(
       entry.kind === "plugin" ? (entry.description ?? "") : "",
@@ -172,16 +147,12 @@ export function indexLauncherCatalog(
 
 function tile(
   item: IndexedItem,
-  reason: LauncherMatchReason,
-  detail: string,
   trigger?: { id: string; payload: string },
 ): LauncherTile {
   return {
     id: item.id,
     kind: item.kind,
     name: item.name,
-    detail,
-    reason,
     monogram: launcherMonogram(item.name),
     iconDataUrl: item.iconDataUrl,
     executableName: item.executableName,
@@ -205,15 +176,11 @@ function section(tiles: LauncherTile[], limit: number): LauncherSection {
   return { tiles: tiles.slice(0, limit), total: tiles.length };
 }
 
-function resolveIds(
-  ids: readonly string[],
-  index: LauncherIndex,
-  reason: LauncherMatchReason,
-): LauncherTile[] {
+function resolveIds(ids: readonly string[], index: LauncherIndex): LauncherTile[] {
   const tiles: LauncherTile[] = [];
   for (const id of ids) {
     const item = index.byId.get(id);
-    if (item) tiles.push(tile(item, reason, ""));
+    if (item) tiles.push(tile(item));
   }
   return tiles;
 }
@@ -224,16 +191,38 @@ export function buildLauncherRecentSection(
   store: LauncherStoreSnapshot,
   limit: number = LAUNCHER_RECENT_TILES,
 ): LauncherSection {
-  return section(resolveIds(store.recents, index, "recent"), limit);
+  return section(resolveIds(store.recents, index), limit);
 }
 
-/** Pinned section: one row by default. */
+/** Pinned section: exactly one row, since `LAUNCHER_PIN_LIMIT` caps the pins. */
 export function buildLauncherPinnedSection(
   index: LauncherIndex,
   store: LauncherStoreSnapshot,
   limit: number = LAUNCHER_PINNED_TILES,
 ): LauncherSection {
-  return section(resolveIds(store.pins, index, "pinned"), limit);
+  return section(resolveIds(store.pins, index), limit);
+}
+
+/**
+ * The "all plugins" view: every installed plugin in one grid.
+ *
+ * Recently used plugins come first (in recents order), the rest keep catalog
+ * order, and local applications are deliberately excluded — this view answers
+ * "what plugins do I have", not "what can I launch".
+ */
+export function buildLauncherAllPluginsSection(
+  index: LauncherIndex,
+  store: LauncherStoreSnapshot,
+): LauncherSection {
+  const rank = recencyRank(store);
+  const plugins = index.items
+    .filter((item) => item.kind === "plugin")
+    .sort(
+      (left, right) =>
+        (rank.get(left.id) ?? rank.size) - (rank.get(right.id) ?? rank.size) ||
+        left.order - right.order,
+    );
+  return { tiles: plugins.map((item) => tile(item)), total: plugins.length };
 }
 
 const TRIGGER_PATTERN_MAX_LENGTH = 200;
@@ -280,8 +269,8 @@ export function matchLauncherTrigger(
 type Scored = {
   item: IndexedItem;
   score: number;
+  /** Which tier produced the score. Ranking and tests only, never rendered. */
   reason: LauncherMatchReason;
-  detail: string;
   trigger?: { id: string; payload: string };
 };
 
@@ -292,6 +281,9 @@ function queryTrimmed(query: string): string {
 /**
  * The hit view: at most `LAUNCHER_MATCH_TILES` tiles, plus the number of matches
  * the grid had to drop so the footer can ask the user to keep typing.
+ *
+ * A trigger match wins the whole item: the plugin is not also scored by name, so
+ * it appears exactly once and always ahead of the name matches.
  */
 export function searchLauncherItems(
   index: LauncherIndex,
@@ -316,7 +308,7 @@ export function searchLauncherItems(
       left.item.order - right.item.order,
   );
   return section(
-    scored.map((hit) => tile(hit.item, hit.reason, hit.detail, hit.trigger)),
+    scored.map((hit) => tile(hit.item, hit.trigger)),
     LAUNCHER_MATCH_TILES,
   );
 }
@@ -339,7 +331,6 @@ function scoreItemNormalized(
         item,
         score: 0,
         reason: "pattern",
-        detail: payload,
         trigger: { id: trigger.id, payload },
       };
     }
@@ -350,45 +341,28 @@ function scoreItemNormalized(
 
 function scoreByName(item: IndexedItem, query: string): Scored | null {
   if (item.nameText === query) {
-    return { item, score: 1, reason: "name", detail: item.name };
-  }
-  const exactAlias = aliasHit(item.aliases, (form) => form === query);
-  if (exactAlias) {
-    return { item, score: 2, reason: "alias", detail: exactAlias.raw };
+    return { item, score: 1, reason: "name" };
   }
   if (item.nameText.startsWith(query)) {
-    return { item, score: 3, reason: "name", detail: item.name };
-  }
-  const prefixAlias = aliasHit(item.aliases, (form) => form.startsWith(query));
-  if (prefixAlias) {
-    return { item, score: 3, reason: "alias", detail: prefixAlias.raw };
+    return { item, score: 3, reason: "name" };
   }
   if (item.pinyin.startsWith(query)) {
-    return { item, score: 4, reason: "pinyin", detail: item.pinyin };
+    return { item, score: 4, reason: "pinyin" };
   }
   if (item.initials.startsWith(query)) {
-    return { item, score: 5, reason: "initials", detail: item.initials };
+    return { item, score: 5, reason: "initials" };
   }
   if (item.nameText.includes(query)) {
-    return { item, score: 6, reason: "name", detail: item.name };
+    return { item, score: 6, reason: "name" };
   }
   if (item.pinyin.includes(query)) {
-    return { item, score: 7, reason: "pinyin", detail: item.pinyin };
+    return { item, score: 7, reason: "pinyin" };
   }
   if (item.initials.includes(query)) {
-    return { item, score: 7, reason: "initials", detail: item.initials };
-  }
-  const partialAlias = aliasHit(item.aliases, (form) => form.includes(query));
-  if (partialAlias) {
-    return { item, score: 8, reason: "alias", detail: partialAlias.raw };
+    return { item, score: 7, reason: "initials" };
   }
   if (item.descriptionText.includes(query)) {
-    return {
-      item,
-      score: 9,
-      reason: "description",
-      detail: item.description ?? "",
-    };
+    return { item, score: 9, reason: "description" };
   }
   return null;
 }

@@ -3,14 +3,15 @@
  *
  * These live in the renderer's `localStorage` rather than host-core: they are
  * presentation state for one floating panel (which tiles the user pinned, what
- * they typed an alias for, what they opened last), and both the launcher window
- * and the main window share one origin, so the plain web storage already
- * survives a restart and already notifies the other window through `storage`.
+ * they opened last), and both the launcher window and the main window share one
+ * origin, so the plain web storage already survives a restart and already
+ * notifies the other window through `storage`.
  *
  * Every read is defensive: storage can hold another version's payload, a
  * truncated write, or a hand-edited value, and none of those may break the
- * panel. Unreadable records are dropped, and the store only ever returns ids it
- * can still resolve against the live catalog (`pruneLauncherState`).
+ * panel. Unreadable records are dropped, unknown fields written by an older or
+ * newer build are ignored without a write-back, and the store only ever returns
+ * ids it can still resolve against the live catalog (`pruneLauncherState`).
  */
 
 const STATE_KEY = "pi.desktop.launcher.state";
@@ -19,22 +20,20 @@ const LEGACY_HISTORY_KEY = "pi.desktop.pluginLaunchHistory";
 
 /** Recency list cap. The panel shows 16 at a time but reports the total. */
 export const LAUNCHER_RECENT_LIMIT = 60;
-/** Pin cap, so a runaway script cannot grow the state file without bound. */
-export const LAUNCHER_PIN_LIMIT = 24;
-/** Aliases kept per item. */
-export const LAUNCHER_ALIAS_LIMIT = 6;
-/** Longest single alias, in characters. */
-export const LAUNCHER_ALIAS_MAX_LENGTH = 32;
-/** Items that may carry aliases. */
-const LAUNCHER_ALIAS_ENTRY_LIMIT = 200;
+/**
+ * Pin cap, so a runaway script cannot grow the state file without bound. The
+ * panel shows the pins as one row of eight tiles, so pinning past this is
+ * refused instead of quietly pushing an older pin out of sight.
+ */
+export const LAUNCHER_PIN_LIMIT = 8;
+/** Items that may carry a launcher-only preference (hidden plugins). */
+const LAUNCHER_ENTRY_LIMIT = 200;
 
 export type LauncherStoreSnapshot = {
   /** Item ids, most recently used first. */
   recents: string[];
   /** Item ids in the order the user pinned them. */
   pins: string[];
-  /** Item id -> user-authored search aliases. */
-  aliases: Record<string, string[]>;
   /** Plugin ids the user hid from the launcher only. */
   disabledPlugins: string[];
   /** `<pluginId>::<triggerId>` entries the user switched off. */
@@ -46,7 +45,6 @@ export type LauncherStorage = Pick<Storage, "getItem" | "setItem">;
 export const EMPTY_LAUNCHER_STATE: LauncherStoreSnapshot = {
   recents: [],
   pins: [],
-  aliases: {},
   disabledPlugins: [],
   disabledTriggers: [],
 };
@@ -96,23 +94,6 @@ export function launcherTriggerKey(pluginId: string, triggerId: string): string 
   return `${pluginId}::${triggerId}`;
 }
 
-function sanitizeAliases(value: unknown): Record<string, string[]> {
-  if (!isRecord(value)) return {};
-  const out: Record<string, string[]> = {};
-  let entries = 0;
-  for (const [itemId, aliases] of Object.entries(value)) {
-    if (entries >= LAUNCHER_ALIAS_ENTRY_LIMIT) break;
-    if (!itemId.trim() || !Array.isArray(aliases)) continue;
-    const cleaned = stringList(aliases, LAUNCHER_ALIAS_LIMIT)
-      .map((alias) => alias.slice(0, LAUNCHER_ALIAS_MAX_LENGTH))
-      .filter(Boolean);
-    if (!cleaned.length) continue;
-    out[itemId] = cleaned;
-    entries += 1;
-  }
-  return out;
-}
-
 /** Legacy plugin-only history, translated to the launcher's item ids. */
 function legacyRecents(storage: LauncherStorage | null): string[] {
   const parsed = readRaw(storage, LEGACY_HISTORY_KEY);
@@ -143,9 +124,8 @@ export function readLauncherState(
   return {
     recents: recents.length ? recents : legacyRecents(storage),
     pins: stringList(stored.pins, LAUNCHER_PIN_LIMIT),
-    aliases: sanitizeAliases(stored.aliases),
-    disabledPlugins: stringList(stored.disabledPlugins, LAUNCHER_ALIAS_ENTRY_LIMIT),
-    disabledTriggers: stringList(stored.disabledTriggers, LAUNCHER_ALIAS_ENTRY_LIMIT * 4),
+    disabledPlugins: stringList(stored.disabledPlugins, LAUNCHER_ENTRY_LIMIT),
+    disabledTriggers: stringList(stored.disabledTriggers, LAUNCHER_ENTRY_LIMIT * 4),
   };
 }
 
@@ -188,32 +168,28 @@ export function rememberLauncherUse(
   );
 }
 
+/**
+ * Pin or unpin one item.
+ *
+ * Pinning is refused once `LAUNCHER_PIN_LIMIT` items are pinned: the panel
+ * shows the pins as a single row, so an extra pin would either reflow the grid
+ * or silently evict a pin the user made earlier. Unpinning always works, and
+ * re-pinning an item that is already pinned keeps its position.
+ */
 export function setLauncherPinned(
   itemId: string,
   pinned: boolean,
   storage: LauncherStorage | null = defaultStorage(),
 ): LauncherStoreSnapshot {
   return updateLauncherState((current) => {
-    const without = current.pins.filter((id) => id !== itemId);
-    if (!pinned) return { ...current, pins: without };
-    return { ...current, pins: [...without, itemId].slice(-LAUNCHER_PIN_LIMIT) };
-  }, storage);
-}
-
-export function setLauncherAliases(
-  itemId: string,
-  aliases: string[],
-  storage: LauncherStorage | null = defaultStorage(),
-): LauncherStoreSnapshot {
-  const cleaned = stringList(
-    aliases.map((alias) => alias.trim().slice(0, LAUNCHER_ALIAS_MAX_LENGTH)),
-    LAUNCHER_ALIAS_LIMIT,
-  ).filter(Boolean);
-  return updateLauncherState((current) => {
-    const next = { ...current.aliases };
-    if (cleaned.length) next[itemId] = cleaned;
-    else delete next[itemId];
-    return { ...current, aliases: next };
+    const existing = current.pins.includes(itemId);
+    if (!pinned) {
+      if (!existing) return current;
+      return { ...current, pins: current.pins.filter((id) => id !== itemId) };
+    }
+    if (existing) return current;
+    if (current.pins.length >= LAUNCHER_PIN_LIMIT) return current;
+    return { ...current, pins: [...current.pins, itemId] };
   }, storage);
 }
 
@@ -227,7 +203,7 @@ export function setLauncherPluginDisabled(
     return {
       ...current,
       disabledPlugins: disabled
-        ? [...without, pluginId].slice(-LAUNCHER_ALIAS_ENTRY_LIMIT)
+        ? [...without, pluginId].slice(-LAUNCHER_ENTRY_LIMIT)
         : without,
     };
   }, storage);
@@ -251,8 +227,8 @@ export function setLauncherTriggerDisabled(
 
 /**
  * Drop everything that names an item the catalog no longer offers, so an
- * uninstalled plugin or a removed application disappears from recents, pins and
- * aliases instead of leaving a tile that cannot open.
+ * uninstalled plugin or a removed application disappears from recents and pins
+ * instead of leaving a tile that cannot open.
  */
 export function pruneLauncherState(
   knownItemIds: Iterable<string>,
@@ -260,14 +236,9 @@ export function pruneLauncherState(
 ): LauncherStoreSnapshot {
   const known = new Set(knownItemIds);
   const current = readLauncherState(storage);
-  const aliases: Record<string, string[]> = {};
-  for (const [itemId, value] of Object.entries(current.aliases)) {
-    if (known.has(itemId)) aliases[itemId] = value;
-  }
   const next: LauncherStoreSnapshot = {
     recents: current.recents.filter((id) => known.has(id)),
     pins: current.pins.filter((id) => known.has(id)),
-    aliases,
     // Plugin ids stay: a disabled plugin keeps its preference across a reload
     // that momentarily reports it as not-ready.
     disabledPlugins: current.disabledPlugins,
@@ -275,8 +246,7 @@ export function pruneLauncherState(
   };
   if (
     next.recents.length !== current.recents.length ||
-    next.pins.length !== current.pins.length ||
-    Object.keys(next.aliases).length !== Object.keys(current.aliases).length
+    next.pins.length !== current.pins.length
   ) {
     writeLauncherState(next, storage);
   }

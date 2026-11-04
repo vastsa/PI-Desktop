@@ -26,6 +26,7 @@ import {
 } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import type { LocalAppCatalog } from "../local-apps";
+import { clampLauncherContentHeight } from "../plugin-launcher-state.ts";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { IpcRegistrar } from "./types";
 
@@ -40,6 +41,11 @@ export type PluginLauncherIpcDependencies = {
   getPluginLauncherWindow: () => BrowserWindow | null;
   plugins: PluginRuntime;
   localApps: LocalAppCatalog;
+  /**
+   * Show the main window on the plugin market page. The launcher cannot
+   * navigate the shell itself, so it hands the request to the orchestrator.
+   */
+  openPluginMarket: () => void;
   /** Active app locale, used to resolve a localized trigger title. */
   getLocale: () => string;
 };
@@ -177,6 +183,7 @@ export function registerPluginLauncherIpc({
   plugins,
   localApps,
   getLocale,
+  openPluginMarket,
 }: PluginLauncherIpcDependencies): void {
   const { handleWithEvent } = registrar;
 
@@ -216,6 +223,45 @@ export function registerPluginLauncherIpc({
       // `launch` resolves the id against the host's own scan result; a path is
       // never accepted from the renderer.
       await localApps.launch(appId);
+      return { ok: true };
+    },
+  );
+
+  /**
+   * Size the panel to the content it just rendered.
+   *
+   * Only the launcher may call this, the value must be a finite positive number,
+   * and it is clamped to the supported range — the width keeps whatever the user
+   * dragged it to, because height is the only dimension the content decides.
+   */
+  handleWithEvent(
+    IPC.invoke.pluginLauncherContentHeight,
+    async (event, request: { height?: unknown }): Promise<{ height: number }> => {
+      assertLauncherSender(getPluginLauncherWindow, event.sender.id);
+      const height = clampLauncherContentHeight(request?.height);
+      if (height === null) throw new Error("launcher content height is required");
+      const window = getPluginLauncherWindow();
+      if (!window || window.isDestroyed()) throw new Error("launcher window is gone");
+      const [width] = window.getContentSize();
+      window.setContentSize(width, height, false);
+      return { height };
+    },
+  );
+
+  /**
+   * Leave the panel and send the user to the plugin market.
+   *
+   * The launcher renders in its own window and cannot navigate the shell, so it
+   * asks the orchestrator to focus the main window and deliver the same
+   * `openPluginMarket` command the application menu uses.
+   */
+  handleWithEvent(
+    IPC.invoke.pluginLauncherOpenMarket,
+    async (event): Promise<{ ok: true }> => {
+      assertLauncherSender(getPluginLauncherWindow, event.sender.id);
+      const launcher = getPluginLauncherWindow();
+      if (launcher && !launcher.isDestroyed()) launcher.hide();
+      openPluginMarket();
       return { ok: true };
     },
   );

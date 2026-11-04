@@ -17,6 +17,7 @@ import { StartupAnimation } from "../../components/StartupAnimation";
 import { StartupSplash } from "../../components/StartupSplash";
 import { api } from "../../lib/api";
 import { composerSuggestion } from "../chat/composer/plugins/suggestion-bridge";
+import { usePluginBrowseState } from "../plugins/browse-state";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
 import { playNotificationChime } from "../../lib/notification-sound";
 import {
@@ -446,6 +447,12 @@ export function useAppShellRuntime() {
             break;
           case "openLogs":
             await api.openLogs();
+            break;
+          case "openPluginMarket":
+            // Sent by the launcher's empty state: land on the marketplace tab
+            // of the plugins page instead of the installed list.
+            store.setPage("plugins");
+            usePluginBrowseState.getState().setTab("market");
             break;
           case "checkForUpdates": {
             const updateState = await api.updatesCheck();

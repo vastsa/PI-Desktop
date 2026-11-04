@@ -13,14 +13,15 @@
 export type LauncherItemKind = "plugin" | "app";
 
 /**
- * Why the launcher surfaced an item. Rendered as the tile's second line so the
- * user learns how they matched instead of guessing.
+ * Why the launcher surfaced an item.
+ *
+ * Ranking is the only consumer: the panel no longer explains a match in a
+ * second text line, so this value never reaches the renderer's tiles.
  */
 export type LauncherMatchReason =
   | "name"
   | "pinyin"
   | "initials"
-  | "alias"
   | "description"
   | "pattern"
   | "pinned"
@@ -72,10 +73,10 @@ export type LauncherAppEntry = {
   /** Opaque item id: `app:<stableKey>`. */
   id: string;
   name: string;
-  /** Executable file name without extension, for the tile's source tag. */
+  /** Executable file name without extension, used by the tile's tooltip. */
   executableName?: string;
   source: LauncherAppSource;
-  /** Small PNG data URL, when the platform could produce one. */
+  /** PNG data URL, when the platform could produce one. */
   iconDataUrl?: string;
 };
 
@@ -92,6 +93,17 @@ export type LauncherCatalog = {
 
 export type LauncherOpenAppRequest = {
   appId: string;
+};
+
+/**
+ * Ask the main process to give the launcher window exactly this content height.
+ *
+ * The panel measures its own content (search row, results, footer) and the
+ * host clamps the value into the supported range, so the window always fits
+ * what it shows instead of carrying a remembered user-dragged height.
+ */
+export type LauncherContentHeightRequest = {
+  height: number;
 };
 
 /**

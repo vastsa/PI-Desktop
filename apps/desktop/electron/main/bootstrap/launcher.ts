@@ -17,7 +17,7 @@ import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 import {
   PLUGIN_LAUNCHER_MAX_HEIGHT,
   PLUGIN_LAUNCHER_MAX_WIDTH,
-  PLUGIN_LAUNCHER_MIN_HEIGHT,
+  PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT,
   PLUGIN_LAUNCHER_MIN_WIDTH,
   readLauncherWindowState,
   resolveLauncherBounds,
@@ -131,7 +131,9 @@ export function createLauncher({
         // columns stay aligned from the minimum width up.
         resizable: true,
         minWidth: PLUGIN_LAUNCHER_MIN_WIDTH,
-        minHeight: PLUGIN_LAUNCHER_MIN_HEIGHT,
+        // Height follows the measured content, so only the floor is set here;
+        // the renderer reports the real height on show.
+        minHeight: PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT,
         maxWidth: PLUGIN_LAUNCHER_MAX_WIDTH,
         maxHeight: PLUGIN_LAUNCHER_MAX_HEIGHT,
         minimizable: false,

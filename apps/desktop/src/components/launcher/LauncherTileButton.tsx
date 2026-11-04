@@ -1,101 +1,110 @@
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LauncherTile } from "../../lib/launcher-search";
+import { IconPin } from "../icons";
 
 /**
- * The second line of a tile.
+ * One grid cell: icon, type badge, and name — plus its own pin toggle.
  *
- * It answers "why is this here": the reason the query matched, or, for a
- * trigger hit, the text the plugin is about to receive. The launcher shows one
- * line, so the text is truncated rather than wrapped — a wrapped line would
- * break the eight-column grid alignment the panel promises.
+ * Every cell has the same three parts so the eight-column grid stays aligned:
+ * the icon shape (square plugin, round application) and the small type badge
+ * carry the source, and the name replaces the old second text line, which used
+ * to explain why the item matched. A long name is ellipsized instead of
+ * wrapping, which would break the row rhythm.
+ *
+ * The pin sits in the corner and is only visible while the cell is hovered,
+ * active or focused; an already pinned cell keeps it visible and filled.
  */
-function useTileDetail(tile: LauncherTile): string {
-  const { t } = useTranslation();
-  switch (tile.reason) {
-    case "pattern":
-      return t("pluginLauncher.reasonReceived", { value: tile.detail });
-    case "name":
-      return t("pluginLauncher.reasonName", { value: tile.detail });
-    case "pinyin":
-      return t("pluginLauncher.reasonPinyin", { value: tile.detail });
-    case "initials":
-      return t("pluginLauncher.reasonInitials", { value: tile.detail });
-    case "alias":
-      return t("pluginLauncher.reasonAlias", { value: tile.detail });
-    case "description":
-      return t("pluginLauncher.reasonDescription", { value: tile.detail });
-    case "pinned":
-      return t("pluginLauncher.reasonPinned");
-    default:
-      return t("pluginLauncher.reasonRecent");
-  }
-}
-
 export function LauncherTileButton({
   tile,
+  pinned,
   active,
   disabled,
   optionId,
   onOpen,
-  onMenu,
+  onTogglePin,
 }: {
   tile: LauncherTile;
+  pinned: boolean;
   active: boolean;
   disabled: boolean;
   optionId: string;
   onOpen: () => void;
-  onMenu: (target: { tile: LauncherTile; anchor: DOMRect }) => void;
+  onTogglePin: () => void;
 }) {
   const { t } = useTranslation();
-  const detail = useTileDetail(tile);
-  const sourceLabel =
+  const [iconBroken, setIconBroken] = useState(false);
+  const openRef = useRef<HTMLButtonElement>(null);
+
+  // A rescan can hand us a different icon for the same id; a URL that failed
+  // before must get another chance instead of staying a monogram forever.
+  useEffect(() => {
+    setIconBroken(false);
+  }, [tile.iconDataUrl]);
+
+  // Keyboard navigation moves the active cell through a scrolling results
+  // area, so the cell that receives focus-by-proxy must be brought into view.
+  useEffect(() => {
+    if (!active) return;
+    openRef.current?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  const typeLabel =
     tile.kind === "plugin"
-      ? t("pluginLauncher.sourcePlugin")
-      : t("pluginLauncher.sourceApp");
+      ? t("pluginLauncher.typePlugin")
+      : t("pluginLauncher.typeApp");
+  const pinLabel = pinned ? t("pluginLauncher.unpin") : t("pluginLauncher.pin");
   const executable = tile.kind === "app" ? tile.executableName : undefined;
+  const title = `${tile.name} · ${typeLabel}${executable ? ` · ${executable}` : ""}`;
+  const showIcon = Boolean(tile.iconDataUrl) && !iconBroken;
 
   return (
     <div className={`plugin-launcher-tile${active ? " active" : ""}`}>
       <button
         id={optionId}
+        ref={openRef}
         type="button"
         role="option"
         aria-selected={active}
         disabled={disabled}
         className="plugin-launcher-tile-open"
-        title={`${tile.name} · ${sourceLabel}${executable ? ` · ${executable}` : ""} · ${detail}`}
+        title={title}
         onClick={onOpen}
       >
         <span
           className={`plugin-launcher-icon plugin-launcher-icon-${tile.kind}`}
           aria-hidden
         >
-          {tile.iconDataUrl ? (
-            <img src={tile.iconDataUrl} alt="" draggable={false} />
+          {showIcon ? (
+            <img
+              src={tile.iconDataUrl}
+              alt=""
+              draggable={false}
+              onError={() => setIconBroken(true)}
+            />
           ) : (
             <span className="plugin-launcher-monogram">{tile.monogram}</span>
           )}
         </span>
-        <span className="plugin-launcher-tile-name">{tile.name}</span>
-        <span className="plugin-launcher-tile-detail">
-          <span className="plugin-launcher-source">{sourceLabel}</span>
-          <span className="plugin-launcher-detail-text">{detail}</span>
+        <span className="plugin-launcher-tile-line">
+          <span className="plugin-launcher-tile-name">{tile.name}</span>
+          <span className="plugin-launcher-tile-type">{typeLabel}</span>
         </span>
       </button>
       <button
         type="button"
         tabIndex={-1}
-        className="plugin-launcher-tile-menu"
-        aria-label={t("pluginLauncher.menuOpen", { name: tile.name })}
+        className="plugin-launcher-pin"
+        aria-label={pinLabel}
+        aria-pressed={pinned}
+        title={pinLabel}
         onClick={(event) => {
+          // Pinning must not open the item: the click never reaches the tile.
           event.stopPropagation();
-          onMenu({
-            tile,
-            anchor: event.currentTarget.getBoundingClientRect(),
-          });
+          onTogglePin();
         }}
       >
-        ⋯
+        <IconPin size={12} aria-hidden />
       </button>
     </div>
   );

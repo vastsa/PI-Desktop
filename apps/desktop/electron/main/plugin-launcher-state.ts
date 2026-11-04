@@ -20,11 +20,18 @@ export const PLUGIN_LAUNCHER_STATE_FILE = "plugin-launcher-state.json";
  * dragging.
  */
 export const PLUGIN_LAUNCHER_MIN_WIDTH = 560;
-export const PLUGIN_LAUNCHER_MIN_HEIGHT = 380;
+/**
+ * Height is not a user preference any more: the renderer measures what it
+ * renders and asks for exactly that height through
+ * `IPC.invoke.pluginLauncherContentHeight`. This floor only keeps the window
+ * from collapsing while the measurement is still on its way.
+ */
+export const PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT = 120;
 /** Wider than this the eight tiles stop being scannable. */
 export const PLUGIN_LAUNCHER_MAX_WIDTH = 1280;
 export const PLUGIN_LAUNCHER_MAX_HEIGHT = 940;
 export const PLUGIN_LAUNCHER_DEFAULT_WIDTH = 760;
+/** Initial height before the panel has measured itself. */
 export const PLUGIN_LAUNCHER_DEFAULT_HEIGHT = 440;
 
 export type LauncherWindowState = {
@@ -59,6 +66,22 @@ function clampDimension(value: unknown, min: number, max: number, fallback: numb
 }
 
 /**
+ * Accept a measured content height from the launcher renderer.
+ *
+ * The value crosses an IPC boundary, so anything that is not a finite positive
+ * number is refused, and an accepted height is clamped into the supported range
+ * — a compromised or buggy renderer can therefore ask for a different height,
+ * never for a window the user cannot recover.
+ */
+export function clampLauncherContentHeight(value: unknown): number | null {
+  if (!isFiniteNumber(value) || value <= 0) return null;
+  return Math.min(
+    PLUGIN_LAUNCHER_MAX_HEIGHT,
+    Math.max(PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT, Math.round(value)),
+  );
+}
+
+/**
  * Read a persisted state defensively: another version's payload, a truncated
  * write, or a hand-edited file must all degrade to "no remembered size" rather
  * than to a window the user cannot see.
@@ -76,7 +99,7 @@ export function parseLauncherWindowState(raw: unknown): LauncherWindowState | nu
     ),
     height: clampDimension(
       record.height,
-      PLUGIN_LAUNCHER_MIN_HEIGHT,
+      PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT,
       PLUGIN_LAUNCHER_MAX_HEIGHT,
       PLUGIN_LAUNCHER_DEFAULT_HEIGHT,
     ),
@@ -108,8 +131,8 @@ export function resolveLauncherBounds(
   );
   const height = clampDimension(
     state?.height,
-    PLUGIN_LAUNCHER_MIN_HEIGHT,
-    Math.max(PLUGIN_LAUNCHER_MIN_HEIGHT, Math.min(PLUGIN_LAUNCHER_MAX_HEIGHT, workArea.height)),
+    PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT,
+    Math.max(PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT, Math.min(PLUGIN_LAUNCHER_MAX_HEIGHT, workArea.height)),
     Math.min(PLUGIN_LAUNCHER_DEFAULT_HEIGHT, workArea.height),
   );
   const centeredX = Math.round(workArea.x + (workArea.width - width) / 2);

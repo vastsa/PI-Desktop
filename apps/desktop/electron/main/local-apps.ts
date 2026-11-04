@@ -49,7 +49,11 @@ export interface DiscoveredApp {
   source: LocalAppSource;
   launchTarget: string;
   iconPath?: string;
-  /** Small icon as a data URL, present only when it fitted the size budget. */
+  /**
+   * Platform icon as a data URL, present only when one was produced and it
+   * fitted the size budget. Icons are cached between scans, so a rescan does
+   * not pay for the same lookup again.
+   */
   iconDataUrl?: string;
 }
 
@@ -98,7 +102,7 @@ export interface LocalAppCatalogOptions {
   maxEntries?: number;
   /** Hard cap on icon lookups per scan. Default 200. */
   maxIcons?: number;
-  /** Data URLs longer than this are dropped. Default 4 KiB. */
+  /** Data URLs longer than this are dropped. Default 32 KiB. */
   maxIconBytes?: number;
   /** Injectable clock, used by the TTL tests. */
   now?: () => number;
@@ -126,7 +130,46 @@ export interface LocalAppCatalog {
 export const LOCAL_APP_TTL_MS = 5 * 60_000;
 export const LOCAL_APP_MAX_ENTRIES = 600;
 export const LOCAL_APP_MAX_ICONS = 200;
-export const LOCAL_APP_MAX_ICON_BYTES = 4_096;
+export const LOCAL_APP_MAX_ICON_BYTES = 32_768;
+
+/**
+ * Icons harvested across scans: `icon:<id>:<path>` -> data URL.
+ *
+ * Keyed by both the stable id and the path the icon came from, so an
+ * application that is reinstalled elsewhere is not served a stale image.
+ */
+export type LocalAppIconCache = Map<string, string>;
+
+export function localAppIconCacheKey(app: DiscoveredApp): string | null {
+  const target = app.iconPath ?? app.launchTarget;
+  return target ? `icon:${app.id}:${target}` : null;
+}
+
+/**
+ * Keep only the icons the current scan can still use, then trim to the cap.
+ *
+ * Insertion order is the oldest entry first, so an overflowing cache drops the
+ * least recently fetched icons rather than growing without bound.
+ */
+function pruneIconCache(
+  cache: LocalAppIconCache,
+  apps: readonly DiscoveredApp[],
+  limit: number,
+): void {
+  const live = new Set<string>();
+  for (const app of apps) {
+    const key = localAppIconCacheKey(app);
+    if (key) live.add(key);
+  }
+  for (const key of [...cache.keys()]) {
+    if (!live.has(key)) cache.delete(key);
+  }
+  while (cache.size > Math.max(0, limit)) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+}
 
 export interface ScanLimits {
   maxEntries: number;
@@ -167,10 +210,19 @@ async function attachIcons(
   deps: LocalAppDeps,
   diagnostics: string[],
   maxIconBytes: number,
+  cache: LocalAppIconCache | undefined,
 ): Promise<void> {
   for (const app of apps) {
     const target = app.iconPath ?? app.launchTarget;
     if (!target) continue;
+    const key = localAppIconCacheKey(app);
+    const cached = key ? cache?.get(key) : undefined;
+    if (cached) {
+      // A rescan reuses the icon it already paid for; the platform lookup is
+      // the expensive part of a scan and nothing about it changed.
+      app.iconDataUrl = cached;
+      continue;
+    }
     try {
       const icon = await deps.getFileIcon(target);
       if (!icon) continue;
@@ -178,6 +230,7 @@ async function attachIcons(
       if (typeof dataUrl !== "string") continue;
       if (dataUrl.length === 0 || dataUrl.length > maxIconBytes) continue;
       app.iconDataUrl = dataUrl;
+      if (key) cache?.set(key, dataUrl);
     } catch (error) {
       // Icons are cosmetic: a failing lookup must never fail the scan.
       diagnostics.push(`icon lookup failed for ${app.name}: ${errorMessage(error)}`);
@@ -203,6 +256,7 @@ async function discoverPlatformApps(
 export async function scanLocalApps(
   deps: LocalAppDeps,
   limits: Partial<ScanLimits> = {},
+  iconCache?: LocalAppIconCache,
 ): Promise<LocalAppScan> {
   const resolved: ScanLimits = {
     maxEntries: limits.maxEntries ?? LOCAL_APP_MAX_ENTRIES,
@@ -226,7 +280,9 @@ export async function scanLocalApps(
     deps,
     diagnostics,
     resolved.maxIconBytes,
+    iconCache,
   );
+  if (iconCache) pruneIconCache(iconCache, apps, resolved.maxIcons);
   return { apps, diagnostics, scannedAt: Date.now() };
 }
 
@@ -251,10 +307,12 @@ export function createLocalAppCatalog(
 
   let cache: LocalAppScan | null = null;
   let inFlight: Promise<LocalAppScan> | null = null;
+  /** Icons survive across scans; `scanLocalApps` prunes what no longer exists. */
+  const iconCache: LocalAppIconCache = new Map();
 
   function startScan(): Promise<LocalAppScan> {
     if (inFlight) return inFlight;
-    const scan = scanLocalApps(deps, limits)
+    const scan = scanLocalApps(deps, limits, iconCache)
       .catch((error: unknown): LocalAppScan => ({
         apps: [],
         diagnostics: [`local app scan failed: ${errorMessage(error)}`],
@@ -445,7 +503,10 @@ export async function createDefaultLocalAppDeps(): Promise<LocalAppDeps> {
     },
     async getFileIcon(target) {
       try {
-        const icon = await app.getFileIcon(target, { size: "small" });
+        // `large` is the 32px native icon: at the panel's tile size the small
+        // variant reads as a blurry square. Oversized results are dropped by
+        // the byte budget instead of being downscaled here.
+        const icon = await app.getFileIcon(target, { size: "large" });
         return icon ?? null;
       } catch {
         return null;
