@@ -503,10 +503,7 @@ export async function createDefaultLocalAppDeps(): Promise<LocalAppDeps> {
     },
     async getFileIcon(target) {
       try {
-        // `large` is the 32px native icon: at the panel's tile size the small
-        // variant reads as a blurry square. Oversized results are dropped by
-        // the byte budget instead of being downscaled here.
-        const icon = await app.getFileIcon(target, { size: "large" });
+        const icon = await app.getFileIcon(target, { size: "small" });
         return icon ?? null;
       } catch {
         return null;

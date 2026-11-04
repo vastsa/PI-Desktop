@@ -1141,7 +1141,9 @@ The minimum selection is:
 
 - Cross-cutting runtime, host, or IPC: `pnpm test:e2e`.
 - Electron startup, preload, or window lifecycle: `pnpm test:e2e` and
-  `pnpm test:e2e:boot`.
+  `pnpm test:e2e:boot`. For packaged-startup regressions, also run
+  `node scripts/e2e-electron-boot.mjs <packaged-executable>` against the
+  installed-layout artifact with an isolated profile.
 - Session-list refresh or model capability lookup: `pnpm test:e2e` and
   `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
 - Settings/composer/plugin search theme surfaces: `pnpm build:js` followed by
