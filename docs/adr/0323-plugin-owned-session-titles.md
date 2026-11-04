@@ -4,7 +4,7 @@
 - Date: 2026-10-08
 - Supersedes: ADR 0186
 - Amended: 2026-10-08 (D654 restores the deterministic first-prompt fallback)
-- Amended: 2026-10-20 (ADR 0339 adds `session.read.all`, so the rejected
+- Amended: 2026-10-20 (ADR 0340 adds `session.read.all`, so the rejected
   "give the plugin a broader session read" alternative below no longer fails
   for the reason recorded here)
 
@@ -73,7 +73,7 @@ model-composed title moves to the plugin.
   spend model tokens and mutate titles when the optional plugin is absent.
 - Give the plugin `session.read` or `session.read.own`: rejected because those
   permissions either expose a general transcript projection or only imported
-  sessions and do not match the required boundary. *(Corrected by ADR 0339: the
+  sessions and do not match the required boundary. *(Corrected by ADR 0340: the
   reason this alternative failed was that no grant described "read the user's
   own session". `session.read.all` now does, so a title plugin that wants more
   than the first turn can say so at install and ask for that grant instead.
