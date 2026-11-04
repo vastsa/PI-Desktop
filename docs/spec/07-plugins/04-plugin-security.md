@@ -163,7 +163,11 @@ Plugins cannot access:
 - Other plugins' data
 - Host secrets through a general-purpose API; `provider.oauth` grants access
   only to the callback's own declared provider credential
-- The host's full session database (unless a controlled API exists in the future)
+- The host's full session database through any general-purpose surface. A
+  controlled API exists: `pi.session` with the `.own` grants (imported sessions
+  only) or the `session.*.all` grants (every live session, approved at install
+  and audited per call). There is no other path to sessions, no SQLite handle,
+  and no transcript file access
 
 ## 5.1 Inter-plugin message bus
 
