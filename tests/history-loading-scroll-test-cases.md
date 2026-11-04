@@ -156,9 +156,11 @@ unlocked ahead-loading with native wheel movement (`beginAhead`). Its
 store, and delayed external Host IPC reads: four paired return-to-latest motion
 cases (ordinary tail vs paginated history × idle vs running, asserting `>= 3`
 intermediate frames, reversal `<= 2px`, and zero empty visible-message frames),
-two ahead-read prefetch cases (standalone user rows and mixed grouped answers
-moving the same visible message `100px` during IO and staying within `2px` after
-prepend), two quiet message-stability cases, and four pending/settled
+three ahead-read prefetch cases (standalone user rows, mixed grouped answers,
+and a preceding message that grows `400px` after upward input). All move the
+same visible message `100px` during IO and stay within `2px` after prepend;
+the delayed predecessor must not replace a still-visible original anchor.
+There are also two quiet message-stability cases and four pending/settled
 latest-button cases. Boundary regressions also cross the prefetch threshold with
 browser-native smooth travel, resume follow during pending IO, interrupt by a
 press without a scroll and remount the saved message, start a delayed failed

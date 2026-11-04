@@ -13562,7 +13562,10 @@ This test plan spec is accepted when:
   running, asserting `>= 3` intermediate frames, no reverse `> 2px`, and zero
   empty visible-message frames) and ahead-read cases (standalone user rows and
   mixed grouped answers moving the same visible message `100px` during pending
-  IO and keeping drift `<= 2px` after prepend) alongside the retained quiet
+  IO and keeping drift `<= 2px` after prepend). A preceding-row case then grows
+  the newly exposed message by `400px`: retain the original readable message
+  until its intended offset leaves the viewport rather than adopting that lazy
+  predecessor's unstable geometry. This runs alongside the retained quiet
   stability and pending/settled latest-button cases. Additional regressions cover
   native browser smooth travel across the prefetch threshold, resuming follow
   during pending IO, press-only interruption plus remount, delayed failed search,

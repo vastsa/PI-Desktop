@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
   captureTranscriptReadingPosition,
+  isTranscriptReadingAnchorVisible,
   restoreTranscriptReadingPosition,
   type TranscriptReadingPosition,
 } from "../../../../lib/transcript-reading-position";
@@ -70,11 +71,12 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
     const scroller = scrollRef.current;
     const content = contentRef.current;
     if (!held?.background || !scroller || !content) return;
-    if (layoutChanged(held, sourceHeadRef.current)) {
-      // Keep intentional scrolling, but not the displacement caused by layout.
-      held.position = { ...held.position, offset: held.position.offset - (scroller.scrollTop - held.top),
-        scrollTop: scroller.scrollTop };
-    } else {
+    // Retain the same readable message across a gesture. Switching immediately
+    // to a newly exposed, estimated row lets its late layout move the text away.
+    held.position = { ...held.position, offset: held.position.offset - (scroller.scrollTop - held.top),
+      scrollTop: scroller.scrollTop };
+    if (!layoutChanged(held, sourceHeadRef.current) &&
+      !isTranscriptReadingAnchorVisible(scroller, content, held.position)) {
       const position = captureTranscriptReadingPosition(scroller, content, false, held.windowSize);
       if (position) held.position = position;
     }

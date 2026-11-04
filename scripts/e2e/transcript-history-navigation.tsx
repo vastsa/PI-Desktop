@@ -312,18 +312,36 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
       } catch (error) { failures.push(String(error)); console.log("PREFETCH_REPIN_ERROR " + String(error)); }
       finally { anchor.stop(); }
     }
-    for (const role of ["user", "mixed"] as const) {
-      await reset(`prefetch-${role}`, role);
+    for (const { role, lateEntry } of [
+      { role: "user", lateEntry: false }, { role: "mixed", lateEntry: false },
+      { role: "user", lateEntry: true },
+    ] as const) {
+      await reset(`prefetch-${role}${lateEntry ? "-late-entry" : ""}`, role);
       const anchor = begin(scroller().clientHeight * 2);
       try {
         await until(() => pending.length === 1, "history was not requested before reaching the top");
         assert(scroller().scrollTop > scroller().clientHeight, "prefetch started too close to the edge");
         assert(scroller().style.overflowY !== "hidden", "background prefetch locked scrolling");
+        let previous: HTMLElement | undefined;
+        if (lateEntry) {
+          const row = scroller().querySelector<HTMLElement>(`[data-message-id="${CSS.escape(anchor.messageId)}"]`);
+          const sibling = row?.previousElementSibling;
+          assert(sibling instanceof HTMLElement, "preceding lazy message missing");
+          previous = sibling;
+          previous.style.contentVisibility = "visible";
+          await frame(); await frame();
+          const el = scroller();
+          el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+          el.scrollTo({ top: el.scrollTop + anchor.measure() + 20, behavior: "instant" });
+          el.dispatchEvent(new Event("scroll", { bubbles: true }));
+          await frame(); await frame();
+        }
         const before = scroller().scrollTop;
         const offsetBeforeScroll = anchor.measure();
         scroller().dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100 }));
         scroller().scrollTo({ top: before - 100, behavior: "instant" });
         await frame();
+        if (previous) previous.style.paddingBottom = "400px";
         await frame();
         assert(Math.abs(anchor.measure() - offsetBeforeScroll - 100) <= 2,
           `prefetch undid a newer reading point: before=${offsetBeforeScroll}, now=${anchor.measure()}`);
@@ -331,7 +349,7 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         const offset = anchor.measure();
         await finish();
         const drift = Math.abs(anchor.measure() - offset);
-        const result = { role, prefetch: true, drift, top: scroller().scrollTop };
+        const result = { role, lateEntry, prefetch: true, drift, top: scroller().scrollTop };
         console.log("EARLY_HISTORY " + JSON.stringify(result));
         assert(drift <= 2, `prefetched page moved the reading point: ${JSON.stringify(result)}`);
         results.push(result);
