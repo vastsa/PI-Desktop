@@ -1,12 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui";
-import {
-  fitSubagentChips,
-  selectedSubagentModels,
-  type ChipFit,
-  type SubagentModelCandidate,
-} from "./subagent-delegation";
 
 /** Chip spacing, mirrored in `model-config.css`. */
 const CHIP_GAP = 5;
@@ -14,6 +8,14 @@ const CHIP_GAP = 5;
 const CHIP_SHARE = 0.6;
 /** Keep a few pixels clear so a rounding error cannot clip the last chip. */
 const CHIP_SAFETY = 12;
+
+import {
+  fitSubagentChips,
+  selectedSubagentModels,
+  subagentChipLabels,
+  type ChipFit,
+  type SubagentModelCandidate,
+} from "./subagent-delegation";
 
 /**
  * One quiet line on the Models page: which models the AI may pick when it
@@ -33,10 +35,17 @@ export function SubagentModelRow({
 }) {
   const { t } = useTranslation();
   const selected = selectedSubagentModels(candidates);
-  const names = selected.map((candidate) => candidate.label);
-  const identity = names.join("\u0000");
+  const labels = subagentChipLabels(selected);
+  // Identity is provider + model, not the label: two services can publish the
+  // same id, and a label is not unique enough to key a list.
+  const identity = selected
+    .map((candidate) => `${candidate.providerId}\u0000${candidate.modelId}`)
+    .join("\u0001");
   const measureRef = useRef<HTMLSpanElement | null>(null);
-  const [fit, setFit] = useState<ChipFit>({ visible: names.length, hidden: 0 });
+  const [fit, setFit] = useState<ChipFit>({ visible: labels.length, hidden: 0 });
+  const fullNames = selected.map(
+    (candidate) => `${candidate.providerName} · ${candidate.label}`,
+  );
 
   useLayoutEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
@@ -81,12 +90,16 @@ export function SubagentModelRow({
           ) : (
             <span
               className="model-subagent-chips"
-              aria-label={names.join(", ")}
-              title={names.join(", ")}
+              aria-label={fullNames.join(", ")}
+              title={fullNames.join(", ")}
             >
-              {names.slice(0, fit.visible).map((name) => (
-                <span className="model-subagent-chip" key={name}>
-                  {name}
+              {selected.slice(0, fit.visible).map((candidate, index) => (
+                <span
+                  className="model-subagent-chip"
+                  key={`${candidate.providerId}:${candidate.modelId}`}
+                  title={fullNames[index]}
+                >
+                  {labels[index]}
                 </span>
               ))}
               {fit.hidden > 0 ? (
@@ -101,12 +114,15 @@ export function SubagentModelRow({
           )}
           {/* Off-screen twin: the only way to know how wide each chip is. */}
           <span ref={measureRef} className="model-subagent-measure" aria-hidden="true">
-            {names.map((name) => (
-              <span className="model-subagent-chip" key={name}>
-                {name}
+            {labels.map((label, index) => (
+              <span
+                className="model-subagent-chip"
+                key={`${selected[index]?.providerId}:${selected[index]?.modelId}`}
+              >
+                {label}
               </span>
             ))}
-            <span className="model-subagent-chip">{`+${names.length}`}</span>
+            <span className="model-subagent-chip">{`+${labels.length}`}</span>
           </span>
         </div>
       </div>

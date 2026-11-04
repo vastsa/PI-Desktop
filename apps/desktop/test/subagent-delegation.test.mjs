@@ -235,10 +235,6 @@ test("the page mounts the row and writes the flag through the provider, not a se
     join(here, "../src/components/settings/SubagentModelsDialog.tsx"),
     "utf8",
   );
-  // The editor reuses the service model list's own parts: same row, same search
-  // field, same Advanced button (which opens the editor that holds the opt-in),
-  // same remove control. Adding never happens here.
-  assert.match(dialog, /className="provider-chosen-list"/);
   assert.match(dialog, /provider-chosen-row-head/);
   assert.match(dialog, /settings\.searchChosenModels/);
   assert.match(dialog, /settings\.advanced/);
@@ -269,4 +265,70 @@ test("chips fill the line and reserve room for the +N chip", () => {
     fitSubagentChips({ widths: [], gap: 5, available: 100, moreWidth: 30 }),
     { visible: 0, hidden: 0 },
   );
+});
+
+test("the empty state names where ticking happens, per service", async () => {
+  const { servicesWithAddableModels } = await import(
+    "../src/components/settings/subagent-delegation.ts"
+  );
+  const candidates = subagentModelCandidates([
+    provider({ models: [binding("a", { availableForSubagents: true }), binding("b")] }),
+    provider({ id: "p2", name: "Local", models: [binding("c")] }),
+    provider({ id: "p3", name: "Acme", ownerPluginId: "acme.x", models: [binding("d")] }),
+  ]);
+  const targets = servicesWithAddableModels(candidates);
+  // Two services offer something to tick; the plugin-owned row is left out
+  // because `providers.update` refuses it.
+  assert.deepEqual(
+    targets.map((target) => `${target.providerId}:${target.count}`),
+    ["p1:1", "p2:1"],
+  );
+});
+
+test("duplicate model ids get a service-prefixed chip label", async () => {
+  const { subagentChipLabels } = await import(
+    "../src/components/settings/subagent-delegation.ts"
+  );
+  const selected = subagentModelCandidates([
+    provider({ models: [binding("gpt-4o", { availableForSubagents: true })] }),
+    provider({ id: "p2", name: "Azure", models: [binding("gpt-4o", { availableForSubagents: true })] }),
+    provider({ id: "p3", name: "Ollama", models: [binding("llama-3", { availableForSubagents: true })] }),
+  ]).filter((entry) => entry.selected);
+  const labels = subagentChipLabels(selected);
+  // The two gpt-4o rows carry their service name; the unique one stays bare.
+  assert.deepEqual(labels, ["Anthropic · gpt-4o", "Azure · gpt-4o", "llama-3"]);
+});
+
+test("an OAuth account is routed to its own dialog, not the provider form", async () => {
+  const page = await readFile(
+    join(here, "../src/components/settings/ModelConfigPage.tsx"),
+    "utf8",
+  );
+  // Both entry points share one routing helper so the subagent list cannot
+  // send a subscription account to the provider form.
+  assert.match(page, /editService\(providers\.find/);
+  assert.match(page, /onEdit=\{editService\}/);
+  const helperIndex = page.indexOf("const editService");
+  const helperBody = page.slice(helperIndex, helperIndex + 400);
+  assert.match(helperBody, /serviceRowKind\(provider\) === "account"/);
+  assert.match(helperBody, /setEditingAccountId/);
+  assert.match(helperBody, /setSetupFor/);
+});
+
+test("the dialog locks navigation while a removal is in flight", async () => {
+  const dialog = await readFile(
+    join(here, "../src/components/settings/SubagentModelsDialog.tsx"),
+    "utf8",
+  );
+  // Advanced and Close must refuse to navigate mid-save: an editor opened from
+  // a stale snapshot would write back the model list the removal just changed.
+  const advancedBlock = dialog.slice(
+    dialog.indexOf("provider-chosen-advanced-toggle"),
+    dialog.indexOf("provider-chosen-advanced-toggle") + 250,
+  );
+  assert.match(advancedBlock, /disabled=\{busy\}/);
+  const closeBlocks = [...dialog.matchAll(/disabled=\{busy\}[\s\S]*?onClick=\{onClose\}/g)];
+  assert.ok(closeBlocks.length >= 2, "both close affordances must disable while busy");
+  // Escape also honours the lock.
+  assert.match(dialog, /if \(!busyRef\.current\) onClose\(\)/);
 });

@@ -132,6 +132,41 @@ export function selectedSubagentModels(
   return candidates.filter((candidate) => candidate.selected);
 }
 
+/** One service the empty state can send the user to, with its unticked models. */
+export type SubagentServiceTarget = {
+  providerId: string;
+  providerName: string;
+  /** Configured models on this service that do not carry the opt-in yet. */
+  count: number;
+};
+
+/**
+ * Services that still hold a model worth opting in, in page order.
+ *
+ * The dialog cannot tick anything itself, so an empty list has to name where
+ * ticking happens. A plugin-owned service is left out: its row is refreshed
+ * from the manifest and `providers.update` refuses it, so sending the user
+ * there would be a dead end.
+ */
+export function servicesWithAddableModels(
+  candidates: readonly SubagentModelCandidate[],
+): SubagentServiceTarget[] {
+  const targets = new Map<string, SubagentServiceTarget>();
+  for (const candidate of candidates) {
+    if (candidate.selected || !candidate.editable) continue;
+    const existing = targets.get(candidate.providerId);
+    if (existing) existing.count += 1;
+    else {
+      targets.set(candidate.providerId, {
+        providerId: candidate.providerId,
+        providerName: candidate.providerName,
+        count: 1,
+      });
+    }
+  }
+  return [...targets.values()];
+}
+
 /**
  * The service's bindings with one delegation opt-in changed.
  *
@@ -195,4 +230,26 @@ export function fitSubagentChips(input: {
   // rather than showing a row that only says `+6`.
   if (visible === 0) return { visible: 1, hidden: widths.length - 1 };
   return { visible, hidden };
+}
+
+/**
+ * What one chip says.
+ *
+ * The bare label is the shortest answer, but two services can publish the same
+ * model id; when that happens the service name rides along, so the row never
+ * shows one chip where the user selected two.
+ */
+export function subagentChipLabels(
+  selected: readonly SubagentModelCandidate[],
+): string[] {
+  const seen = new Map<string, number>();
+  for (const candidate of selected) {
+    const label = candidate.label.toLowerCase();
+    seen.set(label, (seen.get(label) ?? 0) + 1);
+  }
+  return selected.map((candidate) =>
+    (seen.get(candidate.label.toLowerCase()) ?? 0) > 1
+      ? `${candidate.providerName} · ${candidate.label}`
+      : candidate.label,
+  );
 }
