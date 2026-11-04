@@ -98,11 +98,14 @@ export const ErrorCodes = {
    * while `COMPUTER_ELEMENT_NOT_ACTIONABLE` is a real element that offers no
    * action. The two unconditional refusals — `COMPUTER_SELF_TARGET_REFUSED`
    * and `COMPUTER_SECURE_INPUT_REFUSED` — are not reachable by any permission
-   * mode, setting, or grant option.
+   * mode, setting, or grant option. `COMPUTER_STOPPED_BY_USER` is the cooldown
+   * after Stop: the desktop grant is automatic (ADR 0344), so a revocation has
+   * to outlive the request that triggered it or Stop would mean nothing.
    */
   COMPUTER_DISABLED: "COMPUTER_DISABLED",
   COMPUTER_NOT_CONFIGURED: "COMPUTER_NOT_CONFIGURED",
   COMPUTER_NO_GRANT: "COMPUTER_NO_GRANT",
+  COMPUTER_STOPPED_BY_USER: "COMPUTER_STOPPED_BY_USER",
   COMPUTER_GRANT_IN_USE: "COMPUTER_GRANT_IN_USE",
   COMPUTER_GRANT_EXPIRED: "COMPUTER_GRANT_EXPIRED",
   COMPUTER_BUDGET_EXHAUSTED: "COMPUTER_BUDGET_EXHAUSTED",

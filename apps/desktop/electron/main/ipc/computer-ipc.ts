@@ -1,12 +1,11 @@
 /**
- * The computer-use channels the renderer may call (ADR 0342).
+ * The computer-use channels the renderer may call (ADR 0342, ADR 0344).
  *
- * Deliberately short: read what the platform can do, list windows while the
- * picker is open, mint a grant from a window the user chose, revoke one, and
- * read the live grant. There is no channel here that dispatches input — the
- * renderer must never hold that authority — and every call is pinned to the
- * trusted main window, so a plugin view or the cursor overlay cannot mint a
- * grant.
+ * Deliberately short: read what the platform can do, ask the OS for the
+ * permission, read the live grant, and stop it. There is no channel here that
+ * mints a grant, enumerates windows, or dispatches input — the renderer must
+ * never hold that authority — and every call is pinned to the trusted main
+ * window, so a plugin view or the cursor overlay cannot reach even these.
  */
 import { IPC, type ComputerCapabilities, type ComputerGrantView } from "@pi-desktop/shared";
 import { capturePermissionState } from "../computer-use/capture";
@@ -51,31 +50,6 @@ export function registerComputerIpc({ registrar, getHost, publishGrant }: Comput
     const view = { ...requested, capture: capturePermissionState() };
     await openAccessibilitySettings(view);
     return view;
-  });
-
-  registrar.handleWithEvent(IPC.invoke.computerListTargets, async (event) => {
-    registrar.assertMainWindowSender(event);
-    const host = getHost();
-    if (!host) hostUnavailable();
-    return host.call("computer.listTargets", {});
-  });
-
-  registrar.handleWithEvent(IPC.invoke.computerGrantCreate, async (event, request: unknown) => {
-    registrar.assertMainWindowSender(event);
-    const host = getHost();
-    if (!host) hostUnavailable();
-    const input = (request ?? {}) as Record<string, unknown>;
-    // The renderer may name a target, a session, and the two policy choices
-    // the grant card showed; everything else — the handle behind the target,
-    // the budget ceiling, the refusals — is the host's.
-    const grant = await host.call<ComputerGrantView>("computer.grantCreate", {
-      targetId: input.targetId,
-      sessionId: input.sessionId,
-      ...(input.inputPolicy ? { inputPolicy: input.inputPolicy } : {}),
-      ...(input.capture ? { capture: input.capture } : {}),
-    });
-    publishGrant(grant);
-    return grant;
   });
 
   registrar.handleWithEvent(IPC.invoke.computerGrantRevoke, async (event, request: unknown) => {

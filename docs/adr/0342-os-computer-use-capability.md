@@ -1,6 +1,7 @@
 # ADR 0342: Built-in computer use is a host-owned capability behind a user-picked scope grant
 
-- Status: Accepted
+- Status: Accepted; §4 and §8 amended by
+  [ADR 0344](0344-computer-use-whole-desktop-grant.md)
 - Date: 2026-11-04
 - Decision: D681
 - Deciders: PI-Desktop core
@@ -81,6 +82,11 @@ user: it can approve dialogs, including this application's own permission cards.
    capture and action fails closed instead of clicking whatever took its place.
 
 4. **A scope grant is the unit of authority, and only the user can mint one.**
+   *(Amended by [ADR 0344](0344-computer-use-whole-desktop-grant.md): the grant
+   is minted automatically and covers the desktop, one window bound at a time;
+   the picker is gone and the model may switch between windows the host does
+   not refuse. The revision, budget, expiry, single-grant rule, and session
+   ownership below are unchanged.)*
    A grant names exactly one target — one window, or one application's windows —
    chosen by the user in a host-driven picker. It carries a revision, an action
    budget, an idle expiry, and an input policy. The model cannot name, request
@@ -100,7 +106,11 @@ user: it can approve dialogs, including this application's own permission cards.
    sits on top of these two, and the built-in credential-surface entries in it
    cannot be removed.
 
-6. **The permission mode governs the grant, not each keystroke.** Creating a
+6. **The permission mode governs the grant, not each keystroke.**
+   *(Amended by [ADR 0344](0344-computer-use-whole-desktop-grant.md):
+   `autonomous-in-scope` is the default under every mode, `confirm-each` is
+   specified but unbuilt, and Stop both revokes the grant and aborts the turn,
+   with a cooldown on the agent's next automatic mint.)* Creating a
    grant is always an explicit desktop-UI decision with no deadline, like every
    other local approval (ADR 0310); `auto` does not mint grants, and a spoken
    request cannot. Within an active grant, `inspect` and `screenshot` need no

@@ -355,6 +355,7 @@ ADR 0285）。渲染进程除了一个标识徽章外看不到本地/远程之�
 | `COMPUTER_NOT_CONFIGURED` | 否 | 电脑操作已开启但没有配置模型绑定 |
 | `COMPUTER_ACTION_REJECTED` | 否 | 绑定模型的回答超出动作 schema，或指定了校验拒绝的元素、坐标或目标 |
 | `COMPUTER_NO_GRANT` | 否 | 没有活动作用域授权属于该会话与轮次链 |
+| `COMPUTER_STOPPED_BY_USER` | 是 | 用户已停止电脑操作；冷却期结束前拒绝 Agent 自行铸造授权（ADR 0344） |
 | `COMPUTER_GRANT_IN_USE` | 否 | 另一个会话或轮次链持有唯一的活动授权 |
 | `COMPUTER_GRANT_EXPIRED` | 否 | 授权空闲过期、被撤销，或目标已关闭 |
 | `COMPUTER_BUDGET_EXHAUSTED` | 否 | 授权剩余的输入动作预算已归零 |

@@ -1,11 +1,13 @@
 /**
- * The `Computer` tool handler's refusals, against the real module.
+ * The `Computer` tool handler's refusals and its automatic grant, against the
+ * real module.
  *
  * Every case here is something the agent could plausibly try, and each one has
  * to fail with its own code rather than silently acting: a disabled feature, a
- * missing model binding, nothing handed over, and a grant that belongs to
- * another session. The overlay is asserted to stay closed in those cases,
- * because a drawn cursor with no authority behind it is a lie to the user.
+ * missing model binding, a grant that belongs to another session, and a user
+ * Stop the agent tries to walk back (ADR 0344). The overlay is asserted to stay
+ * closed in those cases, because a drawn cursor with no authority behind it is
+ * a lie to the user.
  */
 import assert from "node:assert/strict";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -44,38 +46,61 @@ async function loadService(t) {
   return import(pathToFileURL(outfile).href);
 }
 
-function harness(overrides = {}) {
-  const calls = [];
-  const cursor = [];
-  const settings = overrides.settings ?? {
-    computerUse: { enabled: true, model: { providerId: "p1", modelId: "ui" } },
-  };
-  // `??` would swallow an explicit null, which is exactly the no-handover case.
-  const grant = "grant" in overrides ? overrides.grant : {
+function grantFixture(overrides = {}) {
+  return {
     grantId: "cug_1",
     revision: 1,
+    scope: "desktop",
     targetId: "77:12",
     targetLabel: "Example",
     appKey: "example",
     bounds: { x: 0, y: 0, width: 100, height: 100 },
-    inputPolicy: "confirm-each",
+    inputPolicy: "autonomous-in-scope",
     capture: "a11y-only",
     remainingBudget: 5,
     sessionId: "session-1",
     createdAt: "2026-11-04T00:00:00.000Z",
     expiresAt: "2026-11-04T00:15:00.000Z",
     state: "active",
+    ...overrides,
   };
+}
+
+function harness(overrides = {}) {
+  const calls = [];
+  const log = [];
+  const cursor = [];
+  const settings = overrides.settings ?? {
+    computerUse: { enabled: true, model: { providerId: "p1", modelId: "ui" } },
+  };
+  // `??` would swallow an explicit null, which is exactly the case where the
+  // handler has to mint a grant of its own.
+  const grant = "grant" in overrides ? overrides.grant : grantFixture();
+  let current = grant;
   const host = {
     call: async (method, params) => {
       calls.push(method);
+      log.push({ method, params });
       if (method === "settings.get") return settings;
-      if (method === "computer.grantDescribe") return { grant };
+      if (method === "computer.grantDescribe") return { grant: current };
+      if (method === "computer.grantCreate") {
+        if (overrides.grantCreate) return overrides.grantCreate(params);
+        current = grantFixture({ grantId: "cug_auto" });
+        return current;
+      }
+      if (method === "computer.listTargets") {
+        return {
+          targets: [
+            { targetId: "77:12", appName: "Example", title: "Document", appKey: "example", bounds: current.bounds },
+            { targetId: "88:4", appName: "Other", title: "Inbox", appKey: "other", bounds: current.bounds },
+          ],
+        };
+      }
       if (method === "computer.inspect") {
         return {
-          grantId: grant?.grantId,
+          grantId: current?.grantId,
           revision: 1,
-          bounds: grant?.bounds,
+          bounds: current?.bounds,
           fidelity: "full",
           nodes: [
             {
@@ -94,13 +119,13 @@ function harness(overrides = {}) {
         };
       }
       if (method === "computer.act") {
-        return { grantId: grant.grantId, revision: 1, remainingBudget: 4, dispatched: "accessibility-action" };
+        return { grantId: current.grantId, revision: 1, remainingBudget: 4, dispatched: "accessibility-action" };
       }
       if (method === "providers.get") return { provider: { id: "p1", name: "P", enabled: true, authKind: "none" } };
       throw new Error(`unexpected host call ${method} ${JSON.stringify(params)}`);
     },
   };
-  return { calls, cursor, host, grant, settings };
+  return { calls, log, cursor, host, grant, settings };
 }
 
 function deps(h, overrides = {}) {
@@ -146,13 +171,64 @@ test("a missing model binding refuses instead of using the conversation model", 
   assert.match(result.content.message, /Settings/);
 });
 
-test("no handover refuses and tells the agent the user must pick a window", async (t) => {
+test("an absent grant is minted for the session, carrying only the user's settings", async (t) => {
   const { createComputerUseTool } = await loadService(t);
-  const h = harness({ grant: null });
+  const h = harness({
+    grant: null,
+    settings: {
+      computerUse: {
+        enabled: true,
+        model: { providerId: "p1", modelId: "ui" },
+        defaultCapture: "a11y-and-pixels",
+        actionBudget: 7,
+      },
+    },
+  });
+  const published = [];
+  const result = await createComputerUseTool(deps(h, { onGrant: (next) => published.push(next) }))(input());
+  assert.equal(result.ok, true);
+  const minted = h.log.find((entry) => entry.method === "computer.grantCreate");
+  assert.ok(minted, "the handler mints the grant itself (ADR 0344)");
+  // No target: the scope is the host's decision, not this handler's.
+  assert.equal(minted.params.targetId, undefined);
+  assert.equal(minted.params.origin, "agent");
+  assert.equal(minted.params.sessionId, "session-1");
+  assert.equal(minted.params.capture, "a11y-and-pixels");
+  assert.equal(minted.params.actionBudget, 7);
+  assert.equal(published.at(0)?.grantId, "cug_auto", "the indicator is told at once");
+});
+
+test("a user Stop refuses the automatic mint instead of restarting the run", async (t) => {
+  const { createComputerUseTool } = await loadService(t);
+  const h = harness({
+    grant: null,
+    grantCreate: () => {
+      throw Object.assign(new Error("the user stopped computer use"), {
+        errorCode: "COMPUTER_STOPPED_BY_USER",
+      });
+    },
+  });
   const result = await createComputerUseTool(deps(h))(input());
-  assert.equal(result.errorCode, "COMPUTER_NO_GRANT");
-  assert.match(result.content.message, /pick a window/i);
-  assert.ok(!h.calls.includes("computer.act"));
+  assert.equal(result.ok, false);
+  assert.equal(result.errorCode, "COMPUTER_STOPPED_BY_USER");
+  assert.match(result.content.message, /Do not retry/i);
+  assert.ok(!h.calls.includes("computer.inspect"), "nothing is read after a Stop");
+  assert.deepEqual(h.cursor, [], "nothing is drawn");
+});
+
+test("a switch asks the host to bind the named window and nothing else", async (t) => {
+  const { createComputerUseTool } = await loadService(t);
+  const h = harness();
+  const answers = ['{"kind":"switch","window":"88:4"}', '{"kind":"done","summary":"read it"}'];
+  let asked = 0;
+  const result = await createComputerUseTool(
+    deps(h, { complete: async () => ({ text: answers[Math.min(asked++, answers.length - 1)] }) }),
+  )(input({ instruction: "read the other window" }));
+  assert.equal(result.ok, true);
+  const inspects = h.log.filter((entry) => entry.method === "computer.inspect");
+  assert.equal(inspects.at(0)?.params.targetId, undefined, "the first look is the bound window");
+  assert.equal(inspects.at(1)?.params.targetId, "88:4", "the switch goes through the host");
+  assert.ok(!h.calls.includes("computer.act"), "a switch dispatches no input");
 });
 
 test("a grant owned by another session is refused", async (t) => {

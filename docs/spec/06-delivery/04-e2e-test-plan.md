@@ -19664,7 +19664,7 @@ their separate platform acceptance.
   rendered Electron journey above — grouped grid, content height, resize,
   restart, and the panel payload round trip — is Draft until a launcher E2E
   script exists.
-## Computer use (ADR 0342)
+## Computer use (ADR 0342, ADR 0344)
 
 Native-control scenarios remain landing gates for
 [03-runtime/computer-use](../03-runtime/computer-use.md). Their underlying
@@ -19700,31 +19700,67 @@ The permission-request UI below has isolated fixture automation.
 - **Status**: Fixture automation PASS; actual macOS TCC prompt/switch NOT RUN.
   Native OS approval remains a manual system decision.
 
-### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
+### E2E-COMPUTER-USE-desktop-grant-is-automatic-and-stoppable
 
-- **Preconditions**: Isolated desktop profile, computer use enabled, OS
-  permissions granted on the platform under test, one fixture target
-  application, no provider account needed.
-- **Steps**: Ask the agent to operate the target before any grant exists. Mint a
-  grant through the picker, run `describe_scope`, `inspect`, and one `act`.
-  Press Stop in the indicator mid-task. Mint a second grant from another session
-  while the first is active. Let a grant idle past its expiry, and exhaust an
-  action budget.
-- **Expected**: The first request fails `COMPUTER_NO_GRANT` without an OS prompt
-  or capture. The grant appears in the indicator with target, budget, and
-  capture mode, and stays visible while the app is backgrounded. Stop terminates
-  the remaining steps immediately. The second grant is refused
-  `COMPUTER_GRANT_IN_USE`. Idle expiry and budget exhaustion close the grant with
-  their own codes, and no grant survives a restart.
+- **Preconditions**: Isolated desktop profile, computer use enabled with a model
+  bound, OS permissions granted on the platform under test, two fixture target
+  applications, one PI-Desktop window in front, no provider account needed.
+- **Steps**: Ask the agent to operate an application with no grant in existence.
+  Watch the indicator, run `inspect` and one `act`. Press Stop mid-task and have
+  the agent immediately call `Computer` again. Wait out the cooldown and call
+  again. Ask from a second session while the first grant is active. Let a grant
+  idle past its expiry, and exhaust an action budget. Restart the app.
+- **Expected**: No picker appears and the user is never asked which window: the
+  first call mints a desktop grant bound to the frontmost window that is not
+  PI-Desktop's, with no OS prompt and no capture under `a11y-only`. The
+  indicator names that window, shows budget and capture mode, follows every
+  rebind, and stays visible while the app is backgrounded. Stop revokes the
+  grant, aborts the owning turn, and the immediate re-call fails
+  `COMPUTER_STOPPED_BY_USER` without touching the screen; after the cooldown a
+  new grant is minted normally. The second session is refused
+  `COMPUTER_GRANT_IN_USE`. Idle expiry and budget exhaustion close the grant
+  with their own codes, and no grant survives the restart.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [03-tools-and-permissions](../03-runtime/03-tools-and-permissions.md).
-- **Automation**: `computer::tests::only_one_grant_is_active_per_instance`,
+- **Automation**: `computer::tests::a_desktop_grant_binds_the_frontmost_usable_window`,
+  `a_desktop_grant_refuses_when_every_window_is_refused`,
+  `a_user_stop_blocks_the_agents_next_mint_but_not_the_users`,
+  `only_one_grant_is_active_per_instance`,
   `another_session_cannot_use_the_active_grant`,
   `an_idle_grant_expires_and_stays_expired`, and
   `the_budget_closes_the_grant_and_refuses_the_next_action` in host-core;
-  `apps/desktop/test/computer-use-service.test.mjs` covers the no-grant and
-  wrong-session refusals the agent would hit.
-- **Status**: NOT RUN — needs a real window and the picker.
+  `apps/desktop/test/computer-use-service.test.mjs` covers the automatic mint,
+  the Stop refusal, and the wrong-session refusal the agent would hit.
+- **Status**: NOT RUN — needs a real window and a real turn to abort.
+
+### E2E-COMPUTER-USE-window-switching-stays-inside-the-refusals
+
+- **Preconditions**: Isolated desktop profile with an active desktop grant, two
+  fixture applications, a PI-Desktop window, a window from the built-in
+  credential denylist, and one fixture window that can be closed on demand.
+- **Steps**: Have the agent read the window list, switch to the second fixture
+  application, inspect it, and act. Attempt a switch to the PI-Desktop window,
+  to the denylisted window, and to an id that no longer exists. Act using a
+  `uid` read before the switch. Close the bound window mid-task and act.
+- **Expected**: The observation lists the windows the host enumerated with
+  refusals attached, and no renderer surface enumerates anything. A permitted
+  switch rebinds the grant, moves the revision, re-frames the drawn cursor, and
+  spends a step but no action budget. The refused switches fail
+  `COMPUTER_SELF_TARGET_REFUSED`, `COMPUTER_TARGET_DENYLISTED`, and
+  `COMPUTER_SCOPE_VIOLATION`, leave the bound window unchanged, and are reported
+  to the model as steps rather than ending the run. A pre-switch `uid` fails
+  `COMPUTER_STALE_REVISION`. The closed window rebinds to the frontmost usable
+  window while the in-flight action is refused, and the audit log shows one
+  `computer.grant.rebound` per move with application identity only.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [05-security/01-security](../05-security/01-security.md) §13.
+- **Automation**: `computer::tests::binding_another_window_moves_the_revision`,
+  `a_rebind_re_applies_every_refusal`, `a_window_grant_refuses_a_rebind`, and
+  `a_desktop_grant_whose_window_closes_rebinds_and_refuses_the_action` in
+  host-core; `packages/computer-use` loop tests cover the switch step, the
+  refused-switch recovery, and the terminal-grant case;
+  `apps/desktop/test/computer-use-service.test.mjs` pins the host call shape.
+- **Status**: NOT RUN — needs real windows to switch between.
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -19743,7 +19779,7 @@ The permission-request UI below has isolated fixture automation.
   image, tool result, or log. The built-in denylist entry cannot be removed.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [05-security/01-security](../05-security/01-security.md) §13.
-- **Automation**: `computer::tests::our_own_windows_are_never_pickable`,
+- **Automation**: `computer::tests::our_own_windows_are_never_targetable`,
   `a_renamed_self_process_is_still_refused`,
   `built_in_credential_surfaces_cannot_be_allowlisted`, and
   `secure_input_refuses_both_inspection_and_action` in host-core.
@@ -19769,20 +19805,23 @@ The permission-request UI below has isolated fixture automation.
   `a_coordinate_action_without_a_basis_is_refused` in host-core.
 - **Status**: NOT RUN — needs a real window that moves mid-step.
 
-### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
+### E2E-COMPUTER-USE-voice-request-adds-no-authority-of-its-own
 
 - **Preconditions**: Isolated desktop profile, a Live Voice fixture adapter with
-  a bound work session, computer use enabled with no active grant, no real
-  provider account or microphone.
+  a bound work session, no real provider account or microphone. One run with
+  computer use disabled, one with it enabled.
 - **Steps**: Deliver a spoken request that asks the agent to operate an
-  application. Repeat after a user mints a grant in the desktop UI. Repeat with
-  the session in Plan and in Goal.
-- **Expected**: The first request produces a desktop-UI grant request, not a
-  grant: the card appears in the main window, the call bar reports that the app
-  needs attention, and no capture or synthesis happens before the user decides.
-  After a grant exists, the request runs as an ordinary Agent turn under the
-  session's policy, with progress spoken through the existing work-feedback
-  channel. Plan and Goal deny the tool before permission evaluation.
+  application, with the feature disabled and then enabled. Repeat with the
+  session in Plan and in Goal. Press Stop during a spoken run and repeat the
+  spoken request immediately.
+- **Expected**: With the feature disabled the request fails
+  `COMPUTER_DISABLED`; voice cannot enable it, and nothing is captured or
+  synthesized. With it enabled the request runs as an ordinary Agent turn under
+  the session's policy and the same automatic desktop grant the typed path gets
+  (ADR 0344) — voice adds no authority and skips no refusal — with progress
+  spoken through the existing work-feedback channel. Plan and Goal deny the tool
+  before permission evaluation. A spoken retry inside the Stop cooldown fails
+  `COMPUTER_STOPPED_BY_USER`.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [live-voice](../03-runtime/live-voice.md),
   [live-work-session](../03-runtime/live-work-session.md).
@@ -19794,9 +19833,10 @@ The permission-request UI below has isolated fixture automation.
 
 - **Preconditions**: One run per supported platform plus a Wayland session and a
   platform with the OS permission denied.
-- **Steps**: Enable the feature and open the doctor view on each platform. Mint a
-  grant and act. On Windows, target a window owned by a higher-integrity
-  process. On Wayland, attempt input and then capture. On a platform with Screen
+- **Steps**: Enable the feature and open the doctor view on each platform. Have
+  the agent call `Computer` so a grant is minted, and act. On Windows, bind a
+  window owned by a higher-integrity process. On Wayland, attempt input and then
+  capture. On a platform with Screen
   Recording or Accessibility denied, attempt inspection and capture.
 - **Expected**: The doctor view distinguishes "not requested", "denied", and
   "unsupported on this platform". Input on Wayland fails
