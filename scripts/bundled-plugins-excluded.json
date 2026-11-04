@@ -1,6 +1,11 @@
 {
   "//": "Plugins the marketplace sync must never bundle into apps/desktop/resources/plugins. Ids listed here are skipped by scripts/sync-bundled-plugins.mjs and any already-expanded copy is removed.",
   "//cn.star.skill-learning": "Retired into core by ADR 0377: the app's own skill review owns the skill library now, so shipping the plugin again would put a second writer on ~/.agents/skills.",
+  "//io.github.czp0312.subscription-quota": "Retired 2026-11-04: this deployment does not track subscription quota.",
+  "//io.github.xinzhihong.group-rooms": "Retired 2026-11-04: shared rooms are unused in this deployment.",
+  "//io.github.xideadev.pi-wechatbot": "Retired 2026-11-04: the WeChat bridge is unused in this deployment.",
+  "//local.hindsight.memory": "Retired 2026-11-04: this deployment does not bundle the Hindsight memory bridge.",
+  "//local.unipi": "Retired 2026-11-04: the Muse learning adaptation is unused in this deployment.",
   "excluded": [
     "cn.star.jianying-assistant",
     "icedly.moyu-games",
@@ -8,6 +13,11 @@
     "cn.star.grok-enhance",
     "hawchou.mumu-player",
     "io.github.caopengfei.opencode-quota",
-    "cn.star.skill-learning"
+    "cn.star.skill-learning",
+    "io.github.czp0312.subscription-quota",
+    "io.github.xinzhihong.group-rooms",
+    "io.github.xideadev.pi-wechatbot",
+    "local.hindsight.memory",
+    "local.unipi"
   ]
 }
