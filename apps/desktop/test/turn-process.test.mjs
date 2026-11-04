@@ -554,9 +554,16 @@ test("the header count comes from the production activity summary", () => {
   );
   const summary = cachedActivitySummary(items);
   assert.equal(summary.tools, 4);
-  assert.equal(summary.count, 4);
-  assert.equal(summary.issues, 0);
-  assert.equal(summary.label, "chat.activityTools");
+  assert.equal(summary.thinking, 0);
+  // The header names the actions the group contains, in reading order.
+  assert.deepEqual(
+    summary.buckets.filter((bucket) => bucket.count > 0),
+    [
+      { id: "search", count: 1 },
+      { id: "read", count: 1 },
+      { id: "run", count: 2 },
+    ],
+  );
   const bashOnly = turn([
     message("user", "user", "Run"),
     tool("bash1", "Bash", { toolArgs: { command: "a" } }),
@@ -566,7 +573,10 @@ test("the header count comes from the production activity summary", () => {
     part.kind === "activity" ? part.items : [],
   );
   assert.equal(cachedActivitySummary(bashItems).tools, 2);
-  assert.equal(cachedActivitySummary(bashItems).label, "chat.activityCommands");
+  assert.deepEqual(
+    cachedActivitySummary(bashItems).buckets.filter((bucket) => bucket.count > 0),
+    [{ id: "run", count: 2 }],
+  );
 });
 
 test("the shared process-step helper counts message rows and hides content-backed thinking", () => {

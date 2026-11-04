@@ -185,6 +185,20 @@ export type PluginManifest = {
     globalShortcuts?: PluginGlobalShortcutContrib[];
     /** User-invoked text actions beside the Composer controls. */
     composerTransforms?: PluginComposerTransformContrib[];
+    /**
+     * Launcher triggers: the plugin claims launcher input that matches its
+     * pattern. Each `pattern` is matched against the *whole* trimmed launcher
+     * input, so a character class never competes with a one-character query;
+     * patterns that could backtrack catastrophically are refused at manifest
+     * load. Requires the `ui.panel` permission, because a match opens this
+     * plugin's panel.
+     */
+    launcherTriggers?: Array<{
+      id: string;
+      pattern: string;
+      flags?: string;
+      title?: string | { en: string; "zh-CN": string };
+    }>;
   };
   permissions?: string[];
   /**
