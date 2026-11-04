@@ -1,7 +1,7 @@
 /**
  * Source contracts for the installed plugin cards and the public review
- * surface. These pin the behaviour the redesign promised: grouped cards, one
- * call to action per enabled card, a read-only review drawer that covers the
+ * surface. These pin the behaviour the redesign promised: grouped cards,
+ * update actions for enabled cards, a read-only review drawer that covers the
  * detail sheet without unmounting it, and a composer that only ever links out
  * to the plugin centre.
  */
@@ -35,17 +35,14 @@ test("installed plugins keep their state groups and their disclosure", () => {
   assert.match(pageSrc, /GROUP_ORDER: GroupId\[\] = \["attention", "updates", "active", "disabled"\]/);
 });
 
-test("an installed card grows one call to action: update, then open panel", () => {
+test("installed cards offer updates without a panel shortcut", () => {
   // The update button names the version it lands on.
   assert.match(installedPanel, /t\("plugins\.updateTo", \{ version: update\.version \}\)/);
   assert.match(installedPanel, /variant="primary"/);
-  // Opening the panel is only offered while the plugin is enabled: the host
-  // throws for a plugin it has not loaded.
-  assert.match(installedPanel, /const canOpenPanel = plugin\.enabled && !!plugin\.ui\?\.panel/);
-  assert.doesNotMatch(installedPanel, /\{plugin\.ui\?\.panel \?/);
+  assert.doesNotMatch(installedPanel, /plugins\.openPanel|api\.openPluginPanel/);
   // Settings stay behind enabled + declared settings.
   assert.match(installedPanel, /plugin\.enabled && plugin\.settings\?\.length/);
-  // A disabled plugin has no primary: both branches read plugin.enabled.
+  // A disabled plugin has no primary action.
   assert.match(installedPanel, /\{plugin\.enabled && update \? \(/);
 });
 

@@ -525,10 +525,11 @@ attention, and load errors remain inline. Capabilities, resident service
 status, and risk-tinted permission chips are rendered inside a collapsed native
 Details disclosure; expanding it exposes the existing full readout without
 making every card tall. A card's control rail clusters at its left edge and
-wraps: the compact scope trigger first, then the card's one call to action
-(update to the available version, or open the plugin's panel), then the 28px
-settings and overflow icon actions. A disabled plugin has no primary action and
-no settings icon. Opening the scope trigger shows the three scope choices with
+wraps: the compact scope trigger first, then an update action when an enabled
+plugin has an available update, followed by the 28px settings and overflow
+icon actions. Installed cards do not offer an Open panel shortcut; panel
+opening remains available through the plugin launcher. A disabled plugin has
+no primary action and no settings icon. Opening the scope trigger shows the three scope choices with
 their explanations, and choosing This project opens the existing project
 picker. Icon actions remain visible at rest and show their labels on hover and
 keyboard focus. A verified card shows the trust shield when the installed
