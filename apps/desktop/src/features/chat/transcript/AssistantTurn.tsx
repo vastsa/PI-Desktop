@@ -409,7 +409,6 @@ export const AssistantTurn = memo(function AssistantTurn({
             turnParts={entry.parts}
             visibleSteps={visibleSteps}
             isActive={isActive}
-            delegationStatuses={turnDelegationStatuses}
             failed={summary.hasError}
             activity={runtimeActivity}
           >

@@ -200,9 +200,9 @@ test("rendered Markdown and file chips map source-only hits to their visible own
         ),
       );
 
-    // Task topology stays open by default so its delegation outcome remains
-    // visible; search also reveals a collapsed larger ordinary activity group.
-    assert.match(group(null), /class="tool-activity-header" aria-expanded="true"/);
+    // A settled group folds by default, the Task fan-out among them; search
+    // still reveals the group that owns the hit.
+    assert.match(group(null), /class="tool-activity-header" aria-expanded="false"/);
     const ordinaryItems = Array.from({ length: 5 }, (_, index) => ({
       kind: "tool",
       message: {

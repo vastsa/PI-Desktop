@@ -18028,18 +18028,23 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Steps:** Confirm a live active group starts open, let that same turn finish
   without interacting, and confirm the process closes so only the final answer
   (and any error or pending-action surface) remains. Reopen it and confirm a
-  group with at most four visible items and any Task topology group stay open,
-  while a larger ordinary group is closed. Confirm tool and search payloads stay
-  closed, and Fully folded keeps each visible reasoning row open when
-  `Show thinking` is on. On a second turn, explicitly
+  every settled group folded and every finished reasoning row folded, and that
+  each group header names the actions it contains plus the call count
+  (`搜索并读取文件 · 12 次操作`). Confirm tool and search payloads stay closed.
+  Turn `Auto-fold finished groups` off and confirm every settled group opens
+  whatever its size, then turn it back on; turn `Auto-fold finished thinking`
+  off and confirm every reasoning row opens, then turn it back on. On a second
+  turn, explicitly
   open a completed group and confirm the choice survives subsequent updates; then
   close the turn's disclosure and confirm the group closes with it, and reopen to
   confirm the group choice is restored. In Fully folded, confirm run rows stay
   inside their activity groups and that only ordinary assistant progress text
   splits a group. In Commands first, confirm `Bash`/run rows render as standalone
   rows beside the groups, that a normal assistant progress message or a command
-  ends the current group, adjacent calls stay separate, and Thinking rows default
-  expanded. In Flat, confirm no nested activity group renders, the outer
+  ends the current group, adjacent calls stay separate, and only the reasoning
+  row the turn is still streaming is expanded. In Flat, confirm no nested
+  activity group renders, that `Auto-fold finished groups` is absent from AI
+  settings, and the outer
   disclosure lists tools, commands, thinking and progress in transcript order,
   and tool details stay collapsed. In every mode confirm the turn renders exactly
   one outer disclosure and that closing it hides, then reopening restores, the
@@ -18077,14 +18082,20 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   group, so the middle progress paragraph ends the preceding group and the
   following activity starts a new one. A group appears only with at least two
   visible items; a singleton has no group. Every group stays open while its turn
-  runs; after completion, groups with at most four visible items, Task topology
-  groups and groups that still render a Thinking row remain open, while larger
-  ordinary groups of plain tool rows start closed. Thinking rows default
-  expanded in every mode when `Show thinking` is on.
+  runs; after completion both nested levels fold, so every settled group and
+  every reasoning row that is no longer streaming starts closed, whatever the
+  group's size. Only the reasoning a live turn is still streaming starts
+  expanded when `Show thinking` is on, and a group does not inherit open state
+  from the reasoning inside it, so folding a group hides expanded reasoning.
+  Turning off `Auto-fold finished groups` opens every settled group; turning off
+  `Auto-fold finished thinking` opens every rendered reasoning row. A settled
+  group's header names the actions it contains, capped at three with "and more",
+  and appends the operation count as its own non-truncating token; reasoning is
+  named but not counted, and the header carries no issue counter.
   Explicit user choices persist and are restored when the enclosing disclosure is
   reopened, and never pin an ancestor; an automatic close is deferred only while
-  focus or a selection remains inside. Apart from visible reasoning, group
-  defaults do not depend on `Show thinking`. The header
+  focus or a selection remains inside. Group defaults do not depend on
+  `Show thinking` or on the reasoning a group contains. The header
   reports running, finished, stopped, or failed with failure and stop outranking
   a normal finish, reads `Thinking` while the live step is reasoning, names
   compaction and recovery while those stages are live, omits a duration the

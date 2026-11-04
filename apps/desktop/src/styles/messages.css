@@ -2340,30 +2340,12 @@
 }
 
 /*
- * Issue counts are inline metadata in an activity-group header, never a second
- * line of the row. The icon and its localized count stay on one centered line
- * and truncate together when the band runs out of width.
+ * The operation count beside a group label never truncates: the composition
+ * phrase ellipsizes first, because "12 次操作" is the part that has to survive a
+ * narrow band (see `.tool-activity-label`).
  */
-.activity-issue-count {
-  display: inline-flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  color: var(--ds-error);
-  font-size: var(--text-xs-plus);
-  white-space: nowrap;
-}
-
-.activity-issue-count > svg {
+.tool-activity-count.tool-activity-ops {
   flex: none;
-}
-
-.activity-issue-count > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The caret closes the row, so a short label keeps it at the trailing edge. */
