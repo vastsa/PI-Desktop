@@ -175,6 +175,8 @@ export type ComputerCapabilities = {
   fidelity: ComputerFidelity;
   /** Native inspection/synthesis permission (macOS Accessibility, AT-SPI bus). */
   accessibility: ComputerPermissionState;
+  /** Desktop app's own TCC grant, for display only; never authorizes native input. */
+  applicationAccessibility?: ComputerPermissionState;
   /** Window capture permission, as far as the host can tell before trying. */
   capture: ComputerPermissionState;
   /** `wayland` refuses input by contract; `x11` is best effort. */
@@ -185,9 +187,10 @@ export type ComputerCapabilities = {
 
 /** Only the macOS backend currently implements an explicit OS trust request. */
 export function needsAccessibilityRequest(capabilities: ComputerCapabilities): boolean {
+  const permission = capabilities.applicationAccessibility ?? capabilities.accessibility;
   return capabilities.platform === "darwin"
     && capabilities.backend === "macos-ax"
-    && (capabilities.accessibility === "not-requested" || capabilities.accessibility === "denied");
+    && (permission === "not-requested" || permission === "denied");
 }
 
 export type ComputerGrantView = {

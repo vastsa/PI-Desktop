@@ -91,6 +91,8 @@ it("OS permission requests are offered only for missing macOS Accessibility", ()
   expect(needsAccessibilityRequest({ ...capabilities, accessibility: "denied" })).toBe(true);
   expect(needsAccessibilityRequest({ ...capabilities, accessibility: "granted" })).toBe(false);
   expect(needsAccessibilityRequest({ ...capabilities, accessibility: "unsupported" })).toBe(false);
+  expect(needsAccessibilityRequest({ ...capabilities, applicationAccessibility: "granted" })).toBe(false);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "granted", applicationAccessibility: "not-requested" })).toBe(true);
   for (const platform of ["linux", "win32", "other"] as const) {
     expect(needsAccessibilityRequest({ ...capabilities, platform, backend: "unsupported" })).toBe(false);
   }

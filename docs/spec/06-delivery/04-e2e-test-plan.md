@@ -19679,13 +19679,18 @@ The permission-request UI below has isolated fixture automation.
   retry, a stale capabilities read, focus during a pending request, unsupported
   platform, and unmount during a request.
 - **Expected**: Opening Settings or toggling the feature never requests OS
-  permission. Explicit click alone sends `computer.requestPermission`; while
-  pending, the button is busy/disabled and duplicate clicks are ignored. Missing
-  trust opens only the fixed macOS Accessibility pane and explains that the user
-  must enable it. Errors are visible and retryable. Focus/visibility refreshes
-  without prompting; stale results and unmounted listeners cannot update UI.
-  Granted/unsupported states are labels. Non-main senders are rejected before
-  OS calls; opening failure propagates; no grant, capture, or input is dispatched.
+  permission. Explicit click alone requests the app's own TCC trust in main;
+  while pending, the button is busy/disabled and duplicate clicks are ignored.
+  Missing app trust opens only the fixed macOS Accessibility pane and explains
+  that the user must enable it. Errors are visible and retryable. Focus and
+  visibility refreshes never prompt. Controlled one-second polling after a
+  request detects authorization without a focus event, stops on authorization
+  or unmount, and expires after 60 ticks. Stale reads cannot replace newer state.
+  An app-level grant updates the badge even when the Rust child still reports
+  denied: show a backend-permission diagnostic instead of another request.
+  Backend recovery clears the diagnostic without granting any authority from UI.
+  Granted/unsupported states are labels. Non-main senders are rejected before OS
+  calls; opening failure propagates; no grant, capture, or input is dispatched.
 - **Automation**: `node --test apps/desktop/test/computer-use-permission-user-path.test.mjs
   apps/desktop/test/computer-use-permission-ipc.test.mjs`; shared capability
   selection tests and host-core unsupported-backend tests cover platform gating.

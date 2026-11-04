@@ -2922,6 +2922,7 @@ sklm: {
     requestPermission: "Solicitar permiso de accesibilidad",
     requestingPermission: "Solicitando accesibilidad…",
     permissionPending: "Activa la accesibilidad para PI-Desktop en Ajustes del Sistema y vuelve aquí para actualizar el estado.",
+    backendPermissionMissing: "PI-Desktop está autorizado, pero su backend de control nativo no. Revisa la firma de la aplicación y los permisos del backend; el control sigue bloqueado.",
     permissionRequestFailed: "No se pudo solicitar accesibilidad o abrir Ajustes del Sistema. Inténtalo de nuevo. ({{code}})",
     permission: {
       granted: "Accessibility granted",

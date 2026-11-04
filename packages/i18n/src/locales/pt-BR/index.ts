@@ -2892,6 +2892,7 @@ export const ptBR = {
     requestPermission: "Solicitar permissão de acessibilidade",
     requestingPermission: "Solicitando acessibilidade…",
     permissionPending: "Ative a acessibilidade para o PI-Desktop nos Ajustes do Sistema e volte aqui para atualizar o status.",
+    backendPermissionMissing: "O PI-Desktop está autorizado, mas seu backend de controle nativo não. Verifique a assinatura do aplicativo e as permissões do backend; o controle continua bloqueado.",
     permissionRequestFailed: "Não foi possível solicitar acessibilidade ou abrir os Ajustes do Sistema. Tente novamente. ({{code}})",
     permission: {
       granted: "Accessibility granted",

@@ -2917,6 +2917,7 @@ sklm: {
     requestPermission: "申請輔助使用權限",
     requestingPermission: "正在申請輔助使用權限……",
     permissionPending: "請在系統設定中開啟 PI-Desktop 的輔助使用權限，返回此處後會自動更新狀態。",
+    backendPermissionMissing: "PI-Desktop 已獲授權，但原生操作後端尚未取得權限。請檢查安裝版本的簽章與後端權限；電腦操作仍被阻擋。",
     permissionRequestFailed: "申請輔助使用權限或開啟系統設定失敗，請重試。（{{code}}）",
     permission: {
       granted: "已取得輔助使用權限",

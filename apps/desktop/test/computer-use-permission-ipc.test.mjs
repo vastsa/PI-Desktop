@@ -20,7 +20,13 @@ export const shell = { openExternal: async (url) => {
   if (globalThis.computerPermissionFixture.openError) throw new Error("Fixture pane unavailable");
 } };
 export const desktopCapturer = { getSources: async () => { throw new Error("Permission requests must not capture"); } };
-export const systemPreferences = { getMediaAccessStatus: () => "granted" };
+export const systemPreferences = {
+  getMediaAccessStatus: () => "granted",
+  isTrustedAccessibilityClient: (prompt) => {
+    globalThis.computerPermissionFixture.prompts.push(prompt);
+    return globalThis.computerPermissionFixture.appTrusted;
+  },
+};
 `);
   const outfile = join(temp, "ipc.mjs");
   await build({
@@ -32,7 +38,7 @@ export { IPC } from "@pi-desktop/shared";
     alias: { electron: stub, "@pi-desktop/shared": join(root, "packages/shared/src") },
   });
   const { registerComputerIpc, IPC } = await import(pathToFileURL(outfile).href);
-  const fixture = { urls: [], openError: false };
+  const fixture = { urls: [], openError: false, appTrusted: false, prompts: [] };
   globalThis.computerPermissionFixture = fixture;
   t.after(() => { delete globalThis.computerPermissionFixture; });
   const callbacks = new Map();
@@ -71,21 +77,34 @@ export { IPC } from "@pi-desktop/shared";
   const result = await request({ trusted: true }, { url: "https://not-accepted.invalid", targetId: "not-accepted" });
   assert.equal(result.accessibility, "not-requested");
   assert.equal(result.capture, "granted");
-  assert.deepEqual(calls, [{ method: "computer.requestPermission", params: {} }]);
+  assert.deepEqual(calls, [{ method: "computer.capabilities", params: {} }]);
   assert.deepEqual(fixture.urls, ["x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]);
 
   fixture.urls.length = 0;
   capabilities.accessibility = "granted";
+  fixture.appTrusted = true;
   assert.equal((await request({ trusted: true })).accessibility, "granted");
   assert.deepEqual(fixture.urls, []);
 
   capabilities.accessibility = "denied";
+  fixture.appTrusted = false;
   await request({ trusted: true });
   assert.equal(fixture.urls.length, 1);
   fixture.openError = true;
   await assert.rejects(request({ trusted: true }), /Fixture pane unavailable/);
   fixture.openError = false;
   fixture.urls.length = 0;
+
+  fixture.appTrusted = true;
+  const read = callbacks.get(IPC.invoke.computerCapabilities);
+  const appGranted = await read({ trusted: true });
+  assert.equal(appGranted.applicationAccessibility, "granted",
+    "Settings must read the app's own TCC grant even when its child reports denied");
+  assert.equal(appGranted.accessibility, "denied", "backend refusal must remain authoritative");
+  await request({ trusted: true });
+  assert.deepEqual(fixture.urls, [], "already-authorized app must not reopen System Settings");
+  assert.equal(fixture.prompts.at(-1), false, "an authorized app must not be prompted again");
+  fixture.appTrusted = false;
 
   hostError = Object.assign(new Error("Platform unsupported"), { errorCode: "COMPUTER_PLATFORM_UNSUPPORTED" });
   await assert.rejects(request({ trusted: true }), { errorCode: "COMPUTER_PLATFORM_UNSUPPORTED" });

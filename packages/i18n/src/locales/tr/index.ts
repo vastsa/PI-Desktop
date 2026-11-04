@@ -2954,6 +2954,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     requestPermission: "Erişilebilirlik izni iste",
     requestingPermission: "Erişilebilirlik izni isteniyor…",
     permissionPending: "Sistem Ayarları’nda PI-Desktop için erişilebilirliği etkinleştirin, ardından durumu yenilemek için buraya dönün.",
+    backendPermissionMissing: "PI-Desktop yetkilendirildi ancak yerel kontrol arka ucu yetkilendirilmedi. Uygulama imzasını ve arka uç izinlerini kontrol edin; bilgisayar kontrolü engellenmeye devam eder.",
     permissionRequestFailed: "Erişilebilirlik izni istenemedi veya Sistem Ayarları açılamadı. Tekrar deneyin. ({{code}})",
     permission: {
       granted: "Accessibility granted",

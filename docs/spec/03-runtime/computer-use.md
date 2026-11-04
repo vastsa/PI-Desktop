@@ -255,8 +255,11 @@ never a no-op reported as success.
   presented as a broken feature.
 - On macOS, missing Accessibility is a keyboard-accessible button in Settings,
   available even while Computer Use is off. Only clicking it invokes
-  `pi-desktop/computer/permission/request` → `computer.requestPermission` →
-  `AXIsProcessTrustedWithOptions` with the OS prompt option. If still untrusted,
+  `pi-desktop/computer/permission/request`. Main checks and prompts the app's
+  own TCC identity using `systemPreferences.isTrustedAccessibilityClient`.
+  The host's `computer.requestPermission` remains a backend-only API; desktop
+  settings does not prompt through the differently-attributed Rust process.
+  If still untrusted,
   main opens the fixed Accessibility pane in System Settings; the user must
   enable the switch. This never grants trust automatically or hands over a
   target. macOS cannot distinguish an unrequested grant from a denied grant
@@ -268,6 +271,19 @@ never a no-op reported as success.
   unmount removes listeners and discards pending results. Granted and unsupported
   permission states remain labels, not request buttons. The request IPC rejects
   non-main-window senders, and no `host.proxy` allowlist entry is added.
+- Desktop capabilities add optional `applicationAccessibility`, queried afresh in
+  main. `accessibility` retains its existing meaning: the backend's OS trust.
+  Settings uses the app state when present, falling back to the backend field for
+  older hosts. If the app is granted but the backend is not, show the granted
+  badge with an explicit backend-permission diagnostic. The main-process reading
+  is display-only: it is never sent to host-core as authority and cannot bypass
+  its inspection, grant, or input checks. Adhoc builds can have distinct app and
+  executable-path identities in TCC; a checked app entry is not evidence that
+  the backend can act.
+- After a request remains ungranted, poll capabilities once per second for up
+  to 60 ticks while the page is visible. Never prompt from a poll. Stop the
+  timer on app authorization or unmount. Focus/visibility rechecks remain active
+  after polling expires, and pending requests are never duplicated.
 - The target picker is host-driven and shows the display list only while it is
   open. It is the only way to choose a target.
 - The grant indicator is visible for the whole life of a grant, names the

@@ -2919,6 +2919,7 @@ sklm: {
     requestPermission: "申请辅助功能权限",
     requestingPermission: "正在申请辅助功能权限……",
     permissionPending: "请在系统设置中开启 PI-Desktop 的辅助功能权限，返回此处后会自动刷新状态。",
+    backendPermissionMissing: "PI-Desktop 已获授权，但原生操作后端尚未获得权限。请检查安装版本的签名与后端权限；电脑操作仍被阻止。",
     permissionRequestFailed: "申请辅助功能权限或打开系统设置失败，请重试。（{{code}}）",
     permission: {
       granted: "已获得辅助功能权限",

@@ -2922,6 +2922,7 @@ sklm: {
     requestPermission: "Demander l’autorisation d’accessibilité",
     requestingPermission: "Demande d’accessibilité en cours…",
     permissionPending: "Activez l’accessibilité pour PI-Desktop dans Réglages Système, puis revenez ici pour actualiser l’état.",
+    backendPermissionMissing: "PI-Desktop est autorisé, mais pas son moteur de contrôle natif. Vérifiez la signature de l’application et les autorisations du moteur ; le contrôle reste bloqué.",
     permissionRequestFailed: "Impossible de demander l’accessibilité ou d’ouvrir Réglages Système. Réessayez. ({{code}})",
     permission: {
       granted: "Accessibility granted",

@@ -2970,6 +2970,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     requestPermission: "Request Accessibility permission",
     requestingPermission: "Requesting Accessibility…",
     permissionPending: "Enable Accessibility for PI-Desktop in System Settings, then return here to refresh the status.",
+    backendPermissionMissing: "PI-Desktop is authorized, but its native-control backend is not. Check the installed app’s signature and backend permissions; computer control remains blocked.",
     permissionRequestFailed: "Could not request Accessibility or open System Settings. Try again. ({{code}})",
     permission: {
       granted: "Accessibility granted",

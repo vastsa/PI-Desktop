@@ -64,6 +64,9 @@ export function ComputerUseSettings({
 
   const selectedModel = value.model ? `${value.model.providerId}\u0000${value.model.modelId}` : "";
   const unsupported = capabilities?.backend === "unsupported";
+  const accessibility = capabilities?.applicationAccessibility ?? capabilities?.accessibility;
+  const backendPermissionMissing = capabilities?.applicationAccessibility === "granted"
+    && capabilities.accessibility !== "granted";
 
   const patch = (next: Partial<ComputerUseSettingsValue>) =>
     void saveSettings({ computerUse: { ...value, ...next } });
@@ -96,11 +99,11 @@ export function ComputerUseSettings({
                   aria-busy={requesting}
                   onClick={() => { void requestPermission(); }}
                 >
-                  {requesting ? t("computerUse.requestingPermission") : t(`computerUse.permission.${capabilities.accessibility}`)}
+                  {requesting ? t("computerUse.requestingPermission") : t(`computerUse.permission.${accessibility}`)}
                 </Button>
               ) : (
-                <Badge tone={capabilities.accessibility === "granted" ? "neutral" : "warning"}>
-                  {t(`computerUse.permission.${capabilities.accessibility}`)}
+                <Badge tone={accessibility === "granted" ? "neutral" : "warning"}>
+                  {t(`computerUse.permission.${accessibility}`)}
                 </Badge>
               )}
             </>
@@ -114,6 +117,11 @@ export function ComputerUseSettings({
           {errorCode
             ? t("computerUse.permissionRequestFailed", { code: errorCode })
             : t("computerUse.permissionPending")}
+        </p>
+      )}
+      {backendPermissionMissing && (
+        <p className="computer-use-picker-error" role="status">
+          {t("computerUse.backendPermissionMissing")}
         </p>
       )}
 

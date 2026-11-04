@@ -56,6 +56,19 @@ export function useComputerPermission() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!waiting) return;
+    let polling = false;
+    let attempts = 0;
+    // TCC can settle after focus returns. Poll briefly without prompting again.
+    const timer = window.setInterval(() => {
+      if (++attempts >= 60) window.clearInterval(timer);
+      if (document.hidden || polling || pending.current) return;
+      polling = true;
+      void refresh().finally(() => { polling = false; });
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [waiting, refresh]);
   const requestPermission = useCallback(async () => {
     if (!mounted.current || pending.current || !capabilities || !needsAccessibilityRequest(capabilities)) return;
     pending.current = true;

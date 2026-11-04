@@ -208,6 +208,13 @@ user: it can approve dialogs, including this application's own permission cards.
 - The product acquires OS permission prompts it never had. A doctor view has to
   report Screen Recording and Accessibility state per platform, because a denied
   TCC grant is indistinguishable from a broken feature from the user's side.
+  The desktop app and its child can have different TCC attribution, especially
+  in adhoc builds. Settings queries and requests the app's trust in Electron
+  main; the optional `applicationAccessibility` field is display-only. Native
+  trust remains host-core's `accessibility` reading and all input refusals stay
+  there. A disagreement must be shown explicitly, not resolved by copying an
+  app-level grant into native authority. This retains the ownership decision
+  above and adds no input path or sidecar proxy permission.
 - Screenshots of the user's desktop can now enter a session transcript and
   therefore SQLite. That is a real privacy change; `a11y-only` grants exist so a
   user can take the capability without it.
