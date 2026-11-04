@@ -5720,3 +5720,38 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/plugin-session-api.test.mjs`。见 ADR 0339、ADR 0200 修订、
   ADR 0323 更正后的备选方案、`03-plugin-api.md` §插件拥有与全量会话、
   `13-plugin-permissions-matrix.md` 第 2 节与 E2E-268。
+
+## 2026-11-04 —— 电脑操作是宿主拥有、以作用域授权为门的能力（D681）
+
+- D681 / ADR 0340 以设计形式接受有界的原生应用操作。Agent 此前只能通过白名单
+  CDP 驱动内嵌浏览器宿体，除此之外一无所能；仓库里没有任何屏幕截取、合成输入、
+  窗口枚举或无障碍客户端。本决定记录的是契约而不是实现：没有任何代码随之交付。
+- 该能力住在 `crates/host-core`，作为 `computer.*` 域存在，并以唯一一个高风险
+  内置工具 `Computer` 触达 Agent。它刻意不是插件宿主 API，因此产品中最危险的
+  权限无法被第三方清单申请。Electron Main 保持为薄层——挑选器、指示器和
+  `tools.execute` 转发——sidecar 不需要新的 `host.proxy` 方法。
+- 权限是一份由用户签发、指向一个窗口或一个应用的作用域授权，带 revision、动作
+  预算、空闲过期、输入策略与截取模式。模型不能命名、枚举或扩大目标；每个桌面
+  实例最多一个活动授权；授权从不持久化。
+- 身份以无障碍为先：`inspect` 返回 role、name、bounds 与按授权生成的不透明
+  `uid`，`act` 派发平台无障碍动作。坐标只在配合 `basis`（由同一作用域的截取签发）
+  时存在，并在合成前立即重新校验，因此盲点击无法被表达，移动过的窗口失败关闭。
+- 两条拒绝在任何模式、设置与授权选项下都成立：该能力永不以 PI-Desktop 自身窗口
+  为目标——向本应用合成输入等于绕过权限中介——并且在安全输入状态或焦点落在密码
+  字段时，截取与合成一律拒绝。内置的凭据界面拒绝名单条目不可移除。
+- 权限模式治理授权而非每次按键。签发始终是桌面 UI 的显式决定且无截止期限；
+  `auto` 不签发任何授权，口述请求也不能。在授权内，检查类动作自动允许，输入遵循
+  `confirm-each`（`ask` 下唯一策略）或需显式选择的 `autonomous-in-scope`。
+  Plan 与 Goal 硬拒绝该工具，且它不存在 `allow-session` 授权。
+- 语音不获得新权限：一句口述只能经由现有委派/分类器路径成为绑定会话上的工作
+  请求，由 Agent 轮次执行。语音驱动的电脑操作是任务委派，不是逐帧遥控。
+- 受支持平台为 macOS（`AXUIElement`、ScreenCaptureKit）与 Windows（UIA、
+  `SendInput`，提权目标被拒绝）；Linux/X11 基于 AT-SPI 与 XTEST 尽力而为；
+  Wayland 拒绝输入并保留门户截取。每条不支持路径都有自己的错误码，绝不挂起，
+  也绝不静默空操作。
+- 非目标第 9 条是修订而非删除：浏览器接管、无人看管的全桌面控制，以及任何由
+  模型自行选择目标，仍然是非目标。
+- 只定规格未落实现：`03-runtime/computer-use.md`、`08-error-codes.md` §3.10
+  （`COMPUTER_*`）、`05-host-core-rust.md` §2/§5b/§6、
+  `05-security/01-security.md` §13、`03-tools-and-permissions.md` §0/§2/§6，
+  以及五条 `E2E-COMPUTER-USE-*` 落地闸门，全部为 `NOT RUN`。

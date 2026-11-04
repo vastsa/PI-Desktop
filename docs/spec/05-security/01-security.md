@@ -350,6 +350,7 @@ host-core. They do not change the loopback-only rule above.
 | Dependency poisoning | lockfiles, few deps, native-module review |
 | Malicious local plugin | declared permissions, no secret access, process isolation tracked post-MVP (ADR 0008) |
 | Skill market SSRF via user source URL | public-HTTPS classifier + DNS + per-hop redirect checks in main; renderer CSP forbids the fetch (ADR 0243) |
+| Synthetic input approving this app's own dialogs | computer use refuses PI-Desktop windows and credential surfaces unconditionally; scope grant is user-picked and host-owned (ADR 0340) |
 
 ## 11. Security acceptance gates
 
@@ -370,6 +371,10 @@ host-core. They do not change the loopback-only rule above.
 10. Local MCP control is loopback-only, bearer-authenticated, opt-in, bounded,
     excludes secret writes and native pickers, and requires confirmation for
     session permission-mode changes
+11. Computer use cannot run without a user-minted scope grant, cannot target
+    PI-Desktop's own windows or a secure input state under any mode, refuses a
+    stale basis or revision instead of synthesizing input, and is denied
+    outright in Plan and Goal
 
 ## 12. Native Pi session boundary (ADR 0254)
 
@@ -407,3 +412,33 @@ the parent's session directory (fsync, then a no-clobber hardlink to the final
 name); cleanup removes only files whose device/inode and content still match
 what this operation created, and unexpected filesystem failures cross the
 preload boundary only as a path-free classified error.
+
+## 13. Computer-use boundary (ADR 0340)
+
+Synthetic input is indistinguishable from the user, so the boundary is
+structural rather than advisory. The capability lives in host-core; the
+renderer never holds a window handle, a native element reference, or an input
+primitive, and the sidecar reaches it only through the existing `host.proxy`
+`tools.execute` allowlist entry. `computer.*` is not a plugin host API and is
+not requestable in a plugin manifest.
+
+Authority is one user-minted scope grant naming one window or application. The
+model cannot name, enumerate, or widen a target, there is at most one active
+grant per desktop instance, and grants are never persisted. Every input action
+re-validates the grant revision and the measured geometry; coordinate input
+requires a `basis` minted by a capture of the same scope, and a stale basis is
+refused rather than replayed against whatever now occupies those pixels.
+
+Two refusals hold under every permission mode, setting, and grant option: the
+capability never targets PI-Desktop's own windows — approval cards, settings,
+secrets surfaces, the Live Voice widget, plugin views — and both capture and
+synthesis refuse while the OS reports a secure input state or a password field
+holds focus. A user-editable application denylist sits above them, and its
+built-in credential-surface entries cannot be removed.
+
+Captured pixels, accessibility values, and text read from a window are untrusted
+input: they are data, never instructions that can change the agent's scope,
+tools, grant, or permissions. The audit log records grant and action identity
+with typed text reduced to a length and no pixels; screenshots reaching the
+model are scope-cropped tool images, and an `a11y-only` grant captures none.
+See [03-runtime/computer-use](../03-runtime/computer-use.md).

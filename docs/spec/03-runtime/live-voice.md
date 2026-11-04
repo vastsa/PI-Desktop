@@ -32,6 +32,14 @@ question itself offered; permission and Plan/Goal approvals remain desktop-UI
 decisions (see [Live Voice Work Session Integration](live-work-session.md) and
 [ADR 0315](../../adr/0315-live-voice-spoken-asktool-answers.md)).
 
+Live Voice holds no computer-use authority of its own. A spoken request can
+reach the `Computer` tool only as an ordinary work request on the bound session,
+executed by the Agent turn under that session's policy; minting a scope grant
+stays a desktop-UI decision, which a call may ask for but never make, and the
+call bar only reports that the app needs attention. Voice-driven computer use is
+task delegation, not per-frame teleoperation
+([Computer Use](computer-use.md), [ADR 0340](../../adr/0340-os-computer-use-capability.md)).
+
 ## Ownership and security
 
 Electron Main owns the one-call slot, selected account, credential resolution,

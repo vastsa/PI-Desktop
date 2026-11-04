@@ -400,3 +400,4 @@ Each ADR includes:
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
 | 0339 | [Let a granted plugin reach every session, not only its imports](0339-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
+| 0340 | [Built-in computer use is a host-owned capability behind a user-picked scope grant](0340-os-computer-use-capability.md) | Proposed (D681; amends non-goal 9) |

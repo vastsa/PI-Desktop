@@ -11,7 +11,11 @@
 6. Mobile clients
 7. Multi-user auth systems
 8. Billing/subscription modules
-9. Computer Use browser takeover
+9. Computer Use browser takeover *(amended by ADR 0340)* — browser takeover and
+   unattended full-desktop control remain non-goals, and the model may never
+   choose its own target. Bounded native application control through a
+   user-picked, revocable, audited scope grant is an accepted capability; see
+   [03-runtime/computer-use](../03-runtime/computer-use.md)
 10. Unconfirmed full-disk high privilege mode
 11. Non-English as the primary source language
 12. A second planner Agent, planner service, planner model, or separate

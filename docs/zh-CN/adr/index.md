@@ -317,6 +317,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0312 | [会话级 Todo 清单](/adr/0312-session-scoped-todo-checklist) | 已接受实施 |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](/adr/registry-header-variable-spelling) | Proposed |
 | 0339 | [插件可访问任意会话（新增 .all 权限）](/adr/0339-plugin-session-all-scope) | 已接受（修订 ADR 0200、ADR 0323；D680） |
+| 0340 | [内置电脑操作是宿主拥有、以用户挑选的作用域授权为门的能力](/adr/0340-os-computer-use-capability) | 提议中（D681；修订非目标第 9 条） |
 
 ## 什么时候看 ADR
 

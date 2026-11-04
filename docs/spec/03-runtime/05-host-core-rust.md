@@ -29,6 +29,9 @@ It does **not** replace pi. It provides safe host capabilities to:
    collaboration ledger)
 10. Secrets storage integration points
 11. Audit logging for sensitive actions
+12. Computer-use capability: window enumeration, accessibility inspection,
+    event synthesis, scoped screen capture, and the scope-grant broker
+    ([computer-use](computer-use.md), ADR 0340)
 
 ## 3. Non-responsibilities
 
@@ -91,6 +94,7 @@ Domains:
 - `settings.*` (adapter level)
 - `secrets.*`
 - `audit.*`
+- `computer.*` (scope grants, accessibility inspection, synthesis, capture)
 
 Example:
 
@@ -127,6 +131,10 @@ notification.list
     the active plugin invocation, target permission ceilings are rechecked at
     turn admission, callbacks are at-most-once, and restart recovery never
     replays an interrupted delivery
+11. Computer use runs only inside a user-minted scope grant the host owns: the
+    target is never request-supplied, the grant revision and geometry are
+    re-validated before every synthesis, PI-Desktop's own windows and a secure
+    input state are refused unconditionally, and grants are never persisted
 
 ## 7. Packaging
 
