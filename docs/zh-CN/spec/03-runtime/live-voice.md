@@ -14,6 +14,8 @@
 
 
 独立作用域的 Live Work 通话也可以解决绑定会话唯一一个待回答的 AskTool 提问，但只能从该提问自己提供的选项标签中选择；权限与 Plan/Goal 审批仍然只在桌面 UI 中决定（见[实时语音工作会话接入](live-work-session.md)与 [ADR 0315](../../../adr/0315-live-voice-spoken-asktool-answers.md)）。
+实时语音自身不持有任何电脑操作权限。一句口述只能作为绑定会话上的普通工作请求触达 `Computer` 工具，由该会话策略下的 Agent 轮次执行；签发作用域授权仍然是桌面 UI 的决定，通话可以请求但永不自行做出，通话条只提示应用需要关注。语音驱动的电脑操作是任务委派，不是逐帧遥控（见[电脑操作](computer-use.md)与 [ADR 0342](../../../adr/0342-os-computer-use-capability.md)）。
+
 公开设置为 `liveVoice: { enabled, selectedBindingId?, bindings }`。它只包含 Provider ID、模型/音色选择和协议 profile，不保存凭证。现有 `voice` 和 `speech` 设置保持原义。持久化 JSON 由 Host Core 所有；它会将 Live 设置与其他设置合并。
 
 没有工作绑定的纯语音 Live profile 不会创建 Agent turn、调用 AgentHost 或 MCP、访问工作区文件、执行模型生成的函数、保存录音或持久化字幕。字幕只保存在本次通话的有界 Renderer 内存缓冲区中。除非用户明确开启独立作用域的 Live Work 通话，否则 Provider delegation/function-call 请求会被拒绝或导致协议错误；Live Work 的执行与权限合同见[实时语音工作会话接入](live-work-session.md)。

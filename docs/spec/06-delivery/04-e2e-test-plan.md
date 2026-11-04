@@ -19605,6 +19605,123 @@ their separate platform acceptance.
   group lookup failure, missing project providers, failed/malformed lookup,
   rename identity, and stale results after Host replacement.
 
+## Computer use (ADR 0342)
+
+Every one of these is a landing gate for the capability described in
+[03-runtime/computer-use](../03-runtime/computer-use.md). Stage 1 is
+implemented, so the refusals each scenario depends on are covered by unit
+tests; the scenarios themselves drive a real application and are all
+`NOT RUN`. Automation that does exist is named per scenario.
+
+### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
+
+- **Preconditions**: Isolated desktop profile, computer use enabled, OS
+  permissions granted on the platform under test, one fixture target
+  application, no provider account needed.
+- **Steps**: Ask the agent to operate the target before any grant exists. Mint a
+  grant through the picker, run `describe_scope`, `inspect`, and one `act`.
+  Press Stop in the indicator mid-task. Mint a second grant from another session
+  while the first is active. Let a grant idle past its expiry, and exhaust an
+  action budget.
+- **Expected**: The first request fails `COMPUTER_NO_GRANT` without an OS prompt
+  or capture. The grant appears in the indicator with target, budget, and
+  capture mode, and stays visible while the app is backgrounded. Stop terminates
+  the remaining steps immediately. The second grant is refused
+  `COMPUTER_GRANT_IN_USE`. Idle expiry and budget exhaustion close the grant with
+  their own codes, and no grant survives a restart.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [03-tools-and-permissions](../03-runtime/03-tools-and-permissions.md).
+- **Automation**: `computer::tests::only_one_grant_is_active_per_instance`,
+  `another_session_cannot_use_the_active_grant`,
+  `an_idle_grant_expires_and_stays_expired`, and
+  `the_budget_closes_the_grant_and_refuses_the_next_action` in host-core;
+  `apps/desktop/test/computer-use-service.test.mjs` covers the no-grant and
+  wrong-session refusals the agent would hit.
+- **Status**: NOT RUN — needs a real window and the picker.
+
+### E2E-COMPUTER-USE-self-target-and-secure-input-refused
+
+- **Preconditions**: Isolated desktop profile with an active grant, a PI-Desktop
+  window with a pending approval card, and a fixture window containing a
+  password field.
+- **Steps**: Attempt to inspect, capture, and act on a PI-Desktop window,
+  including its approval card and the Live Voice widget, under every permission
+  mode including `auto` and under an `autonomous-in-scope` grant. Focus the
+  password field and attempt `inspect`, `screenshot`, and `set_value`. Attempt a
+  target on the built-in credential denylist and try to remove that entry.
+- **Expected**: Every self-target attempt fails `COMPUTER_SELF_TARGET_REFUSED`;
+  no synthetic event reaches any PI-Desktop window and no approval card is
+  dismissed. Secure input refuses capture and synthesis with
+  `COMPUTER_SECURE_INPUT_REFUSED`, and no field content appears in a snapshot,
+  image, tool result, or log. The built-in denylist entry cannot be removed.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [05-security/01-security](../05-security/01-security.md) §13.
+- **Automation**: `computer::tests::our_own_windows_are_never_pickable`,
+  `a_renamed_self_process_is_still_refused`,
+  `built_in_credential_surfaces_cannot_be_allowlisted`, and
+  `secure_input_refuses_both_inspection_and_action` in host-core.
+- **Status**: NOT RUN — needs a real approval card and a real password field.
+
+### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
+
+- **Preconditions**: Isolated desktop profile, an `a11y-and-pixels` grant, and a
+  fixture window that can be moved, resized, and re-stacked on demand.
+- **Steps**: Capture a `screenshot`, move the target, then act on the stale
+  basis. Resize the target between `inspect` and `act` on a `uid`. Act with a
+  coordinate outside the measured bounds. Act with a basis minted for a
+  different grant. Act under an `a11y-only` grant with coordinates.
+- **Expected**: `COMPUTER_STALE_BASIS`, `COMPUTER_STALE_REVISION`,
+  `COMPUTER_SCOPE_VIOLATION`, and `COMPUTER_CAPTURE_UNAVAILABLE` respectively;
+  no event is dispatched in any of them, nothing is clamped silently, and the
+  target application observes no input.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [08-error-codes](../03-runtime/08-error-codes.md) §3.10.
+- **Automation**: `computer::tests::a_moved_window_bumps_the_revision_and_invalidates_a_basis`,
+  `a_resized_window_with_the_same_revision_still_refuses_a_stale_basis`,
+  `coordinates_outside_the_measured_window_are_refused_not_clamped`, and
+  `a_coordinate_action_without_a_basis_is_refused` in host-core.
+- **Status**: NOT RUN — needs a real window that moves mid-step.
+
+### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
+
+- **Preconditions**: Isolated desktop profile, a Live Voice fixture adapter with
+  a bound work session, computer use enabled with no active grant, no real
+  provider account or microphone.
+- **Steps**: Deliver a spoken request that asks the agent to operate an
+  application. Repeat after a user mints a grant in the desktop UI. Repeat with
+  the session in Plan and in Goal.
+- **Expected**: The first request produces a desktop-UI grant request, not a
+  grant: the card appears in the main window, the call bar reports that the app
+  needs attention, and no capture or synthesis happens before the user decides.
+  After a grant exists, the request runs as an ordinary Agent turn under the
+  session's policy, with progress spoken through the existing work-feedback
+  channel. Plan and Goal deny the tool before permission evaluation.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [live-voice](../03-runtime/live-voice.md),
+  [live-work-session](../03-runtime/live-work-session.md).
+- **Automation**: none. The spoken path is stage 3 and is deliberately not
+  wired, so there is nothing to drive yet.
+- **Status**: NOT RUN — stage 3.
+
+### E2E-COMPUTER-USE-platform-support-is-explicit
+
+- **Preconditions**: One run per supported platform plus a Wayland session and a
+  platform with the OS permission denied.
+- **Steps**: Enable the feature and open the doctor view on each platform. Mint a
+  grant and act. On Windows, target a window owned by a higher-integrity
+  process. On Wayland, attempt input and then capture. On a platform with Screen
+  Recording or Accessibility denied, attempt inspection and capture.
+- **Expected**: The doctor view distinguishes "not requested", "denied", and
+  "unsupported on this platform". Input on Wayland fails
+  `COMPUTER_PLATFORM_UNSUPPORTED` while portal capture still works; an elevated
+  Windows target fails `COMPUTER_TARGET_ELEVATED` rather than dropping events; a
+  denied OS permission fails `COMPUTER_OS_PERMISSION_MISSING`. No path hangs and
+  none reports success without acting.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md).
+- **Automation**: `computer::tests::an_unsupported_platform_refuses_every_operation`
+  in host-core covers the fallback backend every unported platform uses.
+- **Status**: NOT RUN — needs one run per platform, including Wayland.
+
 ## Round review reader
 
 Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)

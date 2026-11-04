@@ -10159,3 +10159,84 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   event/result agreement, batch rejection and delegate restoration.
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
+
+## 电脑操作（ADR 0342）
+
+每一条都是 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
+所述能力的落地闸门。阶段 1 已实现，因此每条场景依赖的拒绝逻辑都有单测覆盖；
+场景本身需要驱动真实应用，状态仍全部为 `NOT RUN`。已有的自动化按场景列出。
+
+### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
+
+- **前置条件**：隔离的桌面 profile，电脑操作已开启，被测平台的操作系统权限已授予，
+  一个 fixture 目标应用，无需 Provider 账号。
+- **步骤**：在没有任何授权时请求 Agent 操作目标。通过挑选器签发授权，执行
+  `describe_scope`、`inspect` 与一次 `act`。任务进行中按下指示器的"停止"。在第一个
+  授权仍活动时从另一个会话签发第二个授权。让授权空闲超过过期时间，并耗尽动作预算。
+- **预期**：首个请求以 `COMPUTER_NO_GRANT` 失败，不触发操作系统提示也不截取画面。
+  授权出现在指示器中并标明目标、预算与截取模式，应用退到后台时仍可见。"停止"立刻
+  终止剩余步骤。第二个授权以 `COMPUTER_GRANT_IN_USE` 被拒。空闲过期与预算耗尽各以
+  自己的错误码关闭授权，且没有授权能活过重启。
+- **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
+  [03-tools-and-permissions](/zh-CN/spec/03-runtime/03-tools-and-permissions)。
+- **状态**：NOT RUN —— 需要真机运行。
+
+### E2E-COMPUTER-USE-self-target-and-secure-input-refused
+
+- **前置条件**：隔离的桌面 profile，已有活动授权，一个带待处理审批卡片的
+  PI-Desktop 窗口，以及一个包含密码字段的 fixture 窗口。
+- **步骤**：在包括 `auto` 的每种权限模式下、以及在 `autonomous-in-scope` 授权下，
+  尝试对 PI-Desktop 窗口（含审批卡片与实时语音悬浮件）做检查、截取与动作。让密码
+  字段获得焦点，尝试 `inspect`、`screenshot` 与 `set_value`。尝试一个位于内置凭据
+  拒绝名单上的目标，并尝试移除该条目。
+- **预期**：每次自我目标尝试都以 `COMPUTER_SELF_TARGET_REFUSED` 失败；没有任何
+  合成事件到达任何 PI-Desktop 窗口，也没有审批卡片被关闭。安全输入以
+  `COMPUTER_SECURE_INPUT_REFUSED` 拒绝截取与合成，字段内容不出现在快照、图像、
+  工具结果或日志中。内置拒绝名单条目无法移除。
+- **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
+  [05-security/01-security](/zh-CN/spec/05-security/01-security) §13。
+- **状态**：NOT RUN —— 需要真机运行。
+
+### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
+
+- **前置条件**：隔离的桌面 profile，一个 `a11y-and-pixels` 授权，以及一个可按需
+  移动、改变尺寸与改变层叠顺序的 fixture 窗口。
+- **步骤**：先 `screenshot`，移动目标，再基于过期 `basis` 动作。在对某个 `uid` 的
+  `inspect` 与 `act` 之间改变目标尺寸。用超出测得边界的坐标动作。用另一个授权签发的
+  `basis` 动作。在 `a11y-only` 授权下用坐标动作。
+- **预期**：分别返回 `COMPUTER_STALE_BASIS`、`COMPUTER_STALE_REVISION`、
+  `COMPUTER_SCOPE_VIOLATION` 与 `COMPUTER_CAPTURE_UNAVAILABLE`；其中任何一种都不
+  派发事件，不静默夹取，目标应用观察不到任何输入。
+- **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
+  [08-error-codes](/zh-CN/spec/03-runtime/08-error-codes) §3.10。
+- **状态**：NOT RUN —— 需要真机运行。
+
+### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
+
+- **前置条件**：隔离的桌面 profile，带绑定工作会话的实时语音 fixture 适配器，电脑
+  操作已开启但没有活动授权，无真实 Provider 账号与麦克风。
+- **步骤**：口述一条要求 Agent 操作某个应用的请求。在用户于桌面 UI 签发授权后重复。
+  在会话处于 Plan 与 Goal 时分别重复。
+- **预期**：首个请求产生的是桌面 UI 的授权请求而不是授权：卡片出现在主窗口，通话条
+  提示应用需要关注，用户决定之前不发生截取或合成。授权存在后，该请求作为普通 Agent
+  轮次在会话策略下运行，进度通过现有工作反馈通道朗读。Plan 与 Goal 在权限评估之前
+  拒绝该工具。
+- **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
+  [live-voice](/zh-CN/spec/03-runtime/live-voice)、
+  [live-work-session](/zh-CN/spec/03-runtime/live-work-session)。
+- **状态**：NOT RUN —— 需要真机运行。
+
+### E2E-COMPUTER-USE-platform-support-is-explicit
+
+- **前置条件**：每个受支持平台各跑一次，另加一个 Wayland 会话，以及一台操作系统
+  权限被拒绝的机器。
+- **步骤**：在每个平台上开启该功能并打开体检视图。签发授权并动作。在 Windows 上以
+  由更高完整性级别进程拥有的窗口为目标。在 Wayland 上先尝试输入再尝试截取。在屏幕
+  录制或无障碍被拒绝的平台上尝试检查与截取。
+- **预期**：体检视图区分"未申请"、"已拒绝"与"本平台不支持"。Wayland 上的输入以
+  `COMPUTER_PLATFORM_UNSUPPORTED` 失败而门户截取仍可用；提权的 Windows 目标以
+  `COMPUTER_TARGET_ELEVATED` 失败而不是丢弃事件；被拒绝的操作系统权限以
+  `COMPUTER_OS_PERMISSION_MISSING` 失败。没有路径挂起，也没有路径在未动作的情况下
+  回报成功。
+- **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)。
+- **状态**：NOT RUN —— 需要真机运行。

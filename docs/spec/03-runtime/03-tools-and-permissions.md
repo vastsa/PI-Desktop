@@ -103,10 +103,10 @@ See [ordered preparation](../../adr/parallel-read-batches.md) and
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
+| Agent tools | Read / Glob / Grep / Write / Edit / Bash + Computer under an active scope grant + registered plugin tools + optional Jev classifier |
 | Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
 | Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Plan and Goal hard deny | Write / Edit / Computer / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
@@ -134,6 +134,7 @@ Let the agent get things done, but stay under control by default.
 | `Write` | high | Create/overwrite files; returns the post-write `tag` |
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
+| `Computer` | high | Inspect and operate the one native window or application the user granted; disabled without an active scope grant ([computer-use](computer-use.md), ADR 0342) |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
 | `TodoWrite` | low | Replace the current Agent session checklist; host validates and persists the full ordered snapshot |
 
@@ -782,6 +783,12 @@ Rules:
 - `allow-session` grants continue to work under `ask` and stay scoped to the
   session; under `accept-edits`/`auto` they are simply never needed.
 - Scratch-directory writes (D114) stay prompt-free in every mode.
+- `Computer` is governed by its scope grant, not by the mode alone: creating a
+  grant is always an explicit desktop-UI decision, `auto` never mints one, and
+  no `allow-session` grant exists for it. Within an active grant, inspection
+  auto-allows and input follows the grant's `confirm-each` (the only policy
+  under `ask`) or `autonomous-in-scope` policy. Plan and Goal deny the tool
+  outright ([computer-use](computer-use.md)).
 - UI: Settings → segmented global default; composer shows a per-session chip in
   Agent, Plan, and Goal whose menu offers the three effective modes without a
   separate global-default/inherit entry. The chip and selected menu item

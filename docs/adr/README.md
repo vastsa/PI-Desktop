@@ -400,4 +400,5 @@ Each ADR includes:
 | 0339 | [Chat file references open absolute files outside the managed roots](0339-chat-file-refs-open-absolute-files-outside-managed-roots.md) | Accepted (amends ADR 0262 §4) |
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
+| 0342 | [Built-in computer use is a host-owned capability behind a user-picked scope grant](0342-os-computer-use-capability.md) | Proposed (D681; amends non-goal 9) |
 | 0340 | [Let a granted plugin reach every session, not only its imports](0340-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
