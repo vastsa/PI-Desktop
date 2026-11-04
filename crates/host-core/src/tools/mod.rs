@@ -1176,7 +1176,10 @@ async fn run_file_tool(
         // retain the lease until the actual filesystem body has returned.
         let _file_lease = lease;
         #[cfg(test)]
-        file_lease_tests::pause(workspace.as_deref());
+        file_lease_tests::pause(
+            workspace.as_deref(),
+            args.get("path").and_then(Value::as_str),
+        );
         if let Some((_, resources)) = &_file_lease {
             resources
                 .validate(
