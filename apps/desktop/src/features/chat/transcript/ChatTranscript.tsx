@@ -465,8 +465,9 @@ function TranscriptBody({
             role="status"
             aria-live="polite"
             aria-hidden={!loadingOlder}
+            style={{ visibility: loadingOlder ? "visible" : "hidden" }}
           >
-            {loadingOlder ? t("chat.loadingEarlierMessages") : null}
+            {t("chat.loadingEarlierMessages")}
           </div>
           {hydrationBounded ? (
             // One viewport of slack, not a per-entry estimate. The spacer exists

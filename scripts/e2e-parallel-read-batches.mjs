@@ -293,6 +293,9 @@ try {
   // Ask mode: both same-batch Writes wait for approval at the same time;
   // denying one does not affect the other.
   await configureSession(host, session, "agent", "ask");
+  // Existing targets exercise identified admission; absent targets fence the domain.
+  await writeFile(join(workspace, "e.txt"), "original-e\n");
+  await writeFile(join(workspace, "f.txt"), "original-f\n");
   const asks = [
     { id: "ask-write-e", name: "Write", arguments: { path: "e.txt", content: "denied\n" } },
     { id: "ask-write-f", name: "Write", arguments: { path: "f.txt", content: "approved\n" } },
@@ -307,7 +310,7 @@ try {
   await host.call("permissions.resolve", { requestId: permissionFor("ask-write-e").params.requestId, decision: "deny" });
   await host.call("permissions.resolve", { requestId: permissionFor("ask-write-f").params.requestId, decision: "allow-once" });
   const askRequests = await asked;
-  assert.equal(existsSync(join(workspace, "e.txt")), false);
+  assert.equal(await readFile(join(workspace, "e.txt"), "utf8"), "original-e\n");
   assert.equal(await readFile(join(workspace, "f.txt"), "utf8"), "approved\n");
   const askResults = toolMessages(askRequests.at(-1)).filter(message => message.tool_call_id.startsWith("ask-"));
   assert.deepEqual(askResults.map(message => message.tool_call_id), asks.map(call => call.id));

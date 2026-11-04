@@ -29,6 +29,10 @@ pub fn is_write(name: &str) -> bool {
 }
 
 impl FileResources {
+    pub(crate) fn is_identified_write(&self) -> bool {
+        self.exclusive && self.identity.is_some() && self.address.is_some()
+    }
+
     pub fn fence(exclusive: bool) -> Arc<Self> {
         Arc::new(Self {
             exclusive,

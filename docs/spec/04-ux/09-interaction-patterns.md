@@ -727,6 +727,47 @@ may be retained while exactly one workspace supplies the visible shell context.
   writes naming an unknown action are rejected by both the renderer and
   Electron Main.
 
+### 1.12 User-supplied startup animation (D679, ADR 0338)
+
+- A video in `<dataDir>/startup/` becomes the boot surface for that launch,
+  replacing the brand splash. An installation without that directory is
+  unchanged: same splash, same 420ms dwell, same 280ms fade.
+- The sequence is **play → black → reveal**. The video plays over opaque black
+  (`#000`, `object-fit: cover`, muted, no controls, not focusable); when it
+  ends, the same black layer stays as an opaque mask; once the shell has its
+  initial state, that mask fades out over 1000ms
+  (`--motion-startup-reveal`). The reveal waits for both the video and the
+  shell, so it never lands on a half-built window.
+- The mask stops taking input the moment the fade starts, so the shell, its
+  chrome, and the renderer-drawn window controls are operable for the whole
+  second rather than after it.
+- A boot that outlasts the video shows the splash's indeterminate bar after 3s
+  of black, so an opaque mask is not mistaken for a hang.
+- Either `loadeddata` or `playing` acknowledges a decoded first frame; a
+  playing video must not hit the missing-first-frame timeout when `loadeddata`
+  was missed. The first-frame timeout also checks the actual video ref for
+  HAVE_CURRENT_DATA in case both initial events raced their handlers. The total
+  playback bound remains active.
+- Four bounds end the animation, and each runs the same reveal: no first frame
+  within 2s, 15s of total playback, a `<video>` `error`, or `Escape`. The
+  startup watchdog's bounds are unchanged and outrank it — at 30s the boot
+  surface gains logs and diagnostics, and at 180s the recovery surface replaces
+  the animation, so a stalled launch is never left behind the mask.
+- Exactly one boot surface is mounted, ranked recovery > animation > brand
+  splash.
+- The animation plays once per launch, for the first window of the process:
+  reopening from the tray or the Dock replays nothing, and a renderer reload
+  does not replay it.
+- Settings → General → Appearance carries the switch (absent means on, so
+  dropping a file in is enough), a `skipWhenReady` sub-switch gated by it
+  (absent plays the video out), a status line naming the file the next launch
+  would play — or saying none was found — and an action that opens the folder,
+  creating it if needed. Both preferences are read before the window is
+  created, so a change applies on the next launch.
+- Discovery is deterministic: `webm` > `mp4` > `m4v` > `mov`, file name as the
+  tie-break, with dot-prefixed entries, non-files, empty files, files over
+  64 MB, and anything that resolves outside the directory excluded.
+
 ## 2. Streaming message behavior
 
 ### 2.1 Token rendering
@@ -1571,6 +1612,21 @@ Project drag/drop follows these patterns:
 ### 9.1 Transcript scrolling
 
 - Default: auto-scroll to bottom on new content during stream while pinned
+- Loading earlier messages is one pane-local viewport transaction: capture the
+  visible message and its viewport offset before either mounting more cached
+  rows or requesting a page. Keep that anchor through the committed projection
+  and late row layout; total scroll-height growth is not an anchor because it
+  can include tail updates and offscreen intrinsic-size estimates.
+- While that transaction owns the viewport, discard wheel/trackpad, touch-scroll
+  and scrolling-key input addressed to the transcript. Do not queue input for
+  replay after loading. Nested scroll owners, editable fields, title activation
+  and Ctrl+wheel zoom retain their own input. The loading label keeps identical
+  layout space when hidden, and ordinary scrolling resumes after settlement.
+- Search/minimap navigation, return-to-latest, manual disclosure, a new turn,
+  pane hide and unmount retire the hold. A late page cannot reclaim that
+  navigation. A failed or empty page releases input and does not auto-retry at
+  the unchanged boundary; a new reader gesture or earlier-history action may
+  retry. Requests remain single-flight even after their viewport hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement
@@ -1784,6 +1840,7 @@ This does not prevent state changes — it makes them instant.
 | Tool card expand/collapse | 200ms transition | instant toggle |
 | Hover state transition | 150ms background change | instant color change |
 | Startup splash | Brand splash + progress, min dwell then fade out | Instant static splash, no bar motion, instant reveal |
+| Startup animation (D679) | User's video, then a black mask, then a 1000ms reveal | Not played at all; the brand splash's reduced-motion path is used |
 | Dialog / search enter | overlay-in + surface-in via motion tokens | Near-zero duration enter |
 | Scroll-to-bottom button fade-in | 150ms opacity | instant appear |
 | Toast slide-in | 200ms slide | instant appear |

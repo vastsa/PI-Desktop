@@ -27,6 +27,7 @@
 | [14-plugin-roadmap.md](/zh-CN/spec/07-plugins/14-plugin-roadmap) | 插件路线图 |
 | [15-plugin-center.md](/zh-CN/spec/07-plugins/15-plugin-center) | 插件中心（发布侧） |
 | [16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions) | 受信任扩展（sidecar 内扩展面） |
+| [17-plugin-glossary.md](17-plugin-glossary.md) | 插件中英术语与使用边界 |
 
 ## 从契约回查代码
 

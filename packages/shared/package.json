@@ -18,6 +18,10 @@
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js"
     },
+    "./startup-animation": {
+      "types": "./dist/startup-animation.d.ts",
+      "import": "./dist/startup-animation.js"
+    },
     "./changelog-loader": {
       "types": "./dist/changelog-loader.d.ts",
       "import": "./dist/changelog-loader.js"

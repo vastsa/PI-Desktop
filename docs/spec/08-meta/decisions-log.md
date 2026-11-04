@@ -8101,3 +8101,50 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   check `pnpm test:e2e:radial-menu`, and capture scenes `pi-radial` /
   `pi-radial-dark`. See `04-ux/09-interaction-patterns.md` §1.11 and
   E2E-CHAT-radial-background-menu.
+
+## 2026-11-03 — User-supplied startup animation (D679)
+
+- D679 lets a user own the boot surface. A video in `<dataDir>/startup/`
+  replaces the brand splash for that launch: it plays to its last frame, holds
+  the window under the same opaque black it played on until the shell has its
+  initial state, then fades that black out over 1000ms
+  (`--motion-startup-reveal`, the one duration outside the motion ramp). The
+  mask stops taking input when the fade starts, so the shell and its window
+  controls are operable for the whole second.
+- Discovery is filesystem-only and creates nothing: entries are confined to
+  the directory by realpath, ranked `webm` > `mp4` > `m4v` > `mov` with file
+  name as the tie-break, and dot-prefixed, non-file, empty, or over-64 MB
+  entries drop out. An installation with no such directory is unchanged — same
+  splash, same dwell, same watchdog bounds.
+- The bytes are served over `pi-startup://animation`, a host-owned scheme with
+  one pathless URL (`standard`, `secure`, `stream`, no CORS) reserved in the
+  single `registerSchemesAsPrivileged` call; `media-src pi-startup:` is the only
+  CSP change. No filesystem path reaches the renderer. The descriptor arrives
+  as a window creation argument, like the display locale, so it is readable
+  before the first paint.
+- Three bounds keep the surface recoverable, each below the next: first frame
+  2s, whole animation 15s, and the watchdog's stalled bound 180s. `Escape`
+  skips. Every end — clean, error, timeout, skip — runs the same reveal.
+- Exactly one boot surface is mounted, ranked recovery > animation > brand
+  splash. The animation plays once per launch for the process's first window
+  (a tray or Dock reopen replays nothing; `sessionStorage` blocks a reload
+  replay), is dropped entirely under `prefers-reduced-motion: reduce`, and is
+  skipped under `PI_DESKTOP_CAPTURE=1`.
+- `AppSettings.startupAnimation` holds the two choices discovery cannot make:
+  `enabled` (absent means on) and `skipWhenReady` (absent plays it out). Both
+  are read before the window is created, so a change lands on the next launch.
+  General → Appearance gains the switch, the gated `skipWhenReady` switch, a
+  status line naming the file the next launch would play, and an action that
+  opens and creates the folder.
+- Not changed: the brand splash, its 420ms dwell and 280ms fade, the watchdog
+  bounds and recovery surface, window creation options, and plugin contracts.
+  Plugin-contributed animations are explicitly out of scope — that hands an
+  untrusted source the first paint and needs its own ADR.
+- Covered by `packages/shared/src/startup-animation.test.ts` and
+  `apps/desktop/test/startup-animation.test.mjs`. See ADR 0338,
+  `04-ux/09-interaction-patterns.md` §1.12 and E2E-076.
+- `pnpm test:e2e:startup-animation` boots the real app against a generated
+  VP9 clip and asserts what no source check can: Chromium decodes bytes served
+  over `pi-startup:` under the page CSP, playback advances, the reveal hands
+  over an interactive shell, and an unplayable file yields the shell in about a
+  second rather than holding the window.
