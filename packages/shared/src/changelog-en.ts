@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const enEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "Let the agent control desktop apps through computer use, with explicit permission grants and a visible cursor.",
+      "Launch installed apps and plugin commands from one grouped launcher, and pin frequently used apps in place.",
+      "Keep long conversations readable with folded completed activity and more reliable navigation to earlier messages.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

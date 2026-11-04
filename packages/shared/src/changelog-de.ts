@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "Lassen Sie den Agenten Desktop-Apps über die Computersteuerung mit ausdrücklicher Freigabe und sichtbarem Cursor bedienen.",
+      "Starten Sie installierte Apps und Plugin-Befehle in einem gruppierten Launcher und heften Sie häufig genutzte Apps an.",
+      "Abgeschlossene Aktivitäten einklappen und ältere Nachrichten zuverlässiger ansteuern, damit lange Gespräche übersichtlich bleiben.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

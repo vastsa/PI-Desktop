@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "명시적으로 권한을 부여하고 커서를 표시한 상태에서 에이전트가 컴퓨터 사용 기능으로 데스크톱 앱을 제어하게 하세요.",
+      "통합 그룹 런처에서 설치된 앱과 플러그인 명령을 실행하고 자주 쓰는 앱을 제자리에 고정하세요.",
+      "완료된 활동을 접고 이전 메시지 탐색을 개선해 긴 대화를 더 읽기 쉽게 유지하세요.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

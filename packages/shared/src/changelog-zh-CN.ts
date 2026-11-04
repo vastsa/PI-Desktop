@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "通过电脑操作能力让 Agent 操作桌面应用；每次控制都需明确授权，并显示可见光标。",
+      "在统一分组启动器中打开已安装应用和插件命令，并可就地固定常用应用。",
+      "折叠已完成的活动内容，并改善历史消息定位，让长对话更易浏览。",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
