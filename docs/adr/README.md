@@ -406,3 +406,4 @@ Each ADR includes:
 | 0342 | [Built-in computer use is a host-owned capability behind a user-picked scope grant](0342-os-computer-use-capability.md) | Proposed (D681; amends non-goal 9) |
 | 0340 | [Let a granted plugin reach every session, not only its imports](0340-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
 | 0343 | [The plugin launcher enumerates and opens local applications](0343-plugin-launcher-local-apps.md) | Accepted (issue #2085) |
+| 0344 | [Computer use grants the whole desktop automatically, and Stop is the boundary](0344-computer-use-whole-desktop-grant.md) | Accepted (D682; amends ADR 0342 §4 and §6) |

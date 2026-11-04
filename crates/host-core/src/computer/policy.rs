@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 
 use super::backend::{Desktop, Measured, RawTarget};
 use super::{
-    ActResult, Action, ActionKind, Basis, CaptureMode, ComputerResult, Grant, GrantState,
-    InputPolicy, Inspection, Node, Rect, Refusal, Target, TargetRefusal, MAX_ACTION_BUDGET,
-    MAX_IDLE_EXPIRY, MAX_NODES, MAX_TEXT_CHARS, MIN_IDLE_EXPIRY,
+    ActResult, Action, ActionKind, Basis, CaptureMode, ComputerResult, Grant, GrantScope,
+    GrantState, InputPolicy, Inspection, Node, Rect, Refusal, Target, TargetRefusal,
+    MAX_ACTION_BUDGET, MAX_IDLE_EXPIRY, MAX_NODES, MAX_TEXT_CHARS, MIN_IDLE_EXPIRY,
 };
 
 /// Application identifiers that may never be targeted, whatever the user
@@ -111,8 +111,10 @@ pub fn refusal_for_target(
     None
 }
 
-/// Pickable and refused targets, with reasons. Refused entries stay in the
-/// list so the picker can explain itself instead of appearing to lose windows.
+/// Usable and refused targets, with reasons. Refused entries stay in the list
+/// so a caller can explain itself instead of appearing to lose windows — the
+/// loop shows them to the model as "this one is refused", which is how a
+/// desktop grant avoids spending steps retrying a window it can never have.
 pub fn list_targets(desktop: &dyn Desktop, denylist: &Denylist) -> ComputerResult<Vec<Target>> {
     let self_pids = desktop.self_pids();
     let raw = desktop.list_targets().map_err(Refusal::from)?;
@@ -133,7 +135,9 @@ pub fn list_targets(desktop: &dyn Desktop, denylist: &Denylist) -> ComputerResul
 }
 
 pub struct GrantRequest {
-    pub target_id: String,
+    /// `None` mints a desktop-scope grant bound to the frontmost usable window
+    /// (ADR 0344); `Some` pins that one window and refuses to move.
+    pub target_id: Option<String>,
     pub session_id: String,
     pub input_policy: InputPolicy,
     pub capture: CaptureMode,
@@ -141,11 +145,52 @@ pub struct GrantRequest {
     pub idle_expiry: Duration,
 }
 
-/// Mint the single active grant from a target the user picked.
+/// Map a target refusal onto the request-level refusal that reports it.
+fn refusal_error(reason: TargetRefusal) -> Refusal {
+    match reason {
+        TargetRefusal::SelfTarget => Refusal::SelfTargetRefused,
+        TargetRefusal::Denylisted => Refusal::TargetDenylisted,
+        TargetRefusal::Elevated => Refusal::TargetElevated,
+        TargetRefusal::NoAccessibility => Refusal::OsPermissionMissing,
+    }
+}
+
+/// The label a grant shows for the window it is bound to.
+fn target_label(raw: &RawTarget) -> String {
+    if raw.title.trim().is_empty() {
+        super::truncate_label(&raw.app_name)
+    } else {
+        format!(
+            "{} — {}",
+            super::truncate_label(&raw.app_name),
+            super::truncate_label(&raw.title)
+        )
+    }
+}
+
+/// The frontmost window this module does not refuse.
 ///
-/// The caller supplies a `target_id`, never a window handle, and the handle is
-/// re-resolved from a fresh enumeration here — so a stale or invented id cannot
-/// become authority over a window that now belongs to something else.
+/// Backends enumerate front-to-back, so the first survivor is the window the
+/// user is looking at. Our own windows and the denylist drop out here, which is
+/// why "the frontmost window" can never be PI-Desktop's approval card even when
+/// that is literally what is in front.
+fn frontmost_usable(
+    desktop: &dyn Desktop,
+    self_pids: &[i32],
+    denylist: &Denylist,
+) -> ComputerResult<RawTarget> {
+    let raw = desktop.list_targets().map_err(Refusal::from)?;
+    raw.into_iter()
+        .find(|item| refusal_for_target(item, self_pids, denylist).is_none())
+        .ok_or(Refusal::ScopeViolation)
+}
+
+/// Mint the single active grant.
+///
+/// A `target_id` is re-resolved from a fresh enumeration here — never trusted
+/// as a handle — so a stale or invented id cannot become authority over a
+/// window that now belongs to something else. Without one, the grant covers the
+/// desktop and starts bound to the frontmost usable window.
 pub fn create_grant(
     desktop: &dyn Desktop,
     existing: Option<&Grant>,
@@ -159,32 +204,29 @@ pub fn create_grant(
         }
     }
     let self_pids = desktop.self_pids();
-    let raw = desktop.list_targets().map_err(Refusal::from)?;
-    let found = raw
-        .into_iter()
-        .find(|item| item.target.target_id == request.target_id)
-        .ok_or(Refusal::ScopeViolation)?;
-    match refusal_for_target(&found, &self_pids, denylist) {
-        Some(TargetRefusal::SelfTarget) => return Err(Refusal::SelfTargetRefused),
-        Some(TargetRefusal::Denylisted) => return Err(Refusal::TargetDenylisted),
-        Some(TargetRefusal::Elevated) => return Err(Refusal::TargetElevated),
-        Some(TargetRefusal::NoAccessibility) => return Err(Refusal::OsPermissionMissing),
-        None => {}
-    }
-    let label = if found.title.trim().is_empty() {
-        super::truncate_label(&found.app_name)
-    } else {
-        format!(
-            "{} — {}",
-            super::truncate_label(&found.app_name),
-            super::truncate_label(&found.title)
-        )
+    let (scope, found) = match &request.target_id {
+        Some(target_id) => {
+            let raw = desktop.list_targets().map_err(Refusal::from)?;
+            let found = raw
+                .into_iter()
+                .find(|item| &item.target.target_id == target_id)
+                .ok_or(Refusal::ScopeViolation)?;
+            if let Some(reason) = refusal_for_target(&found, &self_pids, denylist) {
+                return Err(refusal_error(reason));
+            }
+            (GrantScope::Window, found)
+        }
+        None => (
+            GrantScope::Desktop,
+            frontmost_usable(desktop, &self_pids, denylist)?,
+        ),
     };
     Ok(Grant {
         grant_id: format!("cug_{}", uuid::Uuid::new_v4().simple()),
         revision: 1,
+        scope,
+        target_label: target_label(&found),
         target: found.target,
-        target_label: label,
         bounds: found.bounds,
         input_policy: request.input_policy,
         capture: request.capture,
@@ -195,6 +237,56 @@ pub fn create_grant(
         idle_expiry: request.idle_expiry.clamp(MIN_IDLE_EXPIRY, MAX_IDLE_EXPIRY),
         state: GrantState::Active,
     })
+}
+
+/// Whether the agent may mint a grant for itself right now.
+///
+/// The grant is automatic (ADR 0344), so a user Stop that only revoked the
+/// current grant would last exactly one tool call. It therefore holds for
+/// `AGENT_REGRANT_COOLDOWN`: the agent's own retry is refused, while the user
+/// asking again — a click in the desktop UI — is never blocked.
+pub fn agent_mint_allowed(stopped_at: Option<Instant>, now: Instant) -> ComputerResult<()> {
+    match stopped_at {
+        Some(stopped) if now.duration_since(stopped) < super::AGENT_REGRANT_COOLDOWN => {
+            Err(Refusal::StoppedByUser)
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Point a desktop-scope grant at another window.
+///
+/// Every refusal runs again against a fresh enumeration, so a rebind is exactly
+/// as restricted as the original mint. The revision always moves, because every
+/// `uid` and `basis` the caller holds describes the window it is leaving.
+pub fn bind_target(
+    desktop: &dyn Desktop,
+    grant: &mut Grant,
+    denylist: &Denylist,
+    target_id: &str,
+) -> ComputerResult<()> {
+    if grant.target.target_id == target_id {
+        return Ok(());
+    }
+    if grant.scope != GrantScope::Desktop {
+        // A window grant is the window it named. Moving it would turn the one
+        // decision the caller made into a different one.
+        return Err(Refusal::ScopeViolation);
+    }
+    let self_pids = desktop.self_pids();
+    let raw = desktop.list_targets().map_err(Refusal::from)?;
+    let found = raw
+        .into_iter()
+        .find(|item| item.target.target_id == target_id)
+        .ok_or(Refusal::ScopeViolation)?;
+    if let Some(reason) = refusal_for_target(&found, &self_pids, denylist) {
+        return Err(refusal_error(reason));
+    }
+    grant.revision = grant.revision.saturating_add(1);
+    grant.target_label = target_label(&found);
+    grant.target = found.target;
+    grant.bounds = found.bounds;
+    Ok(())
 }
 
 /// The grant a request may use, or the reason it may not.
@@ -223,38 +315,76 @@ pub fn usable_grant<'a>(
     Ok(grant)
 }
 
-/// Re-measure the target and fold the result into the grant.
+/// Re-measure the bound window and fold the result into the grant.
 ///
 /// A window that moved or changed identity bumps the revision, which
 /// invalidates every `uid` and `basis` the caller is holding. A window that is
-/// gone is a scope violation: there is nothing left that the grant describes.
-fn refresh(desktop: &dyn Desktop, grant: &mut Grant) -> ComputerResult<Measured> {
-    let measured = desktop.measure(&grant.target).map_err(Refusal::from)?;
-    let moved = !grant.bounds.matches(&measured.bounds);
-    let reidentified = measured.app_key != grant.target.app_key;
-    if reidentified {
-        // The handle now belongs to a different application. Nothing about
-        // this grant still describes what the user picked.
-        grant.state = GrantState::Revoked;
-        return Err(Refusal::ScopeViolation);
-    }
-    if moved {
+/// gone ends a window-scope grant — there is nothing left that it describes —
+/// while a desktop-scope grant falls back to the frontmost usable window,
+/// through the same refusals, with the revision moved.
+fn refresh(
+    desktop: &dyn Desktop,
+    grant: &mut Grant,
+    denylist: &Denylist,
+) -> ComputerResult<Refreshed> {
+    let measured = match desktop.measure(&grant.target) {
+        Ok(measured) if measured.app_key == grant.target.app_key => measured,
+        other => {
+            // Either the window is gone, or its handle now belongs to a
+            // different application: in both cases nothing the caller holds
+            // still describes this window.
+            if grant.scope != GrantScope::Desktop {
+                grant.state = GrantState::Revoked;
+                return Err(other
+                    .err()
+                    .map(Refusal::from)
+                    .unwrap_or(Refusal::ScopeViolation));
+            }
+            let self_pids = desktop.self_pids();
+            let found = frontmost_usable(desktop, &self_pids, denylist)?;
+            grant.revision = grant.revision.saturating_add(1);
+            grant.target_label = target_label(&found);
+            grant.bounds = found.bounds;
+            let measured = Measured {
+                bounds: found.bounds,
+                app_key: found.target.app_key.clone(),
+                title: found.title.clone(),
+            };
+            grant.target = found.target;
+            return Ok(Refreshed {
+                measured,
+                rebound: true,
+            });
+        }
+    };
+    if !grant.bounds.matches(&measured.bounds) {
         grant.revision = grant.revision.saturating_add(1);
         grant.bounds = measured.bounds;
     }
-    Ok(measured)
+    Ok(Refreshed {
+        measured,
+        rebound: false,
+    })
+}
+
+/// What a re-measurement did. `rebound` means the grant is now describing a
+/// different window than the caller's request was built against.
+struct Refreshed {
+    measured: Measured,
+    rebound: bool,
 }
 
 pub fn inspect(
     desktop: &dyn Desktop,
     grant: &mut Grant,
+    denylist: &Denylist,
     expected_revision: Option<u32>,
     now: Instant,
 ) -> ComputerResult<Inspection> {
     if desktop.secure_input_active() {
         return Err(Refusal::SecureInputRefused);
     }
-    refresh(desktop, grant)?;
+    refresh(desktop, grant, denylist)?;
     if let Some(expected) = expected_revision {
         if expected != grant.revision {
             return Err(Refusal::StaleRevision);
@@ -386,9 +516,16 @@ fn validate_basis(grant: &Grant, basis: &Basis, measured_bounds: &Rect) -> Compu
     Ok(())
 }
 
+/// Dispatch one action against the window the grant is bound to.
+///
+/// `act` never chooses a window: binding is `bind_target`'s job and happens on
+/// an inspection. If the bound window vanished, the fallback inside `refresh`
+/// moves the revision, so an action aimed at the old window fails closed
+/// instead of landing on whatever is in front now.
 pub fn act(
     desktop: &dyn Desktop,
     grant: &mut Grant,
+    denylist: &Denylist,
     expected_revision: Option<u32>,
     action: &Action,
     now: Instant,
@@ -396,7 +533,14 @@ pub fn act(
     if desktop.secure_input_active() {
         return Err(Refusal::SecureInputRefused);
     }
-    let measured = refresh(desktop, grant)?;
+    let refreshed = refresh(desktop, grant, denylist)?;
+    if refreshed.rebound {
+        // A desktop grant whose window closed now describes another one. The
+        // action was aimed at the window that is gone, so it is refused even if
+        // the caller pinned no revision at all.
+        return Err(Refusal::StaleRevision);
+    }
+    let measured = refreshed.measured;
     if let Some(expected) = expected_revision {
         if expected != grant.revision {
             return Err(Refusal::StaleRevision);

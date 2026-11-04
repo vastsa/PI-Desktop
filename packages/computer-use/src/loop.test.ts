@@ -8,11 +8,12 @@ function grant(overrides: Partial<ComputerGrantView> = {}): ComputerGrantView {
   return {
     grantId: "cug_1",
     revision: 3,
+    scope: "desktop",
     targetId: "77:12",
     targetLabel: "Example — Document",
     appKey: "example",
     bounds: { x: 100, y: 100, width: 800, height: 600 },
-    inputPolicy: "confirm-each",
+    inputPolicy: "autonomous-in-scope",
     capture: "a11y-only",
     remainingBudget: 10,
     sessionId: "session-1",
@@ -209,6 +210,81 @@ describe("runComputerLoop", () => {
     const move = h.cursor.find((event) => event.kind === "move");
     // The drawn point is the element's centre, in screen coordinates.
     expect(move).toMatchObject({ x: 190, y: 212 });
+  });
+
+  it("switches to another window without spending an action", async () => {
+    const asked: (string | undefined)[] = [];
+    const cursor: ComputerCursorEvent[] = [];
+    const answers = ['{"kind":"switch","window":"88:4","note":"the task is over there"}', '{"kind":"done","summary":"read it"}'];
+    let decisions = 0;
+    const deps: ComputerLoopDeps = {
+      observe: async (targetId) => {
+        asked.push(targetId);
+        return observation([saveButton], {
+          grant: grant(
+            targetId
+              ? { targetId, targetLabel: "Other — Inbox", revision: 4, bounds: { x: 0, y: 0, width: 400, height: 300 } }
+              : {},
+          ),
+          windows: [
+            { targetId: "77:12", appName: "Example", title: "Document", appKey: "example", bounds: grant().bounds },
+            { targetId: "88:4", appName: "Other", title: "Inbox", appKey: "other", bounds: grant().bounds },
+          ],
+        });
+      },
+      act: async () => {
+        throw new Error("must not act");
+      },
+      decide: async () => answers[Math.min(decisions++, answers.length - 1)],
+      onCursor: (event) => cursor.push(event),
+    };
+    const result = await runComputerLoop({ instruction: "read the inbox" }, deps);
+    expect(result.outcome).toBe("done");
+    expect(asked).toEqual([undefined, "88:4"]);
+    expect(result.steps[0]).toMatchObject({ action: "switch", ok: true, target: "Other — Inbox" });
+    // A switch is a read: it must not read as work done on the machine.
+    expect(result.summary).toContain("No action was dispatched.");
+    // The overlay follows the window being worked on.
+    expect(cursor.filter((event) => event.kind === "show")).toHaveLength(2);
+  });
+
+  it("reports a refused window and keeps the remaining steps", async () => {
+    const answers = ['{"kind":"switch","window":"self"}', '{"kind":"done","summary":"left it alone"}'];
+    let decisions = 0;
+    const deps: ComputerLoopDeps = {
+      observe: async (targetId) => {
+        if (targetId) throw coded("COMPUTER_SELF_TARGET_REFUSED");
+        return observation();
+      },
+      act: async () => {
+        throw new Error("must not act");
+      },
+      decide: async () => answers[Math.min(decisions++, answers.length - 1)],
+    };
+    const result = await runComputerLoop({ instruction: "click PI-Desktop's own approve button" }, deps);
+    // The refusal is the model's problem to work around, not a failed run.
+    expect(result.outcome).toBe("done");
+    expect(result.steps[0]).toMatchObject({
+      action: "switch",
+      ok: false,
+      errorCode: "COMPUTER_SELF_TARGET_REFUSED",
+    });
+  });
+
+  it("stops when the grant dies during a switch", async () => {
+    const deps: ComputerLoopDeps = {
+      observe: async (targetId) => {
+        if (targetId) throw coded("COMPUTER_GRANT_EXPIRED");
+        return observation();
+      },
+      act: async () => {
+        throw new Error("must not act");
+      },
+      decide: async () => '{"kind":"switch","window":"88:4"}',
+    };
+    const result = await runComputerLoop({ instruction: "look at the other window", maxSteps: 5 }, deps);
+    expect(result.outcome).toBe("expired");
+    expect(result.errorCode).toBe("COMPUTER_GRANT_EXPIRED");
   });
 
   it("hides the cursor even when the loop throws", async () => {
