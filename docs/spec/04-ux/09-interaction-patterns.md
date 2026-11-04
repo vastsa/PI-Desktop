@@ -363,6 +363,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   transcript on the same frame rather than waiting for `session.get`. The
   durable row is inserted from the `session.create` summary; send and paste wait
   for that in-flight create instead of opening a second slot (ADR 0154).
+  Concurrent first-input materializations share the same project-scoped
+  creation result, including cancellation and failure. A first send does not
+  supersede an in-flight New Task's navigation intent or adopt an unrelated
+  session selected while waiting. A failed create releases the slot for retry.
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
   activation no longer resets manual-scroll state for a revisit (ADR 0137).

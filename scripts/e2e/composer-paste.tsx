@@ -5,6 +5,7 @@ import { createQueueSlice } from "../../apps/desktop/src/stores/slices/queue-sli
 import type { SessionRuntime } from "../../apps/desktop/src/stores/runtime/session-runtime";
 import { useComposerSubmit } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerSubmit";
 import { verifyComposerSubmission } from "./composer-submission";
+import "./composer-draft-race";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
