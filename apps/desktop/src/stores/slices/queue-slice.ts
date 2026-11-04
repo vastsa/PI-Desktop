@@ -371,8 +371,7 @@ export function createQueueSlice({
           return false;
         }
         if (!sessionId) {
-          const intent = runtime.beginNavigationIntent();
-          const createdId = await materializeDraftSession(intent);
+          const createdId = await materializeDraftSession();
           if (!createdId) return false;
           sessionId = createdId;
           const key = `session:${createdId}`;

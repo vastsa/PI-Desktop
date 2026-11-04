@@ -24,7 +24,7 @@ try {
     platform: "browser",
     format: "iife",
     jsx: "automatic",
-    loader: { ".woff": "file", ".woff2": "file", ".ttf": "file" },
+    loader: { ".woff": "file", ".woff2": "file", ".ttf": "file", ".png": "dataurl" },
     define: {
       "import.meta.env.DEV": "false",
       "process.env.NODE_ENV": '"production"',
@@ -147,6 +147,68 @@ ipcMain.handle("pi-desktop/clipboard/recordPaste", (_event, input) => {
   return { ok: true, data: null };
 });
 app.whenReady().then(async () => {
+  if (process.argv.includes("--draft-race")) {
+    app.on("window-all-closed", () => {});
+    const timestamp = "2026-01-01T00:00:00Z";
+    const existing = {
+      id: "existing", title: "Existing task", source: "desktop", mode: "agent", permissionMode: "inherit",
+      thinkingLevel: "off", providerId: "fixture", modelId: "fixture-model", messageCount: 1,
+      createdAt: timestamp, updatedAt: timestamp,
+    };
+    const created = { ...existing, id: "created", title: "New task", messageCount: 0 };
+    const ok = data => ({ ok: true, data });
+    let gate;
+    let started;
+    let creates;
+    let prompts;
+    ipcMain.handle("pi-desktop/session/create", async () => {
+      creates++;
+      started.resolve();
+      await gate.promise;
+      return ok({ session: created });
+    });
+    ipcMain.handle("pi-desktop/session/get", () => ok({
+      session: { ...existing, messages: [{ id: "old", role: "user", content: "Existing message", createdAt: timestamp }] },
+    }));
+    ipcMain.handle("pi-desktop/agent/prompt", (_event, input) => {
+      prompts.push({ id: input.sessionId, content: input.content });
+      return ok({});
+    });
+    try {
+      for (const scenario of ["send", "paste", "cancel-send", "cancel-paste"]) {
+        gate = Promise.withResolvers();
+        started = Promise.withResolvers();
+        creates = 0;
+        prompts = [];
+        saved.length = 0;
+        const window = new BrowserWindow({ show: false, webPreferences: {
+          preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
+          sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
+        } });
+        window.webContents.on("console-message", (event) => console.error(event.message));
+        await window.loadFile(path.join(__dirname, "index.html"));
+        await window.webContents.executeJavaScript("globalThis.startComposerDraftRace(" + JSON.stringify(scenario) + "," + JSON.stringify(existing) + ")");
+        await started.promise;
+        assert.equal(creates, 1, scenario + ": exactly one create must be pending");
+        assert.equal(prompts.length + saved.length, 0, scenario + ": input must wait for creation");
+        gate.resolve();
+        const result = await window.webContents.executeJavaScript("globalThis.finishComposerDraftRace()");
+        assert.equal(creates, 1, scenario + ": no second session create");
+        assert.deepEqual(result.rows.sort(), ["created", "existing"], scenario + ": exactly one new sidebar row");
+        assert.equal(result.selected, scenario.startsWith("cancel") ? "existing" : "created");
+        assert.equal(result.attachment, scenario === "paste");
+        assert.deepEqual(saved.map(entry => entry.sessionId), scenario === "paste" ? ["created"] : []);
+        assert.deepEqual(prompts, scenario === "send" ? [{ id: "created", content: "First message while creation is pending" }] : []);
+        window.destroy();
+        console.log("COMPOSER_DRAFT_RACE " + scenario + " passed");
+      }
+      app.exit(0);
+    } catch (error) {
+      console.error(error.stack || error);
+      app.exit(1);
+    }
+    return;
+  }
   if (process.argv.includes("--history-check")) {
     try {
       const window = new BrowserWindow({ show: false, webPreferences: {
@@ -274,6 +336,12 @@ app.whenReady().then(async () => {
     }
     return { code, output };
   };
+  const draftRace = await runElectron(["--draft-race"]);
+  assert.equal(draftRace.code, 0, draftRace.output.slice(-6000));
+  const draftCases = draftRace.output.split(/\r?\n/).filter((line) => line.startsWith("COMPOSER_DRAFT_RACE "));
+  assert.equal(draftCases.length, 4, draftRace.output.slice(-6000));
+  console.log(draftCases.join("\n"));
+
   const firstRun = await runElectron();
   const pasteLine = firstRun.output
     .split(/\r?\n/)
