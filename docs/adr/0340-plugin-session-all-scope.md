@@ -1,4 +1,4 @@
-# ADR 0339: Let a granted plugin reach every session, not only its imports
+# ADR 0340: Let a granted plugin reach every session, not only its imports
 
 - Status: Accepted
 - Date: 2026-10-20
