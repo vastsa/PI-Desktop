@@ -19589,10 +19589,11 @@ their separate platform acceptance.
 
 ## Computer use (ADR 0340)
 
-These scenarios are specified before implementation. Every one of them is a
-landing gate for the capability described in
-[03-runtime/computer-use](../03-runtime/computer-use.md); none is implemented
-yet, and all are `NOT RUN`.
+Every one of these is a landing gate for the capability described in
+[03-runtime/computer-use](../03-runtime/computer-use.md). Stage 1 is
+implemented, so the refusals each scenario depends on are covered by unit
+tests; the scenarios themselves drive a real application and are all
+`NOT RUN`. Automation that does exist is named per scenario.
 
 ### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
 
@@ -19612,7 +19613,13 @@ yet, and all are `NOT RUN`.
   their own codes, and no grant survives a restart.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [03-tools-and-permissions](../03-runtime/03-tools-and-permissions.md).
-- **Status**: NOT RUN — capability not implemented.
+- **Automation**: `computer::tests::only_one_grant_is_active_per_instance`,
+  `another_session_cannot_use_the_active_grant`,
+  `an_idle_grant_expires_and_stays_expired`, and
+  `the_budget_closes_the_grant_and_refuses_the_next_action` in host-core;
+  `apps/desktop/test/computer-use-service.test.mjs` covers the no-grant and
+  wrong-session refusals the agent would hit.
+- **Status**: NOT RUN — needs a real window and the picker.
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -19631,7 +19638,11 @@ yet, and all are `NOT RUN`.
   image, tool result, or log. The built-in denylist entry cannot be removed.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [05-security/01-security](../05-security/01-security.md) §13.
-- **Status**: NOT RUN — capability not implemented.
+- **Automation**: `computer::tests::our_own_windows_are_never_pickable`,
+  `a_renamed_self_process_is_still_refused`,
+  `built_in_credential_surfaces_cannot_be_allowlisted`, and
+  `secure_input_refuses_both_inspection_and_action` in host-core.
+- **Status**: NOT RUN — needs a real approval card and a real password field.
 
 ### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
 
@@ -19647,7 +19658,11 @@ yet, and all are `NOT RUN`.
   target application observes no input.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [08-error-codes](../03-runtime/08-error-codes.md) §3.10.
-- **Status**: NOT RUN — capability not implemented.
+- **Automation**: `computer::tests::a_moved_window_bumps_the_revision_and_invalidates_a_basis`,
+  `a_resized_window_with_the_same_revision_still_refuses_a_stale_basis`,
+  `coordinates_outside_the_measured_window_are_refused_not_clamped`, and
+  `a_coordinate_action_without_a_basis_is_refused` in host-core.
+- **Status**: NOT RUN — needs a real window that moves mid-step.
 
 ### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
 
@@ -19666,7 +19681,9 @@ yet, and all are `NOT RUN`.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md),
   [live-voice](../03-runtime/live-voice.md),
   [live-work-session](../03-runtime/live-work-session.md).
-- **Status**: NOT RUN — capability not implemented.
+- **Automation**: none. The spoken path is stage 3 and is deliberately not
+  wired, so there is nothing to drive yet.
+- **Status**: NOT RUN — stage 3.
 
 ### E2E-COMPUTER-USE-platform-support-is-explicit
 
@@ -19683,4 +19700,6 @@ yet, and all are `NOT RUN`.
   denied OS permission fails `COMPUTER_OS_PERMISSION_MISSING`. No path hangs and
   none reports success without acting.
 - **Specs**: [Computer Use](../03-runtime/computer-use.md).
-- **Status**: NOT RUN — capability not implemented.
+- **Automation**: `computer::tests::an_unsupported_platform_refuses_every_operation`
+  in host-core covers the fallback backend every unported platform uses.
+- **Status**: NOT RUN — needs one run per platform, including Wayland.

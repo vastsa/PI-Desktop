@@ -5770,5 +5770,12 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   模型自行选择目标，仍然是非目标。
 - 契约页面：`03-runtime/computer-use.md`、`08-error-codes.md` §3.10
   （`COMPUTER_*`）、`05-host-core-rust.md` §2/§5b/§6、
-  `05-security/01-security.md` §13、`03-tools-and-permissions.md` §0/§2/§6，
-  以及五条 `E2E-COMPUTER-USE-*` 落地闸门，在阶段 1 落地前全部为 `NOT RUN`。
+  `05-security/01-security.md` §13、`03-tools-and-permissions.md` §0/§2/§6。
+- 阶段 1 随本决定一起交付：`packages/shared/src/computer-use.ts`、
+  `crates/host-core/src/computer/`（含 macOS 后端与 `rpc/computer_rpc.rs`）、
+  `packages/computer-use/`、`apps/desktop/electron/main/computer-use/`，以及
+  Renderer 中的挑选器、指示器、设置卡片与绘制光标。覆盖来自 host-core 的
+  `computer::` 测试、`packages/computer-use` 单测、shared 校验器，以及
+  `apps/desktop/test/computer-use-service.test.mjs`。尚未驱动任何真实应用，
+  五条 `E2E-COMPUTER-USE-*` 闸门仍为 `NOT RUN`，详见
+  `docs/implementation/computer-use-evidence.md`。

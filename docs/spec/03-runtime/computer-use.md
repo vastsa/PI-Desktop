@@ -1,9 +1,13 @@
 # Computer Use v1
 
-> Status: Stage 1 (MVP) in progress. This page is the authoritative contract
-> for the capability described in
+> Status: Stage 1 implemented, device-unverified. This page is the
+> authoritative contract for the capability described in
 > [ADR 0340](../../adr/0340-os-computer-use-capability.md). The agent is the
 > only caller; the spoken entry point is specified here and built in stage 3.
+> The refusals, the loop, and the tool's own paths are unit-covered; no real
+> application has been driven, and Windows and Linux report
+> `COMPUTER_PLATFORM_UNSUPPORTED` until stage 2. See
+> [computer-use evidence](../../implementation/computer-use-evidence.md).
 
 ## Scope
 

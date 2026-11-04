@@ -1,4 +1,4 @@
-import { IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
+import { IPC, type AgentEventEnvelope, type ComputerGrantView, type UiMessage } from "@pi-desktop/shared";
 import {
   findSubagentProviderSource,
   modelConfigWithBinding,
@@ -12,6 +12,9 @@ import {
   loadBuiltinSkillBody,
 } from "../builtin-skills";
 import { createImageGenerationTool } from "../services/image-generation-service";
+import { createComputerUseTool } from "../computer-use/service";
+import { resolveComputerUseProvider } from "../computer-use/provider";
+import type { ComputerCursorOverlay } from "../computer-use/cursor-overlay";
 import { registerPluginDevTools } from "../plugin-dev-tools";
 import { resolveLocalFile } from "../browser-view";
 import { catalogModelConfigFor } from "../models-dev-catalog";
@@ -66,6 +69,10 @@ export type SidecarRuntimeDependencies = {
   disabledBuiltinSkills: () => Promise<string[]>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   currentNetworkProxy: () => any;
+  /** The agent's drawn cursor. Visualization only (ADR 0340 §10). */
+  computerCursorOverlay: Pick<ComputerCursorOverlay, "apply">;
+  /** Push the live computer-use grant to the renderer's indicator. */
+  publishComputerGrant: (grant: ComputerGrantView | null) => void;
 };
 
 export function createSidecarRuntime({
@@ -97,6 +104,8 @@ export function createSidecarRuntime({
   disabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
+  computerCursorOverlay,
+  publishComputerGrant,
 }: SidecarRuntimeDependencies): {
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
   wireSidecar: (sidecar: AgentSidecar) => void;
@@ -569,6 +578,23 @@ export function createSidecarRuntime({
     },
     // Fake-IP tolerance belongs to the network policy, not to the proxy switch.
     allowFakeIp: () => relaxedNetworkPolicyEnabled(),
+  }));
+  // Granted native application control (ADR 0340). The host authorises the
+  // call through `tools.execute` before this handler runs, and the loop here
+  // holds no grant of its own: it re-reads the live one on every observation.
+  s.setLocalTool("Computer", createComputerUseTool({
+    getHost: () => runtimeState.host,
+    overlay: computerCursorOverlay,
+    resolveProvider: async (binding) => {
+      if (!runtimeState.host) return null;
+      return resolveComputerUseProvider({
+        host: runtimeState.host,
+        binding,
+        resolveAuth: providerId => vendorOAuth.resolveAuth(providerId),
+      });
+    },
+    onGrant: grant => publishComputerGrant(grant),
+    log: (message, data) => logger.app("runtime", "warn", message, data),
   }));
   s.setLocalTool("BrowserPreview", async ({ args, sessionId }) => {
     const raw = String((args as { path?: unknown })?.path ?? "").trim();

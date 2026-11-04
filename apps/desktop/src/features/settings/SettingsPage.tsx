@@ -52,6 +52,7 @@ import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
 import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
 import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
 import { VoiceSettingsSection } from "./voice/VoiceSettingsSection";
+import { ComputerUseSettings } from "./computer-use/ComputerUseSettings";
 import {
   CommandShellRow,
   ContextUsageDisplayRow,
@@ -527,6 +528,7 @@ export function SettingsPage() {
 
           {tab === "ai" && settings && (
             <div className="settings-stack">
+              <ComputerUseSettings t={t} settings={settings} saveSettings={saveSettings} />
               <SettingsCard title={t("settings.permissions")}>
                 <SettingsRow
                   title={t("settings.permissionMode")}

@@ -244,6 +244,9 @@ importers:
       '@pi-desktop/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@pi-desktop/computer-use':
+        specifier: workspace:*
+        version: link:../../packages/computer-use
       '@pi-desktop/host-runtime':
         specifier: workspace:*
         version: link:../../packages/host-runtime

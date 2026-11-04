@@ -745,6 +745,11 @@ export function createSessionLaunchRuntime({
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
         ...(jevApiKey ? { jevApiKey } : {}),
+        // A disabled feature is absent from the prompt rather than advertised
+        // and refused on every call (ADR 0340 §13).
+        ...(mode === "agent" && settings.computerUse?.enabled === true
+          ? { computerUseEnabled: true }
+          : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         // Remote-host tools write on that host; Main can only serve local files.

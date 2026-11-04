@@ -18,6 +18,7 @@ import { searchMcpMarket } from "../mcp-registry-catalog";
 import { registerNotificationIpc } from "./notification-ipc";
 import { registerPluginIpc } from "./plugin-ipc";
 import { registerPluginUiIpc } from "./plugin-ui-ipc";
+import { registerComputerIpc } from "./computer-ipc";
 import { registerJevIpc } from "./jev-ipc";
 import { registerProviderIpc } from "./provider-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
@@ -49,6 +50,8 @@ export type RegisterIpcDependencies = {
   ipcMain: IpcMain;
   getMainWindow: () => BrowserWindow | null;
   getHost: () => HostProcess | null;
+  /** Push the live computer-use grant to the renderer's indicator. */
+  publishComputerGrant: (grant: import("@pi-desktop/shared").ComputerGrantView | null) => void;
   traySessions: ReturnType<typeof createTraySessions>;
   taskbarUnreadBadge: ReturnType<typeof createTaskbarUnreadBadge>;
   getSidecar: () => AgentSidecar | null;
@@ -100,6 +103,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     ipcMain,
     getMainWindow,
     getHost,
+    publishComputerGrant,
     getSidecar,
     getAgentHostBridge,
     getBackendRouter,
@@ -333,6 +337,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
   registerJevIpc({ registrar, logger });
+  registerComputerIpc({ registrar, getHost, publishGrant: publishComputerGrant });
   registerWorktreeIpc({
     registrar,
     getHost,

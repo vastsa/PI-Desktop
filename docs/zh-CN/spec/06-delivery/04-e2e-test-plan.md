@@ -10162,9 +10162,9 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 
 ## 电脑操作（ADR 0340）
 
-以下场景在实现之前先行确定。每一条都是
-[03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
-所述能力的落地闸门；目前全部未实现，状态均为 `NOT RUN`。
+每一条都是 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
+所述能力的落地闸门。阶段 1 已实现，因此每条场景依赖的拒绝逻辑都有单测覆盖；
+场景本身需要驱动真实应用，状态仍全部为 `NOT RUN`。已有的自动化按场景列出。
 
 ### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
 
@@ -10179,7 +10179,7 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   自己的错误码关闭授权，且没有授权能活过重启。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [03-tools-and-permissions](/zh-CN/spec/03-runtime/03-tools-and-permissions)。
-- **状态**：NOT RUN —— 能力尚未实现。
+- **状态**：NOT RUN —— 需要真机运行。
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -10195,7 +10195,7 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   工具结果或日志中。内置拒绝名单条目无法移除。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [05-security/01-security](/zh-CN/spec/05-security/01-security) §13。
-- **状态**：NOT RUN —— 能力尚未实现。
+- **状态**：NOT RUN —— 需要真机运行。
 
 ### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
 
@@ -10209,7 +10209,7 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   派发事件，不静默夹取，目标应用观察不到任何输入。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [08-error-codes](/zh-CN/spec/03-runtime/08-error-codes) §3.10。
-- **状态**：NOT RUN —— 能力尚未实现。
+- **状态**：NOT RUN —— 需要真机运行。
 
 ### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
 
@@ -10224,7 +10224,7 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [live-voice](/zh-CN/spec/03-runtime/live-voice)、
   [live-work-session](/zh-CN/spec/03-runtime/live-work-session)。
-- **状态**：NOT RUN —— 能力尚未实现。
+- **状态**：NOT RUN —— 需要真机运行。
 
 ### E2E-COMPUTER-USE-platform-support-is-explicit
 
@@ -10239,4 +10239,4 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   `COMPUTER_OS_PERMISSION_MISSING` 失败。没有路径挂起，也没有路径在未动作的情况下
   回报成功。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)。
-- **状态**：NOT RUN —— 能力尚未实现。
+- **状态**：NOT RUN —— 需要真机运行。

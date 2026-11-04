@@ -12,6 +12,7 @@
  * a refusal here is final for that step.
  */
 import {
+  COMPUTER_MAX_STEPS_LIMIT,
   COMPUTER_USE_DEFAULTS,
   type ComputerAction,
   type ComputerActResult,
@@ -127,7 +128,12 @@ export async function runComputerLoop(
   deps: ComputerLoopDeps,
 ): Promise<ComputerRunResult> {
   const steps: ComputerStepRecord[] = [];
-  const maxSteps = Math.max(1, Math.min(input.maxSteps ?? COMPUTER_USE_DEFAULTS.maxStepsPerCall, COMPUTER_USE_DEFAULTS.maxStepsPerCall * 4));
+  // The caller's own ceiling, clamped by the shared limit. The grant's action
+  // budget is enforced by the host and can cut a run shorter than this.
+  const maxSteps = Math.max(
+    1,
+    Math.min(input.maxSteps ?? COMPUTER_USE_DEFAULTS.maxStepsPerCall, COMPUTER_MAX_STEPS_LIMIT),
+  );
   let invalidAnswers = 0;
   let lastRefusal: string | undefined;
   let repeatedRefusals = 0;

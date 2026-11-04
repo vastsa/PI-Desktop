@@ -55,6 +55,11 @@ export const COMPUTER_USE_DEFAULTS = {
 };
 
 export const COMPUTER_ACTION_BUDGET_LIMIT = 200;
+/**
+ * Ceiling on one `Computer` call. The loop makes a model request per step, so
+ * the default RPC timeout would cut a legitimate multi-step task short.
+ */
+export const COMPUTER_CALL_TIMEOUT_MS = 10 * 60_000;
 export const COMPUTER_MAX_STEPS_LIMIT = 40;
 /** Bound on the tree a single `inspect` returns, so one call cannot flood. */
 export const COMPUTER_MAX_NODES = 400;

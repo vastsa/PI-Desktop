@@ -22,6 +22,7 @@ import {
   type ActivationScope,
   type AgentEventEnvelope,
   type CloseBehavior,
+  type ComputerGrantView,
   type KeybindingOverrides,
   type PlanExecutionFinishStatus,
 } from "@pi-desktop/shared";
@@ -61,6 +62,7 @@ import { MainProcessState } from "./bootstrap/main-state";
 import { registerApplicationActivation } from "./bootstrap/app-activation";
 import { createHostRuntime } from "./runtime/host";
 import { createSidecarRuntime } from "./runtime/sidecar";
+import { createComputerCursorOverlay } from "./computer-use/cursor-overlay";
 import { createEventPersistence } from "./runtime/event-persistence";
 import { createPlanRuntime } from "./runtime/plans";
 import { createRuntimeLifecycle } from "./runtime/lifecycle";
@@ -754,6 +756,21 @@ const eventPersistence = createEventPersistence({
 });
 const { persistAgentEvent } = eventPersistence;
 
+/**
+ * The agent's drawn cursor and the indicator feed (ADR 0340 §10).
+ *
+ * The overlay is created lazily by its own module on the first draw command,
+ * and it closes with the grant: a window that outlived the authority it was
+ * drawn for would tell the user an action is still possible when it is not.
+ */
+const computerCursorOverlay = createComputerCursorOverlay({
+  log: (message, data) => logger.app("runtime", "warn", message, data),
+});
+function publishComputerGrant(grant: ComputerGrantView | null): void {
+  sendToRenderer(IPC.event.computerGrantChanged, { grant });
+  if (!grant || grant.state !== "active") computerCursorOverlay.close();
+}
+
 const sidecarRuntime = createSidecarRuntime({
   runtimeState,
   steeringReplies,
@@ -785,6 +802,8 @@ const sidecarRuntime = createSidecarRuntime({
   disabledBuiltinSkills: runtimeDisabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
+  computerCursorOverlay,
+  publishComputerGrant,
 });
 emitAgentEvent = sidecarRuntime.emitAgentEvent;
 const { startSidecar } = sidecarRuntime;
@@ -886,6 +905,7 @@ function registerIpc() {
     ipcMain,
     getMainWindow,
     getHost,
+    publishComputerGrant,
     getSidecar,
     getAgentHostBridge: () => mainState.agentHostBridge,
     getBackendRouter: () => startupState.backendRouter,

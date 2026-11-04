@@ -8258,6 +8258,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   full-desktop control, and any model-chosen target remain non-goals.
 - Contract pages: `03-runtime/computer-use.md`, `08-error-codes.md` §3.10
   (`COMPUTER_*`), `05-host-core-rust.md` §2/§5b/§6,
-  `05-security/01-security.md` §13, `03-tools-and-permissions.md` §0/§2/§6, and
-  the five `E2E-COMPUTER-USE-*` landing gates, all `NOT RUN` until stage 1
-  lands.
+  `05-security/01-security.md` §13, and `03-tools-and-permissions.md` §0/§2/§6.
+- Stage 1 shipped with the decision: `packages/shared/src/computer-use.ts`,
+  `crates/host-core/src/computer/` with the macOS backend and
+  `rpc/computer_rpc.rs`, `packages/computer-use/`,
+  `apps/desktop/electron/main/computer-use/`, and the picker, indicator,
+  settings card, and drawn cursor in the renderer. Covered by the host-core
+  `computer::` tests, `packages/computer-use` unit tests, the shared
+  validators, and `apps/desktop/test/computer-use-service.test.mjs`. No real
+  application was driven and the five `E2E-COMPUTER-USE-*` gates remain
+  `NOT RUN`; see `docs/implementation/computer-use-evidence.md`.
