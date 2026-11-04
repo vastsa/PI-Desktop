@@ -1,3 +1,4 @@
+mod computer_rpc;
 mod config_sync_rpc;
 mod file_batches;
 mod gen_ui;
@@ -1965,6 +1966,10 @@ async fn handle_request(
 
     if method.starts_with("tools.fileBatch") {
         return file_batches::handle(state, method, params).await;
+    }
+
+    if method.starts_with("computer.") {
+        return computer_rpc::handle(state, method, params).await;
     }
 
     match method {

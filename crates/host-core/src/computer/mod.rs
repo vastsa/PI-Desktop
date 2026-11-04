@@ -14,7 +14,7 @@
 pub mod backend;
 #[cfg(target_os = "macos")]
 mod macos;
-mod policy;
+pub mod policy;
 #[cfg(test)]
 mod tests;
 

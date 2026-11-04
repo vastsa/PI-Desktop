@@ -634,30 +634,6 @@ fn an_unsupported_platform_refuses_every_operation() {
 }
 
 #[test]
-fn the_cursor_point_is_visualization_only() {
-    let desktop = FakeDesktop::new(vec![target(5, "com.example.app", "Example", "w1")]);
-    let grant = grant_for(&desktop, "w1");
-    // Element bounds win, because that is where the action actually lands.
-    let from_node = policy::cursor_point(
-        &grant,
-        &click_uid("0.1"),
-        Some(rect(10.0, 20.0, 100.0, 40.0)),
-    );
-    assert_eq!(from_node, Some(Point { x: 60.0, y: 40.0 }));
-    // A coordinate action draws at the window-relative point, offset to screen.
-    let action = Action {
-        kind: Some(ActionKind::Click),
-        point: Some(Point { x: 5.0, y: 6.0 }),
-        ..Action::default()
-    };
-    let from_point = policy::cursor_point(&grant, &action, None).expect("point");
-    assert_eq!(from_point.x, grant.bounds.x + 5.0);
-    assert_eq!(from_point.y, grant.bounds.y + 6.0);
-    // Neither: nothing to draw, and that is not an error.
-    assert_eq!(policy::cursor_point(&grant, &Action::default(), None), None);
-}
-
-#[test]
 fn a_grant_view_reports_expiry_without_persisting_it() {
     let desktop = FakeDesktop::new(vec![target(5, "com.example.app", "Example", "w1")]);
     let grant = grant_for(&desktop, "w1");

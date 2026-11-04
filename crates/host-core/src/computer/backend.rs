@@ -42,6 +42,10 @@ pub struct RawTarget {
 pub struct Measured {
     pub bounds: Rect,
     pub app_key: String,
+    /// Live window title. Read by the backends that refresh a grant label; a
+    /// title change alone never bumps the revision, because a document rename
+    /// is not a different window.
+    #[allow(dead_code)]
     pub title: String,
 }
 
@@ -54,6 +58,10 @@ pub enum Dispatched {
     WindowEvent,
 }
 
+/// Variants a given platform may never produce — `Elevated` is Windows-only,
+/// `Unsupported` comes from the fallback — are kept so the contract is the
+/// same everywhere and a port does not have to widen the enum.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DesktopError {
     /// No backend on this platform, or no input path in this session type.
@@ -120,13 +128,16 @@ pub trait Desktop: Send + Sync {
 }
 
 /// The backend every platform has: it exists so that an unimplemented platform
-/// answers with a code instead of panicking or pretending to work.
+/// answers with a code instead of panicking or pretending to work. On a
+/// platform whose backend is built, nothing constructs it outside the tests.
+#[allow(dead_code)]
 pub struct UnsupportedDesktop {
     platform: &'static str,
     reason: &'static str,
 }
 
 impl UnsupportedDesktop {
+    #[allow(dead_code)]
     pub fn new(platform: &'static str, reason: &'static str) -> Self {
         Self { platform, reason }
     }

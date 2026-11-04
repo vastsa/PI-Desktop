@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use super::backend::{Desktop, Measured, RawTarget};
 use super::{
     ActResult, Action, ActionKind, Basis, CaptureMode, ComputerResult, Grant, GrantState,
-    InputPolicy, Inspection, Node, Point, Rect, Refusal, Target, TargetRefusal, MAX_ACTION_BUDGET,
+    InputPolicy, Inspection, Node, Rect, Refusal, Target, TargetRefusal, MAX_ACTION_BUDGET,
     MAX_IDLE_EXPIRY, MAX_NODES, MAX_TEXT_CHARS, MIN_IDLE_EXPIRY,
 };
 
@@ -421,21 +421,6 @@ pub fn act(
         revision: grant.revision,
         remaining_budget: grant.remaining_budget,
         dispatched,
-    })
-}
-
-/// Where the overlay should draw the agent's cursor for this action, in screen
-/// coordinates. Visualization only: a `None` here never blocks an action.
-pub fn cursor_point(grant: &Grant, action: &Action, node_bounds: Option<Rect>) -> Option<Point> {
-    if let Some(bounds) = node_bounds {
-        return Some(Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        });
-    }
-    action.point.map(|point| Point {
-        x: grant.bounds.x + point.x,
-        y: grant.bounds.y + point.y,
     })
 }
 

@@ -1278,7 +1278,10 @@ pub async fn execute_tool_with_file_lease(
     let result: Result<Value, hashline::ToolError> = match tool_name {
         // Authorize the desktop-owned image request through the normal host gate.
         // Only the trusted desktop runner performs the external call.
-        "GenerateImages" => Ok(serde_json::json!({ "authorized": true })),
+        // Both run in Electron main after the host authorises them:
+        // image generation needs a provider SDK, and computer use needs
+        // a provider plus Chromium capture (ADR 0340).
+        "GenerateImages" | "Computer" => Ok(serde_json::json!({ "authorized": true })),
         "Read" | "Glob" | "Grep" | "Write" | "Edit" => {
             run_file_tool(
                 workspace,

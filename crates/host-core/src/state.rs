@@ -93,6 +93,10 @@ pub struct AppState {
     /// Session-scoped Read/Edit snapshot store (ADR 0087). Interior mutex so
     /// tool execution does not hold the AppState lock.
     pub hashline: crate::tools::HashlineStore,
+    /// The single active computer-use grant (ADR 0340). Process-local and
+    /// never persisted: a restart must not hand a new process authority over
+    /// the user's screen.
+    pub computer_grant: Option<crate::computer::Grant>,
 }
 
 impl AppState {
@@ -174,6 +178,7 @@ impl AppState {
             pending_bash_aborts: HashMap::new(),
             pending_tool_aborts: HashMap::new(),
             hashline: crate::tools::HashlineStore::new(),
+            computer_grant: None,
         })
     }
 
