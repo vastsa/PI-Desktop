@@ -23,11 +23,20 @@ import {
 } from "@pi-desktop/shared";
 
 import { parseLoopAnswer, validateAnswerAction, type LoopAnswer } from "./answer.js";
-import { buildDecisionRequest, type DecisionRequest, type Observation } from "./prompt.js";
+import {
+  buildDecisionRequest,
+  windowLabel,
+  type DecisionRequest,
+  type Observation,
+} from "./prompt.js";
 
 export type ComputerLoopDeps = {
-  /** Fresh accessibility tree, grant view, and capture when pixels are allowed. */
-  observe: () => Promise<Observation>;
+  /**
+   * Fresh accessibility tree, grant view, window list, and capture when pixels
+   * are allowed. A `targetId` asks the host to bind that window first; the host
+   * re-applies every refusal, so this is a request, not a move.
+   */
+  observe: (targetId?: string) => Promise<Observation>;
   /** One host action. It throws a coded error when the host refuses. */
   act: (action: ComputerAction, expectedRevision: number) => Promise<ComputerActResult>;
   /** One request to the bound model. Returns raw text; the loop parses it. */
@@ -46,6 +55,16 @@ export type ComputerLoopInput = {
 const MAX_INVALID_ANSWERS = 2;
 /** Consecutive identical refusals before the loop stops trying. */
 const MAX_REPEATED_REFUSALS = 2;
+
+/**
+ * Outcomes that end the run whatever step produced them: the grant itself is
+ * gone, so there is nothing left to retry against.
+ */
+const GRANT_LEVEL_OUTCOMES: ReadonlySet<ComputerRunOutcome> = new Set<ComputerRunOutcome>([
+  "revoked",
+  "expired",
+  "budget-exhausted",
+]);
 
 /** Outcomes a host refusal maps to, so the caller sees why work stopped. */
 const TERMINAL_CODES: Record<string, ComputerRunOutcome> = {
@@ -84,7 +103,9 @@ function summarize(
   modelSummary?: string,
   errorCodeValue?: string,
 ): string {
-  const ran = steps.filter((step) => step.action !== "observe");
+  // Reading is not doing: observations and window switches never appear as
+  // something the agent changed on the user's machine.
+  const ran = steps.filter((step) => step.action !== "observe" && step.action !== "switch");
   const done = ran.filter((step) => step.ok);
   const lines: string[] = [];
   lines.push(
@@ -213,6 +234,48 @@ export async function runComputerLoop(
           steps,
           question: answer.question,
         };
+      }
+
+      if (answer.kind === "switch") {
+        const label = windowLabel(observation, answer.window) ?? `window ${answer.window}`;
+        try {
+          observation = await deps.observe(answer.window);
+          record({ index, action: "switch", ok: true, target: label });
+          // The overlay frames the window being worked on, so it moves too.
+          deps.onCursor?.({
+            kind: "show",
+            grantId: observation.grant.grantId,
+            bounds: observation.grant.bounds,
+          });
+          repeatedRefusals = 0;
+          lastRefusal = undefined;
+        } catch (error) {
+          const code = errorCode(error);
+          record({ index, action: "switch", ok: false, errorCode: code, target: label });
+          const terminal = TERMINAL_CODES[code];
+          if (terminal && GRANT_LEVEL_OUTCOMES.has(terminal)) {
+            return {
+              outcome: terminal,
+              summary: summarize(terminal, steps, undefined, code),
+              steps,
+              errorCode: code,
+            };
+          }
+          // A window the host refuses is not the end of the task: the model is
+          // told, and may do something else with its remaining steps.
+          repeatedRefusals = code === lastRefusal ? repeatedRefusals + 1 : 1;
+          lastRefusal = code;
+          if (repeatedRefusals >= MAX_REPEATED_REFUSALS) {
+            return {
+              outcome: "failed",
+              summary: summarize("failed", steps, undefined, code),
+              steps,
+              errorCode: code,
+            };
+          }
+        }
+        index += 1;
+        continue;
       }
 
       const validated = validateAnswerAction(answer.action, observation.inspection);

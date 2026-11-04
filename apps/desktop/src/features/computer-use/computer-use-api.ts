@@ -1,19 +1,17 @@
 import {
   IPC,
   type ComputerCapabilities,
-  type ComputerCaptureMode,
   type ComputerCursorEvent,
   type ComputerGrantView,
-  type ComputerInputPolicy,
-  type ComputerTarget,
 } from "@pi-desktop/shared";
 
 /**
- * The renderer's computer-use surface (ADR 0342).
+ * The renderer's computer-use surface (ADR 0342, ADR 0344).
  *
- * Read, pick, and revoke — nothing here dispatches input, because the renderer
- * is the one process that must never hold that authority. A refusal keeps its
- * `COMPUTER_*` code so the UI can name it instead of guessing.
+ * Read and stop — nothing here mints a grant, enumerates windows, or
+ * dispatches input, because the renderer is the one process that must never
+ * hold that authority. A refusal keeps its `COMPUTER_*` code so the UI can
+ * name it instead of guessing.
  */
 
 export type ComputerUseError = Error & { code: string };
@@ -33,14 +31,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 export const computerUseApi = {
   capabilities: () => invoke<ComputerCapabilities>(IPC.invoke.computerCapabilities),
   requestPermission: () => invoke<ComputerCapabilities>(IPC.invoke.computerRequestPermission),
-  listTargets: () => invoke<{ targets: ComputerTarget[] }>(IPC.invoke.computerListTargets),
   grant: () => invoke<{ grant: ComputerGrantView | null }>(IPC.invoke.computerGrantDescribe),
-  createGrant: (request: {
-    targetId: string;
-    sessionId: string;
-    inputPolicy?: ComputerInputPolicy;
-    capture?: ComputerCaptureMode;
-  }) => invoke<ComputerGrantView>(IPC.invoke.computerGrantCreate, request),
   revokeGrant: (reason: string) =>
     invoke<{ revoked: boolean }>(IPC.invoke.computerGrantRevoke, { reason }),
   onGrantChanged: (handler: (grant: ComputerGrantView | null) => void): (() => void) => {

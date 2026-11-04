@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   COMPUTER_ACTION_BUDGET_LIMIT,
   COMPUTER_MAX_STEPS_LIMIT,
+  COMPUTER_USE_DEFAULTS,
   needsAccessibilityRequest,
   type ComputerCapabilities,
   validateComputerToolArgs,
@@ -10,6 +11,19 @@ import {
 
 it("computerUse settings accept the minimum shape", () => {
   expect(validateComputerUseSettings({ enabled: false })).toEqual({ enabled: false });
+});
+
+it("runs are autonomous by default and still take pixels only on request", () => {
+  // ADR 0344: the switch is the consent, so an unset policy must not imply a
+  // per-step card that does not exist. Pixels stay opt-in, because they land
+  // in the transcript.
+  expect(COMPUTER_USE_DEFAULTS.inputPolicy).toBe("autonomous-in-scope");
+  expect(COMPUTER_USE_DEFAULTS.capture).toBe("a11y-only");
+  // The narrower policy stays expressible for when the card lands.
+  expect(validateComputerUseSettings({ enabled: true, defaultInputPolicy: "confirm-each" })).toEqual({
+    enabled: true,
+    defaultInputPolicy: "confirm-each",
+  });
 });
 
 it("computerUse settings keep an explicit model binding", () => {

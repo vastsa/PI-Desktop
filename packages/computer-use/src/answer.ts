@@ -28,6 +28,8 @@ export const COMPUTER_ACTION_KINDS: readonly ComputerActionKind[] = [
 
 export type LoopAnswer =
   | { kind: "action"; action: ComputerAction; note?: string }
+  /** Read another window of a desktop-scope grant (ADR 0344). */
+  | { kind: "switch"; window: string; note?: string }
   | { kind: "done"; summary: string }
   | { kind: "ask"; question: string };
 
@@ -100,6 +102,19 @@ export function parseLoopAnswer(text: string): AnswerParse {
       return reject("ask with unexpected fields");
     }
     return { ok: true, answer: { kind: "ask", question } };
+  }
+  if (kind === "switch") {
+    if (Object.keys(value).some((key) => !["kind", "window", "note"].includes(key))) {
+      return reject("switch with unexpected fields");
+    }
+    const window = boundedString(value.window, 256);
+    if (!window) return reject("switch without a window");
+    const switchNote = value.note === undefined ? undefined : boundedString(value.note, MAX_NOTE_CHARS);
+    if (value.note !== undefined && !switchNote) return reject("malformed note");
+    return {
+      ok: true,
+      answer: switchNote ? { kind: "switch", window, note: switchNote } : { kind: "switch", window },
+    };
   }
   if (kind !== "action") return reject("unknown answer kind");
 

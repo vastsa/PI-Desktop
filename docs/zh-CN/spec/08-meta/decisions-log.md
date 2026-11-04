@@ -5779,3 +5779,34 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/computer-use-service.test.mjs`。尚未驱动任何真实应用，
   五条 `E2E-COMPUTER-USE-*` 闸门仍为 `NOT RUN`，详见
   `docs/implementation/computer-use-evidence.md`。
+
+## 2026-11-05 —— 电脑操作默认授权整个桌面（D682）
+
+- D682 / ADR 0344 修订 ADR 0342 第 4、6 条。由用户挑选窗口的授权把跨两个应用的
+  任务变成一串对话框，因此移除挑选器：`Grant` 新增 `scope`，`Computer` 工具处理器
+  在会话首次调用时自行签发 `desktop` 作用域授权，在设置中启用该功能即是用户授权。
+  `window` 授权仍然可表达，但已没有任何界面会签发它。
+- 桌面授权每次只绑定一个窗口，初始为宿主不拒绝的最前窗口。`computer.inspect` 接受
+  可选 `targetId`；绑定会对一次全新枚举重跑自我目标、拒绝名单与提权检查，并总是
+  推进 revision，因此上一个窗口的每个 `uid` 与 `basis` 立即失效。`computer.act`
+  永不绑定窗口。
+- 绑定窗口关闭不会结束桌面授权：它回落到最前可用窗口，而瞄准已消失窗口的动作即使
+  没有传 `expectedRevision` 也以 `COMPUTER_STALE_REVISION` 被拒绝。`window` 授权
+  仍按原样被撤销。
+- 回路会看到宿主给出的窗口列表（含拒绝原因），并新增一种回答：
+  `{"kind":"switch","window":"<id>"}`。切换消耗一个回路步数但不消耗动作预算，被拒绝
+  的切换作为一步回报给模型而不是结束运行，并且切换永不计入"已完成的工作"。
+- 运行默认自主：`COMPUTER_USE_DEFAULTS.inputPolicy` 改为 `autonomous-in-scope`，
+  并在所有权限模式下生效。`confirm-each` 仍在契约中，但背后没有审批卡片，因此移除
+  设置里那一行，而不是留下一个什么都没收窄的控件。截取默认仍为 `a11y-only`，并且
+  处理器现在真的会把用户的截取模式、预算与过期设置传给授权。
+- "停止"结束整次运行：指示器撤销授权并中止持有它的轮次，host-core 在
+  `AGENT_REGRANT_COOLDOWN`（30 秒）内以新错误码 `COMPUTER_STOPPED_BY_USER` 拒绝
+  `origin: agent` 的签发。没有这条，同一轮次的下一次工具调用会直接再签一个。
+- Renderer 完全失去枚举窗口与签发授权的 IPC 通道；它只读取能力与授权，并执行撤销。
+  审计记录作用域与签发方，并在每次改绑时追加带应用身份的 `computer.grant.rebound`。
+- 覆盖来自新增的 host-core `computer::` 测试（绑定最前窗口、无可用窗口、改绑拒绝、
+  `window` 授权拒绝改绑、关闭窗口回落、"停止"冷却）、`packages/computer-use` 的切换
+  测试、shared 默认值测试，以及 `apps/desktop/test/computer-use-service.test.mjs`
+  （自动签发、停止拒绝、切换调用形状）。仍未经真机验证：`E2E-COMPUTER-USE-*` 闸门
+  依旧是 `NOT RUN`。
