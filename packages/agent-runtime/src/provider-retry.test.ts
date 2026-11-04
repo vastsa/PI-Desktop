@@ -309,7 +309,10 @@ describe("provider rate-limit retry", () => {
     });
   });
 
-  it("does not retry billing exhaustion when the captured status is 429", async () => {
+  it.each([
+    '429: {"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}',
+    '429: {"type":"FreeUsageLimitError","message":"Free usage limit reached."}',
+  ])("does not retry explicit quota exhaustion on HTTP 429: %s", async (errorMessage) => {
     let attempts = 0;
     let retryableClaims = 0;
     const claim = vi.fn((error: ClassifiedAgentError) => {
@@ -324,9 +327,7 @@ describe("provider rate-limit retry", () => {
       {},
       () => {
         attempts += 1;
-        return failedStream({
-          errorMessage: '429: {"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}',
-        });
+        return failedStream({ errorMessage });
       },
       { claim, headers: () => undefined, status: () => 429, sleep },
     );
@@ -336,7 +337,7 @@ describe("provider rate-limit retry", () => {
 
     expect(attempts).toBe(1);
     expect(claim).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "PROVIDER_ERROR", retriable: false }),
+      expect.objectContaining({ code: "PROVIDER_ERROR", retriable: false, message: errorMessage }),
       "request",
     );
     expect(sleep).not.toHaveBeenCalled();
