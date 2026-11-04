@@ -2861,8 +2861,9 @@ identify the platform validation still needed.
   `04-ux/08-component-spec.md` (§11), ADR 0154
 - **Acceptance**: C (session creation), Quality
 - **Milestone**: M2
-- **Status**: Source-level regression covered (`session-draft-materialization.test.mjs`, `session-create.test.mjs`,
-  `session-switch-performance.test.mjs`); full UI scenario Draft
+- **Status**: `pnpm test:e2e:composer-paste` covers first Send, oversized
+  paste, and navigation cancellation with a delayed create reply over the
+  Electron preload bridge. Source-level tests also cover create failure and retry.
 
 
 #### Composer file-reference undo regression

@@ -5,6 +5,7 @@ import { createQueueSlice } from "../../apps/desktop/src/stores/slices/queue-sli
 import type { SessionRuntime } from "../../apps/desktop/src/stores/runtime/session-runtime";
 import { useComposerSubmit } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerSubmit";
 import { verifyComposerSubmission } from "./composer-submission";
+import "./composer-draft-race";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
@@ -76,6 +77,7 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
   const submitController = useComposerSubmit({
     value: draft.value, draftKey: draft.draftKey, activeSessionId: sessionId || null,
     thinkingLevel: "off", modelReady: true, sendBlocked: false, pasting: false,
+    invalidateComposerTransforms: noop,
     activeFileReferences: draft.activeFileReferences, t, draft,
     recordHistory: inputHistory.record,
     sendPrompt: (...args) => historySendPrompt(...args),
@@ -1128,6 +1130,7 @@ globalThis.composerHistoryProbe = async (phase) => {
         latestTurnResults: {},
         sessionOutcomes: {},
         isRunning: false,
+        rememberModel: noop,
       } as unknown as AppState;
       const queueRuntime = {
         beginNavigationIntent: () => 1,
