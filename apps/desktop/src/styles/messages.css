@@ -2340,6 +2340,15 @@
 }
 
 /*
+ * The operation count beside a group label never truncates: the composition
+ * phrase ellipsizes first, because "12 次操作" is the part that has to survive a
+ * narrow band (see `.tool-activity-label`).
+ */
+.tool-activity-count.tool-activity-ops {
+  flex: none;
+}
+
+/*
  * Issue counts are inline metadata in an activity-group header, never a second
  * line of the row. The icon and its localized count stay on one centered line
  * and truncate together when the band runs out of width.

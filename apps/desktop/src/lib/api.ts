@@ -446,6 +446,8 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     transcriptDisplayMode: isTranscriptDisplayModeValue(settings.transcriptDisplayMode)
       ? settings.transcriptDisplayMode
       : "fully-folded",
+    autoCollapseSettledGroups: settings.autoCollapseSettledGroups !== false,
+    autoCollapseThinking: settings.autoCollapseThinking !== false,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
@@ -493,6 +495,22 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     !isTranscriptDisplayModeValue(settings.transcriptDisplayMode)
   ) {
     throw Object.assign(new Error("transcriptDisplayMode is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(settings, "autoCollapseSettledGroups") &&
+    typeof settings.autoCollapseSettledGroups !== "boolean"
+  ) {
+    throw Object.assign(new Error("autoCollapseSettledGroups is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(settings, "autoCollapseThinking") &&
+    typeof settings.autoCollapseThinking !== "boolean"
+  ) {
+    throw Object.assign(new Error("autoCollapseThinking is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
