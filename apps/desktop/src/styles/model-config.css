@@ -2006,3 +2006,18 @@
   letter-spacing: var(--tracking-wide);
   line-height: var(--leading-normal);
 }
+
+/* The empty state names where ticking happens: one button per service. */
+.model-subagent-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 14px 12px;
+}
+
+.model-subagent-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

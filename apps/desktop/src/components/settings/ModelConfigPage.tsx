@@ -407,6 +407,21 @@ export function ModelConfigPage() {
     if (await saveAccount(provider, form)) setEditingAccountId(null);
   };
 
+  /**
+   * Open the editor that owns a service's models.
+   *
+   * A vendor-account row is edited by `VendorAccountDialog`, not by the
+   * provider form: the provider form would offer to rewrite the account's name,
+   * endpoint and API style, which a subscription login never asked for. Both
+   * entry points on this page route through here so the subagent list cannot
+   * send an account to the wrong dialog.
+   */
+  const editService = (provider: ProviderPublic | undefined) => {
+    if (!provider) return;
+    if (serviceRowKind(provider) === "account") setEditingAccountId(provider.id);
+    else setSetupFor(provider.id);
+  };
+
   const testProvider = async (provider: ProviderPublic) => {
     if (!rowBusy.begin(provider.id)) return;
     testingRows.begin(provider.id);
@@ -535,11 +550,7 @@ export function ModelConfigPage() {
               }
               isRowBusy={(id) => rowBusy.isBusy(id) || busyAccountId === id}
               isTesting={testingRows.isBusy}
-              onEdit={(provider) =>
-                serviceRowKind(provider) === "account"
-                  ? setEditingAccountId(provider.id)
-                  : setSetupFor(provider.id)
-              }
+              onEdit={editService}
               onTest={(provider) => void testProvider(provider)}
               onCopy={(provider) => {
                 setCopyDraft(
@@ -635,7 +646,7 @@ export function ModelConfigPage() {
           }
           onEdit={(providerId) => {
             setSubagentEditorOpen(false);
-            setSetupFor(providerId);
+            editService(providers.find((entry) => entry.id === providerId));
           }}
           onClose={() => setSubagentEditorOpen(false)}
         />

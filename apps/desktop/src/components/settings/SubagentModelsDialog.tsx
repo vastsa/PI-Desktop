@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatTokenCount } from "@pi-desktop/shared";
 import { useBlockingOverlay } from "../../lib/blocking-overlay";
 import { portalToBody } from "../../lib/portal-visibility";
 import { IconClose, IconSearch } from "../icons";
 import { Button, OverlayBackdrop, TooltipButton } from "../ui";
-import { selectedSubagentModels, type SubagentModelCandidate } from "./subagent-delegation";
+import {
+  selectedSubagentModels,
+  servicesWithAddableModels,
+  type SubagentModelCandidate,
+} from "./subagent-delegation";
 
 /**
  * The subagent delegation editor: the models the AI may pick when it delegates,
@@ -16,6 +20,10 @@ import { selectedSubagentModels, type SubagentModelCandidate } from "./subagent-
  * for AI delegation** in that model's own editor, which is exactly where Advanced
  * goes. Both surfaces read and write `availableForSubagents` on the binding, so
  * neither can drift from the other.
+ *
+ * While a removal is in flight the whole dialog stops navigating: Advanced and
+ * Close are disabled, because a service editor opened from the pre-refresh
+ * snapshot would save that stale model list back and undo the removal.
  */
 export function SubagentModelsDialog({
   candidates,
@@ -34,7 +42,13 @@ export function SubagentModelsDialog({
   useBlockingOverlay();
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+
   const selected = selectedSubagentModels(candidates);
+  const targets = servicesWithAddableModels(candidates);
   const needle = query.trim().toLowerCase();
   const visible = needle
     ? selected.filter((candidate) =>
@@ -44,15 +58,54 @@ export function SubagentModelsDialog({
   const name = (candidate: SubagentModelCandidate) =>
     `${candidate.providerName} · ${candidate.label}`;
 
+  // Focus on open, Escape to close, Tab stays inside, and the trigger gets the
+  // focus back on close. Same contract as the other settings dialogs.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    requestAnimationFrame(() => closeRef.current?.focus());
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!busyRef.current) onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        "input:not([disabled]), button:not([disabled])",
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, [onClose]);
+
   const dialog = (
     <OverlayBackdrop
       className="overlay project-create-dialog-overlay"
       role="presentation"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !busyRef.current) onClose();
       }}
     >
       <div
+        ref={dialogRef}
         className="dialog model-subagent-dialog"
         role="dialog"
         aria-modal="true"
@@ -69,10 +122,12 @@ export function SubagentModelsDialog({
             </p>
           </div>
           <TooltipButton
+            ref={closeRef}
             type="button"
             className="project-create-dialog-close"
             tooltip={t("common.close")}
             ariaLabel={t("common.close")}
+            disabled={busy}
             onClick={onClose}
           >
             <IconClose size={17} />
@@ -100,7 +155,28 @@ export function SubagentModelsDialog({
             </div>
           </div>
           {selected.length === 0 ? (
-            <div className="provider-chosen-empty">{t("settings.subagentModelsUnset")}</div>
+            // The dialog cannot tick the first model itself, so the empty state
+            // names the one place that can: each service's own model editor.
+            <div className="provider-chosen-empty model-subagent-empty">
+              <p>{t("settings.subagentModelsUnset")}</p>
+              {targets.length > 0 ? (
+                <div className="model-subagent-empty-actions">
+                  {targets.map((target) => (
+                    <Button
+                      key={target.providerId}
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => onEdit(target.providerId)}
+                    >
+                      {t("settings.subagentModelOpenService", {
+                        provider: target.providerName,
+                      })}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : visible.length === 0 ? (
             <div className="provider-chosen-empty">{t("settings.noChosenModelMatches")}</div>
           ) : (
@@ -131,6 +207,7 @@ export function SubagentModelsDialog({
                     <button
                       type="button"
                       className="provider-chosen-advanced-toggle"
+                      disabled={busy}
                       onClick={() => onEdit(candidate.providerId)}
                     >
                       {t("settings.advanced")}
@@ -159,7 +236,7 @@ export function SubagentModelsDialog({
         </div>
 
         <div className="model-subagent-dialog-actions">
-          <Button variant="primary" onClick={onClose}>
+          <Button variant="primary" disabled={busy} onClick={onClose}>
             {t("common.close")}
           </Button>
         </div>

@@ -1879,6 +1879,7 @@ sklm: {
     "subagentModelsUnset": "Aún no hay ningún modelo abierto a subagentes",
     "subagentModelAdd": "Añade modelos en los ajustes de modelos del servicio — Avanzado → Disponible para delegación de AI",
     "subagentModelEdit": "Editar",
+    "subagentModelOpenService": "Abrir configuración de modelos de {{provider}}",
     "subagentModelsMore": "+{{count}} más",
     "subagentModelRemove": "Quitar {{model}} de los modelos de subagente",
     "subagentModelSelected": "Modelo disponible para delegación",
