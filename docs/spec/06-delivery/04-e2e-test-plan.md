@@ -19307,6 +19307,54 @@ host-created files. The full app's file-preview viewer is covered separately.
   `apps/desktop/test/main-wiring-contract.test.mjs`; the interactive Electron
   scenario remains a manual validation run.
 
+### E2E-268: A plugin reads and rewrites a session the user created
+
+- **Preconditions**: A development plugin that declares
+  `session.read.all`, `session.update.all`, and `session.delete.all`, and whose
+  commands call `pi.session.list()`, `pi.session.get()`,
+  `pi.session.listMessages()`, `pi.session.rename()`,
+  `pi.session.appendMessage()`, `pi.session.replaceMessages()`,
+  `pi.session.deleteMessage()`, and `pi.session.truncateFrom()`. One ordinary
+  session the user created and typed two prompts into, plus the same manifest
+  edited down to only the `.own` grants.
+- **Steps**:
+  1. Install the `.all` build and run each read command against the user's own
+     session.
+  2. Run `rename`, then check the session title in the sidebar and whether the
+     auto-title plugin can still rename it.
+  3. Run `appendMessage` while the session is idle, and again while a turn is
+     running.
+  4. Run `replaceMessages`, `deleteMessage`, and `truncateFrom` on the same
+     session, watching the open transcript between calls.
+  5. Reinstall the `.own`-only build and repeat steps 1 and 4, including a call
+     that passes `scope: "all"` itself.
+  6. Check the app log for one audit line per call.
+- **Expected**: With `.all`, `list` returns the user's session with
+  `originKind: "created"`, `source: "desktop"`, `externalId: null`, the real
+  `modelId`/`providerId`/`bound.model`, and messages reporting
+  `origin: "desktop"`; `get` and `listMessages` agree with it. `rename`
+  succeeds and the auto-title plugin can no longer replace that title.
+  `appendMessage` adds one row while idle and returns its `messageId`; a repeat
+  with the same id adds nothing. While a turn runs, `appendMessage` still
+  appends and the three transcript rewrites fail with `TURN_RUNNING`.
+  `replaceMessages` and `truncateFrom` repaint the open transcript without
+  reselecting the session, `deleteMessage` on a user prompt removes the prompt
+  and its replies, and a repeated delete reports `deleted: false`. With `.own`
+  the same session is `NOT_FOUND` for every call, nothing in the transcript
+  changes, and the plugin's own `scope: "all"` is ignored — the call still runs
+  as `own`. Every audited line names the scope that authorised it.
+- **Specs linked**: `07-plugins/03-plugin-api.md` §plugin-owned and host-wide
+  sessions; `07-plugins/13-plugin-permissions-matrix.md` §2;
+  `07-plugins/04-plugin-security.md` §5; ADR 0339, ADR 0200 (amendment).
+- **Acceptance**: A plugin that declares the `.all` grants can read and rewrite
+  the user's own conversations, the user sees the result in the open transcript,
+  and a plugin that declares only `.own` keeps exactly the ADR 0200 reach.
+- **Status**: Draft. Host-core coverage in the `plugin_sessions` and
+  `plugin_session` tests, broker policy in
+  `apps/desktop/test/plugin-session-access.test.mjs`, and the plugin-process
+  path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
+  Electron scenario remains a manual validation run.
+
 ### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
 
 - **Preconditions**: A ChatGPT subscription (Codex) account and a Responses

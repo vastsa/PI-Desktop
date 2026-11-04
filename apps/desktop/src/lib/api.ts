@@ -2099,6 +2099,11 @@ export const api = {
       pluginId?: string;
       projectPath?: string | null;
       selectSessionId?: string;
+      /**
+       * The one session whose transcript changed. A plugin message write names
+       * it so the shell can repaint an already open transcript (ADR 0339).
+       */
+      sessionId?: string;
     }) => void,
   ) => {
     if (!window.piDesktop?.on) return () => undefined;
@@ -2109,6 +2114,7 @@ export const api = {
           pluginId?: string;
           projectPath?: string | null;
           selectSessionId?: string;
+          sessionId?: string;
         },
       ),
     );

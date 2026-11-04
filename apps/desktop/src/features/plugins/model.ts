@@ -58,6 +58,11 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "session.autoTitle": "high",
   "session.import": "high",
   "session.delete.own": "high",
+  // The `.all` family reaches the user's own conversations, so every verb sits
+  // at the top tier the matrix gives the imported-only delete (ADR 0339).
+  "session.read.all": "high",
+  "session.update.all": "high",
+  "session.delete.all": "high",
   "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is
   // where the data can go, and outbound requests are declared separately.
