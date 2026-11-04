@@ -372,6 +372,7 @@ export const zhCN = {
     suggestionHint: "Tab 接受 · Esc 忽略",
     addFiles: "添加文件",
     filesAttached: "已将 {{count}} 项加入草稿",
+    directoryAttached: '已将 {{count}} 个复制的文件夹以 @路径 引用插入',
     filesPasted: "已将 {{count}} 个粘贴文件保存到会话临时目录",
     largeTextPasted: "已将大段粘贴文本保存为 @{{name}}",
     slashMenu: "指令",

@@ -370,6 +370,7 @@ export const fr = {
     "suggestionHint": "Tab accepter · Échap ignorer",
     "addFiles": "Ajoutez des fichiers et plus encore",
     "filesAttached": "Ajout de {{count}} élément(s) au brouillon",
+    "directoryAttached": '{{count}} dossier(s) copié(s) inséré(s) comme références @chemin',
     "filesPasted": "Enregistrement de {{count}} fichier(s) collé(s) dans le dossier de travail de la session",
     "largeTextPasted": "Enregistrement d'un texte collé volumineux sous @{{name}}",
     "slashMenu": "Commandes",

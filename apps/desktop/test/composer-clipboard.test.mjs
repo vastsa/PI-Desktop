@@ -5,6 +5,7 @@ import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { clipboardFiles, normalizeClipboardLineEndings, preferClipboardText } =
   await import("../src/features/chat/composer/editor.ts");
+const { composerDropItems } = await import("../src/lib/composer-drop.ts");
 const image = () =>
   new File(["image bytes"], "image.png", { type: "image/png" });
 const noPath = () => null;
@@ -127,4 +128,56 @@ test("paintEditorValue preserves line breaks across DOM rendering", async () => 
   assert.equal(container.childNodes[2].tagName, "BR");
   assert.equal(container.childNodes[3].nodeValue, "line 2");
   assert.equal(readEditorValue(container), "line 1\n\nline 2");
+});
+
+test("a copied folder is a directory item with a native path, kept out of the byte paste", () => {
+  // #2087: pasting a folder copied in the OS file manager used to route its
+  // unreadable File into pasteFiles' arrayBuffer, throwing or silently
+  // dropping the paste. The paste now reuses the drop classifier, so a
+  // directory with a native path is kept as a path reference and ordinary
+  // files stay on the byte path.
+  const folder = new File([], "My Folder", { type: "application/x-directory" });
+  const note = new File(["notes"], "notes.txt", { type: "text/plain" });
+  const resolvePath = (file) =>
+    file === folder ? "C:\\projects\\My Folder" : "C:\\projects\\notes.txt";
+
+  const withEntries = (perItem) => {
+    const items = [
+      {
+        kind: "file",
+        getAsFile: () => folder,
+        ...(perItem
+          ? { webkitGetAsEntry: () => ({ isDirectory: true }) }
+          : {}),
+      },
+      { kind: "file", getAsFile: () => note },
+    ];
+    return { files: [folder, note], items };
+  };
+
+  for (const data of [withEntries(true), withEntries(false)]) {
+    const items = composerDropItems(data, resolvePath);
+    assert.equal(items.length, 2);
+    const directories = items.filter((item) => item.isDirectory && item.path);
+    const files = items
+      .filter((item) => !item.isDirectory)
+      .map((item) => item.file);
+    assert.deepEqual(
+      directories.map((item) => item.path),
+      ["C:\\projects\\My Folder"],
+    );
+    assert.deepEqual(files, [note]);
+    // The byte paste then sees only the regular file, exactly as before.
+    assert.deepEqual(clipboardFiles({ files, items: [] }), [note]);
+  }
+
+  // A directory with no native path stays invisible, as drops already do.
+  const noPathItems = composerDropItems(
+    {
+      files: [folder],
+      items: [{ kind: "file", getAsFile: () => folder }],
+    },
+    () => null,
+  );
+  assert.deepEqual(noPathItems, []);
 });

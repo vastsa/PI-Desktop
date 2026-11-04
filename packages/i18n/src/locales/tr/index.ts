@@ -379,6 +379,7 @@ export const tr = {
     suggestionHint: "Tab kabul · Esc yoksay",
     addFiles: "Dosya ekle",
     filesAttached: "Taslağa {{count}} öğe eklendi",
+    directoryAttached: 'Kopyalanan {{count}} klasör @yol referansı olarak eklendi',
     filesPasted: "Yapıştırılan {{count}} dosya oturum klasörüne kaydedildi",
     largeTextPasted: "Uzun yapıştırılan metin @{{name}} olarak kaydedildi",
     slashMenu: "Komutlar",

@@ -377,6 +377,7 @@ export const en = {
     suggestionHint: "Tab to accept · Esc to ignore",
     addFiles: "Add files",
     filesAttached: "Added {{count}} item(s) to the draft",
+    directoryAttached: 'Inserted {{count}} copied folder(s) as @path references',
     filesPasted: "Saved {{count}} pasted file(s) to the session scratch folder",
     largeTextPasted: "Saved large pasted text as @{{name}}",
     slashMenu: "Commands",

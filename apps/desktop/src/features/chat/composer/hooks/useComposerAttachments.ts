@@ -226,12 +226,47 @@ export function useComposerAttachments({
     }
     if (isInputBlocked) return;
     const text = event.clipboardData.getData("text/plain");
-    const pastedFiles = clipboardFiles(event.clipboardData);
+    const clipboardItems = composerDropItems(event.clipboardData, api.getDroppedFilePath);
+    // A copied folder arrives as a directory item, not bytes: its `File` has
+    // nothing to read, and routing it through pasteFiles either throws or
+    // silently drops the paste (#2087). Native folder drops already keep
+    // directories as literal path references, so a clipboard paste does the
+    // same — an `@path` token, never traversal or upload.
+    const directories = clipboardItems.filter((item) => item.isDirectory && item.path);
+    const pastedFiles = clipboardItems
+      .filter((item) => !item.isDirectory)
+      .map((item) => item.file);
     const files = preferClipboardText(text, pastedFiles, api.getDroppedFilePath)
       ? []
       : pastedFiles;
     const textLength = Array.from(text).length;
-    const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
+    const isLargeTextPaste = !files.length && !directories.length && textLength > largePasteThreshold;
+    if (directories.length) {
+      event.preventDefault();
+      const editor = event.currentTarget;
+      const { start: selectionStart, end: selectionEnd } = editorSelectionRange(editor);
+      const sourceValue = readEditorValue(editor);
+      const inserted = directories
+        .map((item) => formatDroppedDirectoryPath(item.path!))
+        .join(" ");
+      const nextText =
+        sourceValue.slice(0, selectionStart) +
+        inserted +
+        sourceValue.slice(selectionEnd);
+      // The token is plain text in the draft; the references stay exactly the
+      // ones the draft already had, so no chip is invented for the folder.
+      const existingReferences = snapshotReferences(activeSessionId ?? "").map(
+        (reference) =>
+          createFileReference(reference.path, reference.name, activeSessionId ?? "", reference),
+      );
+      draft.applyEditorDraft(
+        nextText,
+        existingReferences,
+        selectionStart + inserted.length,
+      );
+      showToast(t, "chat.directoryAttached", { count: directories.length }, "success");
+      return;
+    }
     if (isLargeTextPaste || files.length) {
       event.preventDefault();
       const editor = event.currentTarget;

@@ -370,6 +370,7 @@ export const es = {
     "suggestionHint": "Tab aceptar · Esc descartar",
     "addFiles": "Agregar archivos y más",
     "filesAttached": "Se agregaron {{count}} elementos al borrador",
+    "directoryAttached": 'Insertadas {{count}} carpeta(s) copiada(s) como referencias @ruta',
     "filesPasted": "Se guardaron {{count}} archivos pegados en la carpeta temporal de la sesión",
     "largeTextPasted": "Se guardó el texto pegado de gran tamaño como @{{name}}",
     "slashMenu": "Comandos",

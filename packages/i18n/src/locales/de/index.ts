@@ -370,6 +370,7 @@ export const de = {
     "suggestionHint": "Tab übernehmen · Esc verwerfen",
     "addFiles": "Dateien hinzufügen und mehr",
     "filesAttached": "{{count}} Element(e) zum Entwurf hinzugefügt",
+    "directoryAttached": '{{count}} kopierte Ordner als @Pfad-Verweise eingefügt',
     "filesPasted": "{{count}} eingefügte Datei(en) im Sitzungs-Scratch-Ordner gespeichert",
     "largeTextPasted": "Großen eingefügten Text gespeichert als @{{name}}",
     "slashMenu": "Befehle",

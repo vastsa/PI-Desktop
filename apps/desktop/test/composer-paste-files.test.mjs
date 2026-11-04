@@ -23,7 +23,16 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.match(composer, /onPaste=\{pasteClipboardFiles\}/);
   assert.match(composer, /const text = event\.clipboardData\.getData\("text\/plain"\)/);
   assert.match(composer, /const textLength = Array\.from\(text\)\.length/);
-  assert.match(composer, /!files\.length && textLength > largePasteThreshold/);
+  assert.match(composer, /!files\.length && !directories\.length && textLength > largePasteThreshold/);
+  // A copied folder is a path reference, not bytes: the paste reuses the drop
+  // classifier and inserts the same @path token a native drop would (#2087).
+  assert.match(
+    composer,
+    /const clipboardItems = composerDropItems\(event\.clipboardData, api\.getDroppedFilePath\)/,
+  );
+  assert.match(composer, /filter\(\(item\) => item\.isDirectory && item\.path\)/);
+  assert.match(composer, /formatDroppedDirectoryPath\(item\.path!\)/);
+  assert.match(composer, /chat\.directoryAttached/);
   assert.match(composer, /pasted-text-\$\{crypto\.randomUUID\(\)\.slice\(0, 8\)\}\.txt/);
   assert.match(composer, /mimeType: "text\/plain"/);
   assert.match(composer, /recordHistory: true/);

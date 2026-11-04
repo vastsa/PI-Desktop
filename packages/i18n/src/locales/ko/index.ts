@@ -379,6 +379,7 @@ export const ko = {
     suggestionHint: "Tab 수락 · Esc 무시",
     addFiles: "파일 추가",
     filesAttached: "초안에 항목 {{count}}개 추가됨",
+    directoryAttached: '복사한 폴더 {{count}}개가 @경로 참조로 삽입되었습니다',
     filesPasted: "붙여넣은 파일 {{count}}개를 세션 임시 폴더에 저장함",
     largeTextPasted: "큰 붙여넣기 텍스트를 @{{name}}으로 저장함",
     slashMenu: "명령",
