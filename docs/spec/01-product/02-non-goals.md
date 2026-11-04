@@ -11,10 +11,11 @@
 6. Mobile clients
 7. Multi-user auth systems
 8. Billing/subscription modules
-9. Computer Use browser takeover *(amended by ADR 0342)* — browser takeover and
-   unattended full-desktop control remain non-goals, and the model may never
-   choose its own target. Bounded native application control through a
-   user-picked, revocable, audited scope grant is an accepted capability; see
+9. Computer Use browser takeover *(amended by ADR 0342 and ADR 0344)* — browser
+   takeover and unattended desktop control with no user present remain
+   non-goals. Bounded native application control is an accepted capability: the
+   user enables it, the grant covers the windows the host does not refuse, the
+   model may move between them, and every action is revocable and audited; see
    [03-runtime/computer-use](../03-runtime/computer-use.md)
 10. Unconfirmed full-disk high privilege mode
 11. Non-English as the primary source language

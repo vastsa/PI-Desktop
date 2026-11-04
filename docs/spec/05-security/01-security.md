@@ -350,7 +350,7 @@ host-core. They do not change the loopback-only rule above.
 | Dependency poisoning | lockfiles, few deps, native-module review |
 | Malicious local plugin | declared permissions, no secret access, process isolation tracked post-MVP (ADR 0008) |
 | Skill market SSRF via user source URL | public-HTTPS classifier + DNS + per-hop redirect checks in main; renderer CSP forbids the fetch (ADR 0243) |
-| Synthetic input approving this app's own dialogs | computer use refuses PI-Desktop windows and credential surfaces unconditionally; scope grant is user-picked and host-owned (ADR 0342) |
+| Synthetic input approving this app's own dialogs | computer use refuses PI-Desktop windows and credential surfaces unconditionally, on every window the grant binds (ADR 0342, ADR 0344) |
 
 ## 11. Security acceptance gates
 
@@ -371,10 +371,11 @@ host-core. They do not change the loopback-only rule above.
 10. Local MCP control is loopback-only, bearer-authenticated, opt-in, bounded,
     excludes secret writes and native pickers, and requires confirmation for
     session permission-mode changes
-11. Computer use cannot run without a user-minted scope grant, cannot target
-    PI-Desktop's own windows or a secure input state under any mode, refuses a
-    stale basis or revision instead of synthesizing input, and is denied
-    outright in Plan and Goal
+11. Computer use cannot run unless the user enabled it, cannot target
+    PI-Desktop's own windows or a secure input state under any mode, re-applies
+    every refusal each time its grant binds a window, refuses a stale basis or
+    revision instead of synthesizing input, holds the user's Stop against the
+    agent's next automatic grant, and is denied outright in Plan and Goal
 
 ## 12. Native Pi session boundary (ADR 0254)
 
@@ -422,12 +423,16 @@ primitive, and the sidecar reaches it only through the existing `host.proxy`
 `tools.execute` allowlist entry. `computer.*` is not a plugin host API and is
 not requestable in a plugin manifest.
 
-Authority is one user-minted scope grant naming one window or application. The
-model cannot name, enumerate, or widen a target, there is at most one active
-grant per desktop instance, and grants are never persisted. Every input action
-re-validates the grant revision and the measured geometry; coordinate input
-requires a `basis` minted by a capture of the same scope, and a stale basis is
-refused rather than replayed against whatever now occupies those pixels.
+Authority is one scope grant, minted automatically for the desktop when the
+user has enabled the capability (ADR 0344) and bound to one window at a time.
+Binding another window re-runs every refusal against a fresh enumeration and
+moves the grant revision; there is at most one active grant per desktop
+instance, and grants are never persisted. Every input action re-validates the
+grant revision and the measured geometry; coordinate input requires a `basis`
+minted by a capture of the same window, and a stale basis is refused rather
+than replayed against whatever now occupies those pixels. The user's Stop
+revokes the grant, aborts the turn holding it, and blocks the agent's next
+automatic grant for a cooldown, so stopping ends a run rather than a call.
 
 Two refusals hold under every permission mode, setting, and grant option: the
 capability never targets PI-Desktop's own windows — approval cards, settings,

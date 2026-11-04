@@ -1,9 +1,9 @@
 /*
- * Computer-use indicator and target picker.
+ * Computer-use indicator and settings status.
  *
  * In-flow surfaces follow the borderless tone scheme (D297): tile and raised
- * backgrounds, no strokes. The picker is a floating layer, so it keeps the
- * hairline the scheme allows there.
+ * backgrounds, no strokes. There is no target picker since ADR 0344 — the
+ * indicator is the whole live surface.
  */
 .computer-use-indicator {
   display: flex;
@@ -28,100 +28,12 @@
   color: var(--text-muted);
 }
 
-.computer-use-picker {
-  width: 320px;
-  max-height: 420px;
-  overflow: auto;
-}
-
-.computer-use-picker-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-}
-
-.computer-use-picker-title {
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-}
-
-.computer-use-picker-hint,
-.computer-use-picker-error {
+/* Permission and backend diagnostics under the platform row. */
+.computer-use-status-error {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
-.computer-use-picker-error {
   color: var(--danger);
   font-variant-numeric: tabular-nums;
-}
-
-.computer-use-target-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.computer-use-target {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: var(--ds-tile);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.computer-use-target:hover:not(:disabled) {
-  background: var(--ds-raised);
-}
-
-.computer-use-target:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.computer-use-target-app {
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  white-space: nowrap;
-}
-
-.computer-use-target-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
-.computer-use-picker-close {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  padding: 4px 6px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.computer-use-picker-close:hover {
-  background: var(--ds-tile);
 }
 
 .computer-use-platform-status {

@@ -8268,3 +8268,45 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   validators, and `apps/desktop/test/computer-use-service.test.mjs`. No real
   application was driven and the five `E2E-COMPUTER-USE-*` gates remain
   `NOT RUN`; see `docs/implementation/computer-use-evidence.md`.
+
+## 2026-11-05 — Computer use grants the whole desktop automatically (D682)
+
+- D682 / ADR 0344 amends ADR 0342 §4 and §6. The user-picked window grant made
+  a two-application task a sequence of dialogs, so the picker is removed: a
+  `Grant` now carries `scope`, the `Computer` tool handler mints a
+  `desktop`-scope grant itself on a session's first call, and enabling the
+  feature in Settings is the consent. A `window` grant stays expressible and is
+  no longer minted by any UI.
+- A desktop grant binds exactly one window at a time, starting at the frontmost
+  window the host does not refuse. `computer.inspect` takes an optional
+  `targetId`; binding re-runs the self-target, denylist, and elevation checks
+  against a fresh enumeration and always moves the revision, so every `uid` and
+  `basis` from the previous window stops validating. `computer.act` never binds.
+- A closed window does not end a desktop grant: it falls back to the frontmost
+  usable window, and an action aimed at the window that disappeared is refused
+  `COMPUTER_STALE_REVISION` even with no `expectedRevision` supplied. A window
+  grant is revoked instead, as before.
+- The loop sees the host's window list with refusals attached and gains one
+  answer kind, `{"kind":"switch","window":"<id>"}`. A switch spends a loop step
+  and no action budget, a refused switch is reported to the model as a step
+  instead of ending the run, and a switch is never counted as work done.
+- Runs are autonomous by default: `COMPUTER_USE_DEFAULTS.inputPolicy` becomes
+  `autonomous-in-scope` and applies under every permission mode. `confirm-each`
+  stays in the contract but has no approval card behind it, so the Settings row
+  offering it is removed rather than left to imply a control that narrows
+  nothing. Capture stays `a11y-only` by default, and the handler now actually
+  passes the user's capture, budget, and expiry settings to the grant.
+- Stop ends the run: the indicator revokes the grant and aborts the turn that
+  holds it, and host-core refuses an `origin: agent` mint for
+  `AGENT_REGRANT_COOLDOWN` (30s) with the new `COMPUTER_STOPPED_BY_USER`.
+  Without that, the next tool call in the same turn would simply re-grant.
+- The renderer loses the window-enumeration and grant-minting IPC channels
+  entirely; it reads capabilities and the grant, and revokes. Audit records the
+  scope and the minting origin, and appends `computer.grant.rebound` with the
+  application identity on every move.
+- Covered by the new host-core `computer::` tests (frontmost bind, no usable
+  window, rebind refusals, window-grant rebind refusal, closed-window fallback,
+  Stop cooldown), `packages/computer-use` switch tests, the shared defaults
+  test, and `apps/desktop/test/computer-use-service.test.mjs` (automatic mint,
+  Stop refusal, switch call shape). Still device-unverified: the
+  `E2E-COMPUTER-USE-*` gates remain `NOT RUN`.

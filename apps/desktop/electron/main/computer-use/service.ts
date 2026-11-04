@@ -9,6 +9,7 @@ import {
   type ComputerInspection,
   type ComputerRunResult,
   type ComputerStepRecord,
+  type ComputerTarget,
 } from "@pi-desktop/shared";
 import type { Context } from "@earendil-works/pi-ai";
 import type { LocalToolHandler, LocalToolResult } from "../agent-sidecar";
@@ -21,9 +22,13 @@ import type { ComputerCursorOverlay } from "./cursor-overlay";
  *
  * The loop lives here because it needs two things host-core deliberately does
  * not have: a model provider and Chromium. Everything that can *refuse* stays
- * in host-core, and this handler cannot talk itself past any of it — it holds
- * no grant, mints none, and re-reads the live grant from the host on every
- * observation.
+ * in host-core, and this handler cannot talk itself past any of it — it asks
+ * for a grant it cannot shape, holds none of its own, and re-reads the live
+ * grant from the host on every observation.
+ *
+ * Since ADR 0344 the grant is desktop-wide and minted here, automatically, on
+ * the first call of a session: enabling the feature in Settings is the user's
+ * consent, and Stop plus the host's cooldown is how they take it back.
  *
  * The tool is registered as a local tool whose permission evaluation runs in
  * host-core first (`tools.execute`, the `GenerateImages` shape), so reaching
@@ -127,18 +132,37 @@ export function createComputerUseTool(options: {
     }
 
     const described = await host.call<{ grant: ComputerGrantView | null }>("computer.grantDescribe", {});
-    const grant = described.grant;
-    if (!grant || grant.state !== "active") {
-      return failure(
-        "COMPUTER_NO_GRANT",
-        "No application is currently handed over. Ask the user to pick a window in PI-Desktop's computer-use indicator, then try again. You cannot choose the window yourself.",
-      );
-    }
-    if (grant.sessionId !== sessionId) {
+    const existing =
+      described.grant && described.grant.state === "active" ? described.grant : null;
+    if (existing && existing.sessionId !== sessionId) {
       return failure(
         "COMPUTER_GRANT_IN_USE",
         "Another session holds the active computer-use grant.",
       );
+    }
+    let grant = existing;
+    if (!grant) {
+      // The host decides what this covers and which windows it refuses; the
+      // only things carried from here are the user's own settings.
+      try {
+        grant = await host.call<ComputerGrantView>("computer.grantCreate", {
+          sessionId,
+          origin: "agent",
+          ...(computerUse.defaultInputPolicy ? { inputPolicy: computerUse.defaultInputPolicy } : {}),
+          ...(computerUse.defaultCapture ? { capture: computerUse.defaultCapture } : {}),
+          ...(computerUse.actionBudget ? { actionBudget: computerUse.actionBudget } : {}),
+          ...(computerUse.idleExpiryMs ? { idleExpiryMs: computerUse.idleExpiryMs } : {}),
+        });
+        options.onGrant?.(grant);
+      } catch (error) {
+        const refusal = coded(error);
+        return failure(
+          refusal.code,
+          refusal.code === "COMPUTER_STOPPED_BY_USER"
+            ? "The user stopped computer use. Do not retry; tell them what you were about to do and let them decide."
+            : `Computer use could not start: ${refusal.message}`,
+        );
+      }
     }
 
     const provider = await options.resolveProvider(
@@ -155,28 +179,49 @@ export function createComputerUseTool(options: {
     const complete = options.complete ?? completeOneShot;
     const capture = options.capture ?? captureGrantedWindow;
 
-    const observe = async (): Promise<Observation> => {
+    const active = grant;
+    const observe = async (targetId?: string): Promise<Observation> => {
       signal.throwIfAborted();
       try {
+        // `inspect` is what binds a window, so it runs first and the grant is
+        // read back afterwards: the view must describe the window whose
+        // elements this observation carries, not the one before the switch.
+        const inspection = await host.call<ComputerInspection>("computer.inspect", {
+          grantId: active.grantId,
+          sessionId,
+          ...(targetId ? { targetId } : {}),
+        });
         const current = await host.call<{ grant: ComputerGrantView | null }>(
           "computer.grantDescribe",
           {},
         );
         const live = current.grant;
-        if (!live || live.state !== "active" || live.grantId !== grant.grantId) {
+        if (!live || live.state !== "active" || live.grantId !== active.grantId) {
           throw Object.assign(new Error("the grant is no longer active"), {
             code: "COMPUTER_GRANT_EXPIRED",
           });
         }
-        const inspection = await host.call<ComputerInspection>("computer.inspect", {
-          grantId: live.grantId,
-          sessionId,
-        });
+        // A window grant sees only itself; a desktop grant is shown the rest of
+        // the screen, refusals included, so a switch is an informed choice.
+        const windows =
+          live.scope === "window"
+            ? undefined
+            : await host
+                .call<{ targets: ComputerTarget[] }>("computer.listTargets", {})
+                .then((result) => result.targets)
+                // A window list that cannot be read is a smaller observation,
+                // never a failed step: the current window is still inspectable.
+                .catch(() => undefined);
         const pixels =
           live.capture === "a11y-and-pixels"
             ? await capture({ targetId: live.targetId, bounds: live.bounds, log: options.log })
             : undefined;
-        return { grant: live, inspection, ...(pixels ? { capture: pixels } : {}) };
+        return {
+          grant: live,
+          inspection,
+          ...(windows ? { windows } : {}),
+          ...(pixels ? { capture: pixels } : {}),
+        };
       } catch (error) {
         throw coded(error);
       }
@@ -186,7 +231,7 @@ export function createComputerUseTool(options: {
       signal.throwIfAborted();
       try {
         return await host.call<ComputerActResult>("computer.act", {
-          grantId: grant.grantId,
+          grantId: active.grantId,
           sessionId,
           expectedRevision,
           action,
@@ -227,7 +272,7 @@ export function createComputerUseTool(options: {
       // The loop reports its own refusals; reaching here means the provider or
       // an abort failed, which must not look like a completed task.
       const aborted = signal.aborted;
-      options.overlay.apply({ kind: "hide", grantId: grant.grantId });
+      options.overlay.apply({ kind: "hide", grantId: active.grantId });
       return failure(
         aborted ? "TURN_ABORTED" : "COMPUTER_ACTION_REJECTED",
         aborted

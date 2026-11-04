@@ -10,6 +10,12 @@
 //! permission mode that reaches them: this application's own windows are never
 //! a target (synthetic input into PI-Desktop would bypass the permission
 //! broker), and a secure input state refuses both inspection and input.
+//!
+//! Since ADR 0344 the grant is automatic and desktop-wide, so the user no
+//! longer narrows the scope by choosing a window. That moves weight onto the
+//! refusals below, which are re-applied every time the grant binds a window,
+//! and onto Stop: a user revocation holds for `AGENT_REGRANT_COOLDOWN` so the
+//! agent cannot immediately mint its way back onto the screen.
 
 pub mod backend;
 #[cfg(target_os = "macos")]
@@ -38,6 +44,9 @@ pub const DEFAULT_ACTION_BUDGET: u32 = 40;
 pub const DEFAULT_IDLE_EXPIRY: Duration = Duration::from_secs(15 * 60);
 pub const MAX_IDLE_EXPIRY: Duration = Duration::from_secs(60 * 60);
 pub const MIN_IDLE_EXPIRY: Duration = Duration::from_secs(30);
+/// How long a user Stop keeps the agent from minting a new grant. Short enough
+/// not to look broken, long enough that Stop ends the run rather than one call.
+pub const AGENT_REGRANT_COOLDOWN: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +78,19 @@ impl Rect {
 pub enum InputPolicy {
     ConfirmEach,
     AutonomousInScope,
+}
+
+/// What a grant reaches (ADR 0344).
+///
+/// `Desktop` is the automatic grant: every window this module does not refuse,
+/// one bound at a time. The refusals do not move with it — they are re-applied
+/// each time the grant binds a window, so "the whole desktop" never includes
+/// our own windows or a denylisted credential surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GrantScope {
+    Desktop,
+    Window,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +167,7 @@ pub enum GrantState {
 pub struct GrantView {
     pub grant_id: String,
     pub revision: u32,
+    pub scope: GrantScope,
     pub target_id: String,
     pub target_label: String,
     pub app_key: String,
@@ -164,6 +187,9 @@ pub struct GrantView {
 pub struct Grant {
     pub grant_id: String,
     pub revision: u32,
+    pub scope: GrantScope,
+    /// The window bound right now. A `Desktop` grant rebinds this; a `Window`
+    /// grant never does.
     pub target: TargetRef,
     pub target_label: String,
     pub bounds: Rect,
@@ -191,6 +217,7 @@ impl Grant {
         GrantView {
             grant_id: self.grant_id.clone(),
             revision: self.revision,
+            scope: self.scope,
             target_id: self.target.target_id.clone(),
             target_label: self.target_label.clone(),
             app_key: self.target.app_key.clone(),
@@ -345,6 +372,7 @@ pub struct ActResult {
 pub enum Refusal {
     Disabled,
     NoGrant,
+    StoppedByUser,
     GrantInUse,
     GrantExpired,
     BudgetExhausted,
@@ -369,6 +397,7 @@ impl Refusal {
         match self {
             Refusal::Disabled => "COMPUTER_DISABLED",
             Refusal::NoGrant => "COMPUTER_NO_GRANT",
+            Refusal::StoppedByUser => "COMPUTER_STOPPED_BY_USER",
             Refusal::GrantInUse => "COMPUTER_GRANT_IN_USE",
             Refusal::GrantExpired => "COMPUTER_GRANT_EXPIRED",
             Refusal::BudgetExhausted => "COMPUTER_BUDGET_EXHAUSTED",
@@ -395,6 +424,9 @@ impl Refusal {
         match self {
             Refusal::Disabled => "computer use is disabled".into(),
             Refusal::NoGrant => "no active computer-use grant".into(),
+            Refusal::StoppedByUser => {
+                "the user stopped computer use; wait before asking again".into()
+            }
             Refusal::GrantInUse => "another session holds the active grant".into(),
             Refusal::GrantExpired => "the computer-use grant is no longer active".into(),
             Refusal::BudgetExhausted => "the grant's action budget is exhausted".into(),
