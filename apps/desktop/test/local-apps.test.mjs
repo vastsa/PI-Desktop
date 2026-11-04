@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  LOCAL_APP_MAX_ICON_BYTES,
   createLocalAppCatalog,
   linuxApplicationDirectories,
   localAppId,
@@ -9,6 +10,7 @@ import {
   parseDesktopEntry,
   windowsStartMenuDirs,
 } from "../electron/main/local-apps.ts";
+import { readMainModuleSync } from "./helpers/source-contracts.mjs";
 import {
   desktopExecutable,
   isLaunchableDesktopEntry,
@@ -369,7 +371,7 @@ test("icon failures and oversized icons never fail the scan", async () => {
     icons: [
       [CHROME_TARGET, new Error("icon extraction failed")],
       [second, "data:image/png;base64,AAAA"],
-      [third, `data:image/png;base64,${"A".repeat(5_000)}`],
+      [third, `data:image/png;base64,${"A".repeat(LOCAL_APP_MAX_ICON_BYTES + 1)}`],
     ],
   });
 
@@ -382,6 +384,53 @@ test("icon failures and oversized icons never fail the scan", async () => {
   assert.equal(state.iconRequests, 3);
 });
 
+test("the icon budget is 32 KiB so a large native icon still fits", () => {
+  assert.equal(LOCAL_APP_MAX_ICON_BYTES, 32_768);
+  // The small variant reads as a blurry square on the launcher's tiles.
+  assert.match(
+    readMainModuleSync("local-apps.ts"),
+    /app\.getFileIcon\(target, \{ size: "large" \}\)/,
+  );
+});
+
+test("a rescan reuses the icon it already fetched", async () => {
+  const { deps, state } = createFakeHost({
+    shortcuts: { [`${START_MENU}\\Chrome.lnk`]: { target: CHROME_TARGET } },
+    existing: [CHROME_TARGET],
+    icons: [[CHROME_TARGET, "data:image/png;base64,AAAA"]],
+  });
+  const catalog = createLocalAppCatalog(deps);
+
+  const first = await catalog.list();
+  assert.equal(state.iconRequests, 1);
+  assert.equal(first[0].iconDataUrl, "data:image/png;base64,AAAA");
+
+  const rescanned = await catalog.refresh();
+
+  assert.equal(state.iconRequests, 1);
+  assert.equal(rescanned[0].iconDataUrl, "data:image/png;base64,AAAA");
+});
+
+test("an icon is dropped from the cache when its application disappears", async () => {
+  const shortcut = `${START_MENU}\\Chrome.lnk`;
+  const { deps, state } = createFakeHost({
+    shortcuts: { [shortcut]: { target: CHROME_TARGET } },
+    existing: [CHROME_TARGET],
+    icons: [[CHROME_TARGET, "data:image/png;base64,AAAA"]],
+  });
+  const catalog = createLocalAppCatalog(deps);
+
+  await catalog.list();
+  assert.equal(state.iconRequests, 1);
+
+  state.shortcuts.delete(shortcut);
+  assert.deepEqual(await catalog.refresh(), []);
+
+  // Reinstalling must not be served the stale image of the previous install.
+  state.shortcuts.set(shortcut, { target: CHROME_TARGET });
+  await catalog.refresh();
+  assert.equal(state.iconRequests, 2);
+});
 test("icons are requested for at most 200 entries", async () => {
   const shortcuts = {};
   const existing = [];

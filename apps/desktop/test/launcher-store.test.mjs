@@ -3,13 +3,12 @@ import test from "node:test";
 
 import {
   EMPTY_LAUNCHER_STATE,
-  LAUNCHER_ALIAS_LIMIT,
+  LAUNCHER_PIN_LIMIT,
   LAUNCHER_RECENT_LIMIT,
   launcherTriggerKey,
   pruneLauncherState,
   readLauncherState,
   rememberLauncherUse,
-  setLauncherAliases,
   setLauncherPinned,
   setLauncherPluginDisabled,
   setLauncherTriggerDisabled,
@@ -62,10 +61,7 @@ test("plugin history written by the previous panel survives the upgrade", () => 
 test("an empty store reports nothing pinned or disabled", () => {
   const state = withStorage(fakeStorage(), () => readLauncherState());
 
-  assert.deepEqual(state.pins, []);
-  assert.deepEqual(state.aliases, {});
-  assert.deepEqual(state.disabledPlugins, []);
-  assert.deepEqual(state.disabledTriggers, []);
+  assert.deepEqual(state, EMPTY_LAUNCHER_STATE);
 });
 
 test("opening an item moves it to the front exactly once", () => {
@@ -94,42 +90,51 @@ test("recents stay capped", () => {
   });
 });
 
-test("pinning is idempotent and unpinning removes the entry", () => {
+test("pinning appends once and unpinning removes the entry", () => {
   const storage = fakeStorage();
 
   withStorage(storage, () => {
     setLauncherPinned("app:a", true);
     setLauncherPinned("app:b", true);
-    assert.deepEqual(setLauncherPinned("app:a", true).pins, ["app:b", "app:a"]);
+    // Re-pinning an item that is already pinned keeps its place.
+    assert.deepEqual(setLauncherPinned("app:a", true).pins, ["app:a", "app:b"]);
     assert.deepEqual(setLauncherPinned("app:b", false).pins, ["app:a"]);
   });
 });
 
-test("aliases are trimmed, deduplicated and capped", () => {
+test("the pin budget is eight and a full row refuses a ninth pin", () => {
   const storage = fakeStorage();
-  const aliases = Array.from(
-    { length: LAUNCHER_ALIAS_LIMIT + 4 },
-    (_, index) => ` alias ${index} `,
-  );
+
+  assert.equal(LAUNCHER_PIN_LIMIT, 8);
 
   withStorage(storage, () => {
-    const state = setLauncherAliases("app:wechat", ["微信", "微信", ...aliases]);
+    for (let index = 0; index < 10; index += 1) {
+      setLauncherPinned(`app:${index}`, true);
+    }
+    const state = readLauncherState();
 
-    assert.deepEqual(state.aliases["app:wechat"], [
-      "微信",
-      ...aliases.slice(0, LAUNCHER_ALIAS_LIMIT - 1).map((alias) => alias.trim()),
+    assert.equal(state.pins.length, LAUNCHER_PIN_LIMIT);
+    assert.deepEqual(
+      state.pins,
+      Array.from({ length: LAUNCHER_PIN_LIMIT }, (_, index) => `app:${index}`),
+    );
+
+    // A full row keeps the pins it has and does not evict the oldest one.
+    const afterRefusal = setLauncherPinned("app:extra", true);
+    assert.deepEqual(afterRefusal.pins, state.pins);
+
+    // Unpinning frees a slot for the next pin.
+    setLauncherPinned("app:0", false);
+    assert.deepEqual(setLauncherPinned("app:extra", true).pins, [
+      "app:1",
+      "app:2",
+      "app:3",
+      "app:4",
+      "app:5",
+      "app:6",
+      "app:7",
+      "app:extra",
     ]);
-  });
-});
-
-test("clearing every alias drops the item key", () => {
-  const storage = fakeStorage();
-
-  withStorage(storage, () => {
-    setLauncherAliases("app:wechat", ["微信"]);
-    const state = setLauncherAliases("app:wechat", ["   "]);
-
-    assert.equal("app:wechat" in state.aliases, false);
   });
 });
 
@@ -158,20 +163,18 @@ test("a plugin hidden from the launcher keeps that preference through pruning", 
   });
 });
 
-test("pruning forgets recents, pins and aliases of items that are gone", () => {
+test("pruning forgets recents and pins of items that are gone", () => {
   const storage = fakeStorage();
 
   withStorage(storage, () => {
     rememberLauncherUse("plugin:gone");
     rememberLauncherUse("app:kept");
     setLauncherPinned("plugin:gone", true);
-    setLauncherAliases("plugin:gone", ["x"]);
 
     const state = pruneLauncherState(["app:kept"]);
 
     assert.deepEqual(state.recents, ["app:kept"]);
     assert.deepEqual(state.pins, []);
-    assert.deepEqual(state.aliases, {});
     assert.deepEqual(readLauncherState().recents, ["app:kept"]);
   });
 });
@@ -184,12 +187,36 @@ test("unreadable persisted state degrades to an empty store", () => {
   assert.deepEqual(state, EMPTY_LAUNCHER_STATE);
 });
 
+test("a legacy payload with aliases is read without them and left untouched", () => {
+  const aliases = { "app:wechat": ["聊天"] };
+  const storage = fakeStorage({
+    [STATE_KEY]: JSON.stringify({
+      recents: ["app:wechat"],
+      pins: ["app:wechat"],
+      aliases,
+      disabledPlugins: [],
+      disabledTriggers: [],
+    }),
+  });
+
+  const state = withStorage(storage, () => readLauncherState());
+
+  assert.deepEqual(state, {
+    recents: ["app:wechat"],
+    pins: ["app:wechat"],
+    disabledPlugins: [],
+    disabledTriggers: [],
+  });
+  // Reading is not a migration: the stored payload is not rewritten behind the
+  // user's back, so a downgrade still finds its aliases.
+  assert.deepEqual(JSON.parse(storage.map.get(STATE_KEY)).aliases, aliases);
+});
+
 test("a wrong-shaped payload is sanitized instead of trusted", () => {
   const storage = fakeStorage({
     [STATE_KEY]: JSON.stringify({
       recents: ["app:a", 7, "app:a", ""],
       pins: "nope",
-      aliases: { "app:a": ["ok", 5], "  ": ["bad"] },
       disabledPlugins: null,
       disabledTriggers: ["calculator::expr", 1],
     }),
@@ -199,7 +226,6 @@ test("a wrong-shaped payload is sanitized instead of trusted", () => {
 
   assert.deepEqual(state.recents, ["app:a"]);
   assert.deepEqual(state.pins, []);
-  assert.deepEqual(state.aliases, { "app:a": ["ok"] });
   assert.deepEqual(state.disabledPlugins, []);
   assert.deepEqual(state.disabledTriggers, ["calculator::expr"]);
 });

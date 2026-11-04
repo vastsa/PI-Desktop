@@ -8,7 +8,7 @@ import {
   PLUGIN_LAUNCHER_DEFAULT_HEIGHT,
   PLUGIN_LAUNCHER_DEFAULT_WIDTH,
   PLUGIN_LAUNCHER_MAX_WIDTH,
-  PLUGIN_LAUNCHER_MIN_HEIGHT,
+  PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT,
   PLUGIN_LAUNCHER_MIN_WIDTH,
   PLUGIN_LAUNCHER_STATE_FILE,
   parseLauncherWindowState,
@@ -38,10 +38,11 @@ test("a missing state file means the panel opens at its default size", () => {
 });
 
 test("the window cannot be persisted narrower than the eight-column floor", () => {
-  const state = parseLauncherWindowState({ width: 120, height: 100 });
+  const state = parseLauncherWindowState({ width: 120, height: 20 });
 
   assert.equal(state.width, PLUGIN_LAUNCHER_MIN_WIDTH);
-  assert.equal(state.height, PLUGIN_LAUNCHER_MIN_HEIGHT);
+  // Height is content-driven now, so only a very small floor is enforced.
+  assert.equal(state.height, PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT);
 });
 
 test("an oversized remembered width is clamped", () => {

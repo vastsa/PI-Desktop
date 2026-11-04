@@ -6,6 +6,7 @@ import {
   LAUNCHER_MATCH_TILES,
   LAUNCHER_PINNED_TILES,
   LAUNCHER_RECENT_TILES,
+  buildLauncherAllPluginsSection,
   buildLauncherPinnedSection,
   buildLauncherRecentSection,
   indexLauncherCatalog,
@@ -16,7 +17,6 @@ import {
 const EMPTY_STORE = {
   recents: [],
   pins: [],
-  aliases: {},
   disabledPlugins: [],
   disabledTriggers: [],
 };
@@ -61,6 +61,18 @@ test("the grid is 8 columns wide with the documented row budget", () => {
   assert.equal(LAUNCHER_MATCH_TILES, 24);
 });
 
+test("a tile carries the name, the monogram, and nothing that explains the match", () => {
+  const items = catalog([], [app("chrome", "Google Chrome")]);
+
+  const tile = search(items, "chrome").tiles[0];
+
+  assert.equal(tile.kind, "app");
+  assert.equal(tile.name, "Google Chrome");
+  assert.equal(tile.monogram, "G");
+  assert.equal("detail" in tile, false);
+  assert.equal("reason" in tile, false);
+});
+
 test("a declared trigger outranks a plugin whose name merely contains the input", () => {
   const items = catalog([
     plugin("calc.name-only", "1+1 helper"),
@@ -72,7 +84,22 @@ test("a declared trigger outranks a plugin whose name merely contains the input"
   const result = search(items, "1+1");
 
   assert.equal(result.tiles[0].id, "plugin:calculator");
-  assert.equal(result.tiles[0].reason, "pattern");
+  assert.deepEqual(result.tiles[0].trigger, { id: "expr", payload: "1+1" });
+});
+
+test("a trigger hit appears once: it is not scored against the name as well", () => {
+  // The plugin's name would also match the input, which used to be able to
+  // surface the same plugin twice: once for the pattern, once for the name.
+  const items = catalog([
+    plugin("calculator", "== 1+1 ==", {
+      triggers: [{ id: "expr", pattern: "^[0-9+\\-*/(). ]+$" }],
+    }),
+  ]);
+
+  const result = search(items, "1+1");
+
+  assert.equal(result.total, 1);
+  assert.equal(result.tiles.length, 1);
   assert.deepEqual(result.tiles[0].trigger, { id: "expr", payload: "1+1" });
 });
 
@@ -112,21 +139,25 @@ test("Chinese names match by full pinyin and by initials", () => {
   const items = catalog([], [app("wechat", "微信")]);
 
   assert.equal(search(items, "weixin").tiles[0].id, "app:wechat");
-  assert.equal(search(items, "weixin").tiles[0].reason, "pinyin");
   assert.equal(search(items, "wx").tiles[0].id, "app:wechat");
-  assert.equal(search(items, "wx").tiles[0].reason, "initials");
   assert.equal(search(items, "微信").tiles[0].id, "app:wechat");
 });
 
-test("a user alias matches and reports that it was the alias", () => {
-  const store = { ...EMPTY_STORE, aliases: { "app:wechat": ["聊天"] } };
-  const items = catalog([], [app("wechat", "WeChat")]);
+test("an application's icon data URL reaches the tile", () => {
+  const items = catalog([], [
+    app("chrome", "Chrome", { iconDataUrl: "data:image/png;base64,AAAA" }),
+  ]);
 
-  const result = search(items, "liaotian", store);
+  assert.equal(
+    search(items, "chrome").tiles[0].iconDataUrl,
+    "data:image/png;base64,AAAA",
+  );
+});
 
-  assert.equal(result.tiles[0].id, "app:wechat");
-  assert.equal(result.tiles[0].reason, "alias");
-  assert.equal(result.tiles[0].detail, "聊天");
+test("plugins never carry an application icon", () => {
+  const items = catalog([plugin("notes", "Notes")]);
+
+  assert.equal(search(items, "notes").tiles[0].iconDataUrl, undefined);
 });
 
 test("same-named plugin and application both appear, plugins first", () => {
@@ -165,7 +196,6 @@ test("a description-only match ranks last", () => {
 
   assert.equal(result.tiles[0].id, "plugin:markdown");
   assert.equal(result.tiles[1].id, "plugin:notes");
-  assert.equal(result.tiles[1].reason, "description");
 });
 
 test("recents report their real total while the grid shows two rows", () => {
@@ -184,7 +214,6 @@ test("recents report their real total while the grid shows two rows", () => {
 
   assert.equal(section.tiles.length, 16);
   assert.equal(section.total, 20);
-  assert.equal(section.tiles[0].reason, "recent");
 });
 
 test("pins show one row and keep the pin order", () => {
@@ -200,7 +229,29 @@ test("pins show one row and keep the pin order", () => {
     section.tiles.map((tile) => tile.id),
     ["app:c", "app:a", "app:b"],
   );
-  assert.equal(section.tiles[0].reason, "pinned");
+});
+
+test("the all-plugins view lists plugins only, recently used first", () => {
+  const items = catalog(
+    [plugin("alpha", "Alpha"), plugin("beta", "Beta"), plugin("gamma", "Gamma")],
+    [app("chrome", "Chrome")],
+  );
+  const store = { ...EMPTY_STORE, recents: ["plugin:gamma"] };
+
+  const section = buildLauncherAllPluginsSection(
+    indexLauncherCatalog(items, store),
+    store,
+  );
+
+  assert.deepEqual(
+    section.tiles.map((tile) => tile.id),
+    ["plugin:gamma", "plugin:alpha", "plugin:beta"],
+  );
+  assert.equal(section.total, 3);
+  assert.deepEqual(
+    section.tiles.filter((tile) => tile.kind !== "plugin"),
+    [],
+  );
 });
 
 test("a plugin the user hid from the launcher is not searchable", () => {
@@ -226,10 +277,7 @@ test("a disabled trigger no longer claims the input", () => {
 
   const result = search(items, "1+1", store);
 
-  assert.equal(
-    result.tiles.every((tile) => tile.reason !== "pattern"),
-    true,
-  );
+  assert.equal(result.tiles.length, 0);
 });
 
 test("recency breaks a tie between equal matches", () => {
