@@ -129,9 +129,8 @@ test("installed plugin rows keep secondary detail behind a disclosure", () => {
 });
 
 test("extension row actions stay visible and labelled", () => {
-  // The card's one call to action is a visible, labelled button; the icon
-  // actions stay visible at rest and carry tooltips and accessible names.
-  assert.match(pageSrc, /t\("plugins\.openPanel"\)/);
+  // Remaining card actions stay visible and accessible; panels open from the launcher.
+  assert.doesNotMatch(pageSrc, /t\("plugins\.openPanel"\)/);
   assert.match(pageSrc, /<TooltipButton[\s\S]*?tooltip=\{t\("plugins\.openSettings"\)\}/);
   assert.match(pageSrc, /<TooltipButton[\s\S]*?tooltip=\{t\("plugins\.rowActions", \{ name: plugin\.name \}\)\}/);
   assert.match(styles, /\.ui-tooltip\s*\{[\s\S]*?position:\s*fixed;/);
