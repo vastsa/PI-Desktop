@@ -747,7 +747,7 @@ Plugins address sessions through two grants that share one set of verbs:
 - `session.read.own` / `session.update.own` / `session.delete.own` — the
   ADR 0200 boundary: only sessions whose origin belongs to the calling plugin.
 - `session.read.all` / `session.update.all` / `session.delete.all` — every live
-  session, including the conversations the user created in this app (ADR 0339).
+  session, including the conversations the user created in this app (ADR 0340).
 
 `.all` is a separate grant, never a widening of `.own`, so an existing install
 keeps exactly the reach it was reviewed for. A manifest may declare both, and
