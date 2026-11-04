@@ -5,8 +5,10 @@
 - Requirements: discard transcript scrolling while earlier messages load; keep
   the current visible turn stationary through paging and late layout; restore
   normal input afterwards without changing other navigation.
-- Integration base: official `vastsa/PI-Desktop` main,
-  `9d86fc95b17780a820fec1890fabcabb1d0fa788`.
+- Follow-up integration base: official `vastsa/PI-Desktop` main,
+  `14b928f3171e9e00b6d2851d67c832812ff61fc7`, including merged PR #2080.
+  The continuous-answer jump and pending-page latest-button race both fail on
+  this baseline despite the original seven direct-component cases passing.
 - The original failing reproduction was verified on official main
   `3f8c02c63e6ca6ed9ff0c9c570cfc4aeadea92cd`.
 - Run from this request checkout, not another installed Desktop build. Existing
@@ -50,6 +52,17 @@ are used. It is not a mock implementation of scrolling.
   page is pending, when rows mount, or when the label disappears. Repeating the
   case must not produce alternating small jumps.
 
+### TC-F-003: a continuous answer spanning a page stays stationary
+
+- Priority: High. Requirement: pagination must not anchor a temporary group.
+- Use the automated `SessionPane` journey below, or a local conversation with
+  several consecutive assistant messages in one answer spanning a page edge.
+- Steps: scroll into the oldest loaded fragment and trigger an earlier page;
+  identify a visible paragraph, then allow the preceding answer fragments to load.
+- Expected: that same message stays at its screen offset even when its enclosing
+  answer group's first message changes. Do not assess only `scrollTop` or the
+  outer group's position. Repeat with ordinary standalone user rows.
+
 ### TC-ERR-001: a failed page releases input
 
 - Priority: High. Requirement: failure recovery does not leave a locked viewport.
@@ -66,6 +79,10 @@ are used. It is not a mock implementation of scrolling.
   button, then click **Complete page**.
 - Expected: navigation reaches and stays at the latest turn. The old page must
   not pull the viewport back to its former reading anchor or keep input locked.
+  Repeat via the real session/store paging path, both immediately after the
+  upward gesture while a page is pending and after the page settles, using
+  standalone rows and a continuous grouped answer. Keep normal motion enabled.
+  No queued scroll event may reopen history or start another older-page read.
 
 ### TC-E-001: verify the real application paths
 
@@ -101,7 +118,11 @@ checks single-flight IO, samples the visible anchor each frame (2 CSS-pixel
 rounding tolerance), and checks normal input after completion. Cases include
 quiet loading, native wheel bursts, tail updates, six successive delayed row
 height changes, rejection, empty pages, cached-window growth, hide/reveal, input
-ownership and return-to-latest.
+ownership and return-to-latest. Its additional `transcript-history-navigation`
+journey uses production `SessionPane`, the real store and delayed external Host
+IPC reads: two message-stability cases (standalone/grouped) plus four real
+latest-button cases (pending/settled page × standalone/grouped). It checks the
+historical view is cleared, the bottom remains reached and no extra page starts.
 
 | Requirement | Cases | Evidence level |
 | --- | --- | --- |

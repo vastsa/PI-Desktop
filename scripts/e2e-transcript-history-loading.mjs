@@ -34,7 +34,6 @@ try {
 const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
 app.setPath('userData', require('node:path').join(__dirname, 'profile'));
-app.commandLine.appendSwitch('force-prefers-reduced-motion');
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => app.quit());
 app.whenReady().then(async () => {
@@ -51,6 +50,7 @@ app.whenReady().then(async () => {
  try {
   await win.loadFile(require('node:path').join(__dirname, 'index.html'));
   await js('new Promise((resolve,reject)=>{const end=performance.now()+10000;const check=()=>{if(globalThis.historyLoadingFixture)resolve();else if(performance.now()>end)reject(new Error("fixture did not initialize"));else requestAnimationFrame(check)};check()})');
+  console.log('HISTORY_MOTION ' + await js('JSON.stringify({ reduced: matchMedia("(prefers-reduced-motion: reduce)").matches })'));
   if (${manual}) return;
   const results = [];
   for (const name of ['wheel', 'quiet', 'tail', 'late-layout', 'failure', 'empty', 'hide']) {
@@ -85,6 +85,8 @@ app.whenReady().then(async () => {
   const navigation = await call('jumpWhileLoading()');
   assert.equal(navigation.locked, false, 'return-to-latest did not cancel the old hold');
   assert(Math.abs(navigation.distanceFromBottom) <= 2, 'late page stole explicit latest navigation');
+  const realNavigation = await js('globalThis.transcriptHistoryNavigationProbe()');
+  console.log('REAL_HISTORY_NAVIGATION_PROBE ' + JSON.stringify(realNavigation));
   console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, cases: results.length, cachedWindow: true, inputOwnership: true, latestNavigation: true }));
   app.exit(0);
  } catch(e) { console.error(e.stack || String(e)); app.exit(1); }

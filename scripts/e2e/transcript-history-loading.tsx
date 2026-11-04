@@ -1,3 +1,4 @@
+import "./transcript-history-navigation";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import i18n from "i18next";

@@ -130,7 +130,7 @@ test("real input, a new turn and every navigation drop the held position", () =>
   );
   assert.match(
     transcript,
-    /const jumpToLatest = useCallback\(\(\) => \{\s*cancelReadingPosition\(\);\s*cancelHistoryPaging\(\);\s*releaseDisclosureAnchor\(\);\s*pinnedRef\.current = true;/,
+    /const jumpToLatest = useCallback\(\(\) => \{\s*(?:\/\/[^\n]*\n\s*)*lastScrollGestureAtRef\.current = -Infinity;\s*cancelReadingPosition\(\);\s*cancelHistoryPaging\(\);\s*releaseDisclosureAnchor\(\);\s*pinnedRef\.current = true;/,
   );
   assert.match(
     transcript,
