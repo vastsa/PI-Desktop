@@ -38,10 +38,12 @@ import {
   listDir,
   readOpenableFile,
   readOpenableImage,
+  readUserOpenableFile,
   resolveRealOpenablePath,
+  resolveUserOpenablePath,
 } from "@pi-desktop/host-runtime";
 import { openableMp4Path } from "../open-attachment-video";
-import { isChatRefOutsideRoots, resolveChatFileRef } from "../chat-ref-resolve";
+import { isChatRefOutsideRoots, resolveChatFileRef, resolveExternalChatRef } from "../chat-ref-resolve";
 import { rebaseWorktreeRef, type WorktreeRefContext } from "../worktree-ref";
 import { getWorkspaceFileIndex, searchWorkspaceFiles } from "../fs-index";
 import {
@@ -939,7 +941,7 @@ handleWithEvent(
           throw error;
         }
       }
-      return readOpenableFile(
+      return readUserOpenableFile(
         requested,
         workspaceRoot,
         await fsExtraRoots(workspaceRoot),
@@ -980,7 +982,7 @@ handleWithEvent(
         throw error;
       }
     }
-    const target = await resolveRealOpenablePath(
+    const target = await resolveUserOpenablePath(
       requested,
       workspaceRoot,
       await fsExtraRoots(workspaceRoot),
@@ -999,7 +1001,7 @@ handleWithEvent(
     if (remote && !(await isLocalStoredFile(String(input.path ?? "")))) throw Object.assign(new Error("remote paths cannot be opened on this computer"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
     const workspaceRoot = await optionalWorkspaceRoot(input.sessionId);
     const requested = String(input.path ?? "").trim();
-    const target = await resolveRealOpenablePath(
+    const target = await resolveUserOpenablePath(
       requested,
       workspaceRoot,
       await fsExtraRoots(workspaceRoot),
@@ -1083,7 +1085,9 @@ handleWithEvent(
         attachments: join(dataDir, "attachments"),
       };
       if (await isChatRefOutsideRoots(ref, roots)) {
-        return { match: null, reason: "outside-allowed-roots" };
+        // An exact absolute path outside the managed roots opens when it names
+        // an existing regular file (ADR 0339).
+        return resolveExternalChatRef(ref);
       }
       return { match: await resolveChatFileRef(ref, roots) };
     },

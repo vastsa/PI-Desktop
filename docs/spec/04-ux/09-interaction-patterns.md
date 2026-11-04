@@ -739,6 +739,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   second rather than after it.
 - A boot that outlasts the video shows the splash's indeterminate bar after 3s
   of black, so an opaque mask is not mistaken for a hang.
+- Either `loadeddata` or `playing` acknowledges a decoded first frame; a
+  playing video must not hit the missing-first-frame timeout when `loadeddata`
+  was missed. The first-frame timeout also checks the actual video ref for
+  HAVE_CURRENT_DATA in case both initial events raced their handlers. The total
+  playback bound remains active.
 - Four bounds end the animation, and each runs the same reveal: no first frame
   within 2s, 15s of total playback, a `<video>` `error`, or `Escape`. The
   startup watchdog's bounds are unchanged and outrank it — at 30s the boot
@@ -1603,6 +1608,21 @@ Project drag/drop follows these patterns:
 ### 9.1 Transcript scrolling
 
 - Default: auto-scroll to bottom on new content during stream while pinned
+- Loading earlier messages is one pane-local viewport transaction: capture the
+  visible message and its viewport offset before either mounting more cached
+  rows or requesting a page. Keep that anchor through the committed projection
+  and late row layout; total scroll-height growth is not an anchor because it
+  can include tail updates and offscreen intrinsic-size estimates.
+- While that transaction owns the viewport, discard wheel/trackpad, touch-scroll
+  and scrolling-key input addressed to the transcript. Do not queue input for
+  replay after loading. Nested scroll owners, editable fields, title activation
+  and Ctrl+wheel zoom retain their own input. The loading label keeps identical
+  layout space when hidden, and ordinary scrolling resumes after settlement.
+- Search/minimap navigation, return-to-latest, manual disclosure, a new turn,
+  pane hide and unmount retire the hold. A late page cannot reclaim that
+  navigation. A failed or empty page releases input and does not auto-retry at
+  the unchanged boundary; a new reader gesture or earlier-history action may
+  retry. Requests remain single-flight even after their viewport hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement

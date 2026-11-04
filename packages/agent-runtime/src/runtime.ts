@@ -1787,6 +1787,7 @@ export class DesktopAgentRuntime {
   private model: Model<Api>;
   private turnId?: string;
   private disposed = false;
+  private aborting?: Promise<void>;
   readonly sessionId: string;
   private mode: Mode;
   private provider: RuntimeProviderConfig;
@@ -9416,11 +9417,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
-  async abort(): Promise<void> {
+  abort(): Promise<void> {
+    return this.aborting ??= this.abortTurn().finally(() => { this.aborting = undefined; });
+  }
+
+  private async abortTurn(): Promise<void> {
     const turnId = this.turnId;
     const settlement = turnId
       ? this.activeTurnSettlements.get(turnId)
       : undefined;
+    const delegates = this.runningDelegations().map((record) => record.completion);
     this.acceptingSteering = false;
     this.gracefulStopRequested = false;
     this.runCancelled = true;
@@ -9441,7 +9447,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // the whole session until it finished on its own (#1767). Drive the tools
     // from here as well, so a stop always releases them.
     for (const abortTool of [...this.activeToolAborts]) abortTool();
-    await settlement;
+    await Promise.allSettled([...(settlement ? [settlement] : []), ...delegates]);
   }
 
   private trackTurnOperation<T>(
@@ -9485,6 +9491,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return {
       sessionId: this.sessionId,
       isRunning:
+        this.aborting !== undefined ||
         this.agent.state.isStreaming ||
         this.compactionInProgress ||
         this.agentActivity !== undefined ||

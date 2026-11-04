@@ -1984,6 +1984,164 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("terminates repeated failed shell patch recovery for quoted git arguments", async () => {
+    // #2016 review: a quoted option value (`-C "/tmp/my project"`) used to be
+    // split on whitespace, its tail mistaken for the subcommand, so these real
+    // patch failures bypassed the recovery budget entirely. The budget must
+    // still terminate at MAX_MUTATION_RECOVERY_FAILURES.
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 128, stderr: "error: repository not found" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const quotedArgs = {
+      command: 'git -C "/tmp/my project" apply --check /tmp/change.patch',
+    };
+
+    for (const [index, id] of ["quoted-patch-1", "quoted-patch-2", "quoted-patch-3"].entries()) {
+      const result = await bash.execute(id, quotedArgs);
+      const expected = index === 2 ? { isError: true, terminate: true } : { isError: true };
+      await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual(expected);
+      expect(result.terminate).toBe(index === 2 ? true : undefined);
+    }
+
+    await runtime.dispose();
+  });
+
+  it("never reaches the patch budget for failures of heredoc and comment text", async () => {
+    // #2016 review round two: heredoc payload lines and comments used to be
+    // classified as patch commands, so repeated ordinary failures could end
+    // the turn. The guard must not engage for them at all.
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 1, stderr: "no match" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const inertArgs = [
+      { command: "cat <<'EOF'\npatch notes\nEOF" },
+      { command: 'printf "%s" x # ; patch notes' },
+    ];
+    for (const [index, args] of inertArgs.entries()) {
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const id = `inert-${index}-${attempt}`;
+        const result = await bash.execute(id, args);
+        await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual({
+          isError: true,
+        });
+        expect(result.terminate).toBeUndefined();
+      }
+    }
+
+    await runtime.dispose();
+  });
+
+  it("never reaches the patch budget for heredoc forms that only look closed", async () => {
+    // #2016 review round three: a space-prefixed delimiter ended the body
+    // early, and a second heredoc on the opening line was swallowed as the
+    // first one's payload. In both scripts the `patch` lines are stdin, so
+    // repeated ordinary failures must not terminate the turn.
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 1, stderr: "no match" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const payloadOnly = [
+      { command: "cat <<'EOF'\n EOF\nordinary text\npatch notes\nEOF" },
+      { command: "cat <<A <<B\nA\nordinary text\npatch notes\nB" },
+      { command: "cat <<EOF\n\tEOF\npatch -p1 < x.diff" },
+      // Spaced and escaped redirection words name the same delimiter (#2016
+      // review round five); both bodies stay stdin.
+      { command: "cat << EOF\npatch notes\nEOF" },
+      { command: "cat <<\\EOF\npatch notes\nEOF" },
+      { command: 'cat <<""\npatch notes' },
+    ];
+    for (const [index, args] of payloadOnly.entries()) {
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const id = `looks-closed-${index}-${attempt}`;
+        const result = await bash.execute(id, args);
+        await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual({
+          isError: true,
+        });
+        expect(result.terminate).toBeUndefined();
+      }
+    }
+
+    await runtime.dispose();
+  });
+
+  it("terminates repeated failures of a patch on the heredoc opening line", async () => {
+    // The reverse direction: heredocs start consuming bodies only after the
+    // opening line ends, so a `git apply` on that line still counts and its
+    // repeated failures must terminate at the budget.
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 128, stderr: "error: patch does not apply" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const args = { command: "cat <<EOF; git apply p.diff\nbody\nEOF" };
+
+    for (const [index, id] of ["opening-patch-1", "opening-patch-2", "opening-patch-3"].entries()) {
+      const result = await bash.execute(id, args);
+      await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual(
+        index === 2 ? { isError: true, terminate: true } : { isError: true },
+      );
+      expect(result.terminate).toBe(index === 2 ? true : undefined);
+    }
+
+    await runtime.dispose();
+  });
+
+  it("terminates repeated failures of an empty -C git apply at the budget", async () => {
+    // The empty quoted argument occupies git's option-value slot, so this is
+    // a real patch command whose failures must still terminate the turn.
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 128, stderr: "error: repository not found" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const args = { command: 'git -C "" apply --check /tmp/change.patch' };
+
+    for (const [index, id] of ["empty-c-1", "empty-c-2", "empty-c-3"].entries()) {
+      const result = await bash.execute(id, args);
+      await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual(
+        index === 2 ? { isError: true, terminate: true } : { isError: true },
+      );
+      expect(result.terminate).toBe(index === 2 ? true : undefined);
+    }
+
+    await runtime.dispose();
+  });
+
   it("spends one grace per recoverable Edit code before counting failures", async () => {
     const errorCodes = [
       "EDIT_TAG_MISMATCH",
@@ -13256,7 +13414,7 @@ describe("DesktopAgentRuntime delegation wait settlement safety", () => {
     }
   });
 
-  it("lets user Stop interrupt auto-resume even if a delegate ignores abort", async () => {
+  it("interrupts auto-resume but keeps Stop pending until an uncooperative delegate retires", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     subagentRuns.calls.length = 0;
     subagentRuns.instances.length = 0;
@@ -13271,9 +13429,16 @@ describe("DesktopAgentRuntime delegation wait settlement safety", () => {
       const resume = (runtime as any).resumeAfterDelegations();
       await Promise.resolve();
 
-      await runtime.abort();
+      let acknowledged = false;
+      const stopping = runtime.abort().then(() => { acknowledged = true; });
       await resume;
+      expect(acknowledged).toBe(false);
+      expect(runtime.getStatus().isRunning).toBe(true);
+      subagentRuns.resolveRun!({ agentName: "explorer", status: "aborted", report: "", turns: 0, toolCalls: 0 });
+      await stopping;
+      expect(runtime.getStatus().isRunning).toBe(false);
     } finally {
+      (subagentRuns.resolveRun as ((result: unknown) => void) | undefined)?.({ agentName: "explorer", status: "aborted", report: "", turns: 0, toolCalls: 0 });
       subagentRuns.ignoreAbort = false;
       subagentRuns.deferred = false;
       await runtime.dispose();

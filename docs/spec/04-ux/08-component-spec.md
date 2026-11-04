@@ -1943,21 +1943,24 @@ Single message render — either user (plaintext) or assistant (markdown streami
   any of these discards old results and cancels queued work. Newly created
   files are reconsidered when the message remounts or its scope changes, not
   by polling. Non-ASCII filenames, spaces, and Windows drive/backslash paths
-  remain whole candidates. User-message paths outside the allowed roots stay
-  plain after verification, while assistant references and tool paths remain
-  clickable so the opener can explain the access limit. Home paths stay plain.
+  remain whole candidates. An exact absolute path to an existing file outside
+  the managed roots verifies like an in-root one (ADR 0339), dotfile folders
+  such as `.ssh` included. Home paths stay plain. A Markdown link whose destination is an absolute path
+  reaches the opener even without a file extension (`/etc/hosts`); the
+  extension heuristic only decides which bare prose tokens become chips.
   Clicking a chip
    completes the reference through `pi-desktop/fs/resolveRef` — the whole open
    project is searched, its group's folders primary first (ADR 0263) — and opens
    where it resolved: a project file in the bundled `pi.file-manager` work-panel
    view (the host `file:` tab when that view is unavailable), a session-scratch
-   or attachment file in the host `file:` tab, and a `.html`/`.htm` page of the
+   or attachment file — or an `external` file named by its exact absolute path
+   outside every managed root (ADR 0339) — in the host `file:` tab, which shows
+   an external `.html`/`.htm` page as source, and a `.html`/`.htm` page of the
    primary folder in the side browser. A primary-folder file is addressed to the
    view as a project-relative path and a sibling-folder file as an absolute one,
    which is also how scratch and attachment files are addressed. A resolved
    image chip resolves and opens the same way. A chip whose reference
-   matches nothing opens nothing and reports itself; an absolute path outside
-   every allowed root reports the access limit separately. The OS default application
+   matches nothing opens nothing and reports itself. The OS default application
    is no longer what this click does.
   HTTP(S) URLs remain inline text links. Bare URLs preserve balanced parentheses
   in paths, queries, and fragments; an unmatched closing parenthesis wrapping

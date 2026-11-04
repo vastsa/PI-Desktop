@@ -1041,6 +1041,7 @@ export function useAppShellRuntime() {
         ? (
             <StartupAnimation
               playing={startupAnimation.playing}
+      videoRef={startupAnimation.videoRef}
               revealing={startupAnimation.phase === "reveal"}
               holdingLong={startupAnimation.holdingLong}
               onFirstFrame={startupAnimation.onFirstFrame}
