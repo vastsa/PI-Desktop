@@ -127,6 +127,13 @@ notarize, and staple macOS artifacts; `workflow_dispatch` may set
 `sign_macos: false` only for unsigned debug artifacts. See the [release
 runbook](../docs/spec/06-delivery/06-release-runbook.md).
 
+### Packaged startup regression
+
+For a packaged startup check, run
+`node scripts/e2e-electron-boot.mjs <packaged-executable>` after `pack`.
+It exercises the installed layout with an isolated profile and the same boot
+probe as `pnpm test:e2e:boot`.
+
 ### Provider certificate regression
 
 - `node scripts/e2e-provider-certificates.mjs`: real desktop launcher and

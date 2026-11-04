@@ -5720,3 +5720,62 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/plugin-session-api.test.mjs`。见 ADR 0340、ADR 0200 修订、
   ADR 0323 更正后的备选方案、`03-plugin-api.md` §插件拥有与全量会话、
   `13-plugin-permissions-matrix.md` 第 2 节与 E2E-268。
+
+## 2026-11-04 —— 电脑操作是宿主拥有、以作用域授权为门的能力（D681）
+
+- D681 / ADR 0342 以设计形式接受有界的原生应用操作。Agent 此前只能通过白名单
+  CDP 驱动内嵌浏览器宿体，除此之外一无所能；仓库里没有任何屏幕截取、合成输入、
+  窗口枚举或无障碍客户端。本决定记录的是契约而不是实现：没有任何代码随之交付。
+- 该能力住在 `crates/host-core`，作为 `computer.*` 域存在，并以唯一一个高风险
+  内置工具 `Computer` 触达 Agent。它刻意不是插件宿主 API，因此产品中最危险的
+  权限无法被第三方清单申请。Electron Main 保持为薄层——挑选器、指示器和
+  `tools.execute` 转发——sidecar 不需要新的 `host.proxy` 方法。
+- 权限是一份由用户签发、指向一个窗口或一个应用的作用域授权，带 revision、动作
+  预算、空闲过期、输入策略与截取模式。模型不能命名、枚举或扩大目标；每个桌面
+  实例最多一个活动授权；授权从不持久化。
+- 身份以无障碍为先：`inspect` 返回 role、name、bounds 与按授权生成的不透明
+  `uid`，`act` 派发平台无障碍动作。坐标只在配合 `basis`（由同一作用域的截取签发）
+  时存在，并在合成前立即重新校验，因此盲点击无法被表达，移动过的窗口失败关闭。
+- 两条拒绝在任何模式、设置与授权选项下都成立：该能力永不以 PI-Desktop 自身窗口
+  为目标——向本应用合成输入等于绕过权限中介——并且在安全输入状态或焦点落在密码
+  字段时，截取与合成一律拒绝。内置的凭据界面拒绝名单条目不可移除。
+- 权限模式治理授权而非每次按键。签发始终是桌面 UI 的显式决定且无截止期限；
+  `auto` 不签发任何授权，口述请求也不能。在授权内，检查类动作自动允许，输入遵循
+  `confirm-each`（`ask` 下唯一策略）或需显式选择的 `autonomous-in-scope`。
+  Plan 与 Goal 硬拒绝该工具，且它不存在 `allow-session` 授权。
+- 电脑操作有**自己的模型绑定**——用户从已配置的 Provider 行中挑选的一组
+  `{ providerId, modelId }`，沿用 `imageGeneration` 的先例。
+  `packages/computer-use` 中一条有界的"观察—决策—动作"回路把一条指令按严格
+  动作 schema 变成一串已校验的步骤；对话模型绝不驱动机器，也没有静默回退。
+  因此面向 Agent 的工具接受的是一条指令，而不是 `uid` 或坐标，返回的是有界
+  摘要而不是内层记录。
+- 回路与截取跑在 Electron Main 而不是 host-core：回路需要模型 Provider，截取
+  需要 Chromium，host-core 两者都不持有。host-core 保留一切能够拒绝的东西——
+  目标枚举、无障碍、合成、授权中介、每动作重校验、审计——而 `Computer` 沿用
+  `GenerateImages` 的形状：`tools.execute` 做权限评估，Main 在宿主放行后才执行。
+- **Agent 的光标是画出来的，不是抢来的。** 动作走无障碍动作或面向窗口的事件，
+  真实指针永不被挪动，Agent 工作期间用户的鼠标仍归自己；只能靠挪动真实指针来
+  动作的路径会被拒绝。一个无边框、透明、穿透点击、置顶的浮层画出 Agent 自己的
+  光标，它不拥有动作的任何部分，不能接收输入，也绝不是动作落点的事实来源。
+- 语音在首个版本中只定规格、刻意不接通：唯一调用方是 Agent。阶段 3 接通后，
+  一句口述只能经由现有委派/分类器路径成为绑定会话上的工作请求，属于任务委派
+  而不是遥控。
+- 三个桌面平台都在范围内。截取各平台统一用 `desktopCapturer`，因此只有检查与
+  输入是平台工作：macOS（`AXUIElement` 动作、`CGEventPostToPid` 按键、手写
+  framework FFI 且不引入新 crate）属阶段 1；Windows（UIA、面向窗口的消息、
+  提权目标被拒绝）与 Linux/X11（AT-SPI，尽力而为）属阶段 2；Wayland 拒绝输入
+  并保留门户截取。每条不支持路径都有自己的错误码，绝不挂起，也绝不静默空操作，
+  保真度只是部分的后端必须自行声明，而不是返回一棵空树。
+- 非目标第 9 条是修订而非删除：浏览器接管、无人看管的全桌面控制，以及任何由
+  模型自行选择目标，仍然是非目标。
+- 契约页面：`03-runtime/computer-use.md`、`08-error-codes.md` §3.10
+  （`COMPUTER_*`）、`05-host-core-rust.md` §2/§5b/§6、
+  `05-security/01-security.md` §13、`03-tools-and-permissions.md` §0/§2/§6。
+- 阶段 1 随本决定一起交付：`packages/shared/src/computer-use.ts`、
+  `crates/host-core/src/computer/`（含 macOS 后端与 `rpc/computer_rpc.rs`）、
+  `packages/computer-use/`、`apps/desktop/electron/main/computer-use/`，以及
+  Renderer 中的挑选器、指示器、设置卡片与绘制光标。覆盖来自 host-core 的
+  `computer::` 测试、`packages/computer-use` 单测、shared 校验器，以及
+  `apps/desktop/test/computer-use-service.test.mjs`。尚未驱动任何真实应用，
+  五条 `E2E-COMPUTER-USE-*` 闸门仍为 `NOT RUN`，详见
+  `docs/implementation/computer-use-evidence.md`。

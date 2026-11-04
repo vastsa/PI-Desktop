@@ -1,3 +1,4 @@
+import type { ReviewContextLines, ReviewContextResult, ReviewTurnsPage, ReviewChangesPage } from "@pi-desktop/shared";
 type ClipboardDirectoryPaste = {
   items: Array<{ kind: "directory"; path: string; name: string } | { kind: "file"; name: string }>;
   token: string | null;
@@ -64,9 +65,11 @@ import type {
   OnboardingState,
   OAuthLoginEvent,
   OAuthRespondInput,
-  OAuthStartResult,
   OAuthVendor,
+  OAuthStartResult,
   PluginSummary,
+  LauncherCatalog,
+  LauncherOpenPluginRequest,
   PluginPermissionReview,
   PluginSettingDefinition,
   PluginServiceStatus,
@@ -450,6 +453,8 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     transcriptDisplayMode: isTranscriptDisplayModeValue(settings.transcriptDisplayMode)
       ? settings.transcriptDisplayMode
       : "fully-folded",
+    autoCollapseSettledGroups: settings.autoCollapseSettledGroups !== false,
+    autoCollapseThinking: settings.autoCollapseThinking !== false,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
@@ -497,6 +502,22 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     !isTranscriptDisplayModeValue(settings.transcriptDisplayMode)
   ) {
     throw Object.assign(new Error("transcriptDisplayMode is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(settings, "autoCollapseSettledGroups") &&
+    typeof settings.autoCollapseSettledGroups !== "boolean"
+  ) {
+    throw Object.assign(new Error("autoCollapseSettledGroups is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(settings, "autoCollapseThinking") &&
+    typeof settings.autoCollapseThinking !== "boolean"
+  ) {
+    throw Object.assign(new Error("autoCollapseThinking is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
@@ -1511,6 +1532,21 @@ export const api = {
   openPluginPanel: (id: string) => invoke(IPC.invoke.pluginOpenPanel, id),
   togglePluginLauncher: () => invoke(IPC.invoke.pluginLauncherToggle),
   dismissPluginLauncher: () => invoke(IPC.invoke.pluginLauncherDismiss),
+  /** Everything the launcher can show: launchable plugins plus installed apps. */
+  launcherCatalog: () => invoke<LauncherCatalog>(IPC.invoke.pluginLauncherCatalog),
+  launcherOpenApp: (appId: string) =>
+    invoke(IPC.invoke.pluginLauncherOpenApp, { appId }),
+  launcherOpenPlugin: (request: LauncherOpenPluginRequest) =>
+    invoke(IPC.invoke.pluginOpenPanel, request),
+  /**
+   * Ask for a window height that fits what the panel currently renders. The
+   * host clamps the value into the supported range and ignores nonsense.
+   */
+  launcherSetContentHeight: (height: number) =>
+    invoke(IPC.invoke.pluginLauncherContentHeight, { height }),
+  /** Leave the panel, focus the main window, and open the plugin market page. */
+  launcherOpenPluginMarket: () =>
+    invoke(IPC.invoke.pluginLauncherOpenMarket),
   listPluginThemes: () => invoke<PluginTheme[]>(IPC.invoke.pluginThemes),
   listPluginProviderCatalog: () =>
     invoke<PluginProviderCatalogMeta[]>(IPC.invoke.pluginProviderCatalog),
@@ -1652,6 +1688,16 @@ export const api = {
   toggleDevTools: (open?: boolean) =>
     invoke<{ open: boolean }>(IPC.invoke.devtoolsToggle, { open }),
   workspaceDiff: (sessionId?: string) => invoke<WorkspaceDiff>(IPC.invoke.workspaceDiff, { ...(sessionId ? { sessionId } : {}) }),
+  workspaceReviewTurns: (input: { sessionId: string; before?: number; limit?: number }) =>
+    invoke<ReviewTurnsPage>(IPC.invoke.workspaceReviewTurns, input),
+  workspaceReviewChanges: (input: { sessionId: string; turnId?: string; snapshotId?: string; offset?: number; limit?: number }) =>
+    invoke<ReviewChangesPage>(IPC.invoke.workspaceReviewChanges, input),
+  workspaceReviewContext: (input: { sessionId: string; snapshotId: string; context: ReviewContextLines }) =>
+    invoke<ReviewContextResult>(IPC.invoke.workspaceReviewContext, input),
+  workspaceReviewOpenFile: (input: { sessionId: string; snapshotId: string; action: "external" | "folder" }) =>
+    invoke(IPC.invoke.workspaceReviewOpenFile, input),
+  workspaceReviewRollbackFile: (input: { sessionId: string; snapshotId: string }) =>
+    invoke<import("@pi-desktop/shared").ReviewFileRollbackResult>(IPC.invoke.workspaceReviewRollbackFile, input),
   workspaceReviewRollback: (input: {
     sessionId: string;
     snapshotId: string;

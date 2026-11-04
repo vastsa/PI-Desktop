@@ -930,3 +930,77 @@
   max-height: 100%;
   border-radius: var(--radius-sm);
 }
+
+/* Round review has one vertical scroll owner, not nested diff viewports. */
+.review-round-toolbar { gap: 6px; }
+.review-select.review-round-scope { flex: 0 0 auto; width: auto; height: 24px; min-height: 24px; padding: 1px 8px; }
+/* Keep native selection behavior; only review opts into the CSS-styled picker. */
+.review-select {
+  appearance: base-select;
+  align-items: center;
+  height: 28px; min-height: 28px; gap: 12px;
+  font-size: var(--text-xs-plus);
+}
+.review-select::picker(select) {
+  appearance: base-select;
+  margin-block: 4px;
+  padding: 0;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-sidebar);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-dialog);
+  max-height: 320px;
+  overflow: auto;
+}
+.review-select option {
+  padding: 6px 10px;
+  gap: 12px;
+  border-radius: 0;
+  background: var(--ds-bg-sidebar);
+  color: var(--ds-text-primary);
+  font-size: var(--text-xs-plus);
+}
+.review-select option:first-child { border-start-start-radius: var(--radius-sm); border-start-end-radius: var(--radius-sm); }
+.review-select option:last-child { border-end-start-radius: var(--radius-sm); border-end-end-radius: var(--radius-sm); }
+.review-select option:hover,
+.review-select option:focus-visible {
+  background: color-mix(in oklab, var(--ds-bg-sidebar) 92%, var(--ds-text-primary));
+}
+.review-select option:checked {
+  background: color-mix(in oklab, var(--ds-bg-sidebar) 86%, var(--ds-text-primary));
+}
+.review-select option:focus-visible { outline: 1px solid var(--ds-text-muted); outline-offset: -1px; }
+.review-select option::checkmark { order: 1; margin-inline-start: auto; }
+.review-settings-button, .review-file-menu-button { flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; }
+.review-history-selector { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 4px 10px 10px; }
+.review-history-label { flex: 0 0 auto; white-space: nowrap; color: var(--ds-text-muted); font-size: var(--text-xs-plus); }
+.review-history-round-select { flex: 1; min-width: 0; padding: 3px 10px; }
+.review-history-round-select option { display: flex; align-items: center; }
+.review-history-round-select option::checkmark { margin-inline-start: 0; }
+.review-turn-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-turn-counts { display: inline-flex; flex: 0 0 auto; gap: 4px; margin-inline-start: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.review-turn-counts.is-unknown { color: var(--ds-text-muted); font-size: var(--text-2xs); }
+.review-history .review-scroll { overflow-y: auto; overflow-x: auto; scroll-padding-top: 36px; }
+.review-history-file { position: relative; min-width: 0; scroll-margin-top: 4px; }
+.review-history-file-heading { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 4px; background: var(--ds-bg-dock); }
+.review-history-file-header {
+  display: flex; align-items: center;
+  justify-content: flex-start; gap: 6px; flex: 1; min-width: 0;
+  padding: 5px 6px; border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--ds-text-primary); text-align: left; font-size: var(--text-xs-plus);
+}
+.review-file-disclosure { display: inline-flex; flex: 0 0 11px; }
+.review-history-file.open .review-file-disclosure > svg { transform: rotate(90deg); }
+.review-history-file-header > svg, .review-history-file-header .diff-counts { flex-shrink: 0; }
+.review-history-file-header .review-change-card-path { flex: 1; min-width: 0; }
+.review-history-file-body { margin: 2px 0 8px 6px; border-radius: var(--radius-sm); background: var(--ds-tile); }
+.review-history-record { min-width: 0; }
+.review-history .review-change-card-body-content { overflow: visible; max-height: none; }
+.review-line-number {
+  flex: 0 0 4ch; padding: 3px 4px; color: var(--ds-text-faint); text-align: right;
+  font-family: var(--font-mono); font-size: var(--text-2xs); user-select: none;
+}
+
+.review-history.is-nowrap .review-change-diff .diff-line { min-width: max-content; }
+.review-history.is-nowrap .diff-line-text { white-space: pre; overflow-wrap: normal; }

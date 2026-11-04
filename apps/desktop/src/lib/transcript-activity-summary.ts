@@ -1,60 +1,56 @@
 import type { UiMessage } from "@pi-desktop/shared";
 import type { AssistantActivityItem, AssistantTurnPart } from "./assistant-turns";
-import { activityItemHasIssue } from "./activity-summary";
+import {
+  ACTIVITY_BUCKET_ORDER,
+  type ActivityBucket,
+  type ActivityBucketId,
+} from "./activity-group-label";
 import { getToolAction } from "./tool-display";
-import { isDelegationActivityItem, subagentOutcome, type SubagentOutcome } from "./subagent-topology";
 import { messageContentFacts } from "./transcript-summary";
 
-const toolFacts = new WeakMap<UiMessage, { action: ReturnType<typeof getToolAction>; issue: boolean }>();
-const outcomes = new WeakMap<UiMessage, {
-  fallback?: SubagentOutcome;
-  byStatuses: WeakMap<ReadonlyMap<string, SubagentOutcome>, SubagentOutcome>;
-}>();
+const actionCache = new WeakMap<UiMessage, ActivityBucketId>();
 
-function cachedOutcome(message: UiMessage, statuses?: ReadonlyMap<string, SubagentOutcome>) {
-  let cache = outcomes.get(message);
-  if (!cache) {
-    cache = { byStatuses: new WeakMap() };
-    outcomes.set(message, cache);
-  }
-  const cached = statuses ? cache.byStatuses.get(statuses) : cache.fallback;
+/** Which label bucket a tool row belongs to, cached per message. */
+function cachedAction(message: UiMessage): ActivityBucketId {
+  const cached = actionCache.get(message);
   if (cached) return cached;
-  const outcome = subagentOutcome(message, statuses);
-  if (statuses) cache.byStatuses.set(statuses, outcome);
-  else cache.fallback = outcome;
-  return outcome;
+  // Every `ToolAction` is a bucket id, so the mapping is the identity.
+  const action = getToolAction(message.toolName);
+  actionCache.set(message, action);
+  return action;
 }
 
-/** Same labels/counts as activitySummary, with payload work keyed by message. */
-export function cachedActivitySummary(items: readonly AssistantActivityItem[], statuses?: ReadonlyMap<string, SubagentOutcome>) {
+/**
+ * What a group or a whole turn did, in one scan.
+ *
+ * The counts behind the group header: rows per action (reasoning counted apart,
+ * because it is not an operation), the operation total, and the reasoning total.
+ * Payload reads are cached per message so a streaming tail only costs the row
+ * that changed.
+ */
+export function cachedActivitySummary(items: readonly AssistantActivityItem[]): {
+  /** Every action, in label reading order, zero counts included. */
+  buckets: ActivityBucket[];
+  tools: number;
+  thinking: number;
+} {
+  const counts = new Map<ActivityBucketId, number>();
   let tools = 0;
   let thinking = 0;
-  let issues = 0;
-  let allRun = true;
-  let allSearch = true;
   for (const item of items) {
-    if (item.kind === "thinking") { thinking += 1; continue; }
-    tools += 1;
-    if (item.kind === "hostedSearch") {
-      allRun = false;
-      if (item.round.status === "failed") issues += 1;
+    if (item.kind === "thinking") {
+      thinking += 1;
       continue;
     }
-    let facts = toolFacts.get(item.message);
-    if (!facts) {
-      facts = { action: getToolAction(item.message.toolName), issue: activityItemHasIssue(item) };
-      toolFacts.set(item.message, facts);
-    }
-    allRun &&= facts.action === "run";
-    allSearch &&= facts.action === "search";
-    if (isDelegationActivityItem(item)) {
-      const outcome = cachedOutcome(item.message, statuses);
-      if (outcome === "failed" || outcome === "denied") issues += 1;
-    } else if (facts.issue) issues += 1;
+    tools += 1;
+    // A hosted search is a search even though it carries no tool name.
+    const id = item.kind === "hostedSearch" ? "search" : cachedAction(item.message);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   return {
-    label: tools === 0 ? "chat.activityThinking" : allRun ? "chat.activityCommands" : allSearch ? "chat.activitySearches" : "chat.activityTools",
-    count: tools || thinking, tools, thinking, issues,
+    buckets: ACTIVITY_BUCKET_ORDER.map((id) => ({ id, count: counts.get(id) ?? 0 })),
+    tools,
+    thinking,
   };
 }
 

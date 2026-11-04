@@ -1,0 +1,77 @@
+/*
+ * The agent's drawn cursor, in its own click-through window.
+ *
+ * Nothing here may capture input: the window already ignores mouse events, and
+ * `pointer-events: none` keeps that true even if a future change makes the
+ * window interactive by accident.
+ */
+.computer-cursor-surface {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.computer-cursor-pointer {
+  position: absolute;
+  transform: translate(-2px, -2px);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+  transition: left 180ms cubic-bezier(0.22, 1, 0.36, 1), top 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.computer-cursor-label {
+  position: absolute;
+  transform: translate(18px, 14px);
+  max-width: 220px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  line-height: var(--leading-row);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #ffffff;
+  background: rgba(17, 17, 20, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: left 180ms cubic-bezier(0.22, 1, 0.36, 1), top 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.computer-cursor-ripple {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: var(--radius-round);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  animation: computer-cursor-ripple 600ms ease-out forwards;
+}
+
+.computer-cursor-ripple-type {
+  border-color: rgba(120, 200, 255, 0.95);
+}
+
+@keyframes computer-cursor-ripple {
+  from {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* A user who asked for less motion still needs to see where it acted. */
+@media (prefers-reduced-motion: reduce) {
+  .computer-cursor-pointer,
+  .computer-cursor-label {
+    transition: none;
+  }
+
+  .computer-cursor-ripple {
+    animation: none;
+    opacity: 0.85;
+  }
+}

@@ -8189,3 +8189,82 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/plugin-session-api.test.mjs`. See ADR 0340, ADR 0200's
   amendment, ADR 0323's corrected alternative, `03-plugin-api.md` §plugin-owned
   and host-wide sessions, `13-plugin-permissions-matrix.md` §2, and E2E-268.
+
+## 2026-11-04 — Computer use is a host-owned capability behind a scope grant (D681)
+
+- D681 / ADR 0342 accepts bounded native application control as a design. The
+  agent could already drive the embedded browser guest over allowlisted CDP and
+  nothing else; there is no screen capture, synthetic input, window enumeration,
+  or accessibility client anywhere in the repository. This decision records the
+  contract, not an implementation: no code ships with it.
+- The capability lives in `crates/host-core` as a `computer.*` domain and
+  reaches the agent as one high-risk builtin tool, `Computer`. It is deliberately
+  not a plugin host API, so the most dangerous privilege in the product cannot be
+  requested by a third-party manifest. Electron main stays thin — the picker, the
+  indicator, and the `tools.execute` relay — and the sidecar needs no new
+  `host.proxy` method.
+- Authority is one user-minted scope grant naming one window or application,
+  with a revision, an action budget, an idle expiry, an input policy, and a
+  capture mode. The model cannot name, enumerate, or widen a target; there is at
+  most one active grant per desktop instance; grants are never persisted.
+- Identity is accessibility-first: `inspect` returns roles, names, bounds and
+  per-grant opaque `uid`s, and `act` dispatches platform accessibility actions.
+  Coordinates exist only against a `basis` minted by a capture of the same
+  scope, re-validated immediately before synthesis, so a blind click is
+  unexpressible and a moved window fails closed.
+- Two refusals hold under every mode, setting and grant option: the capability
+  never targets PI-Desktop's own windows, because synthetic input into this app
+  is a permission-broker bypass, and both capture and synthesis refuse under a
+  secure input state or a focused password field. The built-in
+  credential-surface denylist entries cannot be removed.
+- Permission mode governs the grant rather than each keystroke. Minting is
+  always an explicit desktop-UI decision with no deadline; `auto` mints nothing
+  and a spoken request cannot. Within a grant, inspection auto-allows and input
+  follows `confirm-each` (the only policy under `ask`) or an opt-in
+  `autonomous-in-scope`. Plan and Goal hard-deny the tool, and no
+  `allow-session` grant exists for it.
+- Computer use carries **its own model binding** — one `{ providerId, modelId }`
+  the user picks from the existing provider rows, following `imageGeneration`.
+  A bounded perceive-decide-act loop in `packages/computer-use` turns one
+  instruction into validated steps against a strict action schema; the
+  conversation model never drives the machine and there is no silent fallback
+  to it. The agent-facing tool therefore takes an instruction, not a `uid` or a
+  coordinate, and returns a bounded summary rather than the inner transcript.
+- The loop and the capture run in Electron main, not host-core: the loop needs
+  a model provider and the capture needs Chromium, and host-core holds neither.
+  host-core keeps everything that can refuse — targets, accessibility,
+  synthesis, the grant broker, per-action re-validation, audit — and `Computer`
+  follows the `GenerateImages` shape, where `tools.execute` performs the
+  permission evaluation and main executes only after the host authorises.
+- **The agent's cursor is drawn, not stolen.** Actions go through accessibility
+  actions or window-targeted events, so the real pointer never warps and the
+  user keeps their mouse while the agent works; a path that could only act by
+  warping is refused. A frameless, transparent, click-through, always-on-top
+  overlay draws the agent's own cursor, owns no part of the action, cannot
+  receive input, and is never the source of truth for where an action landed.
+- Voice is specified and deliberately unwired in the first release: the agent
+  is the only caller. When stage 3 lands it, a spoken request will reach
+  `Computer` only as a work request on the bound session through the existing
+  delegate/classifier path, as task delegation rather than teleoperation.
+- All three desktop platforms are in scope. Capture is `desktopCapturer`
+  everywhere, so only inspection and input are platform work: macOS
+  (`AXUIElement` actions, `CGEventPostToPid` keys, hand-declared framework FFI
+  with no new crates) is stage 1; Windows (UIA, window-targeted messages,
+  higher-integrity targets refused) and Linux/X11 (AT-SPI, best effort) are
+  stage 2; Wayland refuses input and keeps portal capture. Every unsupported
+  path has its own code, never a hang or a silent no-op, and a partial-fidelity
+  backend declares it instead of returning an empty tree.
+- Non-goal 9 is amended rather than deleted: browser takeover, unattended
+  full-desktop control, and any model-chosen target remain non-goals.
+- Contract pages: `03-runtime/computer-use.md`, `08-error-codes.md` §3.10
+  (`COMPUTER_*`), `05-host-core-rust.md` §2/§5b/§6,
+  `05-security/01-security.md` §13, and `03-tools-and-permissions.md` §0/§2/§6.
+- Stage 1 shipped with the decision: `packages/shared/src/computer-use.ts`,
+  `crates/host-core/src/computer/` with the macOS backend and
+  `rpc/computer_rpc.rs`, `packages/computer-use/`,
+  `apps/desktop/electron/main/computer-use/`, and the picker, indicator,
+  settings card, and drawn cursor in the renderer. Covered by the host-core
+  `computer::` tests, `packages/computer-use` unit tests, the shared
+  validators, and `apps/desktop/test/computer-use-service.test.mjs`. No real
+  application was driven and the five `E2E-COMPUTER-USE-*` gates remain
+  `NOT RUN`; see `docs/implementation/computer-use-evidence.md`.
