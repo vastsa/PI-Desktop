@@ -16,6 +16,7 @@ import {
   IconAt,
   IconClock,
   IconFileText,
+  IconWrench,
   IconNewSession,
   IconSearch,
   IconSettings,
@@ -25,6 +26,7 @@ import {
 /** Navigable pages surfaced by the global search alongside sessions. */
 const PAGE_ENTRIES = [
   { page: "artifacts", labelKey: "artifacts.title", icon: IconFileText },
+  { page: "tools", labelKey: "tools.title", icon: IconWrench },
   { page: "scheduled", labelKey: "scheduled.title", icon: IconClock },
   { page: "plugins", labelKey: "nav.plugins", icon: IconAt },
 ] as const;

@@ -1,0 +1,172 @@
+/*
+  Tools page — the tool packages this build ships (D681).
+
+  A quiet catalog: one scroll surface, one card per package, dense tool rows.
+  Every colour, size and radius comes from the token scales so the page follows
+  the active theme and the font-scale setting.
+*/
+
+.tools-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  padding: 18px 20px 20px;
+  overflow: auto;
+}
+
+.tools-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tools-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ds-text-primary);
+}
+
+.tools-title h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.tools-count {
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.tools-refresh {
+  margin-inline-start: auto;
+}
+
+.tools-placeholder {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+}
+
+.tools-placeholder.is-error {
+  color: var(--ds-error);
+}
+
+.tools-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 16px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.tools-empty-title {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md-plus);
+}
+
+.tools-empty-hint {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tools-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.tools-card.is-disabled {
+  opacity: 0.72;
+}
+
+.tools-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tools-card-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.tools-card-name {
+  color: var(--ds-text-primary);
+  font-size: var(--text-md-plus);
+  font-weight: var(--font-weight-medium);
+}
+
+.tools-card-id {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  overflow-wrap: anywhere;
+}
+
+.tools-card-description,
+.tools-card-note {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.tools-card-error {
+  margin: 0;
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.tools-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tools-tool {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.tools-tool-name {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+}
+
+.tools-tool-description {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}

@@ -36,6 +36,7 @@ import type {
   AppVersionInfo,
   ArtifactListFilter,
   ArtifactRow,
+  ToolPackageSummary,
   BrowserAction,
   BrowserState,
   CommandItem,
@@ -1138,6 +1139,13 @@ export const api = {
     }),
   listArtifacts: (filter?: ArtifactListFilter) =>
     invoke<{ artifacts: ArtifactRow[] }>(IPC.invoke.artifactsList, filter ?? {}),
+  listToolPackages: () =>
+    invoke<{ packages: ToolPackageSummary[] }>(IPC.invoke.toolPackagesList, {}),
+  setToolPackageEnabled: (id: string, enabled: boolean) =>
+    invoke<{ packages: ToolPackageSummary[] }>(IPC.invoke.toolPackagesSetEnabled, {
+      id,
+      enabled,
+    }),
   cloneProject: (url: string) =>
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectClone,

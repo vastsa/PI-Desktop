@@ -107,6 +107,23 @@ function fallbackStderrLogger(text: string): void {
 }
 
 /**
+ * Directory holding the tool packages this build ships, or null when it ships
+ * none. Mirrors `resolveBuiltinPluginsDir` (electron-builder copies
+ * `resources/tools` to `<resources>/tools`).
+ */
+function resolveBuiltinToolsDir(): string | null {
+  const candidates = [
+    join(process.resourcesPath || "", "tools"),
+    join(getModuleDirectory(import.meta.url), "../../resources/tools"),
+    join(getModuleDirectory(import.meta.url), "../../../resources/tools"),
+  ];
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
  * The desktop's host-core child: the shared stdio transport from
  * `@pi-desktop/host-runtime` plus the two things only Electron knows — where
  * this build keeps the binary and its bundled plugins, and how to name the
@@ -115,6 +132,7 @@ function fallbackStderrLogger(text: string): void {
 export class HostProcess extends RuntimeHostProcess {
   constructor(dataDir: string, onStderr?: StderrHandler) {
     const builtinPlugins = resolveBuiltinPluginsDir();
+    const builtinTools = resolveBuiltinToolsDir();
     super({
       binaryPath: resolveHostBinary(),
       dataDir,
@@ -124,6 +142,9 @@ export class HostProcess extends RuntimeHostProcess {
       env: {
         PI_DESKTOP_ELECTRON_PID: String(process.pid),
         ...(builtinPlugins ? { PI_DESKTOP_BUILTIN_PLUGINS_DIR: builtinPlugins } : {}),
+        // Same split for the bundled tool packages (D681): the host scans the
+        // directory, Electron only says where it is.
+        ...(builtinTools ? { PI_DESKTOP_BUILTIN_TOOLS_DIR: builtinTools } : {}),
       },
       onStderr: onStderr ?? fallbackStderrLogger,
       diagnoseFailure: diagnoseHostFailure,

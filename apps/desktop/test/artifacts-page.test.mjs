@@ -31,10 +31,19 @@ test("the artifacts page is reachable from the shell, the sidebar and global sea
   assert.match(shellSource, /const ArtifactsPage = lazy\(\(\) =>\n  import\("\.\.\/\.\.\/pages\/ArtifactsPage"\)/);
   assert.match(shellSource, /page === "artifacts" \? \(/);
   // The page type has to carry the id, or the route cannot be typed.
-  assert.match(stateSource, /page: "chat" \| "scheduled" \| "plugins" \| "artifacts" \| "settings"/);
+  assert.match(
+    stateSource,
+    /page: "chat" \| "scheduled" \| "plugins" \| "artifacts" \| "tools" \| "settings"/,
+  );
   // A full page hides the work panel and must not be treated as a chat surface.
-  assert.match(runtimeSource, /page === "settings" \|\| page === "plugins" \|\| page === "scheduled" \|\| page === "artifacts"/);
-  assert.match(runtimeSource, /p !== "settings" && p !== "plugins" && p !== "scheduled" && p !== "artifacts"/);
+  assert.match(
+    runtimeSource,
+    /page === "settings" \|\|\s*page === "plugins" \|\|\s*page === "scheduled" \|\|\s*page === "artifacts" \|\|\s*page === "tools"/,
+  );
+  assert.match(
+    runtimeSource,
+    /p !== "settings" &&\s*p !== "plugins" &&\s*p !== "scheduled" &&\s*p !== "artifacts" &&\s*p !== "tools"/,
+  );
   // The sidebar entry is a destination row above the session list, not a footer
   // chip: a place to go reads as a row where a conversation list starts.
   assert.match(sidebarSource, /<nav className="sidebar-nav-rows" aria-label=\{t\("nav\.pages"\)\}>/);

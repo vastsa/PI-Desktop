@@ -33,6 +33,7 @@ mod sessions;
 mod state;
 mod todos;
 mod tool_budget;
+mod tool_packages;
 mod tools;
 mod transcripts;
 mod turn_queue;

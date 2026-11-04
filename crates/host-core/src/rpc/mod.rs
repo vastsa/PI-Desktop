@@ -3722,6 +3722,38 @@ async fn handle_request(
             Ok(json!({ "artifacts": artifacts }))
         }
 
+        // Bundled tool packages (D681): the host scans resources/tools and owns
+        // the enabled set, so the page never touches the filesystem itself.
+        "toolPackages.list" => {
+            let st = state.lock().await;
+            let packages = crate::tool_packages::list(
+                crate::tool_packages::builtin_tools_dir().as_deref(),
+                &st.data_dir,
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "packages": packages }))
+        }
+
+        "toolPackages.setEnabled" => {
+            let id = params
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if id.is_empty() {
+                return Err(rpc_err(1000, "id is required", "INVALID_ARGUMENT"));
+            }
+            let enabled = params
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .ok_or_else(|| rpc_err(1000, "enabled is required", "INVALID_ARGUMENT"))?;
+            let st = state.lock().await;
+            let packages = crate::tool_packages::set_enabled(&st.data_dir, &id, enabled)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "packages": packages }))
+        }
+
         "plans.pending" => {
             let session_id = params.get("sessionId").and_then(|v| v.as_str());
             let st = state.lock().await;
@@ -5516,10 +5548,16 @@ async fn handle_request(
             if let Some(value) = overrides.get("dryRun").and_then(Value::as_bool) {
                 policy.dry_run = value;
             }
-            if let Some(value) = overrides.get("dropEmptyReferences").and_then(Value::as_bool) {
+            if let Some(value) = overrides
+                .get("dropEmptyReferences")
+                .and_then(Value::as_bool)
+            {
                 policy.drop_empty_references = value;
             }
-            if let Some(value) = overrides.get("dropDuplicateReferences").and_then(Value::as_bool) {
+            if let Some(value) = overrides
+                .get("dropDuplicateReferences")
+                .and_then(Value::as_bool)
+            {
                 policy.drop_duplicate_references = value;
             }
             if let Some(value) = overrides.get("maxDocumentChars").and_then(Value::as_u64) {

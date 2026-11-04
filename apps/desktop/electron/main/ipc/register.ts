@@ -10,6 +10,7 @@ import { readNpmPath, writeNpmPath } from "../npm-preferences";
 import { registerAgentIpc } from "./agent-ipc";
 import { registerAppIpc } from "./app-ipc";
 import { registerArtifactsIpc } from "./artifacts-ipc";
+import { registerToolPackagesIpc } from "./tool-packages-ipc";
 import { registerDiagnosticsIpc } from "./diagnostics-ipc";
 import { registerMarketIpc } from "./market-ipc";
 import { registerMcpIpc } from "./mcp-ipc";
@@ -402,6 +403,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
 
   registerMemoryIpc({ registrar, getHost });
   registerArtifactsIpc({ registrar, getHost });
+  registerToolPackagesIpc({ registrar, getHost });
 
   registerAgentExtensionIpc({
     handle,

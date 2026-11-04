@@ -219,6 +219,10 @@ test("packaging keeps only shipped locales and excludes non-runtime artifacts", 
       to: "plugins",
     },
     {
+      from: "resources/tools",
+      to: "tools",
+    },
+    {
       from: "resources/models.dev",
       to: "models.dev",
     },

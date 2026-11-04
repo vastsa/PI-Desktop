@@ -219,6 +219,8 @@ export const IPC = {
     memoryTidy: "pi-desktop/memory/tidy",
     memorySupersede: "pi-desktop/memory/supersede",
     artifactsList: "pi-desktop/artifacts/list",
+    toolPackagesList: "pi-desktop/toolPackages/list",
+    toolPackagesSetEnabled: "pi-desktop/toolPackages/setEnabled",
     projectGroupList: "pi-desktop/project-group/list",
     projectGroupCreateRemote: "pi-desktop/project-group/createRemote",
     projectGroupCreate: "pi-desktop/project-group/create",

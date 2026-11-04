@@ -124,6 +124,7 @@ import {
   IconArchiveRestore,
   IconArrowUpDown,
   IconFileText,
+  IconWrench,
   IconPlug,
   IconBranch,
   IconCheck,
@@ -2631,6 +2632,18 @@ export function Sidebar({
           >
             <IconFileText size={14} aria-hidden />
             <span className="sidebar-nav-row-label">{t("artifacts.title")}</span>
+          </button>
+          <button
+            type="button"
+            className={`sidebar-nav-row${page === "tools" ? " is-active" : ""}`}
+            data-nav="tools"
+            aria-current={page === "tools" ? "page" : undefined}
+            onClick={() =>
+              page === "tools" ? (canNavBack() ? navBack() : setPage("chat")) : setPage("tools")
+            }
+          >
+            <IconWrench size={14} aria-hidden />
+            <span className="sidebar-nav-row-label">{t("tools.title")}</span>
           </button>
         </nav>
 
