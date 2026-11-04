@@ -1647,6 +1647,20 @@ one-liner.
   source cannot break the skill) or `"link"` (symlink so external edits appear
   on the next scan; `SKILL_INVALID` if the OS or file system refuses a symlink).
 - `skills.update({ id, ...skill })`
+- `skills.writeFile({ id, path, content })` → `{ path }` — writes one resource
+  beside the document (`references/<topic>.md`, one level deep, no traversal).
+  A flat `<id>.md` skill is promoted to `<id>/SKILL.md` first, so the id keeps
+  naming the skill.
+- `skills.removeFile({ id, path })` → `{ path }` — the exact mirror: only that
+  resource goes, the document and every sibling stay.
+- `skills.tidy({ level?, projectPath?, policy? })` → `{ report, root }` — library
+  consolidation. `policy` accepts `dryRun`, `dropEmptyReferences`,
+  `dropDuplicateReferences`, `maxDocumentChars`. Only provably redundant files
+  are deleted (an empty reference, a byte-identical twin inside one skill);
+  references the document never mentions and oversized documents are **reported,
+  not changed**. The pass never writes `SKILL.md` and is idempotent. The
+  background review calls it after any pass that actually wrote something, so
+  the library does not grow forever.
 - `skills.read({ id, level?, projectPath? })` → `{ skill, body }`
 - `skills.remove({ id, level?, projectPath? })`
 - `skills.setEnabled({ id, enabled, level, projectPath? })`

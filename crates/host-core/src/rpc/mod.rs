@@ -5497,6 +5497,40 @@ async fn handle_request(
                 .map_err(skill_err)?;
             Ok(json!({ "path": path }))
         }
+        // Library consolidation. Only provably redundant files are deleted (an
+        // empty reference, a byte-identical twin); everything that needs a
+        // judgement is reported instead, so an unattended run cannot lose a
+        // lesson a person wanted. `dryRun` is the same pass with the deletes
+        // skipped, which is how a caller previews before trusting it.
+        "skills.tidy" => {
+            let level = params
+                .get("level")
+                .and_then(Value::as_str)
+                .map(|value| CapabilityLevel::parse(Some(value)))
+                .transpose()
+                .map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))?
+                .unwrap_or(CapabilityLevel::Global);
+            let project_path = params.get("projectPath").and_then(Value::as_str);
+            let mut policy = crate::user_skills::tidy::SkillTidyPolicy::default();
+            let overrides = params.get("policy").unwrap_or(&params);
+            if let Some(value) = overrides.get("dryRun").and_then(Value::as_bool) {
+                policy.dry_run = value;
+            }
+            if let Some(value) = overrides.get("dropEmptyReferences").and_then(Value::as_bool) {
+                policy.drop_empty_references = value;
+            }
+            if let Some(value) = overrides.get("dropDuplicateReferences").and_then(Value::as_bool) {
+                policy.drop_duplicate_references = value;
+            }
+            if let Some(value) = overrides.get("maxDocumentChars").and_then(Value::as_u64) {
+                policy.max_document_chars = value as usize;
+            }
+            let root = crate::agent_capabilities::capability_dir(level, project_path, "skills")
+                .map_err(skill_err)?;
+            let report =
+                crate::user_skills::tidy::tidy_library(&root, &policy).map_err(skill_err)?;
+            Ok(json!({ "report": report, "root": root.to_string_lossy() }))
+        }
         "skills.read" => {
             let id = require_id(&params)?;
             let level = params
@@ -5940,6 +5974,31 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(canonical["messages"][0]["id"], "legacy-prefix");
+    }
+
+    #[tokio::test]
+    async fn skill_tidy_rpc_reports_without_touching_the_library() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let tx = mpsc::unbounded_channel().0;
+
+        let result = handle_request(state, "skills.tidy", json!({ "dryRun": true }), tx)
+            .await
+            .unwrap();
+
+        let report = &result["report"];
+        assert_eq!(report["dry_run"], json!(true));
+        assert!(report["skills_scanned"].is_number());
+        assert_eq!(
+            report["references_removed"],
+            json!([]),
+            "a dry run reports what it would remove and removes nothing"
+        );
+        assert!(result["root"]
+            .as_str()
+            .is_some_and(|root| root.ends_with("skills")));
     }
 
     #[tokio::test]

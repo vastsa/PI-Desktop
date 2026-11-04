@@ -121,6 +121,16 @@ export type SkillReviewRequest = {
   mode?: string;
 };
 
+/**
+ * What `skills.tidy` returns. Only the fields this service logs are named: the
+ * host owns the full shape, and inventing a mirror of it here would be a second
+ * description of the same contract that nobody keeps in step.
+ */
+type SkillTidyReport = {
+  references_removed?: string[];
+  bytes_freed?: number;
+};
+
 function messageText(message: SessionMessage): string {
   const content = message?.content;
   if (typeof content === "string") return content;
@@ -387,6 +397,30 @@ export function createSkillReviewService(deps: SkillReviewDependencies) {
       sessionId: request.sessionId,
       data: { ops: decision.ops.length, applied: appliedOps.length, reason: decision.reason },
     });
+
+    // Consolidate right after a pass that actually wrote something: that is the
+    // only moment we know the library changed, and a library only ever grows in
+    // the write path. The pass deletes just what is provably redundant (an empty
+    // reference, a byte-identical twin) and *reports* the rest — an unlinked
+    // file and an oversized document stay exactly where they are.
+    if (appliedOps.length > 0) {
+      try {
+        const tidied = await host.call<{ report?: SkillTidyReport }>("skills.tidy", {});
+        const removed = tidied?.report?.references_removed?.length ?? 0;
+        if (removed > 0) {
+          deps.logger.app("skill-review", "info", "skill library tidied", {
+            sessionId: request.sessionId,
+            data: { removed, bytesFreed: tidied?.report?.bytes_freed ?? 0 },
+          });
+        }
+      } catch (error) {
+        // A tidy that fails must not undo a review that succeeded.
+        deps.logger.app("skill-review", "warn", "skill tidy failed", {
+          sessionId: request.sessionId,
+          data: { error: String(error) },
+        });
+      }
+    }
     // Surface it in the UI: a background pass the user never sees is
     // indistinguishable from one that did not run.
     if (appliedOps.length > 0) deps.onReviewed?.({ sessionId: request.sessionId, ops: appliedOps });
