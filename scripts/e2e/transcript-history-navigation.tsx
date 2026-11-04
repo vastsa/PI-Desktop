@@ -7,6 +7,7 @@ import { IPC } from "@pi-desktop/shared/protocol";
 import type { Result, SessionSummary, UiMessage } from "@pi-desktop/shared";
 import { SessionPane } from "../../apps/desktop/src/components/SessionPane";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+import { getTranscriptReadingPosition } from "../../apps/desktop/src/lib/transcript-reading-position";
 
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 async function until(predicate: () => boolean, label: string) {
@@ -37,6 +38,8 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
   let pending: { resolve: (value: unknown) => void; response: unknown }[] = [];
   const reads: number[] = [];
   const unexpected: string[] = [];
+  let deferSearch = false;
+  let searchRead: { resolve: (value: unknown) => void } | undefined;
   window.piDesktop = { channels: IPC, platform: "win32", on: () => () => {},
     invoke: async <T,>(channel: string, ...args: unknown[]): Promise<Result<T>> => {
       let value: unknown;
@@ -49,7 +52,9 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         const start = Math.max(0, end - limit);
         const response = { session: { ...summary, messages: data.slice(start, end), messageStart: start,
           messageEnd: end, hasMoreBefore: start > 0, hasMoreAfter: end < data.length } };
-        if (before !== undefined && before < data.length) {
+        if ("messageAround" in input && deferSearch) {
+          value = await new Promise(resolve => { searchRead = { resolve }; });
+        } else if (before !== undefined && before < data.length) {
           reads.push(before);
           value = await new Promise(resolve => pending.push({ resolve, response }));
         } else value = response;
@@ -71,6 +76,7 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
   const reset = async (name: string, role: "user" | "mixed" = "user", running = false, tailOnly = false) => {
     flushSync(() => root.render(null));
     for (const item of pending.splice(0)) item.resolve(item.response);
+    searchRead?.resolve({ session: null }); searchRead = undefined; deferSearch = false;
     id = `navigation-${name}`;
     const count = tailOnly ? 35 : 280;
     data = Array.from({ length: count }, (_, index) => ({ id: `${id}-${index}`,
@@ -179,7 +185,7 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
       assert(failures.length === 0 && unexpected.length === 0, failures.join("\n"));
       return { ok: true, reducedMotion: true, cases: results };
     }
-    for (const action of ["interrupt", "growth", "complete", "hide", "unmount", "new-search"] as const) {
+    for (const action of ["interrupt", "press", "growth", "complete", "hide", "unmount", "new-search", "failed-search"] as const) {
       await reset(`lifecycle-${action}`, "mixed", action === "growth" || action === "complete");
       const anchor = begin();
       try {
@@ -189,7 +195,31 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         const oldTop = el.scrollTop;
         host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
         await until(() => el.scrollTop > oldTop + 20 && !bottom(), "trip did not enter an intermediate position");
-        if (action === "new-search") {
+        if (action === "failed-search") {
+          deferSearch = true;
+          const request = useAppStore.getState().navigateTranscript({ sessionId: id, messageId: data[270].id, query: "Message 270" });
+          await until(() => Boolean(searchRead), "delayed search did not start");
+          await frame();
+          const stopped = el.scrollTop;
+          for (let n = 0; n < 70; n++) await frame();
+          assert(Math.abs(el.scrollTop - stopped) <= 2 && !bottom(), "pending search did not cancel latest motion");
+          searchRead!.resolve({ session: null }); searchRead = undefined;
+          await request;
+          assert(Boolean(host.querySelector(".jump-latest-btn")), "failed search stranded history with no navigation control");
+          deferSearch = false;
+        } else if (action === "press") {
+          el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+          const bookmark = getTranscriptReadingPosition(id);
+          assert(bookmark?.pinned === false && bookmark.messageId, "press-only interruption left a pinned bookmark");
+          const stopped = el.scrollTop;
+          flushSync(() => root.render(null)); render();
+          await until(() => Boolean(scroller().querySelector(`[data-message-id="${CSS.escape(bookmark.messageId!)}"]`)), "interrupted reading row did not remount");
+          await frame();
+          const restoredOffset = () => scroller().querySelector<HTMLElement>(`[data-message-id="${CSS.escape(bookmark.messageId!)}"]`)!.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
+          await until(() => Math.abs(restoredOffset() - bookmark.offset) <= 2,
+            `press-only interruption lost reading row on remount: expected=${bookmark.offset}, now=${restoredOffset()}, oldTop=${stopped}`);
+          assert(!bottom(), "press-only interruption repinned on remount");
+        } else if (action === "new-search") {
           await useAppStore.getState().navigateTranscript({ sessionId: id, messageId: data[270].id, query: "Message 270" });
           await until(() => useAppStore.getState().transcriptViews[id]?.focus?.messageId === data[270].id,
             "new search did not replace latest intent");
@@ -229,12 +259,17 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
       } catch (error) { failures.push(String(error)); console.log("LATEST_LIFECYCLE_ERROR " + action + " " + String(error)); }
       finally { anchor.stop(); }
     }
-    await reset("focused-disjoint", "mixed");
-    useAppStore.setState({ transcriptViews: { [id]: { messages: data.slice(0, 35), messageStart: 0,
-      messageEnd: 35, hasMoreBefore: false, hasMoreAfter: true, loading: null,
-      focus: { sessionId: id, messageId: data[0].id, query: "Message 0", requestId: 991 } } } });
-    await until(() => Boolean(host.querySelector(".transcript-search-target")), "search target did not mount");
-    {
+    for (const kind of ["focused", "restored"] as const) {
+      await reset(`${kind}-disjoint`, "mixed");
+      useAppStore.setState({ transcriptViews: { [id]: { messages: data.slice(0, 35), messageStart: 0,
+        messageEnd: 35, hasMoreBefore: false, hasMoreAfter: true, loading: null,
+        focus: { sessionId: id, messageId: data[0].id, query: "Message 0", requestId: 991 } } } });
+      await until(() => Boolean(host.querySelector(".transcript-search-target")), "search target did not mount");
+      if (kind === "restored") {
+        const view = useAppStore.getState().transcriptViews[id]!;
+        useAppStore.setState({ transcriptViews: { [id]: { ...view, focus: null, restored: true } } });
+        await until(() => !host.querySelector(".transcript-search-target"), "restored view did not leave search");
+      }
       const el = scroller();
       const positions: number[] = [];
       let sampling = true;
@@ -246,14 +281,36 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
       const beforeReads = reads.length;
       host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
       try {
-        await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), "disjoint search failed to join live tail");
+        await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), `${kind} disjoint range failed to join live tail`);
         const reversal = Math.max(0, ...positions.slice(1).map((top, n) => positions[n] - top));
         assert(reversal <= 2, `old search alignment reversed latest: ${reversal}`);
         assert(reads.length === beforeReads, "explicit latest read unloaded intermediate history");
-        results.push({ focusedDisjoint: true, reversal });
-        console.log("LATEST_FOCUSED_DISJOINT " + JSON.stringify({ reversal }));
-      } catch (error) { failures.push(String(error)); console.log("LATEST_FOCUSED_DISJOINT_ERROR " + String(error)); }
+        results.push({ disjoint: kind, reversal });
+        console.log("LATEST_DISJOINT " + JSON.stringify({ kind, reversal }));
+      } catch (error) { failures.push(String(error)); console.log("LATEST_DISJOINT_ERROR " + kind + " " + String(error)); }
       finally { sampling = false; }
+    }
+    await reset("prefetch-repin", "mixed", true);
+    {
+      const anchor = begin(scroller().clientHeight * 2);
+      try {
+        await until(() => pending.length === 1, "repin setup did not prefetch");
+        const el = scroller();
+        el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 100 }));
+        el.scrollTo({ top: el.scrollHeight - el.clientHeight, behavior: "instant" });
+        el.dispatchEvent(new Event("scroll", { bubbles: true }));
+        await frame();
+        const live = useAppStore.getState().messages.map(message => ({ ...message, status: "complete" as const }));
+        useAppStore.setState({ messages: [...live, { ...data.at(-1)!, id: `${id}-new`,
+          content: "New live output. ".repeat(400), status: "streaming" }] });
+        for (let n = 0; n < 8; n++) await frame();
+        assert(bottom() && !host.querySelector(".jump-latest-btn"), "repinned prefetch did not follow new output");
+        await finish();
+        assert(bottom(), "late prefetched page stole resumed follow");
+        results.push({ prefetchRepin: true });
+        console.log("PREFETCH_REPIN " + JSON.stringify({ ok: true }));
+      } catch (error) { failures.push(String(error)); console.log("PREFETCH_REPIN_ERROR " + String(error)); }
+      finally { anchor.stop(); }
     }
     for (const role of ["user", "mixed"] as const) {
       await reset(`prefetch-${role}`, role);

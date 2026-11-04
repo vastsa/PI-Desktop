@@ -64,6 +64,7 @@ type UseTranscriptScrollOptions = {
   paneVisible: boolean;
   searchTarget: TranscriptSearchTarget | null;
   readingWindow: boolean;
+  navigationLoading?: boolean;
   onRestoreReading?: RestoreTranscriptReading;
 };
 
@@ -81,6 +82,7 @@ export function useTranscriptScroll({
   paneVisible,
   searchTarget,
   readingWindow,
+  navigationLoading = false,
   onRestoreReading,
 }: UseTranscriptScrollOptions) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -191,10 +193,10 @@ export function useTranscriptScroll({
     enterDisclosureReading,
     recordScrollPosition,
   );
-  const startHistoryReading = useCallback(() => {
+  const startHistoryReading = useCallback((background: boolean) => {
     releaseDisclosureAnchor();
-    releaseFollow();
-  }, [releaseDisclosureAnchor, releaseFollow]);
+    if (background) leaveFollow(); else releaseFollow();
+  }, [leaveFollow, releaseDisclosureAnchor, releaseFollow]);
   const {
     loadingOlder, pending: historyPending, run: preserveHistory, retry: retryHistoryPaging,
     restore: restoreHistoryAnchor, isHeld: isHistoryPaging, isLocked: isHistoryLocked,
@@ -211,6 +213,13 @@ export function useTranscriptScroll({
     cancelHistoryPaging();
     disclosureAnchorNotifier(title);
   }, [cancelHistoryPaging, disclosureAnchorNotifier]);
+
+  useLayoutEffect(() => {
+    if (!navigationLoading || !latestNavigation.isActive()) return;
+    latestNavigation.cancel();
+    leaveFollow();
+    rememberReadingPosition();
+  }, [latestNavigation, leaveFollow, navigationLoading, rememberReadingPosition]);
 
   // A user scroll-up gesture always emits input before its scroll events;
   // programmatic follow scrolling and layout clamps (composer collapse on
@@ -230,7 +239,9 @@ export function useTranscriptScroll({
         contentRef.current,
       );
       if (!isScrollGestureInput(event.type as ScrollInputType, input)) return;
-      if (latestNavigation.isActive()) { latestNavigation.cancel(); leaveFollow(); }
+      if (latestNavigation.isActive()) {
+        latestNavigation.cancel(); leaveFollow(); rememberReadingPosition();
+      }
       if (!(event instanceof WheelEvent) || (!event.ctrlKey && event.deltaY !== 0)) retryHistoryPaging();
       // Minimap / jump navigation runs in the browser, independently of our
       // follow rAF. Real input must retire that animation at its current offset
@@ -241,7 +252,7 @@ export function useTranscriptScroll({
       // Real input takes the viewport back from a held disclosure position.
       releaseDisclosureAnchor();
     },
-    [cancelReadingPosition, isHistoryLocked, latestNavigation, leaveFollow, releaseDisclosureAnchor, retryHistoryPaging],
+    [cancelReadingPosition, isHistoryLocked, latestNavigation, leaveFollow, releaseDisclosureAnchor, rememberReadingPosition, retryHistoryPaging],
   );
 
   useEffect(() => {
@@ -856,6 +867,7 @@ export function useTranscriptScroll({
     revealEarlierHistory,
     scrollToBottom,
     jumpToLatest,
+    isLatestNavigationActive: latestNavigation.isActive,
     releaseFollow: releaseNavigationFollow,
     disclosureAnchorNotifier: notifyDisclosure,
   };

@@ -13563,8 +13563,14 @@ This test plan spec is accepted when:
   empty visible-message frames) and ahead-read cases (standalone user rows and
   mixed grouped answers moving the same visible message `100px` during pending
   IO and keeping drift `<= 2px` after prepend) alongside the retained quiet
-  stability and pending/settled latest-button cases. Only external Host IPC is
-  controlled; run with normal motion enabled. Manual procedures:
+  stability and pending/settled latest-button cases. Additional regressions cover
+  native browser smooth travel across the prefetch threshold, resuming follow
+  during pending IO, press-only interruption plus remount, delayed failed search,
+  focused and restored disjoint ranges (no automatic forward reads), stream
+  growth/completion, hide/unmount, and reduced-motion media emulation. Empty
+  layout viewports are checked after layout and before paint, not before lazy
+  rows have had their layout opportunity. Only external Host IPC is controlled;
+  the ordinary-motion cases still require intermediate frames. Manual procedures:
   `tests/history-loading-scroll-test-cases.md`.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.

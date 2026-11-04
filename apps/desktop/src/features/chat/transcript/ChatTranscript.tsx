@@ -184,6 +184,7 @@ function TranscriptBody({
     revealEarlierHistory,
     releaseFollow,
     jumpToLatest,
+    isLatestNavigationActive,
     disclosureAnchorNotifier,
   } = useTranscriptScroll({
     sessionId,
@@ -200,6 +201,7 @@ function TranscriptBody({
     paneVisible,
     searchTarget,
     readingWindow,
+    navigationLoading,
     onRestoreReading,
   });
   const returnToLatest = useCallback(() => {
@@ -212,7 +214,7 @@ function TranscriptBody({
   );
   const automaticContinuation = readingWindow && !searchTarget;
   useTranscriptContinuation({
-    scrollRef, contentRef, messages, onLoadNewer,
+    scrollRef, contentRef, messages, onLoadNewer, isNavigationActive: isLatestNavigationActive,
     enabled: automaticContinuation && hasMoreAfter && paneVisible && !veilCovering,
     cursor: continuationCursor,
     loading: navigationLoading,

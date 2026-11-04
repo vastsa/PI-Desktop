@@ -161,6 +161,19 @@ function track() {
   sampling = requestAnimationFrame(sample);
   return inspect();
 }
+async function crossAhead() {
+  const el = scroller();
+  for (const row of el.querySelectorAll<HTMLElement>("[data-message-id], [data-minimap-id]")) row.style.contentVisibility = "visible";
+  el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+  el.scrollTo({ top: el.clientHeight * 3 + 400, behavior: "instant" });
+  el.dispatchEvent(new Event("scroll", { bubbles: true }));
+  await frame(); await frame();
+  el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "PageUp" }));
+  el.scrollTo({ top: el.clientHeight, behavior: "smooth" });
+  await until(() => calls === 1, "smooth upward travel did not prefetch");
+  await until(() => Math.abs(el.scrollTop - el.clientHeight) <= 2, "prefetch interrupted browser smooth upward travel");
+  return track();
+}
 async function growMountedWindow() {
   const el = scroller();
   const count = el.querySelectorAll("[data-minimap-id]").length;
@@ -176,12 +189,12 @@ async function growMountedWindow() {
 declare global { var historyLoadingFixture: { reset: typeof reset; begin: typeof begin; release: typeof release;
   inspect: typeof inspect; growTail: typeof growTail; hideAndReveal: typeof hideAndReveal;
   inputOwnership: typeof inputOwnership; jumpWhileLoading: typeof jumpWhileLoading; beginAhead: typeof beginAhead; track: typeof track;
-  growMountedWindow: typeof growMountedWindow; armNativeInput: typeof armNativeInput;
+  growMountedWindow: typeof growMountedWindow; crossAhead: typeof crossAhead; armNativeInput: typeof armNativeInput;
   finishNativeInput: typeof finishNativeInput; frames: () => Promise<void> }; }
 await i18n.init({ lng: "en", resources: { en: { translation: en } } });
 useAppStore.setState({ activeSessionId: "history-fixture", messages: [], sessions: [], runningSessions: {},
   pendingPlans: {}, pendingAsks: {}, pendingPermissions: {}, planningStates: {}, latestTurnResults: {},
   settings: { ...useAppStore.getState().settings, smoothStreaming: false } });
-globalThis.historyLoadingFixture = { reset, begin, beginAhead, track, release, inspect, growTail, hideAndReveal, inputOwnership, jumpWhileLoading, growMountedWindow, armNativeInput, finishNativeInput,
+globalThis.historyLoadingFixture = { reset, begin, beginAhead, track, release, inspect, growTail, hideAndReveal, inputOwnership, jumpWhileLoading, growMountedWindow, crossAhead, armNativeInput, finishNativeInput,
   frames: async () => { for (let n = 0; n < 4; n++) await frame(); } };
 await reset();

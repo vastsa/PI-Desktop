@@ -74,6 +74,14 @@ app.whenReady().then(async () => {
    const free = await call('inspect()');
    assert(Math.abs(free.top - after.top) > 2 || free.calls > after.calls, name + ': scrolling/retry remained locked after completion');
   }
+  let crossingError;
+  try {
+    await call('reset()');
+    const crossing = await call('crossAhead()');
+    assert.equal(crossing.locked, false, 'crossing the ahead band locked input');
+    await call('release(false,false,true)');
+    console.log('HISTORY_AHEAD_CROSSING ' + JSON.stringify({ ok: true }));
+  } catch (error) { crossingError = error; console.log('HISTORY_AHEAD_CROSSING_ERROR ' + String(error)); }
   await call('reset()');
   await call('beginAhead()');
   await call('frames()');
@@ -111,6 +119,7 @@ app.whenReady().then(async () => {
     const reduced = await js('globalThis.transcriptHistoryNavigationProbe(true)');
     console.log('LATEST_REDUCED_MOTION ' + JSON.stringify(reduced));
   } finally { win.webContents.debugger.detach(); }
+  assert.equal(crossingError, undefined, 'ahead-loading interrupted browser smooth scroll');
   console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, cases: results.length, cachedWindow: true, inputOwnership: true, latestNavigation: true }));
   app.exit(0);
  } catch(e) { console.error(e.stack || String(e)); app.exit(1); }

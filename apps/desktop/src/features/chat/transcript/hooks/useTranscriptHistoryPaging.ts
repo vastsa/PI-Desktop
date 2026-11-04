@@ -36,7 +36,7 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
   contentRef: RefObject<HTMLDivElement | null>;
   visible: boolean;
   sourceHead: string | undefined;
-  onStart: () => void;
+  onStart: (background: boolean) => void;
   onPosition: (top: number) => void;
   onSettled: () => void;
 }) {
@@ -114,7 +114,7 @@ export function useTranscriptHistoryPaging({ scrollRef, contentRef, visible, sou
     holdRef.current = hold; // Synchronous: two scroll events cannot start two pages.
     if (!background) scroller.style.overflowY = "hidden";
     inFlightRef.current = true;
-    callbacks.current.onStart();
+    callbacks.current.onStart(background);
     setPhase(page ? "page" : "mount");
     const finish = () => {
       inFlightRef.current = false;

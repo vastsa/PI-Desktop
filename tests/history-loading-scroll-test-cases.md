@@ -159,7 +159,12 @@ intermediate frames, reversal `<= 2px`, and zero empty visible-message frames),
 two ahead-read prefetch cases (standalone user rows and mixed grouped answers
 moving the same visible message `100px` during IO and staying within `2px` after
 prepend), two quiet message-stability cases, and four pending/settled
-latest-button cases.
+latest-button cases. Boundary regressions also cross the prefetch threshold with
+browser-native smooth travel, resume follow during pending IO, interrupt by a
+press without a scroll and remount the saved message, start a delayed failed
+search, and return from focused/restored disjoint ranges without forward paging.
+Stream growth/completion, hide/unmount, and reduced-motion media emulation are
+covered separately. Empty-view checks run after layout, before paint.
 
 | Requirement | Cases | Evidence level |
 | --- | --- | --- |
