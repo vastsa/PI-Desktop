@@ -60,6 +60,12 @@ These are known and deliberately written down rather than left to be rediscovere
    through per-turn recall. Pointing recall at the entry lists — or retiring the
    scored store — is a separate change with its own compatibility question
    (project-scoped memory, ADR 0234, still lives there).
+   *Measured cost of leaving it as is (2026-11-04):* an empty store costs one
+   local FTS query and **no prompt space** — `memory-context.ts` returns
+   `undefined` when `hits.length` is 0, so nothing is injected. On the real
+   profile both stores held 0 rows, so nothing is lost either way; a profile that
+   does have scored rows keeps them and keeps injecting them, which is why this
+   is a gap to record rather than a bug to patch.
 2. **The entry store was undocumented.** `docs/spec/03-runtime/21-memory-store.md`
    described the scored store only; its §9 now describes the entry lists the
    agent actually writes.
