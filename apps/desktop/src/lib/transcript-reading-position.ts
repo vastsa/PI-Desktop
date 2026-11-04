@@ -72,6 +72,23 @@ export function captureTranscriptReadingPosition(
   }
 }
 
+function readingPositionRow(content: HTMLElement, messageId: string): HTMLElement | null {
+  const id = CSS.escape(messageId);
+  return content.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
+    ?? content.querySelector<HTMLElement>(`[data-minimap-id="${id}"]`);
+}
+
+/** Test the intended reading offset, before compensating a changed layout. */
+export function isTranscriptReadingAnchorVisible(
+  scroller: HTMLElement,
+  content: HTMLElement,
+  position: TranscriptReadingPosition,
+): boolean {
+  if (!transcriptHasLayout(scroller) || !position.messageId) return false;
+  const height = readingPositionRow(content, position.messageId)?.getBoundingClientRect().height ?? 0;
+  return height > 0 && position.offset < scroller.clientHeight && position.offset + height > 0;
+}
+
 /** Returns false until the bookmarked row is actually mounted. */
 export function restoreTranscriptReadingPosition(
   scroller: HTMLElement,
@@ -80,9 +97,7 @@ export function restoreTranscriptReadingPosition(
 ): boolean {
   if (!transcriptHasLayout(scroller)) return false;
   if (position.messageId) {
-    const id = CSS.escape(position.messageId);
-    const row = content.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
-      ?? content.querySelector<HTMLElement>(`[data-minimap-id="${id}"]`);
+    const row = readingPositionRow(content, position.messageId);
     if (row) {
       const rect = row.getBoundingClientRect();
       if (rect.height > 0) {

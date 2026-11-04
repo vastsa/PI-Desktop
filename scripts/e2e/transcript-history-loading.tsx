@@ -36,6 +36,15 @@ let baseline = 0;
 let samples: number[] = [];
 let sampling = 0;
 let scenario = 0;
+let nativeInputEnded = false;
+function armNativeInput() {
+  nativeInputEnded = false;
+  scroller().addEventListener("scrollend", () => { nativeInputEnded = true; }, { once: true });
+}
+async function finishNativeInput() {
+  await until(() => nativeInputEnded, "native wheel did not finish");
+  return inspect();
+}
 const scroller = () => host.querySelector<HTMLElement>(".thread-scroll")!;
 const busy = () => host.querySelector('.transcript-history-loading[aria-hidden="false"]') !== null;
 const offset = () => anchor!.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
@@ -65,16 +74,17 @@ async function reset() {
   await until(() => !host.querySelector('[data-transcript-settling="true"]'), "first paint did not settle");
   await frame(); await frame();
 }
-async function begin() {
+async function begin(top = 80) {
   const el = scroller();
   // Enter from the user's ordinary scroll route; native wheel is exercised by
   // the Electron driver while the real asynchronous page is held below.
   el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -120 }));
-  el.scrollTo({ top: 80, behavior: "instant" });
+  el.scrollTo({ top, behavior: "instant" });
   el.dispatchEvent(new Event("scroll", { bubbles: true }));
   await until(busy, "page did not start");
   return track();
 }
+const beginAhead = () => begin(scroller().clientHeight * 2);
 async function release(failed = false, lateLayout = false, empty = false) {
   if (!finish) throw new Error("No pending page");
   const resolve = finish; finish = undefined;
@@ -136,6 +146,7 @@ async function jumpWhileLoading() {
   await frame();
   await release();
   const el = scroller();
+  await until(() => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 2, "latest navigation did not arrive");
   return { ...inspect(), distanceFromBottom: el.scrollHeight - el.clientHeight - el.scrollTop };
 }
 function track() {
@@ -149,6 +160,19 @@ function track() {
   const sample = () => { if (visible) samples.push(offset()); sampling = requestAnimationFrame(sample); };
   sampling = requestAnimationFrame(sample);
   return inspect();
+}
+async function crossAhead() {
+  const el = scroller();
+  for (const row of el.querySelectorAll<HTMLElement>("[data-message-id], [data-minimap-id]")) row.style.contentVisibility = "visible";
+  el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+  el.scrollTo({ top: el.clientHeight * 3 + 400, behavior: "instant" });
+  el.dispatchEvent(new Event("scroll", { bubbles: true }));
+  await frame(); await frame();
+  el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "PageUp" }));
+  el.scrollTo({ top: el.clientHeight, behavior: "smooth" });
+  await until(() => calls === 1, "smooth upward travel did not prefetch");
+  await until(() => Math.abs(el.scrollTop - el.clientHeight) <= 2, "prefetch interrupted browser smooth upward travel");
+  return track();
 }
 async function growMountedWindow() {
   const el = scroller();
@@ -164,12 +188,13 @@ async function growMountedWindow() {
 }
 declare global { var historyLoadingFixture: { reset: typeof reset; begin: typeof begin; release: typeof release;
   inspect: typeof inspect; growTail: typeof growTail; hideAndReveal: typeof hideAndReveal;
-  inputOwnership: typeof inputOwnership; jumpWhileLoading: typeof jumpWhileLoading;
-  growMountedWindow: typeof growMountedWindow; frames: () => Promise<void> }; }
+  inputOwnership: typeof inputOwnership; jumpWhileLoading: typeof jumpWhileLoading; beginAhead: typeof beginAhead; track: typeof track;
+  growMountedWindow: typeof growMountedWindow; crossAhead: typeof crossAhead; armNativeInput: typeof armNativeInput;
+  finishNativeInput: typeof finishNativeInput; frames: () => Promise<void> }; }
 await i18n.init({ lng: "en", resources: { en: { translation: en } } });
 useAppStore.setState({ activeSessionId: "history-fixture", messages: [], sessions: [], runningSessions: {},
   pendingPlans: {}, pendingAsks: {}, pendingPermissions: {}, planningStates: {}, latestTurnResults: {},
   settings: { ...useAppStore.getState().settings, smoothStreaming: false } });
-globalThis.historyLoadingFixture = { reset, begin, release, inspect, growTail, hideAndReveal, inputOwnership, jumpWhileLoading, growMountedWindow,
+globalThis.historyLoadingFixture = { reset, begin, beginAhead, track, release, inspect, growTail, hideAndReveal, inputOwnership, jumpWhileLoading, growMountedWindow, crossAhead, armNativeInput, finishNativeInput,
   frames: async () => { for (let n = 0; n < 4; n++) await frame(); } };
 await reset();
