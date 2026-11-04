@@ -1176,7 +1176,10 @@ async fn run_file_tool(
         // retain the lease until the actual filesystem body has returned.
         let _file_lease = lease;
         #[cfg(test)]
-        file_lease_tests::pause(workspace.as_deref());
+        file_lease_tests::pause(
+            workspace.as_deref(),
+            args.get("path").and_then(Value::as_str),
+        );
         if let Some((_, resources)) = &_file_lease {
             resources
                 .validate(
@@ -1275,7 +1278,10 @@ pub async fn execute_tool_with_file_lease(
     let result: Result<Value, hashline::ToolError> = match tool_name {
         // Authorize the desktop-owned image request through the normal host gate.
         // Only the trusted desktop runner performs the external call.
-        "GenerateImages" => Ok(serde_json::json!({ "authorized": true })),
+        // Both run in Electron main after the host authorises them:
+        // image generation needs a provider SDK, and computer use needs
+        // a provider plus Chromium capture (ADR 0342).
+        "GenerateImages" | "Computer" => Ok(serde_json::json!({ "authorized": true })),
         "Read" | "Glob" | "Grep" | "Write" | "Edit" => {
             run_file_tool(
                 workspace,

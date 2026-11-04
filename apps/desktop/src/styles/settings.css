@@ -1132,6 +1132,15 @@
   background: var(--ds-tile);
 }
 
+/*
+ * A row that exists only because the row above it is on ("Show thinking",
+ * "Transcript display") indents one step. It keeps the parent's tile surface, so
+ * the pair reads as one setting with a condition instead of two siblings.
+ */
+.settings-row.settings-row-nested {
+  margin-inline-start: 20px;
+}
+
 .settings-row-copy {
   min-width: 0;
   flex: 1;

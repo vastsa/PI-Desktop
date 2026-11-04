@@ -405,7 +405,8 @@ export type PluginSessionListItem = {
   sessionId: string;
   title: string;
   source: string;
-  externalId: string;
+  /** The import source's id; `null` for a session this plugin did not import. */
+  externalId: string | null;
   projectId: number | null;
   messageCount: number;
   originKind: "imported" | "created";
@@ -422,8 +423,8 @@ export type PluginSessionListResult = {
 export type PluginSessionGetResult = {
   sessionId: string;
   title: string;
-  source: string;
-  externalId: string;
+  /** The import source's id; `null` for a session this plugin did not import. */
+  externalId: string | null;
   originKind: "imported" | "created";
   projectId: number | null;
   projectPath: string | null;
@@ -486,7 +487,8 @@ export type PluginSessionMessageResult = {
   content: string;
   contentTruncated?: boolean;
   createdAt: string;
-  origin: "external";
+  /** `external` for imported history, `desktop` for a host-created session. */
+  origin: "external" | "desktop";
   tool?: {
     name: string;
     callId: string;
@@ -499,6 +501,49 @@ export type PluginSessionMessageResult = {
 export type PluginSessionMessageListResult = {
   items: PluginSessionMessageResult[];
   nextCursor?: string;
+};
+
+/**
+ * One message a plugin writes (`session.update.all`). The `id` is optional:
+ * the host generates one when it is absent, and a supplied id makes a retried
+ * write idempotent instead of appending the row twice.
+ */
+export type PluginSessionMessageInput = {
+  id?: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  /** Monotonic RFC3339 within one call, newest last. */
+  createdAt: string;
+  modelId?: string;
+  providerId?: string;
+  toolName?: string;
+  toolCallId?: string;
+  toolStatus?: "success" | "error";
+  toolArgs?: unknown;
+  toolResult?: unknown;
+};
+
+/** Result of `pi.session.appendMessage`. */
+export type PluginSessionAppendResult = {
+  messageId: string;
+};
+
+/** Result of `pi.session.replaceMessages`. */
+export type PluginSessionReplaceResult = {
+  /** Rows the rewritten transcript now holds. */
+  messageCount: number;
+};
+
+/** Result of `pi.session.deleteMessage`; a missing target is a no-op, not an error. */
+export type PluginSessionDeleteMessageResult = {
+  deleted: boolean;
+  deletedCount: number;
+};
+
+/** Result of `pi.session.truncateFrom`. */
+export type PluginSessionTruncateResult = {
+  keptCount: number;
+  discardedCount: number;
 };
 
 /** Resolve a plugin label using the active PI-Desktop locale. */
@@ -1481,6 +1526,37 @@ export type PluginHostApi = {
       sessionId: string;
       mode?: "trash" | "purge";
     }) => Promise<{ deleted: boolean }>;
+    /**
+     * Message-level writes. Each one needs `session.update.all` and rewrites the
+     * live transcript, so the host refuses while a turn owns the session
+     * (`TURN_RUNNING`) and rate-limits the whole group.
+     */
+    appendMessage: (input: {
+      sessionId: string;
+      message: PluginSessionMessageInput;
+    }) => Promise<PluginSessionAppendResult>;
+    replaceMessages: (input: {
+      sessionId: string;
+      /** At most 2,000 entries; the whole live transcript is rewritten. */
+      messages: PluginSessionMessageInput[];
+    }) => Promise<PluginSessionReplaceResult>;
+    /**
+     * Delete one message, or — when it is a user prompt — that prompt and its
+     * replies. Needs `session.delete.all`; a missing target is a no-op.
+     */
+    deleteMessage: (input: {
+      sessionId: string;
+      messageId: string;
+    }) => Promise<PluginSessionDeleteMessageResult>;
+    /**
+     * Keep the prefix before `fromMessageId` (or the first `keepCount` messages)
+     * and discard the rest. Needs `session.delete.all`.
+     */
+    truncateFrom: (input: {
+      sessionId: string;
+      fromMessageId?: string;
+      keepCount?: number;
+    }) => Promise<PluginSessionTruncateResult>;
   };
   /**
    * Read-only completed-turn facts served by the host (`usage.read`). Flat
@@ -1634,6 +1710,13 @@ export const PLUGIN_PERMISSIONS = [
   "session.read.own",
   "session.update.own",
   "session.delete.own",
+  // The `.all` family (ADR 0339): the same three verbs over every live session,
+  // including the user's own conversations. A separate grant rather than a
+  // wider `.own`, so an existing install never silently gains reach. `all` wins
+  // when a manifest declares both.
+  "session.read.all",
+  "session.update.all",
+  "session.delete.all",
   "session.autoTitle",
   // Read-only usage facts (pi.usage.listTurns):
   // completed-turn counters and session titles, never message bodies.

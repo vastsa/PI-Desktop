@@ -739,6 +739,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   second rather than after it.
 - A boot that outlasts the video shows the splash's indeterminate bar after 3s
   of black, so an opaque mask is not mistaken for a hang.
+- Either `loadeddata` or `playing` acknowledges a decoded first frame; a
+  playing video must not hit the missing-first-frame timeout when `loadeddata`
+  was missed. The first-frame timeout also checks the actual video ref for
+  HAVE_CURRENT_DATA in case both initial events raced their handlers. The total
+  playback bound remains active.
 - Four bounds end the animation, and each runs the same reveal: no first frame
   within 2s, 15s of total playback, a `<video>` `error`, or `Escape`. The
   startup watchdog's bounds are unchanged and outrank it — at 30s the boot
@@ -1077,14 +1082,17 @@ may be retained while exactly one workspace supplies the visible shell context.
   nested group header shares its left edge; the group body then indents child
   rows by 12px with the hover/focus collapse rail in that gutter, while a run
   row lifted out of a group keeps the turn's left edge.
-- No item payload opens itself, except the display mode's Thinking default: a
-  tool, hosted-search or plan call stays a header row until the user opens it,
-  including the literal final item of the last activity group. With `Show thinking`
-  on, Thinking rows default expanded in every display mode and collapse only on
-  user action. A collapsed row shows only the Thinking indicator, with no excerpt.
+- No item payload opens itself except reasoning: a tool, hosted-search or plan
+  call stays a header row until the user opens it, including the literal final
+  item of the last activity group. With `Show thinking` on, only the reasoning a
+  live turn is still streaming starts expanded; completed rows start folded and
+  open on user action, or stay open when `Auto-fold finished thinking` is off. A
+  folded row shows only the Thinking indicator, with no excerpt.
   With `Show thinking` off, no completed reasoning row renders; only a live
   whole-run TextShimmer `Thinking` indicator remains while reasoning streams.
   Stored reasoning is retained and reappears when the preference is turned back on.
+  A group and its reasoning answer to their own switches: neither inherits the
+  other's state, so folding a group hides the expanded reasoning inside it.
 - Activating a group or item header toggles only that level. Closing a parent
   preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.
@@ -1603,6 +1611,23 @@ Project drag/drop follows these patterns:
 ### 9.1 Transcript scrolling
 
 - Default: auto-scroll to bottom on new content during stream while pinned
+- Loading earlier messages is one pane-local viewport transaction: capture the
+  visible message and its viewport offset before either mounting more cached
+  rows or requesting a page. Keep that anchor through the committed projection
+  and late row layout; total scroll-height growth is not an anchor because it
+  can include tail updates and offscreen intrinsic-size estimates. Prefer the
+  actual visible message node over its enclosing answer/minimap group: loading
+  the preceding part of a continuous answer can change the group's identity.
+- While that transaction owns the viewport, discard wheel/trackpad, touch-scroll
+  and scrolling-key input addressed to the transcript. Do not queue input for
+  replay after loading. Nested scroll owners, editable fields, title activation
+  and Ctrl+wheel zoom retain their own input. The loading label keeps identical
+  layout space when hidden, and ordinary scrolling resumes after settlement.
+- Search/minimap navigation, return-to-latest, manual disclosure, a new turn,
+  pane hide and unmount retire the hold. A late page cannot reclaim that
+  navigation. A failed or empty page releases input and does not auto-retry at
+  the unchanged boundary; a new reader gesture or earlier-history action may
+  retry. Requests remain single-flight even after their viewport hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement
@@ -1638,7 +1663,9 @@ Project drag/drop follows these patterns:
 - User send / retry / regenerate: re-pins, hides the jump control, and positions the latest content in the layout phase so the new turn is visible without a top-of-history flash; subsequent persisted and streamed rows continue to follow the bottom
 - Scroll-to-bottom button: position fixed at bottom-right of transcript area, offset 12px
 - Button appears as soon as upward scrolling releases follow mode
-- Click button: scrolls to bottom, resumes auto-scroll
+- Click button: scrolls to bottom, resumes auto-scroll and retires the prior
+  scroll gesture before navigation. Queued scroll events or a pending page must
+  not reopen historical reading or fetch another page during that jump.
 - Button disappears when at bottom
 - A delegation tab uses the same single-body scroll owner as the work panel.
   It renders the delegate's conversation — each `Task` call's prompt as a user

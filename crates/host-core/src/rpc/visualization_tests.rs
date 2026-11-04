@@ -1,5 +1,5 @@
 //! Session visualization root (D671): containment, `.html`-only writes,
-//! prompting, review exclusion, and lifecycle.
+//! prompting, non-reversible review evidence, and lifecycle.
 
 use super::*;
 use std::fs;
@@ -209,6 +209,7 @@ async fn rpc_redirected_visualization_write_prompts_and_denial_preserves_project
             .await
             .unwrap();
             assert_eq!(pending.await.unwrap().unwrap()["errorCode"], "TOOL_DENIED");
+            assert!(!f.data_dir.join("review-changes").join(&id).exists());
             assert_eq!(
                 fs::read_to_string(target.join("index.html")).unwrap(),
                 "important project file"
@@ -237,7 +238,13 @@ async fn rpc_direct_html_write_read_edit_user_path_uses_one_canonical_spelling()
     .unwrap();
     assert_eq!(write["ok"], true, "{write}");
     assert_eq!(write["content"]["root"], "visualization");
-    assert!(write["content"].get("review").is_none());
+    let written_review = &write["content"]["review"];
+    assert_eq!(written_review["operation"], "write");
+    assert_eq!(written_review["status"], "added");
+    assert_eq!(written_review["reversible"], false);
+    assert!(Path::new(written_review["path"].as_str().unwrap()).is_absolute());
+    assert_eq!(written_review["additions"], 1);
+    assert!(written_review["snapshotId"].as_str().is_some());
     let read = handle_request(
         state.clone(),
         "tools.execute",
@@ -260,7 +267,14 @@ async fn rpc_direct_html_write_read_edit_user_path_uses_one_canonical_spelling()
     ).await.unwrap();
     assert_eq!(edited["ok"], true, "{edited}");
     assert_eq!(edited["content"]["root"], "visualization");
-    assert!(edited["content"].get("review").is_none());
+    let edited_review = &edited["content"]["review"];
+    assert_eq!(edited_review["operation"], "edit");
+    assert_eq!(edited_review["status"], "modified");
+    assert_eq!(edited_review["reversible"], false);
+    assert_eq!(edited_review["path"], written_review["path"]);
+    assert_eq!(edited_review["additions"], 1);
+    assert_eq!(edited_review["deletions"], 1);
+    assert_ne!(edited_review["snapshotId"], written_review["snapshotId"]);
     assert_eq!(fs::read_to_string(&path).unwrap(), "<p>after</p>");
     while let Ok(note) = rx.try_recv() {
         let note: Value = serde_json::from_str(&note).unwrap();
@@ -469,8 +483,39 @@ fn visualization_paths_do_not_require_external_path_permission() {
 }
 
 #[test]
-fn visualization_writes_are_not_review_snapshotted() {
+fn review_preparation_leaves_unrelated_visualization_roots_lazy() {
     let f = fixture();
+    let roots = local_contained_roots(&f.data_dir, "s1", false);
+    for (tool, path) in [
+        ("Read", f.visualization.join("chart.html")),
+        ("Bash", f.visualization.join("chart.html")),
+        ("Write", f.workspace.join("ordinary.txt")),
+    ] {
+        let pending = review::prepare_change(
+            &f.data_dir,
+            "s1",
+            "lazy-review",
+            Some(&f.workspace),
+            &roots,
+            tool,
+            &json!({"path":path}),
+            false,
+        )
+        .unwrap();
+        if let Some(pending) = pending {
+            review::discard_change(pending);
+        }
+        assert!(
+            !visualizations::base_dir(&f.data_dir).exists(),
+            "{tool} created an unrelated visualization root"
+        );
+    }
+}
+
+#[test]
+fn visualization_writes_are_reviewed_without_granting_rollback_access() {
+    let f = fixture();
+    assert!(!f.visualization.exists());
     let roots = local_contained_roots(&f.data_dir, "s1", false);
     let pending = review::prepare_change(
         &f.data_dir,
@@ -480,9 +525,13 @@ fn visualization_writes_are_not_review_snapshotted() {
         &roots,
         "Write",
         &json!({ "path": f.visualization.join("a.html").to_string_lossy() }),
+        false,
     )
     .unwrap();
-    assert!(pending.is_none());
+    let pending = pending.expect("visualization Write is captured");
+    let change = review::finalize_change(&pending).unwrap();
+    assert!(Path::new(&change.path).is_absolute());
+    assert!(!change.reversible);
 }
 
 #[test]

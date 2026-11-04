@@ -29,6 +29,7 @@ export function SettingsRow({
   title,
   description,
   detail,
+  nested = false,
   children,
 }: {
   title: string;
@@ -37,9 +38,15 @@ export function SettingsRow({
   /** Live row metadata that stays visible (not an explanation). */
   detail?: ReactNode;
   children: ReactNode;
+  /**
+   * A row that only exists while the row above it is on. It indents one step and
+   * keeps its own control, so the dependency is visible without a second
+   * explanation, and hiding it must never rewrite the value it holds.
+   */
+  nested?: boolean;
 }) {
   return (
-    <div className="settings-row">
+    <div className={nested ? "settings-row settings-row-nested" : "settings-row"}>
       <div className="settings-row-copy">
         <div className="settings-row-title">
           {title}

@@ -75,6 +75,10 @@ describe("Plan protocol contracts", () => {
     expect(IPC_WHITELIST.has(IPC.invoke.appOpenFeedback)).toBe(true);
     expect(IPC.invoke.fsOpen).toBe("pi-desktop/fs/open");
     expect(IPC_WHITELIST.has(IPC.invoke.fsOpen)).toBe(true);
+    expect(IPC.invoke.workspaceReviewOpenFile).toBe("pi-desktop/workspace/review/openFile");
+    expect(IPC.invoke.workspaceReviewRollbackFile).toBe("pi-desktop/workspace/review/rollbackFile");
+    expect(IPC_WHITELIST.has(IPC.invoke.workspaceReviewOpenFile)).toBe(true);
+    expect(IPC_WHITELIST.has(IPC.invoke.workspaceReviewRollbackFile)).toBe(true);
     expect(IPC.invoke.statsGetTokenUsageHistory).toBe(
       "pi-desktop/stats/getTokenUsageHistory",
     );

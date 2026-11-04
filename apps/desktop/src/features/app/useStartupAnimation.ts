@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   STARTUP_ANIMATION_FIRST_FRAME_TIMEOUT_MS,
   STARTUP_ANIMATION_HOLD_HINT_MS,
@@ -30,6 +30,7 @@ export type StartupAnimationState = {
   phase: StartupAnimationPhase;
   /** True while the `<video>` should be mounted and playing. */
   playing: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
   /** The hold has outlasted its quiet bound; show the progress affordance. */
   holdingLong: boolean;
   /** Attach to the element: the first decoded frame cancels its own bound. */
@@ -138,6 +139,7 @@ export function useStartupAnimation(ready: boolean): StartupAnimationState {
 
   // The first decoded frame retires the only bound that can fire before the
   // animation is visible at all.
+  const videoRef = useRef<HTMLVideoElement>(null);
   const firstFrameRef = useRef(false);
   const onFirstFrame = useCallback(() => {
     firstFrameRef.current = true;
@@ -150,7 +152,10 @@ export function useStartupAnimation(ready: boolean): StartupAnimationState {
   useEffect(() => {
     if (!active || state.phase !== "video") return;
     const firstFrame = window.setTimeout(() => {
-      if (!firstFrameRef.current) onAnimationEnd("no-first-frame");
+      // Media events can precede their React handlers; inspect the decoded frame too.
+      if (!firstFrameRef.current && (videoRef.current?.readyState ?? 0) < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        onAnimationEnd("no-first-frame");
+      }
     }, STARTUP_ANIMATION_FIRST_FRAME_TIMEOUT_MS);
     const maxDuration = window.setTimeout(() => {
       onAnimationEnd("max-duration");
@@ -207,6 +212,7 @@ export function useStartupAnimation(ready: boolean): StartupAnimationState {
     active: active && state.phase !== "done",
     phase: state.phase,
     playing: active && state.phase === "video",
+    videoRef,
     holdingLong,
     onFirstFrame,
     onAnimationEnd,

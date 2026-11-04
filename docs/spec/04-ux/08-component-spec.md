@@ -933,18 +933,27 @@ thinking never creates an empty wrapper. All three modes render exactly one
 top-level process disclosure and change neither what a tool received nor what is
 stored.
 
-Every ordinary group of a turn stays open while that turn is active, whether or
-not it still owns the live execution segment, so work never folds away mid-run.
-After the turn settles, ordinary groups with at most four visible items remain
-open, larger groups start closed, and Task topology groups remain open. A group
-that still renders a Thinking row also remains open: with `Show thinking` on the
-reasoning is content the reader asked to see, and folding the group around it
-would make the setting look broken. These defaults are unified across modes and
-otherwise do not depend on the thinking preference. Explicit user choices remain
-authoritative. Group headers summarize count, running state and issue count
-without treating a failed child as a failed turn; the issue counter is one inline
-non-wrapping chip whose icon and localized count share a centred line and
-truncate together when the band runs out of width.
+Every group of a turn stays open while that turn is active, whether or not it
+still owns the live execution segment, so work never folds away mid-run. Once the
+turn settles both nested levels fold: expanding a completed turn lists what the
+agent did instead of a wall of rows, and two opt-out switches carry the reader's
+choice. `Auto-fold finished groups` (`autoCollapseSettledGroups`, on by default)
+folds settled groups whatever their size; turned off it leaves every settled
+group open, because the four-item tier is retired. `Auto-fold finished thinking`
+(`autoCollapseThinking`, on by default) keeps only reasoning the live turn is
+still streaming expanded. Each switch is a sub-row of the setting that gates it
+(`Show thinking`, and a non-flat `Transcript display`), it disappears with that
+parent, and hiding it never rewrites the stored value. A group does not inherit
+open state from the reasoning it contains: the group and its Thinking rows each
+answer to their own switch, so closing a group hides expanded reasoning inside
+it. Explicit user choices remain authoritative, and a running turn - or a group
+that still owns a running tool or delegation - never folds. The group header
+states what the group did: the actions it contains, joined with the locale's own
+list wording and capped at three with "and more", followed by the call count as
+its own non-truncating token (`搜索并读取文件 · 12 次操作`). Reasoning is named in
+that sequence but never counted as an operation, and a reasoning-only group
+counts steps instead. Failures are not repeated here: the tool row that failed
+already reports them.
 
 The turn disclosure header states the turn's outcome and carries only its bounded
 metadata: status, recorded duration and direct tool/search count. It never echoes
@@ -965,12 +974,12 @@ collapse rail in that gutter. The rail stays invisible at rest, shows a 2px bar 
 hover or focus, and collapses the group when clicked. The outer turn fold adds no
 extra hierarchy.
 
-Except for the display mode's Thinking default, no item payload opens itself: a
-tool, hosted-search or plan call stays a header row until the user opens its
+Except for `Auto-fold finished thinking`, no item payload opens itself: a tool,
+hosted-search or plan call stays a header row until the user opens its
 disclosure, including a Bash row, whose detail stays closed until the user opens
-it. Groups stay open while their turn runs; after it settles, small groups (up to
-four visible items), Task topology groups and groups that still render a Thinking
-row remain open, while larger ordinary groups of plain tool rows start closed.
+it. Groups stay open while their turn runs and fold once it settles, so a
+settled process reads as a list of headings that each state composition and
+count.
 With `Show thinking` on, Thinking rows expand by default in every display mode and
 collapse only on user action. An expanded Thinking row shows its full reasoning
 markdown; a collapsed one shows only the Thinking indicator, with no summary or
@@ -1926,21 +1935,24 @@ Single message render — either user (plaintext) or assistant (markdown streami
   any of these discards old results and cancels queued work. Newly created
   files are reconsidered when the message remounts or its scope changes, not
   by polling. Non-ASCII filenames, spaces, and Windows drive/backslash paths
-  remain whole candidates. User-message paths outside the allowed roots stay
-  plain after verification, while assistant references and tool paths remain
-  clickable so the opener can explain the access limit. Home paths stay plain.
+  remain whole candidates. An exact absolute path to an existing file outside
+  the managed roots verifies like an in-root one (ADR 0339), dotfile folders
+  such as `.ssh` included. Home paths stay plain. A Markdown link whose destination is an absolute path
+  reaches the opener even without a file extension (`/etc/hosts`); the
+  extension heuristic only decides which bare prose tokens become chips.
   Clicking a chip
    completes the reference through `pi-desktop/fs/resolveRef` — the whole open
    project is searched, its group's folders primary first (ADR 0263) — and opens
    where it resolved: a project file in the bundled `pi.file-manager` work-panel
    view (the host `file:` tab when that view is unavailable), a session-scratch
-   or attachment file in the host `file:` tab, and a `.html`/`.htm` page of the
+   or attachment file — or an `external` file named by its exact absolute path
+   outside every managed root (ADR 0339) — in the host `file:` tab, which shows
+   an external `.html`/`.htm` page as source, and a `.html`/`.htm` page of the
    primary folder in the side browser. A primary-folder file is addressed to the
    view as a project-relative path and a sibling-folder file as an absolute one,
    which is also how scratch and attachment files are addressed. A resolved
    image chip resolves and opens the same way. A chip whose reference
-   matches nothing opens nothing and reports itself; an absolute path outside
-   every allowed root reports the access limit separately. The OS default application
+   matches nothing opens nothing and reports itself. The OS default application
    is no longer what this click does.
   HTTP(S) URLs remain inline text links. Bare URLs preserve balanced parentheses
   in paths, queries, and fragments; an unmatched closing parenthesis wrapping
@@ -4612,3 +4624,67 @@ Input, selection, submission and dismissal semantics remain unchanged.
 Project-delete descriptions and plugin dialog headings/outcomes also wrap long
 project or plugin names instead of overflowing their existing widths. Project
 instructions, memory and OAuth dialogs retain their existing bounded layouts.
+
+## Round review reader
+
+Local Review defaults to Last round (the latest modified user round). Its
+scope dropdown also offers History, which reveals a separate user-round selector row,
+independent of the chat's loaded message window. Rounds without changes do not
+replace Latest. Main and delegated Write/Edit evidence share a file list; actual
+execution roots distinguish identically named files. The file header opens all
+of that file's recorded operations in order, without claiming a net diff.
+
+Expanded file content has no fixed-height inner viewport or vertical scrollbar.
+The outer Review scroll owns vertical travel; the current file header sticks
+below the toolbar within its file section. It is not reordered. A borderless ellipsis button after the summary totals opens a menu containing
+only Word wrap and Context lines. Hovering Context lines opens a secondary
+menu with 1/3/5 (first-use default 3); the choice is profile-wide, remembered
+across sessions, panel reopening and application restarts. Invalid or missing
+preferences use 3, and unavailable storage never blocks the current selection.
+No context selector is shown in the main toolbar.
+Toggle checks appear on the right. History options show date/time on the left
+and Host-recorded added/deleted line totals on the right, before the check.
+Totals count each successful native operation once, including delegated evidence,
+and do not claim a net diff. Binary, originally truncated or missing counts show
+unknown instead of invented zeros. The selector reserves arrow space. File headings have no permanent
+button fill or border; execution roots are not rendered as extra diff rows.
+A separate file ellipsis offers Open internally (disabled without the loaded
+File Manager view; never auto-enables it), Open externally (OS default app),
+and Open folder (system file manager, revealing the current file).
+All three resolve the current exact file through session-aware authorized roots, not
+a historical export or a same-named fallback. Stale session/project results are
+discarded; lookup/open failures are visible without changing stored evidence.
+Absolute and outside-root relative path labels use `.../basename`; full paths
+remain in the title and stored evidence. Native review captures successful
+approved Write/Edit mutations inside and outside the workspace, never Bash or
+external-application changes. Outside snapshots do not grant rollback or general filesystem permissions.
+Their file menu omits internal open and offers only external open and folder
+reveal through explicit snapshot-bound user actions (ADR 0341). Other file-open
+surfaces retain their existing authorization.
+
+Both scope and historical round selectors reuse the shared native Select.
+Review-only CSS opts into Chromium's customizable native picker: its base follows
+the sidebar color, with a contrasting sidebar-derived selected fill (no system
+blue). Only the first option's upper and last option's lower corners are rounded;
+interior edges are square, including when an interior row is selected or hovered.
+A single option has all four outer corners. The scope trigger is 24px high; the
+round field stays 28px high. Both vertically center their text and arrow. Round
+labels retain date/time and recorded counts with reserved arrow space. Native keyboard selection,
+Escape dismissal and focus remain browser-owned. Shared primitives and the AI
+Command shell selector are unchanged.
+Only file action menus opt into compact density. Recorded operations have no
+numbered title or dividing rule. One footer per file copies all its recorded
+hunks or requests a Host-preflighted file rollback; chat's inline actions remain
+unchanged. The copied sequence is not represented as a net diff.
+Review headings and turn-summary file rows share compact 14px file-type glyphs
+(Markdown, JSON, Python, code and document), while status stays in accessible
+labels. Both Review ellipsis menus anchor to the trigger right edge, 4px below;
+when space is insufficient they flip above and clamp within the viewport.
+Pointer position within a button cannot move the menu. They remain body portals,
+and ordinary right-click menus retain pointer placement.
+Diff rows have one line-number gutter: deletions use old coordinates, additions
+and context use new coordinates; EOF markers have no number. Word wrap toggles wrapping without
+introducing nested vertical scrolling. Unsupported
+historical context has an explicit explanation and retains recorded evidence.
+Remote Review retains its existing presentation. Chat inline review rows retain
+their default layout and hash-guarded rollback; no Git or model behavior changes.

@@ -31,7 +31,7 @@ fn not_retracted(reason: &'static str) -> RetractPendingPromptResult {
     }
 }
 
-fn running_turn(db: &Database, session_id: &str) -> Result<bool> {
+pub fn running_turn(db: &Database, session_id: &str) -> Result<bool> {
     Ok(db.conn().query_row(
         "SELECT EXISTS(SELECT 1 FROM turns WHERE session_id=?1 AND status='running')",
         params![session_id],

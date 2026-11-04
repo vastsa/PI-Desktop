@@ -1,8 +1,10 @@
+mod computer_rpc;
 mod config_sync_rpc;
 mod file_batches;
 mod gen_ui;
 mod plugin_reviews_rpc;
 mod remote_tools;
+mod review_actions_rpc;
 mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
@@ -12,6 +14,8 @@ mod worktree_rpc;
 
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
+#[cfg(test)]
+mod review_rpc_tests;
 #[cfg(test)]
 mod visualization_tests;
 
@@ -719,12 +723,28 @@ fn plugin_session_rpc_err(error: impl ToString) -> JsonRpcError {
         .unwrap_or_else(|| "INTERNAL".to_string());
     let rpc_code = match code.as_str() {
         "INVALID_PARAMS" | "LIMIT_EXCEEDED" => 1002,
+        "PERMISSION_DENIED" => 1003,
         "NOT_FOUND" => 1007,
-        "CONFLICT" => 1008,
+        "CONFLICT" | "TURN_RUNNING" => 1008,
         "RATE_LIMITED" => 1006,
         _ => 1000,
     };
     rpc_err(rpc_code, message, &code)
+}
+
+/// Every `plugin.session.*` arm needs the calling plugin; Electron main is the
+/// only caller that can supply it (ADR 0200).
+fn plugin_session_plugin_id(params: &Value) -> Result<&str, JsonRpcError> {
+    params
+        .get("pluginId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))
+}
+
+/// The access scope Electron main resolved from the plugin's grants (ADR 0339).
+/// Host-core holds no permission data, so it enforces exactly what it is handed.
+fn plugin_session_scope(params: &Value) -> Result<plugin_sessions::SessionScope, JsonRpcError> {
+    plugin_sessions::SessionScope::from_params(params).map_err(plugin_session_rpc_err)
 }
 
 /// Optional session `/fast` switch (ADR 0334). Absent or null leaves the
@@ -1951,6 +1971,10 @@ async fn handle_request(
         return file_batches::handle(state, method, params).await;
     }
 
+    if method.starts_with("computer.") {
+        return computer_rpc::handle(state, method, params).await;
+    }
+
     match method {
         "visualizations.readFragment" => gen_ui::read_fragment(state, params).await,
         "tools.remoteComplete" | "tools.workspaceExecute" | "tools.workspaceAbort" => {
@@ -2364,6 +2388,24 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
         }
+        "review.turns" | "review.changes" | "review.context" => {
+            let request = review::query::Request::parse(method, params)
+                .map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            if remote_tools::session_remote_workspace(&st, &request.session_id)?.is_some() {
+                return Err(rpc_err(
+                    1002,
+                    "remote workspace review is unavailable",
+                    "CAPABILITY_UNAVAILABLE",
+                ));
+            }
+            let root = resolve_tool_workspace(&st, &request.session_id)?;
+            review::query::execute(&st.db, method, request, root.as_deref().map(Path::new))
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))
+        }
+        "review.fileTarget" | "review.rollbackFile" => {
+            review_actions_rpc::handle(&state, method, params).await
+        }
         "review.rollback" => {
             let session_id = params
                 .get("sessionId")
@@ -2373,54 +2415,23 @@ async fn handle_request(
                 .get("snapshotId")
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| rpc_err(1002, "snapshotId required", "INVALID_PARAMS"))?;
-            let budget = {
-                let st = state.lock().await;
-                if remote_tools::session_remote_workspace(&st, session_id)?.is_some() {
-                    return Err(rpc_err(
-                        1002,
-                        "remote workspace rollback is unavailable",
-                        "CAPABILITY_UNAVAILABLE",
-                    ));
-                }
-                st.tool_budget.clone()
-            };
-            let permit = Arc::new(
-                budget
-                    .acquire_files(
-                        session_id,
-                        "Write",
-                        false,
-                        crate::file_resources::FileResources::fence(true),
-                        None,
-                    )
-                    .await
-                    .map_err(|e| rpc_err(1000, e.message(), e.code()))?,
-            );
-            let _rollback_lease = permit.clone();
-            let (data_dir, workspace_root) = {
-                let st = state.lock().await;
-                // Session/worktree state may have changed while admission waited.
-                (
-                    st.data_dir.clone(),
-                    resolve_tool_workspace(&st, session_id)?,
-                )
-            };
-            let session = session_id.to_string();
-            let snapshot = snapshot_id.to_string();
-            let root = workspace_root.clone();
-            let outcome = tokio::task::spawn_blocking(move || {
-                let _permit = permit;
-                review::rollback_change(
-                    &data_dir,
-                    &session,
-                    &snapshot,
-                    root.as_deref().map(Path::new),
-                )
-            })
-            .await
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let _rollback_lease = review_actions_rpc::rollback_permit(&state, session_id).await?;
             let st = state.lock().await;
+            if remote_tools::session_remote_workspace(&st, session_id)?.is_some() {
+                return Err(rpc_err(
+                    1002,
+                    "remote workspace rollback is unavailable",
+                    "CAPABILITY_UNAVAILABLE",
+                ));
+            }
+            let workspace_root = resolve_tool_workspace(&st, session_id)?;
+            let outcome = review::query::rollback(
+                &st.db,
+                session_id,
+                snapshot_id,
+                workspace_root.as_deref().map(Path::new),
+            )
+            .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
             if matches!(outcome.status, "rolledBack" | "alreadyRolledBack") {
                 if let Some(root) = workspace_root.as_deref() {
                     let resolved = std::path::Path::new(root).join(&outcome.path);
@@ -3348,66 +3359,86 @@ async fn handle_request(
             Ok(result)
         }
         "plugin.session.list" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
+            let scope = plugin_session_scope(&params)?;
             let st = state.lock().await;
-            plugin_sessions::list(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+            plugin_sessions::list(&st.db, plugin_id, scope, &params).map_err(plugin_session_rpc_err)
         }
         "plugin.session.get" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
+            let scope = plugin_session_scope(&params)?;
             let st = state.lock().await;
-            plugin_sessions::get(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+            plugin_sessions::get(&st.db, plugin_id, scope, &params).map_err(plugin_session_rpc_err)
         }
         "plugin.session.listMessages" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
+            let scope = plugin_session_scope(&params)?;
             let st = state.lock().await;
-            plugin_sessions::list_messages(&st.db, plugin_id, &params)
+            plugin_sessions::list_messages(&st.db, plugin_id, scope, &params)
                 .map_err(plugin_session_rpc_err)
         }
         "plugin.session.autoTitleContext" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
             let st = state.lock().await;
             plugin_sessions::auto_title_context(&st.db, plugin_id, &params)
                 .map_err(plugin_session_rpc_err)
         }
         "plugin.session.setAutoTitle" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
             let st = state.lock().await;
             plugin_sessions::set_auto_title(&st.db, plugin_id, &params)
                 .map_err(plugin_session_rpc_err)
         }
         "plugin.session.rename" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
+            let scope = plugin_session_scope(&params)?;
             let st = state.lock().await;
-            plugin_sessions::rename(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+            plugin_sessions::rename(&st.db, plugin_id, scope, &params)
+                .map_err(plugin_session_rpc_err)
         }
         "plugin.session.delete" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let plugin_id = plugin_session_plugin_id(&params)?;
+            let scope = plugin_session_scope(&params)?;
             let mut st = state.lock().await;
+            // Ownership no longer bounds the target under `.all`, so the
+            // frequency brake is what stays (ADR 0339 §5).
             if !st.allow_plugin_delete(plugin_id) {
                 return Err(rpc_err(1006, "plugin delete rate exceeded", "RATE_LIMITED"));
             }
-            plugin_sessions::delete(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+            plugin_sessions::delete(&st.db, plugin_id, scope, &params)
+                .map_err(plugin_session_rpc_err)
+        }
+
+        // Message-level writes (ADR 0339). Every arm charges the shared message
+        // write budget before touching a transcript, and host-core itself
+        // refuses a rewrite while a turn owns the session.
+        "plugin.session.appendMessage"
+        | "plugin.session.replaceMessages"
+        | "plugin.session.deleteMessage"
+        | "plugin.session.truncateFrom" => {
+            let plugin_id = plugin_session_plugin_id(&params)?;
+            let scope = plugin_session_scope(&params)?;
+            let mut st = state.lock().await;
+            if !st.allow_plugin_message_write(plugin_id) {
+                return Err(rpc_err(
+                    1006,
+                    "plugin message write rate exceeded",
+                    "RATE_LIMITED",
+                ));
+            }
+            match method {
+                "plugin.session.appendMessage" => {
+                    plugin_sessions::append_message(&st.db, plugin_id, scope, &params)
+                }
+                "plugin.session.replaceMessages" => {
+                    plugin_sessions::replace_messages(&st.db, plugin_id, scope, &params)
+                }
+                "plugin.session.deleteMessage" => {
+                    plugin_sessions::delete_message(&st.db, plugin_id, scope, &params)
+                }
+                _ => plugin_sessions::truncate_from(&st.db, plugin_id, scope, &params),
+            }
+            .map_err(plugin_session_rpc_err)
         }
 
         // Plugin usage is a read-only facts domain: a keyset page of completed
@@ -4665,6 +4696,7 @@ async fn handle_request(
                         &local_contained_roots(&data_dir, &p.session_id, false),
                         &p.tool_name,
                         &p.args,
+                        external_path_permission,
                     )
                     .unwrap_or_else(|error| {
                         tracing::warn!(
@@ -7383,6 +7415,154 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn plugin_session_rpc_serves_all_scope_and_message_writes() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // A user-created conversation carries no import origin row, so `.own` can
+        // never reach it and `.all` is the only path (ADR 0339).
+        let session_id = {
+            let st = state.lock().await;
+            sessions::create_session_with_options(
+                &st.db,
+                sessions::SessionCreateOptions {
+                    provider_id: Some("provider".into()),
+                    model_id: Some("model".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .id
+        };
+
+        // `.own` reports the row as missing, which is exactly today's behaviour.
+        let hidden = handle_request(
+            state.clone(),
+            "plugin.session.get",
+            json!({ "pluginId": "plugin.one", "sessionId": session_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(hidden.code, 1007);
+
+        let detail = handle_request(
+            state.clone(),
+            "plugin.session.get",
+            json!({ "pluginId": "plugin.one", "scope": "all", "sessionId": session_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(detail["originKind"], "created");
+        assert_eq!(detail["source"], "desktop");
+        assert_eq!(detail["externalId"], Value::Null);
+        assert_eq!(detail["modelId"], "model");
+
+        // An unknown scope is a client error rather than a silent widening.
+        let unknown = handle_request(
+            state.clone(),
+            "plugin.session.list",
+            json!({ "pluginId": "plugin.one", "scope": "everything" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(unknown.code, 1002);
+
+        let appended = handle_request(
+            state.clone(),
+            "plugin.session.appendMessage",
+            json!({
+                "pluginId": "plugin.one",
+                "scope": "all",
+                "sessionId": session_id,
+                "message": {
+                    "role": "user",
+                    "content": "hello from a plugin",
+                    "createdAt": "2026-01-01T00:00:01Z"
+                }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(appended["messageId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()));
+
+        let replaced = handle_request(
+            state.clone(),
+            "plugin.session.replaceMessages",
+            json!({
+                "pluginId": "plugin.one",
+                "scope": "all",
+                "sessionId": session_id,
+                "messages": [
+                    { "role": "user", "content": "rewritten", "createdAt": "2026-01-01T00:00:01Z" },
+                    { "role": "assistant", "content": "reply", "createdAt": "2026-01-01T00:00:02Z" }
+                ]
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(replaced["messageCount"], 2);
+
+        let messages = handle_request(
+            state.clone(),
+            "plugin.session.listMessages",
+            json!({ "pluginId": "plugin.one", "scope": "all", "sessionId": session_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(messages["items"][0]["origin"], "desktop");
+        let ids = messages["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(ids.len(), 2);
+
+        let deleted = handle_request(
+            state.clone(),
+            "plugin.session.deleteMessage",
+            json!({
+                "pluginId": "plugin.one",
+                "scope": "all",
+                "sessionId": session_id,
+                "messageId": ids[1]
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(deleted["deleted"], true);
+        assert_eq!(deleted["deletedCount"], 1);
+
+        let truncated = handle_request(
+            state,
+            "plugin.session.truncateFrom",
+            json!({
+                "pluginId": "plugin.one",
+                "scope": "all",
+                "sessionId": session_id,
+                "keepCount": 0
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(truncated["keptCount"], 0);
+        assert_eq!(truncated["discardedCount"], 1);
     }
 
     #[tokio::test]

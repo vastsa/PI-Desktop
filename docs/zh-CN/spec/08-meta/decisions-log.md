@@ -428,6 +428,7 @@
 | D236 | 每个数据目录只允许一个桌面实例 | **Electron 主进程在模块求值期间调用 `app.requestSingleInstanceLock()` —— 在 `app.setName` 之后（锁位于由应用名派生的 `userData` 路径下），且在 logger、持久化 outbox 或任何其他数据目录访问之前。没有拿到锁的启动直接调用 `app.quit()` 且不引导任何东西：readiness 与 `before-quit` 处理器都提前返回，因此它不会在运行中实例的数据目录内创建窗口、托盘、子进程或日志行。持有锁的实例通过与托盘“显示”操作相同的路径响应 `second-instance`，恢复并聚焦主窗口，若窗口已关闭或隐藏到托盘则重新创建。只有在未设置 `PI_DESKTOP_DATA_DIR` 时才请求该锁，因此 E2E 测试装置、截图装置和有意并行的 profile 保持原有的随时启动行为。IPC 通道、宿主协议和存储架构均未变化。** | 第二次启动会引导出一个完整的第二份应用：在单写者 `pi.sqlite`（D002）上再开一个 host-core，在同一目录下再建一份 outbox 和日志树，再加一个托盘、一次启动器快捷键注册和一个更新器，导致两个 shell 在同一个数据库上出现分歧。再次启动应用是想看到已经在运行的那一个，把锁的作用域限定在安装本身也让使用独立数据目录的运行仍可启动（ADR 0094）。 |
 | D367 | 宿主拥有的插件会话导入与归属 API | **`pi.session` 增加 `import`、`importBatch`、`list`、`get`、`listMessages`、`rename`、`delete`；每个来源必须声明 `contributes.sessionSources`；host-core 生成 id，并把所有操作限定在 `(pluginId, source, externalId)` 归属内；导入永不激活项目/provider/模型绑定。Schema v14 增加 `session_import_origins` 与 `sessions.deleted_at`；协议 v11 不变。回收站保留转录，仅属主可清除。** | 外部历史插件需要持久的导入/读取/更新/删除，而进行中的 `session.getLlmContext` 与核心 `session.import` 边界不是安全的插件归属边界（ADR 0200，E2E-214 / E2E-215） |
 | D368 | 显式插件项目 id 与宿主拥有的会话刷新 | **受权限门控的 `pi.project.create({ path })` 创建或复用项目并返回宿主生成的 id，不激活工作区；导入项可绑定已有 `projectId`，省略则保持未绑定，历史来源路径永不成为工具根。Electron main 在插件导入、重命名、删除成功后发出 `pi-desktop/session/event/changed`；渲染器复用 `refreshSessions()`，跳过的导入不发事件，已关闭的项目标签不会重新打开。** | 向插件暴露 `workspace.set` 会改变用户的活动工作区，且插件写入需要宿主拥有的渲染器刷新路径（ADR 0201，E2E-216） |
+| D680 | 插件会话作用域：`.all` 权限与消息级写入 | **`pi.session` 增加 `session.read.all`、`session.update.all`、`session.delete.all`，让 `list`/`get`/`listMessages`、`rename`、`delete` 覆盖所有活动会话，而不再只限于本插件导入的会话。`.all` 是与 `.own` 并列的独立授权，不会放宽 `.own`；两者都声明时 `.all` 生效。Electron main 按授权解析作用域并把 `scope` 发给 host-core，host-core 只执行收到的那个值，缺省视为 `own`；`list` 改为对来源边表做 `LEFT JOIN`，`get` 与消息返回真实的 `originKind`、`source`、`externalId`、模型绑定与 `origin`，而不是导入投影，`trash`/`purge` 语句按作用域而不是内嵌 `EXISTS` 执行。消息级写入首次开放：`appendMessage`/`replaceMessages`（`session.update.all`）与 `deleteMessage`/`truncateFrom`（`session.delete.all`），复用既有 host-core 记录操作，回合运行期间以 `TURN_RUNNING` 拒绝改写，并共用每分钟 60 次预算。`rename` 改为占用手动标题来源。每次会话调用都会审计其授权作用域；`sessionsChanged` 会带上变更的会话 id。** | ADR 0200 的归属过滤让「读取用户自己的会话」这一合法能力无法表达，ADR 0323 因此不得不另造一个更窄的标题权限，ADR 0333 已交付的建议流程也读不到它所在的会话；直接放宽 `.own` 则会在用户不知情的情况下放大其审核过的「仅本插件导入的会话」授权（ADR 0340） |
 | D370 | 桌面操作的本地 MCP 控制平面 | *(由 D372 修订)* **Electron Main 内可选启用的 Streamable HTTP MCP 服务器绑定 `127.0.0.1`，用持久随机 bearer token 认证，按回环主机名校验 Origin，写入受模式限制的连接清单，并委托给渲染器使用的同一组已注册 IPC 处理器。命名工具覆盖项目/会话/Agent 流程；`pi_desktop_invoke` 可达带风险标记的操作目录；危险操作需要 `confirm: true`；成功的外部变更复用渲染器会话变更事件。仅本地且启动时失败软着陆。** | 外部 Agent 需要驱动运行中的桌面，又不能有第二套权限或持久化实现，也不能触碰推迟的远程 Gateway / WebUI 边界（ADR 0203，E2E-220） |
 | D372 | 收紧本地 MCP 控制平面边界 | **修订 D370 / ADR 0203：首版目录为项目/会话/Agent/工作区流程加已审阅的读取；剥离秘密形态的参数；`session/configure` 视为危险；监听地址断言为回环；协议版本协商而非回显；包含 `structuredContent` 的结果有界；渲染器会话刷新仅限变更操作。** | 首版目录仍暴露原生选择器、写秘密的 provider/OAuth/MCP 路径与未确认的 `session/configure`，并把会话读取当作渲染器变更（E2E-220） |
 | D377 | 插件桌面控制需要原生用户同意 | **通过 `pi.desktop.invoke` 调用的 `dangerous` 桌面操作，需要插件给出 `confirm: true`，然后由用户在宿主拥有的原生对话框中作答；该对话框只显示目录中的操作 id、描述和有界的参数预览；关闭对话框、拒绝，以及没有对话框服务的宿主都以 `PERMISSION_DENIED` 失败。`read`/`write` 操作与 MCP 契约（D372）不变。** | 控制器的 `confirm` 标志由调用方设置，因此插件（或其背后的模型）可以在没有人参与的情况下删除会话或把会话切到 `auto`，而任何由插件绘制的确认卡片都可能被提示注入的成绩单改换标签（ADR 0208，E2E-236） |
@@ -5688,3 +5689,93 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - `pnpm test:e2e:startup-animation` 用生成的 VP9 片段启动真实应用，断言源码检查无法
   覆盖的部分：Chromium 能在页面 CSP 下解码经 `pi-startup:` 提供的字节、播放会推进、
   渐显会交出可交互的主界面，以及不可播放的文件会在约一秒内交出主界面而不是占住窗口。
+
+## 2026-10-20 —— 插件会话作用域：`.all` 权限与消息级写入（D680）
+
+- D680 / ADR 0340 把 `pi.session` 从 ADR 0200 的导入归属边界扩开。三个新权限
+  `session.read.all`、`session.update.all`、`session.delete.all` 让既有动词覆盖
+  所有活动会话，包括用户在本应用中自己创建的对话。
+- `.all` 是新增而非放宽：已安装插件保留其用户审核过的可达范围；清单可同时声明
+  两者，此时 `.all` 生效。
+- 归属判断不再是隐式的第二权限：Electron main 依据授权解析作用域并下发，
+  host-core 只执行收到的值，缺省按 `own`，未知值以 `INVALID_PARAMS` 拒绝。
+- 修正了只因边界过窄才能工作的查询：`list` 对来源边表做 `LEFT JOIN`，`get` 与
+  消息返回真实的 `originKind`/`source`/`externalId`/模型绑定/`origin`，`trash` 与
+  `purge` 语句按作用域而非内嵌 `EXISTS` 执行。
+- 首次开放消息级写入：`appendMessage`、`replaceMessages`（`session.update.all`）
+  与 `deleteMessage`、`truncateFrom`（`session.delete.all`），复用 host-core 记录
+  操作，因此修订归档、inflight 检查点与 JSONL 重写路径保持不变。
+- 回合运行期间以 `TURN_RUNNING` 拒绝改写；`appendMessage` 例外，因为追加正是
+  回合写入自身行的方式。
+- `rename` 占用手动标题来源，已安装的 `session.autoTitle` 插件之后无法覆盖用户
+  插件选定的标题。
+- 每次会话调用都会审计其授权作用域；此前 `list`/`get`/`listMessages`/`rename`/
+  `delete` 完全没有审计记录。
+- `sessionsChanged` 会带上变更的 `sessionId`，当该会话正是当前打开的会话且没有
+  回合在跑时，外壳会重新读取转录以重绘。
+- 未改动：`.own` 语义、导入契约与其限额、`session.autoTitle` 边界、数据库
+  schema 与持久化格式。删除限流仍为每分钟 20 次；四个消息写入共用每分钟 60 次。
+- 覆盖：host-core 的 `plugin_sessions` 与 `plugin_session` 测试、
+  `apps/desktop/test/plugin-session-access.test.mjs`、
+  `apps/desktop/test/plugin-session-api.test.mjs`。见 ADR 0340、ADR 0200 修订、
+  ADR 0323 更正后的备选方案、`03-plugin-api.md` §插件拥有与全量会话、
+  `13-plugin-permissions-matrix.md` 第 2 节与 E2E-268。
+
+## 2026-11-04 —— 电脑操作是宿主拥有、以作用域授权为门的能力（D681）
+
+- D681 / ADR 0342 以设计形式接受有界的原生应用操作。Agent 此前只能通过白名单
+  CDP 驱动内嵌浏览器宿体，除此之外一无所能；仓库里没有任何屏幕截取、合成输入、
+  窗口枚举或无障碍客户端。本决定记录的是契约而不是实现：没有任何代码随之交付。
+- 该能力住在 `crates/host-core`，作为 `computer.*` 域存在，并以唯一一个高风险
+  内置工具 `Computer` 触达 Agent。它刻意不是插件宿主 API，因此产品中最危险的
+  权限无法被第三方清单申请。Electron Main 保持为薄层——挑选器、指示器和
+  `tools.execute` 转发——sidecar 不需要新的 `host.proxy` 方法。
+- 权限是一份由用户签发、指向一个窗口或一个应用的作用域授权，带 revision、动作
+  预算、空闲过期、输入策略与截取模式。模型不能命名、枚举或扩大目标；每个桌面
+  实例最多一个活动授权；授权从不持久化。
+- 身份以无障碍为先：`inspect` 返回 role、name、bounds 与按授权生成的不透明
+  `uid`，`act` 派发平台无障碍动作。坐标只在配合 `basis`（由同一作用域的截取签发）
+  时存在，并在合成前立即重新校验，因此盲点击无法被表达，移动过的窗口失败关闭。
+- 两条拒绝在任何模式、设置与授权选项下都成立：该能力永不以 PI-Desktop 自身窗口
+  为目标——向本应用合成输入等于绕过权限中介——并且在安全输入状态或焦点落在密码
+  字段时，截取与合成一律拒绝。内置的凭据界面拒绝名单条目不可移除。
+- 权限模式治理授权而非每次按键。签发始终是桌面 UI 的显式决定且无截止期限；
+  `auto` 不签发任何授权，口述请求也不能。在授权内，检查类动作自动允许，输入遵循
+  `confirm-each`（`ask` 下唯一策略）或需显式选择的 `autonomous-in-scope`。
+  Plan 与 Goal 硬拒绝该工具，且它不存在 `allow-session` 授权。
+- 电脑操作有**自己的模型绑定**——用户从已配置的 Provider 行中挑选的一组
+  `{ providerId, modelId }`，沿用 `imageGeneration` 的先例。
+  `packages/computer-use` 中一条有界的"观察—决策—动作"回路把一条指令按严格
+  动作 schema 变成一串已校验的步骤；对话模型绝不驱动机器，也没有静默回退。
+  因此面向 Agent 的工具接受的是一条指令，而不是 `uid` 或坐标，返回的是有界
+  摘要而不是内层记录。
+- 回路与截取跑在 Electron Main 而不是 host-core：回路需要模型 Provider，截取
+  需要 Chromium，host-core 两者都不持有。host-core 保留一切能够拒绝的东西——
+  目标枚举、无障碍、合成、授权中介、每动作重校验、审计——而 `Computer` 沿用
+  `GenerateImages` 的形状：`tools.execute` 做权限评估，Main 在宿主放行后才执行。
+- **Agent 的光标是画出来的，不是抢来的。** 动作走无障碍动作或面向窗口的事件，
+  真实指针永不被挪动，Agent 工作期间用户的鼠标仍归自己；只能靠挪动真实指针来
+  动作的路径会被拒绝。一个无边框、透明、穿透点击、置顶的浮层画出 Agent 自己的
+  光标，它不拥有动作的任何部分，不能接收输入，也绝不是动作落点的事实来源。
+- 语音在首个版本中只定规格、刻意不接通：唯一调用方是 Agent。阶段 3 接通后，
+  一句口述只能经由现有委派/分类器路径成为绑定会话上的工作请求，属于任务委派
+  而不是遥控。
+- 三个桌面平台都在范围内。截取各平台统一用 `desktopCapturer`，因此只有检查与
+  输入是平台工作：macOS（`AXUIElement` 动作、`CGEventPostToPid` 按键、手写
+  framework FFI 且不引入新 crate）属阶段 1；Windows（UIA、面向窗口的消息、
+  提权目标被拒绝）与 Linux/X11（AT-SPI，尽力而为）属阶段 2；Wayland 拒绝输入
+  并保留门户截取。每条不支持路径都有自己的错误码，绝不挂起，也绝不静默空操作，
+  保真度只是部分的后端必须自行声明，而不是返回一棵空树。
+- 非目标第 9 条是修订而非删除：浏览器接管、无人看管的全桌面控制，以及任何由
+  模型自行选择目标，仍然是非目标。
+- 契约页面：`03-runtime/computer-use.md`、`08-error-codes.md` §3.10
+  （`COMPUTER_*`）、`05-host-core-rust.md` §2/§5b/§6、
+  `05-security/01-security.md` §13、`03-tools-and-permissions.md` §0/§2/§6。
+- 阶段 1 随本决定一起交付：`packages/shared/src/computer-use.ts`、
+  `crates/host-core/src/computer/`（含 macOS 后端与 `rpc/computer_rpc.rs`）、
+  `packages/computer-use/`、`apps/desktop/electron/main/computer-use/`，以及
+  Renderer 中的挑选器、指示器、设置卡片与绘制光标。覆盖来自 host-core 的
+  `computer::` 测试、`packages/computer-use` 单测、shared 校验器，以及
+  `apps/desktop/test/computer-use-service.test.mjs`。尚未驱动任何真实应用，
+  五条 `E2E-COMPUTER-USE-*` 闸门仍为 `NOT RUN`，详见
+  `docs/implementation/computer-use-evidence.md`。

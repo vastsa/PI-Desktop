@@ -50,7 +50,11 @@ Unix 对支持的本地文件系统使用已打开文件的 dev/ino；Windows �
 
 ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位。后来的冲突调用不能
 越过等待中的独占者；同批较早源序调用可越过后到达的后继，避免队列与依赖图死锁。
-额度仍为总 16、读 8、写 2、每会话 4、每会话写 1；准入等待 30 秒仍返回 HOST_OVERLOADED。
+额度仍为总 16、读 8、写 2、每会话 4。同一会话最多两个写可以重叠，但两者都必须有
+已验证的批次 ticket 和可信本地文件身份，且通过现有资源冲突检查。其他 mutation 保持
+单写准入，并在两种到达顺序下都与协调写互斥。较早且源序已就绪的保守写等待者阻止
+后来协调写持续补位；未就绪后继与源序前驱绕行仍保留依赖图例外。
+准入等待 30 秒仍返回 HOST_OVERLOADED。
 本地 audit/debug 记录总准入等待与初始原因 source_order、resource、capacity；不将它们
 宣称为互不重叠的分段耗时。
 
@@ -72,10 +76,10 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
-| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
+| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 活动作用域授权下的 Computer + 已注册的插件工具 |
 | Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
 | Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
-| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
+| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / Computer / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
 | 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 本地权限确认 | 无自动截止时间；必须明确决定或取消 |
 | 允许会话范围 | 工具名称 |
@@ -103,6 +107,7 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | `Write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
 | `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
 | `Bash` | 高 | 执行命令 |
+| `Computer` | 高 | 检查并操作用户授权的那一个原生窗口或应用；没有活动作用域授权时不可用（[computer-use](computer-use.md)，ADR 0342） |
 | `asktool` | 低 | 询问一个或多个用户问题并将提交的答案作为工具输出返回 |
 | `TodoWrite` | 低 | 替换当前 Agent 会话清单；由主机校验并持久化完整有序快照 |
 
@@ -587,6 +592,11 @@ MCP 工具调用会显示审批卡片，原因为 "MCP server tool requires appr
 - `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
   会议；在 `BrowserPreview`/`ask` 下，根本不需要它们。
 - 暂存目录写入 (D114) 在每种模式下都保持无提示。
+- `Computer` 由它的作用域授权治理，而不只由模式治理：创建授权始终是桌面 UI
+  的显式决定，`auto` 从不签发授权，该工具也不存在 `allow-session` 授权。
+  在活动授权内，检查类动作自动允许，输入遵循授权的 `confirm-each`（`ask`
+  下唯一可用的策略）或 `autonomous-in-scope` 策略。Plan 与 Goal 直接拒绝该
+  工具（[computer-use](computer-use.md)）。
 - UI：设置→分段全局默认；输入框在中显示每个会话的芯片
   Agent、Plan 和 Goal 的菜单提供了三种有效模式，无需
   单独的 global-default/inherit 条目。芯片和选定的菜单项

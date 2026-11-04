@@ -44,7 +44,7 @@ ToolBudget checks batch predecessors, active resources, conflicting waiters and
 capacity in one synchronous reservation. No capacity is held while awaiting a
 resource. Source predecessors may bypass a later same-batch RPC-arrival waiter;
 otherwise a reversed arrival could deadlock. Conflicting later shared requests
-do not bypass an exclusive waiter. Existing capacity limits and 30-second
+do not bypass an exclusive waiter. Global capacity limits and 30-second
 HOST_OVERLOADED behavior stay unchanged. Local diagnostics report total
 admission wait and the initial reason, not invented non-overlapping timings.
 
@@ -64,7 +64,7 @@ Tickets travel in AsyncLocalStorage, not a shared provider-call-ID map.
 
 Remote workspaces do not yet expose this execution-end protocol. They and old
 Hosts retain sequential write batches; the desktop never stats a remote path
-locally. Bash, Task's delegation lifecycle, plugin/MCP policy, write quotas and
+locally. Bash, Task's delegation lifecycle, plugin/MCP policy and
 persistence formats are unchanged. Coordination covers participating file
 tools and rollback in one Host process, not arbitrary external writers, shell
 processes or other Host instances. It is not OS-wide transaction isolation or a
@@ -85,9 +85,16 @@ new defense against malicious external path replacement.
 
 This is a cross-runtime/Host protocol amendment, not a TS-only optimization.
 It adds bounded process-local metadata and registration/sealing overhead, which
-must be included in performance measurements. It does not raise per-session
-write throughput: one mutation per session still applies. Registry bounds and
-unknown identities may reject/degrade work conservatively.
+must be included in performance measurements. Identified local writes with
+validated batch tickets can share two session mutation slots, still bounded by
+two global mutations. Calls without that coordination remain single-write and
+exclude coordinated writes symmetrically. Eligibility uses immutable request
+facts so finishing batch metadata cannot change release accounting. An older
+source-ready conservative waiter drains its session rather than allowing later
+independent writes to refill it indefinitely; source-order bypass and unready
+successor exceptions remain necessary to avoid queue/DAG cycles. This is not a
+per-Agent fair scheduler. Registry bounds and unknown identities may
+reject/degrade work conservatively.
 
 Regression evidence must cover actual differently named links in both orders,
 reversed RPC/approval arrival, parent/delegate wiring, cross-session aliases,

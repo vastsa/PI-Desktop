@@ -92,6 +92,11 @@ work-panel tab already carries was honoured by main for `pi.browser` only.
    This is deliberate and is why the plugin's `safetyNotes` states the exception
    instead of claiming the project-root containment still covers everything it
    reads.
+   ADR 0339 drops root containment for the host as well: `fs/resolveRef`,
+   `fs/read`, `fs/reveal`, and `fs/open` open an exact absolute path outside the
+   managed roots when it names an existing regular file. The host applies no
+   deny list, because its file view only shows the file to the user who clicked
+   it; the plugin keeps its own, since plugin code receives the bytes.
 5. **The bundled copy moves to v0.4.0** through ADR 0241's re-sync procedure, and
    the same release is published to the plugin center: the marketplace and the
    bundled copy ship the same bytes.

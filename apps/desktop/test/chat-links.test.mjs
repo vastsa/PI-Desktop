@@ -957,3 +957,32 @@ test("session links segment as their own target", () => {
   assert.equal(resolvePreviewTarget("pi-desktop://session/remote:abc", ROOT), null);
   assert.equal(resolvePreviewTarget("pi-desktop://session/", ROOT), null);
 });
+
+test("an absolute Markdown link to an extensionless file still reaches the file opener", () => {
+  // The link destination is explicit, so the extension heuristic that keeps
+  // prose from turning into chips does not apply. The main process decides
+  // whether the file exists and may open (ADR 0339).
+  for (const [source, root, expected] of [
+    ["[config](</Users/me/.ssh/config>)", null, ["/Users/me/.ssh/config", undefined]],
+    ["[Makefile](</tmp/build dir/Makefile>)", "/Users/me/project", ["/tmp/build dir/Makefile", undefined]],
+    ["[LICENSE](<D:/vendor/LICENSE>)", "D:/person", ["D:/vendor/LICENSE", undefined]],
+    ["[notes](</tmp/notes:4>)", null, ["/tmp/notes", undefined, undefined, { line: 4, column: undefined }]],
+  ]) {
+    const markup = renderSanitizedMarkdown(source);
+    const href = markup.match(/<a href="([^"]+)"/)?.[1];
+    assert.ok(href, source);
+    const calls = [];
+    let prevented = false;
+    const handled = handleMarkdownFileLinkClick(
+      { preventDefault: () => { prevented = true; } }, href, root, undefined,
+      (...args) => calls.push(args));
+    assert.equal(handled, true, source);
+    assert.equal(prevented, true, source);
+    assert.deepEqual(calls, [expected], source);
+  }
+  // A home path is not an absolute link destination and opens nothing.
+  const calls = [];
+  assert.equal(handleMarkdownFileLinkClick({ preventDefault() {} }, "~/.ssh/config", null, undefined,
+    (...args) => calls.push(args)), false);
+  assert.deepEqual(calls, []);
+});

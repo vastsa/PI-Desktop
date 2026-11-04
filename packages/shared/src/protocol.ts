@@ -133,6 +133,18 @@ export const IPC = {
     liveVoiceWidgetAction: "pi-desktop/voice/live/widget/action",
     liveVoiceWidgetOwnerState: "pi-desktop/voice/live/widget/ownerState",
     liveVoiceWidgetVisibility: "pi-desktop/voice/live/widget/visibility",
+    /**
+     * Computer use (ADR 0342). The renderer may read capabilities, list
+     * pickable targets while a picker is open, mint a grant from a target the
+     * user chose, and revoke one. It can never act: there is no channel that
+     * dispatches input, and `computer.act` is reachable only from main's tool
+     * handler.
+     */
+    computerCapabilities: "pi-desktop/computer/capabilities",
+    computerListTargets: "pi-desktop/computer/listTargets",
+    computerGrantCreate: "pi-desktop/computer/grant/create",
+    computerGrantRevoke: "pi-desktop/computer/grant/revoke",
+    computerGrantDescribe: "pi-desktop/computer/grant/describe",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStopSubagents: "pi-desktop/agent/stop-subagents",
@@ -433,6 +445,11 @@ export const IPC = {
     composerCommands: "pi-desktop/composer/commands",
     workspaceDiff: "pi-desktop/workspace/diff",
     workspaceReviewRollback: "pi-desktop/workspace/review/rollback",
+    workspaceReviewTurns: "pi-desktop/workspace/review/turns",
+    workspaceReviewChanges: "pi-desktop/workspace/review/changes",
+    workspaceReviewContext: "pi-desktop/workspace/review/context",
+    workspaceReviewOpenFile: "pi-desktop/workspace/review/openFile",
+    workspaceReviewRollbackFile: "pi-desktop/workspace/review/rollbackFile",
     browserNavigate: "pi-desktop/browser/navigate",
     browserAction: "pi-desktop/browser/action",
     browserSetBounds: "pi-desktop/browser/setBounds",
@@ -529,6 +546,12 @@ export const IPC = {
     liveVoiceTranscript: "pi-desktop/voice/live/event/transcript",
     liveVoiceWidgetState: "pi-desktop/voice/live/event/widgetState",
     liveVoiceWidgetAction: "pi-desktop/voice/live/event/widgetAction",
+    /** Active grant view for the indicator; `null` once the grant closes. */
+    computerGrantChanged: "pi-desktop/computer/event/grantChanged",
+    /** Draw commands for the click-through cursor overlay. Visualization only. */
+    computerCursor: "pi-desktop/computer/event/cursor",
+    /** One completed loop step, for the indicator's progress line. */
+    computerStep: "pi-desktop/computer/event/step",
   },
 } as const;
 

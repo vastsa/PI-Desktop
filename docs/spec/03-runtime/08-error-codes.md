@@ -350,6 +350,38 @@ does not trigger automatic provider or billing fallback.
 | `LIVE_AUDIO_BACKPRESSURE` | no | bounded PCM or playback credits were exhausted |
 | `LIVE_EXECUTION_NOT_CONNECTED` | no | a provider requested an unsupported function/delegation execution path |
 
+### 3.10 Computer use (ADR 0342)
+
+Computer-use errors are returned as `Computer` tool failures and host
+`computer.*` responses. Each refusal is separately attributable: a missing
+capability is never a hang and never a no-op reported as success. Retriable
+means the same call may succeed after the stated condition clears — it never
+means the host will retry, and it never widens a scope.
+
+| code | retriable | meaning |
+|---|---|---|
+| `COMPUTER_DISABLED` | no | computer use is disabled in settings |
+| `COMPUTER_NOT_CONFIGURED` | no | computer use is enabled but no model binding is configured |
+| `COMPUTER_ACTION_REJECTED` | no | the bound model answered outside the action schema, or named an element, coordinate, or target the validation refused |
+| `COMPUTER_NO_GRANT` | no | no active scope grant owns this session and turn chain |
+| `COMPUTER_GRANT_IN_USE` | no | another session or turn chain holds the single active grant |
+| `COMPUTER_GRANT_EXPIRED` | no | the grant hit its idle expiry, was revoked, or its target closed |
+| `COMPUTER_BUDGET_EXHAUSTED` | no | the grant's remaining input-action budget reached zero |
+| `COMPUTER_SCOPE_VIOLATION` | no | the request resolved outside the granted window or application |
+| `COMPUTER_SELF_TARGET_REFUSED` | no | the target is a PI-Desktop window; refused under every mode |
+| `COMPUTER_TARGET_DENYLISTED` | no | the target is on the credential-surface or user denylist |
+| `COMPUTER_SECURE_INPUT_REFUSED` | no | the OS reports secure input or a password field holds focus |
+| `COMPUTER_STALE_BASIS` | yes | the coordinate basis does not match a current capture of this scope |
+| `COMPUTER_STALE_REVISION` | yes | the grant revision changed; re-inspect before acting |
+| `COMPUTER_ELEMENT_NOT_FOUND` | yes | the `uid` is unknown, detached, or no longer in the scope |
+| `COMPUTER_ELEMENT_NOT_ACTIONABLE` | no | the element exists but offers no accessibility action for this request |
+| `COMPUTER_INPUT_POLICY_DENIED` | no | the grant's input policy or the user's approval decision refused this batch |
+| `COMPUTER_OS_PERMISSION_MISSING` | no | Screen Recording, Accessibility, or the accessibility bus is not granted |
+| `COMPUTER_TARGET_ELEVATED` | no | the target window is owned by a higher-integrity process |
+| `COMPUTER_PLATFORM_UNSUPPORTED` | no | this platform or session type offers no supported inspection, synthesis, or capture path |
+| `COMPUTER_CAPTURE_UNAVAILABLE` | no | an `a11y-only` grant or an unavailable capture backend forbids pixels |
+| `COMPUTER_TIMEOUT` | yes | a bounded inspection, wait, synthesis, or capture stage timed out |
+
 ## 4. Mapping rules
 
 ### Host RPC numeric → AppError.code
