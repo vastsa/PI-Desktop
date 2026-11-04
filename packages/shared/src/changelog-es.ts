@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "Deja que el agente controle aplicaciones de escritorio mediante el uso del ordenador, con permisos explícitos y un cursor visible.",
+      "Abre aplicaciones instaladas y comandos de plugins desde un único lanzador agrupado y fija las aplicaciones frecuentes.",
+      "Mantén las conversaciones largas más claras plegando la actividad completada y mejorando la navegación a mensajes anteriores.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

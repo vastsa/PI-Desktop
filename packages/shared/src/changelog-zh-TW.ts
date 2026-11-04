@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const zhTWEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "透過電腦操作功能讓 Agent 操作桌面應用程式；每次控制都需明確授權，並顯示可見游標。",
+      "在統一分組啟動器中開啟已安裝的應用程式和外掛命令，並可就地釘選常用應用程式。",
+      "折疊已完成的活動內容，並改善歷史訊息定位，讓長對話更容易瀏覽。",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
