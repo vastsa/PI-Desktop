@@ -106,7 +106,7 @@ test("plugin session API enforces own permissions and declared sources", async (
   assert.equal(calls[0][0], "import");
   assert.equal(calls[0][1], "demo.session");
   assert.equal(calls[0][2].sourceLabel, "legacy");
-  assert.deepEqual(calls[1], ["list", "demo.session", { source: "legacy" }]);
+  assert.deepEqual(calls[1], ["list", "demo.session", { source: "legacy", scope: "own" }]);
   assert.match(runtime.drainToasts().at(-1) ?? "", /source:PERMISSION_DENIED/);
 });
 
@@ -524,4 +524,261 @@ test("plugin usage listTurns is refused without the usage.read permission", asyn
   await runCommand(runtime, "peek");
   assert.deepEqual(calls, []);
   assert.deepEqual(runtime.drainToasts(), ["listTurns:PERMISSION_DENIED"]);
+});
+
+test("session .all grants reach the host as scope all while .own stays own", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      get: async (pluginId, input) => {
+        calls.push([pluginId, input]);
+        return { sessionId: "s1" };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const main = `
+    module.exports = {
+      async onLoad() {
+        await pi.commands.register({
+          id: "read",
+          title: "Read",
+          run: async () => { await pi.session.get({ sessionId: "s1" }); }
+        });
+      }
+    };
+  `;
+  const own = writePlugin({ id: "demo.own", permissions: ["session.read.own"], main });
+  await runtime.loadFromPath(own, ["session.read.own"]);
+  await runCommand(runtime, "read");
+  await runtime.unload("demo.own");
+
+  // Declaring both never widens `.own` by accident: `.all` simply wins.
+  const both = writePlugin({
+    id: "demo.both",
+    permissions: ["session.read.own", "session.read.all"],
+    main,
+  });
+  await runtime.loadFromPath(both, ["session.read.own", "session.read.all"]);
+  await runCommand(runtime, "read");
+
+  assert.deepEqual(calls, [
+    ["demo.own", { sessionId: "s1", scope: "own" }],
+    ["demo.both", { sessionId: "s1", scope: "all" }],
+  ]);
+});
+
+test("a plugin cannot choose its own session scope", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      get: async (pluginId, input) => {
+        calls.push([pluginId, input]);
+        return { sessionId: "s1" };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.smuggle",
+    permissions: ["session.read.own"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "smuggle",
+            title: "Smuggle",
+            run: async () => { await pi.session.get({ sessionId: "s1", scope: "all" }); }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.read.own"]);
+  await runCommand(runtime, "smuggle");
+  assert.deepEqual(calls, [["demo.smuggle", { sessionId: "s1", scope: "own" }]]);
+});
+
+test("message-level writes need an .all grant and forward the host scope", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      appendMessage: async (pluginId, input) => {
+        calls.push(["append", pluginId, input]);
+        return { messageId: "m1" };
+      },
+      replaceMessages: async (pluginId, input) => {
+        calls.push(["replace", pluginId, input]);
+        return { messageCount: 1 };
+      },
+      deleteMessage: async (pluginId, input) => {
+        calls.push(["delete", pluginId, input]);
+        return { deleted: true, deletedCount: 1 };
+      },
+      truncateFrom: async (pluginId, input) => {
+        calls.push(["truncate", pluginId, input]);
+        return { keptCount: 0, discardedCount: 1 };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.message-writer",
+    permissions: ["session.update.all", "session.delete.all"],
+    main: `
+      const message = { role: "user", content: "hi", createdAt: "2026-01-01T00:00:01Z" };
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "write",
+            title: "Write",
+            run: async () => {
+              await pi.session.appendMessage({ sessionId: "s1", message });
+              await pi.session.replaceMessages({ sessionId: "s1", messages: [message] });
+              await pi.session.deleteMessage({ sessionId: "s1", messageId: "m1" });
+              await pi.session.truncateFrom({ sessionId: "s1", keepCount: 0 });
+              // A retained scope field is dropped, never forwarded.
+              await pi.session.appendMessage({ sessionId: "s1", scope: "own", message });
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.update.all", "session.delete.all"]);
+  await runCommand(runtime, "write");
+
+  const message = { role: "user", content: "hi", createdAt: "2026-01-01T00:00:01Z" };
+  assert.deepEqual(calls, [
+    ["append", "demo.message-writer", { sessionId: "s1", message, scope: "all" }],
+    ["replace", "demo.message-writer", { sessionId: "s1", messages: [message], scope: "all" }],
+    ["delete", "demo.message-writer", { sessionId: "s1", messageId: "m1", scope: "all" }],
+    ["truncate", "demo.message-writer", { sessionId: "s1", keepCount: 0, scope: "all" }],
+    ["append", "demo.message-writer", { sessionId: "s1", message, scope: "all" }],
+  ]);
+});
+
+test("message-level writes are refused without an .all grant", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      appendMessage: async () => calls.push("append"),
+      replaceMessages: async () => calls.push("replace"),
+      deleteMessage: async () => calls.push("delete"),
+      truncateFrom: async () => calls.push("truncate"),
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.reader",
+    permissions: ["session.read.own"],
+    main: `
+      const message = { role: "user", content: "hi", createdAt: "2026-01-01T00:00:01Z" };
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "try-write",
+            title: "Try write",
+            run: async () => {
+              for (const [name, call] of [
+                ["append", () => pi.session.appendMessage({ sessionId: "s1", message })],
+                ["replace", () => pi.session.replaceMessages({ sessionId: "s1", messages: [message] })],
+                ["delete", () => pi.session.deleteMessage({ sessionId: "s1", messageId: "m1" })],
+                ["truncate", () => pi.session.truncateFrom({ sessionId: "s1", keepCount: 0 })]
+              ]) {
+                try { await call(); }
+                catch (error) { await pi.ui.showToast(name + ":" + error.code); }
+              }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.read.own"]);
+  await runCommand(runtime, "try-write");
+  assert.deepEqual(calls, []);
+  assert.deepEqual(runtime.drainToasts(), [
+    "append:PERMISSION_DENIED",
+    "replace:PERMISSION_DENIED",
+    "delete:PERMISSION_DENIED",
+    "truncate:PERMISSION_DENIED",
+  ]);
+});
+
+test("message-level write bounds are rejected before host dispatch", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      appendMessage: async (pluginId, input) => {
+        calls.push(["append", pluginId, input]);
+        return { messageId: "m1" };
+      },
+      truncateFrom: async (pluginId, input) => {
+        calls.push(["truncate", pluginId, input]);
+        return { keptCount: 0, discardedCount: 0 };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.bounds",
+    permissions: ["session.update.all", "session.delete.all"],
+    main: `
+      const ok = { role: "user", content: "hi", createdAt: "2026-01-01T00:00:01Z" };
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "bounds",
+            title: "Bounds",
+            run: async () => {
+              const cases = [
+                ["role", () => pi.session.appendMessage({ sessionId: "s1", message: { ...ok, role: "system" } })],
+                ["content", () => pi.session.appendMessage({ sessionId: "s1", message: { ...ok, content: "x".repeat(512 * 1024 + 1) } })],
+                ["time", () => pi.session.appendMessage({ sessionId: "s1", message: { ...ok, createdAt: "yesterday" } })],
+                ["count", () => pi.session.replaceMessages({ sessionId: "s1", messages: Array.from({ length: 2001 }, () => ok) })],
+                ["truncate", () => pi.session.truncateFrom({ sessionId: "s1" })],
+                ["session", () => pi.session.appendMessage({ sessionId: "", message: ok })]
+              ];
+              for (const [name, call] of cases) {
+                try { await call(); }
+                catch (error) { await pi.ui.showToast(name + ":" + error.code); }
+              }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.update.all", "session.delete.all"]);
+  await runCommand(runtime, "bounds");
+  assert.deepEqual(calls, []);
+  assert.deepEqual(runtime.drainToasts(), [
+    "role:INVALID_PARAMS",
+    "content:LIMIT_EXCEEDED",
+    "time:INVALID_PARAMS",
+    "count:LIMIT_EXCEEDED",
+    "truncate:INVALID_PARAMS",
+    "session:INVALID_PARAMS",
+  ]);
 });

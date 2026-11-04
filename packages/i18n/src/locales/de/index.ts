@@ -2516,7 +2516,10 @@ sklm: {
       "bus.subscribe": "Nachrichten von anderen Plugins empfangen",
       "browser.cdp": "Den Arbeitspanel-Browser steuern",
       "usage.read": "Nutzungsstatistiken lesen",
-      "session.autoTitle": "Kontext des ersten Durchlaufs lesen und automatische Titel ändern"
+      "session.autoTitle": "Kontext des ersten Durchlaufs lesen und automatische Titel ändern",
+      "session.read.all": "Beliebige Unterhaltungen lesen, auch deine eigenen",
+      "session.update.all": "Beliebige Unterhaltungen umschreiben, auch ihre Nachrichten",
+      "session.delete.all": "Beliebige Unterhaltungen löschen, auch deine eigenen",
     },
     "permissionHelp": {
       "ui.panel": "Lässt das Plugin sein eigenes Panel innerhalb der App anzeigen.",
@@ -2562,6 +2565,12 @@ sklm: {
         "Listet Nutzungsdaten abgeschlossener Runden auf (Token-Zähler pro Runde, seitenweise). Nachrichteninhalte sind nicht enthalten.",
       "session.autoTitle":
         "Kann nur die erste Eingabe und Antwort geeigneter Sitzungen lesen und den Titel ändern, sofern er nicht manuell geändert wurde. Das vollständige Transkript bleibt unzugänglich.",
+      "session.read.all":
+        "Kann alle Sitzungen auflisten und Titel, Projekt, Modell sowie den vollständigen Nachrichtenverlauf lesen, auch die Unterhaltungen, die du selbst erstellt hast. Es kann nichts ändern.",
+      "session.update.all":
+        "Kann jede Sitzung umbenennen und ihre Nachrichten anhängen, ersetzen oder entfernen. Es schreibt den gespeicherten Verlauf neu, sodass sich eine Unterhaltung auch ohne deine Nachricht ändern kann.",
+      "session.delete.all":
+        "Kann jede Sitzung in den Papierkorb verschieben oder endgültig löschen, zusammen mit ihren Verlaufsdateien. Ratenbegrenzt, ansonsten unbeschränkt.",
     }
   },
   "extensions": {
