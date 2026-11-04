@@ -76,7 +76,7 @@ export { IPC } from "@pi-desktop/shared";
   missingHost = false;
   const result = await request({ trusted: true }, { url: "https://not-accepted.invalid", targetId: "not-accepted" });
   assert.equal(result.accessibility, "not-requested");
-  assert.equal(result.capture, "granted");
+  assert.equal(result.capture, process.platform === "darwin" ? "granted" : "not-requested");
   assert.deepEqual(calls, [{ method: "computer.capabilities", params: {} }]);
   assert.deepEqual(fixture.urls, ["x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]);
 
