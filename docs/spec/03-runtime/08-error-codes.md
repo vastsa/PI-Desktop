@@ -361,6 +361,8 @@ means the host will retry, and it never widens a scope.
 | code | retriable | meaning |
 |---|---|---|
 | `COMPUTER_DISABLED` | no | computer use is disabled in settings |
+| `COMPUTER_NOT_CONFIGURED` | no | computer use is enabled but no model binding is configured |
+| `COMPUTER_ACTION_REJECTED` | no | the bound model answered outside the action schema, or named an element, coordinate, or target the validation refused |
 | `COMPUTER_NO_GRANT` | no | no active scope grant owns this session and turn chain |
 | `COMPUTER_GRANT_IN_USE` | no | another session or turn chain holds the single active grant |
 | `COMPUTER_GRANT_EXPIRED` | no | the grant hit its idle expiry, was revoked, or its target closed |

@@ -72,6 +72,8 @@ export type AppSettings = {
   speech?: SpeechSettings;
   /** App-owned real-time voice bindings; separate from local dictation. */
   liveVoice?: LiveVoiceSettings;
+  /** Granted native application control (ADR 0340); off and unbound by default. */
+  computerUse?: import("../computer-use.js").ComputerUseSettings;
   defaultMode: Mode;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.
