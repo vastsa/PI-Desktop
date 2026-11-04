@@ -813,6 +813,17 @@ export function useAppShellRuntime() {
           }
           if (event.selectSessionId) {
             await useAppStore.getState().selectSession(event.selectSessionId);
+          } else if (event.sessionId) {
+            // A plugin message write named the session it changed. The sidebar
+            // refresh above cannot repaint an open transcript, so re-read it —
+            // but only when the user is looking at it and no turn owns it.
+            const current = useAppStore.getState();
+            if (
+              current.activeSessionId === event.sessionId &&
+              current.runningSessions[event.sessionId] !== true
+            ) {
+              await current.selectSession(event.sessionId, { record: false });
+            }
           }
         })
         .catch(() => undefined);
