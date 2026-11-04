@@ -13,7 +13,9 @@
   instruction. No directory arrayBuffer, traversal, recursive copy, Project change
   or filesystem grant occurs. Unavailable paths fail without partial references.
 - **Status**: Parser/handler/editor/serialization tests cover deterministic cases.
-  Native OS clipboard E2E has not been run in this request.
+  `pnpm test:e2e:composer-paste` uses synthetic file-list metadata to verify
+  folder insertion and removal across the Electron preload bridge. Native OS
+  clipboard verification remains a manual scenario.
 
 
 > Scope: MVP acceptance scenarios plus current shipped product increments for PI-Desktop
