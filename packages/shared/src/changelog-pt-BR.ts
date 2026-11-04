@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    highlights: [
+      "Deixe o agente controlar aplicativos da área de trabalho pelo uso do computador, com permissões explícitas e cursor visível.",
+      "Abra aplicativos instalados e comandos de plugins em um único iniciador agrupado e fixe os aplicativos mais usados.",
+      "Mantenha conversas longas mais claras recolhendo atividades concluídas e melhorando a navegação para mensagens anteriores.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
