@@ -2,8 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-09-17
-- Amended: 2026-10-22
-- Issues: #510, #461, #1806
+- Amended: 2026-10-22, 2026-11-04
+- Issues: #510, #461, #1806, #2094
 - Amends: D071, [ADR 0242](0242-delta-only-streaming-updates.md)
 
 ## Context
@@ -70,7 +70,32 @@ groups with at most four visible items stay open, larger groups of plain tool
 rows start closed, and Task topology groups stay open. A group that still renders
 a Thinking row stays open too: with `Show thinking` on the reasoning is content
 the reader asked to see. Tool, search and run-row payloads keep their own closed
-defaults. Explicit user choices remain authoritative.
+  defaults. Explicit user choices remain authoritative.
+
+The 2026-11-04 amendment (`#2094`) replaces those settled defaults. A settled
+turn now folds both nested levels: its activity groups and every Thinking row
+that is no longer streaming start closed, so expanding a completed turn reads as
+a list of headings. Two opt-out settings carry the choice.
+`autoCollapseSettledGroups` (`Auto-fold finished groups`) folds settled groups
+whatever their size, and when it is off every settled group stays open - the
+four-item tier is retired, because a switch labelled auto-collapse must not still
+collapse something. `autoCollapseThinking` (`Auto-fold finished thinking`) folds
+completed reasoning, and when it is off every rendered reasoning row stays open.
+Each is a sub-row of the setting that gates it (`Show thinking`, and a non-flat
+`Transcript display`), and hiding a sub-row never writes a value, so the stored
+choice survives toggling its parent or switching layouts. The group level no
+longer inherits open state from the reasoning it contains: closing a group hides
+expanded reasoning inside it, and reopening restores each row's own answer, so
+the two levels never cancel each other out. Live work still never folds: a
+running turn, or a group that still owns a running tool or delegation, stays
+open. Because a folded group is a single line, its header now states the
+composition instead of a generic count - the actions it contains, joined with the
+locale's own list wording, capped at three with "and more", followed by the call
+count as a separate token that ellipsizes last (`搜索并读取文件 · 12 次操作`).
+Reasoning is named in that sequence but is not an operation, and a reasoning-only
+group counts steps instead. The group header no longer renders an issue counter:
+a failed call is reported by the row that failed, and repeating it on the group
+added noise without adding information.
 
 The turn's disclosure header states the turn's outcome and carries only its
 bounded metadata: status, recorded duration and direct tool/search count. It
@@ -190,6 +215,13 @@ own bounded issue summaries.
   central workflow-store concern.
 - This groups loaded transcript entries only; it does not reconstruct unloaded
   history or join turns across compaction boundaries.
+- A settled turn folds its groups and its finished reasoning by default, and the
+  two new switches are the only way to keep them open. The four-item tier and the
+  "reasoning keeps its group open" rule are gone, so the two levels cannot cancel
+  each other out.
+- A folded group header names the actions it contains and appends the operation
+  count; reasoning is named but not counted, and a failure is left to the tool
+  row that reports it.
 
 ## Validation
 
@@ -240,3 +272,13 @@ folding, transient reading protection, manual-choice locality and `Show thinking
 behavior in real Chromium. The same suite measures the activity issue counter's
 inline layout at 320/800px and 100%/150% zoom in English and Simplified Chinese.
 See E2E-CHAT-turn-process-and-thinking-display.
+
+For the 2026-11-04 amendment, `apps/desktop/test/activity-group-folding.test.mjs`
+covers both settled defaults, the two switches, the group-label composition
+(three-name cap, reading order, reasoning-only step count) in every shipped
+locale, and the source contracts for the header tokens, the non-truncating count
+and the removed issue badge; `apps/desktop/test/transcript-folding-settings.test.mjs`
+covers the resolver defaults, normalization and write validation at both
+boundaries, the sub-row gating and the settings-search index. The transcript
+disclosure E2E suites were not run for this amendment; E2E-CHAT-turn-process-and-thinking-display
+carries the synchronized scenario text for the integration candidate.

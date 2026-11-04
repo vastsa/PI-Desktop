@@ -202,6 +202,7 @@ providers?: PluginProviderContrib[]; // Host-owned provider rows; needs `provide
   views?: PluginViewContrib[];
   sessionSources?: PluginSessionSourceContrib[];
   globalShortcuts?: PluginGlobalShortcutContrib[]; // needs `keyboard.globalShortcut`
+  launcherTriggers?: PluginLauncherTriggerContrib[]; // claims launcher input; needs `ui.panel` (spec 18)
 };
 
 type PluginCommandContrib = {
@@ -258,6 +259,27 @@ type PluginGlobalShortcutContrib = {
  command: string; // must be declared in contributes.commands
  default?: string; // accelerator the host registers after load; omitted means `pi.keyboard` registers it later
 };
+
+/** One launcher input pattern a plugin claims (spec 18). */
+type PluginLauncherTriggerContrib = {
+ id: string; // [a-zA-Z][a-zA-Z0-9_-]{0,63}, unique within the plugin
+ pattern: string; // 1..200 characters, matched against the whole launcher input
+ flags?: string; // no repeats, only `i` / `s` / `m` / `u`
+ title?: string | { en: string; "zh-CN": string }; // non-empty, at most 120 characters
+};
+
+`launcherTriggers` claims input in the plugin launcher window (`Alt+Space` /
+`⌥+Space`; [18-plugin-launcher.md](18-plugin-launcher.md)). A pattern is matched
+against the whole trimmed input, so a plugin that declares an arithmetic shape
+never competes with a query that merely contains one of its characters. At most
+8 entries are allowed; every non-empty list requires `ui.panel`, because a match
+opens this plugin's panel. Patterns are refused when their structure can
+backtrack catastrophically — a quantifier applied to a group whose body already
+contains a quantifier or an alternation — and when they are unbalanced, empty,
+longer than 200 characters, or end in a dangling escape. The host does not
+compile the pattern, because Rust and JavaScript regex syntaxes differ; it only
+proves the declaration cannot blow up, and the renderer treats an uncompilable
+pattern as inert.
 
 type PluginThemeContrib = {
  id: string; // ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
@@ -677,6 +699,13 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
     lists of non-empty names and require `renderer`. Declaring any of the three
     needs the `renderer.extension` permission (§3.2)
 
+20. `contributes.launcherTriggers` allows at most 8 entries and needs `ui.panel`.
+   `id` matches `[a-zA-Z][a-zA-Z0-9_-]{0,63}` and is unique; `pattern` is
+   non-empty and at most 200 characters; `flags` is a repeat-free subset of
+   `i` / `s` / `m` / `u`; `title`, when present, is a non-empty string or both
+   `en` and `zh-CN`, each at most 120 characters. A pattern with a quantified
+   group that already contains a quantifier or an alternation, unbalanced
+   parentheses, unbalanced brackets, or a dangling escape rejects the manifest
 ## 8. Example: minimal plugin
 
 ```json

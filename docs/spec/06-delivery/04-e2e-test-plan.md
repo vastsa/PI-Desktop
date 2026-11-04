@@ -1141,7 +1141,9 @@ The minimum selection is:
 
 - Cross-cutting runtime, host, or IPC: `pnpm test:e2e`.
 - Electron startup, preload, or window lifecycle: `pnpm test:e2e` and
-  `pnpm test:e2e:boot`.
+  `pnpm test:e2e:boot`. For packaged-startup regressions, also run
+  `node scripts/e2e-electron-boot.mjs <packaged-executable>` against the
+  installed-layout artifact with an isolated profile.
 - Session-list refresh or model capability lookup: `pnpm test:e2e` and
   `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
 - Settings/composer/plugin search theme surfaces: `pnpm build:js` followed by
@@ -18033,18 +18035,23 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Steps:** Confirm a live active group starts open, let that same turn finish
   without interacting, and confirm the process closes so only the final answer
   (and any error or pending-action surface) remains. Reopen it and confirm a
-  group with at most four visible items and any Task topology group stay open,
-  while a larger ordinary group is closed. Confirm tool and search payloads stay
-  closed, and Fully folded keeps each visible reasoning row open when
-  `Show thinking` is on. On a second turn, explicitly
+  every settled group folded and every finished reasoning row folded, and that
+  each group header names the actions it contains plus the call count
+  (`搜索并读取文件 · 12 次操作`). Confirm tool and search payloads stay closed.
+  Turn `Auto-fold finished groups` off and confirm every settled group opens
+  whatever its size, then turn it back on; turn `Auto-fold finished thinking`
+  off and confirm every reasoning row opens, then turn it back on. On a second
+  turn, explicitly
   open a completed group and confirm the choice survives subsequent updates; then
   close the turn's disclosure and confirm the group closes with it, and reopen to
   confirm the group choice is restored. In Fully folded, confirm run rows stay
   inside their activity groups and that only ordinary assistant progress text
   splits a group. In Commands first, confirm `Bash`/run rows render as standalone
   rows beside the groups, that a normal assistant progress message or a command
-  ends the current group, adjacent calls stay separate, and Thinking rows default
-  expanded. In Flat, confirm no nested activity group renders, the outer
+  ends the current group, adjacent calls stay separate, and only the reasoning
+  row the turn is still streaming is expanded. In Flat, confirm no nested
+  activity group renders, that `Auto-fold finished groups` is absent from AI
+  settings, and the outer
   disclosure lists tools, commands, thinking and progress in transcript order,
   and tool details stay collapsed. In every mode confirm the turn renders exactly
   one outer disclosure and that closing it hides, then reopening restores, the
@@ -18082,14 +18089,20 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   group, so the middle progress paragraph ends the preceding group and the
   following activity starts a new one. A group appears only with at least two
   visible items; a singleton has no group. Every group stays open while its turn
-  runs; after completion, groups with at most four visible items, Task topology
-  groups and groups that still render a Thinking row remain open, while larger
-  ordinary groups of plain tool rows start closed. Thinking rows default
-  expanded in every mode when `Show thinking` is on.
+  runs; after completion both nested levels fold, so every settled group and
+  every reasoning row that is no longer streaming starts closed, whatever the
+  group's size. Only the reasoning a live turn is still streaming starts
+  expanded when `Show thinking` is on, and a group does not inherit open state
+  from the reasoning inside it, so folding a group hides expanded reasoning.
+  Turning off `Auto-fold finished groups` opens every settled group; turning off
+  `Auto-fold finished thinking` opens every rendered reasoning row. A settled
+  group's header names the actions it contains, capped at three with "and more",
+  and appends the operation count as its own non-truncating token; reasoning is
+  named but not counted, and the header carries no issue counter.
   Explicit user choices persist and are restored when the enclosing disclosure is
   reopened, and never pin an ancestor; an automatic close is deferred only while
-  focus or a selection remains inside. Apart from visible reasoning, group
-  defaults do not depend on `Show thinking`. The header
+  focus or a selection remains inside. Group defaults do not depend on
+  `Show thinking` or on the reasoning a group contains. The header
   reports running, finished, stopped, or failed with failure and stop outranking
   a normal finish, reads `Thinking` while the live step is reasoning, names
   compaction and recovery while those stages are live, omits a duration the
@@ -19598,3 +19611,274 @@ their separate platform acceptance.
   `apps/desktop/test/plugin-projects.test.mjs` covers pin-independent ordering,
   group lookup failure, missing project providers, failed/malformed lookup,
   rename identity, and stale results after Host replacement.
+
+### E2E-268: Plugin launcher grid, triggers, and local applications
+
+- **Preconditions**: An isolated Host profile with a panel plugin that declares
+  one launcher trigger (for example `^\d+\s*[\+\-\*/]\s*\d+$`, so `1+1` matches
+  it) and whose panel renders the text it received through
+  `window.pluginBridge.consumeLauncherPayload()`. A second panel plugin with a
+  Latin name, and at least two installed applications, one of them Chinese with
+  a `wx` / `weixin` / `微信` spelling chain. Run on Windows and macOS.
+- **Steps**:
+  1. Press `Alt+Space` (`⌥+Space` on macOS) with an empty input. Read the grid:
+     group titles, rows, tiles per row, and the two header actions.
+  2. Type the trigger expression `1+1` and inspect the first tile and its detail
+     line; press `Enter` and read the opened panel.
+  3. Reopen the launcher and type a pinyin initial such as `wx`, then `weixin`,
+     then `微信`; confirm the same application is the matching tile each time.
+  4. Type `pi` and confirm the plugin named `PI-Desktop` is listed with a name
+     match, and that the same item is reachable by pinyin and initials.
+  5. Drag the panel's edge to a larger and then a smaller size; count the tiles
+     per row at each width. Quit and restart the application, then reopen the
+     launcher.
+  6. Type a query that matches more than 24 items. Read the header action and
+     the window height.
+  7. Disable one plugin that was in recents/pins, reopen the launcher, and check
+     the empty-input view and a query that used to match it.
+  8. Paste 500 characters of garbage into the search field.
+  9. Pin an application, quit, restart, and reopen the launcher with an empty
+     input.
+- **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
+  `Pinned` with one row of eight once the user has pins; the recents header
+  reports the true number of remembered items and offers `Show all {count} →`
+  plus `All plugins →`. Step 2 lists the trigger plugin as the **first** tile,
+  ahead of name matches and without a detail line, and the panel shows `1+1`
+  exactly once (a second read returns `null`). Step 3 reaches the same
+  application through all three spellings. Step 4 lists `PI-Desktop` once by
+  name. Step 5 keeps eight columns per row at every width, the panel height
+  always matches what it renders, and the dragged width is restored after the
+  restart. Step 6 keeps the window at its height cap, reports the dropped count
+  in the header, and asks the user to keep typing. Step 7 removes the disabled
+  plugin from recents, pins, and matches while every other tile still opens.
+  Step 8 keeps the panel responsive (no frozen input, no unhandled error) and
+  reports no match, because input longer than 256 characters is never matched
+  against a trigger. Step 9 still shows the pinned application in the `Pinned`
+  row.
+- **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
+  coverage for these rules: `launcher-search.test.mjs` (ranking order, section
+  caps, overflow total, trigger whole-input matching, the 256-character limit
+  and the all-plugins view), `launcher-store.test.mjs` (pins and the eight-pin
+  cap, recents, legacy migration, retired fields read without error, and
+  pruning), `plugin-launcher-height.test.mjs` (content-height arithmetic and
+  clamping), `local-apps.test.mjs` (discovery, bounds, icon budget and icon
+  cache, dropped targets, opaque-id launch) and `plugin-launcher-state.test.mjs`
+  (clamping and re-centring). Rust `plugins` tests cover the manifest rules. The
+  rendered Electron journey above — grouped grid, content height, resize,
+  restart, and the panel payload round trip — is Draft until a launcher E2E
+  script exists.
+## Computer use (ADR 0342)
+
+Native-control scenarios remain landing gates for
+[03-runtime/computer-use](../03-runtime/computer-use.md). Their underlying
+refusals are unit-covered, but driving real applications remains `NOT RUN`.
+The permission-request UI below has isolated fixture automation.
+
+### E2E-COMPUTER-USE-request-accessibility-from-settings
+
+- **Preconditions**: Isolated Electron fixture profile; OS calls mocked at IPC
+  and Electron boundaries; computer use disabled; no provider or real OS prompt.
+- **Steps**: Open Settings with missing Accessibility; focus and click its status
+  button twice. Complete the request while permission remains missing. Grant it
+  externally and return focus. Exercise denied permission, a failed request and
+  retry, a stale capabilities read, focus during a pending request, unsupported
+  platform, and unmount during a request.
+- **Expected**: Opening Settings or toggling the feature never requests OS
+  permission. Explicit click alone requests the app's own TCC trust in main;
+  while pending, the button is busy/disabled and duplicate clicks are ignored.
+  Missing app trust opens only the fixed macOS Accessibility pane and explains
+  that the user must enable it. Errors are visible and retryable. Focus and
+  visibility refreshes never prompt. Controlled one-second polling after a
+  request detects authorization without a focus event, stops on authorization
+  or unmount, and expires after 60 ticks. Stale reads cannot replace newer state.
+  An app-level grant updates the badge even when the Rust child still reports
+  denied: show a backend-permission diagnostic instead of another request.
+  Backend recovery clears the diagnostic without granting any authority from UI.
+  Granted/unsupported states are labels. Non-main senders are rejected before OS
+  calls; opening failure propagates; no grant, capture, or input is dispatched.
+- **Automation**: `node --test apps/desktop/test/computer-use-permission-user-path.test.mjs
+  apps/desktop/test/computer-use-permission-ipc.test.mjs`; shared capability
+  selection tests and host-core unsupported-backend tests cover platform gating.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md), Settings and UX surface.
+- **Status**: Fixture automation PASS; actual macOS TCC prompt/switch NOT RUN.
+  Native OS approval remains a manual system decision.
+
+### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
+
+- **Preconditions**: Isolated desktop profile, computer use enabled, OS
+  permissions granted on the platform under test, one fixture target
+  application, no provider account needed.
+- **Steps**: Ask the agent to operate the target before any grant exists. Mint a
+  grant through the picker, run `describe_scope`, `inspect`, and one `act`.
+  Press Stop in the indicator mid-task. Mint a second grant from another session
+  while the first is active. Let a grant idle past its expiry, and exhaust an
+  action budget.
+- **Expected**: The first request fails `COMPUTER_NO_GRANT` without an OS prompt
+  or capture. The grant appears in the indicator with target, budget, and
+  capture mode, and stays visible while the app is backgrounded. Stop terminates
+  the remaining steps immediately. The second grant is refused
+  `COMPUTER_GRANT_IN_USE`. Idle expiry and budget exhaustion close the grant with
+  their own codes, and no grant survives a restart.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [03-tools-and-permissions](../03-runtime/03-tools-and-permissions.md).
+- **Automation**: `computer::tests::only_one_grant_is_active_per_instance`,
+  `another_session_cannot_use_the_active_grant`,
+  `an_idle_grant_expires_and_stays_expired`, and
+  `the_budget_closes_the_grant_and_refuses_the_next_action` in host-core;
+  `apps/desktop/test/computer-use-service.test.mjs` covers the no-grant and
+  wrong-session refusals the agent would hit.
+- **Status**: NOT RUN — needs a real window and the picker.
+
+### E2E-COMPUTER-USE-self-target-and-secure-input-refused
+
+- **Preconditions**: Isolated desktop profile with an active grant, a PI-Desktop
+  window with a pending approval card, and a fixture window containing a
+  password field.
+- **Steps**: Attempt to inspect, capture, and act on a PI-Desktop window,
+  including its approval card and the Live Voice widget, under every permission
+  mode including `auto` and under an `autonomous-in-scope` grant. Focus the
+  password field and attempt `inspect`, `screenshot`, and `set_value`. Attempt a
+  target on the built-in credential denylist and try to remove that entry.
+- **Expected**: Every self-target attempt fails `COMPUTER_SELF_TARGET_REFUSED`;
+  no synthetic event reaches any PI-Desktop window and no approval card is
+  dismissed. Secure input refuses capture and synthesis with
+  `COMPUTER_SECURE_INPUT_REFUSED`, and no field content appears in a snapshot,
+  image, tool result, or log. The built-in denylist entry cannot be removed.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [05-security/01-security](../05-security/01-security.md) §13.
+- **Automation**: `computer::tests::our_own_windows_are_never_pickable`,
+  `a_renamed_self_process_is_still_refused`,
+  `built_in_credential_surfaces_cannot_be_allowlisted`, and
+  `secure_input_refuses_both_inspection_and_action` in host-core.
+- **Status**: NOT RUN — needs a real approval card and a real password field.
+
+### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
+
+- **Preconditions**: Isolated desktop profile, an `a11y-and-pixels` grant, and a
+  fixture window that can be moved, resized, and re-stacked on demand.
+- **Steps**: Capture a `screenshot`, move the target, then act on the stale
+  basis. Resize the target between `inspect` and `act` on a `uid`. Act with a
+  coordinate outside the measured bounds. Act with a basis minted for a
+  different grant. Act under an `a11y-only` grant with coordinates.
+- **Expected**: `COMPUTER_STALE_BASIS`, `COMPUTER_STALE_REVISION`,
+  `COMPUTER_SCOPE_VIOLATION`, and `COMPUTER_CAPTURE_UNAVAILABLE` respectively;
+  no event is dispatched in any of them, nothing is clamped silently, and the
+  target application observes no input.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [08-error-codes](../03-runtime/08-error-codes.md) §3.10.
+- **Automation**: `computer::tests::a_moved_window_bumps_the_revision_and_invalidates_a_basis`,
+  `a_resized_window_with_the_same_revision_still_refuses_a_stale_basis`,
+  `coordinates_outside_the_measured_window_are_refused_not_clamped`, and
+  `a_coordinate_action_without_a_basis_is_refused` in host-core.
+- **Status**: NOT RUN — needs a real window that moves mid-step.
+
+### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
+
+- **Preconditions**: Isolated desktop profile, a Live Voice fixture adapter with
+  a bound work session, computer use enabled with no active grant, no real
+  provider account or microphone.
+- **Steps**: Deliver a spoken request that asks the agent to operate an
+  application. Repeat after a user mints a grant in the desktop UI. Repeat with
+  the session in Plan and in Goal.
+- **Expected**: The first request produces a desktop-UI grant request, not a
+  grant: the card appears in the main window, the call bar reports that the app
+  needs attention, and no capture or synthesis happens before the user decides.
+  After a grant exists, the request runs as an ordinary Agent turn under the
+  session's policy, with progress spoken through the existing work-feedback
+  channel. Plan and Goal deny the tool before permission evaluation.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md),
+  [live-voice](../03-runtime/live-voice.md),
+  [live-work-session](../03-runtime/live-work-session.md).
+- **Automation**: none. The spoken path is stage 3 and is deliberately not
+  wired, so there is nothing to drive yet.
+- **Status**: NOT RUN — stage 3.
+
+### E2E-COMPUTER-USE-platform-support-is-explicit
+
+- **Preconditions**: One run per supported platform plus a Wayland session and a
+  platform with the OS permission denied.
+- **Steps**: Enable the feature and open the doctor view on each platform. Mint a
+  grant and act. On Windows, target a window owned by a higher-integrity
+  process. On Wayland, attempt input and then capture. On a platform with Screen
+  Recording or Accessibility denied, attempt inspection and capture.
+- **Expected**: The doctor view distinguishes "not requested", "denied", and
+  "unsupported on this platform". Input on Wayland fails
+  `COMPUTER_PLATFORM_UNSUPPORTED` while portal capture still works; an elevated
+  Windows target fails `COMPUTER_TARGET_ELEVATED` rather than dropping events; a
+  denied OS permission fails `COMPUTER_OS_PERMISSION_MISSING`. No path hangs and
+  none reports success without acting.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md).
+- **Automation**: `computer::tests::an_unsupported_platform_refuses_every_operation`
+  in host-core covers the fallback backend every unported platform uses.
+- **Status**: NOT RUN — needs one run per platform, including Wayland.
+
+## Round review reader
+
+Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
+
+- Preconditions: candidate JavaScript and Rust Host built; isolated temporary
+  profile/data/workspace; no provider or running user instance.
+- Command: `node scripts/e2e-review-history.mjs` with `PI_DESKTOP_HOST_BIN` pointing
+  at this candidate's Host binary. The runner writes controlled-data preview PNGs
+  under `docs/public/screenshots/review-history/`.
+- Actions: create modified, newer modified and no-edit rounds through real Host
+  RPC; add delegated evidence; select rounds, expand a multi-operation file,
+  choose Last round/History, hover the context submenu (only 1/3/5), toggle word
+  wrapping, scroll and resize, copy, attempt conflicting rollback, append a
+  late delegate result, restart Host and switch sessions. Choose one context line,
+  reopen Review, switch conversations and reload the renderer from the same
+  isolated profile; verify both the checked menu option and actual diff context
+  retain that choice. Missing/invalid/blocked storage is unit-covered by
+  `apps/desktop/test/review-preferences.test.mjs`.
+- Expected: latest skips no-edit rounds; delegates belong to their original user
+  round; all file records are accessible; old/new numbers and bounded immutable context
+  agree; one gutter uses old numbers for deletions and new numbers otherwise;
+  file-type glyphs match between Review and turn summaries; both ellipsis menus
+  retain trigger-relative placement across click points and fit narrow windows;
+  no full after-image is cached; only the outer review scrolls; headers stick without toolbar overlap in
+  normal/narrow layouts; copy and conflict protection survive; history restores.
+  Toggle checks trail labels, summary dots have no circle, history options contain
+  date/time plus true per-round recorded totals before the check and fit an
+  arrow-safe field. Unknown/binary/oversized counts are not shown as zero.
+  File headers have no idle
+  fill, and no execution-root row appears. File menus disable internal open when
+  the plugin is absent, open its loaded view when available, and pass the resolved
+  current file and session to external open. The third action, Open folder,
+  invokes system reveal without requiring a plugin (OS launch/reveal boundaries
+  are stubbed). Non-workspace rows hide internal open; their remaining two actions
+  exercise the real reviewed-file service and Host snapshot authentication.
+  A multi-operation file has exactly one action bar and no record-number heading;
+  copy contains every operation, conflicting rollback changes nothing, and a
+  successful grouped rollback restores the content before the first operation.
+  Scope and historical round controls reuse the shared native Select with local
+  customizable-picker styles. Check light/dark palettes and live sidebar color
+  changes: selected fills follow the sidebar but differ from the list base, not
+  system blue. Only first-row upper and last-row lower corners are rounded;
+  interior edges are square, and a single row has all four corners. Verify native
+  ArrowUp/ArrowDown, Enter, Escape/focus retention and close-after-selection;
+  the scope trigger is 24px high, the round field stays 28px high, and both
+  vertically center their text and arrow. Round labels show date/time and recorded totals with
+  reserved trigger-arrow space.
+  The long-file fixture has 3100 lines with local edits: unchanged head/tail do
+  not consume the LCS matrix budget, while original hunk coordinates, 1/3/5-line
+  context, copy and guarded rollback still work. Byte/line/middle-cell caps remain. Absolute/outside-root labels show `.../basename`, while the title
+  retains the full path; normal workspace-relative labels remain unchanged.
+  A real approved outside-workspace Write is included in the historical round:
+  its diff remains readable after restart, its label is `.../basename`, and it
+  grants no rollback writes. Rust RPC tests cover workspace/scratch/external
+  Write and Edit, same-named paths, approval denial, failed Edit, and no Bash capture.
+  The visualization RPC Write → Read → Edit path starts with no visualization
+  directory and checks non-reversible review evidence for both mutations.
+  Ordinary operations keep that root lazy; denied redirected writes leave no
+  review snapshots. Run the complete visualization suite, not only review-named
+  tests, to cover the pre-existing cross-platform path contract.
+  `review-file-open.test.mjs` covers missing/fuzzy paths, worktree/secondary-root
+  locations, plugin unload, stale session/project results, and visible failures.
+- Additional acceptance: Rust RPC tests cover over 100 turns/changes, dedup,
+  invalid evidence and root isolation; context tests cover legacy, binary, resource
+  budgets, additions/deletions and newline-only changes. Renderer unit tests cover
+  numbered ranges, grouping and cancelled pagination. Existing review/chat/history
+  tests remain required regression coverage.
+- Specs: ADR 0043; runtime RPC/storage specs; component spec Round review reader.
+- Milestone: maintenance. Traceability: acceptance criteria 1–9 of the approved
+  native round-review enhancement map to this scenario and the tests above.

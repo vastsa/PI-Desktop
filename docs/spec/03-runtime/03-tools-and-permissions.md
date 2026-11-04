@@ -103,10 +103,10 @@ See [ordered preparation](../../adr/parallel-read-batches.md) and
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
+| Agent tools | Read / Glob / Grep / Write / Edit / Bash + Computer under an active scope grant + registered plugin tools + optional Jev classifier |
 | Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
 | Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Plan and Goal hard deny | Write / Edit / Computer / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
@@ -134,6 +134,7 @@ Let the agent get things done, but stay under control by default.
 | `Write` | high | Create/overwrite files; returns the post-write `tag` |
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
+| `Computer` | high | Inspect and operate the one native window or application the user granted; disabled without an active scope grant ([computer-use](computer-use.md), ADR 0342) |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
 | `TodoWrite` | low | Replace the current Agent session checklist; host validates and persists the full ordered snapshot |
 
@@ -413,7 +414,8 @@ visualization lives as long as its session:
 - **Permissions.** `Write`/`Edit` inside the root auto-allow without a card,
   under the same conditions as scratch. Plan and Goal expose no Write/Edit, so
   contract modes cannot write here. Results carry `root: "visualization"`, are
-  not recorded as artifacts, and are not review-snapshotted.
+  not recorded as artifacts. Successful Write/Edit operations retain bounded
+  review evidence without granting rollback access outside the workspace.
 - **Lifecycle.** Created lazily on the first write. Deleted with
   `session.delete`. The startup sweep removes only safe session directories
   whose session no longer exists; it never expires live cards by age or
@@ -445,9 +447,10 @@ visualization lives as long as its session:
 
 ## 4c. Message-owned review snapshots and rollback
 
-`Write` and `Edit` are the structured review boundary. For a successful
-workspace-root mutation, host-core captures the previous file before execution
-and adds bounded review evidence to the tool result:
+`Write` and `Edit` are the structured review boundary, regardless of whether
+their approved target is in the workspace, scratch, visualization, or external
+filesystem. After normal tool approval, host-core captures the previous file
+before execution and adds bounded review evidence only on tool success:
 
 ```ts
 type ReviewChange = {
@@ -469,8 +472,11 @@ type ReviewChange = {
 
 - The renderer persists and displays this record with the tool message; it
   does not recompute Review from Git, `HEAD`, or the current dirty tree.
-- Scratch-root, failed, denied, and unresolvable writes have no `review`
-  record. Binary or oversized content may omit hunks and be non-reversible.
+- Failed, denied, sensitive, and unresolvable writes have no `review` record.
+  Bash and external applications are not capture sources. Workspace paths remain
+  relative; other targets retain absolute identity and display as `.../basename`.
+  Binary or oversized content may omit hunks. Non-workspace snapshots are
+  readable evidence, not persistent path grants, and are non-reversible.
 - Rollback is host-owned and hash-guarded. It restores the captured previous
   bytes, or removes a newly-created file, only when the current content still
   equals the post-tool hash. A later edit returns `conflict` without touching
@@ -777,6 +783,12 @@ Rules:
 - `allow-session` grants continue to work under `ask` and stay scoped to the
   session; under `accept-edits`/`auto` they are simply never needed.
 - Scratch-directory writes (D114) stay prompt-free in every mode.
+- `Computer` is governed by its scope grant, not by the mode alone: creating a
+  grant is always an explicit desktop-UI decision, `auto` never mints one, and
+  no `allow-session` grant exists for it. Within an active grant, inspection
+  auto-allows and input follows the grant's `confirm-each` (the only policy
+  under `ask`) or `autonomous-in-scope` policy. Plan and Goal deny the tool
+  outright ([computer-use](computer-use.md)).
 - UI: Settings → segmented global default; composer shows a per-session chip in
   Agent, Plan, and Goal whose menu offers the three effective modes without a
   separate global-default/inherit entry. The chip and selected menu item

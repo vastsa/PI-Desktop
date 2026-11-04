@@ -1086,14 +1086,17 @@ may be retained while exactly one workspace supplies the visible shell context.
   nested group header shares its left edge; the group body then indents child
   rows by 12px with the hover/focus collapse rail in that gutter, while a run
   row lifted out of a group keeps the turn's left edge.
-- No item payload opens itself, except the display mode's Thinking default: a
-  tool, hosted-search or plan call stays a header row until the user opens it,
-  including the literal final item of the last activity group. With `Show thinking`
-  on, Thinking rows default expanded in every display mode and collapse only on
-  user action. A collapsed row shows only the Thinking indicator, with no excerpt.
+- No item payload opens itself except reasoning: a tool, hosted-search or plan
+  call stays a header row until the user opens it, including the literal final
+  item of the last activity group. With `Show thinking` on, only the reasoning a
+  live turn is still streaming starts expanded; completed rows start folded and
+  open on user action, or stay open when `Auto-fold finished thinking` is off. A
+  folded row shows only the Thinking indicator, with no excerpt.
   With `Show thinking` off, no completed reasoning row renders; only a live
   whole-run TextShimmer `Thinking` indicator remains while reasoning streams.
   Stored reasoning is retained and reappears when the preference is turned back on.
+  A group and its reasoning answer to their own switches: neither inherits the
+  other's state, so folding a group hides the expanded reasoning inside it.
 - Activating a group or item header toggles only that level. Closing a parent
   preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.

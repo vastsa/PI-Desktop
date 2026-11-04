@@ -1,0 +1,143 @@
+/*
+ * Computer-use indicator and target picker.
+ *
+ * In-flow surfaces follow the borderless tone scheme (D297): tile and raised
+ * backgrounds, no strokes. The picker is a floating layer, so it keeps the
+ * hairline the scheme allows there.
+ */
+.computer-use-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-raised);
+  font-size: var(--text-sm);
+}
+
+.computer-use-indicator-target {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+
+.computer-use-indicator-budget {
+  color: var(--text-muted);
+}
+
+.computer-use-picker {
+  width: 320px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.computer-use-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.computer-use-picker-title {
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.computer-use-picker-hint,
+.computer-use-picker-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.computer-use-picker-error {
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.computer-use-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.computer-use-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.computer-use-target:hover:not(:disabled) {
+  background: var(--ds-raised);
+}
+
+.computer-use-target:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.computer-use-target-app {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.computer-use-target-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.computer-use-picker-close {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.computer-use-picker-close:hover {
+  background: var(--ds-tile);
+}
+
+.computer-use-platform-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.computer-use-permission-button {
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-warning) 16%, transparent);
+  color: var(--ds-warning);
+}
+
+.computer-use-permission-button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ds-warning) 24%, transparent);
+}

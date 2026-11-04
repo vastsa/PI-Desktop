@@ -1,3 +1,4 @@
+import { ReviewHistoryPanel } from "./ReviewHistoryPanel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useReviewFocusRequest } from "../../lib/review-focus-request";
@@ -20,6 +21,14 @@ type AppliedFocus = {
 };
 
 export function ReviewTab() {
+  const sessionId = useAppStore(state => state.activeSessionId);
+  const session = useAppStore(state => state.sessions.find(item => item.id === sessionId));
+  return sessionId && !sessionId.startsWith("remote:") && !session?.remoteWorkspace && session?.source !== "pi-native"
+    ? <ReviewHistoryPanel key={sessionId} sessionId={sessionId} />
+    : <LegacyReviewTab />;
+}
+
+function LegacyReviewTab() {
   const { t } = useTranslation();
   const messages = useAppStore((state) => state.messages);
   const entries = useMemo(() => reviewChangesFromMessages(messages), [messages]);
