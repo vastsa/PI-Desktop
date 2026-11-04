@@ -1017,7 +1017,7 @@ export type AgentRuntimeOptions = {
   /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
   jevApiKey?: string;
   /**
-   * Whether the `Computer` tool is offered at all (ADR 0340). Resolved by
+   * Whether the `Computer` tool is offered at all (ADR 0342). Resolved by
    * Electron main from settings, so a disabled feature is absent from the
    * prompt rather than advertised and refused on every call.
    */

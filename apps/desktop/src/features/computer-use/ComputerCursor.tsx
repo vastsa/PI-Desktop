@@ -4,7 +4,7 @@ import { computerUseApi } from "./computer-use-api";
 import "../../styles/computer-cursor.css";
 
 /**
- * The agent's drawn cursor (ADR 0340 §10).
+ * The agent's drawn cursor (ADR 0342 §10).
  *
  * This surface renders in its own click-through window, so it can never take a
  * press away from the user. It owns no part of any action: it is told where an

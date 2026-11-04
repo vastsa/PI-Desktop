@@ -1,6 +1,6 @@
 # Computer Use Stage 1 Evidence
 
-What was built for [ADR 0340](../adr/0340-os-computer-use-capability.md) stage 1,
+What was built for [ADR 0342](../adr/0342-os-computer-use-capability.md) stage 1,
 and — more importantly — what has *not* been verified. This file contains no
 window titles, no captured pixels, and no credentials.
 

@@ -10160,7 +10160,7 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
 
-## 电脑操作（ADR 0340）
+## 电脑操作（ADR 0342）
 
 每一条都是 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
 所述能力的落地闸门。阶段 1 已实现，因此每条场景依赖的拒绝逻辑都有单测覆盖；

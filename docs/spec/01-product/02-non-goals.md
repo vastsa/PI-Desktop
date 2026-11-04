@@ -11,7 +11,7 @@
 6. Mobile clients
 7. Multi-user auth systems
 8. Billing/subscription modules
-9. Computer Use browser takeover *(amended by ADR 0340)* — browser takeover and
+9. Computer Use browser takeover *(amended by ADR 0342)* — browser takeover and
    unattended full-desktop control remain non-goals, and the model may never
    choose its own target. Bounded native application control through a
    user-picked, revocable, audited scope grant is an accepted capability; see

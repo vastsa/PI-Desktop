@@ -16,7 +16,7 @@ import { api } from "../../../lib/api";
 import { computerUseApi } from "../../computer-use/computer-use-api";
 
 /**
- * Computer use settings (ADR 0340).
+ * Computer use settings (ADR 0342).
  *
  * The three things only the user can decide live here: whether the capability
  * exists at all, which model may drive it, and whether a run may take pixels

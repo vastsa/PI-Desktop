@@ -2,7 +2,7 @@ import { desktopCapturer, systemPreferences } from "electron";
 import type { ComputerPermissionState, ComputerRect } from "@pi-desktop/shared";
 
 /**
- * Scope-cropped capture for computer use (ADR 0340 §11).
+ * Scope-cropped capture for computer use (ADR 0342 §11).
  *
  * Chromium's `desktopCapturer` is the one part of the capability that is
  * already cross-platform, and a window source is inherently scoped: nothing

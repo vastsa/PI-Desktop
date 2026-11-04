@@ -17,7 +17,7 @@ import { captureGrantedWindow } from "./capture";
 import type { ComputerCursorOverlay } from "./cursor-overlay";
 
 /**
- * The `Computer` tool handler (ADR 0340 §1, §2).
+ * The `Computer` tool handler (ADR 0342 §1, §2).
  *
  * The loop lives here because it needs two things host-core deliberately does
  * not have: a model provider and Chromium. Everything that can *refuse* stays

@@ -38,7 +38,7 @@ executed by the Agent turn under that session's policy; minting a scope grant
 stays a desktop-UI decision, which a call may ask for but never make, and the
 call bar only reports that the app needs attention. Voice-driven computer use is
 task delegation, not per-frame teleoperation
-([Computer Use](computer-use.md), [ADR 0340](../../adr/0340-os-computer-use-capability.md)).
+([Computer Use](computer-use.md), [ADR 0342](../../adr/0342-os-computer-use-capability.md)).
 
 ## Ownership and security
 

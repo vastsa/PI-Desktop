@@ -31,7 +31,7 @@ It does **not** replace pi. It provides safe host capabilities to:
 11. Audit logging for sensitive actions
 12. Computer-use capability: window enumeration, accessibility inspection,
     event synthesis, scoped screen capture, and the scope-grant broker
-    ([computer-use](computer-use.md), ADR 0340)
+    ([computer-use](computer-use.md), ADR 0342)
 
 ## 3. Non-responsibilities
 

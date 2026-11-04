@@ -1,5 +1,5 @@
 /**
- * The bounded perceive-decide-act loop (ADR 0340 §9).
+ * The bounded perceive-decide-act loop (ADR 0342 §9).
  *
  * Electron-independent on purpose: everything the loop needs — observing,
  * acting, asking the bound model, drawing the cursor — arrives as an injected

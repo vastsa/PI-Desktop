@@ -8192,7 +8192,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 ## 2026-11-04 — Computer use is a host-owned capability behind a scope grant (D681)
 
-- D681 / ADR 0340 accepts bounded native application control as a design. The
+- D681 / ADR 0342 accepts bounded native application control as a design. The
   agent could already drive the embedded browser guest over allowlisted CDP and
   nothing else; there is no screen capture, synthetic input, window enumeration,
   or accessibility client anywhere in the repository. This decision records the

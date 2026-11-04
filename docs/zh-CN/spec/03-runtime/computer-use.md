@@ -2,7 +2,7 @@
 
 > **翻译说明：** 本页与[英文源规格](/spec/03-runtime/computer-use)一一对应。代码、协议字段和标识符保留原文；如翻译与英文源事实存在差异，以英文版本为准。
 
-> 状态：阶段 1 已实现，但未经真机验证。本页是 [ADR 0340](../../../adr/0340-os-computer-use-capability.md) 所述能力的权威契约。当前唯一调用方是 Agent；语音入口在本页定义，但在阶段 3 才接通。拒绝逻辑、回路与工具自身路径已有单测覆盖；尚未驱动过任何真实应用，Windows 与 Linux 在阶段 2 之前一律返回 `COMPUTER_PLATFORM_UNSUPPORTED`。
+> 状态：阶段 1 已实现，但未经真机验证。本页是 [ADR 0342](../../../adr/0342-os-computer-use-capability.md) 所述能力的权威契约。当前唯一调用方是 Agent；语音入口在本页定义，但在阶段 3 才接通。拒绝逻辑、回路与工具自身路径已有单测覆盖；尚未驱动过任何真实应用，Windows 与 Linux 在阶段 2 之前一律返回 `COMPUTER_PLATFORM_UNSUPPORTED`。
 
 ## 范围
 

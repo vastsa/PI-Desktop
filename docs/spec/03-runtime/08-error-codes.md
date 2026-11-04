@@ -350,7 +350,7 @@ does not trigger automatic provider or billing fallback.
 | `LIVE_AUDIO_BACKPRESSURE` | no | bounded PCM or playback credits were exhausted |
 | `LIVE_EXECUTION_NOT_CONNECTED` | no | a provider requested an unsupported function/delegation execution path |
 
-### 3.10 Computer use (ADR 0340)
+### 3.10 Computer use (ADR 0342)
 
 Computer-use errors are returned as `Computer` tool failures and host
 `computer.*` responses. Each refusal is separately attributable: a missing

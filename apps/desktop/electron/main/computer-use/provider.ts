@@ -6,7 +6,7 @@ import type { HostProcess } from "../host-process";
  * Resolve the user's computer-use model into a provider config.
  *
  * It is deliberately its own binding rather than the conversation model
- * (ADR 0340 §9), so it is resolved the way image generation resolves its
+ * (ADR 0342 §9), so it is resolved the way image generation resolves its
  * binding: from the provider row the user picked, with its own secret. A
  * binding whose provider is gone, disabled, or missing its key resolves to
  * `null`, and the tool reports an unconfigured feature instead of quietly

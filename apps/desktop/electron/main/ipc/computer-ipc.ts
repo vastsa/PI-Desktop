@@ -1,5 +1,5 @@
 /**
- * The computer-use channels the renderer may call (ADR 0340).
+ * The computer-use channels the renderer may call (ADR 0342).
  *
  * Deliberately short: read what the platform can do, list windows while the
  * picker is open, mint a grant from a window the user chose, revoke one, and

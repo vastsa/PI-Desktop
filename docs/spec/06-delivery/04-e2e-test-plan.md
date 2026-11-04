@@ -19587,7 +19587,7 @@ their separate platform acceptance.
   group lookup failure, missing project providers, failed/malformed lookup,
   rename identity, and stale results after Host replacement.
 
-## Computer use (ADR 0340)
+## Computer use (ADR 0342)
 
 Every one of these is a landing gate for the capability described in
 [03-runtime/computer-use](../03-runtime/computer-use.md). Stage 1 is

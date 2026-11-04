@@ -9,7 +9,7 @@ import {
 } from "@pi-desktop/shared";
 
 /**
- * The renderer's computer-use surface (ADR 0340).
+ * The renderer's computer-use surface (ADR 0342).
  *
  * Read, pick, and revoke — nothing here dispatches input, because the renderer
  * is the one process that must never hold that authority. A refusal keeps its

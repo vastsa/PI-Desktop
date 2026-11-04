@@ -10,7 +10,7 @@ import "../../styles/computer-use.css";
 
 /**
  * The grant indicator and the only way to hand an application over
- * (ADR 0340 §4).
+ * (ADR 0342 §4).
  *
  * The picker list comes from the host, including the windows it refuses, so a
  * window the user can see is either pickable or carries the reason it is not.

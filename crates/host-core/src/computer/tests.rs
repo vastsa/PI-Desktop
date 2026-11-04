@@ -1,4 +1,4 @@
-//! Refusal coverage for computer use. These are the tests ADR 0340 names as
+//! Refusal coverage for computer use. These are the tests ADR 0342 names as
 //! landing gates, and they run on every platform because the fake backend
 //! stands in for the native one: the rules being checked are policy's, not the
 //! platform's.

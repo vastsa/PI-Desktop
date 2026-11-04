@@ -1,6 +1,6 @@
 //! The platform contract for computer use, plus the fallback that exists on
 //! every target so an unimplemented platform is a refusal rather than a
-//! compile error or a silent no-op (ADR 0340 §11).
+//! compile error or a silent no-op (ADR 0342 §11).
 //!
 //! A backend may only *attempt* work. It never decides whether a request is
 //! allowed: policy has already admitted the request by the time a backend sees

@@ -131,7 +131,7 @@ export const IPC = {
     liveVoiceWidgetOwnerState: "pi-desktop/voice/live/widget/ownerState",
     liveVoiceWidgetVisibility: "pi-desktop/voice/live/widget/visibility",
     /**
-     * Computer use (ADR 0340). The renderer may read capabilities, list
+     * Computer use (ADR 0342). The renderer may read capabilities, list
      * pickable targets while a picker is open, mint a grant from a target the
      * user chose, and revoke one. It can never act: there is no channel that
      * dispatches input, and `computer.act` is reachable only from main's tool

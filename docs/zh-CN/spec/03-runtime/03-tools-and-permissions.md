@@ -107,7 +107,7 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | `Write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
 | `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
 | `Bash` | 高 | 执行命令 |
-| `Computer` | 高 | 检查并操作用户授权的那一个原生窗口或应用；没有活动作用域授权时不可用（[computer-use](computer-use.md)，ADR 0340） |
+| `Computer` | 高 | 检查并操作用户授权的那一个原生窗口或应用；没有活动作用域授权时不可用（[computer-use](computer-use.md)，ADR 0342） |
 | `asktool` | 低 | 询问一个或多个用户问题并将提交的答案作为工具输出返回 |
 | `TodoWrite` | 低 | 替换当前 Agent 会话清单；由主机校验并持久化完整有序快照 |
 

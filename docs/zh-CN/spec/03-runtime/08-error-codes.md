@@ -343,7 +343,7 @@ ADR 0285）。渲染进程除了一个标识徽章外看不到本地/远程之�
 | `LIVE_AUDIO_BACKPRESSURE` | 否 | PCM 或播放 credit 的有界容量已耗尽 |
 | `LIVE_EXECUTION_NOT_CONNECTED` | 否 | Provider 请求了当前不支持的函数/delegation 执行路径 |
 
-### 3.10 电脑操作（ADR 0340）
+### 3.10 电脑操作（ADR 0342）
 
 电脑操作错误以 `Computer` 工具失败和宿主 `computer.*` 响应的形式返回。每一种拒绝
 都可单独归因：缺失的能力永不表现为挂起，也永不以成功回报空操作。可重试表示同一

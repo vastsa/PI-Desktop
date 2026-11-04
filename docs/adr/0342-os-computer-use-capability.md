@@ -1,4 +1,4 @@
-# ADR 0340: Built-in computer use is a host-owned capability behind a user-picked scope grant
+# ADR 0342: Built-in computer use is a host-owned capability behind a user-picked scope grant
 
 - Status: Accepted
 - Date: 2026-11-04

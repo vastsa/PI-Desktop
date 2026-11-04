@@ -69,7 +69,7 @@ export type SidecarRuntimeDependencies = {
   disabledBuiltinSkills: () => Promise<string[]>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   currentNetworkProxy: () => any;
-  /** The agent's drawn cursor. Visualization only (ADR 0340 §10). */
+  /** The agent's drawn cursor. Visualization only (ADR 0342 §10). */
   computerCursorOverlay: Pick<ComputerCursorOverlay, "apply">;
   /** Push the live computer-use grant to the renderer's indicator. */
   publishComputerGrant: (grant: ComputerGrantView | null) => void;
@@ -579,7 +579,7 @@ export function createSidecarRuntime({
     // Fake-IP tolerance belongs to the network policy, not to the proxy switch.
     allowFakeIp: () => relaxedNetworkPolicyEnabled(),
   }));
-  // Granted native application control (ADR 0340). The host authorises the
+  // Granted native application control (ADR 0342). The host authorises the
   // call through `tools.execute` before this handler runs, and the loop here
   // holds no grant of its own: it re-reads the live one on every observation.
   s.setLocalTool("Computer", createComputerUseTool({

@@ -1,4 +1,4 @@
-//! Granted native application control (ADR 0340).
+//! Granted native application control (ADR 0342).
 //!
 //! This module is the only place that may refuse a computer-use request, so
 //! every refusal lives here rather than in the caller: the loop that decides

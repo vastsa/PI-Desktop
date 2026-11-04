@@ -134,7 +134,7 @@ Let the agent get things done, but stay under control by default.
 | `Write` | high | Create/overwrite files; returns the post-write `tag` |
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
-| `Computer` | high | Inspect and operate the one native window or application the user granted; disabled without an active scope grant ([computer-use](computer-use.md), ADR 0340) |
+| `Computer` | high | Inspect and operate the one native window or application the user granted; disabled without an active scope grant ([computer-use](computer-use.md), ADR 0342) |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
 | `TodoWrite` | low | Replace the current Agent session checklist; host validates and persists the full ordered snapshot |
 

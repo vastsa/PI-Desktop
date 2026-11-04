@@ -757,7 +757,7 @@ const eventPersistence = createEventPersistence({
 const { persistAgentEvent } = eventPersistence;
 
 /**
- * The agent's drawn cursor and the indicator feed (ADR 0340 §10).
+ * The agent's drawn cursor and the indicator feed (ADR 0342 §10).
  *
  * The overlay is created lazily by its own module on the first draw command,
  * and it closes with the grant: a window that outlived the authority it was

@@ -1,5 +1,5 @@
 /**
- * The strict wire between the bound model and the machine (ADR 0340 §9).
+ * The strict wire between the bound model and the machine (ADR 0342 §9).
  *
  * Everything in this file treats the model's reply as untrusted text. It is
  * parsed, not interpreted: a reply that is not exactly one well-formed answer

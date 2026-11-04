@@ -1,5 +1,5 @@
 /**
- * Public, host-authoritative contracts for computer use (ADR 0340).
+ * Public, host-authoritative contracts for computer use (ADR 0342).
  *
  * Nothing here carries authority by itself. The grant is minted by host-core
  * from a target the user picked, and every field a caller could forge — the
@@ -207,7 +207,7 @@ export type ComputerNode = {
   role: string;
   /** Accessible name, truncated. Absent when the platform exposes none. */
   label?: string;
-  /** Whether a value exists — never the value itself (ADR 0340 §3). */
+  /** Whether a value exists — never the value itself (ADR 0342 §3). */
   hasValue: boolean;
   enabled: boolean;
   focused: boolean;

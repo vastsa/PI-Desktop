@@ -92,7 +92,7 @@ export const ErrorCodes = {
   LIVE_AUDIO_BACKPRESSURE: "LIVE_AUDIO_BACKPRESSURE",
   LIVE_EXECUTION_NOT_CONNECTED: "LIVE_EXECUTION_NOT_CONNECTED",
   /**
-   * Computer use (ADR 0340). Each refusal is separately attributable because a
+   * Computer use (ADR 0342). Each refusal is separately attributable because a
    * missing native capability must never read as an action that did nothing:
    * `COMPUTER_PLATFORM_UNSUPPORTED` is a backend that does not exist here,
    * while `COMPUTER_ELEMENT_NOT_ACTIONABLE` is a real element that offers no

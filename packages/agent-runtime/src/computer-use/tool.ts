@@ -2,7 +2,7 @@ import { COMPUTER_MAX_STEPS_LIMIT } from "@pi-desktop/shared";
 import { Type } from "typebox";
 
 /**
- * The agent-facing `Computer` schema (ADR 0340 §2).
+ * The agent-facing `Computer` schema (ADR 0342 §2).
  *
  * It takes an instruction and nothing else: no window, no element, no
  * coordinate. The target comes from the grant the user minted, and addressing

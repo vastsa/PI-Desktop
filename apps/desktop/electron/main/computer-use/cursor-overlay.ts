@@ -5,7 +5,7 @@ import { getModuleDirectory } from "../module-path";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 
 /**
- * The agent's own cursor, drawn over the granted window (ADR 0340 §10).
+ * The agent's own cursor, drawn over the granted window (ADR 0342 §10).
  *
  * This window is visualization and nothing else. It is click-through, so it
  * cannot take a press away from the user, and it owns no part of any action:

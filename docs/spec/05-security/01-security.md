@@ -350,7 +350,7 @@ host-core. They do not change the loopback-only rule above.
 | Dependency poisoning | lockfiles, few deps, native-module review |
 | Malicious local plugin | declared permissions, no secret access, process isolation tracked post-MVP (ADR 0008) |
 | Skill market SSRF via user source URL | public-HTTPS classifier + DNS + per-hop redirect checks in main; renderer CSP forbids the fetch (ADR 0243) |
-| Synthetic input approving this app's own dialogs | computer use refuses PI-Desktop windows and credential surfaces unconditionally; scope grant is user-picked and host-owned (ADR 0340) |
+| Synthetic input approving this app's own dialogs | computer use refuses PI-Desktop windows and credential surfaces unconditionally; scope grant is user-picked and host-owned (ADR 0342) |
 
 ## 11. Security acceptance gates
 
@@ -413,7 +413,7 @@ name); cleanup removes only files whose device/inode and content still match
 what this operation created, and unexpected filesystem failures cross the
 preload boundary only as a path-free classified error.
 
-## 13. Computer-use boundary (ADR 0340)
+## 13. Computer-use boundary (ADR 0342)
 
 Synthetic input is indistinguishable from the user, so the boundary is
 structural rather than advisory. The capability lives in host-core; the
