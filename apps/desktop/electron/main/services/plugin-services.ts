@@ -167,7 +167,7 @@ export function createPluginServices({
       (method === "plugin.session.rename" && body.updated === true) ||
       (method === "plugin.session.setAutoTitle" && body.updated === true) ||
       (method === "plugin.session.delete" && body.deleted === true) ||
-      // Message-level writes (ADR 0339) also change what the user sees in the
+      // Message-level writes (ADR 0341) also change what the user sees in the
       // open transcript, so they announce themselves like the session writes.
       (method === "plugin.session.appendMessage" && typeof body.messageId === "string") ||
       (method === "plugin.session.replaceMessages" && typeof body.messageCount === "number") ||

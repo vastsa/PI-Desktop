@@ -53,7 +53,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `session.read.own` | medium | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads only sessions imported by the calling plugin; no cross-plugin access |
 | `session.update.own` | medium | `pi.session.rename` | Confirm at install | Renames only the calling plugin's active imported sessions |
 | `session.delete.own` | high | `pi.session.delete` | Confirm at install | Trash/purge only the calling plugin's imported sessions; rate-limited |
-| `session.read.all` | high | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads **any** live session, including the conversations the user created in this app: title, project, model binding, and full message history with tool payloads. `.all` is a separate grant from `session.read.own` and wins when both are declared; the audit line records which scope authorised the call (ADR 0339) |
+| `session.read.all` | high | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads **any** live session, including the conversations the user created in this app: title, project, model binding, and full message history with tool payloads. `.all` is a separate grant from `session.read.own` and wins when both are declared; the audit line records which scope authorised the call (ADR 0341) |
 | `session.update.all` | high | `pi.session.rename`, `pi.session.appendMessage`, `pi.session.replaceMessages` | Confirm at install | Renames any session and rewrites its transcript: append, replace, or delete-single-message. Rewrites are refused while a turn is running (`TURN_RUNNING`) and rate-limited. A rename claims the manual title source, so `session.autoTitle` cannot overwrite it afterwards |
 | `session.delete.all` | high | `pi.session.delete`, `pi.session.deleteMessage`, `pi.session.truncateFrom` | Confirm at install | Trash/purge any session and cut or delete its messages. Keeps the session-delete rate limit; message rewrites share a 60/min message-write budget |
 | `usage.read` | medium | `pi.usage.listTurns` | Confirm at install | Read-only listing of completed-turn facts (per-turn token counters and identifiers, keyset-paginated); no message body and no write path |
@@ -135,7 +135,7 @@ plugin, so it carries three bounds the other modes do not:
   both, and `.all` wins. Message-level writes (`pi.session.appendMessage`,
   `replaceMessages`, `deleteMessage`, `truncateFrom`) exist only under `.all`,
   because rewriting a transcript is never an imported-session operation
-  (ADR 0339). `session.autoTitle` stays the narrow title path and does not
+  (ADR 0341). `session.autoTitle` stays the narrow title path and does not
   imply any session read grant
 
 ## 3A. Plan operating-state rule

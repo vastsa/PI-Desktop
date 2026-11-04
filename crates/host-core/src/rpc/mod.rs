@@ -737,7 +737,7 @@ fn plugin_session_plugin_id(params: &Value) -> Result<&str, JsonRpcError> {
         .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))
 }
 
-/// The access scope Electron main resolved from the plugin's grants (ADR 0339).
+/// The access scope Electron main resolved from the plugin's grants (ADR 0341).
 /// Host-core holds no permission data, so it enforces exactly what it is handed.
 fn plugin_session_scope(params: &Value) -> Result<plugin_sessions::SessionScope, JsonRpcError> {
     plugin_sessions::SessionScope::from_params(params).map_err(plugin_session_rpc_err)
@@ -3406,7 +3406,7 @@ async fn handle_request(
             let scope = plugin_session_scope(&params)?;
             let mut st = state.lock().await;
             // Ownership no longer bounds the target under `.all`, so the
-            // frequency brake is what stays (ADR 0339 §5).
+            // frequency brake is what stays (ADR 0341 §5).
             if !st.allow_plugin_delete(plugin_id) {
                 return Err(rpc_err(1006, "plugin delete rate exceeded", "RATE_LIMITED"));
             }
@@ -3414,7 +3414,7 @@ async fn handle_request(
                 .map_err(plugin_session_rpc_err)
         }
 
-        // Message-level writes (ADR 0339). Every arm charges the shared message
+        // Message-level writes (ADR 0341). Every arm charges the shared message
         // write budget before touching a transcript, and host-core itself
         // refuses a rewrite while a turn owns the session.
         "plugin.session.appendMessage"
@@ -7430,7 +7430,7 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
 
         // A user-created conversation carries no import origin row, so `.own` can
-        // never reach it and `.all` is the only path (ADR 0339).
+        // never reach it and `.all` is the only path (ADR 0341).
         let session_id = {
             let st = state.lock().await;
             sessions::create_session_with_options(

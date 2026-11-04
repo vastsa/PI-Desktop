@@ -1696,7 +1696,7 @@ export const PLUGIN_PERMISSIONS = [
   "session.read.own",
   "session.update.own",
   "session.delete.own",
-  // The `.all` family (ADR 0339): the same three verbs over every live session,
+  // The `.all` family (ADR 0341): the same three verbs over every live session,
   // including the user's own conversations. A separate grant rather than a
   // wider `.own`, so an existing install never silently gains reach. `all` wins
   // when a manifest declares both.

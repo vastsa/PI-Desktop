@@ -1078,7 +1078,7 @@ function normalizePluginSessionInput(
 }
 
 /**
- * Bound one message-level write payload (ADR 0339).
+ * Bound one message-level write payload (ADR 0341).
  *
  * The policy lives in `plugin-session-access` so it can be tested without a
  * plugin host; this wrapper only turns a problem into the broker's own error and
@@ -3310,7 +3310,7 @@ export class PluginRuntime {
         }
         return this.services.session.delete(loaded.manifest.id, { ...input, scope });
       }
-      // Message-level writes (ADR 0339). These have no `.own` form: rewriting a
+      // Message-level writes (ADR 0341). These have no `.own` form: rewriting a
       // transcript is only ever an `.all` capability, so each case names its
       // grant directly.
       case "session.appendMessage": {
@@ -4995,7 +4995,7 @@ export class PluginRuntime {
   }
 
   /**
-   * Resolve and audit the session-data scope for one call (ADR 0339).
+   * Resolve and audit the session-data scope for one call (ADR 0341).
    *
    * `*.all` is a separate grant from `*.own`, never a widening of it, and it
    * wins when a manifest declares both. The audit line records the scope that

@@ -3,7 +3,7 @@
 //! This module deliberately does not reuse the renderer's session RPCs. A call
 //! is either scoped to the `(plugin_id, source_id, external_id)` origin sidecar
 //! (`SessionScope::Own`, the ADR 0200 boundary) or — for a plugin holding a
-//! `*.all` grant — to every live session (`SessionScope::All`, ADR 0339).
+//! `*.all` grant — to every live session (`SessionScope::All`, ADR 0341).
 //! Imported sessions do not acquire project/provider bindings unless an
 //! explicit host-created project id is supplied.
 
@@ -43,12 +43,12 @@ pub const MAX_CONTENT_LIMIT: usize = 512_000;
 /// sends the literal `scope` parameter; host-core holds no permission data of
 /// its own (ADR 0200), so it enforces exactly the scope it is handed. An absent
 /// parameter means [`SessionScope::Own`], which keeps any caller that predates
-/// ADR 0339 on the original ownership boundary.
+/// ADR 0341 on the original ownership boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionScope {
     /// Only sessions imported by the calling plugin (ADR 0200).
     Own,
-    /// Every live session, imported or user-created (ADR 0339).
+    /// Every live session, imported or user-created (ADR 0341).
     All,
 }
 
@@ -1373,7 +1373,7 @@ pub fn delete(
 }
 
 // ---------------------------------------------------------------------------
-// Message-level writes (`session.update.all` / `session.delete.all`, ADR 0339)
+// Message-level writes (`session.update.all` / `session.delete.all`, ADR 0341)
 // ---------------------------------------------------------------------------
 
 /// One message a plugin writes. Same shape as a `session.import` message, plus
@@ -1567,7 +1567,7 @@ mod tests {
         SessionScope::Own
     }
 
-    /// The ADR 0339 boundary: every live session, imported or user-created.
+    /// The ADR 0341 boundary: every live session, imported or user-created.
     fn all() -> SessionScope {
         SessionScope::All
     }
@@ -2113,7 +2113,7 @@ mod tests {
             list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
         assert_eq!(messages["items"][0]["origin"], "external");
         // A second plugin without an import grant reaches the same row through
-        // `.all`, which is the whole point of ADR 0339.
+        // `.all`, which is the whole point of ADR 0341.
         assert!(get(&db, "plugin.two", all(), &json!({ "sessionId": id })).is_ok());
     }
 

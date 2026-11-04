@@ -63,7 +63,7 @@ pub struct AppState {
     pub plugin_batch_import_rates: HashMap<String, Vec<Instant>>,
     pub plugin_delete_rates: HashMap<String, Vec<Instant>>,
     /// Message-level rewrites are one row at a time but each one rewrites the
-    /// transcript, so they get their own, wider window (ADR 0339).
+    /// transcript, so they get their own, wider window (ADR 0341).
     pub plugin_message_write_rates: HashMap<String, Vec<Instant>>,
     /// Chat-started processes detached from their turn (dev servers, etc.).
     /// Lives with the host process; `shutdown` stops every running task.

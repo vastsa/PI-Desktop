@@ -1,5 +1,5 @@
 /**
- * Session-access policy for the plugin broker (ADR 0339).
+ * Session-access policy for the plugin broker (ADR 0341).
  *
  * Keeping it here — as pure functions over a granted-permission set and a raw
  * request payload — is deliberate: the `.all` family is the widest grant the

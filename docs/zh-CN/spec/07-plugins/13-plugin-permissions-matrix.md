@@ -56,7 +56,7 @@
 | `session.read.own` | 中等 | `pi.session.list`、`pi.session.get`、`pi.session.listMessages` | 安装时确认 | 只能读取本插件导入的会话；不能跨插件访问 |
 | `session.update.own` | 中等 | `pi.session.rename` | 安装时确认 | 只能重命名本插件拥有的活动导入会话 |
 | `session.delete.own` | 高 | `pi.session.delete` | 安装时确认 | 只能回收或清除本插件导入的会话；有频率限制 |
-| `session.read.all` | 高 | `pi.session.list`、`pi.session.get`、`pi.session.listMessages` | 安装时确认 | 可读取**任意**活动会话，包括用户在本应用中自己创建的对话：标题、项目、模型绑定，以及含工具负载的完整消息记录。`.all` 是与 `session.read.own` 并列的独立授权，两者都声明时 `.all` 生效；审计行会记录本次调用依据的作用域（ADR 0339） |
+| `session.read.all` | 高 | `pi.session.list`、`pi.session.get`、`pi.session.listMessages` | 安装时确认 | 可读取**任意**活动会话，包括用户在本应用中自己创建的对话：标题、项目、模型绑定，以及含工具负载的完整消息记录。`.all` 是与 `session.read.own` 并列的独立授权，两者都声明时 `.all` 生效；审计行会记录本次调用依据的作用域（ADR 0341） |
 | `session.update.all` | 高 | `pi.session.rename`、`pi.session.appendMessage`、`pi.session.replaceMessages` | 安装时确认 | 可重命名任意会话并改写其记录：追加、替换或删除单条消息。回合运行期间拒绝改写（`TURN_RUNNING`），并有频率限制。重命名会占用「手动标题」来源，`session.autoTitle` 之后无法覆盖 |
 | `session.delete.all` | 高 | `pi.session.delete`、`pi.session.deleteMessage`、`pi.session.truncateFrom` | 安装时确认 | 可回收或清除任意会话，并截断或删除其消息。保留会话删除频率限制；消息改写共用每分钟 60 次的预算 |
 | `usage.read` | 中等 | `pi.usage.listTurns` | 安装时确认 | 已完成 turn 事实行的只读列举（每回合 token 计数与标识符，keyset 分页）；不含消息正文，无写路径 |

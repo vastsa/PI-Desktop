@@ -59,7 +59,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "session.import": "high",
   "session.delete.own": "high",
   // The `.all` family reaches the user's own conversations, so every verb sits
-  // at the top tier the matrix gives the imported-only delete (ADR 0339).
+  // at the top tier the matrix gives the imported-only delete (ADR 0341).
   "session.read.all": "high",
   "session.update.all": "high",
   "session.delete.all": "high",

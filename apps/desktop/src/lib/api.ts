@@ -2083,7 +2083,7 @@ export const api = {
       selectSessionId?: string;
       /**
        * The one session whose transcript changed. A plugin message write names
-       * it so the shell can repaint an already open transcript (ADR 0339).
+       * it so the shell can repaint an already open transcript (ADR 0341).
        */
       sessionId?: string;
     }) => void,

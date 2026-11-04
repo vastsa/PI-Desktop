@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-09
 - Decision: D367
-- Amended: 2026-10-20 (ADR 0339 adds the `session.*.all` grants and the
+- Amended: 2026-10-20 (ADR 0341 adds the `session.*.all` grants and the
   message-level writes; the ownership boundary below still governs `.own`)
 
 ## Context
@@ -60,10 +60,10 @@ trash-to-purge lifecycle, migration-compatible schema creation, and rate
 limits. Full UI E2E execution remains deferred per repository policy; scenarios
 E2E-214 and E2E-215 are recorded in the E2E plan.
 
-## Amendment (ADR 0339)
+## Amendment (ADR 0341)
 
 The ownership premise above — "a plugin can only query or mutate its own rows" —
-is no longer the only boundary the host can express. ADR 0339 adds
+is no longer the only boundary the host can express. ADR 0341 adds
 `session.read.all`, `session.update.all`, and `session.delete.all`, which carry
 the same verbs over every live session, and it adds message-level writes
 (`appendMessage`, `replaceMessages`, `deleteMessage`, `truncateFrom`) that this
@@ -85,5 +85,5 @@ What changes for this ADR:
   `trash`, and `purge` statements now follow the scope Electron sends instead
   of hard-coding it.
 
-See [ADR 0339](0339-plugin-session-all-scope.md) for the decision, the risk
+See [ADR 0341](0341-plugin-session-all-scope.md) for the decision, the risk
 argument, and the alternatives.

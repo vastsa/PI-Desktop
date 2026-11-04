@@ -397,6 +397,6 @@ Each ADR includes:
 | 0337 | [Keep the request prefix stable across delegation settlements](0337-stable-prompt-prefix-across-delegation.md) | Accepted (supersedes ADR 0279 §9) |
 | 0338 | [A user-supplied video owns the boot surface, served over a host-owned scheme](0338-user-supplied-startup-animation.md) | Accepted (D679) |
 | 0339 | [Chat file references open absolute files outside the managed roots](0339-chat-file-refs-open-absolute-files-outside-managed-roots.md) | Accepted (amends ADR 0262 §4) |
+| 0341 | [Let a granted plugin reach every session, not only its imports](0341-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
-| 0339 | [Let a granted plugin reach every session, not only its imports](0339-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
