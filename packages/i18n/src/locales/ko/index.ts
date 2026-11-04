@@ -2958,6 +2958,10 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     platform: "This platform",
     platformUnsupported: "No backend on this platform",
     platformUnknown: "Checking this platform…",
+    requestPermission: "손쉬운 사용 권한 요청",
+    requestingPermission: "손쉬운 사용 권한 요청 중…",
+    permissionPending: "시스템 설정에서 PI-Desktop의 손쉬운 사용 권한을 켠 다음 돌아오면 상태가 갱신됩니다.",
+    permissionRequestFailed: "손쉬운 사용 권한을 요청하거나 시스템 설정을 열 수 없습니다. 다시 시도하세요. ({{code}})",
     permission: {
       granted: "Accessibility granted",
       denied: "Accessibility denied",

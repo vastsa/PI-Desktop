@@ -2889,6 +2889,10 @@ export const ptBR = {
     platform: "This platform",
     platformUnsupported: "No backend on this platform",
     platformUnknown: "Checking this platform…",
+    requestPermission: "Solicitar permissão de acessibilidade",
+    requestingPermission: "Solicitando acessibilidade…",
+    permissionPending: "Ative a acessibilidade para o PI-Desktop nos Ajustes do Sistema e volte aqui para atualizar o status.",
+    permissionRequestFailed: "Não foi possível solicitar acessibilidade ou abrir os Ajustes do Sistema. Tente novamente. ({{code}})",
     permission: {
       granted: "Accessibility granted",
       denied: "Accessibility denied",

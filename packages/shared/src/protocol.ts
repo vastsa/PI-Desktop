@@ -141,6 +141,8 @@ export const IPC = {
      * handler.
      */
     computerCapabilities: "pi-desktop/computer/capabilities",
+    /** Ask the OS for the grant the platform needs; the user's click starts it. */
+    computerRequestPermission: "pi-desktop/computer/permission/request",
     computerListTargets: "pi-desktop/computer/listTargets",
     computerGrantCreate: "pi-desktop/computer/grant/create",
     computerGrantRevoke: "pi-desktop/computer/grant/revoke",

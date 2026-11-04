@@ -2916,6 +2916,10 @@ sklm: {
     platform: "当前平台",
     platformUnsupported: "本平台暂无后端",
     platformUnknown: "正在检查当前平台……",
+    requestPermission: "申请辅助功能权限",
+    requestingPermission: "正在申请辅助功能权限……",
+    permissionPending: "请在系统设置中开启 PI-Desktop 的辅助功能权限，返回此处后会自动刷新状态。",
+    permissionRequestFailed: "申请辅助功能权限或打开系统设置失败，请重试。（{{code}}）",
     permission: {
       granted: "已获得辅助功能权限",
       denied: "辅助功能权限被拒绝",

@@ -2967,6 +2967,10 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     platform: "This platform",
     platformUnsupported: "No backend on this platform",
     platformUnknown: "Checking this platform…",
+    requestPermission: "Request Accessibility permission",
+    requestingPermission: "Requesting Accessibility…",
+    permissionPending: "Enable Accessibility for PI-Desktop in System Settings, then return here to refresh the status.",
+    permissionRequestFailed: "Could not request Accessibility or open System Settings. Try again. ({{code}})",
     permission: {
       granted: "Accessibility granted",
       denied: "Accessibility denied",

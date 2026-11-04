@@ -19662,11 +19662,34 @@ their separate platform acceptance.
   script exists.
 ## Computer use (ADR 0342)
 
-Every one of these is a landing gate for the capability described in
-[03-runtime/computer-use](../03-runtime/computer-use.md). Stage 1 is
-implemented, so the refusals each scenario depends on are covered by unit
-tests; the scenarios themselves drive a real application and are all
-`NOT RUN`. Automation that does exist is named per scenario.
+Native-control scenarios remain landing gates for
+[03-runtime/computer-use](../03-runtime/computer-use.md). Their underlying
+refusals are unit-covered, but driving real applications remains `NOT RUN`.
+The permission-request UI below has isolated fixture automation.
+
+### E2E-COMPUTER-USE-request-accessibility-from-settings
+
+- **Preconditions**: Isolated Electron fixture profile; OS calls mocked at IPC
+  and Electron boundaries; computer use disabled; no provider or real OS prompt.
+- **Steps**: Open Settings with missing Accessibility; focus and click its status
+  button twice. Complete the request while permission remains missing. Grant it
+  externally and return focus. Exercise denied permission, a failed request and
+  retry, a stale capabilities read, focus during a pending request, unsupported
+  platform, and unmount during a request.
+- **Expected**: Opening Settings or toggling the feature never requests OS
+  permission. Explicit click alone sends `computer.requestPermission`; while
+  pending, the button is busy/disabled and duplicate clicks are ignored. Missing
+  trust opens only the fixed macOS Accessibility pane and explains that the user
+  must enable it. Errors are visible and retryable. Focus/visibility refreshes
+  without prompting; stale results and unmounted listeners cannot update UI.
+  Granted/unsupported states are labels. Non-main senders are rejected before
+  OS calls; opening failure propagates; no grant, capture, or input is dispatched.
+- **Automation**: `node --test apps/desktop/test/computer-use-permission-user-path.test.mjs
+  apps/desktop/test/computer-use-permission-ipc.test.mjs`; shared capability
+  selection tests and host-core unsupported-backend tests cover platform gating.
+- **Specs**: [Computer Use](../03-runtime/computer-use.md), Settings and UX surface.
+- **Status**: Fixture automation PASS; actual macOS TCC prompt/switch NOT RUN.
+  Native OS approval remains a manual system decision.
 
 ### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
 

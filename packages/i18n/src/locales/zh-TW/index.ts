@@ -2914,6 +2914,10 @@ sklm: {
     platform: "目前平台",
     platformUnsupported: "本平台暫無後端",
     platformUnknown: "正在检查目前平台……",
+    requestPermission: "申請輔助使用權限",
+    requestingPermission: "正在申請輔助使用權限……",
+    permissionPending: "請在系統設定中開啟 PI-Desktop 的輔助使用權限，返回此處後會自動更新狀態。",
+    permissionRequestFailed: "申請輔助使用權限或開啟系統設定失敗，請重試。（{{code}}）",
     permission: {
       granted: "已取得輔助使用權限",
       denied: "輔助使用權限被拒絕",

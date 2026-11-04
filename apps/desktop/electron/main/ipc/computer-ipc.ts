@@ -10,6 +10,7 @@
  */
 import { IPC, type ComputerCapabilities, type ComputerGrantView } from "@pi-desktop/shared";
 import { capturePermissionState } from "../computer-use/capture";
+import { openAccessibilitySettings } from "../computer-use/permission";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
 
@@ -32,6 +33,23 @@ export function registerComputerIpc({ registrar, getHost, publishGrant }: Comput
     const capabilities = await host.call<ComputerCapabilities>("computer.capabilities", {});
     // host-core cannot answer for the capture path: that one is Chromium's.
     return { ...capabilities, capture: capturePermissionState() };
+  });
+
+  // The user's click: the host asks macOS for Accessibility, and when the
+  // answer is still "no" main opens the pane that holds the switch. The reply
+  // is the same capability object the row already renders, so the badge updates
+  // without a second round trip.
+  registrar.handleWithEvent(IPC.invoke.computerRequestPermission, async (event) => {
+    registrar.assertMainWindowSender(event);
+    const host = getHost();
+    if (!host) hostUnavailable();
+    const capabilities = await host.call<ComputerCapabilities>(
+      "computer.requestPermission",
+      {},
+    );
+    const view = { ...capabilities, capture: capturePermissionState() };
+    await openAccessibilitySettings(view);
+    return view;
   });
 
   registrar.handleWithEvent(IPC.invoke.computerListTargets, async (event) => {

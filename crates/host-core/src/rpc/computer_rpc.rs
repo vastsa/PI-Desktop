@@ -88,6 +88,27 @@ pub(crate) async fn handle(
         "computer.capabilities" => Ok(serde_json::to_value(desktop.capabilities())
             .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?),
 
+        // The settings row asks the OS on the user's click. It stays readable
+        // while the feature is off: the grant is what makes computer use usable
+        // at all, and asking for it must not require turning the feature on
+        // first — that would make the toggle look broken on a fresh install.
+        "computer.requestPermission" => {
+            let accessibility = desktop
+                .request_permission()
+                .map_err(|error| refusal_err(error.into()))?;
+            let st = state.lock().await;
+            audit_computer(
+                &st,
+                "computer.permission.requested",
+                None,
+                json!({ "accessibility": accessibility }),
+            );
+            let mut capabilities = desktop.capabilities();
+            capabilities.accessibility = accessibility;
+            Ok(serde_json::to_value(capabilities)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?)
+        }
+
         "computer.listTargets" => {
             if !settings_enabled(&state).await {
                 return Err(refusal_err(Refusal::Disabled));

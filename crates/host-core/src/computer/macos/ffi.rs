@@ -80,11 +80,28 @@ extern "C" {
         number_type: CFIndex,
         out: *mut c_void,
     ) -> Boolean;
+    /// Builds a dictionary from parallel key/value arrays. The callbacks are
+    /// `NULL` here, which means the dictionary borrows both arrays for its whole
+    /// lifetime — fine for the synchronous trust call that is its only user.
+    pub(super) fn CFDictionaryCreate(
+        allocator: CFTypeRef,
+        keys: *const CFTypeRef,
+        values: *const CFTypeRef,
+        num_values: CFIndex,
+        key_callbacks: *const c_void,
+        value_callbacks: *const c_void,
+    ) -> CFDictionaryRef;
+    /// The shared boolean CoreFoundation hands out for `true`. Immortal, so it
+    /// is never released.
+    pub(super) static kCFBooleanTrue: CFTypeRef;
 }
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     pub(super) fn AXIsProcessTrusted() -> Boolean;
+    /// The OS handles an asynchronous prompt when this option is true.
+    pub(super) fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> Boolean;
+    pub(super) static kAXTrustedCheckOptionPrompt: CFStringRef;
     pub(super) fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
     pub(super) fn AXUIElementCopyAttributeValue(
         element: AXUIElementRef,

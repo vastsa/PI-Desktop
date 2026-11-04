@@ -2951,6 +2951,10 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     platform: "This platform",
     platformUnsupported: "No backend on this platform",
     platformUnknown: "Checking this platform…",
+    requestPermission: "Erişilebilirlik izni iste",
+    requestingPermission: "Erişilebilirlik izni isteniyor…",
+    permissionPending: "Sistem Ayarları’nda PI-Desktop için erişilebilirliği etkinleştirin, ardından durumu yenilemek için buraya dönün.",
+    permissionRequestFailed: "Erişilebilirlik izni istenemedi veya Sistem Ayarları açılamadı. Tekrar deneyin. ({{code}})",
     permission: {
       granted: "Accessibility granted",
       denied: "Accessibility denied",

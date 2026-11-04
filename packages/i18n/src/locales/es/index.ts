@@ -2919,6 +2919,10 @@ sklm: {
     platform: "This platform",
     platformUnsupported: "No backend on this platform",
     platformUnknown: "Checking this platform…",
+    requestPermission: "Solicitar permiso de accesibilidad",
+    requestingPermission: "Solicitando accesibilidad…",
+    permissionPending: "Activa la accesibilidad para PI-Desktop en Ajustes del Sistema y vuelve aquí para actualizar el estado.",
+    permissionRequestFailed: "No se pudo solicitar accesibilidad o abrir Ajustes del Sistema. Inténtalo de nuevo. ({{code}})",
     permission: {
       granted: "Accessibility granted",
       denied: "Accessibility denied",

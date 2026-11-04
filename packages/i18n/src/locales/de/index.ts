@@ -2919,6 +2919,10 @@ sklm: {
     platform: "This platform",
     platformUnsupported: "No backend on this platform",
     platformUnknown: "Checking this platform…",
+    requestPermission: "Zugriff auf Bedienungshilfen anfordern",
+    requestingPermission: "Zugriff wird angefordert…",
+    permissionPending: "Aktiviere PI-Desktop unter Bedienungshilfen in den Systemeinstellungen. Kehre dann zurück, um den Status zu aktualisieren.",
+    permissionRequestFailed: "Bedienungshilfen konnten nicht angefordert oder Systemeinstellungen nicht geöffnet werden. Versuche es erneut. ({{code}})",
     permission: {
       granted: "Accessibility granted",
       denied: "Accessibility denied",
