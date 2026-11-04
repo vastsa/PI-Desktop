@@ -5743,15 +5743,32 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `auto` 不签发任何授权，口述请求也不能。在授权内，检查类动作自动允许，输入遵循
   `confirm-each`（`ask` 下唯一策略）或需显式选择的 `autonomous-in-scope`。
   Plan 与 Goal 硬拒绝该工具，且它不存在 `allow-session` 授权。
-- 语音不获得新权限：一句口述只能经由现有委派/分类器路径成为绑定会话上的工作
-  请求，由 Agent 轮次执行。语音驱动的电脑操作是任务委派，不是逐帧遥控。
-- 受支持平台为 macOS（`AXUIElement`、ScreenCaptureKit）与 Windows（UIA、
-  `SendInput`，提权目标被拒绝）；Linux/X11 基于 AT-SPI 与 XTEST 尽力而为；
-  Wayland 拒绝输入并保留门户截取。每条不支持路径都有自己的错误码，绝不挂起，
-  也绝不静默空操作。
+- 电脑操作有**自己的模型绑定**——用户从已配置的 Provider 行中挑选的一组
+  `{ providerId, modelId }`，沿用 `imageGeneration` 的先例。
+  `packages/computer-use` 中一条有界的"观察—决策—动作"回路把一条指令按严格
+  动作 schema 变成一串已校验的步骤；对话模型绝不驱动机器，也没有静默回退。
+  因此面向 Agent 的工具接受的是一条指令，而不是 `uid` 或坐标，返回的是有界
+  摘要而不是内层记录。
+- 回路与截取跑在 Electron Main 而不是 host-core：回路需要模型 Provider，截取
+  需要 Chromium，host-core 两者都不持有。host-core 保留一切能够拒绝的东西——
+  目标枚举、无障碍、合成、授权中介、每动作重校验、审计——而 `Computer` 沿用
+  `GenerateImages` 的形状：`tools.execute` 做权限评估，Main 在宿主放行后才执行。
+- **Agent 的光标是画出来的，不是抢来的。** 动作走无障碍动作或面向窗口的事件，
+  真实指针永不被挪动，Agent 工作期间用户的鼠标仍归自己；只能靠挪动真实指针来
+  动作的路径会被拒绝。一个无边框、透明、穿透点击、置顶的浮层画出 Agent 自己的
+  光标，它不拥有动作的任何部分，不能接收输入，也绝不是动作落点的事实来源。
+- 语音在首个版本中只定规格、刻意不接通：唯一调用方是 Agent。阶段 3 接通后，
+  一句口述只能经由现有委派/分类器路径成为绑定会话上的工作请求，属于任务委派
+  而不是遥控。
+- 三个桌面平台都在范围内。截取各平台统一用 `desktopCapturer`，因此只有检查与
+  输入是平台工作：macOS（`AXUIElement` 动作、`CGEventPostToPid` 按键、手写
+  framework FFI 且不引入新 crate）属阶段 1；Windows（UIA、面向窗口的消息、
+  提权目标被拒绝）与 Linux/X11（AT-SPI，尽力而为）属阶段 2；Wayland 拒绝输入
+  并保留门户截取。每条不支持路径都有自己的错误码，绝不挂起，也绝不静默空操作，
+  保真度只是部分的后端必须自行声明，而不是返回一棵空树。
 - 非目标第 9 条是修订而非删除：浏览器接管、无人看管的全桌面控制，以及任何由
   模型自行选择目标，仍然是非目标。
-- 只定规格未落实现：`03-runtime/computer-use.md`、`08-error-codes.md` §3.10
+- 契约页面：`03-runtime/computer-use.md`、`08-error-codes.md` §3.10
   （`COMPUTER_*`）、`05-host-core-rust.md` §2/§5b/§6、
   `05-security/01-security.md` §13、`03-tools-and-permissions.md` §0/§2/§6，
-  以及五条 `E2E-COMPUTER-USE-*` 落地闸门，全部为 `NOT RUN`。
+  以及五条 `E2E-COMPUTER-USE-*` 落地闸门，在阶段 1 落地前全部为 `NOT RUN`。

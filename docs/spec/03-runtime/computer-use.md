@@ -1,9 +1,9 @@
 # Computer Use v1
 
-> Status: Design accepted, not implemented. This page is the authoritative
-> contract for the capability described in
-> [ADR 0340](../../adr/0340-os-computer-use-capability.md). No code in the
-> repository implements it yet.
+> Status: Stage 1 (MVP) in progress. This page is the authoritative contract
+> for the capability described in
+> [ADR 0340](../../adr/0340-os-computer-use-capability.md). The agent is the
+> only caller; the spoken entry point is specified here and built in stage 3.
 
 ## Scope
 
@@ -12,37 +12,47 @@ explicitly handed to it. It is disabled by default, it is separate from the
 embedded `Browser` tool, and it never operates the whole desktop at once: every
 call runs against one user-picked scope.
 
-It is reachable by voice. Live Voice remains a voice interface with no new
-authority — a spoken request becomes a work request on the bound session
+The spoken entry point is deliberately not wired in stage 1. When it lands,
+Live Voice gains no authority of its own — a spoken request becomes a work
+request on the bound session
 ([Live Voice Work Session Integration](live-work-session.md)), the existing
 Agent turn calls the tool, and the session's model, permission mode, and
-approval cards apply unchanged. Voice-driven computer use is task delegation,
-not per-frame teleoperation; a spoken instruction is answered by an agent turn
-with observable progress, not by a continuous control loop.
+approval cards apply unchanged. Voice-driven computer use will be task
+delegation, not per-frame teleoperation.
 
 | Surface | Owner | Reach |
 |---|---|---|
 | `Browser` tool (`pi.browser`, ADR 0170) | Bundled plugin over allowlisted CDP | The embedded `WebContentsView` guest only |
-| `Computer` tool (this page) | host-core builtin | One granted native window or application |
+| `Computer` tool (this page) | Electron main, gated by host-core | One granted native window or application |
 | Live Voice | Electron main and renderer | Audio, transcript, and work delegation; no input synthesis |
 
 ## Ownership and process model
 
 ```text
-Renderer (picker UI, indicator)
-  → Preload IPC → Electron Main (thin: picker, indicator, tools.execute relay)
-    → Rust host-core `computer.*` (windows, accessibility, synthesis, capture,
-      grant broker, audit)
+Renderer (picker, indicator, cursor overlay)
+  → Preload IPC → Electron Main
+       Computer tool handler, bounded loop, bound-model call,
+       scope-cropped capture, overlay driver
+    → Rust host-core `computer.*`
+       targets, accessibility, synthesis, grant broker, re-validation, audit
 ```
 
-host-core owns window enumeration, accessibility inspection, event synthesis,
-screen capture, the grant broker, the action budget, and the audit record. The
-renderer never receives a native window handle, a native element reference, or
-an input primitive; it receives only the picker's display list and the
-indicator's grant view. The agent sidecar reaches the capability exclusively
-through `tools.execute` on the existing `host.proxy` allowlist — no new proxy
-method is added, and `computer.*` is not a plugin host API and does not appear
-in the plugin permissions matrix.
+host-core owns target enumeration, accessibility inspection, event synthesis,
+the grant broker, the action budget, the per-action re-validation, and the audit
+record. It is the only component that can refuse. The loop and the capture sit
+in Electron main because the loop needs a model provider and the capture needs
+Chromium, and host-core carries neither ([05-host-core-rust](05-host-core-rust.md) §3).
+
+The renderer never receives a native window handle, a native element reference,
+or an input primitive; it receives the picker's display list, the indicator's
+grant view, and the overlay's draw commands. The agent sidecar reaches the tool
+exclusively through `tools.execute` on the existing `host.proxy` allowlist — no
+new proxy method is added, and `computer.*` is not a plugin host API and does
+not appear in the plugin permissions matrix.
+
+`Computer` follows the `GenerateImages` shape: host-core classifies it `high`
+and performs the permission evaluation through `tools.execute`, and the handler
+in main runs only after the host authorises the call.
 
 ## Grant and scope
 
@@ -102,18 +112,29 @@ hard-deny it before permission evaluation, exactly like `Write` and `Edit`: it
 mutates state outside the workspace that the host cannot snapshot, diff, or roll
 back.
 
-| Action | Risk | Behavior |
-|---|---|---|
-| `describe_scope` | low | Returns the grant view: target label, revision, policy, capture mode, remaining budget |
-| `inspect` | low | Structured accessibility tree of the scope: role, name, value presence, enabled, focused, bounds, per-grant opaque `uid` |
-| `screenshot` | low | Scope-cropped, downscaled image plus a `basis` token; refused under an `a11y-only` grant |
-| `act` | high | One bounded batch of input addressed by `uid`, or by coordinates against a `basis` |
-| `wait` | low | Bounded wait for a scope condition (element present, enabled, text changed) with an explicit timeout |
+The agent calls it with one natural-language `instruction` and an optional
+`maxSteps`; `observeOnly` returns a description of the scope without acting. It
+takes no `uid`, no coordinate, and no target: addressing is the inner loop's
+job, and the target is the grant's. The result is a bounded summary naming what
+changed, how many steps ran, and why the loop stopped — not a step-by-step
+transcript.
 
-`act` supports `click`, `double_click`, `right_click`, `set_value`,
+Underneath, main drives these host operations. They are not agent-facing.
+
+| Host operation | Risk | Behavior |
+|---|---|---|
+| `computer.capabilities` | low | Backend identity, fidelity, per-platform OS permission state, session type |
+| `computer.listTargets` | low | Pickable windows for the picker only; refused targets are listed with their reason, never silently dropped |
+| `computer.grantCreate` / `grantRevoke` / `grantDescribe` | low | Mint, revoke, and read the single active grant; minting requires the user's picker choice |
+| `computer.inspect` | low | Structured accessibility tree of the scope: role, name, value presence, enabled, focused, bounds, per-grant opaque `uid`, declared fidelity |
+| `computer.act` | high | One validated action addressed by `uid`, or by coordinates against a `basis`, after re-measuring the scope |
+
+`computer.act` supports `click`, `double_click`, `right_click`, `set_value`,
 `press_keys`, `scroll`, and `select`. Each is dispatched through the platform
-accessibility action when one exists, and falls back to synthesis only when it
-does not.
+accessibility action when one exists, and falls back to a window-targeted event
+only when it does not. Capture is performed in main over Chromium's
+`desktopCapturer`, cropped to the geometry host-core measured, and is refused
+under an `a11y-only` grant.
 
 Element identity is accessibility-first. A `uid` is opaque, minted per grant,
 and invalidated by a revision change. `inspect` returns no element values, only
@@ -123,10 +144,10 @@ effect of enumeration.
 
 ### Coordinates and freshness
 
-Coordinate input exists only as `act` with a `basis`: a token minted by a
-`screenshot` of the same scope, carrying the grant revision and the measured
-window geometry. The host re-validates the basis immediately before synthesis
-and refuses a stale one. Therefore:
+Coordinate input exists only as `computer.act` with a `basis`: the grant
+revision plus the window geometry a capture of the same scope was taken
+against. The host re-measures and re-validates the basis immediately before
+synthesis and refuses a stale one. Therefore:
 
 - A model can never dispatch a blind click. Without a capture there is no basis,
   and without a basis there are no coordinates.
@@ -135,6 +156,48 @@ and refuses a stale one. Therefore:
 - Coordinates are scope-relative and clamped to the measured window bounds. A
   coordinate outside them is an error, not a clamped click.
 
+## The bound model and the loop
+
+Computer Use carries its own model binding — one `{ providerId, modelId }` the
+user picks in settings from the existing provider rows, following the
+`imageGeneration` precedent. The conversation model is not used to drive the
+machine, and there is no silent fallback to it: with no binding configured the
+tool reports a configuration error. The user decides which model may operate
+their computer, and what that costs.
+
+The loop is a pure module in `packages/computer-use`, independent of Electron:
+
+1. Observe: the accessibility tree for the scope, plus a scope-cropped capture
+   when the grant allows pixels, plus the grant view.
+2. Decide: one request to the bound model, which must answer with exactly one
+   action against a strict schema, or `done`, or `ask`.
+3. Validate: the schema, then the `uid` against the current tree, the
+   coordinates against the measured geometry, the grant revision, and the
+   remaining budget. Anything outside the schema is a refusal, not an attempt.
+4. Act: one `computer.act`, then observe again.
+
+The loop stops on `done`, on the step limit (the call's `maxSteps` clamped by
+the grant's action budget), on revocation, on expiry, or on repeated failure of
+the same step. Model prose never reaches a tool result unparsed: the summary is
+assembled from what the loop actually did. Nothing in the model's answer can
+widen the scope, change the target, raise the budget, or disable a refusal.
+
+## The agent's cursor is drawn, not stolen
+
+Actions are dispatched through accessibility actions or window-targeted events,
+so the real system cursor never warps. The user keeps their mouse and keyboard
+while the agent works, and a platform path that could only act by warping the
+real pointer is refused rather than taken.
+
+A separate frameless, transparent, click-through, always-on-top overlay window
+draws the agent's own cursor: it travels to the element about to be acted on and
+shows a press when the action is dispatched. The overlay is visualization only.
+It owns no part of the action, never receives input (it is created with mouse
+events ignored), and a failure to draw it neither blocks an action nor stands in
+for one. It is also not the source of truth for where an action landed — the
+host's re-measurement is, and the overlay follows it. The overlay closes with
+the grant.
+
 ## Permission flow
 
 The permission mode governs the grant, not each keystroke.
@@ -142,9 +205,9 @@ The permission mode governs the grant, not each keystroke.
 | Stage | `ask` | `accept-edits` | `auto` |
 |---|---|---|---|
 | Create a grant | confirm (desktop UI) | confirm (desktop UI) | confirm (desktop UI) |
-| `inspect`, `screenshot`, `describe_scope` in an active grant | allow | allow | allow |
-| `act` under `confirm-each` | confirm per batch | confirm per batch | confirm per batch |
-| `act` under `autonomous-in-scope` | unavailable | allow | allow |
+| Inspect, capture, and describe the scope in an active grant | allow | allow | allow |
+| An input action under `confirm-each` | confirm per step | confirm per step | confirm per step |
+| An input action under `autonomous-in-scope` | unavailable | allow | allow |
 | Plan / Goal | hard deny | hard deny | hard deny |
 
 `confirm-each` is the default and the only input policy available under `ask`.
@@ -156,37 +219,48 @@ outlive the target it was approved for.
 
 ## Platform support
 
-| Platform | Inspection and input | Capture | Notes |
-|---|---|---|---|
-| macOS | `AXUIElement` behind the Accessibility TCC grant | ScreenCaptureKit behind the Screen Recording TCC grant | Secure input state refuses both |
-| Windows | UI Automation plus `SendInput` | Desktop Duplication / window capture | A window owned by a higher-integrity process is refused, never silently dropped |
-| Linux / X11 | AT-SPI plus XTEST, best effort | X11 capture | Requires an accessibility bus; absent toolkit support is reported, not guessed |
-| Linux / Wayland | Input refused | Portal screen cast | No portable synthetic input exists; capture stays available |
+All three desktop platforms are in scope. Capture is the same everywhere —
+Chromium's `desktopCapturer`, cropped in main to the geometry host-core
+measured — so only inspection and input are platform work.
 
-Any platform or stage that is not implemented reports an explicit unsupported
-code. A missing capability is never a hang and never a no-op reported as
-success.
+| Platform | Inspection and input | Stage | Notes |
+|---|---|---|---|
+| macOS | `AXUIElement` actions behind the Accessibility TCC grant; `CGEventPostToPid` for keys into the granted app | 1 | Hand-declared framework FFI, no new crates; secure input refuses both capture and input |
+| Windows | UI Automation patterns, with window-targeted messages as the fallback | 2 | A window owned by a higher-integrity process is refused, never silently dropped |
+| Linux / X11 | AT-SPI actions, best effort | 2 | Requires an accessibility bus; absent toolkit support is reported, not guessed |
+| Linux / Wayland | Input refused | — | No portable synthetic input exists; capture stays available through the portal |
+
+A platform whose backend is not built yet reports
+`COMPUTER_PLATFORM_UNSUPPORTED` from every operation that would need it, and
+`computer.capabilities` says so before the user tries. A backend whose fidelity
+is partial declares that in its `inspect` result rather than returning an empty
+tree that reads like an empty window. A missing capability is never a hang and
+never a no-op reported as success.
 
 ## Settings and UX surface
 
 - Computer Use is off by default. Enabling it does not create a grant, request
   an OS permission, capture a frame, or enumerate a window.
-- A doctor view reports per-platform OS permission state (Screen Recording,
-  Accessibility, accessibility bus, session type) and distinguishes "not
-  requested", "denied", and "unsupported on this platform". A denied TCC grant
-  must not be presented as a broken feature.
+- The model binding is explicit. Settings offers the provider rows the user
+  already configured; an enabled feature with no binding is a visible
+  unconfigured state, not a silent fallback to the conversation model.
+- A doctor view reports per-platform OS permission state (accessibility,
+  capture, accessibility bus, session type) and distinguishes "not requested",
+  "denied", and "unsupported on this platform". A denied TCC grant must not be
+  presented as a broken feature.
 - The target picker is host-driven and shows the display list only while it is
   open. It is the only way to choose a target.
 - The grant indicator is visible for the whole life of a grant, names the
   target, shows the remaining budget and the capture mode, and carries Stop. It
-  stays visible while the app is in the background, and the Live Voice call bar
-  reflects an active grant.
+  stays visible while the app is in the background.
 - The grant card states, before approval, which capture mode is being approved
   and that `a11y-and-pixels` means screenshots of the target may enter the
   session transcript.
+- The cursor overlay appears with the first action of a grant and closes with
+  the grant.
 
-Component-level wording for the picker, the indicator, the grant card, and the
-doctor view lands with the implementing change.
+Component-level wording for the picker, the indicator, the grant card, the
+overlay, and the doctor view lands with the implementing change.
 
 ## Audit and privacy
 
@@ -207,17 +281,22 @@ grant, or permissions.
 
 Codes are registered in [08-error-codes](08-error-codes.md) §3.10 under the
 `COMPUTER_` prefix. The contract is that each distinct refusal is separately
-attributable: feature disabled, no grant, scope violation, stale basis, stale
-revision, budget exhausted, grant expired, self-target refused, secure input
-refused, denylisted target, OS permission missing, elevated target, platform
-unsupported, element not found or not actionable, and timeout.
+attributable: feature disabled, no binding, no grant, scope violation, stale
+basis, stale revision, budget exhausted, grant expired, self-target refused,
+secure input refused, denylisted target, OS permission missing, elevated
+target, platform unsupported, element not found or not actionable, a model
+answer outside the action schema, and timeout.
 
 ## Verification and limits
 
 - Automated coverage must include, before any of this ships: the self-target
   refusal, the secure-input refusal, stale-basis and stale-revision rejection,
   coordinate clamping, budget and expiry closure, single-grant exclusivity,
-  Plan/Goal denial, and the unsupported-platform path.
+  Plan/Goal denial, the unsupported-platform path, the missing-binding path,
+  and a model answer outside the action schema.
+- The loop is covered without a provider: the model call is injected, so the
+  schema, the validation, the step limits, and the stop conditions are unit
+  tested against scripted answers including malformed and adversarial ones.
 - The accessibility tree, the synthesis path, and the capture path are
   platform-specific and cannot be proven by fixtures. Real-device acceptance
   per platform is a separate, explicitly authorized matrix, and a green fixture

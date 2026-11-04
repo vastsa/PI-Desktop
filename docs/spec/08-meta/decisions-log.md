@@ -8223,18 +8223,41 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   follows `confirm-each` (the only policy under `ask`) or an opt-in
   `autonomous-in-scope`. Plan and Goal hard-deny the tool, and no
   `allow-session` grant exists for it.
-- Voice gains no authority: a spoken request reaches `Computer` only as a work
-  request on the bound session through the existing delegate/classifier path,
-  executed by the Agent turn. Voice-driven computer use is task delegation, not
-  per-frame teleoperation.
-- macOS (`AXUIElement`, ScreenCaptureKit) and Windows (UIA, `SendInput`, with
-  higher-integrity targets refused) are the supported platforms; Linux/X11 is
-  best-effort over AT-SPI and XTEST; Wayland refuses input and keeps portal
-  capture. Every unsupported path has its own code, never a hang or a silent
-  no-op.
+- Computer use carries **its own model binding** — one `{ providerId, modelId }`
+  the user picks from the existing provider rows, following `imageGeneration`.
+  A bounded perceive-decide-act loop in `packages/computer-use` turns one
+  instruction into validated steps against a strict action schema; the
+  conversation model never drives the machine and there is no silent fallback
+  to it. The agent-facing tool therefore takes an instruction, not a `uid` or a
+  coordinate, and returns a bounded summary rather than the inner transcript.
+- The loop and the capture run in Electron main, not host-core: the loop needs
+  a model provider and the capture needs Chromium, and host-core holds neither.
+  host-core keeps everything that can refuse — targets, accessibility,
+  synthesis, the grant broker, per-action re-validation, audit — and `Computer`
+  follows the `GenerateImages` shape, where `tools.execute` performs the
+  permission evaluation and main executes only after the host authorises.
+- **The agent's cursor is drawn, not stolen.** Actions go through accessibility
+  actions or window-targeted events, so the real pointer never warps and the
+  user keeps their mouse while the agent works; a path that could only act by
+  warping is refused. A frameless, transparent, click-through, always-on-top
+  overlay draws the agent's own cursor, owns no part of the action, cannot
+  receive input, and is never the source of truth for where an action landed.
+- Voice is specified and deliberately unwired in the first release: the agent
+  is the only caller. When stage 3 lands it, a spoken request will reach
+  `Computer` only as a work request on the bound session through the existing
+  delegate/classifier path, as task delegation rather than teleoperation.
+- All three desktop platforms are in scope. Capture is `desktopCapturer`
+  everywhere, so only inspection and input are platform work: macOS
+  (`AXUIElement` actions, `CGEventPostToPid` keys, hand-declared framework FFI
+  with no new crates) is stage 1; Windows (UIA, window-targeted messages,
+  higher-integrity targets refused) and Linux/X11 (AT-SPI, best effort) are
+  stage 2; Wayland refuses input and keeps portal capture. Every unsupported
+  path has its own code, never a hang or a silent no-op, and a partial-fidelity
+  backend declares it instead of returning an empty tree.
 - Non-goal 9 is amended rather than deleted: browser takeover, unattended
   full-desktop control, and any model-chosen target remain non-goals.
-- Specified, not built: `03-runtime/computer-use.md`,
-  `08-error-codes.md` §3.10 (`COMPUTER_*`), `05-host-core-rust.md` §2/§5b/§6,
+- Contract pages: `03-runtime/computer-use.md`, `08-error-codes.md` §3.10
+  (`COMPUTER_*`), `05-host-core-rust.md` §2/§5b/§6,
   `05-security/01-security.md` §13, `03-tools-and-permissions.md` §0/§2/§6, and
-  the five `E2E-COMPUTER-USE-*` landing gates, all `NOT RUN`.
+  the five `E2E-COMPUTER-USE-*` landing gates, all `NOT RUN` until stage 1
+  lands.
