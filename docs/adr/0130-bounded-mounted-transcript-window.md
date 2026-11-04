@@ -49,6 +49,10 @@ reference-equal, and that runs on every streamed token.
    The pane-local history paging hook captures the visible message's viewport
    offset for both. It holds input during the transaction and restores that
    anchor before paint, through committed projection and late row layout.
+   Reading bookmarks prefer a visible message node to an answer-group marker;
+   prepending the earlier half of an answer can replace the group's first id.
+   Explicit latest navigation clears the preceding gesture as well as the hold,
+   so queued near-top scroll events cannot initiate another history transaction.
    This replaces the old `prependHeightRef` total-height delta: deferred DOM,
    tail updates and intrinsic-size estimates made that delta unreliable.
 4. The window **resets per session** and is clamped to the loaded history, so a

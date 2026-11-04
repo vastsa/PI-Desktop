@@ -728,6 +728,9 @@ export function useTranscriptScroll({
   }, [reachTop, releaseDisclosureAnchor, releaseFollow, retryHistoryPaging]);
 
   const jumpToLatest = useCallback(() => {
+    // Explicit navigation supersedes the gesture that entered history. Its
+    // queued scroll events must not start another page during the smooth jump.
+    lastScrollGestureAtRef.current = -Infinity;
     cancelReadingPosition();
     cancelHistoryPaging();
     releaseDisclosureAnchor();

@@ -58,14 +58,17 @@ export function captureTranscriptReadingPosition(
   if (!transcriptHasLayout(scroller)) return;
   if (pinned) return { pinned, offset: 0, scrollTop: scroller.scrollTop, windowSize };
   const viewport = scroller.getBoundingClientRect();
-  // Prefer the outer message/turn: its offset also describes reading inside an
-  // expanded tool body, whose explicit disclosure choices survive eviction.
-  for (const row of content.querySelectorAll<HTMLElement>("[data-minimap-id], [data-message-id]")) {
-    const rect = row.getBoundingClientRect();
-    if (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.height === 0) continue;
-    const messageId = row.dataset.minimapId ?? row.dataset.messageId;
-    if (messageId) return { pinned, messageId, offset: rect.top - viewport.top,
-      scrollTop: scroller.scrollTop, windowSize };
+  // Answer groups can acquire an earlier first message when a page is prepended.
+  // Anchor the visible message itself, whose identity and local offset survive
+  // regrouping; use a turn only for visible content without a message node.
+  for (const selector of ["[data-message-id]", "[data-minimap-id]"]) {
+    for (const row of content.querySelectorAll<HTMLElement>(selector)) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.height === 0) continue;
+      const messageId = row.dataset.messageId ?? row.dataset.minimapId;
+      if (messageId) return { pinned, messageId, offset: rect.top - viewport.top,
+        scrollTop: scroller.scrollTop, windowSize };
+    }
   }
 }
 
@@ -78,7 +81,8 @@ export function restoreTranscriptReadingPosition(
   if (!transcriptHasLayout(scroller)) return false;
   if (position.messageId) {
     const id = CSS.escape(position.messageId);
-    const row = content.querySelector<HTMLElement>(`[data-minimap-id="${id}"], [data-message-id="${id}"]`);
+    const row = content.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
+      ?? content.querySelector<HTMLElement>(`[data-minimap-id="${id}"]`);
     if (row) {
       const rect = row.getBoundingClientRect();
       if (rect.height > 0) {
