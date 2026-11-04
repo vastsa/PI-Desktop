@@ -33,6 +33,7 @@ import {
 import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-copy";
 import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
 import {
+  providerHasSubagentModel,
   subagentModelCandidates,
   subagentModelOptInDraft,
   type SubagentModelCandidate,
@@ -42,7 +43,11 @@ import { SubagentModelsDialog } from "./SubagentModelsDialog";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { ServiceList } from "./ServiceList";
-import { serviceRowKind } from "./service-row-status";
+import {
+  serviceEditorTarget,
+  serviceRowKind,
+  type ServiceEditorTarget,
+} from "./service-row-status";
 import { useVendorAccounts } from "./useVendorAccounts";
 import { VendorAccountDialog, type VendorAccountForm } from "./VendorAccountDialog";
 import { ModelConfigImportPanel } from "../../features/settings/imports/ModelConfigImportPanel";
@@ -321,12 +326,15 @@ export function ModelConfigPage() {
     try {
       const { providers: stored } = await api.listProviders();
       const provider = stored.find((entry) => entry.id === candidate.providerId);
-      // A plugin-owned row is refused by the RPC, and a model that disappeared
-      // from the stored bindings has no flag left to write.
+      // A plugin-declared row has no editor and the RPC refuses it; a model that
+      // disappeared from the stored bindings has no flag left to write. The id is
+      // matched the way the write matches it, so a stored id that differs only in
+      // case or surrounding whitespace cannot fail this check while the write
+      // itself would have succeeded.
       const writable =
         !!provider &&
         !provider.ownerPluginId &&
-        provider.models.some((model) => model.id === candidate.modelId);
+        providerHasSubagentModel(provider.models, candidate.modelId);
       if (!provider || !writable) {
         showToast(t("settings.subagentModelSaveFailed"), { variant: "error" });
         return;
@@ -410,16 +418,24 @@ export function ModelConfigPage() {
   /**
    * Open the editor that owns a service's models.
    *
-   * A vendor-account row is edited by `VendorAccountDialog`, not by the
-   * provider form: the provider form would offer to rewrite the account's name,
-   * endpoint and API style, which a subscription login never asked for. Both
-   * entry points on this page route through here so the subagent list cannot
-   * send an account to the wrong dialog.
+   * A vendor-account row is edited by `VendorAccountDialog`, not by the provider
+   * form: the provider form would offer to rewrite the account's name, endpoint
+   * and API style, which a subscription login never asked for. A plugin-declared
+   * row has no editor at all — `providers.update` refuses it — so both entry
+   * points on this page (the service list and the subagent dialog) ask
+   * `serviceEditorTarget` first and neither can open a dialog that cannot save.
    */
+  const openServiceEditor = (target: ServiceEditorTarget) => {
+    if (target.kind === "account") setEditingAccountId(target.providerId);
+    else setSetupFor(target.providerId);
+  };
+
+  /** Resolves the editor for a row, or false when that row has none. */
   const editService = (provider: ProviderPublic | undefined) => {
-    if (!provider) return;
-    if (serviceRowKind(provider) === "account") setEditingAccountId(provider.id);
-    else setSetupFor(provider.id);
+    const target = provider ? serviceEditorTarget(provider) : null;
+    if (!target) return false;
+    openServiceEditor(target);
+    return true;
   };
 
   const testProvider = async (provider: ProviderPublic) => {
@@ -645,8 +661,16 @@ export function ModelConfigPage() {
             void setSubagentDelegation(candidate, selected)
           }
           onEdit={(providerId) => {
+            const provider = providers.find((entry) => entry.id === providerId);
+            const target = provider ? serviceEditorTarget(provider) : null;
+            if (!target) {
+              // The row is gone (another window removed it) or a plugin owns it.
+              // There is no editor to open, so say so instead of closing silently.
+              showToast(t("settings.subagentModelServiceGone"), { variant: "error" });
+              return;
+            }
             setSubagentEditorOpen(false);
-            editService(providers.find((entry) => entry.id === providerId));
+            openServiceEditor(target);
           }}
           onClose={() => setSubagentEditorOpen(false)}
         />

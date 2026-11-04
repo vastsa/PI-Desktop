@@ -2007,6 +2007,7 @@ sklm: {
     subagentModelAdd: "서비스 모델 설정에서 추가하세요 — 고급 → AI 위임에 사용 가능",
     subagentModelEdit: "편집",
     subagentModelOpenService: "{{provider}} 모델 설정 열기",
+    subagentModelServiceGone: "이 서비스에는 열 수 있는 설정이 없습니다",
     subagentModelsMore: "외 {{count}}개",
     subagentModelRemove: "{{model}}을(를) 서브에이전트 모델에서 제거",
     subagentModelSelected: "위임에 사용할 수 있는 모델",

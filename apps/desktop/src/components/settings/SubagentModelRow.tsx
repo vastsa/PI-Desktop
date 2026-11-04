@@ -41,6 +41,9 @@ export function SubagentModelRow({
   const identity = selected
     .map((candidate) => `${candidate.providerId}\u0000${candidate.modelId}`)
     .join("\u0001");
+  // Widths follow the text, so a renamed alias has to re-measure even when the
+  // identity behind it is unchanged.
+  const labelKey = labels.join("\u0001");
   const measureRef = useRef<HTMLSpanElement | null>(null);
   const [fit, setFit] = useState<ChipFit>({ visible: labels.length, hidden: 0 });
   const fullNames = selected.map(
@@ -70,7 +73,7 @@ export function SubagentModelRow({
     const observer = new ResizeObserver(compute);
     if (element.parentElement) observer.observe(element.parentElement);
     return () => observer.disconnect();
-  }, [identity]);
+  }, [identity, labelKey]);
 
   // Nothing configured yet: the page hides this row rather than offering an
   // editor with no models in it.

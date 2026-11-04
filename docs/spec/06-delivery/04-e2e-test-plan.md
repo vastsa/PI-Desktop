@@ -19793,6 +19793,60 @@ host-created files. The full app's file-preview viewer is covered separately.
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
 
+- **Preconditions**: Two AI services are configured and enabled with
+  credentials, the first with two models and the second with one; exactly one
+  model carries "Available for AI delegation". A third, plugin-declared service
+  publishes one model, and one vendor subscription is signed in twice with the
+  same model on both logins. A parent Agent-mode session can delegate a task.
+- **Steps**:
+  1. Open Settings → Models and read the **Subagent models** row at the bottom:
+     the opted-in models as chips, everything else inside the dialog.
+  2. Press **Edit** and read the dialog's list.
+  3. Open the second service's model editor from that list's Advanced action, tick
+     "Available for AI delegation", save, and re-read both surfaces.
+  4. Start a parent turn and inspect the delegation model summary the Task tool
+     receives.
+  5. Return to the dialog, remove that model with its × action, and re-read both
+     surfaces.
+  6. Remove every opted-in model, read the dialog's empty state, and use one of
+     its buttons to reach a service editor and tick a model.
+  7. Read the plugin-declared service's row in the dialog, and a row whose service
+     is switched off.
+  8. Opt in the same model id on both services, and on both logins of the vendor.
+  9. Remove a model while the write is slow (throttle the host or use a long model
+     list) and press Advanced, Close, the backdrop and Escape meanwhile.
+- **Expected**: The row shows one line of chips that never takes more than 60% of
+  the row, with the overflow collapsed into `+N`, and each chip's tooltip and
+  accessible name carry `service · model`. A model joins only through its own
+  editor's tick. Adding writes `availableForSubagents` on that service's binding
+  and the next parent turn lists the model in the delegation catalog; removing it
+  drops the model from the catalog and leaves no `false` behind on the stored
+  binding. Two services publishing the same model id keep their service name in
+  the chip, and the two logins of one vendor stay distinguishable by account, so
+  one chip never stands for two chosen models. The empty state names one service
+  per button and that button opens the service's model editor. A service that is
+  off or holds no credential keeps its listed models visible and removable,
+  annotated with the reason they are idle, while its models stay out of the
+  catalog. A plugin-declared service offers neither Advanced nor a remove control
+  and says the plugin manages it; a row whose service disappeared says so instead
+  of closing the dialog silently. While a removal is in flight, Advanced, Close,
+  the backdrop and Escape are all inert. The provider dialog and the row show the
+  same flag in both directions, so neither surface can drift. The row is hidden
+  while no service has a configured model, and a refused save reports the error
+  instead of silently keeping the old value.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/11-provider-model-system.md` §7, `04-ux/06-settings-ia.md`
+  (Model configuration), D278, ADR subagent-model-opt-in, issue #1736.
+- **Acceptance**: C / E / Quality — the catalog the parent agent may pick from is
+  reviewable and editable in one place on the Models page without adding a second
+  stored selection, every row states why an opted-in model is not in effect, and
+  no surface offers an editor that cannot save the row it came from.
+- **Milestone**: Post-MVP model configuration.
+- **Status**: Unit coverage in `apps/desktop/test/subagent-delegation.test.mjs`
+  (candidate construction, account disambiguation, chip disambiguation,
+  empty-state targets, row-to-editor routing, the id normalisation the write
+  shares, and the exact provider write). The interactive save → next-turn catalog
+  path remains Draft and is run only when requested in a capable environment.
 ### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
 
 - **Preconditions**: A ChatGPT subscription (Codex) account and a Responses

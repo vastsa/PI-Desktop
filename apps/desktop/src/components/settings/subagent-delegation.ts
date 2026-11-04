@@ -13,6 +13,7 @@
  * without the application bundle.
  */
 import type { ModelBinding, ProviderPublic } from "@pi-desktop/shared";
+import { serviceDisplayLabel } from "./service-row-status";
 
 /** Why an opted-in model cannot reach the catalog today. */
 export type SubagentModelBlockedReason = "provider-disabled" | "credential-missing";
@@ -20,6 +21,7 @@ export type SubagentModelBlockedReason = "provider-disabled" | "credential-missi
 /** One configured model, with the delegation state the page renders. */
 export type SubagentModelCandidate = {
   providerId: string;
+  /** The service as the page shows it; a vendor login carries its account. */
   providerName: string;
   modelId: string;
   /** The alias the rest of Settings shows, else the wire id. */
@@ -111,7 +113,7 @@ export function subagentModelCandidates(
       seen.add(key);
       candidates.push({
         providerId: provider.id,
-        providerName: provider.name,
+        providerName: serviceDisplayLabel(provider),
         modelId,
         label: modelLabel(binding),
         contextWindow: binding.contextWindow,
@@ -132,21 +134,19 @@ export function selectedSubagentModels(
   return candidates.filter((candidate) => candidate.selected);
 }
 
-/** One service the empty state can send the user to, with its unticked models. */
+/** One service the empty state can send the user to. */
 export type SubagentServiceTarget = {
   providerId: string;
   providerName: string;
-  /** Configured models on this service that do not carry the opt-in yet. */
-  count: number;
 };
 
 /**
  * Services that still hold a model worth opting in, in page order.
  *
  * The dialog cannot tick anything itself, so an empty list has to name where
- * ticking happens. A plugin-owned service is left out: its row is refreshed
- * from the manifest and `providers.update` refuses it, so sending the user
- * there would be a dead end.
+ * ticking happens. A plugin-declared service is left out: it has no editor to
+ * open (`serviceEditorTarget` returns null), so sending the user there would be
+ * a dead end.
  */
 export function servicesWithAddableModels(
   candidates: readonly SubagentModelCandidate[],
@@ -154,15 +154,11 @@ export function servicesWithAddableModels(
   const targets = new Map<string, SubagentServiceTarget>();
   for (const candidate of candidates) {
     if (candidate.selected || !candidate.editable) continue;
-    const existing = targets.get(candidate.providerId);
-    if (existing) existing.count += 1;
-    else {
-      targets.set(candidate.providerId, {
-        providerId: candidate.providerId,
-        providerName: candidate.providerName,
-        count: 1,
-      });
-    }
+    if (targets.has(candidate.providerId)) continue;
+    targets.set(candidate.providerId, {
+      providerId: candidate.providerId,
+      providerName: candidate.providerName,
+    });
   }
   return [...targets.values()];
 }
@@ -187,6 +183,23 @@ export function subagentModelOptInDraft(
       ? { ...model, availableForSubagents: selected ? true : undefined }
       : model,
   );
+}
+
+/**
+ * Whether the stored bindings still hold this model id.
+ *
+ * The page re-reads the service before writing, and this is how it decides that
+ * the model it is about to change still exists. It uses the same normalisation
+ * the write uses (`subagentModelOptInDraft`), so a stored id that differs only in
+ * case or surrounding whitespace cannot fail the pre-check while the write itself
+ * would have succeeded.
+ */
+export function providerHasSubagentModel(
+  models: readonly ModelBinding[],
+  modelId: string,
+): boolean {
+  const target = modelId.trim().toLowerCase();
+  return models.some((model) => model.id.trim().toLowerCase() === target);
 }
 
 /** How many chips fit on one line, and how many collapse into `+N`. */

@@ -544,17 +544,28 @@ a usage tab.
 ### Model configuration (`agent` tab)
 - The model configuration page groups its sections in this order: **AI
   services** (including model-catalog status and refresh), **Jev**, the
+  image-generation model selector, then the **Subagent models** row. The sections
+  use one consistent vertical spacing rhythm.
 - **Subagent models** is one settings row, below the image-generation selector.
   It lists only the models that carry the `availableForSubagents` opt-in — the
-  delegation catalog the parent agent sees — as `provider · model` entries with a
-  remove action each, or an empty-state line when none does. Adding is the row's
-  own control: a menu beside the list offers exactly the configured models that
-  as `provider · model` entries with the same Advanced action and remove control
-  a service's own model list has, or an empty-state line when none does.
-  Advanced opens that service's model editor — where the opt-in is ticked — so
-  adding a model happens in the model editor, never from this row. It reads and
-  writes `ModelBinding.availableForSubagents`, never a second
-  The row is hidden while no service has a configured model.
+  delegation catalog the parent agent sees — as chips on one line that takes at
+  most 60% of the row. The rest collapse into `+N`, and each chip's tooltip and
+  accessible name carry the full `service · model`. Two services publishing the
+  same model id keep their service name in the chip, so one chip never stands for
+  two chosen models, and a vendor login is named by its account as well. **Edit**
+  opens a dialog with the same search field, row, Advanced action and remove
+  control a service's own model list has, or an empty-state line when nothing is
+  opted in. That empty state offers one button per service that still holds an
+  unticked model and opens that service's model editor, because ticking happens
+  there and never in this row. Advanced opens the same editor; a plugin-declared
+  row offers neither Advanced nor a remove control, because the plugin owns it and
+  `providers.update` refuses it, and a row with no editor says so instead of
+  closing the dialog silently. While a removal is in flight the dialog stops
+  navigating — Advanced, Close and the backdrop are inert and Escape is ignored —
+  so an editor seeded from the pre-refresh snapshot cannot write the removed
+  opt-in back. It reads and writes `ModelBinding.availableForSubagents`, never a
+  second stored selection. The row is hidden while no service has a configured
+  model.
 - **Defaults** card: a compact settings row shows the provider name and exact
   model ID beneath the Default model label. A quiet Change action opens the
   picker without duplicating the current value. The picker groups model-level

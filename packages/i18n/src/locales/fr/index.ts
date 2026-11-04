@@ -1991,6 +1991,7 @@ sklm: {
     "subagentModelAdd": "Ajoutez des modèles dans les réglages du service — Avancé → Disponible pour la délégation de l'IA",
     "subagentModelEdit": "Modifier",
     "subagentModelOpenService": "Ouvrir les réglages des modèles de {{provider}}",
+    "subagentModelServiceGone": "Ce service n'a aucun réglage à ouvrir",
     "subagentModelsMore": "+{{count}} de plus",
     "subagentModelRemove": "Retirer {{model}} des modèles de sous-agent",
     "subagentModelSelected": "Modèle disponible pour la délégation",

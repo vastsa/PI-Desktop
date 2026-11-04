@@ -2001,6 +2001,7 @@ sklm: {
     subagentModelAdd: "Modelleri hizmetin model ayarlarından ekleyin — Gelişmiş → AI devri için kullanılabilir",
     subagentModelEdit: "Düzenle",
     subagentModelOpenService: "{{provider}} model ayarlarını aç",
+    subagentModelServiceGone: "Bu hizmetin açılacak ayarı yok",
     subagentModelsMore: "+{{count}} tane daha",
     subagentModelRemove: "{{model}} öğesini alt ajan modellerinden çıkar",
     subagentModelSelected: "Model devretmeye açık",
