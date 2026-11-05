@@ -44,3 +44,10 @@ function subscribe(listener: () => void): () => void {
 export function useReviewFocusRequest(): ReviewFocusRequest | null {
   return useSyncExternalStore(subscribe, currentReviewFocusRequest, () => null);
 }
+
+export function scrollReviewToAnchor(scroller: HTMLElement | null, selector: string): void {
+  const anchor = scroller?.querySelector<HTMLElement>(selector);
+  if (!scroller || !anchor) return;
+  // Ancestor scrolling can move the app shell and hide the window chrome.
+  scroller.scrollTop += anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+}
