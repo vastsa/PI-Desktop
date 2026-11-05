@@ -1,12 +1,13 @@
 import { readComposerDraft, readComposerDraftRevision } from "../../../../lib/composer-draft-cache";
 import {
+  useEffect,
   useState,
   useRef,
   type ClipboardEvent,
   type DragEvent as ReactDragEvent,
 } from "react";
 import type { TFunction } from "i18next";
-import { parseSessionLinks, sessionLinkSpans } from "@pi-desktop/shared";
+import { FILE_LINES_CLIPBOARD_TYPE, MAX_FILE_LINE_REFERENCES, parseFileLineReference, parseSessionLinks, sessionLinkSpans, type FileLineReference } from "@pi-desktop/shared";
 import { materializeDraftSession, useAppStore } from "../../../../stores/app-store";
 import { api } from "../../../../lib/api";
 import {
@@ -34,6 +35,7 @@ import {
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerDraftController } from "./useComposerDraft";
+import { normalizeProjectPath } from "../../../../lib/sidebar-session-groups";
 
 type UseComposerAttachmentsOptions = {
   inputBlocked: boolean;
@@ -92,6 +94,39 @@ export function useComposerAttachments({
 
   const snapshotReferences = (sourceSessionId: string) =>
     draft.snapshotReferences(sourceSessionId);
+
+  const addFileLineReference = (reference: FileLineReference, editor: HTMLDivElement) => {
+    const state = useAppStore.getState();
+    if (isInputBlocked || state.activeSessionId !== activeSessionId || !state.activeProjectPath ||
+        normalizeProjectPath(reference.workspace) !== normalizeProjectPath(state.activeProjectPath)) return false;
+    const owner = activeSessionId ?? "";
+    const previous = snapshotReferences(owner);
+    if (previous.some(item => item.path === reference.path && item.lineRange?.start === reference.start && item.lineRange.end === reference.end)) return true;
+    if (previous.filter(item => item.lineRange).length >= MAX_FILE_LINE_REFERENCES) {
+      state.showToast(t("chat.fileLineReferenceLimit", { count: MAX_FILE_LINE_REFERENCES }), { variant: "error" });
+      return true;
+    }
+    const { start, end } = editorSelectionRange(editor);
+    const source = readEditorValue(editor);
+    const token = nextChipToken();
+    const chip = createFileReference(reference.path, undefined, owner, {
+      kind: "file",
+      lineRange: { start: reference.start, end: reference.end },
+      token,
+    });
+    const text = source.slice(0, start) + token + source.slice(end);
+    const references = [...previous.map(item => createFileReference(item.path, item.name, owner, item)), chip];
+    writeComposerDraft(draftKey, { text, fileReferences: references.map(draftFileReference) }, state.activeProjectPath);
+    draft.applyEditorDraft(text, references, start + token.length);
+    return true;
+  };
+  const fileLineInput = useRef({ activeSessionId, draft, addFileLineReference });
+  fileLineInput.current = { activeSessionId, draft, addFileLineReference };
+  useEffect(() => api.onComposerFileLines(({ sessionId, reference }) => {
+    const current = fileLineInput.current;
+    const editor = current.draft.ref.current;
+    if (editor && sessionId === current.activeSessionId && current.addFileLineReference(reference, editor)) editor.focus();
+  }), []);
 
   const pickAndAttach = async () => {
     // The ref closes the gap before React re-renders the disabled button.
@@ -226,6 +261,15 @@ export function useComposerAttachments({
       return;
     }
     if (isInputBlocked) return;
+    const fileLines = event.clipboardData.getData(FILE_LINES_CLIPBOARD_TYPE);
+    if (fileLines && fileLines.length <= 9000) {
+      let reference: FileLineReference | undefined;
+      try { reference = parseFileLineReference(JSON.parse(fileLines)); } catch { /* Plain text remains available. */ }
+      if (reference && addFileLineReference(reference, event.currentTarget)) {
+        event.preventDefault();
+        return;
+      }
+    }
     const text = event.clipboardData.getData("text/plain");
     const pastedFiles = clipboardFiles(event.clipboardData);
     const preferText = preferClipboardText(text, pastedFiles, api.getDroppedFilePath);

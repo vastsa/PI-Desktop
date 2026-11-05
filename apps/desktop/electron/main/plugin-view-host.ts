@@ -222,6 +222,10 @@ export class PluginViewHost {
     return this.views.has(pluginViewKey(pluginId, viewId));
   }
 
+  isVisibleViewSender(senderId: number | undefined, key: string): boolean {
+    return senderId !== undefined && this.visibleKey === key && this.views.get(key)?.view.webContents.id === senderId;
+  }
+
   /**
    * The plugin owning a web contents, so `PluginPanelHost` can accept bridge
    * calls from docked views on the same channel it serves panel windows.

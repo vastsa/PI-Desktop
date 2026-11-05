@@ -202,6 +202,7 @@ globalThis.composerPasteProbe = async () => {
     editor: HTMLDivElement,
     text: string,
     files: File[],
+    fileLines?: { workspace: string; path: string; start: number; end: number },
   ) => {
     const data = new DataTransfer();
     if (text) {
@@ -209,6 +210,7 @@ globalThis.composerPasteProbe = async () => {
       data.setData("text/html", `<b>${text}</b>`);
     }
     for (const file of files) data.items.add(file);
+    if (fileLines) data.setData("application/x-pi-desktop-file-lines", JSON.stringify(fileLines));
     const event = new ClipboardEvent("paste", {
       clipboardData: data,
       bubbles: true,
@@ -237,6 +239,16 @@ globalThis.composerPasteProbe = async () => {
     selection.addRange(range);
   };
   try {
+    const lineEditor = await reset();
+    const workspace = "/fixture/project";
+    useAppStore.setState({ activeProjectPath: workspace });
+    await dispatchPaste(lineEditor, "saved line selection", [], { workspace, path: workspace + "/gpt.py", start: 85, end: 86 });
+    const lineChip = lineEditor.querySelector(".composer-chip");
+    assert(lineChip?.textContent?.includes("gpt.py (85:86)"), "file range paste did not create a line chip");
+    assert(!lineEditor.textContent?.includes("saved line selection"), "file range paste inserted source text");
+    assert(controller.snapshotReferences("paste-a")[0]?.lineRange?.start === 85, "file range did not reach the draft");
+    useAppStore.setState({ activeProjectPath: null });
+
     useAppStore.setState({ sessions: [{
       id: "paste-a", title: "Folder paste fixture", source: "desktop", mode: "agent",
       permissionMode: "inherit", thinkingLevel: "off", messageCount: 0,

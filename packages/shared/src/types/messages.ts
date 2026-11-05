@@ -49,6 +49,7 @@ export type UsageOperation = Omit<MessageUsage, "operations" | "aggregation"> & 
 export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
+  lineRange?: import("../file-line-reference.js").FileLineRange;
   kind: "image" | "file" | "session";
   name: string;
   /** Workspace-relative path, session-scratch absolute path, or a session id. */

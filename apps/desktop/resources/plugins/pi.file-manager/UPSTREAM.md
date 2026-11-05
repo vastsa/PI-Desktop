@@ -1,4 +1,4 @@
-# Vendored File Manager: scoped remote-read hotfix
+# Vendored File Manager
 
 This directory is the actual plugin loaded and packaged by Desktop. It now
 contains the remote-read consumer required by issue #1711. It follows the
@@ -16,9 +16,9 @@ unpublished plugin contribution as an official upstream release.
 | Integration source | https://github.com/Seraph-x/pi-desktop-plugin-file-manager/tree/f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1 |
 | Integration commit | `f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1` |
 | Companion upstream proposal | https://github.com/Tioit-Wang/pi-desktop-plugin-file-manager/pull/5 |
-| Bundled version | `0.9.1-pi.1` — Desktop hotfix, not an upstream release |
+| Bundled version | `0.9.1-pi.2` — Desktop hotfix, not an upstream release |
 | License | MIT; preserve the bundled `LICENSE` and PDF.js notices |
-| Locally packed runtime | `pi.file-manager-0.9.1-pi.1.piplug`, 6921923 bytes, SHA-256 `e8b6041cb5d3d4eab2b68a1e7fa61a8c7089235d9918f4a418541bd60cd109b3` |
+| Base hotfix artifact | `pi.file-manager-0.9.1-pi.1.piplug`, 6921923 bytes, SHA-256 `e8b6041cb5d3d4eab2b68a1e7fa61a8c7089235d9918f4a418541bd60cd109b3` |
 | Marketplace publication | Not published; no marketplace artifact or accepted upstream tag is claimed for this hotfix |
 
 The released reference tag is retained unchanged. The integration source is a
@@ -46,10 +46,12 @@ so the synthetic filesystem events could reach Node.
    retains the theme-token search-control repair already shipped in Desktop
    by #1861 and proposed upstream in plugin PR #6. No minified JavaScript is
    edited by hand. The patch changes only CodeMirror search fields/buttons.
-2. Set manifest version to `0.9.1-pi.1`, add `license: MIT`, and prefix its
+2. Apply `patches/file-manager-line-references.patch` for source selections
+   in the context menu and clipboard, then rebuild the production view.
+3. Set manifest version to `0.9.1-pi.2`, add `license: MIT`, and prefix its
    changelog with the Desktop hotfix description. Keep all other manifest
    declarations, permissions and safety notes from the integration source.
-3. Keep Desktop's MIT `LICENSE` and `package.json` CommonJS marker. The latter
+4. Keep Desktop's MIT `LICENSE` and `package.json` CommonJS marker. The latter
    scopes Node's module interpretation to this plugin; other bundled plugins
    retain their own module format.
 
@@ -72,10 +74,10 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
 | `LICENSE` | 1067 | `ebaec3ae096498a39f6b86e3ac8017e39818fb5aaff80b452349f94bc275ec0d` |
 | `README.md` | 38470 | `4ecf6e3afa2051b59b479907c485d156caca54ef6d1f4e3c410805807942a268` |
 | `main.js` | 125236 | `707feec0ecba8eb1a7c6a876a5ecf157ce064f36f14f5f30bafcf5852c5bed72` |
-| `manifest.json` | 39991 | `75c169a9b5f2ce844611874fcac0c24438db8d849355b090b6e52f8af12a5a40` |
+| `manifest.json` | 39991 | `7b098de7c45b66d0df70e389302b0eb60190406937a392cd047d6e93e83dd35f` |
 | `package.json` | 25 | `8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a` |
 | `remote-workspace.js` | 3757 | `931a579801fd4b334c3d96231aafc7ff52e0c03e7baebbabaf00b4c5e17cc366` |
-| `views/assets/index.js` | 6616929 | `0e415df8a14b4414a53ce3e2add8bb2cc155c67de21a43582a4dc217ae1a85e0` |
+| `views/assets/index.js` | 6618189 | `a2af83cd6b189175d5307a93400dcfa807a6c58d565d3cf3b3f90168f549266d` |
 | `views/assets/pdfjs-LICENSES.txt` | 61789 | `a8b04e2e9022721482079ee5c85b9f05ae129e6a2cfd59ea67f2629a3fc23640` |
 | `views/index.html` | 345 | `771fd3d8afdea7fca75ed1f1918c1ce93ad1c87babdb321cfb85e910465cd2c1` |
 
@@ -83,7 +85,8 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
 
 1. Export the exact integration commit above as LF blobs. Reuse the plugin's
    compatible build dependencies; do not copy QA dependencies into the runtime.
-2. Apply the checked-in theme patch from the Desktop checkout with `git apply`.
+2. Apply the checked-in theme patch with `git apply` and the line reference
+   patch with `git apply --unidiff-zero`.
 3. Run the source typecheck, every verification script (including native file
    watching), and `vite build` in `views-src`.
 4. Apply the three documented manifest edits, then run

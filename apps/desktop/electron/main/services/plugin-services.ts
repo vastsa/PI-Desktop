@@ -64,6 +64,9 @@ import { createComposerSuggestionRelay } from "./composer-suggestion";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
 
+import { FILE_LINES_ADD_CHANNEL, parseFileLineReference } from "@pi-desktop/shared";
+import { fileLinePathInProject } from "../file-line-reference";
+
 export type PluginServicesDependencies = {
   dataDir: string;
   logger: Logger;
@@ -131,8 +134,30 @@ export function createPluginServices({
     (error as { errorCode?: string } | null | undefined)?.errorCode ===
     ErrorCodes.HOST_UNAVAILABLE;
   const pluginPanels = new PluginPanelHost(
-    async (pluginId, channel, payload, context) =>
-      plugins.invokePanelBridge(pluginId, channel, payload, context),
+    async (pluginId, channel, payload, context) => {
+      if (channel !== FILE_LINES_ADD_CHANNEL) return plugins.invokePanelBridge(pluginId, channel, payload, context);
+      const loaded = plugins.getLoaded(pluginId);
+      const reference = parseFileLineReference(payload);
+      const selected = pluginSession.snapshot();
+      if (pluginId !== "pi.file-manager" || !pluginViews.isVisibleViewSender(context?.senderId, "pi.file-manager/manager") ||
+          !loaded || loaded.development || loaded.disposing ||
+          !loaded.permissions.has("fs.read") || !loaded.permissions.has("ui.view") ||
+          !reference || !selected || !pluginActiveInProject(pluginId, selected.projectPath) ||
+          reference.workspace !== getWorkspacePath() ||
+          !fileLinePathInProject(reference.path, selected.projectPath)) {
+        throw new Error("The file selection is outside the active project or session.");
+      }
+      const host = getHost();
+      const registry = await host?.call<{ plugins: Array<{ id: string; enabled: boolean; source: string; version: string }> }>("plugins.list");
+      if (getHost() !== host || plugins.getLoaded(pluginId) !== loaded ||
+          !registry?.plugins.some(item => item.id === pluginId && item.enabled && item.source === "builtin" && item.version === loaded.manifest.version) ||
+          pluginSession.snapshot()?.sessionId !== selected.sessionId || reference.workspace !== getWorkspacePath() ||
+          !pluginViews.isVisibleViewSender(context?.senderId, "pi.file-manager/manager")) {
+        throw new Error("The File Manager or target session is no longer active.");
+      }
+      sendToRenderer(IPC.event.composerFileLines, { sessionId: selected.sessionId, reference });
+      return { ok: true };
+    },
     // A panel reaching for an undeclared host is the shape an exfiltration
     // attempt takes, so it is logged like a denied API call rather than dropped
     // silently in the network layer.

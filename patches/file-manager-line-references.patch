@@ -1,0 +1,85 @@
+diff --git a/views-src/src/App.tsx b/views-src/src/App.tsx
+index 6627d80..93f4ed5 100644
+--- a/views-src/src/App.tsx
++++ b/views-src/src/App.tsx
+@@ -1424,0 +1425 @@ export default function App() {
++          referenceWorkspace={root && !root.remote ? root.path : undefined}
+diff --git a/views-src/src/components/EditorPane.tsx b/views-src/src/components/EditorPane.tsx
+index 710e451..3a4f098 100644
+--- a/views-src/src/components/EditorPane.tsx
++++ b/views-src/src/components/EditorPane.tsx
+@@ -12 +12 @@ import { isDocumentLoaded, type OpenFile } from "../lib/openFile";
+- import { absolutePathOf } from "../lib/roots";
++ import { absoluteFullPath, absolutePathOf } from "../lib/roots";
+@@ -23,0 +24,4 @@ import { GitDiffView, type DiffViewState } from "./GitDiffView";
++import { ContextMenu } from "./ContextMenu";
++import { isExternalPath } from "../lib/hostOpen";
++
++const FILE_LINES_CLIPBOARD_TYPE = "application/x-pi-desktop-file-lines";
+@@ -41,0 +46 @@ type Props = {
++  referenceWorkspace?: string;
+@@ -71,0 +77 @@ export function EditorPane({
++  referenceWorkspace,
+@@ -99,0 +106,14 @@ export function EditorPane({
++  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; loadToken: number } | null>(null);
++  const selectedFileLines = () => {
++    const state = handleRef.current?.view.state;
++    if (!state || !referenceWorkspace || !activeRoot || file?.kind !== "text" ||
++        !isDocumentLoaded(file, loadedToken) || isExternalPath(file.path) ||
++        state.selection.ranges.length !== 1 || state.selection.main.empty) return null;
++    const { from, to } = state.selection.main;
++    return {
++      workspace: referenceWorkspace,
++      path: absoluteFullPath(file.path, activeRoot),
++      start: state.doc.lineAt(from).number,
++      end: state.doc.lineAt(to - 1).number,
++    };
++  };
+@@ -391 +411,46 @@ export function EditorPane({
+-        <div ref={hostRef} className="h-full" />
++        <div
++          ref={hostRef}
++          className="h-full"
++          onCopyCapture={(event) => {
++            const reference = selectedFileLines();
++            const state = handleRef.current?.view.state;
++            if (!reference || !state || !event.nativeEvent.isTrusted) return;
++            const { from, to } = state.selection.main;
++            event.clipboardData.setData("text/plain", state.sliceDoc(from, to));
++            event.clipboardData.setData(FILE_LINES_CLIPBOARD_TYPE, JSON.stringify(reference));
++            event.preventDefault();
++            event.stopPropagation();
++          }}
++          onContextMenu={(event) => {
++            if (!file || !selectedFileLines() || !event.nativeEvent.isTrusted) return;
++            event.preventDefault();
++            setSelectionMenu({ x: event.clientX, y: event.clientY, loadToken: file.loadToken });
++          }}
++        />
++        {selectionMenu && selectionMenu.loadToken === file?.loadToken ? (
++          <ContextMenu
++            x={selectionMenu.x}
++            y={selectionMenu.y}
++            onClose={() => setSelectionMenu(null)}
++            entries={[
++              {
++                kind: "item",
++                label: locale === "zh" ? "加入对话" : "Add to chat",
++                onPick: () => {
++                  const reference = selectedFileLines();
++                  if (!reference) return;
++                  void invoke("composer.addFileLines", reference).catch((error: unknown) =>
++                    invoke("ui.showToast", { message: String(error) }).catch(() => {}));
++                },
++              },
++              {
++                kind: "item",
++                label: locale === "zh" ? "复制" : "Copy",
++                onPick: () => {
++                  handleRef.current?.view.focus();
++                  document.execCommand("copy");
++                },
++              },
++            ]}
++          />
++        ) : null}

@@ -4126,6 +4126,8 @@ async fn handle_request(
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let workspace_only = p.tool_name == "Read"
+                && params.get("workspaceOnly").and_then(Value::as_bool) == Some(true);
             let _pending_file_call = if let Some(ticket) = p.file_batch_ticket.as_deref() {
                 Some(
                     state
@@ -4331,6 +4333,9 @@ async fn handle_request(
                             &p.args,
                         )
                     };
+                    if workspace_only && (remote_workspace.is_some() || external_path_permission) {
+                        return Err(rpc_err(1003, "File line references require a local project path", "PATH_OUTSIDE_WORKSPACE"));
+                    }
                     let mut auto = st
                         .permissions
                         .evaluate_auto_with_permission_mode_and_risk_and_path(
@@ -4809,7 +4814,7 @@ async fn handle_request(
                         tools::ToolExecutionOptions {
                             timeout_ms: execution_timeout_ms,
                             bash_options,
-                            allow_external_paths: external_path_permission,
+                            allow_external_paths: external_path_permission && !workspace_only,
                             hashline: Some(hashline_ctx),
                             visualization_root: visualization_path.as_deref(),
                         },
