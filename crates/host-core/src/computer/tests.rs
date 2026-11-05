@@ -46,6 +46,9 @@ struct FakeDesktop {
     secure_input: Mutex<bool>,
     perform_result: Mutex<Result<Dispatched, DesktopError>>,
     performed: Mutex<Vec<(Option<String>, ActionKind)>>,
+    /// Set when the platform can enumerate a window but not read its tree —
+    /// the real macOS case when the window is off-stage.
+    inspect_error: Mutex<Option<DesktopError>>,
 }
 
 impl FakeDesktop {
@@ -68,7 +71,12 @@ impl FakeDesktop {
             secure_input: Mutex::new(false),
             perform_result: Mutex::new(Ok(Dispatched::AccessibilityAction)),
             performed: Mutex::new(Vec::new()),
+            inspect_error: Mutex::new(None),
         }
+    }
+
+    fn set_inspect_error(&self, error: Option<DesktopError>) {
+        *self.inspect_error.lock().unwrap() = error;
     }
 
     fn set_measured(&self, measured: Option<Measured>) {
@@ -119,6 +127,9 @@ impl Desktop for FakeDesktop {
         _target: &TargetRef,
         _max_nodes: usize,
     ) -> Result<RawInspection, DesktopError> {
+        if let Some(error) = self.inspect_error.lock().unwrap().clone() {
+            return Err(error);
+        }
         Ok(RawInspection {
             nodes: vec![node("0.1", "AXButton", vec![ActionKind::Click])],
             truncated: false,
@@ -696,6 +707,72 @@ fn a_desktop_grant_binds_the_frontmost_usable_window() {
 }
 
 #[test]
+fn an_automatic_grant_skips_a_window_whose_tree_cannot_be_opened() {
+    // The device case: the window server lists Stage Manager's own surfaces in
+    // front of the user's windows, and nothing can read them.
+    struct OnlySecondOpens(FakeDesktop);
+    impl Desktop for OnlySecondOpens {
+        fn capabilities(&self) -> Capabilities {
+            self.0.capabilities()
+        }
+        fn list_targets(&self) -> Result<Vec<RawTarget>, DesktopError> {
+            self.0.list_targets()
+        }
+        fn measure(&self, target: &TargetRef) -> Result<Measured, DesktopError> {
+            self.0.measure(target)
+        }
+        fn inspect(
+            &self,
+            target: &TargetRef,
+            max_nodes: usize,
+        ) -> Result<RawInspection, DesktopError> {
+            if target.target_id == "overlay" {
+                return Err(DesktopError::TargetGone);
+            }
+            self.0.inspect(target, max_nodes)
+        }
+        fn secure_input_active(&self) -> bool {
+            self.0.secure_input_active()
+        }
+        fn perform(
+            &self,
+            target: &TargetRef,
+            uid: Option<&str>,
+            action: &Action,
+        ) -> Result<Dispatched, DesktopError> {
+            self.0.perform(target, uid, action)
+        }
+        fn self_pids(&self) -> Vec<i32> {
+            self.0.self_pids()
+        }
+    }
+
+    let desktop = OnlySecondOpens(FakeDesktop::new(vec![
+        target(404, "windowmanager", "WindowManager", "overlay"),
+        target(5, "com.example.app", "Example", "w1"),
+    ]));
+    let grant = policy::create_grant(
+        &desktop,
+        None,
+        &Denylist::default(),
+        GrantRequest {
+            target_id: None,
+            session_id: "s".into(),
+            input_policy: InputPolicy::AutonomousInScope,
+            capture: CaptureMode::A11yOnly,
+            action_budget: 3,
+            idle_expiry: Duration::from_secs(600),
+        },
+        Instant::now(),
+    )
+    .expect("grant");
+    assert_eq!(
+        grant.target.target_id, "w1",
+        "the unreadable surface is skipped"
+    );
+}
+
+#[test]
 fn a_desktop_grant_refuses_when_every_window_is_refused() {
     let desktop = FakeDesktop::new(vec![
         target(OWN_PID, "com.pi-desktop", "PI-Desktop", "self-window"),
@@ -748,6 +825,51 @@ fn binding_another_window_moves_the_revision() {
     .expect_err("stale revision");
     assert_eq!(error, Refusal::StaleRevision);
     assert_eq!(desktop.performed_count(), 0);
+}
+
+#[test]
+fn a_window_that_cannot_be_read_does_not_become_the_bound_one() {
+    // The macOS case this came from: `CGWindowList` enumerates an off-stage
+    // window that the accessibility client cannot open. The bind is allowed,
+    // the read fails, and the grant must stay where the caller last saw it.
+    let desktop = FakeDesktop::new(vec![
+        target(5, "com.example.app", "Example", "w1"),
+        target(6, "com.other.app", "Other", "w2"),
+    ]);
+    let mut grant = desktop_grant(&desktop, &Denylist::default());
+    assert_eq!(grant.target.target_id, "w1");
+    let revision_before = grant.revision;
+    desktop.set_inspect_error(Some(DesktopError::TargetGone));
+
+    let error = policy::inspect_bound(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        Some("w2"),
+        None,
+        Instant::now(),
+    )
+    .expect_err("the unreadable window must refuse");
+    assert_eq!(error, Refusal::ScopeViolation);
+    assert_eq!(grant.target.target_id, "w1", "the grant stays where it was");
+    assert_eq!(grant.target_label, "Example — Document");
+    assert!(
+        grant.revision > revision_before,
+        "the attempted move still invalidates held ids"
+    );
+
+    // And the window it stayed on is still readable.
+    desktop.set_inspect_error(None);
+    let inspection = policy::inspect_bound(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        None,
+        None,
+        Instant::now(),
+    )
+    .expect("the original window still inspects");
+    assert_eq!(inspection.nodes.len(), 1);
 }
 
 #[test]

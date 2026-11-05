@@ -265,7 +265,7 @@ measured — so only inspection and input are platform work.
 
 | Platform | Inspection and input | Stage | Notes |
 |---|---|---|---|
-| macOS | `AXUIElement` actions behind the Accessibility TCC grant; `CGEventPostToPid` for keys into the granted app | 1 | Hand-declared framework FFI, no new crates; secure input refuses both capture and input |
+| macOS | `AXUIElement` actions behind the Accessibility TCC grant; `CGEventPostToPid` for keys into the granted app | 1 | Hand-declared framework FFI, no new crates; secure input refuses both capture and input. The accessibility window is joined to the `CGWindowList` entry by window id through `_AXUIElementGetWindow`, resolved with `dlsym` and falling back to a geometry match (D683) — the window server and accessibility disagree about a window's frame whenever Stage Manager shows a thumbnail, so geometry alone refuses every off-stage window. A grant's geometry is accessibility's frame, because element bounds, the coordinate clamp, the drawn cursor, and the capture crop are all in it |
 | Windows | UI Automation patterns, with window-targeted messages as the fallback | 2 | A window owned by a higher-integrity process is refused, never silently dropped |
 | Linux / X11 | AT-SPI actions, best effort | 2 | Requires an accessibility bus; absent toolkit support is reported, not guessed |
 | Linux / Wayland | Input refused | — | No portable synthetic input exists; capture stays available through the portal |

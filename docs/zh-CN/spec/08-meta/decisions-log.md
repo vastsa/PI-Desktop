@@ -5810,3 +5810,29 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   测试、shared 默认值测试，以及 `apps/desktop/test/computer-use-service.test.mjs`
   （自动签发、停止拒绝、切换调用形状）。仍未经真机验证：`E2E-COMPUTER-USE-*` 闸门
   依旧是 `NOT RUN`。
+
+## 2026-11-05 —— 无障碍窗口按窗口 id 对应，而不是按几何（D683）
+
+- D683 记录一次真机发现以及修它所用的私有符号。电脑操作的首次真机运行（macOS 15，
+  台前调度开启）除了台前那个窗口以外，其他窗口全部被拒：`window_matches` 用几何把
+  `CGWindowList` 条目和 `AXUIElement` 对起来，而窗口服务器对不在台前的窗口报的是
+  台前调度的**缩略图**几何，无障碍报的是真实几何——同一个窗口实测为 `37,607 121x137`
+  对 `219,44 1568x1125`。所以在这个平台上几何不构成身份，该能力实际上不可用。
+- 现在的连接键是 `_AXUIElementGetWindow` 返回的窗口 id，与 `CGWindowList` 给出的是
+  同一个数字。它未公开、自 10.5 起存在，平台上所有窗口管理工具都在用。它通过
+  `dlsym` 动态解析而不是链接，所以未来系统移除它只会退化为几何匹配，而不会导致启动
+  失败；能读到但不相等的 id 是确定性的否定，直接拒绝。不引入新 crate，其余 FFI 面不变。
+- 授权现在携带无障碍的窗口框，而不是窗口服务器的，因为元素 bounds、坐标夹取、
+  `basis`、绘制光标与截取裁剪都在这个坐标系里。`measure` 仍从 `CGWindowList` 取身份
+  （`appKey`、标题），窗口打不开时回退到它的几何。
+- 同一次运行带出的两个小结论：自动授权现在优先选择**树确实能打开**的窗口
+  （`Desktop::can_open`，一次单节点探测），因为窗口服务器会把台前调度的表面列在用户
+  窗口之前，绑上去只是白费一轮；读取失败也不再让授权留在读不了的窗口上
+  （`policy::inspect_bound` 回退绑定并保留 revision 推进）。
+- 探针本身是 `scripts/e2e-computer-use-device.mjs`，需 `PI_DESKTOP_COMPUTER_USE_DEVICE=1`
+  显式开启，因为它会读取操作者的屏幕、也可能往其中一个窗口输入；不加 `--titles` 时
+  不打印窗口标题。macOS 升级后重跑它：`_AXUIElementGetWindow` 哪天消失，就靠这个发现。
+- 覆盖：`computer::tests::an_automatic_grant_skips_a_window_whose_tree_cannot_be_opened`
+  与 `a_window_that_cannot_be_read_does_not_become_the_bound_one`；对应逻辑本身是平台
+  代码，只有真机探针覆盖。这次跑到与没跑到的部分见
+  `docs/implementation/computer-use-evidence.md`。

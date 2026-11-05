@@ -10163,8 +10163,11 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 ## 电脑操作（ADR 0342、ADR 0344）
 
 原生应用操作仍以 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
-为落地闸门；拒绝逻辑有单测覆盖，真实应用操作仍为 `NOT RUN`。
-下述权限申请界面已有隔离 fixture 自动化。
+为落地闸门。宿主一侧现已有 macOS 真机证据，来自
+`PI_DESKTOP_COMPUTER_USE_DEVICE=1 node scripts/e2e-computer-use-device.mjs`
+（需显式开启：它会读取操作者的屏幕，带 `--act-app` 时还会往其中一个窗口里输入）。
+Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘制光标、对真实模型的回路——
+仍为 `NOT RUN`，需要屏幕录制权限的部分同样未跑。下述权限申请界面已有隔离 fixture 自动化。
 
 ### E2E-COMPUTER-USE-request-accessibility-from-settings
 
@@ -10192,7 +10195,12 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   且没有授权能活过重启。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [03-tools-and-permissions](/zh-CN/spec/03-runtime/03-tools-and-permissions)。
-- **状态**：NOT RUN —— 需要真实窗口与一个可中止的真实轮次。
+- **自动化**：host-core 的 `computer::` 测试、
+  `apps/desktop/test/computer-use-service.test.mjs`；真机用
+  `scripts/e2e-computer-use-device.mjs`。
+- **状态**：PARTIAL —— 真机（macOS 15，台前调度开启）已确认：自动桌面授权绑定最前
+  可用窗口（我们自己的窗口就在它前面且被拒绝）、设置默认值进入授权、真实无障碍树、
+  以及"停止"冷却。指示器、"停止"中止轮次、运行中的预算与空闲关闭、重启场景仍 NOT RUN。
 
 ### E2E-COMPUTER-USE-window-switching-stays-inside-the-refusals
 
@@ -10210,7 +10218,13 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   记录一条仅含应用身份的 `computer.grant.rebound`。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [05-security/01-security](/zh-CN/spec/05-security/01-security) §13。
-- **状态**：NOT RUN —— 需要可供切换的真实窗口。
+- **自动化**：host-core 的 `computer::` 改绑测试、`packages/computer-use` 的切换测试；
+  真机用 `scripts/e2e-computer-use-device.mjs`。
+- **状态**：PARTIAL —— 真机上在六个真实应用之间切换成功，每次绑定都推进 revision，
+  切换前的 revision 被拒绝，自我目标／拒绝名单／未知窗口三种绑定均被按码拒绝。真机还
+  发现并修掉两个缺陷：台前调度下无障碍窗口无法与窗口服务器窗口对应（改为按窗口 id
+  对应，D683），以及读取失败时授权会留在读不了的窗口上。关闭绑定窗口的回落、光标重新
+  框住、审计回读仍 NOT RUN。
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -10226,7 +10240,9 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   工具结果或日志中。内置拒绝名单条目无法移除。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [05-security/01-security](/zh-CN/spec/05-security/01-security) §13。
-- **状态**：NOT RUN —— 需要真机运行。
+- **状态**：PARTIAL —— 真机上一个 PI-Desktop 窗口位于所有窗口最前，无论作为自动授权
+  的候选还是显式绑定，都以 `COMPUTER_SELF_TARGET_REFUSED` 被拒；拒绝名单窗口以
+  `COMPUTER_TARGET_DENYLISTED` 被拒。审批卡片本身、安全输入与密码字段拒绝仍 NOT RUN。
 
 ### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
 

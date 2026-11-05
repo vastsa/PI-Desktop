@@ -285,13 +285,15 @@ pub(crate) async fn handle(
             )
             .map_err(refusal_err)?;
             let before = grant.target.target_id.clone();
-            if let Some(target_id) = target_id.as_deref() {
-                policy::bind_target(desktop.as_ref(), grant, &denylist, target_id)
-                    .map_err(refusal_err)?;
-            }
-            let inspection =
-                policy::inspect(desktop.as_ref(), grant, &denylist, expected_revision, now)
-                    .map_err(refusal_err)?;
+            let inspection = policy::inspect_bound(
+                desktop.as_ref(),
+                grant,
+                &denylist,
+                target_id.as_deref(),
+                expected_revision,
+                now,
+            )
+            .map_err(refusal_err)?;
             // Covers both a named rebind and the fallback inside `refresh`:
             // which application the grant moved to is exactly the identity the
             // audit trail is for, and no window text goes with it.

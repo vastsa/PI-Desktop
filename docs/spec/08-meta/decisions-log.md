@@ -8310,3 +8310,42 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   test, and `apps/desktop/test/computer-use-service.test.mjs` (automatic mint,
   Stop refusal, switch call shape). Still device-unverified: the
   `E2E-COMPUTER-USE-*` gates remain `NOT RUN`.
+
+## 2026-11-05 — The accessibility window is joined by window id, not geometry (D683)
+
+- D683 records a device finding and the private symbol that fixes it. The first
+  real-device run of computer use (macOS 15, Stage Manager active) refused every
+  window except the one on stage: `window_matches` joined the `CGWindowList`
+  entry to its `AXUIElement` by geometry, and the window server reports an
+  off-stage window at its Stage Manager *thumbnail* frame while accessibility
+  reports the real one — measured as `37,607 121x137` against
+  `219,44 1568x1125` for the same window. Geometry is therefore not an identity
+  on this platform, and the capability was unusable in practice.
+- The join is now the window id from `_AXUIElementGetWindow`, which is the same
+  number `CGWindowList` supplies. It is undocumented, has existed since 10.5,
+  and is what every window manager on the platform uses. It is resolved through
+  `dlsym` rather than linked, so a release that drops it degrades to the
+  geometry match instead of failing to launch; a readable id that disagrees is
+  definitive and refuses. No new crate, and the rest of the FFI surface is
+  unchanged.
+- A grant now carries accessibility's window frame rather than the window
+  server's, because element bounds, the coordinate clamp, the `basis`, the drawn
+  cursor, and the capture crop are all in that frame. `measure` keeps taking
+  identity (`appKey`, title) from `CGWindowList` and falls back to its geometry
+  when the window cannot be opened.
+- Two smaller consequences of the same run: the automatic grant now prefers a
+  window whose tree can actually be opened (`Desktop::can_open`, a one-node
+  probe), because the window server lists Stage Manager surfaces in front of
+  the user's windows and binding one wastes a turn; and a failed read no longer
+  leaves the grant on the window it could not read (`policy::inspect_bound`
+  restores the previous binding and keeps the revision bump).
+- The probe itself is `scripts/e2e-computer-use-device.mjs`, opt-in behind
+  `PI_DESKTOP_COMPUTER_USE_DEVICE=1` because it reads the operator's screen and
+  can type into one of their windows. Window titles are withheld unless
+  `--titles` is passed. Re-run it after a macOS upgrade: if `_AXUIElementGetWindow`
+  ever disappears, this is the check that notices.
+- Covered by `computer::tests::an_automatic_grant_skips_a_window_whose_tree_cannot_be_opened`
+  and `a_window_that_cannot_be_read_does_not_become_the_bound_one`; the join
+  itself is platform code and is covered only by the device probe. See
+  `docs/implementation/computer-use-evidence.md` for what the run proved and
+  what it did not.

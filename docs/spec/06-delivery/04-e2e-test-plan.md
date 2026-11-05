@@ -19725,9 +19725,14 @@ their separate platform acceptance.
 ## Computer use (ADR 0342, ADR 0344)
 
 Native-control scenarios remain landing gates for
-[03-runtime/computer-use](../03-runtime/computer-use.md). Their underlying
-refusals are unit-covered, but driving real applications remains `NOT RUN`.
-The permission-request UI below has isolated fixture automation.
+[03-runtime/computer-use](../03-runtime/computer-use.md). The host half now has
+device evidence on macOS through
+`PI_DESKTOP_COMPUTER_USE_DEVICE=1 node scripts/e2e-computer-use-device.mjs`
+(opt-in: it reads the operator's screen, and with `--act-app` types into one of
+their windows). The Electron half — the automatic mint through the tool, the
+indicator, Stop aborting the turn, the drawn cursor, and the loop against a real
+model — is still `NOT RUN`, and so is anything needing Screen Recording. The
+permission-request UI below has isolated fixture automation.
 
 ### E2E-COMPUTER-USE-request-accessibility-from-settings
 
@@ -19788,8 +19793,14 @@ The permission-request UI below has isolated fixture automation.
   `an_idle_grant_expires_and_stays_expired`, and
   `the_budget_closes_the_grant_and_refuses_the_next_action` in host-core;
   `apps/desktop/test/computer-use-service.test.mjs` covers the automatic mint,
-  the Stop refusal, and the wrong-session refusal the agent would hit.
-- **Status**: NOT RUN — needs a real window and a real turn to abort.
+  the Stop refusal, and the wrong-session refusal the agent would hit. Device:
+  `scripts/e2e-computer-use-device.mjs`.
+- **Status**: PARTIAL — the device probe confirmed the automatic desktop grant
+  binding the frontmost usable window (with our own window refused in front of
+  it), the settings defaults reaching the grant, the real tree, and the Stop
+  cooldown on macOS 15 with Stage Manager active. The indicator, Stop aborting
+  the owning turn, budget and idle closure in a running app, and the restart
+  case are NOT RUN.
 
 ### E2E-COMPUTER-USE-window-switching-stays-inside-the-refusals
 
@@ -19818,7 +19829,15 @@ The permission-request UI below has isolated fixture automation.
   host-core; `packages/computer-use` loop tests cover the switch step, the
   refused-switch recovery, and the terminal-grant case;
   `apps/desktop/test/computer-use-service.test.mjs` pins the host call shape.
-- **Status**: NOT RUN — needs real windows to switch between.
+  Device: `scripts/e2e-computer-use-device.mjs`.
+- **Status**: PARTIAL — on device, switching between six real applications
+  worked, the revision moved on every bind, a pre-switch revision was refused,
+  and the self-target, denylist and unknown-window binds were refused by code.
+  Two defects were found and fixed there: the accessibility window could not be
+  matched to the window-server window under Stage Manager (now joined by window
+  id, D683), and a failed read left the grant on the unreadable window. The
+  closed-window fallback, the cursor re-frame, and the audit read-back are
+  NOT RUN.
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -19840,8 +19859,13 @@ The permission-request UI below has isolated fixture automation.
 - **Automation**: `computer::tests::our_own_windows_are_never_targetable`,
   `a_renamed_self_process_is_still_refused`,
   `built_in_credential_surfaces_cannot_be_allowlisted`, and
-  `secure_input_refuses_both_inspection_and_action` in host-core.
-- **Status**: NOT RUN — needs a real approval card and a real password field.
+  `secure_input_refuses_both_inspection_and_action` in host-core. Device:
+  `scripts/e2e-computer-use-device.mjs`.
+- **Status**: PARTIAL — on device, a PI-Desktop window sat in front of every
+  other window and was refused `COMPUTER_SELF_TARGET_REFUSED` both as the
+  automatic grant's choice and as an explicit bind, and a denylisted window was
+  refused `COMPUTER_TARGET_DENYLISTED`. The approval card specifically, and the
+  secure-input and password-field refusals, are NOT RUN.
 
 ### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
 

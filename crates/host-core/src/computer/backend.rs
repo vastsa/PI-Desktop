@@ -105,6 +105,17 @@ pub trait Desktop: Send + Sync {
 
     fn inspect(&self, target: &TargetRef, max_nodes: usize) -> Result<RawInspection, DesktopError>;
 
+    /// Whether this target's tree can be opened at all.
+    ///
+    /// The window server enumerates surfaces that no accessibility client can
+    /// reach — Stage Manager's strip, overlay helpers — and they look exactly
+    /// like application windows in `list_targets`. Binding one is not a
+    /// security problem, it is a wasted turn, so the automatic grant asks this
+    /// before choosing. A one-node probe is the cheapest honest answer.
+    fn can_open(&self, target: &TargetRef) -> bool {
+        self.inspect(target, 1).is_ok()
+    }
+
     /// Whether the OS reports a secure input state right now. A backend that
     /// cannot tell must answer `true`: refusing is the safe default, since the
     /// alternative is typing into a password field.

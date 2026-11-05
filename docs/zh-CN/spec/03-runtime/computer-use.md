@@ -140,7 +140,7 @@ Agent 以一条自然语言 `instruction` 加可选 `maxSteps` 调用它；`obse
 
 | 平台 | 检查与输入 | 阶段 | 说明 |
 |---|---|---|---|
-| macOS | `AXUIElement` 动作，需 Accessibility TCC 授权；按键用 `CGEventPostToPid` 投向被授权应用 | 1 | 手写 framework FFI，不引入新 crate；安全输入会同时拒绝截取与输入 |
+| macOS | `AXUIElement` 动作，需 Accessibility TCC 授权；按键用 `CGEventPostToPid` 投向被授权应用 | 1 | 手写 framework FFI，不引入新 crate；安全输入会同时拒绝截取与输入。无障碍窗口与 `CGWindowList` 条目通过 `_AXUIElementGetWindow` 返回的窗口 id 对应（用 `dlsym` 取，取不到则退回几何匹配，D683）——台前调度显示缩略图时，窗口服务器与无障碍对同一窗口的几何说法不同，只靠几何会拒绝所有不在台前的窗口。授权的几何取无障碍的窗口框，因为元素 bounds、坐标夹取、绘制光标与截取裁剪都在这个坐标系里 |
 | Windows | UI Automation 模式，回退到面向窗口的消息 | 2 | 由更高完整性级别进程拥有的窗口被拒绝，绝不静默丢弃 |
 | Linux / X11 | AT-SPI 动作，尽力而为 | 2 | 需要无障碍总线；工具包不支持时如实上报，不做猜测 |
 | Linux / Wayland | 拒绝输入 | — | 不存在可移植的合成输入；截取仍通过门户可用 |

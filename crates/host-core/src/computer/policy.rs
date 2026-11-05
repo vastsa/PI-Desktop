@@ -180,8 +180,19 @@ fn frontmost_usable(
     denylist: &Denylist,
 ) -> ComputerResult<RawTarget> {
     let raw = desktop.list_targets().map_err(Refusal::from)?;
-    raw.into_iter()
-        .find(|item| refusal_for_target(item, self_pids, denylist).is_none())
+    let allowed = raw
+        .into_iter()
+        .filter(|item| refusal_for_target(item, self_pids, denylist).is_none())
+        .collect::<Vec<_>>();
+    // Prefer a window whose tree can actually be read, so the agent does not
+    // start bound to a window-server surface it can only switch away from.
+    // A desktop where nothing opens still binds the frontmost allowed window:
+    // the refusal then comes from the read, where it can be attributed.
+    allowed
+        .iter()
+        .find(|item| desktop.can_open(&item.target))
+        .cloned()
+        .or_else(|| allowed.into_iter().next())
         .ok_or(Refusal::ScopeViolation)
 }
 
@@ -403,6 +414,45 @@ pub fn inspect(
         truncated: raw.truncated,
         secure_input: false,
     })
+}
+
+/// Bind a window if one was named, then inspect whatever is bound.
+///
+/// A failed inspection leaves the grant describing the window it already had:
+/// the caller's request did not succeed, so the grant must not quietly end up
+/// on a window nobody could read — the next `act` would then be aimed at a
+/// window the caller never saw. The revision keeps the bump either way, so
+/// nothing the caller is holding validates after a move it did not observe.
+pub fn inspect_bound(
+    desktop: &dyn Desktop,
+    grant: &mut Grant,
+    denylist: &Denylist,
+    target_id: Option<&str>,
+    expected_revision: Option<u32>,
+    now: Instant,
+) -> ComputerResult<Inspection> {
+    let restore = target_id.map(|_| {
+        (
+            grant.target.clone(),
+            grant.target_label.clone(),
+            grant.bounds,
+        )
+    });
+    if let Some(target_id) = target_id {
+        // A refused bind mutates nothing, so there is nothing to put back.
+        bind_target(desktop, grant, denylist, target_id)?;
+    }
+    match inspect(desktop, grant, denylist, expected_revision, now) {
+        Ok(inspection) => Ok(inspection),
+        Err(refusal) => {
+            if let Some((target, label, bounds)) = restore {
+                grant.target = target;
+                grant.target_label = label;
+                grant.bounds = bounds;
+            }
+            Err(refusal)
+        }
+    }
 }
 
 /// Labels come from windows the user does not control, so they are bounded

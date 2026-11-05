@@ -111,9 +111,18 @@ impl MacDesktop {
     }
 
     fn window_matches(&self, window: AXUIElementRef, target: &TargetRef) -> bool {
-        // The window id is encoded in `target_id` as `<pid>:<window>`, and the
-        // AX side cannot read it, so geometry is the join key. `measure` is the
-        // authority on whether the grant still describes this window.
+        // The window id is the join key when the system exposes it: it is the
+        // same number `CGWindowList` gave us, so a match is an identity and a
+        // mismatch is definitive rather than a reason to guess by shape.
+        if let Some(id) = ax_window_id(window) {
+            return u64::from(id) == target.window;
+        }
+        // Fallback for a system without `_AXUIElementGetWindow`: geometry, the
+        // other thing both sides report. It is unreliable when the window
+        // server and accessibility disagree about a window's frame — Stage
+        // Manager reports a thumbnail to `CGWindowList` while accessibility
+        // reports the real frame — so an off-stage window is refused here
+        // rather than confused with another one.
         let Some(position) = attribute_point(window, "AXPosition") else {
             return false;
         };
@@ -129,6 +138,21 @@ impl MacDesktop {
         self.cg_bounds(target)
             .map(|cg| cg.matches(&bounds))
             .unwrap_or(false)
+    }
+
+    /// The window's frame as accessibility reports it, which is the frame every
+    /// element position is relative to. `None` when the window cannot be
+    /// opened — including before the Accessibility grant exists.
+    fn ax_bounds(&self, target: &TargetRef) -> Option<Rect> {
+        let window = self.window_element(target).ok()?;
+        let position = attribute_point(window.as_ref(), "AXPosition")?;
+        let size = attribute_size(window.as_ref(), "AXSize")?;
+        Some(Rect {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        })
     }
 
     /// Window geometry straight from `CGWindowList`, which does not need the
@@ -499,8 +523,15 @@ impl Desktop for MacDesktop {
             .into_iter()
             .find(|item| item.target.window == target.window && item.target.pid == target.pid)
             .ok_or(DesktopError::TargetGone)?;
+        // Identity comes from the window server, geometry from accessibility.
+        // The two disagree whenever the window server is showing something
+        // other than the window itself — Stage Manager reports a thumbnail —
+        // and every coordinate this grant will produce (element bounds, the
+        // clamp, the drawn cursor, the capture crop) is in accessibility's
+        // frame, so that is the frame the grant must carry.
+        let bounds = self.ax_bounds(target).unwrap_or(found.bounds);
         Ok(Measured {
-            bounds: found.bounds,
+            bounds,
             app_key: found.target.app_key,
             title: found.title,
         })
