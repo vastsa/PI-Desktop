@@ -1,7 +1,7 @@
 import { ReviewHistoryPanel } from "./ReviewHistoryPanel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useReviewFocusRequest } from "../../lib/review-focus-request";
+import { scrollReviewToAnchor, useReviewFocusRequest } from "../../lib/review-focus-request";
 import { reviewChangesFromMessages, summarizeReviewChanges } from "../../lib/workspace-review";
 import { useAppStore } from "../../stores/app-store";
 import { IconDiff } from "../icons";
@@ -55,9 +55,7 @@ function LegacyReviewTab() {
 
   useEffect(() => {
     if (!focus) return;
-    scrollRef.current
-      ?.querySelector<HTMLElement>(`[data-snapshot-id="${CSS.escape(focus.anchor)}"]`)
-      ?.scrollIntoView({ block: "start" });
+    scrollReviewToAnchor(scrollRef.current, `[data-snapshot-id="${CSS.escape(focus.anchor)}"]`);
   }, [focus]);
 
   if (entries.length === 0) {

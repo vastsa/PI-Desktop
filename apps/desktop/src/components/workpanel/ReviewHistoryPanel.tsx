@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { ReviewChangesPage, ReviewContextLines, ReviewTurnsPage } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { groupReviewFiles, readReviewPages } from "../../lib/review-history";
-import { useReviewFocusRequest } from "../../lib/review-focus-request";
+import { scrollReviewToAnchor, useReviewFocusRequest } from "../../lib/review-focus-request";
 import { readReviewContextLines, rememberReviewContextLines } from "../../lib/review-preferences";
 import { useAppStore } from "../../stores/app-store";
 import { Button, Select } from "../ui";
@@ -52,8 +52,10 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
   const files = useMemo(() => groupReviewFiles(result.changes), [result]);
   useEffect(() => {
     if (loading || !selection.snapshotId) return;
-    scroller.current?.querySelector<HTMLElement>(`[data-review-snapshots~="${CSS.escape(selection.snapshotId)}"]`)
-      ?.scrollIntoView({ block: "start" });
+    scrollReviewToAnchor(
+      scroller.current,
+      `[data-review-snapshots~="${CSS.escape(selection.snapshotId)}"]`,
+    );
   }, [files, loading, selection]);
   const older = async () => {
     if (catalog.nextBefore === undefined || paging) return;
