@@ -19736,6 +19736,13 @@ permission-request UI below has isolated fixture automation.
 
 ### E2E-COMPUTER-USE-request-accessibility-from-settings
 
+- **Layout regression**: Open Settings → AI. Computer use is the final card,
+  after Permissions and Defaults, without card/row explanations or a static
+  scope note. Its switch, platform/permission status, enabled model/capture
+  controls, missing-model hint, and permission error/retry path remain present.
+  `apps/desktop/test/computer-use-settings-surface.test.mjs` covers order and
+  compact rendering with the feature both disabled and enabled.
+
 - **Preconditions**: Isolated Electron fixture profile; OS calls mocked at IPC
   and Electron boundaries; computer use disabled; no provider or real OS prompt.
 - **Steps**: Open Settings with missing Accessibility; focus and click its status

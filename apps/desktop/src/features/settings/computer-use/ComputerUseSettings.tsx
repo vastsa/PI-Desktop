@@ -19,9 +19,8 @@ import { useComputerPermission } from "../../computer-use/use-computer-permissio
  *
  * The three things only the user can decide live here: whether the capability
  * exists at all, which model may drive it, and whether a run may take pixels.
- * The switch is the consent — the agent mints its own desktop-scope grant once
- * it is on — so the row says what that means rather than implying a later
- * per-window decision that no longer exists.
+ * The switch is the consent: the agent mints its own desktop-scope grant once
+ * it is on. The compact card keeps controls and actionable status only.
  *
  * There is no input-approval row: `confirm-each` has no approval card behind it
  * yet, and a control that narrows nothing would misrepresent the capability.
@@ -75,16 +74,14 @@ export function ComputerUseSettings({
     void saveSettings({ computerUse: { ...value, ...next } });
 
   return (
-    <SettingsCard title={t("computerUse.title")} description={t("computerUse.description")}>
-      <SettingsRow title={t("computerUse.enable")} description={t("computerUse.enableDesc")}>
+    <SettingsCard title={t("computerUse.title")}>
+      <SettingsRow title={t("computerUse.enable")}>
         <SettingsToggle
           label={t("computerUse.enable")}
           checked={value.enabled}
           onChange={() => patch({ enabled: !value.enabled })}
         />
       </SettingsRow>
-      {/* The scope is no longer a choice, so it has to be a statement. */}
-      <p className="settings-hint">{t("computerUse.scopeNote")}</p>
 
       {/* Readable before enabling: a platform without a backend should say so
           rather than let the user turn on a feature that cannot act. */}
@@ -132,7 +129,7 @@ export function ComputerUseSettings({
 
       {value.enabled && (
         <>
-          <SettingsRow title={t("computerUse.model")} description={t("computerUse.modelDesc")}>
+          <SettingsRow title={t("computerUse.model")}>
             <SettingsMenuSelect
               label={t("computerUse.model")}
               value={selectedModel}
@@ -149,7 +146,7 @@ export function ComputerUseSettings({
           </SettingsRow>
           {!value.model && <div className="settings-hint">{t("computerUse.modelMissing")}</div>}
 
-          <SettingsRow title={t("computerUse.capture")} description={t("computerUse.captureDesc")}>
+          <SettingsRow title={t("computerUse.capture")}>
             <SettingsMenuSelect
               label={t("computerUse.capture")}
               value={value.defaultCapture ?? COMPUTER_USE_DEFAULTS.capture}

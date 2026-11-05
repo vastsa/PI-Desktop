@@ -281,12 +281,14 @@ never a no-op reported as success.
 
 - Computer Use is off by default. Enabling it does not itself request an OS
   permission, capture a frame, or enumerate a window — but it does authorise the
-  agent to start a desktop-wide grant on its next `Computer` call, so the row
-  says that instead of describing a later handover.
-- Settings states the scope rather than offering it: one window at a time, the
-  agent may switch, PI-Desktop's own windows and credential surfaces are never
-  reachable, and Stop ends the run. There is no input-approval row while
-  `confirm-each` has no card behind it.
+  agent to start a desktop-wide grant on its next `Computer` call.
+- The card is last in Settings → AI, after Permissions and Defaults. It shows
+  controls and actionable status without card/row descriptions or a static
+  scope note. Permission diagnostics and the missing-model hint remain visible.
+  The scope is not selectable: one window at a time, the agent may switch,
+  PI-Desktop's own windows and credential surfaces are never reachable, and
+  Stop ends the run. There is no input-approval row while `confirm-each` has
+  no card behind it.
 - The model binding is explicit. Settings offers the provider rows the user
   already configured; an enabled feature with no binding is a visible
   unconfigured state, not a silent fallback to the conversation model.
