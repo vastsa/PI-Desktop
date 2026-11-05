@@ -58,3 +58,34 @@ test("one inline gutter uses old numbers only for deletions, new numbers otherwi
   const [hunk] = numberedReviewHunks([{ header: "@@ -8,2 +12,2 @@", lines: [{ type: "del", text: "old" }, { type: "add", text: "new" }, { type: "context", text: "same" }, { type: "context", text: "\\ No newline at end of file" }] }]);
   assert.deepEqual(hunk.lines.map(reviewLineNumber), [8, 12, 13, null]);
 });
+
+test("ten operation records across eight paths remain eight visible files", () => {
+  const rows = Array.from({length:8}, (_, i) => entry(String(i), `file-${i}.ts`, '/project'));
+  rows.push(entry('extra-one', 'file-0.ts', '/project'), entry('extra-two', 'file-1.ts', '/project'));
+  const files = groupReviewFiles(rows);
+  assert.equal(files.length, 8);
+  assert.equal(files.reduce((total, file) => total + file.entries.length, 0), 10);
+});
+
+test("zero-counter files are excluded while either positive counter keeps the file visible", () => {
+  const values = [[0, 0], [3, 0], [0, 4], [2, 5]];
+  const rows = values.map(([additions, deletions], i) => {
+    const row = entry(String(i), `file-${i}.ts`, '/project');
+    Object.assign(row.message.toolResult.details.review, { additions, deletions });
+    return row;
+  });
+  const files = groupReviewFiles(rows);
+  assert.deepEqual(files.map(file => file.path), ['file-1.ts', 'file-2.ts', 'file-3.ts']);
+  assert.deepEqual(groupReviewFiles([rows[0]]), []);
+  assert.equal(rows.length, 4);
+});
+
+test("zero-counter operations remain in a visible file's complete operation chain", () => {
+  const first = entry('zero', 'same.ts', '/project');
+  Object.assign(first.message.toolResult.details.review, { additions: 0, deletions: 0 });
+  const second = entry('positive', 'same.ts', '/project');
+  const files = groupReviewFiles([first, second]);
+  assert.equal(files.length, 1);
+  assert.deepEqual(files[0].entries.map(row => row.change.snapshotId), ['zero', 'positive']);
+  assert.deepEqual([files[0].additions, files[0].deletions], [1, 1]);
+});
