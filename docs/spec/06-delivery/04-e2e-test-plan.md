@@ -19786,7 +19786,7 @@ their separate platform acceptance.
 
 ### E2E-GOAL-localized-card
 
-- Render the real input-attached Goal header, one Settings → AI Goal budget row
+- Render the real input-attached Goal header, one Settings → Agent behavior → Session defaults Goal budget row
   with Turns/Tokens inputs, bounded details/audit and adjust-total-budget dialogs.
   Cover active, paused, budget-exhausted and completed fixtures in light/dark
   desktop and narrow layouts, including English and zh-CN.
