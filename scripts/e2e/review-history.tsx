@@ -39,6 +39,13 @@ async function until(predicate: () => boolean | Promise<boolean>, reason: string
 const action = (name: string, input?: unknown) => window.reviewFixture.action(name, input);
 Object.defineProperty(navigator, "clipboard", { value: { writeText: (text: string) => action("copy", text) } });
 const select = (label: string) => document.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+function assertDisclosureFollowsFilename(header: HTMLElement) {
+  const path = header.querySelector<HTMLElement>('.review-change-card-path')!;
+  const text = document.createRange(); text.selectNodeContents(path);
+  const visibleTextRight = Math.min(path.getBoundingClientRect().right, text.getBoundingClientRect().right);
+  const gap = header.querySelector('.review-file-disclosure')!.getBoundingClientRect().left - visibleTextRight;
+  assert(gap >= 5 && gap <= 7, `Disclosure immediately follows the visible filename: gap=${gap}`);
+}
 function checkSelectStyle(node: HTMLSelectElement) {
   assert(node?.classList.contains('field-select'), 'Review restores the shared native Select');
   assert(getComputedStyle(node).appearance === 'base-select', 'Native picker supports local styling');
@@ -193,7 +200,18 @@ window.reviewProbe = async () => {
   }
   checks.push('native-review-select-sidebar-colors-and-outer-only-corners');
   await choose("对话轮次", seed.round); await ready();
-  assert(headers().length === 3, "Workspace, delegated and approved outside changes share one file list");
+  const recorded = await api.workspaceReviewChanges({ sessionId: seed.session.id, turnId: seed.round });
+  assert(recorded.changes.length === 5, "Zero-counter native evidence stays available in the Host response");
+  assert(headers().length === 3, "Workspace, delegated and approved outside changes share one file list, excluding the zero-counter file");
+  assert(!headers().some(header => header.textContent?.includes("zero-preview.txt")), "Both-zero file is absent from Review");
+  assert(document.querySelector('.review-summary')?.textContent === '3 个文件', 'Five records across four paths must report only the three positive-counter files');
+  checks.push("zero-counter-file-hidden-without-losing-native-evidence");
+  const selected = document.querySelector<HTMLElement>('.review-round-selected selectedcontent')!;
+  await until(() => selected?.textContent?.includes('+7') === true, 'Native selectedcontent reflects the chosen round');
+  const time = selected.querySelector<HTMLElement>('.review-turn-time')!, counts = selected.querySelector<HTMLElement>('.review-turn-counts')!;
+  assert(counts.getBoundingClientRect().left > time.getBoundingClientRect().right + 8, 'Closed selection keeps a gap before right-aligned counts');
+  assert(getComputedStyle(counts.querySelector('.diff-count-add')!).color !== getComputedStyle(counts.querySelector('.diff-count-del')!).color, 'Closed selection preserves add/delete colors');
+  assert(selected.getBoundingClientRect().right <= select('对话轮次').getBoundingClientRect().right - 12, 'Closed selected counts reserve the caret lane');
   assert(headers()[2].querySelector('.review-change-card-path')?.textContent === '.../review-open-tests-source.mjs', "Real outside Write shows only basename with three-dot prefix");
   assert(getComputedStyle(headers()[2].querySelector('.review-change-card-path')!).direction === 'ltr', "Outside prefix must stay before the filename visually");
   assert(headers()[2].title.includes('outside') && !headers()[2].title.includes('/workspace/'), "Outside title retains actual path, without prepending workspace");
@@ -212,15 +230,32 @@ window.reviewProbe = async () => {
   headers()[2].click(); await frame();
   checks.push('real-approved-outside-write-capture-display-and-safe-rollback');
   assert(headers()[0].textContent?.includes("long.ts"), "Files preserve original order");
+  const closedWidth = headers()[0].getBoundingClientRect().width;
+  const closedCountRight = headers()[0].querySelector('.diff-counts')!.getBoundingClientRect().right;
+  assert(getComputedStyle(scroller()).scrollbarGutter === 'stable', 'Scroller reserves its gutter before overflow');
+  assert(headers()[0].firstElementChild?.classList.contains('review-file-type'), 'File icon occupies the former left-disclosure space');
+  headers().forEach(assertDisclosureFollowsFilename);
+  await action('hoverReviewFile', true);
+  await until(() => getComputedStyle(headers()[0].querySelector('.review-file-disclosure')!).visibility === 'visible', 'Closed file reveals its right-facing disclosure on hover');
+  assert(getComputedStyle(headers()[0].querySelector('.review-file-disclosure svg')!).transform === 'none', 'Closed disclosure faces right');
   headers()[0].click();
   await until(() => document.querySelectorAll(".review-history-record").length === 2, "All same-file change records expand together");
   assert(document.querySelectorAll('.review-history-file-body .review-change-card-actions').length === 1, "One action bar per file");
   assert(document.querySelectorAll('.review-change-copy').length === 1 && document.querySelectorAll('.review-change-rollback').length === 1, "Exactly one copy and rollback for all operations");
   assert(!document.querySelector('.review-history-file-body')!.textContent?.includes('修改记录'), "No per-operation title");
+  assert(Math.abs(headers()[0].getBoundingClientRect().width - closedWidth) < 1, 'Expanding an overflowing diff cannot shrink file rows');
+  assert(Math.abs(headers()[0].querySelector('.diff-counts')!.getBoundingClientRect().right - closedCountRight) < 1, 'Statistics stay fixed when the vertical scrollbar appears');
+  assert(getComputedStyle(headers()[0].querySelector('.review-file-disclosure svg')!).transform !== 'none', 'Expanded disclosure faces down');
+  const labelRight = headers()[0].querySelector('.review-file-label')!.getBoundingClientRect().right;
+  assert(headers()[0].querySelector('.diff-counts')!.getBoundingClientRect().left - labelRight >= 11, 'Filename lane has a clear gap before statistics');
+  await action('hoverReviewFile', false);
+  await until(() => getComputedStyle(headers()[0].querySelector('.review-file-disclosure')!).visibility === 'hidden', 'Non-hovered disclosure disappears without consuming new space');
+  checks.push('file-count-closed-select-layout-and-reserved-scrollbar');
   checks.push('one-file-one-copy-and-rollback-no-record-titles');
   assert(!document.querySelector(".review-history-root"), "No extra execution-root row in the diff");
   for (const row of document.querySelectorAll('.review-change-diff .diff-line:not(.hunk)')) {
     assert(row.querySelectorAll('.review-line-number').length === 1, 'Inline diff has exactly one line-number gutter');
+    assert(!row.querySelector('.diff-line-sign'), 'Inline gutter has no redundant add/delete sign column');
     const gutter = row.querySelector('.review-line-number')!;
     assert(gutter.getAttribute('data-side') === (row.classList.contains('del') ? 'old' : 'new'), 'Single gutter preserves the correct source coordinate');
   }
@@ -243,6 +278,7 @@ window.reviewProbe = async () => {
   await action("screenshot", "review-normal.png");
   await action("resize", 420); await frame(); await frame();
   assert(scroller().getBoundingClientRect().width <= 420, "Narrow viewport applied");
+  headers().forEach(assertDisclosureFollowsFilename);
   assert(headers()[0].getBoundingClientRect().right <= window.innerWidth + 1, "Narrow header fits");
   assert(Math.abs(headers()[0].getBoundingClientRect().top - scroller().getBoundingClientRect().top - parseFloat(getComputedStyle(scroller()).paddingTop)) <= 2, "Narrow sticky header is visible");
   await fileMenu();

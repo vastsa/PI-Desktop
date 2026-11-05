@@ -26,7 +26,10 @@ export function ReviewHistoryFile({ file, sessionId, context, focusSeq, focusSna
   return <section className={cx("review-history-file", open && "open")} data-review-snapshots={file.entries.map(entry => entry.change.snapshotId).join(" ")}>
     <div className="review-history-file-heading">
     <Button variant="ghost" className="review-history-file-header" aria-expanded={open} aria-controls={detailsId} disabled={disabled} title={/^(?:[a-z]:[\\/]|[\\/])/i.test(file.path) || !file.root ? file.path : `${file.root}/${file.path}`} onClick={() => setOpen(value => !value)}>
-      <span className="review-file-disclosure"><IconChevronRight size={11} /></span><ReviewFileIcon path={file.path} /><span className="review-change-card-path" data-outside-path={reviewFilePathLabel(file.path) !== file.path || undefined}>{reviewFilePathLabel(file.path)}</span>
+      <ReviewFileIcon path={file.path} /><span className="review-file-label">
+        <span className="review-change-card-path" data-outside-path={reviewFilePathLabel(file.path) !== file.path || undefined}>{reviewFilePathLabel(file.path)}</span>
+        <span className="review-file-disclosure"><IconChevronRight size={11} /></span>
+      </span>
       <span className="diff-counts"><span className="diff-count-add">+{file.additions}</span><span className="diff-count-del">−{file.deletions}</span></span>
     </Button>
     <TooltipButton className="icon-btn review-file-menu-button" tooltip={t("panel.review.fileActions")} disabled={disabled} aria-haspopup="menu" aria-expanded={!!menu.contextMenu} onClick={event => menu.openContextMenu(event, { label: t("panel.review.fileActions"), anchor: "bottom-end", density: "compact", items: [
