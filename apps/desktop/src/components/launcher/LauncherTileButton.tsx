@@ -4,13 +4,13 @@ import type { LauncherTile } from "../../lib/launcher-search";
 import { IconPin } from "../icons";
 
 /**
- * One grid cell: icon, type badge, and name — plus its own pin toggle.
+ * One grid cell: a rounded-square icon and the name, plus its own pin toggle.
  *
- * Every cell has the same three parts so the eight-column grid stays aligned:
- * the icon shape (square plugin, round application) and the small type badge
- * carry the source, and the name replaces the old second text line, which used
- * to explain why the item matched. A long name is ellipsized instead of
- * wrapping, which would break the row rhythm.
+ * Every source renders the same shape at the same size, so the grid reads as
+ * one set of tools and the whole line below the icon belongs to the name. The
+ * source still appears in the hover title for anyone who needs it, but it no
+ * longer costs a corner of the icon or a word of the name. A long name is
+ * ellipsized instead of wrapping, which would break the row rhythm.
  *
  * The pin sits in the corner and is only visible while the cell is hovered,
  * active or focused; an already pinned cell keeps it visible and filled.
@@ -71,10 +71,7 @@ export function LauncherTileButton({
         title={title}
         onClick={onOpen}
       >
-        <span
-          className={`plugin-launcher-icon plugin-launcher-icon-${tile.kind}`}
-          aria-hidden
-        >
+        <span className="plugin-launcher-icon" aria-hidden>
           {showIcon ? (
             <img
               src={tile.iconDataUrl}
@@ -86,10 +83,7 @@ export function LauncherTileButton({
             <span className="plugin-launcher-monogram">{tile.monogram}</span>
           )}
         </span>
-        <span className="plugin-launcher-tile-line">
-          <span className="plugin-launcher-tile-name">{tile.name}</span>
-          <span className="plugin-launcher-tile-type">{typeLabel}</span>
-        </span>
+        <span className="plugin-launcher-tile-name">{tile.name}</span>
       </button>
       <button
         type="button"
