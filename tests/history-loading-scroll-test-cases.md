@@ -55,6 +55,19 @@ button, and checks visible rows on every sampled navigation frame and at most
 and exits normally. These checks complement, rather than replace, the held-IO
 component fixture's prepend-anchor and request-concurrency measurements.
 
+## Stable reading after page settlement
+
+`node scripts/e2e-transcript-history-loading.mjs --anchor-only` runs the targeted
+late-reading regressions. It first loads a page through production ChatTranscript,
+then waits for settlement before changing the layout: content above grows 120px;
+a balanced case also shrinks content below by 120px; a long-answer case grows
+an earlier paragraph within the same message. Nonempty layout samples remain
+within 1px, and six 20px steps require identical captured text pixels. There is
+no loading veil, delayed reveal, input cancellation, or final-position-only check.
+The full suite still exercises native wheel/smooth travel and navigation handoff.
+The full application's `--interaction-smoke` also checks a painted reading crop
+after real Host pagination. These checks do not change page-cache lifetime.
+
 ## Start the controlled manual fixture
 
 ```bash

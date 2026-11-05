@@ -204,6 +204,8 @@ export function useTranscriptScroll({
     track: trackHistoryPosition, cancel: cancelHistoryPaging, readLatency: historyReadLatency,
   } = useTranscriptHistoryPaging({
     scrollRef, contentRef, visible: paneVisible, sourceHead: messages[0]?.id, onStart: startHistoryReading,
+    canRetain: (paging) => paneVisible && !pinnedRef.current && (paging || (!latestNavigation.isActive() &&
+      !readingPositionPendingRef.current && !isDisclosureAnchorHeld() && !searchTarget)),
     onPosition: recordScrollPosition, onSettled: rememberReadingPosition,
   });
   const releaseNavigationFollow = useCallback(() => {
@@ -487,8 +489,9 @@ export function useTranscriptScroll({
       pinnedRef.current = transition.pinned;
       setShowJump(transition.showJump);
     }
+    trackHistoryPosition(windowSize);
     rememberReadingPosition();
-  }, [cancelFollowScroll, historyReadLatency, latestNavigation, reachTop, readingPositionPendingRef, readingWindow, recordScrollPosition, rememberReadingPosition, scheduleFollowScroll, trackHistoryPosition]);
+  }, [cancelFollowScroll, historyReadLatency, latestNavigation, reachTop, readingPositionPendingRef, readingWindow, recordScrollPosition, rememberReadingPosition, scheduleFollowScroll, trackHistoryPosition, windowSize]);
 
   // Send / retry / regenerate always re-pins follow mode so the new prompt and
   // its stream stay in view, even if the user had scrolled up through history.

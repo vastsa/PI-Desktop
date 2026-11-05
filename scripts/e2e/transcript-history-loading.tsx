@@ -199,10 +199,10 @@ async function jumpWhileLoading() {
   await until(() => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 2, "latest navigation did not arrive");
   return { ...inspect(), distanceFromBottom: el.scrollHeight - el.clientHeight - el.scrollTop };
 }
-function track() {
+function track(readingNode?: HTMLElement) {
   cancelAnimationFrame(sampling);
   const el = scroller();
-  anchor = [...el.querySelectorAll<HTMLElement>("[data-minimap-id]")].find(row => {
+  anchor = readingNode ?? [...el.querySelectorAll<HTMLElement>("[data-minimap-id]")].find(row => {
     const r = row.getBoundingClientRect(); return r.bottom > el.getBoundingClientRect().top && r.height > 0;
   });
   if (!anchor) throw new Error("Missing visible reading anchor");
@@ -245,15 +245,69 @@ async function growMountedWindow() {
   cancelAnimationFrame(sampling);
   return { before, after: inspect() };
 }
+let mutateSettledLayout: (amount: number) => void = () => { throw new Error("No prepared layout case"); };
+async function prepareSettledLayout(kind: "late" | "balanced" | "paragraph") {
+  await reset(); await beginAhead(); await release();
+  const el = scroller();
+  if (kind === "paragraph") {
+    const id = current.at(-3)!.id;
+    current = current.map(message => message.id === id ? { ...message,
+      content: Array.from({ length: 40 }, (_, n) => `Paragraph ${n}. ${"Stable long-answer reading content. ".repeat(12)}`).join("\n\n") } : message);
+    render();
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 120 }));
+    el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
+    el.dispatchEvent(new Event("scroll", { bubbles: true }));
+  }
+  const rows = [...el.querySelectorAll<HTMLElement>("[data-message-id], [data-minimap-id]")];
+  for (const row of rows) row.style.contentVisibility = "visible";
+  const below = rows.at(-1)!;
+  below.style.paddingBottom = "120px";
+  for (let n = 0; n < 8; n++) await frame();
+  const paragraphs = [...el.querySelectorAll<HTMLElement>(`[data-message-id="${current.at(-3)!.id}"] .prose-chat p`)];
+  const paragraph = kind === "paragraph" ? paragraphs[20] : undefined;
+  if (kind === "paragraph" && !paragraph) throw new Error("Long-answer paragraph missing");
+  el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -120 }));
+  el.scrollTo({ top: paragraph ? el.scrollTop + paragraph.getBoundingClientRect().top - el.getBoundingClientRect().top - 120 : el.scrollHeight / 2,
+    behavior: "instant" });
+  el.dispatchEvent(new Event("scroll", { bubbles: true }));
+  for (let n = 0; n < 12; n++) await frame();
+  const before = track(paragraph);
+  const above = kind === "paragraph" ? paragraphs[0] : rows.find(row => row.getBoundingClientRect().bottom < el.getBoundingClientRect().top);
+  if (!above || above === below) throw new Error("Need distinct content above/below the reading point");
+  const padding = parseFloat(getComputedStyle(above).paddingBottom);
+  const height = el.scrollHeight;
+  mutateSettledLayout = amount => {
+    above.style.paddingBottom = `${padding + amount}px`;
+    if (kind === "balanced") below.style.paddingBottom = `${120 - amount}px`;
+  };
+  const viewport = el.getBoundingClientRect();
+  let line: DOMRect | undefined;
+  for (const node of el.querySelectorAll(".prose-chat p, .message-user-text")) {
+    const range = document.createRange(); range.selectNodeContents(node);
+    line = [...range.getClientRects()].find(rect => rect.width > 200 && rect.top > viewport.top + 20 && rect.bottom < viewport.bottom - 20);
+    if (line) break;
+  }
+  if (!line) throw new Error("Need a visible text line for painted-pixel comparison");
+  return { kind, before, height, crop: { x: Math.ceil(line.left), y: Math.ceil(line.top), width: 200, height: 12 } };
+}
+async function settledLayout(kind: "late" | "balanced" | "paragraph") {
+  const prepared = await prepareSettledLayout(kind);
+  mutateSettledLayout(120);
+  for (let n = 0; n < 12; n++) await frame();
+  cancelAnimationFrame(sampling);
+  return { ...prepared, after: inspect(), totalDelta: scroller().scrollHeight - prepared.height };
+}
 declare global { var historyLoadingFixture: { reset: typeof reset; begin: typeof begin; release: typeof release;
   inspect: typeof inspect; growTail: typeof growTail; hideAndReveal: typeof hideAndReveal;
   inputOwnership: typeof inputOwnership; jumpWhileLoading: typeof jumpWhileLoading; beginAhead: typeof beginAhead; track: typeof track;
   growMountedWindow: typeof growMountedWindow; crossAhead: typeof crossAhead; armNativeInput: typeof armNativeInput;
+  settledLayout: typeof settledLayout; prepareSettledLayout: typeof prepareSettledLayout; mutateSettledLayout: (amount: number) => void;
   finishNativeInput: typeof finishNativeInput; frames: () => Promise<void> }; }
 await i18n.init({ lng: "en", resources: { en: { translation: en } } });
 useAppStore.setState({ activeSessionId: "history-fixture", messages: [], sessions: [], runningSessions: {},
   pendingPlans: {}, pendingAsks: {}, pendingPermissions: {}, planningStates: {}, latestTurnResults: {},
   settings: { ...useAppStore.getState().settings, smoothStreaming: false } });
-globalThis.historyLoadingFixture = { reset, begin, beginAhead, track, release, inspect, growTail, hideAndReveal, inputOwnership, jumpWhileLoading, growMountedWindow, crossAhead, armNativeInput, finishNativeInput,
+globalThis.historyLoadingFixture = { reset, begin, beginAhead, track, release, inspect, growTail, hideAndReveal, inputOwnership, jumpWhileLoading, growMountedWindow, crossAhead, armNativeInput, finishNativeInput, settledLayout,
+  prepareSettledLayout, mutateSettledLayout: amount => mutateSettledLayout(amount),
   frames: async () => { for (let n = 0; n < 4; n++) await frame(); } };
 await reset();

@@ -12,6 +12,7 @@ const { build } = createRequire(join(root, "packages/agent-runtime/package.json"
 const { electronBinary } = resolveElectronBinary(root);
 const manual = process.argv.includes("--manual");
 const manualSmoke = process.argv.includes("--manual-smoke");
+const anchorOnly = process.argv.includes("--anchor-only");
 const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? root, "history-loading-"));
 try {
   await build({ entryPoints: [join(root, "scripts/e2e/transcript-history-loading.tsx")],
@@ -87,6 +88,32 @@ app.whenReady().then(async () => {
     await click('Reset conversation');
     await wait('document.querySelector("#history-manual-status").textContent.includes("40 of 1000")');
     console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, manualControls: true, pages: 2 }));
+    app.exit(0); return;
+  }
+  const settledResults = [];
+  for (const kind of ['late', 'balanced', 'paragraph']) {
+    const result = await call('settledLayout(' + JSON.stringify(kind) + ')');
+    settledResults.push(result);
+    console.log('HISTORY_SETTLED_LAYOUT ' + JSON.stringify(result));
+  }
+  for (const result of settledResults) {
+    assert(result.after.layoutSampleCount >= 8, 'late-layout regression needs actual frame samples');
+    assert(result.after.layoutMaxDrift <= 1, 'a painted late-layout frame moved the reading anchor: ' + result.after.layoutMaxDrift);
+    if (result.kind === 'balanced') assert(Math.abs(result.totalDelta) <= 1, 'balanced layout fixture changed total height');
+  }
+  for (const kind of ['late', 'balanced', 'paragraph']) {
+    const prepared = await call('prepareSettledLayout(' + JSON.stringify(kind) + ')');
+    const baseline = (await win.webContents.capturePage(prepared.crop)).toBitmap();
+    assert(new Set(baseline).size > 8, 'pixel probe captured a blank/uniform region');
+    for (let amount = 20; amount <= 120; amount += 20) {
+      await call('mutateSettledLayout(' + amount + ')');
+      const painted = (await win.webContents.capturePage(prepared.crop)).toBitmap();
+      assert(baseline.equals(painted), kind + ': painted text changed during layout step ' + amount);
+    }
+    console.log('HISTORY_PAINTED_ANCHOR ' + JSON.stringify({ kind, captures: 6, identical: true }));
+  }
+  if (${anchorOnly}) {
+    console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, settledLayout: true }));
     app.exit(0); return;
   }
   const results = [];

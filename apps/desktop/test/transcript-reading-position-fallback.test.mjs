@@ -67,6 +67,29 @@ test("an anchored row that is mounted still restores by its rect", () => {
   assert.equal(scroller.scrollTop, 216);
 });
 
+test("unchanged/subpixel anchor alignment does not write scrollTop or stop native travel", () => {
+  const scroller = fakeScroller({ scrollTop: 480 });
+  let top = scroller.scrollTop;
+  let writes = 0;
+  Object.defineProperty(scroller, "scrollTop", {
+    get: () => top,
+    set: value => { writes++; top = value; },
+  });
+  let rowTop = 24;
+  const row = { getBoundingClientRect: () => ({ top: rowTop, height: 80 }) };
+  const content = fakeContent({ row });
+  assert.equal(restoreTranscriptReadingPosition(scroller, content, bookmark()), true);
+  rowTop = 24.25;
+  assert.equal(restoreTranscriptReadingPosition(scroller, content, bookmark()), true);
+  assert.equal(writes, 0);
+  rowTop = 144;
+  restoreTranscriptReadingPosition(scroller, content, bookmark());
+  assert.equal(writes, 1);
+  assert.equal(top, 600);
+  restoreTranscriptReadingPosition(scroller, fakeContent(), bookmark({ scrollTop: 600 }));
+  assert.equal(writes, 1, "an unchanged missing-row fallback also leaves native travel alone");
+});
+
 test("a bookmark whose row is above the mounted window falls back to its offset", () => {
   const scroller = fakeScroller({ scrollTop: 0, top: 0 });
   const content = fakeContent({ row: null });

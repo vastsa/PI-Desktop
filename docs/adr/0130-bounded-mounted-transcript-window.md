@@ -53,7 +53,12 @@ reference-equal, and that runs on every streamed token.
    newest visible message anchor without hiding overflow or discarding input,
    including the hard-edge (`<= 120px`), explicit continuation, and underfilled
    top-boundary fallback. The moving anchor remains owned through IO and three
-   stable layout frames; it never owns user input. Explicit latest navigation retires
+   stable layout frames; it never owns user input. Settlement ends request
+   ownership, not reading ownership. Ordinary reading retains the actual
+   message and its visible prose block for late layout, with row-level resize
+   observation even when total height is unchanged. Navigation/follow/hide
+   release that reading state. No-op scroll writes are skipped so compensation
+   cannot stop native smooth input. Explicit latest navigation retires
    the prior gesture and hold so queued scroll events cannot start another read.
    This replaces the old `prependHeightRef` total-height delta: deferred DOM,
    tail updates, and intrinsic-size estimates made that delta unreliable.

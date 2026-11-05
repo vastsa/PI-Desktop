@@ -1650,7 +1650,13 @@ Project drag/drop follows these patterns:
   latency plus `150ms` can increase the lead, capped at
   `max(base, min(12000px, 12 * clientHeight))`. Cached history mounts before Host
   IO; requests stay single-flight. The actual-message anchor tracks user
-  displacement and corrects prepend/layout changes before paint.
+  displacement and corrects prepend/layout changes before paint. Request
+  settlement does not release the reading anchor: ordinary reading retains its
+  actual message and, where available, visible prose block until follow or
+  explicit navigation takes over. Row-level resize observation catches changes
+  whose total heights cancel. Corrections run in the current layout/resize
+  delivery, not in a later painted frame, and unchanged/subpixel alignment does
+  not write `scrollTop` and interrupt native smooth scrolling.
 - All paging paths leave `overflow-y` and input untouched, including the
   `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
   top-boundary observer. Wheel/trackpad, touch and keyboard input continue

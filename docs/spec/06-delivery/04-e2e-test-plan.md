@@ -13627,6 +13627,14 @@ This test plan spec is accepted when:
   messages, then the actual latest button reaches the bottom with nonblank
   sampled frames and <=2px tail drift during 600ms after arrival. The isolated
   instance confirms the application's normal quit dialog and exits.
+  Late-reading regressions wait until the page has settled, then change content
+  above the reading point by 120px, balance it with a -120px change below, and
+  change an earlier paragraph inside a long answer. Nonempty pre-paint samples
+  must stay within 1px. Six consecutive 20px steps additionally compare the
+  actual painted text crop byte-for-byte, not merely the eventual scrollTop.
+  Full-Desktop interaction smoke repeats the painted reading check after a real
+  Host page. Original native smooth input, resumed follow, search, disclosure,
+  hide/reveal and turn-completion paths remain required.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
 - **Status**: Automated Electron fixture and unit regressions implemented; run
