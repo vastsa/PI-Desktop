@@ -211,5 +211,12 @@ test("the card stays borderless and the Review tab honors focus requests", async
   );
   assert.match(reviewTab, /useReviewFocusRequest\(\)/);
   assert.match(reviewTab, /openRequest=\{/);
-  assert.match(reviewTab, /scrollIntoView/);
+  const historyPanel = await readFile(
+    new URL("../src/components/workpanel/ReviewHistoryPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(reviewTab, /scrollReviewToAnchor\(\s*scrollRef\.current,/);
+  assert.match(historyPanel, /scrollReviewToAnchor\(\s*scroller\.current,/);
+  assert.doesNotMatch(reviewTab, /scrollIntoView/);
+  assert.doesNotMatch(historyPanel, /scrollIntoView/);
 });

@@ -20021,6 +20021,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   isolated profile; verify both the checked menu option and actual diff context
   retain that choice. Missing/invalid/blocked storage is unit-covered by
   `apps/desktop/test/review-preferences.test.mjs`.
+- Open several files from the per-turn summary with enough Review content to
+  scroll. Each target comes into view inside Review while the conversation and
+  work-panel headers stay visible and the window content reaches the bottom edge.
 - Expected: latest skips no-edit rounds; delegates belong to their original user
   round; all file records are accessible; old/new numbers and bounded immutable context
   agree; one gutter uses old numbers for deletions and new numbers otherwise;
