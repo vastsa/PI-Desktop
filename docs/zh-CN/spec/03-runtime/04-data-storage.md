@@ -1,7 +1,63 @@
-# 04. 数据存储（架构 v27）
+# 04. 数据存储（架构 v33）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
+
+
+## Autonomous Goal storage (schema v33; lifecycle introduced in v28)
+
+Rust exclusively owns `session_goals` and `goal_turns`; see
+[the lifecycle](10-session-state-machine.md#autonomous-goal-lifecycle).
+The v27 -> v28 migration creates a schema-27 backup and transactionally adds:
+
+- `session_goals`: session ownership, revision, six-state status, objective,
+  criteria JSON, progress summary, rounds started, rounds completed (schema v33), token usage, budget JSON,
+  active turn ID, stop reason, and outcome/evidence JSON.
+- A partial unique index permits only one unfinished goal (or outstanding claim)
+  per session. Active turn IDs are unique.
+- `goal_turns`: unique turn ID, goal ownership, settled/interrupted flags and
+  reported tokens, enabling idempotent accounting and stale-claim rejection.
+- The original session-mode pause trigger is removed by v32 below.
+
+The v28 -> v29 migration creates a schema-28 backup and transactionally adds
+nullable audit_json. NULL means a legacy report without an audit, not inferred
+success. Version-1 audits contain the exact original objective, requirement
+items/outcomes/evidence and remaining work. New completion requires the audit;
+existing terminal reports stay readable without fabricated records. Numeric
+budget_json values retain their old caps; explicit maxTurns:null is unlimited
+and absent maxTokens is unlimited tokens. Supplied budget objects require the
+maxTurns key. settings.defaultGoalBudget is validated and snapshotted only on
+new Goal creation, never propagated to existing goals. The schema gate prevents
+older binaries from treating the new format as their own; direct downgrade is
+unsupported, with pre-migration backups retained for a controlled recovery.
+
+The v29 -> v30 migration creates a schema-29 backup, adds a logical `deleted`
+flag and guarded `elapsed_ms` / nullable `active_since_ms`, and updates the mode
+fence. Removed goals and claims remain for late idempotent settlement. Current
+lookup never falls back through a removed latest goal to expose an older goal.
+Active time is checkpointed at domain transitions; paused/offline time is not
+added. Legacy rows start at zero. Restart discards an uncheckpointed active tail
+rather than counting unknown downtime; this is not billing-grade timing.
+
+The v31 -> v32 migration creates a schema-31 backup, removes the session-mode
+pause trigger, and adds active_scope_json plus turn_execution. Each Host claim
+snapshots objective/criteria independently of visible saved edits; settlement
+clears the snapshot and stale old-scope evidence. Immutable runtime turn mode and
+optional unique Goal claim/provenance prevent mutable input mode from changing
+Plan, native, plugin or permission policy. Replaced Goals remain deleted tombstones with their original claims/accounting.
+删除不是 Stop：所有者成功删除将 Goal 设为墓碑，将会话输入偏好设为 agent，抑制自主续跑，仅允许已在运行的绑定 Goal 对话在普通 Agent 权限下完成（不相关的正在运行的 Agent/Plan 对话保持运行，其冻结的执行策略不变；Plan 保持 Plan）。
+撤销的 claim（stop、cancel、replacement、recovery、settled、foreign、unbound）维持无效；墓碑精确结算一次迟到用量，拒绝 Goal 报告、复活和新准入。未完成唯一索引排除逻辑删除行；准入仍等待所有未结算旧 claim 和运行中的普通轮次。
+turn_queue.goal_start_id 保留跨队列持久化的显式新 Goal 启动身份，普通历史输入为 NULL。它不是 claim 或新的重启授权。
+
+v32 -> v33 迁移创建 schema-32 备份，并为 session_goals 添加 host 字段 rounds_completed。rounds_completed 在成功结算时恰好递增一次（普通一次 Host/Agent 对话 = 1）；错误、中止、恢复或内部模型、工具、compaction 迭代绝不递增。rounds_started 保留为启动/预留诊断。界面展示与 maxTurns 预算执行依据 rounds_completed 评估，并为活动 claim 预留单个槽位。错误转换为 blocked、中止转换为 paused，防止无限自动重试。迁移保守回填经持久化证实的已完成绑定轮次。
+
+On startup active goals become paused; interrupted claims clear without replay.
+Counters and evidence survive restart. `plan_approvals` and `.pi/goal` artifacts
+remain legacy approval data: no row is converted or autoauthorized. Approval
+read/resolve/execute behavior is retained; new legacy Goal entry/submission is
+rejected. References below to Goal artifacts/approvals describe this legacy path,
+not autonomous Goal storage. Shared types live in `types/goals.ts`, independently
+of `types/plans.ts`.
 
 
 ### Lossless tool-image storage (#1868)
@@ -1476,3 +1532,7 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+Goal 存储升级至 schema v31：session_goals 新增 pending_budget_json 与 pause_requested。
+升级前备份，保留 v30 原目标、预算、计数、耗时和逻辑删除数据；备份失败不修改源库。
+待生效预算只由原 claim 结算者应用；重启清理中断 claim 时应用待生效预算并暂停，不自动重放。

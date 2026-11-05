@@ -51,7 +51,7 @@ export function ComposerModePicker({
           className={`icon-btn mode-chip composer-mode-chip ${open ? "active" : ""}`}
           data-mode={mode}
           data-planning={planningLive ? "true" : undefined}
-          tooltip={planningLive ? t(`${mode}.planning`) : t("settings.mode")}
+          tooltip={planningLive ? t(`${mode}.planning`) : mode === "goal" ? t("autonomousGoal.startHint") : t("settings.mode")}
           ariaLabel={
             planningLive
               ? `${t("settings.mode")}: ${label}. ${t(`${mode}.planning`)}`
@@ -83,6 +83,7 @@ export function ComposerModePicker({
           type="button"
           role="menuitemradio"
           aria-checked={mode === candidate}
+          title={candidate === "goal" ? t("autonomousGoal.startHint") : undefined}
           disabled={controlsBlocked}
           className={`composer-plus-item ${mode === candidate ? "active" : ""}`}
           onClick={async () => {

@@ -72,6 +72,7 @@ test("prompt IPC persists original session text, skips slash expansion and binds
       if (method === "settings.get") return {};
       if (method === "session.get") return { session: { id: "target", messages: [] } };
       if (method === "session.beginTurn") return { turnId: "turn-1" };
+      if (method === "session.getTurnMode") return { mode: "agent" };
       if (method === "session.appendMessage") return {};
       assert.fail(`unexpected RPC ${method}`);
     },
@@ -128,6 +129,7 @@ test("abort waits for prompt admission before dispatching to the sidecar", async
       if (method === "settings.get") return {};
       if (method === "session.get") return { session: { id: "target", messages: [] } };
       if (method === "session.beginTurn") return { turnId: "turn-1" };
+      if (method === "session.getTurnMode") return { mode: "agent" };
       if (method === "session.appendMessage") return {};
       assert.fail(`unexpected RPC ${method}`);
     },

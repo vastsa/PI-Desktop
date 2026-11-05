@@ -1,4 +1,5 @@
 import { shell } from "electron";
+import type { AgentHostBridge } from "../agent-host-bridge";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import {
@@ -90,6 +91,7 @@ export type SessionIpcDependencies = {
   registrar: IpcRegistrar;
   getHost: () => HostProcess | null;
   getSidecar: () => AgentSidecar | null;
+  getAgentHostBridge?: () => AgentHostBridge | null;
   dataDir: string;
   activeTurns: ReadonlyMap<string, string>;
   sessionProjects: Map<string, string | null>;
@@ -111,6 +113,7 @@ export function registerSessionIpc({
   registrar,
   getHost,
   getSidecar,
+  getAgentHostBridge,
   dataDir,
   activeTurns,
   sessionProjects,

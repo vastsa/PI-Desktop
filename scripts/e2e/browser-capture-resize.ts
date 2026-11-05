@@ -3,15 +3,18 @@ import { once } from "node:events";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { app, BrowserWindow, desktopCapturer, WebContentsView, type View } from "electron";
-import { BrowserHost } from "../../apps/desktop/electron/main/browser-host";
+import { app, BrowserWindow, desktopCapturer, screen, WebContentsView, type View } from "electron";
+import { BrowserHost, type BrowserRect } from "../../apps/desktop/electron/main/browser-host";
 import { BrowserPane } from "../../apps/desktop/electron/main/browser-view";
 import { checkBrowserPaneLifecycle } from "./browser-pane-lifecycle";
 
 const artifactDir = process.env.BROWSER_CAPTURE_ARTIFACT_DIR;
 if (!artifactDir) throw new Error("BROWSER_CAPTURE_ARTIFACT_DIR is required");
 app.setPath("userData", join(artifactDir, "profile"));
-const stage = (value: string) => appendFileSync(join(artifactDir, "progress.log"), `${value}\n`);
+const stage = (value: string) => {
+  appendFileSync(join(artifactDir, "progress.log"), `${value}\n`);
+  console.log(`BROWSER_CAPTURE_STAGE ${value}`);
+};
 
 async function probe(artifactDir: string) {
   stage("app-ready");
@@ -85,6 +88,15 @@ async function probe(artifactDir: string) {
       }
       return pending;
     };
+    // Electron encloses DIP bounds in physical pixels; Chromium rounds that
+    // physical viewport back to CSS pixels. They can differ at fractional DPI.
+    const cssViewportSize = (size: { width: number; height: number }) => {
+      const scale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+      return {
+        width: Math.round(Math.ceil(size.width * scale) / scale),
+        height: Math.round(Math.ceil(size.height * scale) / scale),
+      };
+    };
     const results = [];
     for (let i = 0; i < 12; i++) {
       stage(`capture-${i}`);
@@ -123,7 +135,7 @@ async function probe(artifactDir: string) {
     };
     await measuredPanel();
     await frame();
-    const transitions = [];
+    const transitions: { mode: string; expected: BrowserRect; during: BrowserRect; viewport: unknown }[] = [];
     const nativeScreenshots: string[] = [];
     const nativeScreenshot = async (name: string) => {
       // OS-wide capture enumerates unrelated desktop windows and can block on
@@ -149,20 +161,31 @@ async function probe(artifactDir: string) {
       wc.debugger.sendCommand = (method, params, sessionId) => {
         const response = originalSend(method, params, sessionId);
         if (method !== "Page.captureScreenshot") return response;
-        entered();
-        return Promise.all([response, gate]).then(([result]) => result);
+        // Hold a completed native frame, not Chromium's compositor work across
+        // an OS window transition. The production viewport remains pinned.
+        return response.then(async (result) => {
+          stage(`${mode}:capture-ready`);
+          entered();
+          await gate;
+          return result;
+        });
       };
+      stage(`${mode}:capture-requested`);
       const capture = host.screenshot({ fullPage: true });
-      await started;
-      try {
+      const abort = new AbortController();
+      const transition = async () => {
+        await started;
         const event = mode === "maximize" ? "maximize" : mode === "restore" ? "unmaximize"
           : mode === "fullscreen" ? "enter-full-screen" : "leave-full-screen";
-        const changed = once(window, event);
+        stage(`${mode}:waiting-${event}`);
+        const changed = once(window, event, { signal: abort.signal });
         if (mode === "maximize") window.maximize();
         else if (mode === "restore") window.unmaximize();
         else window.setFullScreen(mode === "fullscreen");
         await changed;
+        stage(`${mode}:window-changed`);
         const expected = await measuredPanel();
+        stage(`${mode}:panel-measured`);
         const surface = presentation(window.contentView.children);
         assert(surface, "browser guest must remain attached");
         let actual = surface.view.getBounds();
@@ -183,11 +206,17 @@ async function probe(artifactDir: string) {
         assert(actual.width <= expected.width && actual.height <= expected.height, `${mode}: clip to panel`);
         assert.deepEqual(viewport, before, `${mode}: preserve capture viewport`);
         transitions.push({ mode, expected, during: actual, viewport });
+      };
+      try {
+        // Observe capture failures even while waiting for its first frame or an
+        // OS event. Otherwise a deadline rejection strands the fixture here.
+        await Promise.race([transition(), capture]);
       } finally {
+        abort.abort();
         release();
-        await capture;
-        wc.debugger.sendCommand = originalSend;
+        try { await capture; } finally { wc.debugger.sendCommand = originalSend; }
       }
+      stage(`${mode}:capture-released`);
       await frame();
       const expected = await measuredPanel();
       // Native bounds updates reach the guest renderer asynchronously. Wait
@@ -196,7 +225,12 @@ async function probe(artifactDir: string) {
       const restored: unknown = await wc.executeJavaScript(
         "({width: innerWidth, height: innerHeight})",
       );
-      assert.deepEqual(restored, { width: expected.width, height: expected.height }, `${mode}: final viewport`);
+      const surface = presentation(window.contentView.children);
+      assert(surface, "browser guest must remain attached after capture");
+      assert.deepEqual(surface.view.getBounds(), { x: 0, y: 0, width: expected.width, height: expected.height },
+        `${mode}: final native bounds`);
+      assert.deepEqual(restored, cssViewportSize(expected), `${mode}: final viewport`);
+      stage(`${mode}:viewport-restored`);
       await nativeScreenshot(`native-${mode}-after.png`);
     }
     const image = await wc.capturePage();

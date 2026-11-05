@@ -310,6 +310,10 @@ fn schema_v15_upgrade_preserves_sessions_and_adds_the_ledger() {
     {
         let db = Database::open(&path).unwrap();
         id = session(&db, "Existing user session");
+        // This v15 fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute_batch(
                 "DROP TABLE session_collaboration_messages; DROP TABLE session_collaboration_links;

@@ -273,7 +273,10 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     if (input.input.attachments?.length) {
       throw new RacpError("CAPABILITY_UNAVAILABLE", "attachments are not offered by this Host");
     }
-    return context.agentHost.startTurn(context.principal, {
+    const goalInput = !input.input.sessionMessageId &&
+      (await context.agentHost.workSnapshot(input.sessionId)).mode === "goal";
+    const start = goalInput ? context.agentHost.startGoal.bind(context.agentHost) : context.agentHost.startTurn.bind(context.agentHost);
+    return start(context.principal, {
       sessionId: input.sessionId,
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
       ...(input.admission ? { admission: input.admission } : {}),

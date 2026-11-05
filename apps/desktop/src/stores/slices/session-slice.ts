@@ -167,6 +167,7 @@ export function createSessionSlice({
   | "forkSession"
   | "forkAssistantMessage"
   | "configureActiveSession"
+  | "prepareGoalRemoval"
   | "abortSession"
 > {
   const pendingInteractiveRestoreGenerations = new Map<string, number>();
@@ -798,6 +799,22 @@ export function createSessionSlice({
       }
     },
 
+    prepareGoalRemoval: (sessionId) => {
+      const intent = runtime.sessionInputModeIntents.get(sessionId);
+      return () => {
+        const state = get();
+        const session = state.sessions.find((item) => item.id === sessionId);
+        if (state.activeSessionId !== sessionId || !session || isRemoteSession(session) || session.source === "pi-native"
+          || runtime.sessionInputModeIntents.get(sessionId) !== intent) return;
+        // Rust already persisted Agent atomically with deletion. Reconcile only
+        // the input preference; the current turn and frozen Plan stay untouched.
+        runtime.sessionInputModeIntents.set(sessionId, { mode: "agent" });
+        const pending = runtime.pendingSessionConfigurations.get(sessionId);
+        if (pending) runtime.pendingSessionConfigurations.set(sessionId, { ...pending, mode: "agent" });
+        set((current) => ({ sessions: current.sessions.map((item) => item.id === sessionId ? { ...item, mode: "agent" } : item) }));
+      };
+    },
+
     configureActiveSession: async (config) => {
       const sessionId = get().activeSessionId;
       if (!sessionId) {
@@ -815,8 +832,14 @@ export function createSessionSlice({
         }));
         return;
       }
-      if (!sessionAllows(get().sessions.find((session) => session.id === sessionId), "canConfigureModel")) return;
+      const currentSession = get().sessions.find((session) => session.id === sessionId);
+      if (!sessionAllows(currentSession, "canConfigureModel")) return;
       if (get().pendingPlans[sessionId]?.status === "pending") return;
+      if (currentSession?.mode !== config.mode
+        || (runtime.sessionInputModeIntents.get(sessionId)?.mode ?? config.mode) !== config.mode) {
+        runtime.sessionInputModeIntents.set(sessionId, { mode: config.mode });
+      }
+      const modeIntent = runtime.sessionInputModeIntents.get(sessionId);
       if (
         get().runningSessions[sessionId] ||
         runtime.sessionConfigurationFlushes.has(sessionId)
@@ -847,7 +870,10 @@ export function createSessionSlice({
         sessions: state.sessions.map((session) =>
           session.id === sessionId
             ? {
-                ...result.session,
+                ...applyOptimisticSessionConfiguration(result.session, {
+                  ...runtime.pendingSessionConfigurations.get(sessionId),
+                  ...(runtime.sessionInputModeIntents.get(sessionId) !== modeIntent ? { mode: session.mode } : {}),
+                }),
                 pinned: sessionIsPinned(sessionId, state.sessionMeta),
                 archived: sessionIsArchived(sessionId, state.sessionMeta),
               }
@@ -855,7 +881,9 @@ export function createSessionSlice({
         ),
         planningStates: {
           ...state.planningStates,
-          [sessionId]: result.session.mode === "plan" ? "planning" : "inactive",
+          [sessionId]: runtime.sessionInputModeIntents.get(sessionId) !== modeIntent
+            ? state.planningStates[sessionId]
+            : result.session.mode === "plan" ? "planning" : "inactive",
         },
       }));
     },
