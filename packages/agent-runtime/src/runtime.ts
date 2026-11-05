@@ -1,3 +1,4 @@
+import { buildJobTools } from "./background-job-tools.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -1382,7 +1383,7 @@ function commandShellToolDescription(
     shellSyntaxGuidance(shell),
     `The session scratch directory variable is ${shellScratchVariable(shell)}.`,
     `An optional timeout from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS} seconds may be supplied; without it, the command defaults to a 60-second timeout.`,
-    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar; do not set it for commands whose output the current turn depends on.`,
+    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar. In Agent mode on supported local Hosts, use TaskList to find it, TaskWait with its job reference to read results, and TaskStop with that reference to stop it. Background completion does not automatically resume the model.`,
     ...(formattedScratch ? [`The session scratch directory is ${formattedScratch}.`] : []),
   ].join(" ");
 }
@@ -4087,18 +4088,41 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.mode === "agent"
         ? [this.buildEnterModeTool("plan"), this.buildEnterModeTool("goal")]
         : [this.buildSubmitTool(this.mode)];
-    // Keep configured delegation declarations stable across mode changes.
-    // Contract modes reject execution before handlers can spawn/control a
-    // delegate; publishing a schema never grants delegation permission.
-    const subagentTools =
-      this.subagents.length
-        ? [
-            this.buildSubagentTool(),
-            this.buildSubagentWaitTool(),
-            this.buildSubagentListTool(),
-            this.buildSubagentStopTool(),
-          ]
-        : [];
+    // Job controls are available without subagents. Contract modes retain
+    // declarations for history but reject execution before these handlers.
+    const subagentTools = [
+      ...(this.subagents.length ? [this.buildSubagentTool()] : []),
+      ...buildJobTools({
+        wait: this.buildSubagentWaitTool(),
+        list: this.buildSubagentListTool(),
+        stop: this.buildSubagentStopTool(),
+      }, {
+        host: this.host,
+        sessionId: this.sessionId,
+        remote: Boolean(this.remoteWorkspace),
+        defaultTimeoutSeconds: TASKWAIT_DEFAULT_TIMEOUT_SECONDS,
+        maxTimeoutSeconds: TASKWAIT_MAX_TIMEOUT_SECONDS,
+        wait: async (run, signal) => {
+          const steeringAbort = new AbortController();
+          this.steeringWaitAbort = steeringAbort;
+          if (this.pendingSteering.size) steeringAbort.abort();
+          try {
+            return await run(signal ? AbortSignal.any([signal, steeringAbort.signal]) : steeringAbort.signal);
+          } catch (error) {
+            const interruptedByInput = isRecord(error) && error.errorCode === "TOOL_ABORTED" &&
+              steeringAbort.signal.aborted && !signal?.aborted &&
+              !this.runCancelled && !this.disposed && !this.turnHadError;
+            if (!interruptedByInput) throw error;
+            return {
+              content: [{ type: "text", text: "Interrupted by new user input. The background command keeps running; handle the user's message before waiting again." }],
+              details: { status: "interrupted" },
+            };
+          } finally {
+            if (this.steeringWaitAbort === steeringAbort) this.steeringWaitAbort = undefined;
+          }
+        },
+      }),
+    ];
     for (const tool of subagentTools) this.builtinTools.add(tool);
     const contextTools = this.compactionEnabled
       ? [this.buildContextCompactionTool()]
@@ -5168,11 +5192,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           content: [
             {
               type: "text",
-              text: `Delegation ${delegationId} started: the ${definition.name} subagent is working in the background${label ? ` (${label})` : ""}. Continue your own independent work, then call TaskWait with this delegationId to converge, or TaskStop to stop it.`,
+              text: `Delegation ${delegationId} started: the ${definition.name} subagent is working in the background${label ? ` (${label})` : ""}. Continue your own independent work, then call TaskWait with this delegationId to converge, or TaskStop to stop it. Job reference: ${JSON.stringify({ kind: "delegation", id: delegationId })}.`,
             },
           ],
           details: {
             delegationId,
+            job: { kind: "delegation", id: delegationId },
             agent: definition.name,
             status: "running",
             startedAt,
@@ -5873,7 +5898,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           delegations.length === 0
             ? "No subagents have been started in this session."
             : delegations
-                .map((record) => `- ${formatDelegationHeartbeat(record)}`)
+                .map((record) => `- ${formatDelegationHeartbeat(record)}; job=${JSON.stringify({ kind: "delegation", id: record.delegationId })}`)
                 .join("\n"),
           this.delegationChains.resumableBlock({ runningDelegationIds }),
         ]
@@ -5882,7 +5907,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         return {
           content: [{ type: "text", text }],
           details: {
-            delegations: delegations.map(delegationSummary),
+            delegations: delegations.map(record => ({ ...delegationSummary(record), job: { kind: "delegation", id: record.delegationId } })),
             resumable: resumable.map((chain) => ({
               agent: chain.agentName,
               delegationId: chain.latestDelegationId,

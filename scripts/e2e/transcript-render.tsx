@@ -548,6 +548,37 @@ globalThis.transcriptRenderProbe = async () => {
       "a standalone Bash row must not render an activity group",
     );
 
+    // A stop acknowledgement can arrive while the command is still running.
+    // Verify the transcript head, where a completed tool call used to say
+    // "Stopped subagents" even when there were no delegates.
+    const job = { kind: "bash", id: "background-command" };
+    render([
+      message("jobs-user", "user", "Check the background test"),
+      message("jobs-stop", "tool", "", {
+        toolName: "TaskStop", toolCallId: "jobs-stop", toolStatus: "success",
+        toolArgs: { job },
+        toolResult: { details: { status: "stopPending", job: {
+          job, command: "npm test", state: "running", stopRequested: true,
+        } } },
+      }),
+      message("jobs-list", "tool", "", {
+        toolName: "TaskList", toolCallId: "jobs-list", toolStatus: "success",
+        toolResult: { details: {
+          delegations: [{ agent: "reviewer", delegationId: "review", status: "running" }],
+          backgroundJobs: { supported: true, tasks: [{ job }] },
+        } },
+      }),
+    ]);
+    const jobHead = (id: string, selector = ".tool-row-header") => container.querySelector(
+      `[data-message-id="${id}"] ${selector}`,
+    )?.textContent;
+    assert(jobHead("jobs-stop", ".tool-row-name") === "Task Stop",
+      "the Bash stop title must not report a completed subagent stop");
+    assert(jobHead("jobs-stop")?.includes("npm test") && jobHead("jobs-stop")?.includes("Stopping"),
+      "the acknowledged Bash stop must identify a command that is still stopping");
+    assert(jobHead("jobs-list")?.includes("reviewer") && jobHead("jobs-list")?.includes("1 background"),
+      "the mixed job list must identify both its delegate and its background command count");
+
     // Keep Task's own message stable: a later lifecycle result must still
     // update its terminal status and timing (#238), unlike unrelated text.
     const start = Date.now() - 12_000;

@@ -1568,3 +1568,39 @@ both content and states untouched. Success persists each affected review state.
 The old `review.rollback` contract remains unchanged. Both rollback methods
 participate in Host file-resource exclusion and re-resolve the session root after
 admission. Both new operations reject remote workspaces. See [ADR 0341](../../adr/0341-explicit-reviewed-file-actions.md).
+
+
+### Session-scoped background job RPC
+
+Only these model proxy methods are allowlisted. The desktop's global
+backgroundTasks methods remain outside the model proxy.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| backgroundJobs.capabilities | sessionId | {version: 1, supported: true} |
+| backgroundJobs.list | sessionId | {tasks: BackgroundJobSummary[]} |
+| backgroundJobs.wait | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
+| backgroundJobs.stop | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
+
+Each method requires an existing local Agent-mode session. Foreign and missing
+job IDs both return NOT_FOUND. Invalid parameters return INVALID_PARAMS; a
+contract-mode session returns PERMISSION_DENIED. Calls never rebind an existing
+job. Session identity comes from the runtime rather than model tool arguments.
+
+timeoutMs is an integer in 0–1000, default 0. Wait observes a per-job completion
+signal without holding AppState. Stop signals the existing supervisor before
+observing completion. The returned state is authoritative; stopRequested is
+only an acknowledgement, and a running job may need another wait. Snapshot
+metadata includes job {kind: bash, id}, command (at most 1024 UTF-8 bytes),
+elapsedMs, state, nullable exitCode and stopRequested. Wait/stop additionally
+return stdout and stderr (each at most 8192 UTF-8 bytes), and truncated for
+either Host retention loss or this observation's clipping.
+
+Terminal state and final drained output share one snapshot lock. Reads do not
+consume output. An observer holds a job handle until the bounded request ends,
+so pruning cannot split an admitted read. After waiting the session is checked
+again. An abandoned RPC never stops a process. Capability absence is an older
+Host limitation; other failures must not be silently converted into an empty
+list. This additive protocol preserves the existing desktop RPC shapes.
+
+The supervisor gives an observed exit precedence over a pending stop and preserves that exit outcome while draining the pipes. Elapsed time freezes when the final state and output are published.
