@@ -196,7 +196,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `.main-pane`, `.main-titlebar`, and `.conversation-topbar` remain opaque
   `bg-primary` surfaces, so vibrancy does not spread across the whole window.
   Windows/Linux retain their existing opaque background and frameless behavior.
-- Settings → General → Appearance → **Translucent window** (macOS only) is on
+- Settings → Appearance → Interface → **Translucent window** (macOS only) is on
   by default and turns the material off: an opaque window paints the host or
   plugin palette and leaves WindowServer's per-frame recomposition path, while
   the renderer keeps the same tint and sheen. The choice is read when the main
@@ -4653,9 +4653,15 @@ independent of the chat's loaded message window. Rounds without changes do not
 replace Latest. Main and delegated Write/Edit evidence share a file list; actual
 execution roots distinguish identically named files. The file header opens all
 of that file's recorded operations in order, without claiming a net diff.
+The toolbar counts visible distinct root/path file groups, not operation records.
+A file group appears only when its recorded additions or deletions are greater
+than zero. Groups with both counters zero are hidden, including preview-limited
+records, and excluded from the toolbar file count. This presentation filter does
+not delete native evidence or omit operations from a retained file group.
 
 Expanded file content has no fixed-height inner viewport or vertical scrollbar.
-The outer Review scroll owns vertical travel; the current file header sticks
+The outer Review scroll reserves its vertical scrollbar gutter before overflow
+and owns vertical travel; the current file header sticks
 below the toolbar within its file section. It is not reordered. A borderless ellipsis button after the summary totals opens a menu containing
 only Word wrap and Context lines. Hovering Context lines opens a secondary
 menu with 1/3/5 (first-use default 3); the choice is profile-wide, remembered
@@ -4665,9 +4671,15 @@ No context selector is shown in the main toolbar.
 Toggle checks appear on the right. History options show date/time on the left
 and Host-recorded added/deleted line totals on the right, before the check.
 Totals count each successful native operation once, including delegated evidence,
-and do not claim a net diff. Binary, originally truncated or missing counts show
-unknown instead of invented zeros. The selector reserves arrow space. File headings have no permanent
-button fill or border; execution roots are not rendered as extra diff rows.
+and do not claim a net diff. Binary/truncated preview flags do not erase saved
+valid counters; absent or unsafe totals show unknown instead of invented zeros.
+The closed selector preserves the same left date/time and right green/red totals
+before its arrow. File headings have no permanent button fill or border; their
+file icon leads the row. A reserved disclosure slot immediately follows the
+visible filename, including an ellipsized name, before the right-aligned statistics.
+It appears on hover or keyboard focus, pointing right
+when closed and down when open, without moving content. Filename and statistics
+have a visible gap; execution roots are not rendered as extra diff rows.
 A separate file ellipsis offers Open internally (disabled without the loaded
 File Manager view; never auto-enables it), Open externally (OS default app),
 and Open folder (system file manager, revealing the current file).
@@ -4703,7 +4715,9 @@ when space is insufficient they flip above and clamp within the viewport.
 Pointer position within a button cannot move the menu. They remain body portals,
 and ordinary right-click menus retain pointer placement.
 Diff rows have one line-number gutter: deletions use old coordinates, additions
-and context use new coordinates; EOF markers have no number. Word wrap toggles wrapping without
+and context use new coordinates; EOF markers have no number. Numbered Review
+rows omit the separate add/delete sign column but retain change backgrounds and
+summary signs; chat inline rows are unchanged. Word wrap toggles wrapping without
 introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain

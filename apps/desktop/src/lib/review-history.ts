@@ -56,7 +56,7 @@ export function groupReviewFiles(rows: readonly ReviewHistoryChange[]): ReviewFi
     group.entries.push({ message: row.message, change });
     group.additions += change.additions; group.deletions += change.deletions;
   }
-  return [...groups.values()];
+  return [...groups.values()].filter(file => file.additions > 0 || file.deletions > 0);
 }
 
 export type ReviewReadRequest = { sessionId: string; turnId?: string; snapshotId?: string; offset?: number; limit?: number };

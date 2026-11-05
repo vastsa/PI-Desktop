@@ -237,7 +237,7 @@ destination, chat as the home surface, tools and permissions inline.
   - an **activity rail**: a 2px track down the group's left edge with a
     travelling pulse, spanning the opened conversation list and shrinking to
     the header while the group is collapsed, plus a matching count.
-  Remote host groups carry the same pair. Settings → General → Sidebar owns
+  Remote host groups carry the same pair. Settings → Appearance → Sidebar owns
   one master switch (`AppSettings.sidebarRunningIndicators`) gating two
   sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`). When unset, the
   master and Count badge resolve on while Activity rail resolves off; explicit
@@ -303,7 +303,7 @@ destination, chat as the home surface, tools and permissions inline.
   focus.
 
 ### 3.3 Scheduled
-Settings → General → Scheduled tasks controls this feature, on by default
+Settings → Behavior → Execution → Scheduled tasks controls this feature, on by default
 (`scheduledTasksEnabled` absent or true). Off hides the footer and search page
 entries and prevents new runs without deleting tasks or run history. The
 settings switch remains searchable so the feature can be re-enabled.
