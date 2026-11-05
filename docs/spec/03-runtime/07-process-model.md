@@ -53,8 +53,10 @@ E2E harnesses point a build at a throwaway profile with it.
 7. Create main window / renderer
 8. Renderer performs `app/getVersion` healthcheck through main
 
-If step 3–4 fails: block app with recovery message. Before a successful host
-boot serves RPC, host-core transactionally marks prior pending approvals and
+If the first `app.handshake` times out, Main disposes the failed child and
+starts a fresh one once in the same launch. Shutdown and other startup errors
+bypass this retry. If startup still fails, show the recovery surface. Before
+a successful host boot serves RPC, host-core transactionally marks prior pending approvals and
 queued/running `plan_approvals` execution states interrupted and aborts their
 running turns. This internal process-epoch fence is not serialized or sent over
 the protocol.
