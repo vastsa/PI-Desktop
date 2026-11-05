@@ -280,14 +280,9 @@ fn collect(db: &Database, session_id: &str, workspace_root: Option<&Path>) -> Re
                 project(db, session_id, record, block, raw, workspace_root)?
             {
                 if seen.insert(snapshot.clone()) {
-                    // Sum only deduplicated successful evidence. Original preview limits
-                    // mean unknown counts; transport-only hunk trimming does not.
+                    // Match the file list: sum the saved counters once per snapshot.
+                    // Preview availability is independent of these recorded values.
                     turns[turn].totals = turns[turn].totals.and_then(|(adds, dels)| {
-                        if raw.get("binary").and_then(Value::as_bool) == Some(true)
-                            || raw.get("truncated").and_then(Value::as_bool) == Some(true)
-                        {
-                            return None;
-                        }
                         let additions = adds.checked_add(raw.get("additions")?.as_u64()?)?;
                         let deletions = dels.checked_add(raw.get("deletions")?.as_u64()?)?;
                         (additions <= 9_007_199_254_740_991 && deletions <= 9_007_199_254_740_991)

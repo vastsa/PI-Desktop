@@ -20024,7 +20024,19 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   normal/narrow layouts; copy and conflict protection survive; history restores.
   Toggle checks trail labels, summary dots have no circle, history options contain
   date/time plus true per-round recorded totals before the check and fit an
-  arrow-safe field. Unknown/binary/oversized counts are not shown as zero.
+  arrow-safe field, including colored right-aligned totals when closed.
+  The summary counts visible files rather than operation records (five records
+  across four paths, including one zero-counter preview-limited file, show three
+  files). Only file groups with additions or deletions greater than zero remain;
+  both-zero groups are hidden and excluded from the summary, while raw Host
+  evidence and each retained file's complete operation chain remain available.
+  Missing/unsafe totals are not invented as zero;
+  Host regressions retain saved valid counters despite binary/truncated previews.
+  Expanding a long diff does not move header widths or statistics because the
+  outer scrollbar gutter is reserved. File icons lead; the reserved disclosure
+  immediately after the visible filename appears only on hover/focus, right when closed and down
+  when expanded, with a clear gap before statistics. Numbered diff rows have no
+  independent add/delete sign column.
   File headers have no idle
   fill, and no execution-root row appears. File menus disable internal open when
   the plugin is absent, open its loaded view when available, and pass the resolved
