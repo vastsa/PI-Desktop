@@ -1903,7 +1903,7 @@ export async function createWindow({
             await new Promise((r) => setTimeout(r, 800));
             await shot("pi-dark-project-archive");
             await setPage("settings");
-            await setSettingsTab("general");
+            await setSettingsTab("appearance");
             await new Promise((r) => setTimeout(r, 800));
             await shot("pi-dark-settings");
             await setTheme("light");
@@ -2103,9 +2103,10 @@ export async function createWindow({
                window.__PI_DESKTOP__?.seedPluginThemes?.(2)`,
             );
             await setPage("settings");
-            // The general tab carries the theme picker, including plugin themes
-            // (D175); earlier scenes leave the sidebar on the archive tab.
-            await setSettingsTab("general");
+            // The appearance destination carries the theme picker, including
+            // plugin themes (D175); earlier scenes leave the rail on the
+            // archive destination.
+            await setSettingsTab("appearance");
             // Seeding plugin themes activates one of them, which drags the
             // shell dark; the settings tabs are documented in light.
             await setTheme("light");

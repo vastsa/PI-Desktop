@@ -196,7 +196,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `.main-pane`, `.main-titlebar`, and `.conversation-topbar` remain opaque
   `bg-primary` surfaces, so vibrancy does not spread across the whole window.
   Windows/Linux retain their existing opaque background and frameless behavior.
-- Settings → General → Appearance → **Translucent window** (macOS only) is on
+- Settings → Appearance → Interface → **Translucent window** (macOS only) is on
   by default and turns the material off: an opaque window paints the host or
   plugin palette and leaves WindowServer's per-frame recomposition path, while
   the renderer keeps the same tint and sheen. The choice is read when the main

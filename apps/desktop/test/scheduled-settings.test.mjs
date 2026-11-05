@@ -37,10 +37,12 @@ test("scheduled task switch rejects non-boolean writes at renderer and main boun
   }
 });
 
-test("the scheduled task switch remains searchable in General in English and Chinese", () => {
+test("the scheduled task switch remains searchable in Behavior in English and Chinese", () => {
+  // The switch withholds scheduled Agent tools and blocks new runs, so it
+  // belongs to agent behavior rather than to the chrome (D684).
   for (const [catalog, query] of [[en, "scheduled tasks"], [zhCN, "定时任务"]]) {
     const copy = flattenCatalog(catalog);
     const hits = searchSettings(query, (key) => copy[key] ?? key);
-    assert.ok(hits.some((hit) => hit.tab === "general" && hit.rowKey === "settings.scheduledTasks"));
+    assert.ok(hits.some((hit) => hit.tab === "behavior" && hit.rowKey === "settings.scheduledTasks"));
   }
 });

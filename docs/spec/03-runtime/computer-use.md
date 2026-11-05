@@ -282,7 +282,8 @@ never a no-op reported as success.
 - Computer Use is off by default. Enabling it does not itself request an OS
   permission, capture a frame, or enumerate a window — but it does authorise the
   agent to start a desktop-wide grant on its next `Computer` call.
-- The card is last in Settings → AI, after Permissions and Defaults. It shows
+- The card is last in Settings → Behavior, after Session defaults and
+  Execution. It shows
   controls and actionable status without card/row descriptions or a static
   scope note. Permission diagnostics and the missing-model hint remain visible.
   The scope is not selectable: one window at a time, the agent may switch,
