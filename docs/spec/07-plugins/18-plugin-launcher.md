@@ -225,7 +225,7 @@ ordinary `storage` event.
   `/usr/local/share/applications`, and `~/.local/share/applications`.
 
 Bounds: the scan result is cached for 5 minutes, holds at most 600 entries and
-extracts icons for the first 200 of them. Each icon is the platform's `large`
+extracts icons for the first 200 of them. Each icon is the platform's `small`
 variant, capped at 32 KiB, and cached across scans keyed by item id and icon
 path; an entry that disappears prunes its cached icon, so a rescan does not pay
 for a lookup it already has. An entry whose target no longer exists is dropped.

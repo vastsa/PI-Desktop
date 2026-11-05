@@ -88,6 +88,27 @@ pub(crate) async fn handle(
         "computer.capabilities" => Ok(serde_json::to_value(desktop.capabilities())
             .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?),
 
+        // The settings row asks the OS on the user's click. It stays readable
+        // while the feature is off: the grant is what makes computer use usable
+        // at all, and asking for it must not require turning the feature on
+        // first — that would make the toggle look broken on a fresh install.
+        "computer.requestPermission" => {
+            let accessibility = desktop
+                .request_permission()
+                .map_err(|error| refusal_err(error.into()))?;
+            let st = state.lock().await;
+            audit_computer(
+                &st,
+                "computer.permission.requested",
+                None,
+                json!({ "accessibility": accessibility }),
+            );
+            let mut capabilities = desktop.capabilities();
+            capabilities.accessibility = accessibility;
+            Ok(serde_json::to_value(capabilities)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?)
+        }
+
         "computer.listTargets" => {
             if !settings_enabled(&state).await {
                 return Err(refusal_err(Refusal::Disabled));
@@ -101,13 +122,22 @@ pub(crate) async fn handle(
             if !settings_enabled(&state).await {
                 return Err(refusal_err(Refusal::Disabled));
             }
-            let target_id =
-                string_param(&params, "targetId").ok_or_else(|| invalid("targetId is required"))?;
+            // No `targetId` is the normal case since ADR 0344: the grant covers
+            // the desktop. An id still pins one window, which keeps the narrower
+            // decision expressible for a caller that has one.
+            let target_id = string_param(&params, "targetId");
             let session_id = string_param(&params, "sessionId")
                 .ok_or_else(|| invalid("sessionId is required"))?;
+            // `agent` is a mint the user did not click, so the Stop cooldown
+            // applies to it; `user` is a direct desktop-UI decision.
+            let agent_origin = match params.get("origin").and_then(Value::as_str) {
+                Some("agent") => true,
+                Some("user") | None => false,
+                Some(_) => return Err(invalid("origin is invalid")),
+            };
             let input_policy = match params.get("inputPolicy").and_then(Value::as_str) {
-                Some("autonomous-in-scope") => InputPolicy::AutonomousInScope,
-                Some("confirm-each") | None => InputPolicy::ConfirmEach,
+                Some("autonomous-in-scope") | None => InputPolicy::AutonomousInScope,
+                Some("confirm-each") => InputPolicy::ConfirmEach,
                 Some(_) => return Err(invalid("inputPolicy is invalid")),
             };
             let capture = match params.get("capture").and_then(Value::as_str) {
@@ -129,6 +159,18 @@ pub(crate) async fn handle(
             let now = Instant::now();
 
             let mut st = state.lock().await;
+            if agent_origin {
+                if let Err(refusal) = policy::agent_mint_allowed(st.computer_stopped_at, now) {
+                    audit_computer(
+                        &st,
+                        "computer.grant.refused",
+                        Some(&session_id),
+                        json!({ "code": refusal.code() }),
+                    );
+                    return Err(refusal_err(refusal));
+                }
+                st.computer_stopped_at = None;
+            }
             let grant = policy::create_grant(
                 desktop.as_ref(),
                 st.computer_grant.as_ref(),
@@ -153,11 +195,18 @@ pub(crate) async fn handle(
                         json!({
                             "grantId": view.grant_id,
                             "appKey": view.app_key,
+                            "scope": view.scope,
+                            "origin": if agent_origin { "agent" } else { "user" },
                             "inputPolicy": view.input_policy,
                             "capture": view.capture,
                             "actionBudget": view.remaining_budget,
                         }),
                     );
+                    if !agent_origin {
+                        // The user asking for it again is the clearest possible
+                        // end to their own Stop.
+                        st.computer_stopped_at = None;
+                    }
                     st.computer_grant = Some(grant);
                     Ok(serde_json::to_value(view)
                         .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?)
@@ -177,6 +226,11 @@ pub(crate) async fn handle(
         "computer.grantRevoke" => {
             let mut st = state.lock().await;
             let reason = string_param(&params, "reason").unwrap_or_else(|| "user".into());
+            if reason == "user" {
+                // Recorded even when there is nothing to revoke: Stop has to
+                // hold against the next automatic mint either way.
+                st.computer_stopped_at = Some(Instant::now());
+            }
             let Some(grant) = st.computer_grant.as_mut() else {
                 // Revoking nothing is success: the caller's intent is satisfied.
                 return Ok(json!({ "revoked": false }));
@@ -212,11 +266,16 @@ pub(crate) async fn handle(
             let grant_id =
                 string_param(&params, "grantId").ok_or_else(|| invalid("grantId is required"))?;
             let session_id = string_param(&params, "sessionId");
+            // Naming a window is how a desktop grant reads the rest of the
+            // screen. The bind runs the refusals again and moves the revision,
+            // so the elements this call returns are the only ones it describes.
+            let target_id = string_param(&params, "targetId");
             let expected_revision = params
                 .get("expectedRevision")
                 .and_then(Value::as_u64)
                 .map(|value| value as u32);
             let now = Instant::now();
+            let denylist = denylist_from_settings(&state).await;
             let mut st = state.lock().await;
             let grant = policy::usable_grant(
                 st.computer_grant.as_mut(),
@@ -225,8 +284,29 @@ pub(crate) async fn handle(
                 now,
             )
             .map_err(refusal_err)?;
-            let inspection = policy::inspect(desktop.as_ref(), grant, expected_revision, now)
-                .map_err(refusal_err)?;
+            let before = grant.target.target_id.clone();
+            let inspection = policy::inspect_bound(
+                desktop.as_ref(),
+                grant,
+                &denylist,
+                target_id.as_deref(),
+                expected_revision,
+                now,
+            )
+            .map_err(refusal_err)?;
+            // Covers both a named rebind and the fallback inside `refresh`:
+            // which application the grant moved to is exactly the identity the
+            // audit trail is for, and no window text goes with it.
+            let rebound = (grant.target.target_id != before)
+                .then(|| (grant.grant_id.clone(), grant.target.app_key.clone()));
+            if let Some((grant_id, app_key)) = rebound {
+                audit_computer(
+                    &st,
+                    "computer.grant.rebound",
+                    session_id.as_deref(),
+                    json!({ "grantId": grant_id, "appKey": app_key }),
+                );
+            }
             Ok(serde_json::to_value(inspection)
                 .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?)
         }
@@ -247,6 +327,7 @@ pub(crate) async fn handle(
             )
             .map_err(|error| invalid(&format!("action is invalid: {error}")))?;
             let now = Instant::now();
+            let denylist = denylist_from_settings(&state).await;
             let mut st = state.lock().await;
             let grant = policy::usable_grant(
                 st.computer_grant.as_mut(),
@@ -257,7 +338,14 @@ pub(crate) async fn handle(
             .map_err(refusal_err)?;
             let owner = grant.session_id.clone();
             let app_key = grant.target.app_key.clone();
-            let result = policy::act(desktop.as_ref(), grant, expected_revision, &action, now);
+            let result = policy::act(
+                desktop.as_ref(),
+                grant,
+                &denylist,
+                expected_revision,
+                &action,
+                now,
+            );
             match result {
                 Ok(outcome) => {
                     // The audit line records identity and shape, never content:

@@ -17,6 +17,10 @@ ownership rules.
 
 ## Decision
 
+The [directory-reference amendment](composer-pasted-directory-references.md) keeps
+native directories as path references. This regular-file byte contract continues
+to apply to files and images only.
+
 1. The renderer intercepts paste only when the clipboard contains one or more
    `File` objects. Text-only paste remains native textarea behavior.
 2. The renderer transfers bounded file bytes plus the browser-provided name and

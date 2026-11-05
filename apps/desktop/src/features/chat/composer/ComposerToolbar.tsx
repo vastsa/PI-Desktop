@@ -133,7 +133,9 @@ export function ComposerToolbar({
           </TooltipButton>
         </div>
         {localToolsAllowed ? <LiveVoiceControls t={t} workSessionId={workSessionId} /> : null}
-        {localToolsAllowed ? <ComputerUseIndicator sessionId={workSessionId ?? null} /> : null}
+        {localToolsAllowed ? (
+          <ComputerUseIndicator sessionId={workSessionId ?? null} abort={abort} />
+        ) : null}
         <ComposerModePicker
           t={t}
           mode={mode}

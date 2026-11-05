@@ -2,12 +2,28 @@ import { expect, it } from "vitest";
 import {
   COMPUTER_ACTION_BUDGET_LIMIT,
   COMPUTER_MAX_STEPS_LIMIT,
+  COMPUTER_USE_DEFAULTS,
+  needsAccessibilityRequest,
+  type ComputerCapabilities,
   validateComputerToolArgs,
   validateComputerUseSettings,
 } from "./computer-use.js";
 
 it("computerUse settings accept the minimum shape", () => {
   expect(validateComputerUseSettings({ enabled: false })).toEqual({ enabled: false });
+});
+
+it("runs are autonomous by default and still take pixels only on request", () => {
+  // ADR 0344: the switch is the consent, so an unset policy must not imply a
+  // per-step card that does not exist. Pixels stay opt-in, because they land
+  // in the transcript.
+  expect(COMPUTER_USE_DEFAULTS.inputPolicy).toBe("autonomous-in-scope");
+  expect(COMPUTER_USE_DEFAULTS.capture).toBe("a11y-only");
+  // The narrower policy stays expressible for when the card lands.
+  expect(validateComputerUseSettings({ enabled: true, defaultInputPolicy: "confirm-each" })).toEqual({
+    enabled: true,
+    defaultInputPolicy: "confirm-each",
+  });
 });
 
 it("computerUse settings keep an explicit model binding", () => {
@@ -77,5 +93,21 @@ it("Computer tool args refuse addressing, targets, and runaway step counts", () 
     null,
   ]) {
     expect(() => validateComputerToolArgs(value), `accepted ${JSON.stringify(value)}`).toThrow(/Computer/);
+  }
+});
+
+it("OS permission requests are offered only for missing macOS Accessibility", () => {
+  const capabilities: ComputerCapabilities = {
+    platform: "darwin", backend: "macos-ax", fidelity: "full",
+    accessibility: "not-requested", capture: "not-requested",
+  };
+  expect(needsAccessibilityRequest(capabilities)).toBe(true);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "denied" })).toBe(true);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "granted" })).toBe(false);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "unsupported" })).toBe(false);
+  expect(needsAccessibilityRequest({ ...capabilities, applicationAccessibility: "granted" })).toBe(false);
+  expect(needsAccessibilityRequest({ ...capabilities, accessibility: "granted", applicationAccessibility: "not-requested" })).toBe(true);
+  for (const platform of ["linux", "win32", "other"] as const) {
+    expect(needsAccessibilityRequest({ ...capabilities, platform, backend: "unsupported" })).toBe(false);
   }
 });

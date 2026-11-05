@@ -293,6 +293,9 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   Password changes are key rewrapping, not revocation of unlocked devices.
 
 ### 全局 AI (`ai` tab)
+- Card order is **Permissions → Defaults → Computer use**. Computer use omits
+  card/row explanatory copy and the static scope note; controls, platform and
+  permission status, errors, and the missing-model hint remain unchanged.
 - **Permissions** card: the global permission-mode control
   (ask / accept-edits / auto) that governs how autonomously the agent acts.
   The control is a menu select on the shared anchored-menu surface rather than

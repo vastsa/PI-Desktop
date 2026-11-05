@@ -674,3 +674,133 @@ test("a saved anchor does not supersede in-flight navigation when both rows are 
   assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), false);
   assert.equal(r.view(), focused, "explicit navigation keeps ownership of the reading view");
 });
+
+test("prepareReturnToLatestTranscript invalidates pending read while keeping messages visible until completion", async () => {
+  const pendingPage = deferred();
+  const r = reader(() => pendingPage.promise, {
+    transcriptViews: {
+      s: {
+        messages: [message("hist-1"), message("hist-2")],
+        messageStart: 20,
+        messageEnd: 40,
+        hasMoreBefore: true,
+        hasMoreAfter: true,
+        focus: null,
+        restored: true,
+        loading: null,
+      },
+    },
+  });
+  assert.equal(r.view().loading, null);
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["hist-1", "hist-2"],
+  );
+
+  const load = r.loadTranscriptPage("s", "before");
+  assert.equal(r.view().loading, "before");
+
+  const complete = r.prepareReturnToLatestTranscript("s");
+  assert.equal(r.view().loading, null, "loading cleared synchronously");
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["hist-1", "hist-2"],
+    "messages stay visible",
+  );
+  assert.equal(r.view().restored, true);
+  assert.equal(r.view().hasMoreBefore, true);
+
+  pendingPage.resolve(page([message("stale-page")]));
+  await load;
+
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["hist-1", "hist-2"],
+    "pending read stale completion ignored",
+  );
+  assert.equal(r.view().loading, null);
+
+  complete();
+  assert.equal(r.view(), undefined, "completion clears prepared view");
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["tail"],
+  );
+});
+
+test("subsequent navigation survives stale completion from prepareReturnToLatestTranscript", async () => {
+  const r = reader(async () => page([message("search-hit")]), {
+    transcriptViews: {
+      s: {
+        messages: [message("hist-1")],
+        messageStart: 20,
+        messageEnd: 40,
+        hasMoreBefore: true,
+        hasMoreAfter: true,
+        focus: null,
+        loading: null,
+      },
+    },
+  });
+  const complete = r.prepareReturnToLatestTranscript("s");
+  assert.notEqual(r.view(), undefined);
+
+  await r.navigateTranscript(target("search-hit"));
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["search-hit"],
+  );
+  assert.equal(r.view().focus.messageId, "search-hit");
+
+  complete();
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["search-hit"],
+    "navigation view survived stale completion",
+  );
+  assert.equal(r.view().focus.messageId, "search-hit");
+});
+
+test("repeated preparation retires previous completion closure", () => {
+  const r = reader(async () => page([]), {
+    transcriptViews: {
+      s: {
+        messages: [message("hist-1")],
+        messageStart: 20,
+        messageEnd: 40,
+        hasMoreBefore: true,
+        hasMoreAfter: true,
+        focus: null,
+        loading: null,
+      },
+    },
+  });
+  const complete1 = r.prepareReturnToLatestTranscript("s");
+  const view1 = r.view();
+  const complete2 = r.prepareReturnToLatestTranscript("s");
+  const view2 = r.view();
+
+  assert.notEqual(view1, view2, "view identity replaced on each preparation");
+
+  complete1();
+  assert.equal(r.view(), view2, "previous completion is retired");
+
+  complete2();
+  assert.equal(r.view(), undefined, "current completion clears prepared view");
+});
+
+test("prepareReturnToLatestTranscript is a no-op when no historical view exists", () => {
+  const r = reader(async () => page([]));
+  assert.equal(r.view(), undefined);
+
+  const complete = r.prepareReturnToLatestTranscript("s");
+  assert.equal(typeof complete, "function");
+  assert.equal(r.view(), undefined, "did not create a transcript view");
+
+  complete();
+  assert.equal(r.view(), undefined, "completion is a no-op");
+  assert.deepEqual(
+    r.visible().map((m) => m.id),
+    ["tail"],
+  );
+});

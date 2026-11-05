@@ -1,21 +1,32 @@
 /**
  * Public, host-authoritative contracts for computer use (ADR 0342).
  *
- * Nothing here carries authority by itself. The grant is minted by host-core
- * from a target the user picked, and every field a caller could forge — the
- * target, the revision, the budget — is re-read from the host before an action
- * runs. These types exist so main, the renderer, and the loop agree on the
- * shape of what the host already decided.
+ * Nothing here carries authority by itself. The grant is minted by host-core —
+ * since ADR 0344 automatically, over the whole desktop — and every field a
+ * caller could forge (the bound window, the revision, the budget) is re-read
+ * from the host before an action runs. These types exist so main, the
+ * renderer, and the loop agree on the shape of what the host already decided.
  */
 
 /** Settings-level capture choice. `a11y-only` never takes a pixel. */
 export type ComputerCaptureMode = "a11y-only" | "a11y-and-pixels";
 
 /**
- * Per-grant input policy. `confirm-each` raises an approval card for every
- * input step and is the only policy available under permission mode `ask`.
+ * Per-grant input policy. `autonomous-in-scope` is the default (ADR 0344):
+ * every step runs inside the budget, the idle expiry, and Stop.
+ *
+ * `confirm-each` is specified to raise an approval card per input step and is
+ * **not implemented** — stage 1 never built the card, so selecting it narrows
+ * nothing today. It stays in the contract because the card is still the plan.
  */
 export type ComputerInputPolicy = "confirm-each" | "autonomous-in-scope";
+
+/**
+ * What a grant reaches. `desktop` is the automatic grant: any window the host
+ * does not refuse, one at a time, rebindable without the user choosing again.
+ * `window` pins the single window a caller named and refuses to move.
+ */
+export type ComputerGrantScope = "desktop" | "window";
 
 /** One `{ providerId, modelId }` the user picked, as in `imageGeneration`. */
 export type ComputerModelBinding = { providerId: string; modelId: string };
@@ -39,7 +50,7 @@ export type ComputerUseSettings = {
 };
 
 export const COMPUTER_USE_DEFAULTS = {
-  inputPolicy: "confirm-each",
+  inputPolicy: "autonomous-in-scope",
   capture: "a11y-only",
   /** One instruction rarely needs more; a runaway loop should hit this. */
   actionBudget: 40,
@@ -63,6 +74,12 @@ export const COMPUTER_CALL_TIMEOUT_MS = 10 * 60_000;
 export const COMPUTER_MAX_STEPS_LIMIT = 40;
 /** Bound on the tree a single `inspect` returns, so one call cannot flood. */
 export const COMPUTER_MAX_NODES = 400;
+/**
+ * Bound on the window list one observation shows the loop. A desktop grant can
+ * see every window, and a machine with a hundred of them must not turn one
+ * observation into a context flood.
+ */
+export const COMPUTER_MAX_WINDOWS = 40;
 /** Bound on one element label, so a hostile window cannot pad the context. */
 export const COMPUTER_MAX_LABEL_CHARS = 200;
 /** Bound on text the loop may type in one step. */
@@ -145,7 +162,7 @@ export function validateComputerUseSettings(value: unknown): ComputerUseSettings
   return result;
 }
 
-/** Why a listed target cannot be picked. Listed, never silently dropped. */
+/** Why a listed target cannot be used. Listed, never silently dropped. */
 export type ComputerTargetRefusal = "self" | "denylisted" | "elevated" | "no-accessibility";
 
 export type ComputerTarget = {
@@ -175,6 +192,8 @@ export type ComputerCapabilities = {
   fidelity: ComputerFidelity;
   /** Native inspection/synthesis permission (macOS Accessibility, AT-SPI bus). */
   accessibility: ComputerPermissionState;
+  /** Desktop app's own TCC grant, for display only; never authorizes native input. */
+  applicationAccessibility?: ComputerPermissionState;
   /** Window capture permission, as far as the host can tell before trying. */
   capture: ComputerPermissionState;
   /** `wayland` refuses input by contract; `x11` is best effort. */
@@ -183,10 +202,25 @@ export type ComputerCapabilities = {
   inputUnsupportedReason?: string;
 };
 
+/** Only the macOS backend currently implements an explicit OS trust request. */
+export function needsAccessibilityRequest(capabilities: ComputerCapabilities): boolean {
+  const permission = capabilities.applicationAccessibility ?? capabilities.accessibility;
+  return capabilities.platform === "darwin"
+    && capabilities.backend === "macos-ax"
+    && (permission === "not-requested" || permission === "denied");
+}
+
 export type ComputerGrantView = {
   grantId: string;
-  /** Bumped whenever the measured target geometry or identity changes. */
+  /**
+   * Bumped whenever the measured geometry or identity of the bound window
+   * changes — including when a `desktop` grant rebinds to another window, so
+   * every `uid` and `basis` from the previous window stops validating.
+   */
   revision: number;
+  /** Absent on a host that predates ADR 0344; treat that as `window`. */
+  scope?: ComputerGrantScope;
+  /** The window the grant is bound to right now, never the whole scope. */
   targetId: string;
   targetLabel: string;
   appKey: string;
@@ -271,7 +305,8 @@ export type ComputerActResult = {
 /** One step the loop completed, as reported back to the user-facing summary. */
 export type ComputerStepRecord = {
   index: number;
-  action: ComputerActionKind | "observe" | "done" | "ask";
+  /** `switch` is a desktop-grant rebind: a read, never an input action. */
+  action: ComputerActionKind | "observe" | "switch" | "done" | "ask";
   /** Element label or coordinate description; never a typed value. */
   target?: string;
   ok: boolean;

@@ -47,6 +47,15 @@ pub(super) struct CGSize {
     pub(super) height: f64,
 }
 
+pub(super) const RTLD_LAZY: i32 = 0x1;
+
+// libSystem, not a framework: used only to resolve the one AX symbol that has
+// no public declaration (see `ax_window_id`).
+extern "C" {
+    pub(super) fn dlopen(path: *const i8, mode: i32) -> *mut c_void;
+    pub(super) fn dlsym(handle: *mut c_void, symbol: *const i8) -> *mut c_void;
+}
+
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     pub(super) fn CFRelease(cf: CFTypeRef);
@@ -80,11 +89,28 @@ extern "C" {
         number_type: CFIndex,
         out: *mut c_void,
     ) -> Boolean;
+    /// Builds a dictionary from parallel key/value arrays. The callbacks are
+    /// `NULL` here, which means the dictionary borrows both arrays for its whole
+    /// lifetime — fine for the synchronous trust call that is its only user.
+    pub(super) fn CFDictionaryCreate(
+        allocator: CFTypeRef,
+        keys: *const CFTypeRef,
+        values: *const CFTypeRef,
+        num_values: CFIndex,
+        key_callbacks: *const c_void,
+        value_callbacks: *const c_void,
+    ) -> CFDictionaryRef;
+    /// The shared boolean CoreFoundation hands out for `true`. Immortal, so it
+    /// is never released.
+    pub(super) static kCFBooleanTrue: CFTypeRef;
 }
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     pub(super) fn AXIsProcessTrusted() -> Boolean;
+    /// The OS handles an asynchronous prompt when this option is true.
+    pub(super) fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> Boolean;
+    pub(super) static kAXTrustedCheckOptionPrompt: CFStringRef;
     pub(super) fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
     pub(super) fn AXUIElementCopyAttributeValue(
         element: AXUIElementRef,
@@ -200,6 +226,49 @@ pub(super) fn cf_string_value(value: CFTypeRef) -> Option<String> {
             .map(|byte| byte as u8)
             .collect();
         String::from_utf8(bytes).ok()
+    }
+}
+
+/// `_AXUIElementGetWindow(AXUIElementRef, CGWindowID*) -> AXError`.
+type AxGetWindowFn = unsafe extern "C" fn(AXUIElementRef, *mut u32) -> AXError;
+
+/// The real `CGWindowID` behind an accessibility window element, when this
+/// system exposes it.
+///
+/// Accessibility publishes no supported way to read a window's id, so joining
+/// the `CGWindowList` entry to its AX element has to go through
+/// `_AXUIElementGetWindow` — undocumented, present since 10.5, and what every
+/// window manager on the platform uses. It is resolved with `dlsym` rather than
+/// linked, so a release that drops it degrades to the geometry join in
+/// `window_matches` instead of failing to launch.
+pub(super) fn ax_window_id(element: AXUIElementRef) -> Option<u32> {
+    use std::sync::OnceLock;
+    static RESOLVED: OnceLock<Option<AxGetWindowFn>> = OnceLock::new();
+    let resolved = RESOLVED.get_or_init(|| {
+        // SAFETY: a null path asks for the global symbol scope, and the symbol
+        // is transmuted to the signature declared above or discarded.
+        unsafe {
+            let handle = dlopen(std::ptr::null(), RTLD_LAZY);
+            if handle.is_null() {
+                return None;
+            }
+            let symbol = dlsym(handle, c"_AXUIElementGetWindow".as_ptr());
+            if symbol.is_null() {
+                None
+            } else {
+                Some(std::mem::transmute::<*mut c_void, AxGetWindowFn>(symbol))
+            }
+        }
+    });
+    let function = (*resolved)?;
+    let mut window: u32 = 0;
+    // SAFETY: `element` is a live AX element and the out pointer is sized.
+    let status = unsafe { function(element, &mut window) };
+    // Window id 0 is `kCGNullWindowID`: an answer that identifies nothing.
+    if status == kAXErrorSuccess && window != 0 {
+        Some(window)
+    } else {
+        None
     }
 }
 

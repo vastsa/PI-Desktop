@@ -294,6 +294,7 @@ export function useComposerDraft({
       (token) => expandTextReferenceRef.current(token),
       (token) => openImageReferenceRef.current(token),
       (token) => openSessionReferenceRef.current(token),
+      t("chat.directoryReference"),
     );
     editorValueRef.current = nextValue;
   };

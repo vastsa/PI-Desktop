@@ -46,6 +46,9 @@ struct FakeDesktop {
     secure_input: Mutex<bool>,
     perform_result: Mutex<Result<Dispatched, DesktopError>>,
     performed: Mutex<Vec<(Option<String>, ActionKind)>>,
+    /// Set when the platform can enumerate a window but not read its tree —
+    /// the real macOS case when the window is off-stage.
+    inspect_error: Mutex<Option<DesktopError>>,
 }
 
 impl FakeDesktop {
@@ -68,7 +71,12 @@ impl FakeDesktop {
             secure_input: Mutex::new(false),
             perform_result: Mutex::new(Ok(Dispatched::AccessibilityAction)),
             performed: Mutex::new(Vec::new()),
+            inspect_error: Mutex::new(None),
         }
+    }
+
+    fn set_inspect_error(&self, error: Option<DesktopError>) {
+        *self.inspect_error.lock().unwrap() = error;
     }
 
     fn set_measured(&self, measured: Option<Measured>) {
@@ -77,6 +85,11 @@ impl FakeDesktop {
 
     fn set_secure_input(&self, value: bool) {
         *self.secure_input.lock().unwrap() = value;
+    }
+
+    /// Replace the enumeration, as closing or opening a window would.
+    fn set_targets(&self, targets: Vec<RawTarget>) {
+        *self.targets.lock().unwrap() = targets;
     }
 
     fn performed_count(&self) -> usize {
@@ -114,6 +127,9 @@ impl Desktop for FakeDesktop {
         _target: &TargetRef,
         _max_nodes: usize,
     ) -> Result<RawInspection, DesktopError> {
+        if let Some(error) = self.inspect_error.lock().unwrap().clone() {
+            return Err(error);
+        }
         Ok(RawInspection {
             nodes: vec![node("0.1", "AXButton", vec![ActionKind::Click])],
             truncated: false,
@@ -167,7 +183,7 @@ fn grant_for(desktop: &FakeDesktop, id: &str) -> Grant {
         None,
         &Denylist::default(),
         GrantRequest {
-            target_id: id.into(),
+            target_id: Some(id.into()),
             session_id: "session-1".into(),
             input_policy: InputPolicy::ConfirmEach,
             capture: CaptureMode::A11yOnly,
@@ -179,6 +195,26 @@ fn grant_for(desktop: &FakeDesktop, id: &str) -> Grant {
     .expect("grant")
 }
 
+/// The automatic grant of ADR 0344: no target, so the host binds the frontmost
+/// usable window itself.
+fn desktop_grant(desktop: &FakeDesktop, denylist: &Denylist) -> Grant {
+    policy::create_grant(
+        desktop,
+        None,
+        denylist,
+        GrantRequest {
+            target_id: None,
+            session_id: "session-1".into(),
+            input_policy: InputPolicy::AutonomousInScope,
+            capture: CaptureMode::A11yOnly,
+            action_budget: 3,
+            idle_expiry: Duration::from_secs(600),
+        },
+        Instant::now(),
+    )
+    .expect("desktop grant")
+}
+
 fn click_uid(uid: &str) -> Action {
     Action {
         kind: Some(ActionKind::Click),
@@ -188,7 +224,7 @@ fn click_uid(uid: &str) -> Action {
 }
 
 #[test]
-fn our_own_windows_are_never_pickable() {
+fn our_own_windows_are_never_targetable() {
     let desktop = FakeDesktop::new(vec![
         target(OWN_PID, "com.pi-desktop", "PI-Desktop", "self-window"),
         target(99, "com.example.app", "Example", "other-window"),
@@ -198,7 +234,7 @@ fn our_own_windows_are_never_pickable() {
         .iter()
         .find(|item| item.target_id == "self-window")
         .expect("listed");
-    // Listed, not hidden — the picker has to be able to explain the refusal.
+    // Listed, not hidden — a caller has to be able to explain the refusal.
     assert_eq!(own.refused_reason, Some(super::TargetRefusal::SelfTarget));
 
     let error = policy::create_grant(
@@ -206,7 +242,7 @@ fn our_own_windows_are_never_pickable() {
         None,
         &Denylist::default(),
         GrantRequest {
-            target_id: "self-window".into(),
+            target_id: Some("self-window".into()),
             session_id: "session-1".into(),
             input_policy: InputPolicy::AutonomousInScope,
             capture: CaptureMode::A11yAndPixels,
@@ -233,7 +269,7 @@ fn a_renamed_self_process_is_still_refused() {
         None,
         &Denylist::default(),
         GrantRequest {
-            target_id: "helper".into(),
+            target_id: Some("helper".into()),
             session_id: "s".into(),
             input_policy: InputPolicy::ConfirmEach,
             capture: CaptureMode::A11yOnly,
@@ -260,7 +296,7 @@ fn built_in_credential_surfaces_cannot_be_allowlisted() {
         None,
         &Denylist::new(&[]),
         GrantRequest {
-            target_id: "kc".into(),
+            target_id: Some("kc".into()),
             session_id: "s".into(),
             input_policy: InputPolicy::ConfirmEach,
             capture: CaptureMode::A11yOnly,
@@ -286,12 +322,20 @@ fn secure_input_refuses_both_inspection_and_action() {
     let mut grant = grant_for(&desktop, "w1");
     desktop.set_secure_input(true);
 
-    let inspect = policy::inspect(&desktop, &mut grant, None, Instant::now()).expect_err("inspect");
+    let inspect = policy::inspect(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        None,
+        Instant::now(),
+    )
+    .expect_err("inspect");
     assert_eq!(inspect, Refusal::SecureInputRefused);
 
     let act = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         None,
         &click_uid("0.1"),
         Instant::now(),
@@ -322,8 +366,15 @@ fn a_moved_window_bumps_the_revision_and_invalidates_a_basis() {
         basis: Some(captured),
         ..Action::default()
     };
-    let error =
-        policy::act(&desktop, &mut grant, None, &action, Instant::now()).expect_err("stale basis");
+    let error = policy::act(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        None,
+        &action,
+        Instant::now(),
+    )
+    .expect_err("stale basis");
     assert_eq!(error, Refusal::StaleRevision);
     assert_eq!(grant.revision, 2, "the move is recorded");
     assert_eq!(desktop.performed_count(), 0);
@@ -355,6 +406,7 @@ fn an_expected_revision_mismatch_refuses_before_dispatch() {
     let error = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         Some(99),
         &click_uid("0.1"),
         Instant::now(),
@@ -408,6 +460,7 @@ fn the_budget_closes_the_grant_and_refuses_the_next_action() {
     let first = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         None,
         &click_uid("0.1"),
         Instant::now(),
@@ -423,6 +476,7 @@ fn the_budget_closes_the_grant_and_refuses_the_next_action() {
     let error = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         None,
         &click_uid("0.1"),
         Instant::now(),
@@ -441,6 +495,7 @@ fn a_refused_dispatch_does_not_spend_the_budget() {
     let error = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         None,
         &click_uid("0.1"),
         Instant::now(),
@@ -477,7 +532,7 @@ fn only_one_grant_is_active_per_instance() {
         Some(&active),
         &Denylist::default(),
         GrantRequest {
-            target_id: "w2".into(),
+            target_id: Some("w2".into()),
             session_id: "session-2".into(),
             input_policy: InputPolicy::ConfirmEach,
             capture: CaptureMode::A11yOnly,
@@ -514,6 +569,7 @@ fn a_target_that_became_another_application_revokes_the_grant() {
     let error = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         None,
         &click_uid("0.1"),
         Instant::now(),
@@ -532,6 +588,7 @@ fn a_closed_window_is_a_scope_violation() {
     let error = policy::act(
         &desktop,
         &mut grant,
+        &Denylist::default(),
         None,
         &click_uid("0.1"),
         Instant::now(),
@@ -627,9 +684,273 @@ fn an_unsupported_platform_refuses_every_operation() {
         "refusing is the safe default"
     );
     assert_eq!(desktop.capabilities().fidelity, Fidelity::None);
+    assert_eq!(desktop.request_permission(), Err(DesktopError::Unsupported));
     assert_eq!(
         policy::list_targets(&desktop, &Denylist::default()).expect_err("targets"),
         Refusal::PlatformUnsupported
+    );
+}
+
+#[test]
+fn a_desktop_grant_binds_the_frontmost_usable_window() {
+    // Our own window is in front, which is exactly the case the automatic
+    // grant must not take: "the whole desktop" never includes us.
+    let desktop = FakeDesktop::new(vec![
+        target(OWN_PID, "com.pi-desktop", "PI-Desktop", "self-window"),
+        target(99, "com.example.app", "Example", "front"),
+        target(98, "com.other.app", "Other", "back"),
+    ]);
+    let grant = desktop_grant(&desktop, &Denylist::default());
+    assert_eq!(grant.scope, super::GrantScope::Desktop);
+    assert_eq!(grant.target.target_id, "front");
+    assert_eq!(grant.view(Instant::now()).scope, super::GrantScope::Desktop);
+}
+
+#[test]
+fn an_automatic_grant_skips_a_window_whose_tree_cannot_be_opened() {
+    // The device case: the window server lists Stage Manager's own surfaces in
+    // front of the user's windows, and nothing can read them.
+    struct OnlySecondOpens(FakeDesktop);
+    impl Desktop for OnlySecondOpens {
+        fn capabilities(&self) -> Capabilities {
+            self.0.capabilities()
+        }
+        fn list_targets(&self) -> Result<Vec<RawTarget>, DesktopError> {
+            self.0.list_targets()
+        }
+        fn measure(&self, target: &TargetRef) -> Result<Measured, DesktopError> {
+            self.0.measure(target)
+        }
+        fn inspect(
+            &self,
+            target: &TargetRef,
+            max_nodes: usize,
+        ) -> Result<RawInspection, DesktopError> {
+            if target.target_id == "overlay" {
+                return Err(DesktopError::TargetGone);
+            }
+            self.0.inspect(target, max_nodes)
+        }
+        fn secure_input_active(&self) -> bool {
+            self.0.secure_input_active()
+        }
+        fn perform(
+            &self,
+            target: &TargetRef,
+            uid: Option<&str>,
+            action: &Action,
+        ) -> Result<Dispatched, DesktopError> {
+            self.0.perform(target, uid, action)
+        }
+        fn self_pids(&self) -> Vec<i32> {
+            self.0.self_pids()
+        }
+    }
+
+    let desktop = OnlySecondOpens(FakeDesktop::new(vec![
+        target(404, "windowmanager", "WindowManager", "overlay"),
+        target(5, "com.example.app", "Example", "w1"),
+    ]));
+    let grant = policy::create_grant(
+        &desktop,
+        None,
+        &Denylist::default(),
+        GrantRequest {
+            target_id: None,
+            session_id: "s".into(),
+            input_policy: InputPolicy::AutonomousInScope,
+            capture: CaptureMode::A11yOnly,
+            action_budget: 3,
+            idle_expiry: Duration::from_secs(600),
+        },
+        Instant::now(),
+    )
+    .expect("grant");
+    assert_eq!(
+        grant.target.target_id, "w1",
+        "the unreadable surface is skipped"
+    );
+}
+
+#[test]
+fn a_desktop_grant_refuses_when_every_window_is_refused() {
+    let desktop = FakeDesktop::new(vec![
+        target(OWN_PID, "com.pi-desktop", "PI-Desktop", "self-window"),
+        target(31, "com.apple.keychainaccess", "Keychain Access", "kc"),
+    ]);
+    let error = policy::create_grant(
+        &desktop,
+        None,
+        &Denylist::default(),
+        GrantRequest {
+            target_id: None,
+            session_id: "s".into(),
+            input_policy: InputPolicy::AutonomousInScope,
+            capture: CaptureMode::A11yOnly,
+            action_budget: 1,
+            idle_expiry: Duration::from_secs(60),
+        },
+        Instant::now(),
+    )
+    .expect_err("nothing usable");
+    assert_eq!(error, Refusal::ScopeViolation);
+}
+
+#[test]
+fn binding_another_window_moves_the_revision() {
+    let desktop = FakeDesktop::new(vec![
+        target(5, "com.example.app", "Example", "w1"),
+        target(6, "com.other.app", "Other", "w2"),
+    ]);
+    let mut grant = desktop_grant(&desktop, &Denylist::default());
+    let before = grant.revision;
+    policy::bind_target(&desktop, &mut grant, &Denylist::default(), "w2").expect("rebind");
+    assert_eq!(grant.target.target_id, "w2");
+    assert_eq!(grant.target_label, "Other — Document");
+    assert!(
+        grant.revision > before,
+        "every uid from w1 must stop validating"
+    );
+
+    // An action still holding the previous revision is refused, so a uid read
+    // from the old window cannot land in the new one.
+    let error = policy::act(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        Some(before),
+        &click_uid("0.1"),
+        Instant::now(),
+    )
+    .expect_err("stale revision");
+    assert_eq!(error, Refusal::StaleRevision);
+    assert_eq!(desktop.performed_count(), 0);
+}
+
+#[test]
+fn a_window_that_cannot_be_read_does_not_become_the_bound_one() {
+    // The macOS case this came from: `CGWindowList` enumerates an off-stage
+    // window that the accessibility client cannot open. The bind is allowed,
+    // the read fails, and the grant must stay where the caller last saw it.
+    let desktop = FakeDesktop::new(vec![
+        target(5, "com.example.app", "Example", "w1"),
+        target(6, "com.other.app", "Other", "w2"),
+    ]);
+    let mut grant = desktop_grant(&desktop, &Denylist::default());
+    assert_eq!(grant.target.target_id, "w1");
+    let revision_before = grant.revision;
+    desktop.set_inspect_error(Some(DesktopError::TargetGone));
+
+    let error = policy::inspect_bound(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        Some("w2"),
+        None,
+        Instant::now(),
+    )
+    .expect_err("the unreadable window must refuse");
+    assert_eq!(error, Refusal::ScopeViolation);
+    assert_eq!(grant.target.target_id, "w1", "the grant stays where it was");
+    assert_eq!(grant.target_label, "Example — Document");
+    assert!(
+        grant.revision > revision_before,
+        "the attempted move still invalidates held ids"
+    );
+
+    // And the window it stayed on is still readable.
+    desktop.set_inspect_error(None);
+    let inspection = policy::inspect_bound(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        None,
+        None,
+        Instant::now(),
+    )
+    .expect("the original window still inspects");
+    assert_eq!(inspection.nodes.len(), 1);
+}
+
+#[test]
+fn a_rebind_re_applies_every_refusal() {
+    let desktop = FakeDesktop::new(vec![
+        target(5, "com.example.app", "Example", "w1"),
+        target(OWN_PID, "com.pi-desktop", "PI-Desktop", "self-window"),
+        target(31, "com.apple.keychainaccess", "Keychain Access", "kc"),
+        target(7, "com.secret.notes", "Secret Notes", "notes"),
+    ]);
+    let denylist = Denylist::new(&["Secret Notes".to_string()]);
+    let mut grant = desktop_grant(&desktop, &denylist);
+    for (target_id, expected) in [
+        ("self-window", Refusal::SelfTargetRefused),
+        ("kc", Refusal::TargetDenylisted),
+        ("notes", Refusal::TargetDenylisted),
+        ("no-such-window", Refusal::ScopeViolation),
+    ] {
+        let error = policy::bind_target(&desktop, &mut grant, &denylist, target_id)
+            .expect_err("refused rebind");
+        assert_eq!(error, expected, "{target_id}");
+        assert_eq!(
+            grant.target.target_id, "w1",
+            "a refused rebind changes nothing"
+        );
+    }
+}
+
+#[test]
+fn a_window_grant_refuses_a_rebind() {
+    let desktop = FakeDesktop::new(vec![
+        target(5, "com.example.app", "Example", "w1"),
+        target(6, "com.other.app", "Other", "w2"),
+    ]);
+    let mut grant = grant_for(&desktop, "w1");
+    let error = policy::bind_target(&desktop, &mut grant, &Denylist::default(), "w2")
+        .expect_err("window scope cannot move");
+    assert_eq!(error, Refusal::ScopeViolation);
+    assert_eq!(grant.target.target_id, "w1");
+}
+
+#[test]
+fn a_desktop_grant_whose_window_closes_rebinds_and_refuses_the_action() {
+    let desktop = FakeDesktop::new(vec![
+        target(5, "com.example.app", "Example", "w1"),
+        target(6, "com.other.app", "Other", "w2"),
+    ]);
+    let mut grant = desktop_grant(&desktop, &Denylist::default());
+    assert_eq!(grant.target.target_id, "w1");
+    // w1 is gone; only w2 is left on screen.
+    desktop.set_measured(None);
+    desktop.set_targets(vec![target(6, "com.other.app", "Other", "w2")]);
+
+    let error = policy::act(
+        &desktop,
+        &mut grant,
+        &Denylist::default(),
+        None,
+        &click_uid("0.1"),
+        Instant::now(),
+    )
+    .expect_err("the action was aimed at the window that closed");
+    assert_eq!(error, Refusal::StaleRevision);
+    assert_eq!(desktop.performed_count(), 0, "nothing may be dispatched");
+    // The grant survives, bound to what is actually there now.
+    assert_eq!(grant.state, GrantState::Active);
+    assert_eq!(grant.target.target_id, "w2");
+}
+
+#[test]
+fn a_user_stop_blocks_the_agents_next_mint_but_not_the_users() {
+    let now = Instant::now();
+    assert!(policy::agent_mint_allowed(None, now).is_ok());
+    assert_eq!(
+        policy::agent_mint_allowed(Some(now), now).expect_err("cooldown"),
+        Refusal::StoppedByUser
+    );
+    let elapsed = now + super::AGENT_REGRANT_COOLDOWN + Duration::from_secs(1);
+    assert!(
+        policy::agent_mint_allowed(Some(now), elapsed).is_ok(),
+        "the cooldown ends on its own"
     );
 }
 

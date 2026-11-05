@@ -10160,26 +10160,71 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
 
-## 电脑操作（ADR 0342）
+## 电脑操作（ADR 0342、ADR 0344）
 
-每一条都是 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
-所述能力的落地闸门。阶段 1 已实现，因此每条场景依赖的拒绝逻辑都有单测覆盖；
-场景本身需要驱动真实应用，状态仍全部为 `NOT RUN`。已有的自动化按场景列出。
+原生应用操作仍以 [03-runtime/computer-use](/zh-CN/spec/03-runtime/computer-use)
+为落地闸门。宿主一侧现已有 macOS 真机证据，来自
+`PI_DESKTOP_COMPUTER_USE_DEVICE=1 node scripts/e2e-computer-use-device.mjs`
+（需显式开启：它会读取操作者的屏幕，带 `--act-app` 时还会往其中一个窗口里输入）。
+Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘制光标、对真实模型的回路——
+仍为 `NOT RUN`，需要屏幕录制权限的部分同样未跑。下述权限申请界面已有隔离 fixture 自动化。
 
-### E2E-COMPUTER-USE-grant-is-user-minted-and-revocable
+### E2E-COMPUTER-USE-request-accessibility-from-settings
 
-- **前置条件**：隔离的桌面 profile，电脑操作已开启，被测平台的操作系统权限已授予，
-  一个 fixture 目标应用，无需 Provider 账号。
-- **步骤**：在没有任何授权时请求 Agent 操作目标。通过挑选器签发授权，执行
-  `describe_scope`、`inspect` 与一次 `act`。任务进行中按下指示器的"停止"。在第一个
-  授权仍活动时从另一个会话签发第二个授权。让授权空闲超过过期时间，并耗尽动作预算。
-- **预期**：首个请求以 `COMPUTER_NO_GRANT` 失败，不触发操作系统提示也不截取画面。
-  授权出现在指示器中并标明目标、预算与截取模式，应用退到后台时仍可见。"停止"立刻
-  终止剩余步骤。第二个授权以 `COMPUTER_GRANT_IN_USE` 被拒。空闲过期与预算耗尽各以
-  自己的错误码关闭授权，且没有授权能活过重启。
+- **前置条件**：隔离 Electron profile；在 IPC 与 Electron 边界模拟系统调用；功能关闭，不调用 Provider 或真实系统权限提示。
+- **步骤**：打开设置，键盘聚焦并连续点击未授权状态；完成申请但保持未授权。在外部开启权限后返回应用。覆盖权限拒绝、申请失败及重试、过期查询、申请中返回焦点、不支持平台与申请中卸载页面。
+- **预期**：打开设置或开启功能不会申请系统权限。只有显式点击才在 Main 申请主应用 TCC 权限，后端 API 保持独立。等待中禁用按钮并显示忙碌，重复点击不重复申请。未授权时仅打开固定的 macOS 辅助功能设置页，并提示用户开启权限。错误可见且可重试。焦点/可见性恢复刷新状态；申请后每秒轮询一次，最多 60 次计时，不再次提示。主应用授权后停止轮询并显示已授权；即使子进程仍未授权，也不会继续要求重复授权，而是单独说明后端权限异常。后端恢复后清除异常。过期结果和卸载后的监听、计时器不得更新界面。已授权或不支持状态仅显示标签。非主窗口来源在系统调用前被拒绝，系统设置打开失败传回；不会交接窗口、截屏或派发输入。
+- **自动化**：`node --test apps/desktop/test/computer-use-permission-user-path.test.mjs apps/desktop/test/computer-use-permission-ipc.test.mjs`；shared 能力筛选测试与 host-core 不支持后端测试覆盖平台门禁。
+- **规格**：[Computer Use](/zh-CN/spec/03-runtime/computer-use) 的设置与 UX 界面。
+- **状态**：fixture 自动化 PASS；真实 macOS TCC 提示/开关 NOT RUN。系统权限仍由用户手动确认。
+
+### E2E-COMPUTER-USE-desktop-grant-is-automatic-and-stoppable
+
+- **前置条件**：隔离的桌面 profile，电脑操作已开启且已绑定模型，被测平台的操作系统
+  权限已授予，两个 fixture 目标应用，最前面是一个 PI-Desktop 窗口，无需 Provider 账号。
+- **步骤**：在没有任何授权时请求 Agent 操作某个应用。观察指示器，执行 `inspect` 与
+  一次 `act`。任务进行中按下"停止"，并让 Agent 立刻再次调用 `Computer`；等冷却结束后
+  再调用一次。在第一个授权仍活动时从另一个会话发起请求。让授权空闲超过过期时间，并
+  耗尽动作预算。随后重启应用。
+- **预期**：不出现挑选器，也从不询问用户选哪个窗口：首次调用即签发桌面授权并绑定到
+  最前面那个非 PI-Desktop 的窗口，不触发操作系统提示，`a11y-only` 下也不截取画面。
+  指示器标明该窗口、剩余预算与截取模式，随每次改绑更新，应用退到后台时仍可见。
+  "停止"撤销授权并中止持有它的轮次，紧随其后的再次调用以
+  `COMPUTER_STOPPED_BY_USER` 失败且不触碰屏幕；冷却结束后可正常签发新授权。第二个
+  会话以 `COMPUTER_GRANT_IN_USE` 被拒。空闲过期与预算耗尽各以自己的错误码关闭授权，
+  且没有授权能活过重启。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [03-tools-and-permissions](/zh-CN/spec/03-runtime/03-tools-and-permissions)。
-- **状态**：NOT RUN —— 需要真机运行。
+- **自动化**：host-core 的 `computer::` 测试、
+  `apps/desktop/test/computer-use-service.test.mjs`；真机用
+  `scripts/e2e-computer-use-device.mjs`。
+- **状态**：PARTIAL —— 真机（macOS 15，台前调度开启）已确认：自动桌面授权绑定最前
+  可用窗口（我们自己的窗口就在它前面且被拒绝）、设置默认值进入授权、真实无障碍树、
+  以及"停止"冷却。指示器、"停止"中止轮次、运行中的预算与空闲关闭、重启场景仍 NOT RUN。
+
+### E2E-COMPUTER-USE-window-switching-stays-inside-the-refusals
+
+- **前置条件**：隔离的桌面 profile 且已有活动桌面授权，两个 fixture 应用，一个
+  PI-Desktop 窗口，一个内置凭据拒绝名单上的窗口，以及一个可按需关闭的 fixture 窗口。
+- **步骤**：让 Agent 读取窗口列表，切换到第二个 fixture 应用并检查、动作。尝试切换到
+  PI-Desktop 窗口、拒绝名单窗口以及一个已不存在的 id。用切换前读到的 `uid` 动作。
+  任务进行中关闭当前绑定窗口再动作。
+- **预期**：观察中列出宿主枚举到的窗口并附带拒绝原因，Renderer 侧没有任何界面能枚举
+  窗口。允许的切换改绑授权、推进 revision、重新框住绘制光标，消耗一个步数但不消耗
+  动作预算。被拒绝的切换分别以 `COMPUTER_SELF_TARGET_REFUSED`、
+  `COMPUTER_TARGET_DENYLISTED` 与 `COMPUTER_SCOPE_VIOLATION` 失败，绑定窗口保持不变，
+  并作为一步回报给模型而不是结束运行。切换前的 `uid` 以 `COMPUTER_STALE_REVISION`
+  失败。绑定窗口被关闭时回落到最前可用窗口，同时在途动作被拒绝；审计日志中每次移动
+  记录一条仅含应用身份的 `computer.grant.rebound`。
+- **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
+  [05-security/01-security](/zh-CN/spec/05-security/01-security) §13。
+- **自动化**：host-core 的 `computer::` 改绑测试、`packages/computer-use` 的切换测试；
+  真机用 `scripts/e2e-computer-use-device.mjs`。
+- **状态**：PARTIAL —— 真机上在六个真实应用之间切换成功，每次绑定都推进 revision，
+  切换前的 revision 被拒绝，自我目标／拒绝名单／未知窗口三种绑定均被按码拒绝。真机还
+  发现并修掉两个缺陷：台前调度下无障碍窗口无法与窗口服务器窗口对应（改为按窗口 id
+  对应，D683），以及读取失败时授权会留在读不了的窗口上。关闭绑定窗口的回落、光标重新
+  框住、审计回读仍 NOT RUN。
 
 ### E2E-COMPUTER-USE-self-target-and-secure-input-refused
 
@@ -10195,7 +10240,9 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   工具结果或日志中。内置拒绝名单条目无法移除。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [05-security/01-security](/zh-CN/spec/05-security/01-security) §13。
-- **状态**：NOT RUN —— 需要真机运行。
+- **状态**：PARTIAL —— 真机上一个 PI-Desktop 窗口位于所有窗口最前，无论作为自动授权
+  的候选还是显式绑定，都以 `COMPUTER_SELF_TARGET_REFUSED` 被拒；拒绝名单窗口以
+  `COMPUTER_TARGET_DENYLISTED` 被拒。审批卡片本身、安全输入与密码字段拒绝仍 NOT RUN。
 
 ### E2E-COMPUTER-USE-stale-basis-and-revision-fail-closed
 
@@ -10211,16 +10258,17 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
   [08-error-codes](/zh-CN/spec/03-runtime/08-error-codes) §3.10。
 - **状态**：NOT RUN —— 需要真机运行。
 
-### E2E-COMPUTER-USE-voice-request-cannot-mint-a-grant
+### E2E-COMPUTER-USE-voice-request-adds-no-authority-of-its-own
 
-- **前置条件**：隔离的桌面 profile，带绑定工作会话的实时语音 fixture 适配器，电脑
-  操作已开启但没有活动授权，无真实 Provider 账号与麦克风。
-- **步骤**：口述一条要求 Agent 操作某个应用的请求。在用户于桌面 UI 签发授权后重复。
-  在会话处于 Plan 与 Goal 时分别重复。
-- **预期**：首个请求产生的是桌面 UI 的授权请求而不是授权：卡片出现在主窗口，通话条
-  提示应用需要关注，用户决定之前不发生截取或合成。授权存在后，该请求作为普通 Agent
-  轮次在会话策略下运行，进度通过现有工作反馈通道朗读。Plan 与 Goal 在权限评估之前
-  拒绝该工具。
+- **前置条件**：隔离的桌面 profile，带绑定工作会话的实时语音 fixture 适配器，无真实
+  Provider 账号与麦克风。分别在电脑操作关闭与开启两种状态下各跑一次。
+- **步骤**：在功能关闭与开启状态下，各口述一条要求 Agent 操作某个应用的请求。在会话
+  处于 Plan 与 Goal 时分别重复。在一次语音运行中按下"停止"，并立刻重复该口述请求。
+- **预期**：功能关闭时请求以 `COMPUTER_DISABLED` 失败；语音不能开启该功能，也不发生
+  截取或合成。功能开启时，该请求作为普通 Agent 轮次在会话策略下运行，并拿到与键入
+  路径相同的自动桌面授权（ADR 0344）——语音不带来任何额外权限，也不跳过任何拒绝——
+  进度通过现有工作反馈通道朗读。Plan 与 Goal 在权限评估之前拒绝该工具。冷却期内的
+  语音重试以 `COMPUTER_STOPPED_BY_USER` 失败。
 - **规格**：[电脑操作](/zh-CN/spec/03-runtime/computer-use)、
   [live-voice](/zh-CN/spec/03-runtime/live-voice)、
   [live-work-session](/zh-CN/spec/03-runtime/live-work-session)。
@@ -10230,8 +10278,8 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
 
 - **前置条件**：每个受支持平台各跑一次，另加一个 Wayland 会话，以及一台操作系统
   权限被拒绝的机器。
-- **步骤**：在每个平台上开启该功能并打开体检视图。签发授权并动作。在 Windows 上以
-  由更高完整性级别进程拥有的窗口为目标。在 Wayland 上先尝试输入再尝试截取。在屏幕
+- **步骤**：在每个平台上开启该功能并打开体检视图。让 Agent 调用 `Computer` 以签发
+  授权并动作。在 Windows 上绑定由更高完整性级别进程拥有的窗口。在 Wayland 上先尝试输入再尝试截取。在屏幕
   录制或无障碍被拒绝的平台上尝试检查与截取。
 - **预期**：体检视图区分"未申请"、"已拒绝"与"本平台不支持"。Wayland 上的输入以
   `COMPUTER_PLATFORM_UNSUPPORTED` 失败而门户截取仍可用；提权的 Windows 目标以

@@ -74,6 +74,30 @@ app.whenReady().then(async () => {
    const free = await call('inspect()');
    assert(Math.abs(free.top - after.top) > 2 || free.calls > after.calls, name + ': scrolling/retry remained locked after completion');
   }
+  let crossingError;
+  try {
+    await call('reset()');
+    const crossing = await call('crossAhead()');
+    assert.equal(crossing.locked, false, 'crossing the ahead band locked input');
+    await call('release(false,false,true)');
+    console.log('HISTORY_AHEAD_CROSSING ' + JSON.stringify({ ok: true }));
+  } catch (error) { crossingError = error; console.log('HISTORY_AHEAD_CROSSING_ERROR ' + String(error)); }
+  await call('reset()');
+  await call('beginAhead()');
+  await call('frames()');
+  const ahead = await call('inspect()');
+  assert.equal(ahead.locked, false, 'ahead-loading blocked main input');
+  await call('armNativeInput()');
+  await wheel(ahead, 180);
+  const moved = await call('finishNativeInput()');
+  console.log('HISTORY_AHEAD_INPUT ' + JSON.stringify({ ahead, moved }));
+  assert(moved.offset > ahead.offset + 20, 'native wheel could not move text while ahead-loading');
+  assert.equal(moved.calls, 1, 'native wheel duplicated the pending read');
+  await call('track()');
+  const aheadAfter = await call('release(false,true)');
+  assert(aheadAfter.maxDrift <= 2, 'ahead-loaded prepend moved the new reading point');
+  assert.equal(aheadAfter.locked, false, 'ahead-loading left input blocked');
+  console.log('HISTORY_AHEAD_NATIVE ' + JSON.stringify({ ahead, moved, after: aheadAfter }));
   await call('reset()'); await call('begin()'); await call('release()');
   const cached = await call('growMountedWindow()');
   assert(cached.after.maxDrift <= 2 && Math.abs(cached.after.offset - cached.before.offset) <= 2,
@@ -87,6 +111,15 @@ app.whenReady().then(async () => {
   assert(Math.abs(navigation.distanceFromBottom) <= 2, 'late page stole explicit latest navigation');
   const realNavigation = await js('globalThis.transcriptHistoryNavigationProbe()');
   console.log('REAL_HISTORY_NAVIGATION_PROBE ' + JSON.stringify(realNavigation));
+  win.webContents.debugger.attach('1.3');
+  try {
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+    const reduced = await js('globalThis.transcriptHistoryNavigationProbe(true)');
+    console.log('LATEST_REDUCED_MOTION ' + JSON.stringify(reduced));
+  } finally { win.webContents.debugger.detach(); }
+  assert.equal(crossingError, undefined, 'ahead-loading interrupted browser smooth scroll');
   console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, cases: results.length, cachedWindow: true, inputOwnership: true, latestNavigation: true }));
   app.exit(0);
  } catch(e) { console.error(e.stack || String(e)); app.exit(1); }

@@ -24,7 +24,7 @@ try {
     platform: "browser",
     format: "iife",
     jsx: "automatic",
-    loader: { ".woff": "file", ".woff2": "file", ".ttf": "file" },
+    loader: { ".woff": "file", ".woff2": "file", ".ttf": "file", ".png": "dataurl" },
     define: {
       "import.meta.env.DEV": "false",
       "process.env.NODE_ENV": '"production"',
@@ -50,6 +50,7 @@ try {
   await build({
     entryPoints: {
       writer: join(root, "apps/desktop/electron/main/composer-paste.ts"),
+      directories: join(root, "apps/desktop/electron/main/composer-clipboard-directories.ts"),
       reader: join(root, "packages/host-runtime/src/workspace-files.ts"),
       video: join(root, "apps/desktop/electron/main/open-attachment-video.ts"),
     },
@@ -81,9 +82,11 @@ try {
     `
 const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
 const { saveComposerPasteFiles } = require("./writer.cjs");
+const { nativeClipboardPaths, readComposerClipboardDirectories } = require("./directories.cjs");
 const { readOpenableFile, readOpenableImage, resolveRealOpenablePath } = require("./reader.cjs");
 const { openableMp4Path } = require("./video.cjs");
 app.setPath("userData", path.join(__dirname, "profile"));
@@ -92,6 +95,19 @@ const history = [];
 const opened = [];
 let completeOpens;
 const opensDone = new Promise(resolve => { completeOpens = resolve; });
+let directoryPastePending = true;
+ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async () => {
+  if (!directoryPastePending) return { ok: true, data: null };
+  directoryPastePending = false;
+  const clipboard = {
+    readBuffer: format => Buffer.from(format === "text/uri-list"
+      ? pathToFileURL(path.join(__dirname, "copied folder")).href : ""),
+  };
+  const data = await readComposerClipboardDirectories(clipboard, () => {
+    throw new Error("a folder-only paste must not create an import token");
+  }, () => nativeClipboardPaths(clipboard, "linux"));
+  return { ok: true, data };
+});
 ipcMain.handle("pi-desktop/composer/pasteFiles", async (_event, input) => {
   const files = await saveComposerPasteFiles(__dirname, input.sessionId, input.files);
   for (let i = 0; i < files.length; i++) {
@@ -147,6 +163,68 @@ ipcMain.handle("pi-desktop/clipboard/recordPaste", (_event, input) => {
   return { ok: true, data: null };
 });
 app.whenReady().then(async () => {
+  if (process.argv.includes("--draft-race")) {
+    app.on("window-all-closed", () => {});
+    const timestamp = "2026-01-01T00:00:00Z";
+    const existing = {
+      id: "existing", title: "Existing task", source: "desktop", mode: "agent", permissionMode: "inherit",
+      thinkingLevel: "off", providerId: "fixture", modelId: "fixture-model", messageCount: 1,
+      createdAt: timestamp, updatedAt: timestamp,
+    };
+    const created = { ...existing, id: "created", title: "New task", messageCount: 0 };
+    const ok = data => ({ ok: true, data });
+    let gate;
+    let started;
+    let creates;
+    let prompts;
+    ipcMain.handle("pi-desktop/session/create", async () => {
+      creates++;
+      started.resolve();
+      await gate.promise;
+      return ok({ session: created });
+    });
+    ipcMain.handle("pi-desktop/session/get", () => ok({
+      session: { ...existing, messages: [{ id: "old", role: "user", content: "Existing message", createdAt: timestamp }] },
+    }));
+    ipcMain.handle("pi-desktop/agent/prompt", (_event, input) => {
+      prompts.push({ id: input.sessionId, content: input.content });
+      return ok({});
+    });
+    try {
+      for (const scenario of ["send", "paste", "cancel-send", "cancel-paste"]) {
+        gate = Promise.withResolvers();
+        started = Promise.withResolvers();
+        creates = 0;
+        prompts = [];
+        saved.length = 0;
+        const window = new BrowserWindow({ show: false, webPreferences: {
+          preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
+          sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
+        } });
+        window.webContents.on("console-message", (event) => console.error(event.message));
+        await window.loadFile(path.join(__dirname, "index.html"));
+        await window.webContents.executeJavaScript("globalThis.startComposerDraftRace(" + JSON.stringify(scenario) + "," + JSON.stringify(existing) + ")");
+        await started.promise;
+        assert.equal(creates, 1, scenario + ": exactly one create must be pending");
+        assert.equal(prompts.length + saved.length, 0, scenario + ": input must wait for creation");
+        gate.resolve();
+        const result = await window.webContents.executeJavaScript("globalThis.finishComposerDraftRace()");
+        assert.equal(creates, 1, scenario + ": no second session create");
+        assert.deepEqual(result.rows.sort(), ["created", "existing"], scenario + ": exactly one new sidebar row");
+        assert.equal(result.selected, scenario.startsWith("cancel") ? "existing" : "created");
+        assert.equal(result.attachment, scenario === "paste");
+        assert.deepEqual(saved.map(entry => entry.sessionId), scenario === "paste" ? ["created"] : []);
+        assert.deepEqual(prompts, scenario === "send" ? [{ id: "created", content: "First message while creation is pending" }] : []);
+        window.destroy();
+        console.log("COMPOSER_DRAFT_RACE " + scenario + " passed");
+      }
+      app.exit(0);
+    } catch (error) {
+      console.error(error.stack || error);
+      app.exit(1);
+    }
+    return;
+  }
   if (process.argv.includes("--history-check")) {
     try {
       const window = new BrowserWindow({ show: false, webPreferences: {
@@ -174,6 +252,7 @@ app.whenReady().then(async () => {
     return;
   }
   await fs.mkdir(path.join(__dirname, "attachments"));
+  await fs.mkdir(path.join(__dirname, "copied folder"));
   await fs.writeFile(path.join(__dirname, "attachments", "a".repeat(64)), Buffer.alloc(512 * 1024 + 1));
   await fs.writeFile(path.join(__dirname, "attachments", "b".repeat(64)), Buffer.from([0, 1, 2, 0]));
   const window = new BrowserWindow({ show: false, webPreferences: {
@@ -215,6 +294,7 @@ app.whenReady().then(async () => {
     });
     await window.webContents.executeJavaScript('globalThis.composerPreviewPointer = input => new Promise(resolve => { globalThis.composerPreviewPointerDone = resolve; console.log("PI_PREVIEW_POINTER:" + JSON.stringify(input)); }); void 0');
     const result = await window.webContents.executeJavaScript("globalThis.composerPasteProbe()");
+    assert.equal(result.ok, true, JSON.stringify(result));
     await opensDone;
     assert.deepEqual(opened.map(path.extname), [".mp4", ".mp4", ".mp4"]);
     assert.equal(await fs.realpath(opened[0]), await fs.realpath(path.join(__dirname, "attachments", "a".repeat(64))));
@@ -274,6 +354,12 @@ app.whenReady().then(async () => {
     }
     return { code, output };
   };
+  const draftRace = await runElectron(["--draft-race"]);
+  assert.equal(draftRace.code, 0, draftRace.output.slice(-6000));
+  const draftCases = draftRace.output.split(/\r?\n/).filter((line) => line.startsWith("COMPOSER_DRAFT_RACE "));
+  assert.equal(draftCases.length, 4, draftRace.output.slice(-6000));
+  console.log(draftCases.join("\n"));
+
   const firstRun = await runElectron();
   const pasteLine = firstRun.output
     .split(/\r?\n/)
