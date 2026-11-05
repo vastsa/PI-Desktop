@@ -64,25 +64,27 @@ test("the transcript keeps the vertical menu unless the ring is enabled", () => 
   assert.match(source, /openTranscriptMenu\(event, \{/);
 });
 
-test("the settings card lives in the General tab, not AI", () => {
+test("the settings card lives on the Appearance destination", () => {
+  // The ring is an interface affordance, so it sits with the rest of the
+  // chrome rather than with agent behavior (D684).
   const source = readFileSync(
-    new URL("../src/features/settings/SettingsPage.tsx", import.meta.url),
+    new URL("../src/features/settings/pages/AppearanceSettings.tsx", import.meta.url),
     "utf8",
   );
-  const generalIndex = source.indexOf('{tab === "general"');
-  const cardIndex = source.indexOf("<RadialMenuSettings");
-  const aiIndex = source.indexOf('{tab === "ai"');
-  assert.ok(generalIndex >= 0 && aiIndex >= 0 && cardIndex >= 0);
-  assert.ok(
-    generalIndex < cardIndex && cardIndex < aiIndex,
-    "RadialMenuSettings must render inside the General tab block",
-  );
+  assert.match(source, /<RadialMenuSettings/);
+  for (const file of ["ConversationSettings", "AgentBehaviorSettings", "SystemSettings"]) {
+    const other = readFileSync(
+      new URL(`../src/features/settings/pages/${file}.tsx`, import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(other, /<RadialMenuSettings/);
+  }
 });
 
-test("settings search indexes the ring under General", async () => {
+test("settings search indexes the ring under Appearance", async () => {
   const { SETTINGS_NAV } = await import("../src/lib/settings-search.ts");
   const owner = SETTINGS_NAV.find((entry) =>
     entry.keywordKeys.includes("settings.radialMenu"),
   );
-  assert.equal(owner?.id, "general");
+  assert.equal(owner?.id, "appearance");
 });

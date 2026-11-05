@@ -4,12 +4,20 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
-test("AI settings place computer use after permissions and defaults", async () => {
-  const source = await readFile(new URL("../src/features/settings/SettingsPage.tsx", import.meta.url), "utf8");
-  const ai = source.slice(source.indexOf('{tab === "ai"'), source.indexOf('{tab === "voice"'));
-  assert.ok(ai.indexOf('t("settings.permissions")') < ai.indexOf('t("settings.defaultsTitle")'));
-  assert.ok(ai.indexOf('t("settings.defaultsTitle")') < ai.indexOf("<ComputerUseSettings"));
-  assert.match(ai, /<ComputerUseSettings[^>]+\/>\s*<\/div>/);
+test("agent behavior places computer use after the session defaults and execution", async () => {
+  // The destination is Behavior since D684; computer use stays its last card,
+  // after what a run starts with and what it may do.
+  const source = await readFile(
+    new URL("../src/features/settings/pages/AgentBehaviorSettings.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    source.indexOf('t("settings.sessionDefaults")') < source.indexOf('t("settings.execution")'),
+  );
+  assert.ok(
+    source.indexOf('t("settings.execution")') < source.indexOf("<ComputerUseSettings"),
+  );
+  assert.match(source, /<ComputerUseSettings[^>]+\/>\s*<\/div>/);
 });
 
 test("computer use keeps controls and required status without explanatory copy", async (t) => {

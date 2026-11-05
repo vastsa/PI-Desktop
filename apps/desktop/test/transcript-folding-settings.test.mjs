@@ -17,7 +17,10 @@ const { resolveAutoCollapseSettledGroups, resolveAutoCollapseThinking } = await 
 const { SETTINGS_NAV } = await import("../src/lib/settings-search.ts");
 
 const ROWS = new URL("../src/components/settings/TranscriptFoldingRows.tsx", import.meta.url);
-const PAGE = new URL("../src/features/settings/SettingsPage.tsx", import.meta.url);
+const PAGE = new URL(
+  "../src/features/settings/pages/ConversationSettings.tsx",
+  import.meta.url,
+);
 
 function withWindow(run) {
   const previous = globalThis.window;
@@ -112,15 +115,15 @@ test("the two switches are sub-rows of the settings that gate them", async () =>
   assert.ok(modeAt >= 0 && groupsAt > modeAt);
 });
 
-test("both switches are searchable inside the AI preferences", () => {
-  const ai = SETTINGS_NAV.find((entry) => entry.id === "ai");
-  assert.ok(ai);
+test("both switches are searchable inside the Conversation destination", () => {
+  const chat = SETTINGS_NAV.find((entry) => entry.id === "chat");
+  assert.ok(chat);
   for (const key of [
     "settings.autoCollapseThinking",
     "settings.autoCollapseThinkingDesc",
     "settings.autoCollapseSettledGroups",
     "settings.autoCollapseSettledGroupsDesc",
   ]) {
-    assert.ok(ai.keywordKeys.includes(key), `${key} is not indexed`);
+    assert.ok(chat.keywordKeys.includes(key), `${key} is not indexed`);
   }
 });
