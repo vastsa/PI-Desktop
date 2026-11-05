@@ -7,6 +7,20 @@ import { en } from "@pi-desktop/i18n";
 import type { UiMessage } from "@pi-desktop/shared";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+import { Button } from "../../apps/desktop/src/components/ui";
+
+const manual = new URLSearchParams(location.search).has("manual");
+let firstMessage = manual ? 960 : 60;
+let manualStatus = "Scroll upward to request history. No real sessions or providers are used.";
+function showStatus(message: string) {
+  manualStatus = message;
+  const output = document.getElementById("history-manual-status");
+  if (output) output.textContent = message;
+}
+async function manualAction(action: () => Promise<unknown>) {
+  try { await action(); }
+  catch (error) { showStatus(error instanceof Error ? error.message : String(error)); }
+}
 
 const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 async function until(test: () => boolean, label: string) {
@@ -34,6 +48,7 @@ let fail: (() => void) | undefined;
 let anchor: HTMLElement | undefined;
 let baseline = 0;
 let samples: number[] = [];
+let layoutSamples: number[] = [];
 let sampling = 0;
 let scenario = 0;
 let nativeInputEnded = false;
@@ -50,16 +65,18 @@ const busy = () => host.querySelector('.transcript-history-loading[aria-hidden="
 const offset = () => anchor!.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
 const onLoadOlder = () => new Promise<void>((resolve, reject) => {
   calls++; finish = resolve; fail = () => reject(new Error("Synthetic history read failed"));
+  showStatus(`Request ${calls} pending; ${current.length} messages loaded. Keep scrolling, then complete or fail this page.`);
 });
 function render() {
   flushSync(() => root.render(<I18nextProvider i18n={i18n}>
     <nav style={{ display: "flex", gap: 12, padding: 8 }}>
-      <button onClick={() => void reset()}>Reset conversation</button>
-      <button onClick={() => void begin()}>Load earlier (hold)</button>
-      <button onClick={() => void release()}>Complete page</button>
-      <button onClick={() => void release(true)}>Fail page</button>
-      <span>Scroll continuously while loading; the visible turn must stay still.</span>
+      <Button onClick={() => void manualAction(reset)}>Reset conversation</Button>
+      <Button onClick={() => void manualAction(manual ? requestManualPage : () => begin())}>Load earlier (hold)</Button>
+      <Button onClick={() => void manualAction(() => release())}>Complete page</Button>
+      <Button onClick={() => void manualAction(() => release(true))}>Fail page</Button>
+      <span>Keep scrolling during loading; releasing a page must not reverse your movement.</span>
     </nav>
+    {manual ? <output id="history-manual-status" aria-live="polite" style={{ padding: 8 }}>{manualStatus}</output> : null}
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0, position: "relative", visibility: visible ? "visible" : "hidden" }}>
       <ChatTranscript key={scenario} sessionId={`history-loading-${scenario}`} messages={current}
         hasMoreBefore={more} onLoadOlder={onLoadOlder} isRunning={false} paneVisible={visible} />
@@ -68,7 +85,10 @@ function render() {
 }
 async function reset() {
   finish?.(); finish = undefined;
-  scenario++; calls = 0; more = true; visible = true; current = messages(60, 100);
+  scenario++; calls = 0; more = true; visible = true;
+  firstMessage = manual ? 960 : 60;
+  current = messages(firstMessage, manual ? 1000 : 100);
+  showStatus(`Ready: ${current.length} of ${manual ? 1000 : 100} synthetic messages loaded. Scroll upward to request a page.`);
   anchor = undefined; cancelAnimationFrame(sampling); samples = [];
   render();
   await until(() => !host.querySelector('[data-transcript-settling="true"]'), "first paint did not settle");
@@ -84,11 +104,38 @@ async function begin(top = 80) {
   await until(busy, "page did not start");
   return track();
 }
+async function requestManualPage() {
+  const currentScenario = scenario;
+  for (let attempt = 0; attempt < 30 && !finish && more && scenario === currentScenario; attempt++) {
+    const el = scroller();
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -120 }));
+    el.scrollTo({ top: 80, behavior: "instant" });
+    el.dispatchEvent(new Event("scroll", { bubbles: true }));
+    // Cached-window expansion settles independently of physical page loading.
+    let stable = 0;
+    let height = el.scrollHeight;
+    while (stable < 3 && !finish && scenario === currentScenario) {
+      await frame();
+      const next = el.scrollHeight;
+      stable = next === height ? stable + 1 : 0;
+      height = next;
+    }
+  }
+  if (scenario !== currentScenario) return;
+  if (finish) track();
+  else showStatus(more ? "Continue scrolling upward to request history." : "All synthetic history has been reached.");
+}
 const beginAhead = () => begin(scroller().clientHeight * 2);
 async function release(failed = false, lateLayout = false, empty = false) {
   if (!finish) throw new Error("No pending page");
   const resolve = finish; finish = undefined;
-  if (!failed && !empty) { current = [...messages(0, 60), ...current]; more = false; render(); }
+  if (!failed && !empty) {
+    const start = manual ? Math.max(0, firstMessage - 100) : 0;
+    current = [...messages(start, firstMessage), ...current];
+    firstMessage = start; more = start > 0; render();
+  }
+  showStatus(failed ? "Simulated page failure. Scroll upward again to retry." :
+    `Page complete: ${current.length} messages loaded; ${firstMessage} older messages remain unloaded.`);
   if (failed) fail?.(); else resolve();
   fail = undefined;
   if (lateLayout) {
@@ -108,6 +155,8 @@ function inspect() {
   el.dispatchEvent(probe);
   return { busy: busy(), locked: probe.defaultPrevented, calls, top: el.scrollTop, height: el.scrollHeight, viewport: el.clientHeight, anchorId: anchor?.dataset.minimapId,
     offset: anchor ? offset() : null, baseline, maxDrift: samples.length ? Math.max(...samples.map(x => Math.abs(x - baseline))) : 0,
+    layoutSampleCount: layoutSamples.length,
+    layoutMaxDrift: layoutSamples.length ? Math.max(...layoutSamples.map(x => Math.abs(x - baseline))) : 0,
     x: Math.round(r.left + r.width / 2), y: Math.round(r.top + Math.min(180, r.height / 2)) };
 }
 async function growTail() {
@@ -120,6 +169,7 @@ async function hideAndReveal() {
   finish?.(); finish = undefined;
   visible = true; render();
   await until(() => !busy(), "hidden load did not release");
+  await until(() => layoutSamples.length > 0, "revealed history did not produce a layout sample");
   return inspect();
 }
 function inputOwnership() {
@@ -156,8 +206,17 @@ function track() {
     const r = row.getBoundingClientRect(); return r.bottom > el.getBoundingClientRect().top && r.height > 0;
   });
   if (!anchor) throw new Error("Missing visible reading anchor");
-  baseline = offset(); samples = [];
-  const sample = () => { if (visible) samples.push(offset()); sampling = requestAnimationFrame(sample); };
+  baseline = offset(); samples = []; layoutSamples = [];
+  const tracked = anchor;
+  const sample = () => {
+    if (visible) samples.push(offset());
+    const observer = new ResizeObserver(() => {
+      observer.disconnect();
+      if (visible && anchor === tracked) layoutSamples.push(offset());
+    });
+    observer.observe(el);
+    sampling = requestAnimationFrame(sample);
+  };
   sampling = requestAnimationFrame(sample);
   return inspect();
 }

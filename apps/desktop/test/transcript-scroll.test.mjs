@@ -218,3 +218,20 @@ test("history prefetch begins within three viewports but stays bounded", () => {
   assert.equal(isHistoryPrefetchPosition(box, true), false);
   assert.equal(isHistoryPrefetchPosition({ ...box, clientHeight: 0 }), false);
 });
+
+test("fast upward travel prefetches before the fixed three-screen band", () => {
+  const geometry = { scrollTop: 4000, scrollHeight: 20000, clientHeight: 800 };
+  assert.equal(isHistoryPrefetchPosition(geometry, false, { upwardSpeed: 12, latencyMs: 300 }), true);
+  assert.equal(isHistoryPrefetchPosition(geometry, false, { upwardSpeed: 0, latencyMs: 300 }), false);
+  assert.equal(isHistoryPrefetchPosition(geometry, true, { upwardSpeed: 12, latencyMs: 300 }), false);
+});
+
+test("adaptive prefetch uses read latency but remains finitely bounded", () => {
+  const geometry = { scrollTop: 6000, scrollHeight: 30000, clientHeight: 800 };
+  assert.equal(isHistoryPrefetchPosition(geometry, false, { upwardSpeed: 10, latencyMs: 100 }), false);
+  assert.equal(isHistoryPrefetchPosition(geometry, false, { upwardSpeed: 10, latencyMs: 600 }), true);
+  assert.equal(isHistoryPrefetchPosition({ ...geometry, scrollTop: 10000 }, false,
+    { upwardSpeed: 1000, latencyMs: 10000 }), false);
+  assert.equal(isHistoryPrefetchPosition({ ...geometry, clientHeight: 0 }, false,
+    { upwardSpeed: 1000, latencyMs: 10000 }), false);
+});

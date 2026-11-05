@@ -57,9 +57,17 @@ export function isHistoryRevealPosition(
 export function isHistoryPrefetchPosition(
   geometry: TranscriptScrollerGeometry,
   pinned = false,
+  motion?: { upwardSpeed: number; latencyMs: number },
 ): boolean {
-  return !pinned && transcriptHasLayout(geometry) &&
-    geometry.scrollTop <= Math.min(2400, Math.max(HISTORY_REVEAL_THRESHOLD_PX, geometry.clientHeight * 3));
+  if (pinned || !transcriptHasLayout(geometry)) return false;
+  const baseline = Math.min(2400, Math.max(HISTORY_REVEAL_THRESHOLD_PX, geometry.clientHeight * 3));
+  const speed = motion && Number.isFinite(motion.upwardSpeed) ? Math.max(0, motion.upwardSpeed) : 0;
+  const latency = motion && Number.isFinite(motion.latencyMs) ? Math.max(0, motion.latencyMs) : 250;
+  // Reserve a layout/commit margin as well as the measured read time. Neither
+  // a slow read nor an extreme gesture may turn this into eager full loading.
+  const ceiling = Math.max(baseline, Math.min(12000, geometry.clientHeight * 12));
+  const lead = Math.min(ceiling, Math.max(baseline, speed * (latency + 150)));
+  return geometry.scrollTop <= lead;
 }
 
 export type TranscriptScrollInput = {
