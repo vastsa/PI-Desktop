@@ -86,3 +86,20 @@ test("reduced motion reaches bottom synchronously", () => {
   assert.equal(f.arrivals(), 1);
   assert.equal(f.frames.size, 0);
 });
+
+for (const delta of [2400, -1200]) {
+  test(`layout above the reader (${delta}px) does not alter latest's visible trajectory`, () => {
+    const baseline = fixture();
+    const changed = fixture();
+    baseline.start(); changed.start();
+    baseline.advance(); changed.advance();
+    changed.box.scrollHeight += delta;
+    baseline.advance(); changed.advance();
+    const remaining = f => f.box.scrollHeight - f.box.clientHeight - f.box.scrollTop;
+    assert(Math.abs(remaining(changed) - remaining(baseline)) <= 1,
+      `layout must be compensated, not interpolated: ${remaining(changed)} vs ${remaining(baseline)}`);
+    baseline.finish(); changed.finish();
+    assert.equal(remaining(changed), 0);
+    assert.equal(changed.arrivals(), 1);
+  });
+}
