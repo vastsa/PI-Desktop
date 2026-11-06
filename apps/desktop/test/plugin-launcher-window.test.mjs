@@ -78,13 +78,16 @@ test("launcher renderer supports keyboard selection and has no window controls",
   assert.match(styles, /html\[data-surface="plugin-launcher"\][\s\S]*background: transparent/);
 });
 
-test("the launcher grid is eight fixed columns with square plugins and round apps", () => {
+test("the launcher grid is eight fixed columns with one tile shape", () => {
   assert.match(
     styles,
     /\.plugin-launcher-grid \{[\s\S]*grid-template-columns: repeat\(8, minmax\(0, 1fr\)\)/,
   );
-  assert.match(styles, /\.plugin-launcher-icon-plugin \{[\s\S]*border-radius: var\(--radius-sm\)/);
-  assert.match(styles, /\.plugin-launcher-icon-app \{[\s\S]*border-radius: var\(--radius-full\)/);
+  // One shape for every source: no per-kind icon rule and no type badge.
+  assert.match(styles, /\.plugin-launcher-icon \{[\s\S]*width: 48px/);
+  assert.match(styles, /\.plugin-launcher-icon \{[\s\S]*border-radius: var\(--radius-lg\)/);
+  assert.doesNotMatch(styles, /plugin-launcher-icon-(plugin|app)/);
+  assert.doesNotMatch(styles, /plugin-launcher-tile-type/);
 });
 
 test("the launcher window is resizable and remembers its size", () => {

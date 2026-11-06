@@ -31,7 +31,7 @@ export const TOOLBAR_PROPS = {
   modelMenu: {
     open: false,
     setOpen: noop,
-    otherModelsExpanded: false, setOtherModelsExpanded: noop, hasOtherModels: false,
+    sections: [], activeSection: null, selectSection: noop, showSectionRail: false, paneRows: 0, searching: false,
     query: "",
     setQuery: noop,
     modelHighlight: -1,

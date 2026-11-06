@@ -13,16 +13,26 @@ const listSource = await readComposerModule("ComposerModelList.tsx");
 const composerSource = `${modelMenuSource}\n${pickerSource}\n${sliderSource}\n${listSource}`;
 const stylesSource = await loadStyles();
 
-test("Composer uses one searchable model menu with an inline disclosure", () => {
-  assert.doesNotMatch(composerSource, /ComposerMenuView|composer-menu-back|showView/);
-  assert.match(composerSource, /aria-expanded=\{otherModelsExpanded\}/);
+test("Composer uses one searchable model menu with a source rail", () => {
+  assert.doesNotMatch(composerSource, /ComposerMenuView|composer-menu-back|showView|otherModelsExpanded/);
   assert.match(pickerSource, /<ComposerModelList/);
-  assert.match(composerSource, /menuClassName="composer-model-menu composer-model-thinking-menu"/);
+  assert.match(pickerSource, /composer-model-menu composer-model-thinking-menu \$\{showSectionRail \? "has-rail" : ""\}/);
+  // Every source is one click away: the rail lists recent + each provider,
+  // its items are radios, and search spans every source at once.
+  assert.match(listSource, /className="composer-model-rail" role="group" aria-label=\{t\("chat\.modelSources"\)\}/);
+  assert.match(listSource, /aria-checked=\{current\}/);
+  assert.match(listSource, /onClick=\{\(\) => selectSection\(section\.id\)\}/);
+  assert.match(modelMenuSource, /showSectionRail: sections\.length > 1/);
+  assert.match(modelMenuSource, /searching\s*\? filteredModelGroups/);
+  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \{[^}]*grid-template-columns: 148px minmax\(0, 1fr\)/);
+  // Switching sources never resizes the menu under the pointer.
+  assert.match(modelMenuSource, /const paneRows = Math\.max\(/);
+  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \.composer-model-list,[\s\S]*?height: min\(280px, calc\(var\(--model-pane-rows, 8\) \* 33px \+ 2px\)\)/);
 });
 
 test("model selection does not itself record usage", () => {
   assert.doesNotMatch(modelMenuSource, /rememberModel/);
-  assert.match(modelMenuSource, /setOtherModelsExpanded\(false\)/);
+  assert.match(modelMenuSource, /setSection\(null\)/);
 });
 test("switching models adopts the target default without resetting same-model overrides", () => {
   assert.match(modelMenuSource, /const selectedSameModel =\s*activeSessionId &&\s*candidate\.id === provider\?\.id &&\s*sameComposerModelId\(modelId \?\? "", nextModelId\);/);

@@ -110,6 +110,13 @@
     narrower values ellipsized the "medium" label into "medi…".
   */
   width: min(320px, calc(100vw - 24px));
+  padding: 6px;
+}
+
+/* With several sources the menu becomes two panes: a source rail on the
+   left and the selected source's models on the right. */
+.composer-model-thinking-menu.has-rail {
+  width: min(460px, calc(100vw - 24px));
 }
 
 .composer-model-thinking-menu.is-open {
@@ -211,7 +218,7 @@
 .composer-model-thinking-menu .composer-menu-root {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .composer-menu-entry,
@@ -274,13 +281,156 @@
 }
 
 .composer-model-thinking-menu .composer-model-search {
-  margin: 3px 3px 5px;
+  margin: 0 0 2px;
 }
 
 .composer-model-thinking-menu .composer-plus-item {
-  min-height: 28px;
-  padding: 5px 8px;
+  min-height: 32px;
+  padding: 6px 8px;
 }
+
+/* Two-pane body: rail | models. One hairline separates the panes; the list
+   keeps a fixed height so switching sources never resizes the menu. */
+.composer-model-body {
+  display: flex;
+  min-height: 0;
+}
+
+.composer-model-body[data-rail] {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.composer-model-body[data-rail] .composer-model-list,
+.composer-model-body[data-rail] .composer-model-rail {
+  height: min(280px, calc(var(--model-pane-rows, 8) * 33px + 2px));
+  max-height: none;
+}
+
+.composer-model-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  padding-right: 6px;
+  border-right: 1px solid var(--ds-border-subtle);
+}
+
+.composer-model-rail-item {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-model-rail-item:hover,
+.composer-model-rail-item:focus-visible {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.composer-model-rail-item.active {
+  background: var(--ds-bg-active);
+  color: var(--ds-text-primary);
+}
+
+/* While searching, sources without a match step back instead of vanishing,
+   so the rail never reflows under the pointer. */
+.composer-model-rail-item[data-empty] {
+  opacity: 0.4;
+}
+
+/* Monogram tile: a stable per-source hue keeps sources recognisable at a
+   glance without shipping vendor artwork. */
+.composer-model-rail-avatar {
+  /* The hue arrives per element; mixing it with theme tokens keeps one rule
+     legible on both light and dark surfaces. */
+  --source-tile-tint: oklch(0.62 0.15 var(--provider-hue, 250));
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--source-tile-tint) 18%, transparent);
+  color: color-mix(in oklab, var(--source-tile-tint) 72%, var(--ds-text-primary));
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-none);
+}
+
+.composer-model-rail-avatar.is-recent {
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+}
+
+.composer-model-rail-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-model-rail-count {
+  flex: 0 0 auto;
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Narrow windows keep both panes: the rail folds to its monograms and the
+   full source name stays the item's title. */
+@media (max-width: 520px) {
+  .composer-model-body[data-rail] {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .composer-model-rail-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .composer-model-rail-label,
+  .composer-model-rail-count {
+    display: none;
+  }
+}
+
+.composer-model-check-slot {
+  display: inline-flex;
+  flex: 0 0 14px;
+  justify-content: center;
+}
+
+.composer-model-option-provider {
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs);
+}
+
+/* Reasoning lives in its own footer under a hairline: it configures the
+   selected model, so it reads as a setting rather than another list row. */
+.composer-model-reasoning {
+  display: flex;
+  flex-direction: column;
+  margin: 2px -6px -6px;
+  padding: 10px 6px 4px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
 
 /* Reasoning slider (issue #417): the menu root carries the slider itself, so a
    level is one drag instead of opening a list of levels.
@@ -535,6 +685,8 @@
 /* Provider→models groups: the list scrolls on its own so the search field and
    provider headings stay reachable with many discovered models. */
 .composer-model-list {
+  min-width: 0;
+  flex: 1;
   max-height: 280px;
   overflow-y: auto;
 }
@@ -674,13 +826,18 @@
 .composer-model-search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
+  gap: 8px;
+  height: 34px;
   margin: 4px 3px 5px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  border-radius: var(--radius-md);
   background: var(--ds-bg-inset);
   color: var(--ds-text-muted);
+  transition: box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-model-search:focus-within {
+  box-shadow: 0 0 0 1px var(--ds-border-strong);
 }
 
 .composer-model-search svg {

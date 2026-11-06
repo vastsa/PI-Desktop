@@ -30,6 +30,19 @@ import {
 } from "../model";
 import { createLatestCommitQueue } from "../thinking-commit-queue";
 
+/** Rail section that lists the most recently used models. */
+export const RECENT_MODEL_SECTION = "recent";
+/** Recent rows get their own rail section, so a few more than one screen fits. */
+const RECENT_MODEL_LIMIT = 6;
+
+export function providerModelSection(providerId: string): string {
+  return `provider:${providerId}`;
+}
+
+export type ComposerModelSection =
+  | { id: string; kind: "recent"; count: number }
+  | { id: string; kind: "provider"; provider: ProviderPublic; label: string; count: number };
+
 type UseComposerModelMenuOptions = {
   mode: Mode;
   activeSessionId: string | null | undefined;
@@ -65,7 +78,8 @@ export function useComposerModelMenu({
   const loadProviderModels = useAppStore((s) => s.loadProviderModels);
   const showToast = useAppStore((s) => s.showToast);
   const [open, setOpen] = useState(false);
-  const [otherModelsExpanded, setOtherModelsExpanded] = useState(false);
+  // null follows the default section; a rail click pins one until close.
+  const [section, setSection] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelHighlight, setModelHighlight] = useState(-1);
   const modelSearchRef = useRef<HTMLInputElement>(null);
@@ -147,7 +161,7 @@ export function useComposerModelMenu({
         providerId: entry.provider.id, modelId: entry.model.modelId,
       }));
       return entry ? [entry] : [];
-    }).slice(0, 3);
+    }).slice(0, RECENT_MODEL_LIMIT);
   }, [modelGroups, recentModels]);
   const queryNeedle = query.trim().toLowerCase();
   const filteredModelGroups = useMemo(
@@ -169,19 +183,54 @@ export function useComposerModelMenu({
         : modelGroups,
     [modelGroups, queryNeedle],
   );
-  const showRecents = !queryNeedle && recentEntries.length > 0;
-  const remainingGroups = showRecents ? filteredModelGroups.map(group => ({
-    ...group,
-    models: group.models.filter(model => !recentEntries.some(entry =>
-      entry.provider.id === group.provider.id && sameComposerModelId(entry.model.modelId, model.modelId))),
-  })).filter(group => group.models.length > 0) : filteredModelGroups;
-  const visibleGroups = !showRecents || otherModelsExpanded ? remainingGroups : [];
+  const searching = queryNeedle.length > 0;
+  // While searching, provider counts become match counts so the rail shows
+  // where the results live; the recent section has no separate result set.
+  const sections = useMemo<ComposerModelSection[]>(() => [
+    ...(recentEntries.length > 0
+      ? [{ id: RECENT_MODEL_SECTION, kind: "recent" as const, count: recentEntries.length }]
+      : []),
+    ...modelGroups.map((group) => ({
+      id: providerModelSection(group.provider.id),
+      kind: "provider" as const,
+      provider: group.provider,
+      label: group.providerDisplayName,
+      count: searching
+        ? (filteredModelGroups.find((candidate) => candidate.provider.id === group.provider.id)?.models.length ?? 0)
+        : group.models.length,
+    })),
+  ], [filteredModelGroups, modelGroups, recentEntries.length, searching]);
+  // One pane height for every source: the tallest source (or the rail itself)
+  // decides it, so switching sources or typing never resizes the menu.
+  const paneRows = Math.max(
+    sections.length,
+    recentEntries.length,
+    ...modelGroups.map((group) => group.models.length),
+  );
+  const selectedProviderSection =
+    provider && modelGroups.some((group) => group.provider.id === provider.id)
+      ? providerModelSection(provider.id)
+      : null;
+  const defaultSection =
+    recentEntries.length > 0 ? RECENT_MODEL_SECTION : (selectedProviderSection ?? sections[0]?.id ?? null);
+  const activeSection =
+    section && sections.some((candidate) => candidate.id === section) ? section : defaultSection;
+  const visibleRecents = useMemo(
+    () => (!searching && activeSection === RECENT_MODEL_SECTION ? recentEntries : []),
+    [activeSection, recentEntries, searching],
+  );
+  const visibleGroups = useMemo(
+    () => searching
+      ? filteredModelGroups
+      : modelGroups.filter((group) => providerModelSection(group.provider.id) === activeSection),
+    [activeSection, filteredModelGroups, modelGroups, searching],
+  );
   const flatModels = useMemo(
     () =>
-      [...(showRecents ? recentEntries : []), ...visibleGroups.flatMap((group) =>
+      [...visibleRecents, ...visibleGroups.flatMap((group) =>
         group.models.map((model) => ({ provider: group.provider, model })),
       )],
-    [visibleGroups, showRecents, recentEntries],
+    [visibleGroups, visibleRecents],
   );
   const flatModelsKey = useMemo(
     () => flatModels.map((entry) => `${entry.provider.id}:${entry.model.modelId}`).join("|"),
@@ -213,7 +262,7 @@ export function useComposerModelMenu({
 
   useEffect(() => {
     if (open) return;
-    setOtherModelsExpanded(false);
+    setSection(null);
     setQuery("");
     setModelHighlight(-1);
   }, [open]);
@@ -279,13 +328,20 @@ export function useComposerModelMenu({
         thinkingLevel: nextThinkingLevel,
       });
       setQuery("");
-      setOtherModelsExpanded(false);
       setModelHighlight(-1);
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), {
         variant: "error",
       });
     }
+  };
+
+  /** Show one rail section. Picking a source ends any search in progress. */
+  const selectSection = (id: string) => {
+    setSection(id);
+    setQuery("");
+    setModelHighlight(-1);
+    modelListRef.current?.scrollTo({ top: 0 });
   };
 
   /**
@@ -330,8 +386,12 @@ export function useComposerModelMenu({
   return {
     open,
     setOpen,
-    otherModelsExpanded,
-    setOtherModelsExpanded,
+    sections,
+    activeSection: searching ? null : activeSection,
+    selectSection,
+    showSectionRail: sections.length > 1,
+    paneRows,
+    searching,
     query,
     setQuery,
     modelHighlight,
@@ -339,8 +399,7 @@ export function useComposerModelMenu({
     modelSearchRef,
     modelListRef,
     modelGroups: visibleGroups,
-    recentEntries: showRecents ? recentEntries : [],
-    hasOtherModels: showRecents && remainingGroups.length > 0,
+    recentEntries: visibleRecents,
     flatModels,
     thinkingMenuLevels,
     selectModel,

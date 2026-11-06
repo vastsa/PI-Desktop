@@ -787,19 +787,72 @@ async fn review_rollbacks_wait_for_active_host_file_mutations() {
 }
 
 #[tokio::test]
-async fn review_turn_totals_do_not_invent_binary_or_truncated_line_counts() {
+async fn review_turn_totals_match_saved_counts_even_when_previews_are_unavailable() {
     let f = Fixture::new().await;
     for (id, binary, truncated) in [("binary-round", true, false), ("large-round", false, true)] {
-        f.user(id, None).await;
+        f.user(&format!("{id}-user"), None).await;
         let mut change = f.capture(f.root.path(), id, id);
         change.binary = binary;
         change.truncated = truncated;
+        change.additions = 53;
+        change.deletions = 34;
         f.tool(id, json!(change), None, None).await;
     }
     let page = f.call("review.turns", json!({})).await;
+    assert_eq!(page["turns"].as_array().unwrap().len(), 2);
     for turn in page["turns"].as_array().unwrap() {
         assert_eq!(turn["changeCount"], 1);
-        assert!(turn["additions"].is_null());
-        assert!(turn["deletions"].is_null());
+        assert_eq!(turn["additions"], 53);
+        assert_eq!(turn["deletions"], 34);
     }
+}
+
+#[tokio::test]
+async fn review_turn_totals_reject_unsafe_sums_without_discarding_file_evidence() {
+    let f = Fixture::new().await;
+    f.user("unsafe-user", None).await;
+    for (id, additions) in [("safe-limit", 9_007_199_254_740_991_u64), ("overflow", 1)] {
+        let mut change = json!(f.capture(f.root.path(), id, id));
+        change["additions"] = json!(additions);
+        f.tool(id, change, None, None).await;
+    }
+    let page = f.call("review.turns", json!({})).await;
+    assert_eq!(page["turns"].as_array().unwrap().len(), 1);
+    assert_eq!(page["turns"][0]["changeCount"], 2);
+    assert!(page["turns"][0]["additions"].is_null());
+    assert!(page["turns"][0]["deletions"].is_null());
+    assert_eq!(
+        f.call("review.changes", json!({})).await["changes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn review_turn_totals_do_not_accept_missing_or_invalid_counters() {
+    let f = Fixture::new().await;
+    f.user("invalid-counts-user", None).await;
+    for (id, value) in [
+        ("missing-count", None),
+        ("negative-count", Some(json!(-1))),
+        ("string-count", Some(json!("53"))),
+    ] {
+        let mut change = json!(f.capture(f.root.path(), id, id));
+        if let Some(value) = value {
+            change["additions"] = value;
+        } else {
+            change.as_object_mut().unwrap().remove("additions");
+        }
+        f.tool(id, change, None, None).await;
+    }
+    assert_eq!(
+        f.call("review.turns", json!({})).await,
+        json!({"turns": []})
+    );
+    assert_eq!(
+        f.call("review.changes", json!({})).await["changes"],
+        json!([])
+    );
 }

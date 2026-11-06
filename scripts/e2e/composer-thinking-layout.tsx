@@ -20,7 +20,7 @@ function Fixture({ width, crowded, model }: { width: number; crowded: boolean; m
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const controller: ReturnType<typeof useComposerModelMenu> = {
-    open, setOpen, otherModelsExpanded: false, setOtherModelsExpanded: noop, hasOtherModels: false, query: "", setQuery: noop,
+    open, setOpen, sections: [], activeSection: null, selectSection: noop, showSectionRail: false, paneRows: 0, searching: false, query: "", setQuery: noop,
     modelHighlight: -1, setModelHighlight: noop,
     thinkingHighlight: -1, setThinkingHighlight: noop,
     modelSearchRef: searchRef, modelListRef: listRef,

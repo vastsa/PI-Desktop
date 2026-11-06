@@ -719,7 +719,7 @@ export const es = {
     },
     "model": "Modelo",
     recentModels: "Usados recientemente",
-    otherModels: "Otros modelos",
+    modelSources: "Fuentes de modelos",
     "searchModels": "Buscar modelos",
     "noModelResults": "No hay modelos coincidentes",
     "modelBadgeReasoning": "razonamiento",

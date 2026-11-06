@@ -728,7 +728,7 @@ export const tr = {
     },
     model: "Model",
     recentModels: "Son kullanılanlar",
-    otherModels: "Diğer modeller",
+    modelSources: "Model kaynakları",
     searchModels: "Model ara",
     noModelResults: "Eşleşen model yok",
     modelBadgeReasoning: "akıl yürütme",

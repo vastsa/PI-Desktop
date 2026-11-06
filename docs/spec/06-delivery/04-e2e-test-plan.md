@@ -1455,6 +1455,12 @@ identify the platform validation still needed.
 #### E2E-003: Rust host healthcheck responds
 
 - **Preconditions**: App is running; Rust host-core sidecar started.
+- **Cold-start timeout**: Let the first handshake time out, then allow a fresh
+  host to answer. Verify the shell opens in the same desktop process. Repeat
+  with both handshakes timing out and with quit during the first attempt.
+  Verify the recovery surface stays available after two attempts and quit
+  prevents a second child. The startup-host-retry tests inject these outcomes
+  at the Main lifecycle boundary.
 - **Steps**: 1) Electron handshakes with protocol version 11. 2) Call the host
   healthcheck RPC. 3) Repeat boot with mismatched older and newer protocol
   fixtures.
@@ -19180,14 +19186,15 @@ host-created files. The full app's file-preview viewer is covered separately.
 ## Composer recent chat models
 
 - Send accepted messages using four distinct configured chat models across providers. Open the combined
-  model menu: exactly the latest three available pairs appear in recency order,
-  with provider labels. Select an older recent row: order stays unchanged until
+  model menu: the Recent source is selected and lists the latest available pairs
+  (up to six) in recency order, with provider labels. Select an older recent row: order stays unchanged until
   a message is accepted, at which point that model moves first.
-- Search immediately without expanding Other models; choose using keyboard
-  navigation. Expand Other models inline and verify no duplicate recent rows.
-  Move from the third recent row to Other models, and tab out of search after
-  arrow navigation: no stale keyboard highlight remains on a model row.
-  Without history, all configured models are directly visible. Verify thinking
+- Search immediately; results span every provider and the rail selection is
+  released; choose using keyboard navigation. Choose a provider in the source
+  rail and verify each of its models appears once. Move from a recent row to the
+  rail, and tab out of search after arrow navigation: no stale keyboard
+  highlight remains on a model row. Without history and with one provider, the
+  rail is hidden and all configured models are directly visible. Verify thinking
   defaults still follow the selected binding and manual same-model levels survive.
 - Create a new chat: it inherits the last actually used model. Reload local preferences
   and create another chat: the same binding is restored. An existing chat keeps
@@ -19753,6 +19760,8 @@ their separate platform acceptance.
   8. Paste 500 characters of garbage into the search field.
   9. Pin an application, quit, restart, and reopen the launcher with an empty
      input.
+ 10. Install a plugin whose name matches an installed application (for example
+     `Calculator`) and open the launcher with an empty input.
 - **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
   `Pinned` with one row of eight once the user has pins; the recents header
   reports the true number of remembered items and offers `Show all {count} →`
@@ -19767,8 +19776,10 @@ their separate platform acceptance.
   plugin from recents, pins, and matches while every other tile still opens.
   Step 8 keeps the panel responsive (no frozen input, no unhandled error) and
   reports no match, because input longer than 256 characters is never matched
-  against a trigger. Step 9 still shows the pinned application in the `Pinned`
-  row.
+  row. Step 10 lists both entries with the identical 48px rounded square and the
+  same name line — the source is only in the hover title — and opening the plugin
+  row still lands in the plugin panel while the application row launches the
+  program.
 - **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
   coverage for these rules: `launcher-search.test.mjs` (ranking order, section
   caps, overflow total, trigger whole-input matching, the 256-character limit
@@ -20015,6 +20026,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   isolated profile; verify both the checked menu option and actual diff context
   retain that choice. Missing/invalid/blocked storage is unit-covered by
   `apps/desktop/test/review-preferences.test.mjs`.
+- Open several files from the per-turn summary with enough Review content to
+  scroll. Each target comes into view inside Review while the conversation and
+  work-panel headers stay visible and the window content reaches the bottom edge.
 - Expected: latest skips no-edit rounds; delegates belong to their original user
   round; all file records are accessible; old/new numbers and bounded immutable context
   agree; one gutter uses old numbers for deletions and new numbers otherwise;
@@ -20024,7 +20038,19 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   normal/narrow layouts; copy and conflict protection survive; history restores.
   Toggle checks trail labels, summary dots have no circle, history options contain
   date/time plus true per-round recorded totals before the check and fit an
-  arrow-safe field. Unknown/binary/oversized counts are not shown as zero.
+  arrow-safe field, including colored right-aligned totals when closed.
+  The summary counts visible files rather than operation records (five records
+  across four paths, including one zero-counter preview-limited file, show three
+  files). Only file groups with additions or deletions greater than zero remain;
+  both-zero groups are hidden and excluded from the summary, while raw Host
+  evidence and each retained file's complete operation chain remain available.
+  Missing/unsafe totals are not invented as zero;
+  Host regressions retain saved valid counters despite binary/truncated previews.
+  Expanding a long diff does not move header widths or statistics because the
+  outer scrollbar gutter is reserved. File icons lead; the reserved disclosure
+  immediately after the visible filename appears only on hover/focus, right when closed and down
+  when expanded, with a clear gap before statistics. Numbered diff rows have no
+  independent add/delete sign column.
   File headers have no idle
   fill, and no execution-root row appears. File menus disable internal open when
   the plugin is absent, open its loaded view when available, and pass the resolved
