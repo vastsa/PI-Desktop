@@ -210,6 +210,7 @@ export type AgentActivity =
   | { phase: "starting"; since: number }
   | { phase: "waiting-model"; since: number }
   | { phase: "preparing"; since: number }
+  | { phase: "waiting-tool-stop"; since: number }
   | {
       phase: "compacting";
       since: number;

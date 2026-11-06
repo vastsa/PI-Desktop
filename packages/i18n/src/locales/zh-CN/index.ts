@@ -658,6 +658,7 @@ export const zhCN = {
     processFailedFor: "失败，{{time}}",
     waitingForModel: "等待模型响应",
     startingTurn: "正在开始…",
+    waitingForToolStop: "正在等待当前操作结束…",
     preparingNextRequest: "正在准备下一次请求…",
     compactingContext: "正在压缩上下文…",
     recoveringTurn: "正在补救空回复…",
