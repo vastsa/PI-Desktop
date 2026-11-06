@@ -15,9 +15,9 @@
 | 主机后端 | **Rust** | 稳定的 Rust 工具链 | tools/plugins/permissions/persistence 适配器 |
 | Rust 异步 | 东京 | 稳定 | 主机服务 |
 | 主机 RPC | stdio JSON-RPC (NDJSON) | 冷冻（D001） | Electron 主 ↔ Rust 主机 |
-| Agent engine | `@earendil-works/pi-agent-core` | 1.4.0 | agent loop |
-| Model API | `@earendil-works/pi-ai` | 1.4.0 | provider adapters, OAuth, and stream handling |
-| Model catalog | models.dev + Pi Providers/Models | bundled models.dev + pinned Pi 1.4.0 | models.dev chat metadata; Pi account IDs, wire capabilities, and typed operations |
+| Agent engine | `@earendil-works/pi-agent-core` | 1.5.0 | agent loop |
+| Model API | `@earendil-works/pi-ai` | 1.5.0 | provider adapters, OAuth, and stream handling |
+| Model catalog | models.dev + Pi Providers/Models | bundled models.dev + pinned Pi 1.5.0 | models.dev chat metadata; Pi account IDs, wire capabilities, and typed operations |
 
 > models.dev owns published chat metadata; pi-ai owns transports and auth.
 > Host 持有 Desktop 账户行、凭据和显式绑定覆盖。

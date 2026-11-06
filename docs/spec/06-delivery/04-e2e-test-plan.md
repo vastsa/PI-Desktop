@@ -290,6 +290,32 @@
 - **Milestone:** Maintenance.
 - **Status:** Candidate validation recorded in `docs/project/pi-140-adoption.md`.
 
+### E2E-PI-150-kernel-upgrade
+
+- **Preconditions:** Exact Pi 1.5.0 release-group pins (including the new
+  `pi-schema` package) and rebased package patches in a dedicated worktree,
+  isolated fixture state, and no real provider credentials.
+- **Steps:** Run the existing runtime, native Pi session, and identity suites
+  against the installed 1.5.0 packages. Stream Anthropic hosted-search blocks
+  through the incrementally parsed 1.5.0 adapter. Build the split sidecar
+  bundle. Run the existing hosted-search and trusted-extension offline suites.
+- **Expected:** Desktop tool schemas built with TypeBox validate unchanged on
+  pi-schema. Hosted-search capture, live query updates, citations, replay, and
+  local request errors remain intact. The release group resolves a single
+  `undici` 8.x, so the sidecar entry stays below its size threshold. Identity
+  headers report 1.5.0. No provider credentials or live services are used.
+- **Coverage:** `pi-upstream-1.5-identity.test.ts`,
+  `pi-upstream-1.5-contract.test.ts`, `pi-1.5-adapter-features.test.ts`,
+  `official-native-search.test.ts`, `native-pi-session.test.ts`,
+  `agent-runtime-bundle-package.test.mjs`, `anthropic-oauth-retry.test.mjs`,
+  plus the existing `test:e2e:hosted-search` and
+  `test:e2e:trusted-extensions` commands.
+- **Specs:** [Pi dependency boundary](../02-architecture/06-pi-runtime-dependency-boundary.md),
+  [trusted extensions](../07-plugins/16-trusted-extensions.md).
+- **Acceptance:** Offline runtime/contract and isolated process validation.
+- **Milestone:** Maintenance.
+- **Status:** Candidate validation recorded in `docs/project/pi-150-adoption.md`.
+
 ### E2E-QUEUE-send-now-wakes-subagents
 
 - **Preconditions:** Dedicated request worktree with built workspace packages,

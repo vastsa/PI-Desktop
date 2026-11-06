@@ -669,6 +669,25 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // Zhipu/Z.ai code 1308 is the plan usage cap, sent as 429; it resets after
+  // hours, so the rate-limit budget must not replay it (pi #11537).
+  it.each([
+    '429 {"error":{"code":"1308","message":"已达到 5 小时的使用上限。您的限额将在 2026-11-06 23:00:00 重置。"}}',
+    '429: {"error":{"code":1308,"message":"Usage limit reached for 5 hour."}}',
+  ])("does not retry the Zhipu usage-limit code: %s", (message) => {
+    expect(classifyAgentError(Object.assign(new Error(message), { status: 429 }))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("keeps a 429 that only mentions 1308 elsewhere retryable", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error('429 {"error":{"code":"1302","message":"rate limit, request 13080"}}'),
+      { status: 429 },
+    ))).toMatchObject({ code: "PROVIDER_RATE_LIMITED", retriable: true });
+  });
+
   it("classifies structured 429 quota errors before generic status handling", () => {
     expect(classifyAgentError(Object.assign(
       new Error("429: rate limit response"),

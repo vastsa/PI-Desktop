@@ -472,6 +472,7 @@ export const tr = {
     copyErrorDetails: "Ayrıntıları kopyala",
     errorProvider: "AI servisi",
     errorModel: "Model",
+    servedByModel: "İstenen: {{requested}}; yanıtlayan: {{served}}",
     previewFile: "Yan panelde önizle",
     fileRefMissing: "{{name}} ile eşleşen dosya yok",
     fileRefRestricted: "{{name}} uygulamanın erişebildiği konumların dışında",

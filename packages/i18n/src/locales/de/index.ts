@@ -460,6 +460,7 @@ export const de = {
     "copyErrorDetails": "Details kopieren",
     "errorProvider": "KI-Anbieter",
     "errorModel": "Modell",
+    "servedByModel": "Angefordert: {{requested}}; ausgeführt von {{served}}",
     "previewFile": "Vorschau im Seitenbereich",
     "fileRefMissing": "Keine Datei entspricht {{name}}",
     "fileRefRestricted": "{{name}} liegt außerhalb der für die App zugänglichen Orte",

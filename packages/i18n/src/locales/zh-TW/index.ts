@@ -465,6 +465,7 @@ export const zhTW = {
     copyErrorDetails: "複製詳情",
     errorProvider: "AI 服務",
     errorModel: "模型",
+    servedByModel: "請求 {{requested}}，實際由 {{served}} 回應",
     previewFile: "在側邊面板預覽",
     fileRefMissing: "沒有匹配 {{name}} 的檔案",
     fileRefRestricted: "{{name}} 不在應用程式允許存取的範圍內",

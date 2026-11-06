@@ -72,8 +72,15 @@ export function usageFromPi(
   const validCost = usage.cost && (["input", "output", "cacheRead", "cacheWrite", "total"] as const).every((key) => Number.isFinite(usage.cost[key]) && usage.cost[key] >= 0);
   // Pi adapters normally calculate cost from model rates. Unmarked all-zero
   // costs are also their missing-price placeholder, not evidence of free use.
-  const costStatus = provenance.costStatus ?? (validCost && usage.cost.total > 0 ? "estimated" : "unknown");
-  const cost = validCost && costStatus !== "unknown" ? { ...usage.cost } : undefined;
+  // Pi 1.5 marks a total that is the provider-billed cost (for example
+  // OpenRouter usage accounting). That is authoritative over catalog-rate
+  // provenance, including models without native rates.
+  const billed = validCost && usage.cost.totalFromProvider === true;
+  const costStatus = billed ? "reported"
+    : provenance.costStatus ?? (validCost && usage.cost.total > 0 ? "estimated" : "unknown");
+  const cost = validCost && costStatus !== "unknown"
+    ? { input: usage.cost.input, output: usage.cost.output, cacheRead: usage.cost.cacheRead, cacheWrite: usage.cost.cacheWrite, total: usage.cost.total }
+    : undefined;
   if (totalTokens <= 0 && inputTokens <= 0 && outputTokens <= 0 && !cost?.total) return undefined;
   return {
     inputTokens,
@@ -103,7 +110,7 @@ export function usageToPi(usage: MessageUsage | undefined): AccountedPiUsage {
     ...(usage?.reasoningTokens !== undefined ? { reasoning: usage.reasoningTokens } : {}),
     totalTokens: usage?.totalTokens ?? input + output + cacheRead + cacheWrite,
     cost: usage?.cost && usage.costStatus !== "unknown"
-      ? { ...usage.cost }
+      ? { ...usage.cost, ...(usage.costStatus === "reported" ? { totalFromProvider: true } : {}) }
       : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     // Explicitly tag the numeric placeholder so it can never become a known
     // zero-dollar charge when reconstructed history crosses this boundary again.

@@ -227,6 +227,11 @@ pub struct UiMessage {
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
+    /// Concrete model the provider reports serving this turn when it differs
+    /// from `model_id` (virtual or fallback models). Stored in record meta; no
+    /// SQL migration, and older builds ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<MessageUsage>,
     /// Elapsed model streaming time for the response throughput statistic.
@@ -439,6 +444,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     if let Some(provider_id) = &message.provider_id {
         meta_obj.insert("providerId".into(), json!(provider_id));
     }
+    if let Some(response_model_id) = &message.response_model_id {
+        meta_obj.insert("responseModelId".into(), json!(response_model_id));
+    }
     if let Some(usage) = &message.usage {
         meta_obj.insert("usage".into(), json!(usage));
     }
@@ -632,6 +640,10 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let error = meta.get("error").cloned();
     let response_duration_ms = meta.get("responseDurationMs").and_then(|v| v.as_i64());
     let response_output_tokens = meta.get("responseOutputTokens").and_then(|v| v.as_i64());
+    let response_model_id = meta
+        .get("responseModelId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let revision_root_id = meta
         .get("revisionRootId")
         .and_then(|v| v.as_str())
@@ -728,6 +740,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             usage,
             response_duration_ms,
             response_output_tokens,
+            response_model_id: response_model_id.clone(),
             error,
             revision_root_id,
             revision_count,
@@ -784,6 +797,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             usage,
             response_duration_ms,
             response_output_tokens,
+            response_model_id: response_model_id.clone(),
             error,
             revision_root_id,
             revision_count,
@@ -4488,6 +4502,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -5453,6 +5468,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -6257,6 +6273,7 @@ mod tests {
             }),
             response_duration_ms: Some(2_000),
             response_output_tokens: Some(34),
+            response_model_id: Some("vendor/concrete-model".into()),
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -6316,6 +6333,10 @@ mod tests {
         assert_eq!(usage.total_tokens, 48);
         assert_eq!(detail.messages[0].response_duration_ms, Some(2_000));
         assert_eq!(detail.messages[0].response_output_tokens, Some(34));
+        assert_eq!(
+            detail.messages[0].response_model_id.as_deref(),
+            Some("vendor/concrete-model")
+        );
     }
 
     #[test]
@@ -6398,6 +6419,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,

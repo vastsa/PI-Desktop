@@ -7441,6 +7441,31 @@ describe("DesktopAgentRuntime response duration", () => {
     }
   });
 
+  it.each([
+    ["router/auto", "vendor/served-model", "vendor/served-model"],
+    ["router/auto", undefined, undefined],
+  ])("records the concrete served model on the finished turn (%s -> %s)", async (requested, served, expected) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internals = runtime as unknown as {
+      handleAgentEvent(event: unknown): Promise<void>;
+      provider: { modelId: string };
+    };
+    internals.provider = { ...internals.provider, modelId: requested };
+    await internals.handleAgentEvent({ type: "message_start", message: { role: "assistant", content: [] } });
+    await internals.handleAgentEvent({
+      type: "message_end",
+      message: { ...assistantMessage({ content: [{ type: "text", text: "answer" }] }), ...(served ? { responseModel: served } : {}) },
+    });
+    const terminal = onEvent.mock.calls
+      .map(([envelope]) => envelope as any)
+      .find(({ event }) => event.type === "message_end")?.event.message;
+    expect(terminal).toMatchObject({ modelId: requested, status: "complete" });
+    if (expected) expect(terminal.responseModelId).toBe(expected);
+    else expect(terminal).not.toHaveProperty("responseModelId");
+    await runtime.dispose();
+  });
+
   it("accumulates request and stream timing across a provider retry", async () => {
     vi.useFakeTimers();
     try {

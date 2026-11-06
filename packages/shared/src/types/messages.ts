@@ -115,6 +115,11 @@ export type UiMessage = {
   /** Provider/model that produced this assistant turn, when known. */
   modelId?: string;
   providerId?: string;
+  /**
+   * Concrete model the provider reports serving this turn, present only when
+   * it differs from `modelId` (for example a router or fallback model).
+   */
+  responseModelId?: string;
   /** Token usage for the assistant turn, when the provider reported it. */
   usage?: MessageUsage;
   /** Elapsed assistant response duration used to calculate output throughput. */

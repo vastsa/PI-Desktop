@@ -101,6 +101,8 @@ export type ExtensionExecResult = {
   stderr: string;
   code: number;
   killed: boolean;
+  /** Output exceeded `maxBuffer`; stdout and stderr are incomplete and `code` is nonzero. */
+  truncated: boolean;
 };
 
 export type ExtensionToolInfo = { name: string; description: string; active: boolean };

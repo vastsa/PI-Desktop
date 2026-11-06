@@ -475,6 +475,7 @@ export const en = {
     actionSlotMore: "More actions",
     errorProvider: "AI provider",
     errorModel: "Model",
+    servedByModel: "Requested {{requested}}; served by {{served}}",
     previewFile: "Preview in the side panel",
     fileRefMissing: "No file matches {{name}}",
     fileRefRestricted: "{{name}} is outside the locations this app can access",

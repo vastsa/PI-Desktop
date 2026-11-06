@@ -465,6 +465,7 @@ export const zhCN = {
     copyErrorDetails: "复制详情",
     errorProvider: "AI 服务",
     errorModel: "模型",
+    servedByModel: "请求 {{requested}}，实际由 {{served}} 响应",
     previewFile: "在侧边面板预览",
     fileRefMissing: "没有匹配 {{name}} 的文件",
     fileRefRestricted: "{{name}} 不在应用允许访问的范围内",

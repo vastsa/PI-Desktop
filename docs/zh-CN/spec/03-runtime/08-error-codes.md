@@ -400,7 +400,7 @@ Node sidecar 将提供商 SDK 错误映射到：
 `maximum prompt length is`、Groq、llama.cpp，以及 Bedrock 的
 `Input is too long for requested model`。`CONTEXT_TOO_LARGE` 不会进入任何重试
 预算，子代理会将其报告为 `SUBAGENT_CONTEXT_OVERFLOW`。明确的账单/账户耗尽代码和
-消息（包括 `insufficient_quota`、`credit_balance_exhausted`、组织用量限额以及组织/项目消费限额代码）
+消息（包括 `insufficient_quota`、`credit_balance_exhausted`、组织用量限额、组织/项目消费限额代码以及智谱/Z.ai 用量上限 JSON 代码 `1308`）
 即使 HTTP 状态为 429，也映射为终止的 `PROVIDER_ERROR`。吞吐限流措辞（包括 Bedrock 的
 `Throttling error: Too many tokens, please wait before trying again.`）仍映射为
 `PROVIDER_RATE_LIMITED`。

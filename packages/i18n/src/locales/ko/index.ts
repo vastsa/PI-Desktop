@@ -472,6 +472,7 @@ export const ko = {
     copyErrorDetails: "세부 정보 복사",
     errorProvider: "AI 프로바이더",
     errorModel: "모델",
+    servedByModel: "요청: {{requested}}; 실제 응답 모델: {{served}}",
     previewFile: "사이드 패널에서 미리 보기",
     fileRefMissing: "{{name}}과(와) 일치하는 파일이 없습니다",
     fileRefRestricted: "{{name}}은(는) 앱이 접근할 수 있는 위치 밖에 있습니다",
