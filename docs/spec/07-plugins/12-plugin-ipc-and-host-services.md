@@ -145,7 +145,9 @@ Panel bridge fixed channels also include `app.setTheme`, `themes.upsert`,
 no file or session access.
 
 The docked File Manager (`pi.file-manager/manager`) receives
-`pluginBridge.capabilities.composerFileLines`. It can invoke
+`pluginBridge.capabilities.composerFileLines` when its loaded version matches
+an enabled Host registry entry and holds both `ui.view` and `fs.read`.
+Development-loaded views do not advertise the capability. An eligible view can invoke
 `composer.addFileLines` with `{ workspace, path, start, end }`, where paths are
 absolute and lines are one-based and inclusive. The host requires the visible
 view of an enabled, registered File Manager with `ui.view` and `fs.read`, a

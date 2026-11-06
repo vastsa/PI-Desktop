@@ -22,8 +22,9 @@ The selected text is never used as the model payload for a reference. Main
 validates the reference path against the Session project folders. At prompt
 execution, the Agent runtime invokes the existing Read tool with the inclusive
 range converted to its zero-based offset and line count. The Host continues
-to authorize the tool call and enforce its output limits. The bounded result
-or read failure is included as file context in the provider prompt.
+to authorize the tool call and enforce its output limits. A successful result
+is included as file context. A blocked or failed read is reported separately
+in the provider prompt. Prefetches do not create assistant tool history.
 
 ## Consequences
 

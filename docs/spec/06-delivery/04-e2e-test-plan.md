@@ -20113,11 +20113,18 @@ the same chip appears, while paste into an ordinary editor yields the selected
 text. End a selection at the start of the next line and verify that line is
 excluded. A one-line selection displays one line number.
 
+Open the same view from a development-loaded File Manager and verify that
+the host does not advertise `composerFileLines`.
+
 Insert an unsaved line before the range. Copying still pastes the original
 text and the selection menu has no **Add to chat** action. Save the file and
 verify that both actions use the new saved line numbers.
 
 Change the saved text after adding the chip, then send it. Observe one scoped
-Read with offset 84 and limit 2, the saved result in the model request, and a
-normal failure when the file disappears. Repeat with a queued turn and a
-project switch. A different project's clipboard metadata cannot add the chip.
+Read with offset 84 and limit 2 and the saved result in the model request.
+Restart and verify the reference is still visible and there is no synthetic
+Read in the transcript or restored model history. Submit again after deleting
+the file and verify a failed reference marker in the model request. Repeat
+with Read permission denied and verify a blocked marker. Neither marker is
+quoted as file content. Repeat with a queued turn and a project switch. A
+different project's clipboard metadata cannot add the chip.

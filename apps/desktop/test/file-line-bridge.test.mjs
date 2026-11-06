@@ -43,12 +43,12 @@ test("an installed File Manager can add lines only to the session that authorize
   assert.deepEqual(await addFileLinesFromView(pluginId, 123, payload, bridge), { ok: true });
   assert.deepEqual(deliveries, [{ sessionId: "selected", reference: payload }]);
 
-  await assert.rejects(addFileLinesFromView(pluginId, 321, payload, bridge), /outside the active project or session/);
+  await assert.rejects(addFileLinesFromView(pluginId, 321, payload, bridge), /no longer active/);
   loaded.permissions.delete("fs.read");
-  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /outside the active project or session/);
+  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /no longer active/);
   loaded.permissions.add("fs.read");
   record.enabled = false;
-  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /no longer active/);
+  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /not enabled in the Host registry/);
   record.enabled = true;
 
   const pending = addFileLinesFromView(pluginId, 123, payload, bridge);

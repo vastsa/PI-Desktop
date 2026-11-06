@@ -32,7 +32,6 @@ import {
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
   type PluginPanelTheme,
 } from "../shared/plugin-panel-chrome";
-import { FILE_LINES_VIEW_KEY } from "./file-line-reference";
 
 /**
  * Re-exported so the location contract stays addressable through the module
@@ -67,6 +66,7 @@ export type PluginViewOpenRequest = {
   theme: PluginPanelTheme;
   /** Absolute path to the view's HTML entry. */
   htmlPath: string;
+  composerFileLines?: boolean;
   /** Egress allowlist from `manifest.net.domains`. */
   netDomains?: readonly string[];
   /** The install-time `net.anyHost` grant, passed through to the egress policy. */
@@ -537,7 +537,7 @@ export class PluginViewHost {
           `${PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX}${encodeURIComponent(request.locale)}`,
           `--pi-plugin-panel-theme=${request.theme}`,
           PLUGIN_PANEL_EMBEDDED_ARGUMENT,
-          ...(pluginViewKey(request.pluginId, request.viewId) === FILE_LINES_VIEW_KEY
+          ...(request.composerFileLines
             ? [PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT]
             : []),
         ],

@@ -515,6 +515,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
 
   registerPluginUiIpc({
     registrar,
+    getHost,
     plugins,
     browserHost,
     pluginViews,

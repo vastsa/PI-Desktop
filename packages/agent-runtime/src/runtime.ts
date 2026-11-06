@@ -334,6 +334,8 @@ export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
   data?: string;
   /** Bounded excerpt of a referenced conversation (`kind: "session"`). */
   text?: string;
+  /** Set by the runtime when an explicit line reference could not be read. */
+  fileReferenceError?: "blocked" | "failed";
 };
 
 export type RuntimePrompt = {
@@ -359,7 +361,13 @@ function promptText(input: RuntimePrompt): string {
     .filter((block): block is string => block !== null);
   const fileLines = attachments.filter(attachment => attachment.lineRange && attachment.text !== undefined)
     .slice(0, MAX_FILE_LINE_REFERENCES)
-    .map(attachment => `<file_lines source="${escapeAttribute(fileLineLabel(attachment.path, attachment.lineRange!))}">\n${attachment.text!.replaceAll("<", "&lt;")}\n</file_lines>`);
+    .map(attachment => {
+      const source = escapeAttribute(fileLineLabel(attachment.path, attachment.lineRange!));
+      const text = attachment.text!.replaceAll("<", "&lt;");
+      return attachment.fileReferenceError
+        ? `<file_reference_error source="${source}" status="${attachment.fileReferenceError}">\n${text}\n</file_reference_error>`
+        : `<file_lines source="${source}">\n${text}\n</file_lines>`;
+    });
   const references = [...sessions, ...fileLines];
   return references.length
     ? `${input.text}\n\n${references.join("\n\n")}`.trim()
@@ -2039,7 +2047,7 @@ export class DesktopAgentRuntime {
    * signal it was handed never fires, or the stop RPC stays pending forever.
    */
   private activeToolAborts = new Set<() => void>();
-  private fileLineReadCalls = new Set<string>();
+  private fileLineReadCalls = new Map<string, { blocked: boolean }>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
   private compactionRequestShape?: CompactionRequestShape;
@@ -2664,7 +2672,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const blocked = await this.extensionToolCall(context);
       if (blocked?.block) return blocked;
       await this.preparePathToolCall(context);
-      await this.registerBatchCall(context);
+      // Composer prefetches run serially outside the assistant's tool batches.
+      if (!this.fileLineReadCalls.has(context.toolCall.id)) await this.registerBatchCall(context);
       return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
@@ -3718,6 +3727,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (executionFailed) throw executionError;
         if (!result) throw new Error("tool execution returned no result");
         const recordParams = isRecord(params) ? params : undefined;
+        const fileLineRead = this.fileLineReadCalls.get(toolCallId);
+        if (fileLineRead && (result.denied || result.errorCode === "PERMISSION_DENIED")) {
+          fileLineRead.blocked = true;
+        }
         const failedToolExecution = !result.ok && result.denied !== true;
         const failedEditPath =
           toolName === "Edit" &&
@@ -9170,7 +9183,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   /** Execute the ordinary Host Read for explicit composer references before model input. */
   async resolveFileLineReferences(input: RuntimePrompt): Promise<RuntimePrompt> {
     if (!input.attachments?.some(attachment => attachment.lineRange !== undefined)) return input;
-    const read = this.activeTools().find(tool => tool.name === "Read");
+    const read = this.activeTools().find(tool => tool.name === "Read" && this.builtinTools.has(tool));
     const turnId = this.turnId;
     const attachments: RuntimePromptAttachment[] = [];
     const seen = new Set<string>();
@@ -9193,8 +9206,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const toolCall = { type: "toolCall" as const, id: randomUUID(), name: "Read", arguments: args };
       const timestamp = Date.now();
       const tools = read ? [read] : [];
-      this.emit({ type: "tool_start", toolCallId: toolCall.id, toolName: toolCall.name, args }, turnId);
-      this.fileLineReadCalls.add(toolCall.id);
+      const prefetch = { blocked: !read };
+      this.fileLineReadCalls.set(toolCall.id, prefetch);
       const { result, isError } = await runToolCall(toolCall, {
         tools,
         assistantMessage: {
@@ -9202,13 +9215,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           model: this.model.id, usage: usageToPi(undefined), stopReason: "toolUse", timestamp,
         },
         context: { messages: this.agent.state.messages, tools },
-        beforeToolCall: context => this.beforeToolCall(context),
+        beforeToolCall: async context => {
+          const decision = await this.beforeToolCall(context);
+          if (decision?.block) prefetch.blocked = true;
+          return decision;
+        },
         afterToolCall: context => this.afterToolCall(context),
       }).finally(() => this.fileLineReadCalls.delete(toolCall.id));
-      this.emit({ type: "tool_end", toolCallId: toolCall.id, result, isError }, turnId);
       const text = result.content.flatMap(part => part.type === "text" ? [part.text] : []).join("\n");
       if (this.runCancelled || this.disposed || turnId !== this.turnId) throw turnAbortedError("Turn ended during file reference reads");
-      attachments.push({ ...attachment, lineRange: range, text });
+      attachments.push({
+        ...attachment, lineRange: range, text,
+        fileReferenceError: isError ? (prefetch.blocked ? "blocked" : "failed") : undefined,
+      });
     }
     return { ...input, attachments };
   }
