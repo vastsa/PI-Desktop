@@ -726,6 +726,7 @@ export const zhTW = {
     recentModels: "最近使用",
     modelSources: "模型來源",
     reasoningShort: "推理",
+    manageModels: "管理模型",
     searchModels: "搜尋模型",
     noModelResults: "沒有匹配的模型",
     modelBadgeReasoning: "推理",

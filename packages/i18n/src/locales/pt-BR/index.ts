@@ -720,6 +720,7 @@ export const ptBR = {
     recentModels: "Usados recentemente",
     modelSources: "Fontes de modelos",
     reasoningShort: "Raciocínio",
+    manageModels: "Gerenciar modelos",
     searchModels: "Pesquisar modelos…",
     noModelResults: "Nenhum modelo encontrado",
     modelBadgeReasoning: "Raciocínio",
