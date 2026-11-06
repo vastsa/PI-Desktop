@@ -50,6 +50,10 @@ export type VendorAuthResolver = (input: {
 // session, so it cannot reach a credential the session was not launched with.
 const HOST_PROXY_ALLOWED = new Set([
   "tools.execute",
+  "backgroundJobs.capabilities",
+  "backgroundJobs.list",
+  "backgroundJobs.wait",
+  "backgroundJobs.stop",
   "tools.fileBatchCapabilities",
   "tools.fileBatchRegister",
   "tools.fileBatchSeal",

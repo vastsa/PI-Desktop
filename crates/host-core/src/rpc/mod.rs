@@ -1,3 +1,4 @@
+mod background_jobs;
 mod computer_rpc;
 mod config_sync_rpc;
 mod file_batches;
@@ -1965,6 +1966,10 @@ async fn handle_request(
         return config_sync_rpc::handle(state, method, params, tx)
             .await
             .map_err(config_sync_rpc_err);
+    }
+
+    if method.starts_with("backgroundJobs.") {
+        return background_jobs::handle(state, method, params).await;
     }
 
     if method.starts_with("tools.fileBatch") {
