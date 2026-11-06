@@ -4,7 +4,7 @@ import test from "node:test";
 import * as React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
-import { splitInlineContent } from "@pi-desktop/shared";
+import { splitComposerDirectoryPrompt, splitInlineContent } from "@pi-desktop/shared";
 import ts from "typescript";
 import { getExtraMessageAttachments } from "../src/features/chat/transcript/extra-attachments.ts";
 import { isRemoteSession, safeSessionSummary, sessionAllows } from "../src/lib/remote-session-safety.ts";
@@ -50,6 +50,7 @@ function loadComponent(name, extras = {}) {
     "../../../components/Markdown": { Markdown: ({ source: text }) => text },
     "../../../components/icons": new Proxy({}, { get: () => Icon }),
     "../../../components/ui": { TooltipButton },
+    "../DirectoryReferenceCard": { DirectoryReferenceCard: () => null },
     "./shared": shared,
     "./menu-items": { userMessageMenuItems: () => [] },
     "./TranscriptMenu": {
@@ -59,7 +60,7 @@ function loadComponent(name, extras = {}) {
     "./ActionBarSlots": { ActionSlotSide: () => null },
     "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },
     // The row renders the user's own order through the shared placement helper.
-    "@pi-desktop/shared": { splitInlineContent },
+    "@pi-desktop/shared": { splitComposerDirectoryPrompt, splitInlineContent },
     ...extras,
   };
   const module = { exports: {} };
