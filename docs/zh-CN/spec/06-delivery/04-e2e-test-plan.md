@@ -51,6 +51,23 @@
   `test:e2e:hosted-search` 和 `test:e2e:trusted-extensions` 命令。具体范围与候选验证记录见英文源及
   `docs/project/pi-140-adoption.md`。
 
+### E2E-PI-150-kernel-upgrade
+
+- **前提：** 在专属 worktree 中精确固定 Pi 1.5.0 release group（含新增的 `pi-schema`）并
+  重建包补丁，使用隔离 fixture 状态，不提供真实 Provider 凭据。
+- **步骤：** 在已安装的 1.5.0 包上运行现有 runtime、原生 Pi 会话和身份测试；经 1.5.0
+  增量解析的 Anthropic 适配器流式传输 hosted-search 块；构建拆分的 sidecar bundle；运行现有
+  hosted-search 和可信扩展离线套件。
+- **预期：** Desktop 用 TypeBox 构建的工具 schema 在 pi-schema 上校验不变。Hosted-search
+  捕获、实时查询更新、引用、重放与本地请求错误保持不变。Release group 只解析一个 `undici`
+  8.x，sidecar 入口保持在体积阈值内。身份请求头报告 1.5.0。不使用 Provider 凭据或线上服务。
+- **覆盖：** `pi-upstream-1.5-identity.test.ts`、`pi-upstream-1.5-contract.test.ts`、
+  `pi-1.5-adapter-features.test.ts`、`official-native-search.test.ts`、
+  `native-pi-session.test.ts`、`agent-runtime-bundle-package.test.mjs`、
+  `anthropic-oauth-retry.test.mjs`，以及现有 `test:e2e:hosted-search` 和
+  `test:e2e:trusted-extensions` 命令。具体范围与候选验证记录见英文源及
+  `docs/project/pi-150-adoption.md`。
+
 ### E2E-LEGACY-DICTATION-idle-model-release
 
 - **前提：** 通过 `VoiceService` 接口测试保留的本地 Dictation 服务，使用确定性的

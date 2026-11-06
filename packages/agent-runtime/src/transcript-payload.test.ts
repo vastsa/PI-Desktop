@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { normalizeContext, Type, type Message, type Model } from "@earendil-works/pi-ai";
+import { normalizeContext, type Message, type Model } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { stream } from "@earendil-works/pi-ai/api/openai-completions";
 import { genericModelConfig } from "./model-capabilities.js";
 import { buildProviderModel } from "./provider-binding.js";

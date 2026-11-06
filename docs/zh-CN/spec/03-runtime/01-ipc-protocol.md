@@ -791,6 +791,7 @@ type UiMessage = {
  sessionMessage?: SessionMessageOrigin;
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
+ responseModelId?: string; // concrete served model when it differs from modelId
  responseDurationMs?: number; // model stream duration for throughput
  responseOutputTokens?: number; // estimated partial output when stop has no final usage
  toolName?: string;
@@ -861,6 +862,12 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 无操作。 `responseDurationMs` 和 `responseOutputTokens` 是可选的转录本
 元数据保留在消息元数据中，因此协议 v11 和存储架构 v16
 保持不变。
+
+`responseModelId` 同为可选消息元数据。仅当 Provider 报告的响应模型（Pi `responseModel`）与请求的
+`modelId` 不同且不是其日期快照时，Agent Runtime 才写入；值会去除首尾空白、限制在 200 字符内，含控制字符则丢弃。
+转录本模型标签显示该值，并在标签说明中注明请求的模型。`MessageUsage.costStatus` 为 `reported` 表示 Provider
+返回了实际计费总额（Pi `usage.cost.totalFromProvider`），`estimated` 表示按目录单价估算，`unknown` 表示无可用价格；
+汇总仅在所有部分均为 `reported` 时才为 `reported`。
 
 设置字体选择器（ADR 0083）通过一个仅 Electron 的允许通道读取
 系统已安装字体：

@@ -460,6 +460,7 @@ export const fr = {
     "copyErrorDetails": "Copier les détails",
     "errorProvider": "Fournisseur d'IA",
     "errorModel": "Modèle",
+    "servedByModel": "Demandé : {{requested}} ; servi par {{served}}",
     "previewFile": "Aperçu dans le panneau latéral",
     "fileRefMissing": "Aucun fichier ne correspond à {{name}}",
     "fileRefRestricted": "{{name}} se trouve hors des emplacements accessibles à l'application",

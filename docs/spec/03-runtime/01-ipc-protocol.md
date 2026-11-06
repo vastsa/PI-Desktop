@@ -995,6 +995,7 @@ type UiMessage = {
  sessionMessage?: SessionMessageOrigin;
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
+ responseModelId?: string; // concrete served model when it differs from modelId
  responseDurationMs?: number; // elapsed assistant response duration for throughput
  providerWaitMs?: number; // request start to first model response event
  modelStreamDurationMs?: number; // streamed thinking and answer duration
@@ -1075,6 +1076,16 @@ window system menu does not open. Non-Windows hosts treat the method as a
 no-op. `responseDurationMs` and `responseOutputTokens` are optional transcript
   metadata persisted in message metadata, so protocol v11 and storage schema v16
 remain unchanged.
+
+`responseModelId` is the same kind of optional message metadata. Agent Runtime
+sets it from the provider-reported response model (Pi `responseModel`) only when
+that model differs from the requested `modelId` and is not a dated snapshot of
+it; the value is trimmed, bounded to 200 characters, and rejected when it holds
+control characters. The transcript model chip shows it and names the requested
+model in its label. `MessageUsage.costStatus` is `reported` when the provider
+returned the billed total (Pi `usage.cost.totalFromProvider`), `estimated` when
+the total comes from catalog rates, and `unknown` without a usable price; a
+rollup is `reported` only when every part is.
 
 The Settings font picker (ADR 0083) reads installed system font families
 through one Electron-only allowlisted channel:

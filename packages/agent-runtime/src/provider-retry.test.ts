@@ -477,6 +477,28 @@ describe("provider rate-limit retry", () => {
     expect(events).toEqual(["error"]);
   });
 
+  it("does not replay a Zhipu 1308 usage-limit 429 through the rate-limit budget", async () => {
+    const claim = vi.fn(() => undefined);
+    const sleep = vi.fn(async () => undefined);
+    const createStream = vi.fn(() => failedStream({
+      errorMessage: '429 {"error":{"code":"1308","message":"Usage limit reached for 5 hour."}}',
+    }));
+    const stream = createProviderRetryStream(model, context, {}, createStream, {
+      claim, sleep, headers: () => undefined, status: () => 429,
+    });
+
+    const events: string[] = [];
+    for await (const event of stream) events.push(event.type);
+
+    expect(createStream).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(claim).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "PROVIDER_ERROR", retriable: false }),
+      "request",
+    );
+    expect(events).toEqual(["error"]);
+  });
+
   it("clears a captured 429 before a fetch fails without a response", async () => {
     let calls = 0;
     let snapshot: { status: number; headers: Record<string, string> } | undefined;

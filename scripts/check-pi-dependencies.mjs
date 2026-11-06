@@ -25,7 +25,7 @@ function parseArgs(argv) {
 }
 
 const root = parseArgs(process.argv.slice(2));
-const targetVersion = "1.4.0";
+const targetVersion = "1.5.0";
 
 function readJson(path) {
   return JSON.parse(readFileSync(join(root, path), "utf8"));
@@ -69,7 +69,7 @@ for (const packageName of ["@earendil-works/pi-ai", "@earendil-works/pi-mcp"]) {
 
 const lockfile = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
 for (const packageName of ["pi-agent-core", "pi-ai", "pi-coding-agent", "pi-mcp"]) {
-  if (new RegExp(`@earendil-works/${packageName}@1\\.[0-3]\\.\\d+(?:[(:]|$)`).test(lockfile)) {
+  if (new RegExp(`@earendil-works/${packageName}@1\\.[0-4]\\.\\d+(?:[(:]|$)`).test(lockfile)) {
     throw new Error(`pnpm-lock.yaml still contains an outdated @earendil-works/${packageName}`);
   }
 }
@@ -81,16 +81,17 @@ const actualReleaseAgeExclusions = [...releaseAgeExclusions.matchAll(/^[ \t]+-[ 
   .map((match) => match[1])
   .sort();
 const expectedReleaseAgeExclusions = [
-  "@earendil-works/pi-agent-core@1.4.0",
-  "@earendil-works/pi-ai@1.4.0",
-  "@earendil-works/pi-codemode@1.4.0",
-  "@earendil-works/pi-coding-agent@1.4.0",
-  "@earendil-works/pi-mcp@1.4.0",
-  "@earendil-works/pi-telemetry@1.4.0",
-  "@earendil-works/pi-tui@1.4.0",
+  "@earendil-works/pi-agent-core@1.5.0",
+  "@earendil-works/pi-ai@1.5.0",
+  "@earendil-works/pi-codemode@1.5.0",
+  "@earendil-works/pi-coding-agent@1.5.0",
+  "@earendil-works/pi-mcp@1.5.0",
+  "@earendil-works/pi-schema@1.5.0",
+  "@earendil-works/pi-telemetry@1.5.0",
+  "@earendil-works/pi-tui@1.5.0",
 ].sort();
 if (JSON.stringify(actualReleaseAgeExclusions) !== JSON.stringify(expectedReleaseAgeExclusions)) {
-  throw new Error("Pi minimumReleaseAgeExclude entries must match only the exact 1.4.0 release packages");
+  throw new Error("Pi minimumReleaseAgeExclude entries must match only the exact 1.5.0 release packages");
 }
 
 process.stdout.write(`Pi direct pins and installed package instances are aligned at ${targetVersion}.\n`);

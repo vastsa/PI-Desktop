@@ -462,6 +462,7 @@ export const ptBR = {
     actionSlotMore: "Mais ações",
     errorProvider: "Provedor de IA",
     errorModel: "Modelo",
+    servedByModel: "Solicitado: {{requested}}; atendido por {{served}}",
     previewFile: "Pré-visualizar no painel lateral",
     fileRefMissing: "Nenhum arquivo corresponde a {{name}}",
     fileRefRestricted: "{{name}} está fora dos locais que o aplicativo pode acessar",

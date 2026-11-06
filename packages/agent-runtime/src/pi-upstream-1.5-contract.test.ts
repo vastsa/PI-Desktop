@@ -26,7 +26,7 @@ function fixture() {
   const executions: unknown[] = [];
   const requests: Request[] = [];
   const runtime = new DesktopAgentRuntime({
-    sessionId: "pi-1.4-fixture", mode: "agent", thinkingLevel: "off",
+    sessionId: "pi-1.5-fixture", mode: "agent", thinkingLevel: "off",
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     provider: {
       id: "fixture", name: "Fixture", modelId: "fixture", apiKey: "fixture",
@@ -57,7 +57,7 @@ function fixture() {
   return { runtime, executions, requests, respond, agent };
 }
 
-describe("Pi 1.4 tool-call contracts through Desktop", () => {
+describe("Pi 1.5 tool-call contracts through Desktop", () => {
   it("rejects malformed final JSON before Host execution and accepts a corrected call", async () => {
     const { runtime, executions, requests, respond, agent } = fixture();
     const malformed = '{"path":"wrong.txt","content":"partial",';

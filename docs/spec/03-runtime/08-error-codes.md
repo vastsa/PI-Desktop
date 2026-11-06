@@ -414,7 +414,8 @@ replayed by either retry budget, and a delegate reports it as
 messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
 `credit_balance_exhausted`,
 organization/project spend-limit codes, `insufficient credits`, and
-`requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
+`requires more credits`, and Zhipu/Z.ai JSON error code `1308` for a reached plan
+usage limit) map to terminal `PROVIDER_ERROR` even when the HTTP
 status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
 omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
