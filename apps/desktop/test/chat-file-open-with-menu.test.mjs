@@ -109,6 +109,7 @@ const previewTarget = loadModule("../src/hooks/use-preview-target.ts", {
   "../lib/api": {
     api: {
       listPluginViews: async () => state.pluginViews,
+      listPlugins: async () => ({ plugins: [] }),
       fsOpen: async (path, mimeType, sessionId) =>
         calls.defaultBrowsers.push([path, mimeType, sessionId]),
       fsResolveRef: async (ref) => {
@@ -441,4 +442,59 @@ test("remote workspace references retain copy actions but never offer local open
   renderToStaticMarkup(React.createElement(Harness));
   assert.deepEqual(items.map(item => item.id), ["copy-full-path", "copy-relative-path"]);
   state.sessions = before;
+});
+
+test("a directory reference browses the file manager instead of the file view (issue #2113)", async () => {
+  reset({
+    root: "workspace",
+    relativePath: "examples",
+    absolutePath: "C:/project/examples",
+    matchedBy: "exact-relative",
+    target: "directory",
+    projectRoot: { primary: true },
+  });
+  await openWithDestination("examples", undefined);
+  assert.deepEqual(calls.tabs, [{
+    id: "plugin:pi.file-manager/manager",
+    kind: "plugin",
+    resource: "pi.file-manager/manager",
+    location: "examples",
+  }]);
+  assert.deepEqual(calls.files, []);
+  assert.deepEqual(calls.toasts, []);
+
+  // A directory outside the project's primary folder travels by its absolute
+  // path, exactly like a file from a sibling folder does.
+  reset({
+    root: "scratch",
+    relativePath: "run",
+    absolutePath: "C:/data/scratch/session-1/run",
+    matchedBy: "exact-relative",
+    target: "directory",
+    sessionScratch: true,
+  });
+  await openWithDestination("run", undefined);
+  assert.deepEqual(calls.tabs.map((tab) => tab.location), ["C:/data/scratch/session-1/run"]);
+  assert.deepEqual(calls.files, []);
+});
+
+test("a directory reference without a loadable file manager reports and never opens the file view", async () => {
+  const viewsBefore = state.pluginViews;
+  state.pluginViews = [];
+  try {
+    reset({
+      root: "workspace",
+      relativePath: "examples",
+      absolutePath: "C:/project/examples",
+      matchedBy: "exact-relative",
+      target: "directory",
+      projectRoot: { primary: true },
+    });
+    await openWithDestination("examples", undefined);
+    assert.deepEqual(calls.tabs, []);
+    assert.deepEqual(calls.files, []);
+    assert.deepEqual(calls.toasts.map(([message]) => message), ["chat.fileManagerUnavailable:"]);
+  } finally {
+    state.pluginViews = viewsBefore;
+  }
 });

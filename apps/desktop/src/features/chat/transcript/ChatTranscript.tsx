@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, RadialMenuAction, UiMessage } from "@pi-desktop/shared";
 import { proposalKindForMode } from "@pi-desktop/shared";
@@ -28,6 +28,7 @@ import {
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
 import { collectLiveDelegationEntries } from "../../../lib/live-delegation-entries";
 import { reuseReadonlyMap } from "../../../lib/assistant-turns";
+import { liveHistoryTurnId } from "../../../lib/turn-process";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
 import { useTranscriptContinuation } from "../../../hooks/use-transcript-continuation";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
@@ -77,6 +78,7 @@ type ChatTranscriptProps = {
   hasMoreAfter?: boolean;
   onLoadNewer?: () => Promise<void>;
   onReturnToLatest?: () => void;
+  onPrepareReturnToLatest?: () => (() => void);
   navigationLoading?: boolean;
 };
 
@@ -113,6 +115,7 @@ function TranscriptBody({
   hasMoreAfter = false,
   onLoadNewer,
   onReturnToLatest,
+  onPrepareReturnToLatest,
   navigationLoading = false,
 }: ChatTranscriptProps) {
   const { t } = useTranslation();
@@ -181,6 +184,7 @@ function TranscriptBody({
     revealEarlierHistory,
     releaseFollow,
     jumpToLatest,
+    isLatestNavigationActive,
     disclosureAnchorNotifier,
   } = useTranscriptScroll({
     sessionId,
@@ -188,8 +192,8 @@ function TranscriptBody({
     compactions,
     hasMoreBefore,
     onLoadOlder,
-    // Rejoining live output is not a new turn: keep the reader's scroll owner.
-    isRunning: isRunning && !readingWindow,
+    // Execution state is independent of the historical reading range.
+    isRunning,
     pendingPermission,
     askPending,
     approvalPending,
@@ -197,15 +201,20 @@ function TranscriptBody({
     paneVisible,
     searchTarget,
     readingWindow,
+    navigationLoading,
     onRestoreReading,
   });
+  const returnToLatest = useCallback(() => {
+    const arrive = onPrepareReturnToLatest?.() ?? onReturnToLatest;
+    jumpToLatest(arrive);
+  }, [jumpToLatest, onPrepareReturnToLatest, onReturnToLatest]);
 
   const continuationCursor = useAppStore((state) =>
     sessionId ? state.transcriptViews[sessionId]?.messageEnd : undefined,
   );
   const automaticContinuation = readingWindow && !searchTarget;
   useTranscriptContinuation({
-    scrollRef, contentRef, messages, onLoadNewer,
+    scrollRef, contentRef, messages, onLoadNewer, isNavigationActive: isLatestNavigationActive,
     enabled: automaticContinuation && hasMoreAfter && paneVisible && !veilCovering,
     cursor: continuationCursor,
     loading: navigationLoading,
@@ -219,6 +228,13 @@ function TranscriptBody({
   const liveDelegationsRef = useRef(rawLiveDelegations);
   const liveDelegations = reuseReadonlyMap(liveDelegationsRef.current, rawLiveDelegations);
   liveDelegationsRef.current = liveDelegations;
+  // The running turn is not always the tail entry: a steering message or a
+  // system row can render after it, and the history list defaults every entry
+  // to inactive. Row state identifies the live turn instead (#1949).
+  const liveTurnId = useMemo(
+    () => (transcriptRunning ? liveHistoryTurnId(historyEntries, tailEntry) : undefined),
+    [historyEntries, tailEntry, transcriptRunning],
+  );
   const hasSpecializedActivity = specializedActivity !== undefined;
   // Existing output does not mean the turn has finished: a text stream can
   // pause, and completed tool rows can outlive their activity. Keep one tail
@@ -343,10 +359,7 @@ function TranscriptBody({
             id,
             label,
             icon: <IconArrowDown size={16} />,
-            onSelect: () => {
-              onReturnToLatest?.();
-              jumpToLatest();
-            },
+            onSelect: returnToLatest,
           };
         case "open-browser":
           return {
@@ -408,10 +421,7 @@ function TranscriptBody({
         scrollRef,
         contentRef,
         actions: { copyText, selectText },
-        onReturnToLatest: () => {
-          onReturnToLatest?.();
-          jumpToLatest();
-        },
+        onReturnToLatest: returnToLatest,
       }),
     });
   };
@@ -457,8 +467,9 @@ function TranscriptBody({
             role="status"
             aria-live="polite"
             aria-hidden={!loadingOlder}
+            style={{ visibility: loadingOlder ? "visible" : "hidden" }}
           >
-            {loadingOlder ? t("chat.loadingEarlierMessages") : null}
+            {t("chat.loadingEarlierMessages")}
           </div>
           {hydrationBounded ? (
             // One viewport of slack, not a per-entry estimate. The spacer exists
@@ -467,7 +478,7 @@ function TranscriptBody({
             // view, which is exactly the jitter this avoids.
             <div className="transcript-hydration-spacer" aria-hidden />
           ) : null}
-          <TranscriptHistory entries={historyEntries} isRunning={isRunning} liveDelegations={liveDelegations} />
+          <TranscriptHistory entries={historyEntries} isRunning={isRunning} liveDelegations={liveDelegations} liveTurnId={liveTurnId} />
           {tailEntry ? (
             <TranscriptTail
               entry={tailEntry}
@@ -548,10 +559,7 @@ function TranscriptBody({
           className="jump-latest-btn"
           ariaLabel={t("chat.scrollToBottom")}
           tooltip={t("chat.scrollToBottom")}
-          onClick={() => {
-            onReturnToLatest?.();
-            jumpToLatest();
-          }}
+          onClick={returnToLatest}
         >
           <IconArrowDown size={14} />
         </TooltipButton>

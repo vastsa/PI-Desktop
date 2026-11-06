@@ -10,6 +10,7 @@ export function useTranscriptSearchFocus({
   target,
   source,
   visible = true,
+  suspended = false,
   scrollRef,
   contentRef,
   contentVersion,
@@ -18,6 +19,7 @@ export function useTranscriptSearchFocus({
 }: {
   target: TranscriptSearchTarget | null;
   source: string;
+  suspended?: boolean;
   visible?: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   contentRef: RefObject<HTMLDivElement | null>;
@@ -30,6 +32,12 @@ export function useTranscriptSearchFocus({
     const scroller = scrollRef.current;
     const content = contentRef.current;
     if (!visible || !target || !scroller || !content) return;
+    if (suspended && position.current.requestId === target.requestId) {
+      // Explicit latest navigation owns the viewport. Keep the range/highlight
+      // data, but do not restart an old alignment after reader interruption.
+      position.current.alignUntil = 0;
+      return;
+    }
     return installTranscriptSearchFocus({
       target,
       source,
@@ -39,7 +47,7 @@ export function useTranscriptSearchFocus({
       onNavigate,
       onPosition,
     });
-  }, [contentRef, contentVersion, onNavigate, onPosition, scrollRef, source, target, visible]);
+  }, [contentRef, contentVersion, onNavigate, onPosition, scrollRef, source, suspended, target, visible]);
 }
 
 type SearchPosition = { current: { requestId: number; alignUntil: number } };

@@ -99,7 +99,7 @@ does not turn temporary thread pressure into a host process exit.
 | `AGENT_SIDECAR_CRASHED` | no | the Node agent sidecar process died mid-turn; the owning turn settles as aborted with this code instead of an unrelated plan-approval code (issue #1077) |
 | `AGENT_SIDECAR_OOM` | no | the sidecar died after its JavaScript heap hit the configured cap, diagnosed from the V8 fatal-error banner in its stderr tail; the same turn fails the same way until the input shrinks (issue #1077) |
 | `MODEL_NOT_CONFIGURED` | no | no usable model selected, or provider rejects the selected model as unknown |
-| `PROVIDER_ERROR` | yes | upstream provider failure; retryable 5xx gateway errors get up to ten same-turn retries, while malformed 400/422 requests, adapter-refused options, and explicit billing, credit, spend, usage, or disk exhaustion (including `insufficient_quota`) are terminal |
+| `PROVIDER_ERROR` | yes | upstream provider failure; retryable 5xx gateway errors get up to ten same-turn retries, while malformed 400/422 requests, adapter-refused options, HTTP 402, and explicit billing, credit, spend, usage, or disk exhaustion (including `insufficient_quota` and insufficient-credits wording) are terminal |
 | `PROVIDER_UNAUTHORIZED` | no | bad/missing provider credentials |
 | `PROVIDER_RATE_LIMITED` | yes | temporary provider throughput limit; runtime retries up to ten times across setup/stream. Explicit billing/account exhaustion remains terminal `PROVIDER_ERROR`, including when returned with HTTP 429 |
 | `CONTEXT_TOO_LARGE` | no | prompt/context still exceeds the safe model budget after recovery, the second provider overflow occurred, or automatic recovery is disabled |
@@ -350,6 +350,39 @@ does not trigger automatic provider or billing fallback.
 | `LIVE_AUDIO_BACKPRESSURE` | no | bounded PCM or playback credits were exhausted |
 | `LIVE_EXECUTION_NOT_CONNECTED` | no | a provider requested an unsupported function/delegation execution path |
 
+### 3.10 Computer use (ADR 0342)
+
+Computer-use errors are returned as `Computer` tool failures and host
+`computer.*` responses. Each refusal is separately attributable: a missing
+capability is never a hang and never a no-op reported as success. Retriable
+means the same call may succeed after the stated condition clears — it never
+means the host will retry, and it never widens a scope.
+
+| code | retriable | meaning |
+|---|---|---|
+| `COMPUTER_DISABLED` | no | computer use is disabled in settings |
+| `COMPUTER_NOT_CONFIGURED` | no | computer use is enabled but no model binding is configured |
+| `COMPUTER_ACTION_REJECTED` | no | the bound model answered outside the action schema, or named an element, coordinate, or target the validation refused |
+| `COMPUTER_NO_GRANT` | no | no active scope grant owns this session and turn chain |
+| `COMPUTER_STOPPED_BY_USER` | yes | the user stopped computer use; an agent-minted grant is refused until the cooldown ends (ADR 0344) |
+| `COMPUTER_GRANT_IN_USE` | no | another session or turn chain holds the single active grant |
+| `COMPUTER_GRANT_EXPIRED` | no | the grant hit its idle expiry, was revoked, or its target closed |
+| `COMPUTER_BUDGET_EXHAUSTED` | no | the grant's remaining input-action budget reached zero |
+| `COMPUTER_SCOPE_VIOLATION` | no | the request resolved outside the granted window or application |
+| `COMPUTER_SELF_TARGET_REFUSED` | no | the target is a PI-Desktop window; refused under every mode |
+| `COMPUTER_TARGET_DENYLISTED` | no | the target is on the credential-surface or user denylist |
+| `COMPUTER_SECURE_INPUT_REFUSED` | no | the OS reports secure input or a password field holds focus |
+| `COMPUTER_STALE_BASIS` | yes | the coordinate basis does not match a current capture of this scope |
+| `COMPUTER_STALE_REVISION` | yes | the grant revision changed; re-inspect before acting |
+| `COMPUTER_ELEMENT_NOT_FOUND` | yes | the `uid` is unknown, detached, or no longer in the scope |
+| `COMPUTER_ELEMENT_NOT_ACTIONABLE` | no | the element exists but offers no accessibility action for this request |
+| `COMPUTER_INPUT_POLICY_DENIED` | no | the grant's input policy or the user's approval decision refused this batch |
+| `COMPUTER_OS_PERMISSION_MISSING` | no | Screen Recording, Accessibility, or the accessibility bus is not granted |
+| `COMPUTER_TARGET_ELEVATED` | no | the target window is owned by a higher-integrity process |
+| `COMPUTER_PLATFORM_UNSUPPORTED` | no | this platform or session type offers no supported inspection, synthesis, or capture path |
+| `COMPUTER_CAPTURE_UNAVAILABLE` | no | an `a11y-only` grant or an unavailable capture backend forbids pixels |
+| `COMPUTER_TIMEOUT` | yes | a bounded inspection, wait, synthesis, or capture stage timed out |
+
 ## 4. Mapping rules
 
 ### Host RPC numeric → AppError.code
@@ -377,11 +410,24 @@ exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
 Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
 replayed by either retry budget, and a delegate reports it as
 `SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
-messages (including `insufficient_quota`, `credit_balance_exhausted`, and
-organization/project spend-limit codes) map to terminal `PROVIDER_ERROR` even
-when the HTTP status is 429. Throughput rate-limit wording, including
+messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
+`credit_balance_exhausted`,
+organization/project spend-limit codes, `insufficient credits`, and
+`requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
+status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
+omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
-stays `PROVIDER_RATE_LIMITED`.
+stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
+HTTP status in `error.code` (Gemini's `@google/genai` `ApiError.message`) is
+classified from that 400-599 code the same way as a `<status>:` message:
+400/422 stay terminal unless they report a context overflow, 404 is
+`MODEL_NOT_CONFIGURED`, 429 stays retryable, and 5xx stay retryable unless
+the body reports a context overflow that is not a rate limit, which is
+terminal `CONTEXT_TOO_LARGE`. A 400 or 422 that explicitly rejects the API
+key (`invalid api key`, `api key not valid`, or `API_KEY_INVALID`, including
+Gemini's `API key not valid` body) is terminal `PROVIDER_UNAUTHORIZED`;
+`permission denied` and a bare `unauthorized` on those statuses stay
+`PROVIDER_ERROR`.
 
 An exact `terminated` provider message and equivalent premature stream-close
 messages map to `STREAM_FAILED`. A message is `TURN_ABORTED` only for a

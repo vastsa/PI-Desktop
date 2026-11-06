@@ -13,16 +13,28 @@
 
 .turn-changes-head {
   display: flex;
+  width: 100%;
   min-width: 0;
+  min-height: 28px;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
-  padding: 0 6px 4px;
+  padding: 2px 6px 4px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.turn-changes-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
 }
 
 .turn-changes-title {
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
 }
 
 .turn-changes-meta {
@@ -37,6 +49,7 @@
 
 .turn-changes-total {
   display: inline-flex;
+  flex: 0 0 auto;
   margin-left: auto;
 }
 
@@ -67,27 +80,10 @@
   color: var(--ds-text-primary);
 }
 
+.turn-changes-head:focus-visible,
 .turn-changes-row:focus-visible {
   outline: 1.5px solid color-mix(in oklab, var(--ds-focus) 78%, transparent);
   outline-offset: -2px;
-}
-
-.turn-changes-mark {
-  width: 10px;
-  flex: 0 0 auto;
-  color: var(--ds-warning);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  text-align: center;
-}
-
-.turn-changes-row[data-status="added"] .turn-changes-mark {
-  color: var(--ds-success);
-}
-
-.turn-changes-row[data-status="deleted"] .turn-changes-mark {
-  color: var(--ds-error);
 }
 
 .turn-changes-path {
@@ -105,10 +101,6 @@
 }
 
 /* Rolled-back files stay listed, struck through like the review row. */
-.turn-changes-row[data-rolled-back] .turn-changes-mark {
-  color: var(--ds-text-faint);
-}
-
 .turn-changes-row[data-rolled-back] .turn-changes-path {
   color: var(--ds-text-faint);
   text-decoration: line-through;

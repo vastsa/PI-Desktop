@@ -1,4 +1,5 @@
 import { loadRecentModels } from "../../lib/recent-models";
+import { DEFAULT_SETTINGS_TAB } from "../../lib/settings-search";
 import type { AppState, AppStateData } from "../app-state";
 import { projectWorkspaceFromPath } from "../../lib/sidebar-preferences";
 import { loadSidebarPreferences } from "../../lib/sidebar-preferences";
@@ -80,7 +81,7 @@ export function createInitialState(): AppStateData {
     sessionTodos: {},
     page: "chat",
     scheduledTaskRequest: null,
-    settingsTab: "general",
+    settingsTab: DEFAULT_SETTINGS_TAB,
     settingsAnchor: null,
     settingsTabNonce: 0,
     navStack: [{ page: "chat" }],

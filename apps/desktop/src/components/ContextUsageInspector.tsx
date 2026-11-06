@@ -19,7 +19,7 @@ import { TooltipButton } from "./ui";
 import {
   aggregateToolTokenUsage,
   calculateCacheRate,
-  calculateContextUsage,
+  composerContextUsage,
   calculateTokenRate,
   contextOccupancyTokens,
   contextUsageView,
@@ -42,6 +42,7 @@ export function ContextUsageInspector({
   responseDurationMs,
   responseOutputTokens,
   responseOutputEstimated = false,
+  compactedContextTokens,
 }: {
   usage: MessageUsage;
   turnUsage: MessageUsage;
@@ -50,6 +51,7 @@ export function ContextUsageInspector({
   responseDurationMs?: number;
   responseOutputTokens?: number;
   responseOutputEstimated?: boolean;
+  compactedContextTokens?: number;
 }) {
   const { t } = useTranslation();
   const panelId = useId();
@@ -94,7 +96,11 @@ export function ContextUsageInspector({
     isRunning: isSessionRunning,
     modelRequestActivity,
   });
-  const context = calculateContextUsage(usage, contextWindow);
+  const context = composerContextUsage({
+    usage,
+    contextWindow,
+    compactedContextTokens,
+  });
   // The display preference flips the leading figure only; capacity colors
   // still follow remaining space so the warning state keeps one meaning.
   const usageDisplay = useAppStore((state) =>

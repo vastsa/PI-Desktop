@@ -27,6 +27,7 @@ function fixture(history: UiMessage[] = [], skills = [skill]) {
     sessionId: "fixture", mode: "agent", provider, thinkingLevel: "off", history, pluginSkills: skills,
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     host: { call: async <T>(method: string, params?: unknown): Promise<T> => {
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
       if (method === "session.appendMessage") {
         if (persistenceFailure) throw persistenceFailure;
         rows.push((params as { message: UiMessage }).message);

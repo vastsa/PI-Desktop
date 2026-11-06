@@ -5,6 +5,7 @@ import {
   TRANSCRIPT_REPIN_THRESHOLD_PX,
   TRANSCRIPT_SCROLL_GESTURE_WINDOW_MS,
   isHistoryRevealPosition,
+  isHistoryPrefetchPosition,
   isRecentScrollGesture,
   reduceTranscriptScroll,
   transcriptHasLayout,
@@ -207,4 +208,13 @@ test("a pinned overflowing transcript is suppressed anywhere in the band", () =>
     ),
     false,
   );
+});
+
+test("history prefetch begins within three viewports but stays bounded", () => {
+  const box = { scrollTop: 1600, scrollHeight: 10000, clientHeight: 800 };
+  assert.equal(isHistoryPrefetchPosition(box), true);
+  assert.equal(isHistoryPrefetchPosition({ ...box, scrollTop: 2401 }), false);
+  assert.equal(isHistoryPrefetchPosition({ ...box, clientHeight: 2000, scrollTop: 2401 }), false);
+  assert.equal(isHistoryPrefetchPosition(box, true), false);
+  assert.equal(isHistoryPrefetchPosition({ ...box, clientHeight: 0 }), false);
 });

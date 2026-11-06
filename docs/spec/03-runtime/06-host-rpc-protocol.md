@@ -1414,6 +1414,14 @@ ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
 the scheduled RPC domain handlers. List is low risk; mutations require normal
 approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.
 
+`AppSettings.scheduledTasksEnabled` is an optional boolean, enabled when absent.
+When false, `tools.list` omits all four tools and stale calls are rejected.
+The Host returns no ids from `scheduled.due` and rejects `scheduled.run`,
+create/update/delete with `INVALID_PARAMS` before admission or mutation.
+Read/import/finish-run operations remain available so saved data and in-flight
+completion are preserved. Re-enabling retains per-task enable states and the
+existing no-catch-up due-time policy; no schema or protocol version changes.
+
 The Host rechecks durable session mode and derives project scope from the
 calling session, never the foreground workspace or model-supplied paths.
 Create binds that scope; list filters it; update/delete require matching scope.
@@ -1497,3 +1505,67 @@ metadata. Approval/rejection remain digest-bound. Only the new S3 format is
 supported; there is no old-data detection or migration. Disconnect removes
 only current S3 credentials, keys and local sync metadata/staging; unrelated
 files and remote objects remain intact. See `22-config-sync.md`.
+
+
+## Host file batch admission (version 1)
+
+The sidecar proxy explicitly allows tools.fileBatchCapabilities, tools.fileBatchRegister,
+tools.fileBatchSeal, tools.fileBatchAbandon and tools.fileBatchClose. No wildcard
+method authorization is added. Capabilities takes sessionId and returns
+{version:1,supported:boolean}; remote-workspace sessions return supported:false.
+Register takes sessionId, optional delegationId, batchId, ordinal, toolCallId,
+toolName and args, and returns {ticket}. Only builtin file tool names are
+accepted. Seal/Close take sessionId/batchId; Abandon takes sessionId/ticket.
+The latter methods return {ok:true}. Metadata is bounded (512 calls, 128 per
+batch, 32 MiB retained arguments), process-local and never grants permission.
+
+The additive tools.execute field fileBatchTicket binds the actual request to a
+sealed single-use registration. Session/delegation, call/name and args must
+match; replay, tampering and pre-seal execution fail. Existing callers without
+tickets still receive Host resource exclusion but cannot claim batch source
+order. Runtime only opens write parallelism after the capability handshake.
+Permissions, roots, leases and resource identities are recomputed by Host;
+clients never supply authoritative identities. A changed workspace binding
+reports TOOL_CONTEXT_CHANGED; an identity/address change fails before writing.
+Close/expiry cannot release a running disk task; no failed/uncertain write is
+automatically replayed. See the Host file admission ADR for lifecycle and limits.
+
+## Round review reader
+
+- `review.turns({sessionId, before?, limit?})` returns `turns` (newest user round
+  first, each with `id`, `userMessageId`, `createdAt`, `title`, `changeCount`,
+  `additions`, `deletions`) and
+  optional `nextBefore`. Only rounds with valid successful Write/Edit review
+  evidence are listed, including approved targets outside the workspace.
+  Source `details.root` is preserved; workspace-relative and non-workspace
+  absolute paths retain distinct identities. Limit is bounded to 100; title is a short excerpt.
+  Added/deleted totals sum deduplicated successful operation evidence, not a net
+  diff. Saved valid counters remain available even when binary/truncated previews
+  are unavailable. Unsafe totals yield null for both counts; malformed evidence
+  remains filtered. Preview trimming does not discard known counts. Older
+  Hosts may omit these additive fields; consumers show unknown.
+- `review.changes({sessionId, turnId?, snapshotId?, offset?, limit?})` returns
+  `turnId`, `changes: [{message, root?}]`, and optional `nextOffset`. Without a
+  selector it resolves the latest modified user round; a snapshot selector locates
+  its owning round, or returns null when absent. Transport omits unrelated tool
+  arguments and result bodies. Oversized previews are explicitly truncated, never
+  silently dropped. Parent Task ancestry and durable message-turn ownership beat
+  arrival order. Duplicate snapshots are emitted once.
+- `review.context({sessionId, snapshotId, context})` accepts only 1, 3 or 5
+  and returns `hunks`, optionally `unavailable: legacy | binary | tooLarge`.
+  Content comes only from bounded immutable context hunks, not current workspace files.
+  Normal containment, session ownership and remote-workspace capability rules apply.
+
+These reads do not replace the chat transcript window or alter execution state.
+
+`review.fileTarget({sessionId, snapshotId})` authenticates a persisted native
+snapshot in the session transcript and returns its exact existing regular file
+path. Replaced symlinks and sensitive targets are rejected. It is used only by
+Main's explicit reviewed-file open/reveal action; it is not a directory grant.
+`review.rollbackFile({sessionId, snapshotId})` selects the complete same-file
+snapshot chain in the anchor's round, returning `{status, changes}`. All active
+links and the current file are checked before one restoration; conflicts leave
+both content and states untouched. Success persists each affected review state.
+The old `review.rollback` contract remains unchanged. Both rollback methods
+participate in Host file-resource exclusion and re-resolve the session root after
+admission. Both new operations reject remote workspaces. See [ADR 0341](../../adr/0341-explicit-reviewed-file-actions.md).

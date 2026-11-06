@@ -297,6 +297,200 @@ describe("classifyAgentError", () => {
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
   });
 
+  // @google/genai ApiError.message is JSON.stringify(errorBody). pi-ai does
+  // not prefix "<status>:", and the Google adapter never records
+  // providerResponseStatus, so the main session and subagents classify this
+  // assistant message through classifyProviderError with no status argument.
+  it.each([
+    [
+      "400 INVALID_ARGUMENT",
+      {
+        error: {
+          code: 400,
+          message: "User location is not supported for the API use.",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 400 } },
+    ],
+    [
+      "404 NOT_FOUND",
+      {
+        error: {
+          code: 404,
+          message:
+            "models/gemini-3-pro-preview is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+          status: "NOT_FOUND",
+        },
+      },
+      {
+        code: "MODEL_NOT_CONFIGURED",
+        retriable: false,
+        details: { providerStatus: 404 },
+      },
+    ],
+    [
+      "429 RESOURCE_EXHAUSTED",
+      {
+        error: {
+          code: 429,
+          message: "Resource has been exhausted (e.g. check quota).",
+          status: "RESOURCE_EXHAUSTED",
+        },
+      },
+      {
+        code: "PROVIDER_RATE_LIMITED",
+        retriable: true,
+        details: { providerStatus: 429 },
+      },
+    ],
+    [
+      "429 billing exhaustion",
+      {
+        error: {
+          code: 429,
+          message:
+            "You exceeded your current quota, please check your plan and billing details.",
+          status: "RESOURCE_EXHAUSTED",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 429 } },
+    ],
+    [
+      "503 UNAVAILABLE",
+      {
+        error: {
+          code: 503,
+          message: "The service is currently unavailable.",
+          status: "UNAVAILABLE",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 503 } },
+    ],
+    [
+      "400 input token count",
+      {
+        error: {
+          code: 400,
+          message:
+            "The input token count exceeds the maximum number of tokens allowed.",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      {
+        code: "CONTEXT_TOO_LARGE",
+        retriable: false,
+        details: { providerStatus: 400 },
+      },
+    ],
+    [
+      "409 unknown 4xx",
+      {
+        error: {
+          code: 409,
+          message: "Resource already exists.",
+          status: "ALREADY_EXISTS",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 409 } },
+    ],
+  ])(
+    "classifies an unprefixed Gemini JSON %s body",
+    (_label, body, expected) => {
+      const errorMessage = JSON.stringify(body);
+      const message = { role: "assistant", stopReason: "error", errorMessage };
+      expect(classifyAgentError(errorMessage)).toMatchObject(expected);
+      expect(classifyAgentError(new Error(errorMessage))).toMatchObject(expected);
+      expect(classifyAgentError(message)).toMatchObject(expected);
+      expect(classifyProviderError(message)).toMatchObject(expected);
+    },
+  );
+
+  // Gemini's native API and some OpenAI-compatible gateways reject a bad key
+  // with HTTP 400, not 401. The status table must still call that a
+  // credential failure. A 400 that only says "permission denied" or
+  // "unauthorized" stays a malformed request.
+  it("classifies an HTTP 400 API-key rejection as unauthorized", () => {
+    const errorMessage = JSON.stringify({
+      error: {
+        code: 400,
+        message: "API key not valid. Please pass a valid API key.",
+        status: "INVALID_ARGUMENT",
+        details: [
+          {
+            "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            reason: "API_KEY_INVALID",
+            domain: "googleapis.com",
+          },
+        ],
+      },
+    });
+    const expected = {
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+      details: { providerStatus: 400 },
+    };
+    const message = { role: "assistant", stopReason: "error", errorMessage };
+    expect(classifyAgentError(errorMessage)).toMatchObject(expected);
+    expect(classifyAgentError(new Error(errorMessage))).toMatchObject(expected);
+    expect(classifyAgentError(message)).toMatchObject(expected);
+    expect(classifyProviderError(message)).toMatchObject(expected);
+    expect(classifyAgentError(`400: ${errorMessage}`)).toMatchObject(expected);
+    expect(classifyProviderError({
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "400: API key not valid. Please pass a valid API key.",
+    })).toMatchObject(expected);
+    expect(classifyAgentError("400: Invalid API key")).toMatchObject(expected);
+    expect(classifyAgentError('400: {"reason":"API_KEY_INVALID"}')).toMatchObject(expected);
+    expect(classifyAgentError("422: invalid_api_key")).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+      details: { providerStatus: 422 },
+    });
+
+    for (const ordinary of [
+      "400: Invalid value at 'contents'",
+      "400: permission denied",
+      "422: unauthorized",
+      "400: unknown parameter",
+    ]) {
+      expect(classifyAgentError(ordinary)).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+    }
+    expect(classifyAgentError(
+      "400: The input token count exceeds the maximum number of tokens allowed.",
+    )).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
+  });
+
+  it("does not treat a non-HTTP JSON code as a provider status", () => {
+    const cases = [
+      JSON.stringify({ error: { code: 123, message: "not an http status" } }),
+      JSON.stringify({ code: 400, message: "plain code is not an http status" }),
+      JSON.stringify({
+        error: {
+          code: "400",
+          message: "string code is not an http status",
+          status: "INVALID_ARGUMENT",
+        },
+      }),
+    ];
+    for (const errorMessage of cases) {
+      const classified = classifyProviderError({
+        role: "assistant",
+        stopReason: "error",
+        errorMessage,
+      });
+      expect(classified).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+      expect(classified.details?.providerStatus).toBeUndefined();
+    }
+  });
+
   it("treats a request option an adapter refuses as non-retriable", () => {
     expect(
       classifyAgentError(
@@ -325,6 +519,93 @@ describe("classifyAgentError", () => {
     ).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
     expect(classifyAgentError("prompt is too long: 210000 tokens"))
       .toMatchObject({ code: "CONTEXT_TOO_LARGE" });
+  });
+
+  // Ollama's MLX runner returns this as HTTP 500, and other gateways wrap the
+  // same upstream overflow as 502/503. pi-ai's LiteLLM rule wants "(8192)" or
+  // " of 8192 tokens", so "(8192 tokens)" is invisible to isContextOverflow.
+  // The status table must not retry it as a generic 5xx.
+  it("classifies a 5xx-wrapped context overflow as terminal CONTEXT_TOO_LARGE", () => {
+    const body =
+      "input length (9000 tokens) exceeds the model's maximum context length (8192 tokens)";
+    const json = (status: number) =>
+      `${status} {"error":{"message":"${body}"}}`;
+    const assistant = (errorMessage: string) =>
+      ({ role: "assistant", stopReason: "error", errorMessage }) as AssistantMessage;
+
+    expect(isContextOverflow(assistant(body))).toBe(false);
+    expect(isContextOverflow(assistant(json(500)))).toBe(false);
+
+    expect(classifyAgentError(json(500))).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { providerStatus: 500 },
+    });
+    expect(classifyAgentError(Object.assign(new Error(body), { status: 500 }))).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { providerStatus: 500 },
+    });
+    expect(classifyProviderError(assistant(json(500)))).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { providerStatus: 500 },
+    });
+    for (const status of [502, 503]) {
+      expect(classifyAgentError(json(status))).toMatchObject({
+        code: "CONTEXT_TOO_LARGE",
+        retriable: false,
+        details: { providerStatus: status },
+      });
+    }
+  });
+
+  it("keeps ordinary and rate-limited 5xx responses retryable", () => {
+    for (const message of [
+      "500 Internal Server Error",
+      "500: Internal Server Error",
+      "502: upstream connect error or disconnect/reset before headers",
+      "503 Service Unavailable",
+      "503: Service Unavailable",
+      "503: overloaded",
+      "503: Too many requests",
+      "503: rate limit exceeded",
+      // CONTEXT_PATTERN matches "too many tokens", but this is a throttle.
+      // pi-ai excludes "rate limit"; the 5xx branch must not undo that.
+      "503: Throttling error: Too many tokens, please wait before trying again.",
+      "503: rate limit: too many tokens, please wait before trying again.",
+    ]) {
+      const classified = classifyAgentError(message);
+      expect(classified.code, message).not.toBe("CONTEXT_TOO_LARGE");
+      expect(classified, message).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+    }
+    expect(classifyAgentError(Object.assign(
+      new Error("Internal Server Error"),
+      { status: 500 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 500 },
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("Service Unavailable"),
+      { status: 503 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 503 },
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("upstream connect error or disconnect/reset before headers"),
+      { status: 502 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 502 },
+    });
   });
 
   // Each message is what pi-ai 1.1.0 reports for that provider's overflow:
@@ -395,6 +676,62 @@ describe("classifyAgentError", () => {
     ))).toMatchObject({
       code: "PROVIDER_ERROR",
       retriable: false,
+    });
+  });
+
+  // OpenRouter reports an empty balance as HTTP 402. Backing off cannot add
+  // credits, so the same-turn transient budget must not replay the request.
+  it.each([
+    "402 Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+    "402 Payment Required",
+    "402 status code (no body)",
+    "402: gateway said something unexpected",
+    "This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 1000.",
+    "Insufficient credits",
+    "Payment Required",
+    '429: {"error":{"message":"Insufficient credits"}}',
+  ])("treats HTTP 402 and credit-exhaustion wording as terminal: %s", (message) => {
+    expect(classifyAgentError(new Error(message))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("treats a structured HTTP 402 as a terminal provider error", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("Payment Required"),
+      { status: 402 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerStatus: 402 },
+    });
+  });
+
+  it("does not treat a bare credits mention or a 429 rate limit as credit exhaustion", () => {
+    expect(classifyAgentError(new Error("credits"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("credits remaining will reset"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    // "credentials" shares a prefix with "credits" and must stay out of the
+    // exhaustion matcher.
+    expect(classifyAgentError(new Error("insufficient credentials"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(
+      '429: {"error":{"type":"rate_limit_error","message":"credits remaining"}}',
+    )).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("429: Too many requests"))).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
     });
   });
 

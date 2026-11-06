@@ -363,6 +363,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   transcript on the same frame rather than waiting for `session.get`. The
   durable row is inserted from the `session.create` summary; send and paste wait
   for that in-flight create instead of opening a second slot (ADR 0154).
+  Concurrent first-input materializations share the same project-scoped
+  creation result, including cancellation and failure. A first send does not
+  supersede an in-flight New Task's navigation intent or adopt an unrelated
+  session selected while waiting. A failed create releases the slot for retry.
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
   activation no longer resets manual-scroll state for a revisit (ADR 0137).
@@ -723,6 +727,47 @@ may be retained while exactly one workspace supplies the visible shell context.
   writes naming an unknown action are rejected by both the renderer and
   Electron Main.
 
+### 1.12 User-supplied startup animation (D679, ADR 0338)
+
+- A video in `<dataDir>/startup/` becomes the boot surface for that launch,
+  replacing the brand splash. An installation without that directory is
+  unchanged: same splash, same 420ms dwell, same 280ms fade.
+- The sequence is **play → black → reveal**. The video plays over opaque black
+  (`#000`, `object-fit: cover`, muted, no controls, not focusable); when it
+  ends, the same black layer stays as an opaque mask; once the shell has its
+  initial state, that mask fades out over 1000ms
+  (`--motion-startup-reveal`). The reveal waits for both the video and the
+  shell, so it never lands on a half-built window.
+- The mask stops taking input the moment the fade starts, so the shell, its
+  chrome, and the renderer-drawn window controls are operable for the whole
+  second rather than after it.
+- A boot that outlasts the video shows the splash's indeterminate bar after 3s
+  of black, so an opaque mask is not mistaken for a hang.
+- Either `loadeddata` or `playing` acknowledges a decoded first frame; a
+  playing video must not hit the missing-first-frame timeout when `loadeddata`
+  was missed. The first-frame timeout also checks the actual video ref for
+  HAVE_CURRENT_DATA in case both initial events raced their handlers. The total
+  playback bound remains active.
+- Four bounds end the animation, and each runs the same reveal: no first frame
+  within 2s, 15s of total playback, a `<video>` `error`, or `Escape`. The
+  startup watchdog's bounds are unchanged and outrank it — at 30s the boot
+  surface gains logs and diagnostics, and at 180s the recovery surface replaces
+  the animation, so a stalled launch is never left behind the mask.
+- Exactly one boot surface is mounted, ranked recovery > animation > brand
+  splash.
+- The animation plays once per launch, for the first window of the process:
+  reopening from the tray or the Dock replays nothing, and a renderer reload
+  does not replay it.
+- Settings → General → Appearance carries the switch (absent means on, so
+  dropping a file in is enough), a `skipWhenReady` sub-switch gated by it
+  (absent plays the video out), a status line naming the file the next launch
+  would play — or saying none was found — and an action that opens the folder,
+  creating it if needed. Both preferences are read before the window is
+  created, so a change applies on the next launch.
+- Discovery is deterministic: `webm` > `mp4` > `m4v` > `mov`, file name as the
+  tie-break, with dot-prefixed entries, non-files, empty files, files over
+  64 MB, and anything that resolves outside the directory excluded.
+
 ## 2. Streaming message behavior
 
 ### 2.1 Token rendering
@@ -778,26 +823,38 @@ may be retained while exactly one workspace supplies the visible shell context.
 - The first upward manual scroll movement pauses auto-scroll immediately and
   cancels any pending follow frame; small trackpad deltas must not snap back to
   the bottom
-- Scroll input owned by the transcript also cancels an in-flight browser smooth
-  navigation at its current offset. A previous minimap or jump navigation must
-  not resume after the reader takes over; nested-scroll input and ordinary row
-  controls do not cancel the transcript's navigation.
+- Scroll input owned by the transcript cancels an in-flight browser smooth
+  navigation or custom return-to-latest animation at its current offset. A
+  previous minimap or return-to-latest move must not resume after the reader
+  takes over; horizontal, zero-delta, or `Ctrl`+wheel input, nested-scroll
+  input, editable fields, and ordinary row controls do not cancel it.
   Space on a button activates that button, and selection keys inside a select
   belong to the select. The same ownership and cancellation rules apply to
   delegated transcript scrollers. Releasing follow after a completed turn's
   prompt navigation does not cancel that newly started navigation.
-  A manual disclosure or history navigation also cancels the prior browser
-  navigation before taking ownership; completion's state-only follow release
-  is separate from these reader-driven moves.
+  A manual disclosure or search/history navigation also cancels any active
+  return-to-latest or browser smooth navigation before taking ownership;
+  completion's state-only follow release is separate from these reader-driven moves.
 - Sending a new prompt, retrying, or regenerating always re-pins follow mode and jumps to the bottom before the turn continues, even if the user had scrolled up
 - "Scroll to bottom" floating button appears as soon as manual upward scrolling
   releases follow mode
-- Click "Scroll to bottom" button: resumes auto-scroll and snaps to bottom.
-  Record the pinned bookmark synchronously, before any smooth-scroll event:
-  immediately switching sessions or projects must preserve this follow intent
-  even if the original pane is hidden or unmounted before scrolling finishes.
-  Returning follows the latest output rather than restoring the old reading
-  offset. Manual upward reading without that click still retains its position.
+- Return-to-latest ("Scroll to bottom" button, context menu, radial menu) runs
+  one custom interruptible viewport animation (`180–420ms` cubic ease-out,
+  monotonic retargeting across late stream growth without reversing; immediate
+  when `prefers-reduced-motion: reduce` is active) instead of browser smooth
+  scroll, suppressing competing follow, layout, previous search alignment, and turn-completion scroll
+  owners until it settles or is cancelled. Record the pinned bookmark
+  synchronously and prepare any active historical `transcriptViews` slice by
+  replacing its identity with `loading: null` while keeping visible messages
+  mounted; only that exact prepared view's arrival closure clears the historical
+  view, while pane hide or unmount commits the accepted latest intent once
+  without continuing an invisible animation. Explicit disjoint search or history
+  views animate across currently mounted rows and join the canonical live tail
+  on arrival without fetching or animating unloaded intermediate ranges.
+  Returning to a switched session follows the latest output rather than
+  restoring the old reading offset; manual upward reading without return-to-latest
+  retains its position, and reader interruption cancels the animation in place
+  without committing arrival.
 - Stream completion (D676): if the user was following a turn that completes,
   its prompt scrolls to 16px below the titlebar band at the top of the
   viewport so the answer reads from its start, follow mode is released, and
@@ -826,12 +883,15 @@ may be retained while exactly one workspace supplies the visible shell context.
   transitions to preserve.
 - A restored reading range that has reached the canonical live tail presents
   the session's running phase, elapsed time, and interaction waits normally.
-  Keeping its reading bookmark does not mean the turn has finished. Rejoining
-  live output preserves the viewport rather than acting like a new turn.
-  Explicit search, unread later pages, and disjoint snapshots remain historical.
-  Reading ranges require a non-empty canonical message identity, compared by
-  message id across history object copies. The ordinary canonical surface still
-  shows the first-event wait before its first message arrives.
+  Runtime `isRunning` state remains real rather than being faked stopped by a
+  historical reading view; keeping a reading bookmark does not mean the turn has
+  finished, and `turnStarted` re-pin skips an active historical reading window
+  so rejoining live output or browsing history preserves the viewport rather
+  than acting like a new turn. Explicit search, unread later pages, and disjoint
+  snapshots remain historical. Reading ranges require a non-empty canonical
+  message identity, compared by message id across history object copies. The
+  ordinary canonical surface still shows the first-event wait before its first
+  message arrives.
 
 ### 2.5 Turn outcome closure
 
@@ -1041,14 +1101,17 @@ may be retained while exactly one workspace supplies the visible shell context.
   nested group header shares its left edge; the group body then indents child
   rows by 12px with the hover/focus collapse rail in that gutter, while a run
   row lifted out of a group keeps the turn's left edge.
-- No item payload opens itself, except the display mode's Thinking default: a
-  tool, hosted-search or plan call stays a header row until the user opens it,
-  including the literal final item of the last activity group. With `Show thinking`
-  on, Thinking rows default expanded in every display mode and collapse only on
-  user action. A collapsed row shows only the Thinking indicator, with no excerpt.
+- No item payload opens itself except reasoning: a tool, hosted-search or plan
+  call stays a header row until the user opens it, including the literal final
+  item of the last activity group. With `Show thinking` on, only the reasoning a
+  live turn is still streaming starts expanded; completed rows start folded and
+  open on user action, or stay open when `Auto-fold finished thinking` is off. A
+  folded row shows only the Thinking indicator, with no excerpt.
   With `Show thinking` off, no completed reasoning row renders; only a live
   whole-run TextShimmer `Thinking` indicator remains while reasoning streams.
   Stored reasoning is retained and reappears when the preference is turned back on.
+  A group and its reasoning answer to their own switches: neither inherits the
+  other's state, so folding a group hides the expanded reasoning inside it.
 - Activating a group or item header toggles only that level. Closing a parent
   preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.
@@ -1567,6 +1630,33 @@ Project drag/drop follows these patterns:
 ### 9.1 Transcript scrolling
 
 - Default: auto-scroll to bottom on new content during stream while pinned
+- Loading earlier messages uses two-stage single-flight escalation — mounting
+  cached withheld rows before requesting a Host page — anchored to the actual
+  visible message node and its viewport offset rather than total scroll-height
+  growth or an enclosing answer/minimap group whose first id can change when
+  earlier fragments prepend. Existing message, page, mounted-window, snapshot,
+  and retained session-pane caches remain unchanged, with no idle TTL or memory
+  reclamation.
+- A real upward scroll gesture within `min(2400px, max(120px, 3 * clientHeight))`
+  starts background ahead-loading: it mounts cached history before Host IO,
+  stays single-flight, leaves `overflow-y` and transcript scroll input unlocked,
+  tracks the reader's newest visible message anchor across ongoing scroll
+  movement, and restores that anchor before paint only when prepended rows or
+  layout measurements change geometry or the head message.
+- Reaching the `<= 120px` hard edge, activating the earlier-history continuation,
+  or intersecting the underfilled `120px` top boundary retains the brief
+  `overflow-y: hidden` and transcript scroll-input lock through IO and three
+  consecutive stable layout frames, discarding (never queueing) main-scroller
+  vertical wheel/trackpad, touch-scroll, and scrolling-key input until
+  settlement. Horizontal, zero-delta, and `Ctrl`+wheel input, nested scroll
+  owners, editable fields, and title activation retain their own input. The
+  loading label keeps identical layout space when hidden, and there is no
+  early-threshold observer or eager page draining at rest.
+- Search/minimap navigation, return-to-latest, manual disclosure, a new turn
+  outside a historical reading window, pane hide, and unmount retire the hold;
+  a late page cannot reclaim that navigation. A failed or empty page releases
+  any lock and waits for a new scroll gesture or explicit earlier-history action
+  before retrying. Requests remain single-flight even after their hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement
@@ -1602,7 +1692,12 @@ Project drag/drop follows these patterns:
 - User send / retry / regenerate: re-pins, hides the jump control, and positions the latest content in the layout phase so the new turn is visible without a top-of-history flash; subsequent persisted and streamed rows continue to follow the bottom
 - Scroll-to-bottom button: position fixed at bottom-right of transcript area, offset 12px
 - Button appears as soon as upward scrolling releases follow mode
-- Click button: scrolls to bottom, resumes auto-scroll
+- Click button: retires the prior scroll gesture and history hold, prepares any
+  historical view without removing visible messages until arrival (or commits on
+  hide/unmount), and drives the custom `180–420ms` cubic ease-out animation to
+  bottom (immediate under reduced motion) while suppressing competing scroll
+  owners. Queued scroll events or a pending page cannot reopen historical
+  reading or start another page read during that trip.
 - Button disappears when at bottom
 - A delegation tab uses the same single-body scroll owner as the work panel.
   It renders the delegate's conversation — each `Task` call's prompt as a user
@@ -1780,6 +1875,7 @@ This does not prevent state changes — it makes them instant.
 | Tool card expand/collapse | 200ms transition | instant toggle |
 | Hover state transition | 150ms background change | instant color change |
 | Startup splash | Brand splash + progress, min dwell then fade out | Instant static splash, no bar motion, instant reveal |
+| Startup animation (D679) | User's video, then a black mask, then a 1000ms reveal | Not played at all; the brand splash's reduced-motion path is used |
 | Dialog / search enter | overlay-in + surface-in via motion tokens | Near-zero duration enter |
 | Scroll-to-bottom button fade-in | 150ms opacity | instant appear |
 | Toast slide-in | 200ms slide | instant appear |
@@ -1790,8 +1886,10 @@ This does not prevent state changes — it makes them instant.
 
 - Session activation uses an immediate layout-phase bottom position so the
   first visible frame is already stable at the latest record.
-- Jump-to-latest and minimap navigation use smooth scrolling only when the OS
-  has not requested reduced motion.
+- Return-to-latest runs its `180–420ms` cubic ease-out viewport animation and
+  minimap navigation uses browser smooth scrolling only when the OS has not
+  requested reduced motion; under `prefers-reduced-motion: reduce` both position
+  immediately.
 - Turn-start following uses an immediate layout-phase update and then a
   frame-coalesced instant follow; it does not start overlapping smooth-scroll
   animations for token groups.

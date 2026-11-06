@@ -13,7 +13,7 @@ use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 mod fork_files;
 mod history_mutations;
 pub use history_mutations::{
-    activate_message_revision_canonical, delete_message, retract_pending_prompt,
+    activate_message_revision_canonical, delete_message, retract_pending_prompt, running_turn,
 };
 mod model_system;
 mod usage;

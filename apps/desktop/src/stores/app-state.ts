@@ -219,6 +219,7 @@ export type AppState = {
   restoreTranscriptReading: (sessionId: string, position: TranscriptReadingPosition, signal: AbortSignal) => Promise<boolean>;
   loadTranscriptPage: (sessionId: string, direction: "before" | "after") => Promise<void>;
   returnToLatestTranscript: (sessionId: string) => void;
+  prepareReturnToLatestTranscript: (sessionId: string) => () => void;
   selectSession: (
     id: string,
     opts?: { record?: boolean } & NavigationOptions,

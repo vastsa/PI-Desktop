@@ -39,6 +39,25 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 
 export type TranscriptDisplayMode = "flat" | "command-first" | "fully-folded";
 
+/**
+ * Preferences for the user-supplied boot animation (D679 / ADR 0338).
+ *
+ * The file itself is never named here — it is discovered in
+ * `<dataDir>/startup/` — so these are only the two choices discovery cannot
+ * make: whether to play what it found, and whether a fast boot may cut the
+ * playback short.
+ */
+export type StartupAnimationSettings = {
+  /** `false` ignores a present file. Absent means play it. */
+  enabled?: boolean;
+  /**
+   * End the animation as soon as the shell has its initial state, instead of
+   * letting the video reach its last frame. Absent and `false` play it out,
+   * which is the shipped behavior.
+   */
+  skipWhenReady?: boolean;
+};
+
 export type AppSettings = {
   imageGeneration?: import("../image-generation.js").ImageGenerationBinding | null;
   /** All models marked for image generation; absent falls back to imageGeneration. */
@@ -53,6 +72,8 @@ export type AppSettings = {
   speech?: SpeechSettings;
   /** App-owned real-time voice bindings; separate from local dictation. */
   liveVoice?: LiveVoiceSettings;
+  /** Granted native application control (ADR 0342); off and unbound by default. */
+  computerUse?: import("../computer-use.js").ComputerUseSettings;
   defaultMode: Mode;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.
@@ -63,6 +84,8 @@ export type AppSettings = {
   jevEnabled?: boolean;
   /** Prevent idle system sleep while this desktop app runs; off when absent. */
   keepAwakeWhileRunning?: boolean;
+  /** Enable scheduled task UI, tools and new runs. Absent means enabled. */
+  scheduledTasksEnabled?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /** @deprecated Retained for one-time migration into pi.prompt-enhancement. */
@@ -87,6 +110,14 @@ export type AppSettings = {
    * launch.
    */
   macosWindowTranslucency?: boolean;
+  /**
+   * User-supplied boot animation played from `<dataDir>/startup/` (D679).
+   *
+   * Absent means the feature is on but dormant: with no file in that directory
+   * the boot surface stays the brand splash, which is why no field here has to
+   * be written for an existing installation to behave as it always did.
+   */
+  startupAnimation?: StartupAnimationSettings;
   /** UI language; `auto` (and absent) follows the OS locale. */
   language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";
   /**
@@ -119,6 +150,23 @@ export type AppSettings = {
    * This is presentation only and never changes tool execution or stored data.
    */
   transcriptDisplayMode?: TranscriptDisplayMode;
+  /**
+   * Fold a settled activity group by default (issue #2094).
+   *
+   * `false` keeps every settled group open; absent and `true` fold them, so a
+   * completed turn expands to a compact list of what the agent did. There is no
+   * other tier: the old "groups of up to four rows stay open" rule is gone,
+   * because a switch labelled auto-collapse must not still collapse something.
+   */
+  autoCollapseSettledGroups?: boolean;
+  /**
+   * Fold reasoning that is no longer being generated (issue #2094).
+   *
+   * Only meaningful while `showThinking` renders reasoning rows. `false` keeps
+   * every rendered Thinking row open; absent and `true` fold all of them except
+   * the row the live turn is still streaming.
+   */
+  autoCollapseThinking?: boolean;
   /**
    * @deprecated Replaced by `transcriptDisplayMode`. Retained for persisted
    * settings and older clients; current rendering no longer reads it.

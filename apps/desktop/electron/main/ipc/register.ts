@@ -10,6 +10,7 @@ import { readNpmPath, writeNpmPath } from "../npm-preferences";
 import { registerAgentIpc } from "./agent-ipc";
 import { registerAppIpc } from "./app-ipc";
 import { registerDiagnosticsIpc } from "./diagnostics-ipc";
+import { registerStartupAnimationIpc } from "./startup-animation-ipc";
 import { registerMarketIpc } from "./market-ipc";
 import { registerMcpIpc } from "./mcp-ipc";
 import type { McpOAuthManager } from "../mcp-oauth";
@@ -17,6 +18,8 @@ import { searchMcpMarket } from "../mcp-registry-catalog";
 import { registerNotificationIpc } from "./notification-ipc";
 import { registerPluginIpc } from "./plugin-ipc";
 import { registerPluginUiIpc } from "./plugin-ui-ipc";
+import { registerPluginLauncherIpc } from "./plugin-launcher-ipc";
+import { registerComputerIpc } from "./computer-ipc";
 import { registerJevIpc } from "./jev-ipc";
 import { registerProviderIpc } from "./provider-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
@@ -48,6 +51,8 @@ export type RegisterIpcDependencies = {
   ipcMain: IpcMain;
   getMainWindow: () => BrowserWindow | null;
   getHost: () => HostProcess | null;
+  /** Push the live computer-use grant to the renderer's indicator. */
+  publishComputerGrant: (grant: import("@pi-desktop/shared").ComputerGrantView | null) => void;
   traySessions: ReturnType<typeof createTraySessions>;
   taskbarUnreadBadge: ReturnType<typeof createTaskbarUnreadBadge>;
   getSidecar: () => AgentSidecar | null;
@@ -99,6 +104,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     ipcMain,
     getMainWindow,
     getHost,
+    publishComputerGrant,
     getSidecar,
     getAgentHostBridge,
     getBackendRouter,
@@ -108,6 +114,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     settleComposerSuggestion,
     getPluginLauncherWindow,
     togglePluginLauncher,
+    openPluginMarket,
     safeOpenExternal,
     updater,
     dataDir,
@@ -118,6 +125,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     persistenceOutbox,
     logger,
     plugins,
+    localApps,
     speech,
     sessionCapabilityContext,
     enrichSession,
@@ -332,6 +340,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
   registerJevIpc({ registrar, logger });
+  registerComputerIpc({ registrar, getHost, publishGrant: publishComputerGrant });
   registerWorktreeIpc({
     registrar,
     getHost,
@@ -517,6 +526,15 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     setActivePluginSession,
     settleComposerSuggestion,
   });
+  registerPluginLauncherIpc({
+    registrar,
+    getHost,
+    getPluginLauncherWindow,
+    plugins,
+    localApps,
+    getLocale: getUpdaterLocale,
+    openPluginMarket,
+  });
   registerSpeechIpc({ registrar, speech });
 
   if (voiceService) {
@@ -546,6 +564,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     isDeveloperMode,
     getMainWindow,
   });
+
+  registerStartupAnimationIpc({ registrar, dataDir, stripWinLongPrefix });
 
 
   return async (channel: string, args: readonly unknown[] = []) => {

@@ -5,47 +5,108 @@
 
 ## 0. Frozen policy summary
 
-### Parallel read batches
+### Parallel file batches
 
-Read, Glob and Grep are the first parallel batch candidates. Task-only batches
-retain their existing parallel fan-out; a batch that mixes Task with Read, Glob
-or Grep is kept sequential: a read ordered before Task finishes before the
-delegate starts, and a read ordered after a writable Task waits for that
-delegate to settle before dispatching to Host. Task keeps its ADR 0089 contract
-inside that batch: it reports a started delegation and the parent converges with
-TaskWait. Any other sequential tool (including Write, Edit, Bash and unknown
-tools) makes its entire assistant batch sequential. This is a per-agent batch
-rule, not application-wide exclusion or a Shell safety lock. Only the selected
-builtin executor receives this allowlist and native path preparation. Same-name
-dynamic tools remain sequential. Delegates retain their startup catalog's policy
-and provenance across later parent catalog rebuilds.
+Read, Glob and Grep are parallel candidates. Write and Edit join them only
+when the runtime negotiates version 1 of the actual local Host file-batch
+protocol. Capability is fixed for that runtime/connection, including background
+delegates. Legacy Hosts and remote workspaces retain Write/Edit as sequential,
+so pi serializes any batch containing a write. No sidecar filesystem lookup is
+used to classify a remote path.
 
-The pinned pi-agent-core prepares all parallel calls in source order before
-launching their execution bodies. Path instruction resolution and prompt updates
-occur during that preparation, after existing parent mode/extension checks.
-Execution consumes the same normalized arguments. Direct internal invocations
-retain preflight. Child preflight updates the child's system transcript only;
-it never replaces parent instructions. Sibling instruction chains replace one
-another according to preparation order, regardless of completion order.
+Task-only fan-out is unchanged. Task mixed with any file tool remains a whole-
+batch sequential boundary. Reads/searches ordered after a writable Task wait
+for the delegate to settle; writes only wait for the Task call to return its
+started notice. Bash, TodoWrite, unknown, plugin and MCP tools keep their
+existing sequential policy. Only the selected builtin executor receives native
+preparation and file-batch bindings; same-name dynamic tools remain sequential.
 
-Permissions, Host capacities, mutation recovery, Hashline validation and tool
-result IDs remain authoritative. Completion events may arrive out of order;
-model tool results remain in source order. Alongside the mixed Task/read batch
-barrier, `PathMutex` coordinates shared reads against exclusive `Write`/`Edit`
-calls on the same normalized workspace path so a parent `Read` does not overlap
-an in-flight delegate mutation on that file. Stop skips unstarted calls; already
-started file RPCs drain through their existing Host lifecycle. Host file
-cancellation and resource coordination are separate follow-up work.
+For an eligible parallel batch, preparation validates arguments and loads path
+instructions in source order, then registers each file call with Host. A record
+contains session/delegation, a fresh batch ID, the original ordinal, tool call
+ID, tool name and normalized arguments. Host returns an opaque, single-use
+ticket. Registration performs no file lookup, grants no permission and takes
+no execution capacity. After preparation finishes, executors share one batch
+seal operation before submitting `tools.execute` with their ticket. Sequential
+batches do not register a partial batch. Tickets are bound to the exact call;
+changed arguments, cross-owner use, replay and execution before sealing fail.
+They are carried in asynchronous execution context, not a global call-ID map,
+so independent delegates cannot overwrite each other's bindings.
 
-See [the ADR](../../adr/parallel-read-batches.md).
+Host first applies the existing mode and permission checks. Only approved calls
+resolve trusted file resources through the session/delegation tool root and
+existing external-path resolver. A pending approval holds neither an active
+lease nor capacity. Until a potentially conflicting earlier call is classified
+or terminal, a later same-batch call waits conservatively. Once both identities
+are known, only conflicting predecessors enforce source order; predecessor
+failure or denial does not cascade. There is no model source order across
+independent batches/sessions, only active resource exclusion and queue fairness.
+
+| Tool / target | Host resource declaration |
+|---|---|
+| Existing regular-file Read | shared object identity and resolved address |
+| Existing regular-file Write / ordinary Edit | exclusive object identity and resolved address |
+| Glob / Grep | shared across the Host file coordination domain |
+| Missing target, unknown identity, unsupported filesystem | shared domain for a read; exclusive domain for a write |
+| Edit MV / REM or a named CUT/PUT register | exclusive domain |
+| Review rollback | exclusive domain, with the existing post-tool hash guard |
+
+Unix identities use dev/ino from an open file on a supported local filesystem;
+Windows uses volume serial plus FILE_ID_INFO on a local disk. The handle stays
+alive while the identity is queued or active. Hard links and symbolic links
+must conflict even with different basenames or roots. Roots determine permission
+and address resolution, not separate namespaces for physical file IDs. File
+names, file size, lexical keys and realpath alone cannot prove independence.
+The global domain includes approved external paths. Two shared declarations do
+not conflict. A domain declaration conflicts with every exclusive declaration;
+otherwise equal object identities or resolved addresses conflict when either
+side is exclusive. Unknown identity never falls back to presumed independence.
+
+ToolBudget grants all resources and execution capacity together. Waiting for a
+predecessor/resource does not occupy a capacity slot. Later conflicting calls
+cannot bypass an exclusive resource waiter; an earlier source-order call can
+bypass a later waiter from its own batch to avoid a queue/DAG deadlock. Existing
+limits remain: 16 total, 8 reads, 2 writes and 4 per session. Within a session,
+up to two writes may overlap only when both have validated batch tickets and
+trusted local file identities, subject to the existing conflict checks. All
+other mutations retain single-write admission and exclude coordinated writes
+in both arrival orders. An older source-ready conservative mutation waiter
+prevents later coordinated writes from continuously refilling that session;
+unready successors and source-predecessor bypass retain the DAG exceptions.
+The bounded admission wait still returns HOST_OVERLOADED after 30 seconds.
+Audit/debug diagnostics record total admission wait and its initial reason
+(source_order, resource or capacity); these are not disjoint duration segments.
+
+Identity/address is revalidated under the granted lease before review snapshots
+and in the actual blocking file task. A changed binding fails without writing
+or automatic replay. Namespace changes and missing-target writes use an
+exclusive domain fence. Snapshot, execution, Hashline state and final review
+snapshot share the lease; later rollback also acquires it without holding the
+AppState mutex while waiting. Cancelling an RPC future does not stop
+spawn_blocking: the blocking task retains the permit until its body ends.
+Unstarted calls are abandoned; a batch close cannot release active disk work.
+Registry limits are 512 calls globally, 128 per batch and 32 MiB of retained
+arguments. Unused metadata expires after 15 minutes; submitted/running calls
+are not expired through a pending permission decision or disk operation.
+
+Host resources replace sidecar PathMutex around calls on the supported path;
+the legacy path retains its original locking. Existing permission, Hashline,
+mutation-recovery and model result semantics remain in force. Parent/delegate
+path instructions still mutate only their own prompt. pi submits tool results
+in source order, irrespective of completion order. The guarantee covers file
+tools and rollback coordinated by one Host process; arbitrary external writers,
+Bash and another Host instance are not participants in this lease protocol.
+
+See [ordered preparation](../../adr/parallel-read-batches.md) and
+[Host file admission](../../adr/host-file-batch-admission.md).
 
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
+| Agent tools | Read / Glob / Grep / Write / Edit / Bash + Computer under an active scope grant + registered plugin tools + optional Jev classifier |
 | Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
 | Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Plan and Goal hard deny | Write / Edit / Computer / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
@@ -73,6 +134,7 @@ Let the agent get things done, but stay under control by default.
 | `Write` | high | Create/overwrite files; returns the post-write `tag` |
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
+| `Computer` | high | Inspect and operate the one native window or application the user granted; disabled without an active scope grant ([computer-use](computer-use.md), ADR 0342) |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
 | `TodoWrite` | low | Replace the current Agent session checklist; host validates and persists the full ordered snapshot |
 
@@ -159,7 +221,9 @@ instead of starting after Stop. `Bash` and `GenerateImages` use the existing
 process cancellation path; the runtime waits up to 10s for the host to return
 output collected before termination. Local `Read`, `Glob`, and `Grep` calls may
 end the runtime's wait immediately and return `TOOL_ABORTED`; their results are
-discarded. A blocking filesystem worker may continue until it returns, but
+discarded. This local stop does not wait for the `tools.abort` acknowledgement;
+late success or failure of either Host request cannot affect a subsequent turn.
+A blocking filesystem worker may continue until it returns, but
 these tools do not mutate the workspace. For a mutating, MCP, or plugin call
 that has already started, the runtime waits for the host result before it
 settles the turn, so Stop cannot hide a write or extension action that is still
@@ -350,7 +414,8 @@ visualization lives as long as its session:
 - **Permissions.** `Write`/`Edit` inside the root auto-allow without a card,
   under the same conditions as scratch. Plan and Goal expose no Write/Edit, so
   contract modes cannot write here. Results carry `root: "visualization"`, are
-  not recorded as artifacts, and are not review-snapshotted.
+  not recorded as artifacts. Successful Write/Edit operations retain bounded
+  review evidence without granting rollback access outside the workspace.
 - **Lifecycle.** Created lazily on the first write. Deleted with
   `session.delete`. The startup sweep removes only safe session directories
   whose session no longer exists; it never expires live cards by age or
@@ -382,9 +447,10 @@ visualization lives as long as its session:
 
 ## 4c. Message-owned review snapshots and rollback
 
-`Write` and `Edit` are the structured review boundary. For a successful
-workspace-root mutation, host-core captures the previous file before execution
-and adds bounded review evidence to the tool result:
+`Write` and `Edit` are the structured review boundary, regardless of whether
+their approved target is in the workspace, scratch, visualization, or external
+filesystem. After normal tool approval, host-core captures the previous file
+before execution and adds bounded review evidence only on tool success:
 
 ```ts
 type ReviewChange = {
@@ -406,8 +472,11 @@ type ReviewChange = {
 
 - The renderer persists and displays this record with the tool message; it
   does not recompute Review from Git, `HEAD`, or the current dirty tree.
-- Scratch-root, failed, denied, and unresolvable writes have no `review`
-  record. Binary or oversized content may omit hunks and be non-reversible.
+- Failed, denied, sensitive, and unresolvable writes have no `review` record.
+  Bash and external applications are not capture sources. Workspace paths remain
+  relative; other targets retain absolute identity and display as `.../basename`.
+  Binary or oversized content may omit hunks. Non-workspace snapshots are
+  readable evidence, not persistent path grants, and are non-reversible.
 - Rollback is host-owned and hash-guarded. It restores the captured previous
   bytes, or removes a newly-created file, only when the current content still
   equals the post-tool hash. A later edit returns `conflict` without touching
@@ -714,6 +783,12 @@ Rules:
 - `allow-session` grants continue to work under `ask` and stay scoped to the
   session; under `accept-edits`/`auto` they are simply never needed.
 - Scratch-directory writes (D114) stay prompt-free in every mode.
+- `Computer` is governed by its scope grant, not by the mode alone: creating a
+  grant is always an explicit desktop-UI decision, `auto` never mints one, and
+  no `allow-session` grant exists for it. Within an active grant, inspection
+  auto-allows and input follows the grant's `confirm-each` (the only policy
+  under `ask`) or `autonomous-in-scope` policy. Plan and Goal deny the tool
+  outright ([computer-use](computer-use.md)).
 - UI: Settings → segmented global default; composer shows a per-session chip in
   Agent, Plan, and Goal whose menu offers the three effective modes without a
   separate global-default/inherit entry. The chip and selected menu item

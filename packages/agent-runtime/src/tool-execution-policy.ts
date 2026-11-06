@@ -1,58 +1,40 @@
-/** Batch policy only: this does not grant permissions or coordinate other agents. */
+/** Logical tool policy. Only Host can prove that file resources are independent. */
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
-export function toolExecutionMode(name: string): "parallel" | "sequential" {
-  switch (name) {
-    case "Read":
-    case "Glob":
-    case "Grep":
-    case "Task":
-      return "parallel";
-    default:
-      return "sequential";
-  }
+export type ToolExecutionSpec = { mode: "parallel" | "sequential"; file?: true };
+export const TOOL_EXECUTION_SPECS: Readonly<Record<string, ToolExecutionSpec>> = {
+  Read: { mode: "parallel", file: true },
+  Glob: { mode: "parallel", file: true },
+  Grep: { mode: "parallel", file: true },
+  Write: { mode: "parallel", file: true },
+  Edit: { mode: "parallel", file: true },
+  Task: { mode: "parallel" },
+};
+
+export function toolExecutionMode(name: string, hostFileBatches = false): "parallel" | "sequential" {
+  if (!hostFileBatches && (name === "Write" || name === "Edit")) return "sequential";
+  return TOOL_EXECUTION_SPECS[name]?.mode ?? "sequential";
 }
 
-/**
- * Keep Task fan-out and read batches parallel, but preserve the old safety
- * boundary for a batch that mixes a background delegate with file reads.
- * Delegate write/resource coordination belongs to a later Host-owned phase.
- */
-export function resolveBatchExecutionMode(
-  assistantMessage: AssistantMessage,
-): "parallel" | "sequential" | undefined {
-  const names = assistantMessage.content
-    .filter((block): block is Extract<AssistantMessage["content"][number], { type: "toolCall" }> => block.type === "toolCall")
-    .map((block) => block.name);
-  const hasTask = names.includes("Task");
-  const hasFileRead = names.some((name) => name === "Read" || name === "Glob" || name === "Grep");
-  return hasTask && hasFileRead ? "sequential" : undefined;
+export function resolveBatchExecutionMode(message: AssistantMessage): "parallel" | "sequential" | undefined {
+  const names = message.content.filter((b) => b.type === "toolCall").map((b) => b.name);
+  return names.includes("Task") && names.some((name) => TOOL_EXECUTION_SPECS[name]?.file)
+    ? "sequential" : undefined;
 }
 
-export function resolveTaskExecutionMode(
-  lastMessage: unknown,
-): "parallel" | "sequential" {
-  if (
-    typeof lastMessage === "object" &&
-    lastMessage !== null &&
-    (lastMessage as { role?: unknown }).role === "assistant" &&
-    Array.isArray((lastMessage as { content?: unknown }).content) &&
-    resolveBatchExecutionMode(lastMessage as AssistantMessage) === "sequential"
-  ) {
-    return "sequential";
-  }
+export function resolveTaskExecutionMode(lastMessage: unknown): "parallel" | "sequential" {
+  if (typeof lastMessage === "object" && lastMessage !== null
+    && (lastMessage as { role?: unknown }).role === "assistant"
+    && Array.isArray((lastMessage as { content?: unknown }).content)
+    && resolveBatchExecutionMode(lastMessage as AssistantMessage) === "sequential") return "sequential";
   return "parallel";
 }
 
-export function withDynamicTaskExecutionMode<
-  T extends { name: string; executionMode?: "parallel" | "sequential" },
->(tool: T, getLastMessage: () => unknown): T {
-  if (tool.name !== "Task" || tool.executionMode !== "parallel") {
-    return tool;
-  }
+export function withDynamicTaskExecutionMode<T extends { name: string; executionMode?: "parallel" | "sequential" }>(
+  tool: T, getLastMessage: () => unknown,
+): T {
+  if (tool.name !== "Task" || tool.executionMode !== "parallel") return tool;
   return Object.defineProperty(tool, "executionMode", {
-    enumerable: true,
-    configurable: true,
-    get: () => resolveTaskExecutionMode(getLastMessage()),
+    enumerable: true, configurable: true, get: () => resolveTaskExecutionMode(getLastMessage()),
   });
 }

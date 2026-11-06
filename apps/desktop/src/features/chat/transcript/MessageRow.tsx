@@ -9,7 +9,8 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
-import { splitInlineContent } from "@pi-desktop/shared";
+import { splitComposerDirectoryPrompt, splitInlineContent } from "@pi-desktop/shared";
+import { DirectoryReferenceCard } from "../DirectoryReferenceCard";
 import { useOpenChatFileRef } from "../../../hooks/use-preview-target";
 import { sessionAllows } from "../../../lib/remote-session-safety";
 import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
@@ -111,6 +112,12 @@ export const MessageRow = memo(function MessageRow({
   // Runtime chunks are already progressive. Rendering that source directly
   // avoids a second per-frame state loop while Markdown memoizes stable blocks.
   const displayed = message.content || "";
+  const directories = useMemo(
+    () => isUser ? splitComposerDirectoryPrompt(displayed) : { text: displayed, paths: [] },
+    [isUser, displayed],
+  );
+  const folderSessionId = sessionAllows(session ?? { id: paneSessionId }, "canUseLocalTools")
+    ? paneSessionId : undefined;
   const hasAnswer = Boolean((message.content || "").trim());
   const revisionCount = message.revisionCount ?? 0;
   const activeRevision = message.activeRevision ?? revisionCount;
@@ -125,8 +132,8 @@ export const MessageRow = memo(function MessageRow({
   // The user's own order: an image chip the draft named inline renders between
   // the text runs it sat between, exactly where the Composer showed it.
   const userContentParts = useMemo(
-    () => splitInlineContent(String(message.content || ""), message.attachments ?? []).parts,
-    [message.attachments, message.content],
+    () => splitInlineContent(directories.text, message.attachments ?? []).parts,
+    [message.attachments, directories.text],
   );
   const renderContentPart = (
     part: (typeof userContentParts)[number],
@@ -310,7 +317,14 @@ export const MessageRow = memo(function MessageRow({
               </form>
             ) : isUser ? (
               <>
-                {message.content ? (
+                {directories.paths.length ? (
+                  <div className="directory-reference-list">
+                    {directories.paths.map((path, index) => (
+                      <DirectoryReferenceCard key={`${index}:${path}`} path={path} sessionId={folderSessionId} />
+                    ))}
+                  </div>
+                ) : null}
+                {directories.text || message.command ? (
                   <div className="message-user-text selectable">
                     {editableUserMessage && message.command ? (
                       <>
@@ -322,7 +336,7 @@ export const MessageRow = memo(function MessageRow({
                             className="chat-command-chip"
                             data-source-start={0}
                             data-source-end={message.content.length}
-                            title={String(message.content || "")}
+                            title={directories.text}
                           >
                             {message.command}
                           </code>

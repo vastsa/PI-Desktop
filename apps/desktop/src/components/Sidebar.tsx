@@ -2353,6 +2353,9 @@ export function Sidebar({
     const runIsLive = projectRunSummaryIsLive(runSummary);
     const showRunBadge = runningAffordances.badge && runIsLive;
     const showRunRail = runningAffordances.rail && runIsLive;
+    // Counts belong to one affordance only: the rail's figures stand in for
+    // the badge when it is switched off, so both on never prints them twice.
+    const showRunCount = runningAffordances.railCount && runIsLive;
 
     const renderProjectSessions = (sessions: SessionSummary[]) => {
       const result: React.ReactNode[] = [
@@ -2476,7 +2479,7 @@ export function Sidebar({
             )}
             <span>{entry.name}</span>
             {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
-            {showRunRail ? <ProjectRunCount summary={runSummary} /> : null}
+            {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
           </TooltipButton>
           <span id={`${projectId}-path-description`} className="sr-only">
@@ -2881,17 +2884,19 @@ export function Sidebar({
             >
               <IconPlug size={14} aria-hidden />
             </TooltipButton>
-            <TooltipButton
-              type="button"
-              className={`footer-action ${page === "scheduled" ? "active" : ""}`}
-              data-nav="scheduled"
-              tooltip={t("scheduled.title")}
-              ariaLabel={t("scheduled.title")}
-              onClick={() => setPage("scheduled")}
-              aria-pressed={page === "scheduled"}
-            >
-              <IconClock size={14} aria-hidden />
-            </TooltipButton>
+            {settings?.scheduledTasksEnabled !== false && (
+              <TooltipButton
+                type="button"
+                className={`footer-action ${page === "scheduled" ? "active" : ""}`}
+                data-nav="scheduled"
+                tooltip={t("scheduled.title")}
+                ariaLabel={t("scheduled.title")}
+                onClick={() => setPage("scheduled")}
+                aria-pressed={page === "scheduled"}
+              >
+                <IconClock size={14} aria-hidden />
+              </TooltipButton>
+            )}
             <NotificationCenter onBeforeOpen={() => closeMenus(false)} />
           </div>
 

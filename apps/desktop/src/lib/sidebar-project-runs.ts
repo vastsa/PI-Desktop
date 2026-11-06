@@ -31,14 +31,24 @@ export const EMPTY_PROJECT_RUN_SUMMARY: ProjectRunSummary = {
 export type ProjectRunSession = { id: string };
 
 /**
- * The two sidebar affordances, each gated by the master switch. Absent
- * settings mean "on" so an existing install keeps the affordances without a
- * migration, and turning the master switch off disables both regardless of
+ * The two sidebar affordances plus the numeric readout that travels with the
+ * rail. The master switch gates all of them; absent sub-switches mean "on"
+ * while the master must be explicitly enabled, so an install that never opted
+ * in stays quiet, and turning the master off disables everything regardless of
  * how the sub-switches are stored.
  */
 export type SidebarRunningAffordances = {
+  /** Count capsules after the project name. */
   badge: boolean;
+  /** Activity track down the group's left edge. */
   rail: boolean;
+  /**
+   * The figures that accompany the rail. They restate the badge, so they only
+   * render while the badge is off: with both sub-switches on the header would
+   * otherwise print the same counts twice (`.project-run-count` is documented
+   * as the badge's stand-in, not an addition to it).
+   */
+  railCount: boolean;
 };
 
 export function resolveSidebarRunningAffordances(
@@ -51,10 +61,9 @@ export function resolveSidebarRunningAffordances(
     | null,
 ): SidebarRunningAffordances {
   const master = settings?.sidebarRunningIndicators === true;
-  return {
-    badge: master && settings?.sidebarRunningBadge !== false,
-    rail: master && settings?.sidebarRunningRail !== false,
-  };
+  const badge = master && settings?.sidebarRunningBadge !== false;
+  const rail = master && settings?.sidebarRunningRail !== false;
+  return { badge, rail, railCount: rail && !badge };
 }
 
 /**

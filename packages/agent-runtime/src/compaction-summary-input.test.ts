@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { estimateTokens } from "./pi-runtime-estimates.js";
+import {
+  ESTIMATED_TEXT_CHARS_PER_TOKEN,
+  estimateTokens,
+} from "./pi-runtime-estimates.js";
 import {
   addSummaryUsage,
   compactionSummaryInputLimit,
@@ -10,6 +13,7 @@ import {
   COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS,
   COMPACTION_SUMMARY_RETRY_BASE_MS,
   COMPACTION_SUMMARY_RETRY_POLICY,
+  compactionSummaryReserveTokens,
   estimateSummaryPromptTokens,
   planSummaryChunks,
   reduceSummaryInput,
@@ -277,6 +281,60 @@ describe("planSummaryChunks", () => {
     });
 
     expect(chunks!.map((chunk) => chunk.length)).toEqual([3, 3, 3, 3]);
+  });
+
+  // The first chunk carries the real previous summary. Each later chunk carries
+  // a summary that fills the reserve planSummaryRequests holds for it. Both
+  // have to stay under the limit the preflight guard enforces.
+  function expectPlannedChunksUnderGuard(scenario: {
+    summaryInputLimit: number;
+    outputBudget: number;
+    previousSummary?: string;
+    messages: AgentMessage[];
+  }): void {
+    const reserveTokens = compactionSummaryReserveTokens({
+      previousSummary: scenario.previousSummary,
+      outputBudget: scenario.outputBudget,
+    });
+    const chunks = planSummaryChunks(
+      input(scenario.messages, { previousSummary: scenario.previousSummary }),
+      { summaryInputLimit: scenario.summaryInputLimit, reserveTokens },
+    );
+    expect(chunks).toBeDefined();
+    expect(chunks!.length).toBeGreaterThan(1);
+    const reserveSummary = "c".repeat(
+      Math.floor(reserveTokens * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    );
+    for (const [index, chunk] of chunks!.entries()) {
+      const tokens = estimateSummaryPromptTokens({
+        messagesToSummarize: chunk,
+        turnPrefixMessages: [],
+        isSplitTurn: false,
+        previousSummary: index === 0 ? scenario.previousSummary : reserveSummary,
+      });
+      expect(tokens, `chunk ${index}`).toBeLessThan(scenario.summaryInputLimit);
+    }
+  }
+
+  it("keeps a large carried summary inside the guard's window", () => {
+    expectPlannedChunksUnderGuard({
+      summaryInputLimit: 10_000,
+      outputBudget: 4_096,
+      previousSummary: "s".repeat(28_000),
+      messages: Array.from({ length: 40 }, (_, index) =>
+        user(`note ${index} ${"m".repeat(1_500)}`),
+      ),
+    });
+  });
+
+  it("keeps plain-text chunks with no previous summary inside the guard's window", () => {
+    expectPlannedChunksUnderGuard({
+      summaryInputLimit: 10_000,
+      outputBudget: 4_096,
+      messages: Array.from({ length: 48 }, (_, index) =>
+        user(`plain ${index} ${"p".repeat(1_500)}`),
+      ),
+    });
   });
 });
 

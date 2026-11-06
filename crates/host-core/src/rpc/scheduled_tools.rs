@@ -43,6 +43,7 @@ fn invalid(message: &str) -> JsonRpcError {
 }
 
 fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpcError> {
+    super::scheduled_settings::require_enabled(st)?;
     // The index row answers both questions this needs — does the session exist,
     // and what is its project? — so no transcript is materialized here.
     let summary = sessions::session_summary(&st.db, &p.session_id)

@@ -272,6 +272,9 @@ function buildApi() {
     workspace: {
       get: () => call("workspace.get"),
     },
+    projects: {
+      list: () => call("projects.list"),
+    },
     desktop: {
       listOperations: () => call("desktop.listOperations"),
       invoke: (input) => call("desktop.invoke", [input ?? {}]),
@@ -340,6 +343,13 @@ function buildApi() {
       importBatch: (input) => call("session.importBatch", [input ?? {}]),
       rename: (input) => call("session.rename", [input ?? {}]),
       delete: (input) => call("session.delete", [input ?? {}]),
+      // Message-level writes (`session.update.all` / `session.delete.all`, ADR
+      // 0339). The plugin supplies no scope: the main-process gateway derives it
+      // from the granted permissions.
+      appendMessage: (input) => call("session.appendMessage", [input ?? {}]),
+      replaceMessages: (input) => call("session.replaceMessages", [input ?? {}]),
+      deleteMessage: (input) => call("session.deleteMessage", [input ?? {}]),
+      truncateFrom: (input) => call("session.truncateFrom", [input ?? {}]),
     },
     // Read-only usage facts (`usage.read`). The main-process dispatch owns
     // the permission check and parameter bounds; the host returns per-turn

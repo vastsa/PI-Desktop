@@ -30,6 +30,8 @@ export const SessionPane = memo(function SessionPane({
   const transcript = useTranscriptView(sessionId);
   const loadTranscriptPage = useAppStore((state) => state.loadTranscriptPage);
   const returnToLatest = useAppStore((state) => state.returnToLatestTranscript);
+  const prepareReturnToLatest = useAppStore((state) => state.prepareReturnToLatestTranscript);
+  const prepareLatest = useCallback(() => prepareReturnToLatest(sessionId), [prepareReturnToLatest, sessionId]);
   const restoreTranscriptReading = useAppStore((state) => state.restoreTranscriptReading);
   const restoreReading = useCallback<RestoreTranscriptReading>(
     (position, signal) => restoreTranscriptReading(sessionId, position, signal),
@@ -84,6 +86,7 @@ export const SessionPane = memo(function SessionPane({
           hasMoreAfter={transcript.hasMoreAfter}
           onLoadNewer={() => loadTranscriptPage(sessionId, "after")}
           onReturnToLatest={() => returnToLatest(sessionId)}
+          onPrepareReturnToLatest={prepareLatest}
           navigationLoading={transcript.loading}
           isRunning={isRunning}
           pendingPermission={transcript.liveTail ? pendingPermission : undefined}

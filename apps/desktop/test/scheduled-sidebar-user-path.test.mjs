@@ -82,7 +82,7 @@ window.piDesktop = { platform: "win32", on() { return () => {}; }, async invoke(
   }
   return { ok: true, data };
 } };
-useAppStore.setState({ settings: storedSettings, settingsTab: "general", page: "chat", providers: [],
+useAppStore.setState({ settings: storedSettings, settingsTab: "appearance", page: "chat", providers: [],
   sessions: [{ id: "automation-session", title: "Hidden automation transcript", scheduledRun: true,
     projectPath: "/fixture", createdAt: timestamp, updatedAt: timestamp },
     { id: "ordinary", title: "Ordinary conversation", projectPath: "/fixture", createdAt: timestamp, updatedAt: timestamp }],

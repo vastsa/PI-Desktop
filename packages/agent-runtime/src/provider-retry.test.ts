@@ -309,7 +309,10 @@ describe("provider rate-limit retry", () => {
     });
   });
 
-  it("does not retry billing exhaustion when the captured status is 429", async () => {
+  it.each([
+    '429: {"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}',
+    '429: {"type":"FreeUsageLimitError","message":"Free usage limit reached."}',
+  ])("does not retry explicit quota exhaustion on HTTP 429: %s", async (errorMessage) => {
     let attempts = 0;
     let retryableClaims = 0;
     const claim = vi.fn((error: ClassifiedAgentError) => {
@@ -324,9 +327,7 @@ describe("provider rate-limit retry", () => {
       {},
       () => {
         attempts += 1;
-        return failedStream({
-          errorMessage: '429: {"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}',
-        });
+        return failedStream({ errorMessage });
       },
       { claim, headers: () => undefined, status: () => 429, sleep },
     );
@@ -336,7 +337,7 @@ describe("provider rate-limit retry", () => {
 
     expect(attempts).toBe(1);
     expect(claim).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "PROVIDER_ERROR", retriable: false }),
+      expect.objectContaining({ code: "PROVIDER_ERROR", retriable: false, message: errorMessage }),
       "request",
     );
     expect(sleep).not.toHaveBeenCalled();
@@ -1088,12 +1089,10 @@ describe("stream idle watchdog", () => {
     }
   });
 
-  it("clamps a positive override up to the retry backoff floor", () => {
+  it("clamps a positive override up to the supported idle minimum", () => {
     const previous = process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
     try {
-      // The watchdog wraps the retry adapter, so a budget under the largest
-      // retry delay would end a turn that is backing off exactly as the
-      // provider asked it to. `0` still disables it outright.
+      // Keep the existing positive minimum; `0` still disables the watchdog.
       process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "1000";
       expect(streamIdleTimeoutMs()).toBe(STREAM_IDLE_TIMEOUT_FLOOR_MS);
       expect(STREAM_IDLE_TIMEOUT_FLOOR_MS).toBeGreaterThan(1_000);

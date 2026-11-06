@@ -53,8 +53,10 @@ E2E harnesses point a build at a throwaway profile with it.
 7. Create main window / renderer
 8. Renderer performs `app/getVersion` healthcheck through main
 
-If step 3–4 fails: block app with recovery message. Before a successful host
-boot serves RPC, host-core transactionally marks prior pending approvals and
+If the first `app.handshake` times out, Main disposes the failed child and
+starts a fresh one once in the same launch. Shutdown and other startup errors
+bypass this retry. If startup still fails, show the recovery surface. Before
+a successful host boot serves RPC, host-core transactionally marks prior pending approvals and
 queued/running `plan_approvals` execution states interrupted and aborts their
 running turns. This internal process-epoch fence is not serialized or sent over
 the protocol.
@@ -271,6 +273,15 @@ windows and an explicit Quit action. Quit from the tray, the existing close
 path, or an update install still enters the normal shutdown sequence above;
 destroying the tray happens during `before-quit` so shutdown cannot be
 intercepted by a stale shell affordance.
+
+`before-quit` alone is not a shutdown signal: the first explicit quit is held
+for the D363 confirmation, and Cancel keeps the app running. Only the shutdown
+handler listens to `before-quit`. Long-lived main-process services that must
+survive a cancelled quit — the scheduled-task runner and the voice service —
+register through `onConfirmedQuit` (`electron/main/bootstrap/confirmed-quit.ts`)
+and stop only once the quit is committed. A service that stopped from its own
+`before-quit` listener stayed stopped after Cancel until the next restart
+(issue #2048).
 
 On macOS the app runs under the regular (foreground) activation policy for its
 whole lifetime, so it is always listed in the Dock and Cmd+Tab: Main never

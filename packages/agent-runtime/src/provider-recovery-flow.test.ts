@@ -17,21 +17,36 @@ const provider: RuntimeProviderConfig = {
 };
 
 type Failure = "network" | "rate-limit" | "stream";
-type Step = Failure | "tool" | "success";
+type Step = Failure | "tool" | "success" | "stall";
 
 /** Real provider adapter and agent loop; replace only fetch and the host edge. */
-function fixture(steps: Step[]) {
+function fixture(steps: Step[], retryAfterMs = 1) {
   let requests = 0;
   let reads = 0;
+  let abortedRequests = 0;
+  const startedAborted: boolean[] = [];
   const events: AgentEventEnvelope[] = [];
-  const fetch = vi.fn(async (): Promise<Response> => {
+  const fetch = vi.fn(async (_input: unknown, init?: RequestInit): Promise<Response> => {
+    startedAborted.push(init?.signal?.aborted === true);
     const step = steps[requests++];
     if (!step) throw new Error("Unexpected provider request");
+    if (step === "stall") {
+      const signal = init?.signal;
+      if (!signal) throw new Error("The fixture request needs an abort signal");
+      return new Promise<Response>((_resolve, reject) => {
+        const abort = () => {
+          abortedRequests++;
+          reject(new DOMException("Request aborted", "AbortError"));
+        };
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+    }
     if (step === "network") throw new TypeError("fetch failed");
     if (step === "rate-limit")
       return new Response("Rate limited", {
         status: 429,
-        headers: { "retry-after-ms": "1" },
+        headers: { "retry-after-ms": String(retryAfterMs) },
       });
     const delta =
       step === "tool"
@@ -85,6 +100,7 @@ function fixture(steps: Step[]) {
     },
     host: {
       async call<T>(method: string): Promise<T> {
+        if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
         if (method === "session.appendMessage") return undefined as T;
         if (method !== "tools.execute")
           throw new Error(`Unexpected host method: ${method}`);
@@ -122,10 +138,11 @@ function fixture(steps: Step[]) {
     ],
     onEvent: (event) => events.push(event),
   });
-  return { runtime, subagent, events, requests: () => requests, reads: () => reads };
+  return { runtime, subagent, events, requests: () => requests, reads: () => reads,
+    abortedRequests: () => abortedRequests, startedAborted };
 }
 
-async function settle<T>(promise: Promise<T>): Promise<T> {
+async function settle<T>(promise: Promise<T>, seconds = 180): Promise<T> {
   let settled = false;
   // Attach handlers before advancing clocks so expected terminal rejections
   // never become unhandled rejections in the test process.
@@ -136,7 +153,7 @@ async function settle<T>(promise: Promise<T>): Promise<T> {
   void observed.then(() => {
     settled = true;
   });
-  for (let tick = 0; tick < 180 && !settled; tick++)
+  for (let tick = 0; tick < seconds && !settled; tick++)
     await vi.advanceTimersByTimeAsync(1000);
   expect(settled, "run settles inside the bounded recovery window").toBe(true);
   const result = await observed;
@@ -146,10 +163,69 @@ async function settle<T>(promise: Promise<T>): Promise<T> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
 describe("provider recovery through real agent loops (#699)", () => {
+  for (const [idleTimeout, failures] of [[180_000, 10], [30_000, 1]] as const) {
+    it(`keeps ${failures} rate-limit waits outside the ${idleTimeout}ms stream idle budget`, async () => {
+      vi.useFakeTimers();
+      vi.stubEnv("PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS", String(idleTimeout));
+      const f = fixture([...Array<Step>(failures).fill("rate-limit"), "success"], 30_000);
+      try {
+        await settle(f.runtime.prompt("Report after the provider becomes available."), 400);
+        expect(f.requests()).toBe(failures + 1);
+        expect(f.events.filter((event) => event.event.type === "error")).toHaveLength(0);
+        expect(f.events.some(({ event }) => event.type === "message_end" &&
+          event.message.content === "Recovered" && event.message.status === "complete")).toBe(true);
+        const attempts = f.events.flatMap(({ event }) =>
+          event.type === "status" && event.status.activity?.phase === "retrying"
+            ? [event.status.activity.attempt] : []);
+        expect(attempts).toEqual(Array.from({ length: failures }, (_, index) => index + 1));
+      } finally {
+        await f.runtime.dispose();
+      }
+    });
+  }
+
+  it("aborts a silent attempt and retries with a fresh request signal", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS", "30000");
+    const f = fixture(["stall", "success"]);
+    try {
+      await settle(f.runtime.prompt("Recover from a silent provider."));
+      expect(f.requests()).toBe(2);
+      expect(f.abortedRequests()).toBe(1);
+      expect(f.startedAborted).toEqual([false, false]);
+      expect(f.events.filter(({ event }) => event.type === "error")).toHaveLength(0);
+      expect(f.events.some(({ event }) => event.type === "message_end" &&
+        event.message.content === "Recovered" && event.message.status === "complete")).toBe(true);
+    } finally {
+      await f.runtime.dispose();
+    }
+  });
+
+  it("keeps repeated idle timeouts inside the shared retry budget", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS", "30000");
+    const f = fixture(Array<Step>(11).fill("stall"));
+    try {
+      await settle(f.runtime.prompt("Report."), 450);
+      expect(f.requests()).toBe(11);
+      expect(f.abortedRequests()).toBe(11);
+      const errors = f.events.filter(({ event }) => event.type === "error");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.event).toMatchObject({
+        type: "error", error: { code: "STREAM_FAILED", details: { retryAttempt: 10 } },
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(f.requests()).toBe(11);
+    } finally {
+      await f.runtime.dispose();
+    }
+  });
+
   for (const owner of ["session", "subagent"] as const) {
     for (const failure of ["network", "rate-limit", "stream"] as const) {
       it(`${owner} recovers independent ${failure} outages across eleven successful tool rounds`, async () => {
@@ -235,9 +311,9 @@ describe("provider recovery through real agent loops (#699)", () => {
     });
   }
 
-  it("cancels the retry wait without opening another provider request", async () => {
+  it.each(["network", "rate-limit"] as const)("cancels a %s retry wait without opening another provider request", async (failure) => {
     vi.useFakeTimers();
-    const f = fixture(["network"]);
+    const f = fixture([failure], 30_000);
     try {
       const prompt = f.runtime.prompt("Report.").catch((error) => error);
       await vi.waitFor(() =>
@@ -250,7 +326,7 @@ describe("provider recovery through real agent loops (#699)", () => {
       );
       await f.runtime.abort();
       await settle(prompt);
-      await vi.advanceTimersByTimeAsync(10000);
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(f.requests()).toBe(1);
       expect(f.events.filter((e) => e.event.type === "agent_end")).toHaveLength(1);
       expect(

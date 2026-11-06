@@ -10,6 +10,7 @@ import { useSyncExternalStore } from "react";
 export type ReviewFocusRequest = {
   /** Scrolled into view in order; the first one found becomes the anchor. */
   snapshotIds: readonly string[];
+  sessionId?: string;
   /** Open each named change's diff, or only reveal the rows. */
   expand: boolean;
   seq: number;
@@ -21,11 +22,11 @@ const listeners = new Set<() => void>();
 
 export function requestReviewFocus(
   snapshotIds: readonly string[],
-  { expand }: { expand: boolean },
+  { expand, sessionId }: { expand: boolean; sessionId?: string },
 ): void {
   if (snapshotIds.length === 0) return;
   sequence += 1;
-  current = { snapshotIds: [...snapshotIds], expand, seq: sequence };
+  current = { snapshotIds: [...snapshotIds], expand, seq: sequence, ...(sessionId ? { sessionId } : {}) };
   for (const listener of listeners) listener();
 }
 
@@ -42,4 +43,11 @@ function subscribe(listener: () => void): () => void {
 
 export function useReviewFocusRequest(): ReviewFocusRequest | null {
   return useSyncExternalStore(subscribe, currentReviewFocusRequest, () => null);
+}
+
+export function scrollReviewToAnchor(scroller: HTMLElement | null, selector: string): void {
+  const anchor = scroller?.querySelector<HTMLElement>(selector);
+  if (!scroller || !anchor) return;
+  // Ancestor scrolling can move the app shell and hide the window chrome.
+  scroller.scrollTop += anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
 }

@@ -5,7 +5,8 @@ import {
 } from "./mutation-recovery.js";
 import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 import { resolveMcpToolSelection } from "./mcp-tool-selection.js";
-import { toolExecutionMode, withDynamicTaskExecutionMode } from "./tool-execution-policy.js";
+import { BatchPlanner, withBatchTurn } from "./batch-planner.js";
+import { TOOL_EXECUTION_SPECS, resolveBatchExecutionMode, toolExecutionMode, withDynamicTaskExecutionMode } from "./tool-execution-policy.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, restoredToolActivation, syncToolActivation, type ToolDeclarationPolicy } from "./fixed-tool-declarations.js";
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
@@ -16,6 +17,7 @@ import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
+import { computerUseDescription, computerUseParameters } from "./computer-use/tool.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { createJevClassifierTool } from "./jev-classifier-tool.js";
@@ -151,9 +153,16 @@ import {
   usageFromPi,
   usageToPi,
 } from "./agent-messages.js";
+import {
+  hostContentBlockText,
+  restoredToolResultContent,
+} from "./tool-result-content.js";
 import { withExplicitRequired } from "./tool-schema.js";
 import { buildSessionContext } from "./session-context.js";
-import { prepareCompaction } from "./pi-runtime-compaction-plan.js";
+import {
+  collectMessageFileOperations,
+  prepareCompaction,
+} from "./pi-runtime-compaction-plan.js";
 import { compact } from "./pi-runtime-compaction-summary.js";
 import {
   ESTIMATED_TEXT_CHARS_PER_TOKEN,
@@ -264,6 +273,7 @@ import {
   addSummaryUsage,
   compactionSummaryInputLimit,
   compactionSummaryOutputBudget,
+  compactionSummaryReserveTokens,
   COMPACTION_SUMMARY_RETRY_POLICY,
   estimateSummaryPromptTokens,
   planSummaryChunks,
@@ -1006,6 +1016,12 @@ export type AgentRuntimeOptions = {
   fastMode?: boolean;
   /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
   jevApiKey?: string;
+  /**
+   * Whether the `Computer` tool is offered at all (ADR 0342). Resolved by
+   * Electron main from settings, so a disabled feature is absent from the
+   * prompt rather than advertised and refused on every call.
+   */
+  computerUseEnabled?: boolean;
   systemPrompt?: string;
   /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
   customSystemPrompt?: CustomSystemPrompt;
@@ -1082,6 +1098,7 @@ export type RuntimeMatchConfig = {
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
   jevApiKey?: string;
+  computerUseEnabled?: boolean;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
@@ -1597,33 +1614,6 @@ function selectRetainedUserMessages(
 }
 
 /**
- * Model-visible text for one host tool content block. Besides plain `text`
- * blocks, MCP servers return file bodies as embedded text resources and large
- * payloads as resource links (github-mcp-server `get_file_contents` sends a
- * status line plus one of these), so dropping them next to a sibling text
- * block hides the actual result from the model. Binary resources and other
- * block kinds have no text to show and stay out of the text channel.
- */
-function hostContentBlockText(block: unknown): string | undefined {
-  if (!isRecord(block)) return undefined;
-  if (block.type === "text" && typeof block.text === "string") return block.text;
-  if (
-    block.type === "resource" &&
-    isRecord(block.resource) &&
-    typeof block.resource.text === "string"
-  ) {
-    return block.resource.text;
-  }
-  if (block.type === "resource_link" && typeof block.uri === "string") {
-    const name = typeof block.name === "string" && block.name.trim()
-      ? `${block.name.trim()}: `
-      : "";
-    return `[resource link] ${name}${block.uri}`;
-  }
-  return undefined;
-}
-
-/**
  * JSON text fallback for a host result that produced no text blocks. Image
  * `data` and resource `blob` bytes stay off the text channel; type, mimeType,
  * and uri remain so the model still sees what was attached.
@@ -1656,67 +1646,7 @@ export function toolResultFromUi(
   timestamp: number,
 ): ToolResultMessage {
   const raw: unknown = m.toolResult;
-  const blocks: ToolResultMessage["content"] = [];
-  const rawBlocks =
-    isRecord(raw) && Array.isArray(raw.content) ? raw.content : undefined;
-  if (rawBlocks) {
-    for (const b of rawBlocks) {
-      if (!isRecord(b)) continue;
-      // Same text rule as live execution: embedded MCP resources and resource
-      // links stay visible after a session restore. Binary resources have no
-      // text and stay out.
-      const blockText = hostContentBlockText(b);
-      if (blockText !== undefined) {
-        blocks.push({ type: "text", text: blockText });
-      } else if (
-        b.type === "image" &&
-        typeof b.data === "string" &&
-        typeof b.mimeType === "string"
-      ) {
-        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
-      }
-    }
-  } else if (Array.isArray(raw)) {
-    // Plugin tools may return a bare content-block array; restore its text
-    // and image blocks so a restart does not flatten them into JSON (#1360).
-    for (const b of raw) {
-      if (!isRecord(b)) continue;
-      const blockText = hostContentBlockText(b);
-      if (blockText !== undefined) {
-        blocks.push({ type: "text", text: blockText });
-      } else if (
-        b.type === "image" &&
-        typeof b.data === "string" &&
-        typeof b.mimeType === "string"
-      ) {
-        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
-      }
-    }
-  } else if (typeof raw === "string" && raw.trim()) {
-    blocks.push({ type: "text", text: raw });
-  } else if (raw !== undefined && raw !== null) {
-    // A host Read of an image file returns a top-level `images` array rather
-    // than content blocks; restore those as real image content so the model
-    // sees the picture across a restart, not just the JSON text (#1073).
-    const rawObject = isRecord(raw) ? raw : undefined;
-    const images = rawObject?.images;
-    if (rawObject && Array.isArray(images)) {
-      const rest = { ...rawObject };
-      delete rest.images;
-      blocks.push({ type: "text", text: safeJson(rest) });
-      for (const image of images) {
-        if (
-          isRecord(image) &&
-          typeof image.data === "string" &&
-          typeof image.mimeType === "string"
-        ) {
-          blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
-        }
-      }
-    } else {
-      blocks.push({ type: "text", text: safeJson(raw) });
-    }
-  }
+  const blocks = restoredToolResultContent(raw);
   const interrupted = m.toolStatus === "running";
   const rawRecord: Record<string, unknown> | undefined = isRecord(raw)
     ? raw
@@ -1865,6 +1795,7 @@ export class DesktopAgentRuntime {
   private model: Model<Api>;
   private turnId?: string;
   private disposed = false;
+  private aborting?: Promise<void>;
   readonly sessionId: string;
   private mode: Mode;
   private provider: RuntimeProviderConfig;
@@ -1927,6 +1858,8 @@ export class DesktopAgentRuntime {
   private delegateWorktrees = new Map<string, string>();
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
+  /** Orders one parallel batch's calls by the resources they claim. */
+  private batchPlanner: BatchPlanner;
   /** Complete tool registry; only the active subset is sent to the provider. */
   private toolCatalog = new Map<string, AgentTool>();
   /** Tools intentionally omitted from the initial provider request. */
@@ -2005,6 +1938,7 @@ export class DesktopAgentRuntime {
   private infiniteProviderRetry = false;
   private fastMode = false;
   private jevApiKey?: string;
+  private computerUseEnabled = false;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -2116,7 +2050,9 @@ export class DesktopAgentRuntime {
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
     this.fastMode = opts.fastMode === true;
     this.jevApiKey = opts.jevApiKey;
+    this.computerUseEnabled = opts.computerUseEnabled === true;
     this.host = opts.host;
+    this.batchPlanner = new BatchPlanner(this.host, this.sessionId);
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
       this.cleanupActiveToolProgress();
@@ -2301,14 +2237,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           m.api,
           this.fastMode,
         );
-        // The watchdog must be able to *stop* what it abandons. It wraps the
-        // retry adapter, so draining alone would let the adapter wake from its
-        // backoff and open a second request for this turn while the runtime is
-        // already re-running the turn — two provider requests and two bills for
-        // one answer. So the stall trips a signal this request owns, combined
-        // with pi's own run signal (Stop must keep working): the adapter refuses
-        // to start an attempt on an aborted signal, and its backoff sleep rejects.
-        const stallAbort = new AbortController();
         // Both output clamps, ours and pi-ai's inside `streamSimple`, must see
         // the instructions the adapter sends, not every superseded snapshot.
         const requestContext = requestTranscript(m, context);
@@ -2320,24 +2248,33 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // `thinkingLevel: "omit"` would otherwise send it untouched, and
           // both consume an estimate that under-counts CJK text (issue B).
           maxTokens: clampOutputToContext(m, requestContext, hookedOptions.maxTokens),
-          signal: AbortSignal.any([
-            ...(hookedOptions.signal ? [hookedOptions.signal] : []),
-            stallAbort.signal,
-          ]),
         };
         const usageTurnId = this.turnId;
         const retryStream = createProviderRetryStream(
           m,
           requestContext,
           attemptOptions,
-          (retryOptions) => accountModelStream(m, () =>
-            this.thinkingLevel === "omit"
-              ? this.models.stream(omitThinkingModel(m), requestContext, retryOptions)
-              : this.models.streamSimple(m, requestContext, retryOptions), {
+          (retryOptions) => {
+            // Each network attempt owns its idle clock and abort signal.
+            // Deliberate backoff must not look like a stalled provider stream.
+            const stallAbort = new AbortController();
+            const timedOptions = {
+              ...retryOptions,
+              signal: AbortSignal.any([
+                ...(retryOptions.signal ? [retryOptions.signal] : []),
+                stallAbort.signal,
+              ]),
+            };
+            const stream = accountModelStream(m, () =>
+              this.thinkingLevel === "omit"
+                ? this.models.stream(omitThinkingModel(m), requestContext, timedOptions)
+                : this.models.streamSimple(m, requestContext, timedOptions), {
                 providerId: this.provider.id,
                 nativeCost: this.provider.modelConfig?.nativeCost,
                 onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
-              }),
+              });
+            return withStreamIdleTimeout(stream, m, streamIdleTimeoutMs(), () => stallAbort.abort());
+          },
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
             headers: () => this.providerRetryHeaders,
@@ -2355,14 +2292,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             },
           },
         );
-        // Zero-event idle watchdog: a stream that emits nothing for the
-        // configured budget ends as a STREAM_FAILED error and re-enters the
-        // shared transient retry path instead of hanging the turn on a
-        // connection the provider never closes.
-        return this.uniqueToolCalls(
-          withStreamIdleTimeout(retryStream, m, streamIdleTimeoutMs(), () => stallAbort.abort()),
-          context.messages,
-        );
+        return this.uniqueToolCalls(retryStream, context.messages);
       },
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
       // from overriding the auth the provider just resolved for this request.
@@ -2724,6 +2654,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const blocked = await this.extensionToolCall(context);
       if (blocked?.block) return blocked;
       await this.preparePathToolCall(context);
+      await this.registerBatchCall(context);
       return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
@@ -2766,8 +2697,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.emit({ type: "planning_state", state, ...details });
   }
 
-  /** True when this runtime can be reused for a prompt with the given config. */
-  matches(config: RuntimeMatchConfig): boolean {
+  /**
+   * First reason this runtime cannot be reused for the given config, or null
+   * when it matches. Field names are diagnostics, not API: they name the
+   * comparison that failed so a rebuild can be attributed (#1948) instead of
+   * leaving "why did my cache reset" unanswerable.
+   */
+  firstMismatch(config: RuntimeMatchConfig): string | null {
     const requestedPluginTools = config.pluginTools ?? [];
     const current = safeJson([...this.pluginTools].sort((a, b) => a.name.localeCompare(b.name)));
     const next = safeJson([...requestedPluginTools].sort((a, b) => a.name.localeCompare(b.name)));
@@ -2785,49 +2721,62 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       Boolean(this.provider.extensionAgentKey) &&
       this.provider.extensionAgentKey === config.provider.extensionAgentKey &&
       this.provider.modelId === config.provider.modelId;
-    const providerMatches = extensionAgentMatches || (
-      this.provider.id === config.provider.id &&
-      this.provider.modelId === config.provider.modelId &&
-      (this.provider.baseUrl ?? "") === (config.provider.baseUrl ?? "") &&
-      this.provider.apiKey === config.provider.apiKey &&
-      this.provider.authKind === config.provider.authKind &&
-      (this.provider.apiStyle ?? "") === (config.provider.apiStyle ?? "") &&
-      providerHeadersEqual(this.provider.headers, config.provider.headers) &&
-      this.provider.supportsReasoning === config.provider.supportsReasoning &&
-      currentThinkingLevels === nextThinkingLevels &&
-      safeJson(this.provider.modelConfig ?? null) === safeJson(config.provider.modelConfig ?? null)
-    );
-    return (
-      !this.disposed &&
-      providerMatches &&
-      this.mode === config.mode &&
-      this.jevApiKey === config.jevApiKey &&
-      this.thinkingLevel ===
-        clampThinkingLevel(config.provider, config.thinkingLevel) &&
-      current === next &&
-      safeJson(this.commandShell) === safeJson(config.commandShell) &&
-      safeJson(this.baseProjectInstructions ?? null) ===
-        safeJson(config.projectInstructions ?? null) &&
+    // An extension agent is identified by its key and model alone; the other
+    // provider fields belong to the plugin that declared it.
+    if (!extensionAgentMatches) {
+      const providerChecks: Array<[string, boolean]> = [
+        ["provider.id", this.provider.id === config.provider.id],
+        ["provider.modelId", this.provider.modelId === config.provider.modelId],
+        ["provider.baseUrl", (this.provider.baseUrl ?? "") === (config.provider.baseUrl ?? "")],
+        ["provider.apiKey", this.provider.apiKey === config.provider.apiKey],
+        ["provider.authKind", this.provider.authKind === config.provider.authKind],
+        ["provider.apiStyle", (this.provider.apiStyle ?? "") === (config.provider.apiStyle ?? "")],
+        ["provider.headers", providerHeadersEqual(this.provider.headers, config.provider.headers)],
+        ["provider.supportsReasoning", this.provider.supportsReasoning === config.provider.supportsReasoning],
+        ["provider.supportedThinkingLevels", currentThinkingLevels === nextThinkingLevels],
+        ["provider.modelConfig", safeJson(this.provider.modelConfig ?? null) === safeJson(config.provider.modelConfig ?? null)],
+      ];
+      for (const [field, ok] of providerChecks) {
+        if (!ok) return field;
+      }
+    }
+    const checks: Array<[string, boolean]> = [
+      ["disposed", !this.disposed],
+      ["mode", this.mode === config.mode],
+      ["jevApiKey", this.jevApiKey === config.jevApiKey],
+      // Turning computer use on or off changes the tool list, so the runtime
+      // is retired rather than left advertising a stale set.
+      ["computerUseEnabled", this.computerUseEnabled === (config.computerUseEnabled === true)],
+      ["thinkingLevel", this.thinkingLevel === clampThinkingLevel(config.provider, config.thinkingLevel)],
+      ["pluginTools", current === next],
+      ["commandShell", safeJson(this.commandShell) === safeJson(config.commandShell)],
+      ["projectInstructions", safeJson(this.baseProjectInstructions ?? null) === safeJson(config.projectInstructions ?? null)],
       // Editing SYSTEM.md / APPEND_SYSTEM.md retires the runtime so the next
       // prompt recomposes from the fresh content.
-      safeJson(this.customSystemPrompt ?? null) ===
-        safeJson(config.customSystemPrompt ?? null) &&
-      (this.projectMemory ?? "") === (config.projectMemory?.trim() ?? "") &&
-      (this.projectPath ?? "") === (config.remoteWorkspace?.path ?? config.projectPath?.trim() ?? "") &&
-      safeJson(this.remoteWorkspace ?? null) === safeJson(config.remoteWorkspace ?? null) &&
-      (this.workspaceRoot ?? "") === (config.workspaceRoot?.trim() ?? "") &&
+      ["customSystemPrompt", safeJson(this.customSystemPrompt ?? null) === safeJson(config.customSystemPrompt ?? null)],
+      ["projectMemory", (this.projectMemory ?? "") === (config.projectMemory?.trim() ?? "")],
+      ["projectPath", (this.projectPath ?? "") === (config.remoteWorkspace?.path ?? config.projectPath?.trim() ?? "")],
+      ["remoteWorkspace", safeJson(this.remoteWorkspace ?? null) === safeJson(config.remoteWorkspace ?? null)],
+      ["workspaceRoot", (this.workspaceRoot ?? "") === (config.workspaceRoot?.trim() ?? "")],
       // Editing `~/.agents/subagents/*.md` must reach the next prompt. Definition
       // bodies are part of the `Task` tool's behavior, so unlike skills they
       // are compared in full.
-      safeJson(this.subagents) === safeJson(config.subagents ?? []) &&
-      safeJson(this.subagentProviders) === safeJson(config.subagentProviders ?? {}) &&
-      safeJson([...this.subagentModelKeys].sort()) ===
-        safeJson([...new Set(config.subagentModelKeys ?? [])].sort()) &&
+      ["subagents", safeJson(this.subagents) === safeJson(config.subagents ?? [])],
+      ["subagentProviders", safeJson(this.subagentProviders) === safeJson(config.subagentProviders ?? {})],
+      ["subagentModelKeys", safeJson([...this.subagentModelKeys].sort()) === safeJson([...new Set(config.subagentModelKeys ?? [])].sort())],
       // Enabling or disabling a trusted extension retires the runtime so the
       // next prompt reloads the set (spec 16 §4.3).
-      trustedExtensionIds(this.trustedExtensionSpecs) ===
-        trustedExtensionIds(config.trustedExtensions ?? [])
-    );
+      ["trustedExtensions", trustedExtensionIds(this.trustedExtensionSpecs) === trustedExtensionIds(config.trustedExtensions ?? [])],
+    ];
+    for (const [field, ok] of checks) {
+      if (!ok) return field;
+    }
+    return null;
+  }
+
+  /** True when this runtime can be reused for a prompt with the given config. */
+  matches(config: RuntimeMatchConfig): boolean {
+    return this.firstMismatch(config) === null;
   }
 
   /**
@@ -3357,6 +3306,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       " An explicit path outside the workspace and session scratch roots requires permission unless the effective mode is Auto.";
     const describe = (toolName: string): string => {
       if (toolName === "GenerateImages") return imageGenerationDescription;
+      if (toolName === "Computer") return computerUseDescription;
       if (scheduledToolDescriptions[toolName]) return scheduledToolDescriptions[toolName];
       switch (toolName) {
         case "BrowserPreview":
@@ -3412,6 +3362,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // stopped being readable.
     const parameters: Record<string, Parameters<typeof Type.Object>[0]> = {
       GenerateImages: imageGenerationParameters,
+      Computer: computerUseParameters,
       TodoWrite: todoWriteParameters,
       Read: {
         path: pathParam(
@@ -3591,7 +3542,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // waiting on a blocking read/search. Mutating, MCP, and plugin calls
         // must settle before the turn is reported stopped. Bash and image
         // generation retain their host process-abort path and grace window.
-        const hostAbortsProcess = isBash || toolName === "GenerateImages";
+        // Computer use joins them: main owns a loop that must settle before
+        // the turn is reported stopped, not be abandoned mid-action.
+        const hostAbortsProcess =
+          isBash || toolName === "GenerateImages" || toolName === "Computer";
         const canAbandonWait = READ_ONLY_CORE_TOOLS.has(toolName);
         const abortedMarker = Symbol("tool-aborted");
         let resolveAborted: (marker: typeof abortedMarker) => void = () => undefined;
@@ -3677,6 +3631,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               toolCallId,
               toolName,
               args: params,
+              ...(this.batchPlanner.ticket(toolCallId) ? { fileBatchTicket: this.batchPlanner.ticket(toolCallId) } : {}),
               mode: this.mode,
               ...(isBash
                 ? {
@@ -3736,8 +3691,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // it armed is released here instead.
           if (abortGraceTimer) clearTimeout(abortGraceTimer);
         }
-        if (abortPromise) await abortPromise;
-        if (abortError) throw abortError;
+        // A local read-only stop cannot depend on the same Host answering a
+        // second RPC. Its abort request already observes late rejections.
+        // Other tools retain Host settlement ownership for their side effects.
+        if (!canAbandonWait) {
+          if (abortPromise) await abortPromise;
+          if (abortError) throw abortError;
+        }
         if (stopped) {
           throw Object.assign(
             new Error(`tool execution aborted while ${toolName} was running`),
@@ -3975,13 +3935,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // Direct/internal invocations retain preflight. pi invocations have
           // already committed instructions in the ordered preparation phase.
           if (!prepared) await this.loadPathInstructions(toolName, params, this.instructionExecution.getStore());
-          if (PATH_MUTATING_TOOLS.has(toolName)) {
+          if (!this.batchPlanner.supported && PATH_MUTATING_TOOLS.has(toolName)) {
             return this.writeLocks.run(
               this.pathLockKey(toolCallId, params),
               () => run(toolCallId, params, signal, onUpdate),
             );
           }
-          if (toolName === "Read") {
+          if (!this.batchPlanner.supported && toolName === "Read") {
             return this.writeLocks.read(
               this.pathLockKey(toolCallId, params),
               () => run(toolCallId, params, signal, onUpdate),
@@ -4063,6 +4023,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         : ["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Write", "Edit"];
     if (this.mode === "agent") {
       tools.push("PluginScaffold", "PluginPack", "GenerateImages", ...Object.keys(scheduledToolParameters));
+      if (this.computerUseEnabled) tools.push("Computer");
     }
     const builtins = tools.map(exec);
     for (const tool of builtins) this.builtinTools.add(tool);
@@ -4170,20 +4131,24 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // The execution mode is decided here, in one place, so no tool can grow
       // an accidental parallel batch: unknown tools remain sequential.
       // pi runs a whole batch sequentially when it holds one sequential tool;
-      // the batch-level policy also keeps Task mixed with file reads behind
-      // the delegate completion boundary.
+      // the batch-level policy also keeps Task mixed with any file tool
+      // (Read/Glob/Grep/Write/Edit) sequential; only reads ordered after a
+      // writable Task wait for that delegate to settle.
       // The provider-facing schema is settled here too, at the single origin of
       // every tool, so the session agent and a delegated `Task` run send the
       // same declaration (#864).
       const builtin = this.builtinTools.has(tool);
+      const guarded = withModeExecutionGuard(
+        withExplicitRequired({
+          ...tool,
+          executionMode: builtin ? toolExecutionMode(tool.name, this.batchPlanner.supported) : "sequential",
+        }),
+        () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
+      );
+      // Batch ordering wraps the mode guard: a call the guard rejects must
+      // still release the calls ordered behind it in its batch.
       const catalogTool = withDynamicTaskExecutionMode(
-        withModeExecutionGuard(
-          withExplicitRequired({
-            ...tool,
-            executionMode: builtin ? toolExecutionMode(tool.name) : "sequential",
-          }),
-          () => this.isToolAllowedInMode(tool.name) ? undefined : modeToolDenial(tool.name, this.mode),
-        ),
+        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(guarded, this.batchPlanner) : guarded,
         () => this.agent?.state.messages.at(-1),
       );
       if (builtin) this.builtinTools.add(catalogTool);
@@ -5130,8 +5095,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             tools: scopedTools,
             beforeToolCall: async (context) => {
               await this.preparePathToolCall(context, applyInstructions, builtinToolNames);
+              await this.registerBatchCall(context, builtinToolNames, worktreeKey);
               return undefined;
             },
+            onTurnEnd: (message) => this.batchPlanner.settleBatch(message),
             onEvent: (envelope) => {
               this.noteDelegationActivity(record, envelope);
               this.onEvent(envelope);
@@ -6406,6 +6373,37 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
+  /**
+   * Records what a prepared builtin call will touch so the batch can order it
+   * (`withBatchTurn`). Runs after every check that can block the call. Tools
+   * without claims are sequential, or Task, whose mixed batches pi already
+   * runs sequentially.
+   */
+  private async registerBatchCall(
+    context: BeforeToolCallContext,
+    builtinToolNames?: ReadonlySet<string>,
+    delegationId?: string,
+  ): Promise<void> {
+    const name = context.toolCall.name;
+    if (!this.batchPlanner.supported || !TOOL_EXECUTION_SPECS[name]?.file) return;
+    // pi prepares/executes sequential batches one call at a time. They must
+    // not seal a partial registration and later try to append to it.
+    const calls = context.assistantMessage.content.filter((block) => block.type === "toolCall");
+    if (resolveBatchExecutionMode(context.assistantMessage) === "sequential"
+      || calls.some((call) => context.context?.tools?.find((tool) => tool.name === call.name)?.executionMode !== "parallel")) return;
+    const selected = context.context?.tools?.find((tool) => tool.name === name);
+    const builtin = builtinToolNames ? builtinToolNames.has(name) : selected && this.builtinTools.has(selected);
+    const batch: unknown = context.assistantMessage;
+    if (!builtin || !isRecord(context.args) || !isRecord(batch)) return;
+    await this.batchPlanner.register(
+      batch,
+      context.args,
+      { toolName: name, toolCallId: context.toolCall.id,
+        ordinal: context.assistantMessage.content.findIndex((block) => block.type === "toolCall" && block.id === context.toolCall.id),
+        args: normalizeToolParams(name, context.args), delegationId },
+    );
+  }
+
   private async preparePathToolCall(
     context: BeforeToolCallContext,
     apply?: (instructions: ProjectInstructions | undefined) => void,
@@ -7047,8 +7045,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    *
    * pi's cut point is still what marks the boundary, but the split it produces
    * is folded back together (see `codexShapedPreparation`), so
-   * `budget.keepRecentTokens` no longer decides what survives — it only decides
-   * which messages pi attributes file operations to.
+   * `budget.keepRecentTokens` no longer decides what survives. File operations
+   * are collected from that whole folded range, including the retained tail.
    */
   private prepareCompactionInput(
     entries: Entry[],
@@ -7119,6 +7117,18 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       ...preparation.turnPrefixMessages,
       ...preparation.retainedTail,
     ];
+    // pi records file operations for `messagesToSummarize` and, on a split
+    // turn, `turnPrefixMessages`. The tail is summarized too — including the
+    // suffix a split left uncollected — so copy the sets and record it there.
+    // The sets pi returned stay unchanged.
+    const fileOps: CompactionPreparation["fileOps"] = {
+      read: new Set(preparation.fileOps.read),
+      written: new Set(preparation.fileOps.written),
+      edited: new Set(preparation.fileOps.edited),
+    };
+    for (const message of preparation.retainedTail) {
+      collectMessageFileOperations(message, fileOps);
+    }
     const latestUser = messagesToSummarize
       .filter((message): message is UserMessage => message.role === "user")
       .at(-1);
@@ -7131,6 +7141,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       turnPrefixMessages: [],
       isSplitTurn: false,
       retainedTail: selectRetainedUserMessages(candidates, retainedUserTokens),
+      fileOps,
     };
   }
 
@@ -7672,13 +7683,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     budget: { hardLimit: number; requestHeadroom: number },
   ): AgentMessage[][] | undefined {
     const reduced = reduceSummaryInput(preparation) ?? preparation;
-    const reserveTokens = Math.max(
-      Math.ceil((preparation.previousSummary?.length ?? 0) / 4),
-      compactionSummaryOutputBudget({
+    const reserveTokens = compactionSummaryReserveTokens({
+      previousSummary: preparation.previousSummary,
+      outputBudget: compactionSummaryOutputBudget({
         requestHeadroom: budget.requestHeadroom,
         modelMaxTokens: this.model.maxTokens,
       }),
-    );
+    });
     return planSummaryChunks(reduced, {
       summaryInputLimit: this.summaryInputLimit(budget),
       reserveTokens,
@@ -7706,6 +7717,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     ) {
       return "oversized";
     }
+    // The composer would otherwise keep showing the last pre-compaction
+    // request's usage until another request reports one (#2015). The estimate
+    // rides in the opaque details so it survives a reload like the generation.
+    checkpoint = {
+      ...checkpoint,
+      details: {
+        ...(isRecord(checkpoint.details) ? checkpoint.details : {}),
+        contextTokens: compactedBudget.tokens,
+      },
+    };
     try {
       await this.host.call("session.appendCompaction", {
         sessionId: this.sessionId,
@@ -8830,6 +8851,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         break;
       case "turn_end":
+        this.batchPlanner.settleBatch(event.message);
         if (
           this.suppressOverflowRunEnd ||
           this.suppressProviderRetryRunEnd ||
@@ -9128,9 +9150,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
     const turnId = durableTurnId?.trim() || randomUUID();
-    return this.trackTurnOperation(turnId, () =>
-      this.promptTurn(input, userMessageId, turnId),
-    );
+    return this.trackTurnOperation(turnId, async () => {
+      try { return await this.promptTurn(input, userMessageId, turnId); }
+      finally { await this.batchPlanner.drain(); }
+    });
   }
 
   private async promptTurn(
@@ -9151,11 +9174,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.turnSubagentUsage = undefined;
     // Capabilities and path-scoped instruction claims belong to one prompt.
     this.subagentOverrideProviders = {};
-    this.resetDeferredToolsForPrompt();
-    if (selectedTools.length) {
-      this.activateDeferredTools(selectedTools);
-      this.setAgentTools(this.activeTools());
-    }
     this.pathInstructionClaims.clear();
     this.pendingUserMessageId = userMessageId;
     this.resetRunRecoveryState();
@@ -9173,6 +9191,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     try {
+      // Publish turn ownership before the first await. Status polling and Stop
+      // must include capability negotiation, not observe a falsely idle turn.
+      await this.batchPlanner.negotiate(Boolean(this.remoteWorkspace));
+      if (this.runCancelled || this.disposed) throw turnAbortedError("Turn aborted during Host capability negotiation");
+      this.rebuildToolCatalog();
+      this.resetDeferredToolsForPrompt();
+      if (selectedTools.length) this.activateDeferredTools(selectedTools);
+      this.setAgentTools(this.activeTools());
       const content = promptContent(modelInput);
       const incomingUserMessage: AgentMessage = {
         role: "user",
@@ -9410,11 +9436,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
-  async abort(): Promise<void> {
+  abort(): Promise<void> {
+    return this.aborting ??= this.abortTurn().finally(() => { this.aborting = undefined; });
+  }
+
+  private async abortTurn(): Promise<void> {
     const turnId = this.turnId;
     const settlement = turnId
       ? this.activeTurnSettlements.get(turnId)
       : undefined;
+    const delegates = this.runningDelegations().map((record) => record.completion);
     this.acceptingSteering = false;
     this.gracefulStopRequested = false;
     this.runCancelled = true;
@@ -9435,7 +9466,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // the whole session until it finished on its own (#1767). Drive the tools
     // from here as well, so a stop always releases them.
     for (const abortTool of [...this.activeToolAborts]) abortTool();
-    await settlement;
+    await Promise.allSettled([...(settlement ? [settlement] : []), ...delegates]);
   }
 
   private trackTurnOperation<T>(
@@ -9479,6 +9510,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return {
       sessionId: this.sessionId,
       isRunning:
+        this.aborting !== undefined ||
         this.agent.state.isStreaming ||
         this.compactionInProgress ||
         this.agentActivity !== undefined ||

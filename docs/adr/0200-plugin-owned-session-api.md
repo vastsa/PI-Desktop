@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-09-09
 - Decision: D367
+- Amended: 2026-10-20 (ADR 0340 adds the `session.*.all` grants and the
+  message-level writes; the ownership boundary below still governs `.own`)
 
 ## Context
 
@@ -57,3 +59,31 @@ list/get/rename, message paging/truncation, tool reserved-key scrubbing,
 trash-to-purge lifecycle, migration-compatible schema creation, and rate
 limits. Full UI E2E execution remains deferred per repository policy; scenarios
 E2E-214 and E2E-215 are recorded in the E2E plan.
+
+## Amendment (ADR 0340)
+
+The ownership premise above — "a plugin can only query or mutate its own rows" —
+is no longer the only boundary the host can express. ADR 0340 adds
+`session.read.all`, `session.update.all`, and `session.delete.all`, which carry
+the same verbs over every live session, and it adds message-level writes
+(`appendMessage`, `replaceMessages`, `deleteMessage`, `truncateFrom`) that this
+ADR deferred as P2/P3.
+
+What changes for this ADR:
+
+- Everything here still describes `.own` exactly as written. An installed plugin
+  keeps that reach; `.all` is a separate grant that a user approves at install,
+  and it wins only when a manifest declares both.
+- "Host-core generates message ids" no longer holds for a plugin-supplied
+  `message.id` used as a retry key; the host still generates the id when the
+  caller omits one.
+- The P2/P3 deferral in the Decision and Consequences no longer covers message
+  mutation. Session creation, arbitrary re-binding, provider/model binding,
+  batch delete, and tags remain deferred.
+- Ownership is still enforced in the queries, but no longer always: the P0/P1
+  SQL keeps its `plugin_id` predicate only for `.own`, and the `list`,
+  `trash`, and `purge` statements now follow the scope Electron sends instead
+  of hard-coding it.
+
+See [ADR 0340](0340-plugin-session-all-scope.md) for the decision, the risk
+argument, and the alternatives.

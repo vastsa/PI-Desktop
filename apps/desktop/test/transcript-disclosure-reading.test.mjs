@@ -89,7 +89,7 @@ test("the transcript restores the held title inside its resize observer", () => 
   // so the correction has to run from the observer, before follow.
   assert.match(
     transcript,
-    /const followScrollNow = useCallback\(\(\) => \{\s*if \(paneVisibleRef\.current && restoreDisclosureAnchor\(\)\) return;\s*if \(!paneVisibleRef\.current \|\| !pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+    /const followScrollNow = useCallback\(\(\) => \{\s*if \(paneVisibleRef\.current && restoreHistoryAnchor\(\)\) return;\s*if \(paneVisibleRef\.current && restoreDisclosureAnchor\(\)\) return;\s*if \(!paneVisibleRef\.current \|\| !pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
   assert.match(transcript, /new ResizeObserver\(followScrollNow\)/);
   assert.match(transcript, /ro\.observe\(content, \{ box: "border-box" \}\)/);
@@ -104,7 +104,7 @@ test("holding a disclosure leaves follow without a delayed grab-back", () => {
     /const leaveFollow = useCallback\(\(\) => \{\s*cancelReadingPosition\(\);\s*cancelFollowScroll\(\);\s*pinnedRef\.current = false;\s*setShowJump\(true\);/,
   );
   assert.match(transcript,
-    /const releaseFollow = useCallback\(\(\) => \{\s*stopSmoothScroll\(scrollRef\.current\);\s*leaveFollow\(\);/);
+    /const releaseFollow = useCallback\(\(\) => \{\s*latestNavigation\.cancel\(\);\s*stopSmoothScroll\(scrollRef\.current\);\s*leaveFollow\(\);/);
   assert.match(transcript, /onAnchored: leaveFollow/);
   assert.match(
     transcript,
@@ -130,7 +130,7 @@ test("real input, a new turn and every navigation drop the held position", () =>
   );
   assert.match(
     transcript,
-    /const jumpToLatest = useCallback\(\(\) => \{\s*cancelReadingPosition\(\);\s*releaseDisclosureAnchor\(\);\s*pinnedRef\.current = true;/,
+    /const jumpToLatest = useCallback\(\(arrive\?: \(\) => void\) => \{\s*(?:\/\/[^\n]*\n\s*)*lastScrollGestureAtRef\.current = -Infinity;\s*cancelReadingPosition\(\);\s*cancelHistoryPaging\(\);\s*cancelFollowScroll\(\);\s*releaseDisclosureAnchor\(\);\s*pinnedRef\.current = true;/,
   );
   assert.match(
     transcript,

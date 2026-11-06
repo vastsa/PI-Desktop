@@ -23,6 +23,11 @@ test("history restore failures cannot accept a clean prompt for stable or legacy
   lines.on("line", (line) => {
     const value = JSON.parse(line);
     if (value.method === "host.proxy") {
+      if (value.params.method === "tools.fileBatchCapabilities") {
+        assert.equal(restoreFailure, "empty", "capability negotiation must follow successful history restoration");
+        send({ id: value.id, result: { version: 1, supported: false } });
+        return;
+      }
       assert.equal(value.params.method, "session.get");
       if (restoreFailure === "host") send({ id: value.id, error: { code: -32000, message: "corrupted persisted history", data: { errorCode: "HISTORY_CORRUPT" } } });
       else if (restoreFailure === "empty") send({ id: value.id, result: { session: { messages: [] } } });

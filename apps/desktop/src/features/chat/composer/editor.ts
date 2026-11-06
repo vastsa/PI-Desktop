@@ -39,7 +39,7 @@ export function createFileReference(
   preferredName?: string,
   sessionId = "",
   metadata?: {
-    kind?: "image" | "file" | "session";
+    kind?: "image" | "file" | "session" | "directory";
     mimeType?: string;
     token?: string;
     plugin?: ComposerPluginPart;
@@ -237,6 +237,7 @@ export function setEditorCaret(el: HTMLElement, index: number): void {
 
 /** One glyph per file family on attachment chips, as inline SVG strings. */
 const CHIP_ICON_SVG: Record<string, string> = {
+  dir: '<path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 9h18"/>',
   image:
     '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
   code: '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="M14.5 4 9.5 20"/>',
@@ -260,6 +261,7 @@ function chipIconKey(reference: ComposerFileReference): string {
   if (reference.plugin?.kind === "mark") return "plugin";
   if (reference.plugin?.kind === "fold") return "fold";
   if (reference.kind === "session") return "session";
+  if (reference.kind === "directory") return "dir";
   const mime = reference.mimeType ?? "";
   if (reference.kind === "image" || mime.startsWith("image/")) return "image";
   const name = reference.name;
@@ -278,7 +280,7 @@ function chipSvg(key: string, size = 13): string {
 }
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
-  if (isPluginMark(reference)) return false;
+  if (isPluginMark(reference) || reference.kind === "directory") return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 
@@ -337,7 +339,7 @@ function buildChipElement(
 
   const icon = document.createElement("span");
   icon.className = "composer-chip-icon";
-  icon.innerHTML = chipSvg(chipIconKey(reference));
+  icon.innerHTML = chipSvg(chipIconKey(reference), 13);
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "composer-chip-name";

@@ -7,7 +7,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 // `restoreTranscriptReadingPosition` escapes the id with the browser-only
 // `CSS.escape`; this suite runs the function directly in Node.
 globalThis.CSS ??= { escape: (value) => String(value).replace(/["\\]/g, "\\$&") };
-const { restoreTranscriptReadingPosition } = await import(
+const { captureTranscriptReadingPosition, restoreTranscriptReadingPosition, isTranscriptReadingAnchorVisible } = await import(
   "../src/lib/transcript-reading-position.ts"
 );
 
@@ -111,4 +111,61 @@ test("a pane with no layout is still refused outright", () => {
     restoreTranscriptReadingPosition(scroller, fakeContent({ row: null }), bookmark()),
     false,
   );
+});
+
+test("capture anchors the visible message, not its regroupable answer wrapper", () => {
+  const scroller = fakeScroller({ scrollTop: 80 });
+  const row = (dataset, top, height) => ({
+    dataset,
+    getBoundingClientRect: () => ({ top, bottom: top + height, height }),
+  });
+  const wrapper = row({ minimapId: "old-group" }, -400, 1600);
+  const previous = row({ messageId: "above" }, -400, 350);
+  const visible = row({ messageId: "visible" }, -20, 800);
+  const content = {
+    querySelectorAll: selector => selector === "[data-message-id]"
+      ? [previous, visible] : selector === "[data-minimap-id]" ? [wrapper] : [wrapper, previous, visible],
+  };
+  const position = captureTranscriptReadingPosition(scroller, content, false, 60);
+  assert.equal(position.messageId, "visible");
+  assert.equal(position.offset, -20);
+  // Prepending the preceding half changes the group key, not this message id.
+  const moved = row({ messageId: "visible" }, 6400, 800);
+  assert.equal(restoreTranscriptReadingPosition(scroller, fakeContent({ row: moved }), position), true);
+  assert.equal(scroller.scrollTop, 6500);
+});
+
+test("capture retains a turn anchor when no visible message body is mounted", () => {
+  const scroller = fakeScroller();
+  const wrapper = { dataset: { minimapId: "tools-only" },
+    getBoundingClientRect: () => ({ top: -20, bottom: 800, height: 820 }) };
+  const content = { querySelectorAll: selector => selector === "[data-message-id]" ? [] : [wrapper] };
+  assert.equal(captureTranscriptReadingPosition(scroller, content, false, 60).messageId, "tools-only");
+});
+
+test("restore prefers the actual message over a group with the same marker id", () => {
+  const scroller = fakeScroller({ scrollTop: 80 });
+  const content = { querySelector: selector => ({
+    getBoundingClientRect: () => ({ top: selector.startsWith("[data-message-id=") ? 140 : 100, height: 600 }),
+  }) };
+  assert.equal(restoreTranscriptReadingPosition(scroller, content, bookmark({ offset: 20 })), true);
+  assert.equal(scroller.scrollTop, 200);
+});
+
+test("anchor visibility uses its intended offset, not displacement from a lazy predecessor", () => {
+  const scroller = fakeScroller();
+  const row = { getBoundingClientRect: () => ({ top: 900, height: 800 }) };
+  assert.equal(isTranscriptReadingAnchorVisible(scroller, fakeContent({ row }), bookmark({ offset: 77 })), true);
+});
+
+test("an anchor changes only after its full row leaves the intended viewport", () => {
+  const scroller = fakeScroller();
+  const row = { getBoundingClientRect: () => ({ top: 0, height: 800 }) };
+  const content = fakeContent({ row });
+  for (const [offset, visible] of [[599, true], [600, false], [-799, true], [-800, false]]) {
+    assert.equal(isTranscriptReadingAnchorVisible(scroller, content, bookmark({ offset })), visible);
+  }
+  assert.equal(isTranscriptReadingAnchorVisible(scroller, fakeContent(), bookmark()), false);
+  assert.equal(isTranscriptReadingAnchorVisible(scroller, content, bookmark({ messageId: undefined })), false);
+  assert.equal(isTranscriptReadingAnchorVisible({ ...scroller, clientHeight: 0 }, content, bookmark()), false);
 });

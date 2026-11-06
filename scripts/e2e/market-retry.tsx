@@ -90,7 +90,7 @@ function mount(panel: "skill" | "mcp") {
         {panel === "skill" ? (
           <SkillMarketPanel installedIds={[]} onBack={() => {}} onInstalled={() => {}} />
         ) : (
-          <McpMarketPanel installedIds={[]} onBack={() => {}} onInstalled={() => {}} />
+          <McpMarketPanel level="global" installedIds={[]} onBack={() => {}} onInstalled={() => {}} />
         )}
       </I18nextProvider>,
     ),

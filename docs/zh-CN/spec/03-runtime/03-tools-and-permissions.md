@@ -8,13 +8,78 @@
 
 ## 0. 冻结政策总结
 
+### 并行文件批次
+
+Read、Glob、Grep 是并行候选；只有 runtime 与实际本地 Host 协商文件批次协议版本 1
+成功后，Write、Edit 才加入并行候选。能力在一个 runtime/连接内固定，后台子代理也
+沿用它。旧 Host 和远程工作区保持 Write/Edit sequential，因此含写整批串行。
+sidecar 不查询本机文件系统来判断远程路径。
+
+仅含 Task 的批次保留扇出；Task 与任何文件工具混批仍整批串行。可写 Task 之后的
+读取或搜索等待委托落定；写只等待 Task 返回启动通知。Bash、TodoWrite、未知、插件、
+MCP 工具保留原有串行策略。只有选中的内建执行器接受原生预处理与批次绑定；同名
+动态工具仍为串行。
+
+符合条件的并行批次按源序校验参数、加载路径指令，再向 Host 登记每个文件调用。
+登记包含 session/delegation、新批次 ID、原始序号、调用 ID、工具名和规范参数；Host
+返回不透明的单次 ticket。登记不查询文件、不授予权限、不占执行容量。全部准备结束
+后，各执行器共用一次封存，再携带 ticket 提交 tools.execute。串行批次不登记不完整
+批次。改参、跨所有者使用、重放、封存前执行均失败。ticket 绑定异步执行上下文，
+不使用全局调用 ID 映射，避免父子代理同名 ID 相互覆盖。
+
+Host 保留现有模式和权限检查；只有已获授权的调用才通过 session/delegation 根和
+外部路径解析器识别资源。待审批调用不占活动租约或容量。较早调用身份未知且可能
+冲突时，同批后继保守等待；身份明确后只等待冲突前驱。前驱失败或拒绝不级联失败。
+不同批次或会话只保证资源互斥和排队公平，不虚构全局模型源顺序。
+
+| 工具 / 目标 | Host 资源声明 |
+|---|---|
+| 已存在常规文件 Read | 文件对象身份及解析地址共享 |
+| 已存在常规文件 Write / 普通 Edit | 文件对象身份及解析地址独占 |
+| Glob / Grep | Host 文件协调域共享 |
+| 目标不存在、身份未知、文件系统不支持 | 读取持共享域；写入持独占域 |
+| Edit MV / REM 或 CUT/PUT 命名寄存器 | 协调域独占 |
+| review 回滚 | 协调域独占，保留写后内容哈希校验 |
+
+Unix 对支持的本地文件系统使用已打开文件的 dev/ino；Windows 对本地磁盘使用卷标识
+和 FILE_ID_INFO。句柄在排队及活动期间保持有效。不同名称、不同根的硬链接/符号链接
+仍必须冲突。根决定权限和地址解析，不能把物理文件 ID 按根分区。basename、文件大小、
+词法路径、单独 realpath 都不能证明独立。全域含已授权外部路径。两侧都是共享时不冲突；
+一侧独占时，域声明与所有文件资源冲突，否则按相同对象身份或地址冲突。未知不退回
+“推定独立”。
+
+ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位。后来的冲突调用不能
+越过等待中的独占者；同批较早源序调用可越过后到达的后继，避免队列与依赖图死锁。
+额度仍为总 16、读 8、写 2、每会话 4。同一会话最多两个写可以重叠，但两者都必须有
+已验证的批次 ticket 和可信本地文件身份，且通过现有资源冲突检查。其他 mutation 保持
+单写准入，并在两种到达顺序下都与协调写互斥。较早且源序已就绪的保守写等待者阻止
+后来协调写持续补位；未就绪后继与源序前驱绕行仍保留依赖图例外。
+准入等待 30 秒仍返回 HOST_OVERLOADED。
+本地 audit/debug 记录总准入等待与初始原因 source_order、resource、capacity；不将它们
+宣称为互不重叠的分段耗时。
+
+拿到租约后在 review 快照前和实际 blocking 文件任务内重验身份与地址。绑定变化则
+失败，不落盘、不自动重放。命名空间变化和创建目标使用全域独占屏障。before 快照、
+执行、Hashline 更新、after 快照共用租约；后续 rollback 也获取租约，等待时不持 AppState
+锁。取消 RPC future 不会停止 spawn_blocking，实际任务持有 permit 到执行结束。
+未开始项可放弃；关闭批次不能释放活动磁盘任务。登记表限制为全局 512 调用、每批
+128 调用、参数总计 32 MiB；未使用元数据 15 分钟过期，已提交的审批等待和实际任务
+不靠 TTL 回收。
+
+支持新协议的路径由 Host 资源协调替代 sidecar PathMutex；legacy 路径保留原锁。
+权限、Hashline、变更恢复和结果语义保持。父子路径指令只更新各自提示词；pi 保持源序
+提交工具结果。租约只覆盖单个 Host 内接入的文件工具和回滚，任意外部写者、Bash、
+另一个 Host 进程不自动参与。
+
+参见 [有序准备 ADR](/adr/parallel-read-batches) 和 [Host 准入 ADR](/adr/host-file-batch-admission)。
+
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
-| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
+| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 活动作用域授权下的 Computer + 已注册的插件工具 |
 | Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
 | Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
-| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
+| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / Computer / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
 | 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 本地权限确认 | 无自动截止时间；必须明确决定或取消 |
 | 允许会话范围 | 工具名称 |
@@ -22,7 +87,7 @@
 | Edit 契约 | 行锚定操作 + 整文件 `tag`；不再有 `old_string`/`new_string`（ADR 0087） |
 | 询问工具 | 交互式多问题工具；无有效期期限；跳过的答案变成空输出字段 |
 
-## 1. Goal
+## 1. 目标
 
 让代理完成工作，但默认情况下仍处于控制之下。
 
@@ -42,6 +107,7 @@
 | `Write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
 | `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
 | `Bash` | 高 | 执行命令 |
+| `Computer` | 高 | 检查并操作用户授权的那一个原生窗口或应用；没有活动作用域授权时不可用（[computer-use](computer-use.md)，ADR 0342） |
 | `asktool` | 低 | 询问一个或多个用户问题并将提交的答案作为工具输出返回 |
 | `TodoWrite` | 低 | 替换当前 Agent 会话清单；由主机校验并持久化完整有序快照 |
 
@@ -526,6 +592,11 @@ MCP 工具调用会显示审批卡片，原因为 "MCP server tool requires appr
 - `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
   会议；在 `BrowserPreview`/`ask` 下，根本不需要它们。
 - 暂存目录写入 (D114) 在每种模式下都保持无提示。
+- `Computer` 由它的作用域授权治理，而不只由模式治理：创建授权始终是桌面 UI
+  的显式决定，`auto` 从不签发授权，该工具也不存在 `allow-session` 授权。
+  在活动授权内，检查类动作自动允许，输入遵循授权的 `confirm-each`（`ask`
+  下唯一可用的策略）或 `autonomous-in-scope` 策略。Plan 与 Goal 直接拒绝该
+  工具（[computer-use](computer-use.md)）。
 - UI：设置→分段全局默认；输入框在中显示每个会话的芯片
   Agent、Plan 和 Goal 的菜单提供了三种有效模式，无需
   单独的 global-default/inherit 条目。芯片和选定的菜单项

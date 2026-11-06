@@ -45,6 +45,7 @@
 - [20-speech.md](03-runtime/20-speech.md)
 - [live-voice.md](03-runtime/live-voice.md)
 - [live-work-session.md](03-runtime/live-work-session.md)
+- [computer-use.md](03-runtime/computer-use.md)
 - [21-image-generation.md](03-runtime/21-image-generation.md)
 - [22-config-sync.md](03-runtime/22-config-sync.md)
 - [svg-attachment-input.md](03-runtime/svg-attachment-input.md)
@@ -98,6 +99,8 @@
 - [14-plugin-roadmap.md](07-plugins/14-plugin-roadmap.md)
 - [15-plugin-center.md](07-plugins/15-plugin-center.md)
 - [16-trusted-extensions.md](07-plugins/16-trusted-extensions.md)
+- [17-plugin-glossary.md](07-plugins/17-plugin-glossary.md)
+- [18-plugin-launcher.md](07-plugins/18-plugin-launcher.md)
 
 ## 8. Meta
 - [README.md](08-meta/README.md)

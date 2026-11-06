@@ -550,13 +550,10 @@ export function createProviderRetryStream(
 export const STREAM_IDLE_TIMEOUT_DEFAULT_MS = 180_000;
 
 /**
- * The smallest idle budget a positive override may set. The watchdog wraps the
- * whole retry adapter, so the backoff wait between two attempts is zero-event
- * time to it: a budget below the largest retry delay would end a turn that is
- * pacing exactly as the provider asked it to. `0` still disables the watchdog
- * outright — this floor only clamps a positive override.
+ * The smallest supported positive idle budget. `0` disables the watchdog;
+ * otherwise the existing 30-second minimum applies to each network attempt.
  */
-export const STREAM_IDLE_TIMEOUT_FLOOR_MS = PROVIDER_RATE_LIMIT_MAX_DELAY_MS;
+export const STREAM_IDLE_TIMEOUT_FLOOR_MS = 30_000;
 
 /**
  * `PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS` overrides the zero-event idle budget;
@@ -589,15 +586,9 @@ function streamIdleTimeoutMessage(timeoutMs: number): string {
  * socket produces — so the existing transient retry budget picks it up instead
  * of adding a second recovery path.
  *
- * `onStall` is the caller's chance to *stop* what this watchdog abandons, and a
- * caller that can must pass it. The wrapper sits outside the retry adapter, so
- * `inner` is that adapter: draining it without aborting it lets it wake from a
- * backoff and open a second request for the same turn while the runtime is
- * already re-running the turn — two provider requests and two bills for one
- * answer. Aborting the request's own signal is what makes the adapter's next
- * attempt refuse to start and its backoff sleep reject. The abandoned stream is
- * drained either way, so its queued events are released rather than left to
- * pile up behind a consumer that has stopped reading.
+ * `onStall` stops the abandoned attempt before its caller can retry. Draining
+ * alone does not cancel network work. The abandoned iterator is drained to
+ * release late events, while the retry adapter owns any subsequent backoff.
  */
 export function withStreamIdleTimeout(
   inner: AssistantMessageEventStream,
@@ -623,9 +614,8 @@ export function withStreamIdleTimeout(
         step = await Promise.race([iterator.next(), idle]);
       } catch {
         clearTimeout(timer);
-        // Stop before draining: the abort is what keeps the adapter from
-        // starting another request behind the retry the runtime is already
-        // running (see the doc comment above).
+        // Stop the abandoned request before exposing the failure to its
+        // retry owner. Draining alone would leave network work running.
         onStall?.();
         drainAbandonedStream(iterator);
         const message = setupErrorMessage(

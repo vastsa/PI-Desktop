@@ -18,6 +18,7 @@ import {
 import type { AppState } from "../app-state";
 import type { InteractionRuntime } from "../runtime/interaction-runtime";
 import type { SessionRuntime } from "../runtime/session-runtime";
+import { resolveSettingsTab } from "../../lib/settings-search";
 import type { StoreAccess } from "./types";
 
 const PLAN_APPROVAL_TIMEOUT = "PLAN_APPROVAL_TIMEOUT";
@@ -92,7 +93,12 @@ export function createInteractionSlice({
       get().setPage("scheduled");
     },
 
-    setSettingsTab: (settingsTab) => {
+    setSettingsTab: (requested) => {
+      // A destination id can arrive from outside this build's index — a native
+      // menu, a capture scene, or a link written before the D684 split.
+      // Resolving it here lands a retired id on its successor instead of
+      // rendering an empty content pane.
+      const settingsTab = resolveSettingsTab(requested);
       get().setPage("settings");
       set((state) => ({
         settingsTab,

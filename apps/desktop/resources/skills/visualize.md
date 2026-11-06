@@ -49,8 +49,10 @@ Read this file in full before authoring. Copy into every compaction summary:
   runtime.
 - Write literal markup with real newlines, never an escaped string
   (`<div class=\"card\">`, `\n`).
-- Give the fragment root a unique ID and select it with
-  `document.getElementById(...)`; never derive it from `document.currentScript`.
+- Write the blocks (heading, controls, visual, legend, notes) as top-level
+  elements; the host stacks them 12px apart. Do not wrap the whole fragment in
+  one container. Give scripted elements unique IDs and select them with
+  `document.getElementById(...)`; never use `document.currentScript`.
 - Keep it under 1 MB: aggregate, bin, or downsample large datasets.
 - Write the file once, complete. Before writing, check that the script has
   no undefined identifiers, every queried element exists, and the primary
@@ -134,7 +136,7 @@ Choose the smallest composition that fits.
   form.
 - **UI mockups:** match the product's own chrome, colors, and type. Do not use
   the visualization utility classes or variables inside the mocked product;
-  define root-scoped product styles with `light-dark(<light>, <dark>)`. Give
+  scope product styles to the mockup with `light-dark(<light>, <dark>)`. Give
   product surfaces opaque backgrounds and keep the surrounding area
   transparent. Show realistic states, not filler dashboards.
 
