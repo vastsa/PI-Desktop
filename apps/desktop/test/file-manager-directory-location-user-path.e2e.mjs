@@ -227,7 +227,14 @@ const workspace = {
 const plugin = require(path.join(workspaceDir, "..", "staged", "pi.file-manager", "main.js"));
 globalThis.pi = {
   workspace: { get: async () => workspace },
-  plugin: { getDataPath: async () => dataDir, getSettings: async () => ({}) },
+  plugin: {
+    getDataPath: async () => dataDir,
+    getSettings: async () => ({}),
+    setSettings: async () => ({}),
+  },
+  // handleHello probes this with a bare typeof; an absent fs would throw and
+  // turn the whole hello (root included) into a failure.
+  fs: {},
 };
 
 contextBridge.exposeInMainWorld("pluginBridge", {

@@ -38,6 +38,8 @@ function withPi(workspace, dataPath, run) {
       getDataPath: async () => dataPath,
       getSettings: async () => ({}),
     },
+    // handleHello probes this with a bare typeof; an absent fs would throw.
+    fs: {},
   };
   return Promise.resolve()
     .then(run)
