@@ -39,6 +39,7 @@ const { pathToFileURL } = require("node:url");
 
 const viewEntry = process.env.PI_FILE_MANAGER_VIEW;
 app.setPath("userData", path.join(__dirname, "profile"));
+app.on("window-all-closed", () => {});
 
 const WAIT_MS = 15000;
 
@@ -134,7 +135,7 @@ app.whenReady().then(async () => {
     //    root, then browse.
     const siblingWindow = await open(fixtures, path.join(fixtures.workspace, "sibling", "docs"));
     const sibling = await waitForState(siblingWindow,
-      "document.querySelector('.tree-row[data-path=\"docs/guide.md\"]') !== null");
+      "document.querySelector('.tree-row[data-path=\"sibling/docs/guide.md\"]') !== null");
     report.sibling = sibling;
     siblingWindow.destroy();
 
@@ -162,30 +163,30 @@ function assertDirectoryState(state) {
   assert.equal(state.met, true, "child row never appeared; state: " + describe(state));
   assert.equal(state.state.selectedPath, "examples");
   assert.equal(state.state.selectedExpanded, "true");
-  assert.equal(state.state.editorOpen, false, "a directory must not dispatch a file read");
+  assert.equal(state.state.fixtureLog.some(call => call.channel === "fm.read"), false, "a directory must not dispatch a file read");
   assert.equal(state.state.alertText, null, "no failure banner for a directory location");
   assert.ok(state.state.treeRows.includes("examples/child.txt"), state.state.treeRows.join(","));
 }
 
 function assertFileState(state) {
   assert.equal(state.met, true, "editor content never appeared; state: " + describe(state));
-  assert.equal(state.state.selectedPath, "test.ts");
+  assert.ok(state.state.fixtureLog.some(call => call.channel === "fm.read" && JSON.parse(call.result).path === "test.ts"));
   assert.equal(state.state.editorOpen, true, "the file preview contract is unchanged");
   assert.equal(state.state.alertText, null);
 }
 
 function assertSiblingState(state) {
   assert.equal(state.met, true, "sibling rows never appeared; state: " + describe(state));
-  assert.equal(state.state.selectedPath, "docs");
+  assert.equal(state.state.selectedPath, "sibling/docs");
   assert.equal(state.state.selectedExpanded, "true");
-  assert.equal(state.state.editorOpen, false);
+  assert.equal(state.state.fixtureLog.some(call => call.channel === "fm.read" && JSON.parse(call.result).ok), false);
   assert.equal(state.state.alertText, null);
-  assert.ok(state.state.treeRows.includes("docs/guide.md"), state.state.treeRows.join(","));
+  assert.ok(state.state.treeRows.includes("sibling/docs/guide.md"), state.state.treeRows.join(","));
 }
 
 function assertScratchState(state) {
   assert.equal(state.met, true, "rejection banner never appeared; state: " + describe(state));
-  assert.equal(state.state.editorOpen, false);
+  assert.equal(state.state.fixtureLog.some(call => call.channel === "fm.read" && JSON.parse(call.result).ok), false);
   assert.match(
     state.state.alertText,
     /That path is a directory/,
