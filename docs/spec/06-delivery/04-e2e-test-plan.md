@@ -20102,3 +20102,26 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 - Specs: ADR 0043; runtime RPC/storage specs; component spec Round review reader.
 - Milestone: maintenance. Traceability: acceptance criteria 1–9 of the approved
   native round-review enhancement map to this scenario and the tests above.
+
+
+### E2E-TOOLS-session-background-jobs
+
+- Entry: build shared/agent-runtime/host-runtime and Host, then run
+  `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`.
+- Environment: isolated Host data and workspace, production runtime and pi tool
+  loop, deterministic localhost HTTP provider. No external model account.
+- Sequence: start a background test, list it, wait for failure and Unicode
+  output tails; start a service, time out waiting, call default stop, then
+  explicitly stop and wait for the same job.
+- Expected: correct exit code and both final tails, per-stream UTF-8 limits,
+  cross-session list/read/stop isolation, timeout and default stop preserve Bash,
+  explicit stop reaches terminal state, repeated reads and desktop output agree.
+  Plan-mode access is rejected.
+- Runtime tests cover new input/parent abort during a pending Host wait, late
+  Host rejection, old Host/remote capability behavior, mixed selector rejection,
+  existing delegation controls and registration without a subagent catalog.
+- Host tests cover pre-settled observation, repeatable output, Unicode clipping,
+  ownership lookup, idempotent stop and stop acknowledgement before termination.
+  Existing Windows child/grandchild cleanup tests remain required; record native
+  failures separately from protocol success.
+- Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
