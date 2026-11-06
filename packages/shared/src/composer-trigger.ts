@@ -193,6 +193,39 @@ export function serializeComposerFileReferences(
   return [content, paths].filter(Boolean).join("\n");
 }
 
+const DIRECTORY_PROMPT_GUIDANCE =
+  "The user provided these local directories for the current task.\nInspect their structure and read relevant files as needed to fulfill the request.";
+
+/** Separate pasted folders from the user-facing text of a serialized prompt. */
+export function splitComposerDirectoryPrompt(content: string): { text: string; paths: string[] } {
+  const guidanceStart = content.lastIndexOf(DIRECTORY_PROMPT_GUIDANCE);
+  if (guidanceStart < 0 || (guidanceStart > 0 && content[guidanceStart - 1] !== "\n")) {
+    return { text: content, paths: [] };
+  }
+  const body = content.slice(0, guidanceStart).trimEnd();
+  const trailer = content.slice(guidanceStart + DIRECTORY_PROMPT_GUIDANCE.length);
+  const marker = /<dir>([^<>]+)<\/dir>/g;
+  const paths: string[] = [];
+  const decodePath = (escaped: string) => escaped.replace(/&(amp|lt|gt);/g, (entity) =>
+    entity === "&amp;" ? "&" : entity === "&lt;" ? "<" : ">");
+  const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/;
+  if (trailer) {
+    // Current drafts append a block of directory references after the guidance.
+    const markers = [...trailer.matchAll(marker)];
+    if (trailer !== markers.map(([tag]) => "\n" + tag).join("")) return { text: content, paths };
+    for (const [, escaped] of markers) paths.push(decodePath(escaped));
+    return paths.every((path) => absolute.test(path)) ? { text: body, paths } : { text: content, paths: [] };
+  }
+  // Older drafts stored the markers inline before the guidance.
+  const text = body.replace(/<dir>([^<>]+)<\/dir>([ \t]?)/g, (tag, escaped: string, space: string, offset: number) => {
+    const path = decodePath(escaped);
+    if (!absolute.test(path)) return tag;
+    paths.push(path);
+    return offset > 0 && /[ \t]/.test(body[offset - 1]) ? "" : space;
+  }).trim();
+  return paths.length ? { text, paths } : { text: content, paths };
+}
+
 /** XML escaping keeps directory names from breaking out of their data marker. */
 function directoryPromptReference(path: string): string {
   const escaped = path.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -237,7 +270,7 @@ export function serializeInlineComposerFileReferences(
   const directories = references.filter(reference => reference.kind === "directory" &&
     (!reference.token || draft.includes(reference.token)));
   const guidance = directories.length
-    ? "The user provided these local directories for the current task.\nInspect their structure and read relevant files as needed to fulfill the request."
+    ? DIRECTORY_PROMPT_GUIDANCE
     : "";
   const unpositioned = directories.filter(reference => !reference.token).map(reference => directoryPromptReference(reference.path)).join("\n");
   return [content.trim(), guidance, unpositioned].filter(Boolean).join("\n");

@@ -149,11 +149,10 @@ test("flushing a scheduled adopt uses the Composer persist that rewrote home", (
 test("composer hydrates from the shared cache and persists across unmount and hidden windows", () => {
   assert.match(draftHook, /composer-draft-cache/);
   assert.match(composer, /readComposerDraft\(draftKey\)/);
-  // A cached draft hydrates through the image attach helper so inline image
-  // chips come back together with their draft.
+  // Cached references are restored with their current presentation.
   assert.match(
     composer,
-    /return attachImageTokens\(initialDraft\?\.text \?\? "", references, nextChipToken\)/,
+    /return restoreDraftAttachments\(initialDraft\?\.text \?\? "", references\)/,
   );
   assert.match(composer, /persistDraft\(draftKeyRef\.current\)/);
   assert.match(composer, /document\.visibilityState === "hidden"/);
