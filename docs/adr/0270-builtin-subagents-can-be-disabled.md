@@ -61,7 +61,7 @@ that may run commands) had no supported path at all.
 ## Alternatives
 
 - **A tombstone document in `~/.agents/subagents`.** Switching a builtin off
-  would write a file the user never asked for, show up in the Global group, and
+  would write a file the user never asked for, show up in the Custom group, and
   turn a one-click toggle into visible filesystem state.
 - **Keeping the state in `agent-capabilities/subagents.json`.** Cheapest to
   write, but the scan-time prune that keeps deleted documents from leaving
