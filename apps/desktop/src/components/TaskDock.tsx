@@ -181,14 +181,14 @@ export function TaskDock({ sessionId }: { sessionId: string }) {
               {t(`backgroundTasks.${error === "remove" ? "removeFailed" : `${error}Failed`}`)}
             </p>
           ) : null}
-          {hasTodo ? (
+          {hasTodo && tab === "todo" ? (
             <TodoPanel
               todos={todos}
               listId={`${panelId}-todo`}
               interactive={!collapsed && tab === "todo"}
             />
           ) : null}
-          {hasTasks ? (
+          {hasTasks && tab === "tasks" ? (
             <TaskPanel
               listId={`${panelId}-tasks`}
               tasks={tasks}

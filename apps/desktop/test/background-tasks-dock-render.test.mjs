@@ -149,3 +149,27 @@ test("a checklist keeps the container without inventing an empty task panel", as
     );
   });
 });
+
+for (const activeTab of ["todo", "tasks"]) {
+  test(`the selected ${activeTab} tab renders only its own panel`, async () => {
+    await withDockRender(({ render }) => {
+      const running = task("t-running", "running");
+      const html = render({
+        tasks: [running],
+        sessionTasks: [running],
+        activeTab,
+        collapsed: false,
+        todos: [{ content: "finish the checklist", status: "completed", priority: "high" }],
+      });
+      assert.match(html, /role="tablist"/);
+      assert.match(html, /1 running/, "the shared header still reports live work");
+      if (activeTab === "todo") {
+        assert.match(html, /class="todo-dock-list"/);
+        assert.doesNotMatch(html, /class="task-list"/, "tasks must not leak into Todo");
+      } else {
+        assert.match(html, /class="task-list"/);
+        assert.doesNotMatch(html, /class="todo-dock-list"/, "todos must not leak into Tasks");
+      }
+    });
+  });
+}

@@ -625,7 +625,10 @@ Host execution baseline:
   Plan/Ask decision surfaces and the input. The container has a single header
   carrying the todo progress summary, the running-task count, the tab list, and
   the disclosure control; collapsing hides only the panels, so the tabs stay
-  reachable while collapsed. Tabs appear only when both sides have content: with
+  reachable while collapsed. Only the selected tab renders its panel; Todo never
+  includes background-task rows or logs, and Background tasks never includes the
+  checklist. Switching tabs does not stop processes or clear an open log.
+  Tabs appear only when both sides have content: with
   one side populated, that panel renders on its own and the tab list is not
   rendered at all, and a container with nothing to show renders nothing. The
   panel scrolls within `min(200px, 24vh)` so additional rows do not displace the

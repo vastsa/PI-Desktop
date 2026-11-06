@@ -1,5 +1,20 @@
 # 04. E2E Test Plan
 
+## E2E-TASK-DOCK-tab-content-isolation
+
+- **Preconditions:** Isolated Electron renderer with synthetic todos and a running
+  task; production TaskDock, hook and store, with only host IPC stubbed.
+- **Steps:** Expand the dock, select Todo, select Background tasks, open its log,
+  switch to Todo and back. Repeat with completed todos.
+- **Expected:** Only the selected panel appears. Todo contains no task rows,
+  Stop control or log; Background tasks contains no checklist. The shared live
+  count remains visible, switching never sends Stop, and the open log survives.
+- **Entry:** `node scripts/e2e-task-dock-tabs.mjs`.
+- **Specs:** `03-runtime/03-tools-and-permissions.md`, shared task container.
+- **Acceptance:** Both switch directions preserve task state and log selection.
+- **Milestone:** Maintenance. **Status:** Automated renderer interaction test.
+
+
 ## E2E-PROJECT-case-alias-upgrade-and-delete
 
 - Entry: `python scripts/e2e-project-path-case.py <candidate-host>` on native
