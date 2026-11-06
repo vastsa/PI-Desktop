@@ -231,15 +231,17 @@ test(
       await writeFile(join(scratch, "run", "artifact.txt"), "artifact\n");
 
       // The preload requires the vendored plugin from the app resources; stage
-      // a copy next to the workspace the fixture constructs (main.js only
-      // requires node builtins, so a copy is self-contained and needs no
-      // symlink privilege).
+      // its runtime files next to the workspace the fixture constructs. main.js
+      // requires its sibling remote-workspace.js, so both travel together; a
+      // copy needs no symlink privilege.
       const pluginStage = join(temp, "staged");
       await mkdir(join(pluginStage, "pi.file-manager"), { recursive: true });
-      await copyFile(
-        join(root, "apps/desktop/resources/plugins/pi.file-manager/main.js"),
-        join(pluginStage, "pi.file-manager", "main.js"),
-      );
+      for (const runtimeFile of ["main.js", "remote-workspace.js"]) {
+        await copyFile(
+          join(root, "apps/desktop/resources/plugins/pi.file-manager", runtimeFile),
+          join(pluginStage, "pi.file-manager", runtimeFile),
+        );
+      }
 
       const preload = String.raw`
 const { contextBridge } = require("electron");
