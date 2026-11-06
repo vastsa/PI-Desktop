@@ -730,6 +730,7 @@ export const tr = {
     recentModels: "Son kullanılanlar",
     modelSources: "Model kaynakları",
     reasoningShort: "Akıl yürütme",
+    manageModels: "Modelleri yönet",
     searchModels: "Model ara",
     noModelResults: "Eşleşen model yok",
     modelBadgeReasoning: "akıl yürütme",

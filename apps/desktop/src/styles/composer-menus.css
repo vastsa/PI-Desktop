@@ -678,7 +678,8 @@
   .composer-thinking-thumb,
   .composer-thinking-tick,
   .composer-model-rail-indicator,
-  .composer-model-thinking-chevron {
+  .composer-model-thinking-chevron,
+  .composer-model-settings svg {
     transition: none;
   }
 }
@@ -886,6 +887,37 @@
 .composer-model-search-clear:hover {
   background: var(--ds-bg-active);
   color: var(--ds-text-primary);
+}
+
+/* The way out to Models settings: a quiet glyph at the header's trailing
+   edge, so it never competes with the search field for attention. */
+.composer-model-settings {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-2xs);
+  color: var(--ds-text-faint);
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-model-settings:hover,
+.composer-model-settings:focus-visible {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.composer-model-settings svg {
+  transition: transform var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.composer-model-settings:hover svg {
+  transform: rotate(45deg);
 }
 
 @keyframes composer-model-clear-in {
