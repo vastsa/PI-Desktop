@@ -652,6 +652,7 @@ export const ptBR = {
     processFailedFor: "Falhou após {{time}}",
     waitingForModel: "Aguardando o modelo…",
     startingTurn: "Iniciando…",
+    waitingForToolStop: "Aguardando a operação atual parar…",
     preparingNextRequest: "Preparando próxima solicitação…",
     compactingContext: "Compactando contexto…",
     recoveringTurn: "Recuperando resposta vazia…",

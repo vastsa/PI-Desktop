@@ -658,6 +658,7 @@ export const zhTW = {
     processFailedFor: "失敗，{{time}}",
     waitingForModel: "等待模型響應",
     startingTurn: "正在開始…",
+    waitingForToolStop: "正在等待目前操作停止…",
     preparingNextRequest: "正在準備下一次請求…",
     compactingContext: "正在壓縮上下文…",
     recoveringTurn: "正在補救空回覆…",
