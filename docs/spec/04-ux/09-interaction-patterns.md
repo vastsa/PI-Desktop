@@ -965,9 +965,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   with Saving tooltips and a Saving label on Send now; edit/remove leave both
   the queue and composer draft unchanged.
 - Send now promotes its row in click order and asks the Host to deliver it as
-  steering input into the active turn. It does not request a stop. An active
-  `TaskWait` returns early so the parent handles the new input while its
-  delegates keep working. Other started tools retain their normal boundaries.
+  steering input into the active turn. Local foreground shell and read calls
+  receive cancellation; an active `TaskWait` returns without stopping delegates.
+  The turn waits for tool settlement before delivering the input.
   An idle Send now dispatches immediately. Refused input or an input admitted
   under a different permission mode stays queued for the next turn. Promoted
   rows retain Remove until delivery and show Waiting to send. Removal
@@ -999,8 +999,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 - `Shift+Enter` and `Alt+Shift+Enter` insert a newline. An Enter confirming an
   IME candidate (`isComposing` or key code 229) never sends or steers.
 - Steering appears as a user message in the current transcript, clears the
-  draft immediately, and reaches the next model request after the current
-  response/tool batch. It creates no FIFO row and does not interrupt tools.
+  draft immediately, and reaches the next model request after current operations
+  settle. It creates no FIFO row. Local foreground shell and read calls receive
+  cancellation; background commands and delegates continue. Other operations
+  settle normally. Show a waiting status while a tool remains active.
 - Submission captures the session and current turn identity. If that target
   ends, rejects input, or is awaiting approval, the draft is restored in its
   own session and a concise error is shown. New text typed after submission

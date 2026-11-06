@@ -651,6 +651,7 @@ export const de = {
     "processFailedFor": "Fehlgeschlagen nach {{time}}",
     "waitingForModel": "Warten auf Modell",
     "startingTurn": "Wird gestartet…",
+    "waitingForToolStop": "Warten, bis der aktuelle Vorgang beendet ist…",
     "preparingNextRequest": "Nächste Anfrage wird vorbereitet…",
     "compactingContext": "Kontext wird verdichtet…",
     "recoveringTurn": "Leere Antwort wird nachgeholt…",

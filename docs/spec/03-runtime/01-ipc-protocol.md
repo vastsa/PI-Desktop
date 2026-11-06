@@ -284,6 +284,11 @@ existing runtime. They do not run launch configuration, `runtimeFor`, or
 `session.beginTurn`. Steering cannot change the active model, permission mode,
 workspace, or approved execution. Slash text is literal input on this channel.
 
+After accepted steering, status activity may be `waiting-tool-stop` while the
+current turn waits for a tool to settle. Local foreground shell and read calls
+receive cancellation; the activity does not assert that a process has exited.
+Remote or uncertain external operations retain their settlement fence.
+
 Accepted input is echoed as ordinary user message events with the current
 `turnId`, main-prepared attachment refs, and `UiMessage.steering: true`. This
 persisted marker protects accepted input from Smart Stop after renderer reload.

@@ -660,6 +660,7 @@ export const ko = {
     processFailedFor: "실패, {{time}}",
     waitingForModel: "모델 대기 중",
     startingTurn: "시작하는 중…",
+    waitingForToolStop: "현재 작업이 중지되기를 기다리는 중…",
     preparingNextRequest: "다음 요청 준비 중…",
     compactingContext: "컨텍스트 압축 중…",
     recoveringTurn: "빈 응답 복구 중…",

@@ -663,6 +663,7 @@ export const en = {
     processFailedFor: "Failed after {{time}}",
     waitingForModel: "Waiting for model",
     startingTurn: "Starting…",
+    waitingForToolStop: "Waiting for the current operation to finish…",
     preparingNextRequest: "Preparing next request…",
     compactingContext: "Compacting context…",
     recoveringTurn: "Recovering empty response…",

@@ -660,6 +660,7 @@ export const tr = {
     processFailedFor: "{{time}} sonra başarısız",
     waitingForModel: "Model bekleniyor",
     startingTurn: "Başlatılıyor…",
+    waitingForToolStop: "Geçerli işlemin durması bekleniyor…",
     preparingNextRequest: "Sonraki istek hazırlanıyor…",
     compactingContext: "Bağlam sıkıştırılıyor…",
     recoveringTurn: "Boş yanıt kurtarılıyor…",

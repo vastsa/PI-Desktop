@@ -651,6 +651,7 @@ export const es = {
     "processFailedFor": "Fallido tras {{time}}",
     "waitingForModel": "Esperando modelo",
     "startingTurn": "Iniciando…",
+    "waitingForToolStop": "Esperando a que se detenga la operación actual…",
     "preparingNextRequest": "Preparando la siguiente solicitud…",
     "compactingContext": "Compactando contexto…",
     "recoveringTurn": "Recuperando respuesta vacía…",

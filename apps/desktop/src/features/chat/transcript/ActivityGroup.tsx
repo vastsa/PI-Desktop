@@ -120,6 +120,8 @@ export function runActivityLabel(
       return t("chat.waitingForModel");
     case "preparing":
       return t("chat.preparingNextRequest");
+    case "waiting-tool-stop":
+      return t("chat.waitingForToolStop");
     case "compacting":
       return t("chat.compactingContext");
     case "recovering":

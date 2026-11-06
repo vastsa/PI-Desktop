@@ -2030,6 +2030,7 @@ export class DesktopAgentRuntime {
    * signal it was handed never fires, or the stop RPC stays pending forever.
    */
   private activeToolAborts = new Set<() => void>();
+  private readonly steeringToolAborts = new Map<string, () => void>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
   private compactionRequestShape?: CompactionRequestShape;
@@ -2631,6 +2632,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private async beforeToolCall(
     context: BeforeToolCallContext,
   ): Promise<BeforeToolCallResult | undefined> {
+    if (this.pendingSteering.size && context.toolCall.name !== SUBAGENT_WAIT_TOOL_NAME) {
+      return { block: true, reason: "Skipped because new user input is waiting." };
+    }
     if (this.deferredToolNames.has(context.toolCall.name) && !this.activeDeferredToolNames.has(context.toolCall.name)) {
       return { block: true, reason: `Call ${TOOL_SEARCH_NAME} to activate ${context.toolCall.name} before using it. A tool declaration does not grant execution permission.` };
     }
@@ -3554,6 +3558,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         });
         let abortGraceTimer: ReturnType<typeof setTimeout> | undefined;
         let stopped = false;
+        let steeringAbortRequested = false;
+        const steeringAbort = () => {
+          if (steeringAbortRequested || settled) return;
+          steeringAbortRequested = true;
+          void this.host.call("tools.abort", {
+            sessionId: this.sessionId, toolCallId, toolName,
+          }).catch(() => undefined);
+        };
         const abort = () => {
           if (abortRequested || settled) return;
           abortRequested = true;
@@ -3596,6 +3608,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           signal?.removeEventListener("abort", abort);
           this.activeToolProgressCleanups.delete(cleanup);
           this.activeToolAborts.delete(abort);
+          this.steeringToolAborts.delete(toolCallId);
         };
         this.activeToolProgressCleanups.add(cleanup);
         if (signal?.aborted) {
@@ -3608,6 +3621,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           signal.addEventListener("abort", abort, { once: true });
         }
         this.activeToolAborts.add(abort);
+        // Remote cancellation only acknowledges the request, not the remote
+        // operation's settlement. Keep waiting for those calls instead.
+        if (!this.remoteWorkspace && (isBash || canAbandonWait) &&
+            this.activeToolCalls.has(toolCallId) && !this.delegateToolCalls.has(toolCallId) &&
+            !(isBash && isRecord(params) && params.runInBackground === true)) {
+          this.steeringToolAborts.set(toolCallId, steeringAbort);
+          if (this.pendingSteering.size) steeringAbort();
+        }
 
         let result: {
           ok: boolean;
@@ -3690,6 +3711,21 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // cleanup is a no-op once the abort path has run, so the grace timer
           // it armed is released here instead.
           if (abortGraceTimer) clearTimeout(abortGraceTimer);
+        }
+        // A failed transport or process-lifecycle result does not prove that
+        // the interrupted shell and its descendants have stopped. Only an
+        // explicit whole-turn Stop may release this uncertain operation.
+        const uncertainShell = steeringAbortRequested && isBash &&
+          (executionFailed || (result?.ok === false && result.errorCode === "TOOL_FAILED"));
+        const uncertainRemote = this.pendingSteering.size > 0 && Boolean(this.remoteWorkspace) &&
+          (executionFailed || result?.ok === false);
+        const uncertainExternal = this.pendingSteering.size > 0 && !canAbandonWait && !isBash &&
+          (executionFailed || result?.errorCode === "TOOL_TIMEOUT");
+        if (!signal?.aborted && (uncertainShell || uncertainRemote || uncertainExternal)) {
+          await new Promise<void>((resolve) => {
+            if (!signal || signal.aborted) return resolve();
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
         }
         // A local read-only stop cannot depend on the same Host answering a
         // second RPC. Its abort request already observes late rejections.
@@ -4124,6 +4160,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * declarations. Execution activation and Host permissions remain separate
    * from the provider-visible schemas.
    */
+  private guardSteeredTool(tool: AgentTool): AgentTool {
+    return { ...tool, execute: async (id, args, signal, update) => {
+      if (tool.name !== SUBAGENT_WAIT_TOOL_NAME && this.pendingSteering.size &&
+          this.activeToolCalls.has(id) && !this.delegateToolCalls.has(id)) {
+        return { content: [{ type: "text", text: "Skipped because new user input is waiting." }], details: {}, isError: true };
+      }
+      return tool.execute(id, args, signal, update);
+    } };
+  }
+
   private rebuildToolCatalog(): void {
     const catalog = new Map<string, AgentTool>();
     for (const tool of this.buildToolDefinitions()) {
@@ -4147,8 +4193,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       );
       // Batch ordering wraps the mode guard: a call the guard rejects must
       // still release the calls ordered behind it in its batch.
+      const steeringGuarded = this.guardSteeredTool(guarded);
       const catalogTool = withDynamicTaskExecutionMode(
-        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(guarded, this.batchPlanner) : guarded,
+        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(steeringGuarded, this.batchPlanner) : steeringGuarded,
         () => this.agent?.state.messages.at(-1),
       );
       if (builtin) this.builtinTools.add(catalogTool);
@@ -4168,10 +4215,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.deferredToolNames.size > 0) {
       this.toolCatalog.set(
         TOOL_SEARCH_NAME,
-        withExplicitRequired({
+        this.guardSteeredTool(withExplicitRequired({
           ...this.buildToolSearchTool(),
           executionMode: "sequential",
-        }),
+        })),
       );
     }
     if (this.model) this.refreshToolDeclarationPolicy();
@@ -9387,6 +9434,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.pendingSteering.set(queued, { id: message.id, toolNames });
     this.agent.steer(queued);
     this.steeringWaitAbort?.abort();
+    for (const abortTool of this.steeringToolAborts.values()) abortTool();
+    if ([...this.activeToolCalls.values()].some((call) => call.toolName !== SUBAGENT_WAIT_TOOL_NAME)) {
+      this.setAgentActivity({ phase: "waiting-tool-stop", since: Date.now() });
+    }
     // Main persists this echo through the same outbox as assistant messages.
     this.emit({ type: "message_start", message });
     this.emit({
