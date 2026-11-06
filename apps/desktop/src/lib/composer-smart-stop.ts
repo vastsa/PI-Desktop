@@ -23,6 +23,7 @@ export type ComposerPluginPart =
     };
 
 export type ComposerDraftFileReference = {
+  lineRange?: import("@pi-desktop/shared").FileLineRange;
   path: string;
   name: string;
   kind?: "image" | "file" | "session" | "directory";

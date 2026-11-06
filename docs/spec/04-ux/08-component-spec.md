@@ -4722,3 +4722,18 @@ introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
+
+### File Manager line references
+
+Select a saved range in the local File Manager's source editor. **Add to chat**
+and copying then pasting into the Composer insert the same removable
+`gpt.py (85:86)` chip. A single selected line displays as `gpt.py (85)`.
+Only the file path and inclusive source line numbers enter the draft. Other
+clipboard consumers still receive the original plain text. Unsaved edits allow
+plain-text copy and suppress line references until the file is saved or reloaded.
+
+At turn execution the Agent calls the existing Host Read for each distinct
+range and adds its bounded result to the model request. Read uses the saved
+file at execution time, including for queued sends. Source views with no
+project file identity and clipboard data from another project use normal text
+copy/paste. See [File Manager line references ADR](../../adr/file-manager-line-references.md).

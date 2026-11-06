@@ -1,0 +1,25 @@
+# File Manager line references
+
+- Status: Accepted
+- Date: 2026-11-06
+
+The File Manager knows the source file and CodeMirror selection range.
+The Composer owns draft mutation and the Host owns file access. A text-only
+clipboard cannot carry the source identity independently from the selection.
+
+The source view places plain text and path/range metadata in the clipboard.
+The explicit context-menu action uses a panel invocation gated to the visible,
+enabled File Manager view, its existing view and read grants, the active
+project, and the selected session. The registered File Manager can be bundled
+or installed. Both paths create the same draft reference. Composer events
+confer no file permission.
+
+The selected text is never used as the model payload for a reference. Main
+validates the reference path against the Session project folders. At prompt
+execution, the Agent runtime invokes the existing Read tool with the inclusive
+range converted to its zero-based offset and line count. The Host continues
+to authorize the tool call and enforce its output limits. The bounded result
+or read failure is included as file context in the provider prompt.
+
+References are initially available for local project source views with one
+selection. Rendered and remote previews retain their clipboard behavior.

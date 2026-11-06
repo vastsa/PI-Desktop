@@ -27,10 +27,12 @@ import {
   type PluginPanelBlockedRequest,
 } from "./plugin-panel-host";
 import {
+  PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT,
   PLUGIN_PANEL_EMBEDDED_ARGUMENT,
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
   type PluginPanelTheme,
 } from "../shared/plugin-panel-chrome";
+import { FILE_LINES_VIEW_KEY } from "./file-line-reference";
 
 /**
  * Re-exported so the location contract stays addressable through the module
@@ -220,6 +222,10 @@ export class PluginViewHost {
   /** Whether a live web contents exists for this view. */
   has(pluginId: string, viewId: string): boolean {
     return this.views.has(pluginViewKey(pluginId, viewId));
+  }
+
+  isVisibleViewSender(senderId: number | undefined, key: string): boolean {
+    return senderId !== undefined && this.visibleKey === key && this.views.get(key)?.view.webContents.id === senderId;
   }
 
   /**
@@ -531,6 +537,9 @@ export class PluginViewHost {
           `${PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX}${encodeURIComponent(request.locale)}`,
           `--pi-plugin-panel-theme=${request.theme}`,
           PLUGIN_PANEL_EMBEDDED_ARGUMENT,
+          ...(pluginViewKey(request.pluginId, request.viewId) === FILE_LINES_VIEW_KEY
+            ? [PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT]
+            : []),
         ],
       },
     });

@@ -21,6 +21,7 @@ type CachedComposerDraft = ComposerDraftSnapshot & {
 export const HOME_DRAFT_KEY = "__home__";
 
 export type ComposerDraftFileInput = {
+  lineRange?: import("@pi-desktop/shared").FileLineRange;
   sessionId?: string;
   path: string;
   name: string;
@@ -38,6 +39,7 @@ export function draftFileReference({
   mimeType,
   token,
   plugin,
+  lineRange,
 }: ComposerDraftFileInput): ComposerDraftFileReference {
   return {
     path,
@@ -46,6 +48,7 @@ export function draftFileReference({
     ...(mimeType ? { mimeType } : {}),
     ...(token ? { token } : {}),
     ...(plugin ? { plugin } : {}),
+    ...(lineRange ? { lineRange } : {}),
   };
 }
 
@@ -73,6 +76,8 @@ export function sameDraftFileReference(
     a.kind === b.kind &&
     a.mimeType === b.mimeType &&
     a.token === b.token &&
+    a.lineRange?.start === b.lineRange?.start &&
+    a.lineRange?.end === b.lineRange?.end &&
     samePluginPart(a.plugin, b.plugin)
   );
 }

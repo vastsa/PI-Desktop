@@ -20088,3 +20088,22 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 - Specs: ADR 0043; runtime RPC/storage specs; component spec Round review reader.
 - Milestone: maintenance. Traceability: acceptance criteria 1–9 of the approved
   native round-review enhancement map to this scenario and the tests above.
+
+### E2E-FILE-LINES — File Manager selections in Composer
+
+Install the File Manager normally. In a temporary local project, open a source
+file with two distinct lines and select both. Verify **Add to chat** adds one
+removable `gpt.py (85:86)` chip
+without sending. Delete it, copy the selection, and paste into the Composer:
+the same chip appears, while paste into an ordinary editor yields the selected
+text. End a selection at the start of the next line and verify that line is
+excluded. A one-line selection displays one line number.
+
+Insert an unsaved line before the range. Copying still pastes the original
+text and the selection menu has no **Add to chat** action. Save the file and
+verify that both actions use the new saved line numbers.
+
+Change the saved text after adding the chip, then send it. Observe one scoped
+Read with offset 84 and limit 2, the saved result in the model request, and a
+normal failure when the file disappears. Repeat with a queued turn and a
+project switch. A different project's clipboard metadata cannot add the chip.
