@@ -35,7 +35,9 @@ use crate::artifacts;
 use crate::audit;
 use crate::background_tasks;
 use crate::notifications;
-use crate::permissions::{PermissionDecision, PermissionEvaluationParams, PermissionManager};
+use crate::permissions::{
+    PermissionDecision, PermissionEvaluationParams, PermissionManager, ToolPermissionPolicy,
+};
 use crate::plans;
 use crate::plugin_sessions;
 use crate::plugin_usage;
@@ -4337,7 +4339,7 @@ async fn handle_request(
                             PermissionEvaluationParams {
                                 session_id: &p.session_id,
                                 tool_name: &p.tool_name,
-                                mode: &durable_mode,
+                                tool_policy: ToolPermissionPolicy::for_legacy_mode(&durable_mode),
                                 permission_mode: &effective_pm,
                                 session_grants: &st.session_grants,
                                 declared_risk: p.declared_risk.as_deref(),
@@ -5049,7 +5051,7 @@ async fn handle_request(
                 .evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                     session_id,
                     tool_name,
-                    mode: &mode,
+                    tool_policy: ToolPermissionPolicy::for_legacy_mode(&mode),
                     permission_mode: &effective_pm,
                     session_grants: &st.session_grants,
                     declared_risk,

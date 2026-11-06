@@ -20102,3 +20102,23 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 - Specs: ADR 0043; runtime RPC/storage specs; component spec Round review reader.
 - Milestone: maintenance. Traceability: acceptance criteria 1–9 of the approved
   native round-review enhancement map to this scenario and the tests above.
+
+### E2E-GOAL-permission-policy-foundation
+
+- **Steps**: Run the host permission tests and
+  `goal_authorization_reuses_the_durable_contract_mode_hard_deny`. Configure a
+  legacy Goal with Auto, then send a native Write with a caller-claimed Agent
+  mode. Compare Agent/Plan/Goal membership with absent, empty and nonempty
+  plan-safe plugin actions; check Ask and external-path approval independently.
+- **Expected**: Host-selected Contract membership still rejects legacy Goal
+  Write/Edit and unsafe plugins before risk, Auto, session grants and scratch
+  exceptions. The spoofed caller mode cannot widen it. Agent membership alone
+  does not approve a high-risk or external-path operation. No Goal lifecycle,
+  schema migration, runtime continuation or UI is enabled by this foundation.
+- **Specs**: [Goal execution permission policy](../../adr/goal-execution-permission-policy.md).
+- **Real process**: With candidate packages built, run
+  `scripts/e2e-goal-permission-policy.mjs` against the candidate Host using
+  isolated scratch/data/agents directories. It checks actual file creation for
+  Agent and no file creation for Plan/legacy Goal while spoofing caller mode.
+  The dependent feature invokes the same fixture with
+  `--autonomous-goal-policy` to assert its explicit Host policy integration.

@@ -114,6 +114,12 @@ See [ordered preparation](../../adr/parallel-read-batches.md) and
 | Edit contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
 | asktool | interactive multi-question tool; no validity deadline; skipped answers become empty output fields |
 
+The Host evaluator receives an internal `ToolPermissionPolicy`, separate from
+Ask/Accept edits/Auto and execution authority. The legacy-mode adapter maps both
+Plan and Goal to the unchanged Contract allowlist; this foundation does not enable
+autonomous Goal tools. The proposed activation boundary is recorded in
+[Goal execution permission policy](../../adr/goal-execution-permission-policy.md).
+
 ## 1. Goal
 
 Let the agent get things done, but stay under control by default.
