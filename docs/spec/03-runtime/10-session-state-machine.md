@@ -44,6 +44,12 @@ Header pause immediately persists paused with a narrow closing claim and sends
 a fixed system steering notice; at most three subsequent model requests may
 finish the handoff (not finishing an entire round). New substantive work is denied, and no Goal claim is admitted;
 Composer Stop and cancel persist stopped state before runtime cancellation.
+The fixed notice uses the Desktop-owned `goal_pause` system section, composed
+only from the current validated GoalTurn closeout. A new claim, ordinary Agent
+work or detached execution clears it; compaction checkpoints do not retain it.
+Replay expires the exact legacy bare notice in internal model-system rows and
+folded/retained checkpoints without rewriting stored history or matching user
+text. Permissions and resume authority remain Host-owned.
 An accepted Goal startup message is authorization, not an ordinary retractable
 prompt. Composer Stop preserves that message and never attempts draft recovery
 for its startup snapshot; ordinary prompt recovery is unchanged.

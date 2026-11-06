@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { MessageEntry, CompactionEntry } from "./pi-runtime-types.js";
 import type { UiMessage } from "@pi-desktop/shared";
-import { getCurrentTools, Type, type SystemMessage } from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, getCurrentTools, Type, type SystemMessage } from "@earendil-works/pi-ai";
 import { orderSystemRows, readSystemMessage, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { buildSessionContext } from "./session-context.js";
 import { CONTEXT_BUDGET_SECTION, syncSystemSections, systemTranscriptCheckpoint } from "./system-transcript.js";
+import { GOAL_PAUSE_NOTICE } from "./goals/goal-pause.js";
 
 const tool = { name: "Read", description: "Read", parameters: Type.Object({ path: Type.String() }) };
 const initial: SystemMessage = { role: "system", content: "", sections: { runtime: "Instructions", skills: "First skill" }, toolsAdded: [tool], timestamp: 1 };
@@ -134,6 +135,47 @@ describe("model system journal", () => {
     const append = vi.fn();
     await journal.persist(JSON.parse(JSON.stringify([checkpoint, user])), [], append);
     expect(append).not.toHaveBeenCalled();
+  });
+
+  it("expires the owned pause section when active state is recomposed and at checkpoints", () => {
+    const paused: SystemMessage = { role: "system", content: "", sections: { goal_pause: GOAL_PAUSE_NOTICE }, timestamp: 3 };
+    const messages = [initial, user, paused];
+    expect(getCurrentSystemPrompt(messages)).toContain(GOAL_PAUSE_NOTICE);
+    expect(getCurrentSystemPrompt(syncSystemSections(messages, initial.sections as Record<string, string>))).not.toContain(GOAL_PAUSE_NOTICE);
+    expect(JSON.stringify(systemTranscriptCheckpoint(messages))).not.toContain(GOAL_PAUSE_NOTICE);
+  });
+
+  it("reads legacy pause history without replaying its control or rewriting the saved row", async () => {
+    const saved: UiMessage = { id: "legacy-pause", role: "system", content: "", createdAt: new Date(3).toISOString(),
+      modelSystem: { version: 1, messageJson: JSON.stringify({ role: "system", content: GOAL_PAUSE_NOTICE, timestamp: 3 }) } };
+    const before = JSON.stringify(saved);
+    const journal = new SystemTranscriptJournal();
+    const restored = journal.restore(saved);
+    expect(getCurrentSystemPrompt([initial, restored])).not.toContain(GOAL_PAUSE_NOTICE);
+    expect(JSON.stringify(saved)).toBe(before);
+    const append = vi.fn(); await journal.persist([restored], [], append);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("expires legacy checkpoint controls with folded state=%s while preserving instructions and tools", (folded) => {
+    const legacy = { ...initial, content: `Keep real hardware offline.\n\n${GOAL_PAUSE_NOTICE}\n\nExtension instructions remain.` };
+    const cp: CompactionEntry = { type: "compaction", id: "cp", seq: 1, parentId: null, timestamp: 4,
+      summary: "Past work", tokensBefore: 100, retainedTail: folded ? [] : [legacy],
+      ...(folded ? { details: { systemMessageJson: JSON.stringify(legacy) } } : {}), fromHook: false };
+    const messages = buildSessionContext([cp]).messages;
+    const prompt = getCurrentSystemPrompt(messages);
+    expect(prompt).not.toContain(GOAL_PAUSE_NOTICE);
+    expect(prompt).toContain("Keep real hardware offline.");
+    expect(prompt).toContain("Extension instructions remain.");
+    expect(getCurrentTools(messages).map(item => item.name)).toEqual(["Read"]);
+    expect(JSON.stringify(cp)).toContain(GOAL_PAUSE_NOTICE);
+  });
+
+  it("preserves quoted pause text and user safety constraints", () => {
+    const quoted = { ...initial, content: `The user quoted: ${GOAL_PAUSE_NOTICE}` };
+    expect(readSystemMessage(JSON.stringify(quoted)).content).toBe(quoted.content);
+    const message: AgentMessage = { role: "user", content: GOAL_PAUSE_NOTICE, timestamp: 3 };
+    expect(buildSessionContext([entry(message)]).messages).toEqual([message]);
   });
 
   it.each([null, {}, { ...initial, timestamp: -1 }, { ...initial, toolsAdded: [{ name: "Read", parameters: "bad" }] }])("rejects malformed saved state", (value) => {

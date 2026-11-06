@@ -20339,6 +20339,12 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Release the response; the next request includes the fixed system pause notice.
   A cooperative model ends in one reply; a fixture repeatedly calling GetGoal
   ends after three subsequent requests. No fake user messages or auto-resume.
+- After handoff settlement, explicitly Resume. The actual provider request must
+  have no expired pause instruction; a native Read must return the fixture file.
+  Pause again and verify closeout still applies; a replacement Goal must not
+  inherit the previous pause. Runtime replay tests cover old bare system rows,
+  folded checkpoints and retained tails, preserving original records, quoted
+  user text, safety constraints, extension instructions and tool declarations.
 - Run scripts/e2e-goal-pause-steering-ui.mjs against the built isolated Desktop.
   Assert actual queue-strip appearance/disappearance and automatic next-round send,
   capture paused header before releasing the provider response, verify no
