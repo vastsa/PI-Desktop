@@ -1,6 +1,6 @@
-# Sidebar hover navigation
+# ADR: Sidebar hover navigation
 
-- Status: Accepted for local implementation; upstream proposal in #2144
+- Status: Proposed (implementation candidate for #2144)
 - Date: 2026-11-06
 
 ## Context
