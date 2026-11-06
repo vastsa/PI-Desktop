@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-ai";
 
 import { SKILL_SECTION_PREFIX } from "./plugin-skills-prompt.js";
+import { GOAL_PAUSE_SECTION } from "./goals/goal-pause.js";
 
 function systemMessages(messages: readonly AgentMessage[]): SystemMessage[] {
   return messages.filter((message): message is SystemMessage => message.role === "system");
@@ -38,7 +39,7 @@ export const CONTEXT_BUDGET_SECTION = "context_budget";
 function desktopSectionNames(sections: Record<string, unknown>): string[] {
   return ["runtime", TOOL_ACTIVATION_SECTION, "skills", ...Object.keys(sections)
     .filter((name) => name.startsWith(SKILL_SECTION_PREFIX))
-    .sort((a, b) => a.localeCompare(b)), "context"];
+    .sort((a, b) => a.localeCompare(b)), "context", GOAL_PAUSE_SECTION];
 }
 
 export function systemPromptContent(messages: readonly AgentMessage[]): string {
@@ -113,8 +114,8 @@ export function systemTranscriptCheckpoint(messages: readonly AgentMessage[]): S
   // Use the journal's durable shape, including extension-provided text blocks.
   const checkpoint: SystemMessage = { ...current, content: contentText(current.content),
     ...(current.toolsAdded ? { toolsAdded: current.toolsAdded.map(toToolDeclaration) } : {}) };
-  if (!checkpoint.sections || !(CONTEXT_BUDGET_SECTION in checkpoint.sections)) return checkpoint;
-  const { [CONTEXT_BUDGET_SECTION]: _expired, ...sections } = checkpoint.sections;
+  if (!checkpoint.sections) return checkpoint;
+  const { [CONTEXT_BUDGET_SECTION]: _expired, [GOAL_PAUSE_SECTION]: _pausedClaim, ...sections } = checkpoint.sections;
   return { ...checkpoint, sections };
 }
 

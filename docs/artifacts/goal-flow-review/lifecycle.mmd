@@ -1,0 +1,39 @@
+flowchart TD
+  select["选择 Goal 模式<br/>只配置，不执行"] --> submit["用户发送目标<br/>默认共 20 个执行轮次；可选 Token 软预算"]
+  submit --> start["校验用户身份、会话与预算<br/>持久化独立 Goal；无需方案审批"]
+  start --> gate{"仍获授权且 active<br/>会话空闲？"}
+  gate -- 否 --> wait["等待；不发起模型请求"]
+  gate -- 是 --> budget{"还有执行预算？"}
+  budget -- 否 --> exhausted["budget_exhausted<br/>不启动下一轮"]
+  budget -- 是 --> claim["优先处理已排队的用户输入<br/>CAS 认领唯一轮次；扣同一目标预算"]
+  claim --> fence{"派发前仍获授权<br/>且未被停止？"}
+  fence -- 是 --> execute["执行模型与工具<br/>普通 Agent 权限、路径、沙箱与插件检查"]
+  fence -- 否 --> unused["释放未使用的认领<br/>保留用户排队输入"]
+  execute -- 需要工具审批 --> permission{"用户是否允许该动作？"}
+  permission -- 允许 --> execute
+  permission -- 拒绝 --> alternative["拒绝保持生效<br/>选允许的替代方式或报告受阻"]
+  execute -- 本轮结束 --> settle["保存进展与验收报告、去重用量<br/>先释放认领，再发送轮次结束事件"]
+  alternative --> settle
+  settle --> result{"持久化状态？"}
+  result -- active --> gate
+  result -- 全部条件满足且有证据 --> complete["completed<br/>模型报告，不等于宿主独立验证"]
+  result -- 错误或无法继续 --> blocked["blocked<br/>显示原因；不自动重试"]
+  execute -. 用户暂停、停止或切离模式 .-> paused["paused<br/>禁止续跑；持久化暂停并中止当前工作"]
+  gate -. 宿主重启 .-> paused
+  execute -. 用户取消 .-> cancelled["cancelled<br/>终态；不能恢复"]
+  exhausted --> resume["用户显式恢复<br/>等待旧轮结算；校验版本和总预算"]
+  blocked --> resume
+  paused --> resume
+  resume --> gate
+  unused --> paused
+  complete --> stop["停止自主执行"]
+  cancelled --> stop
+  rule["模型不能启动或恢复自主权<br/>不能扩大范围或预算<br/>Plan 与历史 Goal 审批保持独立"]
+  classDef action fill:#e9f1fa,stroke:#4d739c,color:#173a5c
+  classDef boundary fill:#fff2d8,stroke:#a47b2c,color:#563c12
+  classDef terminal fill:#e7f3e8,stroke:#467351,color:#23442a
+  classDef note fill:#f2f2f2,stroke:#888888,color:#333333
+  class start,claim,execute,settle action
+  class budget,fence,permission,paused,blocked,exhausted,resume boundary
+  class complete,cancelled,stop terminal
+  class rule,select,wait note

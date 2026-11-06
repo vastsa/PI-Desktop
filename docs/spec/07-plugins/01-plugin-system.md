@@ -12,9 +12,10 @@
 - user MCP tools use the prefix `mcp_<serverId>_<toolName>`, disjoint from D015's
   plugin namespace (D193)
 
-Plugin tools are hidden and denied in Plan/Goal by default. A runtime tool
+Goal uses ordinary Agent plugin permissions, including grants, sandbox and denial.
+Plugin tools are hidden and denied in Plan by default. A runtime tool
 registration may opt in with non-empty `planSafeActions`; only an `args.action`
-in that list may execute in those modes. The list is checked against the schema's
+in that list may execute in Plan. The list is checked against the schema's
 action enum when present. Keep the manifest descriptor and runtime registration
 in sync: the runtime registration drives the executable tool. Risk `low`, session
 grants, and `auto` do not substitute for the declaration. Host policy and the

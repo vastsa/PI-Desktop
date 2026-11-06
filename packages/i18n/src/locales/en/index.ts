@@ -1,4 +1,6 @@
+import { autonomousGoalEn } from "../../autonomous-goal.js";
 export const en = {
+  autonomousGoal: autonomousGoalEn,
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "New isolated session",

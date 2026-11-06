@@ -287,7 +287,7 @@ unsupported ones.
 | Unsupported | `ui.setWidget`, `ui.setFooter`, `ui.setHeader`, `ui.setTitle`, `ui.custom`, `ui.overlay`, `ui.onTerminalInput`, `ui.setWorkingVisible`, `ui.setWorkingIndicator`, `ui.setHiddenThinkingLabel`, `ui.pasteToEditor`, `ui.editor`, `registerMessageRenderer`, `registerEntryRenderer`, `navigateTree`, `shutdown` |
 
 `getActiveTools` describes the model-facing declarations, not execution grants.
-Plan/Goal can retain denied Write/Edit and configured Task-family declarations;
+Plan can retain denied Write/Edit and configured Task-family declarations;
 the runtime mode gate runs before extension tool-call hooks or handlers. Plugins
 must not infer permission from the presence of a name in this list.
 

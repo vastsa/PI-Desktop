@@ -23,10 +23,40 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-mcp@1.4.0'
   - '@earendil-works/pi-telemetry@1.4.0'
   - '@earendil-works/pi-tui@1.4.0'
+  # Exact compiler/platform versions verified by the Desktop namespace regression.
+  - '@rollup/rollup-android-arm-eabi@4.66.0'
+  - '@rollup/rollup-android-arm64@4.66.0'
+  - '@rollup/rollup-darwin-arm64@4.66.0'
+  - '@rollup/rollup-darwin-x64@4.66.0'
+  - '@rollup/rollup-freebsd-arm64@4.66.0'
+  - '@rollup/rollup-freebsd-x64@4.66.0'
+  - '@rollup/rollup-linux-arm-gnueabihf@4.66.0'
+  - '@rollup/rollup-linux-arm-musleabihf@4.66.0'
+  - '@rollup/rollup-linux-arm64-gnu@4.66.0'
+  - '@rollup/rollup-linux-arm64-musl@4.66.0'
+  - '@rollup/rollup-linux-loong64-gnu@4.66.0'
+  - '@rollup/rollup-linux-loong64-musl@4.66.0'
+  - '@rollup/rollup-linux-ppc64-gnu@4.66.0'
+  - '@rollup/rollup-linux-ppc64-musl@4.66.0'
+  - '@rollup/rollup-linux-riscv64-gnu@4.66.0'
+  - '@rollup/rollup-linux-riscv64-musl@4.66.0'
+  - '@rollup/rollup-linux-s390x-gnu@4.66.0'
+  - '@rollup/rollup-linux-x64-gnu@4.66.0'
+  - '@rollup/rollup-linux-x64-musl@4.66.0'
+  - '@rollup/rollup-openbsd-x64@4.66.0'
+  - '@rollup/rollup-openharmony-arm64@4.66.0'
+  - '@rollup/rollup-win32-arm64-msvc@4.66.0'
+  - '@rollup/rollup-win32-ia32-msvc@4.66.0'
+  - '@rollup/rollup-win32-x64-gnu@4.66.0'
+  - '@rollup/rollup-win32-x64-msvc@4.66.0'
+  - rollup@4.66.0
 # Advisory fixes for transitives whose parents still resolve the vulnerable
 # version. Drop each one once its parent ships a release that resolves the
 # patched version on its own.
 overrides:
+  # Older Rollup emits invalid external namespace bindings in dynamic imports.
+  # Keep the compiler fix within Vite's supported Rollup 4 range.
+  rollup: 4.66.0
   # Tailwind's CSS optimizer in 4.3.3 emits a false warning for the valid
   # Custom Highlight API selector `::highlight()`. The parser fix ships in
   # lightningcss 1.33.0.
