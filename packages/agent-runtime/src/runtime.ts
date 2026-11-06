@@ -33,6 +33,7 @@ import {
 } from "./delegation-message.js";
 import {
   Agent,
+  runToolCall,
   type AgentContext,
   type AgentEvent,
   type AgentLoopTurnUpdate,
@@ -320,6 +321,8 @@ import {
   type ProviderTransportHealth,
 } from "./provider-transport-recovery.js";
 
+import { fileLineLabel, MAX_FILE_LINE_REFERENCES, parseFileLineRange } from "@pi-desktop/shared";
+
 export type { RuntimeProviderConfig } from "./provider-binding.js";
 
 export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
@@ -332,6 +335,8 @@ export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
   data?: string;
   /** Bounded excerpt of a referenced conversation (`kind: "session"`). */
   text?: string;
+  /** Set by the runtime when an explicit line reference could not be read. */
+  fileReferenceError?: "blocked" | "failed";
 };
 
 export type RuntimePrompt = {
@@ -350,9 +355,21 @@ export type RuntimePrompt = {
  * from the provider request would be context the user never got.
  */
 function promptText(input: RuntimePrompt): string {
-  const references = (input.attachments ?? [])
+  const attachments = input.attachments ?? [];
+  const sessions = attachments
+    .filter(attachment => attachment.kind === "session")
     .map((attachment) => sessionReferenceBlock(attachment))
     .filter((block): block is string => block !== null);
+  const fileLines = attachments.filter(attachment => attachment.lineRange && attachment.text !== undefined)
+    .slice(0, MAX_FILE_LINE_REFERENCES)
+    .map(attachment => {
+      const source = escapeAttribute(fileLineLabel(attachment.path, attachment.lineRange!));
+      const text = attachment.text!.replaceAll("<", "&lt;");
+      return attachment.fileReferenceError
+        ? `<file_reference_error source="${source}" status="${attachment.fileReferenceError}">\n${text}\n</file_reference_error>`
+        : `<file_lines source="${source}">\n${text}\n</file_lines>`;
+    });
+  const references = [...sessions, ...fileLines];
   return references.length
     ? `${input.text}\n\n${references.join("\n\n")}`.trim()
     : input.text;
@@ -2032,6 +2049,7 @@ export class DesktopAgentRuntime {
    */
   private activeToolAborts = new Set<() => void>();
   private readonly steeringToolAborts = new Map<string, () => void>();
+  private fileLineReadCalls = new Map<string, { blocked: boolean }>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
   private compactionRequestShape?: CompactionRequestShape;
@@ -2659,7 +2677,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const blocked = await this.extensionToolCall(context);
       if (blocked?.block) return blocked;
       await this.preparePathToolCall(context);
-      await this.registerBatchCall(context);
+      // Composer prefetches run serially outside the assistant's tool batches.
+      if (!this.fileLineReadCalls.has(context.toolCall.id)) await this.registerBatchCall(context);
       return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
@@ -3653,6 +3672,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               toolCallId,
               toolName,
               args: params,
+              ...(this.fileLineReadCalls.has(toolCallId) ? { workspaceOnly: true } : {}),
               ...(this.batchPlanner.ticket(toolCallId) ? { fileBatchTicket: this.batchPlanner.ticket(toolCallId) } : {}),
               mode: this.mode,
               ...(isBash
@@ -3744,6 +3764,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (executionFailed) throw executionError;
         if (!result) throw new Error("tool execution returned no result");
         const recordParams = isRecord(params) ? params : undefined;
+        const fileLineRead = this.fileLineReadCalls.get(toolCallId);
+        if (fileLineRead && (result.denied || result.errorCode === "PERMISSION_DENIED")) {
+          fileLineRead.blocked = true;
+        }
         const failedToolExecution = !result.ok && result.denied !== true;
         const failedEditPath =
           toolName === "Edit" &&
@@ -9228,13 +9252,65 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     });
   }
 
+  /** Execute the ordinary Host Read for explicit composer references before model input. */
+  async resolveFileLineReferences(input: RuntimePrompt): Promise<RuntimePrompt> {
+    if (!input.attachments?.some(attachment => attachment.lineRange !== undefined)) return input;
+    const read = this.activeTools().find(tool => tool.name === "Read" && this.builtinTools.has(tool));
+    const turnId = this.turnId;
+    const attachments: RuntimePromptAttachment[] = [];
+    const seen = new Set<string>();
+    for (const attachment of input.attachments) {
+      if (attachment.lineRange === undefined) {
+        attachments.push(attachment);
+        continue;
+      }
+      const range = parseFileLineRange(attachment.lineRange);
+      if (!range || attachment.kind !== "file" || seen.size >= MAX_FILE_LINE_REFERENCES) continue;
+      const key = JSON.stringify([attachment.path, range.start, range.end]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (this.runCancelled || this.disposed || turnId !== this.turnId) throw turnAbortedError("Turn ended during file reference reads");
+      const args = {
+        path: attachment.path,
+        offset: range.start - 1,
+        limit: range.end - range.start + 1,
+      };
+      const toolCall = { type: "toolCall" as const, id: randomUUID(), name: "Read", arguments: args };
+      const timestamp = Date.now();
+      const tools = read ? [read] : [];
+      const prefetch = { blocked: !read };
+      this.fileLineReadCalls.set(toolCall.id, prefetch);
+      const { result, isError } = await runToolCall(toolCall, {
+        tools,
+        assistantMessage: {
+          role: "assistant", content: [toolCall], api: this.model.api, provider: this.model.provider,
+          model: this.model.id, usage: usageToPi(undefined), stopReason: "toolUse", timestamp,
+        },
+        context: { messages: this.agent.state.messages, tools },
+        beforeToolCall: async context => {
+          const decision = await this.beforeToolCall(context);
+          if (decision?.block) prefetch.blocked = true;
+          return decision;
+        },
+        afterToolCall: context => this.afterToolCall(context),
+      }).finally(() => this.fileLineReadCalls.delete(toolCall.id));
+      const text = result.content.flatMap(part => part.type === "text" ? [part.text] : []).join("\n");
+      if (this.runCancelled || this.disposed || turnId !== this.turnId) throw turnAbortedError("Turn ended during file reference reads");
+      attachments.push({
+        ...attachment, lineRange: range, text,
+        fileReferenceError: isError ? (prefetch.blocked ? "blocked" : "failed") : undefined,
+      });
+    }
+    return { ...input, attachments };
+  }
+
   private async promptTurn(
     input: string | RuntimePrompt,
     userMessageId: string | undefined,
     durableTurnId: string,
   ): Promise<{ turnId: string }> {
     const selectedTools = this.selectedMcpTools(input);
-    const modelInput = typeof input !== "string" && input.sessionMessage
+    let modelInput = typeof input !== "string" && input.sessionMessage
       ? { ...input, text: formatSessionMessage(input.text, input.sessionMessage), sessionMessage: undefined }
       : input;
     this.retainPendingSteering();
@@ -9271,6 +9347,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.resetDeferredToolsForPrompt();
       if (selectedTools.length) this.activateDeferredTools(selectedTools);
       this.setAgentTools(this.activeTools());
+      if (typeof modelInput !== "string" && modelInput.attachments?.some(attachment => attachment.lineRange !== undefined)) {
+        modelInput = await this.resolveFileLineReferences(modelInput);
+      }
       const content = promptContent(modelInput);
       const incomingUserMessage: AgentMessage = {
         role: "user",

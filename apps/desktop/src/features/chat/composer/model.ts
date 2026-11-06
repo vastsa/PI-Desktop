@@ -57,6 +57,7 @@ export type ComposerPrefill = {
 };
 
 export type ComposerFileReference = {
+  lineRange?: import("@pi-desktop/shared").FileLineRange;
   id: string;
   sessionId: string;
   path: string;

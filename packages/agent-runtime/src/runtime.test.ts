@@ -227,6 +227,63 @@ function createRuntime(
   });
 }
 
+it("reads each explicit file line range once before passing its text to the model", async () => {
+  const call = vi.fn(async (method: string, _params: unknown) => {
+    if (method === "tools.fileBatchCapabilities") return { version: 1, supported: true };
+    if (method === "tools.fileBatchRegister") return { ticket: "test-ticket" };
+    if (method === "tools.fileBatchSeal") return { ok: true };
+    if (method === "tools.execute") return { ok: true, content: { content: "85: saved first\n86: saved second", totalLines: 100 } };
+  });
+  const onEvent = vi.fn();
+  const runtime = createRuntime({ host: { call }, onEvent, projectPath: "/project", workspaceRoot: "/project" });
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  const reference = { kind: "file" as const, path: "/project/src/gpt.py", name: "gpt.py", lineRange: { start: 85, end: 86 } };
+  try {
+    await runtime.prompt({ text: "Explain these lines", attachments: [reference, reference] }, "prompt", "turn");
+    expect(call.mock.calls.filter(([method]) => method === "tools.execute")).toEqual([
+      ["tools.execute", expect.objectContaining({
+        toolName: "Read",
+        turnId: "turn",
+        workspaceOnly: true,
+        args: { path: "/project/src/gpt.py", offset: 84, limit: 2 },
+      })],
+    ]);
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({
+      role: "user",
+      content: expect.stringContaining("85: saved first"),
+    }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("86: saved second") }));
+    expect(call.mock.calls.map(([method]) => method)).not.toContain("tools.fileBatchRegister");
+    expect(onEvent.mock.calls.map(([event]) => event.type)).not.toContain("tool_end");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it.each([
+  { denied: true, status: "blocked", reason: "Read denied" },
+  { denied: false, status: "failed", reason: "File not found" },
+])("labels a $status file reference separately from file content", async ({ denied, status, reason }) => {
+  const call = vi.fn(async (method: string) => {
+    if (method === "tools.execute") return { ok: false, denied, content: reason };
+  });
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  const reference = { kind: "file" as const, path: "/project/sample.txt", name: "sample.txt", lineRange: { start: 2, end: 2 } };
+  try {
+    await runtime.prompt({ text: "Explain this line", attachments: [reference] });
+    const message = model.mock.calls[0]?.[0];
+    expect(message).toMatchObject({
+      content: expect.stringContaining(`status="${status}">\n${reason}\n</file_reference_error>`),
+    });
+    expect(message).not.toMatchObject({ content: expect.stringContaining("<file_lines") });
+  } finally {
+    await runtime.dispose();
+  }
+});
+
 function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   const internal = runtime as unknown as { agent: { state: { tools: AgentTool[] } } };
   const tool = internal.agent.state.tools.find((entry) => entry.name === name);

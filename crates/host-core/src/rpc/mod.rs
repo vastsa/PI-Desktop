@@ -4131,6 +4131,7 @@ async fn handle_request(
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let workspace_only = p.tool_name == "Read" && p.workspace_only;
             let _pending_file_call = if let Some(ticket) = p.file_batch_ticket.as_deref() {
                 Some(
                     state
@@ -4317,11 +4318,15 @@ async fn handle_request(
                         None => resolve_tool_workspace_for_call(&st, &p.session_id, &p.args)?,
                     };
                     let scratch = scratch::session_dir(&st.data_dir, &p.session_id);
-                    let contained_roots = local_contained_roots(
-                        &st.data_dir,
-                        &p.session_id,
-                        remote_workspace.is_some(),
-                    );
+                    let contained_roots = if workspace_only {
+                        ContainedRoots::new()
+                    } else {
+                        local_contained_roots(
+                            &st.data_dir,
+                            &p.session_id,
+                            remote_workspace.is_some(),
+                        )
+                    };
                     let external_path_permission = if remote_workspace.is_some() {
                         remote_tools::requires_external_permission(
                             ws.as_deref(),
@@ -4336,6 +4341,18 @@ async fn handle_request(
                             &p.args,
                         )
                     };
+                    if workspace_only
+                        && (remote_workspace.is_some()
+                            || ws.is_none()
+                            || ws.as_deref().map(Path::new) == scratch.as_deref()
+                            || external_path_permission)
+                    {
+                        return Err(rpc_err(
+                            1003,
+                            "File line references require a local project path",
+                            "PATH_OUTSIDE_WORKSPACE",
+                        ));
+                    }
                     let mut auto = st
                         .permissions
                         .evaluate_auto_with_permission_mode_and_risk_and_path(
@@ -4808,15 +4825,17 @@ async fn handle_request(
                 } else {
                     let execute = tools::execute_tool_with_file_lease(
                         ws_path.as_deref(),
-                        scratch_path.as_deref(),
+                        scratch_path.as_deref().filter(|_| !workspace_only),
                         &p.tool_name,
                         &p.args,
                         tools::ToolExecutionOptions {
                             timeout_ms: execution_timeout_ms,
                             bash_options,
-                            allow_external_paths: external_path_permission,
+                            allow_external_paths: external_path_permission && !workspace_only,
                             hashline: Some(hashline_ctx),
-                            visualization_root: visualization_path.as_deref(),
+                            visualization_root: visualization_path
+                                .as_deref()
+                                .filter(|_| !workspace_only),
                         },
                         Some(tool_permit.clone()),
                         file_resources.clone(),
@@ -10395,6 +10414,51 @@ mod tests {
         .unwrap();
         assert_eq!(auto["ok"], true);
         assert_eq!(auto["content"]["root"], "external");
+
+        let scoped = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "outside-composer-read",
+                "toolName": "Read",
+                "args": { "path": outside_file.to_string_lossy(), "offset": 0, "limit": 1 },
+                "workspaceOnly": true,
+                "mode": "agent"
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            scoped.message,
+            "File line references require a local project path"
+        );
+
+        let project_file = project.join("note.txt");
+        fs::write(&project_file, "before\nselected line\nafter\n").unwrap();
+        let scoped = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "inside-composer-read",
+                "toolName": "Read",
+                "args": { "path": project_file.to_string_lossy(), "offset": 1, "limit": 1 },
+                "workspaceOnly": true,
+                "mode": "agent"
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(scoped["ok"], true);
+        let content = scoped["content"]["content"].as_str().unwrap();
+        assert!(content.contains("selected line"), "{content}");
+        assert!(
+            !content.contains("before") && !content.contains("after"),
+            "{content}"
+        );
     }
 
     #[tokio::test]
