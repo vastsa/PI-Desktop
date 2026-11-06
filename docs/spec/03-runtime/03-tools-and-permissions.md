@@ -981,3 +981,21 @@ Naming:
 before the trusted desktop executes the request. Plan/Goal remain denied even
 under Auto. See [image generation](21-image-generation.md) for cancellation,
 limits and result semantics.
+
+
+### Model access to background commands
+
+In Agent mode the model can list, wait for and stop its session's background
+Bash jobs through TaskList, TaskWait and TaskStop. The job's Host record is the
+same record read by the desktop. Runtime supplies its bound session identity;
+model arguments cannot select a different session. Host requires an existing
+local Agent-mode session and resolves both read and stop by (sessionId, id).
+Unknown and foreign IDs return the same NOT_FOUND error.
+
+Waiting never kills a process. A one-second bounded Host observation can be
+abandoned on input or cancellation, and no global AppState lock is held during
+the wait. Terminal notification follows output draining. Explicit stop reuses
+the supervisor's process-tree cleanup and reports its actual settled outcome
+or a still-running snapshot with stopRequested. The model's reads and desktop
+reads do not consume each other's logs. Retention and Host restart still bound
+how long a finished ID can be queried.

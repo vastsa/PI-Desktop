@@ -671,8 +671,8 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 `ui-designer` 也默认继承父会话：`auto` 下跟随父会话自动放行，而 `ask` 和
 `accept-edits` 仍保留各自的审批边界。显式声明的内置或用户作用域仍然是一次有意的覆盖。
 
-**工具（ADR 0089）。** 委托是四个工具的生命周期，仅在 Agent 模式下且目录
-非空时构建，四个工具都属于 Agent 核心集而不是第 7.1 节的按需目录：
+**工具（ADR 0089）。** Task 要求非空子代理目录，三个作业控制工具始终声明。
+它们属于 Agent 核心集，仅在 Agent 模式允许执行。
 
 - `Task(agent, task, description?, model?)` — 验证其参数（未知的 `agent`、空的
   `task`、无法解析的模型引脚以及工具全部不可用的定义，各自返回一个工具
@@ -1051,9 +1051,7 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 - Agent：`Read`、`Bash`、`Edit` 和 `Write`（匹配 pi 的编码代理核心）
 - Agent：只要技能目录非空，`Skill` 也在核心集中（D404、ADR 0230）——`# Skills`
   段落与用户输入的 `/skill:<skill-id>` 都要求模型调用它，而模式中缺失的工具根本无法被调用
-- Agent：当子代理目录非空时，`Task`、`TaskWait`、`TaskList` 和
-  `TaskStop` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
-  委托生命周期值得每个请求的额外模式
+- Agent：始终提供 `TaskWait`、`TaskList`、`TaskStop`，子代理目录非空时另提供 `Task`（§5f）。
 - Plan：`Read`、`Glob`、`Grep`、`BrowserPreview` 和 `Bash`
 - 两种模式：`ToolSearch`（当至少存在一种延迟功能时）
 
@@ -1305,3 +1303,17 @@ content. The durable transcript is unchanged and completed tools are not
 re-executed. Other malformed context remains subject to strict validation.
 Tool token estimates are optional telemetry: an invalid call identity must not
 prevent the corresponding terminal tool event from being delivered.
+
+### 会话作业控制
+
+Agent 模式下，即使没有配置子代理，也提供 TaskWait、TaskList 和 TaskStop。Task 仍要求子代理目录。Plan/Goal 保留声明以兼容对话历史，执行时拒绝这些工具。
+
+后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令文字限制为 1 KiB。
+
+TaskWait/TaskStop 接受单个显式 job，与 delegationIds、mode、minCompleted 混用会报错。无 job 时保留原委派默认集合。旧 backgroundTaskId 可写成 `{kind: "bash", id: backgroundTaskId}`。
+
+Bash 等待返回状态、可空退出码、停止请求标记及分别最多 8 KiB 的 stdout/stderr 尾部，按 UTF-8 边界截断。truncated 同时表示 Host 历史丢失或本次截断。查询可重复且不消耗桌面日志。等待默认 600 秒，接受 1–900 秒；details.status 为 completed、timeout 或 interrupted，与作业状态独立。新输入或父回合取消只结束等待。停止返回 completed 或 stopPending，stopRequested 本身不代表进程已退出。
+
+Bash 由 Host 管理，完成后不自动投递结果或延长父回合。原委派报告交付和恢复规则继续生效。能力按连接探测；旧 Host 和远程工作区明确返回后台 Bash 控制不可用，委派操作仍可用。其他传输或 Host 错误会正常呈现。
+
+等待时限包含能力探测和在途请求。超时返回最近一次已观察的快照。如果首次观察尚未返回，工具返回作业引用和 `snapshotAvailable: false`，省略进程状态。聊天记录区分显式 Bash 目标，混合作业列表显示后台命令数量。

@@ -765,3 +765,9 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 ## 图片生成与编辑
 
 `GenerateImages` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。
+
+### 模型访问后台命令
+
+Agent 模式下，模型通过 TaskList、TaskWait、TaskStop 管理本会话的后台 Bash，桌面和模型读取同一 Host 作业记录。runtime 带入已绑定会话身份，模型参数不能选择其他会话。Host 要求会话存在、属于本地并处于 Agent 模式，按 sessionId 与 id 校验读取和停止。未知与其他会话的 ID 均返回 NOT_FOUND。
+
+等待不会终止进程。单次 Host 观察最多一秒，可在新输入或取消时放弃，等待期间不持有全局状态锁。终态通知在输出收尾后发出。显式停止复用主管的进程树清理，并返回实际终态或带 stopRequested 的运行中快照。查询互不消耗日志。有限历史与 Host 重启仍限制旧 ID 可查询的时间。

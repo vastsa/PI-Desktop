@@ -746,8 +746,8 @@ submitted Markdown bytes in a new immutable
 structured title/question in `plan_approvals`, and moves the live state to
 `awaiting_approval`.
 
-Plan/Goal requests retain Write/Edit declarations and, when subagents are
-configured, the Task/TaskWait/TaskList/TaskStop declarations. They are marked
+Plan/Goal requests retain Write/Edit and TaskWait/TaskList/TaskStop declarations,
+plus Task when subagents are configured. They are marked
 unavailable in the active mode. The execution allowlist remains unchanged:
 prohibited calls are blocked before extension call hooks and handlers, and a
 handler retained across a mode change rechecks that mode before executing.
@@ -964,9 +964,9 @@ not override the parent session by default: they follow `auto` completely
 their normal approval behavior. An explicit builtin or user scope remains an
 intentional override.
 
-**Tools (ADR 0089).** Delegation is a four-tool lifecycle, built only in Agent
-mode and only when the catalog is non-empty, and all four belong to the Agent
-core set rather than the on-demand catalog of §7.1:
+**Tools (ADR 0089).** Task requires a non-empty subagent catalog. The three
+job controls are always declared and belong to the Agent core set rather than
+the on-demand catalog of §7.1. Execution of all four is restricted to Agent mode:
 
 - `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
@@ -1618,10 +1618,8 @@ execution activation rules:
 - Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
   `# Skills` section and a user-typed `/skill:<skill-id>` both ask the model to call
   it, and a tool that is missing from the schema cannot be called at all
-- Agent: `Task`, `TaskWait`, `TaskList`, and `TaskStop` as well, whenever the
-  subagent catalog is non-empty (§5f) — a capability the model has to go
-  looking for is one it will not use, and the delegation lifecycle is worth
-  the extra schemas per request
+- Agent: `TaskWait`, `TaskList` and `TaskStop` for session jobs, plus `Task`
+  when the subagent catalog is non-empty (§5f)
 - Plan: `Read`, `Glob`, `Grep`, `BrowserPreview`, and `Bash`
 - both modes: `ToolSearch` when at least one deferred capability exists
 
@@ -1962,3 +1960,44 @@ retries and images retain physical account/model attribution. Nested immediate
 parent and owning Task remain distinct. The migration does not add coding-agent
 AgentSession, Codemode or virtual routing. See the coding-agent design review for
 future adoption conditions.
+
+
+### Session job controls
+
+Agent-mode TaskWait, TaskList and TaskStop are available even without configured
+subagents. Task itself still requires a subagent catalog. Plan/Goal retain the
+declarations for conversation compatibility and reject their execution.
+
+Bash background startup and Task startup return an additive `job: {kind, id}`
+reference, where kind is `bash` or `delegation`; their original identifiers
+remain available. TaskList preserves `delegations` and `resumable` and adds
+`backgroundJobs: {supported, tasks}`. Delegation summaries also include job
+references. Bash summaries contain no logs and bound command text to 1 KiB.
+
+TaskWait and TaskStop accept one explicit `job`. Combining it with
+`delegationIds`, `mode` or `minCompleted` is an error. Omitting it preserves
+the existing delegation defaults, including stop-all-delegates. A Bash job
+never joins those implicit target sets. A legacy backgroundTaskId can be
+addressed as `{kind: "bash", id: backgroundTaskId}`.
+
+For Bash, TaskWait returns a snapshot with state, nullable exitCode,
+stopRequested, separate stdout/stderr tails and truncated. Each stream is
+bounded to 8 KiB at UTF-8 boundaries; truncation also reflects Host ring loss.
+Reads are repeatable and do not consume desktop output. The wait defaults to
+600 seconds and accepts 1–900 seconds. `details.status` describes the wait
+(completed/timeout/interrupted), independently of the job's state. New input
+interrupts the wait; cancelling the parent releases it without stopping Bash.
+TaskStop returns completed or stopPending based on the actual snapshot. A
+stopRequested flag alone does not confirm termination.
+
+The wait deadline includes capability discovery and in-flight requests.
+On timeout the tool returns its last observed snapshot. If the first
+observation has not arrived, it returns the job reference with
+`snapshotAvailable: false` and no process state. Transcript rows identify
+explicit Bash targets and include background commands in mixed job lists.
+
+Bash is still owned by Host and does not auto-deliver completion or keep the
+parent turn open. Delegation report delivery and resumability retain their
+existing lifecycle. Runtime capability probing is connection-scoped; older
+Hosts and remote workspaces explicitly report Bash controls unavailable,
+while delegation controls remain usable. Transport and Host failures propagate.
