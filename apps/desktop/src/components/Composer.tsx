@@ -489,6 +489,7 @@ export function Composer({
     cursor,
     composing,
     enabled: !inputBlocked && localToolsAllowed,
+    agentsEnabled: mode === "agent",
     referenceSessionId,
     fileReferencesRef,
     applyEditorDraft,

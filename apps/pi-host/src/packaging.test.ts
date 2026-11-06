@@ -68,7 +68,11 @@ afterEach(() => {
   for (const dir of temporaryDirectories.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("pi-host packaging", () => {
+// These cases run the real bundle/install scripts, and one case can chain
+// several child processes that each get a 15 s budget in `node()`. Vitest's
+// default 5 s per-test limit is shorter than one such budget, so the suite
+// timed out whenever the machine was busy (for example under `pnpm -r test`).
+describe("pi-host packaging", { timeout: 60_000 }, () => {
   it("loads the copied entry and static/dynamic transitive chunks outside the workspace", () => {
     const f = fixture();
     const packaged = bundle(f);

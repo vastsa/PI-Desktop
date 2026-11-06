@@ -204,6 +204,9 @@ pub struct UiMessage {
     /// Validated Skill tokens in `command`, with UTF-16 offsets for the renderer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_mentions: Option<Vec<SkillMention>>,
+    /// Validated `@agent` tokens in `command`, with UTF-16 offsets for the renderer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_mentions: Option<Vec<AgentMention>>,
     /// Host-authenticated agent-to-agent origin, never a human authorization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_message: Option<Value>,
@@ -290,6 +293,14 @@ pub struct SkillMention {
     pub start: usize,
     pub end: usize,
     pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMention {
+    pub start: usize,
+    pub end: usize,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,6 +417,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     }
     if let Some(mentions) = &message.skill_mentions {
         meta_obj.insert("skillMentions".into(), json!(mentions));
+    }
+    if let Some(mentions) = &message.agent_mentions {
+        meta_obj.insert("agentMentions".into(), json!(mentions));
     }
     if let Some(origin) = &message.session_message {
         meta_obj.insert("sessionMessage".into(), origin.clone());
@@ -565,6 +579,9 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let skill_mentions = meta
         .get("skillMentions")
         .and_then(|value| serde_json::from_value(value.clone()).ok());
+    let agent_mentions: Option<Vec<AgentMention>> = meta
+        .get("agentMentions")
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
     let session_message = meta.get("sessionMessage").cloned();
     let voice_origin = meta.get("voiceOrigin").cloned();
     let steering = meta.get("steering").and_then(Value::as_bool);
@@ -698,6 +715,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             content: text,
             command: command.clone(),
             skill_mentions: skill_mentions.clone(),
+            agent_mentions: agent_mentions.clone(),
             session_message,
             voice_origin: voice_origin.clone(),
             attachments: None,
@@ -753,6 +771,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             content,
             command,
             skill_mentions,
+            agent_mentions,
             session_message,
             voice_origin,
             attachments,
@@ -4428,6 +4447,28 @@ mod tests {
         Database::open(&dir.join("test.sqlite")).unwrap()
     }
 
+    #[test]
+    fn agent_mentions_round_trip_through_record_meta() {
+        let mut message = user_msg("u1", "Call the `Task` tool", "2026-01-01T00:00:00Z");
+        message.command = Some("look @explorer here".into());
+        message.agent_mentions = Some(vec![AgentMention {
+            start: 5,
+            end: 14,
+            name: "explorer".into(),
+        }]);
+        let (record, _) = ui_to_record(&message);
+        let restored = record_to_ui(record);
+        let mentions = restored.agent_mentions.expect("agent mentions survive");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!((mentions[0].start, mentions[0].end), (5, 14));
+        assert_eq!(mentions[0].name, "explorer");
+        assert_eq!(restored.command.as_deref(), Some("look @explorer here"));
+
+        // A row written before the field existed reads back without it.
+        let (legacy, _) = ui_to_record(&user_msg("u2", "plain", "2026-01-01T00:00:00Z"));
+        assert!(record_to_ui(legacy).agent_mentions.is_none());
+    }
+
     fn user_msg(id: &str, content: &str, ts: &str) -> UiMessage {
         UiMessage {
             id: id.into(),
@@ -4435,6 +4476,7 @@ mod tests {
             content: content.into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -5399,6 +5441,7 @@ mod tests {
             content: "ok".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -6194,6 +6237,7 @@ mod tests {
             content: "final answer".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -6342,6 +6386,7 @@ mod tests {
             content: "answer with sources".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
