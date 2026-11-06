@@ -718,7 +718,7 @@ export const ptBR = {
     },
     model: "Modelo",
     recentModels: "Usados recentemente",
-    otherModels: "Outros modelos",
+    modelSources: "Fontes de modelos",
     searchModels: "Pesquisar modelos…",
     noModelResults: "Nenhum modelo encontrado",
     modelBadgeReasoning: "Raciocínio",

@@ -19186,14 +19186,15 @@ host-created files. The full app's file-preview viewer is covered separately.
 ## Composer recent chat models
 
 - Send accepted messages using four distinct configured chat models across providers. Open the combined
-  model menu: exactly the latest three available pairs appear in recency order,
-  with provider labels. Select an older recent row: order stays unchanged until
+  model menu: the Recent source is selected and lists the latest available pairs
+  (up to six) in recency order, with provider labels. Select an older recent row: order stays unchanged until
   a message is accepted, at which point that model moves first.
-- Search immediately without expanding Other models; choose using keyboard
-  navigation. Expand Other models inline and verify no duplicate recent rows.
-  Move from the third recent row to Other models, and tab out of search after
-  arrow navigation: no stale keyboard highlight remains on a model row.
-  Without history, all configured models are directly visible. Verify thinking
+- Search immediately; results span every provider and the rail selection is
+  released; choose using keyboard navigation. Choose a provider in the source
+  rail and verify each of its models appears once. Move from a recent row to the
+  rail, and tab out of search after arrow navigation: no stale keyboard
+  highlight remains on a model row. Without history and with one provider, the
+  rail is hidden and all configured models are directly visible. Verify thinking
   defaults still follow the selected binding and manual same-model levels survive.
 - Create a new chat: it inherits the last actually used model. Reload local preferences
   and create another chat: the same binding is restored. An existing chat keeps

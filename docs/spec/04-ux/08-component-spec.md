@@ -4180,8 +4180,9 @@ responses cannot restore an earlier order. Composer All models groups follow the
 default nor provider configuration. OAuth accounts remain in their separate section.
 
 1. **Model selection** — chat models are selected in the Composer. Its first
-   menu has persistent search, up to three recent available provider/model pairs,
-   and an inline Other models disclosure. Without history, it shows all models.
+   menu has persistent search over a source rail (Recent, then each provider)
+   and the chosen source's models. With a single source the rail is hidden and
+   all models show directly.
    New chats inherit the last actually used available model. Only accepted
    message submission updates that preference; selection and reasoning changes
    alone do not count as usage.

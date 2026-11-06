@@ -719,7 +719,7 @@ export const fr = {
     },
     "model": "Modèle",
     recentModels: "Récemment utilisés",
-    otherModels: "Autres modèles",
+    modelSources: "Sources de modèles",
     "searchModels": "Rechercher des modèles",
     "noModelResults": "Aucun modèle correspondant",
     "modelBadgeReasoning": "raisonnement",
