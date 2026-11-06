@@ -478,7 +478,8 @@ provider as well as the model or alias. Search spans all providers, shows groupe
 results, and dims rail sources without matches. With a single source (for
 example no history and one provider) the rail is hidden and all models are
 visible immediately. The pane height is fixed by the tallest source so switching
-sources never resizes the menu. The current model is checked; reasoning controls
+sources never resizes the menu. Escape clears a typed search before it closes
+the menu. The current model is checked; reasoning controls
 sit in a footer below the list. Discovery enriches exact
 configured IDs without adding unconfigured choices. Model and reasoning changes
 retain the existing session configuration and permission boundaries.

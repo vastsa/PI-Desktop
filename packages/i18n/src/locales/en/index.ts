@@ -732,6 +732,7 @@ export const en = {
     model: "Model",
     recentModels: "Recently used",
     modelSources: "Model sources",
+    reasoningShort: "Reasoning",
     searchModels: "Search models",
     noModelResults: "No matching models",
     modelBadgeReasoning: "reasoning",

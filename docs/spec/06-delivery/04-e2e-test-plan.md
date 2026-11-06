@@ -4879,13 +4879,12 @@ window; opening a normal panel afterward must still work.
 - **Preconditions**: One catalogued reasoning model, one non-reasoning model,
   and one unknown free-form model id.
 - **Steps**: 1) Open the Composer model × reasoning chip. 2) Confirm the root
-  contains the Model and Reasoning level entries with current values, plus a
-  slider with one track dot per supported level on a rail directly beneath the
-  Reasoning level entry; confirm every level keeps a visible label under the
-  rail, each centered on its track dot. 3) Drag and click the slider across
-  multiple supported levels and click a tick label, confirming the chip
-  updates while the menu stays at the root and the selected track dot sits
-  under the thumb. 4) Open Model, search for a model, and select a
+  contains the model list plus a segmented reasoning control in the footer
+  with one labeled column per supported level; confirm every level keeps a
+  visible label, each centered in its column. 3) Drag and click the control
+  across multiple supported levels and click a label, confirming the chip
+  updates while the menu stays open and the raised pill sits under the
+  selected label. 4) Open Model, search for a model, and select a
   model from a provider group; confirm the menu remains open at the root.
   5) Open Reasoning level and choose a level from the radio list. 6) Repeat
   with a non-reasoning provider and an unknown free-form model id; exercise
@@ -19194,7 +19193,9 @@ host-created files. The full app's file-preview viewer is covered separately.
   rail and verify each of its models appears once. Move from a recent row to the
   rail, and tab out of search after arrow navigation: no stale keyboard
   highlight remains on a model row. Without history and with one provider, the
-  rail is hidden and all configured models are directly visible. Verify thinking
+  rail is hidden and all configured models are directly visible. With a
+  search typed, Escape clears it and keeps the menu open; a second Escape
+  closes the menu. Verify thinking
   defaults still follow the selected binding and manual same-model levels survive.
 - Create a new chat: it inherits the last actually used model. Reload local preferences
   and create another chat: the same binding is restored. An existing chat keeps

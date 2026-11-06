@@ -78,36 +78,28 @@ app.whenReady().then(async()=>{
     await click();
     await click('low');
     const hoverSnapshot=()=>window.webContents.executeJavaScript(\`(() => {
-      const dots=[...document.querySelectorAll('.composer-thinking-dot')];
       const ticks=[...document.querySelectorAll('.composer-thinking-tick')];
-      const hovered=dots.findIndex(dot=>dot.hasAttribute('data-hovered'));
-      return {hovered, tick:ticks.findIndex(tick=>tick.hasAttribute('data-hovered')),
-        width:hovered<0?0:dots[hovered].getBoundingClientRect().width,
-        halo:hovered<0?'none':getComputedStyle(dots[hovered]).boxShadow,
-        thumbWidth:document.querySelector('.composer-thinking-thumb').getBoundingClientRect().width,
-        thumbHalo:getComputedStyle(document.querySelector('.composer-thinking-thumb')).boxShadow,
+      return {tick:ticks.findIndex(tick=>tick.hasAttribute('data-hovered')),
+        thumb:document.querySelector('.composer-thinking-thumb').getBoundingClientRect().left,
         value:document.querySelector('.composer-thinking-range').getAttribute('aria-valuetext')};
     })()\`);
     result.hover=[];
+    const restingThumb=(await hoverSnapshot()).thumb;
     for(const stop of [0,1,2,4]){
-      for(const row of ['dot','tick']){
-        const point=await window.webContents.executeJavaScript(\`(() => {
-          const r=document.querySelectorAll('.composer-thinking-\${row}')[\${stop}].getBoundingClientRect();
-          return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)};
-        })()\`);
-        window.webContents.sendInputEvent({type:'mouseMove',...point});
-        await probe('settle()');
-        const hovered=await hoverSnapshot();
-        result.hover.push({stop,row,...hovered});
-        if(hovered.halo!=='none' || hovered.thumbHalo!=='none')
-          result.failures.push('Hover unexpectedly added a halo');
-        if(hovered.hovered!==stop || hovered.tick!==stop || Math.abs(hovered.width-(stop>2?5.2:4))>0.1 || hovered.value!=='low' || Math.abs(hovered.thumbWidth-14)>0.1)
-          result.failures.push('Hover did not link dot and label without selection: '+JSON.stringify({stop,row,...hovered}));
-      }
+      const point=await window.webContents.executeJavaScript(\`(() => {
+        const r=document.querySelectorAll('.composer-thinking-tick')[\${stop}].getBoundingClientRect();
+        return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)};
+      })()\`);
+      window.webContents.sendInputEvent({type:'mouseMove',...point});
+      await probe('settle()');
+      const hovered=await hoverSnapshot();
+      result.hover.push({stop,...hovered});
+      if(hovered.tick!==stop || hovered.value!=='low' || Math.abs(hovered.thumb-restingThumb)>0.1)
+        result.failures.push('Hover did not preview the label without moving the selection: '+JSON.stringify({stop,...hovered}));
     }
     window.webContents.sendInputEvent({type:'mouseMove',x:5,y:5});
     await probe('settle()');
-    if((await hoverSnapshot()).hovered!==-1 || (await hoverSnapshot()).tick!==-1)
+    if((await hoverSnapshot()).tick!==-1)
       result.failures.push('Hover remained after leaving slider');
     await click('omit');
     await probe('focusRange()');

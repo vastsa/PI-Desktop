@@ -24,10 +24,39 @@ test("Composer uses one searchable model menu with a source rail", () => {
   assert.match(listSource, /onClick=\{\(\) => selectSection\(section\.id\)\}/);
   assert.match(modelMenuSource, /showSectionRail: sections\.length > 1/);
   assert.match(modelMenuSource, /searching\s*\? filteredModelGroups/);
-  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \{[^}]*grid-template-columns: 148px minmax\(0, 1fr\)/);
+  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \{[^}]*grid-template-columns: 116px minmax\(0, 1fr\)/);
   // Switching sources never resizes the menu under the pointer.
   assert.match(modelMenuSource, /const paneRows = Math\.max\(/);
-  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \.composer-model-list,[\s\S]*?height: min\(280px, calc\(var\(--model-pane-rows, 8\) \* 33px \+ 2px\)\)/);
+  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \.composer-model-list,[\s\S]*?height: min\(264px, calc\(var\(--model-pane-rows, 8\) \* 30px \+ 4px\)\)/);
+});
+
+test("the source rail and pane move with the selection instead of snapping", () => {
+  // One marker travels between rail items; its step matches the 28px row
+  // plus the 2px gap, and it fades out while search releases the rail.
+  assert.match(listSource, /className="composer-model-rail-indicator"/);
+  assert.match(listSource, /data-hidden=\{railIndex < 0 \? "true" : undefined\}/);
+  assert.match(stylesSource, /\.composer-model-rail-item \{[^}]*height: 28px;/);
+  assert.match(stylesSource, /\.composer-model-rail \{[^}]*gap: 2px;/);
+  assert.match(stylesSource, /transform: translateY\(calc\(var\(--rail-index, 0\) \* 30px\)\)/);
+  // The pane is keyed by source and slides in from the side the rail moved
+  // toward; the first render after opening does not animate.
+  assert.match(listSource, /key=\{activeSection \?\? "search"\}/);
+  assert.match(listSource, /data-step=\{sectionStep === 0 \? undefined : sectionStep < 0 \? "back" : "forward"\}/);
+  assert.match(modelMenuSource, /setSectionStep\(to < from \? -1 : 1\)/);
+  assert.match(modelMenuSource, /setSectionStep\(0\)/);
+  // A current row is marked by a drawn check, and every motion has a
+  // reduced-motion opt-out.
+  assert.match(stylesSource, /\.composer-model-check path \{[^}]*animation: composer-model-check-draw/);
+  assert.match(stylesSource, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.composer-model-pane\[data-step\][\s\S]*?\.composer-model-rail-indicator/);
+});
+
+test("Escape clears a search before it closes the menu", () => {
+  assert.match(
+    modelMenuSource,
+    /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);[\s\S]*?if \(query && event\.target instanceof HTMLInputElement\) \{\s*setQuery\(""\);[\s\S]*?return;\s*\}\s*setOpen\(false\);/,
+  );
+  assert.match(listSource, /className="composer-model-search-clear"/);
+  assert.match(listSource, /aria-label=\{t\("settings\.clearSearch"\)\}/);
 });
 
 test("model selection does not itself record usage", () => {
@@ -72,27 +101,24 @@ test("the menu root carries the reasoning slider itself", () => {
   assert.doesNotMatch(composerSource, /thinkingMode|showThinkingMode|ThinkingSelectionMode|thinkingCommitChainRef/);
 });
 
-test("the reasoning slider aligns each track dot and label to the thumb", () => {
-  // The dots row and the labels row are separate full-width n-column grids
-  // keyed to --stop-count; the range input overlays the dots row at full
-  // width and is inset by half a column minus the thumb radius, which moves
-  // the native thumb's stops onto the same column centers for every n.
+test("the reasoning control aligns each label under its pill column", () => {
+  // The labels are a full-width n-column grid inside the track; the raised
+  // pill is one column wide, offset by index/n, and the range overlays the
+  // track inset by half a column minus its thumb radius, so pill i, label i
+  // and native stop i share one column center for every stop count.
   assert.match(sliderSource, /className="composer-thinking-rail"/);
-  assert.match(sliderSource, /className="composer-thinking-dots" aria-hidden="true"/);
   assert.match(sliderSource, /className="composer-thinking-ticks" aria-hidden="true"/);
-
-  // Rail, dots and labels all key off --stop-count; the dots and labels are
-  // full-width grids and the input carries the inset.
+  assert.doesNotMatch(sliderSource, /composer-thinking-dot/);
   assert.match(stylesSource, /--thinking-thumb-radius: 7px/);
   assert.match(stylesSource, /--thinking-inset: calc\(100% \/ \(2 \* var\(--stop-count, 1\)\) - var\(--thinking-thumb-radius\)\)/);
-  assert.match(stylesSource, /\.composer-thinking-dots \{[\s\S]*?grid-template-columns: repeat\(var\(--stop-count, 1\), minmax\(0, 1fr\)\)/);
   assert.match(stylesSource, /\.composer-thinking-ticks \{[\s\S]*?grid-template-columns: repeat\(var\(--stop-count, 1\), minmax\(0, 1fr\)\)/);
   assert.match(stylesSource, /\.composer-thinking-range \{[\s\S]*?padding: 0 var\(--thinking-inset\)/);
-
-  // Track dots sit on the rail (accent for the selected, muted for the rest)
-  // and labels stay visible; the input's own track is transparent.
-  assert.match(stylesSource, /\.composer-thinking-dot\.active/);
-  assert.match(stylesSource, /\.composer-thinking-range::-webkit-slider-runnable-track \{\s*height: var\(--thinking-track-height\);\s*background: transparent;/);
+  assert.match(stylesSource, /\.composer-thinking-thumb \{[\s\S]*?left: calc\(var\(--composer-thinking-progress, 0%\) \+ var\(--thinking-gutter\)\);\s*width: calc\(100% \/ var\(--stop-count, 1\) - 2 \* var\(--thinking-gutter\)\);/);
+  // The pill is the shared raised surface; dragging follows the pointer
+  // without easing.
+  assert.match(stylesSource, /\.composer-thinking-thumb \{[\s\S]*?background: var\(--ds-raised\);\s*box-shadow: var\(--ds-raised-shadow\);/);
+  assert.match(stylesSource, /\.composer-thinking-slider\[data-dragging\] \.composer-thinking-thumb \{\s*transform: none;\s*transition: none;/);
+  assert.match(stylesSource, /\.composer-thinking-range::-webkit-slider-runnable-track \{\s*height: 100%;\s*background: transparent;/);
 });
 
 test("opening the combined menu preloads model metadata before its submenu", () => {
