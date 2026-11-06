@@ -89,22 +89,24 @@ Official release notes: [Pi 1.5.0](https://github.com/earendil-works/pi/releases
 
 ## Validation
 
-Validation was run from the dedicated request worktree based on
-`d858250b62ab2224162e26d16643d04f22fa5eb6` (`origin/main`, 2026-11-06).
+Task candidate: `chore/pi-1-5-upgrade` rebased onto
+`28d5d07de18f` (`origin/main`, 2026-11-06), run from the dedicated request
+worktree with the primary checkout's Electron and a worktree-built debug Host.
 
-- `pnpm build:js`, Desktop typecheck, and lint passed.
-- Agent Runtime: 121 test files, 1,753 tests passed. Shared: 1,402 passed.
+- `pnpm check:pr-base`, `pnpm build:js`, Desktop typecheck, lint, and
+  `pnpm docs:check` passed. Pi dependency and patch gates and patch-hash fixture
+  tests passed.
+- Agent Runtime: 122 test files, 1,769 tests passed. Shared: 1,402 passed.
   i18n: 31 passed.
-- Desktop: 4,862 tests, 4,856 passed, 3 skipped. Three timing-sensitive tests
-  (`macos-signing-watchdog`, `npm-executable`, `remote-host-ssh-transport`)
-  timed out under the full parallel run and passed 41/41 when rerun alone.
-- Host-core: `cargo fmt --check` passed; 1,202 of 1,203 tests passed. The one
+- Desktop: 4,864 tests, 4,861 passed, 3 skipped, 0 failed. On the earlier base
+  three timing-sensitive tests (`macos-signing-watchdog`, `npm-executable`,
+  `remote-host-ssh-transport`) timed out once under the full parallel run and
+  passed 41/41 alone.
+- Host-core: `cargo fmt --check` passed; 1,210 of 1,211 tests passed. The one
   failure, `review_rpc_records_workspace_scratch_and_approved_external_write_edit`,
   fails identically on the unmodified base commit. Clippy reports two existing
   warnings in `review.rs` and `transcripts.rs`.
-- Pi dependency and patch gates passed; patch-hash fixture tests passed.
-- Trusted-extension E2E passed 57/57 with the worktree-built debug Host binary
-  and the primary checkout's Electron, using isolated fixture state.
+- Trusted-extension E2E passed 57/57.
 - Hosted-search E2E passed 10/10 only with a local, uncommitted fake-host
   addition for `tools.fileBatchCapabilities`. Without it every scenario stops
   with `Unsupported fake-host RPC`: `bdc35fa12` added that runtime RPC but not
