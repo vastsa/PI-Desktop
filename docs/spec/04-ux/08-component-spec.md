@@ -4183,7 +4183,9 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 1. **Model selection** — chat models are selected in the Composer. Its first
    menu has persistent search over a text-only source rail (Recent, then each
    provider) and the chosen source's models. A single marker slides between
-   rail items, and the pane slides in from the direction of the move. With a
+   rail items, and the pane slides in from the direction of the move. A gear at
+   the trailing edge of the search header ("Manage models") closes the menu
+   and opens the Models settings destination. With a
    single source the rail is hidden and all models show directly.
    New chats inherit the last actually used available model. Only accepted
    message submission updates that preference; selection and reasoning changes
