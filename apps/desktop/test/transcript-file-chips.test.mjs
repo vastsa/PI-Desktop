@@ -63,7 +63,9 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // Plain project files prefer the bundled file view. A path:line reference
   // uses the host file tab because the bundled view has no line-navigation API.
   assert.match(hook, /FILE_MANAGER_PLUGIN_TAB/);
-  const resolvedRefIndex = hook.indexOf("const resolved = await resolveRef(path, baseDir)");
+  // The resolver may now be handed the caller's options (issue #2113 adds
+  // allowDirectory), but resolution still precedes any file-manager load.
+  const resolvedRefIndex = hook.indexOf("const resolved = await resolveRef(path, baseDir, options)");
   const livePluginViewIndex = hook.indexOf("ensureFileManagerView(workspacePath)", resolvedRefIndex);
   assert.ok(
     livePluginViewIndex > resolvedRefIndex,

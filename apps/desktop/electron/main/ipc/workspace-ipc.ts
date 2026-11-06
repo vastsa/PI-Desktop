@@ -1088,7 +1088,7 @@ handleWithEvent(
   handle(
     IPC.invoke.fsResolveRef,
     async (
-      input: { ref?: string; sessionId?: string } = {},
+      input: { ref?: string; sessionId?: string; allowDirectory?: boolean } = {},
     ): Promise<FsChatRefResolveResult> => {
       const rawRef = String(input.ref ?? "").trim();
       if (!rawRef) return { match: null };
@@ -1124,10 +1124,16 @@ handleWithEvent(
       };
       if (await isChatRefOutsideRoots(ref, roots)) {
         // An exact absolute path outside the managed roots opens when it names
-        // an existing regular file (ADR 0339).
+        // an existing regular file (ADR 0339). Directories outside the roots
+        // stay unreachable: the remote transport has no allowDirectory flag
+        // either, so local and remote keep the same file-only contract there.
         return resolveExternalChatRef(ref);
       }
-      return { match: await resolveChatFileRef(ref, roots) };
+      return {
+        match: await resolveChatFileRef(ref, roots, {
+          allowDirectory: input.allowDirectory === true,
+        }),
+      };
     },
   );
 
