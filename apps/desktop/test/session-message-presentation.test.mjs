@@ -170,3 +170,24 @@ test("an image without a recorded position still follows the body", () => {
   const image = html.indexOf('data-image="b.png"');
   assert.ok(text >= 0 && image > text, html);
 });
+
+test("an @agent turn shows the typed text with the named delegate chipped (ADR 0346)", () => {
+  const html = render({
+    ...userMessage,
+    content: "The user explicitly delegated this request with @mentions. Call the `Task` tool…",
+    command: "look @explorer where /skill:review runs",
+    agentMentions: [{ start: 5, end: 14, name: "explorer" }],
+    skillMentions: [{ start: 21, end: 34, id: "review" }],
+  });
+  assert.match(html, /look <code class="chat-command-chip" title="@explorer" data-agent-mention="">@explorer<\/code> where <code class="chat-command-chip" title="review">\/skill:review<\/code> runs/);
+  assert.doesNotMatch(html, /Call the `Task` tool/);
+
+  // Offsets that do not point at an @token fall back to plain text.
+  const forged = render({
+    ...userMessage,
+    command: "look explorer here",
+    agentMentions: [{ start: 5, end: 13, name: "explorer" }],
+  });
+  assert.doesNotMatch(forged, /chat-command-chip/);
+  assert.match(forged, /look explorer here/);
+});

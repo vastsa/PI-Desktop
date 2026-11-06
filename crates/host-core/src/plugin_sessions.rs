@@ -281,6 +281,7 @@ fn parse_message(
         content: input.content.clone(),
         command: None,
         skill_mentions: None,
+        agent_mentions: None,
         attachments: None,
         voice_origin: None,
         steering: None,

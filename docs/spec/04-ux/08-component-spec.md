@@ -3565,7 +3565,7 @@ See [Live Voice](../03-runtime/live-voice.md) and
 [Live Work](../03-runtime/live-work-session.md) for the unchanged ownership,
 permission, and call-scoped work contracts.
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
+### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222, ADR 0346)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -3649,6 +3649,20 @@ Anatomy:
   may be incomplete — the bare `@`, until the first search for the token
   answers, and when a search is itself capped or unavailable, as in remote
   sessions; without a workspace the menu shows an "open a project" empty state.
+- `@agent` mentions (ADR 0346): in Agent mode the `@` menu lists an
+  **Agents** group above the files — the catalog `Task` is built from, each
+  row `@name` + description with the bot glyph — and the file rows gain a
+  **Files** heading only beside it. Plan and Goal omit the group. An agent
+  whose name matches a workspace-root entry is hidden, because that token
+  belongs to the file. Accepting an agent inserts an atomic inline chip that
+  serializes to `@name`, with a separating space before and after when a
+  neighbor is not whitespace. At send, main rewrites a draft whose `@name`
+  tokens name catalog subagents (Agent mode, no same-named root entry) into an
+  explicit `Task` instruction followed by the unchanged draft; the typed text
+  persists as `command` with `agentMentions` offsets, and the transcript chips
+  each mention. Skill and agent mentions combine; a leading template or app
+  command is not rewritten. Stop restores the typed `command`, never the
+  rewritten `content`.
 - Accepting commands and directories inserts text (`/name ` / `@dir/`);
   accepting a completed file inserts the inline chip rather than deleting the
   trigger. Immediately
