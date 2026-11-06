@@ -140,10 +140,9 @@ impl PermissionManager {
         }
     }
 
-    /// The shared contract-mode allowlist. Plan and Goal expose the same
-    /// read/inspect core plus Bash; only their submit tool differs, and that one
-    /// is a sidecar-side tool that never reaches this gate. `new_context` is
-    /// sidecar-side too, and listed so the two sides of the bridge agree.
+    /// Plan's read/inspect allowlist plus permission-gated Bash. Goal follows
+    /// Agent policy instead. `new_context` is sidecar-side and listed here so
+    /// the two sides of the bridge agree.
     pub fn plan_mode_allows(tool_name: &str) -> bool {
         ToolPermissionPolicy::contract_mode_allows(tool_name)
     }
@@ -152,9 +151,7 @@ impl PermissionManager {
     ///
     /// `permission_mode` is the already-resolved effective mode — the
     /// caller collapses `inherit` against the global default before calling.
-    /// The contract modes' hard deny for unavailable tools stays above every
-    /// permission mode: `auto` cannot re-enable Write/Edit/plugins in Plan or
-    /// Goal.
+    /// Contract membership denial stays above every permission mode.
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode(
         &self,
@@ -167,7 +164,7 @@ impl PermissionManager {
         self.evaluate_auto_with_permission_mode_and_risk(PermissionEvaluationParams {
             session_id,
             tool_name,
-            tool_policy: ToolPermissionPolicy::for_legacy_mode(mode),
+            tool_policy: ToolPermissionPolicy::for_execution_mode(mode),
             permission_mode,
             session_grants,
             declared_risk: None,
@@ -534,29 +531,44 @@ mod tests {
     }
 
     #[test]
-    fn goal_mode_shares_plans_hard_deny_and_bash_semantics() {
+    fn goals_use_agent_permissions_without_bypassing_ask_or_path_checks() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert(
-            "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
-        );
-        for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
+        for tool in [
+            "Write",
+            "Edit",
+            "Bash",
+            "plugin_x_run",
+            "mcp_srv_tool",
+            "GenerateImages",
+            "TodoWrite",
+            "unknown",
+        ] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
-                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &grants),
-                    Some(PermissionDecision::Deny),
-                    "{tool} must be denied in goal + {mode}"
+                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &no_grants()),
+                    pm.evaluate_auto_with_permission_mode("s", tool, "agent", mode, &no_grants()),
+                    "{tool} + {mode}"
+                );
+            }
+            if tool != "TodoWrite" {
+                assert_eq!(
+                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", "ask", &no_grants()),
+                    None
                 );
             }
         }
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "ask", &no_grants()),
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                tool_policy: ToolPermissionPolicy::for_execution_mode("goal"),
+                permission_mode: "ask",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: true,
+                plan_safe_actions: None,
+            }),
             None
-        );
-        assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "auto", &no_grants()),
-            Some(PermissionDecision::AllowOnce)
         );
     }
 
@@ -569,10 +581,7 @@ mod tests {
         }
     }
 
-    /// TodoWrite is the session checklist: low risk, so the normal permission
-    /// modes never prompt for it inside Agent mode, and part of the contract
-    /// modes' hard deny — a Plan/Goal checklist is negotiated through the
-    /// proposal instead of written directly.
+    /// TodoWrite is low risk in Agent/Goal and hard-denied only in Plan.
     #[test]
     fn todo_write_is_low_risk_in_agent_and_denied_in_contract_modes() {
         let pm = PermissionManager::default();
@@ -595,7 +604,7 @@ mod tests {
         }
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["TodoWrite".to_string()]);
-        for contract in ["plan", "goal"] {
+        for contract in ["plan"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
                     pm.evaluate_auto_with_permission_mode(
@@ -749,7 +758,7 @@ mod tests {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["mcp_srv_tool".to_string()]);
-        for contract in ["plan", "goal"] {
+        for contract in ["plan"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
                     pm.evaluate_auto_with_permission_mode(
@@ -787,7 +796,7 @@ mod tests {
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
                 tool_name: "plugin_x_run",
-                tool_policy: ToolPermissionPolicy::for_legacy_mode("goal"),
+                tool_policy: ToolPermissionPolicy::Contract,
                 permission_mode: "auto",
                 session_grants: &no_grants(),
                 declared_risk: None,
@@ -866,7 +875,7 @@ mod image_generation_tests {
                 "auto",
                 &grants
             ),
-            Some(PermissionDecision::Deny)
+            Some(PermissionDecision::AllowOnce)
         );
     }
 }

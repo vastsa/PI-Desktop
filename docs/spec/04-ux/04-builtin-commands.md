@@ -54,7 +54,11 @@ builtin command contracts.
   stored switch on an unconfigured model has no effect at launch. Remote
   sessions refuse it. The risk is medium because the priority tier
   spends plan limits faster or bills more per token.
-- `SubmitPlan` and `SubmitGoal` are model tools, not palette commands. There is
+- `SubmitPlan` is a model tool, not a palette command. Legacy `EnterGoalMode` /
+  `SubmitGoal` cannot create goals. Goal selection alone starts nothing;
+  `/goal-mode <prompt>` starts through the direct user-send path. Only the user
+  owner may start/resume; input-mode selection never pauses active Goal admission.
+  Successful Goal submission returns input to Agent. There is
   no Chat mode or request-changes alias.
 - The former app/project/settings/plugin/log commands remain available through
   their dedicated surfaces where applicable, but are not part of the command

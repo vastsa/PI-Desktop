@@ -4,6 +4,22 @@
   `/compact` or an automatic compaction until another turn ran (#2015). The
   ring now shows the compacted context's estimated size as soon as the
   checkpoint is installed, and after reopening the session.
+- Refine autonomous Goal: one Goal budget row in Settings → AI with turn/token
+  inputs (non-cap values normalize to Unlimited on blur/Enter), compact height,
+  silent autosave and no helper/validation text, switches or advanced row. Inset
+  the Goal header behind Composer while retaining the original rounded input edge;
+  use compact nonzero d/h/m/s units, circle-ellipsis Details and one bottom Close in removal confirmation.
+  TaskDock is hidden without deleting AI todos; deletion restores it. Saved edits update the header immediately and execution scope on the next Host round, without pausing;
+  deletion preserves chat/tasks and safe late settlement. New completion reports
+  require the current model's full-scope audit, not independent host proof.
+  Existing permissions, finite budgets, historical approvals and restart pause remain.
+
+- Decouple autonomous Goal execution from Composer mode. Accepted Goal submission
+  returns to Agent; mode changes and immediate user guidance do not pause work.
+  Resume succeeds after ordinary Agent tasks. Explicit new Goals replace unfinished
+  ones safely, retaining old claim accounting and independent new budgets. Host
+  turn snapshots preserve Plan restrictions across input preference changes.
+
 - Fixed prompt cache misses after a conversation's agent runtime is rebuilt
   (#1972). Rebuilding happens after a restart or when the thinking level, mode,
   project rules, or model settings change. Assistant replies now keep the
@@ -37,3 +53,48 @@
   legend, and captions as top-level blocks instead of one wrapping element.
   Inline controls, block styling, and roots that lay themselves out keep their
   geometry; cards written earlier inside one wrapping element render as before.
+
+## Goal live refinement candidate
+
+- Separate autonomous execution rounds without synthetic user input; show natural
+  elapsed units and ordinary running feedback instead of legacy Goal planning.
+- Edit objectives without pausing, distinguish immediate pause with bounded closeout from immediate
+  Composer Stop, and edit per-goal limits for the next round independently of defaults.
+- Allow optional private Goal planning/self-review with no user approval stage,
+  retaining normal permissions and ordinary Plan approval. Schema v31 preserves
+  pending budget and pause-closeout intent. Local candidate awaits user review.
+
+
+## Goal pause closeout and queued guidance
+
+- Header Pause immediately persists/displays paused and steers a fixed system
+  handoff notice. No new substantive work starts; the runtime ends after at most
+  three subsequent model requests (not finishing an entire round). Pending
+  questions and tool approvals no longer hold closeout open. Composer Stop remains
+  immediate; Resume waits for settlement.
+- Confirm ordinary queued input dispatches after the current Goal Host round,
+  before autonomous continuation, without waiting for Goal completion. Add real
+  Host/sidecar and built Desktop acceptance for this path and bounded closeout.
+
+## Goal removal and completed rounds accounting (schema 33)
+
+- Goal deletion is not Stop: successful owner removal tombstones the Goal, sets
+  session input preference to Agent, inhibits autonomous continuation, and allows
+  only an already-running bound Goal conversation to finish under ordinary Agent
+  permissions. Unrelated running Agent or Plan conversations continue running
+  with their frozen execution policy unchanged (Plan remains Plan). Revoked claims
+  (stop, cancel, replacement, recovery, settled, foreign, unbound) remain invalid;
+  the tombstone settles late usage exactly once, rejecting Goal reports, revival,
+  and new admission.
+- Add host field roundsCompleted (schema 33 with schema 32 backup) which increments
+  exactly once at successful settlement (not on claim, where one normal Host/Agent
+  conversation = 1 round) and never for errors, aborts, recovery, or internal
+  model, tool, or compaction iterations. roundsStarted is retained as a
+  started/reserved diagnostic. The UI and maxTurns budget evaluation use
+  roundsCompleted, with an active claim reserving a single turn slot; tokens
+  remain soft limits settled idempotently; error blocks and abort pauses prevent
+  infinite automatic retries. Conservative migration backfills only durably proven
+  completed bound turns. Execution verification is pending; do not claim compaction
+  extra-claim root cause or tests passing.
+- Header Pause remains immediate with narrow <=3 subsequent model request closeout,
+  not finishing an entire round.

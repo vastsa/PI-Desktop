@@ -1,6 +1,6 @@
 # ADR: Goal execution permission policy
 
-- Status: Proposed for autonomous Goal activation; behavior-preserving policy boundary implemented
+- Status: Implemented candidate; autonomous integration depends on the behavior-preserving foundation
 - Decision ID: `goal-execution-permission-policy`
 - Related: [tools and permissions](../spec/03-runtime/03-tools-and-permissions.md)
 - Review context: [PR 1999 maintainer request](https://github.com/vastsa/PI-Desktop/pull/1999#issuecomment-6676698692)
@@ -42,12 +42,12 @@ scope grants, cancellation and plugin sandboxes are unchanged. A request's claim
 mode cannot select the policy. Existing permission payloads and schema versions
 are unchanged.
 
-### Autonomous Goal policy proposed for separate activation
+### Autonomous Goal activation in the dependent feature
 
-The dependent Goal feature may select the already-tested Agent policy for work
-owned by the trusted Host execution pipeline. The integration must resolve the
-actual immutable execution mode and validate any Goal binding before selecting
-that profile, not trust a Composer preference, model argument or restored prompt.
+The dependent Goal feature selects the already-tested Agent policy for work
+owned by the trusted Host execution pipeline. Both permission-evaluation callers
+use `for_execution_mode` after resolving the actual execution mode and validating
+any Goal binding, not a Composer preference, model argument or restored prompt.
 The Host's existing direct-owner native tool ingress remains subject to its own
 ordinary permission rules; it must not create autonomous authority.
 
@@ -70,8 +70,8 @@ The feature must preserve these conditions:
    permission to start an autonomous loop.
 
 This is the permission decision to review first. The dependent feature supplies
-and tests the claim, lifecycle and mode-selection producers. This foundation does
-not claim that those producers exist or that autonomous Goal is already enabled.
+and tests the claim, lifecycle and mode-selection producers. The foundation alone
+does not enable autonomous Goal; the integration activates it with those producers.
 
 ## Alternatives
 

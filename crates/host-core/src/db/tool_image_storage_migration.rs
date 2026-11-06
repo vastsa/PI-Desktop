@@ -79,26 +79,36 @@ mod tests {
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             std::fs::write(file, b"legacy bytes are not rewritten on database open\n").unwrap();
         }
-        let db = Database::open(&path).unwrap();
-        assert_eq!(version(db.conn()), 27);
+        // Test exactly v25 -> v26; Database::open continues through newer schema migrations.
+        let conn = Connection::open(&path).unwrap();
+        super::migrate(&conn, &path).unwrap();
+        assert_eq!(version(&conn), 26);
         let backup_path = migration_backup_path(&path, 25);
         let backup = Connection::open(&backup_path).unwrap();
         assert_eq!(version(&backup), 25);
         for (table, snapshot) in tables.iter().zip(&snapshots) {
-            assert_eq!(&rows(db.conn(), table), snapshot, "live {table}");
+            assert_eq!(&rows(&conn, table), snapshot, "live {table}");
             assert_eq!(&rows(&backup, table), snapshot, "backup {table}");
         }
+        drop(backup);
+        drop(conn);
+        let original_backup = std::fs::read(&backup_path).unwrap();
+        let db = Database::open(&path).unwrap();
+        assert_eq!(version(db.conn()), SCHEMA_VERSION);
         for file in &files {
             assert_eq!(
                 std::fs::read(file).unwrap(),
                 b"legacy bytes are not rewritten on database open\n"
             );
         }
-        drop(backup);
+        for (table, snapshot) in tables.iter().zip(&snapshots) {
+            if *table != "sqlite_master" {
+                assert_eq!(&rows(db.conn(), table), snapshot, "full-chain live {table}");
+            }
+        }
         drop(db);
-        let original_backup = std::fs::read(&backup_path).unwrap();
         let db = Database::open(&path).unwrap();
-        assert_eq!(version(db.conn()), 27);
+        assert_eq!(version(db.conn()), SCHEMA_VERSION);
         assert_eq!(
             std::fs::read(backup_path).unwrap(),
             original_backup,
@@ -107,18 +117,27 @@ mod tests {
     }
 
     #[test]
-    fn fresh_database_uses_27_and_future_28_is_refused() {
+    fn fresh_database_uses_current_and_future_version_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("pi.sqlite");
         let db = Database::open(&path).unwrap();
-        assert_eq!(version(db.conn()), 27);
-        db.conn().pragma_update(None, "user_version", 28).unwrap();
+        assert_eq!(version(db.conn()), SCHEMA_VERSION);
+        db.conn()
+            .pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+            .unwrap();
         drop(db);
         let error = Database::open(&path)
             .err()
             .expect("future schema must be refused");
-        assert!(error.to_string().contains("28 is newer than supported 27"));
-        assert_eq!(version(&Connection::open(path).unwrap()), 28);
+        assert!(error.to_string().contains(&format!(
+            "{} is newer than supported {}",
+            SCHEMA_VERSION + 1,
+            SCHEMA_VERSION
+        )));
+        assert_eq!(
+            version(&Connection::open(path).unwrap()),
+            SCHEMA_VERSION + 1
+        );
     }
 
     #[test]
@@ -146,7 +165,7 @@ mod tests {
         .unwrap();
         drop(conn);
         let db = Database::open(&path).unwrap();
-        assert_eq!(version(db.conn()), 27);
+        assert_eq!(version(db.conn()), SCHEMA_VERSION);
         for schema in [24, 25] {
             let backup = Connection::open(migration_backup_path(&path, schema)).unwrap();
             assert_eq!(version(&backup), schema);

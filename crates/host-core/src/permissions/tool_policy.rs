@@ -8,6 +8,16 @@ pub enum ToolPermissionPolicy {
 }
 
 impl ToolPermissionPolicy {
+    /// Select only after Host execution-mode and Goal-binding validation.
+    /// The execution remains Goal for its lifecycle and tool-specific guards.
+    pub fn for_execution_mode(mode: &str) -> Self {
+        if mode == "goal" {
+            Self::Agent
+        } else {
+            Self::for_legacy_mode(mode)
+        }
+    }
+
     /// Preserve existing session semantics until an execution owner selects a policy.
     /// In particular, a legacy Goal remains subject to the contract hard deny.
     pub fn for_legacy_mode(mode: &str) -> Self {
@@ -121,5 +131,45 @@ mod tests {
             evaluate("Bash", "auto", false),
             Some(PermissionDecision::AllowOnce)
         );
+    }
+}
+
+#[cfg(test)]
+mod autonomous_tests {
+    use super::*;
+
+    #[test]
+    fn execution_policy_preserves_the_original_goal_feature_membership() {
+        let empty = [];
+        let actions = ["navigate".to_string()];
+        for mode in ["agent", "plan", "goal", "legacy"] {
+            for tool in [
+                "Read",
+                "Glob",
+                "Grep",
+                "Bash",
+                "BrowserPreview",
+                "new_context",
+                "Write",
+                "Edit",
+                "TodoWrite",
+                "Computer",
+                "plugin_x_run",
+                "mcp_srv_tool",
+                "unknown",
+            ] {
+                for safe in [None, Some(empty.as_slice()), Some(actions.as_slice())] {
+                    let expected = mode != "plan"
+                        || ToolPermissionPolicy::contract_mode_allows(tool)
+                        || (tool.starts_with("plugin_")
+                            && safe.is_some_and(|items| !items.is_empty()));
+                    assert_eq!(
+                        ToolPermissionPolicy::for_execution_mode(mode).allows_tool(tool, safe),
+                        expected,
+                        "{mode}/{tool}/{safe:?}"
+                    );
+                }
+            }
+        }
     }
 }

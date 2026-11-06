@@ -113,10 +113,21 @@ pub fn gate_session_configure(
               SELECT 1 FROM plan_approvals
               WHERE session_id = ?1 AND execution_state IN ('queued', 'running')
           ) OR EXISTS(
-              SELECT 1 FROM turns
-              WHERE session_id = ?1 AND status = 'running'
+              SELECT 1 FROM turns t
+              WHERE t.session_id = ?1 AND t.status = 'running' AND NOT ?2
+                AND NOT (?3 AND EXISTS(SELECT 1 FROM turn_execution e
+                  WHERE e.turn_id=t.id AND e.goal_claim_id IS NOT NULL))
           )",
-        params![session_id],
+        params![
+            session_id,
+            current_mode == "goal"
+                && requested_mode != "goal"
+                && !provider_changes
+                && !model_changes
+                && !thinking_changes
+                && !permission_changes,
+            !provider_changes && !model_changes && !thinking_changes && !permission_changes
+        ],
         |row| row.get(0),
     )?;
     if blocked {
@@ -143,7 +154,12 @@ impl PlanManager {
         let Some(kind) = normalize_kind(kind) else {
             return Err(plan_error("PLAN_INVALID_ARGUMENT"));
         };
-        let Some(mode) = sessions::session_mode(db, session_id)? else {
+        if kind == KIND_GOAL {
+            return Err(plan_error("PLAN_GOAL_ACTIVATION_DISABLED"));
+        }
+        let Some(mode) =
+            sessions::turn_execution::execution_mode(db.conn(), session_id, Some(turn_id))?
+        else {
             return Err(plan_error("PLAN_SESSION_NOT_FOUND"));
         };
         if mode != "agent" {
@@ -207,8 +223,17 @@ impl PlanManager {
         let Some(kind) = normalize_kind(kind) else {
             return Err(plan_error("PLAN_INVALID_ARGUMENT"));
         };
+        if kind == KIND_GOAL {
+            return Err(plan_error("PLAN_GOAL_ACTIVATION_DISABLED"));
+        }
         if markdown.len() > PLAN_MAX_MARKDOWN_BYTES {
             return Err(plan_error("PLAN_MARKDOWN_TOO_LARGE"));
+        }
+        if sessions::turn_execution::execution_mode(db.conn(), session_id, Some(turn_id))?
+            .as_deref()
+            == Some("goal")
+        {
+            return Err(plan_error("PLAN_KIND_MISMATCH"));
         }
         expire_pending_approvals(db)?;
         // Agent mode has no contract to submit; the other contract mode does,

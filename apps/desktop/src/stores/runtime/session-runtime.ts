@@ -1,5 +1,6 @@
 import type {
   AgentEventEnvelope,
+  Mode,
   SessionSummary,
   UiMessage,
 } from "@pi-desktop/shared";
@@ -33,6 +34,8 @@ export const SESSION_TRANSCRIPT_PAGE_SIZE = 100;
 export const SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
 
 export type SubmittedComposerDraft = {
+  /** Explicit Goal authorization is preserved by Stop, never prompt-retracted. */
+  goalStart?: boolean;
   messageCountBeforeSend: number;
   draft: ComposerDraftSnapshot;
   abortResolution?: Promise<boolean>;
@@ -54,6 +57,7 @@ export type SessionRuntime = {
   readonly sessionHistoryCache: Map<string, SessionHistoryWindow>;
   readonly submittedComposerDrafts: Map<string, SubmittedComposerDraft>;
   readonly pendingSessionConfigurations: Map<string, SessionConfiguration>;
+  readonly sessionInputModeIntents: Map<string, { mode: Mode }>;
   readonly sessionConfigurationFlushes: Map<string, Promise<void>>;
   beginNavigationIntent: () => number;
   navigationIntentIsCurrent: (intent: number) => boolean;
@@ -132,6 +136,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   const sessionHistoryCache = new Map<string, SessionHistoryWindow>();
   const submittedComposerDrafts = new Map<string, SubmittedComposerDraft>();
   const pendingSessionConfigurations = new Map<string, SessionConfiguration>();
+  const sessionInputModeIntents = new Map<string, { mode: Mode }>();
   const sessionConfigurationFlushes = new Map<string, Promise<void>>();
   const sessionDetailLoads = new Map<string, ReturnType<typeof api.getSession>>();
   const toolStartsByCallId = new Map<string, ToolStart>();
@@ -399,6 +404,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     syncTranscriptProjection,
     submittedComposerDrafts,
     pendingSessionConfigurations,
+    sessionInputModeIntents,
     sessionConfigurationFlushes,
     beginNavigationIntent: () => navigationIntents.begin(),
     navigationIntentIsCurrent: (intent) => navigationIntents.isCurrent(intent),

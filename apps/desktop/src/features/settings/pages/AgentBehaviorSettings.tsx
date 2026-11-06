@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { SegmentedControl, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { ComputerUseSettings } from "../computer-use/ComputerUseSettings";
+import { GoalBudgetRow } from "../GoalBudgetRow";
 import { CommandShellRow, SettingsCard, SettingsRow } from "../primitives";
 
 export function AgentBehaviorSettings({
@@ -41,6 +42,7 @@ export function AgentBehaviorSettings({
             role="group"
           />
         </SettingsRow>
+        <GoalBudgetRow settings={settings} saveSettings={saveSettings} />
         <SettingsRow
           title={t("settings.permissionMode")}
           description={t("settings.permissionModeDesc")}

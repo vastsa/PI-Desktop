@@ -21,8 +21,9 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
-| goal-execution-permission-policy | [Goal execution permission policy](goal-execution-permission-policy.md) | Proposed; behavior-preserving foundation implemented |
+| goal-execution-permission-policy | [Goal execution permission policy](goal-execution-permission-policy.md) | Implemented candidate |
 | composer-pasted-directory-references | [Composer pasted directory references](composer-pasted-directory-references.md) | Accepted |
+| autonomous-goal-lifecycle | [Autonomous Goal lifecycle](autonomous-goal-lifecycle.md) | Implemented candidate |
 | plugin-projects-list | [Read-only durable project enumeration for plugins](plugin-projects-list.md) | Accepted |
 | append-only-review-state | [Append-only review state](append-only-review-state.md) | Implemented candidate |
 | lossless-tool-image-storage | [Lossless tool-image storage and bounded history mutations](lossless-tool-image-storage.md) | Implemented candidate |
