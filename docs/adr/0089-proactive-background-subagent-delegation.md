@@ -126,3 +126,34 @@ runs 10 delegates, telling the model to wait or stop first.
   must remember to set is a flag it forgets; a lifecycle with distinct tools
   makes "start, work, converge" a sequence the model can follow and the prompt
   can teach.
+
+
+## Amendment — session-owned job controls (2026-11-05)
+
+Background Bash already belongs to Host and exposes results to the desktop,
+but the model's controls only resolve runtime delegation IDs. Extending each
+tool independently would duplicate target selection and risk adding permanent
+servers to default delegation wait/stop sets.
+
+TaskWait/List/Stop therefore share explicit typed job references. Runtime
+routes delegation references to the existing delegation implementation and
+Bash references to session-scoped Host RPC. The controls are registered even
+without a subagent catalog. Existing identifier fields and implicit delegation
+targets remain compatible. Host checks ownership and operating mode and keeps
+process supervision; this decision does not move delegation reports or
+resumption chains into Rust.
+
+Bash waits use bounded, completion-aware Host observations. Cancelling a wait
+does not signal the process. Output tails are repeatable and independently
+bounded for stdout and stderr. This keeps desktop and model readers independent
+without introducing log files or stdin access. A full process-lifecycle
+migration would unnecessarily couple Host to runtime report delivery; a
+TaskWait-only special case would leave discovery and cancellation inconsistent.
+Completion notifications are deferred: Bash completion is queried explicitly,
+while delegate auto-delivery retains its existing behavior. Remote workspaces
+and older Hosts explicitly report unsupported Bash controls.
+
+Trade-offs include up to one observation per second during a long wait and
+finite Host output/history retention. A process does not gain durability across
+Host restart. Protocol, runtime and real-process tests cover the changed
+boundary; process-tree termination remains the existing supervisor's job.
