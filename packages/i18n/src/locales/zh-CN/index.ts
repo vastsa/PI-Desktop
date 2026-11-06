@@ -725,6 +725,7 @@ export const zhCN = {
     model: "模型",
     recentModels: "最近使用",
     modelSources: "模型来源",
+    reasoningShort: "推理",
     searchModels: "搜索模型",
     noModelResults: "没有匹配的模型",
     modelBadgeReasoning: "推理",

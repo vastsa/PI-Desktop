@@ -1,7 +1,7 @@
 import { formatTokenCount, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
 import type { TFunction } from "i18next";
 import type { CSSProperties, RefObject } from "react";
-import { IconCheck, IconClock, IconEye, IconSearch, IconSparkles } from "../../../components/icons";
+import { IconCheck, IconEye, IconSearch, IconSparkles, IconX } from "../../../components/icons";
 import {
   composerModelBadges,
   composerModelBinding,
@@ -16,18 +16,6 @@ export type ComposerModelGroup = {
   providerDisplayName: string;
   models: ModelInfo[];
 };
-
-/** First visible character of the source name; the rail's only glyph. */
-export function providerMonogram(name: string): string {
-  return Array.from(name.trim())[0]?.toUpperCase() ?? "?";
-}
-
-/** Stable per-source hue so a provider keeps its colour across sessions. */
-export function providerHue(providerId: string): number {
-  let hash = 0;
-  for (const char of providerId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return hash % 360;
-}
 
 type ModelRowProps = {
   t: TFunction;
@@ -97,7 +85,7 @@ function ModelRow({ t, provider, model, index, highlighted, active, showProvider
         </span>
       </span>
       <span className="composer-model-check-slot" aria-hidden="true">
-        {active ? <IconCheck size={14} className="composer-model-check" /> : null}
+        {active ? <IconCheck size={13} className="composer-model-check" /> : null}
       </span>
     </button>
   );
@@ -111,12 +99,14 @@ function ModelRow({ t, provider, model, index, highlighted, active, showProvider
 export function ComposerModelList({
   t, query, setQuery, modelSearchRef, modelListRef, modelGroups,
   modelHighlight, setModelHighlight, selectedProviderId, selectedModelId, selectModel,
-  recentEntries, sections, activeSection, selectSection, showSectionRail, searching, paneRows,
+  recentEntries, sections, activeSection, sectionStep, selectSection, showSectionRail, searching, paneRows,
 }: {
   paneRows: number;
   recentEntries: Array<{ provider: ProviderPublic; model: ModelInfo }>;
   sections: ComposerModelSection[];
   activeSection: string | null;
+  /** Direction of the last rail move; 0 before the first move. */
+  sectionStep: number;
   selectSection: (id: string) => void;
   showSectionRail: boolean;
   searching: boolean;
@@ -135,6 +125,7 @@ export function ComposerModelList({
   const isActive = (provider: ProviderPublic, model: ModelInfo) =>
     selectedProviderId === provider.id && sameComposerModelId(selectedModelId ?? "", model.modelId);
   const flatCount = recentEntries.length + modelGroups.reduce((sum, group) => sum + group.models.length, 0);
+  const railIndex = sections.findIndex((section) => section.id === activeSection);
   let flatIndex = recentEntries.length;
   return <>
     <label className="composer-model-search">
@@ -152,6 +143,22 @@ export function ComposerModelList({
         onChange={(event) => setQuery(event.target.value)}
         onBlur={() => setModelHighlight(-1)}
       />
+      {query ? (
+        <button
+          type="button"
+          className="composer-model-search-clear"
+          aria-label={t("settings.clearSearch")}
+          // Keep focus in the field so typing continues after the clear.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setQuery("");
+            setModelHighlight(-1);
+            modelSearchRef.current?.focus();
+          }}
+        >
+          <IconX size={11} aria-hidden="true" />
+        </button>
+      ) : null}
     </label>
     <div
       className="composer-model-body"
@@ -160,6 +167,12 @@ export function ComposerModelList({
     >
       {showSectionRail ? (
         <div className="composer-model-rail" role="group" aria-label={t("chat.modelSources")}>
+          <span
+            className="composer-model-rail-indicator"
+            aria-hidden="true"
+            data-hidden={railIndex < 0 ? "true" : undefined}
+            style={{ "--rail-index": Math.max(railIndex, 0) } as CSSProperties}
+          />
           {sections.map((section) => {
             const label = section.kind === "recent" ? t("chat.recentModels") : section.label;
             const current = section.id === activeSection;
@@ -174,19 +187,6 @@ export function ComposerModelList({
                 className={`composer-model-rail-item ${current ? "active" : ""}`}
                 onClick={() => selectSection(section.id)}
               >
-                {section.kind === "recent" ? (
-                  <span className="composer-model-rail-avatar is-recent" aria-hidden="true">
-                    <IconClock size={12} />
-                  </span>
-                ) : (
-                  <span
-                    className="composer-model-rail-avatar"
-                    aria-hidden="true"
-                    style={{ "--provider-hue": providerHue(section.provider.id) } as CSSProperties}
-                  >
-                    {providerMonogram(section.label)}
-                  </span>
-                )}
                 <span className="composer-model-rail-label">{label}</span>
                 {section.kind === "provider" ? (
                   <span className="composer-model-rail-count">{section.count}</span>
@@ -197,46 +197,53 @@ export function ComposerModelList({
         </div>
       ) : null}
       <div className="composer-model-list" ref={modelListRef}>
-        {recentEntries.length > 0 ? (
-          <div className="composer-model-group" role="group" aria-label={t("chat.recentModels")}>
-            {recentEntries.map(({ provider, model }, index) => (
-              <ModelRow
-                key={`${provider.id}:${model.modelId}`}
-                t={t} provider={provider} model={model} index={index}
-                highlighted={modelHighlight === index}
-                active={isActive(provider, model)}
-                showProvider selectModel={selectModel}
-              />
-            ))}
-          </div>
-        ) : null}
-        {modelGroups.map((group) => (
-          <div
-            key={group.provider.id}
-            className="composer-model-group"
-            role="group"
-            aria-label={group.providerDisplayName}
-          >
-            {searching ? (
-              <div className="composer-model-group-label">{group.providerDisplayName}</div>
-            ) : null}
-            {group.models.map((model) => {
-              const index = flatIndex++;
-              return (
+        {/* Keyed by source so a rail move replays the entry motion once. */}
+        <div
+          key={activeSection ?? "search"}
+          className="composer-model-pane"
+          data-step={sectionStep === 0 ? undefined : sectionStep < 0 ? "back" : "forward"}
+        >
+          {recentEntries.length > 0 ? (
+            <div className="composer-model-group" role="group" aria-label={t("chat.recentModels")}>
+              {recentEntries.map(({ provider, model }, index) => (
                 <ModelRow
-                  key={`${group.provider.id}:${model.modelId}`}
-                  t={t} provider={group.provider} model={model} index={index}
+                  key={`${provider.id}:${model.modelId}`}
+                  t={t} provider={provider} model={model} index={index}
                   highlighted={modelHighlight === index}
-                  active={isActive(group.provider, model)}
-                  showProvider={false} selectModel={selectModel}
+                  active={isActive(provider, model)}
+                  showProvider selectModel={selectModel}
                 />
-              );
-            })}
-          </div>
-        ))}
-        {flatCount === 0 ? (
-          <div className="composer-model-empty">{t("chat.noModelResults")}</div>
-        ) : null}
+              ))}
+            </div>
+          ) : null}
+          {modelGroups.map((group) => (
+            <div
+              key={group.provider.id}
+              className="composer-model-group"
+              role="group"
+              aria-label={group.providerDisplayName}
+            >
+              {searching ? (
+                <div className="composer-model-group-label">{group.providerDisplayName}</div>
+              ) : null}
+              {group.models.map((model) => {
+                const index = flatIndex++;
+                return (
+                  <ModelRow
+                    key={`${group.provider.id}:${model.modelId}`}
+                    t={t} provider={group.provider} model={model} index={index}
+                    highlighted={modelHighlight === index}
+                    active={isActive(group.provider, model)}
+                    showProvider={false} selectModel={selectModel}
+                  />
+                );
+              })}
+            </div>
+          ))}
+          {flatCount === 0 ? (
+            <div className="composer-model-empty">{t("chat.noModelResults")}</div>
+          ) : null}
+        </div>
       </div>
     </div>
   </>;

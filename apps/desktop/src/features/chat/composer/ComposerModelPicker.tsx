@@ -43,6 +43,7 @@ export function ComposerModelPicker({
     setOpen,
     sections,
     activeSection,
+    sectionStep,
     selectSection,
     showSectionRail,
     paneRows,
@@ -116,13 +117,16 @@ export function ComposerModelPicker({
           modelSearchRef={modelSearchRef} modelListRef={modelListRef}
           modelGroups={modelGroups} modelHighlight={modelHighlight}
           recentEntries={recentEntries} sections={sections}
-          activeSection={activeSection} selectSection={selectSection}
+          activeSection={activeSection} sectionStep={sectionStep} selectSection={selectSection}
           showSectionRail={showSectionRail} searching={searching} paneRows={paneRows}
           setModelHighlight={setModelHighlight} selectModel={selectModel}
           selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
         />
         {thinkingMenuLevels.length > 1 ? (
           <div className="composer-model-reasoning">
+            <span className="composer-model-reasoning-label" aria-hidden="true">
+              {t("chat.reasoningShort")}
+            </span>
             <ThinkingLevelSlider
               key={`${selectedProviderId}:${selectedModelId}:${thinkingMenuLevels.join("|")}`}
               levels={thinkingMenuLevels}

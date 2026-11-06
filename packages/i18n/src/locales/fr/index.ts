@@ -720,6 +720,7 @@ export const fr = {
     "model": "Modèle",
     recentModels: "Récemment utilisés",
     modelSources: "Sources de modèles",
+    reasoningShort: "Raisonnement",
     "searchModels": "Rechercher des modèles",
     "noModelResults": "Aucun modèle correspondant",
     "modelBadgeReasoning": "raisonnement",

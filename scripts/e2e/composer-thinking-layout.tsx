@@ -20,11 +20,11 @@ function Fixture({ width, crowded, model }: { width: number; crowded: boolean; m
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const controller: ReturnType<typeof useComposerModelMenu> = {
-    open, setOpen, sections: [], activeSection: null, selectSection: noop, showSectionRail: false, paneRows: 0, searching: false, query: "", setQuery: noop,
+    open, setOpen, sections: [], activeSection: null, sectionStep: 0, selectSection: noop, showSectionRail: false, paneRows: 0, searching: false, query: "", setQuery: noop,
     modelHighlight: -1, setModelHighlight: noop,
     thinkingHighlight: -1, setThinkingHighlight: noop,
     modelSearchRef: searchRef, modelListRef: listRef,
-    thinkingListRef: listRef, modelGroups: [], flatModels: [],
+    thinkingListRef: listRef, modelGroups: [], recentEntries: [], flatModels: [],
     thinkingMenuLevels: levels,
     selectModel: async () => {}, selectThinkingLevel: async () => {},
     commitThinkingLevel: async (next) => { setLevel(next); return true; },
@@ -131,17 +131,17 @@ globalThis.composerThinkingPointerProbe = {
   },
   pressed: () => element(".composer-model-thinking-chip").matches(":active"),
   railTarget(index) {
-    const dot = document.querySelectorAll(".composer-thinking-dot")[index].getBoundingClientRect();
+    const stop = document.querySelectorAll(".composer-thinking-tick")[index].getBoundingClientRect();
     const range = element(".composer-thinking-range").getBoundingClientRect();
-    return { x: Math.round(dot.left + dot.width / 2), y: Math.round(range.top + range.height / 2) };
+    return { x: Math.round(stop.left + stop.width / 2), y: Math.round(range.top + range.height / 2) };
   },
   focusRange: () => element(".composer-thinking-range").focus(),
   motionState() {
     const thumb = element(".composer-thinking-thumb");
     const visual = thumb.getBoundingClientRect();
-    const dot = element(".composer-thinking-dot.active").getBoundingClientRect();
+    const stop = element(".composer-thinking-tick.active").getBoundingClientRect();
     return { dragging: element(".composer-thinking-slider").hasAttribute("data-dragging"),
-      gap: visual.left + visual.width / 2 - dot.left - dot.width / 2,
+      gap: visual.left + visual.width / 2 - stop.left - stop.width / 2,
       animations: thumb.getAnimations().length,
       focused: document.activeElement === element(".composer-thinking-range") };
   },

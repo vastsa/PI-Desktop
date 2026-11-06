@@ -80,6 +80,8 @@ export function useComposerModelMenu({
   const [open, setOpen] = useState(false);
   // null follows the default section; a rail click pins one until close.
   const [section, setSection] = useState<string | null>(null);
+  // Direction of the last rail move, so the pane slides in from that side.
+  const [sectionStep, setSectionStep] = useState(0);
   const [query, setQuery] = useState("");
   const [modelHighlight, setModelHighlight] = useState(-1);
   const modelSearchRef = useRef<HTMLInputElement>(null);
@@ -263,6 +265,7 @@ export function useComposerModelMenu({
   useEffect(() => {
     if (open) return;
     setSection(null);
+    setSectionStep(0);
     setQuery("");
     setModelHighlight(-1);
   }, [open]);
@@ -338,6 +341,10 @@ export function useComposerModelMenu({
 
   /** Show one rail section. Picking a source ends any search in progress. */
   const selectSection = (id: string) => {
+    const from = sections.findIndex((candidate) => candidate.id === activeSection);
+    const to = sections.findIndex((candidate) => candidate.id === id);
+    // The pane is keyed by section, so an unchanged section never replays.
+    setSectionStep(to < from ? -1 : 1);
     setSection(id);
     setQuery("");
     setModelHighlight(-1);
@@ -360,6 +367,12 @@ export function useComposerModelMenu({
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Escape") {
       event.preventDefault();
+      // A search in progress is the innermost state: Escape clears it first.
+      if (query && event.target instanceof HTMLInputElement) {
+        setQuery("");
+        setModelHighlight(-1);
+        return;
+      }
       setOpen(false);
       return;
     }
@@ -388,6 +401,7 @@ export function useComposerModelMenu({
     setOpen,
     sections,
     activeSection: searching ? null : activeSection,
+    sectionStep,
     selectSection,
     showSectionRail: sections.length > 1,
     paneRows,
