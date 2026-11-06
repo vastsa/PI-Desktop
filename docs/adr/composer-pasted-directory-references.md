@@ -12,9 +12,10 @@ Copying its tree into scratch would create an expensive and stale snapshot.
 ## Decision
 
 On an explicit native-file paste, Electron main captures bounded native clipboard
-file metadata. Directories become typed draft references and atomic removable
-folder cards with a name, localized Folder label and full-path tooltip. Mixed
-regular files use the existing sender-bound one-shot import capability. Main
+file metadata. Directories become typed draft references and removable folder
+cards above the editable text, with a name, localized Folder label and full-path
+tooltip. Mixed regular files use the existing sender-bound one-shot import
+capability. Main
 captures the selection before filesystem awaits and accepts no renderer paths.
 The bridge is main-window-only and blocked from MCP/plugin callers. macOS reads
 raw pasteboard types, Linux reads native file URI lists, and Windows reads the
@@ -26,6 +27,9 @@ one instruction to inspect directory structure and read relevant files as needed
 for the current request. They never enter binary attachment transport, previews,
 recursive copies or file snapshots. References grant no new filesystem access;
 existing tool permission checks apply. Removing a card removes its prompt hint.
+The user bubble displays the references as folder cards. Its local reveal action
+is restricted to the main renderer and an existing absolute directory. The
+action reveals the directory in the system file manager and returns no contents.
 
 ## Consequences
 

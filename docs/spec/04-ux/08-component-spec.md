@@ -2,10 +2,13 @@
 
 ### Copied directory references
 
-Native folder paste inserts atomic folder cards at the captured caret, with a
-folder icon, ellipsized name, localized Folder type, full-path tooltip and
-accessible remove button. Mixed folders/files preserve native order. The source
-draft/session owns pending results; newer edits survive. A home paste cancels if
+Native folder paste adds compact cards in a wrapping row above the editable
+text. Each card shows a folder icon, ellipsized name, localized Folder type,
+full-path tooltip and accessible remove button. Short names use their natural
+width. In mixed pastes, folders keep their selection order in the row and
+regular files remain inline at the caret. A folder-only paste preserves the
+selected text. The source draft/session owns pending results and newer edits
+survive. A home paste cancels if
 its workspace/session navigation changes before a durable owner is created. Directory-only clipboard
 selections work even when Chromium provides no File object. Ordinary text/image/
 file paste and the directory-drop open-project/insert-path choice remain.
@@ -13,8 +16,11 @@ file paste and the directory-drop open-project/insert-path choice remain.
 Normal send and steering include escaped `<dir>absolute/path</dir>` markers and
 one instruction: "The user provided these local directories for the current task.
 Inspect their structure and read relevant files as needed to fulfill the request."
-Removing a card removes its hint. Pasting neither reads/copies a directory tree nor
-changes tool permissions. See [directory reference ADR](../../adr/composer-pasted-directory-references.md).
+The user message shows folder cards above the text and omits those generated
+markers and guidance. Clicking a card in a local session reveals the directory
+in the system file manager. Removing a draft card removes its hint. Pasting
+neither reads/copies a directory tree nor changes tool permissions. See
+[directory reference ADR](../../adr/composer-pasted-directory-references.md).
 
 
 > Layout and IA reference: [01-ui-ia.md](01-ui-ia.md)  
