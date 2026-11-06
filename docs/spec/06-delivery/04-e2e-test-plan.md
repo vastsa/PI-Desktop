@@ -18656,10 +18656,14 @@ the latest destination. These assertions measure work counts, not device FPS.
   the test settings API to verify recovery. Generate same-prompt variants and
   distinct images; confirm each result appears once in the conversation gallery
   while the assistant confirms completion in text. Edit a generated image,
-  inspect partial failures, then restart the host/session. Attempt the tool in a
-  durable Plan session and verify no HTTP request occurs.
+  inspect partial failures, then restart the host/session. Return a
+  multi-megabyte `b64_json` image (well above 5.5M base64 characters, below
+  the image size cap). Attempt the tool in a durable Plan session and verify no
+  HTTP request occurs.
 - **Expected:** One image binding persists without changing the chat default;
   generated files, edit sources and transcript references survive restart.
+  The large image is saved byte-for-byte instead of failing with
+  `IMAGE_REQUEST_FAILED` (#2128).
   Each successful image appears once in its result card instead of being
   repeated as a Markdown embed; unconfigured errors navigate to Models settings.
 - **Specs:** 03-runtime/21-image-generation; 03-runtime/13-model-catalog-and-selection.
