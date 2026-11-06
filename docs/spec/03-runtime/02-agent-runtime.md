@@ -278,6 +278,18 @@ re-executed. Other malformed context remains subject to strict validation.
 Tool token estimates are optional telemetry: an invalid call identity must not
 prevent the corresponding terminal tool event from being delivered.
 
+Complete Qwen-style `<tool_call><function=Name><parameter=...>...</parameter>
+</function></tool_call>` blocks emitted as assistant text for a known tool
+receive a visible `TOOL_CALL_NOT_EXECUTED` diagnostic on that response. This
+also applies when normal text precedes the block or structured sibling calls
+execute successfully. The original text is preserved; the affected message
+has error status, while valid structured calls and normal continuation remain
+unchanged. Text is never parsed into executable arguments, tools are never
+silently activated, and no provider retry is spent. Fenced, inline, quoted and
+indented examples, unknown tool names and incomplete blocks are not diagnosed.
+This is a conservative format diagnostic, not a general XML parser or proof
+that the model intended an action.
+
 Before surfacing a pre-stream `PROVIDER_ERROR` for HTTP 400/422 whose message
 ends in `(no body)`, the runtime makes at most one silent repair attempt with
 the generated output-limit fields removed: `max_tokens`,
