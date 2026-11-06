@@ -18,6 +18,11 @@ project, and the selected session. The registered File Manager can be bundled
 or installed. Both paths create the same draft reference. Composer events
 confer no file permission.
 
+The view capability advertises bridge support from the loaded instance and
+its grants. Registration is authorized on invocation, with a bounded Host
+query, so a Host restart cannot delay opening the view or freeze a transient
+registry failure into its preload capability.
+
 The selected text is never used as the model payload for a reference. Main
 validates the reference path against the Session project folders. At prompt
 execution, the Agent runtime invokes the existing Read tool with the inclusive

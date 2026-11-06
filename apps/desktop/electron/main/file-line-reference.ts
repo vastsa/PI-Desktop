@@ -16,17 +16,6 @@ export function canUseFileLineView(loaded: LoadedPlugin | undefined): loaded is 
     loaded.permissions.has("fs.read") && loaded.permissions.has("ui.view");
 }
 
-export async function isRegisteredFileLineView(
-  host: Pick<HostProcess, "call"> | null,
-  pluginId: string,
-  version: string,
-): Promise<boolean> {
-  const registry = await host?.call<{
-    plugins: Array<{ id: string; enabled: boolean; version: string }>;
-  }>("plugins.list");
-  return registry?.plugins.some(item => item.id === pluginId && item.enabled && item.version === version) ?? false;
-}
-
 type FileLineBridge = {
   plugins: Pick<PluginRuntime, "getLoaded">;
   pluginViews: Pick<PluginViewHost, "isVisibleViewSender">;
@@ -63,7 +52,15 @@ export async function addFileLinesFromView(
   }
 
   const host = bridge.getHost();
-  if (!await isRegisteredFileLineView(host, pluginId, target.loaded.manifest.version)) {
+  if (!host) {
+    throw Object.assign(new Error("HOST_UNAVAILABLE: The Host is unavailable. Try adding the selection again when it reconnects."), {
+      code: "HOST_UNAVAILABLE",
+    });
+  }
+  const registry = await host.call<{
+    plugins: Array<{ id: string; enabled: boolean; version: string }>;
+  }>("plugins.list", undefined, 5_000);
+  if (!registry?.plugins.some(item => item.id === pluginId && item.enabled && item.version === target.loaded.manifest.version)) {
     throw new Error("The File Manager is not enabled in the Host registry.");
   }
   const current = currentTarget();

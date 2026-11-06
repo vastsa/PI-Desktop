@@ -18,12 +18,10 @@ import {
   type PluginComposerSuggestionRefusal,
 } from "@pi-desktop/plugin-sdk";
 import type { ComposerSuggestionAnswer } from "../services/composer-suggestion";
-import { canUseFileLineView, FILE_LINES_VIEW_KEY, isRegisteredFileLineView } from "../file-line-reference";
-import type { HostProcess } from "../host-process";
+import { canUseFileLineView, FILE_LINES_VIEW_KEY } from "../file-line-reference";
 
 export type PluginUiIpcDependencies = {
   registrar: IpcRegistrar;
-  getHost: () => HostProcess | null;
   plugins: PluginRuntime;
   browserHost: BrowserHost;
   pluginViews: PluginViewHost;
@@ -47,7 +45,6 @@ export type PluginUiIpcDependencies = {
 /** Register plugin panels, work-panel views, themes and services. */
 export function registerPluginUiIpc({
   registrar,
-  getHost,
   plugins,
   browserHost,
   pluginViews,
@@ -322,23 +319,13 @@ export function registerPluginUiIpc({
       if (isBrowserView && sessionId) {
         browserHost.setChromeSession(sessionId, typeof payload.tabId === "string" ? payload.tabId : undefined, location);
       }
-      let composerFileLines = false;
-      if (pluginViewKey(pluginId, viewId) === FILE_LINES_VIEW_KEY && canUseFileLineView(loaded)) {
-        const host = getHost();
-        composerFileLines = await isRegisteredFileLineView(host, pluginId, loaded.manifest.version).catch(() => false);
-        if (plugins.getLoaded(pluginId) !== loaded || loaded.disposing ||
-            !loaded.permissions.has("ui.view") || !pluginActiveInProject(pluginId, currentWorkspacePath())) {
-          throw new Error("plugin is no longer active in this project");
-        }
-        composerFileLines = composerFileLines && getHost() === host && canUseFileLineView(loaded);
-      }
       pluginViews.open({
         pluginId,
         viewId,
         locale: getUpdaterLocale(),
         theme: getPluginPanelTheme(),
         htmlPath,
-        composerFileLines,
+        composerFileLines: pluginViewKey(pluginId, viewId) === FILE_LINES_VIEW_KEY && canUseFileLineView(loaded),
         netDomains: loaded.manifest.net?.domains?.map((domain) => String(domain)),
         netAnyHost: loaded.permissions.has("net.anyHost"),
         // The browser view owns an address bar and its own history, so its

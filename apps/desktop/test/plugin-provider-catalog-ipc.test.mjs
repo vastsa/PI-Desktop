@@ -50,7 +50,7 @@ function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}
   return module.exports.registerPluginUiIpc;
 }
 
-test("only the enabled, registered File Manager with both grants advertises Composer line references", async () => {
+test("File Manager view capabilities survive Host unavailability without a registry query on open", async () => {
   const handlers = new Map();
   const views = [];
   const loaded = {
@@ -60,8 +60,8 @@ test("only the enabled, registered File Manager with both grants advertises Comp
     path: "/plugins/file-manager",
     manifest: { version: "0.9.0", contributes: { views: [{ id: "manager", entry: "index.html" }] } },
   };
-  const record = { id: "pi.file-manager", enabled: true, version: "0.9.0" };
-  const host = { call: async () => ({ plugins: [record] }) };
+  let hostQueries = 0;
+  const host = { call: async () => { hostQueries++; throw new Error("Host restarting"); } };
   loadPluginUiIpc()({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     plugins: { getLoaded: () => loaded },
@@ -81,14 +81,10 @@ test("only the enabled, registered File Manager with both grants advertises Comp
   loaded.development = true;
   assert.equal(await open(), false);
   loaded.development = false;
-  record.enabled = false;
-  assert.equal(await open(), false);
-  record.enabled = true;
-  record.version = "0.8.0";
-  assert.equal(await open(), false);
-  record.version = "0.9.0";
+  assert.equal(await open(), true);
   loaded.permissions.delete("fs.read");
   assert.equal(await open(), false);
+  assert.equal(hostQueries, 0);
 });
 
 test("the plugin Add Service IPC returns declared categories through the Host handler", async () => {

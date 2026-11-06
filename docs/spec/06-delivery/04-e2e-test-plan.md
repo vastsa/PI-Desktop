@@ -20116,6 +20116,11 @@ excluded. A one-line selection displays one line number.
 Open the same view from a development-loaded File Manager and verify that
 the host does not advertise `composerFileLines`.
 
+With the Host unavailable, open an eligible installed File Manager view.
+Verify opening completes immediately and `composerFileLines` remains true.
+**Add to chat** reports Host unavailability. Reconnect the Host and retry
+from the same view. The selection is added after registration is checked.
+
 Insert an unsaved line before the range. Copying still pastes the original
 text and the selection menu has no **Add to chat** action. Save the file and
 verify that both actions use the new saved line numbers.

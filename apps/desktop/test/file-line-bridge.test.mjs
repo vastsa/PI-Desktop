@@ -25,21 +25,32 @@ test("an installed File Manager can add lines only to the session that authorize
   pluginSession.setActiveSession(session);
   const deliveries = [];
   const record = { id: pluginId, version: "0.9.0", enabled: true, source: "marketplace" };
+  let registryFailure = false;
   const host = {
-    async call(method) {
+    async call(method, params, timeoutMs) {
       assert.equal(method, "plugins.list");
+      assert.equal(params, undefined);
+      assert.equal(timeoutMs, 5_000);
+      if (registryFailure) throw new Error("Host restarting");
       return { plugins: [record] };
     },
   };
+  let activeHost = host;
   const bridge = {
     plugins: { getLoaded: (id) => id === pluginId ? loaded : undefined },
     pluginViews: { isVisibleViewSender: (id, key) => id === 123 && key === "pi.file-manager/manager" },
     pluginSession,
     pluginActiveInProject: (id, projectPath) => id === pluginId && projectPath === workspace,
-    getHost: () => host,
+    getHost: () => activeHost,
     getWorkspacePath: () => workspace,
     publish: (delivery) => deliveries.push(delivery),
   };
+  activeHost = null;
+  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), { code: "HOST_UNAVAILABLE" });
+  activeHost = host;
+  registryFailure = true;
+  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /Host restarting/);
+  registryFailure = false;
   assert.deepEqual(await addFileLinesFromView(pluginId, 123, payload, bridge), { ok: true });
   assert.deepEqual(deliveries, [{ sessionId: "selected", reference: payload }]);
 
@@ -50,6 +61,9 @@ test("an installed File Manager can add lines only to the session that authorize
   record.enabled = false;
   await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /not enabled in the Host registry/);
   record.enabled = true;
+  record.version = "0.8.0";
+  await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /not enabled in the Host registry/);
+  record.version = "0.9.0";
 
   const pending = addFileLinesFromView(pluginId, 123, payload, bridge);
   pluginSession.setActiveSession({ ...session, sessionId: "different" });
