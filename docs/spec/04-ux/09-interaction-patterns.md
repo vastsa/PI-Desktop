@@ -1045,13 +1045,15 @@ may be retained while exactly one workspace supplies the visible shell context.
   last message it covers, reading how many times the session has compacted and
   the summary's estimated token cost (or that no summary was generated). The row
   has no actions and is not selectable.
-- The context usage inspector keeps one muted line for the newest checkpoint,
-  shown while its panel is open — the count and summary cost sit below the
-  compact model/tool usage summaries without adding explanatory copy.
+- The context usage inspector shows the D686 insights dashboard, including
+  compaction events and summaries. Selecting a request in the Step/Turn trend
+  updates its provider token breakdown and recorded-history browser; current
+  capacity continues to describe the newest parent request. History search and
+  expansion preserve the recorded-estimate and partial-history labels.
 - The open context usage inspector shows elapsed session wall time plus three
-  cumulative timing rows: request-to-first-response wait, streamed model
+  measured timing categories: request-to-first-response wait, streamed model
   response time (thinking and answer), and top-level tool execution time.
-  Each row shows its share of the elapsed session span. Nested delegate timing
+  Each category shows its share of measured activity; wall time is separate. Nested delegate timing
   is excluded, and overlapping top-level tool calls count once. Long transcripts
   load earlier timing metadata in bounded pages only while the inspector is open.
   Older messages use their existing response duration for the model row; their
