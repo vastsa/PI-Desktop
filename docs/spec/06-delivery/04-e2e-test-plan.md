@@ -19759,6 +19759,8 @@ their separate platform acceptance.
   8. Paste 500 characters of garbage into the search field.
   9. Pin an application, quit, restart, and reopen the launcher with an empty
      input.
+ 10. Install a plugin whose name matches an installed application (for example
+     `Calculator`) and open the launcher with an empty input.
 - **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
   `Pinned` with one row of eight once the user has pins; the recents header
   reports the true number of remembered items and offers `Show all {count} →`
@@ -19773,8 +19775,10 @@ their separate platform acceptance.
   plugin from recents, pins, and matches while every other tile still opens.
   Step 8 keeps the panel responsive (no frozen input, no unhandled error) and
   reports no match, because input longer than 256 characters is never matched
-  against a trigger. Step 9 still shows the pinned application in the `Pinned`
-  row.
+  row. Step 10 lists both entries with the identical 48px rounded square and the
+  same name line — the source is only in the hover title — and opening the plugin
+  row still lands in the plugin panel while the application row launches the
+  program.
 - **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
   coverage for these rules: `launcher-search.test.mjs` (ranking order, section
   caps, overflow total, trigger whole-input matching, the 256-character limit
