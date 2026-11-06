@@ -6,7 +6,10 @@ export const esEntries: ChangelogEntry[] = [
     highlights: [
       "Deja que el agente controle aplicaciones de escritorio mediante el uso del ordenador, con permisos explícitos y un cursor visible.",
       "Abre aplicaciones instaladas y comandos de plugins desde un único lanzador agrupado y fija las aplicaciones frecuentes.",
-      "Mantén las conversaciones largas más claras plegando la actividad completada y mejorando la navegación a mensajes anteriores.",
+      "Mantén las conversaciones largas más claras plegando la actividad completada y volviendo con fluidez a los mensajes recientes mientras carga el historial anterior.",
+      "Pega carpetas en el cuadro de composición como referencias y abre enlaces a directorios directamente en el gestor de archivos.",
+      "Elige modelos en un selector rediseñado de dos paneles con acceso directo a los ajustes del proveedor.",
+      "Dirige una solicitud a un subagente concreto con una mención @agent.",
     ],
   },
   {

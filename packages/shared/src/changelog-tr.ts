@@ -6,7 +6,10 @@ export const trEntries: ChangelogEntry[] = [
     highlights: [
       "Açık izinler ve görünür imleçle bilgisayar kullanımı üzerinden masaüstü uygulamalarını aracıya kontrol ettirin.",
       "Yüklü uygulamaları ve eklenti komutlarını tek, gruplandırılmış başlatıcıdan açın; sık kullandıklarınızı sabitleyin.",
-      "Tamamlanan etkinlikleri daraltıp eski iletilere gezinmeyi iyileştirerek uzun konuşmaları daha okunaklı tutun.",
+      "Tamamlanan etkinlikleri daraltın; eski geçmiş yüklenirken en yeni iletilere daha akıcı biçimde dönün.",
+      "Klasörleri Composer'a dizin referansları olarak yapıştırın ve dizin bağlantılarını doğrudan dosya yöneticisinde açın.",
+      "Yeniden tasarlanan iki panelli model seçicisinde model seçin ve sağlayıcı ayarlarına doğrudan geçin.",
+      "@agent etiketiyle bir istemi adlandırılmış bir alt ajana yönlendirin.",
     ],
   },
   {

@@ -6,7 +6,10 @@ export const frEntries: ChangelogEntry[] = [
     highlights: [
       "Laissez l’agent contrôler les applications de bureau via l’utilisation de l’ordinateur, avec autorisations explicites et curseur visible.",
       "Lancez les applications installées et les commandes de plugins depuis un lanceur groupé, et épinglez les applications fréquentes.",
-      "Gardez les longues conversations lisibles en repliant les activités terminées et en améliorant l’accès aux anciens messages.",
+      "Gardez les longues conversations lisibles en repliant les activités terminées et en revenant plus fluidement aux messages récents pendant le chargement de l’historique.",
+      "Collez des dossiers dans le champ de rédaction comme références et ouvrez les liens de répertoire directement dans le gestionnaire de fichiers.",
+      "Choisissez vos modèles dans un sélecteur repensé à deux volets, avec un accès direct aux réglages du fournisseur.",
+      "Orientez une demande vers un sous-agent nommé avec une mention @agent.",
     ],
   },
   {

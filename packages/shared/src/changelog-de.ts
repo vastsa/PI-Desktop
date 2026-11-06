@@ -6,7 +6,10 @@ export const deEntries: ChangelogEntry[] = [
     highlights: [
       "Lassen Sie den Agenten Desktop-Apps über die Computersteuerung mit ausdrücklicher Freigabe und sichtbarem Cursor bedienen.",
       "Starten Sie installierte Apps und Plugin-Befehle in einem gruppierten Launcher und heften Sie häufig genutzte Apps an.",
-      "Abgeschlossene Aktivitäten einklappen und ältere Nachrichten zuverlässiger ansteuern, damit lange Gespräche übersichtlich bleiben.",
+      "Abgeschlossene Aktivitäten einklappen und beim Laden älterer Nachrichten flüssiger zu den neuesten zurückkehren.",
+      "Fügen Sie Ordner als Verzeichnisverweise in den Composer ein und öffnen Sie Verzeichnislinks direkt im Dateimanager.",
+      "Wählen Sie Modelle in einer überarbeiteten zweigeteilten Auswahl mit direktem Zugriff auf die Anbietereinstellungen.",
+      "Leiten Sie eine Anfrage mit einer @agent-Erwähnung an einen benannten Unteragenten weiter.",
     ],
   },
   {
