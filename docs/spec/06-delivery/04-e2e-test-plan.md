@@ -62,7 +62,7 @@
 
 - **Preconditions:** Candidate Desktop, Host and reused local dependencies;
   isolated profile/data/project and the local scheduled-model fixture.
-- **Steps:** With a saved task, open Settings → General, observe the default-on
+- **Steps:** With a saved task, open Settings → Behavior, observe the default-on
   Scheduled tasks switch, turn it off, return to the app and search.
   Reload the renderer, verify the saved off state, re-enable and run the task.
 - **Expected:** The footer and page-search entry disappear while off; the
@@ -907,7 +907,7 @@
   requests, GPT Image parameter omission, bounded responses, and rejection of
   more than four references before I/O. These are protocol tests, not official
   provider account/live compatibility certification.
-- **Proxy fake-IP:** With the explicit Settings → General → Network proxy
+- **Proxy fake-IP:** With the explicit Settings → System → Network proxy
   fake-IP option enabled, a URL response resolved to Clash's benchmark range
   is downloaded through the proxy-aware transport; without the option it stays
   `IMAGE_UNSAFE_URL`, and real private addresses remain blocked in both cases.
@@ -1455,6 +1455,12 @@ identify the platform validation still needed.
 #### E2E-003: Rust host healthcheck responds
 
 - **Preconditions**: App is running; Rust host-core sidecar started.
+- **Cold-start timeout**: Let the first handshake time out, then allow a fresh
+  host to answer. Verify the shell opens in the same desktop process. Repeat
+  with both handshakes timing out and with quit during the first attempt.
+  Verify the recovery surface stays available after two attempts and quit
+  prevents a second child. The startup-host-retry tests inject these outcomes
+  at the Main lifecycle boundary.
 - **Steps**: 1) Electron handshakes with protocol version 11. 2) Call the host
   healthcheck RPC. 3) Repeat boot with mismatched older and newer protocol
   fixtures.
@@ -3658,7 +3664,7 @@ identify the platform validation still needed.
   14. Restore the archived project, then activate it.
   15. Archive one project session, open it from Projects, and return to Projects.
   16. Return to the app shell and open Plugins.
-- **Expected**: The rail contains exactly General, AI, Shortcuts, Instructions, Models, Skills, MCP, Subagents, Projects, Cloud sync, Remote Hosts, and Info in that order, each with its semantic Lucide icon (Sliders / Sparkles / Keyboard / FileText / Bot / BookOpen / Server / Bot / Archive / CloudDownload / Globe / Info). The flat directory is visually grouped under four muted, non-interactive headings — Preferences / 偏好 for General, AI, and Shortcuts; Agent / 智能体 for Instructions and Models; Workspace / 工作区 for Projects; About / 关于 for Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. Appearance remains in General, while Permissions, Defaults, and the Command shell row live under 全局 AI; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Projects shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267/D455) with per-section counts in a one-column workbench. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; a click selects a row without leaving Settings; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result selects its owning project, lists sessions in the inspector by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The inspector menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar. Opening an archived session succeeds before clearing its archived state, returns to chat with that session selected, and makes it visible in the project sidebar; returning to Project archive no longer shows that session as archived. The home sidebar and global page results have no standalone Projects destination; Settings search finds Projects; Plugins remains an independent app-shell destination.
+- **Expected**: The rail contains exactly Appearance, Conversation, Shortcuts, Voice, Behavior, Models, Instructions, Skills, MCP, Subagents, Projects, System, Cloud sync, Remote Hosts, and Info in that order, each with its semantic Lucide icon (Palette / MessageSquare / Keyboard / Mic / Sliders / Bot / FileText / BookOpen / Server / Sparkles / Archive / Monitor / CloudDownload / Globe / Info), and no two destinations share a glyph. The flat directory is visually grouped under four muted, non-interactive headings — Preferences / 偏好 for Appearance, Conversation, Shortcuts, and Voice; Agent / 智能体 for Behavior, Models, Instructions, Skills, MCP, and Subagents; Workspace / 工作区 for Projects; System / 系统 for System, Cloud sync, Remote Hosts, and Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. The selected row carries an accent-tinted pill and an accent glyph, and the content pane opens with that same glyph at page scale beside the title. There is no General and no AI destination (D684): theme and type are Appearance, the transcript and composer rows are Conversation, network/storage/power are System, and the permission mode, default mode and Command shell row are Behavior → Session defaults; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Projects shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267/D455) with per-section counts in a one-column workbench. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; a click selects a row without leaving Settings; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result selects its owning project, lists sessions in the inspector by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The inspector menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar. Opening an archived session succeeds before clearing its archived state, returns to chat with that session selected, and makes it visible in the project sidebar; returning to Project archive no longer shows that session as archived. The home sidebar and global page results have no standalone Projects destination; Settings search finds Projects; Plugins remains an independent app-shell destination.
   Cloud sync and Remote Hosts appear in packaged Settings with Experimental
   badges on their navigation rows and page titles; see `04-ux/06-settings-ia.md`.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md`, `03-runtime/11-provider-model-system.md`
@@ -3672,7 +3678,7 @@ identify the platform validation still needed.
   Simplified Chinese, Traditional Chinese, Turkish, German, Spanish, French,
   Korean, and Brazilian Portuguese system locales.
 - **Steps**:
-  1) Open Settings → General.
+  1) Open Settings → Appearance.
   2) In the Appearance card, open the Theme picker. Confirm System, Light, and
      Dark are pinned at the top; select Dark and confirm the trigger shows Dark
      and the UI switches to dark.
@@ -3709,7 +3715,7 @@ identify the platform validation still needed.
 #### E2E-091a: Theme changes keep the Windows frameless background aligned
 
 - **Preconditions**: App running windowed on Windows with the OS in light mode.
-- **Steps**: 1) Select Dark in Settings → General → Appearance. 2) Inspect the lower-left, lower-right, and resize edges while the shell settles and while collapsing/expanding the sidebar. 3) Select Light and repeat. 4) Switch the OS color preference and select System; repeat after the app resolves the system theme.
+- **Steps**: 1) Select Dark in Settings → Appearance → Interface. 2) Inspect the lower-left, lower-right, and resize edges while the shell settles and while collapsing/expanding the sidebar. 3) Select Light and repeat. 4) Switch the OS color preference and select System; repeat after the app resolves the system theme.
 - **Expected**: The native BrowserWindow background follows the resolved application theme (`#181818` for dark and `#ffffff` for light), so no white strip appears around the frameless renderer during theme changes or shell animations. macOS keeps its transparent vibrancy behavior unchanged.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `02-architecture/01-architecture.md`
 - **Acceptance**: A (core shell)
@@ -3719,7 +3725,7 @@ identify the platform validation still needed.
 #### E2E-SETTINGS-ai-tab-pickers-use-in-app-menus
 
 - **Preconditions**: App running with a host that reports at least one configured command shell and at least one catalog shell that is unavailable on this platform.
-- **Steps**: 1) Open Settings → General and open the Theme and Language pickers; note the pill trigger and the opened surface. 2) Open 全局 AI. 3) Open the Permissions card's permission-mode control and select ask, accept-edits, and auto in turn. 4) Open the Defaults card's Command shell control; inspect the unavailable entries and select an available shell. 5) Dismiss each open menu with Escape and then with an outside press. 6) Close Settings, reopen it, and read both rows.
+- **Steps**: 1) Open Settings → Appearance and open the Theme and Language pickers; note the pill trigger and the opened surface. 2) Open Behavior / 行为. 3) Open the Session defaults card's permission-mode control and select ask, accept-edits, and auto in turn. 4) Open the Session defaults card's Command shell control; inspect the unavailable entries and select an available shell. 5) Dismiss each open menu with Escape and then with an outside press. 6) Close Settings, reopen it, and read both rows.
 - **Expected**: Both rows open the same anchored menu surface as the Appearance pickers — the app-drawn frame with the shared radius, elevation, border, and theme tokens, a check mark on the current option, and a hover/keyboard highlight — and never a platform-drawn `<select>` popup. Closed triggers size to the current label, capped by the settings control column. Unavailable shells stay listed with their suffix, are not selectable, and cannot become the current value. Escape and an outside press close the menu and restore focus to the trigger; arrow keys move between selectable options with wraparound. The selected permission mode and command shell persist across closing and reopening Settings, and the selected shell stays the only configured-state indicator.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/09-interaction-patterns.md`
 - **Acceptance**: A (core shell)
@@ -4233,7 +4239,7 @@ window; opening a normal panel afterward must still work.
 #### E2E-024J: Plugin theme applies and falls back when withdrawn
 
 - **Preconditions**: A marketplace/package-installable `examples/plugins/hello` variant (`demo.hello`) whose `midnight` theme CSS references a declared package-relative image at `art/preview.png`; a plugin with CSS using `@import` or remote `url()` for rejection plus a comment-only variant; an asset theme with `windowAppearance` variants with and without `ui.window.appearance`, including `cornerRadius: 0` and an invalid value above 24.
-- **Steps**: 1) Install the packaged Hello variant from Marketplace or its `.piplug` package and select `Hello Midnight` in Settings → General → Theme. 2) Restart the app. 3) Disable the providing plugin. 4) Re-enable it, then uninstall it. 5) Load the plugin with unsafe CSS. 6) Load the comment-only variant. 7) Select the asset variant's theme on Windows/Linux and on macOS, verify the package-relative image renders through `plugin-asset:` in the shell and the plugin's panel, and load a sheet with an undeclared package-relative `url()` to verify it is refused. 8) Deselect its theme after removing `ui.window.appearance`.
+- **Steps**: 1) Install the packaged Hello variant from Marketplace or its `.piplug` package and select `Hello Midnight` in Settings → Appearance → Theme. 2) Restart the app. 3) Disable the providing plugin. 4) Re-enable it, then uninstall it. 5) Load the plugin with unsafe CSS. 6) Load the comment-only variant. 7) Select the asset variant's theme on Windows/Linux and on macOS, verify the package-relative image renders through `plugin-asset:` in the shell and the plugin's panel, and load a sheet with an undeclared package-relative `url()` to verify it is refused. 8) Deselect its theme after removing `ui.window.appearance`.
 - **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and `cornerRadius: 0` makes only the Windows main window rectangular while the authorized theme is selected. Deselecting the theme or dropping the grant restores the host background and the global 12 DIP `--radius-md` Windows corners; a radius above 24 rejects without changing the window. The whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §3.1, `04-ux/07-ui-design-system.md`, D175
 - **Acceptance**: G (theme contribution) + Security
@@ -4241,7 +4247,7 @@ window; opening a normal panel afterward must still work.
 
 #### E2E-PLUGIN-runtime-theme-apis
 
-- **Preconditions**: A plugin with `ui.theme` that can drive `pi.app.setTheme` and `pi.themes.upsert` / `remove` (panel or command). Settings → General shows the searchable theme picker.
+- **Preconditions**: A plugin with `ui.theme` that can drive `pi.app.setTheme` and `pi.themes.upsert` / `remove` (panel or command). Settings → Appearance shows the searchable theme picker.
 - **Steps**: 1) From the plugin UI, call `themes.upsert` with a new theme id and distinct CSS. 2) Confirm the theme appears in Settings without reload/disable. 3) Call `app.setTheme` to select it. 4) Call `themes.upsert` again with different CSS while it is active. 5) Call `themes.remove` on an inactive theme. 6) Call `app.setTheme` with an unknown id. 7) Upsert a ninth theme (former hard cap was 8).
 - **Expected**: The new theme is listed and applies immediately through the same path as Settings; live CSS edits restyle the shell without plugin reload; remove drops the picker row and the event refreshes the list; an unknown id rejects with `INVALID_ARGUMENT` and leaves the preference unchanged; the ninth theme is accepted. `settingsChanged` reaches the renderer store; `appearance:changed` reaches open panels.
 - **Specs linked**: `07-plugins/03-plugin-api.md`, `07-plugins/12-plugin-ipc-and-host-services.md`, `07-plugins/13-plugin-permissions-matrix.md`, ADR 0260, D417
@@ -5578,7 +5584,7 @@ window; opening a normal panel afterward must still work.
 
 #### E2E-CHAT-radial-background-menu: Radial menu on the empty transcript background
 
-- **Preconditions**: Settings → General → Radial context menu is available. A
+- **Preconditions**: Settings → Appearance → Radial context menu is available. A
   session has a completed user prompt, a completed assistant answer, and enough
   history to scroll.
 - **Steps**: 1) With the switch off, right-click empty space below the last
@@ -6272,7 +6278,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 #### E2E-143: Close behavior is asked once and stays configurable (D230)
 
 - **Preconditions**: Windows/Linux run with a clean data dir (no
-  `close-behavior.json`); the main window is visible; Settings → General is
+  `close-behavior.json`); the main window is visible; Settings → System is
   reachable. macOS is excluded: it keeps the native Dock lifecycle.
 - **Steps**: 1) With the preference unset, click the close button (or press
   the close-window shortcut) and verify the themed in-app dialog opens with Cancel focused. Escape, a
@@ -6282,7 +6288,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   full restart and that no second prompt ever appears once a choice exists.
   3) With `tray` set, click the tray icon: the window
   restores, shows, and focuses; the tray context menu offers Open and Quit,
-  and Quit exits the app. 4) In Settings → General, switch between Close to
+  and Quit exits the app. 4) In Settings → System, switch between Close to
   tray / Quit app and verify the next close follows the new
   choice, that the D216 tray icon stays resident either way, that an unset
   preference shows no selection, and that search matches
@@ -6904,7 +6910,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Preconditions**: PI-Desktop is running on Windows with light and dark
   themes available.
 - **Steps**: 1) In light theme, open remaining native selects (scheduled-task
-  form) and confirm Settings pickers on General, 全局 AI, Model configuration,
+  form) and confirm Settings pickers on Appearance, Behavior, Model configuration,
   and Import open as in-app menus rather than platform `<select>` popups. 2)
   Repeat every remaining native list in dark theme. 3) Open each list after
   switching themes without restarting the app.
@@ -7136,7 +7142,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     corrupt-media recovery coverage.
   - With a video in `<dataDir>/startup/` (D679): `data-testid="startup-animation"` replaces the splash in the first painted frame, plays over opaque black with no controls and no audio, then holds the same black until bootstrap finishes, then fades out over about a second with the shell already clickable during the fade. A boot slower than the video shows an indeterminate bar after 3s of black. `Escape` jumps straight to that fade.
   - An unplayable file never holds the launch: the animation ends within 2s (no first frame) or on `error`, and the reveal runs exactly as it does after a clean finish.
-  - The animation is not played under reduced motion, on a renderer reload, or on a window reopened from the tray or Dock; the brand splash is used instead. Settings → General → Appearance names the resolved file, offers the folder, and applies a toggled switch on the next launch only.
+  - The animation is not played under reduced motion, on a renderer reload, or on a window reopened from the tray or Dock; the brand splash is used instead. Settings → Appearance → Interface names the resolved file, offers the folder, and applies a toggled switch on the next launch only.
   - A boot held past the watchdog bounds replaces the animation with the recovery surface — it is never left behind the opaque mask.
   - No plain unbranded “Starting…” centered text as the only boot UI.
   - Overlay/dialog enter motion uses shared tokens; reduced motion keeps state changes without decorative duration.
@@ -7175,7 +7181,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   2. Inspect the rendered `BrandLogo` source in the sidebar and startup splash,
      and inspect the light eight-frame `HomeMascotLogo` GIF in the empty-home
      hero. Hover the mascot and verify that its cadence does not change.
-  3. Switch the theme to dark (Settings → General → Appearance, or system appearance change).
+  3. Switch the theme to dark (Settings → Appearance → Interface, or system appearance change).
   4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
 - **Expected**:
@@ -7268,7 +7274,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Preconditions**: App running; language can switch between English and zh-CN.
 - **Steps**:
   1. Inspect empty-home hint, sidebar temporary-chat section, and status/connection toasts.
-  2. Open Settings → AI providers and the marketplace refresh action.
+  2. Open Settings → Models and the marketplace refresh action.
   3. Switch the app language to zh-CN and re-check the same surfaces.
 - **Expected**:
   - Copy explains outcomes in plain product language (AI provider, project, marketplace, connected/limited) rather than host/backend/repo jargon.
@@ -7982,7 +7988,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      no repair request starts.
   9. Reload the session and verify that only the completed response or the
      single terminal failed assistant remains durable.
-  10. Open Settings → AI → Defaults, enable infinite provider retry, and repeat
+  10. Open Settings → Behavior → Execution, enable infinite provider retry, and repeat
       a network fixture that fails beyond ten attempts before recovering. Stop the
       turn during backoff and verify no later request starts; disable the setting
       and verify a fresh persistent outage stops after ten retries.
@@ -9723,7 +9729,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   default, then changed to a small test value. Record the app data directory,
   session id, and a multiline Unicode text fixture.
 - **Steps**:
-  1. Open Settings → AI → Defaults and confirm the large paste threshold is
+  1. Open Settings → Conversation → Input & links and confirm the large paste threshold is
      600. Set it to a deterministic lower value, save it, then return to the
      composer.
   2. Paste text exactly at the threshold and confirm native textarea behavior;
@@ -11433,17 +11439,25 @@ This test plan spec is accepted when:
 - Open Settings light theme at ~1200×690.
 - Full-page shell: rail ~260px on `#f3f3f3`, main `#fff`; search pill at the
   rail top; Back to app pinned at the rail foot and vertically centred on the
-  main shell's sidebar footer icon line; General active pill with icon.
-- Rail order is exactly General / 常规, AI, Shortcuts / 快捷键,
-  Instructions / 指令, Models / 模型, Skills / 技能, MCP,
-  Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息;
+  main shell's sidebar footer icon line; Appearance active pill with an
+  accent-tinted fill and an accent glyph.
+- Rail order is exactly Appearance / 外观, Conversation / 对话,
+  Shortcuts / 快捷键, Voice / 语音, Behavior / 行为, Models / 模型,
+  Instructions / 指令, Skills / 技能, MCP, Subagents / 子智能体,
+  Projects / 项目, System / 系统, Cloud sync / 云同步,
+  Remote Hosts / 远程主机, and Info / 信息;
   the rows are grouped under muted Preferences / 偏好, Agent / 智能体,
   Workspace / 工作区, and System / 系统 headings without divider lines,
   duplicate destinations, or placeholder rows. The selected page keeps its
-  descriptive title, such as Model configuration or Project archive.
-- General content: large title and an **Appearance** card with working
-  system/light/dark controls. 全局 AI holds Permissions, Defaults, and the
-  Command shell row; Context management has no settings card. Shortcuts holds
+  descriptive title, such as Model configuration or Project archive, and opens
+  with the rail's glyph at page scale plus — where the destination declares one
+  — a single subtitle line.
+- Appearance content: page header and an **Interface** card with working
+  system/light/dark controls, then Sidebar, Radial context menu and Startup.
+  Behavior holds Session defaults (default mode, permission mode, Command
+  shell), Execution and Computer use; Context management has no settings card.
+  Conversation holds Display and Input & links. System holds Network, Storage,
+  Power and, on Windows/Linux, Close behavior. Shortcuts holds
   the Keyboard shortcuts card.
   File-open target, language
   override, menu-bar behavior, and bottom-panel behavior are absent until
@@ -12222,7 +12236,7 @@ This test plan spec is accepted when:
   distinct from the built-in token stack (for example PingFang SC); a clean
   `~/.pi-desktop` profile.
 - **Steps**:
-  1) Open Settings → General and confirm the Appearance card shows a Font row
+  1) Open Settings → Appearance and confirm the Interface card shows a Font row
      below Theme and Language with a trigger labeled "System default".
   2) Open the Font picker and confirm it lists System default followed by
      installed system families only — no bundled open-licensed families and no
@@ -12272,7 +12286,7 @@ This test plan spec is accepted when:
 - **Preconditions**: App running with a clean `~/.pi-desktop` profile and an
   open conversation that shows transcript text, the composer, and the sidebar.
 - **Steps**:
-  1) Open Settings → General and confirm the Appearance card shows a Font
+  1) Open Settings → Appearance and confirm the Interface card shows a Font
      size row below Font, with Grande selected and the slider at 100%.
   2) Choose Venti. Confirm chat transcript, composer, settings labels,
      sidebar session titles, and Lucide chrome icons all enlarge without a
@@ -14693,7 +14707,7 @@ are withdrawn with ADR 0165.
   System mode, the OS has a local system proxy or PAC fixture with a capture
   endpoint and a direct fallback route.
 - **Steps**:
-  1. Open Settings → General. Confirm a Network card with Proxy modes
+  1. Open Settings → System. Confirm a Network card with Proxy modes
      System, Direct, and Custom. System is selected on a profile that never
      set a proxy.
   2. Choose Custom. Confirm a Proxy URL field, Bypass defaulting to
@@ -14883,7 +14897,7 @@ are withdrawn with ADR 0165.
   work-panel Browser view and the system browser opener are available. The
   clipboard can be observed or stubbed for the copy action.
 - **Steps**:
-  1. In Settings → AI → Defaults, select **Work panel browser** and click the
+  1. In Settings → Conversation → Input & links, select **Work panel browser** and click the
      link from a chat reply.
   2. Select **Default OS browser** and click the same link again.
   3. Right-click the link and activate each context-menu item with the pointer:
@@ -16636,12 +16650,12 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 #### E2E-250: Context usage display preference switches the inspector's leading figure
 
 - **Preconditions**: An Agent session has completed at least one turn that
-  reported token usage. Settings → AI → Defaults is reachable.
+  reported token usage. Settings → Conversation → Display is reachable.
 - **Steps**:
   1. Confirm the composer toolbar context ring shows remaining capacity
      (ring nearly full, percentage ≈ remaining %, tooltip and aria-label
      use remaining vocabulary).
-  2. Open Settings → AI → Defaults and switch the Context usage display
+  2. Open Settings → Conversation → Display and switch the Context usage display
      segmented control from Remaining to Used.
   3. Return to the chat and inspect the context ring: the ring arc now
      fills by `usedRatio` (nearly empty at low occupancy), the percentage
@@ -18735,15 +18749,15 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 ### E2E-SETTINGS-destination-scroll-reset
 
-- Open Settings → AI and scroll midway down. Select Shortcuts: its title and
-  first settings appear at the top. Scroll and return to AI: it starts at top.
+- Open Settings → Conversation and scroll midway down. Select Shortcuts: its title and
+  first settings appear at the top. Scroll and return to Conversation: it starts at top.
 - Re-select the active destination and update settings without navigating:
   the content keeps its scroll position.
 - Repeat for built-in → plugin, plugin → plugin, and plugin → the previously
   selected built-in destination. Re-selecting a plugin keeps its position.
-- Follow a global search setting anchor into AI from another destination,
-  from an open plugin destination, and within AI: the plugin page is gone and
-  the target row is visible before the next paint. Consuming the anchor keeps
+- Follow a global search setting anchor into Conversation from another
+  destination, from an open plugin destination, and within Conversation: the
+  plugin page is gone and the target row is visible before the next paint. Consuming the anchor keeps
   that position. An external tab change with no anchor also leaves the plugin
   and starts at the top.
 - Run in light and dark themes.
@@ -18756,6 +18770,57 @@ the latest destination. These assertions measure work counts, not device FPS.
   This covers
   renderer interaction, not host persistence or the
   full global-search dialog.
+
+### E2E-SETTINGS-one-destination-one-subject
+
+- **Scenario:** The D684 directory split. Every setting is reachable from the
+  destination that owns its subject, and nothing is reachable from two.
+- **Steps:**
+  1. Open Settings. The rail lists Appearance, Conversation, Shortcuts, Voice,
+     Behavior, Models, Instructions, Skills, MCP, Subagents, Projects, System,
+     Cloud sync, Remote Hosts, Info, in four titled clusters.
+  2. Visit Appearance: Interface (theme, language, font, font size, and on
+     macOS translucency), Sidebar with its two indented sub-switches, Radial
+     context menu, Startup. No network, storage, power or close-behavior card.
+  3. Visit Conversation: Display (show thinking + sub-row, transcript display +
+     sub-row, context usage, smooth streaming, inline visualizations) under one
+     visible caption saying presentation only, then Input & links (enter to
+     send, paste threshold, link open destination).
+  4. Visit Behavior: Session defaults (default mode, permission mode, command
+     shell), Execution (infinite retry, scheduled tasks), Computer use last.
+  5. Visit System: Network, Storage, Power, and on Windows/Linux Close
+     behavior.
+  6. Search the rail for `theme`, `主题`, `proxy`, `scheduled`, `paste`, and
+     `permission`. Each query surfaces exactly the destination that renders the
+     row, and following a hit scrolls to and flashes that row.
+  7. Change one setting on each of the four pages, close Settings, reopen it,
+     and read the value back.
+- **Expected:** No setting appears on two destinations and none is orphaned.
+  Each page opens with its rail glyph at page scale, its title, and one
+  subtitle line; the capability, model and project workbenches show their own
+  description instead and no subtitle. A row's explanation is still only behind
+  its help mark; the only always-visible explanatory line is a card caption.
+  Persisted values are unchanged by the move — a profile written before the
+  split reads back identically.
+- **Automation:** `settings-general.test.mjs` pins the destination index, the
+  per-page ownership, and the locale keys; `pnpm test:e2e:settings-scroll`
+  exercises the rail, search anchors and per-destination scroll in Electron.
+  `node scripts/e2e-storage-settings.mjs` opens System with a failed settings
+  read, verifies its visible error and retry action, then restores the settings
+  snapshot through retry before exercising storage controls and confirmations.
+
+### E2E-SETTINGS-retired-destination-ids-resolve
+
+- **Scenario:** A destination id written before the split still opens a page.
+- **Steps:** With a profile or deep link selecting `general`, open Settings;
+  repeat with `ai`. Trigger the native Settings menu item and the command
+  palette's Settings entry.
+- **Expected:** `general` opens Appearance and `ai` opens Behavior; neither id
+  appears in the rail or in settings search. An unknown id opens Appearance.
+  The content pane is never blank.
+- **Automation:** `settings-general.test.mjs` asserts the resolution table, and
+  `settings-developer-only-destinations.test.mjs` asserts the hidden-destination
+  fallback uses the index's default rather than a literal id.
 
 ### E2E-SCHEDULED-dispatch
 
@@ -19304,13 +19369,13 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Preconditions**: At least two local project groups with sessions, one of
   them with a running turn (and optionally a session waiting for a
   permission prompt), plus a connected remote host group with a running
-  session. Settings → General → Sidebar switches are at their defaults.
+  session. Settings → Appearance → Sidebar switches are at their defaults.
 - **Steps**:
   1. Start a turn in one project and collapse that project group.
   2. Inspect the collapsed header, then expand it again.
   3. Start a second concurrent turn in a different project and a turn in the
      remote host's project.
-  4. Open Settings → General → Sidebar and turn off **Show running activity
+  4. Open Settings → Appearance → Sidebar and turn off **Show running activity
      on projects**, then re-check the sidebar.
   5. Turn the master switch back on and turn on **Activity rail**.
   6. Turn off **Count badge** only and re-check; turn it back on.
@@ -19736,7 +19801,7 @@ permission-request UI below has isolated fixture automation.
 
 ### E2E-COMPUTER-USE-request-accessibility-from-settings
 
-- **Layout regression**: Open Settings → AI. Computer use is the final card,
+- **Layout regression**: Open Settings → Behavior. Computer use is the final card,
   after Permissions and Defaults, without card/row explanations or a static
   scope note. Its switch, platform/permission status, enabled model/capture
   controls, missing-model hint, and permission error/retry path remain present.
@@ -19956,6 +20021,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   isolated profile; verify both the checked menu option and actual diff context
   retain that choice. Missing/invalid/blocked storage is unit-covered by
   `apps/desktop/test/review-preferences.test.mjs`.
+- Open several files from the per-turn summary with enough Review content to
+  scroll. Each target comes into view inside Review while the conversation and
+  work-panel headers stay visible and the window content reaches the bottom edge.
 - Expected: latest skips no-edit rounds; delegates belong to their original user
   round; all file records are accessible; old/new numbers and bounded immutable context
   agree; one gutter uses old numbers for deletions and new numbers otherwise;
@@ -19965,7 +20033,19 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   normal/narrow layouts; copy and conflict protection survive; history restores.
   Toggle checks trail labels, summary dots have no circle, history options contain
   date/time plus true per-round recorded totals before the check and fit an
-  arrow-safe field. Unknown/binary/oversized counts are not shown as zero.
+  arrow-safe field, including colored right-aligned totals when closed.
+  The summary counts visible files rather than operation records (five records
+  across four paths, including one zero-counter preview-limited file, show three
+  files). Only file groups with additions or deletions greater than zero remain;
+  both-zero groups are hidden and excluded from the summary, while raw Host
+  evidence and each retained file's complete operation chain remain available.
+  Missing/unsafe totals are not invented as zero;
+  Host regressions retain saved valid counters despite binary/truncated previews.
+  Expanding a long diff does not move header widths or statistics because the
+  outer scrollbar gutter is reserved. File icons lead; the reserved disclosure
+  immediately after the visible filename appears only on hover/focus, right when closed and down
+  when expanded, with a clear gap before statistics. Numbered diff rows have no
+  independent add/delete sign column.
   File headers have no idle
   fill, and no execution-root row appears. File menus disable internal open when
   the plugin is absent, open its loaded view when available, and pass the resolved

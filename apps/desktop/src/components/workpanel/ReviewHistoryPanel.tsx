@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewChangesPage, ReviewContextLines, ReviewTurnsPage } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { groupReviewFiles, readReviewPages } from "../../lib/review-history";
-import { useReviewFocusRequest } from "../../lib/review-focus-request";
+import { scrollReviewToAnchor, useReviewFocusRequest } from "../../lib/review-focus-request";
 import { readReviewContextLines, rememberReviewContextLines } from "../../lib/review-preferences";
 import { useAppStore } from "../../stores/app-store";
 import { Button, Select } from "../ui";
@@ -52,8 +52,10 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
   const files = useMemo(() => groupReviewFiles(result.changes), [result]);
   useEffect(() => {
     if (loading || !selection.snapshotId) return;
-    scroller.current?.querySelector<HTMLElement>(`[data-review-snapshots~="${CSS.escape(selection.snapshotId)}"]`)
-      ?.scrollIntoView({ block: "start" });
+    scrollReviewToAnchor(
+      scroller.current,
+      `[data-review-snapshots~="${CSS.escape(selection.snapshotId)}"]`,
+    );
   }, [files, loading, selection]);
   const older = async () => {
     if (catalog.nextBefore === undefined || paging) return;
@@ -68,7 +70,7 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
     finally { if (generation.current === version) setPaging(false); }
   };
   const selectedId = selection.turnId ?? (selection.snapshotId ? result.turnId ?? "" : "");
-  const count = files.reduce((sum, file) => sum + file.entries.length, 0);
+  const count = files.length;
   return <div className={`review-tab review-history${wrap ? "" : " is-nowrap"}`} aria-busy={loading}>
     <ReviewHistoryToolbar history={history} onHistory={value => {
       setHistory(value); setSelection(value && result.turnId ? { turnId: result.turnId } : {});
@@ -80,6 +82,9 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
       <span className="review-history-label">{t("panel.review.historyTitle")}</span>
       <Select className="review-select review-history-round-select" value={selectedId || result.turnId || ""} aria-label={t("panel.review.historyTitle")}
         onChange={event => { setSelection({ turnId: event.target.value }); scroller.current?.scrollTo({ top: 0 }); }}>
+        <Button variant="ghost" className="review-round-selected" tabIndex={-1}>
+          {createElement("selectedcontent")}
+        </Button>
         {selectedId && !catalog.turns.some(turn => turn.id === selectedId) && <ReviewTurnOption turn={{ id: selectedId, createdAt: "" }} />}
         {catalog.turns.map(turn => <ReviewTurnOption key={turn.id} turn={turn} />)}
       </Select>

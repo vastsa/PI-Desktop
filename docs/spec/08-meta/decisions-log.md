@@ -460,6 +460,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 |---|---|---|---|
 | D143 | Settings directory rail icons | **The five settings destinations use fixed Lucide glyphs: Basics=`SlidersHorizontal`, Model configuration=`Bot`, Import=`Download`, Project archive=`Archive`, Info=`Info`. Refresh/rotate glyphs are not used on this rail.** | Prior mapping reused Settings/RefreshCcw/RotateCw, which read as generic gear/reload rather than the destination semantics; monochrome Lucide keeps the compact directory scannable. |
 | D166 | Settings directory split into AI and Shortcuts destinations | **The Settings rail grows from five to seven destinations in order: Basics (`SlidersHorizontal`), 全局 AI/AI (`Sparkles`, new), Shortcuts (`Keyboard`, new), Model configuration (`Bot`), Import (`Download`), Project archive (`Archive`), Info (`Info`). Permissions and Context management move from Basics to the new AI destination; Keyboard shortcuts moves from Basics to the new Shortcuts destination; Developer moves from Basics to Info. Basics keeps only Appearance and Defaults. This supersedes the five-destination count/order of D133 and the five-icon set of D143 (adding `Sparkles` and `Keyboard`) without changing any setting's semantics, the full-page shell, or rail metrics.** | Basics accumulated six unrelated cards, burying global AI behavior (permission mode, context compaction) and shortcut configuration alongside look-and-feel; splitting them gives each concern a scannable home while keeping provider/connection config separate in Model configuration. |
+| D684 | One settings destination owns one subject | **Amend D143 / D166 / D678 and see ADR 0345: the Settings directory is fifteen destinations in order — Appearance (`Palette`), Conversation (`MessageSquare`), Shortcuts (`Keyboard`), Voice (`Mic`), Behavior (`SlidersHorizontal`), Models (`Bot`), Instructions (`FileText`), Skills (`BookOpen`), MCP (`Server`), Subagents (`Sparkles`), Projects (`Archive`), System (`Monitor`), Cloud sync (`CloudDownload`), Remote Hosts (`Globe`), Info (`Info`) — in the four existing clusters. `general` and `ai` are retired: General's appearance rows become Appearance (cards Interface / Sidebar / Radial context menu / Startup) and its machine rows become System (Network / Storage / Power / Close behavior); the AI Defaults catch-all splits into Conversation (Display / Input & links) and Behavior (Session defaults / Execution / Computer use). Both retired ids stay resolvable to their successor and appear in neither the rail nor search. A card may carry one visible caption line and a destination one subtitle line; each page repeats its rail glyph at page scale on an accent-tinted fill, and the selected rail row takes an accent-tinted pill with an accent glyph. No persisted field, IPC, host protocol, or storage schema change — only which page renders which row. See E2E-SETTINGS-one-destination-one-subject and E2E-SETTINGS-retired-destination-ids-resolve.** | Two destinations had become landing places rather than subjects: General mixed theme and type with proxies, disk maintenance, sleep blockers and the close button, and the AI Defaults card had grown to thirteen rows spanning transcript presentation, composer input and run behavior. A reader could not predict which page held a setting, and with every explanation behind a help mark the only way to find one was to hover the whole page. Reordering cards cannot repair a page that owns two subjects. |
 
 ## R. Decision rules going forward
 
@@ -8349,3 +8350,57 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   itself is platform code and is covered only by the device probe. See
   `docs/implementation/computer-use-evidence.md` for what the run proved and
   what it did not.
+
+## 2026-11-05 — One settings destination owns one subject (D684)
+
+- Two Settings destinations had stopped being subjects and become landing
+  places. General carried theme, language and type next to the outbound proxy,
+  the application data directory, sleep blockers and the window's close button.
+  The AI destination's **Defaults** card had grown to thirteen rows: the default
+  operating mode and the command shell sat between the transcript display mode,
+  the thinking toggles, the context ring's leading figure, Enter-to-send and the
+  paste threshold. Those are three subjects — how it looks, how a transcript
+  reads, what a run does — in two pages.
+- The rule now is one destination per subject, and the split follows it rather
+  than reordering cards: **Appearance** (Interface, Sidebar, Radial context
+  menu, Startup), **Conversation** (Display, Input & links), **Behavior**
+  (Session defaults, Execution, Computer use), **System** (Network, Storage,
+  Power, and on Windows/Linux Close behavior). Fifteen destinations in the four
+  existing clusters; Subagents takes the `Sparkles` glyph the retired AI
+  destination released, so no two rows share an icon.
+- Permission mode moved in with the default operating mode and the command
+  shell instead of keeping a card of its own. They are one question asked three
+  ways — what a new conversation starts with — and a one-row card was part of
+  what made the old page read as a pile.
+- Nothing about the settings themselves changed: no persisted field, IPC
+  message, host protocol or storage schema. A profile written before the split
+  reads back identically; only the page that renders each row is different.
+  `general` and `ai` resolve to Appearance and Behavior
+  (`resolveSettingsTab`), so a stored selection, a native menu, a capture scene
+  or an older deep link cannot open a blank pane, and neither id appears in the
+  rail or in settings search.
+- Two presentation rules were added because the IA alone does not make a page
+  legible. A destination may declare one subtitle line under its title, and a
+  card may carry one visible caption line under its heading — the first visible
+  explanatory copy since D601 moved row explanations behind a help mark. The
+  distinction is scope: a caption orients a whole group, a row's explanation
+  still belongs behind its question mark, and copy that needs a second sentence
+  stays there too. The capability, model and project workbenches already open
+  with their own description and declare no subtitle, so no page says its
+  purpose twice.
+- The page header now repeats the rail's glyph at page scale on an
+  accent-tinted fill, and the selected rail row takes an accent-tinted pill
+  with an accent glyph. With fifteen rows in four clusters, "where am I" has to
+  survive a glance; the fills stay inside the in-flow surface rule (D297) since
+  they are tone, not a stroke.
+- Prose that routed a reader to a destination that no longer exists was fixed
+  in every catalog: the proxy and network-policy messages now say
+  Settings → System → Network. The live specs follow
+  (`04-ux/06-settings-ia.md`, `00-baseline.md` §40, `04-ux/01-ui-ia.md`,
+  `04-ux/08-component-spec.md`, `03-runtime/04-data-storage.md`,
+  `03-runtime/computer-use.md`). Earlier decision entries keep their original
+  wording: they record what was decided then.
+- The renderer shell is now a router. Each destination is a module under
+  `features/settings/pages/`, which keeps `SettingsPage.tsx` from growing a
+  fifth subject and leaves the settings source contract intact, since it reads
+  the facade plus everything under `features/settings`.

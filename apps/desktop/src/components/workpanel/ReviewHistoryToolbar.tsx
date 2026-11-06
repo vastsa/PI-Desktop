@@ -19,7 +19,7 @@ export function ReviewHistoryToolbar({ history, onHistory, count, additions, del
         <option value="last">{t("panel.review.previousRound")}</option>
         <option value="history">{t("panel.review.historyMode")}</option>
       </Select>
-      <span className="review-summary">{t("panel.review.changes", { count })}</span>
+      <span className="review-summary">{t("chat.toolChipFiles", { count })}</span>
       <span className="diff-counts review-toolbar-counts" aria-label={t("chat.reviewChangeCounts", { additions, deletions })}>
         <span className="diff-count-add">+{additions}</span><span className="diff-count-del">−{deletions}</span>
       </span>
