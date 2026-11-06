@@ -36,6 +36,9 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
     const runIsLive = projectRunSummaryIsLive(runSummary);
     const showRunBadge = runAffordances.badge && runIsLive;
     const showRunRail = runAffordances.rail && runIsLive;
+    // Same exclusivity rule as the local sidebar: one set of numbers, owned by
+    // the badge while it is on and by the rail when it is off.
+    const showRunCount = runAffordances.railCount && runIsLive;
     return <section
       className={`sidebar-session-group project-group ${runIsLive ? "has-running-sessions" : ""} ${showRunRail ? "has-run-rail" : ""}`}
       key={project.key}
@@ -46,7 +49,7 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
           title={`${project.hostLabel} · ${project.label}`} onClick={() => void open(project)}>
           <IconFolder size={13} aria-hidden /><span>{project.label} · {project.hostLabel}</span>
           {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
-          {showRunRail ? <ProjectRunCount summary={runSummary} /> : null}
+          {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
         </Button>
         <TooltipButton tooltip={t("nav.newTask")} ariaLabel={`${t("nav.newTask")}: ${project.label} · ${project.hostLabel}`}
           disabled={busy !== null} onClick={() => void open(project)}><IconNewProject size={14} /></TooltipButton>

@@ -1540,8 +1540,9 @@ automatically replayed. See the Host file admission ADR for lifecycle and limits
   Source `details.root` is preserved; workspace-relative and non-workspace
   absolute paths retain distinct identities. Limit is bounded to 100; title is a short excerpt.
   Added/deleted totals sum deduplicated successful operation evidence, not a net
-  diff. Originally truncated/binary records or unsafe totals yield null for both
-  counts. Transport-only hunk trimming does not discard known counts. Older
+  diff. Saved valid counters remain available even when binary/truncated previews
+  are unavailable. Unsafe totals yield null for both counts; malformed evidence
+  remains filtered. Preview trimming does not discard known counts. Older
   Hosts may omit these additive fields; consumers show unknown.
 - `review.changes({sessionId, turnId?, snapshotId?, offset?, limit?})` returns
   `turnId`, `changes: [{message, root?}]`, and optional `nextOffset`. Without a

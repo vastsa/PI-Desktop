@@ -74,6 +74,10 @@ export function ProjectRunRail({ summary }: { summary: ProjectRunSummary }) {
 /**
  * The "n" figure that accompanies the rail: a coloured pip per kind, so the
  * colour ties the number to its meaning instead of leaving a bare count.
+ *
+ * It is the badge's stand-in, not an addition to it: callers gate it on
+ * `railCount`, so it appears only while the badge is switched off and the same
+ * figure never renders twice on one header.
  */
 export function ProjectRunCount({ summary }: { summary: ProjectRunSummary }) {
   const { t } = useTranslation();

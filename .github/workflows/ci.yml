@@ -194,3 +194,5 @@ jobs:
         run: xvfb-run --auto-servernum node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs
       - name: Run File Manager theme E2E
         run: xvfb-run --auto-servernum pnpm test:e2e:file-manager-theme
+      - name: Run File Manager directory location E2E
+        run: xvfb-run --auto-servernum pnpm test:e2e:file-manager-directory

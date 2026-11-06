@@ -25,6 +25,7 @@ import {
   loadSidebarWidth,
   saveSidebarWidth,
 } from "../../lib/sidebar-preferences";
+import { DEFAULT_SETTINGS_TAB } from "../../lib/settings-search";
 import { sidebarWidthBudget } from "../../lib/sidebar-resize";
 import { commitWorkPanelPresentation } from "../../lib/work-panel-presentation";
 import {
@@ -431,7 +432,7 @@ export function useAppShellRuntime() {
             await store.openProject();
             break;
           case "openSettings":
-            store.setSettingsTab("general");
+            store.setSettingsTab(DEFAULT_SETTINGS_TAB);
             break;
           case "openSearch":
             setSearchOpen(true);

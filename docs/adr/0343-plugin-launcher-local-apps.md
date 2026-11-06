@@ -71,8 +71,10 @@ app data directory, not host-core user data.
 ## Consequences
 
 - One shortcut opens "anything openable" — plugin panels and installed
-  applications — with a source tag on every tile so the user can tell them
-  apart even when the names collide.
+  applications — in one grid that renders every source as the same rounded
+  square. The trade-off is deliberate: the panel no longer tells a plugin from
+  an application before the user opens it, which buys a wider name line for
+  every tile; a shared name still lists both entries rather than one.
 - The privilege boundary is a window, not a permission: revoking it means
   removing the channel, not editing a plugin manifest. The launcher window runs
   with `contextIsolation`, `sandbox`, and no Node integration like every other

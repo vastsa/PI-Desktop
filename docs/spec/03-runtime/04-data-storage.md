@@ -90,7 +90,7 @@ or transcript format change is required.
 
 ### User-selected storage location (issue #1213)
 
-Settings → General → Storage can select an empty directory on a different
+Settings → System → Storage can select an empty directory on a different
 volume. A selected directory contains `data/` (the complete host/application
 profile) and `browser/` (Chromium default and persistent plugin/browser session
 state). The existing default directories remain unchanged until the user

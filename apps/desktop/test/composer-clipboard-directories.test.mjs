@@ -79,40 +79,13 @@ test("both send serializers include one directory instruction and escaped path m
   }
 });
 
-test("the real editor paints an atomic folder card with a localized type, full path and remove action", t => {
-  const originalDocument = globalThis.document, originalNode = globalThis.Node;
-  t.after(() => { globalThis.document = originalDocument; globalThis.Node = originalNode; });
-  function element(tag) {
-    const node = { nodeType: 1, tagName: tag.toUpperCase(), className: "", dataset: {}, childNodes: [], attributes: {}, listeners: {},
-      setAttribute(key, value) { this.attributes[key] = value; },
-      addEventListener(key, value) { this.listeners[key] = value; },
-      append(...nodes) { this.childNodes.push(...nodes); },
-      appendChild(child) { this.childNodes.push(child); return child; },
-      replaceChildren() { this.childNodes = []; },
-    };
-    node.classList = { contains: key => node.className.split(" ").includes(key), add: key => { node.className += ` ${key}`; } };
-    return node;
-  }
-  globalThis.document = { createElement: element, createTextNode: value => ({ nodeType: 3, nodeValue: value }) };
-  globalThis.Node = { ELEMENT_NODE: 1, TEXT_NODE: 3 };
-  const editor = load("../src/features/chat/composer/editor.ts");
+test("restore moves older folder chips out of the editable without changing file tokens", () => {
+  const { detachDirectoryTokens } = load("../src/features/chat/composer/directory-attachments.ts");
   const reference = { path: "/tmp/folder.txt", name: "folder.txt", kind: "directory", token: "\ue001" };
-  const container = element("div");
-  let removed;
-  const args = [container, "\ue001", new Map([["\ue001", reference]]), () => "Remove folder", token => { removed = token; }];
-  if (editor.paintEditorValue.length >= 10) args.push(undefined, undefined, () => {}, () => {}, () => {}, "Folder");
-  else args.push(() => {}, () => {}, () => {}, "Folder");
-  editor.paintEditorValue(...args);
-  const card = container.childNodes[0];
-  assert.equal(card.classList.contains("composer-directory-card"), true);
-  assert.equal(card.title, reference.path);
-  assert.equal(card.contentEditable, "false");
-  assert.equal(card.childNodes[1].childNodes[0].textContent, "folder.txt");
-  assert.equal(card.childNodes[1].childNodes[1].textContent, "Folder");
-  assert.equal(editor.readEditorValue(container), "\ue001");
-  const remove = card.childNodes.at(-1);
-  assert.equal(remove.attributes["aria-label"], "Remove folder");
-  remove.listeners.click({ stopPropagation() {} });
-  assert.equal(removed, "\ue001");
-  assert.equal(editor.isEditableTextReference(reference), false, "a directory named .txt must not expand as a text file");
+  const file = { path: "/tmp/file.txt", name: "file.txt", kind: "file", token: "\ue002" };
+  assert.deepEqual(detachDirectoryTokens("before \ue001after \ue002", [reference, file]), {
+    text: "before after \ue002",
+    references: [{ path: reference.path, name: reference.name, kind: "directory" }, file],
+  });
+  assert.deepEqual(detachDirectoryTokens("removed", [reference]), { text: "removed", references: [] });
 });

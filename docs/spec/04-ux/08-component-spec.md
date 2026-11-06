@@ -2,10 +2,13 @@
 
 ### Copied directory references
 
-Native folder paste inserts atomic folder cards at the captured caret, with a
-folder icon, ellipsized name, localized Folder type, full-path tooltip and
-accessible remove button. Mixed folders/files preserve native order. The source
-draft/session owns pending results; newer edits survive. A home paste cancels if
+Native folder paste adds compact cards in a wrapping row above the editable
+text. Each card shows a folder icon, ellipsized name, localized Folder type,
+full-path tooltip and accessible remove button. Short names use their natural
+width. In mixed pastes, folders keep their selection order in the row and
+regular files remain inline at the caret. A folder-only paste preserves the
+selected text. The source draft/session owns pending results and newer edits
+survive. A home paste cancels if
 its workspace/session navigation changes before a durable owner is created. Directory-only clipboard
 selections work even when Chromium provides no File object. Ordinary text/image/
 file paste and the directory-drop open-project/insert-path choice remain.
@@ -13,8 +16,11 @@ file paste and the directory-drop open-project/insert-path choice remain.
 Normal send and steering include escaped `<dir>absolute/path</dir>` markers and
 one instruction: "The user provided these local directories for the current task.
 Inspect their structure and read relevant files as needed to fulfill the request."
-Removing a card removes its hint. Pasting neither reads/copies a directory tree nor
-changes tool permissions. See [directory reference ADR](../../adr/composer-pasted-directory-references.md).
+The user message shows folder cards above the text and omits those generated
+markers and guidance. Clicking a card in a local session reveals the directory
+in the system file manager. Removing a draft card removes its hint. Pasting
+neither reads/copies a directory tree nor changes tool permissions. See
+[directory reference ADR](../../adr/composer-pasted-directory-references.md).
 
 
 > Layout and IA reference: [01-ui-ia.md](01-ui-ia.md)  
@@ -196,7 +202,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   `.main-pane`, `.main-titlebar`, and `.conversation-topbar` remain opaque
   `bg-primary` surfaces, so vibrancy does not spread across the whole window.
   Windows/Linux retain their existing opaque background and frameless behavior.
-- Settings → General → Appearance → **Translucent window** (macOS only) is on
+- Settings → Appearance → Interface → **Translucent window** (macOS only) is on
   by default and turns the material off: an opaque window paints the host or
   plugin palette and leaves WindowServer's per-frame recomposition path, while
   the renderer keeps the same tint and sheen. The choice is read when the main
@@ -1037,6 +1043,9 @@ pending action cards remain reachable outside a hidden process. See
 | Idle (after stream) | Auto-scroll unlocked; user can scroll freely. A completed turn the user was following ends with its prompt at the top of the viewport and jump-to-latest shown, unless the prompt was already in view (D676) |
 | Message-scoped review snapshot | Each successful workspace Write/Edit renders as one tool-level review row (`ReviewChangeCard`) carrying that message's added/modified/deleted status and explicit addition/deletion totals. The row itself is the file header — Git-style status letter (`A`/`M`/`D`), path, addition/deletion counts, disclosure caret — with no separate generic tool row above it, so the file header appears exactly once. It keeps the tool-row rhythm with no card border, status rail, icon plate, or status pill; hover fill is the only row chrome, and a rolled-back change is struck through. Its hunks sit in the diff body directly beneath that header behind the row's expandable disclosure: every review row (inline and in the Review tab) is collapsed by default, and the user expands it on demand. The diff body's action row keeps hash-guarded rollback and adds Copy for the hunks. The card remains after a Git commit, never becomes a bottom/global entry, and does not leak into another session's transcript. |
 | Per-turn changed files | A completed reply (same mount condition as the reply plugin slots, so never while streaming and never after a failed turn) whose turn recorded at least one workspace review change shows one read-only `TurnChangesCard` below its answer and above `entryExtra` blocks (D674). It is built only from that turn's message-owned review records: one row per path in first-touched order, counts summed across edits, status `D` when the turn ends by deleting the file, else `A` if any edit created it, else `M`; a file whose every edit was rolled back stays listed, struck through, with the state in its accessible name. The card starts collapsed: its full-width header remains visible with a disclosure chevron, `Changes this turn`, the file count, and the summed `+`/`−`. Clicking the header or activating it with Enter/Space toggles the file list and its Review link without opening Review; `aria-expanded` and `aria-controls` expose the state, and hidden details are not keyboard-focusable. Each turn retains its own explicit choice through the existing session-scoped transcript disclosure mechanism and uses the shared scroll anchor. When expanded, up to four files use relaxed 25px rows; more switch to dense 21px rows and add the directory count; rows past 12 fold into `+N more` plus a link that opens Review. The card is one `--ds-tile` surface with no border or rules. Clicking a row opens the originating session's Review tab, scrolls to that file's first recorded change, and expands its changes there — the card has no diff body or rollback of its own. A turn without workspace writes renders nothing. |
+
+Focusing a file from the per-turn summary scrolls within the Review list.
+The window chrome and conversation viewport stay in place.
 
 ### 4.5 Accessibility
 
@@ -3360,26 +3369,21 @@ reasoning-level control.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
   `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
   the menu lists more than one level, a drag slider with one labeled stop per
-  level directly beneath the Reasoning level entry (D458). The slider shows a
-  rail with one track dot per stop and a label under each stop; every label
-  stays visible and ellipsizes inside its column. The dots row and the labels
-  row are full-width n-column grids and the range input overlays the rail at
-  full width, inset on both sides by half a column minus the thumb radius, so
-  the track dot, the thumb and the label all land on the same column center
-  for every stop count. The selected stop's dot and label use the accent
-  token, the rest a muted token; the thumb covers the selected dot. Tick
-  labels are clickable but not tab stops; the range input is the accessible
-  control.
-  Hovering either a stop or its label highlights the corresponding label.
-  Only unfilled dots brighten and scale to 1.3x; filled stops and the selected
-  thumb have no hover effect. Leaving
-  the slider clears the preview without selecting or persisting a level.
-  A decorative, non-interactive thumb and the filled rail share the range's
-  gapless column geometry. The fill starts at the first dot's outer left edge
-  and ends at the selected thumb's center, covering the starting dot fully.
-  Clicks and keyboard changes move the thumb and
-  fill over `--motion-duration-normal` (200ms); a new click retargets from
-  the current visual position. Native pointer dragging bypasses transitions.
+  level in the menu footer (D458, D685). The control is a segmented track:
+  one label per stop inside a full-width n-column grid, and a raised pill
+  (`--ds-raised`) one column wide, inset by a 2px gutter, under the selected
+  label. Every label stays visible and ellipsizes inside its column. The range
+  input overlays the track at full width, inset on both sides by half a column
+  minus its invisible thumb radius, so the pill, the label and the native stop
+  share one column center for every stop count. The selected label uses the
+  primary ink at medium weight, the rest a muted token. Labels are clickable
+  but not tab stops; the range input is the accessible control.
+  Hovering a column brightens its label without moving the pill; leaving the
+  control clears the preview without selecting or persisting a level.
+  Clicks and keyboard changes move the pill over `--motion-duration-normal`
+  (200ms); a new click retargets from the current visual position. Pressing
+  the control scales the pill to 0.96; native pointer dragging bypasses all
+  transitions.
   Only the requested levels are persisted, never interpolated animation
   positions. Pending selection is optimistic; failure restores the confirmed
   level, and stale completions cannot overwrite a newer choice. Reopening
@@ -4177,8 +4181,10 @@ responses cannot restore an earlier order. Composer All models groups follow the
 default nor provider configuration. OAuth accounts remain in their separate section.
 
 1. **Model selection** — chat models are selected in the Composer. Its first
-   menu has persistent search, up to three recent available provider/model pairs,
-   and an inline Other models disclosure. Without history, it shows all models.
+   menu has persistent search over a text-only source rail (Recent, then each
+   provider) and the chosen source's models. A single marker slides between
+   rail items, and the pane slides in from the direction of the move. With a
+   single source the rail is hidden and all models show directly.
    New chats inherit the last actually used available model. Only accepted
    message submission updates that preference; selection and reasoning changes
    alone do not count as usage.
@@ -4650,9 +4656,15 @@ independent of the chat's loaded message window. Rounds without changes do not
 replace Latest. Main and delegated Write/Edit evidence share a file list; actual
 execution roots distinguish identically named files. The file header opens all
 of that file's recorded operations in order, without claiming a net diff.
+The toolbar counts visible distinct root/path file groups, not operation records.
+A file group appears only when its recorded additions or deletions are greater
+than zero. Groups with both counters zero are hidden, including preview-limited
+records, and excluded from the toolbar file count. This presentation filter does
+not delete native evidence or omit operations from a retained file group.
 
 Expanded file content has no fixed-height inner viewport or vertical scrollbar.
-The outer Review scroll owns vertical travel; the current file header sticks
+The outer Review scroll reserves its vertical scrollbar gutter before overflow
+and owns vertical travel; the current file header sticks
 below the toolbar within its file section. It is not reordered. A borderless ellipsis button after the summary totals opens a menu containing
 only Word wrap and Context lines. Hovering Context lines opens a secondary
 menu with 1/3/5 (first-use default 3); the choice is profile-wide, remembered
@@ -4662,9 +4674,15 @@ No context selector is shown in the main toolbar.
 Toggle checks appear on the right. History options show date/time on the left
 and Host-recorded added/deleted line totals on the right, before the check.
 Totals count each successful native operation once, including delegated evidence,
-and do not claim a net diff. Binary, originally truncated or missing counts show
-unknown instead of invented zeros. The selector reserves arrow space. File headings have no permanent
-button fill or border; execution roots are not rendered as extra diff rows.
+and do not claim a net diff. Binary/truncated preview flags do not erase saved
+valid counters; absent or unsafe totals show unknown instead of invented zeros.
+The closed selector preserves the same left date/time and right green/red totals
+before its arrow. File headings have no permanent button fill or border; their
+file icon leads the row. A reserved disclosure slot immediately follows the
+visible filename, including an ellipsized name, before the right-aligned statistics.
+It appears on hover or keyboard focus, pointing right
+when closed and down when open, without moving content. Filename and statistics
+have a visible gap; execution roots are not rendered as extra diff rows.
 A separate file ellipsis offers Open internally (disabled without the loaded
 File Manager view; never auto-enables it), Open externally (OS default app),
 and Open folder (system file manager, revealing the current file).
@@ -4700,7 +4718,9 @@ when space is insufficient they flip above and clamp within the viewport.
 Pointer position within a button cannot move the menu. They remain body portals,
 and ordinary right-click menus retain pointer placement.
 Diff rows have one line-number gutter: deletions use old coordinates, additions
-and context use new coordinates; EOF markers have no number. Word wrap toggles wrapping without
+and context use new coordinates; EOF markers have no number. Numbered Review
+rows omit the separate add/delete sign column but retain change backgrounds and
+summary signs; chat inline rows are unchanged. Word wrap toggles wrapping without
 introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain

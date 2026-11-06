@@ -33,6 +33,8 @@ export async function seedReviewHistory(host, directory) {
   await mutate(firstTurn, "child.md", "# Unified review\n\nDelegate output belongs to this conversation.\n", "review-task");
   const outsidePath = join(directory, "outside", "review-open-tests-source.mjs");
   await mutate(firstTurn, outsidePath, "export const outside = true;\n");
+  const zero = (await mutate(firstTurn, "zero-preview.txt", "x".repeat(600000))).toolResult.details.review;
+  if (!zero.truncated || zero.additions !== 0 || zero.deletions !== 0) throw new Error("Expected native preview-limited zero counters");
   await end(firstTurn);
   const second = await begin("round-two", "新增最近修改的测试文件");
   await mutate(second, "latest.txt", "Latest modified round\n"); await end(second);

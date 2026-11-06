@@ -43,6 +43,7 @@ ipcMain.handle('fixture:invoke',async(_event,channel,input)=>{if(channel===${JSO
 ipcMain.handle('fixture:action',async(_event,name,input)=>{switch(name){
 case 'seed':seed=await seedReviewHistory(host,__dirname);return {session:seed.session,other:seed.other,round:seed.round,latest:seed.latest,firstSnapshot:seed.firstSnapshot,late:seed.lateMessage};
 case 'currentSeed':return {session:seed.session,firstSnapshot:seed.firstSnapshot};
+case 'hoverReviewFile': {win.showInactive();const rect=await win.webContents.executeJavaScript("document.querySelector("+JSON.stringify(input?'.review-history-file-header':'.fixture-label')+").getBoundingClientRect().toJSON()");win.webContents.debugger.attach('1.3');try{await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:rect.x+rect.width/2,y:rect.y+rect.height/2});}finally{win.webContents.debugger.detach();}return;}
 case 'late':return seed.appendLate();
 case 'runningStart':runningTurn=await seed.startRunning();return;
 case 'runningWrite':return seed.writeRunning(runningTurn);

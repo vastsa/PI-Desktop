@@ -46,7 +46,9 @@ function assertMarkdownLinkClick(markup, expectedPath) {
   );
   assert.equal(handled, true);
   assert.equal(prevented, true);
-  assert.deepEqual(calls, [[expectedPath, undefined]]);
+  // An explicit link destination may name a directory (issue #2113): the
+  // opener is always told the reference is deliberate.
+  assert.deepEqual(calls, [[expectedPath, undefined, undefined, { allowDirectory: true }]]);
 }
 
 test("Windows Markdown file links survive parsing and sanitization without changing their paths", () => {
@@ -97,6 +99,36 @@ test("Windows Markdown file links survive parsing and sanitization without chang
   assertMarkdownLinkClick(encodedSlashMarkup, "D:/person/dir name/报告.js");
 });
 
+test("explicit Markdown destinations keep their href without a file extension (issue #2113)", () => {
+  // A link destination is a deliberate reference: a drive-anchored directory
+  // (or extension-less file) keeps its href instead of being sanitized away
+  // as an unknown `c:` scheme, and the click routes through the file opener.
+  for (const destination of [String.raw`C:\link-demo\输出目录`, "C:/link-demo/输出目录"]) {
+    const markup = renderSanitizedMarkdown(`[目录](<${destination}>)`);
+    assertMarkdownLinkClick(markup, destination);
+  }
+
+  const plainMarkup = renderSanitizedMarkdown(String.raw`[目录](C:\link-demo\输出目录)`);
+  assertMarkdownLinkClick(plainMarkup, String.raw`C:\link-demo\输出目录`);
+
+  assertMarkdownLinkClick(renderSanitizedMarkdown("[build](<C:/repo/Makefile>)"), "C:/repo/Makefile");
+
+  // A relative directory destination keeps its href and routes through the
+  // opener against the workspace root.
+  const relMarkup = renderSanitizedMarkdown("[相对目录](examples/)");
+  const relHref = relMarkup.match(/<a href="([^"]+)"/)?.[1];
+  assert.ok(relHref, relMarkup);
+  const calls = [];
+  assert.equal(handleMarkdownFileLinkClick({ preventDefault() {} }, relHref, "/Users/dev/project", undefined,
+    (...args) => calls.push(args)), true);
+  assert.deepEqual(calls, [["examples", undefined, undefined, { allowDirectory: true }]]);
+
+  // A trailing separator keeps today's inert rendering: the click path's own
+  // acceptance still rejects it, so normalization stays in parity.
+  const trailingMarkup = renderSanitizedMarkdown(String.raw`[目录](<C:\link-demo\输出目录\>)`);
+  assert.ok(!/<a href=/i.test(trailingMarkup), trailingMarkup);
+});
+
 test("positioned HTML references preserve source navigation through Markdown sanitization", () => {
   for (const source of [
     "Source: animation.html:12:3",
@@ -111,7 +143,7 @@ test("positioned HTML references preserve source navigation through Markdown san
     handleMarkdownFileLinkClick({ preventDefault() {} }, href, "D:/person", undefined,
       (...args) => calls.push(args));
     assert.deepEqual(calls, [[source.includes("D:/person") ? "D:/person/animation.html" : "animation.html",
-      undefined, undefined, { line: 12, column: 3 }]], source);
+      undefined, undefined, { line: 12, column: 3, allowDirectory: true }]], source);
   }
 });
 
@@ -960,13 +992,15 @@ test("session links segment as their own target", () => {
 
 test("an absolute Markdown link to an extensionless file still reaches the file opener", () => {
   // The link destination is explicit, so the extension heuristic that keeps
-  // prose from turning into chips does not apply. The main process decides
-  // whether the file exists and may open (ADR 0339).
+  // prose from turning into chips does not apply — for files and, since
+  // #2113, for directories too: the opener is told the reference is
+  // deliberate so an extension-less directory can resolve. The main process
+  // decides whether the path exists and may open (ADR 0339).
   for (const [source, root, expected] of [
-    ["[config](</Users/me/.ssh/config>)", null, ["/Users/me/.ssh/config", undefined]],
-    ["[Makefile](</tmp/build dir/Makefile>)", "/Users/me/project", ["/tmp/build dir/Makefile", undefined]],
-    ["[LICENSE](<D:/vendor/LICENSE>)", "D:/person", ["D:/vendor/LICENSE", undefined]],
-    ["[notes](</tmp/notes:4>)", null, ["/tmp/notes", undefined, undefined, { line: 4, column: undefined }]],
+    ["[config](</Users/me/.ssh/config>)", null, ["/Users/me/.ssh/config", undefined, undefined, { allowDirectory: true }]],
+    ["[Makefile](</tmp/build dir/Makefile>)", "/Users/me/project", ["/tmp/build dir/Makefile", undefined, undefined, { allowDirectory: true }]],
+    ["[LICENSE](<D:/vendor/LICENSE>)", "D:/person", ["D:/vendor/LICENSE", undefined, undefined, { allowDirectory: true }]],
+    ["[notes](</tmp/notes:4>)", null, ["/tmp/notes", undefined, undefined, { line: 4, column: undefined, allowDirectory: true }]],
   ]) {
     const markup = renderSanitizedMarkdown(source);
     const href = markup.match(/<a href="([^"]+)"/)?.[1];

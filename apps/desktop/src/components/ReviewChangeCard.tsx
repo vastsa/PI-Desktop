@@ -99,9 +99,9 @@ export function ReviewChangeDetails({ message, compact = false, contextLines = 3
                     aria-label={reviewLineNumber(line) === null ? undefined : t(line.type === "del" ? "panel.review.oldLine" : "panel.review.newLine", { line: reviewLineNumber(line) })}>
                     {reviewLineNumber(line)}
                   </span>}
-                  <span className="diff-line-sign" aria-hidden>
+                  {!numbered && <span className="diff-line-sign" aria-hidden>
                     {line.type === "add" ? "+" : line.type === "del" ? "−" : " "}
-                  </span>
+                  </span>}
                   <span className="diff-line-text">{line.text}</span>
                 </div>
               ))}

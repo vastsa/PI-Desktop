@@ -48,6 +48,12 @@ import type { ComposerPrefill } from "../model";
 import { useComposerImagePreview, type ComposerImagePreviewController } from "./useComposerImagePreview";
 
 import { attachImageTokens } from "../image-attachments";
+import { detachDirectoryTokens } from "../directory-attachments";
+
+function restoreDraftAttachments(text: string, references: ComposerFileReference[]) {
+  const draft = detachDirectoryTokens(text, references);
+  return attachImageTokens(draft.text, draft.references, nextChipToken);
+}
 
 type ComposerSession = { id: string };
 
@@ -81,6 +87,7 @@ export type ComposerDraftController = {
   paintCurrentDraft: (element: HTMLElement, nextValue: string) => void;
   commitEditorDom: () => void;
   insertNewlineInEditor: () => void;
+  removeDirectoryReference: (id: string) => void;
   /** Set the draft; `focus` false leaves focus where it is (plugin writes). */
   applyEditorDraft: (
     nextText: string,
@@ -142,7 +149,7 @@ export function useComposerDraft({
     const references = (initialDraft?.fileReferences ?? []).map((fileReference) =>
       createFileReferenceFromSnapshot(fileReference, referenceSessionId),
     );
-    return attachImageTokens(initialDraft?.text ?? "", references, nextChipToken);
+    return restoreDraftAttachments(initialDraft?.text ?? "", references);
   });
   const [value, setValue] = useState(initialDraftState.text);
   const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>(
@@ -294,7 +301,6 @@ export function useComposerDraft({
       (token) => expandTextReferenceRef.current(token),
       (token) => openImageReferenceRef.current(token),
       (token) => openSessionReferenceRef.current(token),
-      t("chat.directoryReference"),
     );
     editorValueRef.current = nextValue;
   };
@@ -423,7 +429,7 @@ export function useComposerDraft({
       const nextReferences = (nextDraft?.fileReferences ?? []).map((fileReference) =>
         createFileReferenceFromSnapshot(fileReference, referenceSessionId),
       );
-      const nextDraftState = attachImageTokens(nextDraft?.text ?? "", nextReferences, nextChipToken);
+      const nextDraftState = restoreDraftAttachments(nextDraft?.text ?? "", nextReferences);
       setValue(nextDraftState.text);
       setFileReferences(nextDraftState.references);
       setCursor(nextDraftState.text.length);
@@ -539,7 +545,7 @@ export function useComposerDraft({
     const prefilledReferences = composerPrefill.fileReferences.map((fileReference) =>
       createFileReferenceFromSnapshot(fileReference, composerPrefill.sessionId),
     );
-    const prefilled = attachImageTokens(composerPrefill.text, prefilledReferences, nextChipToken);
+    const prefilled = restoreDraftAttachments(composerPrefill.text, prefilledReferences);
     setValue(prefilled.text);
     setFileReferences((current) => [
       ...current.filter(
@@ -577,7 +583,7 @@ export function useComposerDraft({
     focus = true,
   ) => {
     compositionRef.current = null;
-    const entered = attachImageTokens(nextText, nextReferences, nextChipToken);
+    const entered = restoreDraftAttachments(nextText, nextReferences);
     nextText = entered.text;
     nextReferences = entered.references;
     markComposerDraftEdited(draftKeyRef.current);
@@ -705,7 +711,7 @@ export function useComposerDraft({
     const restoredReferences = snapshot.fileReferences.map((fileReference) =>
       createFileReferenceFromSnapshot(fileReference, sessionId),
     );
-    const restored = attachImageTokens(snapshot.text, restoredReferences, nextChipToken);
+    const restored = restoreDraftAttachments(snapshot.text, restoredReferences);
     setValue(restored.text);
     setFileReferences((current) => [
       ...current.filter((fileReference) => fileReference.sessionId !== sessionId),
@@ -759,6 +765,8 @@ export function useComposerDraft({
     paintCurrentDraft,
     commitEditorDom,
     insertNewlineInEditor,
+    removeDirectoryReference: (id) => setDraftFileReferences((current) =>
+      current.filter((reference) => reference.id !== id || reference.kind !== "directory")),
     applyEditorDraft,
     snapshotReferences,
     draftSnapshot,

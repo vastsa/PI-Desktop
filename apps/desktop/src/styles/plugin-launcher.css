@@ -188,70 +188,47 @@ html[data-surface="plugin-launcher"] #root {
 }
 
 /*
- * Shape is the fastest source signal: plugins are square, applications are
- * round. The type badge beside the name repeats it in words.
+ * Every tile carries the same rounded square. Plugin panels and installed
+ * applications used to differ by shape and by a word beside the name; the grid
+ * now reads as one set of tools, and the whole line below the icon belongs to
+ * the name. The icon grew to 48px so it can carry the identity on its own.
  */
 .plugin-launcher-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   display: grid;
   place-items: center;
   overflow: hidden;
+  border-radius: var(--radius-lg);
   background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
 }
 
-.plugin-launcher-icon-plugin {
-  border-radius: var(--radius-sm);
-}
-
-.plugin-launcher-icon-app {
-  border-radius: var(--radius-full);
-}
-
 .plugin-launcher-icon img {
-  width: 26px;
-  height: 26px;
+  width: 34px;
+  height: 34px;
   object-fit: contain;
-  /** Native icons are already round or square; never stretch them. */
+  /** A platform icon is already an icon; never stretch it. */
   pointer-events: none;
 }
 
 .plugin-launcher-monogram {
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-xl);
   font-weight: var(--font-weight-semibold);
   line-height: var(--leading-tighter);
 }
 
-/* Name and type badge share one line; the name is the part that truncates. */
-.plugin-launcher-tile-line {
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
-  overflow: hidden;
-}
-
 .plugin-launcher-tile-name {
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   color: inherit;
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium-plus);
   line-height: var(--leading-compact);
+  text-align: center;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugin-launcher-tile-type {
-  flex: 0 0 auto;
-  color: var(--ds-text-faint);
-  font-size: var(--text-2xs, 10px);
-  font-weight: var(--font-weight-normal);
-  line-height: var(--leading-compact);
   white-space: nowrap;
 }
 
