@@ -1,6 +1,6 @@
 """Exercise project case-alias upgrade and deletion against a real native Host.
 
-Usage: python scripts/e2e-project-path-case.py HOST [--aie] [--expect-bug]
+Usage: python scripts/e2e-project-path-case.py HOST [--expect-bug]
 Only a temporary profile and synthetic conversations are used.
 """
 import argparse
@@ -17,7 +17,7 @@ import threading
 
 class Host:
     def __init__(self, binary, profile):
-        env = dict(os.environ, PI_DESKTOP_DATA_DIR=str(profile), AIE_DATA_DIR=str(profile))
+        env = dict(os.environ, PI_DESKTOP_DATA_DIR=str(profile))
         self.process = subprocess.Popen(
             [binary], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, encoding="utf-8", env=env,
@@ -56,7 +56,6 @@ class Host:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("host")
-    parser.add_argument("--aie", action="store_true")
     parser.add_argument("--expect-bug", action="store_true")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="project-case-2148-") as temporary:
@@ -88,7 +87,7 @@ def main():
             alias_id = conn.execute("SELECT id FROM projects WHERE path=?", (alias,)).fetchone()[0]
             conn.execute("UPDATE sessions SET project_id=? WHERE id=?", (alias_id, first))
             if not args.expect_bug:
-                conn.execute("PRAGMA user_version=" + str(33 if args.aie else 27))
+                conn.execute("PRAGMA user_version=27")
             conn.commit()
         host = Host(args.host, profile)
         try:
@@ -97,14 +96,21 @@ def main():
             print("Rows after reopen:", [(p["id"], p["path"]) for p in matching], flush=True)
             with closing(sqlite3.connect(database)) as conn:
                 owners = dict(conn.execute("SELECT id,project_id FROM sessions WHERE id IN (?,?)", (first, second)))
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
             if args.expect_bug:
                 assert len(matching) == 2, matching
             else:
+                assert version == 28, version
+                backup = database.with_suffix(".sqlite.v27.bak")
+                assert backup.exists(), "The schema upgrade did not create its backup"
+                with closing(sqlite3.connect(backup)) as conn:
+                    before = dict(conn.execute("SELECT id,project_id FROM sessions WHERE id IN (?,?)", (first, second)))
+                assert len(before) == 2 and len(set(before.values())) == 2, before
                 assert len(matching) == 1, "Duplicate logical projects survived upgrade"
                 assert len(owners) == 2 and len(set(owners.values())) == 1, owners
                 for sid in (first, second):
                     assert (profile / "sessions" / (sid + ".jsonl")).read_bytes() == transcripts[sid]
-            result = host.call("projects.delete" if args.aie else "projects.remove", path=alias)
+            result = host.call("projects.remove", path=alias)
             with closing(sqlite3.connect(database)) as conn:
                 remaining = dict(conn.execute("SELECT id,project_id FROM sessions"))
                 rows = list(conn.execute("SELECT id,path FROM projects"))

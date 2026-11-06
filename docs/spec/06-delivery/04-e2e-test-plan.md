@@ -8,7 +8,8 @@
 - Create a temporary profile, real `Alpha` directory, two conversations with
   transcript bytes, and an unrelated project/conversation. Seed the historical
   lowercase project row and move one conversation to it while the Host is stopped.
-- Restart: require one project, both conversations owned by it, and both
+- Restart: require schema v28 and a v27 backup retaining both original owners,
+  one project, both conversations owned by it, and both
   transcripts preserved. Delete by the lowercase spelling: require both owned
   conversations/files removed, no reappearing alias row, and the unrelated
   conversation and physical project directory preserved.
