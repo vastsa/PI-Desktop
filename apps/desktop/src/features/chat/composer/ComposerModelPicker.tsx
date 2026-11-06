@@ -41,9 +41,13 @@ export function ComposerModelPicker({
   const {
     open,
     setOpen,
-    otherModelsExpanded,
-    setOtherModelsExpanded,
-    hasOtherModels,
+    sections,
+    activeSection,
+    sectionStep,
+    selectSection,
+    showSectionRail,
+    paneRows,
+    searching,
     query,
     setQuery,
     modelHighlight,
@@ -64,7 +68,7 @@ export function ComposerModelPicker({
       className="composer-model-thinking"
       open={open}
       onClose={() => setOpen(false)}
-      menuClassName="composer-model-menu composer-model-thinking-menu"
+      menuClassName={`composer-model-menu composer-model-thinking-menu ${showSectionRail ? "has-rail" : ""}`}
       label={`${t("chat.model")} ${t("chat.reasoningLevel")}`}
       role="menu"
       align="end"
@@ -84,7 +88,6 @@ export function ComposerModelPicker({
           onClick={() => {
             onCloseOtherMenus();
             if (!open) {
-              setOtherModelsExpanded(false);
               setQuery("");
               setModelHighlight(-1);
             }
@@ -113,20 +116,25 @@ export function ComposerModelPicker({
           t={t} query={query} setQuery={setQuery}
           modelSearchRef={modelSearchRef} modelListRef={modelListRef}
           modelGroups={modelGroups} modelHighlight={modelHighlight}
-          recentEntries={recentEntries} hasOtherModels={hasOtherModels}
-          otherModelsExpanded={otherModelsExpanded}
-          setOtherModelsExpanded={setOtherModelsExpanded}
+          recentEntries={recentEntries} sections={sections}
+          activeSection={activeSection} sectionStep={sectionStep} selectSection={selectSection}
+          showSectionRail={showSectionRail} searching={searching} paneRows={paneRows}
           setModelHighlight={setModelHighlight} selectModel={selectModel}
           selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
         />
         {thinkingMenuLevels.length > 1 ? (
-          <ThinkingLevelSlider
-            key={`${selectedProviderId}:${selectedModelId}:${thinkingMenuLevels.join("|")}`}
-            levels={thinkingMenuLevels}
-            level={thinkingLevel}
-            label={t("chat.reasoningLevel")}
-            commit={commitThinkingLevel}
-          />
+          <div className="composer-model-reasoning">
+            <span className="composer-model-reasoning-label" aria-hidden="true">
+              {t("chat.reasoningShort")}
+            </span>
+            <ThinkingLevelSlider
+              key={`${selectedProviderId}:${selectedModelId}:${thinkingMenuLevels.join("|")}`}
+              levels={thinkingMenuLevels}
+              level={thinkingLevel}
+              label={t("chat.reasoningLevel")}
+              commit={commitThinkingLevel}
+            />
+          </div>
         ) : null}
       </div>
     </AnchoredMenu>

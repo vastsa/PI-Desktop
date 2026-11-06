@@ -3363,26 +3363,21 @@ reasoning-level control.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
   `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
   the menu lists more than one level, a drag slider with one labeled stop per
-  level directly beneath the Reasoning level entry (D458). The slider shows a
-  rail with one track dot per stop and a label under each stop; every label
-  stays visible and ellipsizes inside its column. The dots row and the labels
-  row are full-width n-column grids and the range input overlays the rail at
-  full width, inset on both sides by half a column minus the thumb radius, so
-  the track dot, the thumb and the label all land on the same column center
-  for every stop count. The selected stop's dot and label use the accent
-  token, the rest a muted token; the thumb covers the selected dot. Tick
-  labels are clickable but not tab stops; the range input is the accessible
-  control.
-  Hovering either a stop or its label highlights the corresponding label.
-  Only unfilled dots brighten and scale to 1.3x; filled stops and the selected
-  thumb have no hover effect. Leaving
-  the slider clears the preview without selecting or persisting a level.
-  A decorative, non-interactive thumb and the filled rail share the range's
-  gapless column geometry. The fill starts at the first dot's outer left edge
-  and ends at the selected thumb's center, covering the starting dot fully.
-  Clicks and keyboard changes move the thumb and
-  fill over `--motion-duration-normal` (200ms); a new click retargets from
-  the current visual position. Native pointer dragging bypasses transitions.
+  level in the menu footer (D458, D685). The control is a segmented track:
+  one label per stop inside a full-width n-column grid, and a raised pill
+  (`--ds-raised`) one column wide, inset by a 2px gutter, under the selected
+  label. Every label stays visible and ellipsizes inside its column. The range
+  input overlays the track at full width, inset on both sides by half a column
+  minus its invisible thumb radius, so the pill, the label and the native stop
+  share one column center for every stop count. The selected label uses the
+  primary ink at medium weight, the rest a muted token. Labels are clickable
+  but not tab stops; the range input is the accessible control.
+  Hovering a column brightens its label without moving the pill; leaving the
+  control clears the preview without selecting or persisting a level.
+  Clicks and keyboard changes move the pill over `--motion-duration-normal`
+  (200ms); a new click retargets from the current visual position. Pressing
+  the control scales the pill to 0.96; native pointer dragging bypasses all
+  transitions.
   Only the requested levels are persisted, never interpolated animation
   positions. Pending selection is optimistic; failure restores the confirmed
   level, and stale completions cannot overwrite a newer choice. Reopening
@@ -4180,8 +4175,10 @@ responses cannot restore an earlier order. Composer All models groups follow the
 default nor provider configuration. OAuth accounts remain in their separate section.
 
 1. **Model selection** — chat models are selected in the Composer. Its first
-   menu has persistent search, up to three recent available provider/model pairs,
-   and an inline Other models disclosure. Without history, it shows all models.
+   menu has persistent search over a text-only source rail (Recent, then each
+   provider) and the chosen source's models. A single marker slides between
+   rail items, and the pane slides in from the direction of the move. With a
+   single source the rail is hidden and all models show directly.
    New chats inherit the last actually used available model. Only accepted
    message submission updates that preference; selection and reasoning changes
    alone do not count as usage.
