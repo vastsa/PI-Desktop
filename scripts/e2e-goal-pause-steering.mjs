@@ -2,7 +2,7 @@
 // Real Rust + sidecar + AgentHost user paths. Only the model is a loopback fixture.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -12,14 +12,15 @@ import { AgentSidecar, HostProcess, RuntimeService, GoalCoordinator, createHostS
 assert(process.env.PI_HOST_CORE_BINARY && process.env.PI_SCRATCH_DIR);
 const root = await mkdtemp(join(process.env.PI_SCRATCH_DIR, "goal-independent-e2e-"));
 const data = join(root, "data"), home = join(root, "home"), workspace = join(root, "workspace");
-for (const p of [data, home, workspace]) await mkdir(p, { recursive: true });
-const env = { HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData"), PI_DESKTOP_DATA_DIR: data };
+for (const p of [data, home, workspace, join(root, "agents")]) await mkdir(p, { recursive: true });
+await writeFile(join(workspace, "resume.txt"), "resumed offline fixture evidence", "utf8");
+const env = { HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData"), PI_DESKTOP_DATA_DIR: data, PI_DESKTOP_AGENTS_DIR: join(root, "agents") };
 const requests = [], responses = [], errors = []; let fixtureError;
 const server = createServer(async (req, res) => {
   try {
     assert.equal(req.url, "/v1/chat/completions"); let body = "";
     for await (const chunk of req) { body += chunk; assert(body.length < 2_000_000); }
-    requests.push(JSON.parse(body)); assert(requests.length <= 8, "Unexpected autonomous request");
+    requests.push(JSON.parse(body)); assert(requests.length <= 11, "Unexpected autonomous request");
     responses.push(res); res.writeHead(200, { "content-type": "text/event-stream" }); res.flushHeaders();
   } catch (error) { fixtureError = error; res.writeHead(500); res.end(); }
 });
@@ -32,9 +33,9 @@ const wait = async (read, label) => {
   while (Date.now() < end) { if (fixtureError) throw fixtureError; const result = await read(); if (result) return result; await delay(25); }
   throw Error(`Timeout ${label}: requests=${requests.length}, errors=${JSON.stringify(errors)}`);
 };
-const answer = (index, tool) => {
+const answer = (index, tool, args = {}) => {
   const res = responses[index]; assert(res && !res.destroyed);
-  const delta = tool ? { role: "assistant", tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: tool, arguments: "{}" } }] }
+  const delta = tool ? { role: "assistant", tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: tool, arguments: JSON.stringify(args) } }] }
     : { role: "assistant", content: "Fixture round finished." };
   for (const [value, finish] of [[delta, null], [{}, tool ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({ id: `fixture-${index}`, model: "fixture", choices: [{ index: 0, delta: value, finish_reason: finish }] })}\n\n`);
   res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } })}\n\n`);
@@ -89,19 +90,34 @@ try {
   const users = detail.messages.filter(message => message.role === "user").map(message => message.content);
   assert.deepEqual(users, ["Original objective", "Ordinary FIFO information"]);
   await wait(async () => (await agentHost.workSnapshot(session.id)).state === "idle", "first runtime idle");
+  await control(session.id, "resume");
+  await wait(() => requests.length === 5, "explicit resume dispatches a fresh claim");
+  assert.equal((await get(session.id)).status, "active");
+  assert(!system(4).includes("Goal paused by the user"), "Expired pause control reached the resumed request");
+  answer(4, "Read", { path: "resume.txt" });
+  await wait(() => requests.length === 6, "resumed native Read finishes");
+  assert(JSON.stringify(requests[5].messages.filter(message => message.role === "tool")).includes("resumed offline fixture evidence"));
+  assert(!system(5).includes("Goal paused by the user"));
+  await control(session.id, "pause"); answer(5);
+  await wait(() => requests.length === 7, "resumed claim still obeys a new Pause");
+  assert(system(6).includes("Goal paused by the user")); answer(6);
+  await wait(async () => { const row = await get(session.id); return row.status === "paused" && !row.activeTurnId; }, "resumed handoff settles");
+  await wait(async () => (await agentHost.workSnapshot(session.id)).state === "idle", "resumed runtime idle");
   await start(session.id, "Uncooperative closeout fixture", "bounded");
-  await wait(() => requests.length === 5, "second Goal begins");
-  await control(session.id, "pause"); answer(4, "GetGoal");
-  for (let index = 5; index < 8; index++) {
+  await wait(() => requests.length === 8, "second Goal begins");
+  assert(!system(7).includes("Goal paused by the user"), "Replaced Goal inherited an old pause");
+  await control(session.id, "pause"); answer(7, "GetGoal");
+  for (let index = 8; index < 11; index++) {
     await wait(() => requests.length === index + 1, "bounded closeout request " + index);
     assert(system(index).includes("Goal paused by the user")); answer(index, "GetGoal");
   }
   await wait(async () => { const row = await get(session.id); return row.status === "paused" && !row.activeTurnId; }, "runtime ends uncooperative model at three-request limit");
-  await agentHost.kick(session.id); assert.equal(requests.length, 8);
+  await agentHost.kick(session.id); assert.equal(requests.length, 11);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ result: "PASS", modelRequests: requests.length, fifoAfterCurrentRoundNotCompletion: true,
     fifoBeforeGoalContinuation: true, immediateDurablePause: true, cooperativeHandoffRequests: 1,
-    uncooperativeHandoffRequests: 3, noFakeUserMessages: true, noAutomaticResume: true }, null, 2));
+    uncooperativeHandoffRequests: 3, noFakeUserMessages: true, noAutomaticResume: true,
+    explicitResumeExpiresPause: true, resumedNativeRead: true, replacementExpiresPause: true }, null, 2));
 
 } finally {
   await runtime?.dispose(); await sidecar?.dispose(); await host?.dispose();

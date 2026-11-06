@@ -13,7 +13,7 @@ import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, 
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
 import { accountModelStream } from "./request-usage.js";
-import { GOAL_PAUSE_NOTICE } from "./goals/goal-pause.js";
+import { GOAL_PAUSE_NOTICE, GOAL_PAUSE_SECTION } from "./goals/goal-pause.js";
 import { GoalTurn, goalTools, parseGoalTurn, withGoalGuard } from "./goals/goal-turn.js";
 import { modeToolDenial, retainModeToolDeclaration, withModeExecutionGuard } from "./mode-tool-access.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
@@ -2511,6 +2511,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ...(memoryPrompt ? [memoryPrompt] : []),
         ...(this.goalTurn ? [this.goalTurn.instructions()] : []),
       ].join("\n\n")),
+      ...(this.goalTurn?.closeout.active ? { [GOAL_PAUSE_SECTION]: GOAL_PAUSE_NOTICE } : {}),
     };
     const composed = Object.values(this.composedSections).filter(Boolean).join("\n\n");
     this.composedSystemPrompt = composed;
@@ -9503,7 +9504,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     await goal.validate();
     if (this.goalTurn !== goal || this.turnId !== expectedTurnId || !goal.closeout.active || this.runCancelled) return { requested: false };
     if (!this.goalPauseSteering) {
-      this.goalPauseSteering = { role: "system", content: GOAL_PAUSE_NOTICE, timestamp: Date.now() };
+      this.goalPauseSteering = { role: "system", content: "", sections: { [GOAL_PAUSE_SECTION]: GOAL_PAUSE_NOTICE }, timestamp: Date.now() };
       this.agent.steer(this.goalPauseSteering);
       this.resolvePendingAskTools();
       this.steeringWaitAbort?.abort();

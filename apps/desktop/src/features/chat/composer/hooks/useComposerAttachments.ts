@@ -309,7 +309,7 @@ export function useComposerAttachments({
         }
         if (native && sourceSessionId && !useAppStore.getState().sessions.some(session => session.id === sourceSessionId)) return;
         const chips = result.files.map((file) => {
-          const token = nextChipToken();
+          const token = file.kind === "directory" ? undefined : nextChipToken();
           return {
             token,
             reference: createFileReference(file.path, file.name, sessionId, {
@@ -321,9 +321,9 @@ export function useComposerAttachments({
         });
         const inserted = chips.map((chip) => chip.token).join("");
         const nextText =
-          sourceValue.slice(0, selectionStart) +
-          inserted +
-          sourceValue.slice(selectionEnd);
+          inserted
+            ? sourceValue.slice(0, selectionStart) + inserted + sourceValue.slice(selectionEnd)
+            : sourceValue;
         const nextReferences = [
           ...previousReferences.map((reference) =>
             createFileReference(reference.path, reference.name, sessionId!, reference),

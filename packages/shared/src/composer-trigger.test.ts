@@ -10,8 +10,30 @@ import {
   rewriteIdeographicCommaTrigger,
   serializeComposerFileReferences,
   serializeInlineComposerFileReferences,
+  splitComposerDirectoryPrompt,
   stripInlineComposerFileReferenceTokens,
 } from "./composer-trigger.js";
+
+describe("splitComposerDirectoryPrompt", () => {
+  const path = "/tmp/a & <b> &lt;";
+
+  it("removes generated markers and guidance from old and current user messages", () => {
+    const reference = { path, kind: "directory" };
+    for (const content of [
+      serializeInlineComposerFileReferences("before after", [reference]),
+      serializeInlineComposerFileReferences("before \ue001after", [{ ...reference, token: "\ue001" }]),
+    ]) {
+      expect(splitComposerDirectoryPrompt(content)).toEqual({ text: "before after", paths: [path] });
+    }
+    expect(splitComposerDirectoryPrompt(serializeInlineComposerFileReferences("", [reference]))).toEqual({ text: "", paths: [path] });
+  });
+
+  it("keeps literal markup in the prompt body when the generated folder block is present", () => {
+    const text = "Explain <dir>/tmp/example</dir>";
+    expect(splitComposerDirectoryPrompt(text)).toEqual({ text, paths: [] });
+    expect(splitComposerDirectoryPrompt(serializeInlineComposerFileReferences(text, [{ path, kind: "directory" }]))).toEqual({ text, paths: [path] });
+  });
+});
 
 describe("detectTrigger — slash mode", () => {
   it("triggers on a bare slash at position 0", () => {

@@ -293,7 +293,6 @@ function buildChipElement(
   onExpandText: (token: string) => void,
   onOpenImage: (token: string) => void,
   onOpenSession: (token: string) => void,
-  directoryLabel?: string,
 ): HTMLElement {
   const chip = document.createElement("span");
   chip.className = "composer-chip";
@@ -303,8 +302,6 @@ function buildChipElement(
   const origin = isPluginMark(reference) ? (reference.plugin?.pluginId ?? "") : reference.path;
   if (isPluginMark(reference)) chip.dataset.pluginMark = reference.plugin?.kind;
   chip.title = origin;
-  const directory = reference.kind === "directory";
-  if (directory) chip.classList.add("composer-directory-card");
   // An image keeps the compact chip and opens its preview, a session chip opens
   // that conversation, and only plain text expands into editable draft text.
   const image = chipIconKey(reference) === "image";
@@ -342,7 +339,7 @@ function buildChipElement(
 
   const icon = document.createElement("span");
   icon.className = "composer-chip-icon";
-  icon.innerHTML = chipSvg(chipIconKey(reference), directory ? 26 : 13);
+  icon.innerHTML = chipSvg(chipIconKey(reference), 13);
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "composer-chip-name";
@@ -365,15 +362,7 @@ function buildChipElement(
     onRemove(token);
   });
 
-  if (directory) {
-    const details = document.createElement("span");
-    details.className = "composer-directory-details";
-    const label = document.createElement("span");
-    label.className = "composer-directory-type";
-    label.textContent = directoryLabel ?? "";
-    details.append(nameSpan, label);
-    chip.append(icon, details, remove);
-  } else chip.append(icon, nameSpan, remove);
+  chip.append(icon, nameSpan, remove);
   return chip;
 }
 
@@ -387,7 +376,6 @@ export function paintEditorValue(
   onExpandText: (token: string) => void,
   onOpenImage: (token: string) => void,
   onOpenSession: (token: string) => void,
-  directoryLabel?: string,
 ): void {
   el.replaceChildren();
   let textBuffer = "";
@@ -411,7 +399,6 @@ export function paintEditorValue(
             onExpandText,
             onOpenImage,
             onOpenSession,
-            directoryLabel,
           ),
         );
         continue;

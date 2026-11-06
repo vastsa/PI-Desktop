@@ -567,6 +567,8 @@ export function Composer({
           ) : null}
           <ComposerInput
             imagePreview={draft.imagePreview}
+            directoryReferences={activeFileReferences.filter((reference) => reference.kind === "directory")}
+            onRemoveDirectory={draft.removeDirectoryReference}
             inputRef={ref}
             value={value}
             placeholderText={placeholderText}

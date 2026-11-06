@@ -15,11 +15,12 @@ import { join } from "node:path";
 export const PLUGIN_LAUNCHER_STATE_FILE = "plugin-launcher-state.json";
 
 /**
- * The launcher must fit eight columns without squeezing: below this width the
- * grid drops to six columns, which is the one thing the user cannot undo by
- * dragging.
+ * The launcher opens wide enough for a 48px icon and a readable name in every
+ * one of its eight columns. Below this floor a tile is about 90px wide and the
+ * longest names start losing characters, so the window refuses to go narrower
+ * rather than let the grid squeeze.
  */
-export const PLUGIN_LAUNCHER_MIN_WIDTH = 560;
+export const PLUGIN_LAUNCHER_MIN_WIDTH = 800;
 /**
  * Height is not a user preference any more: the renderer measures what it
  * renders and asks for exactly that height through
@@ -30,7 +31,7 @@ export const PLUGIN_LAUNCHER_MIN_CONTENT_HEIGHT = 120;
 /** Wider than this the eight tiles stop being scannable. */
 export const PLUGIN_LAUNCHER_MAX_WIDTH = 1280;
 export const PLUGIN_LAUNCHER_MAX_HEIGHT = 940;
-export const PLUGIN_LAUNCHER_DEFAULT_WIDTH = 760;
+export const PLUGIN_LAUNCHER_DEFAULT_WIDTH = 900;
 /** Initial height before the panel has measured itself. */
 export const PLUGIN_LAUNCHER_DEFAULT_HEIGHT = 440;
 

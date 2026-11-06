@@ -87,22 +87,20 @@ closes the panel, focuses the main window, and opens the plugin market page
 
 ## 4. Tiles
 
-Every tile shows the same three parts:
+Every tile shows the same two parts:
 
-- the icon — an application's platform icon, or a monogram for a plugin and for
-  an application whose icon could not be read; an `<img>` that fails to load
-  falls back to the monogram instead of leaving a hole;
-- the name, ellipsized when it does not fit;
-- a type badge on the same line as the name — `Plugin` or `App`.
+- the icon — 48px, and the same rounded square for every source: an
+  application's platform icon, or a monogram for a plugin and for an
+  application whose icon could not be read; an `<img>` that fails to load falls
+  back to the monogram instead of leaving a hole;
+- the name, ellipsized when it does not fit, on a line of its own.
 
-A tile does not explain why it matched: there is no second line, so every tile is
-the same height and the eight-column grid stays aligned. The `title` tooltip
-carries `name · type` (plus the executable name for an application) and never the
-launcher payload.
-
-Plugins render a square tile and applications a circular one. A plugin and an
-application that share a name are therefore both listed and visually
-distinguishable rather than deduplicated.
+A tile does not explain why it matched, and it does not announce what kind of
+item it is: plugin panels and installed applications render identically, so the
+whole line under the icon belongs to the name and the grid reads as one set of
+tools. The `title` tooltip still carries `name · type` (plus the executable name
+for an application) and never the launcher payload. A plugin and an application
+that share a name are therefore both listed rather than deduplicated.
 
 Each tile carries a pin toggle in its corner (§8) with `aria-pressed` and the
 `Pin to panel` / `Unpin` label. It is hidden until the tile is hovered, active,
@@ -242,9 +240,10 @@ ADR [0343](../../adr/0343-plugin-launcher-local-apps.md) records this decision.
 
 ## 10. Window size, position, and state
 
-- The window is resizable between 560 and 1280 DIP wide; the minimum width is the
-  smallest width at which eight columns still fit without squeezing, and the
-  maximum keeps eight tiles scannable.
+- The window is resizable between 800 and 1280 DIP wide and opens at 900. The
+  floor is the narrowest width at which an eight-column row still leaves a 48px
+  icon and a readable name in every cell; the maximum keeps eight tiles
+  scannable.
 - Height always fits the content. The renderer measures the search row, the
   natural height of the results content, the footer, and the panel padding and
   reports the total through `pi-desktop/pluginLauncher/contentHeight`; the host

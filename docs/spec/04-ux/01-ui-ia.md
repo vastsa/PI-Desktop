@@ -244,7 +244,10 @@ destination, chat as the home surface, tools and permissions inline.
     never read as one number;
   - an **activity rail**: a 2px track down the group's left edge with a
     travelling pulse, spanning the opened conversation list and shrinking to
-    the header while the group is collapsed, plus a matching count.
+    the header while the group is collapsed. It also carries the counts while
+    the badge is switched off; with both affordances on the badge owns the
+    figures and the rail stays a pure track, so one count is never printed
+    twice for the same group.
   Remote host groups carry the same pair. Settings → Appearance → Sidebar owns
   one master switch (`AppSettings.sidebarRunningIndicators`) gating two
   sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`). When unset, the

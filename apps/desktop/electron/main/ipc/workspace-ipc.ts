@@ -998,8 +998,18 @@ handleWithEvent(
     },
   );
 
-  handle(IPC.invoke.fsReveal, async (input: { path?: string; sessionId?: string } = {}) => {
+  handleWithEvent(IPC.invoke.fsReveal, async (event, input: { path?: string; sessionId?: string; directory?: boolean } = {}) => {
+    if (input.directory === true) assertMainWindowSender(event);
     const remote = await remoteFileWorkspace(input.sessionId);
+    if (input.directory === true) {
+      if (remote || !input.sessionId || typeof input.path !== "string" || !isAbsolute(input.path)) {
+        throw new Error("A local session and an absolute directory path are required");
+      }
+      const directory = await realpath(input.path);
+      if (!(await stat(directory)).isDirectory()) throw new Error("Path is not a directory");
+      shell.showItemInFolder(stripWinLongPrefix(directory));
+      return { ok: true };
+    }
     if (remote && !(await isLocalStoredFile(String(input.path ?? "")))) throw Object.assign(new Error("remote paths cannot be revealed on this computer"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
     const requested = String(input.path ?? "").trim();
     let workspaceRoot: string | null = null;
@@ -1078,7 +1088,7 @@ handleWithEvent(
   handle(
     IPC.invoke.fsResolveRef,
     async (
-      input: { ref?: string; sessionId?: string } = {},
+      input: { ref?: string; sessionId?: string; allowDirectory?: boolean } = {},
     ): Promise<FsChatRefResolveResult> => {
       const rawRef = String(input.ref ?? "").trim();
       if (!rawRef) return { match: null };
@@ -1114,10 +1124,16 @@ handleWithEvent(
       };
       if (await isChatRefOutsideRoots(ref, roots)) {
         // An exact absolute path outside the managed roots opens when it names
-        // an existing regular file (ADR 0339).
+        // an existing regular file (ADR 0339). Directories outside the roots
+        // stay unreachable: the remote transport has no allowDirectory flag
+        // either, so local and remote keep the same file-only contract there.
         return resolveExternalChatRef(ref);
       }
-      return { match: await resolveChatFileRef(ref, roots) };
+      return {
+        match: await resolveChatFileRef(ref, roots, {
+          allowDirectory: input.allowDirectory === true,
+        }),
+      };
     },
   );
 

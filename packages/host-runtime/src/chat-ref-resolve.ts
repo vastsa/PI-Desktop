@@ -30,7 +30,9 @@ import { getWorkspaceFileIndex } from "./fs-index.js";
  *      searched to exhaustion before the scratch store is considered;
  *   4. inside one root an exact path wins; a shorthand resolves only when the
  *      complete supplied suffix matches one safe file. Ambiguous or shortened
- *      suffixes remain unresolved.
+ *      suffixes remain unresolved. An exact reference may additionally name a
+ *      real directory when the caller passes `allowDirectory` (issue #2113);
+ *      a shorthand never resolves to a directory.
  */
 
 export type ChatRefRoots = {
@@ -189,6 +191,14 @@ async function isRegularFile(target: string): Promise<boolean> {
   }
 }
 
+async function isDirectory(target: string): Promise<boolean> {
+  try {
+    return (await stat(target)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** Root-relative POSIX path, or null when `absolute` is outside `rootPath`. */
 function relativeInside(rootPath: string, absolute: string): string | null {
   const rel = relative(rootPath, absolute);
@@ -306,6 +316,21 @@ async function isContainedRegularFile(root: string, relativePath: string): Promi
   return realPath !== null && isRegularFile(realPath);
 }
 
+/**
+ * The same containment contract as `isContainedRegularFile` for an exact
+ * directory reference: the real path must stay inside the root, so a symlinked
+ * or dangling directory never matches (issue #2113).
+ */
+async function isContainedDirectory(root: string, relativePath: string): Promise<boolean> {
+  const realPath = await resolveRealPathWithinRoot(root, relativePath);
+  if (realPath === null) return false;
+  try {
+    return (await stat(realPath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 async function hasInvalidLinkAncestor(root: string, segments: readonly string[]): Promise<boolean> {
   for (let length = 1; length <= segments.length; length += 1) {
     const prefixSegments = segments.slice(0, length);
@@ -371,10 +396,24 @@ async function listRootFiles(
 /**
  * Resolve one chat file reference to the best existing file, or null when
  * nothing matches. Never throws: an unreadable root is simply not a match.
+ * With `allowDirectory` an exact reference may name a real directory inside
+ * the roots instead; the match then carries `target: "directory"`.
  */
+export type ChatRefResolveOptions = {
+  /**
+   * Let an exact reference name a real directory (issue #2113). Explicit
+   * Markdown links carry this flag; shorthand and fuzzy completion never do,
+   * so a directory named like the file a shorthand asks for keeps answering
+   * nothing. The absolute branch still stays inside the managed roots — an
+   * exact absolute path outside them keeps the ADR 0339 file-only contract.
+   */
+  allowDirectory?: boolean;
+};
+
 export async function resolveChatFileRef(
   ref: string,
   roots: ChatRefRoots,
+  options: ChatRefResolveOptions = {},
 ): Promise<FsChatRefMatch | null> {
   const parsed = parseChatRef(ref);
   if (!parsed) return null;
@@ -402,7 +441,13 @@ export async function resolveChatFileRef(
     } catch {
       return null;
     }
-    if (!(await isRegularFile(targetPath))) return null;
+    const regular = await isRegularFile(targetPath);
+    if (!regular) {
+      // An exact absolute directory inside a managed root resolves only when
+      // the caller asked for directories (issue #2113); realpath has already
+      // collapsed any link, so the root attribution below cannot escape.
+      if (!options.allowDirectory || !(await isDirectory(targetPath))) return null;
+    }
     for (const root of canonicalRootList) {
       const relativePath = root.realPath ? relativeInside(root.realPath, targetPath) : null;
       if (!relativePath) continue;
@@ -411,6 +456,7 @@ export async function resolveChatFileRef(
         relativePath,
         absolutePath,
         matchedBy: "exact-absolute",
+        ...(regular ? {} : { target: "directory" as const }),
         ...(root.sessionScratch ? { sessionScratch: true } : {}),
         ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
       };
@@ -455,6 +501,24 @@ export async function resolveChatFileRef(
         relativePath: parsed.segments.join("/"),
         absolutePath,
         matchedBy: "exact-relative",
+        ...(root.sessionScratch ? { sessionScratch: true } : {}),
+        ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
+      };
+    }
+    // An exact directory reference answers before the fuzzy walk, and only
+    // when the caller asked for directories (issue #2113). The containment
+    // check doubles as the dangling-link guard: a junction pointing outside
+    // the root (or at nothing) resolves to null, never to the link path.
+    if (
+      options.allowDirectory
+      && (await isContainedDirectory(root.path, parsed.segments.join("/")))
+    ) {
+      return {
+        root: root.kind,
+        relativePath: parsed.segments.join("/"),
+        absolutePath,
+        matchedBy: "exact-relative",
+        target: "directory",
         ...(root.sessionScratch ? { sessionScratch: true } : {}),
         ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
       };

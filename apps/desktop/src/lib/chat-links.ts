@@ -124,7 +124,16 @@ function normalizeMarkdownFilePath(url: string): string {
   const decoded = safeDecodeUri(url);
   if (parseFileRef(decoded) && parseFileRefPosition(decoded)) return encodeURIComponent(decoded);
   if (!/^[A-Za-z]:[\\/]/.test(decoded)) return url;
-  if (!parseFileRef(decoded)) return url;
+  if (!parseFileRef(decoded)) {
+    // A link destination is an explicit reference (the same rule
+    // markdownLinkFileTarget applies): keep a drive-anchored path even when it
+    // carries no file extension — a directory, a Makefile — or the sanitizer
+    // drops the href as an unknown `c:` scheme and the link dies before the
+    // click handler can resolve it (issue #2113).
+    const path = stripLineRef(decoded);
+    if (!path || /[\n\0]/.test(path) || /[\\/]$/.test(path)) return url;
+    return encodeWindowsPathForHref(decoded);
+  }
   return encodeWindowsPathForHref(decoded);
 }
 
@@ -287,15 +296,21 @@ export function handleMarkdownFileLinkClick(
   root: string | null | undefined,
   baseDir: string | undefined,
   openFileRef: (path: string, baseDir?: string, mimeType?: string,
-    position?: { line?: number; column?: number }) => void,
+    options?: { line?: number; column?: number; allowDirectory?: boolean }) => void,
 ): boolean {
   const target = markdownLinkFileTarget(href, root, baseDir);
   if (!target) return false;
   event.preventDefault();
+  // The link names its target deliberately, so an extension-less directory
+  // destination opens in the file manager instead of missing (issue #2113).
   if (target.line !== undefined) {
-    openFileRef(target.path, baseDir, undefined, { line: target.line, column: target.column });
+    openFileRef(target.path, baseDir, undefined, {
+      line: target.line,
+      column: target.column,
+      allowDirectory: true,
+    });
   } else {
-    openFileRef(target.path, baseDir);
+    openFileRef(target.path, baseDir, undefined, { allowDirectory: true });
   }
   return true;
 }

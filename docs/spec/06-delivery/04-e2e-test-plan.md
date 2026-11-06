@@ -4,18 +4,24 @@
 
 - **Preconditions**: Synthetic folders/files with spaces, Unicode and XML-significant names.
 - **Steps**: Copy and paste single/multiple folders and mixed files in home and
-  session composers. Remove cards by mouse/keyboard, undo/redo and restore drafts
+  session composers with text on both sides of the caret. Remove cards by
+  mouse/keyboard and restore drafts
   from history. Edit or switch sessions while metadata resolves; delete the owner.
-  Send and steer with folder cards. Repeat ordinary text/image/file pastes.
-- **Expected**: Localized folder cards expose full paths and removal. Selection
+  Send and steer with folder cards, then activate a card in the sent message.
+  Repeat ordinary text/image/file pastes.
+- **Expected**: Folder cards wrap above the text, fit short names and expose
+  full paths and removal. The sent user bubble shows the directory cards and
+  only the user text. Local cards reveal the referenced directory in the
+  system file manager. Selection
   order and source ownership survive, preserving newer edits. Removed cards send
   no hint. Both send paths carry escaped dir markers and one inspect/read-as-needed
   instruction. No directory arrayBuffer, traversal, recursive copy, Project change
   or filesystem grant occurs. Unavailable paths fail without partial references.
 - **Status**: Parser/handler/editor/serialization tests cover deterministic cases.
   `pnpm test:e2e:composer-paste` uses synthetic file-list metadata to verify
-  folder insertion and removal across the Electron preload bridge. Native OS
-  clipboard verification remains a manual scenario.
+  folder placement, removal, transcript rendering and reveal IPC across the
+  Electron preload bridge. Native OS clipboard and file-manager display are
+  manual scenarios.
 
 
 > Scope: MVP acceptance scenarios plus current shipped product increments for PI-Desktop
@@ -4891,13 +4897,12 @@ window; opening a normal panel afterward must still work.
 - **Preconditions**: One catalogued reasoning model, one non-reasoning model,
   and one unknown free-form model id.
 - **Steps**: 1) Open the Composer model × reasoning chip. 2) Confirm the root
-  contains the Model and Reasoning level entries with current values, plus a
-  slider with one track dot per supported level on a rail directly beneath the
-  Reasoning level entry; confirm every level keeps a visible label under the
-  rail, each centered on its track dot. 3) Drag and click the slider across
-  multiple supported levels and click a tick label, confirming the chip
-  updates while the menu stays at the root and the selected track dot sits
-  under the thumb. 4) Open Model, search for a model, and select a
+  contains the model list plus a segmented reasoning control in the footer
+  with one labeled column per supported level; confirm every level keeps a
+  visible label, each centered in its column. 3) Drag and click the control
+  across multiple supported levels and click a label, confirming the chip
+  updates while the menu stays open and the raised pill sits under the
+  selected label. 4) Open Model, search for a model, and select a
   model from a provider group; confirm the menu remains open at the root.
   5) Open Reasoning level and choose a level from the radio list. 6) Repeat
   with a non-reasoning provider and an unknown free-form model id; exercise
@@ -19182,14 +19187,17 @@ host-created files. The full app's file-preview viewer is covered separately.
 ## Composer recent chat models
 
 - Send accepted messages using four distinct configured chat models across providers. Open the combined
-  model menu: exactly the latest three available pairs appear in recency order,
-  with provider labels. Select an older recent row: order stays unchanged until
+  model menu: the Recent source is selected and lists the latest available pairs
+  (up to six) in recency order, with provider labels. Select an older recent row: order stays unchanged until
   a message is accepted, at which point that model moves first.
-- Search immediately without expanding Other models; choose using keyboard
-  navigation. Expand Other models inline and verify no duplicate recent rows.
-  Move from the third recent row to Other models, and tab out of search after
-  arrow navigation: no stale keyboard highlight remains on a model row.
-  Without history, all configured models are directly visible. Verify thinking
+- Search immediately; results span every provider and the rail selection is
+  released; choose using keyboard navigation. Choose a provider in the source
+  rail and verify each of its models appears once. Move from a recent row to the
+  rail, and tab out of search after arrow navigation: no stale keyboard
+  highlight remains on a model row. Without history and with one provider, the
+  rail is hidden and all configured models are directly visible. With a
+  search typed, Escape clears it and keeps the menu open; a second Escape
+  closes the menu. Verify thinking
   defaults still follow the selected binding and manual same-model levels survive.
 - Create a new chat: it inherits the last actually used model. Reload local preferences
   and create another chat: the same binding is restored. An existing chat keeps
@@ -19381,7 +19389,9 @@ host-created files. The full app's file-preview viewer is covered separately.
   header shows only the count badge by default; the activity rail is off.
   Running and permission-waiting counts are separate figures and never merge
   into one number. The remote host group shows the same default. Turning on the
-  activity rail displays it alongside the badge. The master switch removes
+  activity rail displays it alongside the badge, while the counts stay in the
+  badge alone; with the badge switched off the rail takes them over, so no
+  group ever shows the same figure twice. The master switch removes
   both affordances at once and leaves the two sub-switches disabled while
   retaining their stored value, so
   re-enabling the master restores the previous choice. Each sub-switch hides
@@ -19937,6 +19947,8 @@ their separate platform acceptance.
   8. Paste 500 characters of garbage into the search field.
   9. Pin an application, quit, restart, and reopen the launcher with an empty
      input.
+ 10. Install a plugin whose name matches an installed application (for example
+     `Calculator`) and open the launcher with an empty input.
 - **Expected**: Step 1 shows `Recently used` with two rows of eight tiles and
   `Pinned` with one row of eight once the user has pins; the recents header
   reports the true number of remembered items and offers `Show all {count} →`
@@ -19951,8 +19963,10 @@ their separate platform acceptance.
   plugin from recents, pins, and matches while every other tile still opens.
   Step 8 keeps the panel responsive (no frozen input, no unhandled error) and
   reports no match, because input longer than 256 characters is never matched
-  against a trigger. Step 9 still shows the pinned application in the `Pinned`
-  row.
+  row. Step 10 lists both entries with the identical 48px rounded square and the
+  same name line — the source is only in the hover title — and opening the plugin
+  row still lands in the plugin panel while the application row launches the
+  program.
 - **Automation**: `pnpm --filter @pi-desktop/desktop test` runs the offline
   coverage for these rules: `launcher-search.test.mjs` (ranking order, section
   caps, overflow total, trigger whole-input matching, the 256-character limit
@@ -20325,6 +20339,12 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Release the response; the next request includes the fixed system pause notice.
   A cooperative model ends in one reply; a fixture repeatedly calling GetGoal
   ends after three subsequent requests. No fake user messages or auto-resume.
+- After handoff settlement, explicitly Resume. The actual provider request must
+  have no expired pause instruction; a native Read must return the fixture file.
+  Pause again and verify closeout still applies; a replacement Goal must not
+  inherit the previous pause. Runtime replay tests cover old bare system rows,
+  folded checkpoints and retained tails, preserving original records, quoted
+  user text, safety constraints, extension instructions and tool declarations.
 - Run scripts/e2e-goal-pause-steering-ui.mjs against the built isolated Desktop.
   Assert actual queue-strip appearance/disappearance and automatic next-round send,
   capture paused header before releasing the provider response, verify no

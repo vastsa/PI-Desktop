@@ -65,6 +65,18 @@ test("a missing external file is a miss, not an access limit", async () => {
   assert.deepEqual(await resolveExternalChatRef(join(outside)), { match: null });
 });
 
+test("an external directory stays outside the ADR 0339 file contract (issue #2113)", async () => {
+  // Directories inside the managed roots resolve with allowDirectory; outside
+  // them the external rule keeps naming that exact regular file or nothing,
+  // so the managed-root containment is not widened to directory browsing.
+  const workspace = tempTree("ws-dir-ext", ["src/a.ts"]);
+  const outside = tempTree("outside-dir", ["docs/manual.txt"]);
+  const roots = projectRoots(workspace);
+  assert.equal(await isChatRefOutsideRoots(outside, roots), true);
+  assert.equal(await resolveChatFileRef(outside, roots, { allowDirectory: true }), null);
+  assert.equal((await resolveExternalChatRef(outside)).match, null);
+});
+
 test("a shorthand never resolves outside the managed roots", async () => {
   const workspace = tempTree("ws-short", ["src/a.ts"]);
   const roots = projectRoots(workspace);
