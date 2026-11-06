@@ -18,6 +18,7 @@ import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
+import { textToolCallDiagnostic } from "./text-tool-call.js";
 import { computerUseDescription, computerUseParameters } from "./computer-use/tool.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
@@ -8560,6 +8561,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // inspect only the response that just ended, or a silent retry after
           // progress text would look non-silent forever.
           const responseText = content.hasText ? content.text : "";
+          // Annotate literal calls without aborting valid structured siblings.
+          const textCallDiagnostic = !failed && !aborted
+            ? textToolCallDiagnostic(responseText, this.toolCatalog)
+            : undefined;
           if (looksLikePseudoToolCall(nextText)) {
             // The visible text is a lost tool batch, not an answer. Logging it
             // separates "the model went quiet" from "the model tried to act and
@@ -8782,6 +8787,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                   thinking: nextThinking,
                 })
               : undefined;
+          // This message annotation does not become a terminal run error.
+          classifiedError ??= textCallDiagnostic;
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
@@ -8790,7 +8797,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               : content.hasThinking
                 ? { thinking: undefined }
                 : {}),
-            status: failed || emptyResponse
+            status: failed || emptyResponse || textCallDiagnostic
               ? "error"
               : aborted
                 ? "aborted"

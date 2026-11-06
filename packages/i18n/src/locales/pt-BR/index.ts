@@ -3013,6 +3013,7 @@ export const ptBR = {
     NETWORK_POLICY_BLOCKED: "A verificação de endereço do aplicativo bloqueou esta solicitação. Em redes com proxy ou VPN, verifique Configurações → Sistema → Rede.",
     TIMEOUT: "A solicitação ao provedor de IA atingiu o tempo limite.",
     STREAM_FAILED: "A resposta foi interrompida.",
+    TOOL_CALL_NOT_EXECUTED: "O modelo escreveu uma chamada de ferramenta como texto. Essa chamada não foi executada.",
     EMPTY_MODEL_RESPONSE: "O modelo encerrou a rodada sem gerar resposta, duas vezes seguidas. Tente novamente ou reformule sua solicitação.",
     MUTATION_RETRY_BUDGET_EXHAUSTED: "A mesma edição falhou três vezes seguidas. A rodada foi interrompida para evitar novas tentativas às cegas. Peça para continuar.",
     CONTEXT_TOO_LARGE: "Esta conversa ainda é longa demais após a recuperação de contexto. Encurte sua mensagem ou inicie uma nova conversa.",
