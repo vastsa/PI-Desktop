@@ -19387,7 +19387,9 @@ host-created files. The full app's file-preview viewer is covered separately.
   header shows only the count badge by default; the activity rail is off.
   Running and permission-waiting counts are separate figures and never merge
   into one number. The remote host group shows the same default. Turning on the
-  activity rail displays it alongside the badge. The master switch removes
+  activity rail displays it alongside the badge, while the counts stay in the
+  badge alone; with the badge switched off the rail takes them over, so no
+  group ever shows the same figure twice. The master switch removes
   both affordances at once and leaves the two sub-switches disabled while
   retaining their stored value, so
   re-enabling the master restores the previous choice. Each sub-switch hides
