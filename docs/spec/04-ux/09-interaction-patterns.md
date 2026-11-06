@@ -846,8 +846,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   owners until it settles or is cancelled. Record the pinned bookmark
   synchronously and prepare any active historical `transcriptViews` slice by
   replacing its identity with `loading: null` while keeping visible messages
-  mounted; only that exact prepared view's arrival closure clears the historical
-  view, while pane hide or unmount commits the accepted latest intent once
+  mounted; only that exact prepared view's arrival closure exits historical
+  ownership. Tail-connected older pages and their cursor remain available for
+  later upward reading, without entering model input; live output remains
+  authoritative. Pane hide or unmount commits the accepted latest intent once
   without continuing an invisible animation. Explicit disjoint search or history
   views animate across currently mounted rows and join the canonical live tail
   on arrival without fetching or animating unloaded intermediate ranges.
@@ -855,6 +857,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   restoring the old reading offset; manual upward reading without return-to-latest
   retains its position, and reader interruption cancels the animation in place
   without committing arrival.
+  During travel, compensate actual visible-content displacement above the
+  reader. Added height below it, including a late turn-changes card, extends the
+  destination and is traversed by the remaining animation, not an instant jump.
 - Stream completion (D676): if the user was following a turn that completes,
   its prompt scrolls to 16px below the titlebar band at the top of the
   viewport so the answer reads from its start, follow mode is released, and
@@ -1635,28 +1640,40 @@ Project drag/drop follows these patterns:
   visible message node and its viewport offset rather than total scroll-height
   growth or an enclosing answer/minimap group whose first id can change when
   earlier fragments prepend. Existing message, page, mounted-window, snapshot,
-  and retained session-pane caches remain unchanged, with no idle TTL or memory
-  reclamation.
-- A real upward scroll gesture within `min(2400px, max(120px, 3 * clientHeight))`
-  starts background ahead-loading: it mounts cached history before Host IO,
-  stays single-flight, leaves `overflow-y` and transcript scroll input unlocked,
-  tracks the reader's newest visible message anchor across ongoing scroll
-  movement, and restores that anchor before paint only when prepended rows or
-  layout measurements change geometry or the head message.
-- Reaching the `<= 120px` hard edge, activating the earlier-history continuation,
-  or intersecting the underfilled `120px` top boundary retains the brief
-  `overflow-y: hidden` and transcript scroll-input lock through IO and three
-  consecutive stable layout frames, discarding (never queueing) main-scroller
-  vertical wheel/trackpad, touch-scroll, and scrolling-key input until
-  settlement. Horizontal, zero-delta, and `Ctrl`+wheel input, nested scroll
-  owners, editable fields, and title activation retain their own input. The
-  loading label keeps identical layout space when hidden, and there is no
+  and retained session-pane data caches remain unchanged, with no idle TTL or
+  session-data reclamation.
+- Assistant prose may release its Markdown renderer outside a five-screen
+  retention buffer and restore it inside a three-screen entry buffer, keeping
+  measured-height message/prose shells. Measurements must match the current
+  width; unknown geometry is rendered, not estimated. Streaming, focus,
+  selection, and search targets protect mounted content. Collapsed disclosure
+  scopes release their prose without losing explicit disclosure choices.
+  This bounds expensive offscreen prose, not retained data, row shells, or the
+  size of a single intersecting answer; it never initiates a history request.
+- A real upward scroll gesture starts ahead-loading within a base lead of
+  `min(2400px, max(120px, 3 * clientHeight))`. Upward speed times measured read
+  latency plus `150ms` can increase the lead, capped at
+  `max(base, min(12000px, 12 * clientHeight))`. Cached history mounts before Host
+  IO; requests stay single-flight. The actual-message anchor tracks user
+  displacement and corrects prepend/layout changes before paint. Request
+  settlement does not release the reading anchor: ordinary reading retains its
+  actual message and, where available, visible prose block until follow or
+  explicit navigation takes over. Row-level resize observation catches changes
+  whose total heights cancel. Corrections run in the current layout/resize
+  delivery, not in a later painted frame, and unchanged/subpixel alignment does
+  not write `scrollTop` and interrupt native smooth scrolling.
+- All paging paths leave `overflow-y` and input untouched, including the
+  `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
+  top-boundary observer. Wheel/trackpad, touch and keyboard input continue
+  through IO and the three stable layout frames used for settlement. Nested
+  scroll owners, editable fields, and title activation retain their own input.
+  The loading label keeps identical layout space when hidden; there is no
   early-threshold observer or eager page draining at rest.
 - Search/minimap navigation, return-to-latest, manual disclosure, a new turn
   outside a historical reading window, pane hide, and unmount retire the hold;
-  a late page cannot reclaim that navigation. A failed or empty page releases
-  any lock and waits for a new scroll gesture or explicit earlier-history action
-  before retrying. Requests remain single-flight even after their hold ends.
+  a late page cannot reclaim that navigation. A failed or empty page ends the
+  transaction and waits for a new scroll gesture or explicit earlier-history
+  action before retrying. Requests remain single-flight after their hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement

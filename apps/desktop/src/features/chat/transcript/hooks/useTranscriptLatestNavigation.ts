@@ -10,6 +10,18 @@ export function useTranscriptLatestNavigation({ scrollRef, visible, onPosition }
   position.current = onPosition;
   const [navigation] = useState(() => createTranscriptLatestNavigation({
     geometry: () => scrollRef.current ?? undefined,
+    captureAnchor: () => {
+      const scroller = scrollRef.current;
+      if (!scroller) return;
+      const rect = scroller.getBoundingClientRect();
+      const node = scroller.ownerDocument.elementFromPoint(
+        rect.left + rect.width / 2, rect.top + Math.min(rect.height / 2, 120),
+      )?.closest<HTMLElement>(".prose-chat p, .prose-chat li, .prose-chat pre, [data-message-id], [data-minimap-id]");
+      if (!node || !scroller.contains(node)) return;
+      const measure = () => node.isConnected && scroller.contains(node)
+        ? node.getBoundingClientRect().top + scroller.scrollTop : undefined;
+      return { top: measure() ?? 0, measure };
+    },
     move: top => {
       const scroller = scrollRef.current;
       if (!scroller) return;

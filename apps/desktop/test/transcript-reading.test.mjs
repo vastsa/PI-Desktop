@@ -208,6 +208,41 @@ test("ordinary history uses the same page ownership and keeps receiving live out
   assert.equal(r.visible().at(-1).content, "partial");
 });
 
+for (const prepared of [false, true]) {
+  test(`${prepared ? "animated" : "immediate"} latest preserves loaded pages, their cursor and live updates`, async () => {
+    const rows = Array.from({ length: 30 }, (_, i) => message(`row-${i}`));
+    const calls = [];
+    const r = reader(async (_id, options) => {
+      calls.push(options.messageBefore);
+      const end = options.messageBefore;
+      return page(rows.slice(Math.max(0, end - 10), end), {
+        messageStart: Math.max(0, end - 10), messageEnd: end,
+        hasMoreBefore: end > 10, hasMoreAfter: true,
+      });
+    }, {
+      messages: rows.slice(20),
+      sessionHistory: { s: { messageStart: 20, hasMoreBefore: true } },
+    });
+    const live = r.get().messages;
+    await r.loadTranscriptPage("s", "before");
+    const before = r.visible().map(row => row.id);
+    if (prepared) r.prepareReturnToLatestTranscript("s")();
+    else r.returnToLatestTranscript("s");
+    assert.deepEqual(r.visible().map(row => row.id), before, "arrival must not discard a loaded page");
+    assert.equal(r.view().focus, null);
+    assert(!r.view().restored);
+    assert.equal(r.get().messages, live, "old pages never become model input");
+    r.set({ runningSessions: { s: true }, messages: [...live, message("stream", "new output")] });
+    assert.equal(r.visible().at(-1).content, "new output");
+    await r.loadTranscriptPage("s", "before");
+    assert.deepEqual(calls, [20, 10], "continue beyond retained pages instead of rereading cursor 20");
+    assert.equal(r.visible().length, 31);
+    r.set({ runningSessions: {} });
+    r.set({ messages: [message("rewritten")] });
+    assert.equal(r.view(), undefined, "authoritative rewrites still invalidate the old pages");
+  });
+}
+
 test("search supersedes an ordinary page and return-to-latest cancels historical paging", async () => {
   const older = deferred();
   const later = deferred();
