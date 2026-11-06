@@ -200,6 +200,7 @@ export class OfflineSidecar {
 export function fixtureHost({ history = [], instructions = false } = {}) {
   return async (method, params) => {
     switch (method) {
+      case "tools.fileBatchCapabilities": return { version: 1, supported: false };
       case "session.get": return { session: { id: params.id, messages: history } };
       case "session.appendMessage": {
         const message = params?.message;
