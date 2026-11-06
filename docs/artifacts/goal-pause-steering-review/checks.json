@@ -1,0 +1,17 @@
+{
+  "acceptedInputDigest": "48e4824285e1bce7207d115c272766f49ac2238fa4743922f0a7893a9bf8a6bf",
+  "baseMain": "7e6141715d2442856cea3f11bb3909506a848eb8",
+  "previousPrHead": "5e87077b60c2c69b765463305426f03d3a1eac3b",
+  "freshChecks": {
+    "agentHostPassed": 106,
+    "goalRuntimePassed": 104,
+    "hostRuntimePassed": 182,
+    "hostRuntimeSkipped": 3,
+    "desktopAffectedPassed": 101,
+    "rustGoalPassed": 88,
+    "buildTypecheck": true,
+    "rustFmtBuildStandardClippy": true,
+    "existingClippyWarnings": 3
+  },
+  "evidencePolicy": "Selected real built UI captures and portable summaries only; raw local evidence is not published."
+}

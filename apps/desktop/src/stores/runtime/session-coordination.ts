@@ -18,6 +18,7 @@ import {
   forkedSessionMessages,
   FORKED_SESSION_WINDOW,
 } from "../../lib/session-fork";
+import { applyOptimisticSessionConfiguration } from "../../lib/session-thinking";
 import { EMPTY_SESSION_WINDOW } from "../../lib/session-create";
 import { inheritedSessionModelBinding } from "../../lib/session-model";
 import {
@@ -91,6 +92,7 @@ export function createSessionCoordination({
       while (!get().runningSessions[sessionId]) {
         const config = runtime.pendingSessionConfigurations.get(sessionId);
         if (!config) break;
+        const modeIntent = runtime.sessionInputModeIntents.get(sessionId);
         try {
           const result = await api.configureSession(sessionId, config);
           if (runtime.pendingSessionConfigurations.get(sessionId) === config) {
@@ -100,7 +102,10 @@ export function createSessionCoordination({
             sessions: state.sessions.map((session) =>
               session.id === sessionId
                 ? {
-                    ...result.session,
+                    ...applyOptimisticSessionConfiguration(result.session, {
+                      ...runtime.pendingSessionConfigurations.get(sessionId),
+                      ...(runtime.sessionInputModeIntents.get(sessionId) !== modeIntent ? { mode: session.mode } : {}),
+                    }),
                     pinned: sessionIsPinned(sessionId, state.sessionMeta),
                     archived: sessionIsArchived(sessionId, state.sessionMeta),
                   }
@@ -109,7 +114,9 @@ export function createSessionCoordination({
             planningStates: {
               ...state.planningStates,
               [sessionId]:
-                result.session.mode === "plan" ? "planning" : "inactive",
+                runtime.sessionInputModeIntents.get(sessionId) !== modeIntent
+                  ? state.planningStates[sessionId]
+                  : result.session.mode === "plan" ? "planning" : "inactive",
             },
           }));
         } catch (error) {

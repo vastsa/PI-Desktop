@@ -101,10 +101,9 @@ fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
     // v19 session omit, v21 the session Todo checklist, and v22 the
     // session-list index, v23 the session title source, v24 the worktree
     // registry, v25 model discovery state, v26 lossless image storage, and v27
-    // the session Fast mode switch. A fresh database is stamped with the
-    // newest version, so the
-    // column set is the current one.
-    assert_eq!(SCHEMA_VERSION, 27);
+    // the session Fast mode switch. Goal migrations v28-v30 add lifecycle
+    // storage without changing provider ownership. A fresh database is stamped
+    // with the newest version, so the column set is the current one.
     let version: i64 = db
         .conn()
         .query_row("PRAGMA user_version", [], |row| row.get(0))

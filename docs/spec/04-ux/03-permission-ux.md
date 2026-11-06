@@ -9,8 +9,8 @@ Make high-risk local actions visible, interruptible, and predictable.
 | Mode | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | Plugins |
 |---|---|---|---|---|---|
 | Agent | allow | allow | permission policy | permission policy | registered risk policy |
-| Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | deny |
-| Goal | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | deny |
+| Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
+| Goal | allow | allow | permission policy | permission policy | registered risk policy |
 
 The Read/Glob/Grep `allow` cells apply to paths inside the session workspace
 and scratch roots. An explicit path outside both roots is an exception:
@@ -20,14 +20,11 @@ requested path, and the external result remains absolute in the transcript.
 
 Decision source: **D003/D189/D190/D195 (ADR 0057)**.
 
-Plan and Goal keep this permission-mode control visible. Plan exposes the
-effective permission choice; Goal shows the same chip geometry with a fixed
-Auto label in the Composer and does not open a menu. Goal's approval card is
-the separate place to choose the execution permission for the approved run.
-They are contract intents, not strict read-only security profiles: a Bash
-command can mutate workspace or scratch state under Auto. Write/Edit/plugin
-tools are denied by the host before a permission card, regardless of grants or
-Auto.
+All modes expose effective selectable Ask / Accept edits / Auto. Goal must not
+show fixed disabled Auto. A direct Goal send needs no Plan approval, but never
+implies consent to a denied tool. Path, sandbox, grants and rejection checks
+remain active. Plan retains hard mode restrictions and permission-gated Bash;
+legacy Goal approvals retain their separate execution permission choice.
 
 ## 3. Decision types
 
@@ -140,7 +137,10 @@ A durable grants-management surface is deferred until a host-backed settings
 schema exists; Settings must not render a control that cannot persist or affect
 the permission runtime.
 
-## 9. Plan and Goal contract approval card
+## 9. Plan and legacy Goal contract approval card
+
+Goal references here describe persisted legacy approvals, not new autonomous
+Goal execution. New `SubmitGoal` calls cannot create proposals.
 
 Plan and Goal approval are not generic tool permission cards. They are rendered
 inline in the originating session after `SubmitPlan(...)` or `SubmitGoal(...)`
@@ -177,10 +177,11 @@ after a full Host/app restart.
 
 ## 10. Acceptance
 
-1. Plan and Goal deny Write/Edit/plugins in every permission mode
+1. Plan denies Write/Edit and non-plan-safe plugins in every permission mode;
+   Goal uses ordinary Agent policy without bypassing denial
 2. Plan and Goal Bash prompt under Ask and Accept edits and run without confirmation
    under Auto, with the mutation tradeoff visible
-3. Agent mode uses the normal high-risk permission policy
+3. Agent and Goal use the normal high-risk permission policy
 4. unanswered local permissions remain pending until an explicit decision or
    cancellation; execution timeouts remain enforced after approval
 5. allow-session suppresses repeat prompts for same toolName only

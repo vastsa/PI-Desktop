@@ -35,6 +35,7 @@ pub struct QueuedTurnInput {
     pub input_hash: String,
     pub content: String,
     pub session_message_id: Option<String>,
+    pub goal_start_id: Option<String>,
     pub user_message_id: Option<String>,
     pub voice_origin: Option<VoiceOrigin>,
     pub attachments: Option<Value>,
@@ -53,6 +54,9 @@ pub struct QueuedTurn {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_message_id: Option<String>,
+    /// Startup identity only; a live Host claim is still required to execute.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goal_start_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,6 +95,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
         input_hash: row.get(4)?,
         content: row.get(5)?,
         session_message_id: row.get(10)?,
+        goal_start_id: row.get(14)?,
         attachments: attachments.and_then(|text| serde_json::from_str(&text).ok()),
         permission_mode: row.get(7)?,
         position: row.get(8)?,
@@ -103,7 +108,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
 
 const SELECT: &str = "SELECT id, session_id, principal, idempotency_key, input_hash, content,
         attachments_json, permission_mode, position, created_at, session_message_id, priority,
-        user_message_id, voice_origin_json
+        user_message_id, voice_origin_json, goal_start_id
  FROM turn_queue";
 
 /// Delivery order: promoted entries first in click order (ascending
@@ -138,6 +143,27 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
     if !session_exists {
         return Err(anyhow!("session not found: {}", input.session_id));
     }
+    if let Some(goal_id) = &input.goal_start_id {
+        if goal_id.trim().is_empty()
+            || goal_id.len() > 128
+            || input.session_message_id.is_some()
+            || input.voice_origin.is_some()
+        {
+            return Err(anyhow!(
+                "INVALID_ARGUMENT: invalid Goal startup queue metadata"
+            ));
+        }
+        let owned: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_goals WHERE id=?1 AND session_id=?2)",
+            params![goal_id, input.session_id],
+            |row| row.get(0),
+        )?;
+        if !owned {
+            return Err(anyhow!(
+                "INVALID_ARGUMENT: Goal startup must belong to the queued session"
+            ));
+        }
+    }
     if let Some(key) = input.idempotency_key.as_deref() {
         let existing = conn
             .prepare_cached(&format!(
@@ -149,7 +175,9 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
             )
             .optional()?;
         if let Some(existing) = existing {
-            if existing.input_hash == input.input_hash {
+            if existing.input_hash == input.input_hash
+                && existing.goal_start_id == input.goal_start_id
+            {
                 return Ok(existing);
             }
             return Err(anyhow!("IDEMPOTENCY_CONFLICT"));
@@ -183,8 +211,8 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
         "INSERT INTO turn_queue (
             id, session_id, principal, idempotency_key, input_hash, content,
             attachments_json, permission_mode, position, created_at, session_message_id,
-            user_message_id, voice_origin_json
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            user_message_id, voice_origin_json, goal_start_id
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             id,
             input.session_id,
@@ -198,7 +226,8 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
             created_at,
             input.session_message_id,
             input.user_message_id,
-            voice_origin_json
+            voice_origin_json,
+            input.goal_start_id
         ],
     )?;
     tx.commit()?;
@@ -210,6 +239,7 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
         input_hash: input.input_hash,
         content: input.content,
         session_message_id: input.session_message_id,
+        goal_start_id: input.goal_start_id,
         user_message_id: input.user_message_id,
         voice_origin: input.voice_origin,
         attachments: input.attachments,
@@ -355,6 +385,10 @@ pub fn reorder(db: &Database, id: &str, direction: ReorderDirection) -> Result<b
 }
 
 #[cfg(test)]
+#[path = "turn_queue_goal_start_tests.rs"]
+mod goal_start_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::sessions;
@@ -383,6 +417,7 @@ mod tests {
             input_hash: format!("hash:{content}"),
             content: content.to_string(),
             session_message_id: None,
+            goal_start_id: None,
             user_message_id: None,
             voice_origin: None,
             attachments: None,
@@ -532,7 +567,11 @@ mod tests {
         assert_eq!(entries[0].content, "existing");
         assert!(entries[0].user_message_id.is_none());
         assert!(entries[0].voice_origin.is_none());
-        assert_eq!(crate::db::SCHEMA_VERSION, 27);
+        let version: i64 = db
+            .conn()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, crate::db::SCHEMA_VERSION);
     }
 
     #[test]
@@ -652,7 +691,11 @@ mod tests {
             second = push(&db, input(&session_id, "two", None)).unwrap();
             // A v16 database has no priority column yet.
             db.conn()
-                .execute_batch("ALTER TABLE turn_queue DROP COLUMN priority;")
+                .execute_batch(
+                    "DROP TRIGGER turn_execution_snapshot;
+                    ALTER TABLE turn_queue DROP COLUMN goal_start_id;
+                    ALTER TABLE turn_queue DROP COLUMN priority;",
+                )
                 .unwrap();
             db.conn().pragma_update(None, "user_version", 16).unwrap();
         }

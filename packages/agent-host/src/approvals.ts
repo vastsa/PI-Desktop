@@ -231,6 +231,16 @@ export class ApprovalBroker {
     return result;
   }
 
+  /** Deny not-yet-executed tool requests when the owner pauses a Goal. */
+  async denyPendingToolsForPause(sessionId: string, revision: number): Promise<void> {
+    const requests = await this.port.listPendingTools(sessionId);
+    for (const request of requests) {
+      if (request.sessionId !== sessionId) continue;
+      await this.port.resolveTool(request.requestId, "deny");
+      this.settle(request.requestId, { status: "canceled", decision: "deny", revision });
+    }
+  }
+
   /** Close every open approval of a session, e.g. when its turn ended. */
   cancelForSession(sessionId: string, revision: number): RacpApprovalResult[] {
     const closed: RacpApprovalResult[] = [];

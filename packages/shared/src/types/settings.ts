@@ -75,6 +75,8 @@ export type AppSettings = {
   /** Granted native application control (ADR 0342); off and unbound by default. */
   computerUse?: import("../computer-use.js").ComputerUseSettings;
   defaultMode: Mode;
+  /** Budget snapshotted by the host for new goals only; absent uses 20 turns. */
+  defaultGoalBudget?: import("./goals.js").GoalBudget;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.
    * Absent and false use the bounded ten-retry policy.

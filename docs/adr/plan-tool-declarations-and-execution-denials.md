@@ -1,6 +1,9 @@
 # ADR: Keep known tool declarations while denying contract-mode execution
 
-- Status: Accepted for implementation
+- Status: Accepted for Plan; Goal execution policy superseded by [autonomous-goal-lifecycle](autonomous-goal-lifecycle.md)
+
+The Goal restrictions below record the historical decision. New autonomous Goal
+uses ordinary Agent permissions; Plan declaration/denial behavior is unchanged.
 - Date: 2026-09-28
 - Amends: ADR 0062 (declaration visibility only)
 - Related: #1174
