@@ -65,8 +65,11 @@ function readState(window) {
     "const alert = document.querySelector('[role=\"alert\"]');" +
     "let log = null;" +
     "try { log = window.__fixtureLog ? window.__fixtureLog() : null; } catch {}" +
+    "let preloadError = null;" +
+    "try { preloadError = window.__preloadError ? window.__preloadError() : null; } catch {}" +
     "return {" +
       "bridge: Boolean(window.pluginBridge)," +
+      "preloadError," +
       "selectedPath: selected?.getAttribute('data-path') ?? null," +
       "selectedExpanded: selected?.getAttribute('aria-expanded') ?? null," +
       "alertText: alert?.textContent ?? null," +
@@ -193,6 +196,7 @@ function assertScratchState(state) {
 function describe(state) {
   return JSON.stringify({
     bridge: state.state?.bridge,
+    preloadError: state.state?.preloadError,
     selectedPath: state.state?.selectedPath,
     alertText: state.state?.alertText,
     editorOpen: state.state?.editorOpen,
