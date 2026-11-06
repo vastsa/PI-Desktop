@@ -20159,3 +20159,30 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
+
+#### E2E-SIDEBAR-hover-preview: Select navigation without docking
+
+- **Preconditions**: Completed bootstrap, collapsed sidebar, two retained
+  conversations and a project group. Record chat and work-panel bounds.
+- **Steps**: Hover the titlebar toggle for less than 180ms and leave; hover
+  again for 180ms. Move into the surface across its gap; expand a project,
+  choose a different conversation and verify closure. Reopen, use a row menu,
+  submenu, notification popover and rename dialog, then move back to chat.
+  Test outside press, Escape, window blur and keyboard ArrowDown/Tab/Escape.
+  Click the titlebar or floating header action and use the sidebar shortcut
+  to dock. Repeat with touch, a non-default width, both themes, reduced motion,
+  non-chat routes, maximized work panels, native browser/plugin views and
+  Windows/Linux. Switch route/session or hide the shell during a pending hover.
+- **Expected**: Short passes and touch do not open a preview. Deliberate hover
+  shows the existing full sidebar below native chrome with no pane-width
+  change. A 180ms departure delay bridges travel; focus, menus and dialogs
+  remain usable. Navigation closes the preview without docking. Escape
+  restores the connected trigger; child overlays handle their own dismissal.
+  Outside movement closes a preview left after a portal disappears. Pinning
+  restores the ordinary width-budget rules; floating resizing is unavailable.
+  Native views yield only during the preview and restore on dismissal.
+  Shell hiding/unmount clears timers and listeners. The window edge and
+  file/plugin content never act as opening triggers.
+- **Specs linked**: `04-ux/08-component-spec.md`,
+  [Sidebar hover navigation](../../adr/sidebar-hover-navigation.md)
+- **Status**: Controlled hook interaction coverage; native E2E NOT RUN.
