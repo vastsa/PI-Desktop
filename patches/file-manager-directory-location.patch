@@ -1,0 +1,292 @@
+diff --git a/views-src/package.json b/views-src/package.json
+index 11e5d31..8823964 100644
+--- a/views-src/package.json
++++ b/views-src/package.json
+@@ -20,7 +20,8 @@
+     "verify:menu": "node verify-context-menu.mjs",
+     "verify:remote": "node verify-remote.mjs",
+     "verify:tree": "node verify-tree.mjs",
+-    "verify": "node verify-roots.mjs && node verify-jail.mjs && node verify-highlight.mjs && node verify-markdown.mjs && node verify-viewers.mjs && node verify-editors.mjs && node verify-git.mjs && node verify-watch.mjs && node verify-pdf.mjs && node verify-context-menu.mjs && node verify-remote.mjs && node verify-tree.mjs"
++    "verify:host-open": "node verify-host-open.mjs",
++    "verify": "node verify-roots.mjs && node verify-jail.mjs && node verify-highlight.mjs && node verify-markdown.mjs && node verify-viewers.mjs && node verify-editors.mjs && node verify-git.mjs && node verify-watch.mjs && node verify-pdf.mjs && node verify-context-menu.mjs && node verify-remote.mjs && node verify-tree.mjs && node verify-host-open.mjs"
+   },
+   "dependencies": {
+     "@codemirror/autocomplete": "^6.18.4",
+diff --git a/views-src/src/App.tsx b/views-src/src/App.tsx
+index 6627d80..46b008b 100644
+--- a/views-src/src/App.tsx
++++ b/views-src/src/App.tsx
+@@ -15,7 +15,12 @@ import { openInBuiltInBrowser, openWithDefaultApp, openWithEditor, revealInFileM
+ import { editorsFor } from "./lib/editors";
+ import { buildFileContextMenuEntries, withBuiltInBrowserEntry } from "./lib/file-context-menu";
+ import { copyText } from "./lib/clipboard";
+-import { isExternalPath, watchHostOpenRequests, type HostOpenRequest } from "./lib/hostOpen";
++import {
++  classifyHostOpenTarget,
++  isExternalPath,
++  watchHostOpenRequests,
++  type HostOpenRequest,
++} from "./lib/hostOpen";
+ import type { DiffViewState } from "./components/GitDiffView";
+ import { Tree, type DirState } from "./components/Tree";
+ import { EditorPane } from "./components/EditorPane";
+@@ -143,7 +148,7 @@ export default function App() {
+   const openPathRef = useRef<string | null>(null);
+   const pendingRef = useRef<(() => void) | null>(null);
+   const bodyRef = useRef<HTMLDivElement | null>(null);
+-  const loadRef = useRef<(path: string, force?: boolean) => Promise<void>>(async () => {});
++  const loadRef = useRef<(path: string, force?: boolean) => Promise<FileEntry[] | undefined>>(async () => undefined);
+   /** 宿主请求（入口查询串 / view:open 推送）统一走它。 */
+   const hostOpenRef = useRef<(request: HostOpenRequest) => void>(() => {});
+   /** 宿主请求在 ready 之前到达时先排队，见下面 ready 的 flush effect。 */
+@@ -367,10 +372,12 @@ export default function App() {
+   // ── 目录操作 ─────────────────────────────────────────────────────────────
+ 
+   const loadDirectory = useCallback(
+-    async (path: string, force = false) => {
++    // 返回这次看到的目录条目（缓存命中返回缓存里的），调用方要拿它做判定时
++    // 不必回头读 directories 状态——那条路要等一次渲染，异步链里是旧的。
++    async (path: string, force = false): Promise<FileEntry[] | undefined> => {
+       const revision = revisionRef.current;
+       const existing = dirsRef.current.get(path);
+-      if (!force && existing?.entries && !existing.loading) return;
++      if (!force && existing?.entries && !existing.loading) return existing.entries;
+ 
+       const setDir = (state: DirState) =>
+         setDirectories((prev) => {
+@@ -382,10 +389,10 @@ export default function App() {
+       setDir({ loading: true });
+       try {
+         const response = await invoke<ListResponse | Failure>(channels.list, { path, workspacePath: workspaceRef.current?.path });
+-        if (revision !== revisionRef.current) return;
++        if (revision !== revisionRef.current) return undefined;
+         if (!response.ok) {
+           setDir({ error: failureMessage(response, t) });
+-          return;
++          return undefined;
+         }
+         setDir({ entries: response.entries });
+         // 「项目里有没有忽略规则」只有根目录那次列表能回答，用来提示用户
+@@ -394,9 +401,11 @@ export default function App() {
+         // 概览是整个工作区的（与列的是哪个目录无关），所以任何一次列表刷新都拿
+         // 最新的一份回来；徽标已经随每条 entry 一起进来了。
+         setGitSummary(response.git ?? null);
++        return response.entries;
+       } catch (cause) {
+-        if (revision !== revisionRef.current) return;
++        if (revision !== revisionRef.current) return undefined;
+         setDir({ error: String((cause as Error).message) });
++        return undefined;
+       }
+     },
+     [t],
+@@ -734,6 +743,24 @@ export default function App() {
+             await loadDirectory(parent);
+           }
+           if (revision !== revisionRef.current) return;
++          // 目录 location（0.9.2）：宿主引用的目录不进文件读取（fm.read 对
++          // 目录一律 INVALID_PATH）。展开它自己并加载列表——树就是目录的
++          // 「内容」，所以也不能收起左侧列表：收起了就没有东西可看。
++          // 判定用 loadDirectory 的**返回值**：directories 状态要等一次渲染
++          // 才落进 dirsRef，异步链里读 ref 是旧的（首帧上根列表经常刚好没
++          // 落地，判成 unknown 又退回文件路径，正好复现这次要修的失败）。
++          // loadDirectory 幂等，已加载的目录不产生额外通道调用。
++          const parentPath = parents.length > 0 ? parents[parents.length - 1] : "";
++          if (revision !== revisionRef.current) return;
++          const parentEntries = await loadDirectory(parentPath);
++          if (revision !== revisionRef.current) return;
++          const targetKind = classifyHostOpenTarget(relPath, parentEntries);
++          if (targetKind === "directory") {
++            setExpanded((prev) => new Set([...prev, relPath]));
++            persistPrefs({ treeCollapsed: false });
++            await loadDirectory(relPath);
++            return;
++          }
+           await openEntry({ path: relPath });
+         })();
+       };
+diff --git a/views-src/src/i18n.ts b/views-src/src/i18n.ts
+index 02e9279..d157a69 100644
+--- a/views-src/src/i18n.ts
++++ b/views-src/src/i18n.ts
+@@ -222,6 +222,7 @@ export const COPY_TABLES = {
+     errExists: "An entry with that name already exists.",
+     errName: "That name is not allowed.",
+     errNotFound: "That path no longer exists.",
++    errIsDirectory: "That path is a directory; folders are browsed in the tree, and only inside the project.",
+     errUnsupported: "This host does not support that operation.",
+     errNoBridge: "This page must be opened inside PI-Desktop.",
+     changes: "Changes",
+@@ -467,6 +468,7 @@ export const COPY_TABLES = {
+     errExists: "同名条目已存在。",
+     errName: "该名称不被允许。",
+     errNotFound: "该路径已不存在。",
++    errIsDirectory: "该路径是一个目录；文件夹在目录树里浏览，且只能在项目内。",
+     errUnsupported: "当前宿主不支持该操作。",
+     errNoBridge: "本页面需要在 PI-Desktop 中打开。",
+     changes: "变更",
+diff --git a/views-src/src/lib/hostOpen.ts b/views-src/src/lib/hostOpen.ts
+index 95ac38a..a412a57 100644
+--- a/views-src/src/lib/hostOpen.ts
++++ b/views-src/src/lib/hostOpen.ts
+@@ -62,6 +62,24 @@ export function readOpenRequest(payload: unknown): HostOpenRequest | null {
+   return { path: candidate.path };
+ }
+ 
++/**
++ * 宿主打开目标在树里的身份（0.9.2 目录 location）。宿主引用的目录本就存在，
++ * 打开它意味着展开并列出内容，而不是把目录塞给文件读取（fm.read 对目录一律
++ * 报 INVALID_PATH）。判定只信**已经加载**的父目录列表：按 path 精确匹配条目。
++ * 列表缺席（还没列完 / 刚被外部改动）返回 "unknown"，调用方按文件处理——读
++ * 失败的报告本来就是准确的，宁可保守也不猜。
++ */
++export type HostOpenTargetKind = "file" | "directory" | "unknown";
++
++export function classifyHostOpenTarget(
++  relPath: string,
++  listing: readonly { path: string; isDirectory: boolean }[] | undefined,
++): HostOpenTargetKind {
++  const entry = listing?.find((candidate) => candidate.path === relPath);
++  if (!entry) return "unknown";
++  return entry.isDirectory ? "directory" : "file";
++}
++
+ /**
+  * 订阅两条投递路径，把去重后的请求交给 onRequest。返回取消函数。
+  */
+diff --git a/views-src/src/lib/rpc.ts b/views-src/src/lib/rpc.ts
+index 52af46b..c2f5155 100644
+--- a/views-src/src/lib/rpc.ts
++++ b/views-src/src/lib/rpc.ts
+@@ -481,6 +481,11 @@ export function failureMessage(failure: Failure, t: T): string {
+       return t("sqliteOffsetLimit");
+     case "GIT_UNAVAILABLE":
+       return t("gitUnavailable");
++    case "INVALID_PATH":
++      // 目录不进文件读取（fm.read / fm.write 的统一拒绝）。宿主打开目录
++      // location 时这条失败是正常路径，翻成人话而不是裸的英文 message。
++      if (failure.message === "path is a directory") return t("errIsDirectory");
++      return failure.message || failure.code;
+     default:
+       // SQLITE_SQL_ERROR 走这里：引擎自己的报错（no such table: …）就是最有用的文案
+       return failure.message || failure.code;
+diff --git a/views-src/verify-host-open.mjs b/views-src/verify-host-open.mjs
+new file mode 100644
+index 0000000..dd5ef64
+--- /dev/null
++++ b/views-src/verify-host-open.mjs
+@@ -0,0 +1,114 @@
++/**
++ * 宿主打开目录 location（0.9.2）的离线校验。
++ *
++ * 宿主（Desktop 的 chat 面板）引用的目录以前也被塞给 fm.read，主进程一律回
++ * INVALID_PATH "path is a directory"，视图只能显示一句裸英文——目录引用等于
++ * 一个必然失败的操作。修好之后视图在父目录列表里判定身份：目录 → 展开并列出
++ * 内容；文件 → 照旧预览；列表缺席 → 按文件保守处理。这里断言 lib/hostOpen.ts
++ * 的纯判定与 lib/rpc.ts 对该失败的翻译，不需要 DOM（与 verify-roots.mjs 同样
++ * 的做法）。
++ *
++ * 用法：pnpm verify:host-open
++ */
++
++import { build } from "esbuild";
++import { mkdtempSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { dirname, join } from "node:path";
++import { fileURLToPath, pathToFileURL } from "node:url";
++
++const here = dirname(fileURLToPath(import.meta.url));
++
++async function loadModules(specifiers) {
++  const dir = mkdtempSync(join(tmpdir(), "pifm-host-open-"));
++  const entry = join(dir, "entry.ts");
++  const out = join(dir, "bundle.mjs");
++  const exports = specifiers
++    .map(([name, file]) => `import * as ${name} from ${JSON.stringify(join(here, "src", file))};\nexport { ${name} };`)
++    .join("");
++  writeFileSync(entry, exports);
++
++  await build({
++    entryPoints: [entry],
++    bundle: true,
++    format: "esm",
++    platform: "node",
++    outfile: out,
++    logLevel: "silent",
++  });
++
++  return import(pathToFileURL(out).href);
++}
++
++let failures = 0;
++function check(label, condition, detail = "") {
++  if (condition) {
++    console.log(`ok   ${label}`);
++    return;
++  }
++  failures += 1;
++  console.log(`FAIL ${label} ${detail}`);
++}
++
++const { hostOpen, rpc, i18n } = await loadModules([
++  ["hostOpen", join("lib", "hostOpen.ts")],
++  ["rpc", join("lib", "rpc.ts")],
++  ["i18n", join("i18n.ts")],
++]);
++
++const LISTING = [
++  { path: "examples", isDirectory: true },
++  { path: "test.ts", isDirectory: false },
++  { path: "src/dir/openimage.js", isDirectory: false },
++];
++
++console.log("1. classifyHostOpenTarget（父目录列表已加载）");
++check(
++  "目录条目判定为 directory",
++  hostOpen.classifyHostOpenTarget("examples", LISTING) === "directory",
++);
++check(
++  "文件条目判定为 file",
++  hostOpen.classifyHostOpenTarget("test.ts", LISTING) === "file",
++);
++check(
++  "多段路径按完整相对路径精确匹配，不做后缀猜测",
++  hostOpen.classifyHostOpenTarget("src/dir/openimage.js", LISTING) === "file" &&
++    hostOpen.classifyHostOpenTarget("dir/openimage.js", LISTING) === "unknown",
++);
++check(
++  "列表缺席（未加载 / 已失效）按 unknown 保守处理",
++  hostOpen.classifyHostOpenTarget("examples", undefined) === "unknown" &&
++    hostOpen.classifyHostOpenTarget("examples", []) === "unknown",
++);
++
++console.log("2. failureMessage 把目录读取失败翻成人话");
++const t = (key) => {
++  const table = {
++    errIsDirectory: "That path is a directory; folders are browsed in the tree, and only inside the project.",
++  };
++  return table[key] ?? key;
++};
++check(
++  'fm.read 的 INVALID_PATH "path is a directory" 得到专门文案',
++  rpc.failureMessage({ ok: false, code: "INVALID_PATH", message: "path is a directory" }, t) ===
++    t("errIsDirectory"),
++);
++check(
++  "其他 INVALID_PATH 仍返回主进程自己的 message",
++  rpc.failureMessage({ ok: false, code: "INVALID_PATH", message: "path must be a string" }, t) ===
++    "path must be a string",
++);
++
++console.log("3. 中英文案键一一对齐（errIsDirectory 两边都有）");
++check(
++  "en 与 zh 都有 errIsDirectory",
++  typeof i18n.COPY_TABLES.en.errIsDirectory === "string" &&
++    typeof i18n.COPY_TABLES.zh.errIsDirectory === "string",
++);
++
++if (failures > 0) {
++  console.log(`\n${failures} check(s) failed`);
++  process.exit(1);
++}
++console.log("\nall checks passed");

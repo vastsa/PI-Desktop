@@ -31,6 +31,8 @@ import {
 import { api } from "../../apps/desktop/src/lib/api";
 import { FilesTab } from "../../apps/desktop/src/components/workpanel/FilesTab";
 import { FileRefChip, MessageAttachmentImage } from "../../apps/desktop/src/features/chat/transcript/shared";
+import { MessageRow } from "../../apps/desktop/src/features/chat/transcript/MessageRow";
+import { SlotSessionProvider } from "../../apps/desktop/src/plugins/renderer-slots/use-slots";
 import { useOpenChatFileRef } from "../../apps/desktop/src/hooks/use-preview-target";
 import {
   readComposerDraft,
@@ -102,6 +104,8 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
       <div className="composer-shell">
       <ComposerInput
         imagePreview={draft.imagePreview}
+        directoryReferences={draft.activeFileReferences.filter((reference) => reference.kind === "directory")}
+        onRemoveDirectory={draft.removeDirectoryReference}
         inputRef={draft.ref}
         value={draft.value}
         placeholderText=""
@@ -260,12 +264,30 @@ globalThis.composerPasteProbe = async () => {
       permissionMode: "inherit", thinkingLevel: "off", messageCount: 0,
       createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
     }] });
-    const directoryEditor = await paste("", [], true);
-    const directoryChip = directoryEditor.querySelector(".composer-chip");
+    const directoryEditor = await dispatchPaste(await reset("before after", 0, 6), "", []);
+    const directoryChip = directoryEditor.closest(".composer-input-wrap")?.querySelector(".directory-reference-card");
     assert(directoryChip?.textContent?.includes("copied folder"), "native folder metadata did not render a chip");
+    assert(directoryChip!.getBoundingClientRect().bottom <= directoryEditor.getBoundingClientRect().top,
+      "folder card must be above the editable text");
+    assert(directoryChip!.getBoundingClientRect().width < 200, "short folder name leaves too much blank card width");
+    assert(directoryEditor.getBoundingClientRect().height < 40, "a short prompt leaves excess blank space below the card");
+    assert(readEditorValue(directoryEditor) === "before after", "folder paste changed the editable text");
     assert(controller.fileReferences[0]?.kind === "directory", "folder chip must own a directory reference");
-    flushSync(() => directoryChip?.querySelector<HTMLButtonElement>(".composer-chip-remove")?.click());
+    const content = serializeInlineComposerFileReferences(readEditorValue(directoryEditor), controller.activeFileReferences);
+    assert(content.includes("<dir>") && content.includes("Inspect their structure"), "model prompt lost directory context");
+    flushSync(() => directoryChip?.querySelector<HTMLButtonElement>(".directory-reference-remove")?.click());
     assert(controller.fileReferences.length === 0, "folder chip could not be removed");
+    flushSync(() => root.render(
+      <I18nextProvider i18n={i18n}>
+        <SlotSessionProvider sessionId="paste-a">
+          <MessageRow message={{ id: "directory-message", role: "user", content, createdAt: "2026-01-01T00:00:00Z" }} isRunning={false} />
+        </SlotSessionProvider>
+      </I18nextProvider>,
+    ));
+    assert(host.querySelector(".message-user-text")?.textContent === "before after", "user bubble leaked the model prompt");
+    const sentFolder = host.querySelector<HTMLButtonElement>(".message-bubble .directory-reference-main");
+    assert(sentFolder?.textContent?.includes("copied folder"), "user bubble lost the clickable folder");
+    sentFolder!.click();
 
     // Settings replaces ChatSurface, then remounts the composer in the same
     // workspace. Exercise the real draft hook and DOM across that lifecycle.
