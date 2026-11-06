@@ -6,7 +6,10 @@ export const ptBREntries: ChangelogEntry[] = [
     highlights: [
       "Deixe o agente controlar aplicativos da área de trabalho pelo uso do computador, com permissões explícitas e cursor visível.",
       "Abra aplicativos instalados e comandos de plugins em um único iniciador agrupado e fixe os aplicativos mais usados.",
-      "Mantenha conversas longas mais claras recolhendo atividades concluídas e melhorando a navegação para mensagens anteriores.",
+      "Mantenha conversas longas mais claras recolhendo atividades concluídas e voltando com fluidez às mensagens recentes enquanto o histórico anterior carrega.",
+      "Cole pastas no campo de composição como referências de diretório e abra links de diretório diretamente no gerenciador de arquivos.",
+      "Escolha modelos em um seletor redesenhado de dois painéis com acesso direto às configurações do provedor.",
+      "Direcione um prompt a um subagente específico usando uma menção @agent.",
     ],
   },
   {

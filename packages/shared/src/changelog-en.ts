@@ -6,7 +6,10 @@ export const enEntries: ChangelogEntry[] = [
     highlights: [
       "Let the agent control desktop apps through computer use, with explicit permission grants and a visible cursor.",
       "Launch installed apps and plugin commands from one grouped launcher, and pin frequently used apps in place.",
-      "Keep long conversations readable with folded completed activity and more reliable navigation to earlier messages.",
+      "Keep long conversations readable with folded completed activity and smoother navigation to the latest messages as older history loads.",
+      "Paste folders into chat as directory references, and open directory links directly in the file manager.",
+      "Choose models in a redesigned two-pane picker with direct access to provider settings.",
+      "Route prompts to a named subagent with an @agent mention.",
     ],
   },
   {
