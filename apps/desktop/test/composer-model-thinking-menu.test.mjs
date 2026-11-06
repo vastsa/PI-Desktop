@@ -243,3 +243,11 @@ test("an alias is told apart from the catalog name, and capabilities are icons",
   assert.match(listSource, /chat\.modelBadgeReasoning/);
   assert.match(listSource, /chat\.modelBadgeVision/);
 });
+
+test("the Composer model menu links to Models settings and closes on the way out", async () => {
+  const toolbarSource = await readComposerModule("ComposerToolbar.tsx");
+  // Only the Composer passes the link; a picker hosted inside Settings omits it.
+  assert.match(toolbarSource, /onOpenModelSettings=\{\(\) => useAppStore\.getState\(\)\.setSettingsTab\("agent"\)\}/);
+  assert.match(pickerSource, /onOpenModelSettings \? \(\) => \{\s*setOpen\(false\);\s*onOpenModelSettings\(\);\s*\} : undefined/);
+  assert.match(listSource, /\{onOpenModelSettings \? \(\s*<TooltipButton[\s\S]*?className="composer-model-settings"[\s\S]*?tooltip=\{t\("chat\.manageModels"\)\}[\s\S]*?ariaLabel=\{t\("chat\.manageModels"\)\}/);
+});

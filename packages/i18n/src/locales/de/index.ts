@@ -722,6 +722,7 @@ export const de = {
     recentModels: "Zuletzt verwendet",
     modelSources: "Modellquellen",
     reasoningShort: "Denken",
+    manageModels: "Modelle verwalten",
     "searchModels": "Modelle suchen",
     "noModelResults": "Keine passenden Modelle",
     "modelBadgeReasoning": "Begründung",
