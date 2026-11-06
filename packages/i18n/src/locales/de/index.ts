@@ -390,6 +390,8 @@ export const de = {
     "pluginTriggerMenu": "Plugin-Vorschläge",
     "messageAttachments": "Anhänge in dieser Nachricht",
     "fileEmpty": "Keine übereinstimmenden Dateien",
+    "mentionGroupAgents": "Agenten",
+    "mentionGroupFiles": "Dateien",
     "fileNoWorkspace": "Öffnen Sie ein Projekt, um auf Dateien zu verweisen",
     "fileTruncated": "Das erste wird angezeigt 8000 passende Dateien",
     "acHint": "↑↓ auswählen · Eingabe bestätigen · Esc schließen",

@@ -94,7 +94,9 @@ test("the composer lists active skills last and routes slash skills to the Skill
     /\.\.\.extensionCommands,\s*\.\.\.mcpCommands,\s*\.\.\.skillCommands,/,
   );
   assert.match(mainSrc, /findSkillMentions\(req\.content, activeSkills\)/);
-  assert.match(mainSrc, /Call the \\`Skill\\` tool with each of these ids/);
+  // The Skill instruction text lives in shared `composeMentionPrompt`
+  // (ADR 0346); its exact wording is pinned in composer-trigger.test.ts.
+  assert.match(mainSrc, /composeMentionPrompt\(req\.content, mentions, foundAgents\)/);
   assert.match(composerAutocompleteSrc, /item\.command\.kind === "skill"/);
 });
 

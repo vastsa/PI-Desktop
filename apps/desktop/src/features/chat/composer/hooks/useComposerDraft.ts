@@ -499,11 +499,13 @@ export function useComposerDraft({
     compositionRef.current = null;
     previousWorkspacePathRef.current = workspacePath;
     const current = fileReferencesRef.current;
-    // Plugin marks carry their text, not a workspace path, and a session
-    // reference names a conversation rather than a file in this project.
+    // Plugin marks carry their text, not a workspace path, a session
+    // reference names a conversation and an agent chip names a subagent
+    // rather than a file in this project.
     const survives = (fileReference: ComposerFileReference) =>
       Boolean(fileReference.plugin) ||
       fileReference.kind === "session" ||
+      fileReference.kind === "agent" ||
       isPersistedScratchReference(fileReference.path);
     const kept = current.filter(survives);
     if (kept.length === current.length) return;

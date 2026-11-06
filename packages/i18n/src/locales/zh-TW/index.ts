@@ -385,6 +385,8 @@ export const zhTW = {
     slashCommandSourceUnavailable: "指令清單無法載入，訊息未傳送。請重試。",
     sessionTranscriptEmpty: "無法讀取此工作階段的記錄，請重新開啟後再試一次。",
     fileMenu: "引用檔案",
+    mentionGroupAgents: "智慧體",
+    mentionGroupFiles: "檔案",
     removeFileReference: "移除檔案引用 {{name}}",
     directoryReference: "資料夾",
     directoryPasteUnavailable: "無法取得所複製資料夾的完整路徑，請將資料夾拖入輸入框。",

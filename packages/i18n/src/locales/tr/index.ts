@@ -399,6 +399,8 @@ export const tr = {
     pluginTriggerMenu: "Eklenti önerileri",
     messageAttachments: "Bu iletideki ekler",
     fileEmpty: "Eşleşen dosya yok",
+    mentionGroupAgents: "Ajanlar",
+    mentionGroupFiles: "Dosyalar",
     fileNoWorkspace: "Dosyalara başvurmak için bir proje açın",
     fileTruncated: "İlk 8000 eşleşen dosya gösteriliyor",
     acHint: "↑↓ seç · Enter onayla · Esc kapat",

@@ -67,6 +67,7 @@ export function useComposerCompletions({
   cursor,
   composing,
   enabled,
+  agentsEnabled = false,
   referenceSessionId,
   fileReferencesRef,
   applyEditorDraft,
@@ -77,13 +78,15 @@ export function useComposerCompletions({
   cursor: number;
   composing: boolean;
   enabled: boolean;
+  /** Whether the `@` menu offers subagents (Agent mode only, ADR 0346). */
+  agentsEnabled?: boolean;
   referenceSessionId: string;
   fileReferencesRef: RefObject<ComposerFileReference[]>;
   applyEditorDraft: (text: string, references: ComposerFileReference[], caret: number) => void;
   handleInput: (source: string, caret: number, composing?: boolean) => string;
   invalidateComposerTransforms: () => void;
 }) {
-  const host = useComposerAutocomplete({ value, cursor, composing, enabled });
+  const host = useComposerAutocomplete({ value, cursor, composing, enabled, agentsEnabled });
   const { triggers } = useSyncExternalStore(
     slotRegistry.subscribe,
     slotRegistry.getSnapshot,
@@ -195,6 +198,24 @@ export function useComposerCompletions({
     const result = host.accept(index);
     if (!result) return;
     invalidateComposerTransforms();
+    const acceptedAgent = result.agentReference;
+    if (acceptedAgent) {
+      // The same atomic chip a file gets: it displays and deletes as one
+      // thing, and serializes to `@name` only at send time.
+      const token = nextChipToken();
+      applyEditorDraft(
+        result.value.slice(0, result.cursor) + token + result.value.slice(result.cursor),
+        [
+          ...fileReferencesRef.current,
+          createFileReference(acceptedAgent.name, acceptedAgent.name, referenceSessionId, {
+            kind: "agent",
+            token,
+          }),
+        ],
+        result.cursor + token.length,
+      );
+      return;
+    }
     // File accept strips the @ token (empty insert) and used to store a
     // token-less chip above the textarea. Inline chips only paint when a
     // sentinel is in the draft, so Enter looked like the reference vanished.

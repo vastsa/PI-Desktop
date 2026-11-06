@@ -389,6 +389,8 @@ export const ptBR = {
     pluginTriggerMenu: "Sugestões de plugins",
     messageAttachments: "Anexos desta mensagem",
     fileEmpty: "Nenhum arquivo correspondente",
+    mentionGroupAgents: "Agentes",
+    mentionGroupFiles: "Arquivos",
     fileNoWorkspace: "Abra um projeto para referenciar arquivos",
     fileTruncated: "Exibindo os primeiros 8.000 arquivos correspondentes",
     acHint: "↑↓ para selecionar · Enter para confirmar · Esc para fechar",
