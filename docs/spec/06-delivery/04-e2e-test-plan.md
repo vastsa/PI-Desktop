@@ -1,5 +1,24 @@
 # 04. E2E Test Plan
 
+## E2E-PROJECT-case-alias-upgrade-and-delete
+
+- Entry: `python scripts/e2e-project-path-case.py <candidate-host>` on native
+  Windows or a case-insensitive macOS volume. `--expect-bug` verifies the old
+  failure against an unpatched Host.
+- Create a temporary profile, real `Alpha` directory, two conversations with
+  transcript bytes, and an unrelated project/conversation. Seed the historical
+  lowercase project row and move one conversation to it while the Host is stopped.
+- Restart: require schema v28 and a v27 backup retaining both original owners,
+  one project, both conversations owned by it, and both
+  transcripts preserved. Delete by the lowercase spelling: require both owned
+  conversations/files removed, no reappearing alias row, and the unrelated
+  conversation and physical project directory preserved.
+- Repository regressions also cover a directory appearing after its first
+  registration, schedule/current-selection retention, opaque remote ids,
+  distinct case-sensitive directories, retargeted symlinks, nested import
+  transactions and failure rollback. Use synthetic data only; no installed
+  user profile, provider request or interactive Electron instance is used.
+
 ## E2E-COMPOSER-DIRECTORY-PASTE: Native folder cards and lazy context
 
 - **Preconditions**: Synthetic folders/files with spaces, Unicode and XML-significant names.
