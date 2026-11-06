@@ -1,11 +1,15 @@
-# File Manager line references
+# ADR: File Manager line references
 
-- Status: Accepted
+- Status: Implemented candidate
 - Date: 2026-11-06
+
+## Context
 
 The File Manager knows the source file and CodeMirror selection range.
 The Composer owns draft mutation and the Host owns file access. A text-only
 clipboard cannot carry the source identity independently from the selection.
+
+## Decision
 
 The source view places plain text and path/range metadata in the clipboard.
 The explicit context-menu action uses a panel invocation gated to the visible,
@@ -20,6 +24,8 @@ execution, the Agent runtime invokes the existing Read tool with the inclusive
 range converted to its zero-based offset and line count. The Host continues
 to authorize the tool call and enforce its output limits. The bounded result
 or read failure is included as file context in the provider prompt.
+
+## Consequences
 
 References are initially available for local project source views with one
 selection. Rendered and remote previews retain their clipboard behavior.
