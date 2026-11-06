@@ -1,9 +1,14 @@
-# Steering waits for confirmed tool settlement
+# ADR: Steering waits for confirmed tool settlement
 
 - Status: Accepted
 - Date: 2026-11-06
 - Supersedes: started-tool behavior in ADR active-turn-steering
 - Issue: https://github.com/vastsa/PI-Desktop/issues/2131
+
+## Context
+
+An indefinitely running tool prevents accepted steering from reaching the model.
+Continuing before a mutating operation stops can cause conflicting side effects.
 
 ## Decision
 
