@@ -141,9 +141,11 @@ test("collapsing a project resets its expanded session history", () => {
   );
 });
 
-test("global search stays on the conversation topbar, not the sidebar header", () => {
-  assert.doesNotMatch(sidebarSource, /onOpenSearch|IconSearch|nav\.search/);
+test("sidebar filtering remains separate from global conversation search", () => {
+  assert.doesNotMatch(sidebarSource, /onOpenSearch/);
   assert.doesNotMatch(sidebarSource, /sidebar-session-search|toggleSearch/);
+  assert.match(sidebarSource, /className="sidebar-search-input"/);
+  assert.match(sidebarSource, /onChange=\{\(event\) => setSearchQuery\(event\.target\.value\)\}/);
   assert.match(topbarSource, /onOpenSearch/);
   assert.match(topbarSource, /<IconSearch/);
   assert.match(topbarSource, /ariaLabel=\{t\("nav\.search"\)\}/);
@@ -156,7 +158,7 @@ test("project rows expose press-and-move title drag and keyboard reorder behavio
   assert.doesNotMatch(sidebarSource, /PROJECT_REORDER_LONG_PRESS_MS/);
   assert.match(sidebarSource, /projectReorderShouldArm/);
   assert.match(sidebarSource, /beginProjectReorderPress\(event, entry\.key\)/);
-  assert.match(sidebarSource, /onKeyDown=\{\(event\) => moveProjectWithKeyboard/);
+  assert.match(sidebarSource, /onKeyDown=\{\(event\) => \{ if \(!hasSearch\) moveProjectWithKeyboard/);
   assert.match(sidebarSource, /aria-grabbed=\{draggingProjectKey === entry.key\}/);
   assert.match(sidebarSource, /className="sidebar-session-group-title project-toggle"/);
   assert.match(sidebarSource, /is-drop-before/);

@@ -41,6 +41,15 @@ export function AppearanceSettings({
       </SettingsCard>
 
       <SettingsCard title={t("settings.sidebar")}>
+        <SettingsRow title={t("settings.sidebarScheduledTasks")}>
+          <SettingsToggle
+            checked={settings.sidebarScheduledTasks === true}
+            label={t("settings.sidebarScheduledTasks")}
+            onChange={() => void saveSettings({
+              sidebarScheduledTasks: settings.sidebarScheduledTasks !== true,
+            })}
+          />
+        </SettingsRow>
         <SettingsRow
           title={t("settings.sidebarRunningIndicators")}
           description={t("settings.sidebarRunningIndicatorsDesc")}
