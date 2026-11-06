@@ -13,7 +13,7 @@ index 11e5d31..8823964 100644
    "dependencies": {
      "@codemirror/autocomplete": "^6.18.4",
 diff --git a/views-src/src/App.tsx b/views-src/src/App.tsx
-index 6627d80..aaf9c06 100644
+index 6627d80..46b008b 100644
 --- a/views-src/src/App.tsx
 +++ b/views-src/src/App.tsx
 @@ -15,7 +15,12 @@ import { openInBuiltInBrowser, openWithDefaultApp, openWithEditor, revealInFileM
@@ -30,25 +30,72 @@ index 6627d80..aaf9c06 100644
  import type { DiffViewState } from "./components/GitDiffView";
  import { Tree, type DirState } from "./components/Tree";
  import { EditorPane } from "./components/EditorPane";
-@@ -734,6 +739,27 @@ export default function App() {
+@@ -143,7 +148,7 @@ export default function App() {
+   const openPathRef = useRef<string | null>(null);
+   const pendingRef = useRef<(() => void) | null>(null);
+   const bodyRef = useRef<HTMLDivElement | null>(null);
+-  const loadRef = useRef<(path: string, force?: boolean) => Promise<void>>(async () => {});
++  const loadRef = useRef<(path: string, force?: boolean) => Promise<FileEntry[] | undefined>>(async () => undefined);
+   /** 宿主请求（入口查询串 / view:open 推送）统一走它。 */
+   const hostOpenRef = useRef<(request: HostOpenRequest) => void>(() => {});
+   /** 宿主请求在 ready 之前到达时先排队，见下面 ready 的 flush effect。 */
+@@ -367,10 +372,12 @@ export default function App() {
+   // ── 目录操作 ─────────────────────────────────────────────────────────────
+ 
+   const loadDirectory = useCallback(
+-    async (path: string, force = false) => {
++    // 返回这次看到的目录条目（缓存命中返回缓存里的），调用方要拿它做判定时
++    // 不必回头读 directories 状态——那条路要等一次渲染，异步链里是旧的。
++    async (path: string, force = false): Promise<FileEntry[] | undefined> => {
+       const revision = revisionRef.current;
+       const existing = dirsRef.current.get(path);
+-      if (!force && existing?.entries && !existing.loading) return;
++      if (!force && existing?.entries && !existing.loading) return existing.entries;
+ 
+       const setDir = (state: DirState) =>
+         setDirectories((prev) => {
+@@ -382,10 +389,10 @@ export default function App() {
+       setDir({ loading: true });
+       try {
+         const response = await invoke<ListResponse | Failure>(channels.list, { path, workspacePath: workspaceRef.current?.path });
+-        if (revision !== revisionRef.current) return;
++        if (revision !== revisionRef.current) return undefined;
+         if (!response.ok) {
+           setDir({ error: failureMessage(response, t) });
+-          return;
++          return undefined;
+         }
+         setDir({ entries: response.entries });
+         // 「项目里有没有忽略规则」只有根目录那次列表能回答，用来提示用户
+@@ -394,9 +401,11 @@ export default function App() {
+         // 概览是整个工作区的（与列的是哪个目录无关），所以任何一次列表刷新都拿
+         // 最新的一份回来；徽标已经随每条 entry 一起进来了。
+         setGitSummary(response.git ?? null);
++        return response.entries;
+       } catch (cause) {
+-        if (revision !== revisionRef.current) return;
++        if (revision !== revisionRef.current) return undefined;
+         setDir({ error: String((cause as Error).message) });
++        return undefined;
+       }
+     },
+     [t],
+@@ -734,6 +743,24 @@ export default function App() {
              await loadDirectory(parent);
            }
            if (revision !== revisionRef.current) return;
 +          // 目录 location（0.9.2）：宿主引用的目录不进文件读取（fm.read 对
 +          // 目录一律 INVALID_PATH）。展开它自己并加载列表——树就是目录的
 +          // 「内容」，所以也不能收起左侧列表：收起了就没有东西可看。
-+          // 判定前父目录列表必须真的在手上：首帧上宿主请求可能先于根列表
-+          // 就绪（ready 只等组与基点，不等列表），直接判会拿到 unknown 而
-+          // 退回文件路径，正好复现这次要修的失败。loadDirectory 幂等，多等
-+          // 一次已加载的目录没有任何额外通道调用。
++          // 判定用 loadDirectory 的**返回值**：directories 状态要等一次渲染
++          // 才落进 dirsRef，异步链里读 ref 是旧的（首帧上根列表经常刚好没
++          // 落地，判成 unknown 又退回文件路径，正好复现这次要修的失败）。
++          // loadDirectory 幂等，已加载的目录不产生额外通道调用。
 +          const parentPath = parents.length > 0 ? parents[parents.length - 1] : "";
 +          if (revision !== revisionRef.current) return;
-+          await loadDirectory(parentPath);
++          const parentEntries = await loadDirectory(parentPath);
 +          if (revision !== revisionRef.current) return;
-+          const targetKind = classifyHostOpenTarget(
-+            relPath,
-+            dirsRef.current.get(parentPath)?.entries,
-+          );
++          const targetKind = classifyHostOpenTarget(relPath, parentEntries);
 +          if (targetKind === "directory") {
 +            setExpanded((prev) => new Set([...prev, relPath]));
 +            persistPrefs({ treeCollapsed: false });
