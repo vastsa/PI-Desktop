@@ -10,4 +10,4 @@
 - [ ] Linked requirement issue / 已关联对应的需求 Issue：`Closes #N` / `Refs #N`
 - [ ] Issue explains the background and the expected outcome / Issue 已说明需求背景和期望效果
 - [ ] UI changes carry a fitting reference: screenshot, sketch, or demo / 涉及 UI 的改动已提供合适的截图、设计参考或 Demo
-- [ ] UI changes include before / after screenshots under `.github/pr-assets/<slug>/` / UI 变更已附修改前后截图
+- [ ] UI changes include before / after screenshots, uploaded to the PR (not committed to the repo) / UI 变更已附修改前后截图（直接上传到 PR，不要提交进仓库）
