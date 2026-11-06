@@ -1,3 +1,5 @@
+import type { HTMLAttributes, Ref } from "react";
+import { useBlockingOverlay } from "../lib/blocking-overlay";
 import { IconClock } from "./icons";
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
 import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
@@ -238,6 +240,12 @@ function compareOptionalDate(
   return descending ? b - a : a - b;
 }
 
+function SidebarPreviewNativeGuard() {
+  // Native views otherwise composite above the floating navigation.
+  useBlockingOverlay();
+  return null;
+}
+
 export function Sidebar({
   onToggleSidebar,
   sidebarToggleShortcut,
@@ -248,6 +256,8 @@ export function Sidebar({
   onResizeCollapse,
   className,
   onAnimationEnd,
+  floating = false,
+  previewProps,
 }: {
   onToggleSidebar: () => void;
   sidebarToggleShortcut: string;
@@ -258,6 +268,8 @@ export function Sidebar({
   onResizeCollapse: () => void;
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
+  floating?: boolean;
+  previewProps?: HTMLAttributes<HTMLElement> & { ref: Ref<HTMLElement> };
 }) {
   const { t, i18n } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
@@ -2553,10 +2565,12 @@ export function Sidebar({
 
   return (
     <aside
-      className={cx("sidebar", "sidebar-surface", className)}
+      {...previewProps}
+      className={cx("sidebar", "sidebar-surface", floating && "is-floating", className)}
       data-window-blur={windowFocused ? undefined : "true"}
       onAnimationEnd={onAnimationEnd}
     >
+      {floating && <SidebarPreviewNativeGuard />}
       <div className="sidebar-header">
         <TooltipButton
           type="button"
@@ -2575,11 +2589,11 @@ export function Sidebar({
             className="icon-btn icon-btn-square"
             tooltip={
               sidebarToggleShortcut
-                ? `${t("nav.collapseSidebar")} (${sidebarToggleShortcut})`
-                : t("nav.collapseSidebar")
+                ? `${t(floating ? "nav.expandSidebar" : "nav.collapseSidebar")} (${sidebarToggleShortcut})`
+                : t(floating ? "nav.expandSidebar" : "nav.collapseSidebar")
             }
-            ariaLabel={t("nav.collapseSidebar")}
-            aria-expanded={true}
+            ariaLabel={t(floating ? "nav.expandSidebar" : "nav.collapseSidebar")}
+            aria-expanded={!floating}
             data-nav="toggle-sidebar"
             onClick={onToggleSidebar}
           >
@@ -2882,6 +2896,7 @@ export function Sidebar({
       ) : null}
       <div
         className={cx("sidebar-resize-handle no-drag", sidebarResizing && "is-resizing")}
+        hidden={floating}
         role="separator"
         aria-orientation="vertical"
         aria-label={t("nav.resizeSidebar")}
