@@ -4,18 +4,24 @@
 
 - **Preconditions**: Synthetic folders/files with spaces, Unicode and XML-significant names.
 - **Steps**: Copy and paste single/multiple folders and mixed files in home and
-  session composers. Remove cards by mouse/keyboard, undo/redo and restore drafts
+  session composers with text on both sides of the caret. Remove cards by
+  mouse/keyboard and restore drafts
   from history. Edit or switch sessions while metadata resolves; delete the owner.
-  Send and steer with folder cards. Repeat ordinary text/image/file pastes.
-- **Expected**: Localized folder cards expose full paths and removal. Selection
+  Send and steer with folder cards, then activate a card in the sent message.
+  Repeat ordinary text/image/file pastes.
+- **Expected**: Folder cards wrap above the text, fit short names and expose
+  full paths and removal. The sent user bubble shows the directory cards and
+  only the user text. Local cards reveal the referenced directory in the
+  system file manager. Selection
   order and source ownership survive, preserving newer edits. Removed cards send
   no hint. Both send paths carry escaped dir markers and one inspect/read-as-needed
   instruction. No directory arrayBuffer, traversal, recursive copy, Project change
   or filesystem grant occurs. Unavailable paths fail without partial references.
 - **Status**: Parser/handler/editor/serialization tests cover deterministic cases.
   `pnpm test:e2e:composer-paste` uses synthetic file-list metadata to verify
-  folder insertion and removal across the Electron preload bridge. Native OS
-  clipboard verification remains a manual scenario.
+  folder placement, removal, transcript rendering and reveal IPC across the
+  Electron preload bridge. Native OS clipboard and file-manager display are
+  manual scenarios.
 
 
 > Scope: MVP acceptance scenarios plus current shipped product increments for PI-Desktop
