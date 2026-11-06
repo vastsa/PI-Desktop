@@ -390,6 +390,8 @@ export const en = {
     slashCommandSourceUnavailable: "Command list unavailable, so nothing was sent. Try again.",
     sessionTranscriptEmpty: "This session's history could not be read. Reopen the session to try again.",
     fileMenu: "File references",
+    mentionGroupAgents: "Agents",
+    mentionGroupFiles: "Files",
     removeFileReference: "Remove file reference {{name}}",
     directoryReference: "Folder",
     directoryPasteUnavailable: "The copied folder's full path is unavailable. Drag the folder into the composer instead.",

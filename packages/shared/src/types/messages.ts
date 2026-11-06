@@ -140,6 +140,8 @@ export type UiMessage = {
   command?: string;
   /** Validated Skill tokens in `command`, using UTF-16 offsets. */
   skillMentions?: Array<{ start: number; end: number; id: string }>;
+  /** Validated `@agent` tokens in `command`, using UTF-16 offsets (ADR 0346). */
+  agentMentions?: Array<{ start: number; end: number; name: string }>;
   toolName?: string;
   toolCallId?: string;
   toolStatus?: "running" | "success" | "error" | "denied";

@@ -385,6 +385,8 @@ export const zhCN = {
     slashCommandSourceUnavailable: "指令列表不可用，消息未发送。请重试。",
     sessionTranscriptEmpty: "无法读取该会话的记录，请重新打开会话后重试。",
     fileMenu: "引用文件",
+    mentionGroupAgents: "智能体",
+    mentionGroupFiles: "文件",
     removeFileReference: "移除文件引用 {{name}}",
     directoryReference: "文件夹",
     directoryPasteUnavailable: "无法获取所复制文件夹的完整路径，请将文件夹拖入输入框。",

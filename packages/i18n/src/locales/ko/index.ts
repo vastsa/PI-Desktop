@@ -399,6 +399,8 @@ export const ko = {
     pluginTriggerMenu: "플러그인 제안",
     messageAttachments: "이 메시지의 첨부 파일",
     fileEmpty: "일치하는 파일 없음",
+    mentionGroupAgents: "에이전트",
+    mentionGroupFiles: "파일",
     fileNoWorkspace: "파일을 참조하려면 프로젝트를 여세요",
     fileTruncated: "일치하는 파일 중 처음 8000개 표시",
     acHint: "↑↓ 선택 · Enter 확인 · Esc 닫기",

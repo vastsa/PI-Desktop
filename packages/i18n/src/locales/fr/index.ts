@@ -390,6 +390,8 @@ export const fr = {
     "pluginTriggerMenu": "Suggestions de plugins",
     "messageAttachments": "Pièces jointes à ce message",
     "fileEmpty": "Aucun fichier correspondant",
+    "mentionGroupAgents": "Agents",
+    "mentionGroupFiles": "Fichiers",
     "fileNoWorkspace": "Ouvrir un projet pour référencer les fichiers",
     "fileTruncated": "Afficher le premier 8000 fichiers correspondants",
     "acHint": "↑↓ sélectionner · Entrer confirmer · Esc fermer",
