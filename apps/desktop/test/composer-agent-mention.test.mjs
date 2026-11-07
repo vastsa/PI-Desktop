@@ -19,6 +19,10 @@ function promptFixture({ mode = "agent", projectPath = null, skills = [], templa
     if (method === "settings.get") return {};
     if (method === "session.get") return { session: { id: "s", projectPath, messages: [] } };
     if (method === "session.beginTurn") return { turnId: "turn-1" };
+    if (method === "session.getTurnMode") {
+      assert.deepEqual(params, { sessionId: "s", turnId: "turn-1" });
+      return { mode };
+    }
     if (method === "session.appendMessage") return {};
     assert.fail(`unexpected RPC ${method}`);
   } };
