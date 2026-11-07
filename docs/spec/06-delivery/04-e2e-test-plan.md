@@ -20341,3 +20341,24 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
+
+#### E2E-ISSUE-small-bug-batch: Browser closure, compaction reopening and settings ownership
+
+- Close a connected BrowserPreview tab, open a replacement in the same session,
+  snapshot/fill/navigate it, and confirm no invisible old tab is recreated.
+  Explicitly addressing a closed tab still fails. Coverage:
+  `browser-background-session.test.mjs`, `scripts/e2e-browser-background.mjs`.
+- Append two messages and a compaction after each, open a bounded tail, restart
+  Host and reopen. The latest checkpoint, context estimate and unchanged request
+  usage survive. Middle pages do not acquire future checkpoints. Coverage:
+  `scripts/e2e-compaction-tail.mjs`, Host `layout_tail_window` regression.
+- Retire a historical model and compact with a known 1M current model. Composer
+  shows 20,619 tokens at 2%; an unknown capacity is approximate. Coverage:
+  `compaction-context-usage.test.mjs`, shared checkpoint model projection tests.
+- Under MCP All with a selected project, create/import/install to that project.
+  Explicit Global remains global; Project without selection refuses writes.
+  Existing editors retain ownership. Coverage: `mcp-market-owner-user-path.test.mjs`.
+- Mark an image model, read the localized chat-exclusion help, collapse Advanced,
+  observe its image-model badge, then unmark and regain chat eligibility.
+  Coverage: `image-model-disclosure-user-path.test.mjs`.
+- Fixtures use isolated profiles and local data, with no real provider requests.

@@ -1278,6 +1278,11 @@ entirely inside the plugin's isolated page:
   or closed targets fail rather than borrowing the visible page. Explicit tab or
   session close, plugin disable, window destruction and app shutdown release pages.
 
+- Closing the connected browser tab clears its connection. The next session-only
+  tool action may connect to that same session's selected replacement page;
+  explicitly addressed closed tabs still fail. Navigation cannot revive a closed
+  connection as an invisible resource tab (#2162).
+
 - Main-frame same-document navigation (fragment links and History API routes) updates
   the browser address, history controls, and loading state without requiring a
   full document load. Subframe events and events from an invalidated session or
@@ -4741,3 +4746,11 @@ introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
+
+### Compacted context capacity (#2164)
+
+While the newest checkpoint estimate supplies Composer occupancy, resolve capacity
+against its recorded provider/model, or the current session's exact binding for
+legacy checkpoints. Last-request provider usage retains its historical identity.
+Unknown capacity uses the 128K fallback with an approximate marker in the window
+value; do not borrow a different route or account's configured capacity.

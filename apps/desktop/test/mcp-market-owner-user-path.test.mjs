@@ -95,7 +95,7 @@ window.mcpMarketOwnerProbe = async () => {
     flushSync(() => root.render(null));
     hasProject = Boolean(project);
     writes = [];
-    const level = filter === "project" ? "project" : "global";
+    const level = filter === "project" || (filter === "all" && project) ? "project" : "global";
     records = otherOwner ? [{ ...entry, label: entry.name, enabled: true,
       level: level === "global" ? "project" : "global", projectPath }] : [];
     useAppStore.setState({ settings, workspace: project ? { path: project, name: "Market Project" } : null });
@@ -134,7 +134,7 @@ window.mcpMarketOwnerProbe = async () => {
 };
 `;
 
-test("MCP market installation follows the explicit filter and keeps All global", {
+test("MCP market installation follows the selected project under All and explicit filters", {
   timeout: 60_000,
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Electron requires a display" : false,
 }, async () => {

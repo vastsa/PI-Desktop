@@ -113,6 +113,18 @@ async function probe(output: string) {
     assert.equal((await host.snapshot("A")).title, "Page A");
     assert.deepEqual(reveals, ["C"]);
     passed.push("unknown and closed sessions cannot fall back to another page");
+
+    host.closeTab("A", "a");
+    host.setChromeSession("A", "replacement");
+    await host.navigate({ url: origin + "/c" }, "A", "replacement");
+    assert.equal((await host.snapshot("A")).title, "Page C");
+    await host.evaluate("document.querySelector('#note').value = 'Replacement draft'", "A");
+    assert.equal(await host.evaluate("document.querySelector('#note').value", "A"), "Replacement draft");
+    assert.equal((await host.navigate({ url: origin + "/a" }, "A"))?.tabId, "replacement");
+    assert.deepEqual(host.getPages("A").map((page) => page.tabId), ["replacement"]);
+    await assert.rejects(host.snapshot("A", "a"), { code: "UNAVAILABLE" });
+    assert.deepEqual(reveals, ["C"]);
+    passed.push("closed connections yield to the replacement page without creating invisible tabs");
     mkdirSync(output, { recursive: true });
     writeFileSync(join(output, "result.json"), JSON.stringify({ ok: true, passed }, null, 2));
     console.log("BROWSER_BACKGROUND " + JSON.stringify({ ok: true, passed }));

@@ -919,6 +919,7 @@ export const de = {
     "imageModelSaveFailed": "Bildmodell konnte nicht gespeichert werden.",
     "clearImageModel": "Löschen",
     "setImageModel": "Als Bildmodell festlegen",
+    imageModelChatExclusionHint: "Markierte Modelle werden nach dem Speichern aus Chat- und Standardmodellmenüs entfernt. Dies ist Bilderzeugung, keine Bildeingabe. Markieren Sie nur Modelle, mit denen Ihr Endpunkt Bilder erzeugen kann.",
     "imageModelSelected": "Ausgewähltes Bildmodell",
     "generatedImage": "Generiertes Bild {{index}}",
     "downloadGeneratedImage": "Herunterladen",
