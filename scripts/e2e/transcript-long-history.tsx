@@ -275,13 +275,35 @@ export async function transcriptLongHistoryProbe() {
     scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight - 240);
     scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
     await settled();
+    const afterLayout = () => new Promise<void>((resolve) => {
+      const observer = new ResizeObserver(() => { observer.disconnect(); resolve(); });
+      observer.observe(element(".thread-content"));
+    });
+    await afterLayout();
+    const viewport = scroller.getBoundingClientRect();
+    const proseSelector = ".prose-chat p, .message-user-text";
+    const readingPoint = [...scroller.querySelectorAll<HTMLElement>(proseSelector)].find((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom;
+    });
+    const readingMessageId = readingPoint?.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+    const readingText = readingPoint?.textContent?.slice(0, 80);
+    assert(readingPoint && readingMessageId && readingText, "visible reading content missing");
+    const readingOffset = readingPoint.getBoundingClientRect().top - viewport.top;
     const readingTop = scroller.scrollTop;
     const readingHeight = scroller.scrollHeight;
     await stream(largest, " reader-stays");
-    assert(Math.abs(scroller.scrollTop - readingTop) < 2,
+    // Layout compensation may move scrollTop; the same readable text must stay put.
+    await afterLayout();
+    const readingRow = scroller.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(readingMessageId)}"]`);
+    const currentPoint = [...(readingRow?.querySelectorAll<HTMLElement>(proseSelector) ?? [])]
+      .find((node) => node.textContent?.startsWith(readingText));
+    assert(currentPoint, "stream removed the visible reading content");
+    const currentOffset = currentPoint.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    assert(Math.abs(currentOffset - readingOffset) < 2,
       `stream stole the reader's scroll position: ${JSON.stringify({
-        before: { top: readingTop, height: readingHeight },
-        after: { top: scroller.scrollTop, height: scroller.scrollHeight },
+        before: { top: readingTop, height: readingHeight, offset: readingOffset },
+        after: { top: scroller.scrollTop, height: scroller.scrollHeight, offset: currentOffset },
         viewport: scroller.clientHeight,
         reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       })}`);
