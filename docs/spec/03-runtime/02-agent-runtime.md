@@ -886,7 +886,8 @@ safety bound, and restored history has a 30 MB aggregate raw-byte budget.
 The newest refs are considered first; all eligible images remain image blocks
 when the history fits, while over-budget or oversized images become safe
 `@path` fallbacks; so do images whose header reports a longest edge above
-8000 px (D675). Every provider request also replaces any image block past that
+8000 px (D675). A pixel-limit rejection does not consume the aggregate byte
+budget, so an older image that still fits is inlined. Every provider request also replaces any image block past that
 pixel limit, in user prompts and tool results alike, with a text notice naming
 its size, so a session that already holds one recovers. An image whose message names it inline (`inlinePath`) is
 spliced back into the prompt at that position, so a restored turn keeps the
