@@ -69,7 +69,10 @@ await host.call("settings.set", {
 await host.stop();
 
 const { appDir, electronBinary } = resolveElectronBinary();
-const port = Number(process.env.PI_SCHEDULED_CDP_PORT || 9378);
+// Port 0 lets Chromium pick a free port, so a leftover Electron from an
+// earlier failed run can never be mistaken for this run's target.
+const requestedPort = Number(process.env.PI_SCHEDULED_CDP_PORT || 0);
+let port = requestedPort || null;
 const env = {
   ...process.env,
   HOME: home,
@@ -81,7 +84,7 @@ const env = {
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(
   electronBinary,
-  [`--remote-debugging-port=${port}`, `--user-data-dir=${join(root, "profile")}`, "."],
+  [`--remote-debugging-port=${requestedPort}`, `--user-data-dir=${join(root, "profile")}`, "."],
   { cwd: appDir, env, stdio: ["ignore", "pipe", "pipe"] },
 );
 let output = "";
@@ -90,12 +93,14 @@ child.stdout.on("data", (data) => {
 });
 child.stderr.on("data", (data) => {
   output += data;
+  port ??= Number(/DevTools listening on ws:\/\/[^:]+:(\d+)\//.exec(output)?.[1]) || null;
 });
 let ws;
 try {
   let target;
   await waitFor(
     async () => {
+      if (!port) return false;
       try {
         target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(
           (entry) =>
@@ -249,7 +254,9 @@ try {
   assert.ok(await evaluate(`document.body.innerText.includes('Auto can run restricted actions')`));
   await click(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-chip').getAttribute('aria-label')`), 'button[aria-haspopup]', true);
   await waitFor(() => evaluate(`!!document.querySelector('.composer-model-menu.is-open .composer-menu-root')`), 5000, "measured root menu");
-  await evaluate(`document.querySelector('.composer-menu-root .composer-menu-entry').click()`);
+  // The picker is flat since 4a0c49915: model search sits on the root menu
+  // rather than behind a submenu entry, so the user clicks straight into it.
+  await click("Search models", ".composer-menu-root .composer-model-search input", true);
   await waitFor(() => evaluate(`document.activeElement?.getAttribute('aria-label') === 'Search models'`), 5000, "model search focus");
   await fill('.composer-model-search input', 'fixture-alt');
   await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-option').length === 1`), 5000, "filtered model");
@@ -332,13 +339,13 @@ try {
   await click("Edit task");
   assert.equal(await evaluate(`document.querySelector('button[aria-label="Select project"]').textContent.trim()`), "project-alt");
   assert.equal(await evaluate(`document.querySelector('button[aria-label="Permission mode"]').textContent.trim()`), "Auto");
-  assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-model').textContent.trim()`), "fixture-alt");
+  assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-model').textContent.trim()`), "Scheduled alternate model · fixture-alt");
   assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-level').textContent.trim()`), "high");
   await click(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-chip').getAttribute('aria-label')`), 'button[aria-haspopup]', true);
   await waitFor(() => evaluate(`!!document.querySelector('.composer-model-menu.is-open')`), 5000, "composer model menu");
   await screenshot("after-model-menu.png");
-  await evaluate(`document.querySelector('.composer-menu-root .composer-menu-entry').click()`);
-  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-search')`), 5000, "shared model submenu");
+  await click("Search models", ".composer-menu-root .composer-model-search input", true);
+  await waitFor(() => evaluate(`document.activeElement?.getAttribute('aria-label') === 'Search models'`), 5000, "shared model search on the root menu");
   await screenshot("after-model-search.png");
   await key("Escape", 27);
   await choose("Cadence", "Weekly");
@@ -485,7 +492,15 @@ try {
   throw error;
 } finally {
   ws?.close();
-  child.kill();
+  // SIGTERM reaches before-quit, which may hold the app open behind the quit
+  // confirmation; force the exit so a failed run never leaks an instance.
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill();
+    const exited = once(child, "exit");
+    const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+    await exited;
+    clearTimeout(timer);
+  }
   server.close();
   // Preserve this uniquely named fixture profile for diagnosing failures.
 }
