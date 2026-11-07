@@ -1,5 +1,22 @@
 # 04. E2E Test Plan
 
+## E2E-PROVIDER-DASHSCOPE-terminal-parameter-error
+
+- **Preconditions:** Isolated Agent runtime and a synthetic OpenAI-compatible
+  provider; no real credentials or user history.
+- **Steps:** Submit a prompt. Return HTTP 200 with a streamed provider error
+  whose message starts `InvalidParameter: <400>` and reports repetitive tool
+  calls. Also exercise 400/422, authentication, 429 and 5xx envelopes through
+  the shared classifier.
+- **Expected:** The 400 error ends the turn as non-retriable `PROVIDER_ERROR`
+  with provider status 400, without another provider request or retry backoff.
+  The HTTP 200 transport does not override the embedded error status.
+  Authentication stays terminal; throughput limits and 5xx remain retriable.
+  Structured status takes precedence and prose numbers are ignored.
+- **Automated coverage:** `agent-errors.test.ts` and `provider-retry.test.ts`.
+- **Specs:** `03-runtime/08-error-codes.md` §3.2.
+
+
 ## E2E-TASK-DOCK-tab-content-isolation
 
 - **Preconditions:** Isolated Electron renderer with synthetic todos and a running
@@ -20391,6 +20408,7 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 - Specs: ADR 0043; runtime RPC/storage specs; component spec Round review reader.
 - Milestone: maintenance. Traceability: acceptance criteria 1–9 of the approved
   native round-review enhancement map to this scenario and the tests above.
+
 ### E2E-TOOLS-session-background-jobs
 
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
@@ -20503,3 +20521,23 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   and [autonomous lifecycle](../../adr/autonomous-goal-lifecycle.md).
 - **Store generated evidence in `PI_SCRATCH_DIR` and attach it to the PR, never
   commit process galleries. Record the candidate/base revisions and exact checks.
+
+### E2E-GOAL-permission-policy-foundation
+
+- **Steps**: Run the host permission tests and
+  `goal_authorization_reuses_the_durable_contract_mode_hard_deny`. Configure a
+  legacy Goal with Auto, then send a native Write with a caller-claimed Agent
+  mode. Compare Agent/Plan/Goal membership with absent, empty and nonempty
+  plan-safe plugin actions; check Ask and external-path approval independently.
+- **Expected**: Host-selected Contract membership still rejects legacy Goal
+  Write/Edit and unsafe plugins before risk, Auto, session grants and scratch
+  exceptions. The spoofed caller mode cannot widen it. Agent membership alone
+  does not approve a high-risk or external-path operation. No Goal lifecycle,
+  schema migration, runtime continuation or UI is enabled by this foundation.
+- **Specs**: [Goal execution permission policy](../../adr/goal-execution-permission-policy.md).
+- **Real process**: With candidate packages built, run
+  `scripts/e2e-goal-permission-policy.mjs` against the candidate Host using
+  isolated scratch/data/agents directories. It checks actual file creation for
+  Agent and no file creation for Plan/legacy Goal while spoofing caller mode.
+  The dependent feature invokes the same fixture with
+  `--autonomous-goal-policy` to assert its explicit Host policy integration.
