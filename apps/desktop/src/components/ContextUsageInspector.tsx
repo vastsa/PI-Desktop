@@ -38,6 +38,7 @@ export function ContextUsageInspector({
   usage,
   turnUsage,
   contextWindow,
+  contextWindowEstimated = false,
   tools,
   responseDurationMs,
   responseOutputTokens,
@@ -47,6 +48,7 @@ export function ContextUsageInspector({
   usage: MessageUsage;
   turnUsage: MessageUsage;
   contextWindow: number;
+  contextWindowEstimated?: boolean;
   tools: UiMessage[];
   responseDurationMs?: number;
   responseOutputTokens?: number;
@@ -335,7 +337,7 @@ export function ContextUsageInspector({
         <strong>
           {t("chat.usageContextTokens", {
             used: formatCompactTokenCount(context.usedTokens),
-            window: formatCompactTokenCount(contextWindow),
+            window: `${contextWindowEstimated ? "≈ " : ""}${formatCompactTokenCount(contextWindow)}`,
           })}
         </strong>
         <span className="context-inspector-window-percent">
