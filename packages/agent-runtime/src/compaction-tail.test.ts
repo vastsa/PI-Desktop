@@ -174,6 +174,55 @@ describe("selectRecentTail", () => {
     ]);
   });
 
+  it("bounds assistant thinking so a retained tail can fit the budget", () => {
+    const thinking = "t".repeat(20_000);
+    const message = {
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking, thinkingSignature: "sig-original" },
+        { type: "text", text: "ship the fix" },
+      ],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      usage,
+      stopReason: "stop",
+      timestamp: 2,
+    } as AgentMessage;
+
+    const tail = selectRecentTail([message], 80);
+
+    expect(tail).toHaveLength(1);
+    const content = (tail[0] as { content: Array<Record<string, unknown>> }).content;
+    const thinkingBlock = content.find((block) => block.type === "thinking");
+    const textBlock = content.find((block) => block.type === "text");
+    expect(thinkingBlock?.thinking).toEqual(
+      expect.stringContaining(CHECKPOINT_TRUNCATION_MARKER.trim()),
+    );
+    expect((thinkingBlock?.thinking as string).length).toBeLessThan(thinking.length);
+    expect(thinkingBlock).not.toHaveProperty("thinkingSignature");
+    expect(textBlock).toMatchObject({ type: "text", text: "ship the fix" });
+    expect(estimateTokens(tail[0]!)).toBeLessThanOrEqual(80);
+  });
+
+  it("keeps a signed thinking block that already fits the tail", () => {
+    const message = {
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "short plan", thinkingSignature: "sig-kept" },
+        { type: "text", text: "done" },
+      ],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      usage,
+      stopReason: "stop",
+      timestamp: 2,
+    } as AgentMessage;
+
+    expect(selectRecentTail([message], 10_000)[0]).toBe(message);
+  });
+
   it("returns an empty tail when only tool results remain", () => {
     // Neither a bare result nor a bare tool call is a message a provider
     // accepts, so there is nothing this path can keep.
