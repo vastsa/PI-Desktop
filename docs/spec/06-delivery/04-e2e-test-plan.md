@@ -1,5 +1,22 @@
 # 04. E2E Test Plan
 
+## E2E-PROVIDER-DASHSCOPE-terminal-parameter-error
+
+- **Preconditions:** Isolated Agent runtime and a synthetic OpenAI-compatible
+  provider; no real credentials or user history.
+- **Steps:** Submit a prompt. Return HTTP 200 with a streamed provider error
+  whose message starts `InvalidParameter: <400>` and reports repetitive tool
+  calls. Also exercise 400/422, authentication, 429 and 5xx envelopes through
+  the shared classifier.
+- **Expected:** The 400 error ends the turn as non-retriable `PROVIDER_ERROR`
+  with provider status 400, without another provider request or retry backoff.
+  The HTTP 200 transport does not override the embedded error status.
+  Authentication stays terminal; throughput limits and 5xx remain retriable.
+  Structured status takes precedence and prose numbers are ignored.
+- **Automated coverage:** `agent-errors.test.ts` and `provider-retry.test.ts`.
+- **Specs:** `03-runtime/08-error-codes.md` §3.2.
+
+
 ## E2E-TASK-DOCK-tab-content-isolation
 
 - **Preconditions:** Isolated Electron renderer with synthetic todos and a running
