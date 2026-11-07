@@ -2262,6 +2262,8 @@ sklm: {
       reviewScope: "Review scope",
       reviewSettings: "Review settings",
       wordWrap: "Word wrap",
+      expandAll: "모두 펼치기",
+      collapseAll: "모두 접기",
       contextDisplay: "Context lines",
       fileActions: "파일 작업",
       openInternal: "내부에서 열기",

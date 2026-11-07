@@ -1,3 +1,6 @@
+import { TurnChangesCard } from "../../apps/desktop/src/features/chat/transcript/TurnChangesCard";
+import { SlotSessionProvider } from "../../apps/desktop/src/plugins/renderer-slots/use-slots";
+import { currentReviewFocusRequest } from "../../apps/desktop/src/lib/review-focus-request";
 // Production UI and store; only the external IPC transport and input data are fixtures.
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -11,6 +14,7 @@ import { ReviewTab } from "../../apps/desktop/src/components/workpanel/ReviewTab
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 import { requestReviewFocus } from "../../apps/desktop/src/lib/review-focus-request";
 import type { SessionSummary, UiMessage } from "@pi-desktop/shared";
+import { HighlightedCode } from "../../apps/desktop/src/components/Markdown";
 
 declare global {
   interface Window {
@@ -45,6 +49,44 @@ function assertDisclosureFollowsFilename(header: HTMLElement) {
   const visibleTextRight = Math.min(path.getBoundingClientRect().right, text.getBoundingClientRect().right);
   const gap = header.querySelector('.review-file-disclosure')!.getBoundingClientRect().left - visibleTextRight;
   assert(gap >= 5 && gap <= 7, `Disclosure immediately follows the visible filename: gap=${gap}`);
+}
+async function checkReviewSyntaxParity() {
+  const line = () => document.querySelector<HTMLElement>('.review-change-diff .diff-line.add .diff-line-text');
+  await until(() => (line()?.querySelectorAll(':scope > span[style]').length ?? 0) > 2, 'Captured TypeScript diff lazily acquires syntax tokens');
+  const source = line()!.textContent!;
+  const reference = document.createElement('div');
+  reference.style.cssText = 'position:fixed;left:-10000px;top:0';
+  document.body.append(reference);
+  const referenceRoot = createRoot(reference);
+  const rootTheme = document.documentElement.dataset.theme;
+  const snapshot = (node: HTMLElement) => [...node.children].map(token => {
+    const style = getComputedStyle(token);
+    return { text: token.textContent, color: style.color, fontStyle: style.fontStyle, fontWeight: style.fontWeight, decoration: style.textDecorationLine };
+  });
+  let firstPalette = '';
+  try {
+    flushSync(() => referenceRoot.render(<HighlightedCode code={source} lang="ts" />));
+    for (const theme of ['light', 'dark']) {
+      document.documentElement.dataset.theme = theme;
+      await until(() => {
+        const actual = snapshot(line()!), expected = snapshot(reference);
+        return actual.length > 2 && JSON.stringify(actual) === JSON.stringify(expected)
+          && (theme === 'light' || JSON.stringify(actual) !== firstPalette);
+      }, 'Review token colors/styles match ordinary code and react to the active theme');
+      const actual = snapshot(line()!);
+      if (theme === 'light') firstPalette = JSON.stringify(actual);
+      assert(new Set(actual.map(token => token.color)).size > 1, 'Syntax uses more than one text color');
+      assert(line()!.textContent === source, 'Coloring does not change captured code text');
+      assert([...line()!.children].every(token => getComputedStyle(token).backgroundColor === 'rgba(0, 0, 0, 0)'), 'Tokens do not paint over diff backgrounds');
+      assert(getComputedStyle(line()!.parentElement!).backgroundColor !== 'rgba(0, 0, 0, 0)', 'Addition row keeps its existing diff fill');
+      assert(line()!.parentElement!.querySelectorAll('.review-line-number').length === 1, 'Syntax does not add a line-number column');
+    }
+  } finally {
+    if (rootTheme === undefined) delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = rootTheme;
+    referenceRoot.unmount(); reference.remove();
+  }
+  await until(() => JSON.stringify(snapshot(line()!)) === firstPalette, 'Restored light theme reaches Review before remaining interaction checks');
 }
 function checkSelectStyle(node: HTMLSelectElement) {
   assert(node?.classList.contains('field-select'), 'Review restores the shared native Select');
@@ -112,15 +154,37 @@ async function contextLines(lines: 1 | 3 | 5, expected?: 1 | 3 | 5) {
 }
 const headers = () => [...document.querySelectorAll<HTMLButtonElement>(".review-history-file-header")];
 const scroller = () => document.querySelector<HTMLElement>(".review-scroll")!;
+async function bulkMenu(expected: "全部展开" | "全部收起", disabled = false) {
+  const trigger = document.querySelector<HTMLButtonElement>(".review-settings-button")!;
+  trigger.focus({ preventScroll: true }); trigger.click();
+  await until(() => !!document.querySelector('.context-menu.is-open') && document.activeElement?.hasAttribute('data-context-menu-root-item') === true, `Settings menu opens and focuses its first item (${expected}, disabled=${disabled}, files=${headers().map(node => node.textContent).join('|')})`);
+  const item = document.querySelector<HTMLButtonElement>('[data-context-menu-item="review-toggle-all"]');
+  assert(item, "Review settings includes a bulk expand/collapse action");
+  assert(item.textContent === expected && item.disabled === disabled, "Bulk label follows actual visible file expansion");
+  assert(item.getAttribute('role') === 'menuitem' && !item.hasAttribute('aria-checked') && !item.querySelector('.context-menu-check'), "Bulk action has neither a toggle role nor a trailing check");
+  assert(document.querySelector('[data-context-menu-item="review-wrap"]')?.getAttribute('role') === 'menuitemcheckbox', "Word wrap retains its checked menu semantics");
+  return item;
+}
+async function bulkClick(expected: "全部展开" | "全部收起") {
+  (await bulkMenu(expected)).click();
+  await until(() => !document.querySelector('.context-menu'), "Bulk action closes the shared menu");
+}
+function assertAllFilesOpen(open: boolean) {
+  const nodes = headers();
+  assert(nodes.length > 0, "Bulk assertions require a nonempty file list");
+  assert(nodes.every(node => node.getAttribute('aria-expanded') === String(open)), "All visible file disclosures match the bulk action");
+}
 async function ready() { await until(() => document.querySelector(".review-history")?.getAttribute("aria-busy") === "false", "Review read must settle"); assert(!document.querySelector('[role="alert"]'), document.querySelector('[role="alert"]')?.textContent ?? "Review error"); }
-async function mount(session: SessionSummary, wait = true) {
+async function mount(session: SessionSummary, wait = true, tools: readonly UiMessage[] = []) {
   useAppStore.setState({ activeSessionId: session.id, sessions: [session], messages: [], isRunning: false });
-  flushSync(() => root.render(<main className="fixture"><p className="fixture-label">受控测试数据 · 原生审阅实现预览</p><div className="fixture-panel"><ReviewTab /></div></main>));
+  flushSync(() => root.render(<main className="fixture"><p className="fixture-label">受控测试数据 · 原生审阅实现预览</p>
+    {tools.length > 0 && <SlotSessionProvider sessionId={session.id}><TurnChangesCard tools={tools} /></SlotSessionProvider>}
+    <div className="fixture-panel"><ReviewTab /></div></main>));
   if (wait) await ready();
 }
 window.reviewProbe = async () => {
   const checks: string[] = [];
-  const seed = await action("seed") as { session: SessionSummary; other: SessionSummary; round: string; latest: string; firstSnapshot: string; late: UiMessage };
+  const seed = await action("seed") as { session: SessionSummary; other: SessionSummary; populated: SessionSummary; round: string; latest: string; firstSnapshot: string; late: UiMessage };
   await mount(seed.session);
   await contextLines(3, 3);
   assert(headers().some(node => node.textContent?.includes("latest.txt")), "Latest ignores the newer no-edit conversation");
@@ -206,6 +270,31 @@ window.reviewProbe = async () => {
   assert(!headers().some(header => header.textContent?.includes("zero-preview.txt")), "Both-zero file is absent from Review");
   assert(document.querySelector('.review-summary')?.textContent === '3 个文件', 'Five records across four paths must report only the three positive-counter files');
   checks.push("zero-counter-file-hidden-without-losing-native-evidence");
+  assertAllFilesOpen(false);
+  await bulkClick("全部展开"); assertAllFilesOpen(true);
+  useAppStore.setState({ isRunning: true }); await ready(); assertAllFilesOpen(true);
+  useAppStore.setState({ isRunning: false }); await ready(); assertAllFilesOpen(true);
+  headers()[1].click(); await frame();
+  assert(headers()[1].getAttribute('aria-expanded') === 'false' && headers()[0].getAttribute('aria-expanded') === 'true', "Single-file collapse creates a mixed state");
+  const bulk = await bulkMenu("全部收起");
+  await action('key', 'End');
+  await until(() => document.activeElement === bulk, "Shared keyboard navigation reaches the bulk action");
+  await action('key', 'Return');
+  await until(() => !document.querySelector('.context-menu'), "Enter activates and dismisses the bulk menu");
+  assertAllFilesOpen(false);
+  assert(document.activeElement === document.querySelector('.review-settings-button'), "Menu activation restores trigger focus");
+  checks.push('bulk-open-all-mixed-collapse-all-and-keyboard-menu-semantics');
+  headers()[0].click(); await frame();
+  await bulkClick("全部收起"); assertAllFilesOpen(false);
+  headers()[0].click(); await frame(); headers()[0].click(); await frame();
+  await bulkMenu("全部展开"); await action('key', 'Escape');
+  await until(() => !document.querySelector('.context-menu'), "Escape cancels without changing file disclosures");
+  assertAllFilesOpen(false);
+  checks.push('bulk-label-tracks-single-file-and-last-manual-collapse');
+  headers()[0].click(); await frame();
+  await choose("对话轮次", seed.latest); await ready(); assertAllFilesOpen(false);
+  await choose("对话轮次", seed.round); await ready(); assertAllFilesOpen(false);
+  checks.push('bulk-state-preserved-on-refresh-not-retained-across-rounds');
   const selected = document.querySelector<HTMLElement>('.review-round-selected selectedcontent')!;
   await until(() => selected?.textContent?.includes('+7') === true, 'Native selectedcontent reflects the chosen round');
   const time = selected.querySelector<HTMLElement>('.review-turn-time')!, counts = selected.querySelector<HTMLElement>('.review-turn-counts')!;
@@ -252,6 +341,8 @@ window.reviewProbe = async () => {
   await until(() => getComputedStyle(headers()[0].querySelector('.review-file-disclosure')!).visibility === 'hidden', 'Non-hovered disclosure disappears without consuming new space');
   checks.push('file-count-closed-select-layout-and-reserved-scrollbar');
   checks.push('one-file-one-copy-and-rollback-no-record-titles');
+  await checkReviewSyntaxParity();
+  checks.push('review-syntax-matches-regular-code-light-dark-without-layout-or-text-changes');
   assert(!document.querySelector(".review-history-root"), "No extra execution-root row in the diff");
   for (const row of document.querySelectorAll('.review-change-diff .diff-line:not(.hunk)')) {
     assert(row.querySelectorAll('.review-line-number').length === 1, 'Inline diff has exactly one line-number gutter');
@@ -322,14 +413,35 @@ window.reviewProbe = async () => {
   assert(headers().some(node => node.textContent?.includes("latest.txt")), "Late old delegate does not take over Latest");
   await action("restart");
   await mount(seed.other); assert(headers().length === 0, "Other session has no leaked files");
+  await bulkMenu("全部展开", true); await action('key', 'Escape');
+  await until(() => !document.querySelector('.context-menu'), "Empty-list menu dismisses without leaked state");
   await contextLines(1, 5);
   flushSync(() => root.render(null));
   await mount(seed.other); await contextLines(1, 1);
   await mount(seed.session); assert(headers().some(node => node.textContent?.includes("latest.txt")), "Persisted history survives restart");
   await contextLines(1, 1);
+  await bulkMenu("全部展开");
   requestReviewFocus([seed.firstSnapshot], { expand: true, sessionId: seed.session.id }); await ready();
   await until(() => headers()[0]?.getAttribute("aria-expanded") === "true", "Chat file request finds old round and expands file");
   checks.push("late-delegate-session-isolation-restart-and-focus");
+  const focusedAction = document.querySelector('[data-context-menu-item="review-toggle-all"]');
+  if (focusedAction) assert(focusedAction.textContent === "全部收起", "An open menu follows focus-driven expansion");
+  // Scroll events dismiss menus before the rendering-frame phase. A task yield alone is not that boundary.
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  if (document.querySelector('.context-menu')) {
+    await action('key', 'Escape');
+    await until(() => !document.querySelector('.context-menu'), "Focus-driven bulk label menu dismisses");
+  }
+  await bulkClick("全部收起"); assertAllFilesOpen(false);
+  await frame(); assertAllFilesOpen(false);
+  await action('holdReads');
+  requestReviewFocus([seed.firstSnapshot], { expand: true, sessionId: seed.session.id });
+  await action('readBlocked'); await action('releaseReads'); await ready();
+  await until(() => headers()[0]?.getAttribute('aria-expanded') === 'true', "A new focus request can reopen after bulk collapse");
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  await bulkMenu("全部收起"); await action('key', 'Escape');
+  await until(() => !document.querySelector('.context-menu'), "Focused-file menu dismisses");
+  checks.push('bulk-collapse-overrides-consumed-focus-new-focus-still-expands');
   await until(() => document.querySelector('.review-change-diff')?.textContent?.includes('line_029') === true && !document.querySelector('.review-change-card-body-content [role="status"]'), 'Remembered one-line context reaches the actual diff');
   assert(!document.querySelector('.review-change-diff')?.textContent?.includes('line_028'), 'Remembered context does not expand to three or five lines');
   checks.push('global-context-choice-survives-session-switch-and-panel-reopen');
@@ -339,6 +451,8 @@ window.reviewProbe = async () => {
   await action("holdReads");
   await mount(seed.session, false);
   await action("readBlocked");
+  await bulkMenu("全部展开", true); await action('key', 'Escape');
+  await until(() => !document.querySelector('.context-menu'), "Loading-list bulk action stays disabled");
   await mount(seed.other, false);
   await action("releaseReads"); await ready();
   assert(headers().length === 0, "An old session read cannot populate the new session");
@@ -361,11 +475,34 @@ window.reviewProbe = async () => {
   checks.push('single-file-action-rolls-back-entire-chain');
   // Presentation-only fixture: this does not claim outside-workspace capture.
   const outside = { ...groupReviewFiles([{ message: seed.late }])[0], root: undefined, path: '/outside/deep/review-open-tests-source.mjs' };
-  flushSync(() => root.render(<ReviewHistoryFile file={outside} sessionId={seed.session.id} context={3} disabled={false} onChanged={() => {}} />));
+  flushSync(() => root.render(<ReviewHistoryFile file={outside} sessionId={seed.session.id} context={3} open={false} onOpenChange={() => {}} disabled={false} onChanged={() => {}} />));
   assert(document.querySelector('.review-change-card-path')?.textContent === '.../review-open-tests-source.mjs', "Absolute file labels hide directory prefixes");
   assert(headers()[0].title === outside.path, "Full source path remains available in title");
   checks.push('outside-path-display-only-basename-and-full-title');
   await mount(seed.session); await contextLines(1);
+  // Visit B, click A's real transcript summary, then return to B without a new focus request.
+  await mount(seed.populated);
+  assert(headers().length === 1 && headers()[0].textContent?.includes('other-session.txt'), "Current session initially shows its own recorded file");
+  await mount(seed.session, true, [seed.late]);
+  document.querySelector<HTMLButtonElement>('.turn-changes-head')!.click();
+  await until(() => document.querySelector('.turn-changes-head')?.getAttribute('aria-expanded') === 'true', "The real turn summary expands");
+  await action('holdReads');
+  document.querySelector<HTMLButtonElement>('.turn-changes-row')!.click();
+  await action('readBlocked'); await action('releaseReads'); await ready();
+  await until(() => headers().some(node => node.textContent?.includes('long.ts') && node.getAttribute('aria-expanded') === 'true'), "The real summary opens and expands its originating file");
+  const sourceFocus = currentReviewFocusRequest();
+  await mount(seed.populated);
+  const returnedFiles = headers().map(node => node.querySelector('.review-change-card-path')?.textContent);
+  const returnedTotals = select('对话轮次')?.selectedOptions[0]?.querySelector('.review-turn-counts')?.textContent;
+  await mode(false); await ready(); await mode(true); await ready();
+  const afterScopeCycle = headers().map(node => node.querySelector('.review-change-card-path')?.textContent);
+  console.log('REVIEW_SELECTION_SWITCH ' + JSON.stringify({ returnedFiles, returnedTotals, afterScopeCycle, requestSession: sourceFocus?.sessionId }));
+  assert(returnedFiles.length === 1 && returnedFiles[0] === 'other-session.txt', "Returning to a populated session must not show an empty list beneath another session's stale focus");
+  assert(JSON.stringify(returnedFiles) === JSON.stringify(afterScopeCycle), "Last round / History cycling must not repair a missing initial file list");
+  assert(sourceFocus?.sessionId === seed.session.id, "The transcript summary binds focus to its owning session");
+  assert(select('对话轮次').selectedOptions[0]?.querySelector('.review-turn-counts')?.textContent === '+1 −0', "The selected history counts agree with the visible current-session file");
+  checks.push('real-turn-summary-focus-is-scoped-across-returning-session-and-history-cycle');
+  await mount(seed.session);
   return { checks };
 };
 

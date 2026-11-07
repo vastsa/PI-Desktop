@@ -4665,7 +4665,10 @@ instructions, memory and OAuth dialogs retain their existing bounded layouts.
 
 Local Review defaults to Last round (the latest modified user round). Its
 scope dropdown also offers History, which reveals a separate user-round selector row,
-independent of the chat's loaded message window. Rounds without changes do not
+independent of the chat's loaded message window. Transcript summary focus requests
+carry their originating session; switching back to another conversation cannot
+replay that request there or empty its file list beneath a populated history option.
+Rounds without changes do not
 replace Latest. Main and delegated Write/Edit evidence share a file list; actual
 execution roots distinguish identically named files. The file header opens all
 of that file's recorded operations in order, without claiming a net diff.
@@ -4679,7 +4682,15 @@ Expanded file content has no fixed-height inner viewport or vertical scrollbar.
 The outer Review scroll reserves its vertical scrollbar gutter before overflow
 and owns vertical travel; the current file header sticks
 below the toolbar within its file section. It is not reordered. A borderless ellipsis button after the summary totals opens a menu containing
-only Word wrap and Context lines. Hovering Context lines opens a secondary
+Word wrap, Context lines, and a plain Expand all / Collapse all action with no
+trailing check. Any expanded visible file makes the action Collapse all;
+only an entirely collapsed list makes it Expand all. It controls the same
+per-file state as header clicks and focus requests, and closes the menu on
+activation using its existing pointer/keyboard and focus-restoration behavior.
+The action is disabled while loading, on read errors, or with no visible files.
+Same-round refreshes preserve file choices; removed rows and changed rounds
+reset them, and session isolation and default-collapsed behavior are unchanged.
+Hovering Context lines opens a secondary
 menu with 1/3/5 (first-use default 3); the choice is profile-wide, remembered
 across sessions, panel reopening and application restarts. Invalid or missing
 preferences use 3, and unavailable storage never blocks the current selection.
@@ -4736,5 +4747,16 @@ rows omit the separate add/delete sign column but retain change backgrounds and
 summary signs; chat inline rows are unchanged. Word wrap toggles wrapping without
 introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
+Expanded local Review code reuses ordinary code blocks' Shiki grammars, token
+styles, lazy loading and one-light / one-dark-pro themes, selected by the existing
+file-name language resolver and active appearance. Each captured hunk tokenizes
+before (context + deleted) and after (context + added) separately; deleted lines
+use before tokens, others use after tokens. Hunk headers and EOF markers remain
+plain. Only captured snippets supply context; coloring never reads current disk.
+Unknown/unready languages and snippets over the existing 100,000-code-unit,
+800-line or 2,000-code-unit-per-line budgets retain complete escaped plain text.
+Only text ink changes: diff backgrounds, numbering, wrapping, selection, copy,
+rollback and shared code-block defaults are unchanged. Inline/remote diffs do
+not opt into highlighting or grammar loading.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
