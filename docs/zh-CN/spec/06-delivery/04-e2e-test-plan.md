@@ -27,6 +27,20 @@ replacement exposes Retry; retry success mounts the editor. Old responses must
 not overwrite recovered options. Successful options remain lazy rather than
 being fetched on every subsequent poll.
 
+## E2E-SIDEBAR-upgrade-layout-recovery
+
+- In an isolated profile, retain two synthetic Projects and organize metadata.
+  Close one Project and restart with the same app data root but fresh Chromium
+  storage. Restore the retained Project and metadata; keep the closed tab closed.
+- Migrate a valid legacy cache, including an empty list. If neither copy is valid,
+  recover the Host catalog once; preserve subsequent explicit closes.
+- Reject secondary-renderer/subframe IPC and oversized/invalid writes. Preserve
+  unreadable backups, newer user edits, and the last good file on failure.
+- Relocate internal retained paths and metadata keys without changing external
+  paths, display names or the source profile.
+- Automated path: `node scripts/e2e-sidebar-recovery.mjs`, plus the sidebar backup,
+  recovery, bootstrap and offline relocation regression tests.
+
 > **翻译说明：** 本页是与 [英文源规格](/spec/06-delivery/04-e2e-test-plan) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
