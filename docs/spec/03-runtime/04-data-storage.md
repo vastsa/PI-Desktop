@@ -1630,6 +1630,11 @@ prefix length those offsets describe. Serving a window seeks to its first
 selected line instead of parsing the history in front of it, so the common
 cached read is proportional to the requested page. Consequences:
 
+- A bounded tail page includes checkpoints appended after its last message,
+  so reopening a just-compacted session returns the newest checkpoint and its
+  context estimate. Middle pages retain the active checkpoint and only those
+  within their message offsets; they do not load the complete chain (#2163).
+
 - The layout is derived data, cached in memory and, when reliable file identity
   is available, in the sibling `<sessionId>.jsonl.layout` file. Unix uses the
   device and inode; Windows uses the volume serial number and file ID. If the

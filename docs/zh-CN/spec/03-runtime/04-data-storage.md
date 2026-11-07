@@ -1484,3 +1484,8 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+### 末尾压缩检查点读取（#2163）
+
+有界末尾页包含最后一条消息之后追加的压缩记录，重新打开或重启后立即返回
+最新检查点和上下文估算。历史中间页只保留生效的检查点及页内记录，不读取全链。

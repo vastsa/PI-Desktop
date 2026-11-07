@@ -4741,3 +4741,7 @@ introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
+
+### Issue #2162 correction
+
+Closing the connected Browser tab clears its connection. Subsequent session-only tools use that session's selected replacement page. Explicit closed targets fail; navigation never revives an invisible old tab. Verify close/reopen/snapshot/fill/click/navigate and final closure with `browser-background-session.test.mjs` and `BROWSER_CLOSE_CONNECTION_ONLY=1 node scripts/e2e-browser-background.mjs`.
