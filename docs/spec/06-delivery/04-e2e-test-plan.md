@@ -11033,6 +11033,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | C / Quality — Continue after malformed tool output | E2E-RUNTIME-malformed-tool-call-continue-recovery |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
+| C / E / Quality — Subagent delegation catalog on the Models page | [E2E-269](#e2e-269-models-page-states-and-edits-the-subagent-delegation-catalog) |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice four-stage interaction | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
@@ -19607,6 +19608,60 @@ host-created files. The full app's file-preview viewer is covered separately.
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
 
+- **Preconditions**: Two AI services are configured and enabled with
+  credentials, the first with two models and the second with one; exactly one
+  model carries "Available for AI delegation". A third, plugin-declared service
+  publishes one model, and one vendor subscription is signed in twice with the
+  same model on both logins. A parent Agent-mode session can delegate a task.
+- **Steps**:
+  1. Open Settings → Models and read the **Subagent models** row at the bottom:
+     the opted-in models as chips, everything else inside the dialog.
+  2. Press **Edit** and read the dialog's list.
+  3. Open the second service's model editor from that list's Advanced action, tick
+     "Available for AI delegation", save, and re-read both surfaces.
+  4. Start a parent turn and inspect the delegation model summary the Task tool
+     receives.
+  5. Return to the dialog, remove that model with its × action, and re-read both
+     surfaces.
+  6. Remove every opted-in model, read the dialog's empty state, and use one of
+     its buttons to reach a service editor and tick a model.
+  7. Read the plugin-declared service's row in the dialog, and a row whose service
+     is switched off.
+  8. Opt in the same model id on both services, and on both logins of the vendor.
+  9. Remove a model while the write is slow (throttle the host or use a long model
+     list) and press Advanced, Close, the backdrop and Escape meanwhile.
+- **Expected**: The row shows one line of chips that never takes more than 60% of
+  the row, with the overflow collapsed into `+N`, and each chip's tooltip and
+  accessible name carry `service · model`. A model joins only through its own
+  editor's tick. Adding writes `availableForSubagents` on that service's binding
+  and the next parent turn lists the model in the delegation catalog; removing it
+  drops the model from the catalog and leaves no `false` behind on the stored
+  binding. Two services publishing the same model id keep their service name in
+  the chip, and the two logins of one vendor stay distinguishable by account, so
+  one chip never stands for two chosen models. The empty state names one service
+  per button and that button opens the service's model editor. A service that is
+  off or holds no credential keeps its listed models visible and removable,
+  annotated with the reason they are idle, while its models stay out of the
+  catalog. A plugin-declared service offers neither Advanced nor a remove control
+  and says the plugin manages it; a row whose service disappeared says so instead
+  of closing the dialog silently. While a removal is in flight, Advanced, Close,
+  the backdrop and Escape are all inert. The provider dialog and the row show the
+  same flag in both directions, so neither surface can drift. The row is hidden
+  while no service has a configured model, and a refused save reports the error
+  instead of silently keeping the old value.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/11-provider-model-system.md` §7, `04-ux/06-settings-ia.md`
+  (Model configuration), D278, ADR subagent-model-opt-in, issue #1736.
+- **Acceptance**: C / E / Quality — the catalog the parent agent may pick from is
+  reviewable and editable in one place on the Models page without adding a second
+  stored selection, every row states why an opted-in model is not in effect, and
+  no surface offers an editor that cannot save the row it came from.
+- **Milestone**: Post-MVP model configuration.
+- **Status**: Unit coverage in `apps/desktop/test/subagent-delegation.test.mjs`
+  (candidate construction, account disambiguation, chip disambiguation,
+  empty-state targets, row-to-editor routing, the id normalisation the write
+  shares, and the exact provider write). The interactive save → next-turn catalog
+  path remains Draft and is run only when requested in a capable environment.
 ### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
 
 - **Preconditions**: A ChatGPT subscription (Codex) account and a Responses
@@ -20233,3 +20288,66 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
+  `apps/desktop/test/sidebar-project-runs.test.mjs` covers the count
+  classification, the master/sub-switch gating, both render call sites, and
+  the theme-token and reduced-motion guarantees; the interactive sidebar
+  scenario remains a manual validation scenario run in a capable
+  environment.
+
+### E2E-269: Models page states and edits the subagent delegation catalog
+
+- **Preconditions**: Two AI services are configured, enabled and credentialed,
+  the first with two models and the second with one; exactly one model carries
+  "Available for AI delegation". A plugin-declared service publishes one model,
+  and one vendor subscription is signed in twice with both logins holding the
+  same model. A parent Agent-mode session can delegate a task.
+- **Steps**:
+  1. Open Settings → Models and read the **Subagent models** row: opted-in
+     models appear as chips; the full list lives behind **Edit**.
+  2. Click **Edit** and read the dialog's list.
+  3. Use that list's **Advanced** to open the second service's model editor,
+     tick "Available for AI delegation", save, and re-read both surfaces.
+  4. Start a parent turn and inspect the delegation model summary the Task tool
+     receives.
+  5. Return to the dialog, remove that model with ×, and re-read both surfaces.
+  6. Remove every opted-in model, read the empty state, and use an empty-state
+     button to open a service editor and tick one model.
+  7. Read the plugin-declared service's row and a disabled service's row.
+  8. Tick one model id on two services, and again on two logins of one vendor.
+  9. While a write is slow (a throttled host or a long model list), remove a
+     model and try Advanced, Close, the backdrop and Escape together.
+- **Expected**: The summary row is one line of chips occupying at most 60% of
+  the row, with overflow collapsed into `+N`; every chip's tooltip and
+  accessible name carry `service · model`. A model joins only by ticking the
+  flag in its own editor. Adding writes `availableForSubagents` on that
+  service's binding, so the next parent turn lists the model in the delegation
+  catalog; removing drops it from the catalog and leaves no `false` on the
+  stored binding. Two services publishing the same model id get a
+  service-prefixed chip; two logins of one vendor stay distinguishable by
+  account, so no chip stands for two selected models. The empty state offers one
+  button per service that still has a model to tick, and that button opens the
+  service's own model editor. A service that is off or holds no credential keeps
+  its opted-in models visible and removable, annotated with why they are idle,
+  while its models stay out of the catalog. A plugin-declared service offers
+  neither Advanced nor a remove control and says it is managed by a plugin; a
+  vanished service reports that instead of closing the dialog silently. During a
+  removal, Advanced, Close, the backdrop and Escape are all inert. The service
+  editor and the row show the same flag in both directions. With no configured
+  models the row is hidden; a refused save reports the error instead of silently
+  keeping the old value.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/11-provider-model-system.md` §7, `04-ux/06-settings-ia.md`
+  (Model configuration), D278, ADR subagent-model-opt-in, issue #1736.
+- **Acceptance**: C / E / Quality — the catalog the parent agent may pick from is
+  reviewable and editable in one place on the Models page without adding a
+  second stored selection; every row states why an opted-in model is not in
+  effect; and no surface offers an editor that cannot save.
+- **Milestone**: Post-MVP model configuration.
+- **Status**: Unit coverage in `apps/desktop/test/subagent-delegation.test.mjs`
+  (candidate construction, account disambiguation, chip disambiguation,
+  empty-state targets, row-to-editor routing, write pre-check id parity and the
+  exact provider write). A real-renderer interaction test in
+  `apps/desktop/test/subagent-delegation-account-routing.user-path.test.mjs`
+  clicks Advanced on a vendor account and asserts the account dialog opens. The
+  interactive save → next-turn catalog path remains Draft and is run only when
+  requested in a capable environment.

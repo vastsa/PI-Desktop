@@ -422,6 +422,15 @@ opted-in account uses its exact provider ID as the override key. Selection prior
 for delegated work, not only `Task.model`: a `session/collaboration/spawn` `modelKey` naming a model without it is
 refused with `PERMISSION_DENIED`, while omitting the key, or naming the default model's own key, still inherits.
 
+The flag's editing surface is not tied to the provider dialog. Settings → Models
+lists the opted-in bindings in one **Subagent models** row — each row's Advanced
+action opens the service editor where the opt-in is ticked — and reads the same
+field and rewrites only the touched binding through `providers.update`
+(`apps/desktop/src/components/settings/subagent-delegation.ts`). That row stores
+no second selection, so the delegation catalog and the page cannot disagree, and
+a service that is off, credential-less or plugin-owned is listed with its reason
+instead of disappearing.
+
 ## 8. Secrets
 
 - API keys stored via secure storage (`SECRET_*` APIs)

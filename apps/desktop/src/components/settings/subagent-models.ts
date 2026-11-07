@@ -7,6 +7,7 @@
  */
 import { modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
 import { defaultModelOptions } from "./default-model";
+import { providerServesSubagentDelegation } from "./subagent-delegation";
 
 export type SubagentModelChoice = {
   /** Frontmatter `model:` value. */
@@ -25,10 +26,7 @@ export type SubagentModelChoiceGroup = {
 
 /** True when the Composer would offer this provider's configured models. */
 export function isSubagentModelProvider(provider: ProviderPublic): boolean {
-  return (
-    provider.enabled &&
-    (provider.hasSecret || Boolean(provider.hasOauth) || provider.authKind === "none")
-  );
+  return providerServesSubagentDelegation(provider);
 }
 
 /**
