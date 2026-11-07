@@ -183,9 +183,27 @@ export function truncateTextWithMarker(
 }
 
 /**
+ * Which string a block contributes to the truncation budget.
+ *
+ * Readable assistant thinking lives in `thinking`, not `text`, and pi counts
+ * it toward the context estimate. Redacted thinking is an opaque signature
+ * replay and is not rewritten. A thinking block that only carries `text`
+ * (some OpenAI-compatible adapters) still uses that field.
+ */
+function truncationField(block: Record<string, unknown>): "text" | "thinking" | undefined {
+  if (block.type === "thinking" && block.redacted === true) return undefined;
+  if (block.type === "thinking" && typeof block.thinking === "string") return "thinking";
+  if (typeof block.text === "string") return "text";
+  return undefined;
+}
+
+/**
  * Bound every text block of one message so the message's total text is at most
- * `maxChars`. Blocks without text (tool calls, images) are kept, so a truncated
- * message is still a provider-valid message with its tool calls intact.
+ * `maxChars`. Answer text is reserved first; assistant thinking is then cut to
+ * whatever remains, and a shortened thinking block drops its provider signature
+ * so the replay is not a mutated signed trace. Blocks without text (tool calls,
+ * images, redacted thinking) are kept, so a truncated message is still a
+ * provider-valid message with its tool calls intact.
  */
 export function truncateMessageText(
   message: AgentMessage,
@@ -198,18 +216,39 @@ export function truncateMessageText(
     return text === content ? message : ({ ...message, content: text } as AgentMessage);
   }
   if (!Array.isArray(content)) return message;
-  let remaining = maxChars;
+  const fields = content.map((block) =>
+    isRecord(block) ? truncationField(block) : undefined,
+  );
+  // Reserve answer text first so a long thinking trace cannot evict it.
+  let textBudget = maxChars;
+  const textAllowance: number[] = [];
+  content.forEach((block, index) => {
+    if (fields[index] !== "text" || !isRecord(block)) return;
+    const value = block.text as string;
+    const allowance = Math.min(value.length, Math.max(0, textBudget));
+    textAllowance[index] = allowance;
+    textBudget -= allowance;
+  });
+  let thinkingBudget = Math.max(0, textBudget);
   let changed = false;
-  const blocks = content.map((block) => {
-    if (!isRecord(block) || typeof block.text !== "string") return block;
-    if (block.text.length <= remaining) {
-      remaining -= block.text.length;
+  const blocks = content.map((block, index) => {
+    const field = fields[index];
+    if (!field || !isRecord(block)) return block;
+    const value = block[field];
+    if (typeof value !== "string") return block;
+    const allowance = field === "text" ? (textAllowance[index] ?? 0) : thinkingBudget;
+    if (value.length <= allowance) {
+      if (field === "thinking") thinkingBudget -= value.length;
       return block;
     }
     changed = true;
-    const text = truncateTextWithMarker(block.text, Math.max(1, remaining), marker);
-    remaining = 0;
-    return { ...block, text };
+    const nextValue = truncateTextWithMarker(value, Math.max(1, allowance), marker);
+    if (field === "thinking") thinkingBudget = 0;
+    if (field === "text") return { ...block, text: nextValue };
+    const next: Record<string, unknown> = { ...block, thinking: nextValue };
+    delete next.thinkingSignature;
+    delete next.redacted;
+    return next;
   });
   return changed ? ({ ...message, content: blocks } as AgentMessage) : message;
 }
