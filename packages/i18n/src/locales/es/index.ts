@@ -919,6 +919,7 @@ export const es = {
     "imageModelSaveFailed": "No se pudo guardar el modelo.",
     "clearImageModel": "Borrar",
     "setImageModel": "Usar para generar imágenes",
+    imageModelChatExclusionHint: "Los modelos marcados se eliminan de los menús de chat y modelo predeterminado al guardar. Esto es generación de imágenes, no entrada de imágenes. Marca solo modelos con los que tu endpoint pueda generar imágenes.",
     "imageModelSelected": "Modelo de imágenes seleccionado",
     "generatedImage": "Imagen generada {{index}}",
     "downloadGeneratedImage": "Descargar",
