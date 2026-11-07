@@ -4665,7 +4665,10 @@ instructions, memory and OAuth dialogs retain their existing bounded layouts.
 
 Local Review defaults to Last round (the latest modified user round). Its
 scope dropdown also offers History, which reveals a separate user-round selector row,
-independent of the chat's loaded message window. Rounds without changes do not
+independent of the chat's loaded message window. Transcript summary focus requests
+carry their originating session; switching back to another conversation cannot
+replay that request there or empty its file list beneath a populated history option.
+Rounds without changes do not
 replace Latest. Main and delegated Write/Edit evidence share a file list; actual
 execution roots distinguish identically named files. The file header opens all
 of that file's recorded operations in order, without claiming a net diff.

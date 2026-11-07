@@ -1,3 +1,6 @@
+import { TurnChangesCard } from "../../apps/desktop/src/features/chat/transcript/TurnChangesCard";
+import { SlotSessionProvider } from "../../apps/desktop/src/plugins/renderer-slots/use-slots";
+import { currentReviewFocusRequest } from "../../apps/desktop/src/lib/review-focus-request";
 // Production UI and store; only the external IPC transport and input data are fixtures.
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -113,14 +116,16 @@ async function contextLines(lines: 1 | 3 | 5, expected?: 1 | 3 | 5) {
 const headers = () => [...document.querySelectorAll<HTMLButtonElement>(".review-history-file-header")];
 const scroller = () => document.querySelector<HTMLElement>(".review-scroll")!;
 async function ready() { await until(() => document.querySelector(".review-history")?.getAttribute("aria-busy") === "false", "Review read must settle"); assert(!document.querySelector('[role="alert"]'), document.querySelector('[role="alert"]')?.textContent ?? "Review error"); }
-async function mount(session: SessionSummary, wait = true) {
+async function mount(session: SessionSummary, wait = true, tools: readonly UiMessage[] = []) {
   useAppStore.setState({ activeSessionId: session.id, sessions: [session], messages: [], isRunning: false });
-  flushSync(() => root.render(<main className="fixture"><p className="fixture-label">受控测试数据 · 原生审阅实现预览</p><div className="fixture-panel"><ReviewTab /></div></main>));
+  flushSync(() => root.render(<main className="fixture"><p className="fixture-label">受控测试数据 · 原生审阅实现预览</p>
+    {tools.length > 0 && <SlotSessionProvider sessionId={session.id}><TurnChangesCard tools={tools} /></SlotSessionProvider>}
+    <div className="fixture-panel"><ReviewTab /></div></main>));
   if (wait) await ready();
 }
 window.reviewProbe = async () => {
   const checks: string[] = [];
-  const seed = await action("seed") as { session: SessionSummary; other: SessionSummary; round: string; latest: string; firstSnapshot: string; late: UiMessage };
+  const seed = await action("seed") as { session: SessionSummary; other: SessionSummary; populated: SessionSummary; round: string; latest: string; firstSnapshot: string; late: UiMessage };
   await mount(seed.session);
   await contextLines(3, 3);
   assert(headers().some(node => node.textContent?.includes("latest.txt")), "Latest ignores the newer no-edit conversation");
@@ -366,6 +371,29 @@ window.reviewProbe = async () => {
   assert(headers()[0].title === outside.path, "Full source path remains available in title");
   checks.push('outside-path-display-only-basename-and-full-title');
   await mount(seed.session); await contextLines(1);
+  // Visit B, click A's real transcript summary, then return to B without a new focus request.
+  await mount(seed.populated);
+  assert(headers().length === 1 && headers()[0].textContent?.includes('other-session.txt'), "Current session initially shows its own recorded file");
+  await mount(seed.session, true, [seed.late]);
+  document.querySelector<HTMLButtonElement>('.turn-changes-head')!.click();
+  await until(() => document.querySelector('.turn-changes-head')?.getAttribute('aria-expanded') === 'true', "The real turn summary expands");
+  await action('holdReads');
+  document.querySelector<HTMLButtonElement>('.turn-changes-row')!.click();
+  await action('readBlocked'); await action('releaseReads'); await ready();
+  await until(() => headers().some(node => node.textContent?.includes('long.ts') && node.getAttribute('aria-expanded') === 'true'), "The real summary opens and expands its originating file");
+  const sourceFocus = currentReviewFocusRequest();
+  await mount(seed.populated);
+  const returnedFiles = headers().map(node => node.querySelector('.review-change-card-path')?.textContent);
+  const returnedTotals = select('对话轮次')?.selectedOptions[0]?.querySelector('.review-turn-counts')?.textContent;
+  await mode(false); await ready(); await mode(true); await ready();
+  const afterScopeCycle = headers().map(node => node.querySelector('.review-change-card-path')?.textContent);
+  console.log('REVIEW_SELECTION_SWITCH ' + JSON.stringify({ returnedFiles, returnedTotals, afterScopeCycle, requestSession: sourceFocus?.sessionId }));
+  assert(returnedFiles.length === 1 && returnedFiles[0] === 'other-session.txt', "Returning to a populated session must not show an empty list beneath another session's stale focus");
+  assert(JSON.stringify(returnedFiles) === JSON.stringify(afterScopeCycle), "Last round / History cycling must not repair a missing initial file list");
+  assert(sourceFocus?.sessionId === seed.session.id, "The transcript summary binds focus to its owning session");
+  assert(select('对话轮次').selectedOptions[0]?.querySelector('.review-turn-counts')?.textContent === '+1 −0', "The selected history counts agree with the visible current-session file");
+  checks.push('real-turn-summary-focus-is-scoped-across-returning-session-and-history-cycle');
+  await mount(seed.session);
   return { checks };
 };
 

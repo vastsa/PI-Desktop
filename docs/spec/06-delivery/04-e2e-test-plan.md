@@ -20219,6 +20219,11 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   isolated profile; verify both the checked menu option and actual diff context
   retain that choice. Missing/invalid/blocked storage is unit-covered by
   `apps/desktop/test/review-preferences.test.mjs`.
+- With two populated sessions, visit B, then click a file in A's real transcript
+  turn-summary card and return to B. The retained focus request must belong to A;
+  B must immediately retain its own recorded files. Cycling Last round → History
+  must leave those files unchanged rather than repair an initially empty list,
+  and B's selected history totals must agree with its visible file list.
 - Open several files from the per-turn summary with enough Review content to
   scroll. Each target comes into view inside Review while the conversation and
   work-panel headers stay visible and the window content reaches the bottom edge.
