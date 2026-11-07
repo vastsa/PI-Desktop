@@ -1,5 +1,6 @@
 import { readSystemMessage } from "./system-transcript-journal.js";
 import { recoverMalformedToolCalls } from "./tool-call-recovery.js";
+import { expireLegacyGoalPauseNotice } from "./goals/goal-pause.js";
 /**
  * Project pi session entries into the model context.
  *
@@ -75,7 +76,8 @@ export function sessionEntryToContextMessages(
               identity,
             )),
         ...entry.retainedTail.filter((message) => isContextMessage(message) &&
-          !(message.role === "system" && entry.details && typeof entry.details === "object" && "systemMessageJson" in entry.details)),
+          !(message.role === "system" && entry.details && typeof entry.details === "object" && "systemMessageJson" in entry.details))
+          .map(message => message.role === "system" ? expireLegacyGoalPauseNotice(message) : message),
       ];
     case "branch_summary":
       return entry.summary

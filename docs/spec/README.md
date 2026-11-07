@@ -6,11 +6,11 @@
 > Stack: Electron + **Rust host core** + pi Agent Harness + user-installable plugins
 
 The baseline is a frozen decision artifact, not a complete list of every
-feature in the current app. The current implementation adds Goal contracts,
+feature in the current app. The current implementation adds autonomous Goal execution,
 standalone MCP/Skills/Subagents, plugin marketplace and launcher flows, session
 import, scheduled tasks, next-turn composer configuration, and host-owned
 session collaboration messages. The host wire protocol is v11; storage schema
-is v16 (see `00-baseline.md`).
+is v28 (see `03-runtime/04-data-storage.md`).
 
 ## Quick entry
 
@@ -85,14 +85,15 @@ docs/spec/
 4. pi agent engine in Node sidecar
 5. Host RPC = stdio JSON-RPC NDJSON
 6. SQLite owned by Rust only
-7. Default mode = Agent; operating selector = Agent | Plan | Goal. Plan and Goal
-   are contract states of the same Agent and are not strict read-only security
-   profiles because Bash follows the selected permission mode
+7. Default mode = Agent; operating selector = Agent | Plan | Goal. Plan retains
+   approval; Goal starts from user send under ordinary Agent policy with a default
+   20-turn budget and explicit pause/resume/cancel
 8. SubmitPlan writes exact Markdown bytes to a new host-owned
    `.pi/plan/*.md` artifact; title/question stay structured in
    `plan_approvals`, approval opens the artifact, is approve/reject only, and
    expires after 30 absolute minutes with `PLAN_APPROVAL_TIMEOUT`
-9. Protocol v11 and storage schema v16 are authoritative for Plan/Goal
+9. Protocol v11 retains Plan/legacy Goal compatibility; schema v28 adds independent
+   autonomous Goal state. Historical schema v16 introduced approval
    checkpoints, `plan_approvals` execution fields, startup interruption, shell
    identity, and host-owned session collaboration. v11 withdraws the A2A method
    domain added in v10.
@@ -101,3 +102,6 @@ docs/spec/
 11. Local user-installable plugins (market later)
 12. Tag releases = macOS arm64 and Intel x64, Windows x64, and Linux x64 and arm64 (D126/D285, D638/ADR 0318)
 13. Universal provider/model coverage (native + OpenAI-compatible + custom)
+
+See [Autonomous Goal lifecycle](../adr/autonomous-goal-lifecycle.md) and
+[Run an autonomous goal](../autonomous-goals.md).

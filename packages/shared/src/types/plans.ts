@@ -2,8 +2,8 @@
 import type { Mode } from "./common.js";
 import type { GlobalPermissionMode } from "./permissions.js";
 
-/** Approval-proposal discriminator (D198). Plan and Goal share one host
- * approval pipeline; `kind` selects prompts, artifact directory and copy. */
+/** Approval-proposal discriminator (D198). Historical Goal artifacts remain readable; only Plan creates new
+ * approval proposals. `kind` selects historical artifact directory and copy. */
 export type ProposalKind = "plan" | "goal";
 
 export const PROPOSAL_KINDS = ["plan", "goal"] as const;
@@ -17,7 +17,7 @@ export function normalizeProposalKind(
 
 /** The proposal kind a mode submits, or `null` for freely executing modes. */
 export function proposalKindForMode(mode: Mode): ProposalKind | null {
-  return mode === "plan" || mode === "goal" ? mode : null;
+  return mode === "plan" ? mode : null;
 }
 
 /** The operating mode that owns a proposal kind. */

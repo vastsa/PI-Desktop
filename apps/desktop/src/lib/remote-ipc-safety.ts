@@ -2,6 +2,7 @@ import { IPC } from "@pi-desktop/shared";
 import i18n from "i18next";
 
 const localOnly = new Set<string>([
+  IPC.invoke.goalsGet, IPC.invoke.goalsStart, IPC.invoke.goalsControl,
   IPC.invoke.sessionConfigure, IPC.invoke.sessionFork, IPC.invoke.sessionMoveProject,
   IPC.invoke.sessionReplaceMessages, IPC.invoke.sessionSaveRevision,
   IPC.invoke.sessionDeleteMessage, IPC.invoke.sessionRetractPendingPrompt,

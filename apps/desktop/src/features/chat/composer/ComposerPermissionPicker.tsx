@@ -22,7 +22,7 @@ export function ComposerPermissionPicker({t, mode, composerPermissionMode,
   return (
         <AnchoredMenu
           className="composer-permission"
-          open={permissionOpen && mode !== "goal"}
+          open={permissionOpen}
           onClose={() => setPermissionOpen(false)}
           menuClassName="composer-permission-menu"
           label={t("chat.permissionMode")}
@@ -35,22 +35,18 @@ export function ComposerPermissionPicker({t, mode, composerPermissionMode,
               type="button"
               className={`icon-btn mode-chip ${permissionOpen ? "active" : ""}`}
               tooltip={
-                mode === "goal"
-                  ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
-                  : mode === "plan" && composerPermissionMode === "auto"
+                mode === "plan" && composerPermissionMode === "auto"
                     ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
                     : t("chat.permissionMode")
               }
               ariaLabel={
-                mode === "goal"
-                  ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
-                  : mode === "plan" && composerPermissionMode === "auto"
+                mode === "plan" && composerPermissionMode === "auto"
                     ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
                     : t("chat.permissionMode")
               }
-              aria-haspopup={mode === "goal" ? undefined : "menu"}
-              aria-expanded={mode === "goal" ? false : permissionOpen}
-              disabled={controlsBlocked || mode === "goal"}
+              aria-haspopup="menu"
+              aria-expanded={permissionOpen}
+              disabled={controlsBlocked}
               onClick={() => {
                 onCloseOtherMenus();
                 setPermissionOpen((open) => !open);

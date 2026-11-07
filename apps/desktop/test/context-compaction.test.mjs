@@ -45,7 +45,7 @@ const [
   read("../../../packages/agent-runtime/src/runtime.ts"),
   read("../electron/main/builtin-commands.ts"),
   read("../../../crates/host-core/src/rpc/mod.rs"),
-  read("../../../crates/host-core/src/permissions.rs"),
+  read("../../../crates/host-core/src/permissions/tool_policy.rs"),
   read("../../../crates/host-core/src/sessions.rs"),
   read("../../../crates/host-core/src/transcripts.rs"),
   readTranscriptSource(),
