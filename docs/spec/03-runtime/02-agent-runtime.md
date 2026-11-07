@@ -1995,7 +1995,9 @@ Bash background startup and Task startup return an additive `job: {kind, id}`
 reference, where kind is `bash` or `delegation`; their original identifiers
 remain available. TaskList preserves `delegations` and `resumable` and adds
 `backgroundJobs: {supported, tasks}`. Delegation summaries also include job
-references. Bash summaries contain no logs and bound command text to 1 KiB.
+references. Bash summaries contain no logs. The command preview retains the
+first 1 KiB at a UTF-8 boundary. `commandTruncated` marks a shortened command
+independently of output truncation; older Hosts may omit the field.
 
 TaskWait and TaskStop accept one explicit `job`. Combining it with
 `delegationIds`, `mode` or `minCompleted` is an error. Omitting it preserves
@@ -2011,7 +2013,9 @@ Reads are repeatable and do not consume desktop output. The wait defaults to
 (completed/timeout/interrupted), independently of the job's state. New input
 interrupts the wait; cancelling the parent releases it without stopping Bash.
 TaskStop returns completed or stopPending based on the actual snapshot. A
-stopRequested flag alone does not confirm termination.
+stopRequested flag alone does not confirm termination. Cancelling TaskStop
+before dispatch leaves the job alone. After dispatch, cancellation releases
+the caller's wait while Host continues processing the stop request.
 
 The wait deadline includes capability discovery and in-flight requests.
 On timeout the tool returns its last observed snapshot. If the first
