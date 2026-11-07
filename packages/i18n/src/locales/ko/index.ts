@@ -1,6 +1,7 @@
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const ko = {
+  autonomousGoal: en.autonomousGoal,
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "새 격리 세션",

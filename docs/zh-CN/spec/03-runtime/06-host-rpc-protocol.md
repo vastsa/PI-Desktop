@@ -1180,3 +1180,20 @@ timeoutMs 为 0–1000 的整数，默认 0。wait 观察单作业完成信号�
 终态和最终输出在同一作业锁下读取。读操作不消耗输出，进行中的观察持有作业句柄直至有界请求结束，历史淘汰不会拆散这次读取。等待后重新校验会话。放弃请求不会停止进程。旧 Host 能力缺失会明确报告，其他错误不会转为空列表。桌面原 RPC 结构保持兼容。
 
 监管任务优先处理已观察到的进程退出，并在排空管道时保留退出结果。终态和最终输出发布时固定运行耗时。
+
+## Goal 实时控制扩展
+
+自主 Goal 的 goals 域独立于历史 plans 审批。goals.control 支持 pause、stop、resume、cancel、edit、budget、delete，
+所有操作保持 session/goal 身份与 expectedRevision CAS。edit 支持运行中非终态目标，替换目标和标准并清除旧报告，
+保留 claim、状态、预算、用量、耗时；打开编辑器不暂停。pause 立即持久化 paused，并通过可信 agent.pauseGoal 系统 steering 请求简短收尾，最多三次后续模型请求（不等待整轮结束）；模型报告不能恢复或完成暂停目标，原生工具被拒绝。stop 立即撤销收尾资格并中断运行。
+保存后目标栏立即变化，activeScope 保持当前 Host 轮次的原目标与标准，下一轮才采用修改。模式切换和插话不暂停；Agent 任务后可直接恢复。
+goals.start 原子替换未完成旧目标，保留旧 claim/迟到用量，条件复位输入模式到 Agent。新轮次等待旧运行结算。
+session.beginTurn 可带可信 goalTurn 绑定；session.getTurnMode 返回实际轮次的不可变模式，调用方 mode 不是权限。
+队列 goalStartId 保留显式启动身份，不能授予 claim 或重启执行权限。
+新增 host 字段 roundsCompleted（schema33），在成功结算时恰好递增一次（非 claim 时，普通一次 Host/Agent 对话 = 1），错误、中止、恢复或内部模型/工具/compaction 迭代不递增；roundsStarted 保留为启动/预留诊断。界面和 maxTurns 预算使用 roundsCompleted，活动 claim 预留单个槽位；错误进入 blocked、中止进入 paused 防止无限自动重试。迁移保守回填经证实的已完成绑定轮次。
+budget（或兼容 resume）接受预算字段；有 claim 时保存 pendingBudget，在本轮结算后生效，空闲时立即生效。
+单目标预算不跟随全局默认值，不授权恢复。SessionGoal 另含 pauseRequested 与 roundsCompleted。模型报告工具不能执行这些控制。
+删除不是 Stop：所有者成功删除将 Goal 设为墓碑，将会话输入偏好设为 agent，抑制自主续跑，仅允许已在运行的绑定 Goal 对话在普通 Agent 权限下完成（不相关的正在运行的 Agent/Plan 对话保持运行，其冻结的执行策略不变；Plan 保持 Plan）。Stop、cancel、replacement、recovery、settled、foreign、unbound 维持撤销；墓碑精确结算一次迟到用量，无 Goal 报告、复活或新准入，不删除聊天、todo 或原 claim。
+完成仍须精确覆盖标准和完整原目标的版本化审计；Host 校验结构，不独立验证模型证据的真实性。
+
+本文较早的 Goal 审批段落仅适用于已存在的 legacy Goal 审批，不描述新的自主 Goal。

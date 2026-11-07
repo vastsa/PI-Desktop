@@ -4,6 +4,9 @@ use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms};
 
+mod tool_policy;
+pub use tool_policy::ToolPermissionPolicy;
+
 /// Longest string leaf kept in a permission request's args preview. Full args
 /// (e.g. a Write's whole file content) would otherwise cross every stdio/IPC
 /// hop and stall the renderer right as the dialog opens.
@@ -77,7 +80,7 @@ pub struct PermissionRequestParams<'a> {
 pub struct PermissionEvaluationParams<'a> {
     pub session_id: &'a str,
     pub tool_name: &'a str,
-    pub mode: &'a str,
+    pub tool_policy: ToolPermissionPolicy,
     pub permission_mode: &'a str,
     pub session_grants: &'a HashMap<String, Vec<String>>,
     pub declared_risk: Option<&'a str>,
@@ -137,24 +140,18 @@ impl PermissionManager {
         }
     }
 
-    /// The shared contract-mode allowlist. Plan and Goal expose the same
-    /// read/inspect core plus Bash; only their submit tool differs, and that one
-    /// is a sidecar-side tool that never reaches this gate. `new_context` is
-    /// sidecar-side too, and listed so the two sides of the bridge agree.
+    /// Plan's read/inspect allowlist plus permission-gated Bash. Goal follows
+    /// Agent policy instead. `new_context` is sidecar-side and listed here so
+    /// the two sides of the bridge agree.
     pub fn plan_mode_allows(tool_name: &str) -> bool {
-        matches!(
-            tool_name,
-            "Read" | "Glob" | "Grep" | "Bash" | "BrowserPreview" | "new_context"
-        )
+        ToolPermissionPolicy::contract_mode_allows(tool_name)
     }
 
     /// Auto-decision with an effective permission mode (D115).
     ///
     /// `permission_mode` is the already-resolved effective mode — the
     /// caller collapses `inherit` against the global default before calling.
-    /// The contract modes' hard deny for unavailable tools stays above every
-    /// permission mode: `auto` cannot re-enable Write/Edit/plugins in Plan or
-    /// Goal.
+    /// Contract membership denial stays above every permission mode.
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode(
         &self,
@@ -167,7 +164,7 @@ impl PermissionManager {
         self.evaluate_auto_with_permission_mode_and_risk(PermissionEvaluationParams {
             session_id,
             tool_name,
-            mode,
+            tool_policy: ToolPermissionPolicy::for_execution_mode(mode),
             permission_mode,
             session_grants,
             declared_risk: None,
@@ -195,38 +192,16 @@ impl PermissionManager {
         let PermissionEvaluationParams {
             session_id,
             tool_name,
-            mode,
+            tool_policy,
             permission_mode,
             session_grants,
             declared_risk,
             requires_external_path_permission,
             plan_safe_actions,
         } = params;
-        // The contract modes' tool allowlist is authoritative. This check
-        // intentionally precedes low-risk classification, auto, grants, and
-        // scratch paths, and covers Goal as well as Plan (D198).
-        //
-        // Plugin tools get a narrow carve-out: a plugin may declare a
-        // non-empty `planSafeActions` list (ADR 0211). When the runtime
-        // forwards that list, host-core admits the plugin tool in
-        // contract modes and the plugin-runtime enforces the per-action
-        // restriction at execute time. Without the list the plugin tool
-        // stays Plan-denied, exactly as ADR 0052 / ADR 0053 require.
-        if crate::sessions::is_contract_mode(mode) && !Self::plan_mode_allows(tool_name) {
-            if tool_name.starts_with("plugin_") {
-                if let Some(actions) = plan_safe_actions {
-                    if !actions.is_empty() {
-                        // Fall through; plugin-runtime will gate the
-                        // actual action.
-                    } else {
-                        return Some(PermissionDecision::Deny);
-                    }
-                } else {
-                    return Some(PermissionDecision::Deny);
-                }
-            } else {
-                return Some(PermissionDecision::Deny);
-            }
+        // Membership denial precedes risk, auto, session grants and scratch exceptions.
+        if !tool_policy.allows_tool(tool_name, plan_safe_actions) {
+            return Some(PermissionDecision::Deny);
         }
 
         if requires_external_path_permission {
@@ -556,29 +531,44 @@ mod tests {
     }
 
     #[test]
-    fn goal_mode_shares_plans_hard_deny_and_bash_semantics() {
+    fn goals_use_agent_permissions_without_bypassing_ask_or_path_checks() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert(
-            "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
-        );
-        for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
+        for tool in [
+            "Write",
+            "Edit",
+            "Bash",
+            "plugin_x_run",
+            "mcp_srv_tool",
+            "GenerateImages",
+            "TodoWrite",
+            "unknown",
+        ] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
-                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &grants),
-                    Some(PermissionDecision::Deny),
-                    "{tool} must be denied in goal + {mode}"
+                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &no_grants()),
+                    pm.evaluate_auto_with_permission_mode("s", tool, "agent", mode, &no_grants()),
+                    "{tool} + {mode}"
+                );
+            }
+            if tool != "TodoWrite" {
+                assert_eq!(
+                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", "ask", &no_grants()),
+                    None
                 );
             }
         }
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "ask", &no_grants()),
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                tool_policy: ToolPermissionPolicy::for_execution_mode("goal"),
+                permission_mode: "ask",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: true,
+                plan_safe_actions: None,
+            }),
             None
-        );
-        assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "auto", &no_grants()),
-            Some(PermissionDecision::AllowOnce)
         );
     }
 
@@ -591,10 +581,7 @@ mod tests {
         }
     }
 
-    /// TodoWrite is the session checklist: low risk, so the normal permission
-    /// modes never prompt for it inside Agent mode, and part of the contract
-    /// modes' hard deny — a Plan/Goal checklist is negotiated through the
-    /// proposal instead of written directly.
+    /// TodoWrite is low risk in Agent/Goal and hard-denied only in Plan.
     #[test]
     fn todo_write_is_low_risk_in_agent_and_denied_in_contract_modes() {
         let pm = PermissionManager::default();
@@ -617,7 +604,7 @@ mod tests {
         }
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["TodoWrite".to_string()]);
-        for contract in ["plan", "goal"] {
+        for contract in ["plan"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
                     pm.evaluate_auto_with_permission_mode(
@@ -643,7 +630,7 @@ mod tests {
                 PermissionEvaluationParams {
                     session_id: "s",
                     tool_name: "Read",
-                    mode: "agent",
+                    tool_policy: ToolPermissionPolicy::Agent,
                     permission_mode: mode,
                     session_grants: &no_grants(),
                     declared_risk: None,
@@ -660,7 +647,7 @@ mod tests {
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
                 tool_name: "Read",
-                mode: "agent",
+                tool_policy: ToolPermissionPolicy::Agent,
                 permission_mode: "auto",
                 session_grants: &no_grants(),
                 declared_risk: None,
@@ -679,7 +666,7 @@ mod tests {
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
                 tool_name: "Grep",
-                mode: "plan",
+                tool_policy: ToolPermissionPolicy::Contract,
                 permission_mode: "ask",
                 session_grants: &grants,
                 declared_risk: None,
@@ -726,7 +713,7 @@ mod tests {
                     pm.evaluate_auto_with_permission_mode_and_risk(PermissionEvaluationParams {
                         session_id: "s",
                         tool_name: "mcp_srv_tool",
-                        mode: "agent",
+                        tool_policy: ToolPermissionPolicy::Agent,
                         permission_mode: mode,
                         session_grants: &no_grants(),
                         declared_risk: declared,
@@ -771,7 +758,7 @@ mod tests {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["mcp_srv_tool".to_string()]);
-        for contract in ["plan", "goal"] {
+        for contract in ["plan"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
                     pm.evaluate_auto_with_permission_mode(
@@ -795,7 +782,7 @@ mod tests {
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
                 tool_name: "plugin_x_run",
-                mode: "plan",
+                tool_policy: ToolPermissionPolicy::Contract,
                 permission_mode: "auto",
                 session_grants: &no_grants(),
                 declared_risk: None,
@@ -809,7 +796,7 @@ mod tests {
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
                 tool_name: "plugin_x_run",
-                mode: "goal",
+                tool_policy: ToolPermissionPolicy::Contract,
                 permission_mode: "auto",
                 session_grants: &no_grants(),
                 declared_risk: None,
@@ -823,7 +810,7 @@ mod tests {
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
                 tool_name: "plugin_x_run",
-                mode: "plan",
+                tool_policy: ToolPermissionPolicy::Contract,
                 permission_mode: "auto",
                 session_grants: &no_grants(),
                 declared_risk: None,
@@ -888,7 +875,7 @@ mod image_generation_tests {
                 "auto",
                 &grants
             ),
-            Some(PermissionDecision::Deny)
+            Some(PermissionDecision::AllowOnce)
         );
     }
 }

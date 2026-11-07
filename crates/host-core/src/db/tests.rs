@@ -85,6 +85,10 @@ fn v14_database_migrates_to_v15_with_the_turn_queue() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute_batch(
                 "DROP INDEX idx_turn_queue_idempotency;
@@ -106,6 +110,10 @@ fn v18_database_migrates_session_thinking_omit() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn().pragma_update(None, "user_version", 18).unwrap();
     }
     let db = Database::open(&path).unwrap();
@@ -721,6 +729,10 @@ fn migrates_v13_plugin_session_schema() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute(
                 "INSERT INTO sessions (id, created_at, updated_at)
@@ -830,6 +842,10 @@ fn migrates_v7_chat_modes_settings_and_scheduled_values_to_plan() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute(
                 "INSERT INTO sessions (id, mode, created_at, updated_at)
@@ -965,6 +981,10 @@ fn migrates_v8_approvals_without_expiring_new_work() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute(
                 "INSERT INTO sessions (id, mode, created_at, updated_at)
@@ -1412,6 +1432,10 @@ fn migrates_v9_running_turns_before_creating_single_turn_index() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute_batch("DROP INDEX idx_turns_one_running_session;")
             .unwrap();
@@ -1495,6 +1519,10 @@ fn migrates_v10_approvals_by_labelling_them_plan_contracts() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute_batch(
                 "ALTER TABLE plan_approvals DROP COLUMN kind;
@@ -1549,6 +1577,10 @@ fn migrates_v12_by_dropping_a2a_tables() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         db.conn()
             .execute_batch(
                 "CREATE TABLE a2a_tasks (id TEXT PRIMARY KEY);
@@ -2147,6 +2179,10 @@ fn a_v16_file_gains_the_provider_owner_column() {
     let provider_id;
     {
         let db = Database::open(&path).unwrap();
+        // This legacy fixture predates the v32 cross-table snapshot trigger.
+        db.conn()
+            .execute_batch("DROP TRIGGER turn_execution_snapshot;")
+            .unwrap();
         provider_id = db
             .conn()
             .query_row(

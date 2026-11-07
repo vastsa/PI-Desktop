@@ -34,7 +34,8 @@ contains its selected chat model; otherwise the chat default is preserved.
 with 1–10 output images total. An optional `images` array supplies 1–4 local source
 files per item for editing; a previous generated path supports iterative edits.
 Prompt length is bounded at 32,000 characters. Unsupported or excessive input is
-rejected rather than truncated. Plan and Goal cannot execute the tool.
+rejected rather than truncated. Plan cannot execute the tool; Goal uses ordinary
+Agent authorization and permissions.
 
 The bundled `pi-desktop/imagegen` skill is discoverable in ordinary sessions and
 loads through the existing Skill tool. It teaches prompting, batches, reference

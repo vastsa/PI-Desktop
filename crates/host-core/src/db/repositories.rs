@@ -118,6 +118,7 @@ impl Database {
         PRAGMA trusted_schema = ON;
         "#,
         )?;
+        crate::goals::register_clock(&conn)?;
         // rusqlite's default plan cache is 16 statements and its eviction is
         // LRU, while this crate prepares well over a hundred distinct ones. The
         // write path alone runs four lookups per appended message, and an
@@ -147,6 +148,13 @@ impl Database {
                 tx.execute_batch(PLAN_APPROVALS_SCHEMA)?;
                 tx.execute_batch(crate::session_collaboration::SCHEMA)?;
                 tx.execute_batch(WORKTREE_DDL)?;
+                tx.execute_batch(super::goals_migration::SCHEMA)?;
+                tx.execute_batch(super::goal_audit_migration::ADD_AUDIT)?;
+                tx.execute_batch(super::goal_audit_migration::COUNTER_GUARDS)?;
+                super::goal_lifecycle_migration::apply(&tx)?;
+                super::goal_refinement_migration::apply(&tx)?;
+                super::goal_independence_migration::apply(&tx)?;
+                super::goal_rounds_migration::apply(&tx)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -223,6 +231,7 @@ impl Database {
                 archive_legacy_db(path, legacy)?;
                 return Self::open(path);
             }
+            28..=33 => {}
             SCHEMA_VERSION => {}
             other => {
                 return Err(anyhow!(
@@ -279,14 +288,39 @@ impl Database {
         }
         if migrated_version == 26 {
             migrate_v26_to_v27(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 27 {
+            super::goals_migration::migrate(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 28 {
+            super::goal_audit_migration::migrate(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 29 {
+            super::goal_lifecycle_migration::migrate(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 30 {
+            super::goal_refinement_migration::migrate(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 31 {
+            super::goal_independence_migration::migrate(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 32 {
+            super::goal_rounds_migration::migrate(&conn, path)?;
         }
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version == 27 {
-            super::project_path_migration::migrate(&conn, path, 27)?;
+        if version == 33 {
+            super::project_path_migration::migrate(&conn, path, 33)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;
         crate::session_collaboration::recover(&db)?;
+        crate::goals::recover(&db)?;
         Ok(db)
     }
 
@@ -348,6 +382,7 @@ impl Database {
         if key != "app" {
             return self.kv_set("app", key, value);
         }
+        crate::goals::validate_default_budget(value)?;
         let mut sanitized = value.clone();
         strip_obsolete_plan_approval_permission_mode(&mut sanitized);
         self.kv_set("app", key, &sanitized)

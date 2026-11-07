@@ -7,7 +7,7 @@ pub(crate) use serde_json::Value;
 pub(crate) use std::path::{Path, PathBuf};
 
 /// Current SQLite schema version.
-pub const SCHEMA_VERSION: i64 = 28;
+pub const SCHEMA_VERSION: i64 = 34;
 
 /// Absolute approval deadline for a newly submitted Plan or Goal proposal.
 pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
@@ -15,6 +15,12 @@ pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
 /// Durable notification rows kept globally.
 pub const NOTIFICATION_KEEP: i64 = 200;
 
+mod goal_audit_migration;
+mod goal_independence_migration;
+mod goal_lifecycle_migration;
+mod goal_refinement_migration;
+mod goal_rounds_migration;
+mod goals_migration;
 mod migrations;
 mod model;
 mod model_discovery_migration;
@@ -75,3 +81,7 @@ mod tests;
 #[cfg(test)]
 #[path = "db/project_path_tests.rs"]
 mod project_path_tests;
+
+#[cfg(test)]
+#[path = "db/goal_project_path_migration_tests.rs"]
+mod goal_project_path_migration_tests;

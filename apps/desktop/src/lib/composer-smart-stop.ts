@@ -51,6 +51,7 @@ type AbortMessage = {
 };
 
 type SubmittedDraft = {
+  goalStart?: boolean;
   messageCountBeforeSend: number;
   draft: ComposerDraftSnapshot;
 };
@@ -61,6 +62,7 @@ export function resolveComposerSmartStop<T extends AbortMessage>(
 ):
   | { kind: "restore"; kept: T[]; draft: ComposerDraftSnapshot }
   | { kind: "settle" } {
+  if (submitted?.goalStart) return { kind: "settle" };
   let lastUserIndex = -1;
   const userSearchFloor = submitted?.messageCountBeforeSend ?? 0;
   for (let index = messages.length - 1; index >= userSearchFloor; index -= 1) {

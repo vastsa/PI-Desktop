@@ -106,8 +106,11 @@ test("reject or interruption returns editable planning without changing durable 
   const sendPromptBlock =
     queueSource.slice(queueSource.indexOf("sendPrompt: async"));
   assert.match(sendPromptBlock, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"/);
-  assert.match(sendPromptBlock, /await api\.prompt\(\{/);
-  // The send ships the submitted content through the prompt call.
+  // The public send-path tests exercise Plan routing and legacy pending gates.
+  assert.match(sendPromptBlock, /await submitUserPrompt\(api, current, \{/);
+  assert.match(sendPromptBlock, /\}\);/);
+  assert.doesNotMatch(sendPromptBlock, /goalBudgetDraft|getGoalBudgetDraft/, "Host, not Composer, resolves the saved default budget");
+  // The send ships the submitted content through the user-authorized entry.
   assert.match(sendPromptBlock, /sessionId,\s*content,/);
   assert.match(
     sendPromptBlock,
@@ -141,7 +144,7 @@ test("the component spec assigns mode ownership to Composer", () => {
   assert.doesNotMatch(topbarSpec, /Agent \| Plan|mode toggle|mode indicator/);
   assert.match(composerSpec, /combined model ×\s+reasoning-level control/);
   assert.match(composerSpec, /Composer-left Agent\/Plan\/Goal chip is the sole mode/);
-  assert.match(composerSpec, /--ds-bg-composer/);
+  assert.match(composerSpec, /Background: one solid semantic composer surface/);
 });
 
 test("plan approval sends exact identities and waits for host confirmation", () => {

@@ -63,7 +63,14 @@ const render = () => flushSync(() => rootNode.render(React.createElement(Compute
   t: i18n.t.bind(i18n), settings: { computerUse: { enabled: false } },
   saveSettings() { throw new Error("Requesting permission must not enable computer use or create a grant"); },
 })));
-const frame = () => new Promise(requestAnimationFrame);
+// These checks await React state, not paint. Hidden windows can throttle rAF.
+const frame = () => new Promise(resolve => {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => {
+    channel.port1.close(); channel.port2.close(); resolve();
+  };
+  channel.port2.postMessage(null);
+});
 const settle = async () => { await frame(); await frame(); };
 function check(condition, message) { if (!condition) throw new Error(message); }
 async function until(predicate, message) {

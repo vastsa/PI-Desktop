@@ -50,6 +50,7 @@ describe("result helpers", () => {
       "EDIT_NO_CHANGE",
       "EDIT_AMPLIFICATION_LIMIT",
       "MODEL_ALIAS_TOO_LONG",
+      "GOAL_BUDGET_REQUIRES_BUDGET_OR_RESUME",
     ] as const;
 
     for (const code of newlyLiveCodes) {

@@ -3098,3 +3098,8 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 
 项目删除说明和插件弹窗标题、安装结果中的长名称也在现有宽度内换行。
 项目指令、项目记忆和 OAuth 弹窗维持已有的边界处理。
+
+自主 Goal 使用普通对话的 Working 运行状态，只有 Plan 使用 Planning 兜底；具体运行活动优先级不变。
+不同非空根 Host turnId 创建独立助手轮次，没有伪造用户消息；旧无标识历史和子代理分组语义保留。
+目标耗时省略零单位和前导零，以空格分隔 d/h/m/s，例如 20s、5m、7h 59m 59s、1d 10h 5m 8s；零时长为 0s。
+编辑目标不暂停；保存后目标栏立即更新，下一 Host 执行轮才使用修改。切换输入模式或普通／立即发送消息均不暂停；成功提交目标后输入模式返回 Agent。显式提交新目标可替换运行中或暂停的旧目标；暂停后完成 Agent 任务可从目标栏直接恢复。详情含独立预算修改；运行时保存的预算在本轮结算后生效。界面与预算评估依据 roundsCompleted（schema 33），活动 claim 预留单个槽位，roundsStarted 保留为诊断；成功结算时递增一次（普通一次 Host/Agent 对话 = 1），错误/中止/恢复/compaction 迭代不递增，错误进入 blocked、中止进入 paused 防止无限自动重试。删除不是 Stop：确认删除后将 Goal 设为墓碑并设置输入偏好为 agent，仅允许已绑定的在运行 Goal 对话在普通 Agent 权限下完成（不影响其他正在运行的 Agent/Plan 对话，Plan 保持 Plan），撤销 claim 维持无效，墓碑结算一次迟到用量，无 Goal 报告、复活或新准入。目标栏立即显示已暂停并通知模型有界收尾（最多三次后续模型请求，不等待整轮结束），不显示“本轮结束后暂停”；输入框 Stop 立即中断目标与会话。

@@ -5,6 +5,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { MessageEntry } from "./pi-runtime-types.js";
 import type { UiMessage } from "@pi-desktop/shared";
 import * as Value from "typebox/value";
+import { expireLegacyGoalPauseNotice } from "./goals/goal-pause.js";
 
 const systemSchema = Type.Object({
   role: Type.Literal("system"),
@@ -27,7 +28,7 @@ export function readSystemMessage(value: unknown): SystemMessage {
   if (typeof value === "string") value = JSON.parse(value);
   if (!Value.Check(systemSchema, value)) throw new Error("Invalid persisted model system message");
   // Tool parameter schemas and grammar variants are JSON objects at this boundary.
-  return value as SystemMessage;
+  return expireLegacyGoalPauseNotice(value as SystemMessage);
 }
 
 function serializedSystemMessage(message: SystemMessage): string {

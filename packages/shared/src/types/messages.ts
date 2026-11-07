@@ -89,6 +89,8 @@ export type ToolTokenUsage = {
 
 export type UiMessage = {
   id: string;
+  /** Durable execution round, for grouping only, never authorization. */
+  turnId?: string;
   role: UiMessageRole;
   content: string;
   /** Internal model instructions/tool declarations; never a visible chat row. */

@@ -53,12 +53,22 @@ export async function checkBrowserPaneLifecycle(
       // rather than the pane's pending-completion lifecycle.
       return response.then(async result => { entered(); await gate; return result; });
     };
+    stage("lifecycle-capture-requested");
     const result = (raw
       ? host.cdpCommand("Page.captureScreenshot", { format: "png" })
       : host.screenshot({ fullPage: true })
     ).then(value => ({ value, error: undefined }), error => ({ value: undefined, error }));
-    await started;
-    return { release, fail, result, count: () => count, restore: () => { wc.debugger.sendCommand = original; } };
+    try {
+      await Promise.race([started, result.then(({ error }) => {
+        throw error ?? new Error("capture completed before the lifecycle fixture gate");
+      })]);
+      stage("lifecycle-capture-ready");
+      return { release, fail, result, count: () => count, restore: () => { wc.debugger.sendCommand = original; } };
+    } catch (error) {
+      release();
+      wc.debugger.sendCommand = original;
+      throw error;
+    }
   };
 
   stage("lifecycle-queue");
