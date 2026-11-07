@@ -127,8 +127,8 @@ function redactSensitiveErrorText(message: string): string {
 /**
  * Probe the HTTP status across SDK error shapes: `status`/`statusCode`
  * fields (walking the `cause` chain), then a leading "<status>:" or a
- * "(status)" / "status code NNN" marker, or a DashScope "Code: <status>"
- * envelope in the message. Gemini's
+ * "(status)" / "status code NNN" / OpenAI SDK "Error code: NNN" marker,
+ * or a DashScope "Code: <status>" envelope in the message. Gemini's
  * `@google/genai` ApiError.message is the JSON body with no prefix, so the
  * last probe reads a 400-599 `code` from that object.
  */
@@ -145,6 +145,8 @@ function extractStatus(err: unknown, message: string): number | undefined {
     /^\s*(\d{3})\b/,
     /\((\d{3})\)/,
     /status(?: code)?[ :]+(\d{3})\b/i,
+    // OpenAI Node SDK: "Error code: 402 - Insufficient Balance"
+    /\berror\s*code\s*[:=]\s*(\d{3})\b/i,
   ];
   for (const pattern of patterns) {
     const match = message.match(pattern);

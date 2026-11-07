@@ -428,8 +428,9 @@ status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
 omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
 stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
-HTTP status in `error.code` (Gemini's `@google/genai` `ApiError.message`) is
-classified from that 400-599 code the same way as a `<status>:` message:
+HTTP status in `error.code` (Gemini's `@google/genai` `ApiError.message`),
+and OpenAI Node SDK wording `Error code: NNN - …`, are classified from that
+400-599 code the same way as a `<status>:` message:
 400/422 stay terminal unless they report a context overflow, 404 is
 `MODEL_NOT_CONFIGURED`, 429 stays retryable, and 5xx stay retryable unless
 the body reports a context overflow that is not a rate limit, which is

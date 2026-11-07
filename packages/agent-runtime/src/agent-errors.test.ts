@@ -292,6 +292,31 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // OpenAI's Node SDK flattens failures as "Error code: NNN - …". That is not
+  // a leading "NNN:" / "status code NNN" form, so extractStatus used to miss
+  // it and a 401/402 fell through to the retriable generic bucket.
+  it.each([
+    [
+      "Error code: 402 - Insufficient Balance",
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 402 } },
+    ],
+    [
+      "Error code: 401 - Incorrect API key provided",
+      { code: "PROVIDER_UNAUTHORIZED", retriable: false, details: { providerStatus: 401 } },
+    ],
+    [
+      "Error code: 429 - Rate limit reached for model",
+      { code: "PROVIDER_RATE_LIMITED", retriable: true, details: { providerStatus: 429 } },
+    ],
+    [
+      "Error code: 404 - The model does not exist",
+      { code: "MODEL_NOT_CONFIGURED", retriable: false, details: { providerStatus: 404 } },
+    ],
+  ])("parses OpenAI Error code: NNN status prefixes: %s", (message, expected) => {
+    expect(classifyAgentError(message)).toMatchObject(expected);
+    expect(classifyAgentError(new Error(message))).toMatchObject(expected);
+  });
+
   it("treats malformed requests as non-retriable provider errors", () => {
     expect(classifyAgentError('400: {"error":"unknown parameter"}'))
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
