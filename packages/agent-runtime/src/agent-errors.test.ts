@@ -732,6 +732,11 @@ describe("classifyAgentError", () => {
     "Insufficient credits",
     "Payment Required",
     '429: {"error":{"message":"Insufficient credits"}}',
+    // DeepSeek / SiliconFlow / MiniMax use "balance", not "credits".
+    "Insufficient Balance",
+    "Sorry, your account balance is insufficient",
+    "insufficient balance of the account",
+    '{"code":30001,"message":"Sorry, your account balance is insufficient","data":null}',
   ])("treats HTTP 402 and credit-exhaustion wording as terminal: %s", (message) => {
     expect(classifyAgentError(new Error(message))).toMatchObject({
       code: "PROVIDER_ERROR",
