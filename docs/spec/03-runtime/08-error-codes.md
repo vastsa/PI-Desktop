@@ -90,6 +90,14 @@ does not turn temporary thread pressure into a host process exit.
 
 ### 3.2 Agent / session
 
+Provider status parsing also recognizes DashScope `Code: <status>` envelopes
+at the start of an error message. A streamed `InvalidParameter: <400>`
+rejection is terminal even when the enclosing HTTP response was 200:
+resending unchanged tool history cannot repair it. Structured error status
+fields retain precedence; arbitrary angle-bracket numbers in prose are not
+HTTP statuses. Authentication, rate-limit and transient 5xx envelopes retain
+their existing classifications.
+
 | code | retriable | meaning |
 |---|---|---|
 | `AGENT_BUSY` | no | session already has active turn; leftover subagents after a terminal parent error do not keep the session busy (D352) |
