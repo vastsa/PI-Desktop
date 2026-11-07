@@ -22,6 +22,7 @@ Each ADR includes:
 | ID | Title | Status |
 |---|---|---|
 | steering-local-tool-interruption | [Steering waits for confirmed tool settlement](steering-local-tool-interruption.md) | Accepted |
+| optional-scheduled-sidebar | [Optional scheduled-task shortcuts in the sidebar](optional-scheduled-sidebar.md) | Implemented candidate |
 | composer-pasted-directory-references | [Composer pasted directory references](composer-pasted-directory-references.md) | Accepted |
 | plugin-projects-list | [Read-only durable project enumeration for plugins](plugin-projects-list.md) | Accepted |
 | append-only-review-state | [Append-only review state](append-only-review-state.md) | Implemented candidate |
