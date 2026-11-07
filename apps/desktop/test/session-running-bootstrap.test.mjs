@@ -57,8 +57,11 @@ test("reopening restores running badges and the selected session before another 
 test("a completion arriving during bootstrap wins over the earlier running snapshot", async () => {
   const h = harness();
   let release;
-  h.api.listSessions = () => new Promise((resolve) => { release = resolve; });
+  let markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  h.api.listSessions = () => new Promise((resolve) => { release = resolve; markStarted(); });
   const pending = h.useAppStore.getState().bootstrap();
+  await started;
   const first = release;
   h.api.listSessions = async () => h.snapshot;
   h.useAppStore.getState().handleAgentEvent({
@@ -72,8 +75,11 @@ test("a completion arriving during bootstrap wins over the earlier running snaps
 test("a new live run is retained when the bootstrap snapshot did not contain it", async () => {
   const h = harness([]);
   let release;
-  h.api.listSessions = () => new Promise((resolve) => { release = resolve; });
+  let markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  h.api.listSessions = () => new Promise((resolve) => { release = resolve; markStarted(); });
   const pending = h.useAppStore.getState().bootstrap();
+  await started;
   h.useAppStore.getState().handleAgentEvent({
     sessionId: "running", ts: 1, event: { type: "agent_start" },
   });
