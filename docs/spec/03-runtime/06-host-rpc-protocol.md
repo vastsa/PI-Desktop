@@ -1598,7 +1598,8 @@ timeoutMs is an integer in 0–1000, default 0. Wait observes a per-job completi
 signal without holding AppState. Stop signals the existing supervisor before
 observing completion. The returned state is authoritative; stopRequested is
 only an acknowledgement, and a running job may need another wait. Snapshot
-metadata includes job {kind: bash, id}, command (at most 1024 UTF-8 bytes),
+metadata includes job {kind: bash, id}, command (a UTF-8 prefix of at most 1024 bytes),
+commandTruncated (whether that prefix omits bytes; older Hosts may omit the flag),
 elapsedMs, state, nullable exitCode and stopRequested. Wait/stop additionally
 return stdout and stderr (each at most 8192 UTF-8 bytes), and truncated for
 either Host retention loss or this observation's clipping.

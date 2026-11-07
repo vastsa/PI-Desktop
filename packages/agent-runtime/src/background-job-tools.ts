@@ -161,9 +161,9 @@ export function buildJobTools(
       if (job.kind === "delegation") {
         return delegates.stop.execute(id, { delegationIds: [job.id] }, signal, update);
       }
-      await requireSupported();
+      await abortable(requireSupported(), signal);
       if (signal?.aborted) throw Object.assign(new Error("Job stop aborted before dispatch"), { errorCode: "TOOL_ABORTED" });
-      const snapshot = await call<BackgroundJobSnapshot>("backgroundJobs.stop", { id: job.id, timeoutMs: 1000 });
+      const snapshot = await abortable(call<BackgroundJobSnapshot>("backgroundJobs.stop", { id: job.id, timeoutMs: 1000 }), signal);
       return observation(snapshot, snapshot.state === "running" ? "stopPending" : "completed");
     },
   };
