@@ -228,7 +228,9 @@ For a vision-capable model, images within the 10 MB per-image bound become
 transient pi-ai image blocks. Restored history also has a 30 MB aggregate raw
 image-byte budget: the sidecar considers persisted attachments newest-first and
 preserves every eligible image when the total fits. If the budget is exceeded,
-older images use the existing safe `@path` fallback. Unknown/custom models
+older images use the existing safe `@path` fallback. An image rejected for a
+longest edge above 8000 px does not consume that budget, so an older image
+that still fits stays inlined. Unknown/custom models
 without an explicit image override, non-vision models, oversized images, and
 unavailable refs also use the safe fallback. Main uses streamed hashing and file
 copying for oversized images. The durable user message stores `content` plus
