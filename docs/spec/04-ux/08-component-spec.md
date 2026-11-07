@@ -4741,3 +4741,7 @@ introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
+
+### Issue #2164 correction
+
+While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.

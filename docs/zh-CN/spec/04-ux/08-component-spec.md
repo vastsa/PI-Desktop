@@ -3098,3 +3098,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 
 项目删除说明和插件弹窗标题、安装结果中的长名称也在现有宽度内换行。
 项目指令、项目记忆和 OAuth 弹窗维持已有的边界处理。
+
+### Issue #2164 修正
+
+压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
