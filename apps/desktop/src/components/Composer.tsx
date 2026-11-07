@@ -192,6 +192,7 @@ export function Composer({
     setInputFocused,
     placeholderIndex,
     activeFileReferences,
+    excerpts,
     fileReferencesRef,
     applyEditorDraft,
     snapshotReferences,
@@ -254,7 +255,7 @@ export function Composer({
   // captured draft becomes the input, so the input must be empty first: the
   // live read is the only current source (the draft cache is not per keystroke).
   const handleEditQueuedPrompt = (id: string) => {
-    if (readLiveDraft().trim() || activeFileReferences.length) {
+    if (readLiveDraft().trim() || activeFileReferences.length || excerpts.length) {
       showToast(t("chat.editQueuedPromptBusy"), { variant: "info" });
       return;
     }
@@ -424,7 +425,7 @@ export function Composer({
       ) &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
-  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);
+  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length || excerpts.length);
 
   useEffect(() => {
     if (!controlsBlocked) return;
@@ -457,6 +458,7 @@ export function Composer({
     steeringAllowed: sessionAllows(capabilitySession, "canSteer"),
     pasting,
     activeFileReferences,
+    excerpts,
     t,
     sendPrompt,
     steerPrompt,
@@ -592,6 +594,8 @@ export function Composer({
             />
           ) : null}
           <ComposerInput
+            excerpts={excerpts}
+            onRemoveExcerpt={draft.removeExcerpt}
             imagePreview={draft.imagePreview}
             directoryReferences={activeFileReferences.filter((reference) => reference.kind === "directory")}
             onRemoveDirectory={draft.removeDirectoryReference}

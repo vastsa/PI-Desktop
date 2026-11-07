@@ -31,7 +31,9 @@ import { api } from "../../../lib/api";
 import { pluginViewIcon } from "../../../lib/plugin-view-icons";
 import { pluginWorkPanelTab } from "../../../lib/work-panel-tabs";
 import { useAppStore } from "../../../stores/app-store";
-import { copySelectionOrFallback } from "../../../lib/chat-transcript-text";
+import {
+  copySelectionOrFallback,
+} from "../../../lib/chat-transcript-text";
 
 export type OpenTranscriptMenu = (
   event: ReactMouseEvent<HTMLElement>,
@@ -115,6 +117,8 @@ export function TranscriptMenuProvider({ children, sessionId }: {
 export function useChatTextActions() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
+  const activeSessionId = useAppStore((state) => state.activeSessionId);
+  const addComposerExcerpt = useAppStore((state) => state.addComposerExcerpt);
 
   const copyText = useCallback(
     async (text: string, selection?: string) => {
@@ -149,5 +153,15 @@ export function useChatTextActions() {
     selection.addRange(range);
   }, []);
 
-  return { copyText, selectText };
+  const addToConversation = useCallback(
+    (text: string, selection?: string) => {
+      if (!activeSessionId) return;
+      if (addComposerExcerpt(activeSessionId, copySelectionOrFallback(selection, text))) {
+        showToast(t("chat.addedToConversation"), { variant: "success" });
+      }
+    },
+    [activeSessionId, addComposerExcerpt, showToast, t],
+  );
+
+  return { copyText, selectText, addToConversation };
 }

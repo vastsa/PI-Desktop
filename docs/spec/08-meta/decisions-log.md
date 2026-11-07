@@ -4388,6 +4388,17 @@ See ADR 0178.
   and explicit binding overrides retain their existing precedence. See
   `03-runtime/13-model-catalog-and-selection.md` §11.3.
 
+## 2026-09-23 — Selected transcript text can enter the draft directly (selected-text reuse ADR)
+
+- Issue #921 restores one small selection action after ADR 0268 removed the old
+  multi-action overlay. Selecting text inside one user message or assistant
+  answer shows Add to conversation beside the selection. After user review on
+  2026-09-24, the composer presents selected text as a counted excerpt badge
+  instead of expanding a Markdown quote into the editable draft. Sending adds
+  the excerpts as quoted context; failed sends restore them. The right-click
+  menu keeps a whole-turn fallback. The old annotation system, side chats, and
+  their retired identifiers remain retired; no IPC or stored format changes.
+
 ## 2026-09-23 — Compact before the hard request budget (D623, issue #970)
 
 - D623 starts automatic session and subagent compaction at 90% of the derived

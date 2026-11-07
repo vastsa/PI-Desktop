@@ -280,7 +280,7 @@ export const AssistantTurn = memo(function AssistantTurn({
 }: AssistantTurnProps) {
   const { t } = useTranslation();
   const openTranscriptMenu = useTranscriptMenu();
-  const { copyText, selectText } = useChatTextActions();
+  const { copyText, selectText, addToConversation } = useChatTextActions();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
   const forkAssistantMessage = useAppStore((s) => s.forkAssistantMessage);
   const paneSessionId = useSlotSessionId();
@@ -324,7 +324,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             ),
           ].at(-1) ?? null,
         complete: complete && Boolean(actionMessage) && canEditMessages,
-        actions: { copyText, selectText },
+        actions: { copyText, selectText, addToConversation },
         onRegenerate: () => {
           if (actionMessage) void retryAssistantMessage(actionMessage.id);
         },
