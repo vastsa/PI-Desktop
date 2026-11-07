@@ -164,6 +164,9 @@ import type {
   TrustedExtensionUiPromptResponse,
   SessionTodoSnapshot,
   StorageInfo,
+  BrowserCookieImportRequest,
+  BrowserCookieImportResult,
+  BrowserCookieImportStatus,
 } from "@pi-desktop/shared";
 import {
   defaultCommandShellForPlatform,
@@ -883,6 +886,11 @@ export const api = {
     invoke<ImportRunResult>(IPC.invoke.modelConfigImportRun, items),
   getSettings: () => invoke<AppSettings>(IPC.invoke.settingsGet).then(normalizeSettings),
   getStorageInfo: () => invoke<StorageInfo>(IPC.invoke.storageGet),
+  getBrowserCookieImportStatus: () =>
+    invoke<BrowserCookieImportStatus>(IPC.invoke.browserCookiesStatus),
+  importBrowserCookies: (input: BrowserCookieImportRequest) =>
+    invoke<BrowserCookieImportResult>(IPC.invoke.browserCookiesImport, input),
+  clearBrowserCookies: () => invoke<void>(IPC.invoke.browserCookiesClear),
   chooseStorageDirectory: () => invoke<string | null>(IPC.invoke.storageChoose),
   migrateStorage: (input: { path: string; language: string }) =>
     invoke<void>(IPC.invoke.storageMigrate, input),

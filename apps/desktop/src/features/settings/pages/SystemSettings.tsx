@@ -13,6 +13,7 @@ import { NetworkProxySection } from "../../../components/settings/NetworkProxySe
 import { CloseBehaviorSection } from "../developer-sections";
 import { SettingsCard, SettingsRow } from "../primitives";
 import { StorageSettingsSection } from "../StorageSettingsSection";
+import { BrowserCookiesSection } from "../BrowserCookiesSection";
 
 export function SystemSettings({
   settings,
@@ -29,6 +30,8 @@ export function SystemSettings({
       <NetworkProxySection settings={settings} saveSettings={saveSettings} />
 
       <StorageSettingsSection />
+
+      <BrowserCookiesSection />
 
       <SettingsCard title={t("settings.power")}>
         <SettingsRow

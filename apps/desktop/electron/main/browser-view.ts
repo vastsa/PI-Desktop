@@ -20,7 +20,9 @@ import { BrowserBackingHost } from "./browser-backing-host";
  * sibling assets refresh the preview.
  */
 
-const PARTITION = "persist:work-browser";
+/** Shared with the user-triggered Chrome cookie import, which fills this jar. */
+export const WORK_BROWSER_PARTITION = "persist:work-browser";
+const PARTITION = WORK_BROWSER_PARTITION;
 const LIVE_RELOAD_DEBOUNCE_MS = 250;
 
 export function normalizeUrl(raw: string): string | null {

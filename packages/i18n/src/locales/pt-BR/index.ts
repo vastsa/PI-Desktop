@@ -849,6 +849,24 @@ export const ptBR = {
     dismiss: "Dispensar"
   },
   settings: {
+    browserCookies: {
+      title: "Estado de login do navegador",
+      profile: "Perfil do Chrome",
+      description: "Copia os cookies de um perfil local do Google Chrome para o navegador integrado, para que os sites abram já conectados. Só é executado quando você clica em Importar.",
+      unsupported: "A importação do estado de login do Chrome está disponível apenas no macOS.",
+      noProfiles: "Nenhum perfil do Google Chrome com cookies foi encontrado.",
+      importAction: "Importar do Chrome",
+      keychainHint: "O macOS pede acesso a “Chrome Safe Storage” nas Chaves. Escolha “Sempre Permitir” para não ver o pedido de novo. Os cookies ficam neste dispositivo.",
+      import: "Importar",
+      importing: "Importando…",
+      imported: "{{imported}} cookies importados. {{skipped}} ignorados, {{failed}} com falha.",
+      clearTitle: "Limpar estado de login do navegador",
+      clearHint: "Remove todos os cookies do navegador integrado. Os sites pedirão login novamente.",
+      clear: "Limpar",
+      clearConfirm: "Limpar cookies",
+      cleared: "Todos os cookies do navegador integrado foram removidos.",
+      error: "Não foi possível concluir a operação. {{error}}",
+    },
     storage: {
       unavailableHint: "O diretório de armazenamento está indisponível no momento. Reconecte a unidade antes de iniciar; o aplicativo não criará dados vazios nem mudará para outro diretório.",
       browserSource: "Origem dos dados do navegador",
