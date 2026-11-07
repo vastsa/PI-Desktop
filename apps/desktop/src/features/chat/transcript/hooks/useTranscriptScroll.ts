@@ -92,6 +92,7 @@ export function useTranscriptScroll({
   const [savedReadingPosition] = useState(() => getTranscriptReadingPosition(sessionId));
   const pinnedRef = useRef(savedReadingPosition?.pinned ?? true);
   const lastScrollTopRef = useRef(0);
+  const lastScrollAtRef = useRef(-Infinity);
   // Last offset sampled while the scroller had a real layout box. A hidden
   // pane's `content-visibility: hidden` box reports `scrollTop === 0`, so the
   // hide transition must restore this rather than the collapsed value.
@@ -107,12 +108,7 @@ export function useTranscriptScroll({
   // Read by `reachTop`, which must stay referentially stable for the scroll
   // listener; the projection it describes is only known later in this render.
   const historyLengthRef = useRef(0);
-  const latestNavigation = useTranscriptLatestNavigation({
-    scrollRef, visible: paneVisible, onPosition: top => {
-      lastScrollTopRef.current = top;
-      lastLaidOutScrollTopRef.current = top;
-    },
-  });
+  const latestNavigation = useTranscriptLatestNavigation({ scrollRef, visible: paneVisible });
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     if (latestNavigation.isActive()) return;
@@ -193,16 +189,18 @@ export function useTranscriptScroll({
     enterDisclosureReading,
     recordScrollPosition,
   );
-  const startHistoryReading = useCallback((background: boolean) => {
+  const startHistoryReading = useCallback(() => {
     releaseDisclosureAnchor();
-    if (background) leaveFollow(); else releaseFollow();
-  }, [leaveFollow, releaseDisclosureAnchor, releaseFollow]);
+    leaveFollow();
+  }, [leaveFollow, releaseDisclosureAnchor]);
   const {
     loadingOlder, pending: historyPending, run: preserveHistory, retry: retryHistoryPaging,
-    restore: restoreHistoryAnchor, isHeld: isHistoryPaging, isLocked: isHistoryLocked,
-    track: trackHistoryPosition, cancel: cancelHistoryPaging,
+    restore: restoreHistoryAnchor, isHeld: isHistoryPaging,
+    track: trackHistoryPosition, cancel: cancelHistoryPaging, readLatency: historyReadLatency,
   } = useTranscriptHistoryPaging({
     scrollRef, contentRef, visible: paneVisible, sourceHead: messages[0]?.id, onStart: startHistoryReading,
+    canRetain: (paging) => paneVisible && !pinnedRef.current && (paging || (!latestNavigation.isActive() &&
+      !readingPositionPendingRef.current && !isDisclosureAnchorHeld() && !searchTarget)),
     onPosition: recordScrollPosition, onSettled: rememberReadingPosition,
   });
   const releaseNavigationFollow = useCallback(() => {
@@ -231,7 +229,6 @@ export function useTranscriptScroll({
   // consumes belongs to that dock.
   const markScrollGesture = useCallback(
     (event: Event) => {
-      if (isHistoryLocked()) return;
       if (event instanceof WheelEvent && (event.ctrlKey || event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY))) return;
       const input = readScrollInputContext(
         event,
@@ -252,7 +249,7 @@ export function useTranscriptScroll({
       // Real input takes the viewport back from a held disclosure position.
       releaseDisclosureAnchor();
     },
-    [cancelReadingPosition, isHistoryLocked, latestNavigation, leaveFollow, releaseDisclosureAnchor, rememberReadingPosition, retryHistoryPaging],
+    [cancelReadingPosition, latestNavigation, leaveFollow, releaseDisclosureAnchor, rememberReadingPosition, retryHistoryPaging],
   );
 
   useEffect(() => {
@@ -380,10 +377,10 @@ export function useTranscriptScroll({
 
   useEffect(() => cancelFollowScroll, [cancelFollowScroll]);
 
-  const loadOlder = useCallback((background = false) => {
+  const loadOlder = useCallback(() => {
     if (!paneVisibleRef.current) return;
     if (!hasMoreBefore || !onLoadOlder) return;
-    preserveHistory(onLoadOlder, windowSize, true, background);
+    preserveHistory(onLoadOlder, windowSize, true);
   }, [hasMoreBefore, onLoadOlder, preserveHistory, windowSize]);
 
   /**
@@ -392,15 +389,15 @@ export function useTranscriptScroll({
    * it. Both stages anchor the viewport the same way, because both change
    * scrollHeight above the rows the user is reading.
    */
-  const reachTop = useCallback((background = false) => {
+  const reachTop = useCallback(() => {
     const el = scrollRef.current;
     if (!el || isHistoryPaging()) return;
     const grown = growTranscriptWindow(windowSize, historyLengthRef.current);
     if (grown !== windowSize) {
-      preserveHistory(() => setWindowSize(grown), windowSize, false, background);
+      preserveHistory(() => setWindowSize(grown), windowSize);
       return;
     }
-    loadOlder(background);
+    loadOlder();
   }, [isHistoryPaging, loadOlder, preserveHistory, windowSize]);
 
 
@@ -409,8 +406,12 @@ export function useTranscriptScroll({
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const now = performance.now();
+    const elapsed = now - lastScrollAtRef.current;
+    lastScrollAtRef.current = now;
+    const upwardSpeed = Math.max(0, lastScrollTopRef.current - el.scrollTop) /
+      (elapsed > 0 && elapsed <= 200 ? Math.max(8, elapsed) : 16);
     if (latestNavigation.isActive()) { recordScrollPosition(el.scrollTop); return; }
-    if (isHistoryLocked() && restoreHistoryAnchor()) return;
     trackHistoryPosition();
     if (paneVisibleRef.current && transcriptHasLayout(el)) {
       lastLaidOutScrollTopRef.current = el.scrollTop;
@@ -436,8 +437,8 @@ export function useTranscriptScroll({
     ) {
       reachTop();
     } else if (paneVisibleRef.current && gesturing && el.scrollTop < lastScrollTopRef.current &&
-      isHistoryPrefetchPosition(el)) {
-      reachTop(true);
+      isHistoryPrefetchPosition(el, false, { upwardSpeed, latencyMs: historyReadLatency() })) {
+      reachTop();
     }
     if (readingWindow) {
       pinnedRef.current = false;
@@ -483,8 +484,9 @@ export function useTranscriptScroll({
       pinnedRef.current = transition.pinned;
       setShowJump(transition.showJump);
     }
+    trackHistoryPosition(windowSize);
     rememberReadingPosition();
-  }, [cancelFollowScroll, isHistoryLocked, latestNavigation, reachTop, readingPositionPendingRef, readingWindow, recordScrollPosition, rememberReadingPosition, restoreHistoryAnchor, scheduleFollowScroll, trackHistoryPosition]);
+  }, [cancelFollowScroll, historyReadLatency, latestNavigation, reachTop, readingPositionPendingRef, readingWindow, recordScrollPosition, rememberReadingPosition, scheduleFollowScroll, trackHistoryPosition, windowSize]);
 
   // Send / retry / regenerate always re-pins follow mode so the new prompt and
   // its stream stay in view, even if the user had scrolled up through history.

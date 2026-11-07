@@ -13683,9 +13683,9 @@ This test plan spec is accepted when:
 - **Preconditions**: A built Desktop checkout and existing compatible Electron
   dependencies. Use the isolated synthetic fixture, never a live user profile.
 - **Steps**:
-  1. Scroll upward into the ahead-loading band (`min(2400px, max(120px, 3 *
-     clientHeight))`, above the `120px` hard edge) while holding Host page IO;
-     continue scrolling upward during IO, then complete the page.
+  1. Scroll upward into the adaptive ahead-loading band (base three screens,
+     at most twelve screens or `12000px`) while holding Host page IO; continue
+     scrolling during IO, then complete the page. Repeat from `4000px` at speed.
   2. Start `node scripts/e2e-transcript-history-loading.mjs --manual` and click
      **Load earlier (hold)** (or reach `<= 120px`). Note the visible turn and
      its viewport offset, continuously roll the wheel upward and downward while
@@ -13698,24 +13698,31 @@ This test plan spec is accepted when:
      zero-delta, or `Ctrl`+wheel input and nested/editable/row controls. While a
      page is pending, return to latest, complete the old page, and also test
      hiding/unmounting mid-trip.
+  5. Return after loading older pages, then scroll upward again. Reveal a real
+     turn-changes card during the trip and compare with layout growth above the
+     visible text. Continue with live output and a canonical rewrite.
 - **Expected**: Ahead-loading mounts cached withheld history before Host IO,
   stays single-flight, does not set `overflow-y: hidden` or discard main scroll
   input, tracks the newest actual message anchor across ongoing upward movement,
   and keeps that message within `2px` when the page prepends; there is no
-  early-threshold observer or eager draining at rest. Only the `<= 120px` hard
-  edge, explicit earlier-history action, and underfilled `120px` observer briefly
-  lock `overflow-y` and discard main-scroller vertical wheel/touch/scroll-key
-  input through IO and three stable layout frames while preserving horizontal,
-  zero-delta, and `Ctrl`+wheel input, nested scrolling, editable fields, and
-  title activation. Return-to-latest runs one `180–420ms` cubic ease-out
-  viewport animation (immediate under reduced motion) while suppressing
-  competing follow/layout/turn-completion owners; preparing a historical view
+  early-threshold observer or eager draining at rest. The `<= 120px` hard edge,
+  explicit earlier-history action, and underfilled observer use the same moving
+  anchor without locking overflow or discarding input. Native wheel movement
+  must occur during IO, with insertion preserving the resulting reading point.
+  Nested scrolling, editable fields and title activation remain independent.
+  Return-to-latest uses the same browser-native smooth scrolling as conversation
+  turn markers (`auto` under reduced motion), without custom easing, timing, or
+  per-frame position writes. Competing follow/layout/turn-completion owners yield; preparing a historical view
   clears `loading` on a new view identity while keeping current messages visible
   until exact-identity arrival, commits on hide/unmount, cancels in place only
   on genuine main-scroller input, and may skip unloaded intermediate ranges when
-  a disjoint search/history view joins the live tail. Runtime `isRunning` stays
-  real, and existing message/page/mounted-window/retained-pane caches remain
-  unchanged without idle TTL or memory reclamation.
+  a disjoint search/history view joins the live tail. Tail-connected older pages
+  and their physical cursor survive arrival, so upward reading does not repeat
+  covered reads; they remain outside model input and accept live updates. Pane
+  eviction and canonical rewrites still invalidate them. Native `scrollend`
+  rechecks the current bottom and smoothly finishes any remaining distance after
+  a late card or layout change, without a full-height instantaneous jump.
+  Runtime `isRunning` and mounted-window bounds remain unchanged, without idle TTL or reclamation.
 - **Automation**: `node scripts/e2e-transcript-history-loading.mjs`, also run by
   `e2e-transcript-render.mjs`, plus `transcript-latest-navigation.test.mjs`,
   `transcript-reading.test.mjs`, and `transcript-scroll.test.mjs`. The direct
@@ -13736,11 +13743,40 @@ This test plan spec is accepted when:
   native browser smooth travel across the prefetch threshold, resuming follow
   during pending IO, press-only interruption plus remount, delayed failed search,
   focused and restored disjoint ranges (no automatic forward reads), stream
-  growth/completion, hide/unmount, and reduced-motion media emulation. Empty
-  layout viewports are checked after layout and before paint, not before lazy
-  rows have had their layout opportunity. Only external Host IPC is controlled;
+  growth/completion, hide/unmount, and reduced-motion media emulation. An extra
+  latest case changes height above the reader by `2400px`. The minimap jump
+  journey then clicks latest and verifies one native smooth command with no
+  instantaneous intermediate travel. Separate final travel from arrival drift.
+  Delayed-layout checks require nonempty post-layout/prepaint samples within
+  `2px`, retaining pre-layout rAF diagnostics rather than treating them as paint.
+  Only external Host IPC is controlled;
   the ordinary-motion cases still require intermediate frames. Manual procedures:
   `tests/history-loading-scroll-test-cases.md`.
+  The production `SessionPane` resource journey opens collapsed process groups,
+  traverses both ends and the middle, and checks measured prose recycling plus
+  restoration of visible content without additional history requests.
+  `node scripts/e2e-transcript-prose-state.mjs` opens a table preview and Mermaid
+  source view, moves their prose offscreen and back, and verifies both states
+  survive while ordinary prose still recycles.
+  A separate variant includes a 1,600-paragraph final answer. `--manual-smoke` drives the
+  manual toolbar through two 100-message pages and reset, sending 24 native
+  wheel events in each direction per pending page; directional movement,
+  single-flight requests, and frame-gap p95 <= 100ms are checked. This is a
+  measured fixture budget, not a universal zero-latency guarantee.
+  `node scripts/manual-transcript-desktop.mjs --interaction-smoke` complements
+  this with the complete product shell and real Host database: native upward
+  wheel input crosses the initial 100-message page without mounting all 1,000
+  messages, then the actual latest button reaches the bottom with nonblank
+  sampled frames and <=2px tail drift during 600ms after arrival. The isolated
+  instance confirms the application's normal quit dialog and exits.
+  Late-reading regressions wait until the page has settled, then change content
+  above the reading point by 120px, balance it with a -120px change below, and
+  change an earlier paragraph inside a long answer. Nonempty pre-paint samples
+  must stay within 1px. Six consecutive 20px steps additionally compare the
+  actual painted text crop byte-for-byte, not merely the eventual scrollTop.
+  Full-Desktop interaction smoke repeats the painted reading check after a real
+  Host page. Original native smooth input, resumed follow, search, disclosure,
+  hide/reveal and turn-completion paths remain required.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
 - **Status**: Automated Electron fixture and unit regressions implemented; run
