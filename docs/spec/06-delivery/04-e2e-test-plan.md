@@ -3926,8 +3926,8 @@ identify the platform validation still needed.
 #### E2E-041: Conversation minimap navigates long transcripts
 
 - **Preconditions**: A session contains enough user and assistant turns to
-  scroll beyond one viewport and densely fill the minimap, including one AI
-  response emitted as multiple assistant fragments around tool activity; a
+  scroll beyond one viewport and densely fill the minimap, including assistant
+  responses emitted as multiple fragments around tool activity; a
   second session has at least two eligible turn markers that still fit in one
   viewport.
 - **Steps**: 1) Open the long session. 2) Scroll through the transcript and
@@ -3938,13 +3938,11 @@ identify the platform validation still needed.
   window taller until content no longer overflows, then shorter again. 9) At a
   short window height, inspect and activate the first and last markers near the
   minimap's vertical bounds, including from the titlebar-facing side.
-- **Expected**: The rail contains one marker per visible user turn and one per
-  AI response. Multiple assistant fragments between two user messages share a
-  single marker and combined bounded preview, while tool-only rows create no
-  marker and do not split the response. The marker near the upper-third reading
+- **Expected**: The rail contains one marker per visible user message;
+  assistant and tool rows create no marker. The marker near the upper-third reading
   anchor exposes `aria-current`; hover and focus show the same localized sender
   and preview; nearby markers magnify horizontally without shifting the stack;
-  activation smoothly scrolls to the first contentful message in that response;
+  activation smoothly scrolls to that user message;
   the rail is absent when fewer than two eligible markers exist **or** when
   content does not overflow one viewport; the rail reappears once overflow
   returns after a resize. Dense markers remain centered in the unobstructed
@@ -20241,6 +20239,11 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   isolated profile; verify both the checked menu option and actual diff context
   retain that choice. Missing/invalid/blocked storage is unit-covered by
   `apps/desktop/test/review-preferences.test.mjs`.
+- With two populated sessions, visit B, then click a file in A's real transcript
+  turn-summary card and return to B. The retained focus request must belong to A;
+  B must immediately retain its own recorded files. Cycling Last round → History
+  must leave those files unchanged rather than repair an initially empty list,
+  and B's selected history totals must agree with its visible file list.
 - Open several files from the per-turn summary with enough Review content to
   scroll. Each target comes into view inside Review while the conversation and
   work-panel headers stay visible and the window content reaches the bottom edge.
