@@ -409,15 +409,21 @@ This read-only metadata needs no permission and is also available through the
 panel bridge channel `projects.list`. It never creates, opens, switches, or
 grants access to a project. Filesystem and session permissions are unchanged.
 
-`workspace.get` answers with the primary root — `path` and its leaf `name`,
-both unchanged — plus, when that folder belongs to a project group (ADR 0249),
-`projectId` and `roots`: every registered folder of the group in its own order,
-primary first, each `{ path, name, primary }` (ADR 0263). `workspace:changed`
-carries the same object, and main answers both from the host-owned group
-records, so the event and the pull cannot disagree. A host that cannot resolve
-the group omits `projectId` and `roots` — the same `{ path, name }` a plugin
-already handles — and reading this metadata needs no new permission and adds no
-SDK method.
+`workspace.get` uses the same trusted tool-session project as workspace-rooted
+filesystem calls (ADR 0266). A background session therefore receives its own
+`path`, `name`, `projectId`, group `roots`, and remote metadata even when another
+project is visible or no project is selected. Tool arguments do not select a
+workspace or impersonate a session. Panel calls and untracked sessions retain
+the visible-workspace fallback; `workspace:changed` continues to describe that
+visible workspace, so a background tool's pull can intentionally differ from
+the foreground event.
+
+Group metadata is resolved from the host-owned group snapshot for the selected
+path. An older metadata provider that answers for a different path is discarded
+in favor of the session's `{ path, name }`, without copying another group's
+roots or remote identity. The existing return shape, SDK method, permissions,
+and storage schema do not change. Absolute `openDefault`, `openInBrowser`, and
+`reveal` requests use the same invoking project's registered roots.
 
 `fs.readPreview` classifies one existing readable file for in-app display. It
 uses the same `fs.read` checks as `fs.readText`, rejects directories, and
