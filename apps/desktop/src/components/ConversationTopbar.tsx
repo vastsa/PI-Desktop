@@ -1,3 +1,4 @@
+import type { SidebarPreviewTriggerProps } from "../features/app/useSidebarPreview";
 import {
   useEffect,
   useRef,
@@ -43,12 +44,14 @@ function isDefaultSessionTitle(title?: string | null) {
 
 export function ConversationTopbar({
   sidebarCollapsed,
+  sidebarPreview,
   workPanelOpen,
   onToggleSidebar,
   onNewTask,
   onOpenSearch,
 }: {
   sidebarCollapsed: boolean;
+  sidebarPreview?: SidebarPreviewTriggerProps;
   workPanelOpen: boolean;
   onToggleSidebar: () => void;
   onNewTask: () => void;
@@ -246,6 +249,9 @@ export function ConversationTopbar({
             ariaLabel={t("nav.toggleSidebar")}
             tabIndex={sidebarCollapsed ? undefined : -1}
             onClick={onToggleSidebar}
+            aria-expanded={!sidebarCollapsed}
+            {...sidebarPreview}
+            data-nav="toggle-sidebar"
           >
             <IconSidebar size={15} />
           </TooltipButton>

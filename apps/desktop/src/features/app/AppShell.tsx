@@ -1,3 +1,4 @@
+import { useSidebarPreview } from "./useSidebarPreview";
 import {
   type CSSProperties,
   lazy,
@@ -139,6 +140,11 @@ export function AppShell() {
       />
     );
 
+  const sidebarPreview = useSidebarPreview(
+    sidebarCollapsed && !sidebarExiting && ready && page !== "settings" && !showSplash,
+    page, activeSessionId,
+  );
+
   let shell: ReactNode = null;
   if (ready) {
     shell = (
@@ -149,9 +155,11 @@ export function AppShell() {
             hidden={page === "settings"}
             inert={page === "settings" ? true : undefined}
           >
-            {!sidebarCollapsed || sidebarExiting ? (
+            {!sidebarCollapsed || sidebarExiting || sidebarPreview.open ? (
               <Sidebar
                 className={cx(sidebarEntering && "is-entering", sidebarExiting && "is-exiting")}
+                floating={sidebarPreview.open}
+                previewProps={sidebarPreview.open ? sidebarPreview.sidebarProps : undefined}
                 onAnimationEnd={handleSidebarAnimationEnd}
                 onToggleSidebar={toggleSidebar}
                 sidebarToggleShortcut={sidebarToggleShortcut}
@@ -174,6 +182,7 @@ export function AppShell() {
               >
                 {sidebarCollapsed && (
                   <CollapsedTitlebarActions
+                    sidebarPreview={sidebarPreview.triggerProps}
                     onToggleSidebar={toggleSidebar}
                     onNewTask={() => void runMenuCommand("newTask")}
                     sidebarToggleShortcut={sidebarToggleShortcut}
@@ -199,6 +208,7 @@ export function AppShell() {
               <section ref={setToastAnchor} className="main-pane">
                 {page === "chat" ? (
                   <ConversationTopbar
+                    sidebarPreview={sidebarPreview.triggerProps}
                     sidebarCollapsed={sidebarCollapsed}
                     workPanelOpen={presentedWorkPanelOpen}
                     onToggleSidebar={toggleSidebar}
@@ -215,6 +225,7 @@ export function AppShell() {
                     {sidebarCollapsed && (
                       <div className="main-titlebar-left no-drag">
                         <CollapsedTitlebarActions
+                          sidebarPreview={sidebarPreview.triggerProps}
                           onToggleSidebar={reopenSidebar}
                           onNewTask={() => void runMenuCommand("newTask")}
                           sidebarToggleShortcut={sidebarToggleShortcut}
