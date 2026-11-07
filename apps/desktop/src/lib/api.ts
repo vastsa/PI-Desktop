@@ -1058,6 +1058,8 @@ export const api = {
     invoke<{ ok: boolean }>(IPC.invoke.providersOauthDelete, providerId),
   getProject: () =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectGet),
+  getSidebarPreferences: () => invoke<unknown>(IPC.invoke.sidebarPreferencesGet),
+  setSidebarPreferences: (value: unknown) => invoke<void>(IPC.invoke.sidebarPreferencesSet, value),
   listProjects: () =>
     invoke<{ projects: ProjectRecord[] }>(IPC.invoke.projectList),
   listProjectGroups: () =>

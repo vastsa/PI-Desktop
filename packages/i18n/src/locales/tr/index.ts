@@ -926,6 +926,7 @@ export const tr = {
     "imageModelSaveFailed": "Görsel modeli kaydedilemedi.",
     "clearImageModel": "Temizle",
     "setImageModel": "Görsel modeli olarak ayarla",
+    imageModelChatExclusionHint: "İşaretli modeller kaydedildikten sonra sohbet ve varsayılan model menülerinden kaldırılır. Bu, görsel girdisi değil görsel üretimidir. Yalnızca uç noktanızda görsel üretebilen modelleri işaretleyin.",
     "imageModelSelected": "Seçili görsel modeli",
     "generatedImage": "Oluşturulan görsel {{index}}",
     "downloadGeneratedImage": "İndir",

@@ -20,6 +20,8 @@ import {
 } from "../lib/sidebar-session-status";
 import {
   projectWorkspaceFromPath,
+  restoreSidebarPreferences,
+  sidebarPreferencesState,
   saveSidebarPreferences,
 } from "../lib/sidebar-preferences";
 import {
@@ -241,6 +243,11 @@ export const useAppStore = create<AppState>((set, get) => {
     const generation = ++bootstrapGeneration;
     let recoveredSettings: AppSettings | undefined;
     try {
+      const sidebar = await restoreSidebarPreferences({
+        read: api.getSidebarPreferences, write: api.setSidebarPreferences, listProjects: api.listProjects,
+      });
+      if (generation !== bootstrapGeneration) return;
+      if (sidebar) set(sidebarPreferencesState(sidebar));
       const settingsRequest = api.getSettings().then(async (settingsRaw) => {
         let settings = settingsRaw
           ? {

@@ -922,6 +922,7 @@ export const zhCN = {
     imageModelSaveFailed: "无法保存生图模型。",
     clearImageModel: "清除",
     setImageModel: "设为生图模型",
+    imageModelChatExclusionHint: "保存后，标记的模型会从聊天和默认模型菜单中移除。这是图片生成，不是图片输入；请只标记端点确实支持生图的模型。",
     imageModelSelected: "已设为生图模型",
     generatedImage: "生成图片 {{index}}",
     downloadGeneratedImage: "下载",
