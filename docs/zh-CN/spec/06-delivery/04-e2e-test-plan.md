@@ -20,6 +20,13 @@
   `scheduled-workspace.test.mjs` checks rendered loading/error states.
   These are renderer regression checks, not a native Electron E2E run.
 
+Also invalidate the Host while Create/Edit options are pending, with the old
+request resolving, rejecting or remaining pending. The next normal poll must
+replace that read and recover the same editor without Cancel/reopen. A failed
+replacement exposes Retry; retry success mounts the editor. Old responses must
+not overwrite recovered options. Successful options remain lazy rather than
+being fetched on every subsequent poll.
+
 > **翻译说明：** 本页是与 [英文源规格](/spec/06-delivery/04-e2e-test-plan) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 

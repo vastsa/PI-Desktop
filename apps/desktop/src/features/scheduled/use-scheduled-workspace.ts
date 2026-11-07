@@ -79,6 +79,7 @@ export function useScheduledWorkspace(
   const revision = useRef(0);
   const runRevision = useRef(0);
   const projectRevision = useRef(0);
+  const pendingProjectGeneration = useRef<number | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
   const busyRef = useRef(false);
   const onErrorRef = useRef(onError);
@@ -138,6 +139,7 @@ export function useScheduledWorkspace(
   const loadProjects = useCallback(async () => {
     const request = ++projectRevision.current;
     const generation = cache.generation;
+    pendingProjectGeneration.current = generation;
     setProjectsLoaded(false);
     setProjectsError("");
     try {
@@ -149,6 +151,10 @@ export function useScheduledWorkspace(
       if (mounted.current && request === projectRevision.current && generation === cache.generation) {
         setProjectsError(failure instanceof Error ? failure.message : String(failure));
       }
+    } finally {
+      if (request === projectRevision.current && generation === cache.generation) {
+        pendingProjectGeneration.current = null;
+      }
     }
   }, []);
 
@@ -159,6 +165,10 @@ export function useScheduledWorkspace(
       void refresh();
       const current = selectedTaskIdRef.current;
       if (current) void readTaskRuns(current);
+      // Replace an invalidated editor read even if the old Host never settles it.
+      if (pendingProjectGeneration.current !== null && pendingProjectGeneration.current !== cache.generation) {
+        void loadProjects();
+      }
     }, REFRESH_INTERVAL_MS);
     return () => {
       mounted.current = false;
@@ -167,7 +177,7 @@ export function useScheduledWorkspace(
       projectRevision.current++;
       clearInterval(timer);
     };
-  }, [refresh, readTaskRuns]);
+  }, [refresh, readTaskRuns, loadProjects]);
 
   // Keep one task selected: the first one, or the previous selection while it
   // still exists. A deleted task never leaves the pane pointing at nothing, and

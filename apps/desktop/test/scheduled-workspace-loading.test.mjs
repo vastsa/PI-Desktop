@@ -163,6 +163,54 @@ test("invalidated lifecycle rejects late reads and does not repopulate the next 
   assert.deepEqual(next.output.tasks, []);
 });
 
+for (const oldOutcome of ["resolved", "rejected", "pending"]) {
+  test(`mounted editor recovers after Host invalidation with an old ${oldOutcome} project read`, async t => {
+    const old = deferred(), replacement = deferred(); let projectReads = 0;
+    const h = harness(api({ listProjects: () => ++projectReads === 1 ? old.promise : replacement.promise }));
+    t.after(() => h.close()); await h.settle();
+    void h.output.loadProjects(); await h.settle();
+    cache.clear();
+    if (oldOutcome === "resolved") old.resolve({ projects: [{ id: 1, path: "/old-host" }] });
+    if (oldOutcome === "rejected") old.reject(new Error("Old Host unavailable"));
+    await h.settle(); h.tick(); await h.settle();
+    assert.equal(projectReads, 2, "normal polling replaces the invalidated editor read without reopening");
+    assert.equal(h.output.projectsLoaded, false);
+    assert.equal(h.output.projectsError, "");
+    const projects = [{ id: 2, path: "/new-host" }];
+    replacement.resolve({ projects }); await h.settle();
+    assert.equal(h.output.projectsLoaded, true);
+    assert.deepEqual(h.output.projects, projects);
+    if (oldOutcome === "pending") {
+      old.resolve({ projects: [{ id: 1, path: "/old-host" }] }); await h.settle();
+      assert.deepEqual(h.output.projects, projects, "a late old response cannot replace recovered options");
+    }
+    h.tick(); await h.settle();
+    assert.equal(projectReads, 2, "successful options do not become an extra project query on every poll");
+  });
+}
+
+test("a failed replacement project read exposes retry and recovers in the same editor", async t => {
+  const old = deferred(); let projectReads = 0;
+  const projects = [{ id: 3, path: "/recovered-host" }];
+  const h = harness(api({ listProjects: () => {
+    projectReads++;
+    if (projectReads === 1) return old.promise;
+    if (projectReads === 2) return Promise.reject(new Error("Synthetic Host unavailable"));
+    return Promise.resolve({ projects });
+  } }));
+  t.after(() => h.close()); await h.settle();
+  void h.output.loadProjects(); await h.settle(); cache.clear();
+  h.tick(); await h.settle();
+  assert.match(h.output.projectsError, /Synthetic Host unavailable/);
+  assert.equal(h.output.projectsLoaded, false);
+  await h.output.loadProjects(); await h.settle();
+  assert.equal(h.output.projectsLoaded, true);
+  assert.equal(h.output.projectsError, "");
+  assert.deepEqual(h.output.projects, projects);
+  old.reject(new Error("Old Host closed")); await h.settle();
+  assert.equal(h.output.projectsError, "");
+});
+
 test("conversation return takes precedence over the cached task during initial loading", async t => {
   returns.rememberScheduledReturn({ taskId: "b", taskTitle: "Synthetic B", runId: "restored-b", sessionId: "synthetic-session" });
   const held = deferred();

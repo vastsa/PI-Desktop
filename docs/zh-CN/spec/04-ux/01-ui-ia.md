@@ -227,7 +227,10 @@ the renderer's last successful in-memory snapshot while refreshing. Host loss
 or restart invalidates that snapshot and rejects late responses from the old
 lifecycle. Project options load only when opening Create/Edit; the form waits
 for that read to succeed and exposes retry on failure. Run now and Delete wait
-for known run status; Host admission remains authoritative.
+for known run status; Host admission remains authoritative. If Host loss/restart
+invalidates pending editor options, the next normal page poll replaces that
+read without closing the editor or waiting for the old request to settle.
+A replacement failure exposes the existing Retry action.
 任务列与所选任务的页面并排展示，支持创建、编辑、暂停、启用和确认删除。表单可为每个任务单独选择项目、权限、模型与会话模式（每次新开会话或复用同一会话）。周期保留下拉选择，并与时分统一为自定义主题菜单。每小时按一小时间隔执行，不显示时间选择；保存、启用、启动或上次自动准入后重新计时。
 间隔直接给出跨度：数量加分钟或小时单位（5 分钟至 24 小时），从准入时刻起算。
 每天通过下拉框选择上午 09:00、下午 14:00、晚上 19:00、夜间 22:00；

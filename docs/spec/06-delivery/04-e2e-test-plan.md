@@ -20,6 +20,13 @@
   `scheduled-workspace.test.mjs` checks rendered loading/error states.
   These are renderer regression checks, not a native Electron E2E run.
 
+Also invalidate the Host while Create/Edit options are pending, with the old
+request resolving, rejecting or remaining pending. The next normal poll must
+replace that read and recover the same editor without Cancel/reopen. A failed
+replacement exposes Retry; retry success mounts the editor. Old responses must
+not overwrite recovered options. Successful options remain lazy rather than
+being fetched on every subsequent poll.
+
 ## E2E-PROVIDER-DASHSCOPE-terminal-parameter-error
 
 - **Preconditions:** Isolated Agent runtime and a synthetic OpenAI-compatible
