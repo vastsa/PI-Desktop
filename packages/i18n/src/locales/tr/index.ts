@@ -2256,6 +2256,8 @@ sklm: {
       reviewScope: "Review scope",
       reviewSettings: "Review settings",
       wordWrap: "Word wrap",
+      expandAll: "Tümünü genişlet",
+      collapseAll: "Tümünü daralt",
       contextDisplay: "Context lines",
       fileActions: "Dosya işlemleri",
       openInternal: "Dahili aç",

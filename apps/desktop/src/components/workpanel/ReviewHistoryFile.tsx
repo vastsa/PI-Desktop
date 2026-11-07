@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewContextLines } from "@pi-desktop/shared";
 import { reviewFilePathLabel, type ReviewFileGroup } from "../../lib/review-history";
@@ -10,22 +10,22 @@ import { IconChevronRight, IconMore } from "../icons";
 import { ReviewFileIcon } from "../ReviewFileIcon";
 import { ReviewFileActions } from "./ReviewFileActions";
 
-export function ReviewHistoryFile({ file, sessionId, context, focusSeq, focusSnapshots, expandFocus, disabled, onChanged }: {
+export function ReviewHistoryFile({ file, sessionId, context, open, onOpenChange, focusSeq, focusSnapshots, expandFocus, disabled, onChanged }: {
   file: ReviewFileGroup; sessionId: string; context: ReviewContextLines;
+  open: boolean; onOpenChange: (id: string, open: boolean) => void;
   focusSeq?: number; focusSnapshots?: readonly string[]; expandFocus?: boolean;
   disabled: boolean; onChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const detailsId = useId();
   const menu = useContextMenu();
   const { canOpenInternal, canOpenFile, openFile, outside } = useReviewFileOpen(file, sessionId);
   useEffect(() => {
-    if (focusSeq && expandFocus && file.entries.some(entry => focusSnapshots?.includes(entry.change.snapshotId))) setOpen(true);
-  }, [focusSeq, expandFocus, file, focusSnapshots]);
+    if (focusSeq && expandFocus && file.entries.some(entry => focusSnapshots?.includes(entry.change.snapshotId))) onOpenChange(file.id, true);
+  }, [focusSeq, expandFocus, file, focusSnapshots, onOpenChange]);
   return <section className={cx("review-history-file", open && "open")} data-review-snapshots={file.entries.map(entry => entry.change.snapshotId).join(" ")}>
     <div className="review-history-file-heading">
-    <Button variant="ghost" className="review-history-file-header" aria-expanded={open} aria-controls={detailsId} disabled={disabled} title={/^(?:[a-z]:[\\/]|[\\/])/i.test(file.path) || !file.root ? file.path : `${file.root}/${file.path}`} onClick={() => setOpen(value => !value)}>
+    <Button variant="ghost" className="review-history-file-header" aria-expanded={open} aria-controls={detailsId} disabled={disabled} title={/^(?:[a-z]:[\\/]|[\\/])/i.test(file.path) || !file.root ? file.path : `${file.root}/${file.path}`} onClick={() => onOpenChange(file.id, !open)}>
       <ReviewFileIcon path={file.path} /><span className="review-file-label">
         <span className="review-change-card-path" data-outside-path={reviewFilePathLabel(file.path) !== file.path || undefined}>{reviewFilePathLabel(file.path)}</span>
         <span className="review-file-disclosure"><IconChevronRight size={11} /></span>
@@ -41,7 +41,7 @@ export function ReviewHistoryFile({ file, sessionId, context, focusSeq, focusSna
     <ContextMenu state={menu.contextMenu} onClose={menu.closeContextMenu} />
     {open && <div className="review-history-file-body" id={detailsId}>
       {file.entries.map(entry => <div className="review-history-record" key={entry.change.snapshotId} data-snapshot-id={entry.change.snapshotId}>
-        <ReviewChangeDetails message={entry.message} compact numbered actions={false} sessionId={sessionId} contextLines={context} />
+        <ReviewChangeDetails message={entry.message} compact numbered highlightCode actions={false} sessionId={sessionId} contextLines={context} />
       </div>)}
       <ReviewFileActions file={file} sessionId={sessionId} context={context} disabled={disabled} onChanged={onChanged} />
     </div>}

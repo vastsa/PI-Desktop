@@ -2241,6 +2241,8 @@ sklm: {
       reviewScope: "审阅范围",
       reviewSettings: "审阅设置",
       wordWrap: "自动换行",
+      expandAll: "全部展开",
+      collapseAll: "全部收起",
       contextDisplay: "上下文显示",
       fileActions: "文件操作",
       openInternal: "内部打开",

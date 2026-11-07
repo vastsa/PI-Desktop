@@ -56,7 +56,7 @@ export const TurnChangesCard = memo(function TurnChangesCard({
   const hidden = files.length - visible.length;
 
   const openReview = (snapshotIds: readonly string[], expand: boolean) => {
-    requestReviewFocus(snapshotIds, { expand });
+    requestReviewFocus(snapshotIds, { expand, sessionId });
     const tab = toolWorkPanelTab("review");
     if (sessionId) openTabForSession(sessionId, tab);
     else openTab(tab);
