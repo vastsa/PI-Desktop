@@ -16,6 +16,7 @@ import {
 import { useAppStore } from "../stores/app-store";
 import { formatToolDuration } from "../lib/tool-display";
 import { TooltipButton } from "./ui";
+import { PlanQuotaSection } from "./settings/PlanQuotaBadge";
 import {
   aggregateToolTokenUsage,
   calculateCacheRate,
@@ -87,6 +88,14 @@ export function ContextUsageInspector({
       ? state.agentStatuses[state.activeSessionId]?.activity
       : undefined,
   );
+  // The session's provider row (or the app default) drives the subscription
+  // quota block; a row on a plan without a usage endpoint renders nothing.
+  const planQuotaProvider = useAppStore((state) => {
+    const providerId = session?.providerId ?? state.settings?.defaultProviderId;
+    return providerId
+      ? state.providers.find((candidate) => candidate.id === providerId)
+      : undefined;
+  });
   const sessionTiming = useSessionTiming({
     enabled: open,
     session,
@@ -449,6 +458,7 @@ export function ContextUsageInspector({
           </span>
         </div>
       </div>
+      {planQuotaProvider ? <PlanQuotaSection provider={planQuotaProvider} /> : null}
       {compaction ? (
         <div className="context-inspector-compaction">
           <span>
