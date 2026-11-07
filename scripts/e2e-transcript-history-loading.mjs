@@ -11,6 +11,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const { build } = createRequire(join(root, "packages/agent-runtime/package.json"))("esbuild");
 const { electronBinary } = resolveElectronBinary(root);
 const manual = process.argv.includes("--manual");
+const manualSmoke = process.argv.includes("--manual-smoke");
+const anchorOnly = process.argv.includes("--anchor-only");
 const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? root, "history-loading-"));
 try {
   await build({ entryPoints: [join(root, "scripts/e2e/transcript-history-loading.tsx")],
@@ -48,17 +50,88 @@ app.whenReady().then(async () => {
  };
   win.focus();
  try {
-  await win.loadFile(require('node:path').join(__dirname, 'index.html'));
+  await win.loadFile(require('node:path').join(__dirname, 'index.html'), { query: ${JSON.stringify(manual || manualSmoke ? { manual: "1" } : {})} });
   await js('new Promise((resolve,reject)=>{const end=performance.now()+10000;const check=()=>{if(globalThis.historyLoadingFixture)resolve();else if(performance.now()>end)reject(new Error("fixture did not initialize"));else requestAnimationFrame(check)};check()})');
   console.log('HISTORY_MOTION ' + await js('JSON.stringify({ reduced: matchMedia("(prefers-reduced-motion: reduce)").matches })'));
   if (${manual}) return;
+  if (${manualSmoke}) {
+    const click = label => { console.log('MANUAL_CLICK ' + label); return js('Array.from(document.querySelectorAll("nav button")).find(button => button.textContent === ' + JSON.stringify(label) + ').click()'); };
+    const wait = expression => js('new Promise((resolve,reject)=>{const end=performance.now()+8000;const check=()=>{if(' + expression + ')resolve();else if(performance.now()>end)reject(new Error("manual control did not settle"));else requestAnimationFrame(check)};check()})');
+    await wait('document.querySelector("#history-manual-status").textContent.includes("40 of 1000")');
+    for (const count of [140, 240]) {
+      await click('Load earlier (hold)');
+      await wait('globalThis.historyLoadingFixture.inspect().busy');
+      for (const deltaY of [-120, 120]) {
+      const before = await call('inspect()');
+      await js('globalThis.manualFrameProbe = { gaps: [], last: performance.now(), active: true }; requestAnimationFrame(function sample(now) { const p = globalThis.manualFrameProbe; if (!p.active) return; p.gaps.push(now - p.last); p.last = now; requestAnimationFrame(sample); })');
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: before.x, y: before.y });
+      for (let step = 0; step < 24; step++) {
+        win.webContents.sendInputEvent({ type: 'mouseWheel', x: before.x, y: before.y, deltaY, deltaX: 0, canScroll: true });
+        await js('new Promise(resolve => requestAnimationFrame(resolve))');
+      }
+      await call('frames()');
+      const after = await call('inspect()');
+      const gaps = await js('globalThis.manualFrameProbe.active = false; globalThis.manualFrameProbe.gaps');
+      const sorted = gaps.filter(value => value > 0).sort((a, b) => a - b);
+      assert(sorted.length >= 20, 'native scrolling did not produce enough frame samples');
+      const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
+      console.log('MANUAL_NATIVE_SCROLL ' + JSON.stringify({ count, deltaY, events: 24, moved: after.top - before.top, samples: sorted.length, p95, max: sorted.at(-1) }));
+      assert((after.top - before.top) * -Math.sign(deltaY) > 240, 'pending page swallowed sustained native input');
+      assert.equal(after.calls, before.calls, 'native input duplicated a held page request');
+      assert(p95 <= 100, 'native scroll frame p95 exceeded the renderer responsiveness budget');
+      }
+      await click('Complete page');
+      await wait('!globalThis.historyLoadingFixture.inspect().busy');
+      assert.match(await js('document.querySelector("#history-manual-status").textContent'), new RegExp(count + ' messages loaded'));
+      await call('frames()');
+    }
+    await click('Reset conversation');
+    await wait('document.querySelector("#history-manual-status").textContent.includes("40 of 1000")');
+    console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, manualControls: true, pages: 2 }));
+    app.exit(0); return;
+  }
+  const settledResults = [];
+  for (const kind of ['late', 'balanced', 'paragraph']) {
+    const result = await call('settledLayout(' + JSON.stringify(kind) + ')');
+    settledResults.push(result);
+    console.log('HISTORY_SETTLED_LAYOUT ' + JSON.stringify(result));
+  }
+  for (const result of settledResults) {
+    assert(result.after.layoutSampleCount >= 8, 'late-layout regression needs actual frame samples');
+    assert(result.after.layoutMaxDrift <= 1, 'a painted late-layout frame moved the reading anchor: ' + result.after.layoutMaxDrift);
+    if (result.kind === 'balanced') assert(Math.abs(result.totalDelta) <= 1, 'balanced layout fixture changed total height');
+  }
+  for (const kind of ['late', 'balanced', 'paragraph']) {
+    const prepared = await call('prepareSettledLayout(' + JSON.stringify(kind) + ')');
+    const baseline = (await win.webContents.capturePage(prepared.crop)).toBitmap();
+    assert(new Set(baseline).size > 8, 'pixel probe captured a blank/uniform region');
+    for (let amount = 20; amount <= 120; amount += 20) {
+      await call('mutateSettledLayout(' + amount + ')');
+      const painted = (await win.webContents.capturePage(prepared.crop)).toBitmap();
+      assert(baseline.equals(painted), kind + ': painted text changed during layout step ' + amount);
+    }
+    console.log('HISTORY_PAINTED_ANCHOR ' + JSON.stringify({ kind, captures: 6, identical: true }));
+  }
+  if (${anchorOnly}) {
+    console.log('HISTORY_LOADING_PROBE ' + JSON.stringify({ ok: true, settledLayout: true }));
+    app.exit(0); return;
+  }
   const results = [];
   for (const name of ['wheel', 'quiet', 'tail', 'late-layout', 'failure', 'empty', 'hide']) {
    await call('reset()');
-   const before = await call('begin()');
-   if (name === 'wheel') assert.deepEqual(await call('inputOwnership()'),
-     { wheel: true, key: true, touch: true, field: false, activation: false, nested: false, zoom: false });
-   if (name === 'wheel') for (let n = 0; n < 6; n++) await wheel(before, n % 2 ? 80 : -240);
+   let before = await call('begin()');
+   if (name === 'wheel') {
+     assert.deepEqual(await call('inputOwnership()'),
+       { wheel: false, key: false, touch: false, field: false, activation: false, nested: false, zoom: false });
+     await call('frames()');
+     before = await call('track()');
+     await call('armNativeInput()');
+     await wheel(before, -180);
+     console.log('HISTORY_EDGE_NATIVE_PENDING ' + JSON.stringify({ before, after: await call('inspect()') }));
+     const moved = await call('finishNativeInput()');
+     assert(moved.top > before.top + 20, 'hard-edge loading swallowed native input');
+     before = await call('track()');
+   }
    if (name === 'tail') await call('growTail()');
    const during = await call('inspect()');
    const after = await call(name === 'hide' ? 'hideAndReveal()' : 'release(' + (name === 'failure') + ',' + (name === 'late-layout') + ',' + (name === 'empty') + ')');
@@ -66,7 +139,8 @@ app.whenReady().then(async () => {
    results.push(result);
    console.log('HISTORY_LOADING_CASE ' + JSON.stringify(result));
    assert(Math.abs(during.offset - before.offset) <= 2, name + ': loading input/layout moved the visible row');
-   assert(after.maxDrift <= 2, name + ': a painted frame moved the reading anchor by ' + after.maxDrift);
+   assert(after.layoutSampleCount > 0 && after.layoutMaxDrift <= 2,
+     name + ': a painted frame moved the reading anchor by ' + after.layoutMaxDrift);
    assert(Math.abs(after.offset - before.offset) <= 2, name + ': page changed the reading position');
    assert.equal(after.calls, 1, name + ': duplicate page request');
    assert.equal(after.locked, false, name + ': input remained blocked');
@@ -95,12 +169,12 @@ app.whenReady().then(async () => {
   assert.equal(moved.calls, 1, 'native wheel duplicated the pending read');
   await call('track()');
   const aheadAfter = await call('release(false,true)');
-  assert(aheadAfter.maxDrift <= 2, 'ahead-loaded prepend moved the new reading point');
+  assert(aheadAfter.layoutSampleCount > 0 && aheadAfter.layoutMaxDrift <= 2, 'ahead-loaded prepend moved the new reading point');
   assert.equal(aheadAfter.locked, false, 'ahead-loading left input blocked');
   console.log('HISTORY_AHEAD_NATIVE ' + JSON.stringify({ ahead, moved, after: aheadAfter }));
   await call('reset()'); await call('begin()'); await call('release()');
   const cached = await call('growMountedWindow()');
-  assert(cached.after.maxDrift <= 2 && Math.abs(cached.after.offset - cached.before.offset) <= 2,
+  assert(cached.after.layoutSampleCount > 0 && cached.after.layoutMaxDrift <= 2 && Math.abs(cached.after.offset - cached.before.offset) <= 2,
     'mounting cached history moved the reading anchor');
   assert.equal(cached.after.calls, 1, 'cached window growth made another page request');
   assert.equal(cached.after.locked, false, 'cached window growth left input blocked');

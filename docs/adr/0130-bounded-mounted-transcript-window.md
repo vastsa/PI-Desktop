@@ -50,10 +50,15 @@ reference-equal, and that runs on every streamed token.
    viewport offset (preferring a message node over an answer-group marker whose
    first id can change on prepend) and restores it before paint across committed
    projection and late row layout. Ahead-loading during upward scroll tracks the
-   newest visible message anchor without hiding overflow or discarding input;
-   only the hard-edge (`<= 120px`), explicit continuation, and underfilled
-   top-boundary fallback briefly locks transcript scroll input and `overflow-y`
-   through IO and three stable layout frames. Explicit latest navigation retires
+   newest visible message anchor without hiding overflow or discarding input,
+   including the hard-edge (`<= 120px`), explicit continuation, and underfilled
+   top-boundary fallback. The moving anchor remains owned through IO and three
+   stable layout frames; it never owns user input. Settlement ends request
+   ownership, not reading ownership. Ordinary reading retains the actual
+   message and its visible prose block for late layout, with row-level resize
+   observation even when total height is unchanged. Navigation/follow/hide
+   release that reading state. No-op scroll writes are skipped so compensation
+   cannot stop native smooth input. Explicit latest navigation retires
    the prior gesture and hold so queued scroll events cannot start another read.
    This replaces the old `prependHeightRef` total-height delta: deferred DOM,
    tail updates, and intrinsic-size estimates made that delta unreliable.
@@ -97,12 +102,14 @@ and the `session.get` window contract are untouched.
 - **Full virtualization with measured row offsets:** rejected for now. Transcript
   rows have highly variable, content-dependent heights that change after mount
   (streaming, disclosure toggles, lazy Mermaid), so a measured-offset virtualizer
-  needs a height cache and invalidation for all of it. The trailing window gets
-  the same memory ceiling with a fraction of the moving parts, and the existing
-  pinned-follow and prepend-anchor logic keeps working unchanged.
-- **Unmount by distance from the viewport in both directions:** rejected. The
-  transcript is read from the bottom and streams at the bottom; withholding rows
-  *below* the viewport would fight pinned-follow for no benefit.
+  needs a height cache and invalidation for all of it. The trailing window
+  reduces initial mounting with fewer moving parts, but does not provide a
+  lifetime memory ceiling after repeated backward expansion. Measured prose
+  shells add bidirectional renderer recycling without replacing row navigation.
+- **Unmount whole rows by distance in both directions:** rejected for the
+  original row window because removing addressable geometry interferes with
+  pinned-follow. Measured prose recycling now releases only renderer children,
+  retaining equal-height shells and the streaming tail.
 - **Cap the loaded history instead, discarding older pages from the store:**
   rejected. It would make paging non-monotonic and re-fetch rows the user just
   scrolled past, and the store's transcript is also read by the outcome card and
@@ -115,9 +122,11 @@ and the `session.get` window contract are untouched.
 
 ## Consequences
 
-- Retained renderer memory for a transcript is bounded by the window rather than
-  by how far back the user has scrolled, and per-frame reconciliation during
-  streaming is bounded with it.
+- The initial row window limits cold mounting, but expands as the reader moves
+  backward. It is not a bound on retained message data or addressable row shells.
+  Measured assistant prose additionally releases offscreen Markdown renderers in
+  both directions; this limits expensive mounted content, not total session
+  memory. A single intersecting answer and protected content remain mounted.
 - Upward travel through a long session costs one frame per growth step before
   pagination resumes. Each step is a mount of already-loaded rows, so it does not
   add IPC.
@@ -131,33 +140,48 @@ and the `session.get` window contract are untouched.
 
 ## Implementation notes
 
-- **Gesture-driven ahead-loading vs. hard-edge lock:** A real upward scroll
-  gesture within `min(2400px, max(120px, 3 * clientHeight))` starts single-flight
-  escalation in the background, still mounting cached withheld rows before
-  requesting a Host page. Background escalation leaves `overflow-y` and main
-  scroll input unlocked, updates its actual-message reading anchor as the user
-  continues scrolling, and subtracts observed scroll displacement from its
-  viewport offset before correcting geometry changes. This preserves compositor
-  movement even when lazy rows lay out before their scroll event. Reaching `<= 120px`,
-  invoking the earlier-history continuation, or intersecting the `120px` top
-  boundary retains the brief input/`overflow-y: hidden` lock through IO and
-  three consecutive stable layout frames. Failed or empty reads release any lock
-  and wait for a new scroll gesture or explicit earlier-history action.
-- **Interruptible return-to-latest:** Returning to latest uses one custom
-  viewport animation (`180–420ms` cubic ease-out, monotonic retargeting across
-  late stream growth; immediate under `prefers-reduced-motion: reduce`) instead
-  of browser smooth scroll, suppressing competing follow, layout, previous
-  search-alignment, and turn-completion scroll owners while active. A new search
+- **Adaptive, gesture-driven ahead-loading:** The base lead is
+  `min(2400px, max(120px, 3 * clientHeight))`. Upward speed in pixels/ms times
+  measured page latency plus a `150ms` commit margin can increase that lead,
+  capped at `max(base, min(12000px, 12 * clientHeight))`. Single-flight
+  escalation still mounts cached withheld rows before requesting a Host page.
+  No early-threshold observer drains pages at rest. All escalation paths,
+  including the hard edge and explicit continuation, leave overflow and input
+  untouched. The actual-message anchor subtracts observed scroll displacement
+  before correcting layout, preserving compositor movement even when lazy rows
+  lay out before their scroll event. A transaction settles after three stable
+  layout frames. Failed or empty reads wait for new input or an explicit retry.
+- **Native latest trajectory:** Return-to-latest uses browser `smooth` scrolling,
+  exactly like conversation turn markers (`auto` under reduced motion). The app
+  does not impose an easing curve, duration, or per-frame position writes.
+  A `scrollend` listener commits arrival only at the current bottom; if lazy
+  layout or a late turn-changes card extends it, native scrolling finishes the
+  remaining distance instead of snapping. Completion and cancellation remove
+  the listener.
+- **Interruptible return-to-latest:** Competing follow, layout, previous search
+  alignment, and turn-completion scroll owners yield while travel is active. A new search
   request still cancels the trip. Genuine main-scroller input
   cancels the animation in place without committing arrival; horizontal,
   zero-delta, or `Ctrl`+wheel input and nested scrollers, editable fields, or
   row controls do not. Preparing return-to-latest from a historical
   `transcriptViews` slice replaces its identity with `loading: null` while
-  keeping current messages mounted, clears that exact prepared view only on
-  arrival, and commits on pane hide or unmount; disjoint search/history ranges
+  keeping current messages mounted, exits that exact view's historical ownership
+  on arrival, and commits on pane hide or unmount; tail-connected older pages and
+  cursors remain available, while disjoint search/history ranges
   join the canonical live tail on arrival without fetching or animating unloaded
   intermediate ranges. Runtime `isRunning` state passed to scroll hooks stays
   real rather than faked stopped by a historical view.
-- **Cache invariants:** Existing message, page, mounted-window, recent snapshot,
-  and retained session-pane caches are unchanged; no idle TTL or memory
-  reclamation is introduced.
+- **Measured prose window:** `TranscriptProse` preserves the existing prose and
+  message shells. At the current width, measured offscreen prose becomes an
+  equal-height placeholder beyond five viewport heights; it remounts within
+  three. Streaming, focused, selected, and search-target prose stays mounted.
+  Missing measurements or a changed width require rendering again rather than
+  guessing a height. Explicitly collapsed disclosure scopes release their
+  Markdown without changing stored disclosure choices. One observer and frame
+  scheduler per viewport handles scroll, resize, focus, and selection, and is
+  disposed when its last shell leaves.
+- **Cache invariants:** Returning to latest retains older pages connected to
+  the canonical live tail, without hydrating model input or retaining historical
+  focus. Disjoint snapshots still release to live; pane eviction and canonical
+  rewrites invalidate old pages. Mounted-row bounds and prose recycling remain
+  independent; no idle TTL or unrelated cache reclamation is introduced.
