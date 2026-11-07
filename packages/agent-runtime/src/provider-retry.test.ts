@@ -444,6 +444,29 @@ describe("provider rate-limit retry", () => {
     expect(events).toEqual(["start", "done"]);
   });
 
+  it("does not replay a DashScope parameter rejection delivered over HTTP 200", async () => {
+    let retryClaims = 0;
+    const claim = vi.fn((error: ClassifiedAgentError) =>
+      error.retriable && retryClaims++ === 0 ? 1 : undefined);
+    const sleep = vi.fn(async () => undefined);
+    const createStream = vi.fn(() => failedStream({
+      errorMessage: "InvalidParameter: <400> InternalError.Algo.InvalidParameter: Repetitive tool calls detected in the conversation history.",
+    }));
+    const stream = createProviderRetryStream(model, context, {}, createStream, {
+      claim, sleep, headers: () => undefined, status: () => 200,
+    });
+
+    const events: string[] = [];
+    for await (const event of stream) events.push(event.type);
+
+    expect(createStream).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({
+      code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 400 },
+    }), "request");
+    expect(events).toEqual(["error"]);
+  });
+
   it("does not promote known non-retryable errors just because status is 429", async () => {
     const claim = vi.fn(() => undefined);
     const stream = createProviderRetryStream(

@@ -297,6 +297,29 @@ describe("classifyAgentError", () => {
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
   });
 
+  it.each([
+    ["InvalidParameter: <400> InternalError.Algo.InvalidParameter: Repetitive tool calls detected in the conversation history.", "PROVIDER_ERROR", false, 400],
+    ["InvalidParameter: <422> Invalid tool arguments.", "PROVIDER_ERROR", false, 422],
+    ["InvalidApiKey: <401> Invalid API key.", "PROVIDER_UNAUTHORIZED", false, 401],
+    ["Throttling: <429> Too many requests.", "PROVIDER_RATE_LIMITED", true, 429],
+    ["InternalError: <500> The service is temporarily unavailable.", "PROVIDER_ERROR", true, 500],
+  ])("classifies DashScope code/status envelopes: %s", (message, code, retriable, status) => {
+    expect(classifyAgentError(message)).toMatchObject({
+      code, retriable, details: { providerStatus: status },
+    });
+  });
+
+  it("does not infer an HTTP status from an angle-bracket number in prose", () => {
+    expect(classifyAgentError("Provider failed while processing item <400>."))
+      .toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+    expect(classifyAgentError("InvalidParameter: <400> Unknown parameter. <429>"))
+      .toMatchObject({ code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 400 } });
+    expect(classifyAgentError(Object.assign(
+      new Error("InvalidParameter: <400> Unknown parameter."),
+      { status: 503 },
+    ))).toMatchObject({ code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 503 } });
+  });
+
   // @google/genai ApiError.message is JSON.stringify(errorBody). pi-ai does
   // not prefix "<status>:", and the Google adapter never records
   // providerResponseStatus, so the main session and subagents classify this
