@@ -117,7 +117,10 @@ try {
   const detail = (await host.call("session.get", { id: session.id })).session;
   const users = detail.messages.filter(message => message.role === "user").map(message => message.content);
   assert.deepEqual(users, ["Original objective", "Additional guidance from the user", "Ordinary queued follow-up", "Ordinary Agent task", "Replacement objective", "Fresh objective replacing paused work"]);
-  assert.deepEqual(errors, []);
+  assert.equal(errors.length, 1, "Only the stale pre-guidance GetGoal is interrupted");
+  assert.equal(errors[0].message, "tool execution failed");
+  assert.equal(errors[0].data.toolName, "GetGoal");
+  assert(JSON.stringify(requests[1].messages.filter(message => message.role === "tool")).includes("Skipped because new user input is waiting"));
   const failed = (await host.call("session.create", { title: "Insufficient balance fixture", projectPath: workspace, mode: "agent" })).session;
   await start(failed.id, "Failure must stop safely", "provider-failure");
   await wait(async () => { const row = await get(failed.id); return row.status === "blocked" && !row.activeTurnId && (await agentHost.workSnapshot(failed.id)).state === "idle"; }, "provider inability blocks continuation");

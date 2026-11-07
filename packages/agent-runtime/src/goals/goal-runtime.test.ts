@@ -701,7 +701,7 @@ it("removing a paused current Goal preserves real user guidance while lifting cl
   expect(followup).toContain("Preserve my exact requested output.");
   expect(followup).toContain("The user removed the Goal");
   expect(f.calls.filter(item => item.method === "tools.execute").map(item => item.params.toolName)).toEqual(["Write"]);
-  expect(f.calls.filter(item => item.method === "tools.execute").map(item => item.params.args.path)).toEqual(["finish.txt"]);
+  expect(f.calls.filter(item => item.method === "tools.execute").map(item => item.params.args)).toEqual([{ path: "finish.txt", content: "guided completion" }]);
   expect(f.events.filter(item => item.event.type === "agent_end")).toHaveLength(1);
 });
 
