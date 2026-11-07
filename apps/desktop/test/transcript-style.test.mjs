@@ -562,7 +562,7 @@ test("streaming assistant turns hide answer copy until idle", () => {
   );
 });
 
-test("assistant context inspector keeps a compact summary and retry action wired", () => {
+test("assistant context inspector keeps the insights dashboard and retry action wired", () => {
   assert.match(transcriptSource, /function MessageMeta/);
   assert.match(transcriptSource, /message-meta-chip/);
   assert.doesNotMatch(transcriptSource, /ContextUsageInspector/);
@@ -572,26 +572,12 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(composerSource, /sessionCompactions/);
   assert.match(inspectorSource, /export function ContextUsageInspector/);
   assert.match(inspectorSource, /className="context-inspector"/);
-  assert.match(inspectorSource, /chat\.usageTools/);
-  assert.match(inspectorSource, /aggregateToolTokenUsage/);
-  assert.match(inspectorSource, /context-inspector-summary/);
-  assert.match(inspectorSource, /context-inspector-summary-row/);
-  assert.match(inspectorSource, /chat\.usageToolsSummary/);
-  assert.match(inspectorSource, /context-inspector-kpis/);
+  assert.match(inspectorSource, /ContextUsageDashboard/);
   assert.match(inspectorSource, /useSessionTiming/);
-  assert.match(inspectorSource, /chat\.usageSessionTime/);
-  assert.match(inspectorSource, /chat\.usageNetworkRequest/);
-  assert.match(inspectorSource, /chat\.usageModelResponse/);
-  assert.match(inspectorSource, /chat\.usageToolCalls/);
   assert.match(inspectorSource, /networkRequestPercent/);
   assert.match(inspectorSource, /toolCallPercent/);
-  assert.match(inspectorSource, /context-inspector-window-percent/);
   assert.match(inspectorSource, /chat\.usageContextLeft/);
   assert.match(inspectorSource, /chat\.usageThroughput/);
-  assert.match(inspectorSource, /calculateCacheRate/);
-  assert.match(inspectorSource, /chat\.usageCacheRate/);
-  assert.match(inspectorSource, /contextOccupancyTokens\(usage\)/);
-  assert.match(inspectorSource, /usage\.cacheReadTokens/);
   assert.doesNotMatch(inspectorSource, /turnUsage\.cacheReadTokens/);
   assert.match(inspectorSource, /portalToBody\(popover\)/);
   assert.match(inspectorSource, /getBoundingClientRect\(\)/);
@@ -602,12 +588,10 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(transcriptSource, /chat\.retry/);
   assert.match(stylesSource, /\.context-inspector-ring-progress/);
   assert.match(stylesSource, /\.context-inspector-ring-value/);
-  assert.match(stylesSource, /\.context-inspector-summary/);
-  assert.match(stylesSource, /\.context-inspector-summary-values/);
-  assert.doesNotMatch(
-    stylesSource,
-    /\.context-inspector-(window|kpis|summary|compaction)[^{]*\{[^}]*border-top:/,
-  );
+  assert.match(stylesSource, /\.context-dashboard/);
+  assert.match(stylesSource, /\.context-donut/);
+  assert.match(stylesSource, /\.context-capacity/);
+  assert.match(stylesSource, /\.context-browser-group/);
   assert.doesNotMatch(inspectorSource, /context-inspector-source-badge/);
   assert.doesNotMatch(inspectorSource, /context-inspector-tool-meta/);
   assert.doesNotMatch(stylesSource, /\.context-inspector-meter\s*\{/);
