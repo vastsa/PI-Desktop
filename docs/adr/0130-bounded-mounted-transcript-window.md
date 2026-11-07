@@ -174,7 +174,8 @@ and the `session.get` window contract are untouched.
 - **Measured prose window:** `TranscriptProse` preserves the existing prose and
   message shells. At the current width, measured offscreen prose becomes an
   equal-height placeholder beyond five viewport heights; it remounts within
-  three. Streaming, focused, selected, and search-target prose stays mounted.
+  three. Streaming, focused, selected, search-target, fenced, and table content
+  stays mounted so diagrams and portalled previews retain their state.
   Missing measurements or a changed width require rendering again rather than
   guessing a height. Explicitly collapsed disclosure scopes release their
   Markdown without changing stored disclosure choices. One observer and frame

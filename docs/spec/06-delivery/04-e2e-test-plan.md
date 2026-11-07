@@ -13754,8 +13754,11 @@ This test plan spec is accepted when:
   `tests/history-loading-scroll-test-cases.md`.
   The production `SessionPane` resource journey opens collapsed process groups,
   traverses both ends and the middle, and checks measured prose recycling plus
-  restoration of visible content without additional history requests. A separate
-  variant includes a 1,600-paragraph final answer. `--manual-smoke` drives the
+  restoration of visible content without additional history requests.
+  `node scripts/e2e-transcript-prose-state.mjs` opens a table preview and Mermaid
+  source view, moves their prose offscreen and back, and verifies both states
+  survive while ordinary prose still recycles.
+  A separate variant includes a 1,600-paragraph final answer. `--manual-smoke` drives the
   manual toolbar through two 100-message pages and reset, sending 24 native
   wheel events in each direction per pending page; directional movement,
   single-flight requests, and frame-gap p95 <= 100ms are checked. This is a

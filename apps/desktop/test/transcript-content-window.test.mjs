@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import { register } from "node:module";
 import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { shouldMountTranscriptContent } = await import("../src/lib/transcript-content-window.ts");
+const { shouldMountTranscriptContent, hasStatefulTranscriptContent } = await import("../src/lib/transcript-content-window.ts");
+
+test("structured Markdown retains lazy diagrams, plugin fences and table preview state", () => {
+  for (const source of [
+    "```mermaid\ngraph TD; A-->B\n```", "~~~custom-plugin\ninteractive\n~~~",
+    "Name | Value\n--- | ---\nA | B", "| Name | Value |\n| :--- | ---: |\n| A | B |",
+  ]) assert.equal(hasStatefulTranscriptContent(source), true, source);
+  for (const source of ["A paragraph with **bold** and `inline code`.", "A | B is ordinary prose."])
+    assert.equal(hasStatefulTranscriptContent(source), false, source);
+});
 
 const sample = (changes = {}) => ({
   top: 10000, bottom: 10200, viewportHeight: 600,

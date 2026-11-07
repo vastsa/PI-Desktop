@@ -1,7 +1,7 @@
 import { memo, useContext, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "../../../components/Markdown";
 import { observeTranscriptContent } from "../../../lib/transcript-content-observer";
-import { shouldMountTranscriptContent } from "../../../lib/transcript-content-window";
+import { hasStatefulTranscriptContent, shouldMountTranscriptContent } from "../../../lib/transcript-content-window";
 import { ScopeContext } from "./disclosure-scope";
 
 /** Keep the existing prose shell and message anchors while releasing its renderer. */
@@ -18,7 +18,7 @@ export const TranscriptProse = memo(function TranscriptProse({ source, streaming
   useLayoutEffect(() => {
     const element = elementRef.current;
     const viewport = element?.closest<HTMLElement>(".thread-scroll");
-    if (!element || !viewport || streaming || !visible) return;
+    if (!element || !viewport || streaming || !visible || hasStatefulTranscriptContent(source)) return;
     let measuredHeight: number | null = null;
     let measuredWidth: number | null = null;
     return observeTranscriptContent(element, () => {

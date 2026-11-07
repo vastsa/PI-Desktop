@@ -1,3 +1,9 @@
+/** Fences and tables can own lazy layout, plugin state, or portalled previews. */
+export function hasStatefulTranscriptContent(source: string): boolean {
+  return /`{3,}|~{3,}/.test(source) ||
+    /^[ \t]*\|?[ \t]*:?-+:?[ \t]*\|[ \t:|-]*$/m.test(source);
+}
+
 /** Geometry is relative to the scroll viewport, not the document. */
 export interface TranscriptContentGeometry {
   top: number;
