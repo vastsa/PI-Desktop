@@ -17,11 +17,15 @@ import { composerSuggestionKeyAction } from "./plugins/suggestion-keys";
 import type { ComposerSuggestionView } from "./hooks/useComposerSuggestion";
 import type { CompletionController } from "./hooks/useComposerCompletions";
 import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
+import type { ComposerExcerpt } from "../../../lib/composer-excerpts";
+import { ComposerExcerptBadge } from "./ComposerExcerptBadge";
 
 export type ComposerInputProps = {
   imagePreview?: ComposerImagePreviewController;
   directoryReferences?: ComposerFileReference[];
   onRemoveDirectory?: (id: string) => void;
+  excerpts?: readonly ComposerExcerpt[];
+  onRemoveExcerpt?: (id: string) => void;
   inputRef: RefObject<HTMLDivElement | null>;
   value: string;
   placeholderText: string;
@@ -62,6 +66,8 @@ export function ComposerInput({
   imagePreview,
   directoryReferences = [],
   onRemoveDirectory,
+  excerpts = [],
+  onRemoveExcerpt,
   inputRef,
   value,
   placeholderText,
@@ -104,6 +110,9 @@ export function ComposerInput({
             />
           ))}
         </div>
+      ) : null}
+      {onRemoveExcerpt ? (
+        <ComposerExcerptBadge excerpts={excerpts} onRemove={onRemoveExcerpt} disabled={inputBlocked} />
       ) : null}
       <div className="composer-input-stage">
         {/* React does not render children into this node; the editor module
