@@ -23,9 +23,10 @@ import { ToastHost } from "../../apps/desktop/src/components/Toast";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
 const projectPath = "/projects/market-owner-a";
+const otherProjectPath = "/projects/market-owner-b";
 const entry = BUILTIN_MCP_CATALOG.servers.find((item) => !item.requiredEnv?.length);
 const settings = { defaultMode: "agent", theme: "light", language: "en" };
-let records = [], writes = [], hasProject = true;
+let records = [], writes = [], imports = [], hasProject = true;
 Object.defineProperty(window, "AudioContext", { configurable: true, value: undefined });
 window.piDesktop = {
   platform: "darwin",
@@ -34,7 +35,7 @@ window.piDesktop = {
     let data;
     switch (channel) {
       case IPC.invoke.projectList:
-        data = { projects: hasProject ? [{ id: 1, path: projectPath, name: "Market Project" }] : [] };
+        data = { projects: hasProject ? [{ id: 1, path: projectPath, name: "Market Project" }, { id: 2, path: otherProjectPath, name: "Other Project" }] : [] };
         break;
       case IPC.invoke.mcpList:
         data = { servers: records.filter((record) => record.level === input.level &&
@@ -50,6 +51,13 @@ window.piDesktop = {
         writes.push(input);
         data = { server: { ...input, enabled: true } };
         records.push(data.server);
+        break;
+      case IPC.invoke.mcpImportScan:
+        data = { candidates: [{ source: "codex", sourcePath: "/fixture/config.toml", id: "imported", rawKey: "imported", label: "Imported fixture", transport: "stdio", command: "fixture-server", warnings: [] }], sources: [] };
+        break;
+      case IPC.invoke.mcpImportRun:
+        imports.push(input);
+        data = { imported: input.items.map(item => ({ item, server: { ...item, level: input.level, projectPath: input.projectPath } })), skipped: [], failed: [] };
         break;
       default:
         throw new Error("Unexpected fixture IPC: " + channel);
@@ -70,6 +78,11 @@ async function until(predicate, message) {
   assert(predicate(), message);
 }
 const click = (node) => { assert(node, "Missing action"); flushSync(() => node.click()); };
+const type = (node, value) => {
+  assert(node, "Missing input");
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(node, value);
+  flushSync(() => node.dispatchEvent(new Event("input", { bubbles: true })));
+};
 const button = (label) => [...document.querySelectorAll("button")]
   .find((node) => node.textContent.trim() === label);
 const marketAction = () => [...document.querySelectorAll(".mcpm-card")]
@@ -85,6 +98,12 @@ async function install() {
   click(document.querySelector('[role="dialog"] .ext-sheet-actions button.mcpm-install:not(.is-ghost)'));
   await until(() => !document.querySelector(".mcpm"), "Install did not return to MCP settings");
 }
+async function selectOtherProject() {
+  click(document.querySelector('.agent-capability-project-select .settings-menu-select-trigger'));
+  await until(() => document.querySelector('[role="option"]'), "Project options missing");
+  click([...document.querySelectorAll('[role="option"]')].find(node => node.textContent.trim() === "Other Project"));
+  await until(() => document.querySelector('.agent-capability-project-select').textContent.includes("Other Project"), "Project did not change");
+}
 window.mcpMarketOwnerProbe = async () => {
   const results = [];
   for (const [filter, project, otherOwner] of [
@@ -95,7 +114,8 @@ window.mcpMarketOwnerProbe = async () => {
     flushSync(() => root.render(null));
     hasProject = Boolean(project);
     writes = [];
-    const level = filter === "project" ? "project" : "global";
+    imports = [];
+    const level = filter === "project" || (filter === "all" && project) ? "project" : "global";
     records = otherOwner ? [{ ...entry, label: entry.name, enabled: true,
       level: level === "global" ? "project" : "global", projectPath }] : [];
     useAppStore.setState({ settings, workspace: project ? { path: project, name: "Market Project" } : null });
@@ -103,6 +123,22 @@ window.mcpMarketOwnerProbe = async () => {
     await until(() => document.querySelector('.agent-capability-segment button[role="radio"]'), "MCP filters missing");
     click([...document.querySelectorAll('.agent-capability-segment button[role="radio"]')]
       .find((node) => node.textContent.trim().startsWith(i18n.t("settings.capabilityFilter" + filter[0].toUpperCase() + filter.slice(1)))));
+    click(button(i18n.t("settings.addMcp")));
+    type(document.querySelector('input[placeholder="' + i18n.t("extensions.mcp.labelPlaceholder") + '"]'), "Owner fixture");
+    type(document.querySelector('input[placeholder="-y @upstash/context7-mcp"]'), "-y fixture-server");
+    click(button(i18n.t("common.save")));
+    await until(() => writes.length === 1, "Create did not save");
+    assert(writes[0].level === level, "Creation wrote to wrong level");
+    assert(writes[0].projectPath === (level === "project" ? project : undefined), "Creation wrote to wrong project");
+    await until(() => !document.querySelector('[role="dialog"]'), "Editor did not close");
+    click(document.querySelector('[aria-controls="agent-mcp-import-panel"]'));
+    click(button(i18n.t("settings.importScan")));
+    await until(() => document.querySelector('.import-select-all input'), "Imported candidates missing");
+    click(document.querySelector('.import-select-all input'));
+    click(button(i18n.t("settings.importSelected", { count: 1 })));
+    await until(() => imports.length === 1, "Import did not save");
+    assert(imports[0].level === level && imports[0].projectPath === (level === "project" ? project : undefined), "Import wrote to wrong owner");
+    writes = [];
     await openMarket();
     await install();
     assert(writes.length === 1, "Market must save one server");
@@ -113,6 +149,23 @@ window.mcpMarketOwnerProbe = async () => {
     await openMarket();
     await until(() => marketAction()?.disabled, "Installed state must follow the destination owner");
     results.push({ filter, project, otherOwner, level: writes[0].level });
+  }
+  // An existing global or project record retains its owner after the page's
+  // selected project changes while the editor is open.
+  for (const level of ["global", "project"]) {
+    flushSync(() => root.render(null));
+    hasProject = true;
+    writes = [];
+    records = [{ id: "existing", label: "Existing fixture", command: "fixture-server", transport: "stdio", enabled: true, level,
+      ...(level === "project" ? { projectPath } : {}) }];
+    useAppStore.setState({ settings, workspace: { path: projectPath, name: "Market Project" } });
+    flushSync(() => root.render(<AgentMcpPage />));
+    await until(() => document.querySelector('.agent-capability-row'), "Existing record missing");
+    click(document.querySelector('[aria-label="' + i18n.t("settings.editMcpOf", { name: "Existing fixture" }) + '"]'));
+    await selectOtherProject();
+    click(button(i18n.t("common.save")));
+    await until(() => writes.length === 1, "Edit did not save");
+    assert(writes[0].level === level && writes[0].projectPath === (level === "project" ? projectPath : undefined), "Edit moved the existing owner");
   }
   flushSync(() => root.render(null));
   hasProject = false;
@@ -134,7 +187,7 @@ window.mcpMarketOwnerProbe = async () => {
 };
 `;
 
-test("MCP market installation follows the explicit filter and keeps All global", {
+test("MCP market installation follows the selected project under All and explicit filters", {
   timeout: 60_000,
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Electron requires a display" : false,
 }, async () => {
