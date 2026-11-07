@@ -70,6 +70,11 @@ async function until(predicate, message) {
   assert(predicate(), message);
 }
 const click = (node) => { assert(node, "Missing action"); flushSync(() => node.click()); };
+const type = (node, value) => {
+  assert(node, "Missing input");
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(node, value);
+  flushSync(() => node.dispatchEvent(new Event("input", { bubbles: true })));
+};
 const button = (label) => [...document.querySelectorAll("button")]
   .find((node) => node.textContent.trim() === label);
 const marketAction = () => [...document.querySelectorAll(".mcpm-card")]
@@ -95,7 +100,7 @@ window.mcpMarketOwnerProbe = async () => {
     flushSync(() => root.render(null));
     hasProject = Boolean(project);
     writes = [];
-    const level = filter === "project" ? "project" : "global";
+    const level = filter === "project" || (filter === "all" && project) ? "project" : "global";
     records = otherOwner ? [{ ...entry, label: entry.name, enabled: true,
       level: level === "global" ? "project" : "global", projectPath }] : [];
     useAppStore.setState({ settings, workspace: project ? { path: project, name: "Market Project" } : null });
@@ -103,6 +108,15 @@ window.mcpMarketOwnerProbe = async () => {
     await until(() => document.querySelector('.agent-capability-segment button[role="radio"]'), "MCP filters missing");
     click([...document.querySelectorAll('.agent-capability-segment button[role="radio"]')]
       .find((node) => node.textContent.trim().startsWith(i18n.t("settings.capabilityFilter" + filter[0].toUpperCase() + filter.slice(1)))));
+    click(button(i18n.t("settings.addMcp")));
+    type(document.querySelector('input[placeholder="' + i18n.t("extensions.mcp.labelPlaceholder") + '"]'), "Owner fixture");
+    type(document.querySelector('input[placeholder="-y @upstash/context7-mcp"]'), "-y fixture-server");
+    click(button(i18n.t("common.save")));
+    await until(() => writes.length === 1, "Create did not save");
+    assert(writes[0].level === level, "Creation wrote to wrong level");
+    assert(writes[0].projectPath === (level === "project" ? project : undefined), "Creation wrote to wrong project");
+    await until(() => !document.querySelector('[role="dialog"]'), "Editor did not close");
+    writes = [];
     await openMarket();
     await install();
     assert(writes.length === 1, "Market must save one server");
@@ -134,7 +148,7 @@ window.mcpMarketOwnerProbe = async () => {
 };
 `;
 
-test("MCP market installation follows the explicit filter and keeps All global", {
+test("MCP market installation follows the selected project under All and explicit filters", {
   timeout: 60_000,
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Electron requires a display" : false,
 }, async () => {

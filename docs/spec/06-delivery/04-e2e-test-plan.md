@@ -20341,3 +20341,7 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
+
+#### E2E-ISSUE-1953
+
+MCP All uses the selected project for create/import/install, falling back to Global only without a project. Explicit filters retain ownership and an opened editor pins its project. Verify create and market installation across all/project/global and missing-project cases with `mcp-market-owner-user-path.test.mjs`.
