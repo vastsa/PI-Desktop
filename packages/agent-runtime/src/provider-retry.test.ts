@@ -1090,6 +1090,150 @@ describe("opaque bad-request repair", () => {
   });
 });
 
+const OPENAI_OUTPUT_CEILING =
+  "OpenAI API error (400): max_tokens is too large: 16384. This model supports at most 4096 completion tokens, whereas you provided 16384.";
+const ANTHROPIC_OUTPUT_CEILING =
+  'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: 65537 > 64000, which is the maximum allowed number of output tokens for claude-opus-4-5-20251101"}}';
+
+describe("explicit output-limit repair", () => {
+  async function repairPayload(
+    errorMessage: string,
+    payload: Record<string, unknown>,
+  ): Promise<{ attempts: number; repaired: unknown; claim: ReturnType<typeof vi.fn>; sleep: ReturnType<typeof vi.fn> }> {
+    let attempts = 0;
+    let repairOptions: { onPayload?: (payload: unknown) => Promise<unknown> } | undefined;
+    const claim = vi.fn(() => undefined);
+    const sleep = vi.fn(async () => undefined);
+    const stream = createProviderRetryStream(
+      model,
+      context,
+      {
+        onPayload: async (body: unknown) => ({
+          ...(body as Record<string, unknown>),
+          marked: true,
+        }),
+      } as any,
+      (options) => {
+        attempts += 1;
+        if (attempts === 1) return failedStream({ errorMessage });
+        repairOptions = options as typeof repairOptions;
+        return successfulStream();
+      },
+      {
+        claim,
+        headers: () => undefined,
+        status: () => undefined,
+        sleep,
+      },
+    );
+    for await (const _event of stream) {
+      // Drain so the repair hook is installed before we inspect it.
+    }
+    return {
+      attempts,
+      repaired: await repairOptions?.onPayload?.(payload),
+      claim,
+      sleep,
+    };
+  }
+
+  it("clamps an OpenAI completion ceiling instead of failing the turn", async () => {
+    const result = await repairPayload(OPENAI_OUTPUT_CEILING, {
+      model: "ft:gpt-4o",
+      max_tokens: 16384,
+      max_completion_tokens: 16384,
+      temperature: 0,
+    });
+
+    expect(result.attempts).toBe(2);
+    expect(result.claim).not.toHaveBeenCalled();
+    expect(result.sleep).not.toHaveBeenCalled();
+    expect(result.repaired).toEqual({
+      marked: true,
+      model: "ft:gpt-4o",
+      max_tokens: 4096,
+      max_completion_tokens: 4096,
+      temperature: 0,
+    });
+  });
+
+  it("clamps an Anthropic output ceiling without dropping max_tokens", async () => {
+    const result = await repairPayload(ANTHROPIC_OUTPUT_CEILING, {
+      model: "claude-opus-4-5-20251101",
+      max_tokens: 65537,
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(result.attempts).toBe(2);
+    expect(result.claim).not.toHaveBeenCalled();
+    expect(result.sleep).not.toHaveBeenCalled();
+    expect(result.repaired).toEqual({
+      marked: true,
+      model: "claude-opus-4-5-20251101",
+      max_tokens: 64000,
+      messages: [{ role: "user", content: "hi" }],
+    });
+  });
+
+  it("leaves credit and context-overflow 400s terminal", async () => {
+    const credit = await repairPayload(
+      "400 This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 1000.",
+      { max_tokens: 65536 },
+    );
+    const overflow = await repairPayload(
+      "400 prompt is too long: 213462 tokens > 200000 maximum",
+      { max_tokens: 64000 },
+    );
+
+    expect(credit.attempts).toBe(1);
+    expect(overflow.attempts).toBe(1);
+    expect(credit.claim).toHaveBeenCalledTimes(1);
+    expect(overflow.claim).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps a proxy expected-value ceiling without adding a missing field", async () => {
+    const result = await repairPayload(
+      '400 {"error":{"code":"InvalidParameter","message":"The parameter max_tokens specified in the request is not valid: integer above maximum value, expected a value <= 32768, but got 64000 instead."}}',
+      { max_tokens: 64000, stream: true },
+    );
+
+    expect(result.attempts).toBe(2);
+    expect(result.repaired).toEqual({
+      marked: true,
+      max_tokens: 32768,
+      stream: true,
+    });
+  });
+
+  it("surfaces the original ceiling error when the clamped attempt fails the same way", async () => {
+    let attempts = 0;
+    const claim = vi.fn(() => undefined);
+    const stream = createProviderRetryStream(
+      model,
+      context,
+      {},
+      () => {
+        attempts += 1;
+        return failedStream({ errorMessage: OPENAI_OUTPUT_CEILING });
+      },
+      {
+        claim,
+        headers: () => undefined,
+        status: () => undefined,
+        sleep: async () => undefined,
+      },
+    );
+
+    const events: string[] = [];
+    for await (const event of stream) events.push(event.type);
+
+    expect(attempts).toBe(2);
+    expect(events).toEqual(["error"]);
+    expect((await stream.result()).errorMessage).toBe(OPENAI_OUTPUT_CEILING);
+    expect(claim).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("stream idle watchdog", () => {
   it("reads the idle budget from the environment with a safe default", () => {
     const previous = process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
