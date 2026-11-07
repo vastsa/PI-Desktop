@@ -18141,6 +18141,26 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   project. The two-live-sessions desktop journey and the panel step are Draft
   (run only in a capable environment when this surface changes)
 
+##### Workspace discovery consistency and project-isolated queues
+
+- Run `node --experimental-strip-types --test
+  apps/desktop/test/plugin-workspace-session.test.mjs` on Node 22, together with
+  the existing session-root, invocation, filesystem-scope and workspace-root
+  suites. The real plugin child process checks concurrent A/B workspace
+  discovery against actual marker reads, foreground switching, no visible
+  workspace, legacy provider mismatch, remote identity, and absolute reveal
+  limited to the caller's registered roots. Only the OS reveal boundary is stubbed.
+- A companion knowledge-plugin process test runs the real PluginRuntime, actual
+  plugin entry point, project queues and temporary files. Hold A's read at an
+  explicit RPC gate; B must save before A is released. A second caller in A
+  queues behind A and must retain its own invocation after the first finishes.
+  Switch or clear the visible project, reject an A invocation targeting B,
+  cancel A while B searches, and verify both original bodies and B's saved
+  revision. No live provider, installed user instance or `verify:ui:*` is used.
+- The full two-live-session shell journey remains separate; the child-process
+  tests establish the actual host/plugin/filesystem boundary without requiring
+  a foreground Electron app or changing permission semantics.
+
 #### E2E-MODEL-catalog-window-correction-reaches-saved-bindings
 
 - **Goal**: a models.dev limit correction — the context window or the output cap —
