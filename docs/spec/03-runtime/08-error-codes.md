@@ -90,6 +90,14 @@ does not turn temporary thread pressure into a host process exit.
 
 ### 3.2 Agent / session
 
+Provider status parsing also recognizes DashScope `Code: <status>` envelopes
+at the start of an error message. A streamed `InvalidParameter: <400>`
+rejection is terminal even when the enclosing HTTP response was 200:
+resending unchanged tool history cannot repair it. Structured error status
+fields retain precedence; arbitrary angle-bracket numbers in prose are not
+HTTP statuses. Authentication, rate-limit and transient 5xx envelopes retain
+their existing classifications.
+
 | code | retriable | meaning |
 |---|---|---|
 | `AGENT_BUSY` | no | session already has active turn; leftover subagents after a terminal parent error do not keep the session busy (D352) |
@@ -106,6 +114,7 @@ does not turn temporary thread pressure into a host process exit.
 | `CONTEXT_COMPACTION_FAILED` | no | automatic retained-tail recovery could not prepare, persist, or fit a checkpoint, or manual checkpoint summary generation / durable append failed; the guarded next provider request does not start |
 | `STREAM_FAILED` | yes | provider stream was terminated, closed prematurely, or otherwise ended before a complete response; up to ten same-turn retries may precede the terminal event |
 | `EMPTY_MODEL_RESPONSE` | yes | the model ended its turn with no tool call and no visible text twice: once as streamed, once after the automatic re-run; the first reply to a Host-ledger completion notice is exempt (spec 02-agent-runtime §5e, D446) |
+| `TOOL_CALL_NOT_EXECUTED` | no | a complete known-tool Qwen call was emitted as assistant text; the message shows a format diagnostic without executing text, retrying the provider or interrupting valid structured siblings |
 | `PROMPT_ENHANCEMENT_EMPTY` | no | the one-shot enhancement model returned no text |
 | `SPEECH_NOT_CONFIGURED` | no | host speech ASR or TTS is not bound in settings |
 | `SPEECH_PROTOCOL_UNSUPPORTED` | no | the speech protocol is unknown or does not support this role |
@@ -413,7 +422,8 @@ replayed by either retry budget, and a delegate reports it as
 messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
 `credit_balance_exhausted`,
 organization/project spend-limit codes, `insufficient credits`, and
-`requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
+`requires more credits`, and Zhipu/Z.ai JSON error code `1308` for a reached plan
+usage limit) map to terminal `PROVIDER_ERROR` even when the HTTP
 status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
 omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,

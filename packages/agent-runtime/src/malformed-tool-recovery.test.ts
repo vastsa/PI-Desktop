@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
 import { validateHostedSearchMessages } from "@earendil-works/pi-ai/utils/hosted-search";
@@ -21,7 +23,7 @@ function assistant(content: unknown[], stopReason = "toolUse"): AssistantMessage
 const call = (id = "valid-call") => ({ type: "toolCall", id, name: "Bash", arguments: { command: "printf checked" } });
 const answer = () => assistant([{ type: "text", text: "The requested check is complete." }], "stop");
 
-function fixture(reply: (round: number) => AssistantMessage) {
+function fixture(reply: (round: number) => AssistantMessage, baseUrl?: string) {
   const requests: AgentMessage[][] = [];
   const events: AgentEventEnvelope["event"][] = [];
   const host = { call: vi.fn(async (method: string) => method === "tools.execute"
@@ -29,13 +31,13 @@ function fixture(reply: (round: number) => AssistantMessage) {
     : undefined) };
   const runtime = new DesktopAgentRuntime({
     sessionId: "malformed-call-fixture", mode: "agent", thinkingLevel: "off", host: host as never,
-    provider: { id: "fixture", name: "Fixture", modelId: "fixture", apiKey: "fixture", baseUrl: "http://localhost/v1",
+    provider: { id: "fixture", name: "Fixture", modelId: "fixture", apiKey: "fixture", baseUrl: baseUrl ?? "http://localhost/v1",
       supportsReasoning: false, supportedThinkingLevels: ["off"] },
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     history: [{ id: "earlier-user", role: "user", content: "Keep the completed work.", createdAt: new Date(1).toISOString() }],
     onEvent: (envelope) => events.push(envelope.event),
   });
-  vi.spyOn(runtime["models"], "streamSimple").mockImplementation((_model, context) => {
+  if (!baseUrl) vi.spyOn(runtime["models"], "streamSimple").mockImplementation((_model, context) => {
     requests.push(structuredClone(context.messages));
     if (requests.length > 6) throw new Error("Unexpected extra provider request");
     validateHostedSearchMessages(context.messages);
@@ -52,6 +54,43 @@ function fixture(reply: (round: number) => AssistantMessage) {
 }
 
 describe("malformed tool-call recovery", () => {
+  it.each([false, true])("makes an unexecuted text tool call visible, with real sibling call: %s", async (withSibling) => {
+    const text = 'I checked the workspace.\n<tool_call>\n<function=TodoWrite>\n<parameter=todos>\n[]\n</parameter>\n</function>\n</tool_call>';
+    const requests: string[] = [];
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      requests.push(body);
+      const sibling = withSibling && requests.length === 1;
+      const delta = {
+        role: "assistant", content: requests.length === 1 ? text : "The requested check is complete.",
+        ...(sibling ? { tool_calls: [{ index: 0, id: "valid-call", type: "function", function: {
+          name: "Bash", arguments: JSON.stringify({ command: "printf checked" }),
+        } }] } : {}),
+      };
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: sibling ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { runtime, host, events } = fixture(answer, `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`);
+    try {
+      await runtime.prompt("Track the requested work.");
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "message_end", message: expect.objectContaining({
+          content: text, status: "error", error: expect.objectContaining({
+            code: "TOOL_CALL_NOT_EXECUTED", message: expect.stringContaining("TodoWrite"),
+          }),
+        }),
+      }));
+      expect(host.call.mock.calls.filter(([method]) => method === "tools.execute")).toHaveLength(withSibling ? 1 : 0);
+      expect(requests).toHaveLength(withSibling ? 2 : 1);
+      expect(events.filter((event) => event.type === "tool_start" && event.toolName === "TodoWrite")).toHaveLength(0);
+    } finally {
+      await runtime.dispose();
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
   it.each([
     ["empty name", { name: "" }],
     ["missing name", { name: undefined }],

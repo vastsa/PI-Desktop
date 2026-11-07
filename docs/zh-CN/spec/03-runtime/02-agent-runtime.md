@@ -158,7 +158,7 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
 429 后跟流阶段的 429 无法重置或倍增该预算。在两个阶段中，
 捕获的响应状态都会在对提供商消息进行分类之前应用，因此通用的
 429 正文仍会进入 429 预算，而已知的不可重试分类仍然是终止的。明确的
-账单/账户额度耗尽（包括 `insufficient_quota` 和消费限额代码）即使状态为
+账单/账户额度耗尽（包括 `insufficient_quota`、消费限额代码和智谱/Z.ai 用量上限代码 `1308`）即使状态为
 HTTP 429，也会成为终止的 `PROVIDER_ERROR`。
 主会话和内置子代理使用相同的控制器和策略。
 
@@ -1303,6 +1303,18 @@ content. The durable transcript is unchanged and completed tools are not
 re-executed. Other malformed context remains subject to strict validation.
 Tool token estimates are optional telemetry: an invalid call identity must not
 prevent the corresponding terminal tool event from being delivered.
+
+Complete Qwen-style `<tool_call><function=Name><parameter=...>...</parameter>
+</function></tool_call>` blocks emitted as assistant text for a known tool
+receive a visible `TOOL_CALL_NOT_EXECUTED` diagnostic on that response. This
+also applies when normal text precedes the block or structured sibling calls
+execute successfully. The original text is preserved; the affected message
+has error status, while valid structured calls and normal continuation remain
+unchanged. Text is never parsed into executable arguments, tools are never
+silently activated, and no provider retry is spent. Fenced, inline, quoted and
+indented examples, unknown tool names and incomplete blocks are not diagnosed.
+This is a conservative format diagnostic, not a general XML parser or proof
+that the model intended an action.
 
 ### 会话作业控制
 

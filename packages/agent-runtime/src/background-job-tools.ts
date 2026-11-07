@@ -1,7 +1,7 @@
 /** Model job controls route to their existing owner; only Bash crosses Host RPC. */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TObject } from "typebox";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
   BACKGROUND_JOBS_VERSION,
   type BackgroundJobSnapshot,

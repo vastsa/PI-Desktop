@@ -1,5 +1,5 @@
 diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
-index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f5627094f309a3 100644
+index de2b2d8c209f5576c18b020de297d4ef5fad5960..037ecdaea6efcb76f827ba2dd69bc3a09a3d78f7 100644
 --- a/dist/api/anthropic-messages.js
 +++ b/dist/api/anthropic-messages.js
 @@ -1,3 +1,6 @@
@@ -9,7 +9,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
  import Anthropic, {} from "@anthropic-ai/sdk";
  import { ANTHROPIC_FEDERATION_RULE_ID_ENV, ANTHROPIC_IDENTITY_TOKEN_FILE_ENV, ANTHROPIC_ORGANIZATION_ID_ENV, ANTHROPIC_SERVICE_ACCOUNT_ID_ENV, ANTHROPIC_WORKSPACE_ID_ENV, } from "../env-api-keys.js";
  import { calculateCost } from "../models.js";
-@@ -375,8 +378,6 @@ async function* iterateAnthropicEvents(response, signal) {
+@@ -377,8 +380,6 @@ async function* iterateAnthropicEvents(response, signal) {
  }
  export const stream = (model, context, options) => {
      const stream = new AssistantMessageEventStream();
@@ -18,7 +18,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
      (async () => {
          const output = {
              role: "assistant",
-@@ -395,7 +396,11 @@ export const stream = (model, context, options) => {
+@@ -397,7 +398,11 @@ export const stream = (model, context, options) => {
              stopReason: "pending",
              timestamp: Date.now(),
          };
@@ -30,7 +30,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
              let client;
              let isOAuth;
              let usageModel = model;
-@@ -431,6 +436,7 @@ export const stream = (model, context, options) => {
+@@ -433,6 +438,7 @@ export const stream = (model, context, options) => {
              let disablePreferredStrictTools = false;
              let response;
              for (;;) {
@@ -38,7 +38,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
                  options?.signal?.throwIfAborted();
                  const built = buildParams(model, normalizedContext, isOAuth, options, disablePreferredStrictTools);
                  if (built.providerThinkingLevel)
-@@ -440,6 +446,8 @@ export const stream = (model, context, options) => {
+@@ -442,6 +448,8 @@ export const stream = (model, context, options) => {
                  if (nextParams !== undefined) {
                      params = { ...nextParams, stream: true };
                  }
@@ -47,8 +47,8 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
                  try {
                      response = await retryProviderRequest(() => client.beta.messages.create(params, requestOptions).asResponse(), {
                          maxRetries: options?.maxRetries,
-@@ -552,17 +560,50 @@ export const stream = (model, context, options) => {
-                         output.content.push(block);
+@@ -550,38 +558,83 @@ export const stream = (model, context, options) => {
+                         });
                          stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
                      }
 +                    // Hosted web search (PI-Desktop): server-side search blocks
@@ -57,73 +57,69 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
 +                    // the hostedSearch block so multi-turn conversations keep
 +                    // their grounding (encrypted content included).
 +                    else if (event.content_block.type === "server_tool_use") {
-+                        const block = {
++                        output.content.push({
 +                            type: "hostedSearch",
 +                            phase: "server_tool_use",
 +                            blockId: event.content_block.id,
 +                            name: event.content_block.name,
 +                            input: event.content_block.input,
-+                            inputJson: "",
-+                            index: event.index,
-+                        };
-+                        output.content.push(block);
++                        });
++                        openBlocks.set(event.index, {
++                            contentIndex: output.content.length - 1,
++                            arguments: new ToolCallArgumentsStream(),
++                        });
 +                        stream.push({ type: "hosted_search_update", contentIndex: output.content.length - 1, partial: output });
 +                    }
 +                    else if (event.content_block.type === "web_search_tool_result" ||
 +                        event.content_block.type === "web_search_tool_result_error") {
 +                        const isError = event.content_block.type === "web_search_tool_result_error";
-+                        const block = {
++                        output.content.push({
 +                            type: "hostedSearch",
 +                            phase: "web_search_tool_result",
 +                            blockId: event.content_block.tool_use_id,
 +                            isError,
 +                            // The raw block is the replay payload; keep it verbatim.
 +                            wire: event.content_block,
-+                            index: event.index,
-+                        };
-+                        output.content.push(block);
++                        });
++                        openBlocks.set(event.index, { contentIndex: output.content.length - 1 });
 +                        stream.push({ type: "hosted_search_update", contentIndex: output.content.length - 1, partial: output });
 +                    }
                  }
                  else if (event.type === "content_block_delta") {
+                     const open = openBlock(event.index);
                      if (event.delta.type === "text_delta") {
-                         const index = blocks.findIndex((b) => b.index === event.index);
-                         const block = blocks[index];
-                         if (block && block.type === "text") {
--                            block.text += event.delta.text;
-+                            block.text += event.delta.text ?? "";
+                         if (open?.block.type === "text") {
+-                            open.block.text += event.delta.text;
++                            open.block.text += event.delta.text ?? "";
                              stream.push({
                                  type: "text_delta",
-                                 contentIndex: index,
+                                 contentIndex: open.contentIndex,
 -                                delta: event.delta.text,
 +                                delta: event.delta.text ?? "",
                                  partial: output,
                              });
                          }
-@@ -571,11 +612,11 @@ export const stream = (model, context, options) => {
-                         const index = blocks.findIndex((b) => b.index === event.index);
-                         const block = blocks[index];
-                         if (block && block.type === "thinking") {
--                            block.thinking += event.delta.thinking;
-+                            block.thinking += event.delta.thinking ?? "";
+                     }
+                     else if (event.delta.type === "thinking_delta") {
+                         if (open?.block.type === "thinking") {
+-                            open.block.thinking += event.delta.thinking;
++                            open.block.thinking += event.delta.thinking ?? "";
                              stream.push({
                                  type: "thinking_delta",
-                                 contentIndex: index,
+                                 contentIndex: open.contentIndex,
 -                                delta: event.delta.thinking,
 +                                delta: event.delta.thinking ?? "",
                                  partial: output,
                              });
                          }
-@@ -584,12 +625,24 @@ export const stream = (model, context, options) => {
-                         const index = blocks.findIndex((b) => b.index === event.index);
-                         const block = blocks[index];
-                         if (block && block.type === "toolCall") {
--                            block.partialJson += event.delta.partial_json;
-+                            block.partialJson += event.delta.partial_json ?? "";
-                             block.arguments = parseStreamingJson(block.partialJson);
+                     }
+                     else if (event.delta.type === "input_json_delta") {
+                         if (open?.block.type === "toolCall" && open.arguments !== undefined) {
+-                            open.block.arguments = open.arguments.append(event.delta.partial_json);
++                            open.block.arguments = open.arguments.append(event.delta.partial_json ?? "");
                              stream.push({
                                  type: "toolcall_delta",
-                                 contentIndex: index,
+                                 contentIndex: open.contentIndex,
 -                                delta: event.delta.partial_json,
 +                                delta: event.delta.partial_json ?? "",
 +                                partial: output,
@@ -132,21 +128,21 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
 +                        // Hosted web search (PI-Desktop): server_tool_use input
 +                        // (the query) streams as input_json_delta like any tool
 +                        // call; accumulate it so the row can show the query live.
-+                        else if (block && block.type === "hostedSearch" && block.phase === "server_tool_use") {
-+                            block.inputJson = (block.inputJson ?? "") + (event.delta.partial_json ?? "");
-+                            block.input = parseStreamingJson(block.inputJson);
++                        else if (open?.block.type === "hostedSearch" && open.block.phase === "server_tool_use" &&
++                            open.arguments !== undefined) {
++                            open.block.input = open.arguments.append(event.delta.partial_json ?? "");
 +                            stream.push({
 +                                type: "hosted_search_update",
-+                                contentIndex: index,
++                                contentIndex: open.contentIndex,
                                  partial: output,
                              });
                          }
-@@ -599,7 +652,19 @@ export const stream = (model, context, options) => {
-                         const block = blocks[index];
-                         if (block && block.type === "thinking") {
-                             block.thinkingSignature = block.thinkingSignature || "";
--                            block.thinkingSignature += event.delta.signature;
-+                            block.thinkingSignature += event.delta.signature ?? "";
+@@ -589,7 +642,19 @@ export const stream = (model, context, options) => {
+                     else if (event.delta.type === "signature_delta") {
+                         if (open?.block.type === "thinking") {
+                             open.block.thinkingSignature = open.block.thinkingSignature || "";
+-                            open.block.thinkingSignature += event.delta.signature;
++                            open.block.thinkingSignature += event.delta.signature ?? "";
 +                        }
 +                    }
 +                    // Hosted web search (PI-Desktop): citations arrive as deltas
@@ -162,20 +158,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
                          }
                      }
                  }
-@@ -636,6 +701,12 @@ export const stream = (model, context, options) => {
-                                 partial: output,
-                             });
-                         }
-+                        // Hosted search blocks carry no streaming scratch
-+                        // state; closing one just drops the index marker.
-+                        else if (block.type === "hostedSearch") {
-+                            delete block.index;
-+                            delete block.inputJson;
-+                        }
-                     }
-                 }
-                 else if (event.type === "message_delta") {
-@@ -708,13 +779,18 @@ export const stream = (model, context, options) => {
+@@ -700,8 +765,13 @@ export const stream = (model, context, options) => {
              stream.end();
          }
          catch (error) {
@@ -184,18 +167,13 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
 +            const errorDetails = options?.signal?.aborted ? undefined : localRequestErrorDetails(error);
 +            if (errorDetails)
 +                output.errorDetails = errorDetails;
-             for (const block of output.content) {
-                 delete block.index;
-                 // partialJson is only a streaming scratch buffer; never persist it.
-                 delete block.partialJson;
-             }
              output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 -            output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
 +            output.errorMessage = errorDetails?.message ?? (error instanceof Error ? error.message : JSON.stringify(error));
              stream.push({ type: "error", reason: output.stopReason, error: output });
              stream.end();
          }
-@@ -742,7 +818,7 @@ function mapThinkingLevelToEffort(model, level) {
+@@ -729,7 +799,7 @@ function mapThinkingLevelToEffort(model, level) {
              return "high";
      }
  }
@@ -204,7 +182,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
      if (!getAnthropicFederation(model, options?.apiKey, options?.headers, options?.env)) {
          assertRequestAuth(model.provider, options?.apiKey, options?.headers);
      }
-@@ -776,7 +852,7 @@ export const streamSimple = (model, context, options) => {
+@@ -763,7 +833,7 @@ export const streamSimple = (model, context, options) => {
          thinkingEnabled: true,
          thinkingBudgetTokens: Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024)),
      });
@@ -213,7 +191,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
  function isOAuthToken(apiKey) {
      return apiKey.includes("sk-ant-oat");
  }
-@@ -972,6 +1048,15 @@ function buildParams(model, context, isOAuthToken, options, disablePreferredStri
+@@ -956,6 +1026,15 @@ function buildParams(model, context, isOAuthToken, options, disablePreferredStri
              params.tools = convertToolDefinitions(tools, toolCacheControl);
          }
      }
@@ -229,7 +207,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
      if (thinkingDisabled) {
          // No effort is sent, so the model default applies. Anthropic rejects `block_binding`
          // with disabled thinking.
-@@ -1173,6 +1258,15 @@ convertToolDefinitions) {
+@@ -1161,6 +1240,15 @@ convertToolDefinitions) {
                          input: block.arguments ?? {},
                      });
                  }
@@ -246,7 +224,7 @@ index 841da8964d2b403c45a18d4d1735c1fabc441a9a..02f20bdcd2c1d294754ca05579f56270
              if (blocks.length === 0)
                  continue;
 diff --git a/dist/api/azure-openai-responses.js b/dist/api/azure-openai-responses.js
-index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd1975c2e18a9 100644
+index e6a50f20ab31a3f3de0d2a71190dd98b6f1d401d..8620aa5ecb7cd7c4220347792e6e119408e3a497 100644
 --- a/dist/api/azure-openai-responses.js
 +++ b/dist/api/azure-openai-responses.js
 @@ -1,3 +1,5 @@
@@ -286,7 +264,7 @@ index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd197
              const { data: openaiStream, response } = await retryProviderRequest(() => client.responses.create(params, requestOptions).withResponse(), {
                  maxRetries: options?.maxRetries,
                  maxRetryDelayMs: options?.maxRetryDelayMs,
-@@ -85,6 +90,11 @@ export const stream = (model, context, options) => {
+@@ -85,15 +90,20 @@ export const stream = (model, context, options) => {
              stream.end();
          }
          catch (error) {
@@ -295,12 +273,6 @@ index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd197
 +            const errorDetails = options?.signal?.aborted ? undefined : localRequestErrorDetails(error);
 +            if (errorDetails)
 +                output.errorDetails = errorDetails;
-             for (const block of output.content) {
-                 delete block.index;
-                 // Streaming scratch buffers are only used during parsing; never persist them.
-@@ -92,14 +102,14 @@ export const stream = (model, context, options) => {
-                 delete block.customInput;
-             }
              output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 -            output.errorMessage = formatAzureOpenAIError(error);
 +            output.errorMessage = errorDetails?.message ?? formatAzureOpenAIError(error);
@@ -315,7 +287,7 @@ index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd197
      const apiKey = options?.apiKey;
      if (!apiKey) {
          throw new Error(`No API key for provider: ${model.provider}`);
-@@ -114,7 +124,7 @@ export const streamSimple = (model, context, options) => {
+@@ -108,7 +118,7 @@ export const streamSimple = (model, context, options) => {
          ...base,
          reasoningEffort,
      });
@@ -324,7 +296,7 @@ index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd197
  function createClient(model, apiKey, options) {
      const headers = { ...getIdentityHeaders(model, options?.identity), ...model.headers };
      if (options?.headers) {
-@@ -167,6 +177,10 @@ function buildParams(model, context, options, deploymentName, grammarToolInputPr
+@@ -161,6 +171,10 @@ function buildParams(model, context, options, deploymentName, grammarToolInputPr
              supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,
          });
      }
@@ -335,7 +307,7 @@ index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd197
      if (options?.toolChoice !== undefined) {
          params.tool_choice = options.toolChoice;
      }
-@@ -188,6 +202,10 @@ function buildParams(model, context, options, deploymentName, grammarToolInputPr
+@@ -182,6 +196,10 @@ function buildParams(model, context, options, deploymentName, grammarToolInputPr
              };
          }
      }
@@ -347,10 +319,10 @@ index c88f27ee93a6f267f6abf9f69b13d0ad2303c8b2..e557d917026f8c315f56a95ce03bd197
      const samplingParams = resolveSamplingParams(model, reasoningEffort ?? "off", options?.samplingParams);
      if (samplingParams) {
 diff --git a/dist/api/mistral-conversations.js b/dist/api/mistral-conversations.js
-index 193e8e42a40402a33d208e1f9c18e7cff893ce47..53af5c2911b253144c3b9391e95c324d4fb47404 100644
+index 51de5ed18b59979d0e7aa883f46ecdc05ab274a7..da385ff92649735f8850b6ac6511f46d61b0e03f 100644
 --- a/dist/api/mistral-conversations.js
 +++ b/dist/api/mistral-conversations.js
-@@ -674,6 +674,9 @@ function toChatMessages(messages, supportsImages) {
+@@ -647,6 +647,9 @@ function toChatMessages(messages, supportsImages) {
                      }
                      continue;
                  }
@@ -361,10 +333,10 @@ index 193e8e42a40402a33d208e1f9c18e7cff893ce47..53af5c2911b253144c3b9391e95c324d
                      id: block.id,
                      type: "function",
 diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
-index 45bcd08b85b478f0f96006881d489820f1264d2c..24d06138833cd9cad81bb519ce5dc58481be7fda 100644
+index 427df0a7054cc4b2071c8e5c2dc2ac1a82ea166a..fce4d2181faaec2e18357c20eade7da2cecd3c29 100644
 --- a/dist/api/openai-codex-responses.js
 +++ b/dist/api/openai-codex-responses.js
-@@ -418,6 +418,12 @@ function buildRequestBody(model, context, options, cacheSessionId, grammarToolIn
+@@ -413,6 +413,12 @@ function buildRequestBody(model, context, options, cacheSessionId, grammarToolIn
              supportsOpenAIGrammarTools,
          });
      }
@@ -378,10 +350,10 @@ index 45bcd08b85b478f0f96006881d489820f1264d2c..24d06138833cd9cad81bb519ce5dc584
          const effort = options.reasoningEffort === "none"
              ? model.thinkingLevelMap?.off === undefined
 diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
-index 793ed0a6060e5d2e61b09e2d93514610527873df..78c6a829151d8bb57357d9a379997da4a5f03fbd 100644
+index 12ec37eaf976340d2b29234dab2f17964ed56c91..02d3cdec478f40f40c312dea4d412f9e7c24003b 100644
 --- a/dist/api/openai-completions.js
 +++ b/dist/api/openai-completions.js
-@@ -1052,21 +1052,27 @@ export function convertMessages(model, context, compat, options) {
+@@ -1034,21 +1034,27 @@ export function convertMessages(model, context, compat, options) {
              if (preservedReasoningDetails) {
                  assistantMsg.reasoning_details = preservedReasoningDetails;
              }
@@ -415,7 +387,7 @@ index 793ed0a6060e5d2e61b09e2d93514610527873df..78c6a829151d8bb57357d9a379997da4
              }
              params.push(assistantMsg);
          }
-@@ -1134,6 +1140,49 @@ export function convertMessages(model, context, compat, options) {
+@@ -1116,6 +1122,49 @@ export function convertMessages(model, context, compat, options) {
          }
          lastRole = msg.role;
      }
@@ -465,7 +437,7 @@ index 793ed0a6060e5d2e61b09e2d93514610527873df..78c6a829151d8bb57357d9a379997da4
      return params;
  }
  function convertTools(tools, compat) {
-@@ -1278,6 +1327,9 @@ function detectCompat(model) {
+@@ -1266,6 +1315,9 @@ function detectCompat(model) {
          requiresAssistantAfterToolResult: false,
          requiresThinkingAsText: false,
          requiresReasoningContentOnAssistantMessages: isDeepSeek,
@@ -475,7 +447,7 @@ index 793ed0a6060e5d2e61b09e2d93514610527873df..78c6a829151d8bb57357d9a379997da4
          thinkingFormat: isDeepSeek
              ? "deepseek"
              : isZai
-@@ -1331,6 +1383,8 @@ function getCompat(model) {
+@@ -1319,6 +1371,8 @@ function getCompat(model) {
          requiresThinkingAsText: model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
          requiresReasoningContentOnAssistantMessages: model.compat.requiresReasoningContentOnAssistantMessages ??
              detected.requiresReasoningContentOnAssistantMessages,
@@ -485,14 +457,14 @@ index 793ed0a6060e5d2e61b09e2d93514610527873df..78c6a829151d8bb57357d9a379997da4
          openRouterRouting: model.compat.openRouterRouting ?? {},
          vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
 diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
-index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448ff0ca7f37 100644
+index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d39472222693 100644
 --- a/dist/api/openai-responses-shared.js
 +++ b/dist/api/openai-responses-shared.js
 @@ -1,3 +1,4 @@
 +import { hostedSearchReplayProjection, validateHostedSearchMessages } from "../utils/hosted-search.js";
  import { calculateCost } from "../models.js";
  import { shortHash } from "../utils/hash.js";
- import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.js";
+ import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 @@ -90,6 +91,7 @@ function renderToolRemovalNotice(names) {
  }
  export function convertResponsesMessages(model, context, allowedToolCallProviders, options) {
@@ -515,7 +487,7 @@ index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448f
                  else if (block.type === "toolCall") {
                      const toolCall = block;
                      const [callId, itemIdRaw] = toolCall.id.split("|");
-@@ -471,6 +480,28 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -458,6 +467,28 @@ export async function processResponsesStream(openaiStream, output, stream, model
              stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
              return slot;
          }
@@ -544,7 +516,7 @@ index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448f
          return undefined;
      };
      const getOrCreateSlot = (outputIndex, item) => {
-@@ -552,11 +583,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -539,11 +570,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "thinking");
              if (!slot)
                  continue;
@@ -558,7 +530,7 @@ index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448f
                  partial: output,
              });
          }
-@@ -576,11 +607,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -563,11 +594,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "thinking");
              if (!slot)
                  continue;
@@ -572,7 +544,7 @@ index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448f
                  partial: output,
              });
          }
-@@ -588,23 +619,44 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -575,23 +606,44 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "text");
              if (!slot)
                  continue;
@@ -621,19 +593,18 @@ index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448f
                  partial: output,
              });
          }
-@@ -612,9 +664,9 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -599,8 +651,8 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "toolCall");
-             if (!slot || slot.block.partialJson === undefined)
+             if (slot?.input.kind !== "json")
                  continue;
--            slot.block.partialJson += event.delta;
-+            slot.block.partialJson += event.delta ?? "";
-             slot.block.arguments = parseStreamingJson(slot.block.partialJson);
+-            slot.block.arguments = slot.input.arguments.append(event.delta);
 -            pushToolCallDelta(slot, event.delta);
++            slot.block.arguments = slot.input.arguments.append(event.delta ?? "");
 +            pushToolCallDelta(slot, event.delta ?? "");
          }
          else if (event.type === "response.function_call_arguments.done") {
              const slot = getSlot(event.output_index, "toolCall");
-@@ -700,9 +752,25 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -680,9 +732,25 @@ export async function processResponsesStream(openaiStream, output, stream, model
                  });
                  outputSlots.delete(event.output_index);
              }
@@ -660,7 +631,7 @@ index b7b27ca98c8f4069a806a01913632a2d9200379c..da6ba8ba9abc8e897c9a72383038448f
          else if (event.type === "error") {
              throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
 diff --git a/dist/api/openai-responses.js b/dist/api/openai-responses.js
-index b418bfb7ca4e378b5b5c3115b79a6bcc7af17775..17cb84b3ba3f42ae602030680112edf84f3fdf5e 100644
+index 7b3b0d733c3495fd0815f563212acac457224dc0..c9e536a33e7e955db48c3c2e2dc7667b41da85d4 100644
 --- a/dist/api/openai-responses.js
 +++ b/dist/api/openai-responses.js
 @@ -1,3 +1,5 @@
@@ -697,7 +668,7 @@ index b418bfb7ca4e378b5b5c3115b79a6bcc7af17775..17cb84b3ba3f42ae602030680112edf8
              const { data: openaiStream, response } = await retryProviderRequest(() => client.responses.create(params, requestOptions).withResponse(), {
                  maxRetries: options?.maxRetries,
                  maxRetryDelayMs: options?.maxRetryDelayMs,
-@@ -172,6 +178,11 @@ export const stream = (model, context, options) => {
+@@ -172,8 +178,13 @@ export const stream = (model, context, options) => {
              stream.end();
          }
          catch (error) {
@@ -706,19 +677,13 @@ index b418bfb7ca4e378b5b5c3115b79a6bcc7af17775..17cb84b3ba3f42ae602030680112edf8
 +            const errorDetails = options?.signal?.aborted ? undefined : localRequestErrorDetails(error);
 +            if (errorDetails)
 +                output.errorDetails = errorDetails;
-             for (const block of output.content) {
-                 delete block.index;
-                 // Streaming scratch buffers are only used during parsing; never persist them.
-@@ -179,7 +190,7 @@ export const stream = (model, context, options) => {
-                 delete block.customInput;
-             }
              output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 -            const errorMessage = formatProviderError(normalizeProviderError(error), `${model.provider === "openai" ? "OpenAI" : model.provider} API error`);
 +            const errorMessage = errorDetails?.message ?? formatProviderError(normalizeProviderError(error), `${model.provider === "openai" ? "OpenAI" : model.provider} API error`);
              // Sign in with ChatGPT shares the subscription's usage limit with other apps.
              // On ChatGPT Business plans, the workspace admin also sets a per-user limit.
              if (errorMessage.includes("subscription_sharing_usage_limit_exceeded")) {
-@@ -197,7 +208,7 @@ export const stream = (model, context, options) => {
+@@ -191,7 +202,7 @@ export const stream = (model, context, options) => {
      })();
      return stream;
  };
@@ -727,7 +692,7 @@ index b418bfb7ca4e378b5b5c3115b79a6bcc7af17775..17cb84b3ba3f42ae602030680112edf8
      getClientApiKey(model.provider, options?.apiKey, options?.headers);
      const base = {
          ...buildBaseOptions(model, context, options, options?.apiKey),
-@@ -209,7 +220,7 @@ export const streamSimple = (model, context, options) => {
+@@ -203,7 +214,7 @@ export const streamSimple = (model, context, options) => {
          ...base,
          reasoningEffort,
      });
@@ -736,7 +701,7 @@ index b418bfb7ca4e378b5b5c3115b79a6bcc7af17775..17cb84b3ba3f42ae602030680112edf8
  function createClient(model, context, apiKey, optionsHeaders, identity, fetch, sessionId) {
      const compat = getCompat(model);
      const headers = { ...getIdentityHeaders(model, identity), ...model.headers };
-@@ -284,6 +295,12 @@ function buildParams(model, context, options, compat, grammarToolInputProperties
+@@ -278,6 +289,12 @@ function buildParams(model, context, options, compat, grammarToolInputProperties
              supportsOpenAIGrammarTools: compat.supportsOpenAIGrammarTools,
          });
      }
@@ -749,7 +714,7 @@ index b418bfb7ca4e378b5b5c3115b79a6bcc7af17775..17cb84b3ba3f42ae602030680112edf8
      if (options?.toolChoice !== undefined) {
          params.tool_choice = options.toolChoice;
      }
-@@ -308,6 +325,10 @@ function buildParams(model, context, options, compat, grammarToolInputProperties
+@@ -302,6 +319,10 @@ function buildParams(model, context, options, compat, grammarToolInputProperties
          if (model.provider === "xai")
              params.include = ["reasoning.encrypted_content"];
      }
@@ -773,7 +738,7 @@ index ed753df7ea29238c5ef2f1543c3568173be00df7..0a1621a162bc6cff3b81550395c0efea
      return Math.min(maxTokens, Math.max(MIN_MAX_TOKENS, available));
  }
  export function resolveSamplingParams(model, thinkingLevel, requestParams) {
-@@ -31,6 +32,7 @@ export function buildBaseOptions(model, context, options, apiKey) {
+@@ -31,6 +31,7 @@ export function buildBaseOptions(model, context, options, apiKey) {
          headers: options?.headers,
          identity: options?.identity,
          onPayload: options?.onPayload,
@@ -782,7 +747,7 @@ index ed753df7ea29238c5ef2f1543c3568173be00df7..0a1621a162bc6cff3b81550395c0efea
          onProviderStreamEvent: options?.onProviderStreamEvent,
          timeoutMs: options?.timeoutMs,
 diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
-index 0823512eb83d74167335cde72ae21ea32384572e..43d4cae89da499e481ee671c8fc2cccfcdde3dd4 100644
+index 0823512eb83d74167335cde72ae21ea32384572e..338b1571d1e5e2cd6596b98f4ae6c3ffaf343676 100644
 --- a/dist/auth/oauth/anthropic.js
 +++ b/dist/auth/oauth/anthropic.js
 @@ -4,6 +4,7 @@
@@ -939,11 +904,11 @@ index 0823512eb83d74167335cde72ae21ea32384572e..43d4cae89da499e481ee671c8fc2cccf
      return {
          type: "oauth",
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 226fa3e6578dacc5744ce5c9271dd20d4a3b5b23..90cda08400b4a49fda02989b3c4a2f9b75494713 100644
+index 5f531d7dbaf7a79972629f7cb5e096af75116d02..f8d9596dffdc83fb087e5d9ab1f3aea8caac7e84 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -33,5 +33,8 @@ export * from "./utils/transcript.ts";
- export * from "./utils/typebox-helpers.ts";
+@@ -32,5 +32,8 @@ export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "./
+ export * from "./utils/transcript.ts";
  export { uuidv7 } from "./utils/uuid.ts";
  export * from "./utils/validation.ts";
 +export { LocalRequestError, localRequestErrorDetails } from "./utils/local-request-error.ts";
@@ -951,42 +916,60 @@ index 226fa3e6578dacc5744ce5c9271dd20d4a3b5b23..90cda08400b4a49fda02989b3c4a2f9b
 +export * from "./utils/hosted-search.ts";
  export { PI_AI_VERSION } from "./utils/version.ts";
  //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
-index d8d81e85328ff551562c9da1d645339a2ddf9f93..d508f96f3af3798fb166e6d7ff294b6c527551bd 100644
+index d1ec9f0c1d3cbe644ba80e81e61cb58becc9ae2d..062642acfad612f54ae0b05af168017501e4e795 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -20,5 +20,7 @@ export * from "./utils/transcript.js";
- export * from "./utils/typebox-helpers.js";
+@@ -20,5 +20,7 @@ export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "./
+ export * from "./utils/transcript.js";
  export { uuidv7 } from "./utils/uuid.js";
  export * from "./utils/validation.js";
 +export { LocalRequestError, localRequestErrorDetails } from "./utils/local-request-error.js";
 +export * from "./utils/hosted-search.js";
  export { PI_AI_VERSION } from "./utils/version.js";
  //# sourceMappingURL=index.js.map
+\ No newline at end of file
 diff --git a/dist/providers/compat-schema.d.ts b/dist/providers/compat-schema.d.ts
-index 681c7d626372d485351672fc7e4c11e3ed2351ee..5d160ed3cf657852ee22416a98653b5fe178443f 100644
+index 0e906dc7d9fa39dad8d52d0c0e6da63351cbeb45..f7e64e2c207605835d81ee094c776fe17d92a73c 100644
 --- a/dist/providers/compat-schema.d.ts
 +++ b/dist/providers/compat-schema.d.ts
-@@ -71,6 +71,7 @@ export declare const OpenAICompletionsCompatSchema: Type.TObject<{
-     requiresAssistantAfterToolResult: Type.TOptional<Type.TBoolean>;
-     requiresThinkingAsText: Type.TOptional<Type.TBoolean>;
-     requiresReasoningContentOnAssistantMessages: Type.TOptional<Type.TBoolean>;
-+    requiresNonEmptyReasoningReplay: Type.TOptional<Type.TBoolean>;
-     thinkingFormat: Type.TOptional<Type.TUnion<[Type.TLiteral<"openai">, Type.TLiteral<"openrouter">, Type.TLiteral<"deepseek">, Type.TLiteral<"together">, Type.TLiteral<"baseten">, Type.TLiteral<"zai">, Type.TLiteral<"qwen">, Type.TLiteral<"chat-template">, Type.TLiteral<"qwen-chat-template">, Type.TLiteral<"string-thinking">, Type.TLiteral<"ant-ling">]>>;
-     chatTemplateKwargs: Type.TOptional<Type.TRecord<"^.*$", Type.TUnion<[Type.TString, Type.TNumber, Type.TBoolean, Type.TNull, Type.TObject<{
-         $var: Type.TUnion<[Type.TLiteral<"thinking.enabled">, Type.TLiteral<"thinking.effort">, Type.TLiteral<"thinking.budget">]>;
+@@ -71,6 +71,7 @@ export declare const OpenAICompletionsCompatSchema: import("@earendil-works/pi-s
+     requiresAssistantAfterToolResult?: boolean | undefined;
+     requiresThinkingAsText?: boolean | undefined;
+     requiresReasoningContentOnAssistantMessages?: boolean | undefined;
++    requiresNonEmptyReasoningReplay?: boolean | undefined;
+     thinkingFormat?: "ant-ling" | "baseten" | "chat-template" | "deepseek" | "openai" | "openrouter" | "qwen" | "qwen-chat-template" | "string-thinking" | "together" | "zai" | undefined;
+     chatTemplateKwargs?: Record<string, string | number | boolean | {
+         $var: "thinking.budget" | "thinking.effort" | "thinking.enabled";
+@@ -198,6 +199,7 @@ export declare const CompatSchemasByApi: {
+         requiresAssistantAfterToolResult?: boolean | undefined;
+         requiresThinkingAsText?: boolean | undefined;
+         requiresReasoningContentOnAssistantMessages?: boolean | undefined;
++        requiresNonEmptyReasoningReplay?: boolean | undefined;
+         thinkingFormat?: "ant-ling" | "baseten" | "chat-template" | "deepseek" | "openai" | "openrouter" | "qwen" | "qwen-chat-template" | "string-thinking" | "together" | "zai" | undefined;
+         chatTemplateKwargs?: Record<string, string | number | boolean | {
+             $var: "thinking.budget" | "thinking.effort" | "thinking.enabled";
+@@ -353,6 +355,7 @@ export declare const ProviderCompatSchema: import("@earendil-works/pi-schema").S
+     requiresAssistantAfterToolResult?: boolean | undefined;
+     requiresThinkingAsText?: boolean | undefined;
+     requiresReasoningContentOnAssistantMessages?: boolean | undefined;
++    requiresNonEmptyReasoningReplay?: boolean | undefined;
+     thinkingFormat?: "ant-ling" | "baseten" | "chat-template" | "deepseek" | "openai" | "openrouter" | "qwen" | "qwen-chat-template" | "string-thinking" | "together" | "zai" | undefined;
+     chatTemplateKwargs?: Record<string, string | number | boolean | {
+         $var: "thinking.budget" | "thinking.effort" | "thinking.enabled";
 diff --git a/dist/providers/compat-schema.js b/dist/providers/compat-schema.js
-index 33d82ac41790de38f7affdbcc2635d6e746c490a..35304bdd315cdfac4592b2ce9649f4c961e8a1af 100644
+index cc9e60a5f8ef12c976984a8a4c8f55eb588896f5..a9dafd908c5cca6cc275985853d7acccaef74709 100644
 --- a/dist/providers/compat-schema.js
 +++ b/dist/providers/compat-schema.js
-@@ -106,6 +106,9 @@ function optionalSessionAffinityFormat(options) {
-     return Type.Optional(sessionAffinityFormat(options));
+@@ -111,6 +111,9 @@ function optionalSessionAffinityFormat(options) {
+     return opt(sessionAffinityFormat(options));
  }
- export const OpenAICompletionsCompatSchema = Type.Object({
-+    requiresNonEmptyReasoningReplay: Type.Optional(Type.Boolean({
+ const OpenAICompletionsCompatProperties = {
++    requiresNonEmptyReasoningReplay: opt(bool({
 +        description: "Whether assistant replay without reasoning requires a non-empty placeholder. Explicit endpoint opt-in only.",
 +    })),
-     supportsStore: Type.Optional(Type.Boolean({
+     supportsStore: opt(bool({
          description: "Whether the provider supports the store field. Default: auto-detected from URL.",
      })),
 diff --git a/dist/providers/data/deepseek.json b/dist/providers/data/deepseek.json
@@ -997,7 +980,7 @@ index 1443bb592b2913ba09579f3f555a2b09456e63cf..5fc0625778014863aa267ac5186db2cd
 -{"openai-completions":{"chat:deepseek-flash":{"id":"deepseek-flash","name":"DeepSeek V4.1 Flash","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"thinkingLevelMap":{"minimal":null,"low":"low","medium":null,"high":"high","max":"max"},"input":["text","image"],"cost":{"input":0.3,"output":1.2,"cacheRead":0.006,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true},"inputLimits":{"images":{"resize":{"maxWidth":2000,"maxHeight":2000,"maxBytes":4718592,"jpegQuality":80}}},"type":"chat"},"chat:deepseek-v4-pro":{"id":"deepseek-v4-pro","name":"DeepSeek V4 Pro","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"input":["text"],"cost":{"input":1.32,"output":3.96,"cacheRead":0.044,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true,"supportsMidConvoSystemMessages":true},"thinkingLevelMap":{"minimal":null,"low":null,"medium":null,"high":"high","max":"max"},"type":"chat"}}}
 +{"openai-completions":{"chat:deepseek-flash":{"id":"deepseek-flash","name":"DeepSeek V4.1 Flash","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"thinkingLevelMap":{"minimal":null,"low":"low","medium":null,"high":"high","max":"max"},"input":["text","image"],"cost":{"input":0.3,"output":1.2,"cacheRead":0.006,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true,"supportsMidConvoSystemMessages":true},"inputLimits":{"images":{"resize":{"maxWidth":2000,"maxHeight":2000,"maxBytes":4718592,"jpegQuality":80}}},"type":"chat"},"chat:deepseek-v4-pro":{"id":"deepseek-v4-pro","name":"DeepSeek V4 Pro","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"input":["text"],"cost":{"input":1.32,"output":3.96,"cacheRead":0.044,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true,"supportsMidConvoSystemMessages":true},"thinkingLevelMap":{"minimal":null,"low":null,"medium":null,"high":"high","max":"max"},"type":"chat"}}}
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index e92eefd0889876a84929584675ef2ec441051a2b..7b00dcd6e9e7b84962675d23ea442c08b437ea6d 100644
+index 2d650ea3ece9ed470dc6c60538409e2b84f06f32..c814ef7e9187fd57b26cbefc8722c81ed5e68159 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -240,6 +240,8 @@ export interface SimpleStreamOptions extends StreamOptions {
@@ -1040,7 +1023,7 @@ index e92eefd0889876a84929584675ef2ec441051a2b..7b00dcd6e9e7b84962675d23ea442c08
  export interface Usage {
      input: number;
      output: number;
-@@ -367,7 +393,7 @@ export interface UserMessage {
+@@ -374,7 +400,7 @@ export interface UserMessage {
  }
  export interface AssistantMessage {
      role: "assistant";
@@ -1049,7 +1032,7 @@ index e92eefd0889876a84929584675ef2ec441051a2b..7b00dcd6e9e7b84962675d23ea442c08
      api: Api;
      provider: ProviderId;
      model: string;
-@@ -382,6 +408,8 @@ export interface AssistantMessage {
+@@ -389,6 +415,8 @@ export interface AssistantMessage {
      stopReason: StopReason;
      deferred?: DeferredHandle;
      errorMessage?: string;
@@ -1058,7 +1041,7 @@ index e92eefd0889876a84929584675ef2ec441051a2b..7b00dcd6e9e7b84962675d23ea442c08
      rawStopReason?: string;
      /**
       * Provider indication of whether the model explicitly ended its turn.
-@@ -617,6 +645,10 @@ export type AssistantMessageEvent = {
+@@ -627,6 +655,10 @@ export type AssistantMessageEvent = {
      contentIndex: number;
      toolCall: ToolCall;
      partial: AssistantMessage;
@@ -1069,7 +1052,7 @@ index e92eefd0889876a84929584675ef2ec441051a2b..7b00dcd6e9e7b84962675d23ea442c08
  } | {
      type: "done";
      reason: Extract<StopReason, "stop" | "length" | "toolUse" | "deferred">;
-@@ -648,6 +680,8 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
+@@ -658,6 +690,8 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
       */
      type?: "chat";
      reasoning: boolean;

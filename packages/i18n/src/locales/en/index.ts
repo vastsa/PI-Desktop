@@ -475,6 +475,7 @@ export const en = {
     actionSlotMore: "More actions",
     errorProvider: "AI provider",
     errorModel: "Model",
+    servedByModel: "Requested {{requested}}; served by {{served}}",
     previewFile: "Preview in the side panel",
     fileRefMissing: "No file matches {{name}}",
     fileRefRestricted: "{{name}} is outside the locations this app can access",
@@ -3184,6 +3185,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     NETWORK_POLICY_BLOCKED: "The app's address check blocked this request. Behind a proxy or VPN, check Settings → System → Network.",
     TIMEOUT: "The request to the AI provider timed out.",
     STREAM_FAILED: "The reply was interrupted.",
+    TOOL_CALL_NOT_EXECUTED: "The model wrote a tool call as text. That call was not executed.",
     EMPTY_MODEL_RESPONSE:
       "The model finished its turn without saying anything, twice in a row. Try again, or rephrase your request.",
     MUTATION_RETRY_BUDGET_EXHAUSTED:

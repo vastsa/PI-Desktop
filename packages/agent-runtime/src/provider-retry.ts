@@ -123,6 +123,82 @@ export function withoutDerivedOutputLimit(
   };
 }
 
+/**
+ * Output ceilings providers state on a 400. These are not context overflows:
+ * the prompt fit, and the catalog's `max_tokens` is above that model's
+ * completion cap (a fine-tune, a proxy, or a stale catalog entry).
+ *
+ * - OpenAI: "max_tokens is too large: 16384. This model supports at most 4096 completion tokens"
+ * - Anthropic: "max_tokens: 65537 > 64000, which is the maximum allowed number of output tokens"
+ * - Anthropic-compatible proxies: "expected a value <= 32768, but got 64000 instead"
+ */
+const OUTPUT_TOKEN_CEILING_PATTERNS = [
+  /max_(?:completion_|output_)?tokens is too large:[\s\S]{0,240}?at most (\d[\d,]*) completion tokens/i,
+  /max_tokens:\s*\d[\d,]*\s*>\s*(\d[\d,]*)\s*,\s*which is the maximum allowed number of\s+output tokens/i,
+  /max_tokens[\s\S]{0,180}?expected a value <=\s*(\d[\d,]*)/i,
+];
+
+/** The completion cap named in `message`, when it is one of the shapes above. */
+export function outputTokenCeiling(message: string): number | undefined {
+  for (const pattern of OUTPUT_TOKEN_CEILING_PATTERNS) {
+    const match = message.match(pattern);
+    const raw = match?.[1];
+    if (raw === undefined) continue;
+    const value = Number(raw.replaceAll(",", ""));
+    if (Number.isSafeInteger(value) && value > 0) return value;
+  }
+  return undefined;
+}
+
+/**
+ * A terminal or status-less bad request that names an output ceiling. Credit
+ * exhaustion and context overflow use other codes, so they cannot take this
+ * repair. A 5xx that merely mentions `max_tokens` stays on the transient path.
+ */
+export function isOutputLimitRejection(error: ClassifiedAgentError): boolean {
+  if (error.code !== "PROVIDER_ERROR") return false;
+  if (outputTokenCeiling(error.message) === undefined) return false;
+  const providerStatus = error.details?.providerStatus;
+  return (
+    providerStatus === undefined ||
+    providerStatus === 400 ||
+    providerStatus === 422
+  );
+}
+
+/**
+ * Lower output-limit fields that are above `ceiling`. Absent fields stay
+ * absent — Anthropic rejects a request that omits `max_tokens` — and a value
+ * already within the ceiling is left alone.
+ */
+export function clampOutputLimitFields(payload: unknown, ceiling: number): unknown {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return payload;
+  }
+  const next = { ...(payload as Record<string, unknown>) };
+  for (const field of OUTPUT_LIMIT_FIELDS) {
+    const value = next[field];
+    if (typeof value === "number" && Number.isFinite(value) && value > ceiling) {
+      next[field] = ceiling;
+    }
+  }
+  return next;
+}
+
+/** One repair attempt that clamps the derived output limit to `ceiling`. */
+export function withClampedOutputLimit(
+  options: SimpleStreamOptions,
+  ceiling: number,
+): SimpleStreamOptions {
+  return {
+    ...options,
+    onPayload: async (payload, model) => {
+      const rewritten = await options.onPayload?.(payload, model);
+      return clampOutputLimitFields(rewritten ?? payload, ceiling);
+    },
+  };
+}
+
 export type ProviderResponseSnapshot = {
   status: number;
   headers: Record<string, string>;
@@ -433,14 +509,21 @@ export function createProviderRetryStream(
   const sleep = controller.sleep ?? delayWithAbort;
 
   void (async () => {
-    // One repair per logical turn: after an opaque 400/422 the next attempt
-    // drops the derived output limit. Repairing never consumes the shared
-    // transient budget, and a second opaque failure surfaces untouched.
+    // One repair per logical turn. An opaque 400/422 drops the derived output
+    // limit; a body that names a completion ceiling clamps it instead.
+    // Repairing never consumes the shared transient budget, and a second
+    // failure of the same kind surfaces untouched.
     let limitRepairTried = false;
+    let outputCeiling: number | undefined;
     for (;;) {
       if (options.signal?.aborted) throw requestAbortedError();
+      const requestOptions = !limitRepairTried
+        ? options
+        : outputCeiling !== undefined
+          ? withClampedOutputLimit(options, outputCeiling)
+          : withoutDerivedOutputLimit(options);
       const inner = createStream({
-        ...(limitRepairTried ? withoutDerivedOutputLimit(options) : options),
+        ...requestOptions,
         maxRetries: 0,
       });
       let sawStart = false;
@@ -465,6 +548,12 @@ export function createProviderRetryStream(
             controller.failure?.(),
           );
           if (!limitRepairTried && isOpaqueBadRequest(error)) {
+            opaqueLimitRejection = error;
+            break;
+          }
+          const ceiling = !limitRepairTried ? outputTokenCeiling(error.message) : undefined;
+          if (ceiling !== undefined && isOutputLimitRejection(error)) {
+            outputCeiling = ceiling;
             opaqueLimitRejection = error;
             break;
           }

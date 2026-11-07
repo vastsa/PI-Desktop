@@ -107,6 +107,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `CONTEXT_COMPACTION_FAILED` | 不 | 自动保留尾部恢复无法准备、持久或适合检查点，或手动检查点摘要生成/持久追加失败；受保护的下一个提供程序请求不会启动 |
 | `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；最多四次同回合重试可能会在终止事件之前发生 |
 | `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后；对 Host 账本完成通知的第一条回复除外（规范 02-agent-runtime §5e、D446） |
+| `TOOL_CALL_NOT_EXECUTED` | no | a complete known-tool Qwen call was emitted as assistant text; the message shows a format diagnostic without executing text, retrying the provider or interrupting valid structured siblings |
 | `PROMPT_ENHANCEMENT_EMPTY` | 不 | 一次性增强模型没有返回任何文本 |
 | `SPEECH_NOT_CONFIGURED` | 不 | 设置里没有绑定转写或朗读 |
 | `SPEECH_PROTOCOL_UNSUPPORTED` | 不 | 语音协议未知或不支持该角色 |
@@ -399,7 +400,7 @@ Node sidecar 将提供商 SDK 错误映射到：
 `maximum prompt length is`、Groq、llama.cpp，以及 Bedrock 的
 `Input is too long for requested model`。`CONTEXT_TOO_LARGE` 不会进入任何重试
 预算，子代理会将其报告为 `SUBAGENT_CONTEXT_OVERFLOW`。明确的账单/账户耗尽代码和
-消息（包括 `insufficient_quota`、`credit_balance_exhausted`、组织用量限额以及组织/项目消费限额代码）
+消息（包括 `insufficient_quota`、`credit_balance_exhausted`、组织用量限额、组织/项目消费限额代码以及智谱/Z.ai 用量上限 JSON 代码 `1308`）
 即使 HTTP 状态为 429，也映射为终止的 `PROVIDER_ERROR`。吞吐限流措辞（包括 Bedrock 的
 `Throttling error: Too many tokens, please wait before trying again.`）仍映射为
 `PROVIDER_RATE_LIMITED`。

@@ -244,6 +244,12 @@ type ToolBudgetHealth = {
   `rolledBack`, `alreadyRolledBack`, `conflict`, or `unavailable`.
 
 ### Projects
+- Before upsert, list or removal, reconcile local case/separator aliases proven
+  by filesystem resolution, preserving all session/schedule ownership. Removal
+  prefers the stored selected path; it must not delete another stored project
+  merely because a symlink now resolves there. Missing paths, distinct
+  case-sensitive directories and opaque remote ids are preserved. See storage
+  schema v28 and `E2E-PROJECT-case-alias-upgrade-and-delete`.
 - `projects.list` — returns durable project records ordered pinned-first, then
   by last-opened time; includes records materialized by session imports
 - `projects.create({ path })` — upserts a durable project record without

@@ -50,7 +50,7 @@ const usage: AssistantMessage["usage"] = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-describe("Pi 1.4 adapters through Desktop provider binding", () => {
+describe("Pi 1.5 adapters through Desktop provider binding", () => {
   it.each(["claude-haiku-5-5", "claude-opus-5"] as const)("disables thinking without effort markers while preserving hosted search: %s", async (id) => {
     const payload = await anthropicRequest(anthropic(id), [{ role: "user", content: "Hello", timestamp: 1 }]);
     expect(payload.thinking).toEqual({ type: "disabled" });

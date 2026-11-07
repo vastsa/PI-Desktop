@@ -10,8 +10,8 @@ JavaScript 包。上游包演进时，必须保持这一职责划分清晰。
 ## 2. 当前职责
 
 Sidecar 将 `@earendil-works/pi-agent-core`、`pi-ai` 与 `pi-coding-agent` 精确固定在
-`1.4.0`；Desktop 的 `pi-ai` 和 `pi-mcp` 开发依赖也使用同一版本。补丁行为与迁移
-记录见 `docs/project/pi-140-adoption.md`。
+`1.5.0`；Desktop 的 `pi-ai` 和 `pi-mcp` 开发依赖也使用同一版本。补丁行为与迁移
+记录见 `docs/project/pi-150-adoption.md`。
 
 - `@earendil-works/pi-agent-core` 提供 Agent 循环，以及稳定的 agent、event、tool
   类型。Agent Runtime 自行维护桌面专用的上下文投影、压缩和 prompt 模板展开。

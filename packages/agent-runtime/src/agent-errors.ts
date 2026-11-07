@@ -60,6 +60,14 @@ const RATE_LIMIT_PATTERN =
 const EXHAUSTED_QUOTA_CODE_PATTERN =
   /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded|FreeUsageLimitError)\b/i;
 
+/**
+ * Zhipu/Z.ai (open.bigmodel.cn) error code 1308: the plan usage limit is
+ * reached. It arrives as HTTP 429 but resets after hours, so it is terminal
+ * like pi-ai 1.5 treats it. Only a JSON `code` field matches; a bare 1308 in
+ * a byte count or request id does not.
+ */
+const ZHIPU_USAGE_LIMIT_PATTERN = /"code"\s*:\s*"?1308(?![0-9])/;
+
 const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
   /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b/i;
 
@@ -119,7 +127,8 @@ function redactSensitiveErrorText(message: string): string {
 /**
  * Probe the HTTP status across SDK error shapes: `status`/`statusCode`
  * fields (walking the `cause` chain), then a leading "<status>:" or a
- * "(status)" / "status code NNN" marker in the message. Gemini's
+ * "(status)" / "status code NNN" marker, or a DashScope "Code: <status>"
+ * envelope in the message. Gemini's
  * `@google/genai` ApiError.message is the JSON body with no prefix, so the
  * last probe reads a 400-599 `code` from that object.
  */
@@ -131,6 +140,7 @@ function extractStatus(err: unknown, message: string): number | undefined {
     current = current.cause;
   }
   const patterns = [
+    /^\s*[A-Za-z][A-Za-z0-9_.-]*:\s*<(\d{3})>/,
     /^\s*(\d{3})\s*:/,
     /^\s*(\d{3})\b/,
     /\((\d{3})\)/,
@@ -646,6 +656,7 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
   if (
     EXHAUSTED_QUOTA_CODE_PATTERN.test(rawMessage) ||
     EXHAUSTED_QUOTA_MESSAGE_PATTERN.test(rawMessage) ||
+    ZHIPU_USAGE_LIMIT_PATTERN.test(rawMessage) ||
     (typeof providerCode === "string" &&
       EXHAUSTED_QUOTA_CODE_PATTERN.test(providerCode))
   ) {

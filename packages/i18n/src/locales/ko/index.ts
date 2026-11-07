@@ -472,6 +472,7 @@ export const ko = {
     copyErrorDetails: "세부 정보 복사",
     errorProvider: "AI 프로바이더",
     errorModel: "모델",
+    servedByModel: "요청: {{requested}}; 실제 응답 모델: {{served}}",
     previewFile: "사이드 패널에서 미리 보기",
     fileRefMissing: "{{name}}과(와) 일치하는 파일이 없습니다",
     fileRefRestricted: "{{name}}은(는) 앱이 접근할 수 있는 위치 밖에 있습니다",
@@ -3082,6 +3083,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     NETWORK_POLICY_BLOCKED: "앱의 주소 검사가 이 요청을 차단했습니다. 프록시나 VPN을 사용한다면 설정 → 시스템 → 네트워크를 확인하세요.",
     TIMEOUT: "AI 프로바이더 요청 시간이 초과되었습니다.",
     STREAM_FAILED: "답변이 중단되었습니다.",
+    TOOL_CALL_NOT_EXECUTED: "모델이 도구 호출을 텍스트로 작성했습니다. 해당 호출은 실행되지 않았습니다.",
     EMPTY_MODEL_RESPONSE:
       "모델이 두 번 연속 아무 말 없이 턴을 완료했습니다. 다시 시도하거나 요청을 바꿔 표현하세요.",
     MUTATION_RETRY_BUDGET_EXHAUSTED:

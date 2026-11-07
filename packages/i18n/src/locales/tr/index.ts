@@ -472,6 +472,7 @@ export const tr = {
     copyErrorDetails: "Ayrıntıları kopyala",
     errorProvider: "AI servisi",
     errorModel: "Model",
+    servedByModel: "İstenen: {{requested}}; yanıtlayan: {{served}}",
     previewFile: "Yan panelde önizle",
     fileRefMissing: "{{name}} ile eşleşen dosya yok",
     fileRefRestricted: "{{name}} uygulamanın erişebildiği konumların dışında",
@@ -3075,6 +3076,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     NETWORK_POLICY_BLOCKED: "Uygulamanın adres denetimi bu isteği engelledi. Proxy veya VPN kullanıyorsanız Ayarlar → Sistem → Ağ bölümüne bakın.",
     TIMEOUT: "AI servisine istek zaman aşımına uğradı.",
     STREAM_FAILED: "Yanıt kesildi.",
+    TOOL_CALL_NOT_EXECUTED: "Model bir araç çağrısını metin olarak yazdı. Bu çağrı çalıştırılmadı.",
     EMPTY_MODEL_RESPONSE:
       "Model iki tur üst üste hiçbir şey söylemeden bitirdi. Yeniden deneyin veya isteği başka türlü sorun.",
     MUTATION_RETRY_BUDGET_EXHAUSTED:

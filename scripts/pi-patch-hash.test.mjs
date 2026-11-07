@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const patchDependencyCheck = join(here, "check-pi-dependencies.mjs");
 const patchCheck = join(here, "check-pi-patches.mjs");
 
-const TARGET = "1.4.0";
+const TARGET = "1.5.0";
 const PATCHED = [
   {
     name: "@earendil-works/pi-agent-core",
@@ -44,6 +44,7 @@ const RELEASE_AGE_EXCLUDE = [
   "pi-codemode",
   "pi-coding-agent",
   "pi-mcp",
+  "pi-schema",
   "pi-telemetry",
   "pi-tui",
 ].map((name) => `@earendil-works/${name}@${TARGET}`);
