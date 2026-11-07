@@ -3098,3 +3098,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 
 项目删除说明和插件弹窗标题、安装结果中的长名称也在现有宽度内换行。
 项目指令、项目记忆和 OAuth 弹窗维持已有的边界处理。
+
+### Issue #2162 修正
+
+关闭已连接浏览器标签时清除连接；会话级工具使用同一会话选中的替代页，显式已关闭目标仍失败，导航不复活不可见旧标签。验证关闭、重开、snapshot、fill、click、navigate 和最终关闭。

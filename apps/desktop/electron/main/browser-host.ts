@@ -595,6 +595,7 @@ export class BrowserHost {
     }
     this.locations.delete(key);
     if (this.selectedTabs.get(sessionId) === tabId) this.selectedTabs.delete(sessionId);
+    if (this.connectedTabs.get(sessionId) === tabId) this.connectedTabs.delete(sessionId);
   }
 
   closeSession(sessionId: string): void {
