@@ -74,10 +74,15 @@
   right: 12px;
   bottom: 12px;
   display: flex;
+  gap: 8px;
   pointer-events: none;
 }
-.generated-image-actions a {
+.generated-image-actions a,
+.generated-image-actions button {
   display: inline-flex;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
   align-items: center;
   justify-content: center;
   width: 38px;
@@ -88,8 +93,10 @@
   box-shadow: 0 2px 10px #0003;
   pointer-events: auto;
 }
-.generated-image-actions a:hover { background: var(--ds-bg-primary); }
+.generated-image-actions a:hover,
+.generated-image-actions button:hover { background: var(--ds-bg-primary); }
 .generated-image-actions a:focus-visible,
+.generated-image-actions button:focus-visible,
 .generated-image-preview:focus-visible { outline: 2px solid var(--ds-text-primary); outline-offset: -4px; }
 
 .generated-image-viewer {
@@ -129,10 +136,15 @@
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
 }
+.generated-image-viewer-status {
+  flex: 0 0 auto;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
 .generated-image-viewer-header-actions,
 .generated-image-viewer-navigation,
 .generated-image-viewer-zoom { display: flex; align-items: center; gap: 4px; }
-.generated-image-viewer button,
+.generated-image-viewer button:not(.context-menu-item),
 .generated-image-viewer a {
   display: inline-flex;
   align-items: center;
@@ -146,10 +158,10 @@
   color: inherit;
   cursor: pointer;
 }
-.generated-image-viewer button:hover:not(:disabled),
+.generated-image-viewer button:not(.context-menu-item):hover:not(:disabled),
 .generated-image-viewer a:hover { background: var(--ds-bg-hover); }
-.generated-image-viewer button:disabled { opacity: 0.38; cursor: default; }
-.generated-image-viewer button:focus-visible,
+.generated-image-viewer button:not(.context-menu-item):disabled { opacity: 0.38; cursor: default; }
+.generated-image-viewer button:not(.context-menu-item):focus-visible,
 .generated-image-viewer a:focus-visible { outline: 2px solid var(--ds-text-primary); outline-offset: 2px; }
 .generated-image-viewer-body {
   display: flex;

@@ -94,8 +94,14 @@ next image decodes, and the latest navigation wins during rapid input. The selec
 thumbnail uses a light gray ring. Viewer selection remains selected in chat after closing.
 A bounded
 preview can be downloaded from the card or viewer using a safe MIME-derived
-filename. The viewer's Show in folder action uses the contained `fs/reveal`
-path. A missing or unreadable preview has no download action; revealing a
+filename, or copied to the system clipboard from the card or viewer. Copy is
+offered by a button, by right-clicking the image itself (a menu with Copy
+image and Download that replaces the turn menu on the image), and by
+Cmd/Ctrl+C in the viewer when no text is selected. Copy writes PNG bytes; JPEG
+and WebP previews are re-encoded to PNG in the renderer. The card reports the
+outcome by toast; the viewer is a modal top-layer dialog, so it reports the
+outcome inline in its header and portals its menu into the dialog. The viewer's Show in folder action uses the contained `fs/reveal`
+path. A missing or unreadable preview has no download or copy action; revealing a
 missing file reports an error. These actions do not move or overwrite the
 original scratch file.
 

@@ -1,6 +1,6 @@
 import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
 import { useChatNativeFilesAllowed, useChatSessionCapability } from "../../../hooks/use-chat-session-capability";
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { IconChevronLeft, IconChevronRight, IconClose, IconDownload, IconExternal, IconFolder, IconMinus, IconPlus } from "../../../components/icons";
 import { Button, TooltipButton } from "../../../components/ui";
@@ -10,6 +10,7 @@ import { useBlockingOverlay } from "../../../lib/blocking-overlay";
 import { portalToBody } from "../../../lib/portal-visibility";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { useAppStore } from "../../../stores/app-store";
+import { CopyGeneratedImageButton, useCopyGeneratedImage, useGeneratedImageContextMenu } from "./CopyGeneratedImageButton";
 import { generatedImageDownloadName } from "./generated-image-download";
 import { GeneratedImageThumbnail, type GeneratedImageRef } from "./GeneratedImageThumbnail";
 
@@ -45,7 +46,23 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
   const zoom = manualZoom?.src === src ? manualZoom.value : fit;
   const downloadName = generatedImageDownloadName(src, selected?.index ?? 0);
   const openFile = useOpenChatFileRef();
+  // Toasts render below the modal top layer, so copy feedback stays in the viewer.
+  const [copyStatus, setCopyStatus] = useState<{ id: number; copied: boolean } | null>(null);
+  const reportCopy = useCallback((copied: boolean) => {
+    setCopyStatus((current) => ({ id: (current?.id ?? 0) + 1, copied }));
+  }, []);
+  const copyImage = useCopyGeneratedImage(reportCopy);
+  const imageMenu = useGeneratedImageContextMenu(src, selected?.index ?? 0, {
+    container: dialogRef.current,
+    onCopied: reportCopy,
+  });
   useBlockingOverlay();
+
+  useEffect(() => {
+    if (!copyStatus) return;
+    const timer = window.setTimeout(() => setCopyStatus(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copyStatus]);
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -129,15 +146,29 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           event.preventDefault();
           move(event.key === "ArrowLeft" ? -1 : 1);
+          return;
+        }
+        // Cmd/Ctrl+C copies the shown image unless the user selected text.
+        if (
+          (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey &&
+          event.key.toLowerCase() === "c" && src && downloadName &&
+          !window.getSelection()?.toString()
+        ) {
+          event.preventDefault();
+          void copyImage(src);
         }
       }}
     >
       <header className="generated-image-viewer-header">
         <TooltipButton type="button" autoFocus onClick={closeViewer} tooltip={t("common.close")}><IconClose size={18} /></TooltipButton>
         <strong>{t("settings.generatedImage", { index: selected.index + 1 })}</strong>
+        {copyStatus ? <span className="generated-image-viewer-status" role="status">
+          {t(copyStatus.copied ? "chat.copied" : "chat.copyFailed")}
+        </span> : null}
         <div className="generated-image-viewer-header-actions">
           <TooltipButton type="button" onClick={() => { closeViewer(); void openFile(selected.path); }} tooltip={t("chat.previewFile")}><IconExternal size={18} /></TooltipButton>
           {nativeFilesAllowed ? <TooltipButton type="button" onClick={() => void reveal()} tooltip={t("settings.revealGeneratedImage")}><IconFolder size={18} /></TooltipButton> : null}
+          {src && downloadName ? <CopyGeneratedImageButton dataUrl={src} onCopied={reportCopy} /> : null}
           {src && downloadName ? <a href={src} download={downloadName} aria-label={t("settings.downloadGeneratedImage")} title={t("settings.downloadGeneratedImage")}><IconDownload size={18} /></a> : null}
         </div>
       </header>
@@ -150,6 +181,7 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
             src={src}
             alt={t("settings.generatedImage", { index: selected.index + 1 })}
             draggable={false}
+            onContextMenu={imageMenu.onContextMenu}
             data-sized={size ? "true" : undefined}
             style={size ? { width: size.width * zoom, height: size.height * zoom } : undefined}
             onLoad={(event) => {
@@ -176,6 +208,7 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
           <Button type="button" variant="ghost" disabled={!size} onClick={() => setManualZoom(null)}>{t("chat.imagePreview.fit")}</Button>
         </div>
       </footer>
+      {imageMenu.menu}
     </dialog>,
   );
 }
