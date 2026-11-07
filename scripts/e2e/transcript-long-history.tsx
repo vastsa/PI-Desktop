@@ -241,11 +241,12 @@ export async function transcriptLongHistoryProbe() {
     const largest = sessions[2];
     await select(largest);
     // A mounted older row must invalidate its own projection and minimap preview.
-    const older = largest.messages[largest.messages.length - 7];
+    // The outline only marks user messages, so correct a mounted older user row.
+    const older = largest.messages.slice(0, -6).findLast((item) => item.role === "user")!;
     send(largest.summary.id, { type: "message_end", message: { ...older, content: "Older row corrected", status: "complete" } });
     await until(() => host.textContent?.includes("Older row corrected") === true, "older row correction");
     await settled();
-    const markers = [...host.querySelectorAll<HTMLButtonElement>(".minimap-marker.assistant")];
+    const markers = [...host.querySelectorAll<HTMLButtonElement>(".minimap-marker.user")];
     assert(markers.length > 0, "minimap markers missing");
     let freshPreview = false;
     const previews: string[] = [];

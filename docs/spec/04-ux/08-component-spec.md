@@ -1742,9 +1742,8 @@ storage but compose into one assistant turn until the next user message.
   view. Plain project-file references still prefer the bundled file view, whose
   open contract does not carry a line position.
 - Hover or focus a minimap marker: show the localized sender and a bounded
-  plaintext preview; multiple assistant fragments produced within one user
-  turn are combined into one AI-response marker and preview; nearby markers
-  magnify horizontally without reflowing the rail
+  plaintext preview of that user message; nearby markers magnify horizontally
+  without reflowing the rail
 - Click a minimap marker: smoothly scroll its message near the top of the
   transcript viewport
 - Scroll the transcript: update the active minimap marker against an anchor
@@ -1856,10 +1855,8 @@ storage but compose into one assistant turn until the next user message.
 - The minimap renders when at least two eligible turn markers exist **and** the
   transcript content overflows one viewport (scrollHeight > clientHeight), or
   whenever earlier history remains unmounted or unloaded (D269).
-  Each visible user message creates one marker; all contentful assistant
-  fragments until the next user message create one AI-response marker anchored
-  to the first contentful fragment. Tool-only rows do not create markers or
-  split an AI response, and a one-page transcript never shows the rail.
+  Each visible user message creates one marker; assistant and tool rows do
+  not create markers, and a one-page transcript never shows the rail.
 - Marker previews are capped at 280 source characters and are display-only
 - Derived visible rows, minimap rows, and activity grouping share the immutable
   `messages` projection with the Composer context inspector. After warm-up, an
