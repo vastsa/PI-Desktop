@@ -379,6 +379,7 @@ export const tr = {
     suggestionHint: "Tab kabul · Esc yoksay",
     addFiles: "Dosya ekle",
     filesAttached: "Taslağa {{count}} öğe eklendi",
+    fileLineReferenceLimit: "Her mesaja en fazla {{count}} dosya satırı başvurusu ekleyebilirsiniz.",
     filesPasted: "Yapıştırılan {{count}} dosya oturum klasörüne kaydedildi",
     largeTextPasted: "Uzun yapıştırılan metin @{{name}} olarak kaydedildi",
     slashMenu: "Komutlar",

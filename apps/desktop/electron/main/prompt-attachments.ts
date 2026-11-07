@@ -20,6 +20,9 @@ import { copyFile, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   ErrorCodes,
+  fileLineLabel,
+  MAX_FILE_LINE_REFERENCES,
+  parseFileLineRange,
   formatFileInsert,
   formatPromptPathText,
   imageExceedsInlineDimensions,
@@ -31,6 +34,7 @@ import {
   type AgentPromptAttachment,
   type MessageAttachment,
 } from "@pi-desktop/shared";
+import { fileLinePathInProject } from "./file-line-reference.ts";
 
 export { MAX_INLINE_IMAGE_BYTES } from "@pi-desktop/shared";
 
@@ -240,6 +244,9 @@ export async function preparePromptAttachments(
   promptContent: string,
 ): Promise<PreparedPromptAttachment[]> {
   const prepared: PreparedPromptAttachment[] = [];
+  if (attachments.filter(attachment => attachment.lineRange !== undefined).length > MAX_FILE_LINE_REFERENCES) {
+    throw Object.assign(new Error("Too many file line references"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+  }
   // Reference order is the user's order, so each entry takes the next matching
   // `@path` text the prompt holds.
   const inlineSpans = locateInlinePromptPaths(
@@ -247,6 +254,21 @@ export async function preparePromptAttachments(
     attachments.map((attachment) => attachment.path),
   );
   for (const [index, attachment] of attachments.entries()) {
+    if (attachment.lineRange !== undefined) {
+      const lineRange = parseFileLineRange(attachment.lineRange);
+      if (!lineRange || attachment.kind !== "file" || !fileLinePathInProject(attachment.path, projectPath ?? null)) {
+        throw Object.assign(new Error("Invalid file line reference for the session project"), {
+          errorCode: ErrorCodes.INVALID_ARGUMENT,
+        });
+      }
+      const name = attachment.name || attachment.path.split(/[\\/]/).at(-1) || "file";
+      const inlinePath = fileLineLabel(attachment.path, lineRange);
+      prepared.push({
+        message: { kind: "file", name, ref: attachment.path, lineRange, inlinePath },
+        fallbackPath: attachment.path,
+      });
+      continue;
+    }
     const source = resolvePromptPath(dataRoot, sessionId, projectPath, attachment.path);
     if (!source) {
       throw Object.assign(new Error(`Attachment path is outside the session roots: ${attachment.path}`), {
@@ -347,7 +369,7 @@ export function appendPromptFallbackPaths(
   attachments: readonly PreparedPromptAttachment[],
 ): string {
   const paths = attachments
-    .filter((attachment) => !attachment.inlineData)
+    .filter((attachment) => !attachment.inlineData && !attachment.message.lineRange)
     // A path the prompt already names at the user's own position needs no second
     // copy at the end; a rewritten fallback (a replayed copy) still travels.
     .filter(
