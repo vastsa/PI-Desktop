@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewChangesPage, ReviewContextLines, ReviewTurnsPage } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -23,7 +23,6 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
   const [catalog, setCatalog] = useState<ReviewTurnsPage>({ turns: [] });
   const [result, setResult] = useState<ReviewChangesPage>({ turnId: null, changes: [] });
   const [context, setContext] = useState<ReviewContextLines>(readReviewContextLines);
-  const [openFiles, setOpenFiles] = useState<ReadonlySet<string>>(() => new Set());
   const [history, setHistory] = useState(false), [wrap, setWrap] = useState(true);
   const [loading, setLoading] = useState(true), [error, setError] = useState(false);
   const [reload, setReload] = useState(0), [paging, setPaging] = useState(false);
@@ -51,24 +50,6 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
     return () => { active = false; if (generation.current === version) generation.current++; };
   }, [sessionId, selection, revision, running, reload]);
   const files = useMemo(() => groupReviewFiles(result.changes), [result]);
-  const fileKeys = useMemo(() => files.map(file => `${result.turnId}:${file.id}`), [files, result.turnId]);
-  // Match the existing keyed file lifecycle: keep choices on refresh, not across rounds or removed rows.
-  useEffect(() => {
-    setOpenFiles(current => {
-      const next = new Set([...current].filter(key => !error && fileKeys.includes(key)));
-      return next.size === current.size ? current : next;
-    });
-  }, [fileKeys, error]);
-  const onFileOpenChange = useCallback((id: string, open: boolean) => {
-    const key = `${result.turnId}:${id}`;
-    setOpenFiles(current => {
-      if (current.has(key) === open) return current;
-      const next = new Set(current);
-      if (open) next.add(key); else next.delete(key);
-      return next;
-    });
-  }, [result.turnId]);
-  const anyOpen = !error && fileKeys.some(key => openFiles.has(key));
   useEffect(() => {
     if (loading || !selection.snapshotId) return;
     scrollReviewToAnchor(
@@ -96,8 +77,7 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
     }} count={count} additions={files.reduce((sum, file) => sum + file.additions, 0)}
       deletions={files.reduce((sum, file) => sum + file.deletions, 0)} context={context} onContext={value => {
         rememberReviewContextLines(value); setContext(value);
-      }} wrap={wrap} onWrap={() => setWrap(value => !value)} anyOpen={anyOpen}
-      disclosureDisabled={loading || error || !count} onToggleAll={() => setOpenFiles(new Set(anyOpen ? [] : fileKeys))} />
+      }} wrap={wrap} onWrap={() => setWrap(value => !value)} />
     {history && <div className="review-history-selector">
       <span className="review-history-label">{t("panel.review.historyTitle")}</span>
       <Select className="review-select review-history-round-select" value={selectedId || result.turnId || ""} aria-label={t("panel.review.historyTitle")}
@@ -115,7 +95,6 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
       {error && <div className="review-change-note" role="alert">{t("panel.review.historyError")} <Button size="sm" onClick={() => setReload(value => value + 1)}>{t("panel.review.retryHistory")}</Button></div>}
       {!loading && !error && !files.length && <div className="review-change-note">{t("panel.review.noChanges")}</div>}
       {!error && files.map(file => <ReviewHistoryFile key={`${result.turnId}:${file.id}`} file={file} sessionId={sessionId} context={context}
-        open={openFiles.has(`${result.turnId}:${file.id}`)} onOpenChange={onFileOpenChange}
         focusSeq={selection.focusSeq} focusSnapshots={focus?.snapshotIds} expandFocus={focus?.expand}
         disabled={loading} onChanged={() => setReload(value => value + 1)} />)}
     </div>

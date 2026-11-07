@@ -20234,14 +20234,6 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   retain trigger-relative placement across click points and fit narrow windows;
   no full after-image is cached; only the outer review scrolls; headers stick without toolbar overlap in
   normal/narrow layouts; copy and conflict protection survive; history restores.
-  The settings menu's plain bulk action has no trailing check or checkbox role:
-  all closed → Expand all → all open; any open/mixed → Collapse all → all closed.
-  Manual single-file changes, including closing the last open file, immediately
-  update its label. Keyboard End/Enter activates it, Escape cancels, and focus
-  returns to the trigger. A consumed focus request cannot defeat bulk collapse;
-  a new request still expands its target. Same-round refresh keeps choices,
-  round/session changes do not leak them, and empty/loading lists disable the
-  action. Word wrap and context choices retain their existing checks and effects.
   Toggle checks trail labels, summary dots have no circle, history options contain
   date/time plus true per-round recorded totals before the check and fit an
   arrow-safe field, including colored right-aligned totals when closed.
@@ -20257,18 +20249,6 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   immediately after the visible filename appears only on hover/focus, right when closed and down
   when expanded, with a clear gap before statistics. Numbered diff rows have no
   independent add/delete sign column.
-  Expanded captured code must match ordinary code blocks' actual token colors
-  and font styles in light and dark appearances, including a live theme switch.
-  Syntax spans preserve the exact source text, transparent token backgrounds,
-  existing diff fills and single gutter; the remaining copy/rollback, wrap,
-  scrolling and session paths must still pass. `review-syntax.test.mjs` compares
-  Python tokens against ordinary blocks, tests independent before/after multiline
-  grammar state, escaped unknown/plain code and unchanged highlight budgets.
-  For a Codex visual comparison, use the same complete Python/JS/TS snippet,
-  language and appearance: verify keyword/string/comment/number categories and
-  added/deleted/context rows separately. Exact palette/pixel equality additionally
-  requires the same Codex version, theme, font and scale; do not infer those from
-  a screenshot or change PI-Desktop's global theme to match one reference.
   File headers have no idle
   fill, and no execution-root row appears. File menus disable internal open when
   the plugin is absent, open its loaded view when available, and pass the resolved

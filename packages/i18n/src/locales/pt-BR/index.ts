@@ -2212,8 +2212,6 @@ export const ptBR = {
       reviewScope: "Review scope",
       reviewSettings: "Review settings",
       wordWrap: "Word wrap",
-      expandAll: "Expandir tudo",
-      collapseAll: "Recolher tudo",
       contextDisplay: "Context lines",
       fileActions: "Ações do arquivo",
       openInternal: "Abrir internamente",

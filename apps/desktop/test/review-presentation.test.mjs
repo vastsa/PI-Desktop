@@ -38,7 +38,7 @@ test("review and turn summaries share compact decorative file-type glyphs", asyn
 test("toolbar names the visible file count rather than the operation count", async t => {
   const ssr = await slotSsr(t);
   const { ReviewHistoryToolbar } = await ssr.load('/src/components/workpanel/ReviewHistoryToolbar.tsx');
-  const html = ssr.render(createElement(ReviewHistoryToolbar, {history:false,onHistory:()=>{},count:8,additions:302,deletions:2,context:3,onContext:()=>{},wrap:true,onWrap:()=>{},anyOpen:false,disclosureDisabled:false,onToggleAll:()=>{}}));
+  const html = ssr.render(createElement(ReviewHistoryToolbar, {history:false,onHistory:()=>{},count:8,additions:302,deletions:2,context:3,onContext:()=>{},wrap:true,onWrap:()=>{}}));
   assert.match(html, /8 files/);
   assert.doesNotMatch(html, /recorded changes/);
   assert.match(html, /\+302/);

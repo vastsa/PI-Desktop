@@ -2246,8 +2246,6 @@ sklm: {
       reviewScope: "Review scope",
       reviewSettings: "Review settings",
       wordWrap: "Word wrap",
-      expandAll: "Alle ausklappen",
-      collapseAll: "Alle einklappen",
       contextDisplay: "Context lines",
       fileActions: "Dateiaktionen",
       openInternal: "Intern öffnen",

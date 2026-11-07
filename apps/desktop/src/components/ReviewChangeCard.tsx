@@ -9,13 +9,12 @@ import type {
   ReviewContextResult,
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import { numberedReviewHunks, reviewFilePathLabel } from "../lib/review-history";
+import { numberedReviewHunks, reviewFilePathLabel, reviewLineNumber } from "../lib/review-history";
 import { reviewChangeFromMessage } from "../lib/workspace-review";
 import { useAppStore } from "../stores/app-store";
 import { useCopy } from "./Markdown";
 import { cx } from "./ui";
 import { IconCheck, IconChevronRight, IconCopy, IconSnapshot } from "./icons";
-import { ReviewDiffHunk } from "./ReviewDiffHunk";
 
 /* Git-status letters carry the status without relying on color alone; the
    localized word stays in the row's accessible name. */
@@ -38,9 +37,9 @@ export function reviewDiffText(change: Pick<ReviewChange, "hunks">): string {
     .join("\n");
 }
 
-export function ReviewChangeDetails({ message, compact = false, contextLines = 3, sessionId, onChanged, numbered = false, actions = true, highlightCode = false }: {
+export function ReviewChangeDetails({ message, compact = false, contextLines = 3, sessionId, onChanged, numbered = false, actions = true }: {
   message: UiMessage; compact?: boolean; contextLines?: ReviewContextLines;
-  sessionId?: string; onChanged?: () => void; numbered?: boolean; actions?: boolean; highlightCode?: boolean;
+  sessionId?: string; onChanged?: () => void; numbered?: boolean; actions?: boolean;
 }) {
   const { t } = useTranslation();
   const change = reviewChangeFromMessage(message);
@@ -89,8 +88,25 @@ export function ReviewChangeDetails({ message, compact = false, contextLines = 3
         <div className="review-change-note">{t("panel.review.tooLarge")}</div>
       ) : displayChange.hunks.length > 0 ? (
         <div className="review-change-diff">
-          {hunks.map((hunk, hunkIndex) => <ReviewDiffHunk key={`${hunk.header}-${hunkIndex}`}
-            hunk={hunk} path={displayChange.path} numbered={numbered} highlightCode={highlightCode} />)}
+          {hunks.map((hunk, hunkIndex) => (
+            <div className="diff-hunk" key={`${hunk.header}-${hunkIndex}`}>
+              <div className="diff-line hunk">
+                <span className="diff-line-text">{hunk.header}</span>
+              </div>
+              {hunk.lines.map((line, lineIndex) => (
+                <div className={cx("diff-line", line.type)} key={lineIndex}>
+                  {numbered && <span className="review-line-number" data-side={line.type === "del" ? "old" : "new"}
+                    aria-label={reviewLineNumber(line) === null ? undefined : t(line.type === "del" ? "panel.review.oldLine" : "panel.review.newLine", { line: reviewLineNumber(line) })}>
+                    {reviewLineNumber(line)}
+                  </span>}
+                  {!numbered && <span className="diff-line-sign" aria-hidden>
+                    {line.type === "add" ? "+" : line.type === "del" ? "−" : " "}
+                  </span>}
+                  <span className="diff-line-text">{line.text}</span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="review-change-note">{t("panel.review.noLineDetails")}</div>
