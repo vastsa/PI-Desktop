@@ -70,6 +70,28 @@ describe("session job controls", () => {
     expect(dispatch.mock.calls.map(call => call[0])).not.toContain("backgroundJobs.stop");
   });
 
+  it.each(["capabilities", "stop"])("abandons a pending %s RPC without dispatching stop again", async stalled => {
+    const { stop, dispatch, snapshot } = fixture();
+    let finishRpc!: () => void;
+    dispatch.mockImplementation(async method => method.endsWith(stalled)
+      ? new Promise((resolve, reject) => {
+        finishRpc = stalled === "capabilities"
+          ? () => resolve({ version: 1, supported: true })
+          : () => reject(new Error("late transport failure"));
+      })
+      : { version: 1, supported: true });
+    const controller = new AbortController();
+    const stopping = stop.execute("stop", { job: snapshot.job }, controller.signal);
+    const assertion = expect(stopping).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith(`backgroundJobs.${stalled}`, expect.anything()));
+    controller.abort();
+    await assertion;
+    finishRpc();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(dispatch.mock.calls.map(([method]) => method)).toEqual(stalled === "capabilities"
+      ? ["backgroundJobs.capabilities"] : ["backgroundJobs.capabilities", "backgroundJobs.stop"]);
+  });
+
   it("abandons an in-flight wait promptly without stopping, and observes a late failure", async () => {
     const { wait, dispatch, snapshot } = fixture();
     let fail: (error: Error) => void = () => {};
