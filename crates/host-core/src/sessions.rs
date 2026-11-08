@@ -39,26 +39,44 @@ pub struct AutoTitleContext {
     pub model_key: Option<String>,
 }
 
-/// Compatibility normalization for v7 callers and imported records. The
-/// persisted operating profile is now always `plan`, `goal` or `agent`.
+/// Compatibility normalization for v7 callers and imported records. `chat`
+/// is the old name of `plan`; any valid mode id (builtin or user-defined,
+/// ADR mode-definitions) is kept, and anything else reads as `agent`.
 pub fn normalize_mode(mode: Option<&str>) -> String {
     match mode {
-        Some("plan") | Some("chat") => "plan".into(),
-        Some("goal") => "goal".into(),
-        Some("agent") => "agent".into(),
+        Some("chat") => "plan".into(),
+        Some(mode) if is_valid_mode(mode) => mode.into(),
         _ => "agent".into(),
     }
 }
 
+/// Builtin-only normalization for surfaces that never carry a custom mode
+/// (scheduled tasks): unknown ids read as `agent`.
+pub fn normalize_builtin_mode(mode: Option<&str>) -> String {
+    match mode {
+        Some("plan") | Some("chat") => "plan".into(),
+        Some("goal") => "goal".into(),
+        _ => "agent".into(),
+    }
+}
+
+/// Any id a session may persist: a builtin or a user-defined mode.
 pub fn is_valid_mode(mode: &str) -> bool {
+    crate::mode_runs::is_mode_id(mode)
+}
+
+pub fn is_builtin_mode(mode: &str) -> bool {
     MODES.contains(&mode)
 }
 
 /// Plan and Goal negotiate a contract before executing (D198), so they share one
-/// tool allowlist and one hard deny. Agent is the only executing mode.
+/// tool allowlist and one hard deny. Agent is the only executing mode. This
+/// names the builtin modes only; authorization uses `tool_policy`.
 pub fn is_contract_mode(mode: &str) -> bool {
     matches!(mode, "plan" | "goal")
 }
+
+pub use crate::mode_runs::{tool_policy, ToolPolicy};
 
 /// Values accepted by the persisted per-session thinking selector.  Keep this
 /// list in the host boundary so old clients cannot write arbitrary provider
@@ -1880,11 +1898,11 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, fast_mode, source, pinned, last_seq, created_at,
-                    updated_at
+                    permission_mode, fast_mode, mode_snapshot_hash, source, pinned, last_seq,
+                    created_at, updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, fast_mode, NULL, 0, ?3, ?4, ?4
+                        permission_mode, fast_mode, mode_snapshot_hash, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1973,7 +1991,8 @@ pub fn configure_session_with_thinking(
 }
 
 /// Full configurator. Every `None` preserves the persisted value, including
-/// the `/fast` switch (ADR 0334).
+/// the `/fast` switch (ADR 0334). The mode snapshot is cleared: a builtin
+/// mode configured here never carries one.
 #[allow(clippy::too_many_arguments)]
 pub fn configure_session_with_fast_mode(
     db: &Database,
@@ -1985,8 +2004,35 @@ pub fn configure_session_with_fast_mode(
     permission_mode: Option<&str>,
     fast_mode: Option<bool>,
 ) -> Result<Option<SessionSummary>> {
+    configure_session_with_mode_snapshot(
+        db,
+        id,
+        mode,
+        provider_id,
+        model_id,
+        thinking_level,
+        permission_mode,
+        fast_mode,
+        None,
+    )
+}
+
+/// `configure_session_with_fast_mode` that also writes the session's mode
+/// snapshot hash (ADR mode-definitions) in the same statement as the mode.
+#[allow(clippy::too_many_arguments)]
+pub fn configure_session_with_mode_snapshot(
+    db: &Database,
+    id: &str,
+    mode: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    thinking_level: Option<&str>,
+    permission_mode: Option<&str>,
+    fast_mode: Option<bool>,
+    mode_snapshot_hash: Option<&str>,
+) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
-        return Err(anyhow!("mode must be plan or agent"));
+        return Err(anyhow!("mode must be a valid mode id"));
     }
     let mode = normalize_mode(Some(mode));
     if let Some(level) = thinking_level {
@@ -2012,7 +2058,8 @@ pub fn configure_session_with_fast_mode(
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
                  permission_mode = COALESCE(?6, permission_mode),
-                 fast_mode = COALESCE(?8, fast_mode), updated_at = ?7
+                 fast_mode = COALESCE(?8, fast_mode), mode_snapshot_hash = ?9,
+                 updated_at = ?7
              WHERE id = ?1",
         )?
         .execute(params![
@@ -2023,7 +2070,8 @@ pub fn configure_session_with_fast_mode(
             thinking_level,
             permission_mode,
             now_ms(),
-            fast_mode
+            fast_mode,
+            mode_snapshot_hash
         ])?;
     if changed == 0 {
         return Ok(None);
@@ -4930,7 +4978,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(preserved.thinking_level, "high");
-        assert!(configure_session(&db, &session.id, "invalid", None, None).is_err());
+        assert!(configure_session(&db, &session.id, "Not A Mode", None, None).is_err());
         assert!(configure_session_with_thinking(
             &db,
             &session.id,

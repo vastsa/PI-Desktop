@@ -33,6 +33,7 @@ import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
 import { TaskDock } from "./TaskDock";
+import { ModeRunStatusBar } from "../features/modes/ModeRunStatusBar";
 import {
   COMPOSER_MAX_VISIBLE_ROWS,
   COMPOSER_MIN_HEIGHT_PX,
@@ -321,10 +322,9 @@ export function Composer({
   const mode: Mode = activeSession
     ? activeSession.mode
     : (draftConfiguration?.mode ?? settings?.defaultMode ?? "agent");
+  // Only the builtin Plan negotiates a proposal; Goal runs as a staged mode.
   const planningLive =
-    isRunning &&
-    planningState === "planning" &&
-    (mode === "plan" || mode === "goal");
+    isRunning && planningState === "planning" && mode === "plan";
   // Permission mode (D115/D132): inherited sessions still resolve through the
   // global setting, but the composer presents only the effective mode.
   const globalPermissionMode: PermissionMode =
@@ -538,6 +538,7 @@ export function Composer({
             header, so the gate now covers both the way it already covered the
             todo dock. */}
         {activeSessionId && localToolsAllowed ? <TaskDock sessionId={activeSessionId} /> : null}
+        {activeSessionId ? <ModeRunStatusBar sessionId={activeSessionId} /> : null}
         {planCheckpoint?.status === "pending" ? (
           <PlanApprovalBar proposal={planCheckpoint} />
         ) : null}
