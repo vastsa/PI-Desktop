@@ -1,5 +1,15 @@
 # 04. E2E Test Plan
 
+### E2E-COMPOSER-screenshot-without-directory-scan
+
+Paste a native folder, then a synthetic screenshot through real Composer,
+preload IPC and the bounded scratch writer in `e2e-composer-paste.mjs`.
+Run with `--screenshot-only` to verify the folder and screenshot route while
+excluding unrelated MP4 preview. Screenshot metadata never enters native
+directory discovery; scratch bytes are verified exactly in Main.
+`composer-directory-paste.test.mjs` verifies byte preservation and existing
+folder/mixed-selection behavior. No system clipboard contents are changed.
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and
