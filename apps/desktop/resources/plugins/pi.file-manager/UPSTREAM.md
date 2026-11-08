@@ -83,7 +83,7 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
 | `CHANGELOG.md` | 34520 | `b7a3c06c07b2dbe5ce79577bbc6c6a53ffa00324bd64a27d0d5634493dec48b4` |
 | `LICENSE` | 1067 | `ebaec3ae096498a39f6b86e3ac8017e39818fb5aaff80b452349f94bc275ec0d` |
 | `README.md` | 38470 | `4ecf6e3afa2051b59b479907c485d156caca54ef6d1f4e3c410805807942a268` |
-| `main.js` | 125236 | `707feec0ecba8eb1a7c6a876a5ecf157ce064f36f14f5f30bafcf5852c5bed72` |
+| `main.js` | 125253 | `7eafffdb525a9ad9b16adaa5a0cd78cd66a9a99a8c3a8cb136aa987b5db44dd7` |
 | `manifest.json` | 40092 | `ea3798770849c77193f16da5a582157cc07e5f756f7225dcbec1762ed591d461` |
 | `package.json` | 25 | `8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a` |
 | `remote-workspace.js` | 3757 | `931a579801fd4b334c3d96231aafc7ff52e0c03e7baebbabaf00b4c5e17cc366` |
@@ -114,3 +114,9 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
    integration pin with that real tag/commit and marketplace provenance; preserve
    the search-theme fix if that release does not yet contain it. Do not rewrite
    an existing upstream tag or label the local artifact as a marketplace release.
+
+## Desktop mutation repair (#2184)
+
+The bundled `main.js` restores file-name validation and moves
+`entryFromStat` to module scope. This is a Desktop-local runtime repair;
+the upstream pins and published artifact claims above are unchanged.
