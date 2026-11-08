@@ -20358,8 +20358,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   explicit stop reaches terminal state, repeated reads and desktop output agree.
   Plan-mode access is rejected.
 - Runtime tests cover new input/parent abort during a pending Host wait, late
-  Host rejection, old Host/remote capability behavior, mixed selector rejection,
-  existing delegation controls and registration without a subagent catalog.
+  Host rejection, old Host/remote capability behavior, conflicting/malformed
+  delegation selectors and mixed Bash selector rejection, existing delegation
+  controls and registration without a subagent catalog.
 - Host tests cover pre-settled observation, repeatable output, Unicode clipping,
   ownership lookup, idempotent stop and stop acknowledgement before termination.
   Existing Windows child/grandchild cleanup tests remain required; record native
@@ -20381,3 +20382,20 @@ Bounded tail pages include compactions appended after the last message. Middle p
 #### E2E-ISSUE-2164
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+#### E2E-ISSUE-2173: Redundant delegation job selectors
+
+- Entry: build shared/agent-runtime/host-runtime and Host, then run
+  `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-task-job-selectors.mjs`.
+- Preconditions: isolated Host data/workspace and a deterministic localhost
+  provider; production parent and delegate loops, with no external model account.
+- Steps: start a delegate; wait with both its job reference and matching
+  delegationIds; re-read with empty delegationIds and single-job mode/minCompleted;
+  start another delegate, hold its provider response, stop it with both selectors,
+  and confirm its stopped state through TaskWait.
+- Expected: reports remain readable, redundant selectors do not cause errors,
+  single-job mode/minCompleted are ignored, and cancellation settles the target.
+  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+- Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
+- Acceptance: wait, report re-read and running-delegate cancellation complete
+  through the real tool loop. Milestone: maintenance. Status: automated.
