@@ -81,6 +81,7 @@ Examples:
 - `pi-desktop/session/getScratchPath`
 - `pi-desktop/session/openScratchPath`
 - `pi-desktop/session/collaboration`
+- `pi-desktop/session/usageCost`
 
 ## 3.1 Logical project groups
 
@@ -1088,6 +1089,17 @@ model in its label. `MessageUsage.costStatus` is `reported` when the provider
 returned the billed total (Pi `usage.cost.totalFromProvider`), `estimated` when
 the total comes from catalog rates, and `unknown` without a usable price; a
 rollup is `reported` only when every part is.
+
+`pi-desktop/session/usageCost({ sessionId }) -> SessionUsageCost` is a
+read-only rollup of every turn the session ever ran, served by Host
+`session.usageCost`. The renderer holds only a window of the transcript, so the
+session total is never summed from loaded messages. Each physical request in a
+turn ledger is counted once and grouped by its `providerId`; turns of every
+status count, because aborted and failed requests were still billed.
+`ProviderUsageCost.total` sums only priced requests, `reportedRequests` counts
+those the provider billed, and `unpricedRequests` counts requests without a
+usable price, including legacy token-only turns grouped without a
+`providerId`. Imported `native-pi:` sessions return an empty rollup.
 
 The Settings font picker (ADR 0083) reads installed system font families
 through one Electron-only allowlisted channel:

@@ -373,6 +373,11 @@ to later refresh and inference; the vendor picker does not collect them.
   branch (discarding unmerged work)
 - `session.getScratchPath` — the session's scratch directory (D114), created
   on demand
+- `session.usageCost({ sessionId })` — read-only cost rollup of the session's
+  `turns.usage_json` ledgers, grouped by `providerId`: `{ sessionId, turnCount,
+  requestCount, providers: [{ providerId?, total, pricedRequests,
+  reportedRequests, unpricedRequests }] }`. No schema change; a missing
+  `sessionId` is `INVALID_PARAMS`.
 - `visualizations.readFragment({ sessionId, fileName })` — private Main-to-Host
   reader for `pi-genui:` documents (D671). No renderer IPC or Plugin SDK method
   is added. Parameters contain only a validated session ID and direct `.html`

@@ -2085,7 +2085,12 @@ Single message render — either user (plaintext) or assistant (markdown streami
   across the visual turn's assistant messages; `output` already carries the
   reasoning tokens, so `reasoningTokens` is never added again, and subagent
   spend is not included (D103). Speed is summed output tokens over summed
-  response duration. No meta row, and therefore no capsule, renders while the
+  response duration. When pay-as-you-go requests in the turn have a price, the
+  capsule appends the turn cost after the total and its accessible name ends
+  with it; the popover then adds a cost row and a one-line explanation
+  (provider-billed, catalog estimate, lower bound, or subscription). Turns with
+  no price, or served only by a subscription account, show no inline cost. No
+  meta row, and therefore no capsule, renders while the
   turn is streaming. The capsule's
   accessible name states the speed and total and that activating it shows the
   breakdown. The popover portals to the document body, clamps to the
@@ -2113,8 +2118,17 @@ Single message render — either user (plaintext) or assistant (markdown streami
   regardless of display mode, without making color the only signal.
   Clicking the trigger (or activating it from the keyboard) toggles a
   non-modal panel whose heading follows the same display-mode figure,
-  followed by used/window counts, unboxed turn/speed summary values, and the
-  elapsed session time. Three compact timing rows show request-to-first-response
+  followed by used/window counts, unboxed turn/speed summary values, a cost
+  row, and the elapsed session time. The cost row shows the newest turn's cost
+  and the whole-session total; the session figure is read from Host
+  (`session/usageCost`) only while the panel is open, refreshes in place when
+  another request is billed, and never shows another session's figure. Cost
+  wording is shared with the capsule: a provider-billed amount reads plainly,
+  a catalog estimate is prefixed `≈`, a total that omits unpriced requests is
+  prefixed `≥`, and usage on a subscription account (OAuth sign-in, or Kimi
+  Coding) reads "Subscription" with its API-price equivalent in the tooltip and
+  is never added to the pay-as-you-go amount. A scope with nothing to price is
+  left out. Three compact timing rows show request-to-first-response
   wait, streamed model response time (thinking plus answer), and top-level tool
   execution time, each with its share of the session span. Network/provider wait
   and streamed response are separate; parallel top-level tools count overlapping
@@ -4741,3 +4755,11 @@ introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
+
+### Issue #2162 correction
+
+Closing the connected Browser tab clears its connection. Subsequent session-only tools use that session's selected replacement page. Explicit closed targets fail; navigation never revives an invisible old tab. Verify close/reopen/snapshot/fill/click/navigate and final closure with `browser-background-session.test.mjs` and `BROWSER_CLOSE_CONNECTION_ONLY=1 node scripts/e2e-browser-background.mjs`.
+
+### Issue #2164 correction
+
+While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
