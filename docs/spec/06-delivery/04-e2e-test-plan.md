@@ -8,6 +8,14 @@ provider, overflow, silent and progress recovery in `runtime.test.ts`.
 `e2e-transcript-render.mjs` verifies production event projection and the
 existing one-bubble overflow recovery when no steering is consumed.
 
+### E2E-FILE-MANAGER-git-deadline
+
+`file-manager-git-timeout.test.mjs` drives actual bundled `fm.list` and `fm.read`
+against real fixture files with a controlled child-process boundary. Advance
+the Git deadline while the child never closes: entries and preview complete
+without Git metadata. Existing Electron directory-location and mutation
+journeys cover successful reads, saves and directory browsing.
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and
