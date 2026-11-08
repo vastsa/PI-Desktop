@@ -20548,3 +20548,12 @@ session data is used.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.
