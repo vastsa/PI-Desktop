@@ -3111,3 +3111,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 ### Issue #2164 修正
 
 压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
+
+### 分支激活选择状态（#2086）
+
+完成分支并激活时，同步清除旧 selectingSessionId；已被新导航替代的分支只加入列表，不清除后来选择。防止分支已创建但界面仍显示旧切换状态。

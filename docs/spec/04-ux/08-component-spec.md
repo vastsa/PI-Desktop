@@ -4763,3 +4763,7 @@ Closing the connected Browser tab clears its connection. Subsequent session-only
 ### Issue #2164 correction
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+### Fork activation selection ownership (#2086)
+
+Activating a completed session fork clears the previous selectingSessionId together with its visible pane switch. A superseded fork only lists its durable child and does not clear a newer pending selection. This prevents stale switching UI from hiding the activated branch.

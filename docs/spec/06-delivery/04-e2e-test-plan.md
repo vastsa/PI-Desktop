@@ -20399,3 +20399,7 @@ While a checkpoint estimate supplies context occupancy, use its recorded provide
 - Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
 - Acceptance: wait, report re-read and running-delegate cancellation complete
   through the real tool loop. Milestone: maintenance. Status: automated.
+
+#### E2E-ISSUE-2086-fork-selection
+
+While the parent is revalidating, invoke sidebar forkSession and complete the Host response. The child becomes active/retained and selectingSessionId clears. If a newer selection supersedes a reply fork, its selection remains. Cover existing running-parent transcript and fork-error paths through session-fork-running.test.mjs.
