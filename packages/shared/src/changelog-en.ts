@@ -3,7 +3,11 @@ import type { ChangelogEntry } from "./changelog.js";
 export const enEntries: ChangelogEntry[] = [
   {
     version: "0.22.0",
+    date: "2026-11-08",
     highlights: [
+      "Use the Pi 1.5 agent engine and inspect turn and session costs in the usage surfaces.",
+      "Keep long conversations stable with safer context compaction, image handling, and tool execution.",
+      "Recover project layout and scheduled-task editors reliably, and save MCP configurations to the selected project.",
       "Let the agent control desktop apps through computer use, with explicit permission grants and a visible cursor.",
       "Launch installed apps and plugin commands from one grouped launcher, and pin frequently used apps in place.",
       "Keep long conversations readable with folded completed activity and smoother navigation to the latest messages as older history loads.",

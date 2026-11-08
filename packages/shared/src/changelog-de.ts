@@ -3,7 +3,11 @@ import type { ChangelogEntry } from "./changelog.js";
 export const deEntries: ChangelogEntry[] = [
   {
     version: "0.22.0",
+    date: "2026-11-08",
     highlights: [
+      "Nutzen Sie die Pi-1.5-Agent-Engine und prüfen Sie Runden- und Sitzungskosten in den Nutzungsansichten.",
+      "Stabilere lange Gespräche durch sicherere Kontextkomprimierung, Bildverarbeitung und Werkzeugausführung.",
+      "Projektlayout und Editoren geplanter Aufgaben zuverlässig wiederherstellen und MCP-Konfigurationen im ausgewählten Projekt speichern.",
       "Lassen Sie den Agenten Desktop-Apps über die Computersteuerung mit ausdrücklicher Freigabe und sichtbarem Cursor bedienen.",
       "Starten Sie installierte Apps und Plugin-Befehle in einem gruppierten Launcher und heften Sie häufig genutzte Apps an.",
       "Abgeschlossene Aktivitäten einklappen und beim Laden älterer Nachrichten flüssiger zu den neuesten zurückkehren.",
