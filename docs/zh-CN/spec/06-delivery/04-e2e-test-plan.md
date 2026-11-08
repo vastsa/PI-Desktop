@@ -8,6 +8,13 @@
 `composer-directory-paste.test.mjs` 验证字节不变及原有目录/混合选择流程。
 不修改系统剪贴板内容。
 
+### E2E-FILE-MANAGER-git-deadline
+
+`file-manager-git-timeout.test.mjs` 对真实测试文件调用内置 `fm.list` 和
+`fm.read`，仅控制子进程边界。子进程从不关闭时推进 Git 截止时间，目录及
+预览仍完成，Git 元数据不可用。原有 Electron 目录定位和文件修改旅程验证
+正常读取、保存和目录浏览。
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and
