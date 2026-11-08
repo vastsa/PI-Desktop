@@ -5983,7 +5983,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   fully visible, clear of the panel column, and narrowed rather than clipped on
   a narrow pane. 8) Click Retry on that turn while idle. 9) Confirm a session
   without usage still offers Retry on completed turns and omits the composer
-  inspector.
+  inspector. 10) With an API-key provider whose model has catalog prices, open
+  the inspector and the capsule popover; send another prompt with the
+  inspector open; switch sessions; repeat on a subscription (OAuth) account.
 - **Expected**: Model badge appears under completed assistant answers when a
   model id exists, followed immediately by the turn usage capsule when that
   turn has usage. The capsule's speed is summed output tokens over summed
@@ -5992,7 +5994,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   subagent spend. Its popover stays open while the pointer is over it, closes
   on pointer leave after a grace delay unless the trigger retains keyboard
   focus, on Escape, or on an outside press; it portals to the body, clamps to
-  the conversation pane, and is absent on streaming turns.
+  the conversation pane, and is absent on streaming turns. A priced
+  pay-as-you-go turn shows its cost after the capsule total (`≈` for a catalog
+  estimate) and in a popover cost row with a one-line explanation; the
+  inspector shows the newest turn cost and the whole-session total, which
+  refreshes in place after the next billed request without a loading flash and
+  never shows another session's figure. Subscription usage reads
+  "Subscription" with its API-price equivalent in the tooltip, adds nothing to
+  the pay-as-you-go amount, and shows no inline capsule cost. Automated by
+  `apps/desktop/test/usage-cost-user-path.test.mjs`.
   The compact Context inspector appears in the composer
   right toolbar, left of the model picker, once any usage exists, and always
   mirrors the newest usage-bearing assistant turn. The trigger shows the ring

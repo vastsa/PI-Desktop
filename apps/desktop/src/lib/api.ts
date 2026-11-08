@@ -838,6 +838,8 @@ export const api = {
     })),
   getSessionCollaboration: (sessionId: string) =>
     invoke<SessionCollaborationSummary>(IPC.invoke.sessionCollaboration, { sessionId }),
+  getSessionUsageCost: (sessionId: string) =>
+    invoke<import("@pi-desktop/shared").SessionUsageCost>(IPC.invoke.sessionUsageCost, { sessionId }),
   deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),
   getSessionScratchPath: (sessionId: string) =>
     invoke<{ path: string }>(IPC.invoke.sessionGetScratchPath, { sessionId }),

@@ -273,6 +273,9 @@ type ToolBudgetHealth = {
 - `session.get`
 - `session.delete` — 对隔离会话还会删除其 worktree 和分支（丢弃未合并的工作）
 - `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建
+- `session.usageCost({ sessionId })` — 会话 `turns.usage_json` 账本的只读费用汇总，按 `providerId` 分组：
+  `{ sessionId, turnCount, requestCount, providers: [{ providerId?, total, pricedRequests,
+  reportedRequests, unpricedRequests }] }`。无表结构变更；缺少 `sessionId` 返回 `INVALID_PARAMS`。
 - `session.rename` — 在主机边界裁剪并校验标题，接受 1–80 个 Unicode 码点；成功后将标题来源
   标记为 `manual`，但不更新 `updated_at`、转录内容、消息数或历史通知标题快照。
 - `session.deriveTitle` — `{ id, title }`：应用确定性的首条提示兜底标题，返回
