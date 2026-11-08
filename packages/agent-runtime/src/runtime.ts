@@ -434,6 +434,7 @@ function runtimeAttachmentFromMessage(
     // Recorded placement: the message content names this image at that spot, so
     // the restored prompt keeps the block there too.
     ...(attachment.inlinePath ? { inlinePath: attachment.inlinePath } : {}),
+    ...(attachment.lineRange ? { lineRange: attachment.lineRange } : {}),
     ...(data ? { data } : {}),
   };
 }
@@ -9265,6 +9266,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   /** Execute the ordinary Host Read for explicit composer references before model input. */
   async resolveFileLineReferences(input: RuntimePrompt): Promise<RuntimePrompt> {
     if (!input.attachments?.some(attachment => attachment.lineRange !== undefined)) return input;
+    const references = input.attachments.filter(attachment => attachment.lineRange !== undefined);
+    if (references.length > MAX_FILE_LINE_REFERENCES) {
+      throw Object.assign(new Error("Too many file line references"), { errorCode: "INVALID_ARGUMENT" });
+    }
+    if (references.some(attachment => attachment.kind !== "file" || !parseFileLineRange(attachment.lineRange))) {
+      throw Object.assign(new Error("Invalid file line reference"), { errorCode: "INVALID_ARGUMENT" });
+    }
     const read = this.activeTools().find(tool => tool.name === "Read" && this.builtinTools.has(tool));
     const turnId = this.turnId;
     const attachments: RuntimePromptAttachment[] = [];
@@ -9274,8 +9282,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         attachments.push(attachment);
         continue;
       }
-      const range = parseFileLineRange(attachment.lineRange);
-      if (!range || attachment.kind !== "file" || seen.size >= MAX_FILE_LINE_REFERENCES) continue;
+      const range = parseFileLineRange(attachment.lineRange)!;
       const key = JSON.stringify([attachment.path, range.start, range.end]);
       if (seen.has(key)) continue;
       seen.add(key);

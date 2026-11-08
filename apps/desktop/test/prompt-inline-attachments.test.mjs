@@ -120,6 +120,17 @@ test("line ranges stay deferred and cannot escape the session project", async (t
   assert.equal(prepared.inlineData, undefined);
   assert.equal(appendPromptFallbackPaths("Review this", [prepared]), "Review this");
 
+  for (const references of [
+    Array.from({ length: 5 }, () => attachment),
+    [{ ...attachment, lineRange: { start: 1, end: 9e15 } }],
+    [{ ...attachment, lineRange: { start: 1, end: 4001 } }],
+  ]) {
+    await assert.rejects(
+      preparePromptAttachments(data, sessionId, project, references, false, "Review this"),
+      { errorCode: "INVALID_ARGUMENT" },
+    );
+  }
+
   for (const invalidPath of [outside, escape]) {
     await assert.rejects(
       preparePromptAttachments(data, sessionId, project, [{ ...attachment, path: invalidPath }], false, ""),

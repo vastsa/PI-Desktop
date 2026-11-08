@@ -54,6 +54,11 @@ test("an installed File Manager can add lines only to the session that authorize
   assert.deepEqual(await addFileLinesFromView(pluginId, 123, payload, bridge), { ok: true });
   assert.deepEqual(deliveries, [{ sessionId: "selected", reference: payload }]);
 
+  const normalizedPayload = { ...payload, workspace: `${workspace}/` };
+  assert.deepEqual(await addFileLinesFromView(pluginId, 123, normalizedPayload, bridge), { ok: true });
+  await assert.rejects(addFileLinesFromView(pluginId, 123, { ...payload, workspace: `${workspace}-other` }, bridge), /no longer active/);
+  assert.deepEqual(deliveries.at(-1), { sessionId: "selected", reference: normalizedPayload });
+
   await assert.rejects(addFileLinesFromView(pluginId, 321, payload, bridge), /no longer active/);
   loaded.permissions.delete("fs.read");
   await assert.rejects(addFileLinesFromView(pluginId, 123, payload, bridge), /no longer active/);
@@ -68,5 +73,5 @@ test("an installed File Manager can add lines only to the session that authorize
   const pending = addFileLinesFromView(pluginId, 123, payload, bridge);
   pluginSession.setActiveSession({ ...session, sessionId: "different" });
   await assert.rejects(pending, /no longer active/);
-  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries.length, 2);
 });

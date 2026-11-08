@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
-import { parseFileLineReference, type FileLineReference } from "@pi-desktop/shared";
+import { normalizeProjectPath, parseFileLineReference, type FileLineReference } from "@pi-desktop/shared";
 import type { HostProcess } from "./host-process";
 import type { PluginRuntime } from "./plugin-runtime";
 import type { PluginViewHost } from "./plugin-view-host";
@@ -41,7 +41,7 @@ export async function addFileLinesFromView(
       !selected || !canUseFileLineView(loaded) ||
       !bridge.pluginViews.isVisibleViewSender(senderId, FILE_LINES_VIEW_KEY) ||
       !bridge.pluginActiveInProject(pluginId, selected.projectPath) ||
-      reference.workspace !== bridge.getWorkspacePath()
+      normalizeProjectPath(reference.workspace) !== normalizeProjectPath(bridge.getWorkspacePath())
     ) return null;
     return { loaded, selected };
   };

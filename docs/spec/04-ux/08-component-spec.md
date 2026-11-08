@@ -4759,6 +4759,10 @@ clipboard consumers still receive the original plain text. Unsaved edits allow
 plain-text copy and suppress line references until the file is saved or reloaded.
 At the four-reference limit, another paste shows the limit warning and inserts
 the plain text instead of consuming it without changing the draft.
+Selections longer than 4,000 lines or outside positive signed 32-bit line
+coordinates use plain-text paste. Main applies the same workspace spelling
+normalization as Composer (separators and trailing slash), while retaining
+the lexical and real-path project containment checks.
 
 At turn execution the Agent calls the existing Host Read for each distinct
 range and adds its bounded result to the model request. Read uses the saved

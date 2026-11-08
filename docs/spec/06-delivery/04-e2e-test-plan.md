@@ -20403,3 +20403,10 @@ quoted as file content. Repeat with a queued turn and a project switch. A
 different project's clipboard metadata cannot add the chip.
 Fill the draft with four distinct line references, then paste another range.
 Verify a limit warning, four unchanged references, and the pasted plain text.
+Paste metadata for a 4,001-line selection or an out-of-bounds line number and
+verify ordinary text paste. A trailing workspace separator must behave the same
+for the context-menu and clipboard paths; another workspace must still fail.
+Submit five references or a malformed range directly to the prompt boundary
+and runtime boundary: both reject with `INVALID_ARGUMENT` before any Read.
+Restore a historical attachment with range metadata and a recorded excerpt;
+verify the excerpt remains a file-lines block without an assistant tool call.

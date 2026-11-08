@@ -160,6 +160,11 @@ transcript-read API. The core runs no title completion of its own.
    as one `<session_reference name="…" session="…">` block ahead of the user's
    own words
    A validated File Manager `lineRange` travels as file attachment metadata.
+   Inclusive line numbers are positive 32-bit signed integers and each range
+   spans at most 4,000 lines, matching the Host Read line budget. Unsupported
+   clipboard selections retain plain-text paste rather than changing the range.
+   Main and runtime reject malformed references or more than four references
+   with `INVALID_ARGUMENT` before any prefetch; neither silently drops a chip.
    The runtime executes one workspace-only Read per distinct range through
    the normal tool hooks and quotes its bounded result as file context for
    the provider turn. Permission blocks and read failures use a separate

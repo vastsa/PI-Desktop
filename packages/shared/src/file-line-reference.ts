@@ -1,6 +1,9 @@
 export const FILE_LINES_CLIPBOARD_TYPE = "application/x-pi-desktop-file-lines";
 export const FILE_LINES_ADD_CHANNEL = "composer.addFileLines";
 export const MAX_FILE_LINE_REFERENCES = 4;
+export const MAX_FILE_LINE_NUMBER = 2_147_483_647;
+// Match the Host Read line budget; oversized selections retain plain-text paste.
+export const MAX_FILE_LINE_RANGE_LINES = 4_000;
 
 export type FileLineRange = { start: number; end: number };
 export type FileLineReference = FileLineRange & { path: string; workspace: string };
@@ -10,7 +13,8 @@ export function parseFileLineRange(value: unknown): FileLineRange | undefined {
   const { start, end } = value as Partial<FileLineRange>;
   if (typeof start !== "number" || typeof end !== "number" ||
       !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
-      start < 1 || end < start) return;
+      start < 1 || end < start || end > MAX_FILE_LINE_NUMBER ||
+      end - start + 1 > MAX_FILE_LINE_RANGE_LINES) return;
   return { start, end };
 }
 

@@ -262,6 +262,43 @@ it("reads each explicit file line range once before passing its text to the mode
 });
 
 it.each([
+  { label: "too many", attachments: Array.from({ length: 5 }, (_, index) => ({
+    kind: "file" as const, path: `/project/${index}.txt`, name: `${index}.txt`, lineRange: { start: 1, end: 1 },
+  })) },
+  { label: "invalid", attachments: [
+    { kind: "file" as const, path: "/project/a.txt", name: "a.txt", lineRange: { start: 2, end: 1 } },
+  ] },
+])("rejects $label file references before any Host read", async ({ attachments }) => {
+  const call = vi.fn();
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  try {
+    await expect(runtime.resolveFileLineReferences({ text: "Review", attachments }))
+      .rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    expect(call.mock.calls.filter(([method]) => method === "tools.execute")).toEqual([]);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it("restores a recorded line-range excerpt without synthesizing an assistant tool call", async () => {
+  const runtime = createRuntime({ history: [{
+    id: "file-lines", role: "user", content: "Review /project/a.txt (85:86)",
+    createdAt: "2026-11-08T00:00:00.000Z",
+    attachments: [{ kind: "file", ref: "/project/a.txt", name: "a.txt",
+      lineRange: { start: 85, end: 86 }, text: "recorded saved excerpt" }],
+  }] });
+  try {
+    const messages = (runtime as unknown as { agent: Agent }).agent.state.messages;
+    expect(messages.filter(message => message.role === "user")).toEqual([expect.objectContaining({
+      role: "user", content: expect.stringContaining('<file_lines source="/project/a.txt (85:86)">\nrecorded saved excerpt\n</file_lines>'),
+    })]);
+    expect(messages.some(message => message.role === "assistant" || message.role === "toolResult")).toBe(false);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it.each([
   { denied: true, status: "blocked", reason: "Read denied" },
   { denied: false, status: "failed", reason: "File not found" },
 ])("labels a $status file reference separately from file content", async ({ denied, status, reason }) => {
