@@ -3111,3 +3111,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 ### Issue #2164 修正
 
 压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
+
+### 文件管理器名称校验（#2184）
+
+新建和重命名前校验名称，创建、重命名和移动后返回正确条目信息。空名称、点路径、分隔符、控制字符、Windows 保留名及尾点返回 INVALID_NAME；已有目标返回 EXISTS。路径边界和受保护路径检查保持生效。
