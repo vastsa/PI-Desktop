@@ -47,7 +47,12 @@ async function writeDmgFixture(release) {
  */
 async function writeXcrunNotaryFixture(
   bin,
-  { status = "Accepted", submitExit = 0, stapleFailures = 0 } = {},
+  {
+    status = "Accepted",
+    submitExit = 0,
+    stapleFailures = 0,
+    validateFailures = 0,
+  } = {},
 ) {
   await mkdir(bin, { recursive: true });
   const xcrun = `#!/usr/bin/env bash
@@ -76,6 +81,18 @@ case "$1 $2" in
     fi
     exit 0
     ;;
+  "stapler validate")
+    count_file="$NOTARY_LOG.validates"
+    count=0
+    if [[ -f "$count_file" ]]; then count="$(cat "$count_file")"; fi
+    count=$((count + 1))
+    echo "$count" > "$count_file"
+    if (( count <= ${validateFailures} )); then
+      echo 'CloudKit query failed: The network connection was lost' >&2
+      exit 68
+    fi
+    exit 0
+    ;;
 esac
 exit 0
 `;
@@ -91,7 +108,7 @@ function runNotarize(release, bin, log, extraEnv = {}) {
       ...NOTARY_ENV,
       PATH: `${bin}:${process.env.PATH}`,
       NOTARY_LOG: log,
-      STAPLE_DELAY_SECONDS: "1",
+      STAPLE_DELAY_SECONDS: "0",
       ...extraEnv,
     },
   });
@@ -137,6 +154,50 @@ test("stapling retries only after Apple accepts the DMG", async (t) => {
     calls.filter((line) => line.startsWith("stapler staple")).length,
     3,
     "two failures then a successful staple",
+  );
+});
+
+test("DMG validation retries a temporary CloudKit connection failure", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-desktop-macos-dmg-validate-retry-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const release = join(root, "release");
+  const bin = join(root, "bin");
+  const log = join(root, "xcrun.log");
+  await writeDmgFixture(release);
+  await writeXcrunNotaryFixture(bin, { validateFailures: 1 });
+
+  const result = runNotarize(release, bin, log);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /stapler validate attempt 1\/6 failed/);
+  const calls = (await readFile(log, "utf8")).trim().split("\n");
+  assert.equal(
+    calls.filter((line) => line.startsWith("stapler validate")).length,
+    2,
+    "validation retries once and then succeeds",
+  );
+});
+
+test("DMG validation fails closed after the configured retry limit", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-desktop-macos-dmg-validate-fail-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const release = join(root, "release");
+  const bin = join(root, "bin");
+  const log = join(root, "xcrun.log");
+  await writeDmgFixture(release);
+  await writeXcrunNotaryFixture(bin, { validateFailures: 2 });
+
+  const result = runNotarize(release, bin, log, { STAPLE_ATTEMPTS: "2" });
+
+  assert.equal(result.status, 68);
+  assert.match(result.stderr, /stapler validate attempt 1\/2 failed/);
+  const calls = (await readFile(log, "utf8")).trim().split("\n");
+  assert.equal(
+    calls.filter((line) => line.startsWith("stapler validate")).length,
+    2,
+    "validation stops after the configured bound",
   );
 });
 
@@ -233,7 +294,7 @@ test("macOS release verification requires a notarized Developer ID app and DMG",
   );
   await writeFile(
     join(bin, "xcrun"),
-    "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$STAPLER_LOG\"\n[[ \"$1 $2\" == 'stapler validate' ]]\n",
+    "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$STAPLER_LOG\"\nif [[ \"$1 $2\" == 'stapler validate' ]]; then\n  count_file=\"$STAPLER_LOG.validates\"\n  count=0\n  if [[ -f \"$count_file\" ]]; then count=\"$(cat \"$count_file\")\"; fi\n  count=$((count + 1))\n  echo \"$count\" > \"$count_file\"\n  if (( count == 1 )); then echo 'CloudKit query failed: The network connection was lost' >&2; exit 68; fi\n  exit 0\nfi\nexit 1\n",
   );
   await Promise.all(
     ["codesign", "spctl", "xcrun"].map((name) => chmod(join(bin, name), 0o755)),
@@ -248,6 +309,8 @@ test("macOS release verification requires a notarized Developer ID app and DMG",
       MAC_SIGNING_IDENTITY: SIGNING_IDENTITY_NAME,
       PATH: `${bin}:${process.env.PATH}`,
       STAPLER_LOG: staplerLog,
+      STAPLE_ATTEMPTS: "2",
+      STAPLE_DELAY_SECONDS: "0",
     },
   });
 
@@ -257,7 +320,7 @@ test("macOS release verification requires a notarized Developer ID app and DMG",
   assert.match(result.stdout, /host-core sidecar/);
   assert.equal(
     await readFile(staplerLog, "utf8"),
-    `stapler validate ${app}\nstapler validate ${dmg}\n`,
+    `stapler validate ${app}\nstapler validate ${app}\nstapler validate ${dmg}\n`,
   );
 });
 
