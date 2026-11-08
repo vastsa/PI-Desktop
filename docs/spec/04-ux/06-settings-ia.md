@@ -781,6 +781,14 @@ system while preserving their different data ownership:
   the primary action's tooltip names that destination so the choice is never
   implicit. Choosing Project without a selected project reports that instead
   of failing silently.
+  MCP creation and inline imports are the exception: All uses the selected
+  project when present and otherwise Global. Explicit Global/Project retain
+  their ownership. An opened editor pins its project owner; changing the page's
+  selected project cannot move an existing definition (#1953).
+  Save refreshes the list at the editor's pinned destination before checking
+  duplicate IDs/names. A same-name definition in another project cannot block
+  a valid save; a conflict in the target project still blocks it. Host upsert
+  retains its authoritative destination validation for concurrent writes.
 - Inside the panel, each level is a group header row — level name, resolved
   `.agents` path in mono, localized count — followed by its rows. Lists flow
   at natural page height like every other Settings surface; the page scrolls
@@ -851,8 +859,9 @@ system while preserving their different data ownership:
   opens inline on the MCP page. Imported servers follow the current Global /
   Project filter and selected project; secrets and header values are never
   shown in candidate rows.
-- MCP Market installs into the same destination as Add: Global under All or
-  Global, and the selected project under Project. Its installed badges reflect
+- MCP Market installs into the same destination as Add: the selected project
+  under All when present, Global otherwise or under explicit Global, and the
+  selected project under Project. Its installed badges reflect
   only that destination, so an entry in another level can still be installed
   here. Project installation requires a selected project and never falls back
   to Global.
