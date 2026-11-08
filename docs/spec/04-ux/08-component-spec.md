@@ -1,5 +1,9 @@
 # 08. Component Spec
 
+File Manager Git deadlines settle the command at the deadline even when child
+output pipes remain open. A failed snapshot omits Git badges and does not block
+directory listings or file previews indefinitely (Refs #1731).
+
 ### Copied directory references
 
 Native folder paste adds compact cards in a wrapping row above the editable
