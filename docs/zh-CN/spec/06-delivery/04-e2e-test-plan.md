@@ -1,5 +1,12 @@
 # 04. E2E 测试 Plan
 
+### E2E-SUBAGENT-system-notice-reconstruction
+
+重建运行中的 Task 后接系统通知的会话，生产条目构建、运行状态选择及结果
+解析保留 Task 运行状态。结束会话或追加普通用户提示后，历史 Task 不再存活。
+覆盖：`live-delegation-system-row.test.mjs`；`turn-process.test.mjs` 验证对应
+回合边界，`turn-process-header.test.mjs` 验证渲染状态标签。
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and

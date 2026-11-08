@@ -1,5 +1,9 @@
 # 08. Component Spec
 
+Live delegation reconstruction crosses system notices as well as steering
+messages. An ordinary user prompt remains the run boundary. A running Task
+behind a system notice must not become aborted on navigation (Refs #1990).
+
 ### Copied directory references
 
 Native folder paste adds compact cards in a wrapping row above the editable
