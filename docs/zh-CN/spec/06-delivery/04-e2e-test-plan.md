@@ -1,5 +1,12 @@
 # 04. E2E 测试 Plan
 
+### E2E-STEERING-recovery-reply-order
+
+在早先回复和下一次恢复回复之间送入已消费的 steering，旧片段结束，下一条
+回复使用新 ID。`runtime.test.ts` 覆盖提供商、溢出、空回复及进度恢复。
+`e2e-transcript-render.mjs` 验证生产事件投影，以及无 steering 时原有的
+单气泡溢出恢复行为。
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and

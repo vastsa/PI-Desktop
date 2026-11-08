@@ -1,5 +1,13 @@
 # 04. E2E Test Plan
 
+### E2E-STEERING-recovery-reply-order
+
+Feed consumed steering between an earlier reply and the next recovery response.
+The earlier reservation settles and the next reply gets a new ID. Cover
+provider, overflow, silent and progress recovery in `runtime.test.ts`.
+`e2e-transcript-render.mjs` verifies production event projection and the
+existing one-bubble overflow recovery when no steering is consumed.
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and

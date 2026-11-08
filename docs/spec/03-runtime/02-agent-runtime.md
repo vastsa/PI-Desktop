@@ -1,5 +1,10 @@
 # 02. Agent Runtime
 
+Consumed steering closes any pre-steering streaming reservation and separates
+the next assistant reply, including during provider/overflow/silent/progress
+recovery. Recovery stays within the durable turn but never replaces a reply
+located before the steering user row (Refs #1699).
+
 ## 1. Goal
 
 Applied decisions: **D002/D003/D008/D158/D189/D190/D193/D194/D278/D378**.

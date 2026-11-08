@@ -1315,6 +1315,28 @@ function runtimeFirstMismatch(
 }
 
 describe("system transcript reconstruction", () => {
+  it.each(["progressTurnRerunInProgress", "silentTurnRerunInProgress", "providerRetryInProgress", "overflowRecoveryInProgress"])("starts a new recovery reply after consumed steering during %s (#1699)", async (recovery) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent, turnId: "active-turn" });
+    const internal = runtime as any;
+    const progress = assistantMessage({ content: [{ type: "text", text: "Checking the task" }] });
+    await internal.handleAgentEvent({ type: "message_start", message: progress });
+    const firstId = internal.currentAssistant.id;
+    const steering = { role: "user", content: "Are you stuck?", timestamp: Date.now() };
+    internal.pendingSteering.set(steering, { id: "steering-user", toolNames: [] });
+    internal[recovery] = true;
+    await internal.handleAgentEvent({ type: "message_end", message: steering });
+    const next = assistantMessage({ content: [{ type: "text", text: "No, continuing now" }] });
+    await internal.handleAgentEvent({ type: "message_start", message: next });
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    const starts = events.filter(event => event.type === "message_start" && event.message.role === "assistant");
+    expect(starts).toHaveLength(2);
+    expect(starts[1].message.id).not.toBe(firstId);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "message_end", message: expect.objectContaining({ id: firstId, status: "complete" }),
+    }));
+    await runtime.dispose();
+  });
   it("keeps provider usage valid when rebuilding an unchanged prefix", async () => {
     const runtime = createRuntime();
     const internals = runtime as any;
