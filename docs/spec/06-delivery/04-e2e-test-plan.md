@@ -20771,3 +20771,12 @@ Build two actual runtimes with identical configuration and different scratch dir
   with the built app and candidate Host. It drives Chromium pointer/keyboard input
   through the real shell and native Browser view; it does not establish physical
   mouse-device or Windows/Linux coverage. The proposal still needs direction approval.
+
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.

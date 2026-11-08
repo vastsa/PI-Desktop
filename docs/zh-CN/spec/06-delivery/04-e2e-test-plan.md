@@ -1,5 +1,14 @@
 # 04. E2E 测试 Plan
 
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.
+
 ### E2E-FILE-INDEX-git-deadline
 
 对真实测试文件调用 `getWorkspaceFileIndex` 和 `searchWorkspaceFiles`，
