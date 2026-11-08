@@ -4749,3 +4749,19 @@ Closing the connected Browser tab clears its connection. Subsequent session-only
 ### Issue #2164 correction
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+### File Manager line references
+
+Select a saved range in the local File Manager's source editor. **Add to chat**
+and copying then pasting into the Composer insert the same removable
+`gpt.py (85:86)` chip. A single selected line displays as `gpt.py (85)`.
+Only the file path and inclusive source line numbers enter the draft. Other
+clipboard consumers still receive the original plain text. Unsaved edits allow
+plain-text copy and suppress line references until the file is saved or reloaded.
+At the four-reference limit, another paste shows the limit warning and inserts
+the plain text instead of consuming it without changing the draft.
+
+At turn execution the Agent calls the existing Host Read for each distinct
+range and adds its bounded result to the model request. Read uses the saved
+file at execution time, including for queued sends. Source views with no
+project file identity and clipboard data from another project use normal text
+copy/paste. See [File Manager line references ADR](../../adr/file-manager-line-references.md).

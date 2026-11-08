@@ -4,6 +4,7 @@ import {
 } from "@pi-desktop/shared";
 import type { ComposerPluginPart } from "../../../lib/composer-smart-stop";
 import type { ComposerFileReference } from "./model";
+import { fileLineLabel, type FileLineRange } from "@pi-desktop/shared";
 
 export { type ComposerFileReference } from "./model";
 
@@ -42,6 +43,7 @@ export function createFileReference(
     kind?: "image" | "file" | "session" | "directory" | "agent";
     mimeType?: string;
     token?: string;
+    lineRange?: FileLineRange;
     plugin?: ComposerPluginPart;
   },
 ): ComposerFileReference {
@@ -60,6 +62,7 @@ export function createFileReference(
     kind: metadata?.kind ?? (isImageFilePath(path) ? "image" : "file"),
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
     ...(metadata?.token ? { token: metadata.token } : {}),
+    ...(metadata?.lineRange ? { lineRange: metadata.lineRange } : {}),
     ...(metadata?.plugin ? { plugin: metadata.plugin } : {}),
   };
 }
@@ -265,6 +268,7 @@ function chipIconKey(reference: ComposerFileReference): string {
   if (reference.kind === "session") return "session";
   if (reference.kind === "agent") return "agent";
   if (reference.kind === "directory") return "dir";
+  if (reference.lineRange) return "file";
   const mime = reference.mimeType ?? "";
   if (reference.kind === "image" || mime.startsWith("image/")) return "image";
   const name = reference.name;
@@ -283,7 +287,7 @@ function chipSvg(key: string, size = 13): string {
 }
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
-  if (isPluginMark(reference) || reference.kind === "directory" || reference.kind === "agent") return false;
+  if (isPluginMark(reference) || reference.kind === "directory" || reference.kind === "agent" || reference.lineRange) return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 
@@ -325,7 +329,8 @@ function buildChipElement(
         ? () => onOpenSession(token)
         : undefined;
   chip.setAttribute("role", activate ? "button" : "listitem");
-  chip.setAttribute("aria-label", `${reference.name} — ${origin}`);
+  const label = reference.lineRange ? fileLineLabel(reference.name, reference.lineRange) : reference.name;
+  chip.setAttribute("aria-label", `${label} — ${origin}`);
   if (activate) {
     chip.tabIndex = 0;
     // Only a text reference expands into editable text; an image chip opens
@@ -351,7 +356,7 @@ function buildChipElement(
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "composer-chip-name";
-  nameSpan.textContent = reference.name;
+  nameSpan.textContent = label;
 
   const remove = document.createElement("button");
   remove.type = "button";

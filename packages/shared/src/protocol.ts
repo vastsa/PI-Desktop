@@ -524,6 +524,7 @@ export const IPC = {
      * `pluginComposerSuggestionResult`.
      */
     pluginComposerSuggestion: "pi-desktop/plugin/composer/event/suggestion",
+    composerFileLines: "pi-desktop/composer/event/fileLines",
     windowMaximized: "pi-desktop/window/event/maximized",
     windowFullScreen: "pi-desktop/window/event/fullscreen",
     windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",

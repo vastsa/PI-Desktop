@@ -159,6 +159,13 @@ transcript-read API. The core runs no title completion of its own.
    conversation dropped before any read, and the runtime quotes it to the model
    as one `<session_reference name="…" session="…">` block ahead of the user's
    own words
+   A validated File Manager `lineRange` travels as file attachment metadata.
+   The runtime executes one workspace-only Read per distinct range through
+   the normal tool hooks and quotes its bounded result as file context for
+   the provider turn. Permission blocks and read failures use a separate
+   `file_reference_error` block with a `blocked` or `failed` status. The
+   prefetch runs outside assistant tool batches and creates no tool transcript
+   row. Restoring the reference preserves its path and range metadata.
 7. snapshot the effective shell ID and dialect for the turn
 8. start pi turn with the resolved session configuration and effective
    thinking level; HTTP 429 setup and stream failures use the runtime-owned
