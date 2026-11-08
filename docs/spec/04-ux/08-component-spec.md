@@ -4,6 +4,10 @@ Live delegation reconstruction crosses system notices as well as steering
 messages. An ordinary user prompt remains the run boundary. A running Task
 behind a system notice must not become aborted on navigation (Refs #1990).
 
+File Manager Git deadlines settle the command at the deadline even when child
+output pipes remain open. A failed snapshot omits Git badges and does not block
+directory listings or file previews indefinitely (Refs #1731).
+
 ### Copied directory references
 
 Native folder paste adds compact cards in a wrapping row above the editable

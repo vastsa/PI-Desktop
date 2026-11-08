@@ -9,6 +9,14 @@ that historical Tasks are no longer live. Coverage:
 `live-delegation-system-row.test.mjs`; `turn-process.test.mjs` checks the
 matching turn boundary and `turn-process-header.test.mjs` the rendered labels.
 
+### E2E-FILE-MANAGER-git-deadline
+
+`file-manager-git-timeout.test.mjs` drives actual bundled `fm.list` and `fm.read`
+against real fixture files with a controlled child-process boundary. Advance
+the Git deadline while the child never closes: entries and preview complete
+without Git metadata. Existing Electron directory-location and mutation
+journeys cover successful reads, saves and directory browsing.
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and
