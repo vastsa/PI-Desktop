@@ -1,5 +1,7 @@
 # ADR: User-definable modes as staged workflows
 
+::: v-pre
+
 - Status: Implemented candidate
 - Date: 2026-11-07
 - Supersedes: hard-coded `Mode = "plan" | "goal" | "agent"` behavior
@@ -258,3 +260,5 @@ One migration after the current schema:
    every turn and stage completion would have no clear signal.
 4. Project-level definitions. Rejected because of the repository-supplied
    workflow risk (same reason as D202).
+
+:::
