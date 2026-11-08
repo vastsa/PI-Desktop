@@ -46,6 +46,27 @@ export type UsageOperation = Omit<MessageUsage, "operations" | "aggregation"> & 
   operationId: string;
 };
 
+/** One physical provider's share of a session's spend. */
+export type ProviderUsageCost = {
+  /** Desktop provider row; absent for legacy token-only turns. */
+  providerId?: string;
+  /** USD sum of the priced requests only. */
+  total: number;
+  pricedRequests: number;
+  /** Priced requests whose total the provider billed rather than the catalog estimated. */
+  reportedRequests: number;
+  /** Requests with no usable price; `total` is a lower bound when nonzero. */
+  unpricedRequests: number;
+};
+
+/** Host-owned cost rollup of every turn in one session (`session.usageCost`). */
+export type SessionUsageCost = {
+  sessionId: string;
+  turnCount: number;
+  requestCount: number;
+  providers: ProviderUsageCost[];
+};
+
 export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
