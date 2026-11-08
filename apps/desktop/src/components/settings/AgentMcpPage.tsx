@@ -215,18 +215,20 @@ export function AgentMcpPage() {
     }
     const candidateId = editor.draft.id.trim();
     const candidateLabel = editor.draft.label.trim().toLocaleLowerCase();
-    const sameLevel = (editor.level === "global" ? globalServers : projectServers).some(
-      (server) =>
-        server.id !== editor.editing?.id &&
-        (server.id === candidateId ||
-          (!!candidateLabel && server.label.trim().toLocaleLowerCase() === candidateLabel)),
-    );
-    if (sameLevel) {
-      showToast(t("settings.mcpDuplicate"), { variant: "error" });
-      return;
-    }
     setSaving(true);
     try {
+      // 保存校验跟随编辑器的归属，并读取最新列表，避免页面切换后的记录误拦截。
+      const { servers } = await api.listMcpServers({ level: editor.level, projectPath });
+      const sameLevel = servers.some(
+        (server) =>
+          server.id !== editor.editing?.id &&
+          (server.id === candidateId ||
+            (!!candidateLabel && server.label.trim().toLocaleLowerCase() === candidateLabel)),
+      );
+      if (sameLevel) {
+        showToast(t("settings.mcpDuplicate"), { variant: "error" });
+        return;
+      }
       await api.upsertMcpServer(draftToInput(editor.draft, { level: editor.level, projectPath }));
       await load();
       showToast(

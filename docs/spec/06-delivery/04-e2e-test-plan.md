@@ -20371,6 +20371,11 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 
 MCP All uses the selected project for create/import/install, falling back to Global only without a project. Explicit filters retain ownership and an opened editor pins its project. Verify create and market installation across all/project/global and missing-project cases with `mcp-market-owner-user-path.test.mjs`.
 
+Open an editor in project A, switch the page to B and wait for B's list. A/B
+same-name definitions with different IDs do not prevent saving to A. A real
+duplicate name or ID in A still blocks creation; a real duplicate name blocks
+editing. Cover both creating and editing before changing the page selection.
+
 #### E2E-ISSUE-1789
 
 Image-model marking explains chat/default-menu exclusion and distinguishes generation from image input. Collapsed model rows retain an image-model badge. Verify marking, help, collapsing, unmarking and restored chat eligibility through `image-model-disclosure-user-path.test.mjs`.

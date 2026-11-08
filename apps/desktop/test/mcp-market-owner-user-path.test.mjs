@@ -26,7 +26,7 @@ const projectPath = "/projects/market-owner-a";
 const otherProjectPath = "/projects/market-owner-b";
 const entry = BUILTIN_MCP_CATALOG.servers.find((item) => !item.requiredEnv?.length);
 const settings = { defaultMode: "agent", theme: "light", language: "en" };
-let records = [], writes = [], imports = [], hasProject = true;
+let records = [], writes = [], imports = [], hasProject = true, lastProjectRead = null;
 Object.defineProperty(window, "AudioContext", { configurable: true, value: undefined });
 window.piDesktop = {
   platform: "darwin",
@@ -38,6 +38,7 @@ window.piDesktop = {
         data = { projects: hasProject ? [{ id: 1, path: projectPath, name: "Market Project" }, { id: 2, path: otherProjectPath, name: "Other Project" }] : [] };
         break;
       case IPC.invoke.mcpList:
+        if (input.level === "project") lastProjectRead = input.projectPath;
         data = { servers: records.filter((record) => record.level === input.level &&
           (record.level === "global" || record.projectPath === input.projectPath)), statuses: [] };
         break;
@@ -103,6 +104,8 @@ async function selectOtherProject() {
   await until(() => document.querySelector('[role="option"]'), "Project options missing");
   click([...document.querySelectorAll('[role="option"]')].find(node => node.textContent.trim() === "Other Project"));
   await until(() => document.querySelector('.agent-capability-project-select').textContent.includes("Other Project"), "Project did not change");
+  await until(() => lastProjectRead === otherProjectPath, "Other project's list did not load");
+  await new Promise(requestAnimationFrame);
 }
 window.mcpMarketOwnerProbe = async () => {
   const results = [];
@@ -150,6 +153,43 @@ window.mcpMarketOwnerProbe = async () => {
     await until(() => marketAction()?.disabled, "Installed state must follow the destination owner");
     results.push({ filter, project, otherOwner, level: writes[0].level });
   }
+  const ownershipCases = [];
+  for (const action of ["create", "edit"]) {
+    const conflicts = action === "edit" ? ["other-project", "target-label"] : ["other-project", "target-label", "target-id"];
+    for (const conflict of conflicts) {
+      flushSync(() => root.render(null));
+      hasProject = true;
+      writes = [];
+      lastProjectRead = null;
+      const existing = { id: "existing", label: "Existing fixture", command: "fixture-server", transport: "stdio", enabled: true, level: "project", projectPath };
+      records = action === "edit" ? [existing] : [];
+      records.push({ ...existing, id: "other-id", projectPath: otherProjectPath });
+      if (conflict !== "other-project") records.push({ ...existing,
+        id: conflict === "target-id" ? "existing-fixture" : "conflicting-id",
+        label: conflict === "target-id" ? "Different name" : "Existing fixture" });
+      useAppStore.setState({ settings, toasts: [], workspace: { path: projectPath, name: "Market Project" } });
+      flushSync(() => root.render(<><AgentMcpPage /><ToastHost /></>));
+      await until(() => lastProjectRead === projectPath, "Target project's list did not load");
+      await new Promise(requestAnimationFrame);
+      if (action === "edit") {
+        click(document.querySelector('[aria-label="' + i18n.t("settings.editMcpOf", { name: "Existing fixture" }) + '"]'));
+      } else {
+        click(button(i18n.t("settings.addMcp")));
+        type(document.querySelector('input[placeholder="' + i18n.t("extensions.mcp.labelPlaceholder") + '"]'), "Existing fixture");
+        type(document.querySelector('input[placeholder="-y @upstash/context7-mcp"]'), "-y fixture-server");
+      }
+      await selectOtherProject();
+      click(button(i18n.t("common.save")));
+      if (conflict === "other-project") {
+        await until(() => writes.length === 1, "Other project's duplicate blocked a valid " + action);
+        assert(writes[0].projectPath === projectPath, "Save changed the pinned owner");
+      } else {
+        await until(() => [...document.querySelectorAll('.toast-message')].some(node => node.textContent === i18n.t("settings.mcpDuplicate")), "Target conflict was not rejected");
+        assert(writes.length === 0, "Conflicting save reached upsert");
+      }
+      ownershipCases.push({ action, conflict });
+    }
+  }
   // An existing global or project record retains its owner after the page's
   // selected project changes while the editor is open.
   for (const level of ["global", "project"]) {
@@ -157,7 +197,9 @@ window.mcpMarketOwnerProbe = async () => {
     hasProject = true;
     writes = [];
     records = [{ id: "existing", label: "Existing fixture", command: "fixture-server", transport: "stdio", enabled: true, level,
-      ...(level === "project" ? { projectPath } : {}) }];
+      ...(level === "project" ? { projectPath } : {}) },
+      { id: "other-id", label: "Existing fixture", command: "fixture-server", transport: "stdio", enabled: true, level: "project", projectPath: otherProjectPath }];
+    lastProjectRead = null;
     useAppStore.setState({ settings, workspace: { path: projectPath, name: "Market Project" } });
     flushSync(() => root.render(<AgentMcpPage />));
     await until(() => document.querySelector('.agent-capability-row'), "Existing record missing");
@@ -183,7 +225,7 @@ window.mcpMarketOwnerProbe = async () => {
   await until(() => [...document.querySelectorAll(".toast-message")]
     .some((node) => node.textContent === i18n.t("settings.selectProjectFirst")), "Missing project must report an error");
   assert(writes.length === 0, "Missing project must never save globally");
-  return { results, missingProjectBlocked: true };
+  return { results, ownershipCases, missingProjectBlocked: true };
 };
 `;
 
@@ -230,7 +272,7 @@ app.whenReady().then(async () => {
     });
     let output = "";
     for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => { output += chunk; });
-    const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    const timer = setTimeout(() => child.kill("SIGKILL"), 55_000);
     let code;
     try {
       code = await new Promise((resolve, reject) => {
@@ -243,6 +285,7 @@ app.whenReady().then(async () => {
     assert(line, output);
     const result = JSON.parse(line.slice("MCP_MARKET_OWNER ".length));
     assert.equal(result.results.length, 6);
+    assert.equal(result.ownershipCases.length, 5);
     assert.equal(result.missingProjectBlocked, true);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });

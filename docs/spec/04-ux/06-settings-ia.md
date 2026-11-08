@@ -785,6 +785,10 @@ system while preserving their different data ownership:
   project when present and otherwise Global. Explicit Global/Project retain
   their ownership. An opened editor pins its project owner; changing the page's
   selected project cannot move an existing definition (#1953).
+  Save refreshes the list at the editor's pinned destination before checking
+  duplicate IDs/names. A same-name definition in another project cannot block
+  a valid save; a conflict in the target project still blocks it. Host upsert
+  retains its authoritative destination validation for concurrent writes.
 - Inside the panel, each level is a group header row — level name, resolved
   `.agents` path in mono, localized count — followed by its rows. Lists flow
   at natural page height like every other Settings surface; the page scrolls
