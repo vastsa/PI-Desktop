@@ -43,10 +43,46 @@ describe("session job controls", () => {
     await stop.execute("stop", {});
     expect(dispatch).not.toHaveBeenCalled();
     await wait.execute("one", { job: { kind: "delegation", id: "delegate" }, timeoutSeconds: 12 });
-    expect(delegates.wait.execute).toHaveBeenLastCalledWith("one", { job: undefined, delegationIds: ["delegate"], timeoutSeconds: 12 }, undefined, undefined);
+    expect(delegates.wait.execute).toHaveBeenLastCalledWith("one", { delegationIds: ["delegate"], timeoutSeconds: 12 }, undefined, undefined);
     await stop.execute("one", { job: { kind: "delegation", id: "delegate" } });
     expect(delegates.stop.execute).toHaveBeenLastCalledWith("one", { delegationIds: ["delegate"] }, undefined, undefined);
   });
+
+  it.each([undefined, [], ["delegate"], ["delegate", "delegate"]].map(delegationIds => ({ delegationIds })))(
+    "accepts redundant delegation selectors (%j) and ignores single-job wait options",
+    async ({ delegationIds }) => {
+      const { wait, stop, dispatch, delegates } = fixture();
+      const params = {
+        job: { kind: "delegation", id: "delegate" }, delegationIds,
+        mode: "any", minCompleted: 2, timeoutSeconds: 180,
+      };
+      const signal = new AbortController().signal;
+      const update = vi.fn();
+      const waitResult = await wait.execute("wait", params, signal, update);
+      expect(waitResult.content).toEqual([{ type: "text", text: "delegate report" }]);
+      expect(delegates.wait.execute).toHaveBeenCalledWith("wait", {
+        delegationIds: ["delegate"], timeoutSeconds: 180,
+      }, signal, update);
+      await stop.execute("stop", params, signal, update);
+      expect(delegates.stop.execute).toHaveBeenCalledWith("stop", {
+        delegationIds: ["delegate"],
+      }, signal, update);
+      expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([["other"], ["delegate", "other"], "delegate", null].map(delegationIds => ({ delegationIds })))(
+    "rejects conflicting or malformed delegation selectors (%j) before dispatch",
+    async ({ delegationIds }) => {
+      const { wait, stop, dispatch, delegates } = fixture();
+      const params = { job: { kind: "delegation", id: "delegate" }, delegationIds };
+      await expect(wait.execute("wait", params)).rejects.toThrow("omit delegationIds or pass only job.id");
+      await expect(stop.execute("stop", params)).rejects.toThrow("omit delegationIds or pass only job.id");
+      expect(delegates.wait.execute).not.toHaveBeenCalled();
+      expect(delegates.stop.execute).not.toHaveBeenCalled();
+      expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["delegationIds", "mode", "minCompleted"])("rejects mixed selectors before dispatch (%s)", async key => {
     const { wait, stop, dispatch } = fixture();

@@ -13,7 +13,7 @@ import type { RuntimeHost } from "./host-client.js";
 const jobSchema = Type.Object({
   kind: Type.Union([Type.Literal("bash"), Type.Literal("delegation")]),
   id: Type.String({ minLength: 1 }),
-}, { additionalProperties: false, description: "An explicit job returned by Bash, Task or TaskList." });
+}, { additionalProperties: false, description: "An explicit job returned by Bash, Task or TaskList. For delegation jobs, omit delegationIds or pass an empty array or only this job's id; mode and minCompleted are ignored. For Bash jobs, omit delegationIds, mode and minCompleted." });
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -26,8 +26,13 @@ function target(params: unknown): JobReference | undefined {
       typeof job.id !== "string" || !job.id.trim() || Object.keys(job).some(key => key !== "id" && key !== "kind")) {
     throw new Error("job must contain a kind (bash or delegation) and a nonempty id");
   }
-  if (["delegationIds", "mode", "minCompleted"].some(key => params[key] !== undefined)) {
-    throw new Error("job cannot be combined with delegationIds, mode or minCompleted");
+  if (job.kind === "delegation") {
+    if (params.delegationIds !== undefined && (!Array.isArray(params.delegationIds) ||
+        params.delegationIds.some(id => id !== job.id))) {
+      throw new Error("A delegation job targets one subagent: omit delegationIds or pass only job.id. To select multiple subagents, omit job and use delegationIds.");
+    }
+  } else if (["delegationIds", "mode", "minCompleted"].some(key => params[key] !== undefined)) {
+    throw new Error("A Bash job cannot be combined with delegationIds, mode or minCompleted. Pass only job and optional timeoutSeconds; for subagents, omit job and use delegationIds.");
   }
   return { kind: job.kind, id: job.id };
 }
@@ -96,7 +101,7 @@ export function buildJobTools(
       const job = target(params);
       if (!job) return delegates.wait.execute(id, params, signal, update);
       if (job.kind === "delegation") {
-        return delegates.wait.execute(id, { ...params, job: undefined, delegationIds: [job.id] }, signal, update);
+        return delegates.wait.execute(id, { delegationIds: [job.id], timeoutSeconds: params.timeoutSeconds }, signal, update);
       }
       const seconds = params.timeoutSeconds ?? options.defaultTimeoutSeconds;
       if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 1 || seconds > options.maxTimeoutSeconds) {
