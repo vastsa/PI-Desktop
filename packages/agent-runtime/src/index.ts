@@ -2,6 +2,17 @@ export * from "./host-client.js";
 export * from "./custom-system-prompt.js";
 export * from "./model-capabilities.js";
 export * from "./mode-prompts.js";
+export {
+  builtinModeDefinition,
+  builtinModeSource,
+  loadModeDefinitions,
+  MAX_USER_MODES,
+  parseStrictModeYaml,
+  splitModeDocument,
+} from "./mode-definitions.js";
+export type { LoadedModeDefinitions, UserModeDocument } from "./mode-definitions.js";
+export { COMPLETE_STAGE_TOOL_NAME } from "./modes/complete-stage-tool.js";
+export { modePolicyLevel } from "./modes/mode-policy.js";
 export * from "./runtime.js";
 export * from "./parent-host-proxy.js";
 export * from "./plugin-skills.js";

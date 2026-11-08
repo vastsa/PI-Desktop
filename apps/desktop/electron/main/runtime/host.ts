@@ -230,6 +230,10 @@ export function createHostRuntime({
             const normalizedMode = typeof q.mode === "string" ? q.mode : undefined;
             if (normalizedMode === "agent" || normalizedMode === "plan" || normalizedMode === "goal") {
               sessionMode = normalizedMode;
+            } else if (normalizedMode) {
+              // A user-defined mode id: host-core reports its tool policy as
+              // "agent" or "plan"; anything else stays restricted, never open.
+              sessionMode = "plan";
             } else if (q.sessionId && runtimeState.host) {
               try {
                 const detail = await runtimeState.host.call<{
@@ -243,6 +247,8 @@ export function createHostRuntime({
                 const session = detail?.session;
                 if (session?.mode === "agent" || session?.mode === "plan" || session?.mode === "goal") {
                   sessionMode = session.mode;
+                } else if (typeof session?.mode === "string" && session.mode) {
+                  sessionMode = "plan";
                 }
                 if (session?.providerId && session?.modelId) {
                   modelKey = `${session.providerId}/${session.modelId}`;
@@ -331,6 +337,8 @@ export function createHostRuntime({
       );
     } else if (method === "plans.changed") {
       sendToRenderer(IPC.event.plansChanged, params);
+    } else if (method === "modes.changed") {
+      sendToRenderer(IPC.event.modesChanged, params);
     } else if (method === "todos.changed") {
       sendToRenderer(IPC.event.todosChanged, params);
     } else if (method === "configSync.changed") {

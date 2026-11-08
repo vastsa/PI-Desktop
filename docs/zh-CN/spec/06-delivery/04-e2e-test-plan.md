@@ -10443,6 +10443,45 @@ MCP All 在创建、导入、安装时使用所选项目，无项目才回退全
 
 压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
 
+
+## User-defined mode workflow acceptance
+
+Candidate command: `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-mode-definitions.mjs`
+with `PI_SCRATCH_DIR` set to an isolated test directory. No model API is called.
+
+1. Configure a session with a two-stage definition snapshot. Start a durable
+   turn and claim the first contract stage.
+2. Request completion without its required artifact; observe a failed gate.
+3. Supply the artifact through stage completion; verify its exact disk content
+   and the waiting-for-approval state.
+4. Settle the first turn, approve with the current revision and claim the next
+   stage with approval provenance.
+5. Submit the stage's command gate. A changed command must fail with
+   `MODE_GATE_MISMATCH` before execution.
+6. Execute the exact command through `tools.execute`; consume the Host-recorded
+   result and observe finished, no open run, and session mode Agent.
+
+Companion tests: `mode_runs::*` and `rpc::modes_rpc::tests::*` cover migration,
+recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
+`mode-definitions-renderer` and `mode-runs-main` cover source editing, selection,
+run controls and Main dispatch. Runtime `modes/*` covers stage completion and
+compaction injection.
+#### E2E-ISSUE-2173: Redundant delegation job selectors
+
+- Entry: build shared/agent-runtime/host-runtime and Host, then run
+  `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-task-job-selectors.mjs`.
+- Preconditions: isolated Host data/workspace and a deterministic localhost
+  provider; production parent and delegate loops, with no external model account.
+- Steps: start a delegate; wait with both its job reference and matching
+  delegationIds; re-read with empty delegationIds and single-job mode/minCompleted;
+  start another delegate, hold its provider response, stop it with both selectors,
+  and confirm its stopped state through TaskWait.
+- Expected: reports remain readable, redundant selectors do not cause errors,
+  single-job mode/minCompleted are ignored, and cancellation settles the target.
+  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+- Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
+- Acceptance: wait, report re-read and running-delegate cancellation complete
+  through the real tool loop. Milestone: maintenance. Status: automated.
 #### E2E-ISSUE-1707
 
 生产 SSH 引导使用合成 Darwin 目标，按 IPC 形态传递错误并解析界面提示：显示 Linux 安装包范围，不下载或上传。Linux 及其他安装失败提示保持原行为。

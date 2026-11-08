@@ -44,6 +44,8 @@ import { ApprovalBroker, type ApprovalPort } from "./approvals.js";
 import { racpError } from "./errors.js";
 import { EventHub, type SubscribeParams, type SubscribeResult, type SubscriptionSink } from "./event-log.js";
 import {
+  TRUSTED_MODE_ORIGIN,
+  type TrustedModeOrigin,
   MemoryQueueStore,
   RandomIds,
   SystemClock,
@@ -91,6 +93,8 @@ export type QueueEntryView = {
 };
 
 export type StartTurnParams = {
+  /** In-process only; a Host-started mode run continuation never queues. */
+  [TRUSTED_MODE_ORIGIN]?: TrustedModeOrigin;
   sessionId: string;
   idempotencyKey?: string;
   /** Main-private identity captured when authorizing a Live work scope. */
@@ -517,6 +521,11 @@ export class AgentHost {
     });
     const admission: RacpTurnAdmission = forceQueue ? "queue" : params.admission ?? "reject_if_busy";
     const busy = this.isBusy(state);
+    const modeOrigin = params[TRUSTED_MODE_ORIGIN];
+    if (modeOrigin && (busy || forceQueue)) {
+      // Queued user input goes first; its turn continues the run when it ends.
+      throw racpError("AGENT_BUSY", "the session already has an active or queued turn");
+    }
     let turn: TurnRecord;
     if (busy || forceQueue) {
       if (admission === "reject_if_busy") {
@@ -548,6 +557,7 @@ export class AgentHost {
       this.notifyQueue(state.id);
     } else {
       const started = await this.runtime.prompt({
+        ...(modeOrigin ? { [TRUSTED_MODE_ORIGIN]: modeOrigin } : {}),
         sessionId: state.id,
         content: params.input.text,
         ...(params.input.sessionMessageId ? { sessionMessageId: params.input.sessionMessageId } : {}),
