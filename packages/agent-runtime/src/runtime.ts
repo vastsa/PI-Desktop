@@ -2161,11 +2161,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Editing workflow.
       `Editing workflow: inside the advertised workspace, use Edit for small, uniquely anchored changes and Write for new files or intentional whole-file rewrites. Never modify the same path concurrently. Do not use shell apply_patch, git apply, patch, or hand-edited unified-diff files. On failure, diagnose the cause, refresh content or anchors with Read or a complete tool-provided reveal when needed, and correct the payload before retrying. After three failed edit attempts on the same path in one user turn, stop editing that path, report the exact error, and continue unblocked work. For an authorized worktree outside the advertised workspace, use a guarded, deterministic Bash edit that aborts on unexpected content, then verify the diff.`,
       // Shell dialect and scratch variable are selected by host-core.
-      commandShellGuidance(this.commandShell, this.scratchDir),
+      commandShellGuidance(this.commandShell),
       // Session scratch directory (D114).
       ...(this.scratchDir
         ? [
-            `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
+            `Store ad-hoc temporary and intermediate files in the session scratch directory using ${shellScratchVariable(this.commandShell)}. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
           ]
         : []),
       // Inline visualizations (ADR gen-ui-inline-visualization).
@@ -2538,6 +2538,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
+        ...(this.scratchDir ? [
+          `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}).`,
+        ] : []),
       ].join("\n\n"), this.modeState.instructions()),
     };
     const composed = Object.values(this.composedSections).filter(Boolean).join("\n\n");

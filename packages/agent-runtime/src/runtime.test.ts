@@ -2699,6 +2699,19 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("keeps session scratch paths behind the shared system prefix (#1926)", async () => {
+    const first = createRuntime({ scratchDir: "/fixture/scratch/one", projectMemory: "shared memory" });
+    const second = createRuntime({ scratchDir: "/fixture/scratch/two", projectMemory: "shared memory" });
+    const firstPrompt = first as unknown as { composedSections: Record<string, string> };
+    const secondPrompt = second as unknown as { composedSections: Record<string, string> };
+    expect(firstPrompt.composedSections.runtime).toBe(secondPrompt.composedSections.runtime);
+    expect(firstPrompt.composedSections.runtime).not.toContain("/fixture/scratch/one");
+    expect(firstPrompt.composedSections.context).toContain("/fixture/scratch/one");
+    expect(secondPrompt.composedSections.context).toContain("/fixture/scratch/two");
+    await first.dispose();
+    await second.dispose();
+  });
+
   it("sends the default Bash timeout and preserves explicit overrides", async () => {
     const host = {
       call: vi.fn().mockResolvedValue({ ok: true, content: "done" }),
