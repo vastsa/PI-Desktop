@@ -27,6 +27,20 @@ replacement exposes Retry; retry success mounts the editor. Old responses must
 not overwrite recovered options. Successful options remain lazy rather than
 being fetched on every subsequent poll.
 
+## E2E-SIDEBAR-upgrade-layout-recovery
+
+- In an isolated profile, retain two synthetic Projects and organize metadata.
+  Close one Project and restart with the same app data root but fresh Chromium
+  storage. Restore the retained Project and metadata; keep the closed tab closed.
+- Migrate a valid legacy cache, including an empty list. If neither copy is valid,
+  recover the Host catalog once; preserve subsequent explicit closes.
+- Reject secondary-renderer/subframe IPC and oversized/invalid writes. Preserve
+  unreadable backups, newer user edits, and the last good file on failure.
+- Relocate internal retained paths and metadata keys without changing external
+  paths, display names or the source profile.
+- Automated path: `node scripts/e2e-sidebar-recovery.mjs`, plus the sidebar backup,
+  recovery, bootstrap and offline relocation regression tests.
+
 > **翻译说明：** 本页是与 [英文源规格](/spec/06-delivery/04-e2e-test-plan) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
@@ -10391,3 +10405,19 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 - runtime 测试补充新输入和父回合取消、延迟 RPC 错误、旧 Host/远程能力缺失、混合选择器拒绝、原委派控制及无子代理配置的工具注册。
 - Host 测试覆盖先完成后等待、重复读取、Unicode 截断、归属查找、幂等停止与停止请求待确认。Windows 子孙进程清理测试仍须执行，原生失败单独报告。
 - 在子进程已退出、监管任务尚未排空管道时请求停止，检查原退出结果、最终输出和重复读取的耗时。延迟能力探测或第一次 Host 观察，检查等待总时限。Electron 会话记录用例渲染尚待确认的 Bash 停止请求和混合作业列表。
+
+#### E2E-ISSUE-1789
+
+生图标记说明聊天和默认菜单移除效果，并区分图片生成与输入；折叠行保留生图标记。通过真实组件验证标记、帮助、折叠、取消及恢复聊天资格。
+
+#### E2E-ISSUE-2162
+
+关闭已连接浏览器标签时清除连接；会话级工具使用同一会话选中的替代页，显式已关闭目标仍失败，导航不复活不可见旧标签。验证关闭、重开、snapshot、fill、click、navigate 和最终关闭。
+
+#### E2E-ISSUE-2163
+
+末尾分页包含最后一条消息之后追加的检查点，中间页仍只读取生效及页内记录。验证消息、压缩追加后读取及 Host 重启，最新检查点与上下文估算保留，历史用量不变。
+
+#### E2E-ISSUE-2164
+
+压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。

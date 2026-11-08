@@ -130,8 +130,9 @@ export function Composer({
         providerModels,
         providers,
         sessionCompactions,
+        activeSessionSummary,
       ),
-    [liveMessages, providerModels, providers, sessionCompactions],
+    [liveMessages, providerModels, providers, sessionCompactions, activeSessionSummary],
   );
   const configureActiveSession = useAppStore((s) => s.configureActiveSession);
   const showToast = useAppStore((s) => s.showToast);

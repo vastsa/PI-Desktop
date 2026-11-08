@@ -546,9 +546,10 @@ key does not change database schemas, transcript evidence or saved context hunks
 
 #### Renderer sidebar preferences (D093)
 
-Sidebar organization is non-authoritative presentation state stored
-best-effort under renderer localStorage key
-`pi.desktop.sidebarPreferences`:
+Sidebar organization is non-authoritative presentation state. Main keeps an
+atomic `sidebar-preferences.json` backup in the selected app data root;
+renderer localStorage key `pi.desktop.sidebarPreferences` supplies first paint.
+See [sidebar layout recovery](../../adr/sidebar-layout-recovery.md).
 
 ```ts
 type SidebarPreferences = {
@@ -580,9 +581,16 @@ type SidebarPreferences = {
   Missing or invalid values fall back to stable path order; pinned and archived
   priority remains applied before manual order. Session `manual`/`order` remain
   compatibility fields and are not exposed by the sidebar.
-- Missing, malformed, or unwritable preferences fall back to empty metadata,
-  `recent`, archived hidden, and the host-selected project. Preference failure
-  never blocks a host operation.
+- Restore the application backup before bootstrap persists the selected Project.
+  Without a backup, migrate a valid legacy cache, including an explicitly empty
+  tab list. Only if neither copy is valid, recover registered Projects from
+  `projects.list`. Existing valid layouts never reopen intentionally closed tabs.
+- An unreadable backup must not be replaced with empty startup state; a failed
+  catalog read must not persist an empty recovery result. Writes are limited to
+  2 MiB, flushed and atomically renamed through dedicated trusted-Main-frame IPC.
+  Project/Session/Workspace authority remains with Rust. Offline storage
+  relocation remaps internal retained paths and Project metadata keys while
+  preserving external Projects and display labels.
 - The record never contains transcript content, tool arguments, provider
   configuration, or secrets. Clearing it changes presentation only.
 - `openProjectPaths` retains sidebar tabs. The selected workspace remains
@@ -1621,6 +1629,11 @@ offset of every message and compaction line, plus the file identity and complete
 prefix length those offsets describe. Serving a window seeks to its first
 selected line instead of parsing the history in front of it, so the common
 cached read is proportional to the requested page. Consequences:
+
+- A bounded tail page includes checkpoints appended after its last message,
+  so reopening a just-compacted session returns the newest checkpoint and its
+  context estimate. Middle pages retain the active checkpoint and only those
+  within their message offsets; they do not load the complete chain (#2163).
 
 - The layout is derived data, cached in memory and, when reliable file identity
   is available, in the sibling `<sessionId>.jsonl.layout` file. Unix uses the

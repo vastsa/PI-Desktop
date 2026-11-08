@@ -1999,11 +1999,16 @@ references. Bash summaries contain no logs. The command preview retains the
 first 1 KiB at a UTF-8 boundary. `commandTruncated` marks a shortened command
 independently of output truncation; older Hosts may omit the field.
 
-TaskWait and TaskStop accept one explicit `job`. Combining it with
-`delegationIds`, `mode` or `minCompleted` is an error. Omitting it preserves
-the existing delegation defaults, including stop-all-delegates. A Bash job
-never joins those implicit target sets. A legacy backgroundTaskId can be
-addressed as `{kind: "bash", id: backgroundTaskId}`.
+TaskWait and TaskStop accept one explicit `job`. For a delegation job,
+`delegationIds` may be omitted, empty, or contain only that job's id (duplicates
+are harmless); conflicting or malformed selectors fail before dispatch with
+instructions to omit `job` for multi-subagent selection. `mode` and
+`minCompleted` are ignored for this single-target form; TaskWait still honors
+`timeoutSeconds`. For a Bash job, combining it with `delegationIds`, `mode` or
+`minCompleted` remains an error with corrective usage instructions. Omitting
+`job` preserves the existing delegation defaults, including stop-all-delegates.
+A Bash job never joins those implicit target sets. A legacy backgroundTaskId
+can be addressed as `{kind: "bash", id: backgroundTaskId}`.
 
 For Bash, TaskWait returns a snapshot with state, nullable exitCode,
 stopRequested, separate stdout/stderr tails and truncated. Each stream is
