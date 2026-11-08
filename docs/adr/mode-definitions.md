@@ -1,6 +1,6 @@
 # ADR: User-definable modes as staged workflows
 
-- Status: Proposed
+- Status: Implemented candidate
 - Date: 2026-11-07
 - Supersedes: hard-coded `Mode = "plan" | "goal" | "agent"` behavior
   (contract-mode grouping D198). The Plan approval flow in ADR 0053 is
@@ -209,7 +209,7 @@ One migration after the current schema:
 - `mode_gate_results`: run, stage, gate index, action, result, evidence and
   timestamp.
 - Existing `plan_approvals` rows stay valid. The builtin `plan` reads them in
-  its `ask: user` gate.
+  the existing Plan proposal pipeline.
 
 ### 9. Builtins and compatibility
 

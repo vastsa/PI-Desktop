@@ -28,7 +28,9 @@ fn canonical_root(workspace: &Path) -> Result<PathBuf> {
 /// `root/relative` after the lexical rules. Nothing is touched on disk.
 fn lexical_target(root: &Path, relative: &str) -> Result<PathBuf> {
     if !valid_artifact_path(relative) {
-        return Err(path_error(format!("`{relative}` is not a workspace-relative path")));
+        return Err(path_error(format!(
+            "`{relative}` is not a workspace-relative path"
+        )));
     }
     let mut target = root.to_path_buf();
     for segment in relative.split('/') {
@@ -166,11 +168,7 @@ fn heading_text(line: &str) -> Option<String> {
     if !rest.starts_with(|ch: char| ch.is_whitespace()) {
         return None;
     }
-    let text = rest
-        .trim()
-        .trim_end_matches('#')
-        .trim_end()
-        .to_string();
+    let text = rest.trim().trim_end_matches('#').trim_end().to_string();
     Some(text)
 }
 

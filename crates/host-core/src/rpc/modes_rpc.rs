@@ -17,7 +17,8 @@ use crate::state::AppState;
 use crate::tools::ToolsExecuteParams;
 
 fn parse<T: DeserializeOwned>(value: Value) -> Result<T, JsonRpcError> {
-    serde_json::from_value(value).map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))
+    serde_json::from_value(value)
+        .map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))
 }
 
 /// `MODE_*` failures keep their code as the wire `errorCode`; anything else
@@ -26,7 +27,11 @@ pub(super) fn error(error: anyhow::Error) -> JsonRpcError {
     let message = error.to_string();
     let code = message.split(':').next().unwrap_or_default().trim();
     if code.starts_with("MODE_") && code.chars().all(|ch| ch.is_ascii_uppercase() || ch == '_') {
-        let rpc_code = if code.ends_with("_NOT_FOUND") { 1007 } else { 1002 };
+        let rpc_code = if code.ends_with("_NOT_FOUND") {
+            1007
+        } else {
+            1002
+        };
         let code = code.to_string();
         rpc_err(rpc_code, message, &code)
     } else {

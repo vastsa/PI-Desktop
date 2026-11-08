@@ -17,7 +17,10 @@ const COLUMNS: &str = "id, session_id, mode_id, snapshot_hash, input, stage_id, 
 
 const OPEN_STATES: &str = "('running', 'waiting', 'paused', 'budget_exhausted')";
 
-fn conversion(index: usize, error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {
+fn conversion(
+    index: usize,
+    error: impl std::error::Error + Send + Sync + 'static,
+) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(index, rusqlite::types::Type::Text, Box::new(error))
 }
 
@@ -198,9 +201,7 @@ pub struct GateRecord<'a> {
 }
 
 pub fn record_gate(conn: &Connection, run_id: &str, record: GateRecord<'_>) -> Result<()> {
-    let evidence = record
-        .evidence
-        .map(|text| tail(text, MAX_EVIDENCE_BYTES));
+    let evidence = record.evidence.map(|text| tail(text, MAX_EVIDENCE_BYTES));
     conn.prepare_cached(
         "INSERT INTO mode_gate_results
            (run_id, stage_id, gate_index, action, passed, evidence, tool_call_id, created_at)

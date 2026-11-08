@@ -16,8 +16,8 @@ pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
 pub const NOTIFICATION_KEEP: i64 = 200;
 
 mod migrations;
-mod model;
 mod mode_runs_migration;
+mod model;
 mod model_discovery_migration;
 mod plugin_providers_migration;
 mod project_groups;

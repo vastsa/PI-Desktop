@@ -90,7 +90,11 @@ pub struct ModeStage {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ModeGate {
     Require {
         artifact: String,
@@ -210,7 +214,10 @@ fn check(definition: &ModeDefinition, mode: &str) -> Result<()> {
             return Err(invalid(format!("artifact id `{}` is invalid", artifact.id)));
         }
         if !valid_artifact_path(&artifact.path) {
-            return Err(invalid(format!("artifact `{}` has an unsafe path", artifact.id)));
+            return Err(invalid(format!(
+                "artifact `{}` has an unsafe path",
+                artifact.id
+            )));
         }
         if artifact.required_headings.len() > MAX_HEADINGS
             || artifact.required_headings.iter().any(|heading| {

@@ -87,7 +87,12 @@ impl Harness {
         .unwrap()
     }
 
-    async fn bash(&self, call_id: &str, command: &str, gate: Option<Value>) -> Result<Value, Value> {
+    async fn bash(
+        &self,
+        call_id: &str,
+        command: &str,
+        gate: Option<Value>,
+    ) -> Result<Value, Value> {
         let shell = crate::tools::shell::default_shell_id();
         let mut params = json!({
             "sessionId": self.session_id,
@@ -222,13 +227,50 @@ async fn run_gates_use_the_exit_code_tools_execute_recorded() {
         .await
         .unwrap();
     assert_eq!(verify["status"], "run");
-    let failed = h
-        .bash(
-            "gate-1",
-            FAIL,
-            Some(json!({ "runId": run_id, "gateIndex": 0 })),
-        )
+    // Host-origin continuations use accept-edits even in an Auto session.
+    // Resolve the real permission request instead of leaving this test waiting.
+    let state = h.state.clone();
+    let tx = h.tx.clone();
+    let shell = crate::tools::shell::default_shell_id();
+    let execute = tokio::spawn(handle_request(
+        state,
+        "tools.execute",
+        json!({
+            "sessionId": h.session_id, "turnId": "t2", "toolCallId": "gate-1",
+            "toolName": "Bash", "args": { "command": FAIL }, "mode": "agent",
+            "expectedCommandShellId": shell,
+            "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(shell),
+            "modeGate": { "runId": run_id, "gateIndex": 0 }
+        }),
+        tx,
+    ));
+    let mut observed_mode_events = Vec::new();
+    let approval = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let line = h.rx.recv().await.expect("permission stream remains open");
+            let event: Value = serde_json::from_str(&line).unwrap();
+            if event["method"] == "modes.changed" {
+                observed_mode_events.push(event["params"].clone());
+            }
+            if event["method"] == "permissions.request" {
+                break event;
+            }
+        }
+    })
+    .await
+    .expect("host continuation must request approval");
+    h.call(
+        "permissions.resolve",
+        json!({
+            "requestId": approval["params"]["requestId"], "decision": "allow-once"
+        }),
+    )
+    .await
+    .unwrap();
+    let failed = tokio::time::timeout(std::time::Duration::from_secs(10), execute)
         .await
+        .unwrap()
+        .unwrap()
         .unwrap();
     assert_eq!(failed["ok"], false);
     let blocked = h
@@ -239,10 +281,14 @@ async fn run_gates_use_the_exit_code_tools_execute_recorded() {
         .await
         .unwrap();
     assert_eq!(blocked["status"], "blocked");
-    assert!(blocked["message"].as_str().unwrap().contains("exited with code 3"));
+    assert!(blocked["message"]
+        .as_str()
+        .unwrap()
+        .contains("exited with code 3"));
     assert_eq!(blocked["run"]["state"], "waiting");
     assert_eq!(blocked["run"]["waitReason"], "retries");
-    assert!(h.mode_events().len() >= 6);
+    observed_mode_events.extend(h.mode_events());
+    assert!(observed_mode_events.len() >= 6);
 
     let got = h
         .call("modes.get", json!({ "sessionId": h.session_id }))
@@ -313,7 +359,9 @@ async fn configure_validates_the_mode_snapshot() {
     assert_eq!(configured["session"]["mode"], "checks");
     let st = h.state.lock().await;
     assert_eq!(
-        sessions::session_mode(&st.db, &h.session_id).unwrap().as_deref(),
+        sessions::session_mode(&st.db, &h.session_id)
+            .unwrap()
+            .as_deref(),
         Some("checks")
     );
 }
@@ -346,7 +394,9 @@ async fn legacy_goal_activation_is_disabled() {
     assert_eq!(error_code(&submitted), "PLAN_GOAL_ACTIVATION_DISABLED");
     let st = h.state.lock().await;
     assert_eq!(
-        sessions::session_mode(&st.db, &h.session_id).unwrap().as_deref(),
+        sessions::session_mode(&st.db, &h.session_id)
+            .unwrap()
+            .as_deref(),
         Some("agent")
     );
 }

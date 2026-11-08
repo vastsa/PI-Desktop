@@ -91,14 +91,12 @@ fn each_invalid_rule_is_rejected() {
             "kind": "run", "command": "x".repeat(2001), "timeoutMinutes": 5, "onFail": { "retries": 0 }
         }])
     });
-    rejects(|v| {
-        v["stages"][0]["exit"] =
-            json!([{ "kind": "run", "command": "true", "timeoutMinutes": 61, "onFail": { "retries": 0 } }])
-    });
-    rejects(|v| {
-        v["stages"][0]["exit"] =
-            json!([{ "kind": "run", "command": "true", "timeoutMinutes": 0, "onFail": { "retries": 0 } }])
-    });
+    rejects(
+        |v| v["stages"][0]["exit"] = json!([{ "kind": "run", "command": "true", "timeoutMinutes": 61, "onFail": { "retries": 0 } }]),
+    );
+    rejects(
+        |v| v["stages"][0]["exit"] = json!([{ "kind": "run", "command": "true", "timeoutMinutes": 0, "onFail": { "retries": 0 } }]),
+    );
     rejects(|v| {
         v["stages"][0]["exit"] = json!([
             { "kind": "ask" },

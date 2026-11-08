@@ -123,7 +123,12 @@ pub(super) fn claim(fx: &Fixture, run: &ModeRun, turn: &str, origin: Origin) -> 
     .unwrap()
 }
 
-pub(super) fn settle(fx: &Fixture, run: &ModeRun, turn: &str, outcome: TurnOutcome) -> ContinueResult {
+pub(super) fn settle(
+    fx: &Fixture,
+    run: &ModeRun,
+    turn: &str,
+    outcome: TurnOutcome,
+) -> ContinueResult {
     settle_turn(
         &fx.db,
         SettleParams {
@@ -157,7 +162,11 @@ pub(super) fn complete(
     )
 }
 
-fn control_run(fx: &Fixture, run: &ModeRun, action: ControlAction) -> anyhow::Result<ContinueResult> {
+fn control_run(
+    fx: &Fixture,
+    run: &ModeRun,
+    action: ControlAction,
+) -> anyhow::Result<ContinueResult> {
     control(
         &fx.db,
         ControlParams {
@@ -220,7 +229,9 @@ fn full_lifecycle_returns_the_session_to_its_return_mode() {
         other => panic!("expected failed, got {other:?}"),
     }
     let headings = complete(&fx, &run, "t1", plan_artifact("# Plan\nonly")).unwrap();
-    assert!(matches!(headings.status, StageStatus::Blocked { ref message } if message.contains("Risks")));
+    assert!(
+        matches!(headings.status, StageStatus::Blocked { ref message } if message.contains("Risks"))
+    );
     // A blocked stage waits for the user; Host continuation is refused.
     let blocked = settle(&fx, &headings.run, "t1", TurnOutcome::Completed);
     assert!(!blocked.continue_run);
@@ -248,7 +259,10 @@ fn full_lifecycle_returns_the_session_to_its_return_mode() {
     let settled = settle(&fx, &advanced.run, "t2", TurnOutcome::Completed);
     assert!(settled.continue_run, "an advanced stage continues");
     let again = settle(&fx, &settled.run, "t2", TurnOutcome::Completed);
-    assert!(!again.continue_run && !again.changed, "settle is idempotent");
+    assert!(
+        !again.continue_run && !again.changed,
+        "settle is idempotent"
+    );
     assert_eq!(again.run.rounds_completed, 2);
 
     let host = claim(&fx, &settled.run, "t3", Origin::Host);
@@ -269,7 +283,11 @@ fn full_lifecycle_returns_the_session_to_its_return_mode() {
     let gates: i64 = fx
         .db
         .conn()
-        .query_row("SELECT COUNT(*) FROM mode_gate_results WHERE run_id = ?1", [&run.id], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM mode_gate_results WHERE run_id = ?1",
+            [&run.id],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(gates, 3);
 }
@@ -289,11 +307,16 @@ fn goto_moves_to_the_named_stage_and_continues() {
     configure(&fx.db, &sid, "loopback", Some(&def)).unwrap();
     let run = start_run(&fx, &sid, "t1").run;
     let first = settle(&fx, &run, "t1", TurnOutcome::Completed);
-    assert!(first.continue_run, "a stage without gates passes at turn end");
+    assert!(
+        first.continue_run,
+        "a stage without gates passes at turn end"
+    );
     assert_eq!(first.run.stage_id, "check");
     let claimed = claim(&fx, &first.run, "t2", Origin::Host);
     let outcome = complete(&fx, &claimed.run, "t2", None).unwrap();
-    assert!(matches!(outcome.status, StageStatus::Goto { ref next_stage_id, .. } if next_stage_id == "draft"));
+    assert!(
+        matches!(outcome.status, StageStatus::Goto { ref next_stage_id, .. } if next_stage_id == "draft")
+    );
     assert_eq!(outcome.run.stage_id, "draft");
     assert!(settle(&fx, &outcome.run, "t2", TurnOutcome::Completed).continue_run);
 }
@@ -403,7 +426,11 @@ fn pause_resume_stop_and_turn_outcomes() {
     let run = start_run(&fx, &sid, "t1").run;
     let paused = control_run(&fx, &run, ControlAction::Pause).unwrap();
     assert_eq!(paused.run.state, RunState::Paused);
-    assert_eq!(paused.run.active_turn_id.as_deref(), Some("t1"), "the turn runs to its end");
+    assert_eq!(
+        paused.run.active_turn_id.as_deref(),
+        Some("t1"),
+        "the turn runs to its end"
+    );
     let settled = settle(&fx, &paused.run, "t1", TurnOutcome::Completed);
     assert!(!settled.continue_run);
     assert_eq!(settled.run.state, RunState::Paused);
@@ -413,7 +440,11 @@ fn pause_resume_stop_and_turn_outcomes() {
 
     let aborted = claim(&fx, &resumed.run, "t2", Origin::Approval);
     let aborted = settle(&fx, &aborted.run, "t2", TurnOutcome::Aborted);
-    assert_eq!(aborted.run.state, RunState::Paused, "composer Stop pauses the run");
+    assert_eq!(
+        aborted.run.state,
+        RunState::Paused,
+        "composer Stop pauses the run"
+    );
     let failed = claim(&fx, &aborted.run, "t3", Origin::User);
     let failed = settle(&fx, &failed.run, "t3", TurnOutcome::Error);
     assert_eq!(failed.run.wait_reason, Some(WaitReason::Error));
@@ -429,18 +460,21 @@ fn pause_resume_stop_and_turn_outcomes() {
         },
     );
     assert_eq!(stale.unwrap_err().to_string(), "MODE_REVISION_CONFLICT");
-    assert!(!claim_turn(
-        &fx.db,
-        ClaimParams {
-            session_id: sid.clone(),
-            run_id: run.id.clone(),
-            expected_revision: run.revision,
-            turn_id: "t4".into(),
-            origin: Origin::User,
-        },
-    )
-    .unwrap()
-    .claimed, "a stale claim is refused, not an error");
+    assert!(
+        !claim_turn(
+            &fx.db,
+            ClaimParams {
+                session_id: sid.clone(),
+                run_id: run.id.clone(),
+                expected_revision: run.revision,
+                turn_id: "t4".into(),
+                origin: Origin::User,
+            },
+        )
+        .unwrap()
+        .claimed,
+        "a stale claim is refused, not an error"
+    );
 
     let stopped = control_run(&fx, &failed.run, ControlAction::Stop).unwrap();
     assert_eq!(stopped.run.state, RunState::Stopped);
@@ -475,7 +509,9 @@ fn configure_while_a_run_is_open() {
     configure(&fx.db, &sid, "flow", Some(&flow())).unwrap();
     let run = start_run(&fx, &sid, "t1").run;
     settle(&fx, &run, "t1", TurnOutcome::Completed);
-    assert!(configure(&fx.db, &sid, "flow", Some(&flow())).unwrap().is_none());
+    assert!(configure(&fx.db, &sid, "flow", Some(&flow()))
+        .unwrap()
+        .is_none());
     let other = definition(
         "other",
         "agent",
@@ -521,7 +557,9 @@ fn configure_while_a_run_is_open() {
         "MODE_RUN_ACTIVE"
     );
     assert_eq!(
-        configure(&fx.db, &sid, "custom", None).unwrap_err().to_string(),
+        configure(&fx.db, &sid, "custom", None)
+            .unwrap_err()
+            .to_string(),
         "MODE_SNAPSHOT_REQUIRED"
     );
 }
@@ -615,7 +653,9 @@ fn completing_a_stage_requires_the_claim_and_declared_artifacts() {
     configure(&fx.db, &sid, "flow", Some(&flow())).unwrap();
     let run = start_run(&fx, &sid, "t1").run;
     assert_eq!(
-        complete(&fx, &run, "other-turn", None).unwrap_err().to_string(),
+        complete(&fx, &run, "other-turn", None)
+            .unwrap_err()
+            .to_string(),
         "MODE_CLAIM_MISMATCH"
     );
     let unknown = Some(BTreeMap::from([("nope".to_string(), "x".to_string())]));

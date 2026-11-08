@@ -81,7 +81,12 @@ fn session_row(conn: &Connection, session_id: &str) -> Result<Option<(String, Op
 /// Resolution order: the open run of the session's mode (its stage's
 /// permission), then the session snapshot of that mode, then the builtin
 /// names. Any other id fails closed to `Contract`.
-fn resolve(conn: &Connection, session_id: &str, mode: &str, hash: Option<&str>) -> Result<ToolPolicy> {
+fn resolve(
+    conn: &Connection,
+    session_id: &str,
+    mode: &str,
+    hash: Option<&str>,
+) -> Result<ToolPolicy> {
     if let Some(run) = repository::open_run(conn, session_id)? {
         if run.mode_id == mode {
             let snapshot = snapshot::require(conn, &run.snapshot_hash)?;

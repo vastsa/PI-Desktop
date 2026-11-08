@@ -72,7 +72,11 @@ fn finish(run: &mut ModeRun, state: RunState) {
 }
 
 /// Session-side effect of a closed run.
-pub(super) fn apply_finish(conn: &Connection, run: &ModeRun, definition: &ModeDefinition) -> Result<()> {
+pub(super) fn apply_finish(
+    conn: &Connection,
+    run: &ModeRun,
+    definition: &ModeDefinition,
+) -> Result<()> {
     if run.state.is_open() {
         return Ok(());
     }
@@ -468,7 +472,9 @@ pub fn verify_gate_command(
         .ok()
         .and_then(|index| snapshot.definition.stage(&run.stage_id)?.exit.get(index));
     match expected {
-        Some(snapshot::ModeGate::Run { command: expected, .. }) if expected == command => Ok(()),
+        Some(snapshot::ModeGate::Run {
+            command: expected, ..
+        }) if expected == command => Ok(()),
         _ => Err(mismatch()),
     }
 }
@@ -482,7 +488,9 @@ pub struct PreparedMode {
 
 impl PreparedMode {
     pub fn snapshot_hash(&self) -> Option<&str> {
-        self.snapshot.as_ref().map(|snapshot| snapshot.hash.as_str())
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.hash.as_str())
     }
 }
 
@@ -516,10 +524,7 @@ pub fn prepare_session_mode(
             }
         }
     }
-    Ok(PreparedMode {
-        snapshot,
-        pause,
-    })
+    Ok(PreparedMode { snapshot, pause })
 }
 
 /// Persist the snapshot before the session row references it.

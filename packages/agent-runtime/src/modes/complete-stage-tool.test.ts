@@ -77,7 +77,7 @@ describe("CompleteStage", () => {
     const { tool, endTurn } = harness({
       "modes.completeStage": [{ status: "failed", gateIndex: 0, message: "missing heading Evidence", retriesLeft: 2, run: RUN }],
     });
-    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean; content: never };
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean; content: Array<{ type: string; text?: string }> };
 
     expect(text(result)).toContain("Exit check 1 failed: missing heading Evidence");
     expect(text(result)).toContain("2 retries left");
@@ -94,7 +94,7 @@ describe("CompleteStage", () => {
         { status: "advanced", nextStageId: "review", run: RUN },
       ],
     });
-    const result = await tool.execute("model-call", { summary: "Done" }) as { terminate?: boolean; content: never };
+    const result = await tool.execute("model-call", { summary: "Done" }) as { terminate?: boolean; content: Array<{ type: string; text?: string }> };
 
     expect(gates.map((gate) => [gate.command, gate.modeGate, gate.timeoutSeconds])).toEqual([
       ["npm test", { runId: "run-1", gateIndex: 0 }, 300],
@@ -116,7 +116,7 @@ describe("CompleteStage", () => {
       "modes.completeStage": [{ status: "run", gateIndex: 0, command: "npm test", timeoutMinutes: 5, run: RUN }],
       "modes.gateResult": [{ status: "failed", gateIndex: 0, message: "exit code 1: 2 tests failed", retriesLeft: 1, run: RUN }],
     }, { gate: async () => ({ isError: true, text: "2 tests failed" }) });
-    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; content: never };
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; content: Array<{ type: string; text?: string }> };
 
     expect(text(result)).toContain("exit code 1: 2 tests failed");
     expect(text(result)).toContain("1 retry left");
@@ -132,7 +132,7 @@ describe("CompleteStage", () => {
     [{ status: "finished", run: RUN }, "the run is finished"],
   ])("ends the turn gracefully on %o", async (outcome, fragment) => {
     const { tool, endTurn } = harness({ "modes.completeStage": [outcome] });
-    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean; content: never };
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean; content: Array<{ type: string; text?: string }> };
 
     expect(text(result)).toContain(fragment);
     expect(text(result)).toContain("this turn ends now");
@@ -143,7 +143,7 @@ describe("CompleteStage", () => {
 
   it("refuses without a run claim and never calls the Host", async () => {
     const { host, tool } = harness({}, { claimed: false });
-    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; content: never };
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; content: Array<{ type: string; text?: string }> };
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("only in a turn of an active mode run");
     expect(host.call).not.toHaveBeenCalled();
@@ -152,7 +152,7 @@ describe("CompleteStage", () => {
   it("ends the turn when the Host says the claim is gone", async () => {
     const lost = Object.assign(new Error("claim mismatch"), { data: { errorCode: "MODE_CLAIM_MISMATCH" } });
     const { tool, endTurn } = harness({ "modes.completeStage": [lost] });
-    const result = await tool.execute("call-1", { summary: "Done" }) as { terminate?: boolean; content: never };
+    const result = await tool.execute("call-1", { summary: "Done" }) as { terminate?: boolean; content: Array<{ type: string; text?: string }> };
     expect(text(result)).toContain("MODE_CLAIM_MISMATCH");
     expect(result.terminate).toBe(true);
     expect(endTurn).toHaveBeenCalledTimes(1);
@@ -163,7 +163,7 @@ describe("CompleteStage", () => {
       "modes.completeStage": [{ status: "run", gateIndex: 0, command: "npm test", timeoutMinutes: 5, run: RUN }],
       "modes.gateResult": [{ status: "run", gateIndex: 0, command: "npm test", timeoutMinutes: 5, run: RUN }],
     });
-    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; content: never };
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; content: Array<{ type: string; text?: string }> };
     expect(gates).toHaveLength(1);
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("MODE_OUTCOME_INVALID");

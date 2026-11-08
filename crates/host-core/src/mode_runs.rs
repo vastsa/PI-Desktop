@@ -19,13 +19,11 @@ mod repository;
 mod snapshot;
 
 pub use engine::{
-    claim_turn, configure_session_mode, control, open_run, prepare_session_mode, recover,
-    resolve, settle_turn, start, store_session_snapshot, verify_gate_command, PreparedMode,
+    claim_turn, configure_session_mode, control, open_run, prepare_session_mode, recover, resolve,
+    settle_turn, start, store_session_snapshot, verify_gate_command, PreparedMode,
 };
 pub use gates::{complete_stage, gate_result, GateExecution, GateExecutions};
-pub use model::{
-    CompleteStageParams, GateResultParams, ModeRun, SessionParams, StartParams,
-};
+pub use model::{CompleteStageParams, GateResultParams, ModeRun, SessionParams, StartParams};
 pub use policy::{authorization, tool_policy, tool_policy_conn, ToolPolicy};
 
 /// Mode ids are `^[a-z][a-z0-9-]{0,39}$`, shared with `MODE_ID_RE` in

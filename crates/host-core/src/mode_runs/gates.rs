@@ -63,8 +63,10 @@ impl GateExecutions {
                 self.entries.remove(&key);
             }
         }
-        self.entries
-            .insert((session_id.to_string(), tool_call_id.to_string()), execution);
+        self.entries.insert(
+            (session_id.to_string(), tool_call_id.to_string()),
+            execution,
+        );
     }
 
     fn get(&self, session_id: &str, tool_call_id: &str) -> Option<&GateExecution> {
