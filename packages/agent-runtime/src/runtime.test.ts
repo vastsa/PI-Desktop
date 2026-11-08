@@ -9355,6 +9355,8 @@ describe("DesktopAgentRuntime inline context compaction", () => {
           summaryTokens: 7,
           contextTokens: 40_000,
           summarized: true,
+          providerId: "local",
+          modelId: "local-model",
         },
       }),
     );

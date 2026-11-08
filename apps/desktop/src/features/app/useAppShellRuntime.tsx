@@ -16,6 +16,7 @@ import { installRendererApi } from "../../capture/renderer-api";
 import { StartupAnimation } from "../../components/StartupAnimation";
 import { StartupSplash } from "../../components/StartupSplash";
 import { api } from "../../lib/api";
+import { scheduledWorkspaceCache } from "../scheduled/scheduled-workspace-cache";
 import { composerSuggestion } from "../chat/composer/plugins/suggestion-bridge";
 import { usePluginBrowseState } from "../plugins/browse-state";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
@@ -762,6 +763,7 @@ export function useAppShellRuntime() {
       });
     });
     const offHostStatus = api.onHostStatus((status) => {
+      if (status.component !== "sidecar" && (!status.ok || status.restarted)) scheduledWorkspaceCache.clear();
       if (status.archMismatch) setArchMismatch(status.archMismatch);
       if (status.ok) {
         setBackendDown(null);

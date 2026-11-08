@@ -165,6 +165,7 @@ export const IPC = {
     sessionSearchContext: "pi-desktop/session/searchContext",
     sessionGet: "pi-desktop/session/get",
     sessionCollaboration: "pi-desktop/session/collaboration",
+    sessionUsageCost: "pi-desktop/session/usageCost",
     /** Validate and select a durable session from a reviewed host operation. */
     sessionOpen: "pi-desktop/session/open",
     sessionDelete: "pi-desktop/session/delete",
@@ -202,6 +203,8 @@ export const IPC = {
     projectOpenFolder: "pi-desktop/project/openFolder",
     settingsGet: "pi-desktop/settings/get",
     settingsSet: "pi-desktop/settings/set",
+    sidebarPreferencesGet: "pi-desktop/sidebar/preferences/get",
+    sidebarPreferencesSet: "pi-desktop/sidebar/preferences/set",
     configSyncGetState: "pi-desktop/configSync/getState",
     backgroundTasksList: "pi-desktop/backgroundTasks/list",
     backgroundTasksOutput: "pi-desktop/backgroundTasks/output",

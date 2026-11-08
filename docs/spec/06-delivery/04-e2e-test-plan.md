@@ -1,5 +1,46 @@
 # 04. E2E Test Plan
 
+## E2E-SCHEDULED-independent-loading-and-route-return
+
+- **Preconditions:** Synthetic tasks; controllable task, latest-run, history and
+  project API responses. No provider execution is required.
+- **Steps:** Hold latest-run and project reads while resolving task definitions;
+  select a task and run, leave and re-enter with refresh held; open Create/Edit;
+  fail and retry a history read; switch tasks while a previous history is held;
+  invalidate the Host lifecycle before an old read resolves.
+- **Expected:** Definitions appear independently. Route return immediately shows
+  the last successful in-memory task/outcome/history snapshot and selection.
+  Project options are requested only for editing; the form waits for successful
+  options and failures expose retry. Pending/failed run reads never say the task
+  has not run. Failed refresh retains known history, and late responses cannot
+  replace another task's data or repopulate an invalidated snapshot. Run now and
+  Delete require known run status and retain authoritative Host admission.
+- **Coverage:** `apps/desktop/test/scheduled-workspace-loading.test.mjs` exercises
+  the production hook with controlled API promises and poll ticks;
+  `scheduled-workspace.test.mjs` checks rendered loading/error states.
+  These are renderer regression checks, not a native Electron E2E run.
+
+Also invalidate the Host while Create/Edit options are pending, with the old
+request resolving, rejecting or remaining pending. The next normal poll must
+replace that read and recover the same editor without Cancel/reopen. A failed
+replacement exposes Retry; retry success mounts the editor. Old responses must
+not overwrite recovered options. Successful options remain lazy rather than
+being fetched on every subsequent poll.
+
+## E2E-SIDEBAR-upgrade-layout-recovery
+
+- In an isolated profile, retain two synthetic Projects and organize metadata.
+  Close one Project and restart with the same app data root but fresh Chromium
+  storage. Restore the retained Project and metadata; keep the closed tab closed.
+- Migrate a valid legacy cache, including an empty list. If neither copy is valid,
+  recover the Host catalog once; preserve subsequent explicit closes.
+- Reject secondary-renderer/subframe IPC and oversized/invalid writes. Preserve
+  unreadable backups, newer user edits, and the last good file on failure.
+- Relocate internal retained paths and metadata keys without changing external
+  paths, display names or the source profile.
+- Automated path: `node scripts/e2e-sidebar-recovery.mjs`, plus the sidebar backup,
+  recovery, bootstrap and offline relocation regression tests.
+
 ## E2E-PROVIDER-DASHSCOPE-terminal-parameter-error
 
 - **Preconditions:** Isolated Agent runtime and a synthetic OpenAI-compatible
@@ -3906,8 +3947,8 @@ identify the platform validation still needed.
 #### E2E-041: Conversation minimap navigates long transcripts
 
 - **Preconditions**: A session contains enough user and assistant turns to
-  scroll beyond one viewport and densely fill the minimap, including one AI
-  response emitted as multiple assistant fragments around tool activity; a
+  scroll beyond one viewport and densely fill the minimap, including assistant
+  responses emitted as multiple fragments around tool activity; a
   second session has at least two eligible turn markers that still fit in one
   viewport.
 - **Steps**: 1) Open the long session. 2) Scroll through the transcript and
@@ -3918,13 +3959,11 @@ identify the platform validation still needed.
   window taller until content no longer overflows, then shorter again. 9) At a
   short window height, inspect and activate the first and last markers near the
   minimap's vertical bounds, including from the titlebar-facing side.
-- **Expected**: The rail contains one marker per visible user turn and one per
-  AI response. Multiple assistant fragments between two user messages share a
-  single marker and combined bounded preview, while tool-only rows create no
-  marker and do not split the response. The marker near the upper-third reading
+- **Expected**: The rail contains one marker per visible user message;
+  assistant and tool rows create no marker. The marker near the upper-third reading
   anchor exposes `aria-current`; hover and focus show the same localized sender
   and preview; nearby markers magnify horizontally without shifting the stack;
-  activation smoothly scrolls to the first contentful message in that response;
+  activation smoothly scrolls to that user message;
   the rail is absent when fewer than two eligible markers exist **or** when
   content does not overflow one viewport; the rail reappears once overflow
   returns after a resize. Dense markers remain centered in the unobstructed
@@ -5944,7 +5983,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   fully visible, clear of the panel column, and narrowed rather than clipped on
   a narrow pane. 8) Click Retry on that turn while idle. 9) Confirm a session
   without usage still offers Retry on completed turns and omits the composer
-  inspector.
+  inspector. 10) With an API-key provider whose model has catalog prices, open
+  the inspector and the capsule popover; send another prompt with the
+  inspector open; switch sessions; repeat on a subscription (OAuth) account.
 - **Expected**: Model badge appears under completed assistant answers when a
   model id exists, followed immediately by the turn usage capsule when that
   turn has usage. The capsule's speed is summed output tokens over summed
@@ -5953,7 +5994,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   subagent spend. Its popover stays open while the pointer is over it, closes
   on pointer leave after a grace delay unless the trigger retains keyboard
   focus, on Escape, or on an outside press; it portals to the body, clamps to
-  the conversation pane, and is absent on streaming turns.
+  the conversation pane, and is absent on streaming turns. A priced
+  pay-as-you-go turn shows its cost after the capsule total (`≈` for a catalog
+  estimate) and in a popover cost row with a one-line explanation; the
+  inspector shows the newest turn cost and the whole-session total, which
+  refreshes in place after the next billed request without a loading flash and
+  never shows another session's figure. Subscription usage reads
+  "Subscription" with its API-price equivalent in the tooltip, adds nothing to
+  the pay-as-you-go amount, and shows no inline capsule cost. Automated by
+  `apps/desktop/test/usage-cost-user-path.test.mjs`.
   The compact Context inspector appears in the composer
   right toolbar, left of the model picker, once any usage exists, and always
   mirrors the newest usage-bearing assistant turn. The trigger shows the ring
@@ -20221,6 +20270,11 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   isolated profile; verify both the checked menu option and actual diff context
   retain that choice. Missing/invalid/blocked storage is unit-covered by
   `apps/desktop/test/review-preferences.test.mjs`.
+- With two populated sessions, visit B, then click a file in A's real transcript
+  turn-summary card and return to B. The retained focus request must belong to A;
+  B must immediately retain its own recorded files. Cycling Last round → History
+  must leave those files unchanged rather than repair an initially empty list,
+  and B's selected history totals must agree with its visible file list.
 - Open several files from the per-turn summary with enough Review content to
   scroll. Each target comes into view inside Review while the conversation and
   work-panel headers stay visible and the window content reaches the bottom edge.
@@ -20311,3 +20365,19 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
+
+#### E2E-ISSUE-1789
+
+Image-model marking explains chat/default-menu exclusion and distinguishes generation from image input. Collapsed model rows retain an image-model badge. Verify marking, help, collapsing, unmarking and restored chat eligibility through `image-model-disclosure-user-path.test.mjs`.
+
+#### E2E-ISSUE-2162
+
+Closing the connected Browser tab clears its connection. Subsequent session-only tools use that session's selected replacement page. Explicit closed targets fail; navigation never revives an invisible old tab. Verify close/reopen/snapshot/fill/click/navigate and final closure with `browser-background-session.test.mjs` and `BROWSER_CLOSE_CONNECTION_ONLY=1 node scripts/e2e-browser-background.mjs`.
+
+#### E2E-ISSUE-2163
+
+Bounded tail pages include compactions appended after the last message. Middle pages still read only the active checkpoint and records inside their offsets. Verify append-message/append-compaction, tail reopening and Host restart with `scripts/e2e-compaction-tail.mjs` and `layout_tail_window` tests.
+
+#### E2E-ISSUE-2164
+
+While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.

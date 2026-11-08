@@ -155,8 +155,8 @@ test("the Scheduled route is the one that writes the return origin", async () =>
   assert.match(pageSource, /sessionId,/);
 
   assert.match(workspaceSource, /const restored = peekScheduledReturn\(\)/);
-  assert.match(workspaceSource, /useState<string \| null>\(restored\?\.taskId \?\? null\)/);
-  assert.match(workspaceSource, /useState<string \| null>\(restored\?\.runId \?\? null\)/);
+  assert.match(workspaceSource, /const initialTaskId = restored\?\.taskId \?\?/);
+  assert.match(workspaceSource, /useState<string \| null>\(restored\?\.runId \?\?/);
   assert.match(
     workspaceSource,
     /resolveSelectedTaskId\(tasks, current, loaded\)/,

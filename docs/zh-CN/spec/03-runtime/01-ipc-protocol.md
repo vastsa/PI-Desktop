@@ -66,6 +66,7 @@ event: pi-desktop/<domain>/event/<name>
 - `pi-desktop/project-group/memory/get` / `save`
 - `pi-desktop/project-group/instructions/get` / `save`
 - `pi-desktop/session/collaboration`
+- `pi-desktop/session/usageCost`
 
 ## 3.1 逻辑项目组
 
@@ -868,6 +869,13 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 转录本模型标签显示该值，并在标签说明中注明请求的模型。`MessageUsage.costStatus` 为 `reported` 表示 Provider
 返回了实际计费总额（Pi `usage.cost.totalFromProvider`），`estimated` 表示按目录单价估算，`unknown` 表示无可用价格；
 汇总仅在所有部分均为 `reported` 时才为 `reported`。
+
+`pi-desktop/session/usageCost({ sessionId }) -> SessionUsageCost` 是会话全部轮次的只读费用汇总，
+由 Host `session.usageCost` 提供。渲染层只持有转录本的一个窗口，因此会话累计不从已加载消息求和。
+轮次账本中的每个物理请求只计一次，并按 `providerId` 分组；所有状态的轮次都计入，因为中止或失败的请求同样计费。
+`ProviderUsageCost.total` 只累加有价格的请求，`reportedRequests` 为 Provider 实际计费的请求数，
+`unpricedRequests` 为没有可用价格的请求数，包括按无 `providerId` 分组的旧版仅 token 轮次。
+导入的 `native-pi:` 会话返回空汇总。
 
 设置字体选择器（ADR 0083）通过一个仅 Electron 的允许通道读取
 系统已安装字体：

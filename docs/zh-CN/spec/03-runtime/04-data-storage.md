@@ -250,9 +250,10 @@ CREATE TABLE kv (
 
 #### Renderer 侧边栏首选项 (D093)
 
-侧边栏组织是非权威的呈现状态存储
-渲染器 localStorage 键下的尽力而为
-`pi.desktop.sidebarPreferences`：
+Sidebar organization remains non-authoritative presentation state. Main keeps
+an atomic `sidebar-preferences.json` backup in the selected app data root;
+`pi.desktop.sidebarPreferences` in renderer localStorage supplies first paint.
+See [sidebar layout recovery](/adr/sidebar-layout-recovery).
 
 ```ts
 type SidebarPreferences = {
@@ -282,9 +283,16 @@ type SidebarPreferences = {
   拖动项目标题或在该标题上使用键盘箭头会为可见的规范化路径写入连续顺序值。
   缺失或无效值回落到稳定路径顺序；置顶和归档优先级仍在手动顺序之前应用。
   会话 `manual`/`order` 仍是兼容性字段，侧边栏不会公开会话手动重排。
-- 缺失、格式错误或不可写的首选项回退到空元数据，
-  `recent`，存档隐藏，以及主机选择的项目。偏好失败
-  永远不会阻止主机操作。
+- Restore the application backup before bootstrap persists the selected Project.
+  Without a backup, migrate a valid legacy cache, including an explicitly empty
+  tab list. Only if neither copy is valid, recover registered Projects from
+  `projects.list`. Existing valid layouts never reopen intentionally closed tabs.
+- An unreadable backup must not be replaced with empty startup state; a failed
+  catalog read must not persist an empty recovery result. Writes are limited to
+  2 MiB, flushed and atomically renamed through dedicated trusted-Main-frame IPC.
+  Project/Session/Workspace authority remains with Rust. Offline storage
+  relocation remaps internal retained paths and Project metadata keys while
+  preserving external Projects and display labels.
 - 记录从不包含转录内容、工具参数、提供商
   配置或秘密。清除它仅更改显示。
 - `openProjectPaths` 保留侧边栏选项卡。选定的工作空间仍然存在
@@ -1476,3 +1484,8 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+### 末尾压缩检查点读取（#2163）
+
+有界末尾页包含最后一条消息之后追加的压缩记录，重新打开或重启后立即返回
+最新检查点和上下文估算。历史中间页只保留生效的检查点及页内记录，不读取全链。

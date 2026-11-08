@@ -376,6 +376,20 @@ export function registerSessionIpc({
     }
     return readSessionCollaboration(host, sidecar, sessionId);
   });
+  handle(IPC.invoke.sessionUsageCost, async (input?: { sessionId?: unknown }) => {
+    const sessionId = typeof input?.sessionId === "string" ? input.sessionId.trim() : "";
+    if (!sessionId || sessionId.length > 256) {
+      throw Object.assign(new Error("sessionId must be a non-empty string of at most 256 characters"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    // Imported native Pi sessions have no Desktop turn ledger to roll up.
+    if (sessionId.startsWith("native-pi:")) {
+      return { sessionId, turnCount: 0, requestCount: 0, providers: [] };
+    }
+    if (!host) throw new Error("host unavailable");
+    return host.call("session.usageCost", { sessionId });
+  });
   handle(IPC.invoke.sessionOpen, async (rawSessionId: string) => {
     if (!host) throw new Error("host unavailable");
     const sessionId = String(rawSessionId ?? "").trim();
