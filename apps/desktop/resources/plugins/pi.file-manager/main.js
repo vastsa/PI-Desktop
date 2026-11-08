@@ -2521,6 +2521,12 @@ const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 function assertValidName(rawName) {
   if (typeof rawName !== "string") throw fail("INVALID_NAME", "name is required");
   const name = rawName.trim();
+  if (!name || name === "." || name === ".." || /[<>:"/\\|?*\x00-\x1f]/.test(name) || name.endsWith(".") || WINDOWS_RESERVED.test(name)) {
+    throw fail("INVALID_NAME", "name must be a valid file or directory name");
+  }
+  return name;
+}
+
 function entryFromStat(name, rel, stat) {
   return {
     name,
@@ -2533,17 +2539,6 @@ function entryFromStat(name, rel, stat) {
     outside: false,
     // 新建 / 改名 / 移动之后这一行是全新的：状态由下一次列表调用现算。
     git: null,
-  };
-}
-  return {
-    name,
-    path: rel,
-    isDirectory: stat.isDirectory(),
-    size: stat.isDirectory() ? undefined : stat.size,
-    mtimeMs: stat.mtimeMs,
-    ignored: false,
-    isSymlink: false,
-    outside: false,
   };
 }
 

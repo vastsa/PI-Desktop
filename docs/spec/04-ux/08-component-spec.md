@@ -4767,3 +4767,7 @@ While a checkpoint estimate supplies context occupancy, use its recorded provide
 ### Fork activation selection ownership (#2086)
 
 Activating a completed session fork clears the previous selectingSessionId together with its visible pane switch. A superseded fork only lists its durable child and does not clear a newer pending selection. This prevents stale switching UI from hiding the activated branch.
+
+### File Manager mutation validation (#2184)
+
+The bundled File Manager validates each create/rename name before filesystem writes. Valid names return canonical entry metadata after create, rename or move. Empty names, dot segments, separators, control characters, Windows-reserved names and trailing dots fail with INVALID_NAME. Existing destinations fail with EXISTS; containment and protected-path gates remain enforced.

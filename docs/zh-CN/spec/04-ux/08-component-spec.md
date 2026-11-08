@@ -3115,3 +3115,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 ### 分支激活选择状态（#2086）
 
 完成分支并激活时，同步清除旧 selectingSessionId；已被新导航替代的分支只加入列表，不清除后来选择。防止分支已创建但界面仍显示旧切换状态。
+
+### 文件管理器名称校验（#2184）
+
+新建和重命名前校验名称，创建、重命名和移动后返回正确条目信息。空名称、点路径、分隔符、控制字符、Windows 保留名及尾点返回 INVALID_NAME；已有目标返回 EXISTS。路径边界和受保护路径检查保持生效。
