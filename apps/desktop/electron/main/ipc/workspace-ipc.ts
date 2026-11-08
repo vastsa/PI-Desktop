@@ -918,11 +918,13 @@ handleWithEvent(
     sessionId: string | undefined,
   ): Promise<string | null> => {
     const id = String(sessionId ?? "").trim();
-    if (!id || !host) return null;
+    const owner = getHost();
+    if (!id || !owner) return null;
     try {
-      const result = await host.call<{ path: string }>("session.getScratchPath", {
+      const result = await owner.call<{ path: string }>("session.getScratchPath", {
         sessionId: id,
       });
+      if (getHost() !== owner) return null;
       const path = String(result?.path ?? "").trim();
       return path || null;
     } catch {

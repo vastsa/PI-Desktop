@@ -4763,3 +4763,7 @@ Closing the connected Browser tab clears its connection. Subsequent session-only
 ### Issue #2164 correction
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+### Scratch reference Host ownership (#1784)
+
+Resolving a session scratch reference captures the current Host for that lookup rather than reusing a mutable registrar-wide Host variable. Unrelated overlapping IPC calls cannot erase the scratch root. A lookup whose Host is replaced before its response returns is discarded.

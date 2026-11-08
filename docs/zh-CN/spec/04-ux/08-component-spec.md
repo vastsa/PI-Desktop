@@ -3111,3 +3111,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 ### Issue #2164 修正
 
 压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
+
+### Scratch 文件引用 Host 归属（#1784）
+
+会话 scratch 引用查询捕获当前 Host，不读取可被其他 IPC 改写的共享变量；并发无关调用不使 scratch 根丢失，Host 替换后旧响应丢弃。

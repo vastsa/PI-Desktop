@@ -20399,3 +20399,7 @@ While a checkpoint estimate supplies context occupancy, use its recorded provide
 - Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
 - Acceptance: wait, report re-read and running-delegate cancellation complete
   through the real tool loop. Milestone: maintenance. Status: automated.
+
+#### E2E-ISSUE-1784-scratch-ipc
+
+Pause a session file lookup, run an unrelated IPC while Host is temporarily unavailable, restore the same Host and finish the read. The exact scratch image resolves. Run production workspace IPC and filesystem resolution with mocked Host/Electron edges. Coverage: scratch-reference-concurrency.test.mjs.
