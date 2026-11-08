@@ -4,6 +4,9 @@ export const trEntries: ChangelogEntry[] = [
   {
     version: "0.22.0",
     highlights: [
+      "Pi 1.5 aracı motorunu kullanın ve kullanım alanlarında tur ile oturum maliyetlerini inceleyin.",
+      "Daha güvenli bağlam sıkıştırma, görüntü işleme ve araç yürütmeyle uzun konuşmaları kararlı tutun.",
+      "Proje düzenini ve zamanlanmış görev düzenleyicilerini güvenilir biçimde kurtarın; MCP yapılandırmalarını seçili projeye kaydedin.",
       "Açık izinler ve görünür imleçle bilgisayar kullanımı üzerinden masaüstü uygulamalarını aracıya kontrol ettirin.",
       "Yüklü uygulamaları ve eklenti komutlarını tek, gruplandırılmış başlatıcıdan açın; sık kullandıklarınızı sabitleyin.",
       "Tamamlanan etkinlikleri daraltın; eski geçmiş yüklenirken en yeni iletilere daha akıcı biçimde dönün.",

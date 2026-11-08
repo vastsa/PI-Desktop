@@ -4,6 +4,9 @@ export const frEntries: ChangelogEntry[] = [
   {
     version: "0.22.0",
     highlights: [
+      "Utilisez le moteur Pi 1.5 et consultez les coûts par tour et par session dans les vues d’utilisation.",
+      "Stabilisez les longues conversations grâce à une compression du contexte, un traitement des images et une exécution des outils plus sûrs.",
+      "Restaurez la disposition des projets et les éditeurs de tâches planifiées, et enregistrez les configurations MCP dans le projet sélectionné.",
       "Laissez l’agent contrôler les applications de bureau via l’utilisation de l’ordinateur, avec autorisations explicites et curseur visible.",
       "Lancez les applications installées et les commandes de plugins depuis un lanceur groupé, et épinglez les applications fréquentes.",
       "Gardez les longues conversations lisibles en repliant les activités terminées et en revenant plus fluidement aux messages récents pendant le chargement de l’historique.",
