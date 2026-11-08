@@ -1512,10 +1512,11 @@ identify the platform validation still needed.
   `codesign --verify --deep --strict --verbose=2`,
   `spctl --assess --type execute --verbose=4`, and `xcrun stapler validate`
   against the app, including `Contents/Resources/bin/pi-desktop-host-core`.
-  4) Confirm the app stapler shim retries only `xcrun stapler staple` up to six
-  total attempts after the app submission is accepted, then confirm the
-  workflow's DMG step reported an Apple notary status of `Accepted` and run
-  `xcrun stapler validate` against the matching DMG.
+  4) Confirm the app stapler shim retries `xcrun stapler staple` and
+  `xcrun stapler validate` up to six total attempts after the app submission
+  is accepted, then confirm the workflow's DMG step reported an Apple notary
+  status of `Accepted` and stapled and validated the matching DMG. A transient
+  CloudKit lookup failure during validation is retried within the same bound.
   5) Download the DMG on a clean macOS profile, move the app to
   `/Applications`, and open it without clearing `com.apple.quarantine`.
 - **Expected**: Each macOS app passes signature integrity, Gatekeeper reports
@@ -1524,7 +1525,7 @@ identify the platform validation still needed.
   no ticket and fails `stapler staple` with error 65, so a tag build must never
   reach that state. The app opens normally; no `xattr` quarantine-removal
   command or Security & Privacy override is required. Missing secrets, a
-  rejected submission, or an exhausted staple retry fail the job.
+  rejected submission, or exhausted staple or validation retries fail the job.
 - **Specs linked**: `06-delivery/06-release-runbook.md`,
   `05-security/01-security.md`, ADR 0289
 - **Acceptance**: Quality, Security
