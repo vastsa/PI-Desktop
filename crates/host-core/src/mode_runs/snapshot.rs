@@ -171,8 +171,7 @@ pub fn validate(value: &Value, mode: &str) -> Result<Snapshot> {
     if json.len() > MAX_SNAPSHOT_BYTES {
         return Err(invalid("modeSnapshot is larger than 256 KiB"));
     }
-    let definition: ModeDefinition =
-        serde_json::from_value(value.clone()).map_err(|error| invalid(error))?;
+    let definition: ModeDefinition = serde_json::from_value(value.clone()).map_err(invalid)?;
     check(&definition, mode)?;
     Ok(Snapshot {
         hash: sha256_hex(json.as_bytes()),
@@ -393,9 +392,8 @@ pub fn load(conn: &Connection, hash: &str) -> Result<Option<Snapshot>> {
     let Some(json) = json else {
         return Ok(None);
     };
-    let value: Value = serde_json::from_str(&json).map_err(|error| invalid(error))?;
-    let definition: ModeDefinition =
-        serde_json::from_value(value.clone()).map_err(|error| invalid(error))?;
+    let value: Value = serde_json::from_str(&json).map_err(invalid)?;
+    let definition: ModeDefinition = serde_json::from_value(value.clone()).map_err(invalid)?;
     Ok(Some(Snapshot {
         hash: hash.to_string(),
         json,
