@@ -145,7 +145,7 @@ jobs:
       - name: Install virtual display
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes openbox xauth xvfb
+          sudo apt-get install --no-install-recommends --yes openbox xauth x11-utils xvfb
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -178,7 +178,9 @@ jobs:
         run: xvfb-run --auto-servernum pnpm test:e2e:provider-client-certificate
 
       - name: Run browser capture/resize E2E
-        run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-browser-capture-resize.mjs'
+        run: |
+          node --test scripts/e2e/with-openbox.test.mjs
+          xvfb-run --auto-servernum sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs
 
       - name: Run transcript rendering and disclosure E2E
         run: xvfb-run --auto-servernum sh -c 'node scripts/e2e-transcript-render.mjs && node scripts/e2e-transcript-disclosure-anchor.mjs'
