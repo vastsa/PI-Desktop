@@ -20419,6 +20419,10 @@ Load the actual bundled plugin in an isolated workspace. Create a file and Unico
 
 ### E2E-NATIVE-workspace-file-routing
 
-Run 
-ode scripts/e2e-native-workspace-files.mjs: isolated Electron Main, production workspace IPC, synthetic sidecar session metadata and real fixture files. Select an unrelated Desktop workspace; list, read and resolve a native file, then reject a missing native session. The test asserts no native session or scratch RPC reaches Desktop storage. 
-ative-workspace-files.test.mjs additionally rejects replaced sidecars. No provider execution or native user session data is used.
+Run `node scripts/e2e-native-workspace-files.mjs`: isolated Electron Main,
+production workspace IPC, synthetic sidecar session metadata and real fixture
+files. Select an unrelated Desktop workspace; list, read and resolve a native
+file, then reject a missing native session. The test asserts no native session
+or scratch RPC reaches Desktop storage. `native-workspace-files.test.mjs`
+additionally rejects replaced sidecars. No provider execution or native user
+session data is used.

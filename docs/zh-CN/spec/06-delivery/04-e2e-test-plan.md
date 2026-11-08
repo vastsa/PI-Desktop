@@ -10438,6 +10438,9 @@ MCP All 在创建、导入、安装时使用所选项目，无项目才回退全
 
 ### E2E-NATIVE-workspace-file-routing
 
-运行 
-ode scripts/e2e-native-workspace-files.mjs：使用隔离 Electron Main、生产 workspace IPC、合成 sidecar 会话元数据和真实测试文件。选中无关的 Desktop 工作区后，列出、读取和解析 native 文件，再拒绝不存在的 native 会话。断言 native 会话及 scratch 请求不会进入 Desktop 存储。
-ative-workspace-files.test.mjs 另验证 sidecar 更换后拒绝旧响应。不执行模型或访问用户 native 会话。
+运行 `node scripts/e2e-native-workspace-files.mjs`：使用隔离 Electron Main、
+生产 workspace IPC、合成 sidecar 会话元数据和真实测试文件。选中无关的
+Desktop 工作区后，列出、读取和解析 native 文件，再拒绝不存在的 native 会话。
+断言 native 会话及 scratch 请求不会进入 Desktop 存储。
+`native-workspace-files.test.mjs` 另验证 sidecar 更换后拒绝旧响应。
+不执行模型或访问用户 native 会话。
