@@ -679,6 +679,18 @@ pub struct ToolsExecuteParams {
     /// execute time.
     #[serde(default)]
     pub plan_safe_actions: Option<Vec<String>>,
+    /// A Bash call that runs a staged mode's pending `run` exit gate (ADR
+    /// mode-definitions). host-core verifies it against the run before
+    /// executing and records the exit code for `modes.gateResult`.
+    #[serde(default)]
+    pub mode_gate: Option<ModeGateRef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModeGateRef {
+    pub run_id: String,
+    pub gate_index: i64,
 }
 
 #[derive(Debug, Serialize)]

@@ -199,6 +199,19 @@ async function scenarioWorkspaceRequired(binary, tempRoot) {
     for (const kind of ["plan", "goal"]) {
       const session = await createSession(ctx.host, undefined, "Temporary contract", "agent");
       const turnId = await beginTurn(ctx.host, session.id);
+      if (kind === "goal") {
+        await expectRpcError(() => ctx.host.call("plans.enter", {
+          sessionId: session.id, turnId, toolCallId: "enter", kind,
+        }), ["PLAN_GOAL_ACTIVATION_DISABLED"]);
+        await expectRpcError(() => ctx.host.call("plans.submit", {
+          sessionId: session.id, turnId, toolCallId: "submit", kind,
+          title: "Legacy Goal", markdown: "# Goal", question: "Proceed?",
+        }), ["PLAN_GOAL_ACTIVATION_DISABLED"]);
+        const pending = await ctx.host.call("plans.pending", { sessionId: session.id });
+        assert(pending.plans.length === 0, "disabled Goal created an approval");
+        await endTurn(ctx.host, turnId);
+        continue;
+      }
       const entered = await ctx.host.call("plans.enter", {
         sessionId: session.id, turnId, toolCallId: "enter", kind,
       });
@@ -212,7 +225,7 @@ async function scenarioWorkspaceRequired(binary, tempRoot) {
       assert(pending.plans.length === 0, "failed submission created an approval");
       await endTurn(ctx.host, turnId);
     }
-    return "Plan/Goal allow planning without a workspace but reject approval submission";
+    return "Plan permits planning but needs a workspace for submission; legacy Goal activation is denied";
   }, binary, tempRoot);
 }
 
