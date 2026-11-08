@@ -1,12 +1,14 @@
 #!/bin/bash
-# Retry only the stapling operation after the caller has an accepted ticket.
-# electron-notarize invokes this command only after notarytool reports Accepted.
+# Retry stapler operations after the caller has an accepted ticket. Validation
+# uses the same bounded retry because Apple's ticket lookup can lose its
+# CloudKit connection after a successful staple.
 
 set -u
 
 PI_STAPLER_REAL_XCRUN="${PI_XCRUN_REAL:-/usr/bin/xcrun}"
+PI_STAPLER_OPERATION="${2:-}"
 
-if [[ "${1:-}" != "stapler" || "${2:-}" != "staple" || -z "${PI_STAPLER_MAX_ATTEMPTS:-}" ]]; then
+if [[ "${1:-}" != "stapler" || ( "$PI_STAPLER_OPERATION" != "staple" && "$PI_STAPLER_OPERATION" != "validate" ) || -z "${PI_STAPLER_MAX_ATTEMPTS:-}" ]]; then
   exec "$PI_STAPLER_REAL_XCRUN" "$@"
 fi
 
@@ -32,7 +34,7 @@ for ((attempt = 1; attempt <= PI_STAPLER_ATTEMPTS; attempt += 1)); do
   fi
 
   if (( attempt < PI_STAPLER_ATTEMPTS )); then
-    echo "warning: stapler staple attempt $attempt/$PI_STAPLER_ATTEMPTS failed; retrying in ${PI_STAPLER_DELAY}s." >&2
+    echo "warning: stapler $PI_STAPLER_OPERATION attempt $attempt/$PI_STAPLER_ATTEMPTS failed; retrying in ${PI_STAPLER_DELAY}s." >&2
     sleep "$PI_STAPLER_DELAY"
   fi
 done
