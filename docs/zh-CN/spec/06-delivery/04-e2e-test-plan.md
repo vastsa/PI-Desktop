@@ -10450,3 +10450,7 @@ MCP All 在创建、导入、安装时使用所选项目，无项目才回退全
 #### E2E-ISSUE-2184
 
 隔离项目加载真实内置插件，创建文件和中文目录，重命名并移动文件，核查磁盘与返回元数据；非法名称及重复目标拒绝。覆盖 file-manager-mutations.test.mjs 和原有 Electron 目录定位路径。
+
+#### E2E-ISSUE-1926-scratch-prefix
+
+创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
