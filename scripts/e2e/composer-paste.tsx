@@ -358,10 +358,13 @@ globalThis.composerPasteProbe = async (screenshotOnly = false) => {
         assert(directoryScans === 0, "screenshot entered native directory discovery");
         assert(controller.fileReferences.length === 1 && controller.fileReferences[0].kind === "image",
           "screenshot bytes did not become an image attachment");
-        return { ok: true, screenshotWithoutDirectoryScan: true };
       } finally {
         api.readClipboardDirectories = readDirectories;
       }
+      await paste("native-image.png", [nativeFiles[0]]);
+      assert(controller.fileReferences.length === 1 && controller.fileReferences[0].kind === "image",
+        "native image file lost its attachment path");
+      return { ok: true, screenshotWithoutDirectoryScan: true, nativeImagePreserved: true };
     }
     const text = "Word paragraph 中文\nsecond line";
     let editor = await paste(text, [image]);

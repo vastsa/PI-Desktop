@@ -302,8 +302,9 @@ app.whenReady().then(async () => {
     const result = await window.webContents.executeJavaScript("globalThis.composerPasteProbe(" + process.argv.includes("--screenshot-only") + ")");
     assert.equal(result.ok, true, JSON.stringify(result));
     if (process.argv.includes("--screenshot-only")) {
-      assert.equal(saved.length, 1);
+      assert.equal(saved.length, 2);
       assert.deepEqual(saved[0].mimeTypes, ["image/png"]);
+      assert.deepEqual(saved[1].mimeTypes, ["image/png"]);
       assert.equal(revealedFolders.length, 1);
       console.log("COMPOSER_PASTE_PROBE " + JSON.stringify({ ...result, scratchBytesVerified: true }));
       app.quit();
@@ -391,6 +392,7 @@ app.whenReady().then(async () => {
 
   if (screenshotOnly) {
     assert.equal(pasteResult.screenshotWithoutDirectoryScan, true);
+    assert.equal(pasteResult.nativeImagePreserved, true);
   } else {
     const restartRun = await runElectron(["--history-check"]);
     const restartLine = restartRun.output
