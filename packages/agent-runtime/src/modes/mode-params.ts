@@ -5,6 +5,7 @@
  * (`modeTurn`). Malformed shapes are rejected, never coerced; the idea of a
  * strictly parsed per-turn context is ported from PR #2141 by new-Beginner.
  */
+import type { ModeTurnNoticeParams } from "./mode-state.js";
 import {
   MODE_DEFINITION_VERSION,
   MODE_ID_RE,
@@ -216,4 +217,22 @@ export function parseModeTurn(value: unknown, definition?: ModeDefinition): Mode
     input: value.input,
     artifactPaths: Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, String(path)])),
   };
+}
+
+/** `agent.modeTurnNotice` from Electron main: exact actions and string ids. */
+export function parseModeTurnNotice(params: Record<string, unknown>): ModeTurnNoticeParams {
+  const id = (value: unknown, name: string): string => {
+    if (typeof value !== "string" || !value.trim() || value.length > 200) {
+      return reject({ message: `invalid mode turn notice: ${name}`, errorCode: "INVALID_ARGUMENT" });
+    }
+    return value;
+  };
+  const turnId = id(params.turnId, "turnId");
+  const runId = id(params.runId, "runId");
+  if (params.action === "closeout") return { turnId, runId, action: "closeout" };
+  if (params.action === "release") {
+    const launch = parseModeLaunchParams({ mode: params.mode, modeDefinition: params.modeDefinition });
+    return { turnId, runId, action: "release", ...launch };
+  }
+  return reject({ message: "invalid mode turn notice: action", errorCode: "INVALID_ARGUMENT" });
 }

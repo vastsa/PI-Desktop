@@ -114,6 +114,10 @@ pub(super) async fn handle(
             let result = mode_runs::control(&st.db, parse(params)?).map_err(error)?;
             (result.wire(), result.changed.then_some(result.run))
         }
+        "modes.update" => {
+            let result = mode_runs::update(&st.db, parse(params)?).map_err(error)?;
+            (result.wire(), result.changed.then_some(result.run))
+        }
         "modes.resolve" => {
             let result = mode_runs::resolve(&st.db, parse(params)?).map_err(error)?;
             (result.wire(), result.changed.then_some(result.run))

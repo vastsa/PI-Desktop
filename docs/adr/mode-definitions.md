@@ -137,11 +137,24 @@ and `{{artifacts.<id>.path}}`. Substitution is text-only.
 - **Run states.** The states are `running`, `waiting` (for an approval, after
   retries are exhausted, or after a non-loop stage stops), `paused`,
   `budget_exhausted`, `finished` and `stopped`. The status bar shows the mode,
-  the stage, turns or budget, and the controls Pause, Resume and Stop. Pause is
-  persisted immediately and blocks Host-started turns; a turn already running
-  finishes normally. Stop ends the run, revokes the claim and interrupts the
-  active turn. The composer Stop button interrupts the turn and pauses the run.
-  After a restart, a run whose turn was in flight is paused, never replayed.
+  the stage, turns or budget, and the controls Pause, Resume, Edit, Remove and
+  Stop. Pause is persisted immediately and blocks Host-started turns. A turn
+  already running closes out: Electron main tells its runtime
+  (`agent.modeTurnNotice` `closeout`), which adds a system notice asking for a
+  short handoff and ends the turn after at most 3 more model requests; the
+  notice is never a user message and the next turn starts without it. Stop
+  ends the run, revokes the claim and interrupts the active turn. Remove ends
+  the run the same way but does not interrupt: the runtime drops the run
+  context (`release`) and the turn finishes as an ordinary turn of the
+  `returnTo` mode, with no Host-started turn after it. The composer Stop
+  button interrupts the turn and pauses the run. After a restart, a run whose
+  turn was in flight is paused, never replayed.
+- **Editing a run.** `modes.update` changes an open run's input (the
+  objective) and its `{ maxTurns, maxTokens }` budget. Both apply from the
+  next claim. The turn holding the claim keeps the input it started with;
+  its `CompleteStage` carries that input and the Host answers
+  `MODE_INPUT_CHANGED` when it is no longer current, which ends the turn.
+  A raised budget does not resume a `budget_exhausted` run; Resume does.
 - **Remote workspaces.** Staged runs are not available in remote workspaces in
   this version. Simple modes are.
 - **Mode switch.** Selecting another staged mode while a run is active asks the
@@ -224,7 +237,12 @@ One migration after the current schema:
 - `goal`: stage `work` (`agent`, `loop`, artifact `goal` from a template
   seeded with `{{run.input}}`, `inject` on compaction, gate
   `require: artifact:goal` with headings Objective, Acceptance criteria and
-  Evidence). Completion stays a model self-report, as in #2141. The legacy
+  Evidence). Completion stays a model self-report, as in #2141. A new Goal run
+  takes its budget from the `goalBudget` app setting (Settings → Agent
+  behavior) when it is set and valid, otherwise from the definition (20 turns,
+  unlimited tokens); a running run keeps its own. While a Goal run is open the
+  composer's Todo / background-task dock is hidden; its data stays and the dock
+  returns when the run ends. The legacy
   Goal negotiation (`EnterGoalMode`, `SubmitGoal`) is no longer offered, and
   the Host rejects new Goal proposals with `PLAN_GOAL_ACTIVATION_DISABLED`.
   Old Goal approval rows stay readable, expire normally and never become

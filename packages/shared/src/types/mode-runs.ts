@@ -76,7 +76,21 @@ export type ModeStageOutcome =
 
 export type ModeSettleResult = { run: ModeRun | null; continue: boolean };
 
-export type ModeControlAction = "pause" | "resume" | "stop";
+/** `stop` ends the run and interrupts its active turn; `remove` ends the run
+ * and lets that turn finish in the mode the session returns to. */
+export type ModeControlAction = "pause" | "resume" | "stop" | "remove";
+
+/** A run budget; `null` is unlimited. Same range as a definition budget. */
+export type ModeRunBudget = { maxTurns: number | null; maxTokens: number | null };
+
+/** `modes.update`: edit an open run. Both fields apply from the next claim. */
+export type ModeUpdateRequest = {
+  sessionId: string;
+  runId: string;
+  expectedRevision: number;
+  input?: string;
+  budget?: ModeRunBudget;
+};
 export type ModeResolveAction = "approve" | "reject";
 
 export type ModeControlRequest = {
