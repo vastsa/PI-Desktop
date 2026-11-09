@@ -3811,9 +3811,11 @@ Anatomy:
   full path and Copy relative path on every surface that names it. Unpositioned
   `.html` and `.htm` references also offer an **Open with** submenu containing
   File Manager, built-in browser, and default browser. Each choice completes the
-  reference first and opens that exact resolved file. Other file types keep the
-  copy actions only; the transcript menu has no **Show in folder** action. A
-  file outside the project has no relative path to copy and reports that fact.
+  reference first and opens that exact resolved file. In a session that may use
+  local files, every reference also offers **Show in folder**, which reveals the
+  same resolved file in the system file manager; a remote workspace keeps the
+  copy actions only. A file outside the project has no relative path to copy
+  and reports that fact.
   The OS default application is no longer what this click does. HTTP(S)
   URLs stay text links. Plain clicks follow the Link open destination setting,
   and right-clicking a URL exposes the same external, work-panel, and copy

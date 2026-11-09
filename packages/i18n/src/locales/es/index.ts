@@ -473,6 +473,8 @@ export const es = {
     "fileManagerOpenFailed": "No se pudo abrir el archivo en el administrador de archivos.",
     "builtInBrowserUnavailable": "El navegador integrado no está disponible.",
     "defaultBrowserOpenFailed": "No se pudo abrir el archivo en el navegador predeterminado.",
+    "revealFileInFolder": "Mostrar en carpeta",
+    "fileRevealFailed": "No se pudo mostrar el archivo en su carpeta.",
     "copyFullPath": "Copiar ruta completa",
     "copyRelativePath": "Copiar ruta relativa",
     "relativePathUnavailable": "El archivo está fuera del proyecto y no tiene ruta relativa",
