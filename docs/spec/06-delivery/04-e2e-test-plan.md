@@ -6,6 +6,13 @@ Set high thinking through the production extension bridge, send a prompt and
 capture the provider stream options. The actual Agent loop sends high, matching
 the extension getter. `runtime.test.ts` mocks only the provider stream.
 
+### E2E-SESSION-rejected-stop-state
+
+Reject a remote Stop at the API boundary: the production session slice keeps
+its running state and rethrows the error. Retry successfully: both the active
+indicator and owning session running entry clear. Coverage:
+`failed-session-stop-state.test.mjs`, without provider execution.
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 Reconstruct a transcript with a running Task followed by a system notice.

@@ -5,6 +5,12 @@
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
 发送 high，与扩展查询值一致。`runtime.test.ts` 仅替换提供商流边界。
 
+### E2E-SESSION-rejected-stop-state
+
+在 API 边界拒绝远端 Stop，生产会话 slice 保留运行状态并传播错误。再次成功
+停止后，当前标记和目标会话运行条目清除。覆盖
+`failed-session-stop-state.test.mjs`，不执行提供商请求。
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 重建运行中的 Task 后接系统通知的会话，生产条目构建、运行状态选择及结果
