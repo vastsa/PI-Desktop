@@ -1,5 +1,12 @@
 # 04. E2E Test Plan
 
+### E2E-MODEL-idle-write-order
+
+Hold the first idle configuration response, select a second model, then release
+both responses. Assert a single in-flight write and the final newest model.
+Coverage: `session-model-write-order.test.mjs`, using real slice/coordination
+with only Host API controlled. Running-turn configuration remains queued.
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 Reconstruct a transcript with a running Task followed by a system notice.

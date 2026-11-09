@@ -1,5 +1,9 @@
 # 08. Component Spec
 
+Idle session model writes participate in the same per-session configuration
+queue as running-turn changes. Rapid choices serialize; the newest queued
+choice is applied after the in-flight write, rather than racing older replies.
+
 Live delegation reconstruction crosses system notices as well as steering
 messages. An ordinary user prompt remains the run boundary. A running Task
 behind a system notice must not become aborted on navigation (Refs #1990).

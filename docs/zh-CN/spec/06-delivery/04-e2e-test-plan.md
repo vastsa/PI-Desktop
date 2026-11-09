@@ -1,5 +1,11 @@
 # 04. E2E 测试 Plan
 
+### E2E-MODEL-idle-write-order
+
+保持空闲配置的首个响应，选择第二个模型再顺序释放响应，验证只有一个写入
+进行中且最终保留最新模型。`session-model-write-order.test.mjs` 使用真实 slice
+与协调器，仅控制 Host API 边界。运行中配置继续排队。
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 重建运行中的 Task 后接系统通知的会话，生产条目构建、运行状态选择及结果
