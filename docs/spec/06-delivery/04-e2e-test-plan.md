@@ -1,5 +1,11 @@
 # 04. E2E Test Plan
 
+### E2E-EXTENSION-thinking-request-state
+
+Set high thinking through the production extension bridge, send a prompt and
+capture the provider stream options. The actual Agent loop sends high, matching
+the extension getter. `runtime.test.ts` mocks only the provider stream.
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 Reconstruct a transcript with a running Task followed by a system notice.

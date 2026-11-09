@@ -1,5 +1,9 @@
 # 02. Agent Runtime
 
+Trusted-extension `setThinkingLevel` updates both the runtime's public value and
+the Pi Agent state used by subsequent provider requests. Capability clamping
+remains authoritative; a reported change must not leave request effort stale.
+
 Consumed steering closes any pre-steering streaming reservation and separates
 the next assistant reply, including during provider/overflow/silent/progress
 recovery. Recovery stays within the durable turn but never replaces a reply
