@@ -256,6 +256,10 @@ pub struct CompleteStageParams {
     pub summary: String,
     #[serde(default)]
     pub artifacts: Option<BTreeMap<String, String>>,
+    /// The run input the calling turn was claimed with. A mismatch means the
+    /// user edited the objective during the turn (`MODE_INPUT_CHANGED`).
+    #[serde(default)]
+    pub input: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -310,7 +314,11 @@ pub struct SettleParams {
 pub enum ControlAction {
     Pause,
     Resume,
+    /// End the run and interrupt its active turn.
     Stop,
+    /// End the run without interrupting its active turn, which finishes as
+    /// an ordinary turn of the mode the session returns to.
+    Remove,
 }
 
 #[derive(Debug, Deserialize)]
@@ -320,6 +328,21 @@ pub struct ControlParams {
     pub run_id: String,
     pub expected_revision: i64,
     pub action: ControlAction,
+}
+
+/// `modes.update`: the user edits an open run. The input (the objective) and
+/// the budget apply from the next claim; the turn holding the claim keeps the
+/// input it started with and cannot complete the stage for the new one.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateParams {
+    pub session_id: String,
+    pub run_id: String,
+    pub expected_revision: i64,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub budget: Option<super::budget::RunBudget>,
 }
 
 /// `ModeClaimResult`. `changed` is Host-internal: a committed state change

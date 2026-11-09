@@ -160,7 +160,8 @@ pub fn save(conn: &Connection, run: &mut ModeRun) -> Result<()> {
                  revision = ?7, active_turn_id = ?8, active_origin = ?9, stage_entered = ?10,
                  advanced_in_turn = ?11, pending_gate = ?12, retry_counts = ?13,
                  rounds_completed = ?14, tokens_used = ?15, settled_turns = ?16,
-                 updated_at = ?17, finished_at = ?18
+                 updated_at = ?17, finished_at = ?18, input = ?19, max_turns = ?20,
+                 max_tokens = ?21
              WHERE id = ?1 AND revision = ?2",
         )?
         .execute(params![
@@ -182,6 +183,9 @@ pub fn save(conn: &Connection, run: &mut ModeRun) -> Result<()> {
             serde_json::to_string(&run.settled_turns)?,
             now,
             run.finished_at,
+            run.input,
+            run.max_turns,
+            run.max_tokens,
         ])?;
     if changed != 1 {
         return Err(mode_error("MODE_REVISION_CONFLICT"));

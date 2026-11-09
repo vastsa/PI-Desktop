@@ -134,13 +134,13 @@ test("a pushed catalog is normalized and a malformed one is dropped", () => {
 
 test("every run state has its own label and the controls the run allows", () => {
   const cases = [
-    [{ state: "running" }, "running", { pause: true, resume: false, stop: true, approve: false, reject: false }],
-    [{ state: "waiting", waitReason: "approval" }, "waitingApproval", { pause: true, resume: false, stop: true, approve: true, reject: true }],
-    [{ state: "waiting", waitReason: "retries" }, "blocked", { pause: true, resume: false, stop: true, approve: false, reject: false }],
-    [{ state: "waiting", waitReason: "turn_end" }, "waitingInput", { pause: true, resume: false, stop: true, approve: false, reject: false }],
-    [{ state: "waiting", waitReason: "error" }, "error", { pause: true, resume: false, stop: true, approve: false, reject: false }],
-    [{ state: "paused" }, "paused", { pause: false, resume: true, stop: true, approve: false, reject: false }],
-    [{ state: "budget_exhausted" }, "budgetExhausted", { pause: false, resume: true, stop: true, approve: false, reject: false }],
+    [{ state: "running" }, "running", { pause: true, resume: false, stop: true, remove: true, edit: true, approve: false, reject: false }],
+    [{ state: "waiting", waitReason: "approval" }, "waitingApproval", { pause: true, resume: false, stop: true, remove: true, edit: true, approve: true, reject: true }],
+    [{ state: "waiting", waitReason: "retries" }, "blocked", { pause: true, resume: false, stop: true, remove: true, edit: true, approve: false, reject: false }],
+    [{ state: "waiting", waitReason: "turn_end" }, "waitingInput", { pause: true, resume: false, stop: true, remove: true, edit: true, approve: false, reject: false }],
+    [{ state: "waiting", waitReason: "error" }, "error", { pause: true, resume: false, stop: true, remove: true, edit: true, approve: false, reject: false }],
+    [{ state: "paused" }, "paused", { pause: false, resume: true, stop: true, remove: true, edit: true, approve: false, reject: false }],
+    [{ state: "budget_exhausted" }, "budgetExhausted", { pause: false, resume: true, stop: true, remove: true, edit: true, approve: false, reject: false }],
   ];
   const labels = new Set();
   for (const [run, key, controls] of cases) {
@@ -149,7 +149,32 @@ test("every run state has its own label and the controls the run allows", () => 
     labels.add(runModel.MODE_RUN_STATE_LABEL_KEYS[key]);
   }
   assert.equal(labels.size, cases.length);
-  assert.deepEqual(runModel.modeRunControls({ state: "finished" }).stop, false);
+  const finished = runModel.modeRunControls({ state: "finished" });
+  assert.deepEqual([finished.stop, finished.remove, finished.edit], [false, false, false]);
+});
+
+test("a run edit sends only what changed and rejects an empty objective or an out-of-range budget", () => {
+  const run = { ...RUN, input: "ship it", maxTurns: 20, maxTokens: null };
+  const draft = runModel.modeRunDraft(run);
+  assert.deepEqual(draft, { input: "ship it", maxTurns: "20", maxTokens: "" });
+  assert.equal(runModel.modeUpdateRequest(run, draft), null, "nothing changed");
+  assert.deepEqual(runModel.modeUpdateRequest(run, { ...draft, input: "  ship it with docs " }), {
+    sessionId: "session-1",
+    runId: "run-1",
+    expectedRevision: 7,
+    input: "ship it with docs",
+  });
+  assert.deepEqual(runModel.modeUpdateRequest(run, { ...draft, maxTurns: "", maxTokens: "50000" }), {
+    sessionId: "session-1",
+    runId: "run-1",
+    expectedRevision: 7,
+    budget: { maxTurns: null, maxTokens: 50000 },
+  });
+  for (const invalid of [{ input: " " }, { maxTurns: "0" }, { maxTurns: "10001" }, { maxTurns: "2.5" }, { maxTokens: "999" }, { maxTokens: "-5" }]) {
+    assert.equal(runModel.modeUpdateRequest(run, { ...draft, ...invalid }), "invalid", JSON.stringify(invalid));
+  }
+  assert.equal(runModel.parseModeBudgetField(" 12 ", "maxTurns"), 12);
+  assert.equal(runModel.parseModeBudgetField("", "maxTokens"), null);
 });
 
 test("control and resolve requests carry the revision the user acted on", () => {

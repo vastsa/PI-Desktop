@@ -12,10 +12,11 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::artifacts;
+use super::budget::{self, RunBudget, GOAL_MODE_ID};
 use super::model::{
     ClaimParams, ClaimResult, ContinueResult, ControlAction, ControlParams, ModeRun, Origin,
-    ResolveAction, ResolveParams, RunState, SettleParams, StartParams, TurnOutcome, WaitReason,
-    MAX_SAFE_INTEGER, MAX_TEXT_BYTES, SETTLED_TURNS_KEPT,
+    ResolveAction, ResolveParams, RunState, SettleParams, StartParams, TurnOutcome, UpdateParams,
+    WaitReason, MAX_SAFE_INTEGER, MAX_TEXT_BYTES, SETTLED_TURNS_KEPT,
 };
 use super::repository::{self, GateRecord};
 use super::snapshot::{self, ModeDefinition, Snapshot};
@@ -114,6 +115,17 @@ pub fn start(db: &Database, workspace: &Path, params: StartParams) -> Result<Cla
         return Err(mode_error("MODE_RUN_ACTIVE"));
     }
     let definition = &snapshot.definition;
+    // The Goal default from settings replaces the builtin's budget for new
+    // runs; a running run keeps the budget it started with.
+    let budget = if definition.id == GOAL_MODE_ID {
+        budget::goal_budget_from_settings(db.get_setting("app")?.as_ref())
+    } else {
+        None
+    }
+    .unwrap_or(RunBudget {
+        max_turns: definition.budget.max_turns,
+        max_tokens: definition.budget.max_tokens,
+    });
     let first = definition
         .stages
         .first()
@@ -150,8 +162,8 @@ pub fn start(db: &Database, workspace: &Path, params: StartParams) -> Result<Cla
         retry_counts: BTreeMap::new(),
         rounds_completed: 0,
         tokens_used: 0,
-        max_turns: definition.budget.max_turns,
-        max_tokens: definition.budget.max_tokens,
+        max_turns: budget.max_turns,
+        max_tokens: budget.max_tokens,
         artifact_paths,
         settled_turns: Vec::new(),
         created_at: now,
@@ -380,7 +392,7 @@ pub fn control(db: &Database, params: ControlParams) -> Result<ContinueResult> {
             }
             _ => return Ok(unchanged(run)),
         },
-        ControlAction::Stop => finish(&mut run, RunState::Stopped),
+        ControlAction::Stop | ControlAction::Remove => finish(&mut run, RunState::Stopped),
     }
     let tx = conn.unchecked_transaction()?;
     repository::save(&tx, &mut run)?;
@@ -389,6 +401,46 @@ pub fn control(db: &Database, params: ControlParams) -> Result<ContinueResult> {
     Ok(ContinueResult {
         run,
         continue_run,
+        changed: true,
+    })
+}
+
+/// `modes.update`: the user edits the objective or the budget of an open run.
+/// Both apply from the next claim. An empty update is a no-op.
+pub fn update(db: &Database, params: UpdateParams) -> Result<ContinueResult> {
+    if let Some(input) = &params.input {
+        require_text(input, "input")?;
+    }
+    if let Some(budget) = &params.budget {
+        budget.validate().map_err(invalid_argument)?;
+    }
+    let conn = db.conn();
+    let (mut run, _) = load_run(conn, &params.session_id, &params.run_id)?;
+    check_revision(&run, params.expected_revision)?;
+    if !run.state.is_open() {
+        return Err(mode_error("MODE_RUN_CLOSED"));
+    }
+    let mut changed = false;
+    if let Some(input) = params.input.filter(|input| *input != run.input) {
+        run.input = input;
+        changed = true;
+    }
+    if let Some(budget) = params.budget {
+        if (run.max_turns, run.max_tokens) != (budget.max_turns, budget.max_tokens) {
+            run.max_turns = budget.max_turns;
+            run.max_tokens = budget.max_tokens;
+            // A raised limit lets an exhausted run be resumed; it does not
+            // resume it by itself.
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(unchanged(run));
+    }
+    repository::save(conn, &mut run)?;
+    Ok(ContinueResult {
+        run,
+        continue_run: false,
         changed: true,
     })
 }

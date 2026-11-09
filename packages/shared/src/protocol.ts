@@ -266,6 +266,7 @@ export const IPC = {
     modesDelete: "pi-desktop/modes/delete",
     modesRunGet: "pi-desktop/modes/run/get",
     modesRunControl: "pi-desktop/modes/run/control",
+    modesRunUpdate: "pi-desktop/modes/run/update",
     modesRunResolve: "pi-desktop/modes/run/resolve",
     /**
      * List every paired remote `pi-host` this desktop knows, redacted so no
