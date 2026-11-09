@@ -10,23 +10,38 @@ type NativeClipboard = {
 const MAX_ITEMS = 20;
 const MAX_METADATA_BYTES = 1024 * 1024;
 
-async function execFileAsync(
+/** Exported so a regression can exercise a real child process boundary. */
+export async function execFileAsync(
   command: string,
   args: string[],
   options: { timeout?: number; maxBuffer?: number; [key: string]: unknown },
   input?: Buffer,
 ): Promise<Buffer> {
-  const child = execFile(command, args, options);
+  // execFile defaults to utf8 strings; pin the buffer encoding so stdout stays binary
+  // no matter which caller reads a clipboard, and normalize anything that still
+  // arrives as a string instead of throwing inside the stream handler.
+  const child = execFile(command, args, { encoding: "buffer", ...options });
   return new Promise<Buffer>((resolve, reject) => {
-    let stdout = Buffer.alloc(0);
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = Buffer.concat([stdout, chunk]);
+    const chunks: Buffer[] = [];
+    let settled = false;
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
+    // Stream errors must reject the promise; an unhandled handler would crash Main.
+    child.stdout?.on("error", fail);
+    child.stdin?.on("error", fail);
     child.on("error", (error: ExecFileException) => {
-      reject(new Error(error.message || "clipboard file list read failed"));
+      fail(new Error(error.message || "clipboard file list read failed"));
     });
     child.on("close", (code) => {
-      if (code === 0) resolve(stdout);
+      if (settled) return;
+      settled = true;
+      if (code === 0) resolve(Buffer.concat(chunks));
       else reject(new Error("clipboard file list read failed"));
     });
     child.stdin?.end(input);
