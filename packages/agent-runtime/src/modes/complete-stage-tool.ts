@@ -30,6 +30,7 @@ const TERMINAL_HOST_ERRORS = new Set([
   "MODE_CLAIM_MISMATCH",
   "MODE_RUN_NOT_FOUND",
   "MODE_NOT_STAGED",
+  "MODE_INPUT_CHANGED",
 ]);
 
 const STATUSES = new Set<ModeStageOutcome["status"]>([
@@ -207,7 +208,11 @@ export function createCompleteStageTool(deps: CompleteStageToolDeps): AgentTool 
         if (terminal) deps.endTurn();
         const lines = [`${COMPLETE_STAGE_TOOL_NAME} failed (${errorCode}): ${errorMessage(error)}`];
         if (gateText) lines.push(`Gate command output:\n${gateText}`);
-        if (terminal) lines.push("This turn no longer holds the run; it ends now.");
+        if (errorCode === "MODE_INPUT_CHANGED") {
+          lines.push("The user edited the run's objective after this turn started. This turn ends now; the next turn of the run receives the new objective.");
+        } else if (terminal) {
+          lines.push("This turn no longer holds the run; it ends now.");
+        }
         return textResult(lines.join("\n"), { errorCode, gates }, { isError: true, ...(terminal ? { terminate: true } : {}) });
       };
 
@@ -217,6 +222,9 @@ export function createCompleteStageTool(deps: CompleteStageToolDeps): AgentTool 
           ...identity,
           summary: params.summary,
           ...(params.artifacts ? { artifacts: params.artifacts } : {}),
+          // The Host refuses the report when the user edited the objective
+          // after this turn was claimed (MODE_INPUT_CHANGED).
+          input: modeTurn.input,
         }));
       } catch (error) {
         if (signal?.aborted) throw abortedError();

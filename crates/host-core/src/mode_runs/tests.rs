@@ -158,11 +158,12 @@ pub(super) fn complete(
             turn_id: turn.into(),
             summary: "done".into(),
             artifacts,
+            input: None,
         },
     )
 }
 
-fn control_run(
+pub(super) fn control_run(
     fx: &Fixture,
     run: &ModeRun,
     action: ControlAction,
@@ -186,7 +187,7 @@ fn policy(fx: &Fixture, sid: &str) -> Option<ToolPolicy> {
     tool_policy(&fx.db, sid).unwrap()
 }
 
-fn mode_row(db: &Database, sid: &str) -> (String, Option<String>) {
+pub(super) fn mode_row(db: &Database, sid: &str) -> (String, Option<String>) {
     db.conn()
         .query_row(
             "SELECT mode, mode_snapshot_hash FROM sessions WHERE id = ?1",

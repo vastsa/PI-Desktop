@@ -248,7 +248,7 @@ import {
   composeModeSystemPrompt,
   DEFAULT_RUNTIME_SYSTEM_PROMPT,
 } from "./mode-prompts.js";
-import { RuntimeModeState } from "./modes/mode-state.js";
+import { RuntimeModeState, type ModeTurnNoticeParams } from "./modes/mode-state.js";
 import {
   COMPLETE_STAGE_TOOL_NAME,
   createCompleteStageTool,
@@ -2371,8 +2371,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // queued renderer prompt ends a completed turn at the next boundary,
       // without treating an error or abort as a graceful stop.
       finishTurn: async ({ message }) => {
-        if (!this.gracefulStopRequested) return;
         if (message.stopReason === "error" || message.stopReason === "aborted") return;
+        // A paused run's turn has used its wrap-up requests (ADR mode-definitions).
+        if (this.modeState.closeoutExhausted()) return { action: "end" };
+        if (!this.gracefulStopRequested) return;
         this.gracefulStopRequested = false;
         return { action: "end" };
       },
@@ -2484,6 +2486,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   /** Steering is consumed after next-turn preparation; sync before dispatch. */
   private prepareToolDeclarations(context: AgentContext): AgentLoopTurnUpdate {
+    this.modeState.noteModelRequest();
     const tools = this.declaredTools();
     let messages = context.messages;
     const changes = getToolStateChanges(getCurrentTools(messages), tools.map(toToolDeclaration));
@@ -9714,6 +9717,29 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       settle();
     });
+  }
+
+  /**
+   * Electron main reports that the run this turn works on changed (ADR
+   * mode-definitions): `closeout` after the user paused it, `release` after
+   * the user removed it. A notice for another turn or run is ignored.
+   */
+  modeTurnNotice(notice: ModeTurnNoticeParams): { applied: boolean } {
+    if (this.disposed || !this.turnId || notice.turnId !== this.turnId) return { applied: false };
+    if (this.modeState.activeTurn?.runId !== notice.runId) return { applied: false };
+    if (notice.action === "closeout") {
+      if (!this.modeState.beginCloseout(notice.runId)) return { applied: false };
+      this.setAgentSystemPrompt(this.composeSystemPrompt());
+      return { applied: true };
+    }
+    // The turn finishes as an ordinary turn of the mode the session returned
+    // to; CompleteStage and the stage brief leave with the run context.
+    this.modeState.clearTurn();
+    this.setMode(notice.mode, notice.modeDefinition);
+    this.rebuildToolCatalog();
+    this.setAgentSystemPrompt(this.composeSystemPrompt());
+    this.setAgentTools(this.activeTools());
+    return { applied: true };
   }
 
   /** Ask pi-agent-core to stop after the current assistant/tool turn. */

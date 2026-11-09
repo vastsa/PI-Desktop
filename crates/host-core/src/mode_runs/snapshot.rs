@@ -25,8 +25,8 @@ const MAX_COMMAND_CHARS: usize = 2_000;
 const MAX_PATH_CHARS: usize = 300;
 const MAX_RETRIES: i64 = 10;
 const MAX_TIMEOUT_MINUTES: i64 = 60;
-const MAX_TURNS: i64 = 10_000;
-const MIN_TOKENS: i64 = 1_000;
+pub(super) const MAX_TURNS: i64 = 10_000;
+pub(super) const MIN_TOKENS: i64 = 1_000;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

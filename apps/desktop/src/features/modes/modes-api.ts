@@ -10,6 +10,7 @@ import {
   type ModeResolveRequest,
   type ModeRun,
   type ModesChangedEvent,
+  type ModeUpdateRequest,
 } from "@pi-desktop/shared";
 
 /**
@@ -129,6 +130,8 @@ export const modesApi = {
     invoke<{ run?: unknown }>(IPC.invoke.modesRunGet, sessionId).then((result) => parseModeRun(result?.run)),
   controlRun: (request: ModeControlRequest) =>
     invoke<{ run?: unknown; continue?: unknown }>(IPC.invoke.modesRunControl, request).then(runResult),
+  updateRun: (request: ModeUpdateRequest) =>
+    invoke<{ run?: unknown; continue?: unknown }>(IPC.invoke.modesRunUpdate, request).then(runResult),
   resolveRun: (request: ModeResolveRequest) =>
     invoke<{ run?: unknown; continue?: unknown }>(IPC.invoke.modesRunResolve, request).then(runResult),
   onCatalogChanged: (listener: (catalog: ModeCatalog) => void): (() => void) => {

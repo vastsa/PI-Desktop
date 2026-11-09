@@ -106,10 +106,18 @@ window.piDesktop = {
           failNextControl = false;
           return { ok: false, error: { code: "MODE_REVISION_CONFLICT", message: "revision conflict" } };
         }
-        const state = { pause: "paused", resume: "running", stop: "stopped" }[input.action];
+        const state = { pause: "paused", resume: "running", stop: "stopped", remove: "stopped" }[input.action];
         run = { ...run, state, waitReason: undefined, revision: run.revision + 1 };
         return ok({ run, continue: input.action === "resume" });
       }
+      case IPC.invoke.modesRunUpdate:
+        run = {
+          ...run,
+          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.budget ? input.budget : {}),
+          revision: run.revision + 1,
+        };
+        return ok({ run, continue: false });
       case IPC.invoke.modesRunResolve:
         run = { ...run, state: input.action === "approve" ? "running" : "waiting", waitReason: input.action === "approve" ? undefined : "turn_end", revision: run.revision + 1 };
         return ok({ run, continue: input.action === "approve" });
@@ -190,10 +198,10 @@ window.modesProbe = async () => {
   flushSync(() => window.__view("run"));
   await waitFor(() => text().includes("Waiting for approval"), "waiting run not shown");
   result.waitingText = text().includes("Rounds 2/∞") && text().includes("design");
-  result.waitingButtons = ["Approve", "Reject", "Pause", "Resume", "Stop"].filter((label) => button(label));
+  result.waitingButtons = ["Approve", "Reject", "Pause", "Resume", "Edit", "Remove", "Stop"].filter((label) => button(label));
   flushSync(() => button("Approve").click());
   await waitFor(() => text().includes("Running"), "approve did not apply");
-  result.runningButtons = ["Approve", "Reject", "Pause", "Resume", "Stop"].filter((label) => button(label));
+  result.runningButtons = ["Approve", "Reject", "Pause", "Resume", "Edit", "Remove", "Stop"].filter((label) => button(label));
   flushSync(() => button("Pause").click());
   await waitFor(() => text().includes("Paused"), "pause did not apply");
   // A pushed change is shown as is: budget exhausted with the last error.
@@ -201,7 +209,23 @@ window.modesProbe = async () => {
   emit(IPC.event.modesChanged, { sessionId: "session-1", run });
   await waitFor(() => text().includes("Budget exhausted"), "pushed run not shown");
   result.budgetText = text().includes("Last error: npm test exited with 1");
-  result.budgetButtons = ["Approve", "Reject", "Pause", "Resume", "Stop"].filter((label) => button(label));
+  result.budgetButtons = ["Approve", "Reject", "Pause", "Resume", "Edit", "Remove", "Stop"].filter((label) => button(label));
+  // Edit: the objective and the budget go to the Host with the revision.
+  flushSync(() => button("Edit").click());
+  const form = await waitFor(() => document.querySelector('[data-testid="mode-run-edit"]'), "edit form missing");
+  result.editInitial = [...form.querySelectorAll("textarea, input")].map((field) => field.value);
+  const [objective, turns, tokens] = form.querySelectorAll("textarea, input");
+  typeInto(turns, "0");
+  await waitFor(() => text().includes("Check the objective and the budget"), "invalid budget not reported");
+  result.saveBlockedByBudget = button("Save").disabled;
+  typeInto(objective, "go, with docs");
+  typeInto(turns, "40");
+  typeInto(tokens, "200000");
+  await settle();
+  flushSync(() => button("Save").click());
+  await waitFor(() => !document.querySelector('[data-testid="mode-run-edit"]'), "edit form did not close");
+  await waitFor(() => text().includes("Rounds 2/40"), "edited budget not shown");
+  result.updateRequests = sent(IPC.invoke.modesRunUpdate);
   // A refused control is named in the user's language.
   failNextControl = true;
   flushSync(() => button("Resume").click());
@@ -215,6 +239,15 @@ window.modesProbe = async () => {
   result.stopAsked = text().includes("Stop this run?");
   flushSync(() => button("Stop run").click());
   await waitFor(() => !document.querySelector('[data-testid="mode-run-bar"]'), "stopped run still shown");
+  // Remove asks first; a fresh open run is pushed to remove.
+  run = { ...run, id: "run-2", state: "running", revision: 20, lastError: undefined };
+  emit(IPC.event.modesChanged, { sessionId: "session-1", run });
+  await waitFor(() => button("Remove"), "new run not shown");
+  flushSync(() => button("Remove").click());
+  await waitFor(() => button("Remove run"), "remove confirmation missing");
+  result.removeAsked = text().includes("The current turn finishes in the previous mode");
+  flushSync(() => button("Remove run").click());
+  await waitFor(() => !document.querySelector('[data-testid="mode-run-bar"]'), "removed run still shown");
   result.resolveRequests = sent(IPC.invoke.modesRunResolve);
   result.controlRequests = sent(IPC.invoke.modesRunControl);
 
@@ -353,18 +386,31 @@ app.whenReady().then(async () => {
 
     // Run status bar.
     assert.equal(result.waitingText, true);
-    assert.deepEqual(result.waitingButtons, ["Approve", "Reject", "Pause", "Stop"]);
-    assert.deepEqual(result.runningButtons, ["Pause", "Stop"]);
+    assert.deepEqual(result.waitingButtons, ["Approve", "Reject", "Pause", "Edit", "Remove", "Stop"]);
+    assert.deepEqual(result.runningButtons, ["Pause", "Edit", "Remove", "Stop"]);
     assert.equal(result.budgetText, true);
-    assert.deepEqual(result.budgetButtons, ["Resume", "Stop"]);
+    assert.deepEqual(result.budgetButtons, ["Resume", "Edit", "Remove", "Stop"]);
+    assert.deepEqual(result.editInitial, ["go", "", ""]);
+    assert.equal(result.saveBlockedByBudget, true);
+    assert.deepEqual(result.updateRequests, [
+      {
+        sessionId: "session-1",
+        runId: "run-1",
+        expectedRevision: 9,
+        input: "go, with docs",
+        budget: { maxTurns: 40, maxTokens: 200000 },
+      },
+    ]);
     assert.equal(result.stopAsked, true);
+    assert.equal(result.removeAsked, true);
     assert.deepEqual(result.resolveRequests, [
       { sessionId: "session-1", runId: "run-1", expectedRevision: 3, action: "approve" },
     ]);
     assert.deepEqual(result.controlRequests, [
       { sessionId: "session-1", runId: "run-1", expectedRevision: 4, action: "pause" },
-      { sessionId: "session-1", runId: "run-1", expectedRevision: 9, action: "resume" },
-      { sessionId: "session-1", runId: "run-1", expectedRevision: 9, action: "stop" },
+      { sessionId: "session-1", runId: "run-1", expectedRevision: 10, action: "resume" },
+      { sessionId: "session-1", runId: "run-1", expectedRevision: 10, action: "stop" },
+      { sessionId: "session-1", runId: "run-2", expectedRevision: 20, action: "remove" },
     ]);
 
     // Settings → Modes.

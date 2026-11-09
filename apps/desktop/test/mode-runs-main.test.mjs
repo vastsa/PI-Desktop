@@ -52,6 +52,7 @@ function fixture({ open = null, claim, settle = { run: null, continue: false } }
   const calls = [];
   const continuations = [];
   const aborts = [];
+  const notices = [];
   const host = {
     async call(method, params) {
       calls.push({ method, params });
@@ -60,7 +61,7 @@ function fixture({ open = null, claim, settle = { run: null, continue: false } }
         return claim ?? { claimed: true, run: run({ activeTurnId: params.turnId }), enteredStage: method === "modes.start", definition: staged };
       }
       if (method === "modes.settleTurn") return settle;
-      if (method === "modes.control" || method === "modes.resolve") return settle;
+      if (method === "modes.control" || method === "modes.resolve" || method === "modes.update") return settle;
       throw new Error(`unexpected ${method}`);
     },
   };
@@ -80,10 +81,13 @@ function fixture({ open = null, claim, settle = { run: null, continue: false } }
     abortTurn: async (sessionId) => {
       aborts.push(sessionId);
     },
+    notifyTurn: async (sessionId, turnId, notice) => {
+      notices.push({ sessionId, turnId, ...notice });
+    },
     logger: { app() {} },
     isQuitting: () => false,
   });
-  return { coordinator, calls, continuations, aborts };
+  return { coordinator, calls, continuations, aborts, notices };
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -176,6 +180,45 @@ test("stop aborts the claimed turn; approval continues with the approval origin"
   await coordinator.resolve({ sessionId: "s1", runId: "run1", expectedRevision: 4, action: "approve" });
   await tick();
   assert.ok(continuations.every((entry) => entry.origin === "approval"));
+});
+
+test("pause closes out the claimed turn once, without aborting it", async () => {
+  const { coordinator, aborts, notices } = fixture({ settle: { run: run({ state: "paused", revision: 4 }), continue: false } });
+  await coordinator.prepareTurn({ sessionId: "s1", turnId: "t1", sessionMode: "feature", content: "x", origin: "user" });
+  await coordinator.control({ sessionId: "s1", runId: "run1", expectedRevision: 3, action: "pause" });
+  assert.deepEqual(aborts, []);
+  assert.deepEqual(notices, [{ sessionId: "s1", turnId: "t1", runId: "run1", action: "closeout" }]);
+  // An unchanged (already paused) run sends no second notice.
+  await coordinator.control({ sessionId: "s1", runId: "run1", expectedRevision: 4, action: "pause" });
+  assert.equal(notices.length, 1);
+});
+
+test("pause without a claimed turn sends no notice", async () => {
+  const { coordinator, notices } = fixture({ settle: { run: run({ state: "paused", revision: 4 }), continue: false } });
+  await coordinator.control({ sessionId: "s1", runId: "run1", expectedRevision: 3, action: "pause" });
+  assert.deepEqual(notices, []);
+});
+
+test("remove releases the claimed turn to the return mode instead of aborting it", async () => {
+  const { coordinator, aborts, notices, continuations } = fixture({
+    settle: { run: run({ state: "stopped", revision: 4, finishedAt: "t" }), continue: false },
+  });
+  await coordinator.prepareTurn({ sessionId: "s1", turnId: "t1", sessionMode: "feature", content: "x", origin: "user" });
+  await coordinator.control({ sessionId: "s1", runId: "run1", expectedRevision: 3, action: "remove" });
+  assert.deepEqual(aborts, []);
+  assert.deepEqual(notices, [{ sessionId: "s1", turnId: "t1", runId: "run1", action: "release", mode: "agent" }]);
+  await tick();
+  assert.deepEqual(continuations, []);
+});
+
+test("an edit is forwarded to the Host as is and starts no turn", async () => {
+  const { coordinator, calls, continuations } = fixture({ settle: { run: run({ input: "new", revision: 4 }), continue: false } });
+  const request = { sessionId: "s1", runId: "run1", expectedRevision: 3, input: "new", budget: { maxTurns: 5, maxTokens: null } };
+  const result = await coordinator.update(request);
+  assert.deepEqual(calls, [{ method: "modes.update", params: request }]);
+  assert.equal(result.run.input, "new");
+  await tick();
+  assert.deepEqual(continuations, []);
 });
 
 test("continuation authority survives only on the registered object", () => {
