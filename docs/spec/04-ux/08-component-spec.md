@@ -4,6 +4,10 @@ Idle session model writes participate in the same per-session configuration
 queue as running-turn changes. Rapid choices serialize; the newest queued
 choice is applied after the in-flight write, rather than racing older replies.
 
+A full transcript read may fill its session cache only when that cache has not
+changed during the request. New streaming or edit snapshots retain ownership;
+the caller still receives the requested history for its own action validation.
+
 A rejected session Stop request retains the last known running state. A
 transport failure is not confirmation of process settlement; successful Stop
 and authoritative terminal events continue to clear the running indicator.

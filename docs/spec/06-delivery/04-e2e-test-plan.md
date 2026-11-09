@@ -7,6 +7,19 @@ both responses. Assert a single in-flight write and the final newest model.
 Coverage: `session-model-write-order.test.mjs`, using real slice/coordination
 with only Host API controlled. Running-turn configuration remains queued.
 
+### E2E-EXTENSION-thinking-request-state
+
+Set high thinking through the production extension bridge, send a prompt and
+capture the provider stream options. The actual Agent loop sends high, matching
+the extension getter. `runtime.test.ts` mocks only the provider stream.
+
+### E2E-TRANSCRIPT-full-read-cache-race
+
+Hold a full-history read, publish a newer streaming snapshot, then resolve the
+old read. The caller receives history while the session cache keeps the newer
+snapshot. Coverage: `full-transcript-refresh-race.test.mjs` plus existing
+session-runtime update regressions. No provider execution is required.
+
 ### E2E-SESSION-rejected-stop-state
 
 Reject a remote Stop at the API boundary: the production session slice keeps
