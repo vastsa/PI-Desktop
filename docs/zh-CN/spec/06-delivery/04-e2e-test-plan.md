@@ -1,5 +1,11 @@
 # 04. E2E 测试 Plan
 
+### E2E-TRANSCRIPT-full-read-cache-race
+
+保持全量历史读取请求，发布新的流式快照，再返回旧读取结果。调用方得到历史，
+会话缓存保留新快照。覆盖 `full-transcript-refresh-race.test.mjs` 和现有会话
+更新回归，不执行模型请求。
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 重建运行中的 Task 后接系统通知的会话，生产条目构建、运行状态选择及结果
