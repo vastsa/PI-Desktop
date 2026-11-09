@@ -555,6 +555,7 @@ const {
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
   disposePowerSaveBlockers,
+  disposeNativeThemeListener,
   applyApplicationMenuSettings,
   applyAppThemePreference,
   broadcastAppearance,
@@ -1163,6 +1164,7 @@ registerShutdownHandlers({
   logger,
   confirmQuitDialog,
   disposePowerSaveBlockers,
+  disposeNativeThemeListener,
   liveCallService,
   disposeSystemProxyRelay,
 });
