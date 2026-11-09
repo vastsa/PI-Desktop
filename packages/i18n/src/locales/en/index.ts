@@ -488,6 +488,8 @@ export const en = {
     fileManagerOpenFailed: "Could not open the file in File Manager.",
     builtInBrowserUnavailable: "The built-in browser is unavailable.",
     defaultBrowserOpenFailed: "Could not open the file in the default browser.",
+    revealFileInFolder: "Show in folder",
+    fileRevealFailed: "Could not show the file in its folder.",
     copyFullPath: "Copy full path",
     copyRelativePath: "Copy relative path",
     relativePathUnavailable: "That file is outside the project, so it has no relative path",

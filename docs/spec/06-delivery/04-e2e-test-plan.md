@@ -14661,13 +14661,15 @@ are withdrawn with ADR 0165.
   that matches nothing. On an HTML reference, open the Open with submenu and
   choose File Manager, built-in browser, and default browser; repeat for the
   scratch HTML file. 9) Use Copy full path and Copy relative path, then do the
-  same on a reference that resolves in the session scratch store.
+  same on a reference that resolves in the session scratch store. 10) Choose
+  Show in folder on a project file and on a scratch file.
 - **Expected**:
   - Right-clicking a file reference offers Copy full path and Copy relative
-    path on each transcript surface that names it. The transcript menu has no
-    Show in folder item. An unpositioned HTML reference also has a second-level
-    Open with submenu for File Manager, built-in browser, and default browser;
-    non-HTML references keep only the copy actions. Each open choice resolves
+    path on each transcript surface that names it, plus Show in folder in a
+    local session. An unpositioned HTML reference also has a second-level
+    Open with submenu for File Manager, built-in browser, and default browser.
+    Show in folder reveals the resolved file in the system file manager and a
+    missing reference reports itself instead. Each open choice resolves
     the reference first, and a missing reference reports itself without opening
     a same-named file elsewhere.
   - A copy writes exactly what it names: the absolute address for the full copy

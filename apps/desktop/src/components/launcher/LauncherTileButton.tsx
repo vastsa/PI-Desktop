@@ -71,7 +71,12 @@ export function LauncherTileButton({
         title={title}
         onClick={onOpen}
       >
-        <span className="plugin-launcher-icon" aria-hidden>
+        <span
+          className={`plugin-launcher-icon${
+            showIcon && tile.kind === "app" ? " plugin-launcher-icon-native" : ""
+          }`}
+          aria-hidden
+        >
           {showIcon ? (
             <img
               src={tile.iconDataUrl}
