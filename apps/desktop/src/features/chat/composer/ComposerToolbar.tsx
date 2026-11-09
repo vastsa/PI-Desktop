@@ -10,6 +10,7 @@ import {
 } from "@pi-desktop/shared";
 import { type AppState, useAppStore } from "../../../stores/app-store";
 import { ComposerModePicker } from "./ComposerModePicker";
+import { modeErrorMessage } from "../../modes/mode-run-model";
 import { ComposerPermissionPicker } from "./ComposerPermissionPicker";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
 import { ComposerControlSlots } from "./ComposerControlSlots";
@@ -156,7 +157,8 @@ export function ComposerToolbar({
                 thinkingLevel,
               });
             } catch (error) {
-              showToast(error instanceof Error ? error.message : String(error), {
+              // MODE_RUN_ACTIVE / MODE_NOT_FOUND are named, not shown raw.
+              showToast(modeErrorMessage(t, error), {
                 variant: "error",
               });
             }

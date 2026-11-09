@@ -1,3 +1,4 @@
+import { builtinModeRuns } from "./helpers/builtin-mode-runs.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,6 +24,7 @@ function promptFixture({ mode = "agent", projectPath = null, skills = [], templa
     assert.fail(`unexpected RPC ${method}`);
   } };
   registerAgentIpc({
+    modeRuns: builtinModeRuns,
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => host,
     getSidecar: () => ({ setProjectInstructionRoot() {}, async call(method, params) {

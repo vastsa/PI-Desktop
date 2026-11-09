@@ -1,3 +1,4 @@
+import { builtinModeRuns } from "./helpers/builtin-mode-runs.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -63,6 +64,7 @@ function promptFixture(commandService, projectPath = "/repo", remoteWorkspace) {
     assert.fail(`unexpected RPC ${method}`);
   } };
   registerAgentIpc({
+    modeRuns: builtinModeRuns,
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => host,
     getSidecar: () => ({ setProjectInstructionRoot() {}, async call(method, params) {
