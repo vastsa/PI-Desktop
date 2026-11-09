@@ -1,5 +1,12 @@
 # 04. E2E 测试 Plan
 
+### E2E-FILE-INDEX-git-deadline
+
+对真实测试文件调用 `getWorkspaceFileIndex` 和 `searchWorkspaceFiles`，
+保持 Git 的 close 事件未到达，推进截止时间后两者均返回有界目录列表。
+覆盖：`fs-index-git-deadline.test.mjs`。原有索引测试覆盖 Git 忽略规则、
+Unicode 字节分块及深层搜索。
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 重建运行中的 Task 后接系统通知的会话，生产条目构建、运行状态选择及结果

@@ -61,9 +61,20 @@ function gitListFiles(root: string): Promise<string[] | null> {
     );
     let out = "";
     let failed = false;
+    let settled = false;
+    const finish = (files: string[] | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(files);
+    };
     const timer = setTimeout(() => {
       failed = true;
+      // 截止时间直接结束等待，继承 stdout 的进程可能永远不发 close。
+      finish(null);
       child.kill();
+      child.stdout.destroy();
+      child.stderr?.destroy();
     }, GIT_TIMEOUT_MS);
     // A filename's UTF-8 bytes can straddle stdout chunks.
     child.stdout.setEncoding("utf8");
@@ -71,17 +82,18 @@ function gitListFiles(root: string): Promise<string[] | null> {
       out += chunk;
       if (out.length > MAX_GIT_BUFFER) {
         failed = true;
+        finish(null);
         child.kill();
+        child.stdout.destroy();
+        child.stderr?.destroy();
       }
     });
     child.on("error", () => {
-      clearTimeout(timer);
-      resolve(null);
+      finish(null);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
-      if (failed || code !== 0) return resolve(null);
-      resolve(out.split("\0").filter((p) => p.length > 0));
+      if (failed || code !== 0) return finish(null);
+      finish(out.split("\0").filter((p) => p.length > 0));
     });
   });
 }

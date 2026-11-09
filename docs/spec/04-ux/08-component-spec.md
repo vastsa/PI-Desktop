@@ -1,5 +1,9 @@
 # 08. Component Spec
 
+Workspace file index Git queries settle at their deadline or output limit,
+even when inherited child pipes do not close. Composer file search and the
+Files index then use the existing bounded filesystem fallback (Refs #1731).
+
 Live delegation reconstruction crosses system notices as well as steering
 messages. An ordinary user prompt remains the run boundary. A running Task
 behind a system notice must not become aborted on navigation (Refs #1990).
