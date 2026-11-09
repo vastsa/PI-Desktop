@@ -1,5 +1,10 @@
 # 04. E2E 测试 Plan
 
+### E2E-EXTENSION-thinking-request-state
+
+通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
+发送 high，与扩展查询值一致。`runtime.test.ts` 仅替换提供商流边界。
+
 ### E2E-TRANSCRIPT-full-read-cache-race
 
 保持全量历史读取请求，发布新的流式快照，再返回旧读取结果。调用方得到历史，

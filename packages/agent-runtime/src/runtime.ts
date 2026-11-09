@@ -3001,6 +3001,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       getThinkingLevel: () => agentThinkingLevel(runtime.thinkingLevel),
       setThinkingLevel: (level) => {
         runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
+        runtime.agent.state.thinkingLevel = agentThinkingLevel(runtime.thinkingLevel);
       },
       isIdle: () => !runtime.agent.state.isStreaming,
       abort: () => {
