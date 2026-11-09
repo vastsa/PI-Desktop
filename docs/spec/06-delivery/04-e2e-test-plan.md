@@ -7,6 +7,13 @@ old read. The caller receives history while the session cache keeps the newer
 snapshot. Coverage: `full-transcript-refresh-race.test.mjs` plus existing
 session-runtime update regressions. No provider execution is required.
 
+### E2E-SESSION-rejected-stop-state
+
+Reject a remote Stop at the API boundary: the production session slice keeps
+its running state and rethrows the error. Retry successfully: both the active
+indicator and owning session running entry clear. Coverage:
+`failed-session-stop-state.test.mjs`, without provider execution.
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 Reconstruct a transcript with a running Task followed by a system notice.
