@@ -71,6 +71,36 @@ test("an asynchronous Windows clipboard probe keeps the event loop responsive", 
   assert.ok(ticks >= 3, "the event loop must keep running while the clipboard probe is pending");
 });
 
+test("macOS Finder metadata is piped to plutil asynchronously", async () => {
+  const plist = Buffer.from("synthetic Finder plist");
+  const paths = ["/tmp/first folder", "/tmp/second"];
+  const calls = [];
+  let stdinBytes;
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stdin = {
+    end(input) {
+      stdinBytes = Buffer.from(input);
+      setImmediate(() => {
+        child.stdout.emit("data", Buffer.from(JSON.stringify(paths)));
+        child.emit("close", 0);
+      });
+    },
+  };
+  const { nativeClipboardPaths: readPaths } = loadWithExecFile((command, args, options) => {
+    calls.push({ command, args, options });
+    return child;
+  });
+
+  assert.deepEqual(await readPaths(clipboard({ NSFilenamesPboardType: plist }), "darwin"), paths);
+  assert.deepEqual(stdinBytes, plist);
+  assert.equal(calls[0].command, "/usr/bin/plutil");
+  assert.deepEqual(calls[0].args, ["-convert", "json", "-o", "-", "--", "-"]);
+  assert.equal(calls[0].options.timeout, 10_000);
+  assert.equal(calls[0].options.maxBuffer, 1024 * 1024);
+  assert.equal("input" in calls[0].options, false);
+});
+
 test("Windows PowerShell clipboard adapter reads stdout asynchronously with process bounds", async () => {
   const paths = ["C:\\first folder", "D:\\中文"];
   const calls = [];

@@ -14,6 +14,7 @@ async function execFileAsync(
   command: string,
   args: string[],
   options: { timeout?: number; maxBuffer?: number; [key: string]: unknown },
+  input?: Buffer,
 ): Promise<Buffer> {
   const child = execFile(command, args, options);
   return new Promise<Buffer>((resolve, reject) => {
@@ -28,6 +29,7 @@ async function execFileAsync(
       if (code === 0) resolve(stdout);
       else reject(new Error("clipboard file list read failed"));
     });
+    child.stdin?.end(input);
   });
 }
 
@@ -62,22 +64,12 @@ export async function nativeClipboardPaths(
   const macList = platform === "darwin" ? read("NSFilenamesPboardType") : Buffer.alloc(0);
   if (platform === "win32") paths = await readWindowsPaths();
   else if (macList.length) {
-    const child = execFile("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", "-"], {
-      input: macList, maxBuffer: MAX_METADATA_BYTES, timeout: 10000,
-    } as any);
     const value: unknown = JSON.parse(
       (
-        await new Promise<Buffer>((resolve, reject) => {
-          let buf = Buffer.alloc(0);
-          child.stdout?.on("data", (chunk: Buffer) => {
-            buf = Buffer.concat([buf, chunk]);
-          });
-          child.on("error", reject);
-          child.on("close", (code) => {
-            if (code === 0) resolve(buf);
-            else reject(new Error("invalid clipboard file list"));
-          });
-        })
+        await execFileAsync("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", "-"], {
+          maxBuffer: MAX_METADATA_BYTES,
+          timeout: 10000,
+        }, macList)
       ).toString("utf8"),
     );
     if (!Array.isArray(value) || !value.every(path => typeof path === "string")) throw new Error("invalid clipboard file list");
