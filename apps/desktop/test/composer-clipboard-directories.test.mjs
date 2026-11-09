@@ -79,6 +79,7 @@ test("macOS Finder metadata is piped to plutil asynchronously", async () => {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stdin = {
+    on() {},
     end(input) {
       stdinBytes = Buffer.from(input);
       setImmediate(() => {
@@ -137,6 +138,47 @@ test("Windows PowerShell clipboard adapter rejects a failed child process", asyn
     return child;
   });
   await assert.rejects(() => readPaths(silentWindowsClipboard(), "win32"), /clipboard file list read failed/);
+});
+
+test("the clipboard helper reads a real child process whose stdout is not binary", async () => {
+  // execFile defaults to utf8, so a real child hands the stream string chunks. A mock that
+  // emits Buffers hides that boundary, which is how the production adapter crashed on macOS.
+  const { execFileAsync } = load("../electron/main/composer-clipboard-directories.ts");
+  const output = await execFileAsync(process.execPath, ["-e", "process.stdout.write(JSON.stringify(['/tmp/one folder']))"], {
+    timeout: 30_000,
+    maxBuffer: 1024 * 1024,
+  });
+  assert.ok(Buffer.isBuffer(output), "stdout must stay binary for JSON.parse");
+  assert.deepEqual(JSON.parse(output.toString("utf8")), ["/tmp/one folder"]);
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ["-e", "process.exit(3)"], { timeout: 30_000 }),
+    /clipboard file list read failed/,
+  );
+});
+
+test("a child process that already decodes stdout to strings is accepted", async () => {
+  const paths = ["/tmp/one folder"];
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stdin = {
+    on() {},
+    end() {
+      setImmediate(() => {
+        child.stdout.emit("data", JSON.stringify(paths));
+        child.emit("close", 0);
+      });
+    },
+  };
+  const { nativeClipboardPaths: readPaths } = loadWithExecFile(() => child);
+  assert.deepEqual(await readPaths(silentWindowsClipboard(), "win32"), paths);
+});
+
+test("a child stream error rejects instead of escaping the event handler", async () => {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stdin = { on() {}, end() { setImmediate(() => child.stdout.emit("error", new Error("spawn ENOENT"))); } };
+  const { nativeClipboardPaths: readPaths } = loadWithExecFile(() => child);
+  await assert.rejects(() => readPaths(silentWindowsClipboard(), "win32"), /spawn ENOENT/);
 });
 
 test("a Windows clipboard probe failure rejects without blocking the main process", async () => {
