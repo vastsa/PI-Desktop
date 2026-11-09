@@ -7,6 +7,13 @@ both responses. Assert a single in-flight write and the final newest model.
 Coverage: `session-model-write-order.test.mjs`, using real slice/coordination
 with only Host API controlled. Running-turn configuration remains queued.
 
+### E2E-SESSION-rejected-stop-state
+
+Reject a remote Stop at the API boundary: the production session slice keeps
+its running state and rethrows the error. Retry successfully: both the active
+indicator and owning session running entry clear. Coverage:
+`failed-session-stop-state.test.mjs`, without provider execution.
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 Reconstruct a transcript with a running Task followed by a system notice.

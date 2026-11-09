@@ -6,6 +6,12 @@
 进行中且最终保留最新模型。`session-model-write-order.test.mjs` 使用真实 slice
 与协调器，仅控制 Host API 边界。运行中配置继续排队。
 
+### E2E-SESSION-rejected-stop-state
+
+在 API 边界拒绝远端 Stop，生产会话 slice 保留运行状态并传播错误。再次成功
+停止后，当前标记和目标会话运行条目清除。覆盖
+`failed-session-stop-state.test.mjs`，不执行提供商请求。
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 重建运行中的 Task 后接系统通知的会话，生产条目构建、运行状态选择及结果

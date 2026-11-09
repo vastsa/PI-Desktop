@@ -4,6 +4,10 @@ Idle session model writes participate in the same per-session configuration
 queue as running-turn changes. Rapid choices serialize; the newest queued
 choice is applied after the in-flight write, rather than racing older replies.
 
+A rejected session Stop request retains the last known running state. A
+transport failure is not confirmation of process settlement; successful Stop
+and authoritative terminal events continue to clear the running indicator.
+
 Live delegation reconstruction crosses system notices as well as steering
 messages. An ordinary user prompt remains the run boundary. A running Task
 behind a system notice must not become aborted on navigation (Refs #1990).

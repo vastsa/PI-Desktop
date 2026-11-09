@@ -880,15 +880,12 @@ export function createSessionSlice({
     /** Abort one session's running turn, whether or not it is the visible one. */
     abortSession: async (sessionId) => {
       if (!sessionId) return;
-      try {
-        await api.abort(sessionId);
-      } finally {
-        set((state) => ({
-          isRunning:
-            state.activeSessionId === sessionId ? false : state.isRunning,
-          runningSessions: { ...state.runningSessions, [sessionId]: false },
-        }));
-      }
+      await api.abort(sessionId);
+      set((state) => ({
+        isRunning:
+          state.activeSessionId === sessionId ? false : state.isRunning,
+        runningSessions: { ...state.runningSessions, [sessionId]: false },
+      }));
     },
   };
 }
