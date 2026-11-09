@@ -54,7 +54,7 @@ const server = createServer(async (req, res) => {
         break;
       case 2:
         assert(toolResult(body, "call-2").includes(failedJob.id));
-        name = "TaskWait"; args = { job: failedJob, timeoutSeconds: 20 };
+        name = "TaskWait"; args = { job: failedJob, delegationIds: [], mode: "all", minCompleted: 1, timeoutSeconds: 20 };
         break;
       case 3: {
         const result = parseResult(body, "call-3");
@@ -84,7 +84,7 @@ const server = createServer(async (req, res) => {
         await host.call("backgroundJobs.capabilities", { sessionId: owner.id });
         assert.equal(observed, false, "waiting must release the global Host lock");
         assert.equal((await pending).state, "running");
-        name = "TaskWait"; args = { job: serviceJob, timeoutSeconds: 1 };
+        name = "TaskWait"; args = { job: serviceJob, delegationIds: [], mode: "any", minCompleted: 1, timeoutSeconds: 1 };
         break;
       case 5:
         assert.equal(parseResult(body, "call-5").status, "timeout");
@@ -93,7 +93,7 @@ const server = createServer(async (req, res) => {
         break;
       case 6:
         assert.equal((await host.call("backgroundJobs.wait", { sessionId: owner.id, id: serviceJob.id })).state, "running");
-        name = "TaskStop"; args = { job: serviceJob };
+        name = "TaskStop"; args = { job: serviceJob, delegationIds: [] };
         break;
       case 7:
         assert.equal(parseResult(body, "call-7").stopRequested, true);
