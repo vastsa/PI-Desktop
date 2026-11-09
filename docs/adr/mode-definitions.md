@@ -35,6 +35,11 @@ Builtins `agent`, `plan` and `goal` use the same format and ship with the app.
 The builtin ids are reserved: a user document that uses one is reported in
 settings and is not loaded. To change a builtin, duplicate it under a new id.
 Discovery is global only, so a cloned repository cannot provide a mode.
+Settings read the directory again each time they load the catalog, so a
+document written by another editor shows up without a restart. A document
+whose `name` differs from its directory keeps that file: settings read, save
+and delete it in place, and a new mode never writes into a directory that
+already holds another mode.
 
 A definition has one of two levels of complexity.
 
