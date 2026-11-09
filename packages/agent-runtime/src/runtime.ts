@@ -8612,6 +8612,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const steering = this.pendingSteering.get(event.message);
           const id = steering?.id ?? this.pendingUserMessageId ?? randomUUID();
           if (steering) {
+            // 后续回复必须位于已接收的用户补充之后，恢复重试也不能复用前一气泡。
+            if (this.currentAssistant?.status === "streaming") {
+              this.emit({ type: "message_end", message: {
+                ...this.currentAssistant,
+                status: this.currentAssistant.error ? "error" : "complete",
+              } });
+            }
+            this.currentAssistant = undefined;
             if (steering.toolNames.length) {
               this.activateDeferredTools(steering.toolNames);
               this.setAgentTools(this.activeTools());
