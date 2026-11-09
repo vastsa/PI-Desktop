@@ -221,6 +221,10 @@ One migration after the current schema:
   existing values `agent`, `plan` and `goal` map to the builtins. A session
   whose mode no longer exists falls back to `agent`; an active run keeps its
   snapshot.
+  When a run closes, the Host returns the session to `returnTo` without a
+  snapshot; Electron main then settles it through `modes.settleReturn`,
+  attaching the return mode's current definition, or moving the session to
+  `agent` when that mode was deleted during the run.
 - `mode_snapshots (hash, json)`: an immutable definition per run, so editing a
   mode never changes a running run.
 - `mode_runs`: generalized from #2141 `session_goals`. Each row stores the mode,
