@@ -16,6 +16,8 @@ test("the actual bundled File Manager lists and reads remote files through the H
   await mkdir(join(root, "docs"), { recursive: true });
   await mkdir(data);
   await writeFile(join(root, "docs/guide.md"), "ACTUAL BUNDLED REMOTE BYTES\n");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
+  await writeFile(join(root, "docs/figure.png"), png);
   await writeFile(join(root, ".env"), "private fixture");
   const previousData = process.env.PI_DESKTOP_DATA_DIR;
   process.env.PI_DESKTOP_DATA_DIR = data;
@@ -66,9 +68,14 @@ test("the actual bundled File Manager lists and reads remote files through the H
   assert.equal(preview.ok, true, JSON.stringify(preview));
   assert.equal(preview.text, "ACTUAL BUNDLED REMOTE BYTES\n");
   assert.equal(preview.readOnly, true);
+  const image = await invoke("fm.read", { path: "docs/figure.png" });
+  assert.equal(image.ok, true, JSON.stringify(image));
+  assert.equal(image.kind, "image");
+  assert.equal(image.dataUri, `data:image/png;base64,${png.toString("base64")}`);
+  assert.equal(image.readOnly, true);
   const denied = await invoke("fm.write", { path: "docs/guide.md", text: "must not write" });
   assert.equal(denied.ok, false);
   assert.equal(denied.code, "REMOTE_READ_ONLY");
   assert.equal(await readFile(join(root, "docs/guide.md"), "utf8"), "ACTUAL BUNDLED REMOTE BYTES\n");
-  assert.deepEqual(requests.map(request => request.operation), ["list", "preview"]);
+  assert.deepEqual(requests.map(request => request.operation), ["list", "preview", "preview"]);
 });

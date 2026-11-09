@@ -16,7 +16,7 @@ unpublished plugin contribution as an official upstream release.
 | Integration source | https://github.com/Seraph-x/pi-desktop-plugin-file-manager/tree/f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1 |
 | Integration commit | `f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1` |
 | Companion upstream proposal | https://github.com/Tioit-Wang/pi-desktop-plugin-file-manager/pull/5 |
-| Bundled version | `0.9.1-pi.2` — Desktop hotfix, not an upstream release |
+| Bundled version | `0.9.1-pi.3` — Desktop hotfix, not an upstream release |
 | License | MIT; preserve the bundled `LICENSE` and PDF.js notices |
 | Locally packed runtime | `pi.file-manager-0.9.1-pi.1.piplug`, 6921923 bytes, SHA-256 `e8b6041cb5d3d4eab2b68a1e7fa61a8c7089235d9918f4a418541bd60cd109b3` |
 | Marketplace publication | Not published; no marketplace artifact or accepted upstream tag is claimed for this hotfix |
@@ -58,7 +58,7 @@ so the synthetic filesystem events could reach Node.
    `views-src/verify-host-open.mjs`. No minified JavaScript is edited by hand.
 3. Register `verify:host-open` in `views-src/package.json` and include it in
    the `verify` chain.
-4. Set manifest version to `0.9.1-pi.2`, add `license: MIT`, and prefix its
+4. Set manifest version to `0.9.1-pi.3`, add `license: MIT`, and prefix its
    changelog with the Desktop hotfix description. Keep all other manifest
    declarations, permissions and safety notes from the integration source.
 5. Keep Desktop's MIT `LICENSE` and `package.json` CommonJS marker. The latter
@@ -84,10 +84,10 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
 | `LICENSE` | 1067 | `ebaec3ae096498a39f6b86e3ac8017e39818fb5aaff80b452349f94bc275ec0d` |
 | `README.md` | 38470 | `4ecf6e3afa2051b59b479907c485d156caca54ef6d1f4e3c410805807942a268` |
 | `main.js` | 125487 | `f819c13bb8e0196e92a0cbef18ffb147a5f38fdc9a8e7fbe27d58463fd991088` |
-| `manifest.json` | 40092 | `ea3798770849c77193f16da5a582157cc07e5f756f7225dcbec1762ed591d461` |
+| `manifest.json` | 40092 | `504b3f44b2edbf4bce6ccefc2d5b3611c27eaf9d6dbd29fc951f463dc30200af` |
 | `package.json` | 25 | `8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a` |
 | `remote-workspace.js` | 3757 | `931a579801fd4b334c3d96231aafc7ff52e0c03e7baebbabaf00b4c5e17cc366` |
-| `views/assets/index.js` | 6617597 | `75fe29bb98db38e8246aa38bcc55c21c28a6b9310cf1ae5ae146bf6c304f080a` |
+| `views/assets/index.js` | 6619003 | `974763b75875940576cf2e0b42db55b6980706889087e4f5d8ab12781d36ef1a` |
 | `views/assets/pdfjs-LICENSES.txt` | 61789 | `a8b04e2e9022721482079ee5c85b9f05ae129e6a2cfd59ea67f2629a3fc23640` |
 | `views/index.html` | 345 | `771fd3d8afdea7fca75ed1f1918c1ce93ad1c87babdb321cfb85e910465cd2c1` |
 
@@ -97,6 +97,8 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
    compatible build dependencies; do not copy QA dependencies into the runtime.
 2. Apply the checked-in theme and directory-location patches from the Desktop
    checkout with `git apply`.
+   Then apply `patches/file-manager-markdown-images.patch` with
+   `git apply --unidiff-zero` before rebuilding.
 3. Run the source typecheck, every verification script (including native file
    watching), and `vite build` in `views-src`.
 4. Apply the three documented manifest edits, then run
@@ -114,6 +116,18 @@ is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
    integration pin with that real tag/commit and marketplace provenance; preserve
    the search-theme fix if that release does not yet contain it. Do not rewrite
    an existing upstream tag or label the local artifact as a marketplace release.
+
+## Markdown image repair (2026-11-09)
+
+The original renderer always emitted an alt-text placeholder for Markdown
+images. The additional source patch uses bounded `fm.read` image responses,
+resolves relative paths from the document directory inside the selected root,
+and retains permission/size/type failures as placeholders. Remote URLs,
+absolute image paths and external-document siblings remain placeholders.
+Document reloads refresh images; document/root changes discard pending view
+updates. Version `0.9.1-pi.3` ensures installed bundled copies can receive the
+rebuilt view. Rebuilt with Node 26.13.0, Vite 5.4.21 and the pinned source
+lockfile; no minified code was edited by hand. No upstream release is claimed.
 
 ## Desktop mutation repair (#2184)
 

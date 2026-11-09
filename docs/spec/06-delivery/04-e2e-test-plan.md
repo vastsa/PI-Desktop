@@ -1,5 +1,18 @@
 # 04. E2E Test Plan
 
+### E2E-FILE-MANAGER-markdown-images
+
+Open synthetic `notes/guide.md` containing an image at
+`../images/fig%2002.png`, switch Edit to Preview and require inline pixels,
+preserved alt text and width constrained to the panel. Cover Chinese names,
+nested lists/tables and PNG/JPEG/SVG. Reload changed image bytes; switch
+documents/roots with reads pending and reject old results. Missing, invalid,
+oversized, protected, traversal and symlink-escape targets retain placeholders.
+Absolute paths, remote URLs and external-document siblings trigger no read.
+Repeat against a scoped SSH root and preserve directory navigation and search
+themes. Controlled source verification reads actual fixture Markdown/PNG via
+the production plugin receiver; it does not establish Electron pixel results.
+
 ### E2E-COMPOSER-screenshot-without-directory-scan
 
 Paste a native folder, then a synthetic screenshot through real Composer,

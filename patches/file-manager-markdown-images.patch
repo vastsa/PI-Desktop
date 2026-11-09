@@ -1,0 +1,300 @@
+diff --git a/views-src/src/App.tsx b/views-src/src/App.tsx
+index d0d9a9f..c99bd0c 100644
+--- a/views-src/src/App.tsx
++++ b/views-src/src/App.tsx
+@@ -1402,3 +1402,4 @@ export default function App() {
+           dirty={dirty}
+           saving={saving}
+           error={error}
++          workspacePath={root?.path}
+diff --git a/views-src/src/components/EditorPane.tsx b/views-src/src/components/EditorPane.tsx
+index 90d6de5..8ba4fb6 100644
+--- a/views-src/src/components/EditorPane.tsx
++++ b/views-src/src/components/EditorPane.tsx
+@@ -39,3 +39,4 @@ type Props = {
+    */
+   externalChange: boolean;
+    activeRoot: WorkspaceRoot | null;
++  workspacePath?: string;
+@@ -69,3 +70,4 @@ export function EditorPane({
+   file,
+    base,
+    activeRoot,
++  workspacePath,
+@@ -395,7 +397,9 @@ export function EditorPane({
+         {content === "markdown" && file ? (
+           <div className="md-scroll">
+             <div className="md-body">
+-              <MarkdownPreview text={structuredText} base={base} onLink={onLink} />
++              <MarkdownPreview text={structuredText} base={base} onLink={onLink}
++                key={`${activeRoot?.path}:${file.loadToken}`}
++                filePath={file.path} workspacePath={workspacePath} />
+             </div>
+           </div>
+         ) : null}
+diff --git a/views-src/src/lib/markdown.tsx b/views-src/src/lib/markdown.tsx
+index 272dcc1..c0c9410 100644
+--- a/views-src/src/lib/markdown.tsx
++++ b/views-src/src/lib/markdown.tsx
+@@ -8,7 +8,7 @@
+  *
+  * 支持：ATX 标题、围栏代码块（带语法高亮）、引用、分隔线、有序/无序/任务
+  * 列表（按缩进嵌套）、表格、以及行内的 code / 粗体 / 斜体 / 删除线 / 链接 /
+- * 图片。图片不加载（面板是 file://，相对路径指向视图自身），渲染为占位说明。
++ * Images use the existing bounded file-read bridge, relative to the document.
+  */
+ 
+ import { useEffect, useState, type ReactNode } from "react";
+@@ -17,6 +17,7 @@ import { createElement, Fragment } from "react";
+ import type { Base } from "./appearance";
+ import { renderHighlighted, tokenizeCode } from "./highlight";
+ import { isSafeLink } from "./linkSafety";
++import { loadMarkdownImage } from "./markdownImages";
+ 
+ // ── 行内 ────────────────────────────────────────────────────────────────────
+ 
+@@ -43,8 +44,29 @@ type InlineContext = {
+   base: Base;
+   onLink: (url: string) => void;
+   keyPrefix: string;
++  filePath?: string;
++  workspacePath?: string;
+ };
+ 
++function MarkdownImage({ source, alt, filePath = "", workspacePath = "" }: {
++  source: string; alt: string; filePath?: string; workspacePath?: string;
++}) {
++  const [dataUri, setDataUri] = useState<string | null>(null);
++  useEffect(() => {
++    let cancelled = false;
++    void loadMarkdownImage(source, filePath, workspacePath).then(value => {
++      if (!cancelled) setDataUri(value);
++    });
++    return () => { cancelled = true; };
++  }, [source, filePath, workspacePath]);
++  return dataUri
++    ? createElement("img", {
++      src: dataUri, alt, title: source, className: "md-image-preview",
++      onError: () => setDataUri(null),
++    })
++    : createElement("span", { className: "md-image", title: source }, `🖼 ${alt || source}`);
++}
++
+ function renderInline(text: string, context: InlineContext): ReactNode[] {
+   const nodes: ReactNode[] = [];
+   const pattern = newInlinePattern();
+@@ -76,14 +98,12 @@ function renderInline(text: string, context: InlineContext): ReactNode[] {
+     if (fence !== undefined) {
+       nodes.push(createElement("code", { key, className: "md-inline-code" }, codeBody));
+     } else if (imageSrc !== undefined) {
+-      // 面板以 file:// 加载，相对路径指向视图目录，图片无法加载；
+-      // 与其显示一个破图，不如给出可读的占位。
+       nodes.push(
+-        createElement(
+-          "span",
+-          { key, className: "md-image", title: imageSrc },
+-          `🖼 ${imageAlt || imageSrc}`,
+-        ),
++        createElement(MarkdownImage, {
++          key: `${key}:${context.workspacePath}:${context.filePath}:${imageSrc}`,
++          source: imageSrc, alt: imageAlt ?? "",
++          filePath: context.filePath, workspacePath: context.workspacePath,
++        }),
+       );
+     } else if (linkHref !== undefined) {
+       nodes.push(renderLink(linkHref, renderInline(linkText ?? "", { ...context, keyPrefix: key }), key, context));
+@@ -478,15 +498,19 @@ export function MarkdownPreview({
+   text,
+   base,
+   onLink,
++  filePath,
++  workspacePath,
+ }: {
+   text: string;
+   base: Base;
+   onLink: (url: string) => void;
++  filePath?: string;
++  workspacePath?: string;
+ }) {
+   const blocks = parseBlocks(text.replace(/\r\n?/g, "\n").split("\n"));
+   return createElement(
+     Fragment,
+     null,
+-    ...renderBlocks(blocks, { base, onLink, keyPrefix: "md" }, base),
++    ...renderBlocks(blocks, { base, onLink, filePath, workspacePath, keyPrefix: "md" }, base),
+   );
+ }
+diff --git a/views-src/src/lib/markdownImages.ts b/views-src/src/lib/markdownImages.ts
+new file mode 100644
+index 0000000..4f93941
+--- /dev/null
++++ b/views-src/src/lib/markdownImages.ts
+@@ -0,0 +1,34 @@
++import { invoke } from "./bridge";
++import { channels, type Failure, type ReadResponse } from "./rpc";
++
++/** Resolve only project-relative images; the receiver still enforces its file jail. */
++export function markdownImagePath(source: string, filePath: string): string | null {
++  let decoded: string;
++  try { decoded = decodeURIComponent(source.split(/[?#]/, 1)[0]); }
++  catch { return null; }
++  const relative = (value: string) => value.length > 0 &&
++    !/^[\\/]|^[a-z][a-z\d+.-]*:|[\x00-\x1f\x7f]/i.test(value);
++  if (!relative(decoded) || !relative(filePath)) return null;
++  const parts = filePath.replace(/\\/g, "/").split("/").slice(0, -1);
++  for (const part of decoded.replace(/\\/g, "/").split("/")) {
++    if (!part || part === ".") continue;
++    if (part === "..") {
++      if (!parts.length) return null;
++      parts.pop();
++    } else parts.push(part);
++  }
++  return parts.length ? parts.join("/") : null;
++}
++
++export async function loadMarkdownImage(
++  source: string, filePath: string, workspacePath: string,
++): Promise<string | null> {
++  const path = markdownImagePath(source, filePath);
++  if (!path || !workspacePath) return null;
++  try {
++    const response = await invoke<ReadResponse | Failure>(channels.read, { path, workspacePath });
++    return response.ok && response.kind === "image" &&
++      /^data:image\/[a-z\d.+-]+;base64,[a-z\d+/=]+$/i.test(response.dataUri)
++      ? response.dataUri : null;
++  } catch { return null; }
++}
+diff --git a/views-src/src/styles/index.css b/views-src/src/styles/index.css
+index fe5b4f6..31bb1eb 100644
+--- a/views-src/src/styles/index.css
++++ b/views-src/src/styles/index.css
+@@ -578,6 +578,13 @@ input:focus-visible {
+   text-decoration-style: dotted;
+ }
+ 
++.md-image-preview {
++  display: inline-block;
++  max-width: 100%;
++  height: auto;
++  vertical-align: middle;
++}
++
+ .md-image {
+   display: inline-block;
+   border-radius: 6px;
+diff --git a/views-src/verify-markdown.mjs b/views-src/verify-markdown.mjs
+index dbbc780..be6dfb9 100644
+--- a/views-src/verify-markdown.mjs
++++ b/views-src/verify-markdown.mjs
+@@ -8,7 +8,8 @@
+  */
+ 
+ import { build } from "esbuild";
+-import { mkdtempSync, writeFileSync } from "node:fs";
++import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
++import { createRequire } from "node:module";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { pathToFileURL } from "node:url";
+@@ -22,7 +23,8 @@ async function loadModule() {
+   writeFileSync(
+     entry,
+     `export { MarkdownPreview } from ${JSON.stringify(join(src, "markdown.tsx"))};\n` +
+-      `export { isSafeLink } from ${JSON.stringify(join(src, "linkSafety.ts"))};\n`,
++      `export { isSafeLink } from ${JSON.stringify(join(src, "linkSafety.ts"))};\n` +
++      `export { markdownImagePath, loadMarkdownImage } from ${JSON.stringify(join(src, "markdownImages.ts"))};\n`,
+   );
+ 
+   await build({
+@@ -80,6 +82,91 @@ const main = async () => {
+   const mod = await loadModule();
+   const noop = () => {};
+ 
++  const imageTree = mod.MarkdownPreview({
++    text: "![figure](./images/fig-02.png)", base: "dark", onLink: noop,
++    filePath: "notes/guide.md", workspacePath: "/synthetic/project",
++  });
++  const image = walk(imageTree).find(item => typeof item === "object" && item.tag === "MarkdownImage");
++  check(Boolean(image), "Markdown image uses the inline preview component");
++  check(image?.props.filePath === "notes/guide.md", "Image retains its Markdown document path");
++  check(image?.props.workspacePath === "/synthetic/project", "Image retains its selected root");
++  for (const [source, expected] of [
++    ["./images/fig-02.png", "notes/images/fig-02.png"],
++    ["../fig%2002.png#anchor", "fig 02.png"],
++    ["../图.png", "图.png"],
++    ["../../outside.png", null], ["%2e%2e/%2e%2e/outside.png", null],
++    ["https://example.com/image.png", null], ["//server/image.png", null],
++    ["file:///tmp/image.png", null], ["C:\\image.png", null],
++    ["data:image/png;base64,AA", null], ["javascript:alert(1)", null],
++    ["%ZZ.png", null], ["image%00.png", null],
++  ]) check(mod.markdownImagePath(source, "notes/guide.md") === expected, `image path: ${source}`);
++  check(mod.markdownImagePath("fig.png", "/outside/guide.md") === null, "External documents cannot grant sibling reads");
++  const previousWindow = globalThis.window;
++  let reads = 0;
++  let response = { ok: true, kind: "image", dataUri: "data:image/png;base64,AA==" };
++  globalThis.window = { pluginBridge: { invoke: async (channel, payload) => {
++    reads++;
++    check(channel === "fm.read", "Images reuse the existing file read channel");
++    check(JSON.stringify(payload) === JSON.stringify({ path: "notes/fig.png", workspacePath: "/synthetic/project" }), "Image reads retain the document root and never set external");
++    return response;
++  } } };
++  try {
++    check(await mod.loadMarkdownImage("fig.png", "notes/guide.md", "/synthetic/project") === response.dataUri, "Image bytes reach the inline renderer");
++    for (const refused of [
++      { ok: false, code: "PERMISSION_DENIED" }, { ok: true, kind: "tooLarge" },
++      { ok: true, kind: "text", text: "private" },
++      { ok: true, kind: "image", dataUri: "https://example.com/leak" },
++    ]) {
++      response = refused;
++      check(await mod.loadMarkdownImage("fig.png", "notes/guide.md", "/synthetic/project") === null, "Unavailable or invalid images retain a placeholder");
++    }
++    const before = reads;
++    await mod.loadMarkdownImage("../../outside.png", "notes/guide.md", "/synthetic/project");
++    check(reads === before, "Escaping paths never reach the bridge");
++    globalThis.window.pluginBridge.invoke = async () => { throw new Error("disconnected"); };
++    check(await mod.loadMarkdownImage("fig.png", "notes/guide.md", "/synthetic/project") === null, "Disconnected bridge retains a placeholder");
++  } finally {
++    if (previousWindow === undefined) delete globalThis.window;
++    else globalThis.window = previousWindow;
++  }
++
++  const fixture = mkdtempSync(join(tmpdir(), "pifm-markdown-images-"));
++  const root = join(fixture, "project");
++  const previousPi = globalThis.pi;
++  const plugin = createRequire(import.meta.url)("../main.js");
++  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
++  mkdirSync(join(root, "notes"), { recursive: true });
++  mkdirSync(join(root, ".ssh"));
++  writeFileSync(join(root, "notes/guide.md"), "![figure](../fig%2002.png)");
++  writeFileSync(join(root, "fig 02.png"), png);
++  writeFileSync(join(root, ".ssh/secret.png"), png);
++  writeFileSync(join(fixture, "outside.png"), png);
++  symlinkSync(join(fixture, "outside.png"), join(root, "escape.png"));
++  writeFileSync(join(root, "large.png"), "");
++  truncateSync(join(root, "large.png"), 64 * 1024 * 1024);
++  globalThis.pi = {
++    workspace: { get: async () => ({ path: root, name: "Synthetic images" }) },
++    plugin: { getDataPath: async () => join(fixture, "data"), getSettings: async () => ({}) },
++    fs: {},
++  };
++  globalThis.window = { pluginBridge: { invoke: (channel, payload) => plugin.onPanelInvoke(channel, payload) } };
++  try {
++    const document = await plugin.onPanelInvoke("fm.read", { path: "notes/guide.md", workspacePath: root });
++    check(document.ok && document.kind === "text", "User journey reads a real Markdown document");
++    const tree = mod.MarkdownPreview({ text: document.text, base: "dark", onLink: noop, filePath: document.path, workspacePath: root });
++    const rendered = walk(tree).find(item => typeof item === "object" && item.tag === "MarkdownImage");
++    check(await mod.loadMarkdownImage(rendered.props.source, rendered.props.filePath, rendered.props.workspacePath) === `data:image/png;base64,${png.toString("base64")}`, "Document-relative preview reads actual PNG bytes through the plugin");
++    for (const source of ["../missing.png", "../.ssh/secret.png", "../escape.png", "../large.png"]) {
++      check(await mod.loadMarkdownImage(source, document.path, root) === null, `Real file reader preserves denial/fallback: ${source}`);
++    }
++  } finally {
++    if (previousPi === undefined) delete globalThis.pi;
++    else globalThis.pi = previousPi;
++    if (previousWindow === undefined) delete globalThis.window;
++    else globalThis.window = previousWindow;
++    rmSync(fixture, { recursive: true, force: true });
++  }
++
+   console.log("--- 链接白名单 ---");
+   const safeLinks = ["https://example.com", "http://a.b/c", "mailto:a@b.c"];
+   const unsafeLinks = [
