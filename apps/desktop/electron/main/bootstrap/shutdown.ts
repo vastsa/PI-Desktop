@@ -53,6 +53,8 @@ export type ShutdownDependencies = {
   logger: Pick<Logger, "app">;
   confirmQuitDialog: () => Promise<boolean>;
   disposePowerSaveBlockers: () => void;
+  /** Detach the native-theme listener that keeps system palettes live (#2215). */
+  disposeNativeThemeListener?: () => void;
   liveCallService?: Pick<LiveCallService, "endForLifecycle">;
   disposeSystemProxyRelay?: () => Promise<void>;
 };
@@ -79,6 +81,7 @@ export function registerShutdownHandlers({
   logger,
   confirmQuitDialog,
   disposePowerSaveBlockers,
+  disposeNativeThemeListener,
   liveCallService,
   disposeSystemProxyRelay,
 }: ShutdownDependencies): void {
@@ -149,6 +152,7 @@ export function registerShutdownHandlers({
     // cancelled confirmation stop only from here (issue #2048).
     runConfirmedQuitTeardown(logger);
     disposePowerSaveBlockers();
+    disposeNativeThemeListener?.();
     state.tray?.destroy();
     state.tray = null;
     if (state.pluginLauncherAccelerator) {

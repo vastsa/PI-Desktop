@@ -18,6 +18,10 @@ import {
   type NativeMenuAction,
 } from "@pi-desktop/shared";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
+import {
+  pluginPanelThemeFollowsSystem,
+  resolvedPluginPanelTheme,
+} from "./theme-transition";
 import { installApplicationMenu } from "../application-menu";
 import { isWindowFullScreen, setWindowFullScreen } from "../window-fullscreen";
 import { createTraySessions } from "../tray-sessions";
@@ -567,6 +571,40 @@ export function createApplicationLifecycle({
   }
 
   /**
+   * Whether the current preference tracks the OS appearance at all. An explicit
+   * light/dark scheme pins the native palette, and a contributed plugin theme
+   * with a base is fixed by its author; only `system` — or a `plugin:` theme
+   * whose registry entry is gone or baseless, which falls back to the OS —
+   * should react to a native theme transition.
+   */
+  /**
+   * Re-resolve the host palette when the OS appearance flips under a
+   * system-following preference. `applyAppThemePreference` snapshots
+   * `nativeTheme.shouldUseDarkColors` once per settings write, so without this
+   * the plugin panels keep the previous palette between two dark surfaces
+   * (#2215). Explicit palettes are preserved, the broadcast is
+   * signature-guarded, and the listener is removed at shutdown.
+   */
+  function onNativeThemeUpdated() {
+    if (!pluginPanelThemeFollowsSystem(appearanceState.appThemePreference, (id) =>
+      plugins.getThemes().find((theme) => theme.id === id),
+    )) {
+      return;
+    }
+    appearanceState.pluginPanelTheme = resolvedPluginPanelTheme(nativeTheme.shouldUseDarkColors);
+    broadcastAppearance();
+  }
+
+  const nativeThemeListener = (() => {
+    nativeTheme.on("updated", onNativeThemeUpdated);
+    return () => nativeTheme.off("updated", onNativeThemeUpdated);
+  })();
+
+  function disposeNativeThemeListener() {
+    nativeThemeListener();
+  }
+
+  /**
    * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
    * theme preference the renderer paints. `system` keeps following the OS;
    * an explicit or plugin base locks the native appearance so a dark dock
@@ -775,6 +813,7 @@ export function createApplicationLifecycle({
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
     disposePowerSaveBlockers,
+    disposeNativeThemeListener,
     applyNativeThemeSource,
     applyAppThemePreference,
     applyApplicationMenuSettings,
