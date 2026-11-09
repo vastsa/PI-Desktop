@@ -2034,3 +2034,7 @@ parent turn open. Delegation report delivery and resumability retain their
 existing lifecycle. Runtime capability probing is connection-scoped; older
 Hosts and remote workspaces explicitly report Bash controls unavailable,
 while delegation controls remain usable. Transport and Host failures propagate.
+
+### Shared prefix and scratch identity (#1926)
+
+The base runtime system section keeps shell dialect, scratch-variable syntax and temporary-file policy stable across sessions. The exact scratch directory is appended after project/memory context rather than embedded twice in the leading runtime rules. Bash tool descriptions retain their exact path guidance. This preserves a shared system-text prefix, without promising provider cache hits or changing history reconstruction.

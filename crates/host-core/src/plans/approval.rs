@@ -153,7 +153,7 @@ impl PlanManager {
         let tx = db.conn().unchecked_transaction()?;
         let changed = tx
             .prepare_cached(
-                "UPDATE sessions SET mode = ?4, updated_at = ?1
+                "UPDATE sessions SET mode = ?4, mode_snapshot_hash = NULL, updated_at = ?1
              WHERE id = ?2 AND mode = 'agent'
                AND EXISTS (
                  SELECT 1 FROM turns
@@ -314,10 +314,9 @@ impl PlanManager {
 
     pub fn state_for_session(&self, db: &Database, session_id: &str) -> Result<String> {
         expire_pending_approvals(db)?;
-        let Some(mode) = sessions::session_mode(db, session_id)? else {
-            return Err(plan_error("PLAN_SESSION_NOT_FOUND"));
-        };
-        if mode == "agent" {
+        // Only a session authoring a Plan or legacy Goal contract plans;
+        // Agent and snapshot-defined modes (ADR mode-definitions) do not.
+        if session_submit_kind(db, session_id)?.is_none() {
             return Ok("inactive".into());
         }
         if !self.pending_for_session(db, Some(session_id))?.is_empty() {
@@ -432,7 +431,8 @@ impl PlanManager {
             let changed = tx
                 .prepare_cached(
                     "UPDATE sessions
-                 SET mode = 'agent', permission_mode = ?1, updated_at = ?2
+                 SET mode = 'agent', mode_snapshot_hash = NULL, permission_mode = ?1,
+                     updated_at = ?2
                  WHERE id = ?3 AND mode = ?4",
                 )?
                 .execute(params![selected, now, session_id, kind])?;
