@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,11 +9,17 @@ import test from "node:test";
 import { buildSync } from "esbuild";
 
 const require = createRequire(import.meta.url);
-function load(path) {
+function load(path, overrides = {}) {
   const result = buildSync({ entryPoints: [fileURLToPath(new URL(path, import.meta.url))], bundle: true, write: false, platform: "node", format: "cjs" });
   const module = { exports: {} };
-  new Function("require", "module", "exports", result.outputFiles[0].text)(require, module, module.exports);
+  const testRequire = id => overrides[id] ?? require(id);
+  new Function("require", "module", "exports", result.outputFiles[0].text)(testRequire, module, module.exports);
   return module.exports;
+}
+function loadWithExecFile(execFile) {
+  return load("../electron/main/composer-clipboard-directories.ts", {
+    "node:child_process": { execFile },
+  });
 }
 const { nativeClipboardPaths, readComposerClipboardDirectories } = load("../electron/main/composer-clipboard-directories.ts");
 const { serializeComposerFileReferences, serializeInlineComposerFileReferences } = load("../../../packages/shared/src/composer-trigger.ts");
@@ -50,9 +57,8 @@ test("macOS Finder file-list metadata is decoded in full", { skip: process.platf
   assert.deepEqual(await nativeClipboardPaths(clipboard({ NSFilenamesPboardType: xml }), "darwin"), ["/tmp/first folder", "/tmp/second"]);
 });
 
-test("a Windows clipboard probe slower than the former 2s timeout no longer aborts the paste", async () => {
-  // The former spawnSync bound was 2000ms; a machine whose PowerShell starts slower used to
-  // surface spawnSync ETIMEDOUT and fail image paste outright.
+test("an asynchronous Windows clipboard probe keeps the event loop responsive", async () => {
+  // Keep the probe pending while verifying that unrelated event-loop work continues.
   const paths = ["C:\\slow folder"];
   const slowProbe = () => new Promise(resolve => setTimeout(() => resolve(paths), 50));
   let ticks = 0;
@@ -63,6 +69,44 @@ test("a Windows clipboard probe slower than the former 2s timeout no longer abor
     clearInterval(spin);
   }
   assert.ok(ticks >= 3, "the event loop must keep running while the clipboard probe is pending");
+});
+
+test("Windows PowerShell clipboard adapter reads stdout asynchronously with process bounds", async () => {
+  const paths = ["C:\\first folder", "D:\\中文"];
+  const calls = [];
+  let eventLoopTicks = 0;
+  const { nativeClipboardPaths: readPaths } = loadWithExecFile((command, args, options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    const deliver = () => {
+      eventLoopTicks++;
+      if (eventLoopTicks < 3) {
+        setImmediate(deliver);
+        return;
+      }
+      child.stdout.emit("data", Buffer.from(JSON.stringify(paths)));
+      child.emit("close", 0);
+    };
+    setImmediate(deliver);
+    return child;
+  });
+  assert.deepEqual(await readPaths(silentWindowsClipboard(), "win32"), paths);
+  assert.equal(eventLoopTicks, 3, "the event loop must run while PowerShell is pending");
+  assert.match(calls[0].command, /powershell\.exe$/i);
+  assert.ok(calls[0].args.includes("-STA"));
+  assert.equal(calls[0].options.timeout, 10_000);
+  assert.equal(calls[0].options.maxBuffer, 1024 * 1024);
+});
+
+test("Windows PowerShell clipboard adapter rejects a failed child process", async () => {
+  const { nativeClipboardPaths: readPaths } = loadWithExecFile(() => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    setImmediate(() => child.emit("close", 1));
+    return child;
+  });
+  await assert.rejects(() => readPaths(silentWindowsClipboard(), "win32"), /clipboard file list read failed/);
 });
 
 test("a Windows clipboard probe failure rejects without blocking the main process", async () => {
