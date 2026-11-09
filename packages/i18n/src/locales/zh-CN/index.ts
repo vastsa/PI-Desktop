@@ -478,6 +478,8 @@ export const zhCN = {
     fileManagerOpenFailed: "无法在文件管理器中打开此文件。",
     builtInBrowserUnavailable: "内置浏览器当前不可用。",
     defaultBrowserOpenFailed: "无法在默认浏览器中打开此文件。",
+    revealFileInFolder: "在文件夹中打开",
+    fileRevealFailed: "无法在文件夹中打开该文件。",
     copyFullPath: "复制完整地址",
     copyRelativePath: "复制相对地址",
     relativePathUnavailable: "该文件不在项目内，没有相对地址",
