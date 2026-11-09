@@ -69,7 +69,20 @@ describe("CompleteStage", () => {
       turnId: "turn-1",
       summary: "Done",
       artifacts: { goal: "# Objective\n" },
+      input: TURN.input,
     });
+    expect(endTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it("ends the turn when the user edited the objective after the turn started", async () => {
+    const { tool, endTurn } = harness({
+      "modes.completeStage": [Object.assign(new Error("MODE_INPUT_CHANGED"), { errorCode: "MODE_INPUT_CHANGED" })],
+    });
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean; content: Array<{ type: string; text?: string }> };
+
+    expect(result.isError).toBe(true);
+    expect(result.terminate).toBe(true);
+    expect(text(result)).toContain("edited the run's objective");
     expect(endTurn).toHaveBeenCalledTimes(1);
   });
 

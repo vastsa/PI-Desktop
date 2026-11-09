@@ -8,6 +8,28 @@ import { modeStage, type Mode, type ModeDefinition, type ModePermission, type Mo
 import { modePolicyLevel, offersAgentModeOnlyTools, ownModeDefinition } from "./mode-policy.js";
 import { composeModeInstructions, resolveModeInjects, type ModeArtifactReader } from "./stage-brief.js";
 
+/** Sidecar `agent.modeTurnNotice` from Electron main for the running turn. */
+export type ModeTurnNoticeParams =
+  | { turnId: string; runId: string; action: "closeout" }
+  | { turnId: string; runId: string; action: "release"; mode: Mode; modeDefinition?: ModeDefinition };
+
+/** Model requests a paused run's turn may still send to wrap up. */
+export const MODE_CLOSEOUT_MAX_REQUESTS = 3;
+
+/** System notice of the first turn after the user edited the run input. */
+export const MODE_INPUT_EDITED_PROMPT = [
+  "# Objective edited",
+  "The user edited the run input since the previous turn of this run. Earlier turns, the conversation and the artifacts may describe the previous version.",
+  "The run input in the brief above is the objective now: update the artifacts to it, and verify every acceptance criterion against it again before calling CompleteStage. Work already done counts only where it meets the edited objective.",
+].join("\n");
+
+/** System notice of a paused run's turn; never a user message. */
+export const MODE_CLOSEOUT_PROMPT = [
+  "# Run paused",
+  "The user paused this mode run while this turn was working on it. Do not start new work, and do not call CompleteStage.",
+  `Finish the tool call in progress if it is needed for a consistent state, then reply with a short handoff: what is done, what remains, and what the user has to decide. The host ends this turn after at most ${MODE_CLOSEOUT_MAX_REQUESTS} more model requests. The run continues only when the user resumes it.`,
+].join("\n");
+
 function sameDefinition(left: ModeDefinition | undefined, right: ModeDefinition | undefined): boolean {
   if (left === right) return true;
   if (!left || !right) return false;
@@ -26,6 +48,12 @@ export class RuntimeModeState {
   private compacted: boolean;
   /** Invalidates inject reads that resolve after the turn changed. */
   private epoch = 0;
+  /** Model requests sent since the user paused the run; undefined otherwise. */
+  private closeoutRequests?: number;
+  /** The input the previous turn of a run was claimed with. */
+  private lastRunInput?: { runId: string; input: string };
+  /** The user edited the run input since this runtime's previous turn of the run. */
+  private inputEdited = false;
 
   constructor(modeId: Mode, definition?: ModeDefinition, options: { compacted?: boolean } = {}) {
     this.currentModeId = modeId;
@@ -89,6 +117,11 @@ export class RuntimeModeState {
     const epoch = this.epoch;
     this.turn = turn && this.currentDefinition ? turn : undefined;
     this.turnActive = Boolean(this.turn);
+    this.closeoutRequests = undefined;
+    this.inputEdited = Boolean(
+      this.turn && this.lastRunInput?.runId === this.turn.runId && this.lastRunInput.input !== this.turn.input,
+    );
+    if (this.turn) this.lastRunInput = { runId: this.turn.runId, input: this.turn.input };
     this.enterInjects = [];
     this.compactionInjects = [];
     const definition = this.currentDefinition;
@@ -106,6 +139,32 @@ export class RuntimeModeState {
   /** The prompt's turn settled; CompleteStage and injects no longer apply. */
   endTurn(): void {
     this.turnActive = false;
+    this.closeoutRequests = undefined;
+  }
+
+  /**
+   * The user paused run `runId` while this turn works on it: the turn wraps
+   * up with a short handoff within `MODE_CLOSEOUT_MAX_REQUESTS` further model
+   * requests. Returns whether the prompt must be recomposed.
+   */
+  beginCloseout(runId: string): boolean {
+    if (this.activeTurn?.runId !== runId || this.closeoutRequests !== undefined) return false;
+    this.closeoutRequests = 0;
+    return true;
+  }
+
+  get closingOut(): boolean {
+    return this.closeoutRequests !== undefined;
+  }
+
+  /** Count a model request of the active turn. */
+  noteModelRequest(): void {
+    if (this.closeoutRequests !== undefined) this.closeoutRequests += 1;
+  }
+
+  /** The closeout used its last model request; the turn ends at the next boundary. */
+  closeoutExhausted(): boolean {
+    return this.closeoutRequests !== undefined && this.closeoutRequests >= MODE_CLOSEOUT_MAX_REQUESTS;
   }
 
   /** Forget the run context (approved-plan execution, mode change). */
@@ -135,17 +194,24 @@ export class RuntimeModeState {
 
   /** The mode part of the system prompt. */
   instructions(): string {
-    return composeModeInstructions({
+    const instructions = composeModeInstructions({
       modeId: this.currentModeId,
       definition: this.currentDefinition,
       modeTurn: this.turn,
       level: this.level(),
       injects: { enter: this.enterInjects, compaction: this.compactionInjects },
     });
+    return [
+      instructions,
+      ...(this.inputEdited && this.turn ? [MODE_INPUT_EDITED_PROMPT] : []),
+      ...(this.closingOut ? [MODE_CLOSEOUT_PROMPT] : []),
+    ].join("\n\n");
   }
 
   private dropTurn(): void {
     this.epoch += 1;
+    this.closeoutRequests = undefined;
+    this.inputEdited = false;
     this.turn = undefined;
     this.turnActive = false;
     this.enterInjects = [];

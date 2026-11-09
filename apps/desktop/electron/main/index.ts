@@ -710,6 +710,7 @@ const sessionCollaboration = createSessionCollaborationService({
 const modeServices = createModeServices({
   getHost,
   getAgentHostBridge: () => mainState.agentHostBridge,
+  getSidecar,
   sendToRenderer,
   logger,
   isQuitting: () => mainState.quitting,

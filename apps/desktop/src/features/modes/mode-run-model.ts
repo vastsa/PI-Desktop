@@ -4,6 +4,8 @@ import type {
   ModeResolveAction,
   ModeResolveRequest,
   ModeRun,
+  ModeRunBudget,
+  ModeUpdateRequest,
 } from "@pi-desktop/shared";
 
 /**
@@ -54,6 +56,10 @@ export type ModeRunControls = {
   pause: boolean;
   resume: boolean;
   stop: boolean;
+  /** End the run but let its active turn finish (Remove). */
+  remove: boolean;
+  /** Edit the objective and the budget. */
+  edit: boolean;
   approve: boolean;
   reject: boolean;
 };
@@ -65,6 +71,8 @@ export function modeRunControls(run: Pick<ModeRun, "state" | "waitReason">): Mod
     pause: run.state === "running" || run.state === "waiting",
     resume: run.state === "paused" || run.state === "budget_exhausted",
     stop: open,
+    remove: open,
+    edit: open,
     approve: awaitingApproval,
     reject: awaitingApproval,
   };
@@ -77,6 +85,49 @@ export function modeControlRequest(run: ModeRun, action: ModeControlAction): Mod
 
 export function modeResolveRequest(run: ModeRun, action: ModeResolveAction): ModeResolveRequest {
   return { sessionId: run.sessionId, runId: run.id, expectedRevision: run.revision, action };
+}
+
+/** Run budget ranges, the same as a definition budget (host-core checks them again). */
+export const MODE_BUDGET_LIMITS = { maxTurns: 10_000, minTokens: 1_000 } as const;
+
+/**
+ * One budget field as typed: empty is unlimited (`null`), a whole number in
+ * range is the limit, anything else is `undefined` (invalid).
+ */
+export function parseModeBudgetField(text: string, field: keyof ModeRunBudget): number | null | undefined {
+  const value = text.trim();
+  if (!value) return null;
+  if (!/^\d+$/.test(value)) return undefined;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) return undefined;
+  if (field === "maxTurns") return number >= 1 && number <= MODE_BUDGET_LIMITS.maxTurns ? number : undefined;
+  return number >= MODE_BUDGET_LIMITS.minTokens ? number : undefined;
+}
+
+export function modeBudgetFieldText(value: number | null | undefined): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+export type ModeRunDraft = { input: string; maxTurns: string; maxTokens: string };
+
+export function modeRunDraft(run: Pick<ModeRun, "input" | "maxTurns" | "maxTokens">): ModeRunDraft {
+  return { input: run.input, maxTurns: modeBudgetFieldText(run.maxTurns), maxTokens: modeBudgetFieldText(run.maxTokens) };
+}
+
+/**
+ * The `modes.update` request for an edited draft: only changed fields are
+ * sent. Returns `"invalid"` for an empty objective or an out-of-range budget,
+ * and `null` when nothing changed.
+ */
+export function modeUpdateRequest(run: ModeRun, draft: ModeRunDraft): ModeUpdateRequest | "invalid" | null {
+  const input = draft.input.trim();
+  const maxTurns = parseModeBudgetField(draft.maxTurns, "maxTurns");
+  const maxTokens = parseModeBudgetField(draft.maxTokens, "maxTokens");
+  if (!input || maxTurns === undefined || maxTokens === undefined) return "invalid";
+  const request: ModeUpdateRequest = { sessionId: run.sessionId, runId: run.id, expectedRevision: run.revision };
+  if (input !== run.input) request.input = input;
+  if (maxTurns !== run.maxTurns || maxTokens !== run.maxTokens) request.budget = { maxTurns, maxTokens };
+  return request.input === undefined && request.budget === undefined ? null : request;
 }
 
 /** `roundsCompleted / maxTurns`, with ∞ for an unlimited budget. */
@@ -96,6 +147,8 @@ const MODE_ERROR_KEYS: Record<string, string> = {
   MODE_REVISION_CONFLICT: "modes.errors.revisionConflict",
   MODE_NOT_AWAITING_APPROVAL: "modes.errors.notAwaitingApproval",
   MODE_REMOTE_UNSUPPORTED: "modes.errors.remoteUnsupported",
+  MODE_INVALID_ARGUMENT: "modes.errors.invalidEdit",
+  MODE_RUN_CLOSED: "modes.errors.runClosed",
 };
 
 export const MODE_ERROR_MESSAGE_KEYS: readonly string[] = Object.values(MODE_ERROR_KEYS);

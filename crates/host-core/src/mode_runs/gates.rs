@@ -260,6 +260,15 @@ pub fn complete_stage(
     }
     let (mut run, definition) =
         claimed_run(db, &params.session_id, &params.run_id, &params.turn_id)?;
+    // The user edited the objective while this turn ran: its evidence is for
+    // the old objective. The next claim carries the new one.
+    if params
+        .input
+        .as_ref()
+        .is_some_and(|input| *input != run.input)
+    {
+        return Err(mode_error("MODE_INPUT_CHANGED"));
+    }
     if let Some(artifacts) = &params.artifacts {
         artifacts::write_declared(workspace, &run.artifact_paths, artifacts)?;
     }

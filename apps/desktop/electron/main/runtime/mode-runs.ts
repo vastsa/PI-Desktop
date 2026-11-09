@@ -19,6 +19,7 @@ import type {
   ModeSettleResult,
   ModeTurnContext,
   ModeTurnOrigin,
+  ModeUpdateRequest,
 } from "@pi-desktop/shared";
 import type { ModeCatalogService } from "./mode-catalog";
 
@@ -50,6 +51,11 @@ function totalTokens(usage: MessageUsage | undefined): number {
   return Number.isSafeInteger(total) && total > 0 ? total : 0;
 }
 
+/** Sidecar `agent.modeTurnNotice` payload (without session and turn ids). */
+export type ModeTurnNotice =
+  | { runId: string; action: "closeout" }
+  | { runId: string; action: "release"; mode: string; modeDefinition?: ModeDefinition };
+
 export type ModeRunCoordinator = ReturnType<typeof createModeRunCoordinator>;
 
 export function createModeRunCoordinator(deps: {
@@ -59,6 +65,12 @@ export function createModeRunCoordinator(deps: {
   startContinuation: (sessionId: string, origin: Exclude<ModeTurnOrigin, "user">, content: string) => Promise<unknown>;
   /** Interrupts the session's active turn (run Stop). */
   abortTurn: (sessionId: string) => Promise<void>;
+  /**
+   * Tells the runtime running `turnId` that its run changed under it: `closeout`
+   * after Pause (wrap up within a few model requests), `release` after Remove
+   * (finish as an ordinary turn of the mode the session returned to).
+   */
+  notifyTurn: (sessionId: string, turnId: string, input: ModeTurnNotice) => Promise<void>;
   logger: { app: (...args: any[]) => void };
   isQuitting: () => boolean;
 }) {
@@ -190,16 +202,39 @@ export function createModeRunCoordinator(deps: {
     async control(request: ModeControlRequest): Promise<ModeSettleResult> {
       const active = [...turnRuns.entries()].find(([, entry]) => entry.sessionId === request.sessionId && entry.runId === request.runId);
       const result = await host().call<ModeSettleResult>("modes.control", request);
-      if (request.action === "stop" && active) {
-        await deps.abortTurn(request.sessionId).catch((error: unknown) => {
-          deps.logger.app("session", "warn", "mode run stop could not abort the turn", {
-            sessionId: request.sessionId,
-            data: String(error),
-          });
-        });
+      const warn = (message: string) => (error: unknown) => {
+        deps.logger.app("session", "warn", message, { sessionId: request.sessionId, data: String(error) });
+      };
+      if (active) {
+        const [turnId] = active;
+        if (request.action === "stop") {
+          await deps.abortTurn(request.sessionId).catch(warn("mode run stop could not abort the turn"));
+        } else if (request.action === "pause" && result.run?.state === "paused" && result.run.revision !== request.expectedRevision) {
+          // Pause takes effect now: the turn wraps up instead of working on.
+          await deps.notifyTurn(request.sessionId, turnId, { runId: request.runId, action: "closeout" })
+            .catch(warn("mode run pause could not close out the turn"));
+        } else if (request.action === "remove") {
+          // The session already returned to its return mode in the Host.
+          await (async () => {
+            const definition = result.run ? await deps.catalog.definition(result.run.modeId) : undefined;
+            const mode = definition?.returnTo ?? "agent";
+            const modeDefinition = await deps.catalog.definition(mode);
+            await deps.notifyTurn(request.sessionId, turnId, {
+              runId: request.runId,
+              action: "release",
+              mode,
+              ...(modeDefinition ? { modeDefinition } : {}),
+            });
+          })().catch(warn("mode run remove could not release the turn"));
+        }
       }
       if (result.continue) scheduleContinuation(request.sessionId, "approval");
       return result;
+    },
+
+    /** Edit the objective or budget of an open run; applies from the next claim. */
+    async update(request: ModeUpdateRequest): Promise<ModeSettleResult> {
+      return host().call<ModeSettleResult>("modes.update", request);
     },
 
     async resolve(request: ModeResolveRequest): Promise<ModeSettleResult> {

@@ -75,6 +75,52 @@
   color: var(--ds-text-primary);
 }
 
+/* Inline run editor: full width under the summary row. */
+.mode-run-edit {
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.mode-run-edit-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
+.mode-run-edit-objective textarea {
+  resize: vertical;
+}
+
+.mode-run-edit-budget {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 160px));
+  gap: 8px;
+}
+
+.mode-run-edit-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mode-run-edit-hint {
+  margin-right: auto;
+  color: var(--ds-text-muted);
+}
+
+.mode-run-edit-hint[role="alert"] {
+  color: var(--ds-error);
+}
+
 /* Composer mode menu: user modes follow the builtins under a short label. */
 .composer-mode-menu:has(.composer-mode-menu-group) {
   width: min(240px, calc(100vw - 24px));
@@ -246,4 +292,23 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
+}
+
+/* Settings → Agent behavior: Goal default budget. */
+.settings-goal-budget {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-goal-budget-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
+.settings-goal-budget-input {
+  width: 96px;
 }

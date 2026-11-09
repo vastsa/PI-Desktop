@@ -1173,6 +1173,9 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             }
         }
     }
+    if let Err(message) = crate::mode_runs::validate_goal_budget_setting(value) {
+        return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+    }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
         if !infinite_retry.is_boolean() {
             return Err(rpc_err(
@@ -8256,6 +8259,31 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(retry_settings["infiniteProviderRetry"], true);
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "goalBudget": { "maxTurns": 40, "maxTokens": null } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let goal_settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            goal_settings["goalBudget"],
+            json!({ "maxTurns": 40, "maxTokens": null })
+        );
+        let invalid_goal = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "goalBudget": { "maxTurns": 0, "maxTokens": null } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(invalid_goal.data.unwrap()["errorCode"], "INVALID_PARAMS");
 
         handle_request(
             state.clone(),
