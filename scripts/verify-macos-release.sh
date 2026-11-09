@@ -5,12 +5,23 @@
 set -euo pipefail
 
 RELEASE_DIR="${1:-apps/desktop/release}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PRODUCT_NAME="PI-Desktop"
 # Accepts either the bare common name ("XingYu Liu (DUV63RKYTW)") or the full
 # certificate label ("Developer ID Application: XingYu Liu (DUV63RKYTW)").
 IDENTITY_NAME="${MAC_SIGNING_IDENTITY:-XingYu Liu (DUV63RKYTW)}"
 IDENTITY_NAME="${IDENTITY_NAME#Developer ID Application: }"
 EXPECTED_IDENTITY="Developer ID Application: ${IDENTITY_NAME}"
+STAPLE_ATTEMPTS="${PI_STAPLER_MAX_ATTEMPTS:-${STAPLE_ATTEMPTS:-6}}"
+STAPLE_DELAY_SECONDS="${PI_STAPLER_RETRY_DELAY_SECONDS:-${STAPLE_DELAY_SECONDS:-10}}"
+
+validate_stapled_ticket() {
+  local artifact="$1"
+  PI_XCRUN_REAL="$(command -v xcrun)" \
+  PI_STAPLER_MAX_ATTEMPTS="$STAPLE_ATTEMPTS" \
+  PI_STAPLER_RETRY_DELAY_SECONDS="$STAPLE_DELAY_SECONDS" \
+    bash "$SCRIPT_DIR/macos-stapler-retry-shim.sh" stapler validate "$artifact"
+}
 
 if [[ ! -d "$RELEASE_DIR" ]]; then
   echo "error: release directory does not exist: $RELEASE_DIR" >&2
@@ -66,7 +77,7 @@ if [[ "$ASSESSMENT" != *"source=Notarized Developer ID"* ]]; then
 fi
 
 echo "==> Validating stapled notarization tickets"
-xcrun stapler validate "$APP"
-xcrun stapler validate "$DMG"
+validate_stapled_ticket "$APP"
+validate_stapled_ticket "$DMG"
 
 echo "==> macOS release verification passed: $APP and $DMG"

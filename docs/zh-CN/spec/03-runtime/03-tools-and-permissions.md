@@ -651,37 +651,31 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 ## 10. 操作模式矩阵
 
-| 模式 | Read/Glob/Grep | BrowserPreview | Write/Edit | 重击 | 插件 |
+模式是一份定义文档（ADR mode-definitions）。它的工具策略只有两档，由定义（或分阶段运行的当前阶段）决定，并由 host-core 根据持久化的定义快照解析，从不采信运行时自报的模式：
+
+| 策略 | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | 插件 |
 |---|---|---|---|---|---|
-| Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
-| Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
-| Goal | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
+| `agent` | 允许 | 允许 | 权限策略 | 权限策略 | 已注册的风险策略 |
+| `contract` | 允许 | 允许 | 拒绝 | `ask`/`accept-edits`：确认；`auto`：允许 | 仅 plan-safe 操作 |
 
-### 注释
-- 权限 UI 之前，Plan 和 Goal 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
-  调用不能绕过矩阵。声明了非空列表的插件工具会被放行；运行器仍会拒绝列表外的任何动作（ADR 0211）。
-- Agent 模式使用权限卡或选定的自动策略
-  Write/Edit/Bash 和注册的插件工具。
-- 当用户选择“自动”时，Plan 和 Goal Bash 可能会改变工作区或暂存状态；
-  用户界面必须使这种权衡可见。
-- 仅针对活动会话记住每个 toolName 的允许会话
-- 会话授权遵循 `sessionId` 跨项目选项卡开关，并且永远不会
-  由另一个会话或临时会话继承
+内置模式：Agent 使用 `agent`；Plan 使用 `contract`；Goal 是分阶段运行，其 `work` 阶段使用 `agent`。没有快照的旧 Goal 会话，以及 Host 无法解析的模式 id，一律回退为 `contract`（失败即关闭）。
 
-### 10. 1 Plan 和 Goal 控制工具
+### 说明
+- `contract` 在权限 UI 之前硬性拒绝 Write/Edit 和未声明 `planSafeActions` 的插件工具；直接调用 host 也无法绕过该矩阵。声明了非空列表的插件工具会被放行，但运行器仍会拒绝列表之外的操作（ADR 0211）。
+- `agent` 对 Write/Edit/Bash 和已注册插件工具使用权限卡片或所选的自动策略。
+- 用户选择 Auto 时，`contract` 下的 Bash 可能修改工作区或 scratch 状态；UI 必须让这一取舍可见。
+- `Computer` 和定时任务工具只在内置 Agent 模式中可用，用户自定义模式中永远不可用。
+- Host 为分阶段运行自行发起的回合（loop 续跑、`onFail.goto`）会把 `auto` 按 `accept-edits` 处理。用户发起的回合，以及审批通过后的回合，保持会话的权限模式。
+- allow-session 只按 toolName 在当前会话内记住
+- 会话授权跟随 `sessionId` 跨项目标签页切换，不会被其他会话或临时会话继承
 
-`new_context` 在每种模式下都可用，无需确认：它只询问
-在下一回合边界压缩的运行时间，主机将在其上执行此操作
-一旦达到硬预算（参见
-[02-代理运行时](/zh-CN/spec/03-runtime/02-agent-runtime) §5.1)。提交
-工具仅在其自己的合同模式下可用，并且必须是其辅助批次中唯一的工具调用。它保留了
-类型目录下新的独特工件中的确切 Markdown 字节
-（`.pi/plan/*.md` 为 `SubmitPlan`，`.pi/goal/*.md` 为 `SubmitGoal`）
-在创建一项待批准之前通过 host-core。 `EnterPlanMode` 和
-`EnterGoalMode` 仅在 Agent 中可用，并且每个工具调用必须是唯一的
-在其批次中。主机验证持久模式、提案类型和
-任何转换之前的 active-turn/configuration 边界；可见的工具列表
-是指导，而不是安全边界。
+### 10. 1 Plan 控制工具与阶段完成
+
+`new_context` 在所有模式下可用且无需确认：它只是请求运行时在下一个回合边界压缩上下文，达到硬预算时 host 本来也会这样做（见 [02-agent-runtime](02-agent-runtime.md) §5.1）。`SubmitPlan` 只在 Plan 中可用，并且必须是其助手批次中唯一的工具调用。它通过 host-core 把完整 Markdown 字节保存为 `.pi/plan/*.md` 下的一个新唯一产物，然后创建一个待审批项。`EnterPlanMode` 只在 Agent 中可用，并且必须是其批次中唯一的工具调用。host 在任何切换之前校验持久化模式、提案类型和活动回合/配置边界；可见的工具列表只是指引，不是安全边界。
+
+不再提供 `EnterGoalMode` 和 `SubmitGoal`。host 以 `PLAN_GOAL_ACTIVATION_DISABLED` 拒绝新的 Goal 提案；已存储的 Goal 审批仍可读取，且永远不会被转换为自主执行授权。
+
+`CompleteStage { summary, artifacts? }` 只在分阶段模式运行的回合中提供。Host 把声明的产物写入其声明的工作区路径（`contract` 阶段写这些产物不需要 Write 权限），然后按顺序评估阶段的退出检查。`run` 检查通过正常的 Bash 权限路径（`tools.execute` 上的 `modeGate`）执行定义中的原样命令；命令、运行、检查序号或回合声明不匹配的调用会被 Host 拒绝。
 
 ### 10. 2 委派和子代理工具范围（D201、ADR 0062）
 

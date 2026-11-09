@@ -19,8 +19,9 @@
  *   - every child line is forwarded live with a `[sign] ` prefix (redacted),
  *   - `codesign` is wrapped by scripts/macos-codesign-shim.sh so each call is
  *     timed through $PI_CODESIGN_LOG (see --codesign-log),
- *   - when PI_STAPLER_MAX_ATTEMPTS is set, `xcrun stapler staple` is wrapped
- *     with bounded retries; every other xcrun invocation passes through,
+ *   - when PI_STAPLER_MAX_ATTEMPTS is set, `xcrun stapler staple` and
+ *     `xcrun stapler validate` are wrapped with bounded retries; every other
+ *     xcrun invocation passes through,
  *   - a heartbeat reports phase/idle time/active codesign while output is
  *     silent, plus a bounded stall diagnostic dump,
  *   - a hard timeout terminates the whole process group and exits 124,

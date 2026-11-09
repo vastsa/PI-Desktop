@@ -174,3 +174,13 @@ test("Word text plus a generated image keeps text paste without a native file re
   assert.deepEqual(run.nativeReads, []);
   assert.deepEqual(run.textInsertions, ["Copied text from Word"]);
 });
+
+test("screenshot-only paste transfers image bytes without waiting for native directory discovery", async () => {
+  const image = new File(["screenshot bytes"], "image.png", { type: "image/png" });
+  const run = harness(null, { files: [image] });
+  await run.paste();
+  assert.deepEqual(run.errors, []);
+  assert.deepEqual(run.nativeReads, []);
+  assert.equal(run.transfers.length, 1);
+  assert.equal(new TextDecoder().decode(run.transfers[0][0].data), "screenshot bytes");
+});

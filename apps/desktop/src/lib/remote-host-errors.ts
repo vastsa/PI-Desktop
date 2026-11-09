@@ -8,7 +8,14 @@ export function remoteHostErrorKey(error: unknown): string {
     case "REMOTE_PATH_NOT_FOUND": return "remote:pathUnavailable";
     case "REMOTE_PATH_FORBIDDEN": return "remote:pathForbidden";
     case "HOST_VERSION_MISMATCH": return "remote:upgradeRequired";
-    case "HOST_BOOTSTRAP_FAILED": return "remote:hostBootstrapFailed";
+    case "HOST_BOOTSTRAP_FAILED": {
+      const details = error && typeof error === "object" && "details" in error ? error.details : undefined;
+      if (details && typeof details === "object" && "target" in details &&
+        (details.target === "darwin-x64" || details.target === "darwin-arm64")) {
+        return "remote:hostPlatformUnsupported";
+      }
+      return "remote:hostBootstrapFailed";
+    }
     case "HOST_AUTH_FAILED":
     case "SSH_AUTH_FAILED":
     case "TOKEN_INVALID":

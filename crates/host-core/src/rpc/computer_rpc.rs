@@ -27,6 +27,22 @@ fn invalid(message: &str) -> JsonRpcError {
     rpc_err(1002, message.to_string(), "INVALID_PARAMS")
 }
 
+/// Computer use is an Agent-mode capability (ADR mode-definitions): the
+/// Host refuses it for any other persisted session mode, whatever the
+/// caller claims.
+fn require_agent_session(state: &AppState, session_id: &str) -> Result<(), JsonRpcError> {
+    let mode = crate::sessions::session_mode(&state.db, session_id)
+        .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+    if mode.as_deref() != Some("agent") {
+        return Err(rpc_err(
+            1006,
+            "computer use requires Agent mode",
+            "TOOL_DISABLED_IN_PLAN",
+        ));
+    }
+    Ok(())
+}
+
 fn string_param(params: &Value, key: &str) -> Option<String> {
     params
         .get(key)
@@ -160,6 +176,7 @@ pub(crate) async fn handle(
 
             let mut st = state.lock().await;
             if agent_origin {
+                require_agent_session(&st, &session_id)?;
                 if let Err(refusal) = policy::agent_mint_allowed(st.computer_stopped_at, now) {
                     audit_computer(
                         &st,
@@ -329,6 +346,13 @@ pub(crate) async fn handle(
             let now = Instant::now();
             let denylist = denylist_from_settings(&state).await;
             let mut st = state.lock().await;
+            if let Some(owner) = st
+                .computer_grant
+                .as_ref()
+                .map(|grant| grant.session_id.clone())
+            {
+                require_agent_session(&st, &owner)?;
+            }
             let grant = policy::usable_grant(
                 st.computer_grant.as_mut(),
                 &grant_id,

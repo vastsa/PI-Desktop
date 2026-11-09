@@ -1,5 +1,20 @@
 # 04. E2E 测试 Plan
 
+### E2E-COMPOSER-screenshot-without-directory-scan
+
+`e2e-composer-paste.mjs` 使用真实 Composer、preload IPC 和有界 scratch 写入，
+先粘贴原生目录，再粘贴合成截图。使用 `--screenshot-only` 验证这条路径，
+跳过无关的 MP4 预览；截图不进入原生目录探测，Main 精确校验 scratch 字节。
+`composer-directory-paste.test.mjs` 验证字节不变及原有目录/混合选择流程。
+不修改系统剪贴板内容。
+
+### E2E-FILE-MANAGER-git-deadline
+
+`file-manager-git-timeout.test.mjs` 对真实测试文件调用内置 `fm.list` 和
+`fm.read`，仅控制子进程边界。子进程从不关闭时推进 Git 截止时间，目录及
+预览仍完成，Git 元数据不可用。原有 Electron 目录定位和文件修改旅程验证
+正常读取、保存和目录浏览。
+
 ## E2E-SCHEDULED-independent-loading-and-route-return
 
 - **Preconditions:** Synthetic tasks; controllable task, latest-run, history and
@@ -10407,6 +10422,13 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 - Host 测试覆盖先完成后等待、重复读取、Unicode 截断、归属查找、幂等停止与停止请求待确认。Windows 子孙进程清理测试仍须执行，原生失败单独报告。
 - 在子进程已退出、监管任务尚未排空管道时请求停止，检查原退出结果、最终输出和重复读取的耗时。延迟能力探测或第一次 Host 观察，检查等待总时限。Electron 会话记录用例渲染尚待确认的 Bash 停止请求和混合作业列表。
 
+#### E2E-ISSUE-1953
+
+MCP All 在创建、导入、安装时使用所选项目，无项目才回退全局；显式筛选保留归属，编辑器固定项目。验证不同筛选、创建、市场安装和缺少项目拒绝写入。
+
+在 A 打开创建或编辑窗口，切换页面至 B 并等待列表加载。A/B 同名不同 ID
+不阻止保存到 A；A 真实重复名称或 ID 仍阻止创建，真实重复名称仍阻止编辑。
+
 #### E2E-ISSUE-1789
 
 生图标记说明聊天和默认菜单移除效果，并区分图片生成与输入；折叠行保留生图标记。通过真实组件验证标记、帮助、折叠、取消及恢复聊天资格。
@@ -10422,3 +10444,54 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 #### E2E-ISSUE-2164
 
 压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
+
+
+## User-defined mode workflow acceptance
+
+Candidate command: `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-mode-definitions.mjs`
+with `PI_SCRATCH_DIR` set to an isolated test directory. No model API is called.
+
+1. Configure a session with a two-stage definition snapshot. Start a durable
+   turn and claim the first contract stage.
+2. Request completion without its required artifact; observe a failed gate.
+3. Supply the artifact through stage completion; verify its exact disk content
+   and the waiting-for-approval state.
+4. Settle the first turn, approve with the current revision and claim the next
+   stage with approval provenance.
+5. Submit the stage's command gate. A changed command must fail with
+   `MODE_GATE_MISMATCH` before execution.
+6. Execute the exact command through `tools.execute`; consume the Host-recorded
+   result and observe finished, no open run, and session mode Agent.
+
+Companion tests: `mode_runs::*` and `rpc::modes_rpc::tests::*` cover migration,
+recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
+`mode-definitions-renderer` and `mode-runs-main` cover source editing, selection,
+run controls and Main dispatch. Runtime `modes/*` covers stage completion and
+compaction injection.
+#### E2E-ISSUE-2173: Redundant delegation job selectors
+
+- Entry: build shared/agent-runtime/host-runtime and Host, then run
+  `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-task-job-selectors.mjs`.
+- Preconditions: isolated Host data/workspace and a deterministic localhost
+  provider; production parent and delegate loops, with no external model account.
+- Steps: start a delegate; wait with both its job reference and matching
+  delegationIds; re-read with empty delegationIds and single-job mode/minCompleted;
+  start another delegate, hold its provider response, stop it with both selectors,
+  and confirm its stopped state through TaskWait.
+- Expected: reports remain readable, redundant selectors do not cause errors,
+  single-job mode/minCompleted are ignored, and cancellation settles the target.
+  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+- Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
+- Acceptance: wait, report re-read and running-delegate cancellation complete
+  through the real tool loop. Milestone: maintenance. Status: automated.
+#### E2E-ISSUE-1707
+
+生产 SSH 引导使用合成 Darwin 目标，按 IPC 形态传递错误并解析界面提示：显示 Linux 安装包范围，不下载或上传。Linux 及其他安装失败提示保持原行为。
+
+#### E2E-ISSUE-2184
+
+隔离项目加载真实内置插件，创建文件和中文目录，重命名并移动文件，核查磁盘与返回元数据；非法名称及重复目标拒绝。覆盖 file-manager-mutations.test.mjs 和原有 Electron 目录定位路径。
+
+#### E2E-ISSUE-1926-scratch-prefix
+
+创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
