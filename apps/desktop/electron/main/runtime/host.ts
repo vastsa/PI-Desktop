@@ -22,6 +22,8 @@ export type HostRuntimeDependencies = {
   userMcp: UserMcpRuntime;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   sendToRenderer: (channel: string, payload: unknown) => void;
+  /** Settles the session mode of a run that closed; true when it changed. */
+  settleModeReturn: (sessionId: string, run: { id: string; state: string }) => Promise<boolean>;
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
   togglePluginLauncher: () => Promise<void>;
   finishTurn: FinishTurn;
@@ -58,6 +60,7 @@ export function createHostRuntime({
   userMcp,
   pluginActiveInProject,
   sendToRenderer,
+  settleModeReturn,
   emitAgentEvent,
   togglePluginLauncher,
   finishTurn,
@@ -339,6 +342,17 @@ export function createHostRuntime({
       sendToRenderer(IPC.event.plansChanged, params);
     } else if (method === "modes.changed") {
       sendToRenderer(IPC.event.modesChanged, params);
+      const { sessionId, run } = (params ?? {}) as { sessionId?: unknown; run?: { id?: unknown; state?: unknown } | null };
+      if (typeof sessionId === "string" && typeof run?.id === "string" && typeof run.state === "string") {
+        void settleModeReturn(sessionId, { id: run.id, state: run.state })
+          .then((changed) => {
+            // The renderer reads the session list again on a closed run.
+            if (changed && runtimeState.host === h) sendToRenderer(IPC.event.modesChanged, params);
+          })
+          .catch((error: unknown) =>
+            logger.app("session", "warn", "mode run return mode was not settled", { sessionId, data: String(error) }),
+          );
+      }
     } else if (method === "todos.changed") {
       sendToRenderer(IPC.event.todosChanged, params);
     } else if (method === "configSync.changed") {
