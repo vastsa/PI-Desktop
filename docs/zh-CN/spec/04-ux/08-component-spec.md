@@ -3122,3 +3122,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 ### 文件管理器名称校验（#2184）
 
 新建和重命名前校验名称，创建、重命名和移动后返回正确条目信息。空名称、点路径、分隔符、控制字符、Windows 保留名及尾点返回 INVALID_NAME；已有目标返回 EXISTS。路径边界和受保护路径检查保持生效。
+
+### Native Pi 文件引用（#1853）
+
+用户发起的文件读取、目录列表、引用解析和文件搜索使用 sidecar 投影的 native 会话项目路径。Native 身份不查询 Desktop 会话存储，也不回退到当前选中的工作区。来源丢失或更换时拒绝请求。现有本地文件范围和显式外部文件规则继续生效，不增加模型工具或附件权限。Native 会话没有 Desktop scratch 目录。
