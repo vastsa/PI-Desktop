@@ -5,6 +5,7 @@
 Set high thinking through the production extension bridge, send a prompt and
 capture the provider stream options. The actual Agent loop sends high, matching
 the extension getter. `runtime.test.ts` mocks only the provider stream.
+
 ### E2E-TRANSCRIPT-full-read-cache-race
 
 Hold a full-history read, publish a newer streaming snapshot, then resolve the
