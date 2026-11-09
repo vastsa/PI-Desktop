@@ -4,6 +4,12 @@ Live delegation reconstruction crosses system notices as well as steering
 messages. An ordinary user prompt remains the run boundary. A running Task
 behind a system notice must not become aborted on navigation (Refs #1990).
 
+Screenshot-only Composer paste (image bytes without a native disk path) skips
+native directory discovery and uses the existing bounded attachment writer.
+Native files and folder-only or mixed file/folder selections keep the directory
+metadata path. This removes the system-process wait from screenshot paste
+(Refs #2086, #1366), without copying directory trees.
+
 File Manager Git deadlines settle the command at the deadline even when child
 output pipes remain open. A failed snapshot omits Git badges and does not block
 directory listings or file previews indefinitely (Refs #1731).

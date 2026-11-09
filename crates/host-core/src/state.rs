@@ -101,6 +101,9 @@ pub struct AppState {
     /// (ADR 0344), so Stop has to block the agent's next mint for a cooldown —
     /// otherwise the same turn re-grants itself and Stop means nothing.
     pub computer_stopped_at: Option<std::time::Instant>,
+    /// Exit codes of staged-mode `run` gate commands, keyed by
+    /// (session_id, tool_call_id), until `modes.gateResult` consumes them.
+    pub mode_gate_executions: crate::mode_runs::GateExecutions,
 }
 
 impl AppState {
@@ -127,6 +130,13 @@ impl AppState {
             }
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
+        }
+        // A staged mode run's claim dies with the process that dispatched
+        // its turn: such runs pause and nothing is replayed.
+        match crate::mode_runs::recover(&db) {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "paused mode runs with stale claims"),
+            Err(error) => tracing::error!(%error, "mode run recovery failed"),
         }
         let secrets = SecretStore::open(data_dir)?;
         // The marketplace channel is read before the manager builds its first
@@ -184,6 +194,7 @@ impl AppState {
             hashline: crate::tools::HashlineStore::new(),
             computer_grant: None,
             computer_stopped_at: None,
+            mode_gate_executions: crate::mode_runs::GateExecutions::default(),
         })
     }
 

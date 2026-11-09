@@ -9,6 +9,24 @@ that historical Tasks are no longer live. Coverage:
 `live-delegation-system-row.test.mjs`; `turn-process.test.mjs` checks the
 matching turn boundary and `turn-process-header.test.mjs` the rendered labels.
 
+### E2E-STEERING-recovery-reply-order
+
+Feed consumed steering between an earlier reply and the next recovery response.
+The earlier reservation settles and the next reply gets a new ID. Cover
+provider, overflow, silent and progress recovery in `runtime.test.ts`.
+`e2e-transcript-render.mjs` verifies production event projection and the
+existing one-bubble overflow recovery when no steering is consumed.
+
+### E2E-COMPOSER-screenshot-without-directory-scan
+
+Paste a native folder, then a synthetic screenshot through real Composer,
+preload IPC and the bounded scratch writer in `e2e-composer-paste.mjs`.
+Run with `--screenshot-only` to verify the folder and screenshot route while
+excluding unrelated MP4 preview. Screenshot metadata never enters native
+directory discovery; scratch bytes are verified exactly in Main.
+`composer-directory-paste.test.mjs` verifies byte preservation and existing
+folder/mixed-selection behavior. No system clipboard contents are changed.
+
 ### E2E-FILE-MANAGER-git-deadline
 
 `file-manager-git-timeout.test.mjs` drives actual bundled `fm.list` and `fm.read`
@@ -20410,6 +20428,29 @@ Bounded tail pages include compactions appended after the last message. Middle p
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
 
+
+## User-defined mode workflow acceptance
+
+Candidate command: `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-mode-definitions.mjs`
+with `PI_SCRATCH_DIR` set to an isolated test directory. No model API is called.
+
+1. Configure a session with a two-stage definition snapshot. Start a durable
+   turn and claim the first contract stage.
+2. Request completion without its required artifact; observe a failed gate.
+3. Supply the artifact through stage completion; verify its exact disk content
+   and the waiting-for-approval state.
+4. Settle the first turn, approve with the current revision and claim the next
+   stage with approval provenance.
+5. Submit the stage's command gate. A changed command must fail with
+   `MODE_GATE_MISMATCH` before execution.
+6. Execute the exact command through `tools.execute`; consume the Host-recorded
+   result and observe finished, no open run, and session mode Agent.
+
+Companion tests: `mode_runs::*` and `rpc::modes_rpc::tests::*` cover migration,
+recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
+`mode-definitions-renderer` and `mode-runs-main` cover source editing, selection,
+run controls and Main dispatch. Runtime `modes/*` covers stage completion and
+compaction injection.
 #### E2E-ISSUE-2173: Redundant delegation job selectors
 
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
@@ -20434,3 +20475,7 @@ Use synthetic Darwin x64/arm64 uname responses through production SSH bootstrap,
 #### E2E-ISSUE-2184
 
 Load the actual bundled plugin in an isolated workspace. Create a file and Unicode directory, rename and move the file; verify disk entries and response metadata. Invalid create/rename names fail before writing, and duplicate destinations are refused. Coverage: apps/desktop/test/file-manager-mutations.test.mjs. Existing Electron directory-location path also passes.
+
+#### E2E-ISSUE-1926-scratch-prefix
+
+Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
