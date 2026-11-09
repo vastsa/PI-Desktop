@@ -141,7 +141,10 @@ D684.
     settings control column, and shows the current name. The menu pins System,
     Light, and Dark at the top, then lists plugin themes after a divider with a
     "Provided by …" hint. Search matches labels, descriptions, ids, and plugin
-    ids. Selection updates `settings.theme`.
+    ids. Selection updates `settings.theme`. With System selected, OS appearance
+    changes refresh the resolved plugin palette and broadcast it to open plugin
+    surfaces, including Browser chrome, without another settings write or restart.
+    Explicit light/dark and registered plugin palettes remain fixed.
   - **Language**: a searchable picker row (not a card grid). The closed trigger
     sizes to the current label, capped by the settings control column, and
     shows the current native name, or Match system. The menu pins Auto at the

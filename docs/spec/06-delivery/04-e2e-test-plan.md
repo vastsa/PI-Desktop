@@ -3856,7 +3856,11 @@ identify the platform validation still needed.
   2) In the Appearance card, open the Theme picker. Confirm System, Light, and
      Dark are pinned at the top; select Dark and confirm the trigger shows Dark
      and the UI switches to dark.
-  3) Select Light and confirm the UI switches to light.
+  3) Select Light and confirm the UI switches to light. With a Browser tab open,
+     select System and change OS appearance light → dark → light. Confirm the
+     shell and Browser address/navigation toolbar update together without a
+     settings write or restart. Repeat with explicit Light and Dark: OS changes
+     must not override the selected app palette.
   4) In the Language row, open the searchable picker. Confirm Auto is pinned
      at the top with the detected native name and that English, 简体中文,
      繁體中文, Türkçe, Deutsch, Español, Français, 한국어, and Português (Brasil)
