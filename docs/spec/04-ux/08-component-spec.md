@@ -1,5 +1,9 @@
 # 08. Component Spec
 
+Live delegation reconstruction crosses system notices as well as steering
+messages. An ordinary user prompt remains the run boundary. A running Task
+behind a system notice must not become aborted on navigation (Refs #1990).
+
 Screenshot-only Composer paste (image bytes without a native disk path) skips
 native directory discovery and uses the existing bounded attachment writer.
 Native files and folder-only or mixed file/folder selections keep the directory
