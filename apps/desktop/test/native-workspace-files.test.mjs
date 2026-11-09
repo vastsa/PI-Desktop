@@ -23,9 +23,10 @@ test("unavailable native sources fail closed without Desktop workspace fallback"
 
 test("a replaced sidecar cannot publish a stale native file root", async () => {
   let finish;
+  const host = { call: () => assert.fail("native identity reached Desktop storage") };
   let sidecar = { call: () => new Promise(resolve => { finish = resolve; }) };
-  const pending = remoteWorkspaceForFiles(() => ({ call() {} }), "native-pi:fixture", () => sidecar);
+  const pending = remoteWorkspaceForFiles(() => host, "native-pi:fixture", () => sidecar);
   sidecar = null;
   finish({ session: { projectPath: "C:/fixture" } });
-  await assert.rejects(pending, { errorCode: "HOST_UNAVAILABLE" });
+  await assert.rejects(pending, { errorCode: "HOST_UNAVAILABLE", message: "session source replaced" });
 });
