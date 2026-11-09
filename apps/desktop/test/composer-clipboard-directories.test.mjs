@@ -17,36 +17,59 @@ function load(path) {
 const { nativeClipboardPaths, readComposerClipboardDirectories } = load("../electron/main/composer-clipboard-directories.ts");
 const { serializeComposerFileReferences, serializeInlineComposerFileReferences } = load("../../../packages/shared/src/composer-trigger.ts");
 const clipboard = values => ({ availableFormats: () => Object.keys(values), readBuffer: format => Buffer.from(values[format] ?? "") });
+const silentWindowsClipboard = () => ({ readBuffer: () => assert.fail("Windows must use its native file list") });
 
-test("native URI file lists preserve order and decode spaces/unicode without reading clipboard text", () => {
-  assert.deepEqual(nativeClipboardPaths(clipboard({
+test("native URI file lists preserve order and decode spaces/unicode without reading clipboard text", async () => {
+  assert.deepEqual(await nativeClipboardPaths(clipboard({
     "text/uri-list": "# comment\r\nfile:///tmp/one%20folder\r\nfile:///tmp/%E4%B8%AD%E6%96%87\r\nhttps://example.com/ignored",
     "text/plain": "unrelated clipboard text",
   }), "linux"), ["/tmp/one folder", "/tmp/中文"]);
-  assert.deepEqual(nativeClipboardPaths(clipboard({ "x-special/gnome-copied-files": "copy\nfile:///tmp/a\nfile:///tmp/a" }), "linux"), ["/tmp/a"]);
+  assert.deepEqual(await nativeClipboardPaths(clipboard({ "x-special/gnome-copied-files": "copy\nfile:///tmp/a\nfile:///tmp/a" }), "linux"), ["/tmp/a"]);
 });
 
-test("native file lists enforce metadata and selection bounds", () => {
-  assert.throws(() => nativeClipboardPaths(clipboard({ "text/uri-list": "x".repeat(1024 * 1024 + 1) }), "linux"), /too large/);
-  assert.throws(() => nativeClipboardPaths(clipboard({ "text/uri-list": Array.from({ length: 21 }, (_, i) => `file:///tmp/${i}`).join("\n") }), "linux"), /too many/);
-  assert.throws(() => nativeClipboardPaths(clipboard({ "text/uri-list": "file:///tmp/a%00b" }), "linux"), /null|invalid|encoded/i);
+test("native file lists enforce metadata and selection bounds", async () => {
+  await assert.rejects(() => nativeClipboardPaths(clipboard({ "text/uri-list": "x".repeat(1024 * 1024 + 1) }), "linux"), /too large/);
+  await assert.rejects(() => nativeClipboardPaths(clipboard({ "text/uri-list": Array.from({ length: 21 }, (_, i) => `file:///tmp/${i}`).join("\n") }), "linux"), /too many/);
+  await assert.rejects(() => nativeClipboardPaths(clipboard({ "text/uri-list": "file:///tmp/a%00b" }), "linux"), /null|invalid|encoded/i);
 });
 
-test("Windows uses the complete native FileDropList instead of custom CF_HDROP or one FileNameW", () => {
+test("Windows uses the complete native FileDropList instead of custom CF_HDROP or one FileNameW", async () => {
   const paths = ["C:\\first folder", "C:\\notes.txt", "D:\\中文"];
-  assert.deepEqual(nativeClipboardPaths({ readBuffer: () => assert.fail("Windows must use its native file list") }, "win32", () => paths), paths);
-  assert.throws(() => nativeClipboardPaths(clipboard({}), "win32", () => ["relative"]), /invalid clipboard file path/);
+  assert.deepEqual(await nativeClipboardPaths(silentWindowsClipboard(), "win32", () => paths), paths);
+  await assert.rejects(() => nativeClipboardPaths(clipboard({}), "win32", () => ["relative"]), /invalid clipboard file path/);
 });
 
-test("normalized MIME enumeration does not hide raw Finder file URLs", () => {
+test("normalized MIME enumeration does not hide raw Finder file URLs", async () => {
   const native = clipboard({ "public.file-url": "file:///tmp/synthetic-folder" });
   native.availableFormats = () => ["text/uri-list"];
-  assert.deepEqual(nativeClipboardPaths(native, "darwin"), ["/tmp/synthetic-folder"]);
+  assert.deepEqual(await nativeClipboardPaths(native, "darwin"), ["/tmp/synthetic-folder"]);
 });
 
-test("macOS Finder file-list metadata is decoded in full", { skip: process.platform !== "darwin" }, () => {
+test("macOS Finder file-list metadata is decoded in full", { skip: process.platform !== "darwin" }, async () => {
   const xml = '<?xml version="1.0"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><array><string>/tmp/first folder</string><string>/tmp/second</string></array></plist>';
-  assert.deepEqual(nativeClipboardPaths(clipboard({ NSFilenamesPboardType: xml }), "darwin"), ["/tmp/first folder", "/tmp/second"]);
+  assert.deepEqual(await nativeClipboardPaths(clipboard({ NSFilenamesPboardType: xml }), "darwin"), ["/tmp/first folder", "/tmp/second"]);
+});
+
+test("a Windows clipboard probe slower than the former 2s timeout no longer aborts the paste", async () => {
+  // The former spawnSync bound was 2000ms; a machine whose PowerShell starts slower used to
+  // surface spawnSync ETIMEDOUT and fail image paste outright.
+  const paths = ["C:\\slow folder"];
+  const slowProbe = () => new Promise(resolve => setTimeout(() => resolve(paths), 50));
+  let ticks = 0;
+  const spin = setInterval(() => ticks++, 5);
+  try {
+    assert.deepEqual(await nativeClipboardPaths(silentWindowsClipboard(), "win32", slowProbe), paths);
+  } finally {
+    clearInterval(spin);
+  }
+  assert.ok(ticks >= 3, "the event loop must keep running while the clipboard probe is pending");
+});
+
+test("a Windows clipboard probe failure rejects without blocking the main process", async () => {
+  // A hung or killed shell must surface as a rejection the caller can report, never as a
+  // synchronous throw that leaves the main process frozen.
+  const failed = () => new Promise((_resolve, reject) => setTimeout(() => reject(new Error("clipboard file list read failed")), 20));
+  await assert.rejects(() => nativeClipboardPaths(silentWindowsClipboard(), "win32", failed), /clipboard file list read failed/);
 });
 
 test("directory metadata never copies a tree and mixed files use the existing import capability", async t => {
