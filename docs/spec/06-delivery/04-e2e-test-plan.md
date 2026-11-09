@@ -1,5 +1,28 @@
 # 04. E2E Test Plan
 
+### E2E-TRANSCRIPT-full-read-cache-race
+
+Hold a full-history read, publish a newer streaming snapshot, then resolve the
+old read. The caller receives history while the session cache keeps the newer
+snapshot. Coverage: `full-transcript-refresh-race.test.mjs` plus existing
+session-runtime update regressions. No provider execution is required.
+
+### E2E-SESSION-rejected-stop-state
+
+Reject a remote Stop at the API boundary: the production session slice keeps
+its running state and rethrows the error. Retry successfully: both the active
+indicator and owning session running entry clear. Coverage:
+`failed-session-stop-state.test.mjs`, without provider execution.
+
+### E2E-SUBAGENT-system-notice-reconstruction
+
+Reconstruct a transcript with a running Task followed by a system notice.
+The production entry builder, live-delegation selector and outcome resolver
+keep the Task running. End the session or add a new ordinary prompt and verify
+that historical Tasks are no longer live. Coverage:
+`live-delegation-system-row.test.mjs`; `turn-process.test.mjs` checks the
+matching turn boundary and `turn-process-header.test.mjs` the rendered labels.
+
 ### E2E-STEERING-recovery-reply-order
 
 Feed consumed steering between an earlier reply and the next recovery response.
@@ -14645,13 +14668,15 @@ are withdrawn with ADR 0165.
   that matches nothing. On an HTML reference, open the Open with submenu and
   choose File Manager, built-in browser, and default browser; repeat for the
   scratch HTML file. 9) Use Copy full path and Copy relative path, then do the
-  same on a reference that resolves in the session scratch store.
+  same on a reference that resolves in the session scratch store. 10) Choose
+  Show in folder on a project file and on a scratch file.
 - **Expected**:
   - Right-clicking a file reference offers Copy full path and Copy relative
-    path on each transcript surface that names it. The transcript menu has no
-    Show in folder item. An unpositioned HTML reference also has a second-level
-    Open with submenu for File Manager, built-in browser, and default browser;
-    non-HTML references keep only the copy actions. Each open choice resolves
+    path on each transcript surface that names it, plus Show in folder in a
+    local session. An unpositioned HTML reference also has a second-level
+    Open with submenu for File Manager, built-in browser, and default browser.
+    Show in folder reveals the resolved file in the system file manager and a
+    missing reference reports itself instead. Each open choice resolves
     the reference first, and a missing reference reports itself without opening
     a same-named file elsewhere.
   - A copy writes exactly what it names: the absolute address for the full copy

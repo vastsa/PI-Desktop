@@ -1,5 +1,17 @@
 # 08. Component Spec
 
+A full transcript read may fill its session cache only when that cache has not
+changed during the request. New streaming or edit snapshots retain ownership;
+the caller still receives the requested history for its own action validation.
+
+A rejected session Stop request retains the last known running state. A
+transport failure is not confirmation of process settlement; successful Stop
+and authoritative terminal events continue to clear the running indicator.
+
+Live delegation reconstruction crosses system notices as well as steering
+messages. An ordinary user prompt remains the run boundary. A running Task
+behind a system notice must not become aborted on navigation (Refs #1990).
+
 Screenshot-only Composer paste (image bytes without a native disk path) skips
 native directory discovery and uses the existing bounded attachment writer.
 Native files and folder-only or mixed file/folder selections keep the directory
@@ -3807,9 +3819,11 @@ Anatomy:
   full path and Copy relative path on every surface that names it. Unpositioned
   `.html` and `.htm` references also offer an **Open with** submenu containing
   File Manager, built-in browser, and default browser. Each choice completes the
-  reference first and opens that exact resolved file. Other file types keep the
-  copy actions only; the transcript menu has no **Show in folder** action. A
-  file outside the project has no relative path to copy and reports that fact.
+  reference first and opens that exact resolved file. In a session that may use
+  local files, every reference also offers **Show in folder**, which reveals the
+  same resolved file in the system file manager; a remote workspace keeps the
+  copy actions only. A file outside the project has no relative path to copy
+  and reports that fact.
   The OS default application is no longer what this click does. HTTP(S)
   URLs stay text links. Plain clicks follow the Link open destination setting,
   and right-clicking a URL exposes the same external, work-panel, and copy

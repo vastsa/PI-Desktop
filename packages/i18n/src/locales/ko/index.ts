@@ -485,6 +485,8 @@ export const ko = {
     fileManagerOpenFailed: "파일 관리자에서 파일을 열 수 없습니다.",
     builtInBrowserUnavailable: "내장 브라우저를 사용할 수 없습니다.",
     defaultBrowserOpenFailed: "기본 브라우저에서 파일을 열 수 없습니다.",
+    revealFileInFolder: "폴더에서 보기",
+    fileRevealFailed: "폴더에서 파일을 표시할 수 없습니다.",
     copyFullPath: "전체 경로 복사",
     copyRelativePath: "상대 경로 복사",
     relativePathUnavailable: "이 파일은 프로젝트 밖에 있어 상대 경로가 없습니다",

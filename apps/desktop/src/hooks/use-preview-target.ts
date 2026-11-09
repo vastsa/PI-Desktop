@@ -415,6 +415,36 @@ export function useOpenChatFileRef() {
 }
 
 /**
+ * Show a file reference in the system file manager.
+ *
+ * It travels through the same completion a click uses (`useOpenChatFileRef`),
+ * so a right-click never reveals a differently named file that happens to sit
+ * in the same folder: a reference that matched nothing says so instead.
+ */
+export function useRevealChatFileRef() {
+  const { t } = useTranslation();
+  const resolveRef = useResolveChatFileRef();
+  const paneSessionId = useSlotSessionId();
+  const sessionId = useAppStore((s) => paneSessionId || s.activeSessionId);
+  const showToast = useAppStore((s) => s.showToast);
+
+  return useCallback(
+    (path: string, baseDir?: string) => {
+      void (async () => {
+        const resolved = await resolveRef(path, baseDir);
+        if (!resolved) return;
+        try {
+          await api.fsReveal(resolved.absolutePath, sessionId ?? undefined);
+        } catch {
+          showToast(t("chat.fileRevealFailed"), { variant: "error" });
+        }
+      })();
+    },
+    [resolveRef, sessionId, showToast, t],
+  );
+}
+
+/**
  * Copy a reference as an address a user can paste somewhere else.
  *
  * "Full" is the absolute path, the one spelling that resolves from any working
