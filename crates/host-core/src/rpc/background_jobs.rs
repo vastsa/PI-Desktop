@@ -13,10 +13,10 @@ struct Request {
 }
 
 fn authorize(st: &AppState, session_id: &str) -> Result<(), JsonRpcError> {
-    let mode = sessions::session_mode(&st.db, session_id)
+    let policy = sessions::tool_policy(&st.db, session_id)
         .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
         .ok_or_else(|| rpc_err(1007, "task not found", "NOT_FOUND"))?;
-    if mode != "agent" {
+    if policy != sessions::ToolPolicy::Agent {
         return Err(rpc_err(
             1001,
             "background job controls require Agent mode",

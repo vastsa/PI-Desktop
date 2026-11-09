@@ -21,6 +21,8 @@ import { registerPluginUiIpc } from "./plugin-ui-ipc";
 import { registerPluginLauncherIpc } from "./plugin-launcher-ipc";
 import { registerComputerIpc } from "./computer-ipc";
 import { registerJevIpc } from "./jev-ipc";
+import { registerModesIpc } from "./modes-ipc";
+import type { ModeServices } from "../runtime/mode-services";
 import { registerProviderIpc } from "./provider-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
@@ -78,6 +80,8 @@ export type RegisterIpcDependencies = {
   /** Host activation plus the inline-visualization switch, for runtime consumers. */
   runtimeDisabledBuiltinSkills: () => Promise<string[]>;
   completionNoticeTurns: Set<string>;
+  /** Mode definition catalog and staged run coordination (ADR mode-definitions). */
+  modeServices: ModeServices;
   liveCallService?: LiveCallService;
   liveVoiceWidget?: LiveVoiceWidget;
   restartForStorage: () => void;
@@ -299,6 +303,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     beginTranscriptRewrite,
     forgetTranscriptRewriteHistory,
     stripWinLongPrefix,
+    modeCatalog: dependencies.modeServices.catalog,
   });
   registerSettingsIpc({
     registrar,
@@ -340,6 +345,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
   registerJevIpc({ registrar, logger });
+  registerModesIpc({ registrar, catalog: dependencies.modeServices.catalog, runs: dependencies.modeServices.runs });
   registerComputerIpc({ registrar, getHost, publishGrant: publishComputerGrant });
   registerWorktreeIpc({
     registrar,
@@ -461,6 +467,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     optionalWorkspaceRoot,
     composerCommandService,
     loadComposerTemplatesCached,
+    modeRuns: dependencies.modeServices.runs,
   });
 
   registerPluginIpc({

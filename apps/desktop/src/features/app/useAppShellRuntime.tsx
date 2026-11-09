@@ -20,6 +20,7 @@ import { scheduledWorkspaceCache } from "../scheduled/scheduled-workspace-cache"
 import { composerSuggestion } from "../chat/composer/plugins/suggestion-bridge";
 import { usePluginBrowseState } from "../plugins/browse-state";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
+import { startModesSync } from "../modes/modes-sync";
 import { playNotificationChime } from "../../lib/notification-sound";
 import {
   clampSidebarWidth,
@@ -657,6 +658,10 @@ export function useAppShellRuntime() {
     if (!ready) return;
     void api.menuRendererReady().catch(() => undefined);
   }, [ready]);
+
+  // Mode catalog (Electron main) and run pushes (host-core) for the picker,
+  // the run status bar and Settings → Modes (ADR mode-definitions).
+  useEffect(() => startModesSync(), []);
 
   // The Host owns the prompt queue (D375); mirror it whenever the visible
   // session changes so a reload or a switch shows the durable entries.

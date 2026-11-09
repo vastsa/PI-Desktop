@@ -1315,6 +1315,28 @@ function runtimeFirstMismatch(
 }
 
 describe("system transcript reconstruction", () => {
+  it.each(["progressTurnRerunInProgress", "silentTurnRerunInProgress", "providerRetryInProgress", "overflowRecoveryInProgress"])("starts a new recovery reply after consumed steering during %s (#1699)", async (recovery) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent, turnId: "active-turn" });
+    const internal = runtime as any;
+    const progress = assistantMessage({ content: [{ type: "text", text: "Checking the task" }] });
+    await internal.handleAgentEvent({ type: "message_start", message: progress });
+    const firstId = internal.currentAssistant.id;
+    const steering = { role: "user", content: "Are you stuck?", timestamp: Date.now() };
+    internal.pendingSteering.set(steering, { id: "steering-user", toolNames: [] });
+    internal[recovery] = true;
+    await internal.handleAgentEvent({ type: "message_end", message: steering });
+    const next = assistantMessage({ content: [{ type: "text", text: "No, continuing now" }] });
+    await internal.handleAgentEvent({ type: "message_start", message: next });
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    const starts = events.filter(event => event.type === "message_start" && event.message.role === "assistant");
+    expect(starts).toHaveLength(2);
+    expect(starts[1].message.id).not.toBe(firstId);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "message_end", message: expect.objectContaining({ id: firstId, status: "complete" }),
+    }));
+    await runtime.dispose();
+  });
   it("keeps provider usage valid when rebuilding an unchanged prefix", async () => {
     const runtime = createRuntime();
     const internals = runtime as any;
@@ -2699,6 +2721,19 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("keeps session scratch paths behind the shared system prefix (#1926)", async () => {
+    const first = createRuntime({ scratchDir: "/fixture/scratch/one", projectMemory: "shared memory" });
+    const second = createRuntime({ scratchDir: "/fixture/scratch/two", projectMemory: "shared memory" });
+    const firstPrompt = first as unknown as { composedSections: Record<string, string> };
+    const secondPrompt = second as unknown as { composedSections: Record<string, string> };
+    expect(firstPrompt.composedSections.runtime).toBe(secondPrompt.composedSections.runtime);
+    expect(firstPrompt.composedSections.runtime).not.toContain("/fixture/scratch/one");
+    expect(firstPrompt.composedSections.context).toContain("/fixture/scratch/one");
+    expect(secondPrompt.composedSections.context).toContain("/fixture/scratch/two");
+    await first.dispose();
+    await second.dispose();
+  });
+
   it("sends the default Bash timeout and preserves explicit overrides", async () => {
     const host = {
       call: vi.fn().mockResolvedValue({ ok: true, content: "done" }),
@@ -3823,8 +3858,8 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       "Grep",
       "asktool",
       "Skill",
+      // Goal runs as a staged mode the user selects; EnterGoalMode is gone.
       "EnterPlanMode",
-      "EnterGoalMode",
       "TaskWait",
       "TaskList",
       "TaskStop",
@@ -4197,7 +4232,10 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
     await runtime.dispose();
   });
 
-  it("gives Goal mode the read-only core, guarded editing declarations, and SubmitGoal", async () => {
+  it("keeps a Goal session without a definition read-only and offers no legacy Goal negotiation", async () => {
+    // ADR mode-definitions: Goal is a staged mode. A session that carries no
+    // Goal definition (legacy negotiation sessions) falls back to the
+    // builtin mapping, which is the contract level, and SubmitGoal is gone.
     const runtime = createRuntime({
       mode: "goal",
       pluginTools: [
@@ -4218,16 +4256,19 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
         "Grep",
         "BrowserPreview",
         "Bash",
-        "SubmitGoal",
       ]),
     );
     expect(goalTools).toEqual(expect.arrayContaining(["Write", "Edit"]));
     expect(goalTools).not.toContain("plugin_demo_run");
     expect(goalTools).not.toContain("SubmitPlan");
+    expect(goalTools).not.toContain("SubmitGoal");
     expect(goalTools).not.toContain("EnterGoalMode");
-    expect(runtime.getStatus().planningState).toBe("planning");
-    expect(agent.state.systemPrompt).toContain("SubmitGoal");
-    expect(agent.state.systemPrompt).toContain("acceptance criteria");
+    expect(goalTools).not.toContain("CompleteStage");
+    expect(runtime.getStatus().planningState).toBe("inactive");
+    expect(agent.state.systemPrompt).not.toContain("SubmitGoal");
+    expect(agent.state.systemPrompt).toContain("Do not use Write, Edit");
+    await expect(runtimeTool(runtime, "Write").execute("w1", { path: "a.txt", content: "x" }))
+      .rejects.toThrow("not allowed in goal mode");
 
     await runtime.dispose();
   });
@@ -4339,7 +4380,8 @@ describe("DesktopAgentRuntime tool schema completeness (#864)", () => {
 });
 
 describe("DesktopAgentRuntime plan transitions", () => {
-  it.each(["plan", "goal"] as const)(
+  // Goal no longer submits a contract (ADR mode-definitions); only Plan does.
+  it.each(["plan"] as const)(
     "continues the %s user turn after a missing-workspace submission",
     async (kind) => {
       const host = {
@@ -4548,68 +4590,33 @@ describe("DesktopAgentRuntime plan transitions", () => {
     await runtime.dispose();
   });
 
-  it("routes the Goal contract through the same host approval with kind goal", async () => {
+  it("denies the retired Goal negotiation tools from older transcripts", async () => {
+    // ADR mode-definitions: Goal is a staged mode the user selects. Neither
+    // EnterGoalMode nor SubmitGoal is offered, and a call replayed from an
+    // older transcript is denied without reaching the Host.
     const host = { call: vi.fn() };
     const runtime = createRuntime({ host, turnId: "turn-1" });
     const agent = (runtime as any).agent;
-
-    host.call.mockResolvedValueOnce({ ok: true, state: "planning" });
-    const enterTool = agent.state.tools.find(
-      (tool: any) => tool.name === "EnterGoalMode",
-    );
-    await enterTool.execute("enter-goal-call", {});
-    expect(runtime.getMode()).toBe("goal");
-    expect(host.call).toHaveBeenNthCalledWith(1, "plans.enter", {
-      sessionId: "session-1",
-      turnId: "turn-1",
-      toolCallId: "enter-goal-call",
-      kind: "goal",
-    });
-
-    const markdown = "# Goal\n\nCheckout works.\n\n## Acceptance criteria\n- tests pass\n";
-    const proposal = {
-      id: "proposal-goal-1",
-      sessionId: "session-1",
-      turnId: "durable-turn-1",
-      toolCallId: "submit-goal-call",
-      kind: "goal",
-      title: "Checkout works",
-      markdown,
-      plan: markdown,
-      question: "Approve this goal?",
-      artifact: {
-        relativePath: ".pi/goal/proposal-goal-1.md",
-        sha256: "def456",
-        sizeBytes: 42,
-      },
-      version: 1,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    host.call.mockResolvedValueOnce({ status: "pending", proposal });
-    const submitTool = agent.state.tools.find(
-      (tool: any) => tool.name === "SubmitGoal",
-    );
-    expect(submitTool.description).toContain("acceptance criteria");
-    const submitResult = await submitTool.execute("submit-goal-call", {
-      title: proposal.title,
-      markdown: proposal.markdown,
-      question: proposal.question,
-    });
-
-    expect(submitResult.terminate).toBe(true);
-    expect(runtime.getMode()).toBe("goal");
-    expect(runtime.getStatus().planningState).toBe("awaiting_approval");
-    expect(host.call).toHaveBeenLastCalledWith(
-      "plans.submit",
-      expect.objectContaining({
-        sessionId: "session-1",
-        toolCallId: "submit-goal-call",
-        kind: "goal",
-        markdown: proposal.markdown,
-      }),
-    );
+    const names = agent.state.tools.map((tool: any) => tool.name);
+    expect(names).toContain("EnterPlanMode");
+    expect(names).not.toContain("EnterGoalMode");
+    expect(names).not.toContain("SubmitGoal");
+    const beforeToolCall = agent.beforeToolCall as Function;
+    for (const name of ["EnterGoalMode", "SubmitGoal"]) {
+      await expect(
+        beforeToolCall({
+          assistantMessage: { content: [{ type: "toolCall", id: "g1", name, arguments: {} }] },
+          toolCall: { id: "g1", name, arguments: {} },
+          args: {},
+          context: {},
+        }),
+      ).resolves.toMatchObject({
+        block: true,
+        reason: expect.stringContaining(`${name} is no longer available`),
+      });
+    }
+    expect(host.call).not.toHaveBeenCalled();
+    expect(runtime.getMode()).toBe("agent");
 
     await runtime.dispose();
   });

@@ -803,7 +803,11 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
 
     const timer = setTimeout(() => {
       timedOut = true;
+      // close 可能被后代进程继承的管道拖住；截止时间必须直接结束等待。
+      finish(reject, fail("GIT_TIMEOUT", "git command timed out"));
       child.kill("SIGKILL");
+      child.stdout?.destroy?.();
+      child.stderr?.destroy?.();
     }, timeoutMs);
 
     child.stdout?.on("data", (chunk) => {

@@ -1,5 +1,19 @@
 # 08. Component Spec
 
+Live delegation reconstruction crosses system notices as well as steering
+messages. An ordinary user prompt remains the run boundary. A running Task
+behind a system notice must not become aborted on navigation (Refs #1990).
+
+Screenshot-only Composer paste (image bytes without a native disk path) skips
+native directory discovery and uses the existing bounded attachment writer.
+Native files and folder-only or mixed file/folder selections keep the directory
+metadata path. This removes the system-process wait from screenshot paste
+(Refs #2086, #1366), without copying directory trees.
+
+File Manager Git deadlines settle the command at the deadline even when child
+output pipes remain open. A failed snapshot omits Git badges and does not block
+directory listings or file previews indefinitely (Refs #1731).
+
 ### Copied directory references
 
 Native folder paste adds compact cards in a wrapping row above the editable
@@ -4771,3 +4785,7 @@ Activating a completed session fork clears the previous selectingSessionId toget
 ### File Manager mutation validation (#2184)
 
 The bundled File Manager validates each create/rename name before filesystem writes. Valid names return canonical entry metadata after create, rename or move. Empty names, dot segments, separators, control characters, Windows-reserved names and trailing dots fail with INVALID_NAME. Existing destinations fail with EXISTS; containment and protected-path gates remain enforced.
+
+### Native Pi file references (#1853)
+
+User-initiated file reads, directory listings, reference resolution and file search use the native session's sidecar-projected project path. Native identities never query Desktop session storage or fall back to the selected workspace. Missing/replaced sources fail closed. Existing local file containment and explicit external-file rules still apply; this grants no model tools or attachments. Native sessions have no Desktop scratch directory.
