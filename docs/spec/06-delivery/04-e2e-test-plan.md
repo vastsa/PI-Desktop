@@ -3469,6 +3469,21 @@ identify the platform validation still needed.
 - **Milestone**: M3
 - **Status**: Automated (protocol smoke: Read + Glob in sample project)
 
+#### OpenAI scheduled tool schema compatibility
+
+- **Preconditions**: OpenAI Responses route and scheduled tools enabled; include
+  a resumed transcript whose saved declarations contain `uniqueItems`.
+- **Steps**: Send a turn, load a tool, and continue. Inspect current declarations,
+  `additional_tools`, and `tool_search_output`. Try duplicate schedule weekdays.
+- **Expected**: Outbound function schemas omit `uniqueItems` without changing
+  canonical schemas, saved declarations, strict flags, hosted tools or other
+  APIs. The turn succeeds without `invalid_json_schema`; local validation still
+  rejects duplicate weekdays. Payload-hook replacements receive the same pass.
+- **Coverage**: `packages/agent-runtime/src/openai-tool-schema.test.ts` exercises
+  the provider registry and both adapter stream entry points with a deterministic
+  HTTP boundary. Live-provider/native E2E is separate.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`
+
 ### Permission Allow / Deny / Cancellation
 
 #### E2E-014: Write/Edit/Bash triggers permission card
