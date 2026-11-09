@@ -1633,6 +1633,7 @@ ADR `mode-definitions` adds the following Host methods. Parameters use camelCase
 | `modes.control` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; pause, resume, stop or remove. Stop and remove both end the run; Electron main interrupts the active turn only for stop |
 | `modes.update` | `sessionId, runId, expectedRevision, input?, budget?` | `{ run, continue: false }`; edits an open run's input and `{ maxTurns, maxTokens }` budget (both fields required, `null` is unlimited), effective from the next claim |
 | `modes.resolve` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; approve or reject |
+| `modes.settleReturn` | `sessionId, runId, mode?, modeSnapshot?` | `{ pending, applied }`; after a run closed, reports the custom `returnTo` the session waits on (`pending`). Called again with that `mode`, it stores `modeSnapshot` for it, or moves the session to `agent` when the snapshot is absent because the mode no longer exists |
 
 `session.configure` accepts an optional validated `modeSnapshot`. Custom mode
 ids require a snapshot. Agent and Plan retain their builtin policies. Host

@@ -4781,3 +4781,7 @@ While a checkpoint estimate supplies context occupancy, use its recorded provide
 ### File Manager mutation validation (#2184)
 
 The bundled File Manager validates each create/rename name before filesystem writes. Valid names return canonical entry metadata after create, rename or move. Empty names, dot segments, separators, control characters, Windows-reserved names and trailing dots fail with INVALID_NAME. Existing destinations fail with EXISTS; containment and protected-path gates remain enforced.
+
+### Native Pi file references (#1853)
+
+User-initiated file reads, directory listings, reference resolution and file search use the native session's sidecar-projected project path. Native identities never query Desktop session storage or fall back to the selected workspace. Missing/replaced sources fail closed. Existing local file containment and explicit external-file rules still apply; this grants no model tools or attachments. Native sessions have no Desktop scratch directory.

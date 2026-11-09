@@ -118,6 +118,10 @@ pub(super) async fn handle(
             let result = mode_runs::update(&st.db, parse(params)?).map_err(error)?;
             (result.wire(), result.changed.then_some(result.run))
         }
+        "modes.settleReturn" => {
+            let result = mode_runs::settle_return(&st.db, parse(params)?).map_err(error)?;
+            return Ok(result.wire());
+        }
         "modes.resolve" => {
             let result = mode_runs::resolve(&st.db, parse(params)?).map_err(error)?;
             (result.wire(), result.changed.then_some(result.run))

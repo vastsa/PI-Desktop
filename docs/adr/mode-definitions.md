@@ -35,6 +35,11 @@ Builtins `agent`, `plan` and `goal` use the same format and ship with the app.
 The builtin ids are reserved: a user document that uses one is reported in
 settings and is not loaded. To change a builtin, duplicate it under a new id.
 Discovery is global only, so a cloned repository cannot provide a mode.
+Settings read the directory again each time they load the catalog, so a
+document written by another editor shows up without a restart. A document
+whose `name` differs from its directory keeps that file: settings read, save
+and delete it in place, and a new mode never writes into a directory that
+already holds another mode.
 
 A definition has one of two levels of complexity.
 
@@ -216,6 +221,10 @@ One migration after the current schema:
   existing values `agent`, `plan` and `goal` map to the builtins. A session
   whose mode no longer exists falls back to `agent`; an active run keeps its
   snapshot.
+  When a run closes, the Host returns the session to `returnTo` without a
+  snapshot; Electron main then settles it through `modes.settleReturn`,
+  attaching the return mode's current definition, or moving the session to
+  `agent` when that mode was deleted during the run.
 - `mode_snapshots (hash, json)`: an immutable definition per run, so editing a
   mode never changes a running run.
 - `mode_runs`: generalized from #2141 `session_goals`. Each row stores the mode,
