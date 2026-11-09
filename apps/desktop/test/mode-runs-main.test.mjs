@@ -48,7 +48,7 @@ function run(overrides = {}) {
   };
 }
 
-function fixture({ open = null, claim, settle = { run: null, continue: false } } = {}) {
+function fixture({ open = null, claim, settle = { run: null, continue: false }, pendingReturn = null, catalogModes = null, featureReturnTo = "agent" } = {}) {
   const calls = [];
   const continuations = [];
   const aborts = [];
@@ -62,12 +62,17 @@ function fixture({ open = null, claim, settle = { run: null, continue: false } }
       }
       if (method === "modes.settleTurn") return settle;
       if (method === "modes.control" || method === "modes.resolve" || method === "modes.update") return settle;
+      if (method === "modes.settleReturn") {
+        if (params.mode === undefined) return { pending: pendingReturn, applied: null };
+        return { pending: null, applied: params.modeSnapshot ? params.mode : "agent" };
+      }
       throw new Error(`unexpected ${method}`);
     },
   };
   const catalog = {
     async definition(id) {
-      if (id === "feature") return staged;
+      if (catalogModes && !catalogModes.includes(id)) return undefined;
+      if (id === "feature") return { ...staged, returnTo: featureReturnTo };
       if (id === "review") return { ...staged, id: "review", stages: [] };
       return undefined;
     },
@@ -266,4 +271,40 @@ test("the catalog reads, validates, writes and deletes user modes in its own dir
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a closed run hands the session its existing return mode with a snapshot (#2204)", async () => {
+  const { coordinator, calls } = fixture({ pendingReturn: "review" });
+  assert.equal(await coordinator.settleReturn("s1", run({ state: "finished" })), true);
+  const settles = calls.filter((call) => call.method === "modes.settleReturn");
+  assert.equal(settles.length, 2);
+  assert.equal(settles[1].params.mode, "review");
+  assert.equal(settles[1].params.modeSnapshot.id, "review");
+});
+
+test("a deleted return mode is settled without a snapshot, so the Host falls back to agent (#2204)", async () => {
+  const { coordinator, calls } = fixture({ pendingReturn: "review", catalogModes: ["feature"] });
+  assert.equal(await coordinator.settleReturn("s1", run({ state: "stopped" })), true);
+  const last = calls.filter((call) => call.method === "modes.settleReturn").at(-1);
+  assert.deepEqual(last.params, { sessionId: "s1", runId: "run1", mode: "review" });
+});
+
+test("an open run or a settled session asks the Host nothing more (#2204)", async () => {
+  const open = fixture({ pendingReturn: "review" });
+  assert.equal(await open.coordinator.settleReturn("s1", run({ state: "paused" })), false);
+  assert.deepEqual(open.calls, []);
+  const settled = fixture();
+  assert.equal(await settled.coordinator.settleReturn("s1", run({ state: "finished" })), false);
+  assert.equal(settled.calls.length, 1);
+});
+
+test("remove releases the turn to agent when the return mode was deleted (#2204)", async () => {
+  const { coordinator, notices } = fixture({
+    settle: { run: run({ state: "stopped", revision: 4, finishedAt: "t" }), continue: false },
+    catalogModes: ["feature"],
+    featureReturnTo: "review",
+  });
+  await coordinator.prepareTurn({ sessionId: "s1", turnId: "t1", sessionMode: "feature", content: "x", origin: "user" });
+  await coordinator.control({ sessionId: "s1", runId: "run1", expectedRevision: 3, action: "remove" });
+  assert.deepEqual(notices, [{ sessionId: "s1", turnId: "t1", runId: "run1", action: "release", mode: "agent" }]);
 });

@@ -25,6 +25,14 @@ import type { ModeCatalogService } from "./mode-catalog";
 
 type HostCaller = { call<T = unknown>(method: string, params?: unknown): Promise<T> };
 
+/** `modes.settleReturn` answer: the return mode still pending, or the one applied. */
+type ModeSettleReturnResult = { pending: string | null; applied: string | null };
+
+/** Builtins whose Host semantics need no snapshot. */
+function isPlainMode(mode: string): boolean {
+  return mode === "agent" || mode === "plan";
+}
+
 /** Model-facing content of a Host-started turn. It is never persisted as a
  * user message; the stage brief in the system prompt carries the details. */
 export const MODE_CONTINUATION_CONTENT =
@@ -217,8 +225,11 @@ export function createModeRunCoordinator(deps: {
           // The session already returned to its return mode in the Host.
           await (async () => {
             const definition = result.run ? await deps.catalog.definition(result.run.modeId) : undefined;
-            const mode = definition?.returnTo ?? "agent";
-            const modeDefinition = await deps.catalog.definition(mode);
+            const returnTo = definition?.returnTo ?? "agent";
+            const returnDefinition = await deps.catalog.definition(returnTo);
+            // A deleted return mode falls back to Agent, as settleReturn does.
+            const mode = returnDefinition || isPlainMode(returnTo) ? returnTo : "agent";
+            const modeDefinition = mode === returnTo ? returnDefinition : undefined;
             await deps.notifyTurn(request.sessionId, turnId, {
               runId: request.runId,
               action: "release",
@@ -241,6 +252,33 @@ export function createModeRunCoordinator(deps: {
       const result = await host().call<ModeSettleResult>("modes.resolve", request);
       if (result.continue) scheduleContinuation(request.sessionId, "approval");
       return result;
+    },
+
+    /**
+     * After a run closed, the Host left the session on the run's `returnTo`
+     * without a snapshot (#2204). Hand it that mode's current definition, or
+     * let it fall back to Agent when the mode no longer exists. Returns
+     * whether the session's mode row changed.
+     */
+    async settleReturn(sessionId: string, run: { id: string; state: string }): Promise<boolean> {
+      if (run.state !== "finished" && run.state !== "stopped") return false;
+      const hostCaller = host();
+      const { pending } = await hostCaller.call<ModeSettleReturnResult>("modes.settleReturn", { sessionId, runId: run.id });
+      if (!pending) return false;
+      const modeSnapshot = await deps.catalog.definition(pending);
+      const { applied } = await hostCaller.call<ModeSettleReturnResult>("modes.settleReturn", {
+        sessionId,
+        runId: run.id,
+        mode: pending,
+        ...(modeSnapshot ? { modeSnapshot } : {}),
+      });
+      if (applied && applied !== pending) {
+        deps.logger.app("session", "warn", "mode run return mode no longer exists; session uses agent", {
+          sessionId,
+          data: pending,
+        });
+      }
+      return Boolean(applied);
     },
 
     /** Test seam and diagnostics. */

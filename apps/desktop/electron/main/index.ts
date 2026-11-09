@@ -837,6 +837,7 @@ const { startHost } = createHostRuntime({
   userMcp,
   pluginActiveInProject,
   sendToRenderer,
+  settleModeReturn: (sessionId, run) => modeServices.runs.settleReturn(sessionId, run),
   emitAgentEvent,
   togglePluginLauncher,
   finishTurn,
