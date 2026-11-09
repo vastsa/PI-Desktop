@@ -43,16 +43,16 @@ index 272dcc1..c0c9410 100644
 - * 图片。图片不加载（面板是 file://，相对路径指向视图自身），渲染为占位说明。
 + * Images use the existing bounded file-read bridge, relative to the document.
   */
- 
+
  import { useEffect, useState, type ReactNode } from "react";
 @@ -17,6 +17,7 @@ import { createElement, Fragment } from "react";
  import type { Base } from "./appearance";
  import { renderHighlighted, tokenizeCode } from "./highlight";
  import { isSafeLink } from "./linkSafety";
 +import { loadMarkdownImage } from "./markdownImages";
- 
+
  // ── 行内 ────────────────────────────────────────────────────────────────────
- 
+
 @@ -43,8 +44,29 @@ type InlineContext = {
    base: Base;
    onLink: (url: string) => void;
@@ -60,7 +60,7 @@ index 272dcc1..c0c9410 100644
 +  filePath?: string;
 +  workspacePath?: string;
  };
- 
+
 +function MarkdownImage({ source, alt, filePath = "", workspacePath = "" }: {
 +  source: string; alt: string; filePath?: string; workspacePath?: string;
 +}) {
@@ -171,7 +171,7 @@ index fe5b4f6..31bb1eb 100644
 @@ -578,6 +578,13 @@ input:focus-visible {
    text-decoration-style: dotted;
  }
- 
+
 +.md-image-preview {
 +  display: inline-block;
 +  max-width: 100%;
@@ -188,7 +188,7 @@ index dbbc780..be6dfb9 100644
 +++ b/views-src/verify-markdown.mjs
 @@ -8,7 +8,8 @@
   */
- 
+
  import { build } from "esbuild";
 -import { mkdtempSync, writeFileSync } from "node:fs";
 +import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
@@ -204,12 +204,12 @@ index dbbc780..be6dfb9 100644
 +      `export { isSafeLink } from ${JSON.stringify(join(src, "linkSafety.ts"))};\n` +
 +      `export { markdownImagePath, loadMarkdownImage } from ${JSON.stringify(join(src, "markdownImages.ts"))};\n`,
    );
- 
+
    await build({
 @@ -80,6 +82,91 @@ const main = async () => {
    const mod = await loadModule();
    const noop = () => {};
- 
+
 +  const imageTree = mod.MarkdownPreview({
 +    text: "![figure](./images/fig-02.png)", base: "dark", onLink: noop,
 +    filePath: "notes/guide.md", workspacePath: "/synthetic/project",
