@@ -1,5 +1,11 @@
 # 04. E2E 测试 Plan
 
+### E2E-TRANSCRIPT-full-read-cache-race
+
+保持全量历史读取请求，发布新的流式快照，再返回旧读取结果。调用方得到历史，
+会话缓存保留新快照。覆盖 `full-transcript-refresh-race.test.mjs` 和现有会话
+更新回归，不执行模型请求。
+
 ### E2E-SESSION-rejected-stop-state
 
 在 API 边界拒绝远端 Stop，生产会话 slice 保留运行状态并传播错误。再次成功
