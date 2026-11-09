@@ -8,7 +8,7 @@
  */
 import { mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   builtinModeSource,
   loadModeDefinitions,
@@ -125,12 +125,39 @@ export function createModeCatalogService(options: {
     return cache;
   }
 
+  /** Re-read the directory. Listeners hear about it only when the catalog
+   * actually changed, so a plain read does not fan out a redundant event. */
   async function refresh(): Promise<ModeCatalog> {
+    const previous = cache;
     cache = null;
     const { catalog } = await current();
-    options.onChanged?.(catalog);
+    const before = previous ? await previous.then((loaded) => loaded.catalog, () => undefined) : undefined;
+    if (!before || JSON.stringify(before) !== JSON.stringify(catalog)) options.onChanged?.(catalog);
     return catalog;
   }
+
+  /**
+   * Directory that holds the user mode `id`. A mode's id comes from its
+   * `name:` and may differ from its directory, so the catalog's recorded
+   * file wins; an id the catalog does not know lives in `<dir>/<id>`.
+   * `occupiedBy` names another mode whose document already sits there.
+   * File operations pass `rescan` so they act on the disk as it is now.
+   */
+  async function locate(
+    id: string,
+    rescan = false,
+  ): Promise<{ modeDir: string; known: boolean; occupiedBy?: string }> {
+    if (rescan) cache = null;
+    const { catalog } = await current();
+    const entries = catalog.modes.filter((entry) => entry.id === id && entry.source === "user" && !entry.reserved && entry.filePath);
+    const entry = entries.find((candidate) => candidate.available) ?? entries[0];
+    if (entry?.filePath) return { modeDir: dirname(entry.filePath), known: true };
+    const modeDir = join(dir, id);
+    const filePath = join(modeDir, MODE_DOCUMENT_NAME);
+    const occupant = catalog.modes.find((candidate) => candidate.filePath === filePath);
+    return { modeDir, known: false, ...(occupant ? { occupiedBy: occupant.id } : {}) };
+  }
+
 
   function assertWritableId(id: string): void {
     if (!isModeId(id)) {
@@ -149,9 +176,17 @@ export function createModeCatalogService(options: {
     if (Buffer.byteLength(source) > MODE_LIMITS.fileBytes) {
       return { ok: false, errors: [`file: larger than ${MODE_LIMITS.fileBytes} bytes`], warnings: [] };
     }
-    const templates = await readTemplates(join(dir, id)).catch(() => ({}));
+    const { modeDir, occupiedBy } = await locate(id);
+    if (occupiedBy !== undefined) {
+      return {
+        ok: false,
+        errors: [`name: the directory "${basename(modeDir)}" already holds the mode "${occupiedBy}"`],
+        warnings: [],
+      };
+    }
+    const templates = await readTemplates(modeDir).catch(() => ({}));
     const result = loadModeDefinitions({
-      userDocuments: [{ dirName: id, filePath: join(dir, id, MODE_DOCUMENT_NAME), source, templates }],
+      userDocuments: [{ dirName: basename(modeDir), filePath: join(modeDir, MODE_DOCUMENT_NAME), source, templates }],
     });
     const diagnostic = result.diagnostics.find((entry) => entry.modeId === id);
     const errors = diagnostic?.errors ?? [];
@@ -163,7 +198,8 @@ export function createModeCatalogService(options: {
 
   return {
     directory: dir,
-    catalog: async (): Promise<ModeCatalog> => (await current()).catalog,
+    /** Rescans `~/.pi/modes`, so edits made outside the app show up. */
+    catalog: (): Promise<ModeCatalog> => refresh(),
     refresh,
     /** Parsed definition, or undefined for an unknown or unavailable id. */
     definition: async (id: string): Promise<ModeDefinition | undefined> => (await current()).definitions.get(id),
@@ -181,7 +217,7 @@ export function createModeCatalogService(options: {
       const builtin = builtinModeSource(id);
       if (builtin !== undefined) return { id, source: builtin, builtin: true };
       if (!isModeId(id)) throw modeError("MODE_ID_INVALID", "invalid mode id");
-      const filePath = join(dir, id, MODE_DOCUMENT_NAME);
+      const filePath = join((await locate(id, true)).modeDir, MODE_DOCUMENT_NAME);
       try {
         return { id, source: await readFile(filePath, "utf8"), filePath, builtin: false };
       } catch (error) {
@@ -192,6 +228,7 @@ export function createModeCatalogService(options: {
     validate,
     async write(id: string, source: string): Promise<ModeCatalog> {
       assertWritableId(id);
+      const { modeDir } = await locate(id, true);
       const validation = await validate(id, source);
       if (!validation.ok) {
         throw modeError("MODE_DEFINITION_INVALID", validation.errors[0] ?? "invalid mode definition", {
@@ -199,18 +236,20 @@ export function createModeCatalogService(options: {
           warnings: validation.warnings,
         });
       }
-      await mkdir(join(dir, id), { recursive: true });
-      await writeFile(join(dir, id, MODE_DOCUMENT_NAME), source, "utf8");
+      await mkdir(modeDir, { recursive: true });
+      await writeFile(join(modeDir, MODE_DOCUMENT_NAME), source, "utf8");
       options.logger?.app("settings", "info", "mode definition saved", { data: { id } });
       return refresh();
     },
     async remove(id: string): Promise<ModeCatalog> {
       assertWritableId(id);
-      await rm(join(dir, id, MODE_DOCUMENT_NAME), { force: true });
+      const { modeDir, known } = await locate(id, true);
+      if (!known) throw modeError("MODE_NOT_FOUND", `Mode "${id}" does not exist`);
+      await rm(join(modeDir, MODE_DOCUMENT_NAME), { force: true });
       // Templates belong to the mode. The directory goes only when it is
       // empty, so nothing else the user put there is lost.
-      await rm(join(dir, id, TEMPLATE_DIR), { recursive: true, force: true });
-      await rmdir(join(dir, id)).catch(() => undefined);
+      await rm(join(modeDir, TEMPLATE_DIR), { recursive: true, force: true });
+      await rmdir(modeDir).catch(() => undefined);
       options.logger?.app("settings", "info", "mode definition deleted", { data: { id } });
       return refresh();
     },
