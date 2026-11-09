@@ -473,6 +473,8 @@ export const de = {
     "fileManagerOpenFailed": "Die Datei konnte nicht im Dateimanager geöffnet werden.",
     "builtInBrowserUnavailable": "Der integrierte Browser ist nicht verfügbar.",
     "defaultBrowserOpenFailed": "Die Datei konnte nicht im Standardbrowser geöffnet werden.",
+    "revealFileInFolder": "Im Ordner anzeigen",
+    "fileRevealFailed": "Die Datei konnte nicht im Ordner angezeigt werden.",
     "copyFullPath": "Vollständigen Pfad kopieren",
     "copyRelativePath": "Relativen Pfad kopieren",
     "relativePathUnavailable": "Die Datei liegt außerhalb des Projekts und hat keinen relativen Pfad",

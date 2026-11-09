@@ -478,6 +478,8 @@ export const zhTW = {
     fileManagerOpenFailed: "無法在檔案管理器中開啟此檔案。",
     builtInBrowserUnavailable: "內建瀏覽器目前無法使用。",
     defaultBrowserOpenFailed: "無法在預設瀏覽器中開啟此檔案。",
+    revealFileInFolder: "在資料夾中開啟",
+    fileRevealFailed: "無法在資料夾中開啟該檔案。",
     copyFullPath: "複製完整位址",
     copyRelativePath: "複製相對位址",
     relativePathUnavailable: "該檔案不在專案內，沒有相對位址",
