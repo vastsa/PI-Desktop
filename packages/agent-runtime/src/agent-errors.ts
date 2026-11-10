@@ -49,13 +49,14 @@ const RATE_LIMIT_PATTERN =
 /**
  * Billing, spending, credit, and disk exhaustion are terminal, including
  * OpenAI's `insufficient_quota` type, OpenRouter-style "insufficient credits"
- * / "requires more credits" / "Payment Required" wording, and explicit 429
- * error codes. Checked before the status table because those conditions do
- * not recover by backing off. Generic "quota exceeded" wording remains
- * eligible for rate-limit classification below. A bare "credits" is not
- * exhaustion, and "insufficient credentials" must not match it either.
- * HTTP 402 is terminal in the status table even when the body omits these
- * phrases.
+ * / "requires more credits" / "Payment Required" wording, DeepSeek's
+ * "Insufficient Balance", SiliconFlow's and MiniMax's "account balance is
+ * insufficient" family, and explicit 429 error codes. Checked before the
+ * status table because those conditions do not recover by backing off.
+ * Generic "quota exceeded" wording remains eligible for rate-limit
+ * classification below. A bare "credits" or "balance" is not exhaustion, and
+ * "insufficient credentials" must not match either. HTTP 402 is terminal in
+ * the status table even when the body omits these phrases.
  */
 const EXHAUSTED_QUOTA_CODE_PATTERN =
   /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded|FreeUsageLimitError)\b/i;
@@ -69,7 +70,7 @@ const EXHAUSTED_QUOTA_CODE_PATTERN =
 const ZHIPU_USAGE_LIMIT_PATTERN = /"code"\s*:\s*"?1308(?![0-9])/;
 
 const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
-  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b/i;
+  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b|\binsufficient\s+balance\b|\bbalance\s+is\s+insufficient\b/i;
 
 /**
  * Whether a provider message reports a context overflow.
@@ -127,7 +128,8 @@ function redactSensitiveErrorText(message: string): string {
 /**
  * Probe the HTTP status across SDK error shapes: `status`/`statusCode`
  * fields (walking the `cause` chain), then a leading "<status>:" or a
- * "(status)" / "status code NNN" marker, or a DashScope "Code: <status>"
+ * "(status)" / "status code NNN" marker, the OpenAI SDK's flattened
+ * "Error code: NNN - …" prefix, or a DashScope "Code: <status>"
  * envelope in the message. Gemini's
  * `@google/genai` ApiError.message is the JSON body with no prefix, so the
  * last probe reads a 400-599 `code` from that object.
@@ -140,6 +142,10 @@ function extractStatus(err: unknown, message: string): number | undefined {
     current = current.cause;
   }
   const patterns = [
+    // pi-ai stores the OpenAI SDK's flattened string verbatim when no
+    // structured status survives, so the number is already in the message
+    // (#2245). Anchored on the SDK's own wording, not any "error code" phrase.
+    /^error code:\s*(\d{3})\b/i,
     /^\s*[A-Za-z][A-Za-z0-9_.-]*:\s*<(\d{3})>/,
     /^\s*(\d{3})\s*:/,
     /^\s*(\d{3})\b/,
@@ -483,8 +489,10 @@ export function networkFailureDiagnostics(
 /**
  * Explicit API-key rejection. Safe on HTTP 400/422 as well as on a
  * statusless message: Gemini's `@google/genai` ApiError reports a bad key
- * as 400 `API key not valid` / `API_KEY_INVALID`, and some OpenAI-compatible
- * gateways do the same.
+ * as 400 `API key not valid` / `API_KEY_INVALID`, some OpenAI-compatible
+ * gateways do the same, OpenAI's classic statusless rejection reads
+ * "Incorrect API key provided", its expiry wording reads "API key expired",
+ * and Anthropic's header name surfaces as `invalid x-api-key` (#2241).
  *
  * Broader words such as "unauthorized" and "permission denied" stay out of
  * this pattern. On a 400 they can describe a bad parameter or a tool
@@ -492,7 +500,7 @@ export function networkFailureDiagnostics(
  * below treats them as an auth failure.
  */
 const API_KEY_REJECTION_PATTERN =
-  /invalid[ _]api[ _]key|api key not valid|API_KEY_INVALID/i;
+  /invalid[ _]api[ _]key|api key not valid|API_KEY_INVALID|incorrect[ _]api[ _]key|api[ _]key[ _]expired|invalid\s+x-api-key/i;
 
 /**
  * Credential rejection worded without an HTTP status.

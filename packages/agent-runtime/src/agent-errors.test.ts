@@ -788,6 +788,77 @@ describe("classifyAgentError", () => {
     });
   });
 
+  it("reads the OpenAI SDK's 'Error code: NNN - …' prefix as the HTTP status (#2245)", () => {
+    // pi-ai stores the SDK's flattened string verbatim; before this the
+    // leading status never reached the status table, so 401/402 were
+    // retriable PROVIDER_ERROR with no providerStatus.
+    expect(classifyAgentError(new Error("Error code: 402 - Insufficient Balance")))
+      .toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+        details: { providerStatus: 402 },
+      });
+    expect(classifyAgentError(new Error("Error code: 401 - Incorrect API key provided")))
+      .toMatchObject({
+        code: "PROVIDER_UNAUTHORIZED",
+        retriable: false,
+        details: { providerStatus: 401 },
+      });
+    expect(classifyAgentError(new Error("Error code: 429 - Rate limit reached for model")))
+      .toMatchObject({
+        code: "PROVIDER_RATE_LIMITED",
+        retriable: true,
+        details: { providerStatus: 429 },
+      });
+    expect(classifyAgentError(new Error("Error code: 404 - The model does not exist")))
+      .toMatchObject({
+        code: "MODEL_NOT_CONFIGURED",
+        retriable: false,
+        details: { providerStatus: 404 },
+      });
+    // The anchor is the SDK's wording: a message that merely mentions an
+    // error code phrase in prose is not a status.
+    expect(classifyAgentError(new Error('the provider replied "error code: 500" mid-stream')))
+      .toMatchObject({ code: "STREAM_FAILED", retriable: true });
+  });
+
+  it("treats DeepSeek/SiliconFlow/MiniMax balance exhaustion as terminal (#2243)", () => {
+    for (const message of [
+      "Insufficient Balance",
+      "Sorry, your account balance is insufficient",
+      "insufficient balance of the account",
+      '{"code":30001,"message":"Sorry, your account balance is insufficient","data":null}',
+    ]) {
+      expect(classifyAgentError(new Error(message))).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+    }
+    // The bare mentions the issue keeps retriable stay out of the matcher.
+    expect(classifyAgentError(new Error("balance remaining is fine"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("insufficient credentials"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+  });
+
+  it("classifies statusless OpenAI/Anthropic auth wording as unauthorized (#2241)", () => {
+    for (const message of [
+      "Incorrect API key provided",
+      "Incorrect API key provided: sk-****. You can find your API key at https://platform.openai.com/account/api-keys.",
+      "API key expired. Please renew the API key.",
+      "invalid x-api-key",
+    ]) {
+      expect(classifyAgentError(new Error(message))).toMatchObject({
+        code: "PROVIDER_UNAUTHORIZED",
+        retriable: false,
+      });
+    }
+  });
+
   it("keeps context checkpoint failures distinct from provider failures", () => {
     expect(
       classifyAgentError(
