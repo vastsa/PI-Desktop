@@ -132,7 +132,9 @@ export function createCatalogSlice({
               },
             }));
           }
-          if (!refreshed.error) refreshedProviderModels.add(providerId);
+          if (generation === catalogRuntime.providerGeneration() && !refreshed.error) {
+            refreshedProviderModels.add(providerId);
+          }
         } catch {
           // Keep the cached catalog; the menu already has a usable fallback.
         }
