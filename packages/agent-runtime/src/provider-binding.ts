@@ -42,6 +42,7 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { genericModelConfig } from "./model-capabilities.js";
+import { withOpenAICompatibleToolSchemas } from "./openai-tool-schema.js";
 import { sessionAffinityCompat } from "./session-affinity.js";
 import type { ModelConfig } from "./thinking-level.js";
 
@@ -508,7 +509,7 @@ export function createProviderModels(
   }, {
     ...operations,
     models: [model, ...(operations?.models ?? [])],
-    api: apiBindingForProviderModel(provider).adapter(),
+    api: withOpenAICompatibleToolSchemas(apiBindingForProviderModel(provider).adapter()),
   });
 }
 /** Build a pi-ai model collection for a trusted extension-owned agent. */

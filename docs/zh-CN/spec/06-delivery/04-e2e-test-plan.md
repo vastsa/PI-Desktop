@@ -1232,6 +1232,19 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M3
 - **状态**：自动化（协议烟雾：示例项目中的 Read + Glob）
 
+#### OpenAI scheduled tool schema compatibility
+
+Enable scheduled tools on a Responses route and resume saved declarations with
+`uniqueItems`. Send, load a tool and continue through current declarations,
+`additional_tools` and `tool_search_output`. Outbound schemas omit the unsupported
+keyword while canonical/stored schemas remain unchanged and local duplicate
+weekdays stay invalid. Strict flags, hosted tools, property names and other APIs
+remain intact. Coverage: `openai-tool-schema.test.ts` and
+`node scripts/e2e-openai-tool-schema.mjs` after building agent-runtime. The latter
+uses actual loopback HTTP for both stream entry points and three replay paths;
+the endpoint rejects invalid schemas and returns SSE for normalized payloads.
+Live OpenAI acceptance remains separate. Specs: `03-runtime/03-tools-and-permissions.md`.
+
 ### 权限允许/拒绝/取消
 
 #### E2E-014：Write/Edit/Bash 触发权限卡

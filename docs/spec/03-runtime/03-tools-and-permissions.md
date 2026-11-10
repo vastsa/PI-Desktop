@@ -5,6 +5,16 @@
 
 ## 0. Frozen policy summary
 
+### OpenAI function schema compatibility
+
+OpenAI Responses and Codex Responses omit the unsupported `uniqueItems`
+keyword from outbound function parameter schemas, including current tools,
+historical `additional_tools`, and `tool_search_output` declarations. The pass
+runs after payload hooks. Canonical schemas and stored transcripts remain
+unchanged, so local argument validation and Host schedule validation continue
+to reject duplicate weekdays. Property names, examples, other constraints,
+strict-mode flags, hosted tools, and other APIs retain their existing behavior.
+
 ### Parallel file batches
 
 Read, Glob and Grep are parallel candidates. Write and Edit join them only

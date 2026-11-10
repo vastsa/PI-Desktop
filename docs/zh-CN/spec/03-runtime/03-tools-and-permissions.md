@@ -8,6 +8,14 @@
 
 ## 0. 冻结政策总结
 
+### OpenAI function schema compatibility
+
+OpenAI Responses and Codex Responses omit unsupported `uniqueItems` from outbound
+function parameter schemas, including current tools, historical `additional_tools`
+and `tool_search_output`. The pass runs after payload hooks. Canonical schemas,
+stored transcripts, local duplicate-weekday validation, property names, examples,
+strict flags, hosted tools and other transports retain their behavior.
+
 ### 并行文件批次
 
 Read、Glob、Grep 是并行候选；只有 runtime 与实际本地 Host 协商文件批次协议版本 1
