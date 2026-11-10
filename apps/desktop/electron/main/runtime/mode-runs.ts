@@ -111,6 +111,7 @@ export function createModeRunCoordinator(deps: {
 
   return {
     async definitionForPrompt(modeId: string): Promise<ModeDefinition | undefined> {
+      if (isPlainMode(modeId)) return undefined;
       const definition = await deps.catalog.definition(modeId);
       if (!definition && modeId !== "agent" && modeId !== "plan") {
         throw Object.assign(new Error("Mode is not available"), { errorCode: "MODE_NOT_FOUND" });

@@ -106,6 +106,14 @@ test("simple custom modes resolve their definition for prompt dispatch", async (
   await assert.rejects(coordinator.definitionForPrompt("missing"), { errorCode: "MODE_NOT_FOUND" });
 });
 
+test("Agent and Plan dispatch use builtin runtime instructions without a snapshot", async () => {
+  const coordinator = createModeRunCoordinator({
+    catalog: { definition: async () => assert.fail("plain modes need no catalog snapshot") },
+  });
+  assert.equal(await coordinator.definitionForPrompt("agent"), undefined);
+  assert.equal(await coordinator.definitionForPrompt("plan"), undefined);
+});
+
 test("a user turn in a simple mode claims nothing", async () => {
   const { coordinator, calls } = fixture();
   const prepared = await coordinator.prepareTurn({ sessionId: "s1", turnId: "t1", sessionMode: "review", content: "x", origin: "user" });

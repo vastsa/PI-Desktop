@@ -343,7 +343,7 @@ export function registerAgentIpc({
     );
     sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
 
-    const modeDefinition = await modeRuns.definitionForPrompt(launch.sidecarParams.mode);
+    const modeDefinition = await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
 
     // Open a durable turn row, then persist the user message under it.
     const turn = await host.call<{ turnId?: string }>("session.beginTurn", {
