@@ -863,6 +863,14 @@ Builtins: Agent uses `agent`; Plan uses `contract`; Goal is a staged run whose
 `work` stage uses `agent`. A legacy Goal session without a snapshot, and any
 mode id the Host cannot resolve, falls back to `contract` (fail closed).
 
+Prompt admission resolves the selected mode from the main-process catalog before
+opening a durable turn. Simple custom modes carry that definition to the runtime;
+a staged run overrides it with the run's persisted snapshot. An unavailable mode
+is rejected before admission. Plan-state projection may rename only Agent/Plan
+sessions; an inactive projection preserves Goal and custom-mode identity.
+New Goal/custom sessions persist the catalog snapshot before returning from
+Desktop creation, including sessions created directly in the default mode.
+
 ### Notes
 - `contract` hard-denies Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
   call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).

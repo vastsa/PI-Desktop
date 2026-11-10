@@ -20528,6 +20528,19 @@ or scratch RPC reaches Desktop storage. `native-workspace-files.test.mjs`
 additionally rejects replaced sidecars. No provider execution or native user
 session data is used.
 
+#### E2E-custom-mode-prompt-admission
+
+Select a simple custom mode with a distinctive prompt and contract policy, send a
+message, and refresh planning state. The runtime receives the selected definition
+and the session retains its mode. Remove the definition before another send: reject
+before creating a turn. For a staged run, edit the catalog after starting; subsequent
+dispatch retains the run snapshot. Controlled coverage:
+`apps/desktop/test/custom-mode-dispatch.test.mjs`. Native Electron/provider
+acceptance is separate from these stubbed Host/sidecar boundary checks.
+Also create directly in Goal or a staged custom mode without switching modes:
+the first send starts a run. `mode-session-create.test.mjs` checks the production
+creation registrar persists its snapshot before returning.
+
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.

@@ -27,15 +27,15 @@ export function visiblePlanningState(
 }
 
 /**
- * The session mode after a plan update. `inactive` from the Host means the
- * session is in Agent again, whatever the renderer last knew; otherwise a
- * mode the pipeline does not own is left as it is.
+ * The proposal pipeline can change only Agent and Plan modes. An inactive
+ * projection also belongs to custom modes and staged Goal, so it does not
+ * establish that either session switched back to Agent.
  */
 export function modeAfterPlanningUpdate(
   mode: Mode | undefined,
-  hostState: PlanningState,
+  _hostState: PlanningState,
   projectedMode: () => Mode,
 ): Mode {
-  if (mode === undefined || planningOwnsMode(mode) || hostState === "inactive") return projectedMode();
+  if (mode === undefined || planningOwnsMode(mode)) return projectedMode();
   return mode;
 }

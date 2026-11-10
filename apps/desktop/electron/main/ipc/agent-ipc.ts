@@ -52,7 +52,7 @@ export type AgentIpcDependencies = {
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
   /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
-  modeRuns: Pick<ModeRunCoordinator, "canContinue" | "prepareTurn" | "abandonTurn">;
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -343,6 +343,8 @@ export function registerAgentIpc({
     );
     sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
 
+    const modeDefinition = await modeRuns.definitionForPrompt(launch.sidecarParams.mode);
+
     // Open a durable turn row, then persist the user message under it.
     const turn = await host.call<{ turnId?: string }>("session.beginTurn", {
       sessionId: req.sessionId,
@@ -583,6 +585,7 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
+          ...(modeDefinition ? { modeDefinition } : {}),
           ...(preparedMode
             ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
             : {}),
