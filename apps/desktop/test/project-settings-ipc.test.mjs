@@ -45,6 +45,9 @@ function fixture(dataDir) {
           return { path: "/srv/canonical" };
         } }),
       };
+      // Sidebar preferences register alongside the workspace handlers; this test
+      // exercises project save only.
+      if (specifier === "./sidebar-preferences-ipc") return { registerSidebarPreferencesIpc() {} };
       // These imports belong to unrelated handlers; accessing one is a failure.
       return new Proxy({}, { get: (_target, key) => {
         throw new Error(`Unexpected dependency in project save: ${specifier}.${String(key)}`);

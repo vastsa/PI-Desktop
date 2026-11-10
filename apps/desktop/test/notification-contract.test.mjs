@@ -102,7 +102,9 @@ test("restoring the focused chat acknowledges its session outcome", () => {
 });
 
 test("sidebar terminal outcomes are notification-backed, not lifecycle-backed", () => {
-  const terminalStart = eventsSource.indexOf('} else if (event.type === "agent_end" || event.type === "error")');
+  // Delegate-scoped events carry `parentToolCallId` and never drive the parent
+  // turn, so the terminal branch is guarded by `childScoped`.
+  const terminalStart = eventsSource.indexOf('!childScoped && (event.type === "agent_end" || event.type === "error")');
   const terminalEnd = eventsSource.indexOf('      if (event.type === "planning_state")', terminalStart);
   const terminalBlock = eventsSource.slice(terminalStart, terminalEnd);
   assert.match(terminalBlock, /latestTurnResults/);

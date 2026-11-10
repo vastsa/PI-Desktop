@@ -1,6 +1,6 @@
 /** Read-only session directory. Inspection never widens the resumable cache. */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { formatResumableList, listedReadFiles, type DelegationChain, type ResumableChain } from "./delegation-history.js";
 import { parseSubagentContentParams } from "./subagent-content.js";
 import { SUBAGENT_LIST_TOOL_NAME } from "./subagent.js";

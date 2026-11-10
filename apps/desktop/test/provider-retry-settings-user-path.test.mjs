@@ -12,8 +12,13 @@ const { build } = createRequire(join(root, "packages/agent-runtime/package.json"
 let electron;
 try { electron = resolveElectronBinary(root).electronBinary; } catch { /* Reported as a skip below. */ }
 
-test("AI settings wires the configurable native provider retry rows", async () => {
-  const page = await readFile(join(root, "apps/desktop/src/features/settings/SettingsPage.tsx"), "utf8");
+test("Behavior settings wires the configurable native provider retry rows", async () => {
+  // One settings destination owns one subject (D684): the Execution card of the
+  // Behavior destination keeps the retry rows.
+  const page = await readFile(
+    join(root, "apps/desktop/src/features/settings/pages/AgentBehaviorSettings.tsx"),
+    "utf8",
+  );
   assert.match(page, /<ProviderRetrySettingsRows\s+settings=\{settings\}\s+saveSettings=\{saveSettings\}/);
 });
 
@@ -98,7 +103,7 @@ window.retryProbe = async () => {
     for (const field of fields) {
       const key = "settings." + field;
       const hits = searchSettings(messages[key], (item) => messages[item] || item);
-      check(hits.some((hit) => hit.tab === "ai" && hit.rowKey === key), language + " retry search did not reach AI settings: " + field);
+      check(hits.some((hit) => hit.tab === "behavior" && hit.rowKey === key), language + " retry search did not reach Behavior settings: " + field);
     }
   }
   await reload();

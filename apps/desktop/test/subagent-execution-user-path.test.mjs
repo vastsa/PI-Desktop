@@ -136,6 +136,9 @@ for (const ending of ["agent.stopSubagents", "agent.disposeSession"]) {
       async acquireSessionOperation() { return () => {}; }, finishTurn,
       async resolveAgentRuntimeLaunch() { return { providerId: "fixture", modelId: "fixture-model", sidecarParams: launch }; },
       async finishApprovedExecution() {}, async dispatchApprovedPlan() {}, async dispatchExecutionForProposal() {},
+      // Staged mode runs are out of scope here: no run is claimed, so the plain
+      // Agent turn path stays in effect.
+      modeRuns: { canContinue: () => false, prepareTurn: async () => undefined, abandonTurn: async () => {} },
       emitAgentEvent() {}, setNotificationViewingSessionId() {}, optionalWorkspaceRoot: async () => null,
       composerCommandService: { buildComposerCommands: async () => [] }, loadComposerTemplatesCached: async () => [],
     });

@@ -22,7 +22,7 @@
  */
 
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { normalizeSubagentName, type UiMessage } from "@pi-desktop/shared";
 import { MAX_SUBAGENT_REPORT_CHARS, SUBAGENT_READ_TOOL_NAME } from "./subagent.js";
 import type { DelegationChain } from "./delegation-history.js";

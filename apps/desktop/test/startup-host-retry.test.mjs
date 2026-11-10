@@ -40,6 +40,24 @@ function startupFixture(startFailure, isQuitting = () => false) {
     async syncPluginDisplayLocale() {},
     getDisplayLocale: () => "en",
     async applyNetworkProxyFromAppSettings() {},
+    // Desktop secure DNS and the authenticated system-proxy relay are read from
+    // the native network module during the network setup step.
+    currentSystemProxyRelayUrl: () => null,
+    currentNetworkDns: () => ({ mode: "system" }),
+    // This branch restores resident plugin services, workspace scope and the
+    // renderer plugin notification before the sidecar starts, so the startup
+    // boundary is reached only after those steps have run.
+    plugins: {
+      setServices() {},
+      async loadFromPath() {},
+      watchDevPlugin() {},
+    },
+    setCurrentWorkspacePath() {},
+    rememberPluginScopes() {},
+    sendToRenderer() {},
+    IPC: { event: { pluginChanged: "plugin:changed" } },
+    async refreshUserMcp() {},
+    async drainApprovedPlanExecutions() {},
     async startSidecar() {
       events.push("sidecar");
       throw sidecarBoundary;

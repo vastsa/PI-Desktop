@@ -64,9 +64,11 @@ test("main serves BrowserPreview from its originating session workspace", async 
   assert.match(mainSource, /s\.setLocalTool\("BrowserPreview"/);
   // The local tool receives session identity from the sidecar and resolves the
   // workspace from that durable session, never from the visible shell project.
+  // `startSidecar` registers the local tools in order: BrowserPreview, then
+  // Skill. Slicing to the next registration bounds this handler exactly.
   const handler = mainSource.slice(
     mainSource.indexOf('s.setLocalTool("BrowserPreview"'),
-    mainSource.indexOf("sidecar = s;"),
+    mainSource.indexOf('s.setLocalTool("Skill"'),
   );
   assert.match(handler, /async \(\{ args, sessionId \}\)/);
   assert.match(handler, /browserHost\.getFileRoots\(sessionId\)/);
