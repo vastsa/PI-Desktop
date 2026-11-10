@@ -7,6 +7,17 @@
 覆盖：`fs-index-git-deadline.test.mjs`。原有索引测试覆盖 Git 忽略规则、
 Unicode 字节分块及深层搜索。
 
+### E2E-EXTENSION-thinking-request-state
+
+通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
+发送 high，与扩展查询值一致。`runtime.test.ts` 仅替换提供商流边界。
+
+### E2E-TRANSCRIPT-full-read-cache-race
+
+保持全量历史读取请求，发布新的流式快照，再返回旧读取结果。调用方得到历史，
+会话缓存保留新快照。覆盖 `full-transcript-refresh-race.test.mjs` 和现有会话
+更新回归，不执行模型请求。
+
 ### E2E-SESSION-rejected-stop-state
 
 在 API 边界拒绝远端 Stop，生产会话 slice 保留运行状态并传播错误。再次成功

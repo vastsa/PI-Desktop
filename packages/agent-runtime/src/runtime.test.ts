@@ -235,6 +235,33 @@ function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
 }
 
 describe("Pi 1.4 client identity", () => {
+  it("extension thinking changes reach the next provider request", async () => {
+    const runtime = createRuntime();
+    const internal = runtime as any;
+    const bridge = internal.createExtensionBridge();
+    bridge.setThinkingLevel("high");
+    expect(bridge.getThinkingLevel()).toBe("high");
+    const levels: unknown[] = [];
+    internal.models = {
+      streamSimple: (_model: unknown, _context: unknown, options: { reasoning?: unknown }) => {
+        levels.push(options.reasoning);
+        const message = assistantMessage({ content: [{ type: "text", text: "Ready." }] }) as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: "stop", message });
+          stream.end(message);
+        });
+        return stream;
+      },
+    };
+    try {
+      await runtime.prompt("Say ready.", "thinking-user", "thinking-turn");
+      expect(levels).toEqual(["high"]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
   it("forwards the desktop identity through a user prompt to the provider adapter", async () => {
     const runtime = createRuntime();
     const internal = runtime as unknown as {
