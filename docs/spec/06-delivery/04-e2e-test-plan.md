@@ -3868,6 +3868,13 @@ identify the platform validation still needed.
 
 #### E2E-091: Appearance card selects searchable theme and language pickers
 
+macOS OS-event acceptance: `PI_E2E_SYSTEM_APPEARANCE=1 node scripts/e2e-browser-system-appearance.mjs`.
+The opt-in probe temporarily changes OS appearance and restores it in a finalizer.
+It mounts the bundled Browser with production lifecycle functions in sandboxed
+Electron, checks light/dark/light paint, fixed app/plugin palettes, view recreation,
+process restart and listener removal. Host/plugin-registry edges are synthetic;
+this does not claim an installed full-app settings journey.
+
 - **Preconditions**: App running on macOS; the harness can exercise English,
   Simplified Chinese, Traditional Chinese, Turkish, German, Spanish, French,
   Korean, and Brazilian Portuguese system locales.
@@ -3876,7 +3883,11 @@ identify the platform validation still needed.
   2) In the Appearance card, open the Theme picker. Confirm System, Light, and
      Dark are pinned at the top; select Dark and confirm the trigger shows Dark
      and the UI switches to dark.
-  3) Select Light and confirm the UI switches to light.
+  3) Select Light and confirm the UI switches to light. With a Browser tab open,
+     select System and change OS appearance light → dark → light. Confirm the
+     shell and Browser address/navigation toolbar update together without a
+     settings write or restart. Repeat with explicit Light and Dark: OS changes
+     must not override the selected app palette.
   4) In the Language row, open the searchable picker. Confirm Auto is pinned
      at the top with the detected native name and that English, 简体中文,
      繁體中文, Türkçe, Deutsch, Español, Français, 한국어, and Português (Brasil)

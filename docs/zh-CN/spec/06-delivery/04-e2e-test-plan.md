@@ -1484,6 +1484,16 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 #### E2E-091：外观卡通过可搜索主题和语言选择器选择
 
+macOS OS-event acceptance: `PI_E2E_SYSTEM_APPEARANCE=1 node scripts/e2e-browser-system-appearance.mjs`.
+The opt-in probe temporarily changes OS appearance and restores it in a finalizer.
+It mounts the bundled Browser with production lifecycle functions in sandboxed
+Electron, checks light/dark/light paint, fixed app/plugin palettes, view recreation,
+process restart and listener removal. Host/plugin-registry edges are synthetic;
+this does not claim an installed full-app settings journey.
+With Browser open, select System and switch OS light → dark → light. The shell
+and Browser toolbar update together. Explicit Light, Dark and registered plugin
+palettes remain fixed across OS changes; repeat after shutdown/restart.
+
 - **先决条件**：应用程序在 macOS 上运行；测试工具可以切换英语、简体中文、繁体中文、土耳其语、德语、西班牙语、法语、韩语和巴西葡萄牙语系统区域设置。
 - **步骤**：
   1) 打开设置 → 外观。

@@ -739,6 +739,14 @@ export function createApplicationLifecycle({
     plugins.broadcastEvent("appearance:changed", [appearance]);
   }
 
+  function refreshSystemAppearance(): void {
+    if (nativeTheme.themeSource !== "system") return;
+    appearanceState.pluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    broadcastAppearance();
+  }
+  nativeTheme.on("updated", refreshSystemAppearance);
+  app.once("will-quit", () => nativeTheme.removeListener("updated", refreshSystemAppearance));
+
   function flushPendingApplicationMenuCommands() {
     const commands = appState.pendingApplicationMenuCommands.splice(0);
     void (async () => {
