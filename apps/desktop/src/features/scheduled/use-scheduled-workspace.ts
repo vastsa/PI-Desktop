@@ -82,6 +82,7 @@ export function useScheduledWorkspace(
   const projectRevision = useRef(0);
   const pendingProjectGeneration = useRef<number | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
+  const pendingTaskId = useRef<string | null>(requestedTaskId ?? null);
   const busyRef = useRef(false);
   const onErrorRef = useRef(onError);
 
@@ -100,6 +101,7 @@ export function useScheduledWorkspace(
       api.listScheduled().then((result) => {
         if (!current()) return;
         cache.snapshot.tasks = result.tasks;
+        pendingTaskId.current = null;
         setTasks(result.tasks);
         setError("");
         setLoaded(true);
@@ -184,6 +186,8 @@ export function useScheduledWorkspace(
   // still exists. A deleted task never leaves the pane pointing at nothing, and
   // a selection restored from a conversation outlives the first, empty read.
   useEffect(() => {
+    // A sidebar may know a new task before this workspace's cached list does.
+    if (pendingTaskId.current) return;
     setSelectedTaskId((current) => resolveSelectedTaskId(tasks, current, loaded));
   }, [tasks, loaded]);
 
@@ -271,8 +275,10 @@ export function useScheduledWorkspace(
   );
 
   const selectTask = useCallback((taskId: string) => {
+    pendingTaskId.current = taskId;
     cache.snapshot.selection = { taskId, runId: null };
     setSelectedTaskId(taskId);
+    setSelectedRunId(null);
   }, []);
   const selectRun = useCallback((runId: string) => {
     const taskId = selectedTaskIdRef.current;

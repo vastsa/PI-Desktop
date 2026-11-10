@@ -140,6 +140,9 @@ test("explicit sidebar task overrides cached selection and conversation return w
   assert.equal(h.output.selectedRunId, null);
   assert.equal(h.output.runsLoaded, false);
   assert.deepEqual(h.output.runs, []);
+  h.output.selectRun("selected-b"); await h.settle();
+  h.output.selectTask("b"); await h.settle();
+  assert.equal(h.output.selectedRunId, null, "revisiting the same task clears its run selection");
 });
 
 test("failed summaries and task histories stay distinguishable from successful empty results", async t => {
@@ -151,6 +154,19 @@ test("failed summaries and task histories stay distinguishable from successful e
   assert.match(h.output.runsError, /Synthetic read failure/);
   assert.equal(h.output.runsLoaded, false);
 });
+
+for (const stillExists of [true, false]) {
+  test(`sidebar task absent from stale cached definitions waits for refresh (exists=${stillExists})`, async t => {
+    cache.snapshot.tasks = [task("a")];
+    const refresh = deferred();
+    const h = harness(api({ listScheduled: () => refresh.promise }), "b");
+    t.after(() => h.close()); await h.settle();
+    assert.equal(h.output.selectedTaskId, "b", "cached definitions must not discard explicit navigation");
+    refresh.resolve({ tasks: stillExists ? [task("a"), task("b")] : [task("a")] });
+    await h.settle();
+    assert.equal(h.output.selectedTaskId, stillExists ? "b" : "a", "fresh definitions decide deletion fallback");
+  });
+}
 
 test("late histories cannot replace the selected task and failures retain known history", async t => {
   const old = deferred(), newest = run("b-result", "b"); let fail = false;

@@ -10328,6 +10328,8 @@ PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需�
    每次核对详情和按任务读取的运行历史；导航不会派发执行。
    Seed a cached task/run and a conversation-return origin; the explicit
    shortcut wins, clears the old run, and retains independent loading states.
+   A task absent from stale definitions remains selected during refresh;
+   fresh definitions retain it if present and choose a surviving task if deleted.
 5. 重命名、新建、改绑和删除后刷新入口，改绑任务移至新父项目。显示开关仍开着时，
    删除最后一个任务会移除目录。运行开关控制数量和活动轨道；读取未完成时关闭
    显示开关，旧响应不能恢复任何目录，重新读取设置后选择仍保留。

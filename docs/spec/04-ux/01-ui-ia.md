@@ -51,6 +51,8 @@ destination, chat as the home surface, tools and permissions inline.
   An explicit task shortcut takes precedence over a cached workspace selection
   or conversation-return origin and clears their selected run. Definitions,
   newest outcomes and task history keep their independent cached loading states.
+  An explicit task absent from stale cached definitions is retained until a
+  fresh definition read confirms it or selects a surviving task after deletion.
   Folder folding is remembered independently per project, separately from the project fold.
   Unbound tasks and tasks whose projects are not retained in the sidebar remain
   accessible from the footer's Scheduled management page.

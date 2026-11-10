@@ -54,6 +54,8 @@
   An explicit task shortcut overrides cached selection and conversation-return
   origins, clearing their selected run. Definitions, newest outcomes and task
   history retain independent cached loading states.
+  Explicit tasks missing from a stale cache wait for fresh definitions before
+  deletion fallback. Revisiting the same task clears its selected run.
   无归属任务以及所属项目未保留在侧边栏中的任务，继续通过页脚定时任务管理页访问。
   只有开关打开时，侧边栏搜索才匹配有归属的任务名称，沿用其他侧栏条目的大小写
   不敏感子串匹配。命中时临时展开所属项目和任务目录，清空后恢复两者原折叠状态。

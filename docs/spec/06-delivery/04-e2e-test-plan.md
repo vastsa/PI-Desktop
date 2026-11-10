@@ -20032,6 +20032,8 @@ their separate platform acceptance.
    Seed a cached task/run selection and a different conversation-return origin;
    an explicit sidebar shortcut wins, clears the old run and preserves the
    independently cached definitions/outcome/history loading states.
+   Omit the requested task from stale cached definitions, delay refresh, then
+   confirm fresh definitions keep it if present and fall back if deleted.
 5. Refresh after rename, creation, retargeting or deletion. Retargeted tasks
    move to their new parent. Removing the last task removes its folder even
    while the display setting stays on. Existing running settings gate the count
