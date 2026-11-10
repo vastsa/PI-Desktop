@@ -1,6 +1,8 @@
 import {
   AgentHost,
   RacpError,
+  TRUSTED_MODE_ORIGIN,
+  type TrustedModeOrigin,
   type ApprovalPort,
   type Principal,
   type QueueEntryView,
@@ -26,6 +28,7 @@ import type {
   RacpPermissionMode,
 } from "@pi-desktop/shared";
 import { IPC, isGlobalPermissionMode } from "@pi-desktop/shared";
+import { modeContinuationRequest } from "./runtime/mode-runs";
 
 type IpcInvoke = (channel: string, args: readonly unknown[]) => Promise<unknown>;
 
@@ -137,16 +140,20 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
           summary && summary.permissionMode !== request.effectivePermissionMode
             ? request.effectivePermissionMode
             : undefined;
+        const promptRequest = {
+          sessionId: request.sessionId,
+          content: request.content,
+          ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
+          ...(request.userMessageId ? { messageId: request.userMessageId } : {}),
+          ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
+          ...(request.attachments ? { attachments: request.attachments } : {}),
+          ...(permissionModeOverride ? { permissionMode: permissionModeOverride } : {}),
+        };
+        // The in-process invoke keeps object identity, so the mode run origin
+        // reaches the prompt handler without any serializable field.
+        const modeOrigin = request[TRUSTED_MODE_ORIGIN];
         const result = (await options.invoke(options.channels.agentPrompt, [
-          {
-            sessionId: request.sessionId,
-            content: request.content,
-            ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
-            ...(request.userMessageId ? { messageId: request.userMessageId } : {}),
-            ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
-            ...(request.attachments ? { attachments: request.attachments } : {}),
-            ...(permissionModeOverride ? { permissionMode: permissionModeOverride } : {}),
-          },
+          modeOrigin ? modeContinuationRequest(promptRequest, modeOrigin) : promptRequest,
         ])) as { accepted?: boolean; turnId: string };
         return { turnId: result.turnId };
       } catch (error) {
@@ -336,6 +343,20 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
 
   return {
     agentHost,
+    /**
+     * Start a Host-requested mode run turn through the same admission as user
+     * turns. It never queues: a busy session or queued user input wins, and
+     * that turn's settlement continues the run.
+     */
+    startModeContinuation(sessionId: string, origin: TrustedModeOrigin, content: string) {
+      return forIpc(() => agentHost.startTurn(DESKTOP_PRINCIPAL, {
+        [TRUSTED_MODE_ORIGIN]: origin,
+        sessionId,
+        admission: "reject_if_busy",
+        input: { text: content },
+        context: { requestId: `mode-continuation-${Date.now()}` },
+      }));
+    },
     observeWorkTarget(sessionId: string): string | null {
       return agentHost.observeWorkTarget(sessionId).activeTurnId;
     },

@@ -70,6 +70,7 @@ import { createSidecarRuntime } from "./runtime/sidecar";
 import { createComputerCursorOverlay } from "./computer-use/cursor-overlay";
 import { createEventPersistence } from "./runtime/event-persistence";
 import { createPlanRuntime } from "./runtime/plans";
+import { createModeServices } from "./runtime/mode-services";
 import { createRuntimeLifecycle } from "./runtime/lifecycle";
 import {
   createProviderCatalogRuntime,
@@ -706,6 +707,15 @@ const sessionCollaboration = createSessionCollaborationService({
   log: (message, data) => logger.app("runtime", "warn", message, { data }),
 });
 
+const modeServices = createModeServices({
+  getHost,
+  getAgentHostBridge: () => mainState.agentHostBridge,
+  getSidecar,
+  sendToRenderer,
+  logger,
+  isQuitting: () => mainState.quitting,
+});
+
 const planRuntime = createPlanRuntime({
   runtimeState,
   planState: planRuntimeState,
@@ -729,6 +739,7 @@ const planRuntime = createPlanRuntime({
   resolveAgentRuntimeLaunch,
   isQuitting: () => mainState.quitting,
   onTurnSettled: sessionCollaboration.settle,
+  onTurnEnded: (sessionId, turnId, end) => modeServices.runs.settleTurn(sessionId, turnId, end),
 });
 const {
   finishTurn,
@@ -826,6 +837,7 @@ const { startHost } = createHostRuntime({
   userMcp,
   pluginActiveInProject,
   sendToRenderer,
+  settleModeReturn: (sessionId, run) => modeServices.runs.settleReturn(sessionId, run),
   emitAgentEvent,
   togglePluginLauncher,
   finishTurn,
@@ -925,6 +937,7 @@ const localApps: LocalAppCatalog = {
 
 function registerIpc() {
   return registerIpcHandlers({
+    modeServices,
     restartForStorage: () => {
       shutdownState.quitConfirmed = true;
       app.relaunch({ args: [...process.argv.slice(1).filter((arg) => arg !== "--pi-managed-storage"), "--pi-managed-storage"] });

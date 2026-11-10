@@ -234,6 +234,9 @@ export function useComposerAttachments({
       : pastedFiles;
     const hasNativeFileTypes = event.clipboardData.types?.includes("Files");
     const nativeFilePaste = !preferText && (hasNativeFileTypes || !text);
+    const screenshotPaste = files.length > 0 && files.every(file =>
+      file.type.toLowerCase().startsWith("image/") && !api.getDroppedFilePath(file),
+    );
     const textLength = Array.from(text).length;
     const isLargeTextPaste = !files.length && textLength > largePasteThreshold;
     if (isLargeTextPaste || files.length || nativeFilePaste) {
@@ -248,7 +251,8 @@ export function useComposerAttachments({
       const sourceRevision = readComposerDraftRevision(sourceDraftKey);
       setPasting(true);
       try {
-        const native = !isLargeTextPaste ? await api.readClipboardDirectories() : null;
+        // 合成截图已有字节，无需启动系统目录探测进程；磁盘文件仍走原路径。
+        const native = !isLargeTextPaste && !screenshotPaste ? await api.readClipboardDirectories() : null;
         if (!native && !files.length && !isLargeTextPaste) {
           if (hasNativeFileTypes) throw new Error(t("chat.directoryPasteUnavailable"));
           return;

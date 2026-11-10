@@ -1,3 +1,4 @@
+import { builtinModeRuns } from "./helpers/builtin-mode-runs.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
@@ -59,6 +60,7 @@ test("unsupported native agent IPC never reaches host or queue", async () => {
   const forbidden = () => assert.fail("native operation reached Desktop backend");
   const backend = new Proxy({}, { get: () => forbidden });
   registerAgentIpc({
+    modeRuns: builtinModeRuns,
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => backend, getSidecar: () => backend, getAgentHostBridge: () => backend,
   });
@@ -126,6 +128,7 @@ test("queue remove/prioritize preserve the Desktop opaque host turnId contract",
   const handlers = new Map();
   const calls = [];
   registerAgentIpc({
+    modeRuns: builtinModeRuns,
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => null, getSidecar: () => null,
     getAgentHostBridge: () => ({ queue: {
@@ -144,6 +147,7 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
   const backend = new Proxy({}, { get: () => forbidden });
   const calls = [];
   registerAgentIpc({
+    modeRuns: builtinModeRuns,
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => backend, getAgentHostBridge: () => backend, setNotificationViewingSessionId() {},
     getSidecar: () => ({ call: async (...args) => { calls.push(args); return { accepted: true, turnId: "native-turn" }; } }),

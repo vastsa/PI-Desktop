@@ -8,7 +8,10 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 const { build } = require("esbuild");
 
-test("a concurrent unrelated IPC cannot replace the Host used to resolve scratch images", async () => {
+for (const replaceDuringScratch of [false, true]) {
+test(replaceDuringScratch
+  ? "a replaced Host cannot publish a late scratch image root"
+  : "a concurrent unrelated IPC cannot replace the Host used to resolve scratch images", async () => {
   const temp = await mkdtemp(new URL("../.scratch-ref-test-", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
   try {
     const scratch = join(temp, "scratch", "session");
@@ -34,9 +37,16 @@ export class WebContentsView {};
     const handlers = new Map();
     let release;
     const pending = new Promise(resolve => { release = resolve; });
+    let scratchRequested, releaseScratch;
+    const scratchStarted = new Promise(resolve => { scratchRequested = resolve; });
+    const scratchPending = new Promise(resolve => { releaseScratch = resolve; });
     const owner = { async call(method) {
       if (method === "session.get") { await pending; return { session: { projectPath: workspace } }; }
-      if (method === "session.getScratchPath") return { path: scratch };
+      if (method === "session.getScratchPath") {
+        scratchRequested();
+        if (replaceDuringScratch) await scratchPending;
+        return { path: scratch };
+      }
       throw new Error("Unexpected Host RPC: " + method);
     } };
     let active = owner;
@@ -52,7 +62,14 @@ export class WebContentsView {};
     await handlers.get(IPC.invoke.browserGetState)();
     active = owner;
     release();
+    if (replaceDuringScratch) {
+      await scratchStarted;
+      active = { call: async () => assert.fail("the replacement Host must not supply the old lookup") };
+      releaseScratch();
+    }
     const result = await reading;
-    assert.equal(result.match?.absolutePath, join(scratch, "image.png"));
+    if (replaceDuringScratch) assert.equal(result.match, null);
+    else assert.equal(result.match?.absolutePath, join(scratch, "image.png"));
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
+}

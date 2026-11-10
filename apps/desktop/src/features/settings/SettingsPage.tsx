@@ -33,6 +33,7 @@ import {
   IconSparkles,
   IconCloudDown,
   IconMic,
+  IconWorkflow,
 } from "../../components/icons";
 import { Badge, Button, cx } from "../../components/ui";
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
@@ -51,6 +52,7 @@ import { AgentBehaviorSettings } from "./pages/AgentBehaviorSettings";
 import { AppearanceSettings } from "./pages/AppearanceSettings";
 import { ConversationSettings } from "./pages/ConversationSettings";
 import { SystemSettings } from "./pages/SystemSettings";
+import { ModesSettingsPage } from "../modes/ModesSettingsPage";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -230,6 +232,7 @@ export function SettingsPage() {
       skills: <IconBookOpen size={14} />,
       mcp: <IconServer size={14} />,
       subagents: <IconSparkles size={14} />,
+      modes: <IconWorkflow size={14} />,
       projects: <IconArchive size={14} />,
       system: <IconMonitor size={14} />,
       sync: <IconCloudDown size={14} />,
@@ -469,6 +472,8 @@ export function SettingsPage() {
           {tab === "mcp" && <AgentMcpPage />}
 
           {tab === "subagents" && <AgentSubagentsPage />}
+
+          {tab === "modes" && <ModesSettingsPage />}
 
           {tab === "instructions" && <AgentInstructionsSection />}
 

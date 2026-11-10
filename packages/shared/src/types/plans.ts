@@ -15,9 +15,11 @@ export function normalizeProposalKind(
   return value === "goal" || value === "plan" ? value : fallback;
 }
 
-/** The proposal kind a mode submits, or `null` for freely executing modes. */
+/** The proposal kind a mode submits, or `null` when the mode has no ADR 0053
+ * proposal pipeline. Only the builtin Plan submits new proposals; legacy Goal
+ * approvals are still read back with kind `goal`. */
 export function proposalKindForMode(mode: Mode): ProposalKind | null {
-  return mode === "plan" || mode === "goal" ? mode : null;
+  return mode === "plan" ? "plan" : null;
 }
 
 /** The operating mode that owns a proposal kind. */
