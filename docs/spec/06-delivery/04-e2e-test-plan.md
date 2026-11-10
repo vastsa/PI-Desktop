@@ -113,6 +113,26 @@ being fetched on every subsequent poll.
 - **Specs:** `03-runtime/08-error-codes.md` §3.2.
 
 
+## E2E-PROVIDER-anthropic-oauth-claude-code-identity
+
+- **Preconditions:** Built desktop, isolated Host data directory and Electron
+  profile, and a seeded Claude (Anthropic OAuth) account row with a synthetic,
+  unexpired credential. Every `api.anthropic.com` / `platform.claude.com`
+  request from Electron main and the agent sidecar is redirected to a local
+  fixture; no real Anthropic request is made.
+- **Steps:** Launch the app, type a prompt in the Composer, and press Enter.
+  The fixture rejects Claude Code identities older than 2.1.290 with HTTP 400
+  `claude_code_version_too_old`, as Claude Pro/Max models do (issue #2239),
+  and otherwise streams a reply.
+- **Expected:** The model request carries the OAuth bearer token, `x-app: cli`
+  and a `claude-cli/<version>` User-Agent of at least 2.1.290. The chat shows
+  the streamed reply and no version rejection.
+- **Automated coverage:** `pnpm test:e2e:anthropic-oauth-identity`
+  (`scripts/e2e-anthropic-oauth-identity.mjs`) and
+  `packages/agent-runtime/src/anthropic-oauth-identity.test.ts`.
+- **Specs:** `03-runtime/12-provider-config-schema.md`.
+
+
 ## E2E-TASK-DOCK-tab-content-isolation
 
 - **Preconditions:** Isolated Electron renderer with synthetic todos and a running
