@@ -1,5 +1,9 @@
 # 04. E2E Test Plan
 
+### E2E-QUEUE-late-read-after-event
+
+Render two queued prompts, hold a production refresh, deliver a queueChanged event removing the first prompt, then return the old read. Only the second remains visible; a later authoritative refresh still applies. `queue-refresh-event-order.test.mjs` covers event/read order, reversed reads and session independence; `e2e-queue-refresh-event-order.mjs` renders production ComposerStatus/useAppStore in real Electron. No prompt is dispatched to a provider.
+
 ### E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and
