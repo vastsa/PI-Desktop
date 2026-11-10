@@ -649,6 +649,9 @@ pub struct ToolsExecuteParams {
     pub tool_call_id: String,
     pub tool_name: String,
     pub args: Value,
+    /// Restrict an automatic composer Read to the local project.
+    #[serde(default)]
+    pub workspace_only: bool,
     /// Host-issued source-order binding, not a permission or resource claim.
     #[serde(default)]
     pub file_batch_ticket: Option<String>,

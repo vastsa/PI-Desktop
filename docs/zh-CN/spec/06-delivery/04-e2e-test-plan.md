@@ -10553,3 +10553,30 @@ Desktop 工作区后，列出、读取和解析 native 文件，再拒绝不存�
 #### E2E-ISSUE-1926-scratch-prefix
 
 创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
+
+### E2E-FILE-LINES — File Manager selections in Composer
+
+Install File Manager normally in an isolated local project. Select saved source
+lines and verify **Add to chat** and clipboard paste create the same removable
+range chip without sending; ordinary editors receive plain text. One-line and
+next-line-boundary selections retain exact inclusive coordinates. Unsaved edits
+suppress references until saved. Development-loaded views receive no capability.
+Opening an eligible view with an unavailable Host must not wait for a registry
+query; Add to chat reports unavailability, and the same view works after recovery.
+Change saved content before sending and verify the scoped Read uses execution-time
+bytes. Restart, queue and switch projects: ranges survive, another project's
+metadata is rejected, and no synthetic assistant Read is persisted or restored.
+Denied/missing files use blocked/failed reference markers rather than file content.
+Four-reference overflow warns and preserves pasted text; unsupported coordinates
+or over-4,000-line metadata use text. Invalid or over-four direct prompt/runtime
+inputs fail with `INVALID_ARGUMENT` before reads. Workspace trailing separators
+behave consistently. A staged Goal prompt retains both its refreshed objective
+and file context (`runtime.test.ts`). Installed-plugin acceptance follows the
+host-first sequence in plugin PR #10.
+
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, run `sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delayed Openbox startup must wait for its EWMH root-window claim before window
+transitions. Capture/viewport/lifecycle checks pass; absent or failed window
+managers fail within ten seconds and native failures print their progress stages.

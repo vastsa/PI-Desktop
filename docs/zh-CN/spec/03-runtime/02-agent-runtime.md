@@ -125,6 +125,18 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
    草稿里的 `pi-desktop://session/<id>` 链接在同一步骤里解析成有界摘录附件：只限
    同一项目，当前对话在任何读取之前就被跳过；运行时随后把它作为一个
    `<session_reference name="…" session="…">` 块排在用户自己的话之前引用给模型
+   A validated File Manager `lineRange` travels as file attachment metadata.
+   Inclusive line numbers are positive 32-bit signed integers and each range
+   spans at most 4,000 lines, matching the Host Read line budget. Unsupported
+   clipboard selections retain plain-text paste rather than changing the range.
+   Main and runtime reject malformed references or more than four references
+   with `INVALID_ARGUMENT` before any prefetch; neither silently drops a chip.
+   The runtime executes one workspace-only Read per distinct range through
+   the normal tool hooks and quotes its bounded result as file context for
+   the provider turn. Permission blocks and read failures use a separate
+   `file_reference_error` block with a `blocked` or `failed` status. The
+   prefetch runs outside assistant tool batches and creates no tool transcript
+   row. Restoring the reference preserves its path and range metadata.
 7. 为本回合快照有效的 shell ID 与方言
 8. 用解析出的会话配置和有效思考级别启动 pi 回合；HTTP 429 的建连与流式失败
    使用运行时自有的静默 10 次重试预算，其他瞬时的 transport/provider 失败则在
