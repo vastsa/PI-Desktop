@@ -20533,13 +20533,18 @@ session data is used.
 Select a simple custom mode with a distinctive prompt and contract policy, send a
 message, and refresh planning state. The runtime receives the selected definition
 and the session retains its mode. Remove the definition before another send: reject
-before creating a turn. For a staged run, edit the catalog after starting; subsequent
-dispatch retains the run snapshot. Controlled coverage:
+without persisting a user message or invoking the sidecar; the admission turn is
+closed. For a staged run, edit the catalog into a simple mode and then remove it;
+subsequent dispatch retains the run snapshot in both cases. Controlled coverage:
 `apps/desktop/test/custom-mode-dispatch.test.mjs`. Native Electron/provider
 acceptance is separate from these stubbed Host/sidecar boundary checks.
 Also create directly in Goal or a staged custom mode without switching modes:
 the first send starts a run. `mode-session-create.test.mjs` checks the production
 creation registrar persists its snapshot before returning.
+`scripts/e2e-mode-definitions.mjs` also exercises production prompt IPC and the
+coordinator against an isolated real Host, including edit/removal, durable claim
+settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this
+does not qualify native Electron interaction or live-provider execution.
 
 #### E2E-ISSUE-1926-scratch-prefix
 

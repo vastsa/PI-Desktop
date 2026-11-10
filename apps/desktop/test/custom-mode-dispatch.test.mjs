@@ -10,6 +10,7 @@ const { IPC } = await import("@pi-desktop/shared");
 async function promptFixture({ unavailable = false, prepared } = {}) {
   const handlers = new Map();
   const prompts = [];
+  const finished = [];
   const definition = {
     version: 1, id: "review", label: "Review", description: "", source: "user",
     permission: "contract", prompt: "Review without changing files.",
@@ -52,11 +53,11 @@ async function promptFixture({ unavailable = false, prepared } = {}) {
       providerId: "fixture", modelId: "fixture",
       sidecarParams: { sessionId: "s", mode: "review", provider: { modelConfig: { input: ["text"] } } },
     }),
-    finishTurn: async () => assert.fail("prompt admission failed"),
+    finishTurn: async (...args) => finished.push(args),
     emitAgentEvent() {}, setNotificationViewingSessionId() {},
   });
   return {
-    prompts, hostCalls, definition,
+    prompts, hostCalls, definition, finished,
     prompt: () => handlers.get(IPC.invoke.agentPrompt)({ sessionId: "s", content: "Inspect the changes." }),
   };
 }
@@ -69,17 +70,27 @@ test("a simple custom mode reaches the sidecar with its instructions and policy"
   assert.equal(prompts[0].modeTurn, undefined);
 });
 
-test("an unavailable mode is rejected before creating a durable turn", async () => {
-  const { prompt, prompts, hostCalls } = await promptFixture({ unavailable: true });
+test("an unavailable mode closes admission without persisting a message or calling the sidecar", async () => {
+  const { prompt, prompts, hostCalls, finished } = await promptFixture({ unavailable: true });
   await assert.rejects(prompt, { errorCode: "MODE_NOT_FOUND" });
   assert.equal(prompts.length, 0);
-  assert.ok(!hostCalls.includes("session.beginTurn"));
+  assert.ok(!hostCalls.includes("session.appendMessage"));
+  assert.deepEqual(finished, [["s", "error", "MODE_NOT_FOUND", { turnId: "turn" }]]);
 });
 
 test("a staged run keeps its persisted snapshot over the current catalog", async () => {
   const definition = { id: "review", prompt: "Persisted stage instructions." };
   const modeTurn = { runId: "run", stageId: "work", permission: "contract" };
   const { prompt, prompts } = await promptFixture({ prepared: { definition, modeTurn } });
+  await prompt();
+  assert.deepEqual(prompts[0].modeDefinition, definition);
+  assert.deepEqual(prompts[0].modeTurn, modeTurn);
+});
+
+test("a staged run dispatches its persisted snapshot after its catalog entry is removed", async () => {
+  const definition = { id: "review", prompt: "Persisted stage instructions." };
+  const modeTurn = { runId: "run", stageId: "work", permission: "contract" };
+  const { prompt, prompts } = await promptFixture({ unavailable: true, prepared: { definition, modeTurn } });
   await prompt();
   assert.deepEqual(prompts[0].modeDefinition, definition);
   assert.deepEqual(prompts[0].modeTurn, modeTurn);

@@ -1,6 +1,7 @@
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
+import type { ModeDefinition } from "@pi-desktop/shared";
 import { modeContinuationOrigin, type ModeRunCoordinator, type PreparedModeTurn } from "../runtime/mode-runs";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
@@ -343,8 +344,6 @@ export function registerAgentIpc({
     );
     sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
 
-    const modeDefinition = await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
-
     // Open a durable turn row, then persist the user message under it.
     const turn = await host.call<{ turnId?: string }>("session.beginTurn", {
       sessionId: req.sessionId,
@@ -363,6 +362,7 @@ export function registerAgentIpc({
     // A staged mode claims its run for this durable turn before anything runs;
     // the sidecar then executes the run's own definition snapshot.
     let preparedMode: PreparedModeTurn | undefined;
+    let modeDefinition: ModeDefinition | undefined;
     try {
       preparedMode = await modeRuns.prepareTurn({
         sessionId: req.sessionId,
@@ -371,6 +371,7 @@ export function registerAgentIpc({
         content: req.content,
         origin: modeOrigin ?? "user",
       });
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
     } catch (error) {
       await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
         turnId: durableTurnId,

@@ -118,7 +118,7 @@ test("a user turn in a simple mode claims nothing", async () => {
   const { coordinator, calls } = fixture();
   const prepared = await coordinator.prepareTurn({ sessionId: "s1", turnId: "t1", sessionMode: "review", content: "x", origin: "user" });
   assert.equal(prepared, undefined);
-  assert.equal(calls.length, 0);
+  assert.deepEqual(calls.map(call => call.method), ["modes.get"]);
 });
 
 test("the first user turn of a staged mode starts a run and carries the snapshot", async () => {
@@ -152,6 +152,20 @@ test("an open run is claimed with its revision, and a host turn without a run fa
   );
 });
 
+test("an open run keeps its snapshot when its catalog definition is removed or made simple", async () => {
+  for (const catalogModes of [[], ["review"]]) {
+    const snapshot = { ...staged, id: "review" };
+    const { coordinator, calls } = fixture({
+      open: run({ modeId: "review" }), catalogModes,
+      claim: { claimed: true, run: run({ modeId: "review" }), enteredStage: false, definition: snapshot },
+    });
+    const prepared = await coordinator.prepareTurn({ sessionId: "s1", turnId: "t2", sessionMode: "review", content: "more", origin: "host" });
+    assert.deepEqual(prepared.definition, snapshot);
+    assert.equal(prepared.modeTurn.runId, "run1");
+    assert.deepEqual(calls.map(call => call.method), ["modes.get", "modes.claimTurn"]);
+  }
+});
+
 test("a rejected claim runs a user turn plainly but refuses a continuation", async () => {
   const rejected = { claimed: false, run: null, enteredStage: false };
   const { coordinator } = fixture({ open: run({ activeTurnId: "other" }), claim: rejected });
@@ -163,6 +177,19 @@ test("a rejected claim runs a user turn plainly but refuses a continuation", asy
     coordinator.prepareTurn({ sessionId: "s1", turnId: "t5", sessionMode: "feature", content: "x", origin: "host" }),
     { errorCode: "MODE_CLAIM_REJECTED" },
   );
+});
+
+test("an accepted claim without its snapshot is abandoned instead of using an edited catalog", async () => {
+  const { coordinator, calls } = fixture({
+    open: run(), claim: { claimed: true, run: run(), enteredStage: false },
+  });
+  await assert.rejects(
+    coordinator.prepareTurn({ sessionId: "s1", turnId: "t2", sessionMode: "feature", content: "more", origin: "user" }),
+    { errorCode: "MODE_NOT_FOUND" },
+  );
+  assert.equal(coordinator.claimedTurns().size, 0);
+  assert.equal(calls.at(-1).method, "modes.settleTurn");
+  assert.equal(calls.at(-1).params.outcome, "aborted");
 });
 
 test("settling a claimed turn reports tokens and starts the Host continuation", async () => {
