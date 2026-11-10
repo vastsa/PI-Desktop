@@ -1,3 +1,4 @@
+import { builtinModeRuns } from "./builtin-mode-runs.mjs";
 import assert from "node:assert/strict";
 import { IPC } from "@pi-desktop/shared";
 import { sessionWorkspaceIdentity } from "@pi-desktop/host-runtime";
@@ -54,6 +55,7 @@ export async function createProductionWorkHarness(t, server, options = {}) {
     },
   };
   registerAgentIpc({
+    modeRuns: builtinModeRuns,
     registrar: { handle: (channel, handler) => registeredHandlers.set(channel, handler) },
     getHost: () => host,
     getSidecar: () => ({

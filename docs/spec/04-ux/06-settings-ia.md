@@ -428,6 +428,13 @@ Card order is **Session defaults → Execution → Computer use**.
   anchored-menu surface rather than a platform-drawn `<select>` popup, so every
   Settings picker opens the same way. The closed trigger sizes to the current
   label, capped by the settings control column.
+- The **Goal budget** row sits under the default mode in Session defaults: two
+  numeric fields (turns, tokens) persisted as optional
+  `AppSettings.goalBudget { maxTurns, maxTokens }`. A field saves on blur or
+  Enter; empty is unlimited and an out-of-range value (turns 1–10000, tokens
+  at least 1000) reverts to the saved one. Absent keeps the builtin Goal
+  budget (20 turns, unlimited tokens). Only new Goal runs use it; an open run
+  is edited from its status bar.
 - **Execution** card: the infinite provider retry switch and the app-wide
   **Scheduled tasks** switch. The retry switch is off by default and explains
   that network/transient provider failures keep retrying until success; Stop

@@ -55,6 +55,7 @@ import type {
 import {
   type SessionRuntime,
 } from "../runtime/session-runtime";
+import { modeAfterPlanningUpdate, visiblePlanningState } from "../helpers/planning-projection";
 import type { StoreAccess } from "./types";
 import { switchWorkPanelSession } from "./work-panel-slice";
 
@@ -207,25 +208,29 @@ export function createSessionSlice({
         const durableMode = get().sessions.find(
           (session) => session.id === sessionId,
         )?.mode;
-        const nextState =
+        const hostState =
           result.state ??
           (proposal?.status === "pending"
             ? "awaiting_approval"
             : durableMode === "plan" || durableMode === "goal"
               ? "planning"
               : "inactive");
+        // Goal and user modes are not Plan negotiations (ADR mode-definitions).
+        const nextState = visiblePlanningState(
+          durableMode,
+          hostState,
+          proposal?.status === "pending" || wasPending,
+        );
         const nextKind: ProposalKind | undefined =
           result.kind ??
           proposal?.kind ??
-          (durableMode === "plan" || durableMode === "goal"
-            ? durableMode
-            : undefined);
+          (durableMode === "plan" ? "plan" : durableMode === "goal" ? "goal" : undefined);
         const checkpoint =
           proposal ??
           (existingCheckpoint?.status === "pending" &&
           nextState === "awaiting_approval"
             ? existingCheckpoint
-            : terminalizeMissingPlan(existingCheckpoint, nextState));
+            : terminalizeMissingPlan(existingCheckpoint, hostState));
         const activeProposal =
           nextState === "awaiting_approval" && isPendingPlan(checkpoint)
             ? checkpoint
@@ -254,7 +259,9 @@ export function createSessionSlice({
             session.id === sessionId
               ? {
                   ...session,
-                  mode: sessionModeForPlanningState(nextState, nextKind),
+                  mode: modeAfterPlanningUpdate(durableMode, hostState, () =>
+                    sessionModeForPlanningState(hostState, nextKind),
+                  ),
                 }
               : session,
           ),
@@ -863,15 +870,12 @@ export function createSessionSlice({
     /** Abort one session's running turn, whether or not it is the visible one. */
     abortSession: async (sessionId) => {
       if (!sessionId) return;
-      try {
-        await api.abort(sessionId);
-      } finally {
-        set((state) => ({
-          isRunning:
-            state.activeSessionId === sessionId ? false : state.isRunning,
-          runningSessions: { ...state.runningSessions, [sessionId]: false },
-        }));
-      }
+      await api.abort(sessionId);
+      set((state) => ({
+        isRunning:
+          state.activeSessionId === sessionId ? false : state.isRunning,
+        runningSessions: { ...state.runningSessions, [sessionId]: false },
+      }));
     },
   };
 }

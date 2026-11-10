@@ -214,10 +214,11 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   }
 
   async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
+    const previous = sessionTranscriptCache.get(id);
     const detail = await api.getSession(id);
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
-    if (cache) cacheSessionTranscript(id, messages, {
+    if (cache && sessionTranscriptCache.get(id) === previous) cacheSessionTranscript(id, messages, {
         messageStart: 0,
         hasMoreBefore: false,
       });
