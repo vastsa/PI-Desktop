@@ -14,13 +14,18 @@ export type PluginPanelTheme = "light" | "dark";
 
 export type ThemeBaseSource = { base?: "light" | "dark" } | undefined;
 
+/**
+ * `findTheme` receives the preference verbatim — the theme registry
+ * (`plugins.getThemes()`) keys entries by the full `plugin:`-prefixed id, so
+ * no prefix stripping happens before the lookup.
+ */
 export function pluginPanelThemeFollowsSystem(
   preference: unknown,
   findTheme: (id: string) => ThemeBaseSource,
 ): boolean {
   if (preference === "light" || preference === "dark") return false;
   if (typeof preference === "string" && preference.startsWith("plugin:")) {
-    const theme = findTheme(preference.slice("plugin:".length));
+    const theme = findTheme(preference);
     return theme?.base !== "light" && theme?.base !== "dark";
   }
   return true;

@@ -19,18 +19,26 @@ test("only system-following preferences react to a native theme transition", () 
   // An explicit scheme pins the palette against OS flips.
   assert.equal(pluginPanelThemeFollowsSystem("light", noThemes), false);
   assert.equal(pluginPanelThemeFollowsSystem("dark", noThemes), false);
+  // The lookup mimics the real registry: plugins.getThemes() keys entries by
+  // the full `plugin:`-prefixed id, so the helper must match the preference
+  // verbatim — a prefix-stripped lookup misses every entry.
+  const registry = [
+    { id: "plugin:midnight", base: "dark" },
+    { id: "plugin:unstyled", base: undefined },
+  ];
+  const findInRegistry = (id) => registry.find((theme) => theme.id === id);
   // A contributed theme with a base is fixed by its author.
   assert.equal(
-    pluginPanelThemeFollowsSystem("plugin:midnight", () => ({ base: "dark" })),
+    pluginPanelThemeFollowsSystem("plugin:midnight", findInRegistry),
     false,
   );
   // A plugin theme without a base falls back to the OS, so it follows.
   assert.equal(
-    pluginPanelThemeFollowsSystem("plugin:unstyled", () => ({})),
+    pluginPanelThemeFollowsSystem("plugin:unstyled", findInRegistry),
     true,
   );
   // A plugin whose theme is gone falls back to the OS, so it follows too.
-  assert.equal(pluginPanelThemeFollowsSystem("plugin:gone", () => undefined), true);
+  assert.equal(pluginPanelThemeFollowsSystem("plugin:gone", findInRegistry), true);
 });
 
 test("the resolved palette follows the OS dark flag", () => {
