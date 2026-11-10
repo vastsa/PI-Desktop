@@ -10226,44 +10226,6 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **验收**：项目折叠时仍能回答“这里是否有正在运行的工作”，且两种提示可从持久化设置独立控制。
 - **状态**：草稿。现有 `apps/desktop/test/sidebar-project-runs.test.mjs` 覆盖数量分类、总开关与子开关门控、两种渲染入口，以及主题令牌和减少动态效果保证；它不覆盖设置 API 缺省值规范化或完整交互，相关场景仍需在可用环境手动验证。
 
-### E2E-269：模型页显示并编辑子代理委托目录
-
-- **前提条件**：两个 AI 服务已配置、已启用并持有凭据，第一个有两个模型、第二个有一个；
-  仅其中一个模型勾选了“可供 AI 自动调度”。另有一个插件声明的服务发布一个模型，且某个
-  厂商订阅登录了两次、两个登录持有同一个模型。可委派任务的父 Agent 会话可用。
-- **步骤**：
-  1. 打开设置 → 模型，阅读底部的 **子代理模型** 行：已加入的模型显示为 chip，其余在弹窗里。
-  2. 点“编辑”，阅读弹窗内的列表。
-  3. 用该列表的“高级”打开第二个服务的模型编辑器，勾选“可供 AI 自动调度”并保存，再看这两处。
-  4. 发起一次父会话回合，检查 Task 工具收到的委托模型摘要。
-  5. 回到弹窗用 × 移除该模型，再看这两处。
-  6. 移除全部已加入模型，阅读弹窗空态，并用空态按钮进入某个服务编辑器勾选一个模型。
-  7. 阅读弹窗里插件声明服务的行，以及一个已关闭服务的行。
-  8. 在两个服务上、以及同一厂商的两个登录上，分别勾选同一个模型 id。
-  9. 在写入很慢时（限速宿主或使用长模型列表）移除一个模型，同时按“高级”、关闭、遮罩与 Escape。
-- **预期**：该行是单行 chip，最多占整行 60%，溢出折叠为 `+N`；每个 chip 的 tooltip 与
-  无障碍名称都带 `服务 · 模型`。模型只能通过在该模型编辑器里勾选来加入。加入会把
-  `availableForSubagents` 写入该服务的绑定，下一次父会话回合即可在委托目录中看到该模型；
-  移除会把它从目录移出，且不在已存绑定上留下 `false`。两个服务发布同名模型时 chip 会带上
-  服务名；同一厂商的两个登录也能靠账号名区分，因此一个 chip 不会代表两个已选模型。空态为
-  每个仍可勾选的服务提供一个按钮，点击即打开该服务的模型编辑器。服务已关闭或缺少凭据时，
-  已加入的模型仍然列出并可移除，并注明为何暂不生效，同时其模型不进入目录。插件声明的服务
-  既不给“高级”也不给删除，并说明由插件管理；服务已消失的行会明确提示，而不是静默关闭弹窗。
-  删除进行中时，“高级”、关闭、遮罩与 Escape 全部失效。服务对话框与这一行双向显示同一开关，
-  两个界面不会各说各话。没有任何服务配置模型时整行隐藏；保存被拒绝时报告错误，而不是静默
-  保留旧值。
-- **关联规格**：`03-runtime/02-agent-runtime.md` §5f、
-  `03-runtime/11-provider-model-system.md` §7、`04-ux/06-settings-ia.md`（模型配置）、
-  D278、ADR subagent-model-opt-in、issue #1736。
-- **验收**：C / E / Quality —— 父 agent 可挑选的委托目录能在模型页一处查看并修改，且不新增
-  第二份保存的选择；每一行都说明某个已勾选模型为何暂不生效；任何界面都不提供“存不了盘”的
-  编辑器。
-- **里程碑**：Post-MVP 模型配置。
-- **状态**：`apps/desktop/test/subagent-delegation.test.mjs` 有单元覆盖（候选构造、账号
-  去歧义、chip 去歧义、空态目标、行到编辑器的路由、与写入共用 id 归一化、以及精确的提供商
-  写入）。`apps/desktop/test/subagent-delegation-account-routing.user-path.test.mjs` 有
-  一条真实渲染的交互测试，在厂商账号行上点“高级”并断言打开的是账号对话框。交互式的
-  “保存 → 下一回合目录”路径仍为草稿，仅在明确请求且环境可用时运行。
 ### E2E-FAST-MODE：`/fast` 只在允许的模型上请求优先档位
 
 - **前置条件**：一个 ChatGPT 订阅（Codex）账号和一个 Responses API key 提供商，各配置两个模型。
@@ -10488,3 +10450,146 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 - 验证退出码、两路末尾输出、UTF-8 上限、跨会话列表/读/停隔离、超时和无参停止保留 Bash、显式停止终态、重复查询及桌面输出一致；拒绝 Plan 模式。
 - runtime 测试补充新输入和父回合取消、延迟 RPC 错误、旧 Host/远程能力缺失、混合选择器拒绝、原委派控制及无子代理配置的工具注册。
 - Host 测试覆盖先完成后等待、重复读取、Unicode 截断、归属查找、幂等停止与停止请求待确认。Windows 子孙进程清理测试仍须执行，原生失败单独报告。
+- 在子进程已退出、监管任务尚未排空管道时请求停止，检查原退出结果、最终输出和重复读取的耗时。延迟能力探测或第一次 Host 观察，检查等待总时限。Electron 会话记录用例渲染尚待确认的 Bash 停止请求和混合作业列表。
+
+#### E2E-ISSUE-1953
+
+MCP All 在创建、导入、安装时使用所选项目，无项目才回退全局；显式筛选保留归属，编辑器固定项目。验证不同筛选、创建、市场安装和缺少项目拒绝写入。
+
+在 A 打开创建或编辑窗口，切换页面至 B 并等待列表加载。A/B 同名不同 ID
+不阻止保存到 A；A 真实重复名称或 ID 仍阻止创建，真实重复名称仍阻止编辑。
+
+#### E2E-ISSUE-1789
+
+生图标记说明聊天和默认菜单移除效果，并区分图片生成与输入；折叠行保留生图标记。通过真实组件验证标记、帮助、折叠、取消及恢复聊天资格。
+
+#### E2E-ISSUE-2162
+
+关闭已连接浏览器标签时清除连接；会话级工具使用同一会话选中的替代页，显式已关闭目标仍失败，导航不复活不可见旧标签。验证关闭、重开、snapshot、fill、click、navigate 和最终关闭。
+
+#### E2E-ISSUE-2163
+
+末尾分页包含最后一条消息之后追加的检查点，中间页仍只读取生效及页内记录。验证消息、压缩追加后读取及 Host 重启，最新检查点与上下文估算保留，历史用量不变。
+
+#### E2E-ISSUE-2164
+
+压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
+
+
+## User-defined mode workflow acceptance
+
+Candidate command: `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-mode-definitions.mjs`
+with `PI_SCRATCH_DIR` set to an isolated test directory. No model API is called.
+
+1. Configure a session with a two-stage definition snapshot. Start a durable
+   turn and claim the first contract stage.
+2. Request completion without its required artifact; observe a failed gate.
+3. Supply the artifact through stage completion; verify its exact disk content
+   and the waiting-for-approval state.
+4. Settle the first turn, approve with the current revision and claim the next
+   stage with approval provenance.
+5. Submit the stage's command gate. A changed command must fail with
+   `MODE_GATE_MISMATCH` before execution.
+6. Execute the exact command through `tools.execute`; consume the Host-recorded
+   result and observe finished, no open run, and session mode Agent.
+
+Companion tests: `mode_runs::*` and `rpc::modes_rpc::tests::*` cover migration,
+recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
+`mode-definitions-renderer` and `mode-runs-main` cover source editing, selection,
+run controls and Main dispatch. Runtime `modes/*` covers stage completion and
+compaction injection.
+
+### Goal run controls with a live model (opt-in, paid)
+
+Command: `PI_LIVE_BASE_URL=<url> PI_LIVE_MODEL=<model> PI_LIVE_API_KEY=<key>
+PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-goal-live.mjs` with
+`PI_SCRATCH_DIR` set (`PI_LIVE_SECRETS_DIR` + `PI_LIVE_SECRET_REF` may replace
+the key; only the machine key and that one secret file are copied). It calls a
+paid model API and needs the account owner's authorization. Real pieces: an
+isolated Host, the production runtime loop and Electron main's run coordinator.
+
+1. With `goalBudget { maxTurns: 6 }` set, a Goal run starts with 6 turns, does
+   the work, calls `CompleteStage` with the three-heading artifact, finishes,
+   and the session returns to Agent.
+2. During the first turn, Edit the objective and budget, then Pause: the turn
+   receives the closeout notice and ends within 3 more model requests; the run
+   stays paused and no turn starts. Resume starts an approval turn with the
+   edited objective, which the run meets before it finishes.
+3. During a turn, Remove: the turn is not interrupted, finishes in Agent
+   without `CompleteStage`, no Host-started turn follows, and no open run is
+   left.
+#### E2E-ISSUE-2173: Redundant delegation job selectors
+
+- Entry: build shared/agent-runtime/host-runtime and Host, then run
+  `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-task-job-selectors.mjs`.
+- Preconditions: isolated Host data/workspace and a deterministic localhost
+  provider; production parent and delegate loops, with no external model account.
+- Steps: start a delegate; wait with both its job reference and matching
+  delegationIds; re-read with empty delegationIds and single-job mode/minCompleted;
+  start another delegate, hold its provider response, stop it with both selectors,
+  and confirm its stopped state through TaskWait.
+- Expected: reports remain readable, redundant selectors do not cause errors,
+  single-job mode/minCompleted are ignored, and cancellation settles the target.
+  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+- Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
+- Acceptance: wait, report re-read and running-delegate cancellation complete
+  through the real tool loop. Milestone: maintenance. Status: automated.
+#### E2E-ISSUE-1707
+
+生产 SSH 引导使用合成 Darwin 目标，按 IPC 形态传递错误并解析界面提示：显示 Linux 安装包范围，不下载或上传。Linux 及其他安装失败提示保持原行为。
+
+#### E2E-ISSUE-2184
+
+隔离项目加载真实内置插件，创建文件和中文目录，重命名并移动文件，核查磁盘与返回元数据；非法名称及重复目标拒绝。覆盖 file-manager-mutations.test.mjs 和原有 Electron 目录定位路径。
+
+### E2E-NATIVE-workspace-file-routing
+
+运行 `node scripts/e2e-native-workspace-files.mjs`：使用隔离 Electron Main、
+生产 workspace IPC、合成 sidecar 会话元数据和真实测试文件。选中无关的
+Desktop 工作区后，列出、读取和解析 native 文件，再拒绝不存在的 native 会话。
+断言 native 会话及 scratch 请求不会进入 Desktop 存储。
+`native-workspace-files.test.mjs` 另验证 sidecar 更换后拒绝旧响应。
+不执行模型或访问用户 native 会话。
+
+#### E2E-ISSUE-1926-scratch-prefix
+
+创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
+
+### E2E-269：模型页显示并编辑子代理委托目录
+
+- **前提条件**：两个 AI 服务已配置、已启用并持有凭据，第一个有两个模型、第二个有一个；
+  仅其中一个模型勾选了“可供 AI 自动调度”。另有一个插件声明的服务发布一个模型，且某个
+  厂商订阅登录了两次、两个登录持有同一个模型。可委派任务的父 Agent 会话可用。
+- **步骤**：
+  1. 打开设置 → 模型，阅读底部的 **子代理模型** 行：已加入的模型显示为 chip，其余在弹窗里。
+  2. 点“编辑”，阅读弹窗内的列表。
+  3. 用该列表的“高级”打开第二个服务的模型编辑器，勾选“可供 AI 自动调度”并保存，再看这两处。
+  4. 发起一次父会话回合，检查 Task 工具收到的委托模型摘要。
+  5. 回到弹窗用 × 移除该模型，再看这两处。
+  6. 移除全部已加入模型，阅读弹窗空态，并用空态按钮进入某个服务编辑器勾选一个模型。
+  7. 阅读弹窗里插件声明服务的行，以及一个已关闭服务的行。
+  8. 在两个服务上、以及同一厂商的两个登录上，分别勾选同一个模型 id。
+  9. 在写入很慢时（限速宿主或使用长模型列表）移除一个模型，同时按“高级”、关闭、遮罩与 Escape。
+- **预期**：该行是单行 chip，最多占整行 60%，溢出折叠为 `+N`；每个 chip 的 tooltip 与
+  无障碍名称都带 `服务 · 模型`。模型只能通过在该模型编辑器里勾选来加入。加入会把
+  `availableForSubagents` 写入该服务的绑定，下一次父会话回合即可在委托目录中看到该模型；
+  移除会把它从目录移出，且不在已存绑定上留下 `false`。两个服务发布同名模型时 chip 会带上
+  服务名；同一厂商的两个登录也能靠账号名区分，因此一个 chip 不会代表两个已选模型。空态为
+  每个仍可勾选的服务提供一个按钮，点击即打开该服务的模型编辑器。服务已关闭或缺少凭据时，
+  已加入的模型仍然列出并可移除，并注明为何暂不生效，同时其模型不进入目录。插件声明的服务
+  既不给“高级”也不给删除，并说明由插件管理；服务已消失的行会明确提示，而不是静默关闭弹窗。
+  删除进行中时，“高级”、关闭、遮罩与 Escape 全部失效。服务对话框与这一行双向显示同一开关，
+  两个界面不会各说各话。没有任何服务配置模型时整行隐藏；保存被拒绝时报告错误，而不是静默
+  保留旧值。
+- **关联规格**：`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/11-provider-model-system.md` §7、`04-ux/06-settings-ia.md`（模型配置）、
+  D278、ADR subagent-model-opt-in、issue #1736。
+- **验收**：C / E / Quality —— 父 agent 可挑选的委托目录能在模型页一处查看并修改，且不新增
+  第二份保存的选择；每一行都说明某个已勾选模型为何暂不生效；任何界面都不提供“存不了盘”的
+  编辑器。
+- **里程碑**：Post-MVP 模型配置。
+- **状态**：`apps/desktop/test/subagent-delegation.test.mjs` 有单元覆盖（候选构造、账号
+  去歧义、chip 去歧义、空态目标、行到编辑器的路由、与写入共用 id 归一化、以及精确的提供商
+  写入）。`apps/desktop/test/subagent-delegation-account-routing.user-path.test.mjs` 有
+  一条真实渲染的交互测试，在厂商账号行上点“高级”并断言打开的是账号对话框。交互式的
+  “保存 → 下一回合目录”路径仍为草稿，仅在明确请求且环境可用时运行。

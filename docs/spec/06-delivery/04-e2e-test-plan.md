@@ -19793,60 +19793,6 @@ host-created files. The full app's file-preview viewer is covered separately.
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
 
-- **Preconditions**: Two AI services are configured and enabled with
-  credentials, the first with two models and the second with one; exactly one
-  model carries "Available for AI delegation". A third, plugin-declared service
-  publishes one model, and one vendor subscription is signed in twice with the
-  same model on both logins. A parent Agent-mode session can delegate a task.
-- **Steps**:
-  1. Open Settings → Models and read the **Subagent models** row at the bottom:
-     the opted-in models as chips, everything else inside the dialog.
-  2. Press **Edit** and read the dialog's list.
-  3. Open the second service's model editor from that list's Advanced action, tick
-     "Available for AI delegation", save, and re-read both surfaces.
-  4. Start a parent turn and inspect the delegation model summary the Task tool
-     receives.
-  5. Return to the dialog, remove that model with its × action, and re-read both
-     surfaces.
-  6. Remove every opted-in model, read the dialog's empty state, and use one of
-     its buttons to reach a service editor and tick a model.
-  7. Read the plugin-declared service's row in the dialog, and a row whose service
-     is switched off.
-  8. Opt in the same model id on both services, and on both logins of the vendor.
-  9. Remove a model while the write is slow (throttle the host or use a long model
-     list) and press Advanced, Close, the backdrop and Escape meanwhile.
-- **Expected**: The row shows one line of chips that never takes more than 60% of
-  the row, with the overflow collapsed into `+N`, and each chip's tooltip and
-  accessible name carry `service · model`. A model joins only through its own
-  editor's tick. Adding writes `availableForSubagents` on that service's binding
-  and the next parent turn lists the model in the delegation catalog; removing it
-  drops the model from the catalog and leaves no `false` behind on the stored
-  binding. Two services publishing the same model id keep their service name in
-  the chip, and the two logins of one vendor stay distinguishable by account, so
-  one chip never stands for two chosen models. The empty state names one service
-  per button and that button opens the service's model editor. A service that is
-  off or holds no credential keeps its listed models visible and removable,
-  annotated with the reason they are idle, while its models stay out of the
-  catalog. A plugin-declared service offers neither Advanced nor a remove control
-  and says the plugin manages it; a row whose service disappeared says so instead
-  of closing the dialog silently. While a removal is in flight, Advanced, Close,
-  the backdrop and Escape are all inert. The provider dialog and the row show the
-  same flag in both directions, so neither surface can drift. The row is hidden
-  while no service has a configured model, and a refused save reports the error
-  instead of silently keeping the old value.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
-  `03-runtime/11-provider-model-system.md` §7, `04-ux/06-settings-ia.md`
-  (Model configuration), D278, ADR subagent-model-opt-in, issue #1736.
-- **Acceptance**: C / E / Quality — the catalog the parent agent may pick from is
-  reviewable and editable in one place on the Models page without adding a second
-  stored selection, every row states why an opted-in model is not in effect, and
-  no surface offers an editor that cannot save the row it came from.
-- **Milestone**: Post-MVP model configuration.
-- **Status**: Unit coverage in `apps/desktop/test/subagent-delegation.test.mjs`
-  (candidate construction, account disambiguation, chip disambiguation,
-  empty-state targets, row-to-editor routing, the id normalisation the write
-  shares, and the exact provider write). The interactive save → next-turn catalog
-  path remains Draft and is run only when requested in a capable environment.
 ### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
 
 - **Preconditions**: A ChatGPT subscription (Codex) account and a Responses
@@ -20479,3 +20425,168 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
+
+#### E2E-ISSUE-1953
+
+MCP All uses the selected project for create/import/install, falling back to Global only without a project. Explicit filters retain ownership and an opened editor pins its project. Verify create and market installation across all/project/global and missing-project cases with `mcp-market-owner-user-path.test.mjs`.
+
+Open an editor in project A, switch the page to B and wait for B's list. A/B
+same-name definitions with different IDs do not prevent saving to A. A real
+duplicate name or ID in A still blocks creation; a real duplicate name blocks
+editing. Cover both creating and editing before changing the page selection.
+
+#### E2E-ISSUE-1789
+
+Image-model marking explains chat/default-menu exclusion and distinguishes generation from image input. Collapsed model rows retain an image-model badge. Verify marking, help, collapsing, unmarking and restored chat eligibility through `image-model-disclosure-user-path.test.mjs`.
+
+#### E2E-ISSUE-2162
+
+Closing the connected Browser tab clears its connection. Subsequent session-only tools use that session's selected replacement page. Explicit closed targets fail; navigation never revives an invisible old tab. Verify close/reopen/snapshot/fill/click/navigate and final closure with `browser-background-session.test.mjs` and `BROWSER_CLOSE_CONNECTION_ONLY=1 node scripts/e2e-browser-background.mjs`.
+
+#### E2E-ISSUE-2163
+
+Bounded tail pages include compactions appended after the last message. Middle pages still read only the active checkpoint and records inside their offsets. Verify append-message/append-compaction, tail reopening and Host restart with `scripts/e2e-compaction-tail.mjs` and `layout_tail_window` tests.
+
+#### E2E-ISSUE-2164
+
+While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+
+## User-defined mode workflow acceptance
+
+Candidate command: `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-mode-definitions.mjs`
+with `PI_SCRATCH_DIR` set to an isolated test directory. No model API is called.
+
+1. Configure a session with a two-stage definition snapshot. Start a durable
+   turn and claim the first contract stage.
+2. Request completion without its required artifact; observe a failed gate.
+3. Supply the artifact through stage completion; verify its exact disk content
+   and the waiting-for-approval state.
+4. Settle the first turn, approve with the current revision and claim the next
+   stage with approval provenance.
+5. Submit the stage's command gate. A changed command must fail with
+   `MODE_GATE_MISMATCH` before execution.
+6. Execute the exact command through `tools.execute`; consume the Host-recorded
+   result and observe finished, no open run, and session mode Agent.
+
+Companion tests: `mode_runs::*` and `rpc::modes_rpc::tests::*` cover migration,
+recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
+`mode-definitions-renderer` and `mode-runs-main` cover source editing, selection,
+run controls and Main dispatch. Runtime `modes/*` covers stage completion and
+compaction injection.
+
+### Goal run controls with a live model (opt-in, paid)
+
+Command: `PI_LIVE_BASE_URL=<url> PI_LIVE_MODEL=<model> PI_LIVE_API_KEY=<key>
+PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-goal-live.mjs` with
+`PI_SCRATCH_DIR` set (`PI_LIVE_SECRETS_DIR` + `PI_LIVE_SECRET_REF` may replace
+the key; only the machine key and that one secret file are copied). It calls a
+paid model API and needs the account owner's authorization. Real pieces: an
+isolated Host, the production runtime loop and Electron main's run coordinator.
+
+1. With `goalBudget { maxTurns: 6 }` set, a Goal run starts with 6 turns, does
+   the work, calls `CompleteStage` with the three-heading artifact, finishes,
+   and the session returns to Agent.
+2. During the first turn, Edit the objective and budget, then Pause: the turn
+   receives the closeout notice and ends within 3 more model requests; the run
+   stays paused and no turn starts. Resume starts an approval turn with the
+   edited objective, which the run meets before it finishes.
+3. During a turn, Remove: the turn is not interrupted, finishes in Agent
+   without `CompleteStage`, no Host-started turn follows, and no open run is
+   left.
+#### E2E-ISSUE-2173: Redundant delegation job selectors
+
+- Entry: build shared/agent-runtime/host-runtime and Host, then run
+  `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-task-job-selectors.mjs`.
+- Preconditions: isolated Host data/workspace and a deterministic localhost
+  provider; production parent and delegate loops, with no external model account.
+- Steps: start a delegate; wait with both its job reference and matching
+  delegationIds; re-read with empty delegationIds and single-job mode/minCompleted;
+  start another delegate, hold its provider response, stop it with both selectors,
+  and confirm its stopped state through TaskWait.
+- Expected: reports remain readable, redundant selectors do not cause errors,
+  single-job mode/minCompleted are ignored, and cancellation settles the target.
+  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+- Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
+- Acceptance: wait, report re-read and running-delegate cancellation complete
+  through the real tool loop. Milestone: maintenance. Status: automated.
+
+#### E2E-ISSUE-1707
+
+Use synthetic Darwin x64/arm64 uname responses through production SSH bootstrap, serialize its code/details as IPC does, and resolve the renderer error. The platform explanation appears, no checksum or upload occurs. Linux and other bootstrap failures keep existing messages. Coverage: remote-host-ssh-bootstrap.test.mjs and remote-host-errors.test.mjs.
+
+#### E2E-ISSUE-2184
+
+Load the actual bundled plugin in an isolated workspace. Create a file and Unicode directory, rename and move the file; verify disk entries and response metadata. Invalid create/rename names fail before writing, and duplicate destinations are refused. Coverage: apps/desktop/test/file-manager-mutations.test.mjs. Existing Electron directory-location path also passes.
+
+### E2E-NATIVE-workspace-file-routing
+
+Run `node scripts/e2e-native-workspace-files.mjs`: isolated Electron Main,
+production workspace IPC, synthetic sidecar session metadata and real fixture
+files. Select an unrelated Desktop workspace; list, read and resolve a native
+file, then reject a missing native session. The test asserts no native session
+or scratch RPC reaches Desktop storage. `native-workspace-files.test.mjs`
+additionally rejects replaced sidecars. No provider execution or native user
+session data is used.
+
+#### E2E-ISSUE-1926-scratch-prefix
+
+Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+### E2E-269: Models page states and edits the subagent delegation catalog
+
+- **Preconditions**: Two AI services are configured, enabled and credentialed,
+  the first with two models and the second with one; exactly one model carries
+  "Available for AI delegation". A plugin-declared service publishes one model,
+  and one vendor subscription is signed in twice with both logins holding the
+  same model. A parent Agent-mode session can delegate a task.
+- **Steps**:
+  1. Open Settings → Models and read the **Subagent models** row: opted-in
+     models appear as chips; the full list lives behind **Edit**.
+  2. Click **Edit** and read the dialog's list.
+  3. Use that list's **Advanced** to open the second service's model editor,
+     tick "Available for AI delegation", save, and re-read both surfaces.
+  4. Start a parent turn and inspect the delegation model summary the Task tool
+     receives.
+  5. Return to the dialog, remove that model with ×, and re-read both surfaces.
+  6. Remove every opted-in model, read the empty state, and use an empty-state
+     button to open a service editor and tick one model.
+  7. Read the plugin-declared service's row and a disabled service's row.
+  8. Tick one model id on two services, and again on two logins of one vendor.
+  9. While a write is slow (a throttled host or a long model list), remove a
+     model and try Advanced, Close, the backdrop and Escape together.
+- **Expected**: The summary row is one line of chips occupying at most 60% of
+  the row, with overflow collapsed into `+N`; every chip's tooltip and
+  accessible name carry `service · model`. A model joins only by ticking the
+  flag in its own editor. Adding writes `availableForSubagents` on that
+  service's binding, so the next parent turn lists the model in the delegation
+  catalog; removing drops it from the catalog and leaves no `false` on the
+  stored binding. Two services publishing the same model id get a
+  service-prefixed chip; two logins of one vendor stay distinguishable by
+  account, so no chip stands for two selected models. The empty state offers one
+  button per service that still has a model to tick, and that button opens the
+  service's own model editor. A service that is off or holds no credential keeps
+  its opted-in models visible and removable, annotated with why they are idle,
+  while its models stay out of the catalog. A plugin-declared service offers
+  neither Advanced nor a remove control and says it is managed by a plugin; a
+  vanished service reports that instead of closing the dialog silently. During a
+  removal, Advanced, Close, the backdrop and Escape are all inert. The service
+  editor and the row show the same flag in both directions. With no configured
+  models the row is hidden; a refused save reports the error instead of silently
+  keeping the old value.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/11-provider-model-system.md` §7, `04-ux/06-settings-ia.md`
+  (Model configuration), D278, ADR subagent-model-opt-in, issue #1736.
+- **Acceptance**: C / E / Quality — the catalog the parent agent may pick from is
+  reviewable and editable in one place on the Models page without adding a
+  second stored selection; every row states why an opted-in model is not in
+  effect; and no surface offers an editor that cannot save.
+- **Milestone**: Post-MVP model configuration.
+- **Status**: Unit coverage in `apps/desktop/test/subagent-delegation.test.mjs`
+  (candidate construction, account disambiguation, chip disambiguation,
+  empty-state targets, row-to-editor routing, write pre-check id parity and the
+  exact provider write). A real-renderer interaction test in
+  `apps/desktop/test/subagent-delegation-account-routing.user-path.test.mjs`
+  clicks Advanced on a vendor account and asserts the account dialog opens. The
+  interactive save → next-turn catalog path remains Draft and is run only when
+  requested in a capable environment.
