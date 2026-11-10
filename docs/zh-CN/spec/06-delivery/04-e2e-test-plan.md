@@ -1,5 +1,9 @@
 # 04. E2E 测试 Plan
 
+### E2E-INTERACTIVE-response-retry
+
+选择 AskTool 选项并提交，在 API 边界拒绝请求；卡片及已选答案保留并显示错误，重试成功后清除。随后对权限卡片的一次允许操作重复失败与重试。`interactive-response-retry.test.mjs` 覆盖两种 slice 入口及替换请求；`e2e-interactive-response-retry.mjs` 在真实 Electron 中点击生产 AskToolCard/PermissionCard 并使用真实 useAppStore。仅控制外部 API 结果，不向真实工具授权。
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环

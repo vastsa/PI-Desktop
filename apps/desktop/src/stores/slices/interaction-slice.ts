@@ -138,34 +138,28 @@ export function createInteractionSlice({
     resolvePermission: async (sessionId, requestId, decision) => {
       const permission = headPermission(get().pendingPermissions, sessionId);
       if (!permission || permission.requestId !== requestId) return;
-      try {
-        await api.resolvePermission({ requestId, decision });
-      } finally {
-        set((state) => ({
-          pendingPermissions: removePermission(
-            state.pendingPermissions,
-            sessionId,
-            requestId,
-          ),
-        }));
-      }
+      await api.resolvePermission({ requestId, decision });
+      set((state) => ({
+        pendingPermissions: removePermission(
+          state.pendingPermissions,
+          sessionId,
+          requestId,
+        ),
+      }));
     },
 
     resolveAsk: async (sessionId, resolution: AskToolResolution) => {
       const ask = headAsk(get().pendingAsks, sessionId);
       if (!ask || ask.requestId !== resolution.requestId) return;
-      try {
-        await api.resolveAskTool(resolution);
-      } finally {
-        set((state) => ({
-          pendingAsks: removeAsk(
-            state.pendingAsks,
-            sessionId,
-            resolution.requestId,
-          ),
-          askDrafts: removeAskDraft(state.askDrafts, resolution.requestId),
-        }));
-      }
+      await api.resolveAskTool(resolution);
+      set((state) => ({
+        pendingAsks: removeAsk(
+          state.pendingAsks,
+          sessionId,
+          resolution.requestId,
+        ),
+        askDrafts: removeAskDraft(state.askDrafts, resolution.requestId),
+      }));
     },
 
     setAskDraft: (requestId: string, draft: AskDraft) => {

@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+Failed AskTool and tool-permission submissions retain their pending card and any answer draft. The error is visible and the same request can be retried. A successful response removes only its request id; terminal tool events continue to own cancellation and expiry cleanup (Refs #1107).
+
 A full transcript read may fill its session cache only when that cache has not
 changed during the request. New streaming or edit snapshots retain ownership;
 the caller still receives the requested history for its own action validation.

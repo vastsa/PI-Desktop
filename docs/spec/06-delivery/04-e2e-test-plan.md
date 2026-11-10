@@ -1,5 +1,9 @@
 # 04. E2E Test Plan
 
+### E2E-INTERACTIVE-response-retry
+
+Select an AskTool option and submit, then reject its API request. Verify the card and selected answer remain and the error is shown. Retry successfully; then repeat failure/retry with Allow once on a permission card. `interactive-response-retry.test.mjs` covers both slice entry points and a replacement request; `e2e-interactive-response-retry.mjs` clicks production AskToolCard/PermissionCard with real useAppStore in Electron. Only external API outcomes are controlled; no permission is granted to real tools.
+
 ### E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and
