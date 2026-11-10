@@ -10,6 +10,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   ErrorCodes,
   IPC,
+  isBrowserAction,
   type ComposerPasteFile,
   type FsChatRefProjectRoot,
   type FsChatRefResolveResult,
@@ -762,13 +763,8 @@ handleWithEvent(
         errorCode: "UNAVAILABLE",
       });
     }
-    const action = String(input.action ?? "");
-    if (
-      action === "back" ||
-      action === "forward" ||
-      action === "reload" ||
-      action === "stop"
-    ) {
+    const action = input.action;
+    if (isBrowserAction(action)) {
       browserHost.action(action);
     }
     return { ok: true };

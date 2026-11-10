@@ -2,7 +2,7 @@ import { shell, View, WebContentsView, type BrowserWindow, type WebContents } fr
 import { realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { BrowserState } from "@pi-desktop/shared";
+import type { BrowserAction, BrowserState } from "@pi-desktop/shared";
 import { isAllowedHttpUrl, parseAllowedExternalUrl } from "./safe-open-external";
 import { BrowserBackingHost } from "./browser-backing-host";
 
@@ -142,6 +142,9 @@ export class BrowserPane {
   private pendingTarget: string | null = null;
   private loadError: { url: string; message: string } | null = null;
   private cancelPending: (() => void) | null = null;
+  /** User-owned tab mute; survives guest recreation, never persisted. */
+  private audioMuted = false;
+  private audible = false;
 
   private readonly onOpenUrl?: (url: string) => void;
   private readonly backingHost: BrowserBackingHost;
@@ -181,6 +184,8 @@ export class BrowserPane {
       ...(this.loadError ? { loadError: this.loadError.message } : {}),
       canGoBack: wc.navigationHistory.canGoBack(),
       canGoForward: wc.navigationHistory.canGoForward(),
+      audioMuted: this.audioMuted,
+      audible: this.audible,
     };
   }
 
@@ -317,7 +322,11 @@ export class BrowserPane {
     });
   }
 
-  action(action: "back" | "forward" | "reload" | "stop"): void {
+  action(action: BrowserAction): void {
+    if (action === "mute" || action === "unmute") {
+      this.setAudioMuted(action === "mute");
+      return;
+    }
     const wc = this.view?.webContents;
     if (!wc || wc.isDestroyed()) return;
     if (action === "stop" && this.pendingTarget) {
@@ -341,6 +350,14 @@ export class BrowserPane {
     } else if (action === "stop") {
       wc.stop();
     }
+  }
+
+  private setAudioMuted(muted: boolean): void {
+    if (this.audioMuted === muted) return;
+    this.audioMuted = muted;
+    this.getWebContents()?.setAudioMuted(muted);
+    const state = this.getState();
+    if (state) this.onState(state);
   }
 
   setBounds(bounds: { x: number; y: number; width: number; height: number }): void {
@@ -570,6 +587,15 @@ export class BrowserPane {
         if (this.acceptNativeNavigation(validatedUrl)) push();
       },
     );
+    // A recreated guest inherits the tab's mute choice; audibility restarts.
+    this.audible = false;
+    if (this.audioMuted) wc.setAudioMuted(true);
+    wc.on("audio-state-changed", (event) => {
+      this.audible = event.audible;
+      if (!this.hasCurrentStateEventScope()) return;
+      const state = this.getState();
+      if (state) this.onState(state);
+    });
     this.view = view;
     if (this.visible) this.attach();
     else this.park();

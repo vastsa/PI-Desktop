@@ -5688,6 +5688,23 @@ window; opening a normal panel afterward must still work.
   `05-security/01-security.md`, [background lifecycle ADR](../../adr/browser-background-lifecycle.md).
 - **Status**: Automated native Chromium/service paths; isolated Desktop trial passed.
 
+#### E2E-BROWSER-audio-mute: A user mutes one Browser tab from the toolbar
+
+- **Preconditions**: Dedicated worktree, reused Electron/toolchain, isolated
+  profile and localhost pages that play a quiet Web Audio tone.
+- **Steps**: Open two tabs in one session and wait until both report audible.
+  Mute the first tab through the toolbar action, then unmute it. Mute the
+  second tab, close it, and open a new page with the same tab id.
+- **Expected**: Only the chosen guest is muted in Chromium and its published
+  state reports `audioMuted` while still reporting `audible`; the sibling tab is
+  unaffected. Unmute restores the tab. Closing a tab discards its mute choice.
+  The toolbar button enables with a page, toggles Mute tab / Unmute tab and
+  `aria-pressed`, and follows the selected tab's own state.
+- **Automation**: `node scripts/e2e-browser-audio-mute.mjs`,
+  `browser-pane-navigation.test.mjs`, `browser-mute-toolbar.test.mjs`.
+- **Specs**: `04-ux/08-component-spec.md`, `07-plugins/03-plugin-api.md`.
+- **Status**: Automated native Chromium path.
+
 #### E2E-060: Files tab browsing stays inside the workspace
 
 - **Preconditions**: Workspace with file artifacts for nested source, large

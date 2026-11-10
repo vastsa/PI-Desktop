@@ -120,6 +120,7 @@ async function fixture(t, onInvoke) {
       console(_limit, sessionId) { browserCalls.push(["console", sessionId]); return {}; },
       async cdp(_method, _params, sessionId) { browserCalls.push(["cdp", sessionId]); },
       getState(sessionId) { browserCalls.push(["getState", sessionId]); return {}; },
+      action(action) { browserCalls.push(["action", action]); },
     },
     getSessionContext: async (sessionId) => ({ sessionId, messages: [], truncated: false }),
   });
@@ -135,6 +136,15 @@ test("browser.reveal reaches Main with the invoking session context", { timeout:
   const result = await tool.execute({ reveal: true }, { sessionId: "session-b", turnId: "turn-b" });
   assert.equal(result.sessionId, "session-b");
   assert.deepEqual(reveals, ["session-b"]);
+});
+
+test("view browser.action forwards every toolbar action, including mute, and drops unknown ones", { timeout: 5000 }, async (t) => {
+  const { id, runtime, browserCalls } = await fixture(t, async () => ({}));
+  for (const action of ["back", "forward", "reload", "stop", "mute", "unmute", "close"]) {
+    assert.deepEqual(await runtime.invokePanelBridge(id, "browser.action", { action }), { ok: true });
+  }
+  assert.deepEqual(browserCalls.filter(([name]) => name === "action").map(([, action]) => action),
+    ["back", "forward", "reload", "stop", "mute", "unmute"]);
 });
 
 test("every Browser API forwards trusted invocation identity across the real plugin process", { timeout: 5000 }, async (t) => {

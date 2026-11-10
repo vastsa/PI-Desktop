@@ -1609,7 +1609,7 @@ export type PluginHostApi = {
     /** Reveal the Browser view for the calling session and wait until it is ready. */
     reveal: () => Promise<void>;
     navigate: (input: { url?: string; path?: string }) => Promise<unknown>;
-    action: (input: { action: "back" | "forward" | "reload" | "stop" }) => Promise<void>;
+    action: (input: { action: "back" | "forward" | "reload" | "stop" | "mute" | "unmute" }) => Promise<void>;
     setBounds: (hole: { x: number; y: number; width: number; height: number }) => Promise<unknown>;
     setVisible: (visible: boolean | { visible: boolean }) => Promise<void>;
     getState: () => Promise<unknown>;
