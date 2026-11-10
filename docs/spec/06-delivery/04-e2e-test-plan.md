@@ -1,5 +1,9 @@
 # 04. E2E Test Plan
 
+### E2E-COMPOSER-stop-rejected-retry
+
+Click the actual Composer Stop button with a streaming answer. Reject the external abort API: the error is shown, Stop stays available, and the answer remains streaming. Retry successfully: rows settle and the toolbar returns to Send. `composer-stop-rejection.test.mjs` additionally checks submitted-draft/permission retention and waiter cleanup; `e2e-composer-stop-rejection.mjs` uses real Electron, production ComposerToolbar/useAppStore, and a controlled API. This covers Composer abort, distinct from project deletion abortSession.
+
 ### E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and

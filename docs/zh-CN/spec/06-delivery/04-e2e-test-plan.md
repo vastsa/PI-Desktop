@@ -1,5 +1,9 @@
 # 04. E2E 测试 Plan
 
+### E2E-COMPOSER-stop-rejected-retry
+
+回答流式输出时点击真实 Composer Stop 按钮，在外部 abort API 边界拒绝请求：显示错误，Stop 保持可用，正文仍流式输出。重试成功后消息结束，工具栏返回发送按钮。`composer-stop-rejection.test.mjs` 另覆盖已提交草稿、权限条目保留及等待器清理；`e2e-composer-stop-rejection.mjs` 使用真实 Electron、生产 ComposerToolbar/useAppStore 及受控 API。这是 Composer abort 路径，区别于项目删除 abortSession。
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环

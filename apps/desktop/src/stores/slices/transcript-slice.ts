@@ -507,16 +507,18 @@ export function createTranscriptSlice({
         .slice(submittedDraft?.messageCountBeforeSend ?? 0)
         .findLast((message) => message.role === "user")?.steering;
       const stoppedAtMs = Date.now();
+      let createdAbortResolution: Promise<boolean> | undefined;
       if (submittedDraft && !submittedDraft.abortResolution) {
-        submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
+        createdAbortResolution = new Promise<boolean>((resolve) => {
           submittedDraft.resolveAbort = resolve;
         });
+        submittedDraft.abortResolution = createdAbortResolution;
       }
       const pendingForSession = sessionPermissions(
         stateBeforeAbort.pendingPermissions,
         sessionId,
       );
-      await Promise.allSettled([
+      const [abortResult] = await Promise.allSettled([
         api.abort(sessionId),
         ...pendingForSession.map((permission) =>
           api.resolvePermission({
@@ -525,6 +527,14 @@ export function createTranscriptSlice({
           }),
         ),
       ]);
+      if (abortResult.status === "rejected") {
+        if (createdAbortResolution && submittedDraft?.abortResolution === createdAbortResolution) {
+          submittedDraft.resolveAbort?.(false);
+          delete submittedDraft.abortResolution;
+          delete submittedDraft.resolveAbort;
+        }
+        throw abortResult.reason;
+      }
       set((current) => ({
         pendingPermissions: clearSessionPermissions(
           current.pendingPermissions,

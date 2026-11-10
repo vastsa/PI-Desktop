@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+A rejected local Composer Stop request keeps the last known running state, streaming rows, and submitted draft. It reports the failure and allows retry. Only confirmed Stop continues smart-stop retraction/settlement; a failed attempt releases its own temporary abort waiter without removing a newer draft (Refs #1990).
+
 A full transcript read may fill its session cache only when that cache has not
 changed during the request. New streaming or edit snapshots retain ownership;
 the caller still receives the requested history for its own action validation.
