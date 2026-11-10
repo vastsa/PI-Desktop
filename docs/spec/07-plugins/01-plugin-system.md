@@ -538,6 +538,12 @@ Rules the control encodes:
   policy (edit or Test connection to retry), rather than repeatedly connecting
   on each call. Removed tools return `TOOL_NOT_FOUND`. Recovery never replays a
   failed `tools/call`, which may already have performed a mutation.
+- Test connection uses the requested settings project, or the currently open
+  project when no project is supplied. It retries that workspace and clears the
+  same server's other idle failed workspace connections, so a successful test
+  cannot leave later project sessions stuck on an earlier failure. Healthy
+  connections in other projects, active tool calls, and ongoing handshakes are
+  preserved. The returned test status describes the tested workspace.
 
 - Streamable HTTP `202 Accepted` acknowledgements for notifications and client
   responses are not JSON-RPC replies. Any acknowledgement body is discarded,

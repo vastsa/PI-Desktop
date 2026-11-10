@@ -304,7 +304,10 @@ export class UserMcpRuntime {
    * button. The connection is kept: a user who just tested a server is about to
    * use it.
    */
-  async test(serverId: string): Promise<McpServerStatus> {
+  async test(
+    serverId: string,
+    projectPath: string | null | undefined = null,
+  ): Promise<McpServerStatus> {
     const record = this.records.find((entry) => entry.id === serverId);
     if (!record) {
       return {
@@ -315,13 +318,26 @@ export class UserMcpRuntime {
         updatedAt: Date.now(),
       };
     }
-    // Force a fresh handshake so a fixed command is retried rather than
-    // reporting the cached failure.
-    const key = connectionKey(record, null);
-    this.entries.get(key)?.client.close();
-    this.entries.delete(key);
-    await this.connect(record, null);
-    return this.statusFor(serverId);
+    // Retry the requested workspace and clear this server's other failed
+    // workspace caches. A successful home test must not leave project sessions
+    // stuck on an earlier failure. Never interrupt a handshake or tool call.
+    const targetKey = connectionKey(record, projectPath);
+    for (const [key, entry] of [...this.entries]) {
+      if (
+        entry.record.id !== serverId || entry.connecting || entry.activeCalls > 0 ||
+        (key !== targetKey && entry.status.state !== "failed")
+      ) continue;
+      entry.client.close();
+      this.entries.delete(key);
+    }
+    const { entry } = await this.connect(record, projectPath);
+    return entry ? { ...entry.status } : {
+      serverId,
+      state: "failed",
+      toolCount: 0,
+      message: "connection cache is full; try again after active calls finish",
+      updatedAt: Date.now(),
+    };
   }
 
   /** Drop a cached connection and tools for a server. */
@@ -375,7 +391,12 @@ export class UserMcpRuntime {
 
     const key = connectionKey(record, projectPath);
     let existing = this.entries.get(key);
-    if (existing && record.transport === "http" && existing.oauthToken !== oauthToken) {
+    // Token refresh can run while Test connection or another session arrives.
+    // Let existing calls/handshakes finish; rotate the transport when idle.
+    if (
+      existing && record.transport === "http" && existing.oauthToken !== oauthToken &&
+      !existing.connecting && existing.activeCalls === 0
+    ) {
       existing.client.close();
       this.entries.delete(key);
       existing = undefined;

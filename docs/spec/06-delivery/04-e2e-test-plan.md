@@ -9400,7 +9400,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     override so the next connection uses the default handshake timeout.
   - The broken command records `failed` with a message, contributes no tools,
      and is not re-dialled on the following session assembly; pressing Test
-     retries it.
+     retries it. After a transient failure in two projects, repair the stub
+     without editing its saved record and test the server. Both projects regain
+     tools on their next session without an enable toggle. Testing a selected
+     project uses that project's cwd and tool catalog; an active call or
+     handshake in another project completes without interruption.
    - A stopped HTTP server loses its `ready` status on settings refresh and
      reports `failed`; Test connection restores `ready` after it restarts.
 - **Specs linked**: `07-plugins/01-plugin-system.md` §12,

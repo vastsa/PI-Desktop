@@ -78,7 +78,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server?.id });
     if (res.server && res.server.enabled !== false) {
       void userMcp
-        .test(res.server.id)
+        .test(res.server.id, currentWorkspacePath())
         .then(() => {
           sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server.id });
         })
@@ -155,7 +155,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
         ...userMcp.listRecords().filter((record) => !listed.servers.some((item) => item.id === record.id)),
         ...(listed.servers ?? []),
       ]);
-      const status = await userMcp.test(payload.id);
+      const status = await userMcp.test(payload.id, payload.projectPath ?? currentWorkspacePath());
       await refreshUserMcp(currentWorkspacePath());
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       const hasOauth = oauth ? await oauth.hasOAuth(payload.id) : false;
