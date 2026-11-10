@@ -55,3 +55,6 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+# `#[tokio::test(start_paused = true)]` plus `tokio::time::advance` let the
+# admission tests prove a wait window without spending it on the wall clock.
+tokio = { version = "1", features = ["full", "test-util"] }

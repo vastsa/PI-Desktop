@@ -383,31 +383,7 @@ pub(crate) fn capture_instructions(
             ));
         }
     }
-    for group in st.db.list_project_groups()? {
-        if group.legacy {
-            continue;
-        }
-        let logical_id = project_group_logical_id(st, &group)?;
-        let content = st.db.get_project_group_instructions(&group.id)?;
-        if content.trim().is_empty() {
-            continue;
-        }
-        let group_name = group.name.clone();
-        result.push(entity(
-            DOMAIN_INSTRUCTIONS,
-            format!("project-group:{}", group.id),
-            group_name,
-            json!({
-                "projectGroupLogicalId": logical_id,
-                "projectGroupName": group.name,
-                "content": content,
-            }),
-            false,
-            true,
-            true,
-            Vec::new(),
-        ));
-    }
+    result.extend(capture_project_group_instructions(st, identities)?);
     for project in st.db.list_projects()? {
         let path = Path::new(&project.path).join("AGENTS.md");
         let Some(content) = read_instruction_file(&path)? else {
@@ -433,6 +409,52 @@ pub(crate) fn capture_instructions(
             project.name,
             payload,
             true,
+            true,
+            true,
+            Vec::new(),
+        ));
+    }
+    Ok(result)
+}
+
+// Keep app-owned group settings separate from filesystem instruction capture.
+pub(crate) fn capture_project_group_instructions(
+    st: &mut AppState,
+    identities: &ProjectIdentityOverrides,
+) -> Result<Vec<PortableEntity>> {
+    let mut result = Vec::new();
+    for group in st.db.list_project_groups()? {
+        if group.capabilities.is_none()
+            && st
+                .db
+                .kv_get("projectGroupInstructions", &group.id)?
+                .is_none()
+        {
+            continue;
+        }
+        let logical_id = match identities
+            .group_ids
+            .get(&group.primary_path)
+            .or_else(|| identities.project_ids.get(&group.primary_path))
+        {
+            Some(id) => id.clone(),
+            None => project_group_logical_id(st, &group)?,
+        };
+        let content = st.db.get_project_group_instructions(&group.id)?;
+        let mut payload = json!({
+            "projectGroupLogicalId": logical_id,
+            "projectGroupName": group.name,
+            "content": content,
+        });
+        if let Some(capabilities) = group.capabilities {
+            payload["capabilities"] = serde_json::to_value(capabilities)?;
+        }
+        result.push(entity(
+            DOMAIN_INSTRUCTIONS,
+            format!("project-group:{}", group.id),
+            group.name,
+            payload,
+            false,
             true,
             true,
             Vec::new(),

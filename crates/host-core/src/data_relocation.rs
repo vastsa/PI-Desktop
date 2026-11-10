@@ -86,6 +86,34 @@ impl Roots {
         }
     }
 
+    fn project_path(&self, value: &mut Value) -> bool {
+        let Some(next) = value.as_str().and_then(|text| self.remap(text)) else {
+            return false;
+        };
+        *value = Value::String(crate::db::canonical_project_path(&next).unwrap_or(next));
+        true
+    }
+
+    fn project_group(&self, value: &mut Value) -> bool {
+        let mut changed = false;
+        if let Some(primary) = value.get_mut("primaryPath") {
+            changed |= self.project_path(primary);
+        }
+        if let Some(roots) = value.get_mut("roots").and_then(Value::as_array_mut) {
+            for root in roots {
+                if let Some(path) = root.get_mut("path") {
+                    changed |= self.project_path(path);
+                }
+            }
+        }
+        if let Some(paths) = value.get_mut("detachedPaths").and_then(Value::as_array_mut) {
+            for path in paths {
+                changed |= self.project_path(path);
+            }
+        }
+        changed
+    }
+
     fn stored_record(&self, value: &mut Value) -> Result<bool> {
         if value.get("binaryStorage").is_none() {
             // Offline relocation must not upgrade a legacy profile's storage
@@ -434,7 +462,7 @@ fn relocate_database(roots: &Roots) -> Result<()> {
     }
     if column_exists(&transaction, "kv", "value_json")? {
         let rows = {
-            let mut statement = transaction.prepare("SELECT ns, key, value_json FROM kv WHERE ns IN ('app','ui','projectGroups','projectMemory','projectInstructions')")?;
+            let mut statement = transaction.prepare("SELECT ns, key, value_json FROM kv WHERE ns IN ('app','ui','projectGroups','projectMemory','projectInstructions','projectGroupInstructions')")?;
             let rows = statement
                 .query_map([], |row| {
                     Ok((
@@ -453,6 +481,16 @@ fn relocate_database(roots: &Roots) -> Result<()> {
                     .remap(&key)
                     .map(|path| crate::db::canonical_project_path(&path).unwrap_or(path))
                     .unwrap_or_else(|| key.clone())
+            } else if namespace == "projectGroupInstructions" {
+                key.strip_prefix("legacy:")
+                    .and_then(|path| roots.remap(path))
+                    .map(|path| {
+                        format!(
+                            "legacy:{}",
+                            crate::db::canonical_project_path(&path).unwrap_or(path)
+                        )
+                    })
+                    .unwrap_or_else(|| key.clone())
             } else {
                 key.clone()
             };
@@ -460,7 +498,9 @@ fn relocate_database(roots: &Roots) -> Result<()> {
                 serde_json::from_str(&text).context("parse relocation settings metadata")?;
             let changed = if namespace == "app" && key == "currentProjectId" {
                 roots.string(&mut value)
-            } else if matches!(namespace.as_str(), "app" | "ui" | "projectGroups") {
+            } else if namespace == "projectGroups" {
+                roots.project_group(&mut value)
+            } else if matches!(namespace.as_str(), "app" | "ui") {
                 roots.structured(&mut value)
             } else {
                 false

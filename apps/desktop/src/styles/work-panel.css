@@ -450,9 +450,13 @@
 
 .subagent-transcript-model-picker {
   flex: 1 1 auto;
+  min-width: 0;
   max-width: calc(100% - 36px);
-  justify-content: flex-start;
-  cursor: not-allowed;
+}
+
+.subagent-transcript-model-picker .provider-service-trigger {
+  width: 100%;
+  min-width: 0;
 }
 
 .subagent-transcript-composer-controls > .stop-btn {

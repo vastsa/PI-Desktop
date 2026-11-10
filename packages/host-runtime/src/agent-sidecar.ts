@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { COMPUTER_CALL_TIMEOUT_MS, DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
+import { SidecarToolExecutions, type ToolExecutionIdentity, type ToolExecutionPolicy } from "./tool-executions.js";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
 // process's last words instead of a bare "agent sidecar exited".
@@ -54,6 +55,8 @@ const HOST_PROXY_ALLOWED = new Set([
   "backgroundJobs.list",
   "backgroundJobs.wait",
   "backgroundJobs.stop",
+  "tools.execution.start",
+  "tools.execution.end",
   "tools.fileBatchCapabilities",
   "tools.fileBatchRegister",
   "tools.fileBatchSeal",
@@ -153,6 +156,7 @@ export class AgentSidecar {
   // Tools served by the embedding host itself (e.g. BrowserPreview drives the
   // work panel's WebContentsView) — host-core never sees these.
   private localToolControllers = new Map<string, AbortController>();
+  private readonly toolExecutions = new SidecarToolExecutions();
   private localTools = new Map<string, LocalToolHandler>();
   private localToolTimers = new Set<ReturnType<typeof setTimeout>>();
   private projectInstructionResolver: ProjectInstructionResolver | null = null;
@@ -209,6 +213,7 @@ export class AgentSidecar {
   private closeTransport(error: Error) {
     if (this.closed) return;
     this.closed = true;
+    this.toolExecutions.clear();
     this.unsubscribeHost?.();
     this.unsubscribeHost = null;
     this.unsubscribeHostExit?.();
@@ -273,11 +278,15 @@ export class AgentSidecar {
     handler: LocalToolHandler,
     input: Omit<Parameters<LocalToolHandler>[0], "signal">,
     params: Record<string, unknown>,
+    callerSignal?: AbortSignal,
   ): Promise<LocalToolResult> {
     const key = `${input.sessionId}:${input.toolCallId}`;
     if (this.localToolControllers.has(key)) throw new Error("duplicate local tool call");
     const controller = new AbortController();
     this.localToolControllers.set(key, controller);
+    const abort = () => controller.abort();
+    if (callerSignal?.aborted) abort();
+    else callerSignal?.addEventListener("abort", abort, { once: true });
     const imageGeneration = params.toolName === "GenerateImages";
     const computerUse = params.toolName === "Computer";
     // High-risk local tools must be authorised by host-core before the local
@@ -300,6 +309,7 @@ export class AgentSidecar {
             if (!gate.ok) return gate;
             controller.signal.throwIfAborted();
           }
+          controller.signal.throwIfAborted();
           return handler({ ...input, signal: controller.signal });
         })(),
         new Promise<LocalToolResult>((_, reject) => {
@@ -311,6 +321,7 @@ export class AgentSidecar {
         }),
       ]);
     } finally {
+      callerSignal?.removeEventListener("abort", abort);
       controller.abort();
       this.localToolControllers.delete(key);
       if (timer) { clearTimeout(timer); this.localToolTimers.delete(timer); }
@@ -326,6 +337,19 @@ export class AgentSidecar {
   /** Register a tool the sidecar can call that the embedding host handles locally. */
   setLocalTool(name: string, handler: LocalToolHandler): void {
     this.localTools.set(name, handler);
+  }
+
+  setToolExecutionPolicy(policy: ToolExecutionPolicy): void {
+    this.toolExecutions.setPolicy(policy);
+  }
+
+  markToolExecutionPlugin(input: ToolExecutionIdentity, pluginId: string): void {
+    this.toolExecutions.markPlugin(input, pluginId);
+  }
+
+  getToolExecution(input: ToolExecutionIdentity, host: SidecarHostLink) {
+    if (this.closed || this.host !== host) return undefined;
+    return this.toolExecutions.get(input);
   }
 
   setProjectInstructionResolver(resolver: ProjectInstructionResolver): void {
@@ -379,6 +403,7 @@ export class AgentSidecar {
   setHost(host: SidecarHostLink) {
     if (this.closed) return;
     if (this.host && this.host !== host) {
+      this.toolExecutions.clear();
       for (const controller of this.localToolControllers.values()) controller.abort();
     }
     this.host = host;
@@ -399,6 +424,7 @@ export class AgentSidecar {
       this.writeToChild(payload);
     });
     this.unsubscribeHostExit = host.onExit(() => {
+      this.toolExecutions.clear();
       for (const controller of this.localToolControllers.values()) controller.abort();
       this.unsubscribeHost?.();
       this.unsubscribeHost = null;
@@ -477,6 +503,7 @@ export class AgentSidecar {
 
     // Reverse RPC from sidecar → host proxy
     if (msg.method === "host.proxy" && msg.id !== undefined) {
+      let execution: ReturnType<SidecarToolExecutions["begin"]> | undefined;
       try {
         const method = String(msg.params?.method || "");
         if (!HOST_PROXY_ALLOWED.has(method)) {
@@ -487,6 +514,14 @@ export class AgentSidecar {
         }
         const params = (msg.params?.params ?? {}) as Record<string, unknown>;
         const requestedToolName = String(params.toolName ?? "");
+        if (method === "tools.execution.start" || method === "tools.execution.end") {
+          if (!this.host) throw new Error("host unavailable");
+          if (method === "tools.execution.start") this.toolExecutions.start(params);
+          else this.toolExecutions.end(params);
+          this.writeToChild(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { ok: true } }) + "\n");
+          return;
+        }
+        if (method === "tools.execute") execution = this.toolExecutions.begin(params);
         const planLocalTool =
           requestedToolName === "Skill" ||
           requestedToolName === "PluginCheck" ||
@@ -505,6 +540,7 @@ export class AgentSidecar {
           );
         }
         if (method === "tools.abort") {
+          this.toolExecutions.abort(String(params.sessionId ?? ""), String(params.toolCallId ?? ""));
           this.localToolControllers.get(`${params.sessionId}:${params.toolCallId}`)?.abort();
         }
         if (method === "project.instructions.resolve") {
@@ -575,7 +611,7 @@ export class AgentSidecar {
                   sessionId: String(params.sessionId ?? ""),
                   toolCallId: String(params.toolCallId ?? ""),
                   args: params.args,
-                }, params);
+                }, params, execution?.execution.signal);
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
           );
@@ -594,6 +630,8 @@ export class AgentSidecar {
             error: rpcErrorToWire(e),
           }) + "\n",
         );
+      } finally {
+        execution?.finish();
       }
       return;
     }

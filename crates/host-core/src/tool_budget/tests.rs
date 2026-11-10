@@ -1,4 +1,5 @@
-use super::{AdmissionError, ToolBudget, ToolPermit, MAX_QUEUED_TOOLS};
+use super::{AdmissionError, ToolBudget, ToolPermit, MAX_QUEUED_TOOLS, TOOL_QUEUE_WAIT_MS};
+use crate::file_resources::FileResources;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
@@ -513,4 +514,33 @@ async fn an_abandoned_hold_releases_waiting_calls() {
     drop(hold);
     drop(admitted(late.as_mut()));
     drop(running);
+}
+/// A search fences the whole file domain (its targets are unknown) and a big
+/// tree takes minutes, so a write that arrives meanwhile must wait it out
+/// rather than fail the user's edit after the shared queue window.
+#[tokio::test(start_paused = true)]
+async fn a_write_waits_out_a_running_search_instead_of_failing_the_edit() {
+    let budget = ToolBudget::new();
+    let search = budget
+        .acquire_files("session-a", "Glob", false, FileResources::fence(false), None)
+        .await
+        .unwrap();
+    let mut write = Box::pin(budget.acquire_files(
+        "session-a",
+        "Write",
+        false,
+        FileResources::fence(true),
+        None,
+    ));
+    assert!(poll_once(write.as_mut()).is_pending());
+
+    tokio::time::advance(Duration::from_millis(TOOL_QUEUE_WAIT_MS + 5_000)).await;
+    assert!(
+        poll_once(write.as_mut()).is_pending(),
+        "a write must keep waiting while a domain-fenced search runs"
+    );
+
+    drop(search);
+    drop(admitted(write.as_mut()));
+    assert_eq!(budget.snapshot().active, 0);
 }

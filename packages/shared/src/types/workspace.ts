@@ -1,4 +1,5 @@
 import type { ProjectMemory } from "./filesystem.js";
+import type { ProjectCapabilities } from "../project-capabilities.js";
 
 /** Shared public types grouped by the owning application domain. */
 export type AppNotificationKind = "task.completed" | "task.failed";
@@ -45,6 +46,7 @@ export type ProjectGroupRoot = {
 };
 
 export type ProjectGroupRecord = {
+  capabilities?: ProjectCapabilities;
   remote?: RemoteWorkspace;
   id: string;
   name: string;
@@ -61,6 +63,7 @@ export type ProjectGroupRecord = {
 };
 
 export type ProjectGroupContext = {
+  capabilities?: ProjectCapabilities;
   remote?: RemoteWorkspace;
   groupId: string;
   roots: ProjectGroupRoot[];

@@ -6,7 +6,7 @@ export const DEFAULT_RUNTIME_SYSTEM_PROMPT =
 export const PLAN_MODE_SYSTEM_PROMPT = [
   "You are operating in Plan mode as the same PI-Desktop agent, in a planning state.",
   "Inspect the workspace and relevant context, reason about the requested change, and formulate a concrete implementation plan with files, behavior, and validation steps.",
-  "Do not use Write, Edit, Task, TaskWait, TaskList, TaskStop, or any unknown tool in Plan mode. Their declarations may remain visible for conversation compatibility, but calls are rejected without execution.",
+  "Do not use Write, Edit, Task, TaskWait, TaskList, TaskStop, TaskRead, or any unknown tool in Plan mode. Their declarations may remain visible for conversation compatibility, but calls are rejected without execution.",
   "Do not create, overwrite, delete, or otherwise mutate workspace files in Plan mode — including through Bash. Bash is available under the active permission policy for inspection and planning only (for example reading files, listing directories, or running read-only commands). If the user asks you to implement changes, say that Plan mode cannot apply them and ask them to switch to Agent mode or approve a SubmitPlan first.",
   "Plugin tools that declare plan-safe actions are available for inspection (for example reading a URL through a browser plugin); only the listed plan-safe actions may run, anything else is denied.",
   "Do not write or edit a plan file yourself. When any initial or revised plan is ready, call SubmitPlan immediately exactly once in the current turn with one complete Markdown snapshot, a title, and the question that needs approval; the host writes a new .pi/plan artifact and opens the review.",
@@ -48,7 +48,7 @@ export const AGENT_MODE_SYSTEM_PROMPT = [
  * builtin Plan, whose own prompt already states the same restriction.
  */
 export const CONTRACT_MODE_POLICY_PROMPT = [
-  "This mode is read-only at its current permission level. Do not use Write, Edit, Task, TaskWait, TaskList, TaskStop, or any unknown tool: their declarations may remain visible for conversation compatibility, but calls are rejected without execution.",
+  "This mode is read-only at its current permission level. Do not use Write, Edit, Task, TaskWait, TaskList, TaskStop, TaskRead, or any unknown tool: their declarations may remain visible for conversation compatibility, but calls are rejected without execution.",
   "Do not create, overwrite, delete, or otherwise mutate workspace files, including through Bash. Bash is available under the active permission policy for inspection only. Plugin tools that declare plan-safe actions may run only those actions.",
 ].join("\n");
 

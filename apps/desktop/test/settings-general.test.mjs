@@ -186,6 +186,13 @@ test("settings destinations own one subject each", () => {
 
   assert.doesNotMatch(behaviorSource, /PromptEnhancementCard|promptEnhancement/);
   assert.doesNotMatch(behaviorSource, /EnhancementModelCard/);
+  // The execution card keeps the retry rows (max attempts and delays) that the
+  // provider-retry feature adds on top of the infinite-retry toggle.
+  assert.match(
+    behaviorSource,
+    /<ProviderRetrySettingsRows settings=\{settings\} saveSettings=\{saveSettings\}/,
+  );
+
   assert.match(
     settingsPageSource,
     /saveSettings\(\{ contextUsageDisplay: value \}\)/,

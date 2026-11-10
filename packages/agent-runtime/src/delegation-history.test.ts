@@ -613,6 +613,41 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
 });
 
 describe("rebuildChainsFromTranscript", () => {
+  it.each([undefined, "custom/retained"])("recovers the exact legacy reply account instead of alias %s", modelKey => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolArgs = { agent: "explorer", task: "Original task", model: "custom/retained" };
+    task.toolResult = { details: { delegationId: "d1", status: "completed", modelId: "retained", modelKey } };
+    const reply = { ...delegateAssistant("a1", "Result", "call-1"), providerId: "original", modelId: "retained" };
+    const foreign = { ...reply, id: "foreign", agentName: "fixer", providerId: "wrong" };
+    const sibling = { ...reply, id: "sibling", parentToolCallId: "other", providerId: "wrong" };
+    expect(rebuildChainsFromTranscript([task, reply, foreign, sibling])[0]).toMatchObject({
+      latestModelId: "retained", latestModelKey: "original/retained",
+    });
+  });
+
+  it("does not restore a stale reply account after a recorded model switch", () => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolResult = { details: { delegationId: "d1", status: "interrupted", modelId: "new-model", modelKey: "new/new-model" } };
+    const reply = { ...delegateAssistant("a1", "Old result", "call-1"), providerId: "old", modelId: "old-model" };
+    expect(rebuildChainsFromTranscript([task, reply])[0]).toMatchObject({ latestModelKey: "new/new-model", latestModelId: "new-model" });
+  });
+
+  it("keeps a recorded same-model account switch before its first reply", () => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolResult = { details: { delegationId: "d1", status: "interrupted", modelId: "retained", modelKey: "new/retained" } };
+    const reply = { ...delegateAssistant("a1", "Old result", "call-1"), providerId: "old", modelId: "retained" };
+    expect(rebuildChainsFromTranscript([task, reply])[0].latestModelKey).toBe("new/retained");
+  });
+
+  it("uses a matching recorded Task choice only when no child account was recorded", () => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolArgs = { agent: "explorer", task: "Original task", model: "original/retained" };
+    task.toolResult = { details: { delegationId: "d1", status: "completed", modelId: "retained" } };
+    expect(rebuildChainsFromTranscript([task])[0].latestModelKey).toBe("original/retained");
+    task.toolResult = { details: { delegationId: "d1", status: "completed", modelId: "fallback" } };
+    expect(rebuildChainsFromTranscript([task])[0].latestModelKey).toBeUndefined();
+  });
+
   it("groups resume links into one chain with the latest objective", () => {
     const transcript: UiMessage[] = [
       taskRow("call-1", "d1", "explore the parser", { description: "explore" }),

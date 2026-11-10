@@ -272,6 +272,15 @@ application-window behavior rather than agent behavior.
     decides what applies, and the values come back with Custom instead of the
     built-in `socks5://127.0.0.1:1080` (issue #1541). Nothing applies them
     while another mode is selected.
+  - **Secure DNS (DoH)**: device-local `AppSettings.networkDns` defaults to
+    `mode: "system"`. Enabling uses an HTTPS POST endpoint (blank restores
+    `https://1.1.1.1/dns-query`) and an explicit, default-off system fallback
+    toggle. Credentials, fragments, URI templates, and invalid endpoints are
+    rejected. Disabling retains endpoint/fallback preferences. Pending writes
+    disable duplicate input; validation is announced inline and save/apply
+    failures remain visible. Unrelated settings writes preserve DNS preferences.
+    No OS DNS setting or portable remote-host preference changes; see
+    [native DNS ADR](../../adr/native-desktop-dns.md).
   - **Relaxed network mode**: one switch persisting as
     `AppSettings.networkPolicy.mode` (`relaxed` | `strict`), **on by default**.
     When it is on, an endpoint the user typed themselves — a model base URL, an

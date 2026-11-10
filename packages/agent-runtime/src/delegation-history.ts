@@ -23,6 +23,7 @@
  * `toolResultFromUi`.
  */
 
+import { subagentTaskDisplayMessage } from "@pi-desktop/shared";
 import { estimateTokens } from "./pi-runtime-estimates.js";
 import type {
   AssistantMessage,
@@ -491,6 +492,7 @@ export type RebuiltTaskCall = {
   objective: string;
   task?: string;
   modelId?: string;
+  modelKey?: string;
   createdAt: number;
   /** Settled status this call's `Task` row recorded, when it recorded one. */
   status?: string;
@@ -528,7 +530,16 @@ export function rebuildChainsFromTranscript(
 ): DelegationChain[] {
   const calls: RebuiltTaskCall[] = [];
   const callIndexByToolCallId = new Map<string, number>();
+  // Legacy Task results omitted modelKey, while child replies already recorded
+  // the real account. Only this call's own agent-attributed rows are evidence.
+  const lastReplies = new Map<string, UiMessage>();
   for (const row of transcript) {
+    if (row.role === "assistant" && row.parentToolCallId && row.agentName && row.modelId?.trim()) {
+      lastReplies.set(JSON.stringify([row.parentToolCallId, row.agentName]), row);
+    }
+  }
+  for (const source of transcript) {
+    const row = subagentTaskDisplayMessage(source);
     if (row.role !== "tool" || row.toolName !== "Task" || !row.toolCallId) {
       continue;
     }
@@ -556,8 +567,17 @@ export function rebuildChainsFromTranscript(
     if (!agentName) continue;
     const resume = typeof args?.resume === "string" ? args.resume.trim() : "";
     const task = typeof args?.task === "string" ? args.task.trim() : "";
-    const modelId =
-      typeof details?.modelId === "string" ? details.modelId : undefined;
+    const reply = lastReplies.get(JSON.stringify([row.toolCallId, agentName]));
+    const modelId = (typeof details?.modelId === "string" ? details.modelId.trim() : "") || reply?.modelId?.trim();
+    const replyMatches = reply?.modelId?.trim().toLowerCase() === modelId?.toLowerCase();
+    const requestedKey = typeof args?.model === "string" ? args.model.trim() : "";
+    const requestedModel = requestedKey.slice(requestedKey.indexOf("/") + 1);
+    const recordedKey = typeof details?.modelKey === "string" ? details.modelKey.trim() : "";
+    const replyKey = replyMatches && reply?.providerId?.trim() ? `${reply.providerId.trim()}/${modelId}` : undefined;
+    // A newer explicit binding wins over old replies. A legacy echoed alias
+    // can be made exact using the actual account that answered that Task.
+    const modelKey = recordedKey && recordedKey !== requestedKey ? recordedKey : replyKey || recordedKey ||
+      (requestedKey.indexOf("/") > 0 && requestedModel.toLowerCase() === modelId?.toLowerCase() ? requestedKey : undefined);
     const call: RebuiltTaskCall = {
       toolCallId: row.toolCallId,
       delegationId,
@@ -566,6 +586,7 @@ export function rebuildChainsFromTranscript(
       objective: taskObjectiveFromArgs(args),
       ...(task ? { task } : {}),
       ...(modelId ? { modelId } : {}),
+      ...(modelKey ? { modelKey } : {}),
       status: chainStatusFromDetail(details, row),
       createdAt: timestampMs(row.createdAt) || Date.now(),
     };
@@ -628,6 +649,7 @@ export function rebuildChainsFromTranscript(
       latestDelegationId: latest?.delegationId,
       latestObjective: latest?.objective ?? root.objective,
       latestModelId: latest?.modelId,
+      latestModelKey: latest?.modelKey,
       latestStatus: latest?.status,
       lastActivityAt: latest?.createdAt ?? root.createdAt,
     });

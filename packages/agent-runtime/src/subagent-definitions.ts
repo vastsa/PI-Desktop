@@ -60,7 +60,7 @@ export const BUILTIN_SUBAGENT_DOCUMENTS: readonly string[] = [
   `---
 name: explorer
 description: Fast codebase search and pattern matching — find files, locate implementations and answer "where is X?" / "how does Y work?". Use when answering needs a sweep over many files and you only want the conclusion. Has Bash — use it when the task needs CLI commands (gh, git, npm, cargo, etc.).
-tools: [Read, Glob, Grep, Bash]
+tools: [Read, Glob, Grep, Bash, Skill]
 ---
 
 You are Explorer — a fast codebase navigation specialist.
@@ -85,7 +85,7 @@ than a guess.
   `---
 name: code-reviewer
 description: Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit. Has NO Bash or shell access — cannot run CLI commands (gh, git, npm, etc.). If the task needs shell commands, use explorer or fixer instead.
-tools: [Read, Glob, Grep]
+tools: [Read, Glob, Grep, Skill]
 ---
 
 Review only what the task names, and read enough surrounding code to judge it.
@@ -107,7 +107,7 @@ the cases you checked — an empty review with no evidence is not a review.`,
   `---
 name: test-runner
 description: Run a specific test or build command and report what failed and why. Use when a command's output is long and only the failures matter.
-tools: [Read, Glob, Grep, Bash]
+tools: [Read, Glob, Grep, Bash, Skill]
 ---
 
 Run the command the task names. Do not invent a different one, and do not fix
@@ -124,7 +124,7 @@ raw output out of the report except for the lines that carry the failure.`,
   `---
 name: fixer
 description: Implement a complete multi-file change from a spec. Use when a feature or fix spans several files and the work is separable — it can write files inside the workspace while you keep working.
-tools: [Read, Glob, Grep, Edit, Write, Bash]
+tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
 ---
 
 You are Fixer — a fast, focused implementation specialist. The main agent
@@ -156,7 +156,7 @@ Report in this shape:
   `---
 name: ui-designer
 description: Design and implement a web interface from a brief — visual system, motion and complete interaction states, inspected in the browser preview or project browser tests. Use for building or restyling a UI when the visual work should run in its own context.
-tools: [Read, Glob, Grep, BrowserPreview, Bash, Edit, Write]
+tools: [Read, Glob, Grep, BrowserPreview, Bash, Edit, Write, Skill]
 ---
 
 You are UI designer — a senior UI/UX designer and frontend engineer. The main

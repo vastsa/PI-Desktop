@@ -402,13 +402,14 @@ test("changing only scope or label keeps the connection", async (t) => {
 function reconnectingRuntime(t) {
   let connected = false;
   let tools = [];
-  const state = { handshakes: 0, calls: [], advertised: [{ name: "lookup" }], fail: false, gate: null };
+  const state = { handshakes: 0, calls: [], advertised: [{ name: "lookup" }], fail: false, gate: null, onHandshake: () => {} };
   const client = {
     isConnected: () => connected,
     getTools: () => tools,
     close: () => { connected = false; tools = []; },
     connect: async () => {
       state.handshakes += 1;
+      state.onHandshake();
       await state.gate;
       if (state.fail) throw new Error("offline");
       connected = true;
@@ -476,11 +477,14 @@ test("concurrent calls share one recovery handshake", async (t) => {
   client.close();
   let release;
   state.gate = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { state.onHandshake = resolve; });
   const first = rt.callTool("mcp_stub_lookup", {}, "/repo");
   const second = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  await started;
   assert.equal(state.handshakes, 2);
   release();
   assert.deepEqual(await Promise.all([first, second]), ["lookup", "lookup"]);
+  assert.equal(state.handshakes, 2);
 });
 
 test("scope changes during recovery prevent dispatch", async (t) => {
@@ -489,7 +493,9 @@ test("scope changes during recovery prevent dispatch", async (t) => {
   client.close();
   let release;
   state.gate = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { state.onHandshake = resolve; });
   const pending = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  await started;
   rt.setRecords([stubRecord("/unused", { scope: { mode: "projects", projects: ["/other"] } })]);
   release();
   await assert.rejects(pending, { errorCode: "TOOL_NOT_FOUND" });
@@ -502,7 +508,9 @@ test("removing a server during recovery cannot restore its tools", async (t) => 
   client.close();
   let release;
   state.gate = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { state.onHandshake = resolve; });
   const pending = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  await started;
   rt.setRecords([]);
   release();
   await assert.rejects(pending, { errorCode: "TOOL_NOT_FOUND" });
@@ -698,4 +706,35 @@ test("custom timeoutSeconds overrides default connect and call timeouts on clien
   assert.equal(createdConfig.connectTimeoutMs, 45_000);
   assert.equal(createdConfig.callTimeoutMs, 100_000);
   assert.equal(createdConfig.discoveryTimeoutMs, 45_000);
+});
+
+test("caller cancellation isolates parent and child MCP tools within one session", async t => {
+  const starts = new Map(), releases = new Map(), signals = new Map();
+  let closes = 0;
+  const client = {
+    isConnected: () => true, getTools: () => [{ name: "lookup" }], close: () => { closes++; },
+    connect: async () => [{ name: "lookup" }],
+    callTool: async (_name, args, signal) => new Promise((resolve, reject) => {
+      signals.set(args.id, signal); releases.set(args.id, resolve);
+      signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { code: "TOOL_ABORTED" })), { once: true });
+      starts.get(args.id)();
+    }),
+  };
+  const rt = new UserMcpRuntime({ createClient: () => client });
+  t.after(() => rt.disposeAll());
+  rt.setRecords([stubRecord("/unused")]);
+  await rt.toolsForProject("/repo");
+  const parentController = new AbortController(), childController = new AbortController();
+  const parentStarted = new Promise(resolve => starts.set("parent", resolve));
+  const parent = rt.callTool("mcp_stub_lookup", { id: "parent" }, "/repo", "same-session", parentController.signal);
+  await parentStarted;
+  const childStarted = new Promise(resolve => starts.set("child", resolve));
+  const child = rt.callTool("mcp_stub_lookup", { id: "child" }, "/repo", "same-session", childController.signal);
+  await childStarted;
+  parentController.abort();
+  await assert.rejects(parent, /aborted/);
+  assert.equal(signals.get("child").aborted, false);
+  assert.equal(closes, 0, "cancelling one call must not close the shared MCP server");
+  releases.get("child")("child completed");
+  assert.equal(await child, "child completed");
 });

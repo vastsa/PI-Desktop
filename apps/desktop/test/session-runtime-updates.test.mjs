@@ -25,6 +25,10 @@ function harness(messages, background = []) {
     retainedTranscripts: { active: messages, background },
     runningSessions: { active: true, background: true },
     sessionHistory: {},
+    // Containers the app store always has; the harness starts them empty.
+    sessions: [], agentStatuses: {}, sessionOutcomes: {}, latestTurnResults: {},
+    sessionCompactions: {}, planningStates: {}, planCheckpoints: {}, pendingPlans: {},
+    pendingPermissions: {}, pendingAsks: {}, askDrafts: {},
   };
   const access = {
     get: () => state,
@@ -40,7 +44,24 @@ function harness(messages, background = []) {
   runtime = createSessionRuntime(access);
   runtime.cacheSessionTranscript("active", messages);
   runtime.cacheSessionTranscript("background", background);
-  Object.assign(state, createEventsSlice({ ...access, runtime }));
+  // Stand-ins for the app-store wiring these event tests do not exercise.
+  Object.assign(state, {
+    refreshSessions: () => {},
+    refreshQueuedPrompts: () => {},
+    showToast: () => {},
+  }, createEventsSlice({
+    ...access,
+    runtime,
+    withoutRecordKey: (record, key) => record
+      ? Object.fromEntries(Object.entries(record).filter(([name]) => name !== key))
+      : record,
+    sessionModeForPlanningState: (mode) => mode ?? "agent",
+    openPlanArtifact: () => {},
+    notifyInteractivePrompt: () => {},
+    flushPendingSessionConfiguration: async () => {},
+    assistantErrorMessage: (error) => message("error-row", { error }),
+    withCompactionMark: (marks, mark) => [...(marks ?? []), mark],
+  }));
   return { ...access, runtime, writes: () => writes };
 }
 
@@ -228,4 +249,34 @@ test("background tool partials stay cache-only and update the first running matc
   assert.equal(updated.at(-3), background.at(-3));
   assert.equal(h.get().retainedTranscripts, retained);
   assert.equal(h.writes(), 0);
+}));
+
+test("child subagent events never drive the parent session's running state", () => withFrames(() => {
+  const h = harness([message("parent")]);
+  const child = (event) => ({
+    sessionId: "active", ts: 1, turnId: "parent-turn",
+    parentToolCallId: "child-call", agentName: "worker", event,
+  });
+  h.get().handleAgentEvent({
+    sessionId: "active", ts: 1, turnId: "parent-turn",
+    event: { type: "agent_end", messageIds: [] },
+  });
+  assert.equal(h.get().runningSessions.active, false, "the parent turn ended");
+  assert.equal(h.get().isRunning, false);
+
+  h.get().handleAgentEvent(child({ type: "turn_start" }));
+  assert.equal(h.get().runningSessions.active, false, "a child turn must not make the session busy");
+  assert.equal(h.get().isRunning, false, "a child turn must not block the composer");
+  h.get().handleAgentEvent(child({ type: "agent_start" }));
+  assert.equal(h.get().runningSessions.active, false);
+  assert.equal(h.get().isRunning, false);
+
+  h.get().handleAgentEvent({
+    sessionId: "active", ts: 2, turnId: "next-turn",
+    event: { type: "turn_start" },
+  });
+  assert.equal(h.get().runningSessions.active, true, "the parent turn marks the session busy");
+  h.get().handleAgentEvent(child({ type: "agent_end", messageIds: [] }));
+  assert.equal(h.get().runningSessions.active, true, "a child finishing must not settle the parent turn");
+  assert.equal(h.get().isRunning, true, "a child finishing must not unblock the composer mid-turn");
 }));

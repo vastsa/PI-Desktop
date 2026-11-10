@@ -73,7 +73,12 @@ other mutations retain single-write admission and exclude coordinated writes
 in both arrival orders. An older source-ready conservative mutation waiter
 prevents later coordinated writes from continuously refilling that session;
 unready successors and source-predecessor bypass retain the DAG exceptions.
-The bounded admission wait still returns HOST_OVERLOADED after 30 seconds.
+The bounded admission wait still returns HOST_OVERLOADED after 30 seconds for
+shared calls. An exclusive write waits longer: a domain-fenced `Glob`/`Grep`
+holds the file domain while it scans, and failing the user's edit while that
+work is still making progress only made the model retry into the same fence. A
+mutation therefore waits for its conflicting holder for up to ten minutes
+(`MUTATION_QUEUE_WAIT_MS`), and `tools.abort` still cuts that wait.
 Audit/debug diagnostics record total admission wait and its initial reason
 (source_order, resource or capacity); these are not disjoint duration segments.
 
@@ -910,23 +915,43 @@ Host rejects a gate call whose command, run, gate index or claim does not match.
 one subagent definition. Plan and Goal are read-only contract negotiations, so a
 delegate with `Bash`, `Edit` or `Write` would drive straight through them.
 
+`TaskRead` is the parent's additive inspection tool for this conversation's
+recorded delegations (ADR 0347). Unlike `Task`, it is registered and declared
+as an Agent core tool even when the session has no subagent definitions,
+because a chain's rows stay readable after a definition is removed or the
+sidecar restarts. It is denied in Plan and Goal with the other delegation
+controls, and it is never grantable to a delegate.
+
+`TaskRecover` is a parent-only Agent lifecycle tool (ADR 0350). It requires an
+owned live child's stalled physical provider attempt and fresh Main authorization
+for a different model currently enabled for delegation; it never inherits a
+cached grant or changes normal tool permissions. Plan/Goal and delegates cannot
+execute it.
+
+Project capability selections (ADR 0349) intersect existing enablement and
+project scope. Omitted lists inherit, explicit empty lists deny every choice in
+that category, and invalid persisted selections fail closed. Main filters Skill
+catalogs/MCP discovery and rechecks selections before dispatch and after async
+preparation; selecting an ID never enables a disabled or out-of-scope resource.
+Project Markdown is app-owned context and does not grant tool authority.
+
 A definition declares the tools its delegate may call. By default those names
-are drawn only from the seven working tools `Read`, `Glob`, `Grep`,
-`BrowserPreview`, `Bash`, `Edit` and `Write`. A definition that declares none
-gets `Read`, `Glob`, `Grep`; `tools: "*"` means all seven working tools. An
-unrecognized name — including the withdrawn `A2A` and `Peer` tools (D326 /
+are drawn only from `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `Edit`,
+`Write`, and `Skill`. A definition that declares none gets `Read`, `Glob`,
+`Grep`; `tools: "*"` means all assignable tools.
+An unrecognized name — including the withdrawn `A2A` and `Peer` tools (D326 /
 ADR 0165) — is dropped with a parse warning.
 
 A document may opt into the parent session's live tool catalog with
 `tools: inherit` or `tools: [inherit, Bash]` (ADR 0246 / D415). At `Task` spawn
 the runtime unions `toolCatalog` keys (including deferred plugin/MCP tools)
 with any assignable extras, then drops `Task` / `TaskWait` / `TaskList` /
-`TaskStop`, `EnterPlanMode` / `EnterGoalMode`, `asktool`, `new_context`, and
-`ToolSearch`. Builtins do not opt in. `inherit` is visible in the Markdown and
-in Settings; host-core keeps the token so an inherit-only document still
-loads. Plugin tools, `Skill`, and MCP tools are therefore available to a
-delegate only through this opt-in, never by putting those names on the
-assignable whitelist.
+`TaskStop` / `TaskRead` / `TaskRecover`, `EnterPlanMode` / `EnterGoalMode`, `asktool`,
+`new_context`, and `ToolSearch`. Builtins do not opt in. `inherit` is visible
+in the Markdown and in Settings; host-core keeps the token so an inherit-only
+document still loads. Plugin and MCP tools are available only through this
+opt-in. `Skill` may also be declared explicitly, but it can load only the
+documents currently authorized for the owning session.
 
 Without `tools: inherit`, a delegate's available tools are its definition's,
 never its session's: it cannot gain a tool because the parent has it, and a

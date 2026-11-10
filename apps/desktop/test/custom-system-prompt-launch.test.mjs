@@ -39,6 +39,7 @@ function launchRuntime() {
         if (method === "skills.active") return { skills: [] };
         if (method === "mcp.active") return { servers: [] };
         if (method === "project.memory.get") return {};
+        if (method === "project.group.context") return { context: null };
         throw new Error(`Unexpected host call ${method}`);
       },
     } },

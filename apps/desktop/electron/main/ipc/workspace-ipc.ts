@@ -10,6 +10,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   ErrorCodes,
   IPC,
+  parseProjectAgentSettings,
   type ComposerPasteFile,
   type FsChatRefProjectRoot,
   type FsChatRefResolveResult,
@@ -231,9 +232,10 @@ export function registerWorkspaceIpc({
     }
     return { workspace: await withGitBranch(res.workspace) };
   });
-  handle(IPC.invoke.projectGroupCreateRemote, async (input: { name?: unknown; hostKey?: unknown; path?: unknown } = {}) => {
+  handle(IPC.invoke.projectGroupCreateRemote, async (input: { name?: unknown; hostKey?: unknown; path?: unknown; capabilities?: unknown; instructions?: unknown } = {}) => {
     if (!host) throw new Error("host unavailable");
     const name = typeof input.name === "string" ? input.name.trim() : "";
+    const settings = parseProjectAgentSettings(input);
     const hostKey = typeof input.hostKey === "string" ? input.hostKey.trim() : "";
     const path = typeof input.path === "string" ? input.path.trim() : "";
     if (!name || Array.from(name).length > 80 || !hostKey || hostKey.length > 200 || hostKey.includes(":")
@@ -243,7 +245,7 @@ export function registerWorkspaceIpc({
     const boot = getActiveRemoteHostsBoot();
     if (!boot) throw new Error("remote hosts unavailable");
     const directory = await boot.browseProjects(hostKey, path);
-    const created = await host.call("project.group.createRemote", { name, remote: { hostKey, path: directory.path } });
+    const created = await host.call("project.group.createRemote", { name, remote: { hostKey, path: directory.path }, ...settings });
     void refreshProjectGroups(host);
     return created;
   });
@@ -263,9 +265,10 @@ export function registerWorkspaceIpc({
   });
   handle(
     IPC.invoke.projectGroupCreate,
-    async (input: { name?: unknown; folders?: unknown } = {}) => {
+    async (input: { name?: unknown; folders?: unknown; capabilities?: unknown; instructions?: unknown } = {}) => {
       if (!host) throw new Error("host unavailable");
       const name = typeof input.name === "string" ? input.name.trim() : "";
+      const settings = parseProjectAgentSettings(input);
       const folders = Array.isArray(input.folders)
         ? input.folders.filter((path): path is string => typeof path === "string")
         : [];
@@ -290,6 +293,7 @@ export function registerWorkspaceIpc({
       const created = await host.call("project.group.create", {
         name,
         folders: safeFolders,
+        ...settings,
       });
       void refreshProjectGroups(host);
       return created;
@@ -302,6 +306,8 @@ export function registerWorkspaceIpc({
       name?: unknown;
       folders?: unknown;
       primary?: unknown;
+      capabilities?: unknown;
+      instructions?: unknown;
     } = {}) => {
       if (!host) throw new Error("host unavailable");
       const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
@@ -310,6 +316,7 @@ export function registerWorkspaceIpc({
         ? input.folders.filter((path): path is string => typeof path === "string")
         : [];
       const primary = typeof input.primary === "string" ? input.primary.trim() : "";
+      const settings = parseProjectAgentSettings(input);
       if (!groupId || !name || folders.length === 0) {
         throw Object.assign(new Error("project group id, name and folders required"), {
           errorCode: ErrorCodes.INVALID_ARGUMENT,
@@ -321,6 +328,7 @@ export function registerWorkspaceIpc({
           name,
           folders,
           ...(primary ? { primary } : {}),
+          ...settings,
         });
         void refreshProjectGroups(host);
         return result;
@@ -348,6 +356,7 @@ export function registerWorkspaceIpc({
         groupId,
         name,
         folders: safeFolders,
+        ...settings,
         ...(safePrimary ? { primary: safePrimary } : {}),
       });
       void refreshProjectGroups(host);
@@ -356,7 +365,7 @@ export function registerWorkspaceIpc({
   );
   handle(
     IPC.invoke.projectGroupRename,
-    async (input: { groupId?: unknown; name?: unknown } = {}) => {
+    async (input: { groupId?: unknown; name?: unknown; capabilities?: unknown; instructions?: unknown } = {}) => {
       if (!host) throw new Error("host unavailable");
       const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
       const name = typeof input.name === "string" ? input.name.trim() : "";
@@ -365,7 +374,7 @@ export function registerWorkspaceIpc({
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      const renamed = await host.call("project.group.rename", { groupId, name });
+      const renamed = await host.call("project.group.rename", { groupId, name, ...parseProjectAgentSettings(input) });
       void refreshProjectGroups(host);
       return renamed;
     },

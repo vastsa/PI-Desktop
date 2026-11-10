@@ -209,7 +209,7 @@ pi.composer.clearSuggestion(input?: { sessionId?: string }): Promise<{ ok: true 
 
 ```js
 pi.events.on("session:turnEnded", async (event) => {
-  if (event.reason !== "completed") return;
+  if (event.scope === "subagent" || event.reason !== "completed") return;
   const active = await pi.session.getActive();
   if (active?.sessionId !== event.sessionId) return;
   const text = await writeNextLine(active); // the plugin's own model request
@@ -458,8 +458,11 @@ type ToolExecContext = {
 }
 ```
 
-`turnId` 对宿主驱动的回合会被填充，并与对应的 `session:turnEnded` 事件（§5）的
-`turnId` 一致。
+`turnId` 与对应清理 `session:turnEnded` 事件（§5）一致。根调用使用持久化 Host
+回合，子调用使用独立合成的执行 owner id，不是旧或当前父回合。它是不透明资源键，
+不能用作持久化会话 turn API 的权限。`signal` 只取消本次调用：停止父级不会取消
+存活子代理的调用，明确的子取消与会话销毁会。插件 MCP 接收相同信号，但不停止
+共享 MCP 服务器。
 
 ### models（需要 `models.list`）
 ```ts
@@ -1272,6 +1275,15 @@ pi.events.off(event, handler)
   工具都已退出——迟到结果仍可能到达——因此插件必须按 `turnId` 串行化或以其他方式
   限定清理范围。该事件同样不需要新权限：它走既有的插件事件通道，订阅未知的事件名
   也不会报错。依赖该事件的插件必须确认其支持的宿主版本；历史宿主可能不发送这一增量事件。
+  子执行还使用该事件作为兼容清理通知：增加 `scope: "subagent"`、`parentTurnId`
+  与 `executionOwnerId`，且 `turnId === executionOwnerId`，与子工具上下文一致。
+  每个子执行生命周期发送一次，仅发给实际执行过该子工具且仍在项目作用域内的插件。
+  它不创建或结算持久化回合、不延迟父事件，也不表示整个会话结束。只关心持久化
+  父回合的监听器必须忽略 `scope === "subagent"`；清理须按准确上下文 id，而非
+  仅按 session 分组。
+- `subagent:executionEnded` —— 与上述兼容通知相同的子作用域载荷和接收者，在
+  完成、失败、明确的子 Stop 或运行时/传输销毁时发出。订阅两个事件名的插件须
+  幂等清理；投递同样没有 ack 或重放保证。
 
 - `session:activated` —— 载荷是 `PluginActiveSession` 对象或 `null`，在该快照变化时
   发送：用户切到另一个会话（或离开聊天）、选中会话的项目变化、或它的运行回合开始

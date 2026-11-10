@@ -313,6 +313,7 @@ fn parse_message(
         model_system: None,
         provider_replay: None,
         session_message: None,
+        subagent_control: None,
     })
 }
 

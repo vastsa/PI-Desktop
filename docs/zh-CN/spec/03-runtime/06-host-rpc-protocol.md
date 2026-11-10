@@ -85,6 +85,13 @@ Electron 和 sidecar 不能独立过度接纳相同的资源。
 因此，排队的 `Bash`/read/search 调用在等待时不会保留全局容量
 对于同一会话中的较早突变。
 
+Shared calls wait at most 30 seconds; a mutating call (a `Write` or `Edit`) waits
+for its conflicting holder for up to `MUTATION_QUEUE_WAIT_MS` (ten minutes),
+because the holder it waits for is a domain-fenced search that is still scanning,
+not a stuck Host. Electron's `HostProcess` retries an admission
+`HOST_OVERLOADED` after 50, 100, 200, 400, 800, 1 600, 3 200, 6 400, 8 000 and
+9 000 ms — about 30 seconds in total — and never replays an admitted request.
+
 ### 请求
 
 ```json

@@ -57,9 +57,9 @@ test("create project dialog can create the project from a git checkout", () => {
   assert.match(dialog, /parentPath: cloneParent/);
   assert.match(dialog, /!projectName \|\| !cloneTarget \|\| !cloneParent \|\| busy/);
   assert.match(dialog, /project\.cloning/);
-  assert.match(store, /createProjectFromGit: async \(\{ name, url, parentPath \}\)/);
+  assert.match(store, /createProjectFromGit: async \(\{ name, url, parentPath, agentSettings \}\)/);
   assert.match(store, /api\.cloneProjectInto\(url, parentPath\)/);
-  assert.match(store, /folders: \[checkout\.path\], primaryPath: checkout\.path/);
+  assert.match(store, /folders: \[checkout\.path\], primaryPath: checkout\.path, agentSettings/);
   assert.match(api, /cloneProjectInto: \(url: string, parentPath: string\)/);
   assert.match(protocol, /projectCloneCheckout:\s*"pi-desktop\/project\/cloneCheckout"/);
 });
@@ -70,9 +70,9 @@ test("project creation creates one logical group with a primary workspace", () =
     store,
     /openProject: async \(options\) => \{\s*set\(\{\s*createProjectDialogOpen: true,\s*createProjectDialogRemoteHostKey: options\?\.remoteHostKey\s*\}\)/,
   );
-  assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\)/);
+  assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath, agentSettings \}\)/);
   assert.match(store, /const orderedFolders = \[/);
-  assert.match(store, /api\.createProjectGroup\(normalizedName, orderedFolders\)/);
+  assert.match(store, /api\.createProjectGroup\(normalizedName, orderedFolders, agentSettings\)/);
   assert.match(store, /const \{ groups \} = await api\.listProjectGroups\(\)/);
   assert.match(store, /group\.roots\.some\(\(root\) => normalizeProjectPath\(root\.path\) === selectedPath\)/);
   assert.match(store, /const existingPrimary = existing\.primaryPath \|\| orderedFolders\[0\]/);
@@ -86,13 +86,13 @@ test("project creation creates one logical group with a primary workspace", () =
   );
   // Folder picks and git checkouts share one project creation semantic.
   assert.match(store, /async function createNamedProjectGroup\(/);
-  assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\) =>\s*createNamedProjectGroup\(/);
+  assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath, agentSettings \}\) =>\s*createNamedProjectGroup\(/);
 });
 
 test("folder picker is a renderer-only multi-directory selection", () => {
   assert.match(protocol, /projectPickFolders:\s*"pi-desktop\/project\/pickFolders"/);
   assert.match(protocol, /projectGroupCreate:\s*"pi-desktop\/project-group\/create"/);
-  assert.match(api, /createProjectGroup: \(name: string, folders: string\[\]\)/);
+  assert.match(api, /createProjectGroup: \(name: string, folders: string\[\], settings\?: ProjectAgentSettings\)/);
   assert.match(main, /project\.group\.create/);
   assert.match(api, /pickProjectFolders: \(\) =>[\s\S]*?projectPickFolders/);
   const start = main.indexOf("IPC.invoke.projectPickFolders");

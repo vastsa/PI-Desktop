@@ -1,4 +1,7 @@
 import type { ReviewContextLines, ReviewContextResult, ReviewTurnsPage, ReviewChangesPage } from "@pi-desktop/shared";
+import type { AgentSubagentControlRequest, AgentSubagentControlResponse } from "@pi-desktop/shared";
+import type { ProjectAgentSettings, ProjectCapabilityCatalog } from "@pi-desktop/shared";
+
 type ClipboardDirectoryPaste = {
   items: Array<{ kind: "directory"; path: string; name: string } | { kind: "file"; name: string }>;
   token: string | null;
@@ -173,13 +176,19 @@ import {
   normalizeLargePasteThreshold,
   normalizeMode,
   normalizeNetworkProxy,
+  normalizeNetworkDns,
   normalizeNetworkPolicy,
+  normalizeProviderRetryMaxAttempts,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryFixedDelayMs,
+  providerRetrySettingsWriteError,
   normalizeRadialMenuPreferences,
   radialMenuWriteError,
   resolveFontScale,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
   validateNetworkProxy,
+  validateNetworkDns,
   validateSpeechSettings,
   JEV_API_KEY_SECRET_REF,
 } from "@pi-desktop/shared";
@@ -444,7 +453,7 @@ function isTranscriptDisplayModeValue(value: unknown): value is TranscriptDispla
 }
 
 export function normalizeSettings(settings: AppSettings): AppSettings {
-  return {
+  const normalized: AppSettings = {
     ...settings,
     sidebarRunningIndicators: settings.sidebarRunningIndicators !== false,
     sidebarRunningBadge: settings.sidebarRunningBadge !== false,
@@ -475,10 +484,22 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
+    networkDns: normalizeNetworkDns((settings as { networkDns?: unknown }).networkDns),
     networkPolicy: normalizeNetworkPolicy(
       (settings as { networkPolicy?: unknown }).networkPolicy,
     ),
   };
+  const retryFields = [
+    ["providerRetryMaxAttempts", normalizeProviderRetryMaxAttempts],
+    ["providerRetryInitialDelayMs", normalizeProviderRetryInitialDelayMs],
+    ["providerRetryFixedDelayMs", normalizeProviderRetryFixedDelayMs],
+  ] as const;
+  for (const [field, normalize] of retryFields) {
+    const value = normalize(settings[field]);
+    if (value === undefined) delete normalized[field];
+    else normalized[field] = value;
+  }
+  return normalized;
 }
 
 export function validateSettingsWrite(settings: AppSettings): AppSettings {
@@ -544,6 +565,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     updatePreference?: unknown;
     lastNotifiedUpdateVersion?: unknown;
     networkProxy?: unknown;
+    networkDns?: unknown;
     networkPolicy?: unknown;
   };
   if (
@@ -586,6 +608,10 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
+  }
+  const providerRetryProblem = providerRetrySettingsWriteError(settings);
+  if (providerRetryProblem !== undefined) {
+    throw Object.assign(new Error(providerRetryProblem), { errorCode: "INVALID_PARAMS" });
   }
   if (
     Object.prototype.hasOwnProperty.call(settings, "scheduledTasksEnabled") &&
@@ -680,6 +706,15 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       });
     }
     value.networkProxy = proxy.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "networkDns")) {
+    const dns = validateNetworkDns(value.networkDns);
+    if (!dns.ok) {
+      throw Object.assign(new Error(dns.error), {
+        errorCode: "INVALID_PARAMS",
+      });
+    }
+    value.networkDns = dns.value;
   }
   if (Object.prototype.hasOwnProperty.call(value, "networkPolicy")) {
     const policy = validateNetworkPolicy(value.networkPolicy);
@@ -1066,14 +1101,16 @@ export const api = {
   setSidebarPreferences: (value: unknown) => invoke<void>(IPC.invoke.sidebarPreferencesSet, value),
   listProjects: () =>
     invoke<{ projects: ProjectRecord[] }>(IPC.invoke.projectList),
+  listProjectCapabilities: (projectPath?: string, remote?: boolean) =>
+    invoke<ProjectCapabilityCatalog>(IPC.invoke.projectCapabilitiesList, { projectPath, remote }),
   listProjectGroups: () =>
     invoke<{ groups: ProjectGroupRecord[] }>(IPC.invoke.projectGroupList),
-  createRemoteProjectGroup: (name: string, hostKey: string, path: string) =>
-    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupCreateRemote, { name, hostKey, path }),
-  createProjectGroup: (name: string, folders: string[]) =>
-    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupCreate, { name, folders }),
-  renameProjectGroup: (groupId: string, name: string) =>
-    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupRename, { groupId, name }),
+  createRemoteProjectGroup: (name: string, hostKey: string, path: string, settings?: ProjectAgentSettings) =>
+    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupCreateRemote, { name, hostKey, path, ...settings }),
+  createProjectGroup: (name: string, folders: string[], settings?: ProjectAgentSettings) =>
+    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupCreate, { name, folders, ...settings }),
+  renameProjectGroup: (groupId: string, name: string, settings?: ProjectAgentSettings) =>
+    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupRename, { groupId, name, ...settings }),
   // `primary` names the folder that becomes the group's primary root; the host
   // keeps the stored one when it is omitted.
   updateProjectGroup: (
@@ -1081,12 +1118,14 @@ export const api = {
     name: string,
     folders: string[],
     primary?: string,
+    settings?: ProjectAgentSettings,
   ) =>
     invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupUpdate, {
       groupId,
       name,
       folders,
       ...(primary ? { primary } : {}),
+      ...settings,
     }),
   getProjectGroupMemory: (groupId: string) =>
     invoke<{ memory: ProjectMemory }>(IPC.invoke.projectGroupMemoryGet, { groupId }),
@@ -1229,6 +1268,8 @@ export const api = {
     invoke(IPC.invoke.agentAbort, { sessionId }),
   stopSubagents: (req: AgentStopSubagentsRequest) =>
     invoke<AgentStopSubagentsResponse>(IPC.invoke.agentStopSubagents, req),
+  controlSubagent: (req: AgentSubagentControlRequest) =>
+    invoke<AgentSubagentControlResponse>(IPC.invoke.agentSubagentControl, req),
   stop: (sessionId: string, turnId?: string) =>
     invoke<AgentStopResponse>(IPC.invoke.agentStop, { sessionId, ...(turnId ? { turnId } : {}) }),
   queuePrompt: (req: AgentQueuePushRequest) =>

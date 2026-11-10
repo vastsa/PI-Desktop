@@ -216,12 +216,26 @@ export function collectDelegationStatuses(
       statuses.set(id, status);
     }
   }
+  // A delegate the parent deliberately detached keeps working after its turn
+  // ended, so the projection must not paint it as aborted/stopped (#2304).
+  // Later rows win: a settled snapshot clears the marker again.
+  const detachedRunning = new Set<string>();
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    const payload = asRecord(toolResultPayload(item.message));
+    const id = payload?.delegationId;
+    if (typeof id !== "string" || !id) continue;
+    if (payload?.status === "running" && payload.detached === true) detachedRunning.add(id);
+    else if (asDelegationStatus(payload?.status)) detachedRunning.delete(id);
+  }
+  for (const id of detachedRunning) statuses.set(id, "running");
   if (options?.turnLive === false) {
     for (const item of items) {
       if (item.kind !== "tool" || !isDelegationActivityItem(item)) continue;
       const payload = asRecord(toolResultPayload(item.message));
       const id = payload?.delegationId;
       if (typeof id !== "string" || !id) continue;
+      if (detachedRunning.has(id)) continue;
       const current = statuses.get(id);
       if (!current || current === "running") statuses.set(id, "aborted");
     }

@@ -16,7 +16,7 @@
  * itself, and a total outage degrades to the built-in catalog.
  */
 import { net, session } from "electron";
-import { lookup } from "node:dns/promises";
+import { lookupDesktopHost } from "./network-proxy";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import type { IncomingHttpHeaders } from "node:http";
@@ -138,7 +138,7 @@ async function resolvePublicUrl(
     return { address: literal, family: literalFamily, route };
   }
   const addresses = await withTimeout(
-    lookup(host, { all: true, verbatim: true }),
+    lookupDesktopHost(host),
     remaining,
   );
   if (!addresses.length) throw new Error(`hostname does not resolve: ${host}`);

@@ -1,6 +1,7 @@
 import { ErrorCodes, IPC, type AgentEventEnvelope, type PlanExecutionFinishStatus, type Risk } from "@pi-desktop/shared";
 import { assertLinuxGlibcSupported } from "../linux-glibc";
 import { HostProcess } from "../host-process";
+import type { NetworkDnsSettings } from "@pi-desktop/shared";
 import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
@@ -46,6 +47,7 @@ export type HostRuntimeDependencies = {
   superviseRestart: (kind: "host" | "sidecar") => Promise<void>;
   isQuitting: () => boolean;
   ensureSystemProxyRelay: () => Promise<string>;
+  currentNetworkDns: () => NetworkDnsSettings;
 };
 
 export function createHostRuntime({
@@ -73,6 +75,7 @@ export function createHostRuntime({
   superviseRestart,
   isQuitting,
   ensureSystemProxyRelay,
+  currentNetworkDns,
 }: HostRuntimeDependencies): {
   wireHost: (host: HostProcess) => void;
   startHost: () => Promise<void>;
@@ -83,6 +86,7 @@ export function createHostRuntime({
     isCurrent: () => runtimeState.host === h,
     isTurnDispatchable: (sessionId, turnId) => isTurnDispatchable(sessionId, turnId),
     log: (message, error) => logger.app("diagnostics", "warn", message, { data: String(error) }),
+    getExecution: (request) => runtimeState.sidecar?.getToolExecution(request, h),
   });
 
   h.onNotification((method, params) => {
@@ -183,6 +187,11 @@ export function createHostRuntime({
           args: unknown;
           mode?: string;
         };
+        const execution = runtimeState.sidecar?.getToolExecution(q, h);
+        const dispatchable = () => runtimeState.host === h &&
+          (!runtimeState.sidecar || runtimeState.sidecar.getToolExecution(q, h) === execution && execution !== undefined) &&
+          !execution?.signal.aborted &&
+          (execution?.owner !== undefined || isTurnDispatchable(q.sessionId ?? "", q.turnId));
         const projectPath = q.sessionId
           ? (sessionProjects.get(q.sessionId) ?? null)
           : null;
@@ -190,7 +199,8 @@ export function createHostRuntime({
         let payload: Record<string, unknown>;
         if (q.toolName.startsWith("mcp_")) {
           try {
-            const result = await userMcp.callTool(q.toolName, q.args, projectPath, q.sessionId);
+            if (!dispatchable()) throw Object.assign(new Error("MCP execution was cancelled"), { code: "TOOL_ABORTED" });
+            const result = await userMcp.callTool(q.toolName, q.args, projectPath, q.sessionId, execution?.signal);
             payload = { executionId: q.executionId, ok: true, content: result ?? null };
           } catch (e) {
             payload = {
@@ -276,7 +286,7 @@ export function createHostRuntime({
             // `tools.execute`, so a call without one is not a supported shape; a
             // standalone caller that ever needs the channel must be distinguished
             // by an explicit origin instead of by an absent identity.
-            if (!isTurnDispatchable(q.sessionId ?? "", q.turnId)) {
+            if (!dispatchable()) {
               payload = {
                 executionId: q.executionId,
                 ok: false,
@@ -286,9 +296,11 @@ export function createHostRuntime({
                 },
               };
             } else {
+              runtimeState.sidecar?.markToolExecutionPlugin(q, tool.pluginId);
               const result = await tool.execute(q.args, {
                 sessionId: q.sessionId,
-                turnId: q.turnId,
+                turnId: execution?.owner?.executionOwnerId ?? q.turnId,
+                signal: execution?.signal,
                 mode: sessionMode,
                 modelKey,
                 thinkingLevel,
@@ -417,6 +429,7 @@ export function createHostRuntime({
     await h.handshake();
     await h.call("network.configureSystemProxyRelay", {
       url: systemProxyRelayUrl,
+      desktopDnsEnabled: currentNetworkDns().mode === "doh",
     });
     logger.app("runtime", "info", "host-core handshake ok", {
       data: { generation: h.generation },

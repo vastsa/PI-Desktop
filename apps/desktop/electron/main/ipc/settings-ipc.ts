@@ -1,10 +1,16 @@
-import { IPC, type UpdatePreference } from "@pi-desktop/shared";
+import {
+  IPC, type UpdatePreference,
+  normalizeProviderRetryMaxAttempts,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryFixedDelayMs,
+  providerRetrySettingsWriteError,
+} from "@pi-desktop/shared";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
 import type { LiveCallService } from "../live-voice/call-service";
 import type { AppSettings } from "@pi-desktop/shared";
-import { currentSystemProxyRelayUrl } from "../network-proxy";
+import { currentNetworkDns, currentSystemProxyRelayUrl, ensureSystemProxyRelay } from "../network-proxy";
 
 export type SettingsIpcDependencies = {
   registrar: IpcRegistrar;
@@ -31,6 +37,21 @@ export type SettingsIpcDependencies = {
   liveCallService?: Pick<LiveCallService, "beginSettingsWrite" | "settingsWritten">;
 };
 
+function normalizeRetrySettings(settings: unknown): unknown {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return settings;
+  const normalized: Record<string, unknown> = { ...settings };
+  for (const [field, normalize] of [
+    ["providerRetryMaxAttempts", normalizeProviderRetryMaxAttempts],
+    ["providerRetryInitialDelayMs", normalizeProviderRetryInitialDelayMs],
+    ["providerRetryFixedDelayMs", normalizeProviderRetryFixedDelayMs],
+  ] as const) {
+    const value = normalize(normalized[field]);
+    if (value === undefined) delete normalized[field];
+    else normalized[field] = value;
+  }
+  return normalized;
+}
+
 /** Register app settings and command-shell channels. */
 export function registerSettingsIpc({
   registrar,
@@ -51,11 +72,15 @@ export function registerSettingsIpc({
   liveCallService,
 }: SettingsIpcDependencies): void {
   let host: HostProcess | null = null;
-  let sidecar: AgentSidecar | null = null;
+  let settingsWriteQueue = Promise.resolve();
+  const queueSettingsWrite = (write: () => Promise<AppSettings>): Promise<AppSettings> => {
+    const operation = settingsWriteQueue.then(write);
+    settingsWriteQueue = operation.then(() => {}, () => {});
+    return operation;
+  };
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, async (...args) => {
       host = getHost();
-      sidecar = getSidecar();
       return fn(...args);
     });
   };
@@ -63,17 +88,28 @@ export function registerSettingsIpc({
   handle(IPC.invoke.settingsGet, async () => {
     if (!host) throw new Error("host unavailable");
     const settings = await host.call("settings.get");
-    return normalizeSettings(settings);
+    return normalizeRetrySettings(normalizeSettings(settings));
   });
 
   handle(IPC.invoke.networkProxyTest, async (settings: unknown) => {
     return testNetworkProxy(settings);
   });
 
-  handle(IPC.invoke.settingsSet, async (settings: unknown) => {
+  handle(IPC.invoke.settingsSet, (settings: unknown) => queueSettingsWrite(async () => {
+    const host = getHost();
     if (!host) throw new Error("host unavailable");
+    const assertCurrentHost = () => {
+      if (getHost() !== host) throw new Error("host changed during network setup");
+    };
+    if (settings && typeof settings === "object" && !Array.isArray(settings)) {
+      const problem = providerRetrySettingsWriteError(settings);
+      if (problem !== undefined) {
+        throw Object.assign(new Error(problem), { errorCode: "INVALID_PARAMS" });
+      }
+    }
     const validatedSettings = validateSettingsWrite(settings);
     const currentSettings = await host.call<AppSettings>("settings.get");
+    assertCurrentHost();
     const prospectiveSettings = validatedSettings && typeof validatedSettings === "object" && !Array.isArray(validatedSettings)
       ? { ...currentSettings, ...(validatedSettings as Partial<AppSettings>) }
       : currentSettings;
@@ -81,7 +117,9 @@ export function registerSettingsIpc({
     let result: AppSettings;
     try {
       result = await host.call<AppSettings>("settings.set", validatedSettings);
+      assertCurrentHost();
       await liveCallService?.settingsWritten(result);
+      assertCurrentHost();
     } finally {
       releaseSettingsWrite?.();
     }
@@ -98,18 +136,42 @@ export function registerSettingsIpc({
       .preventScreenSleep === "boolean") {
       applyPreventScreenSleep(validatedSettings as { preventScreenSleep: boolean });
     }
-    await applyNetworkProxyFromAppSettings(validatedSettings);
+    // settings.set acknowledges a write; only the persisted merged snapshot
+    // can preserve DNS/proxy preferences omitted by an unrelated partial save.
+    const persistedSettings = await host.call<AppSettings>("settings.get");
+    assertCurrentHost();
+    await applyNetworkProxyFromAppSettings(persistedSettings);
+    assertCurrentHost();
+    const desktopDnsEnabled = currentNetworkDns().mode === "doh";
+    const relayUrl = desktopDnsEnabled
+      ? await ensureSystemProxyRelay()
+      : currentSystemProxyRelayUrl();
+    assertCurrentHost();
+    if (relayUrl) {
+      await host.call("network.configureSystemProxyRelay", {
+        url: relayUrl,
+        desktopDnsEnabled,
+      });
+      assertCurrentHost();
+    }
+    const sidecar = getSidecar();
     if (sidecar) {
       try {
         await sidecar.call("sidecar.configure", {
           hostBinary: host.binaryPath,
           dataDir,
           networkProxy: currentNetworkProxy(),
-          systemProxyRelayUrl: currentSystemProxyRelayUrl(),
+          systemProxyRelayUrl: relayUrl,
+          desktopDnsEnabled,
         });
-      } catch {
-        // Sidecar will pick up PI_DESKTOP_PROXY_JSON on the next spawn.
+      } catch (error) {
+        // A stopped sidecar is configured on spawn. Secure DNS cannot report
+        // successful live application while its provider transport is unchanged.
+        if (desktopDnsEnabled) throw error;
+        console.warn("Sidecar network settings will be applied on its next start", error);
       }
+      assertCurrentHost();
+      if (getSidecar() !== sidecar) throw new Error("sidecar changed during network setup");
     }
     applyApplicationMenuSettings(
       validatedSettings as {
@@ -124,7 +186,7 @@ export function registerSettingsIpc({
     );
     applyDeveloperMode(validatedSettings as { developerMode?: unknown } | null);
     return result;
-  });
+  }));
 
   handle(IPC.invoke.commandShellList, async () => resolveEffectiveCommandShell());
 }

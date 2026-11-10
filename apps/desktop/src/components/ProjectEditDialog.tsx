@@ -2,7 +2,8 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
-import type { ProjectGroupRecord, ProjectGroupRoot } from "@pi-desktop/shared";
+import type { ProjectAgentSettings, ProjectGroupRecord, ProjectGroupRoot } from "@pi-desktop/shared";
+import { ProjectAgentSettingsFields, projectInstructionsTooLarge } from "./ProjectAgentSettingsFields";
 import { api } from "../lib/api";
 import { MAX_PROJECT_NAME_CHARS } from "../lib/sidebar-preferences";
 import { OverlayBackdrop, Button, Input, TooltipButton } from "./ui";
@@ -62,6 +63,7 @@ export function ProjectEditDialog({
   );
   const [primaryPath, setPrimaryPath] = useState(project.path);
   const [loading, setLoading] = useState(true);
+  const [agentSettings, setAgentSettings] = useState<ProjectAgentSettings>({});
   const [busy, setBusy] = useState(false);
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -72,9 +74,11 @@ export function ProjectEditDialog({
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setGroup(null);
     void api
       .listProjectGroups()
-      .then(({ groups }) => {
+      .then(async ({ groups }) => {
         if (cancelled) return;
         const requestedPath = project.path;
         const resolved = groups.find(
@@ -86,6 +90,9 @@ export function ProjectEditDialog({
         if (!resolved) {
           throw new Error(t("project.notFound", { defaultValue: "Project not found" }));
         }
+        const { content } = await api.getProjectGroupInstructions(resolved.id);
+        if (cancelled) return;
+        setAgentSettings({ capabilities: resolved.capabilities ?? {}, instructions: content });
         setGroup(resolved);
         setName(resolved.name);
         setPrimaryPath(resolved.primaryPath);
@@ -122,7 +129,7 @@ export function ProjectEditDialog({
       }
       if (event.key !== "Tab") return;
       const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'input:not([disabled]), button:not([disabled])',
+        'input:not([disabled]), textarea:not([disabled]), button:not([disabled])',
       );
       if (!focusable?.length) return;
       const first = focusable[0];
@@ -175,14 +182,14 @@ export function ProjectEditDialog({
 
   const submit = async () => {
     const trimmedName = name.trim();
-    if (!group || loading || !trimmedName || busyRef.current) return;
+    if (!group || loading || !trimmedName || busyRef.current || projectInstructionsTooLarge(agentSettings.instructions)) return;
     if (folders.length === 0 || !folders.some((path) => samePath(path, primaryPath))) return;
     busyRef.current = true;
     setBusy(true);
     try {
       const result = group.remote
-        ? await api.renameProjectGroup(group.id, trimmedName)
-        : await api.updateProjectGroup(group.id, trimmedName, folders, primaryPath);
+        ? await api.renameProjectGroup(group.id, trimmedName, agentSettings)
+        : await api.updateProjectGroup(group.id, trimmedName, folders, primaryPath, agentSettings);
       onSaved(result.group);
       onClose();
     } catch (error) {
@@ -370,6 +377,8 @@ export function ProjectEditDialog({
                 </span>
               </Button> : null}
             </section>
+            <ProjectAgentSettingsFields projectPath={primaryPath} remote={Boolean(group?.remote)}
+              value={agentSettings} onChange={setAgentSettings} disabled={loading || busy || !group} />
           </div>
 
           <div className="project-create-dialog-actions">
@@ -380,7 +389,7 @@ export function ProjectEditDialog({
               type="submit"
               variant="primary"
               disabled={
-                loading ||
+                loading || projectInstructionsTooLarge(agentSettings.instructions) ||
                 !group ||
                 !name.trim() ||
                 folders.length === 0 ||

@@ -27,6 +27,7 @@ const desktopSidecarSrc = readFileSync(
   join(desktopRoot, "electron/main/runtime/sidecar.ts"),
   "utf8",
 );
+const skillToolSrc = readFileSync(join(desktopRoot, "electron/main/skill-tool.ts"), "utf8");
 const composerAutocompleteSrc = readFileSync(
   join(desktopRoot, "src/components/ComposerAutocomplete.tsx"),
   "utf8",
@@ -116,17 +117,16 @@ test("the built-in plugin skill only activates for plugin workspaces", () => {
 });
 
 test("the built-in skill body loads through the same Skill tool", () => {
-  // Host-owned skills are not in any registry, so main tries them first, then
-  // the user's own skills, then a plugin's — bare ids cannot collide with the
-  // `<pluginId>/<skillId>` form.
+  // The session-scoped handler tries built-in and user skills before checking
+  // plugin scope. The same handler is registered for parent and child requests.
   assert.match(builtinSrc, /export function loadBuiltinSkillBody/);
-  assert.match(
-    mainSrc,
-    /loadBuiltinSkillBody\(id\) \?\?\s*\(await loadUserSkillBody\(id, projectPath\)\) \?\?\s*plugins\.loadSkillBody\(id\)/,
-  );
-  assert.match(mainSrc, /const userIds = \(await activeUserSkills/);
-  assert.match(desktopSidecarSrc, /formatSkillToolContent\(skill\)/);
-  assert.match(desktopSidecarSrc, /await assertBuiltinSkillEnabled\(id, disabledBuiltinSkills\)/);
+  assert.match(desktopSidecarSrc, /s\.setLocalTool\("Skill", createSkillToolHandler\(/);
+  assert.match(skillToolSrc, /loadBuiltinSkillBody\(id\) \?\? await input\.loadUserSkillBody\(id, projectPath\)/);
+  assert.match(skillToolSrc, /skill = input\.plugins\.loadSkillBody\(id\)/);
+  assert.match(skillToolSrc, /input\.pluginActiveInProject\(definition\.pluginId, projectPath\)/);
+  assert.match(skillToolSrc, /const userIds = \(await input\.activeUserSkills/);
+  assert.match(skillToolSrc, /formatSkillToolContent\(skill\)/);
+  assert.match(skillToolSrc, /await assertBuiltinSkillEnabled\(id, input\.disabledBuiltinSkills\)/);
   assert.match(builtinSrc, /location: raw\.path/);
   assert.match(runtimeSrc, /location: skill\.path/);
 });

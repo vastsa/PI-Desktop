@@ -1,3 +1,4 @@
+import type { ProjectAgentSettings } from "@pi-desktop/shared";
 import type { RecentModel } from "../lib/recent-models";
 import type { RemoteProjectTarget } from "../lib/remote-project-session";
 import type {
@@ -285,17 +286,20 @@ export type AppState = {
   openProject: (options?: { remoteHostKey?: string }) => Promise<void>;
   closeProjectDialog: () => void;
   createProjectFromRemote: (input: {
+    agentSettings?: ProjectAgentSettings;
     name: string;
     hostKey: string;
     path: string;
   }) => Promise<void>;
   createProjectFromFolders: (input: {
+    agentSettings?: ProjectAgentSettings;
     name: string;
     folders: string[];
     primaryPath: string;
   }) => Promise<void>;
   /** Clone a public git remote into a chosen folder, then create its project. */
   createProjectFromGit: (input: {
+    agentSettings?: ProjectAgentSettings;
     name: string;
     url: string;
     parentPath: string;

@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import {
   isActiveInProject,
+  projectCapabilityAllowed,
   type McpServerRecord,
   type McpServerStatus,
 } from "@pi-desktop/shared";
@@ -59,6 +60,7 @@ export type UserMcpRuntimeOptions = {
   connectTimeoutMs?: number;
   callTimeoutMs?: number;
   discoveryTimeoutMs?: number;
+  selectedServerIds?: (projectPath: string | null | undefined) => Promise<readonly string[] | undefined>;
 };
 
 type Entry = {
@@ -184,7 +186,9 @@ export class UserMcpRuntime {
    * status rather than thrown.
    */
   async toolsForProject(projectPath: string | null | undefined): Promise<UserMcpToolDescriptor[]> {
-    const active = this.records.filter((record) => isActiveInProject(record, projectPath));
+    const selected = await this.options.selectedServerIds?.(projectPath);
+    const active = this.records.filter((record) => isActiveInProject(record, projectPath) &&
+      projectCapabilityAllowed(selected, record.id));
     const admitted = active.slice(0, MAX_ACTIVE_SERVERS);
     if (admitted.length < active.length) {
       this.options.log?.("warn", "user mcp servers skipped over the active cap", {
@@ -227,8 +231,9 @@ export class UserMcpRuntime {
     args: unknown,
     projectPath: string | null | undefined,
     sessionId?: string,
+    callerSignal?: AbortSignal,
   ): Promise<unknown> {
-    return this.calls.run(sessionId, (signal) => this.callToolActive(fullName, args, projectPath, signal));
+    return this.calls.run(sessionId, (signal) => this.callToolActive(fullName, args, projectPath, signal), callerSignal);
   }
 
   private async callToolActive(
@@ -240,6 +245,12 @@ export class UserMcpRuntime {
     const found = this.findTool(fullName);
     if (!found) {
       throw Object.assign(new Error(`unknown mcp tool: ${fullName}`), {
+        errorCode: "TOOL_NOT_FOUND",
+      });
+    }
+    const selected = await this.options.selectedServerIds?.(projectPath);
+    if (!projectCapabilityAllowed(selected, found.serverId)) {
+      throw Object.assign(new Error(`mcp server ${found.serverId} is not selected for this project`), {
         errorCode: "TOOL_NOT_FOUND",
       });
     }
@@ -257,6 +268,12 @@ export class UserMcpRuntime {
       });
     }
     try {
+      const currentSelection = await this.options.selectedServerIds?.(projectPath);
+      if (!projectCapabilityAllowed(currentSelection, found.serverId)) {
+        throw Object.assign(new Error(`mcp server ${found.serverId} is no longer selected for this project`), {
+          errorCode: "TOOL_NOT_FOUND",
+        });
+      }
       // Configuration or scope can change while the handshake is in flight.
       const current = this.records.find((entry) => entry.id === found.serverId);
       if (!current || !isActiveInProject(current, projectPath)) {

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { dialog, shell, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
-import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type Result } from "@pi-desktop/shared";
+import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type McpServerRecord, type Result } from "@pi-desktop/shared";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
@@ -38,6 +38,7 @@ import { registerWindowIpc } from "./window-ipc";
 import { registerWorktreeIpc } from "./worktree-ipc";
 import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-ipc";
 import { registerComposerIpc } from "./composer-ipc";
+import { loadProjectCapabilities } from "../project-capabilities";
 import { registerSpeechIpc } from "./speech-ipc";
 import { registerVoiceIpc } from "./voice-ipc";
 import { registerLiveVoiceIpc } from "./live-voice-ipc";
@@ -364,6 +365,13 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     optionalWorkspaceRoot,
     activeUserSkills,
     disabledBuiltinSkills: runtimeDisabledBuiltinSkills,
+    projectCapabilities: (root) => loadProjectCapabilities(getHost(), root),
+    projectMcpRecords: async (root) => {
+      const host = getHost();
+      if (!host) throw new Error("host unavailable");
+      const result = await host.call<{ servers: McpServerRecord[] }>("mcp.active", { projectPath: root });
+      return result.servers;
+    },
     pluginActiveInProject,
     loadComposerTemplatesCached,
   });

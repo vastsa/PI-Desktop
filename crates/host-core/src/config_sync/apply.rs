@@ -458,34 +458,48 @@ fn apply_entity(
             }
             bail!("CONFIG_SYNC_INVALID: unsupported instruction scope");
         }
-        let paths = mapped_project_paths(config, &entity.payload)?;
-        let group_id = if let Some(paths) = paths {
-            if let Some(group) = st.db.project_group_for_path(&paths[0])? {
-                group.id
-            } else {
-                let name = entity
-                    .payload
-                    .get("projectGroupName")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Imported project")
-                    .to_string();
-                st.db.create_project_group(&name, &paths)?.id
+        let mut settings = json!({});
+        if let Some(content) = entity.payload.get("content") {
+            settings["instructions"] = content.clone();
+        }
+        if let Some(capabilities) = entity.payload.get("capabilities") {
+            settings["capabilities"] = capabilities.clone();
+        }
+        // Validate the original payload before resolving or creating a group.
+        crate::db::ProjectGroupOptions::from_json(&settings)
+            .map_err(|error| anyhow!("CONFIG_SYNC_INVALID: {error}"))?;
+        if entity.deleted {
+            settings["instructions"] = json!("");
+            if entity.payload.get("capabilities").is_some() {
+                settings["capabilities"] = json!({});
             }
-        } else {
+        }
+        let options = crate::db::ProjectGroupOptions::from_json(&settings)?;
+        let Some(paths) = mapped_project_paths(config, &entity.payload)? else {
             bail!("CONFIG_SYNC_MAPPING_REQUIRED: project instructions need a group")
         };
-        st.db.set_project_group_instructions(
-            &group_id,
-            if entity.deleted {
-                ""
+        if let Some(group) = st.db.project_group_for_path(&paths[0])? {
+            if group.legacy {
+                st.db.update_project_group_with_options(
+                    &group.id,
+                    &group.name,
+                    &paths,
+                    None,
+                    &options,
+                )?;
             } else {
-                entity
-                    .payload
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-            },
-        )?;
+                st.db
+                    .rename_project_group_with_options(&group.id, &group.name, &options)?;
+            }
+        } else {
+            let name = entity
+                .payload
+                .get("projectGroupName")
+                .and_then(Value::as_str)
+                .unwrap_or("Imported project");
+            st.db
+                .create_project_group_with_options(name, &paths, &options)?;
+        }
         return Ok(());
     }
     if entity.domain == domains::DOMAIN_PLUGINS {
@@ -773,3 +787,11 @@ pub(crate) fn recover_import_journal(
         .unwrap_or_else(empty_manifest);
     apply_bundle_locked(st, config, key, base.as_ref(), &local_before, bundle)
 }
+
+#[cfg(test)]
+#[path = "project_group_options_tests.rs"]
+mod project_group_options_tests;
+
+#[cfg(test)]
+#[path = "network_dns_tests.rs"]
+mod network_dns_tests;

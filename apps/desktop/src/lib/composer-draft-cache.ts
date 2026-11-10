@@ -15,8 +15,8 @@ type CachedComposerDraft = ComposerDraftSnapshot & {
  * The cache is module-scoped rather than a Composer `useRef` so a remount —
  * empty-home ↔ docked, chat ↔ Settings/Plugins, or the window hiding and
  * showing — restores the same session slot instead of starting empty.
- * Nothing here is written to disk; a full renderer reload still starts blank,
- * matching the in-memory contract in the component spec.
+ * Drafts stay in memory by default. Explicit interface refresh may create a
+ * one-shot, window-scoped checkpoint; ordinary reload or restart stays blank.
  */
 export const HOME_DRAFT_KEY = "__home__";
 
@@ -155,6 +155,12 @@ export function captureComposerDraft(
   const snapshot = snapshotComposerDraft(text, fileReferences, key, workspacePath);
   cache.set(key, snapshot);
   return snapshot;
+}
+
+export function snapshotComposerDrafts(): Array<{ key: string; draft: ComposerDraftSnapshot; workspacePath?: string }> {
+  return [...cache].map(([key, { workspacePath, text, fileReferences }]) => ({ key,
+    draft: { text, fileReferences: fileReferences.map((reference) => ({ ...reference })) },
+    ...(workspacePath === undefined ? {} : { workspacePath }) }));
 }
 
 export function deleteComposerDraft(key: string): void {

@@ -1,3 +1,4 @@
+import { registerSubagentControlIpc } from "./subagent-control-ipc";
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
@@ -123,6 +124,8 @@ export function registerAgentIpc({
       return fn(...args);
     });
   };
+  registerSubagentControlIpc({ registrar, getHost, getSidecar, activeTurns, recordTurnStart,
+    isTurnDispatchable, acquireSessionOperation, finishTurn, resolveAgentRuntimeLaunch });
   handle(IPC.invoke.agentSteer, async (req: AgentSteerRequest) => {
     if (!host || !sidecar) throw new Error("backend unavailable");
     if (
@@ -718,7 +721,8 @@ export function registerAgentIpc({
     try {
       // An open extension prompt resolves with its abort value (spec 16 §9).
       agentExtensions.cancelPrompts(req.sessionId);
-      cancelSessionTools(req.sessionId, "Session turn was aborted");
+      // Runtime cancels parent-owned calls by ID. Session-wide cancellation
+      // would also kill independent subagent plugin and MCP work.
       result = await sidecar.call("agent.abort", {
         ...req,
         ...(abortedTurnId ? { turnId: abortedTurnId } : {}),

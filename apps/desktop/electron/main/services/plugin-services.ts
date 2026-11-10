@@ -1,5 +1,6 @@
 import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
 import { join } from "node:path";
+import { loadProjectCapabilities } from "../project-capabilities";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
 import { createPluginWorkspaceReader } from "../remote/plugin-workspace-files";
 import {
@@ -567,6 +568,7 @@ export function createPluginServices({
     connectTimeoutMs: MCP_CONNECT_TIMEOUT_MS,
     callTimeoutMs: MCP_CALL_TIMEOUT_MS,
     discoveryTimeoutMs: MCP_TOOL_DISCOVERY_TIMEOUT_MS,
+    selectedServerIds: async (root) => (await loadProjectCapabilities(getHost(), root))?.mcpServerIds,
     audit: (entry) => logger.app("plugin", "info", "mcp.api", entry),
     log: (level, message, data) => logger.app("plugin", level, message, { data }),
   });

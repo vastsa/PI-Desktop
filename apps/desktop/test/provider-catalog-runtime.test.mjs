@@ -248,3 +248,19 @@ test("a user-pinned context window is never replaced by the catalog number (#117
   }).models;
   assert.equal(inherited[0].contextWindow, 128_000, "a catalog-sourced window follows the published value");
 });
+
+test("retry settings preserve integers, reset nulls, and reject invalid writes", async () => {
+  const { runtime } = await fixtureRuntime();
+  for (const key of ["providerRetryMaxAttempts", "providerRetryInitialDelayMs", "providerRetryFixedDelayMs"]) {
+    for (const value of [0, 45_000, Number.MAX_SAFE_INTEGER]) {
+      assert.equal(runtime.normalizeSettings({ [key]: value })[key], value);
+      assert.deepEqual(runtime.validateSettingsWrite({ [key]: value }), { [key]: value });
+    }
+    for (const value of [null, -1, 1.5, "1000", Number.MAX_SAFE_INTEGER + 1]) {
+      assert.equal(Object.hasOwn(runtime.normalizeSettings({ [key]: value }), key), false);
+      if (value !== null) assert.throws(() => runtime.validateSettingsWrite({ [key]: value }), /invalid/);
+    }
+    assert.deepEqual(runtime.validateSettingsWrite({ [key]: null }), { [key]: null });
+    assert.throws(() => runtime.validateSettingsWrite({ [key]: undefined }), /invalid/);
+  }
+});

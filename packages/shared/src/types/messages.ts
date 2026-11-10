@@ -2,6 +2,7 @@ import type { AppError } from "../errors.js";
 /** Shared public types grouped by the owning application domain. */
 import type { SessionMessageOrigin } from "../session-collaboration.js";
 import type { PlanHistoryEntry } from "./plans.js";
+import type { SubagentControlMetadata } from "../subagent-control.js";
 
 export type UiMessageRole = "user" | "assistant" | "system" | "tool";
 
@@ -191,6 +192,8 @@ export type UiMessage = {
   nestedParentToolCallId?: string;
   /** Definition name of the subagent that produced this row. */
   agentName?: string;
+  /** Direct user commands are private to the owning delegation chain. */
+  subagentControl?: SubagentControlMetadata;
   /**
    * Provider-hosted web search activity for this assistant turn, extracted
    * from the vendor stream by the pi-ai adapters. Present only when the

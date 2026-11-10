@@ -3,6 +3,7 @@ import {
   IconCircleAlert,
   IconCloudDown,
   IconMore,
+  IconPanel,
   IconPlug,
   IconReview,
   IconSearch,
@@ -194,6 +195,19 @@ export function InstalledPluginsPanel({
                                   ? t("plugins.updating")
                                   : t("plugins.updateTo", { version: update.version })}
                               </Button>
+                            ) : null}
+                            {plugin.enabled && plugin.ui?.panel ? (
+                              <TooltipButton
+                                type="button"
+                                className="plugins-icon-btn"
+                                tooltip={t("plugins.openPanel")}
+                                ariaLabel={t("plugins.openPanel")}
+                                onClick={() =>
+                                  void run(() => api.openPluginPanel(plugin.id))
+                                }
+                              >
+                                <IconPanel size={15} />
+                              </TooltipButton>
                             ) : null}
                             {plugin.enabled && plugin.settings?.length ? (
                               <TooltipButton

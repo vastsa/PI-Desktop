@@ -54,7 +54,12 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 已验证的批次 ticket 和可信本地文件身份，且通过现有资源冲突检查。其他 mutation 保持
 单写准入，并在两种到达顺序下都与协调写互斥。较早且源序已就绪的保守写等待者阻止
 后来协调写持续补位；未就绪后继与源序前驱绕行仍保留依赖图例外。
-准入等待 30 秒仍返回 HOST_OVERLOADED。
+共享调用的准入等待 30 秒仍返回 HOST_OVERLOADED。
+The exclusive write wait is longer. A domain-fenced `Glob`/`Grep` holds the file
+domain while it scans, and failing the user's edit while that work is still
+making progress only made the model retry into the same fence. A mutation
+therefore waits for its conflicting holder for up to ten minutes
+(`MUTATION_QUEUE_WAIT_MS`), and `tools.abort` still cuts that wait.
 本地 audit/debug 记录总准入等待与初始原因 source_order、resource、capacity；不将它们
 宣称为互不重叠的分段耗时。
 
@@ -683,19 +688,33 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 一个子代理定义。 Plan 和 Goal 是只读合同协商，因此
 具有 `Bash`、`Edit` 或 `Write` 的代表将直接穿过它们。
 
-定义声明其委托可以调用的工具。默认名称仅来自七个工作工具 `Read`、
-`Glob`、`Grep`、`BrowserPreview`、`Bash`、`Edit` 和 `Write`。未声明
-`tools` 时得到 `Read`、`Glob`、`Grep`；`tools: "*"` 表示全部七个。
+`TaskRead` 是父会话对本会话已记录委派的附加检查工具（ADR 0347）。与 `Task`
+不同，即使会话没有任何子代理定义，它也会作为 Agent 核心工具注册并声明，
+因为定义被删除或 sidecar 重启后该链的记录仍然可读。它与其他委派控制工具
+一起在 Plan 和 Goal 中被否认，并且永远不会授予委托。
+
+`TaskRecover` 是仅供父级 Agent 使用的生命周期工具（ADR 0350），要求目标是其拥有的
+活动子代理，且物理供应商请求已卡顿。每次由 Main 重新授权另一个当前允许自动调度的
+模型；不能复用缓存许可或改变工具权限。Plan/Goal 与子代理均不能执行。
+
+项目能力选择（ADR 0349）与既有启用状态和项目作用域取交集。省略列表表示继承，
+显式空列表禁止该类全部选项，损坏配置必须报错。Main 过滤 Skill 目录和 MCP 发现，
+在分发及异步准备后再次校验；选中 ID 不能启用被禁用或超出作用域的资源。
+项目 Markdown 仅提供应用内上下文，不授予工具权限。
+
+定义可声明 `Read`、`Glob`、`Grep`、`BrowserPreview`、`Bash`、`Edit`、`Write`
+和 `Skill`。未声明 `tools` 时得到 `Read`、`Glob`、`Grep`；`tools: "*"`
+表示全部可分配工具。
 无法识别的名称会被删除并带有解析警告。
 
 文档可以用 `tools: inherit` 或 `tools: [inherit, Bash]` 选择继承父会话的
 实时工具目录（ADR 0246 / D415）。`Task` 启动时运行时把 `toolCatalog`
 （含延迟的插件/MCP 工具）与可分配的额外工具取并集，再去掉 `Task` /
-`TaskWait` / `TaskList` / `TaskStop`、`EnterPlanMode` / `EnterGoalMode`、
+`TaskWait` / `TaskList` / `TaskStop` / `TaskRead` / `TaskRecover`、`EnterPlanMode` / `EnterGoalMode`、
 `asktool`、`new_context` 和 `ToolSearch`。内置定义不默认开启。`inherit`
 写在 Markdown 和设置里；host-core 会保留该标记，因此只有 inherit 的文档
-仍能加载。插件工具、`Skill` 和 MCP 工具只通过这一 opt-in 到达委托，
-不能写进可分配白名单。
+仍能加载。插件与 MCP 工具只通过此 opt-in 到达委托；`Skill` 也可显式声明，
+但只能加载当前已获所属会话授权的文档。
 
 没有 `tools: inherit` 时，委托可用的工具来自其定义，而不是其会话：它
 无法因为父级拥有某个工具而获得该工具，会话也不能把修改权限借给只读

@@ -41,6 +41,7 @@ import {
   pluginWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { subscribePluginCatalogRefresh } from "./plugin-catalog-refresh";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupAnimation } from "./useStartupAnimation";
 import { useStartupWatchdog } from "./useStartupWatchdog";
@@ -554,8 +555,10 @@ export function useAppShellRuntime() {
 
   useEffect(() => {
     if (!ready) return;
-    void useAppStore.getState().refreshPlugins();
-    return api.onPluginChanged(() => void useAppStore.getState().refreshPlugins());
+    return subscribePluginCatalogRefresh(
+      api.onPluginChanged,
+      () => useAppStore.getState().refreshPlugins(),
+    );
   }, [ready]);
 
   // Work panel views are filtered by activation scope, so opening a different

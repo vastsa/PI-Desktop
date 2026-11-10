@@ -70,6 +70,11 @@ interface AgentRuntime {
 模型请求之前正常地发出 `agent_end`。它不会取消进行中的提供商流或正在运行的
 工具。空闲的运行时返回 `{ requested: false }`；立即生效的 `abort()` 仍然是另
 一条独立的取消路径。
+桌面 `agent.abort` 仅取消父级：释放父回合，但不中止或等待运行中的子代理。
+子代理的供应商请求及运行时拥有的工具取消信号保持有效；脱离父回合的子代理不阻塞
+新的父级输入，也不会在新父回合开始时被清理。只有明确的子代理 Stop / `TaskStop`
+与运行时销毁仍取消子代理。内部默认 `abort()` 保留会话级清理，等待父级和子代理
+都退出；回合边界的优雅停止仍是另一条操作。
 
 ### 4.0 当前回合补充指令
 
@@ -227,6 +232,25 @@ not temporary retry activity. See the English source section 5d and ADR 0206.
 停止路径不变。不可重试错误、上下文恢复、压缩、工具执行和一次性补全仍走原有有界预算。
 开启后可能在用户停止回合前持续消耗 API 用量。
 设置读取对此开关返回明确布尔值：缺省或关闭均规范化为 `false`。修改并保存其他设置不得因此校验失败或启用重试；非布尔值写入仍被拒绝。
+
+The limits and delays above are the released defaults. AI settings also expose
+`providerRetryMaxAttempts`, `providerRetryInitialDelayMs`, and
+`providerRetryFixedDelayMs` as optional nonnegative JavaScript safe integers.
+The count denotes retries after the initial request; `0`, or the existing
+infinite toggle, removes the ceiling. Delay `0` means immediate. An explicit
+fixed interval replaces both exponential schedules and takes precedence over
+`Retry-After`; without it, the configured initial wait raises the category cap
+when necessary. Long waits are scheduled incrementally in timer-safe slices
+and remain abortable without preallocating the whole schedule.
+
+The UI commits numeric edits on blur/Enter, rejects invalid input, and reverts
+a failed save with a localized error. Empty fields display runtime defaults;
+clearing a stored override writes `null`. Omitted fields preserve stored values,
+invalid writes are rejected at renderer/IPC/native boundaries, and invalid
+persisted reads normalize to absence. Config sync carries these preferences.
+Main and builtin-subagent launches share the resolved policy, including reused
+sidecars on the next turn; an active turn retains its starting policy. One-shot
+completions and compaction retain their separately bounded policies.
 
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
@@ -680,8 +704,9 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 `ui-designer` 也默认继承父会话：`auto` 下跟随父会话自动放行，而 `ask` 和
 `accept-edits` 仍保留各自的审批边界。显式声明的内置或用户作用域仍然是一次有意的覆盖。
 
-**工具（ADR 0089）。** Task 要求非空子代理目录，三个作业控制工具始终声明。
-它们属于 Agent 核心集，仅在 Agent 模式允许执行。
+**工具（ADR 0089、ADR 0347）。** `Task` 与 `TaskRecover` 要求非空子代理目录；三个作业
+控制工具始终声明，`TaskRead` 也不受目录约束（ADR 0347）。六个工具都属于 Agent 核心集，
+而不是第 7.1 节的按需目录：
 
 - `Task(agent, task, description?, model?)` — 验证其参数（未知的 `agent`、空的
   `task`、无法解析的模型引脚以及工具全部不可用的定义，各自返回一个工具
@@ -716,18 +741,47 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   所以这个上限决定了会话最长能看起来卡住多久。到点不是失败，也不会停掉委托
   （D328）—— 等待返回心跳（谁、状态、已用时、轮数、最后工具）以及已完成的
   报告。运行时会保持父级回合打开，并在它们完成时把剩余报告交回，即使父级已经
-  停止调用工具。只有 `TaskStop` 或用户 Stop 才会中止委托。
-- `TaskList()` — 报告会话的每个委托及其状态和运行中心跳，并给出父级可用
-  `Task(resume: ...)` 继续的可复用链（`details.resumable`）；这是该清单唯一的读取路径（ADR 0337）。
+  停止调用工具。`TaskStop` 或明确的子代理 Stop 会中止委托；停止父代理不会。
+- `TaskList(offset?, limit?)` — 保留活动委托状态/心跳与可复用链清单
+  （`details.resumable`，ADR 0337），另提供独立的 `details.recorded` 历史页。
+  历史包括用户创建、已停止和已淘汰的链，但不授予续跑权限。offset 默认 0，
+  limit 默认 40、最大 100；返回 `total`、`returned`、`hasMore`、`nextOffset` 和
+  `entries`（代理名、最新 delegationId、状态、512 字符目标预览）。参数只分页
+  历史摘要。TaskList/TaskRead 无定义时仍声明，仅 Agent 模式可执行，子代理不继承。
 - `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；等待每次
   中止结算后，在 `details.stopped[]` 上持久化 `status: "stopped"` 与
   `completedAt`。被停止的委托读作 `stopped`。
+- `TaskRecover(delegationId, model)` — 以另一个当前已授权的准确模型键恢复父级拥有的
+  活动子代理供应商请求（ADR 0350）。供应商连续至少 120000 毫秒没有任何事件才算
+  卡顿，思考事件也刷新活动时间；工具执行、重试等待和普通空闲不算。每次恢复都由
+  Main 重新授权，缓存的 Task 许可与定义固定模型不能绕过 `availableForSubagents`。
+  相同绑定、并发重复恢复、用户直接创建的链，以及等待后归属、回合、会话、模式、
+  取消状态变化或供应商恢复活动均被拒绝。先准备模型、思考、传输和凭据，再只中止
+  卡顿请求；忽略迟到事件，保留已完成工具和有序跟进，父模型不变。结果包含
+  `oldModelKey`、`newModelKey`，`Task(resume, model)` 仍被拒绝。
+  TaskList/TaskWait 提供 `phase`、`providerAttempt`、`providerAttemptStartedAt`、
+  `lastProviderEventAt`、`stalled`、`recoveryPending`；TaskWait 对每个新卡顿的
+  已选请求提前返回一次，重复等待不会因同一观察结果立即循环。计时观察不自动取消
+  子代理，也不自动选择模型。
+- `TaskRead(delegationId, offset?, limit?)` — 分页读取某个委托记录下来的可见
+  步骤：初始任务、按顺序的用户追问、助手文本与工具调用及结果；不包含隐藏推理、
+  模型系统行、provider 重放或附件，也不进行文件/路径/会话查找（ADR 0347）。记录文本可以包含路径。
+  身份是本会话 `Task` 或 `TaskList` 返回的 `delegationId`，解析范围是本运行时的
+  活动记录或本会话记录的委托链，续跑缓存淘汰后仍可读取，但不授予模型续跑权限。
+  一条 resume 链作为同一序列分页。`offset` 默认 0，
+  `limit` 默认 40、最大 100，每个文本值截断到 2000 字符，序列化整页不超过 20000 字符。
+  结果报告 `total`、`returned`、`offset`、`hasMore`、`nextOffset`、`truncatedValues`、
+  `source`（`live` 或 `chain`）和 `status`；`nextOffset` 按实际输出步骤推进，不跳过
+  步骤，越界 `offset` 返回合法空页。行必须属于该链的 Task 调用 id，且规范化后的
+  代理名匹配；缺名旧行只按唯一 Task 调用归属，计入 `unattributedRows` 并说明。
+  即使没有任何当前子代理定义，Agent 模式也注册该工具，使新 sidecar 恢复后仍能
+  读取保留历史；Plan 与 Goal 为对话兼容保留其声明，但拒绝执行。
 
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
 以及与父级相同的主机连接，并遵循与父级相同的有界提供程序重试策略。
-委托没有轮次上限：它会在自己结束时、父级调用 `TaskStop` 时、用户 Stop 时结束，
-或因父级终态错误而被中止（ADR 0253）。仍声明 `maxTurns` 的文档会正常加载，该键
+委托没有轮次上限：它会在自己结束、父级调用 `TaskStop`、用户明确停止该子代理时结束，
+或因仍关联的父级终态错误而被中止（ADR 0253）。仍声明 `maxTurns` 的文档会正常加载，该键
 会像其他任何无法识别的 frontmatter 键一样被忽略。
 `maxTokens` 是可选的按定义输出上限（最大 200000）；省略、`none` 或 `0` 表示跟随模型
 已发布的上限。它会覆盖为该委托构建的模型上的 `maxTokens`，因此适配器派生出的
@@ -747,22 +801,43 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 
 **委托生命周期（D328）。** 运行时不再用空闲或总时长掐死委托。
 `idle-timeout` / `max-duration` 仍会解析以便旧文档能加载，但不会被武装。
-委托一直跑到自己结束、失败、被 `TaskStop`，或用户
-Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行中只能看到
-一行心跳（谁、状态、已用时、轮数、最后工具）。
+委托一直运行到结束、失败、被 `TaskStop`、被明确的子代理 Stop 停止或运行时销毁。
+停止父代理只解除关联，不取消子代理。主代理可通过 `TaskRecover` 恢复静默供应商请求
+（ADR 0350）；进度观察不恢复按空闲或总时长自动取消的 watchdog。
 
 当父级在委托仍在跑时停止调用工具，运行时吞掉这次 `agent_end`，保持持久
 回合打开，等委托完成后再把报告塞回父级。父级收工不会中止它们。
+用户明确停止父代理时则取消父级等待、解除运行中子代理的父回合关联，并只释放父回合，
+不等待或取消子代理。会话销毁仍同时中止父级等待与子代理。
+
+**独立子工具执行权限（ADR 0348）。** 可信 runtime 在子代理启动前通过
+`tools.execution.start` 注册不可变的 `sessionId`、原始 `turnId`、`runtimeId`
+与 `executionOwnerId`。桌面 sidecar 持有临时 owner/调用登记，生命周期 RPC
+不创建持久化 Host 回合。每个 `tools.execute` 都在转发 Host 前登记；Main 根据
+当前 sidecar/Host 代际中的 session/call/turn/tool 字段查找活动调用，而不信任
+任意通知元数据。根调用继续要求 `isTurnDispatchable`；子调用必须有活动 owner，
+缺失、伪造、撤销及跨 session/runtime/turn 身份均拒绝。权限与会话查询等 await 后
+再次同步检查，旧子代理不得借用新父回合。`tools.abort` 只取消精确调用信号并继续
+转发原生取消；插件工具、插件 MCP、用户 MCP 和远程工作区工具使用该信号，
+不关闭共享 MCP 服务器。结束、销毁与传输替换撤销 owner 及调用。派发前取消和
+已撤销 owner 的记录有界，达到容量时拒绝准入。worktree 身份与 TodoWrite 的
+owned-turn 规则不变。
+
+子代理插件工具的 `ctx.turnId` 使用合成的 `executionOwnerId`。子执行结束时，
+仅实际参与且仍在项目作用域内的插件收到 `subagent:executionEnded` 及兼容的
+`session:turnEnded`；两者均使用该子 id，包含 `parentTurnId` 和 `scope: "subagent"`
+（插件 API §5）。父级普通终态事件不变。存在活动子代理或待接纳用户控制时，
+不兼容的运行时配置返回 `AGENT_BUSY`，不得隐式销毁子代理；相同配置继续复用。
 
 致命的 provider/stream 错误（包括耗尽的 HTTP 429）、父级中止，仍分别保留它们既有的
 `failed` 和 `aborted` 结果。如果助手响应在提供程序输出 token 上限处结束（`stopReason: "length"`
 或 `"max_tokens"`），且已经产生报告文本，该委派会以 `failed`、
 `SUBAGENT_OUTPUT_TRUNCATED` 和 `outputTruncated: true` 结算；有界的部分报告会保留在失败说明
 下，供诊断截断原因。后续以正常原因结束的委派回合会清除该标记并可以成功完成。
-父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
-“继续”不会变成 `AGENT_BUSY`（D352）。 被系统中断的委托以
-`failed` 和 `SUBAGENT_PARENT_FAILED` 结算，保留基于历史的恢复资格，但不会自动重启。
-用户 Stop、TaskStop 与运行时销毁仍按不可恢复的取消处理。
+父级终态错误还会中止仍关联的残留委托、跳过续跑提示，并把会话恢复为空闲，这样
+“继续”不会变成 `AGENT_BUSY`（D352）。已经脱离旧父回合的子代理不受后续父级错误影响。
+被系统中断的委托以 `failed` 和 `SUBAGENT_PARENT_FAILED` 结算，保留基于历史的恢复资格，
+但不会自动重启。明确的子代理 Stop、TaskStop 与销毁仍按模型不可续跑的取消处理。
 
 **可恢复的委托（ADR 0279）。** `Task` 接受一个可选的 `resume` 参数，携带同一会话中
 某个已结算委托的 `delegationId`。恢复后的委托是一个新的 `SubagentRun`，以该链此前的
@@ -779,21 +854,22 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 能挺过一次 sidecar 重启。链的身份（`delegateSessionId`）始终留在内部；父级只会传
 `delegationId`，由反向映射解析它。
 
-只有 `completed` 与 `failed` 的链可恢复；`stopped` 和 `aborted` 的运行是终态，只能靠
-新建委托重来；而应用在它还在工作时被关掉的那种运行会重建成 `interrupted`，同样不可
-恢复。只读工具输出超过 `MAX_RESUMABLE_READ_LINES`（50000）的链会从可复用清单里消失，
+Model-issued `Task(resume)` accepts `completed`, `failed`, and `timed_out`
+chains, not `stopped`, `aborted`, or restart-reconstructed `interrupted` runs.
+Explicit user continuation of those states follows §5f.4.
+只读工具输出超过 `MAX_RESUMABLE_READ_LINES`（50000）的链会从可复用清单里消失，
 且不做链内裁剪，因此恢复绝不会悄悄丢掉历史。注册表按定义名最多保留
 `MAX_RESUMABLE_CHAINS_PER_AGENT`（2）条可复用链，并在每次委托结算时淘汰最久未活动的
 那些；仍在工作的链永不淘汰，所以这个上限只算可复用链，活跃链可以让它暂时超出。
 
-恢复严格限定在同一会话内，且从不排队：对正在运行的委托做恢复是一个工具错误，提示父级
-先用 `TaskWait` 收敛；一条链在任何时刻最多只有一条活跃记录。`model` 与 `resume` 同时
-给出会被拒绝，而恢复后的运行会沿用该链记录的绑定：优先使用链解析出的
-`providerId/modelId` 键，从 transcript 重建的链则按模型 id 匹配；当什么都匹配不上时，
-运行会继续使用定义当前的绑定，并把先前的模型 id 记进它生命周期 details 的
-`modelChangedFrom`。有意换模型意味着新建一个委托。未知 id、属于另一个定义的 id、
-不可恢复的状态、超出读预算的链，以及行已经不在的链，各自返回一个说明原因的工具错误；
-对未知 id，还会一并列出当前可复用的 id。
+Resume is strictly same-session, never queues a running chain, and rejects
+`Task.model` together with `Task.resume`. The recorded account/model is retained.
+Legacy records without a binding key recover it from the child reply's own
+provider/model metadata; model-only matching must be unambiguous. If the original
+binding is unavailable, no default model is substituted and no successor starts.
+The user can explicitly choose a configured model through the subagent panel.
+Rejected Task attempts keep their errors visible without replacing the original
+chain's model display or continuation id. Other resume gates remain unchanged.
 
 On-demand grants expire at each new parent prompt or approved plan/goal execution;
 late responses cannot restore expired grants. Resume reauthorizes a remembered key
@@ -847,20 +923,23 @@ details 会说明该委托丢失了历史，而不是把一个不完整的答案
 的工具结果 —— 因此一次恢复从 `hardLimit` 之下开始，而不是在它的第一次请求上就溢出。
 
 委托压缩只影响委托的模型上下文。它不改写任何持久化的转录行，不写入 host-core 检查点，
-也不添加压缩行、警告 toast 或上下文检查器条目；委托保留它完整的可见行，父级依旧只看到
-报告。压缩完全自动：`new_context` 对委托仍然被拒绝，因为执行它会设置父级运行时的待压缩
-标记。
+也不添加压缩行、警告 toast 或上下文检查器条目；委托保留它完整的可见行，父级默认仍只
+看到报告。`TaskRead` 是显式的 opt-in 例外：它按请求分页读取记录步骤（ADR 0347）。
+有界输出进入普通父级工具历史，但原始子行不会被追加到父级协议转录。
+压缩完全自动：`new_context` 对委托仍被拒绝，因为执行它会设置父级运行时的待压缩标记。
 
 **事件与上下文。** 委托发出的每个事件都在信封上携带 `parentToolCallId` 和
 `agentName`，Electron main 会把这两者一并复制到持久化的行上。运行时重建模型
-上下文时会跳过每一条带 `parentToolCallId` 的行：父级从始至终只通过 `TaskWait`
-或运行时的完成提示（D328）看到报告，重放委托的行既与这一点相矛盾，也会重新
-引入委托机制本就是为了避免的上下文开销。
+上下文时默认跳过每一条带 `parentToolCallId` 的行：父级通过 `TaskWait`
+或运行时的完成提示（D328）看到报告，自动重放委托的行既与这一点相矛盾，也会重新
+引入委托机制本就是为了避免的上下文开销。唯一的例外是父级自己的工具输出：一条
+`TaskRead` 结果像其他工具结果一样进入父级回合，因此父级只看到它请求的那一页步骤，
+不再看到别的。子行永远不会被自动重放，之前读过的 `TaskRead` 页也不会被重新注入。
 
-**回合所有权。** 委托的生命周期永远不会轮到 Electron main
-处理。父级可以在 `Task` 之后继续自己的主线或对用户说话。如果它在委托仍在
-跑时停止调用工具，运行时保持持久回合打开，并在它们完成时交回报告。用户
-Stop、`TaskStop`、运行时销毁或父级终态错误（D352）会中止仍在运行的委托。
+**回合所有权。** 子代理终态事件不结算父级的持久回合。父级在 `Task` 之后可以继续
+自己的主线；正常空闲等待保持父回合打开，直到报告到达。明确停止父代理则解除运行中
+子代理的关联并只释放父回合；子代理跨后续父级输入继续执行。明确的子代理 Stop、
+`TaskStop` 与运行时销毁保留取消路径；父级终态错误只取消仍关联的子代理（D352）。
 
 **隔离 worktree（ADR 0329）。** 在隔离会话中，工具包含 `Write` 或 `Edit` 的委托在首个回合
 前获得自己的 worktree（`worktree.delegate.create`，以委托链 id 为键，续跑的委托会复用它），
@@ -894,10 +973,65 @@ Write/Edit 免提示裁决；其余一切按会话模式行事”。
 ADR 0162 / ADR 0164）均已撤销。
 
 协调工作仍然走既有的委托契约：父方撰写彼此独立的任务简报，启动 `Task`，
-再通过 `TaskWait` / `TaskList` / `TaskStop` 收集各自完备的报告。如果还需要
+再通过 `TaskWait` / `TaskList` / `TaskStop` 收集各自完备的报告，并可用 `TaskRead`
+查看已结算链记录下来的步骤（ADR 0347）。如果还需要
 下一轮工作，那就是一个新的 `Task`，其简报里包含先前的报告。`A2A` 与 `Peer`
 不是可分配的工具；定义中若出现这两个名字，会被当作未知工具名，并在解析时
 带警告丢弃。
+
+### 5f.4 用户直接控制桌面子代理（ADR 0348）
+
+会话目录可以直接启动委托或向本会话拥有的链发送消息，无需父模型往返。
+声明式控制请求包含 `sessionId`、`operationId`，以及 `start`（`agent`、
+`task`、可选 `model`）或 `message`（`delegationId`、`content`、可选 `model`）。
+Renderer 输入不能提供启动凭据、权限状态或提供商配置。Main 解析当前会话与启动状态，
+运行时独立接纳操作；只有受支持的本地 Agent 会话可用，Plan/Goal、Remote
+和 Native Pi 均不可用。
+
+接纳的工作仍由既有委托工厂与取消所有者执行。运行中的子代理按顺序接收后续
+消息。用户显式选择的模型在接纳前解析，并在该消息的回合边界应用；当前请求、
+重试和回退先完成，模型、传输与凭据一起切换。已结算链保留历史，并使用所选
+模型的上下文预算续跑。没有覆盖时保留既有绑定。父级提供商的
+`Task(resume, model)` 仍被拒绝，父代理模型不变。接纳结果为 `started`、
+`queued` 或 `recorded`，不代表执行已经完成。
+
+Plain messages to a running child use safe steering. At the next in-run model
+boundary, after the current tool batch completes, the runtime waits for admitted
+message writes and consumes the committed plain-message prefix in order. It
+budgets the updated child context before requesting the model. Active requests
+and tools are not cancelled, completed actions are not undone, and commands are
+neither duplicated nor added to parent context. An explicit model selection is
+an ordering barrier: it and later messages retain the existing separate follow-up
+boundary after current work/retry/fallback. Failed writes and stopped/disposed
+children cannot start a steering request. Queued receipts remain admission-only.
+
+面向模型的有界续跑缓存不是用户显式继续操作的归属边界。缓存中缺失的链只能从
+本会话转录重建；外来句柄、不兼容状态、模型授权及读取/上下文预算仍须校验，
+新执行保留完整的原链。已接纳但仍在解析模型的指令必须保持持久 turn 存活。
+父代理与子代理都结束后，运行时为延后的结束各发送一次 `turn_end` 和
+`agent_end`，让 Main 在下次继续前释放旧 turn。取消操作不等待尚未完成的模型授权。
+
+Explicit user continuation also accepts stopped, aborted, and interrupted chains.
+A restart never resumes work automatically. If shutdown preceded the first child
+reply, a persisted original task can seed the user-requested run; a missing task
+still fails. Child history remains chain-scoped, unfinished tools are not replayed,
+and current model authorization and read/context budgets remain enforced.
+Model-issued Task resume permissions do not expand.
+
+命令持久化为子代理拥有的用户行，附加 `subagentControl` 元数据、操作标识与
+请求哈希。相同请求的重试共享一次接纳；以相同标识提交冲突内容会失败。恢复后，
+已记入日志的操作只返回确认，不会重放。目录仅为展示把用户创建的根适配成
+Task 形状，不会持久化或发送伪造的提供商 Task。既有转录无需数据库迁移，
+Rust 仍独占持久化所有权。
+Main 将子代理拥有的用户快照及终态控制元数据与工具行一起写入消息 outbox，
+不能把它们当作父会话 steering。`TaskRead` 按时间顺序包含初始任务与后续追问，
+但不会自动把这些内容注入父模型历史。
+
+父级默认重放仍排除子代理拥有的行。用户创建的子代理报告不会自动触发父模型
+请求；`TaskRead` / `TaskWait` 仍是显式查看路径。这不恢复同级或跨会话通信。
+草稿与显式模型选择在组件重新挂载与 Renderer 刷新后仍按会话和链隔离。
+迟到的确认只清除已提交的文本版本，绝不清除更新的编辑；所选账号/模型绑定
+保留在链元数据中。
 
 ## 6. 提供商和模型
 
@@ -1060,7 +1194,12 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 - Agent：`Read`、`Bash`、`Edit` 和 `Write`（匹配 pi 的编码代理核心）
 - Agent：只要技能目录非空，`Skill` 也在核心集中（D404、ADR 0230）——`# Skills`
   段落与用户输入的 `/skill:<skill-id>` 都要求模型调用它，而模式中缺失的工具根本无法被调用
-- Agent：始终提供 `TaskWait`、`TaskList`、`TaskStop`，子代理目录非空时另提供 `Task`（§5f）。
+- Agent：`TaskRead` 与 `TaskList` 无条件进入核心集，即使没有配置任何子代理定义
+  (§5f, ADR 0347) — 它读取本会话保留的委托历史，因此删除定义不能连带删掉父级
+  复查既有记录的能力
+- Agent：当子代理目录非空时，`Task`、`TaskWait`、`TaskStop` 和
+  `TaskRecover` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
+  委托生命周期值得每个请求的额外模式
 - Plan：`Read`、`Glob`、`Grep`、`BrowserPreview` 和 `Bash`
 - 两种模式：`ToolSearch`（当至少存在一种延迟功能时）
 

@@ -176,6 +176,17 @@ export function subagentModelChoices(
   return choices;
 }
 
+/** User message overrides need explicit delegation opt-in, unlike definition pins. */
+export function subagentMessageModelChoices(
+  providers: readonly ProviderPublic[],
+): SubagentModelChoice[] {
+  return subagentModelChoices(providers).filter((choice) =>
+    providers.find((provider) => provider.id === choice.providerId)?.models?.some(
+      (model) => model.id === choice.modelId && model.availableForSubagents === true,
+    ),
+  );
+}
+
 export function groupSubagentModelChoices(
   choices: readonly SubagentModelChoice[],
 ): SubagentModelChoiceGroup[] {

@@ -4114,6 +4114,15 @@ identify the platform validation still needed.
 - **Acceptance**: G (hot reload), D (permissions cannot widen without review)
 - **Milestone**: Post-MVP
 - **Status**: Automated in part (`apps/desktop/test/plugin-hot-reload.test.mjs`: debounce, ignore list, permission ceiling, recovery, teardown); manual edit loop Documented
+- **Resident-stream regression**: `plugin-watcher-behavior.test.mjs` covers
+  access-time notifications, same-size edits, atomic replacement, new/deleted
+  nested sources, ignored paths, and stale watcher teardown. The real child
+  process in `plugin-hot-reload-stream.test.mjs` keeps an HTTP stream open across
+  native metadata events, then checks genuine edit reload, permission-ceiling
+  rejection without disconnecting the stream, and explicit unload without revival.
+  Packaged proxy acceptance uses an isolated profile and loopback streaming model;
+  record actual elapsed time, metadata rounds, requests, and reloads. Accelerated
+  metadata triggers are not evidence of an overnight production run.
 
 #### E2E-022C: Check, pack, install round-trip
 
@@ -4314,10 +4323,10 @@ identify the platform validation still needed.
 - **Preconditions**: At least one enabled plugin, one disabled plugin, and one plugin whose load failed.
 - **Steps**: 1) Open Extensions → Installed while plugin changed events are arriving in a burst. 2) Read the tab and group counts. 3) Confirm the failed plugin sits under Needs attention with its error message. 4) Search by author and by permission. 5) Clear the search. 6) Inspect enabled panel-only, update-ready, settings-bearing, and disabled plugin cards.
 - **Expected**: The page remains usable during transient host backpressure: identical plugin and extension registry refreshes coalesce, and renderer-facing RPC calls retry explicit `HOST_OVERLOADED` responses with bounded backoff before surfacing an error. Plugins group as Needs attention / Updates available / Active / Turned off with counts; `status: "error" | "load_error"` renders the error message inline instead of being silent; each plugin is a card in an auto-filling grid, defaulting to a quiet name/id/version summary (plus a rating chip when the centre has one), while a Details disclosure reveals risk-tinted permission chips, capabilities, and resident service status; the single scope trigger opens explained Off / This project / Everywhere choices and the project picker; card icon actions expose hover/focus labels; the result count reflects the filtered subset and clearing restores every group.
-- **Card actions**: Installed cards never show an Open panel shortcut, even when enabled with a declared panel. A panel-only card keeps scope and overflow controls; an enabled update-ready card keeps its versioned update action; enabled declared settings remain reachable. Panel opening remains available through the plugin launcher.
+- **Card actions**: In English and Simplified Chinese, click Open panel on enabled cards with `ui.panel`, both with and without an available update; each click opens that plugin through the existing Host API. Plugins without a panel and disabled plugins offer no launch action. Open and close declared settings, toggle auto-update from the row menu, and disable a panel plugin through its scope control; its launch action disappears while the menu remains. Update and settings controls stay independent of panel availability. A Host refusal is reported through the page's error toast without bypassing permissions. The plugin launcher remains an additional entry point.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `07-plugins/13-plugin-permissions-matrix.md`
 - **Acceptance**: G (installed plugin management)
-- **Status**: Documented
+- **Status**: Card actions automated by `apps/desktop/test/installed-plugin-panel-user-path.test.mjs` (real Plugins page, hook, store and API; isolated renderer with a fixture preload boundary). Native panel creation remains covered separately by E2E-024D; other scenarios above are documented.
 
 #### E2E-024D: Isolated plugin panel host bridge
 
@@ -11310,6 +11319,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | C / E / F / Quality — Background Bash tasks outlive their turn | E2E-265 |
+| C — Conversation & stream (session subagent directory) | E2E-SUBAGENT-session-directory |
+| Quality (session subagent directory) | E2E-SUBAGENT-session-directory |
+| M6+ (session subagent directory) | E2E-SUBAGENT-session-directory |
+| C — Conversation & stream (parent inspection of recorded delegation content) | E2E-SUBAGENT-parent-recorded-content |
+| E — Tools & permissions (parent inspection of recorded delegation content) | E2E-SUBAGENT-parent-recorded-content |
+| F — Persistence (parent inspection of recorded delegation content) | E2E-SUBAGENT-parent-recorded-content |
+| Security (parent inspection of recorded delegation content) | E2E-SUBAGENT-parent-recorded-content |
+| Quality (parent inspection of recorded delegation content) | E2E-SUBAGENT-parent-recorded-content |
+| M6+ (parent inspection of recorded delegation content) | E2E-SUBAGENT-parent-recorded-content |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -13411,10 +13429,12 @@ This test plan spec is accepted when:
     made seed the new run, and its failed assistant row is not replayed.
   - Step 7 is refused as a tool error: a resumed run keeps the chain's model, and
     the message points at starting a new delegation to change models.
-  - Step 8 still resumes, on the binding the definition resolves to now, and the
-    delegation's lifecycle details carry the previous model id as
-    `modelChangedFrom`. The parent sees it through the lifecycle snapshot it
-    polls and the card shows it with the run, so the switch is never silent.
+  - Step 8 rejects the unavailable recorded binding before any model request or
+    successor starts. No definition/session default is substituted. The original
+    model and continuation id remain visible; explicit user model selection in
+    the subagent panel can recover it. Legacy Task rows without `modelKey` recover
+    the exact account from their own child replies, not a same-named account.
+    A rejected Task attempt remains an error, never the latest successful chain.
   - Step 9 keeps at most two reusable chains per definition: the least recently
     active settled chain is evicted whole, so every id on it answers as an
     unknown delegation with the current reusable list, while a chain whose latest
@@ -13590,6 +13610,276 @@ This test plan spec is accepted when:
 - **Acceptance criterion**: C — Conversation & stream; Quality
 - **Milestone**: M6+
 - **Status**: Draft. Required suites: `test:e2e`, `test:e2e:subagents`.
+
+#### E2E-SUBAGENT-session-directory
+
+- **Preconditions**: An Agent session with running, completed/resumed, failed,
+  stopped, and timed-out delegations, older Task rows outside the main
+  transcript window, and a Task whose stable handle has not arrived. A second
+  session has its own delegation. The work panel is closed. Retained Task and
+  lifecycle results include reports/errors larger than the display preview.
+- **Steps**:
+  1. Open the conversation topbar bot action; confirm one Session subagents tab.
+     Close it and reopen it through the work panel's `+` New launcher row.
+  2. Read agent, task, model, and status; confirm recent chains come first and
+     a resumed chain occupies one row.
+  3. Search by task, agent, and model; switch All / Running / Completed / Issues.
+  4. Load earlier history explicitly and select an older chain. Read its
+     recorded text/tools, page activity, retry a rejected read, and deliver a
+     newer live snapshot for an already loaded row.
+  5. Select the creating Task before its handle arrives. Inspect Copy ID and
+     Stop, then deliver its stable handle without reselecting the row.
+  6. Copy an established chain's latest id; stop that delegate and then stop all.
+     Repeat a click while cancellation is pending and delay acknowledgement.
+  7. Refresh bounded Host history containing large reports and errors.
+  8. Start a Task with the panel closed and with another tab active. Switch
+     sessions while a read is pending, close/reopen the tab, and return.
+  9. Open a remote session and a workspace with no active conversation. Confirm
+     the existing transcript topology/detail entry remains available.
+- **Expected**: Only the active conversation's delegations appear. Search and
+  filters work; failed, stopped, and timed-out delegates remain Issues even
+  when their Task tool call succeeded. Bounded previews preserve complete valid
+  identity/status/resume metadata independently of report bodies, so restored
+  chains stay grouped. The index retains metadata, not child transcripts or
+  reports; older history requires explicit paging. Selected activity uses its
+  own bounded reader and newer live rows win without replacing the main
+  transcript. Creating shows a localized capsule, disables Copy ID, and offers
+  no individual Stop or stop-all solely for pending creation. Stable-handle
+  arrival preserves selection and enables the appropriate controls. Copy uses
+  the latest established chain id; a main-agent Task resume remains available.
+  Direct commands follow E2E-SUBAGENT-user-control below. Stops are deduplicated, remain
+  pending until acknowledged, never optimistically relabel rows, and never
+  stop the parent. Task starts do not open, activate, or focus the tab. Late
+  reads cannot paint another session or a disposed detail. The topbar action
+  is absent for remote/no-session contexts; existing topology/detail behavior
+  is preserved.
+- **Specs linked**: `04-ux/01-ui-ia.md` §3, `04-ux/08-component-spec.md` §5.1
+  and §5.8, `04-ux/09-interaction-patterns.md` §1.8,
+  `03-runtime/02-agent-runtime.md` §5f, ADR 0347
+- **Acceptance criterion**: C — Conversation & stream; Quality
+- **Milestone**: M6+
+- **Status**: Local automated coverage on 2026-11-02. The isolated renderer
+  user path `apps/desktop/test/session-subagents-user-path.test.mjs` covers real
+  topbar/launcher/store/page wiring, controls, paging, retry, streaming,
+  creation, and session/disposal boundaries with fictional sessions and mocked
+  preload/clipboard edges. Model/history tests cover indexing and outcomes;
+  `crates/host-core/src/sessions/delegation_display.rs` covers actual bounded
+  Host reads, long reports, preserved metadata, and unchanged canonical history.
+  This is not installed-client or PR-integration qualification. Local entry:
+  `node --test --test-concurrency=1 apps/desktop/test/session-subagents-user-path.test.mjs`.
+
+#### E2E-SUBAGENT-user-control
+
+- **Preconditions**: Fictional supported local Agent sessions, current subagent
+  definitions/model bindings, running and settled chains, and mocked external
+  preload/Host/provider edges. Unsupported modes and foreign handles are available.
+- **Steps**:
+  1. Open Session subagents, start a selected definition with a task and optional
+     model, and inspect the accepted child-owned root and activity.
+  2. Select an explicitly delegation-enabled model and send a follow-up while the
+     child runs; also continue a settled chain with and without a model choice.
+     Confirm unavailable models cannot be selected or admitted.
+  3. Edit while acknowledgement is pending, remount the tab, refresh the
+     renderer, and switch sessions. Confirm draft and result ownership.
+  4. Reject admission and retry. Exercise stale configuration, unsupported
+     modes, foreign handles, duplicate operation ids, and conflicting reuse.
+  5. Restore journaled operations and stop running children through the existing
+     confirmed cancellation path.
+  6. Stop a child, settle two newer children of the same definition, then append
+     a message and Continue the older child both live and after runtime restore.
+     Repeat with a provider-created Task chain; verify new user input, Running
+     status, the actual next provider request, and its visible reply.
+  7. Let the parent finish while a user child is running or its model selection
+     is awaiting authorization. Verify the turn remains dispatchable until that
+     work settles, then emits a single final `agent_end`. Stop during pending
+     authorization and confirm cancellation returns without launching the child.
+  8. Start both provider-created and user-created children. Stop the parent while
+     it is waiting for a model and while waiting for children. Verify child model
+     requests and runtime tool signals are not aborted; a new parent prompt makes
+     a real provider request while the child continues to natural completion.
+     Repeat with a child tool spanning Stop and another tool started afterwards.
+     Verify explicit child Stop and session disposal still cancel child work.
+  9. Create a child, send a follow-up, then inspect it from the parent with
+     TaskList/TaskRead. Verify initial task, follow-up, and replies in order;
+     those rows do not enter parent model history unless explicitly requested.
+     Repeat after cache eviction and with all definitions removed: page TaskList
+     recorded history, then TaskRead initial and resumed ids. Verify pagination,
+     rejection of foreign ids, and no widening of the model's resumable list.
+  10. Stop the parent while a child plugin/MCP/remote call is admitted or awaiting
+      admission. Child-owned calls continue; root stale calls remain denied.
+      Stop either execution and verify only its call signals abort. Revoke or
+      replace the owner/Host before a delayed admission returns: no late dispatch.
+      Check child cleanup uses a synthetic id, not either parent turn, and only
+      participating project-active plugins receive it. Attempt a changed launch
+      while the child remains active: expect AGENT_BUSY without cancellation.
+  11. Persist a running child, recreate the runtime, and Continue from the same
+      directory row. Cover both a saved child checkpoint and a provider-created
+      Task interrupted before its first reply. Verify original task/history and
+      model retention, no automatic tool replay or parent request, a single
+      visible chain, and immediate availability of the next parent prompt.
+      Model-issued resume, foreign handles, and concurrently running targets
+      retain their existing rejection rules.
+  12. Hold a real child tool batch, send two plain directions from its composer,
+      and release the tool. The first subsequent model request includes both
+      saved directions in order and the original tool result, without cancelling
+      or rerunning the tool. Assert one persisted command per operation and no
+      parent-context leakage. Cover a delayed/failed write and concurrent child
+      Stop; neither can dispatch an uncommitted direction. A queued model change
+      blocks later plain messages from overtaking it. The running composer shows
+      safe-boundary guidance; explicit model selection keeps model-change guidance.
+- **Expected**: No parent-model round trip admits a command. Main and runtime
+  independently enforce current authority. User commands stay child-owned and
+  never become forged provider Task calls or implicit parent context. Running
+  follow-ups are ordered. The chosen model, thinking policy, transport, and
+  credentials apply together only at the next message's turn boundary, after
+  current work, retry, and fallback finish. Settled chains retain history and use
+  the selected model's context budget; the parent model and provider Task resume
+  restrictions remain unchanged. Duplicates do not execute twice, and journal
+  recovery does not replay accepted work. Newer drafts and other sessions survive
+  late results. Receipts distinguish started/queued/recorded from authoritative
+  completion; Stop remains cooperative. Resume-cache eviction never mislabels a
+  session-owned child as foreign. Final turn release permits the next Continue
+  instead of routing it to an already idle sidecar turn.
+- **Coverage**: `apps/desktop/test/subagent-control-user-path.test.mjs`,
+  `subagent-control-ipc.test.mjs`, `subagent-control-drafts.test.mjs`, and
+  `subagent-control-renderer-model.test.mjs`; shared request tests and
+  `packages/agent-runtime/src/subagent-control-runtime.test.ts` cover admission,
+  execution, replay, and ownership. Host metadata tests live in
+  `crates/host-core/src/sessions/subagent_control.rs` and session persistence tests.
+  `parent-stop-independent.test.ts` covers parent-scoped cancellation;
+  `subagent-content-runtime.test.ts` covers explicit child-content inspection;
+  `subagent-settlement-persistence.test.mjs` covers child-owned terminal snapshots.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.4,
+  `04-ux/08-component-spec.md` §5.8, ADR 0348.
+- **Status**: Implemented source candidate. Isolated fixtures and unit/contract
+  coverage are not installed-client, native-persistence, or PR-integration qualification.
+  `subagent-execution-user-path.test.mjs` uses real Main IPC, the source sidecar,
+  a loopback provider, isolated profiles, and real plugin invocation cancellation
+  with an in-memory Host adapter. It covers Task/user children in both parent
+  wait phases, new parent turns, configuration rejection, child Stop, and runtime
+  disposal. `subagent-tool-execution-boundary.test.mjs` covers trusted owner/call
+  admission, replay/forgery rejection, post-await cancellation, and Host replacement;
+  remote workspace and user MCP suites cover their precise-call signal bridges.
+  These adapters deliberately omit new owner fields from Host notifications:
+  Main must find the registered call. Native Host forwarding/persistence and an
+  installed plugin/client still need separate qualification; no stale-turn gate
+  is relaxed to obtain these results.
+
+#### E2E-UI-renderer-refresh
+
+- **Preconditions**: An isolated Electron app shell with the production local
+  `file:` navigation guard, fictional sessions, and mocked external Host/preload.
+  Main and child drafts and selected work-panel state are populated.
+- **Steps**: Click interface refresh, verify a new renderer document restores
+  drafts and presentation, and attempt external/other-file navigation. Cancel a
+  reload, advance the controlled 10-second deadline, and retry. Unmount the button
+  while a cancelled reload is pending.
+- **Expected**: Only the exact current authorized local document can reload.
+  Other navigation stays blocked. No agent execution, Stop, or message replay is
+  introduced. A cancelled reload restores the button, reports a localized error,
+  preserves live drafts, and removes its stale checkpoint; retry works and
+  unmount cleans up the deadline.
+- **Coverage**: `apps/desktop/test/renderer-refresh-navigation.test.mjs`,
+  `renderer-refresh-user-path.test.mjs`, and `renderer-refresh-checkpoint.test.mjs`.
+- **Status**: Isolated local user-path coverage, not installed-client or
+  PR-integration qualification.
+
+#### E2E-PROJECT-agent-settings
+
+- **Preconditions**: Isolated Electron profile with real project dialogs/store,
+  fictional catalog and preload persistence boundary; native tests use temporary
+  SQLite/project roots and no user data or external services.
+- **Steps**: Create with one skill, no MCP, and independent Markdown; reopen Edit,
+  restore skill inheritance and select one MCP; exceed the UTF-8 Markdown bound,
+  correct and save. Use the separate instructions dialog for a legacy project.
+  Reopen an existing project first untouched, then with explicit empty settings.
+  Race catalog requests, retry a failure, and remove an unavailable saved ID.
+  Exercise native local/remote create/update/rename, omission/reset, corrupt
+  selections, storage failures, root changes, config sync, and data relocation.
+  In both Create and Edit, load twelve skills and twelve MCP entries with long
+  English/CJK descriptions and unbroken names at 900, 660, and 420px window widths.
+  Check rendered label bounds, focus/scroll to each group's last checkbox, change
+  the selection through its label, and save in English and Simplified Chinese.
+- **Expected**: Settings round-trip without repository writes; empty and inherited
+  lists stay distinct; stale responses do not replace drafts. Native writes are
+  atomic and context remains isolated by group. Dispatch cannot use disabled,
+  out-of-scope, unselected, or revoked capabilities. Launch uses one context read.
+  Long descriptions stay within their own rows without horizontal overflow or
+  adjacent-row overlap; the bounded lists scroll and save the intended choices.
+- **Coverage**: `project-settings-user-path.test.mjs`, `project-settings-ipc.test.mjs`,
+  `project-capabilities.test.mjs`, `skill-tool.test.mjs`, shared
+  `project-capabilities.test.ts`, host-runtime `launch-resolver.test.ts`, and native
+  `project_group_options` tests.
+- **Status**: Isolated candidate coverage; installed-client and remote-provider
+  acceptance remain separate.
+
+#### E2E-SUBAGENT-provider-recovery
+
+- **Preconditions**: Real runtime wiring, fictional sessions, loopback SSE
+  providers, fresh model-authorization boundary, and controlled clocks.
+- **Steps**: Parent starts a child with Task; child completes a tool and its next
+  provider attempt stalls. TaskWait wakes at 120 seconds; parent invokes
+  TaskRecover with another authorized provider and collects completion. Verify
+  thinking resets activity, tools/backoff do not qualify, and repeated waits do
+  not spin. Race authorization with renewed activity, Stop, disposal, settlement,
+  mode/turn/child changes; try duplicate, unchanged, revoked, and foreign targets.
+  Send late events/callbacks and queue a user message while recovery is pending.
+- **Expected**: Fresh authorization is mandatory; only the physical stalled
+  request is interrupted. Completed tools run once, queued messages stay ordered,
+  parent binding stays unchanged, late output is isolated, and completion/report
+  settlement occurs once. Task resume with a model stays invalid; children and
+  Plan/Goal cannot invoke recovery. No real provider or production data is used.
+- **Coverage**: `subagent-provider-attempt.test.ts`,
+  `subagent-recovery-runtime.test.ts`, and shared `subagent-definition.test.ts`.
+- **Status**: Isolated candidate coverage, not installed-client qualification.
+
+#### E2E-SUBAGENT-parent-recorded-content
+
+- **Preconditions**: Real `agent.prompt` and restore wiring with a fictional
+  380-row session, mocked external Host, and loopback SSE provider. A resumed
+  chain has rows outside the visible window, normalized `agents/explorer` rows,
+  a uniquely attributable missing-name row, parallel/mismatched-agent rows,
+  and reasoning-only/non-text content. Current definitions may be empty.
+- **Steps**:
+  1. Ask the parent to inspect a settled delegation with `TaskRead`. Check
+     default offset/limit and explicit small page sizes.
+  2. Follow `nextOffset` to completion, then request an offset past `total`.
+  3. Inspect one resumed sequence; check matching normalized and disclosed
+     legacy rows, excluding parallel/mismatched-agent and reasoning-only rows.
+  4. Restore the session in a fresh sidecar with `subagents: []` and inspect it.
+  5. Request foreign delegation ids, file paths, and session ids; exercise
+     Plan/Goal and explicit/inherited child definitions.
+  6. Inspect the parent's default provider input and the requested tool output.
+- **Expected**: Default limit is 40, maximum 100; each value is clipped to
+  2000 characters and the serialized envelope/page stays within 20000.
+  `total`, `returned`, `offset`, `hasMore`, `nextOffset`, `truncatedValues`,
+  `source`, and `status` describe a gapless page; an out-of-range offset is a
+  valid empty page. Only owned chain calls with matching normalized agent
+  names contribute visible assistant text or tool args/text results. Unique
+  legacy rows are counted in `unattributedRows` and explained. No reasoning,
+  model-system/provider replay, or attachment payload is projected. Recorded
+  tool text may include paths, but the tool performs no filesystem/session-path
+  lookup. Foreign ids/paths/session ids fail with a stable error; Plan/Goal
+  deny the tool, and delegates never receive it, including `tools: inherit`.
+  Agent mode declares it with no current definitions. Restore uses retained
+  chains (`source: chain`); live records use `source: live`. Default replay
+  still excludes all raw child rows; only explicitly requested output enters
+  normal parent tool history, with no extra automatic replay or prompt section.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/03-tools-and-permissions.md` §10.2, ADR 0089, ADR 0337, ADR 0347
+- **Acceptance criterion**: C, E, F, Security, Quality
+- **Milestone**: M6+
+- **Status**: Local automated coverage on 2026-11-02. The fresh-sidecar path
+  `apps/desktop/test/subagent-content-sidecar.test.mjs` covers restored history,
+  paging, ownership, excluded default replay, empty definitions, and foreign-id
+  denial with real runtime wiring and mocked Host/loopback provider edges.
+  `packages/agent-runtime/src/subagent-content.test.ts` and
+  `subagent-content-runtime.test.ts` cover defaults, limits, live/chain
+  resolution, and text-only extraction; `mode-tool-access.test.ts` and
+  `packages/shared/src/subagent-definition.test.ts` cover mode/child denial.
+  These are task-worktree checks, not installed-client, real-provider,
+  PR-integration, or release qualification. Local entry:
+  `node --test --test-concurrency=1 apps/desktop/test/subagent-content-sidecar.test.mjs`.
 
 #### E2E-161: A delegation lifecycle row reads as a subagent row
 
@@ -20531,3 +20821,27 @@ session data is used.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+#### E2E-NETWORK-native-dns
+
+- **Preconditions**: Isolated Electron profile, loopback RFC 8484 HTTPS servers
+  and HTTP target, the real native resolver and authenticated relay, and a
+  process-local SPKI pin for the fixture certificate. Never use installed-client
+  data, live providers, a global TLS bypass, or host-resolver overrides.
+- **Steps**: Enable DNS, reject an invalid endpoint, save a valid endpoint and
+  fallback preference, disable/reopen/re-enable, and reject a failed save. Resolve
+  a `.invalid` host via local DoH; request it through system/direct/custom provider
+  modes; switch resolver, disable DNS, and test an unreachable strict endpoint.
+  Persist/reopen settings in a temporary Host database and import config sync.
+  Race Host replacement, settings writes, and confirmed quit with sidecar setup.
+- **Expected**: Endpoint/preferences persist; partial writes and config sync
+  preserve local DNS; strict failures never fall back silently. Relay requests
+  retain Host/SNI and normal proxy policy. Stale/failed/shutdown candidates are
+  disposed before publication. Existing retry and child cancellation remain intact.
+- **Coverage**: `network-dns-settings-user-path.test.mjs`,
+  `network-dns-native.test.mjs`, `network-dns.test.mjs`,
+  `network-settings-ipc.test.mjs`, `network-runtime-startup.test.mjs`,
+  `network-sidecar-quit.test.mjs`, `network-sidecar-rpc.test.mjs`,
+  `network-catalog-dns.test.mjs`, runtime `system-proxy-relay-dns.test.ts`,
+  and Host `network_dns`, `network_dns_settings_tests`, and config-sync tests.
+- **Qualification**: Source and isolated-process checks do not assert deployment
+  or acceptance of an installed package. See `docs/adr/native-desktop-dns.md`.

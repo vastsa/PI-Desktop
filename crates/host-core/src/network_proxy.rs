@@ -15,7 +15,16 @@ pub enum ProxyMode {
 }
 
 static MARKET_PROXY: RwLock<ProxyMode> = RwLock::new(ProxyMode::System);
-static SYSTEM_PROXY_RELAY: RwLock<Option<String>> = RwLock::new(None);
+#[derive(Clone, Default)]
+struct DesktopProxyRelay {
+    url: Option<String>,
+    dns_enabled: bool,
+}
+
+static SYSTEM_PROXY_RELAY: RwLock<DesktopProxyRelay> = RwLock::new(DesktopProxyRelay {
+    url: None,
+    dns_enabled: false,
+});
 
 /// Mirrors `DEFAULT_NETWORK_PROXY_BYPASS` in `packages/shared`: loopback plus
 /// the private ranges a user's own LAN devices live in, so a custom proxy never
@@ -32,7 +41,7 @@ pub fn apply_from_settings(value: Option<&Value>) {
 
 /// Configure Electron's ephemeral, loopback-only system/PAC proxy relay.
 /// This value is runtime-only and is never copied into host-core's environment.
-pub fn set_system_proxy_relay(value: &str) -> Result<(), String> {
+pub fn set_system_proxy_relay(value: &str, dns_enabled: bool) -> Result<(), String> {
     let value = value.trim();
     if value.len() > PROXY_URL_MAX {
         return Err("system proxy relay URL is too long".into());
@@ -58,7 +67,10 @@ pub fn set_system_proxy_relay(value: &str) -> Result<(), String> {
     let mut slot = SYSTEM_PROXY_RELAY
         .write()
         .map_err(|_| "system proxy relay state unavailable")?;
-    *slot = Some(value.to_string());
+    *slot = DesktopProxyRelay {
+        url: Some(value.to_string()),
+        dns_enabled,
+    };
     Ok(())
 }
 
@@ -161,16 +173,35 @@ pub fn parse_proxy_url(raw: &str) -> Result<String, String> {
 
 /// Extra curl arguments so marketplace downloads honor the selected route
 /// without mutating host-core process env (Bash must not inherit credentials).
-pub fn curl_proxy_args() -> Vec<String> {
+pub fn curl_proxy_args() -> Result<Vec<String>, String> {
     let mode = MARKET_PROXY
         .read()
-        .map(|guard| guard.clone())
-        .unwrap_or_default();
-    match mode {
-        ProxyMode::System => SYSTEM_PROXY_RELAY
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone())
+        .map_err(|_| "network proxy state unavailable")?;
+    let relay = SYSTEM_PROXY_RELAY
+        .read()
+        .map_err(|_| "system proxy relay state unavailable")?;
+    curl_proxy_args_for(&mode, &relay)
+}
+
+fn curl_proxy_args_for(mode: &ProxyMode, relay: &DesktopProxyRelay) -> Result<Vec<String>, String> {
+    if relay.dns_enabled {
+        let url = relay
+            .url
+            .as_ref()
+            .ok_or("Desktop secure DNS requires an authenticated proxy relay")?;
+        // DNS and proxy bypass decisions belong to the Desktop relay, not curl's
+        // environment. Even Direct mode must send the hostname to that relay.
+        return Ok(vec![
+            "--proxy".into(),
+            url.replacen("socks5://", "socks5h://", 1),
+            "--noproxy".into(),
+            String::new(),
+        ]);
+    }
+    Ok(match mode {
+        ProxyMode::System => relay
+            .url
+            .as_ref()
             .map(|url| vec!["--proxy".into(), url.replacen("socks5://", "socks5h://", 1)])
             .unwrap_or_default(),
         ProxyMode::Direct => vec!["--noproxy".into(), "*".into()],
@@ -181,14 +212,14 @@ pub fn curl_proxy_args() -> Vec<String> {
                 .filter(|part| !part.is_empty() && *part != "<local>")
                 .collect::<Vec<_>>()
                 .join(",");
-            let mut args = vec!["--proxy".into(), url];
+            let mut args = vec!["--proxy".into(), url.clone()];
             if !noproxy.is_empty() {
                 args.push("--noproxy".into());
                 args.push(noproxy);
             }
             args
         }
-    }
+    })
 }
 
 /// Keep Windows Schannel downloads working when a revocation distribution
@@ -284,7 +315,7 @@ mod tests {
         apply_from_settings(Some(&json!({
             "networkProxy": { "mode": "custom", "url": "socks5://127.0.0.1:1080" }
         })));
-        let args = curl_proxy_args();
+        let args = curl_proxy_args().unwrap();
         assert_eq!(args[0], "--proxy");
         assert_eq!(args[1], "socks5://127.0.0.1:1080");
         assert!(args.contains(&"--noproxy".to_string()));
@@ -292,10 +323,10 @@ mod tests {
         apply_from_settings(Some(&json!({
             "networkProxy": { "mode": "direct" }
         })));
-        assert_eq!(curl_proxy_args(), vec!["--noproxy", "*"]);
+        assert_eq!(curl_proxy_args().unwrap(), vec!["--noproxy", "*"]);
 
         apply_from_settings(Some(&json!({})));
-        assert!(curl_proxy_args().is_empty());
+        assert!(curl_proxy_args().unwrap().is_empty());
     }
 
     #[test]
@@ -310,14 +341,24 @@ mod tests {
             "socks5://system-auto:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@0.0.0.0:43210",
             "socks5://system-auto:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@127.0.0.1:0",
         ] {
-            assert!(set_system_proxy_relay(invalid).is_err());
+            assert!(set_system_proxy_relay(invalid, false).is_err());
         }
 
-        set_system_proxy_relay(&relay_url).unwrap();
+        set_system_proxy_relay(&relay_url, false).unwrap();
         apply_from_settings(Some(&json!({})));
-        let args = curl_proxy_args();
+        let args = curl_proxy_args().unwrap();
+        set_system_proxy_relay(&relay_url, true).unwrap();
+        apply_from_settings(Some(&json!({"networkProxy": {"mode": "direct"}})));
+        let dns_args = curl_proxy_args().unwrap();
+        assert!(
+            set_system_proxy_relay("socks5://system-auto:short@127.0.0.1:43210", false).is_err()
+        );
+        let after_invalid = curl_proxy_args().unwrap();
+        set_system_proxy_relay(&relay_url, false).unwrap();
+        let disabled_args = curl_proxy_args().unwrap();
+        apply_from_settings(Some(&json!({})));
         if let Ok(mut relay) = SYSTEM_PROXY_RELAY.write() {
-            *relay = None;
+            *relay = DesktopProxyRelay::default();
         }
 
         assert_eq!(
@@ -326,6 +367,76 @@ mod tests {
                 "--proxy".to_string(),
                 format!("socks5h://system-auto:{token}@127.0.0.1:43210")
             ]
+        );
+        assert_eq!(
+            dns_args,
+            vec![
+                "--proxy".to_string(),
+                format!("socks5h://system-auto:{token}@127.0.0.1:43210"),
+                "--noproxy".to_string(),
+                String::new(),
+            ]
+        );
+        assert_eq!(after_invalid, dns_args);
+        assert_eq!(disabled_args, vec!["--noproxy", "*"]);
+    }
+
+    #[test]
+    fn secure_dns_uses_the_relay_in_all_modes_without_environment_bypass() {
+        let relay = DesktopProxyRelay {
+            url: Some(format!(
+                "socks5://system-auto:{}@127.0.0.1:43210",
+                "a".repeat(64)
+            )),
+            dns_enabled: true,
+        };
+        for mode in [
+            ProxyMode::System,
+            ProxyMode::Direct,
+            ProxyMode::Custom {
+                url: "http://proxy.example:8080".into(),
+                bypass: "*".into(),
+            },
+        ] {
+            assert_eq!(
+                curl_proxy_args_for(&mode, &relay).unwrap(),
+                vec![
+                    "--proxy".to_string(),
+                    format!("socks5h://system-auto:{}@127.0.0.1:43210", "a".repeat(64)),
+                    "--noproxy".to_string(),
+                    String::new(),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn required_missing_dns_relay_fails_closed_and_headless_defaults_remain_direct() {
+        let required = DesktopProxyRelay {
+            url: None,
+            dns_enabled: true,
+        };
+        for mode in [
+            ProxyMode::System,
+            ProxyMode::Direct,
+            ProxyMode::Custom {
+                url: "http://proxy.example:8080".into(),
+                bypass: "*".into(),
+            },
+        ] {
+            assert_eq!(
+                curl_proxy_args_for(&mode, &required).unwrap_err(),
+                "Desktop secure DNS requires an authenticated proxy relay"
+            );
+        }
+        assert_eq!(
+            curl_proxy_args_for(&ProxyMode::Direct, &DesktopProxyRelay::default()).unwrap(),
+            vec!["--noproxy", "*"]
+        );
+        assert!(
+            curl_proxy_args_for(&ProxyMode::System, &DesktopProxyRelay::default())
+                .unwrap()
+                .is_empty()
         );
     }
 

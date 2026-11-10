@@ -3,6 +3,8 @@ import {
   GEN_UI_DIRECTORY_NAME,
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
+  projectCapabilityAllowed,
+  parseProjectCapabilities,
   isCommandShellCatalog,
   JEV_API_KEY_SECRET_REF,
   imageGenerationBindings,
@@ -17,6 +19,9 @@ import {
   type SessionThinkingLevel,
   type UserSkillRecord,
   type UserSubagentRecord,
+  normalizeProviderRetryMaxAttempts,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryFixedDelayMs,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -44,6 +49,7 @@ import type { RuntimeProvider } from "./provider-catalog";
 import type { LoadedSkillDocument } from "../skill-document";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
 import { loadRemoteWorkspaceInstructions } from "../remote/remote-workspace-instructions.js";
+import { loadProjectContext } from "../project-capabilities";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -468,15 +474,11 @@ export function createSessionLaunchRuntime({
     // per launch; a change retires the runtime through the reuse match.
     const customSystemPrompt = await loadCustomSystemPrompt(localInstructionRoot);
     let projectMemory: string | undefined;
+    const projectContext = await loadProjectContext(runtimeState.host, projectPath);
+    const projectCapabilities = parseProjectCapabilities(projectContext.context?.capabilities);
     if (projectPath) {
       try {
-        const result = await runtimeState.host!.call<{
-          context?: {
-            roots?: Array<{ path?: string }>;
-            instructions?: string;
-            memory?: { content?: string };
-          } | null;
-        }>("project.group.context", { path: projectPath });
+        const result = projectContext;
         const groupRoots = result.context?.roots ?? [];
         // An isolated session's root is its worktree; the group's other roots
         // are outside it and are not advertised (ADR 0329).
@@ -511,7 +513,7 @@ export function createSessionLaunchRuntime({
           if (content) projectMemory = content;
         }
       } catch {
-        // Project context is best effort; it must never prevent a session launch.
+        // Project memory is best effort; capability lookup above remains required.
         try {
           const legacy = await runtimeState.host!.call<{
             memory?: { content?: string };
@@ -562,7 +564,7 @@ export function createSessionLaunchRuntime({
         name: skill.name,
         description: skill.description,
       })),
-    ];
+    ].filter((skill) => projectCapabilityAllowed(projectCapabilities?.skillIds, skill.id));
     // Subagents (ADR 0062): definitions are re-read per launch so editing
     // `~/.agents/subagents` or the registry takes effect on the next prompt, and every
     // pinned model is resolved here because credentials and the models.dev catalog
@@ -730,6 +732,9 @@ export function createSessionLaunchRuntime({
         });
       }
     }
+    const providerRetryMaxAttempts = normalizeProviderRetryMaxAttempts(settings.providerRetryMaxAttempts);
+    const providerRetryInitialDelayMs = normalizeProviderRetryInitialDelayMs(settings.providerRetryInitialDelayMs);
+    const providerRetryFixedDelayMs = normalizeProviderRetryFixedDelayMs(settings.providerRetryFixedDelayMs);
     return {
       providerId: provider.id,
       modelId,
@@ -741,6 +746,9 @@ export function createSessionLaunchRuntime({
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        ...(providerRetryMaxAttempts === undefined ? {} : { providerRetryMaxAttempts }),
+        ...(providerRetryInitialDelayMs === undefined ? {} : { providerRetryInitialDelayMs }),
+        ...(providerRetryFixedDelayMs === undefined ? {} : { providerRetryFixedDelayMs }),
         // The session `/fast` switch only reaches a model the user allowed it
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,

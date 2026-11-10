@@ -91,6 +91,22 @@ with sessions is omitted from `detachedPaths` and remains readable as a standalo
 legacy group; removing a root from group membership never deletes sessions or files.
 Existing path projects are projected as legacy single-root groups at read time;
 their path-scoped memory and filesystem instructions remain readable.
+
+Project groups may also carry `capabilities: { skillIds?, mcpServerIds? }`
+(ADR 0349). An omitted list inherits enabled/scoped choices; `[]` selects none;
+`{}` restores inheritance. IDs are case-sensitive, deduplicated exactly, and
+retained when unavailable. Each list accepts at most 512 IDs of at most 512
+UTF-8 bytes; blank IDs, control characters, nulls, and unknown capability fields
+are rejected. Invalid persisted selections never silently widen access.
+`project.group.create`, `createRemote`, `update`, and `rename` accept optional
+top-level `capabilities` and `instructions`. Omission preserves saved values;
+empty instructions clear them. Instructions are bounded to 32 KiB UTF-8 and
+remain in `projectGroupInstructions`, including for legacy projections promoted
+to durable groups. Group/settings writes are transactional; a failed write
+leaves both unchanged. Relocation preserves IDs and settings; configuration sync
+carries selections with the existing group-instructions entity. No schema bump
+or repository Markdown write is required.
+
 5. **Plan/Goal checkpoints are immutable host artifacts** with recorded path,
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.

@@ -108,6 +108,24 @@ describe("resolveResume", () => {
     }
   });
 
+  it("allows explicit user continuation of an interrupted chain without granting model resume", () => {
+    const registry = new DelegationChainRegistry();
+    registry.hydrate([chain({ latestStatus: "interrupted" })]);
+    expect(registry.resolveResume({
+      resume: "del-1", agentName: "explorer", runningDelegationIds: NONE, userTranscript: [],
+    })).toMatchObject({ ok: true, chain: { latestDelegationId: "del-3", latestStatus: "interrupted" } });
+    expect(registry.resolveResume({
+      resume: "del-1", agentName: "explorer", runningDelegationIds: NONE,
+    })).toEqual({ ok: false, error: { kind: "not-resumable", status: "interrupted" } });
+    expect(registry.resumableList({ runningDelegationIds: NONE })).toEqual([]);
+    expect(registry.resolveResume({
+      resume: "another-session", agentName: "explorer", runningDelegationIds: NONE, userTranscript: [],
+    })).toEqual({ ok: false, error: { kind: "unknown" } });
+    expect(registry.resolveResume({
+      resume: "del-1", agentName: "explorer", runningDelegationIds: new Set(["del-3"]), userTranscript: [],
+    })).toEqual({ ok: false, error: { kind: "running", delegationId: "del-3" } });
+  });
+
   it("accepts every settled status a delegate can end on", () => {
     for (const status of ["completed", "failed", "timed_out"]) {
       const registry = new DelegationChainRegistry();

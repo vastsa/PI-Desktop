@@ -319,6 +319,11 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0342 | [内置电脑操作是宿主拥有、以用户挑选的作用域授权为门的能力](/adr/0342-os-computer-use-capability) | 提议中（D681；修订非目标第 9 条） |
 | 0340 | [插件可访问任意会话（新增 .all 权限）](/adr/0340-plugin-session-all-scope) | 已接受（修订 ADR 0200、ADR 0323；D680） |
 | 0344 | [电脑操作默认授权整个桌面，“停止”就是边界](/adr/0344-computer-use-whole-desktop-grant) | 已接受（D682；修订 ADR 0342 第 4、6 条） |
+| 0347 | [会话子代理检查：会话内目录与显式 TaskRead](/adr/0347-session-subagent-inspection) | 已接受 |
+| 0348 | [用户直接控制子代理，无需父模型往返](/adr/0348-user-owned-subagent-control) | 已实现候选 |
+| native-desktop-dns | [Native Desktop DNS over HTTPS](/adr/native-desktop-dns) | Implemented candidate |
+| 0349 | [项目能力选择与应用内独立说明](/adr/0349-project-agent-settings) | 已实现候选 |
+| 0350 | [父代理决定恢复卡顿的子代理供应商请求](/adr/0350-parent-directed-subagent-recovery) | 已实现候选 |
 
 ## 什么时候看 ADR
 

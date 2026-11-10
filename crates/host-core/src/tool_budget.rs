@@ -15,12 +15,24 @@ const MAX_IN_FLIGHT_COORDINATED_MUTATIONS_PER_SESSION: usize = 2;
 pub const MAX_IN_FLIGHT_PLUGINS: usize = 4;
 pub const MAX_IN_FLIGHT_PER_SESSION: usize = 4;
 pub const MAX_QUEUED_TOOLS: usize = 64;
-/// How long a call waits for execution capacity before admission fails. A call
-/// waits here after the permission gate and before it runs, so the transport
-/// deadline has to carry it too. Mirrored by `TOOL_QUEUE_WAIT_MS` in
+/// How long a shared call waits for execution capacity before admission fails.
+/// A call waits here after the permission gate and before it runs, so the
+/// transport deadline has to carry it too. Mirrored by `TOOL_QUEUE_WAIT_MS` in
 /// `packages/shared/src/rpc-timeouts.ts`.
 pub const TOOL_QUEUE_WAIT_MS: u64 = 30_000;
+/// How long an exclusive call — a `Write` or `Edit` — waits for capacity.
+///
+/// A write is exclusive over its path, and over the whole file domain when it
+/// is structural or its target is unknown. Searches (`Glob`/`Grep`) hold that
+/// domain shared for as long as they scan, which on a large tree is minutes.
+/// Only writes wait for them, so the shared 30-second window turned ordinary
+/// reading traffic into `HOST_OVERLOADED` tool errors the user had to notice
+/// and the model had to retry. An exclusive request instead waits the holder
+/// out: still bounded, and `tools.abort` still cuts the wait when the user
+/// stops the turn.
+pub const MUTATION_QUEUE_WAIT_MS: u64 = 10 * 60_000;
 const QUEUE_WAIT: Duration = Duration::from_millis(TOOL_QUEUE_WAIT_MS);
+const MUTATION_QUEUE_WAIT: Duration = Duration::from_millis(MUTATION_QUEUE_WAIT_MS);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ToolClass {
@@ -587,6 +599,14 @@ impl ToolBudget {
         request: Request,
         wait: Duration,
     ) -> Result<ToolPermit, AdmissionError> {
+        // An exclusive request (a write) is not a slow caller's problem to
+        // report: it waits for the conflicting holder to finish, because the
+        // only thing that can block it is work that is still making progress.
+        let wait = if request.class == ToolClass::Mutation {
+            MUTATION_QUEUE_WAIT
+        } else {
+            wait
+        };
         let ready = Arc::new(Notify::new());
         let guard = {
             let mut state = self.lock();

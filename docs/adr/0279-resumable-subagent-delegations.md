@@ -103,18 +103,18 @@ model can act on:
 No new error codes for "evicted" versus "never existed": both resolve to the
 same unknown-id error, because the model's only correct action is identical.
 
-A resume keeps the chain's own model binding. The `providerId/modelId` key the
-chain recorded is preferred; a chain rebuilt from the transcript only knows the
-model id, which is matched only against the current definition's pin/fallbacks,
-the session binding, and currently authorized overrides. A remembered key whose
-turn grant expired is reauthorized before use; a denied key cannot select another
-account by model id. Other definitions' private pins are never candidates (#841). Changing the
-parent's own session model therefore does not strand a chain, and a delegate never
-swaps models by accident. If nothing resolves the recorded binding any more, the
-run continues on the binding the definition resolves to now and records the
-previous model id in the delegation's lifecycle details as `modelChangedFrom`:
-refusing instead would strand the chain forever, and swapping silently would hand
-the same conversation to a different model with no trace.
+A resume keeps the chain's own model binding. New runs persist the resolved
+account id, not an ambiguous vendor/name alias. Legacy Task rows that omitted
+the binding key recover it from their own child reply's provider/model metadata;
+this evidence never includes parent, sibling, or foreign-agent messages. If only
+a model id survives, exactly one authorized matching account is required.
+A remembered key is resolved only against current definition pins/fallbacks,
+session inheritance, and authorized override grants, or reauthorized on demand.
+A missing, revoked, or ambiguous binding now rejects resume before a successor
+starts, rather than substituting the definition/session default. Direct user
+control (ADR 0348) provides an explicit model-selection recovery path, so refusing
+an implicit switch no longer strands the chain. Rejected Task calls are visible
+errors, not successors that replace the original chain's id or model display.
 
 ### 5. Only `completed` and `failed` are resumable
 

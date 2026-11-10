@@ -52,6 +52,7 @@ import { ReviewTab } from "./ReviewTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
 import { SubagentTranscriptTab } from "./SubagentTranscriptTab";
+import { SessionSubagentsTab } from "../../features/subagents/SessionSubagentsTab";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
@@ -69,6 +70,7 @@ const TAB_ICONS = {
   file: IconFileText,
   plugin: IconPlug,
   subagent: IconBot,
+  subagents: IconBot,
 } as const;
 
 type WorkPanelResizeState = {
@@ -132,9 +134,15 @@ function workPanelTools(
   t: (key: string) => string,
   pluginViews: PluginViewMeta[],
 ): WorkPanelTool[] {
-  // Review is the only host-owned launcher. Files, Browser, and every future
-  // tool are plugin-contributed views, so their list stays data-driven.
+  // Conversation-native tools stay host-owned. Workspace tools such as Files
+  // and Browser remain plugin-contributed, keeping their list data-driven.
   return [
+    {
+      id: "subagents",
+      tab: toolWorkPanelTab("subagents"),
+      label: t("panel.tabs.subagents"),
+      icon: IconBot,
+    },
     {
       id: "review",
       tab: toolWorkPanelTab("review"),
@@ -1086,6 +1094,17 @@ function LocalWorkPanel({
           </div>
         </header>
         <div className="work-panel-body">
+          {activeTab?.kind === "subagents" && (
+            <div
+              key={`${activeSessionId ?? ""}:${activeTab.id}`}
+              id={`work-panel-surface-${activeTab.id}`}
+              className="work-panel-tabpane"
+              role="tabpanel"
+              aria-labelledby={`work-panel-tab-${activeTab.id}`}
+            >
+              <SessionSubagentsTab />
+            </div>
+          )}
           {activeTab?.kind === "subagent" && (
             <div
               key={activeTab.id}

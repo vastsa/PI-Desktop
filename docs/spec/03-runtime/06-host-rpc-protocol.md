@@ -84,17 +84,23 @@ Electron and the sidecar cannot independently over-admit the same resources.
 Admission reserves total, tool-class, session, and session-mutation capacity
 atomically. A queued call holds no execution capacity. When capacity returns,
 the oldest runnable request is admitted; a request blocked by one class or
-session does not block unrelated runnable work. Calls wait at most 30 seconds.
+session does not block unrelated runnable work. Shared calls wait at most 30
+seconds; a mutating call (a `Write` or `Edit`) waits for its conflicting holder
+for up to `MUTATION_QUEUE_WAIT_MS` (ten minutes), because the holder it waits
+for is a domain-fenced search that is still scanning, not a stuck Host.
 Dropping a waiting admission future or letting it time out removes its queue
 entry and releases any reservation made before the caller receives its permit. The health counters report only
 fully admitted reservations, including those awaiting delivery to the caller;
 `queued` counts only requests still waiting for capacity.
 
 Electron's `HostProcess` treats an explicit `HOST_OVERLOADED` response as
-retryable backpressure for renderer-facing calls. It waits 50, 100, 200, and
-400 ms between at most four retries, then returns the structured error to the
-caller. This retry applies only to an admission rejection; transport failure,
-timeout, and errors from an admitted request are never replayed.
+retryable backpressure for renderer-facing calls. It retries after 50, 100, 200,
+400, 800, 1 600, 3 200, 6 400, 8 000 and 9 000 ms — about 30 seconds in total,
+which is at least as long as the Host's own bounded tool queue can hold a
+request — then returns the structured error to the caller. This retry applies
+only to an admission rejection the Host produced before it handled the request,
+so no retry can replay an executed write; transport failure, timeout, and errors
+from an admitted request are never replayed.
 
 ### Request
 

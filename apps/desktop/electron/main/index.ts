@@ -14,6 +14,7 @@ import {
 import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
+  currentNetworkDns,
   disposeSystemProxyRelay,
   ensureSystemProxyRelay,
   testNetworkProxy,
@@ -794,7 +795,7 @@ const sidecarRuntime = createSidecarRuntime({
   logger,
   sendToRenderer,
   persistAgentEvent,
-  activeTurns,
+  activeTurns, isTurnDispatchable,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
@@ -850,6 +851,7 @@ const { startHost } = createHostRuntime({
   superviseRestart,
   isQuitting: () => mainState.quitting,
   ensureSystemProxyRelay,
+  currentNetworkDns,
 });
 
 runtimeLifecycle = createRuntimeLifecycle({

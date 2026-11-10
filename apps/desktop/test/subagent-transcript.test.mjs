@@ -176,10 +176,12 @@ test("a Task node and detail header show the effective thinking level", () => {
     runtimeSource,
     /modelId: provider\.modelId,\s*\n\s*thinkingLevel,/,
   );
-  assert.match(
-    runtimeSource,
-    /modelId: record\.modelId,\s*\n\s*thinkingLevel: record\.thinkingLevel,/,
+  const summary = runtimeSource.slice(
+    runtimeSource.indexOf("function delegationSummary("),
+    runtimeSource.indexOf("function elapsedSeconds("),
   );
+  assert.match(summary, /modelId: record\.modelId,/);
+  assert.match(summary, /thinkingLevel: record\.thinkingLevel,/);
   assert.match(transcriptSource, /function delegateThinkingLevel\(message: UiMessage\)/);
   assert.match(transcriptSource, /value === "off"/);
   assert.match(transcriptSource, /const thinkingLabel = thinkingLevel \?\? "";/);

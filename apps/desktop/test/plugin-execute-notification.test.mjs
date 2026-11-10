@@ -142,6 +142,7 @@ function fixture({ activeTurn } = {}) {
     superviseRestart: async () => undefined,
     isQuitting: () => false,
     ensureSystemProxyRelay: async () => "socks5://system-auto:test@127.0.0.1:1",
+    currentNetworkDns: () => ({ mode: "system" }),
   });
   runtime.wireHost(host);
 

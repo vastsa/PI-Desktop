@@ -552,7 +552,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   panel without deleting tabs, retaining tabs, active resource, and committed
   width. They are a no-op without an active session or while Settings is the
   active page. The panel's `+` trigger can then create a New launcher tab whose
-  body offers Browser or an in-scope plugin view.
+  body offers Review, Session subagents, or an in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
   and opens the panel. Background artifacts never open the visible panel.
 - File resources use normalized paths as identity. Browser and plugin views
@@ -561,8 +561,8 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Once open, the panel header is a `tablist` that scrolls horizontally while a
   tight `+` trigger stays fixed beside it. Each tab owns its active state and
   close button; the active tab is scrolled into view. Clicking `+` creates a
-  unique New launcher tab; its data-driven Review, Files, Browser, and plugin
-  view rows are ordinary buttons in the page body.
+  unique New launcher tab; its data-driven Review, Session subagents, and
+  plugin-view rows are ordinary buttons in the page body.
 - Tab focus uses roving `tabIndex`: ArrowLeft/ArrowRight/Home/End move across
   tabs and Delete/Backspace closes the focused tab. Pressing and moving a tab
   by 8px starts pointer reordering; dropping on the target's left or right half
@@ -596,6 +596,17 @@ may be retained while exactly one workspace supplies the visible shell context.
   and scratch writes behave the same. Background-session events update only
   their retained context and never open, activate, resize, focus, or change the
   visible panel.
+- The Session subagents directory is a singleton tool tab, like Review and a
+  plugin view: the conversation topbar's bot action and the New launcher's
+  Session subagents row both open or activate it without duplicating it. The
+  topbar action is absent when no session is active and for remote sessions.
+  Starting a `Task` never opens, activates, or focuses it, so delegation is
+  discovered by looking, not by having the panel taken over. Row actions use
+  the existing confirmed cancellation contract (a pending state until
+  termination is confirmed, no parent stop, no optimistic `stopped`) and never
+  send to a child. Only the detail view sends, from its own composer, and only
+  for a supported local Agent session; the detail also copies the latest
+  `delegationId` for a follow-up through the main agent (ADR 0348).
 - Each successful workspace Write/Edit tool result carries one durable review
   snapshot. Its compact review row is rendered in the same activity disclosure
   as the tool row itself: one file header followed by its diff body, with no

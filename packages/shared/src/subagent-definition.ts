@@ -81,9 +81,9 @@ export type SubagentDefinition = {
   filePath?: string;
 };
 
-/** Tools a definition may declare by name. Plugin, skill, mode and meta tools
- * are not on this list; a document opts into the parent's live catalog with
- * `tools: inherit` instead (ADR 0246). */
+/** Tools a definition may declare by name. Skill loads only documents already
+ * authorized for this session; plugin, mode and meta tools still require
+ * `tools: inherit` and remain subject to the deny list. */
 export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Read",
   "Glob",
@@ -92,6 +92,7 @@ export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Bash",
   "Edit",
   "Write",
+  "Skill",
 ] as const;
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
@@ -108,6 +109,8 @@ export const SUBAGENT_INHERIT_TOKEN = "inherit";
  */
 export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
   "Task",
+  "TaskRead",
+  "TaskRecover",
   "TaskWait",
   "TaskList",
   "TaskStop",

@@ -6,6 +6,7 @@ import { loadStyles } from "./helpers/styles.mjs";
 import { readMainSource } from "./helpers/main-source.mjs";
 import { readStoreSource } from "./helpers/store-source.mjs";
 import { readTranscriptSource } from "./helpers/transcript-source.mjs";
+import ts from "typescript";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
@@ -216,7 +217,19 @@ test("work panel uses the fixed-window internal dock", () => {
   assert.match(mainSource, /setWorkPanelReservationWidth\(0\)/);
   assert.match(mainSource, /return \{ requested: 0, reserved: 0 \}/);
   assert.match(appSource, /commitWorkPanelPresentation/);
-  assert.doesNotMatch(appSource, /\.finally\(\(\) => \{[\s\S]*setPresentedWorkPanelOpen/);
+  // Inspect actual callback bodies rather than matching across concatenated
+  // modules from an unrelated bootstrap/refresh finally into the dock hook.
+  const source = ts.createSourceFile("app.tsx", appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "finally") {
+      for (const callback of node.arguments) {
+        assert.doesNotMatch(callback.getText(source), /setPresentedWorkPanelOpen/);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   // Mount follows presentation commit; exit keep-alive plays work-panel-out
   // before unmounting, so MainChat reflows continuously in both directions.
   assert.match(

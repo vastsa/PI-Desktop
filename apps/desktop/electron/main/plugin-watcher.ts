@@ -1,4 +1,5 @@
-import { watch as fsWatch } from "node:fs";
+import { lstatSync, readdirSync, watch as fsWatch } from "node:fs";
+import { isAbsolute, join } from "node:path";
 
 /**
  * Debounce window for a source edit. Editors write several files in a burst
@@ -15,6 +16,51 @@ export const MAX_WATCHED_PLUGINS = 16;
 
 /** Directories a plugin's own build output and tooling live in. */
 export const IGNORED_WATCH_DIRS = ["node_modules", ".git", "dist", "target"];
+
+/** Bound the metadata inventory; never descend into dependencies or symlinks. */
+const MAX_WATCHED_ENTRIES = 10_000;
+
+type WatchedPlugin = {
+  dir: string;
+  stamps: Map<string, string>;
+  handle?: WatchHandle;
+};
+
+function sourceStamp(file: string): string | undefined {
+  try {
+    const stat = lstatSync(file, { bigint: true, throwIfNoEntry: false });
+    if (!stat) return undefined;
+    // Windows emits fs.watch events for reads when NTFS updates last access.
+    // Access/change timestamps are not source edits. Identity also catches an
+    // editor's atomic replacement with a preserved modification time and size.
+    return `${stat.ino}:${stat.mode}:${stat.size}:${stat.mtimeNs}`;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
+
+function sourceStamps(dir: string): Map<string, string> {
+  const stamps = new Map<string, string>();
+  const pending = [""];
+  let entries = 0;
+  while (pending.length) {
+    const relative = pending.pop()!;
+    for (const entry of readdirSync(join(dir, relative), { withFileTypes: true })) {
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
+      if (isIgnoredWatchPath(name)) continue;
+      if (++entries > MAX_WATCHED_ENTRIES) {
+        throw new Error(`source watch limit reached (${MAX_WATCHED_ENTRIES}); use manual reload`);
+      }
+      const stamp = sourceStamp(join(dir, name));
+      if (stamp === undefined) continue;
+      stamps.set(name, stamp);
+      if (entry.isDirectory() && !entry.isSymbolicLink()) pending.push(name);
+    }
+  }
+  return stamps;
+}
 
 export type WatchHandle = { close: () => void };
 
@@ -39,8 +85,9 @@ export type DevPluginWatcherDeps = {
  * into its own `dist/` while loading would otherwise reload forever.
  */
 export function isIgnoredWatchPath(relative: string): boolean {
-  if (!relative) return true;
+  if (!relative || isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) return true;
   const segments = relative.split(/[\\/]/);
+  if (segments.includes("..")) return true;
   if (segments.some((segment) => IGNORED_WATCH_DIRS.includes(segment))) return true;
   const file = segments[segments.length - 1] ?? "";
   // Editor scratch files: JetBrains `___jb_tmp___`, vim `4913`, macOS metadata.
@@ -66,7 +113,7 @@ const defaultWatch: WatchFactory = (dir, onEvent) => {
  * sources change, so editing a plugin never means re-picking its folder.
  */
 export class DevPluginWatcher {
-  private watches = new Map<string, WatchHandle>();
+  private watches = new Map<string, WatchedPlugin>();
   private timers = new Map<string, NodeJS.Timeout>();
   private readonly watch: WatchFactory;
   private readonly debounceMs: number;
@@ -102,8 +149,12 @@ export class DevPluginWatcher {
       return;
     }
     try {
-      const handle = this.watch(dir, (relative) => this.onEvent(pluginId, relative));
-      this.watches.set(pluginId, handle);
+      const watched: WatchedPlugin = { dir, stamps: sourceStamps(dir) };
+      watched.handle = this.watch(dir, (relative) => {
+        if (this.watches.get(pluginId) !== watched) return;
+        this.onEvent(pluginId, relative);
+      });
+      this.watches.set(pluginId, watched);
     } catch (error) {
       this.deps.onProblem?.(pluginId, `watch failed: ${(error as Error).message}`);
     }
@@ -119,7 +170,7 @@ export class DevPluginWatcher {
     if (!handle) return;
     this.watches.delete(pluginId);
     try {
-      handle.close();
+      handle.handle?.close();
     } catch {
       // Already closed by the platform.
     }
@@ -130,11 +181,31 @@ export class DevPluginWatcher {
   }
 
   private onEvent(pluginId: string, relative: string): void {
+    relative = relative.replaceAll("\\", "/");
     if (isIgnoredWatchPath(relative)) return;
+    const watched = this.watches.get(pluginId);
+    if (!watched) return;
+    try {
+      const stamp = sourceStamp(join(watched.dir, relative));
+      if (watched.stamps.get(relative) === stamp) return;
+      if (stamp === undefined) watched.stamps.delete(relative);
+      else watched.stamps.set(relative, stamp);
+    } catch (error) {
+      this.deps.onProblem?.(pluginId, `watch stat failed: ${(error as Error).message}`);
+      return;
+    }
     const existing = this.timers.get(pluginId);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       this.timers.delete(pluginId);
+      if (this.watches.get(pluginId) !== watched) return;
+      // Include sources inside a newly added/moved directory before onLoad
+      // reads them. Those reads must not start a second reload.
+      try {
+        watched.stamps = sourceStamps(watched.dir);
+      } catch (error) {
+        this.deps.onProblem?.(pluginId, `watch inventory failed: ${(error as Error).message}`);
+      }
       void this.deps.reload(pluginId);
     }, this.debounceMs);
     // A pending reload must not hold the app open at quit.

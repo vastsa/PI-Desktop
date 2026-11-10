@@ -20,6 +20,7 @@ import {
   validateNetworkProxy,
   type ChromiumProxyConfig,
   type NetworkProxySettings,
+  type NetworkDnsSettings,
 } from "@pi-desktop/shared";
 import {
   startAuthenticatedProxyRelay,
@@ -30,6 +31,7 @@ import {
   startSystemProxyRelay,
   type SystemProxyRelay,
 } from "@pi-desktop/agent-runtime/system-proxy-relay";
+import { createNetworkDnsController } from "./network-dns";
 
 const originalEnv = snapshotProxyEnv(process.env);
 let applied: NetworkProxySettings = { mode: "system" };
@@ -39,13 +41,31 @@ let activeRelay: AuthenticatedProxyRelay | null = null;
 let relayUpstreamHref: string | null = null;
 let systemProxyRelay: SystemProxyRelay | null = null;
 let systemProxyRelayStart: Promise<SystemProxyRelay> | null = null;
+let networkSettingsQueue = Promise.resolve();
+const knownSessions = new Set<Session>();
+const nativeDns = createNetworkDnsController({
+  platform: process.platform,
+  configureHostResolver: (config) => app.configureHostResolver(config),
+  clearHostResolverCache: async () => {
+    knownSessions.add(session.defaultSession);
+    await Promise.all([...knownSessions].map((ses) => ses.clearHostResolverCache()));
+  },
+  resolveHost: (host, options) => session.defaultSession.resolveHost(host, options),
+});
+
+export const lookupDesktopHost = nativeDns.lookupAll;
+
+export function currentNetworkDns(): NetworkDnsSettings {
+  return nativeDns.current();
+}
 
 export async function ensureSystemProxyRelay(): Promise<string> {
   if (!systemProxyRelay) {
     const starting =
       systemProxyRelayStart ??
-      (systemProxyRelayStart = startSystemProxyRelay((url) =>
-        session.defaultSession.resolveProxy(url),
+      (systemProxyRelayStart = startSystemProxyRelay(
+        (url) => session.defaultSession.resolveProxy(url),
+        { lookup: nativeDns.lookup },
       ));
     try {
       systemProxyRelay = await starting;
@@ -61,6 +81,10 @@ export function currentSystemProxyRelayUrl(): string | null {
 }
 
 export async function disposeSystemProxyRelay(): Promise<void> {
+  nativeDns.dispose();
+  knownSessions.clear();
+  if (sessionHookInstalled) app.off("session-created", onSessionCreated);
+  sessionHookInstalled = false;
   const pending = systemProxyRelayStart;
   const relay = systemProxyRelay ?? (pending ? await pending : null);
   systemProxyRelay = null;
@@ -110,24 +134,34 @@ export async function applyNetworkProxy(
   return next;
 }
 
-export async function applyNetworkProxyFromAppSettings(
+export function applyNetworkProxyFromAppSettings(
   settings: unknown,
 ): Promise<NetworkProxySettings> {
-  // The network policy and the proxy ride the same settings write, so one call
-  // site mirrors both.
-  applyUserEndpointPolicyFromAppSettings(settings);
-  const record =
-    settings && typeof settings === "object"
-      ? (settings as { networkProxy?: unknown })
-      : {};
-  return applyNetworkProxy(record.networkProxy ?? { mode: "system" });
+  const record = settings && typeof settings === "object"
+    ? settings as { networkProxy?: unknown; networkDns?: unknown }
+    : {};
+  const operation = networkSettingsQueue.then(async () => {
+    applyUserEndpointPolicyFromAppSettings(settings);
+    installSessionHook();
+    await nativeDns.apply(record.networkDns);
+    return applyNetworkProxy(record.networkProxy ?? { mode: "system" });
+  });
+  // Preserve write order, but let a subsequent valid write recover from failure.
+  networkSettingsQueue = operation.then(() => {}, () => {});
+  return operation;
 }
 
 function installSessionHook(): void {
   if (sessionHookInstalled) return;
   sessionHookInstalled = true;
-  app.on("session-created", (ses) => {
-    void applyToSession(ses, chromiumConfigFromApplied());
+  knownSessions.add(session.defaultSession);
+  app.on("session-created", onSessionCreated);
+}
+
+function onSessionCreated(ses: Session): void {
+  knownSessions.add(ses);
+  void applyToSession(ses, chromiumConfigFromApplied()).catch((error: unknown) => {
+    console.error("Failed to apply the Desktop proxy to a new session", error);
   });
 }
 
@@ -201,7 +235,7 @@ async function chromiumConfigFor(
       relay: activeRelay,
     };
   }
-  const relay = await startAuthenticatedProxyRelay(parsed.value);
+  const relay = await startAuthenticatedProxyRelay(parsed.value, { lookup: nativeDns.lookup });
   return {
     config: {
       proxyRules: relay.url,

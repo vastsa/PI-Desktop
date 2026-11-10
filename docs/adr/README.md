@@ -376,6 +376,7 @@ Each ADR includes:
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
+| native-desktop-dns | [Native Desktop DNS over HTTPS](native-desktop-dns.md) | Implemented candidate |
 | image-generation-capability | [Image generation as a configured Agent capability](image-generation-capability.md) | Accepted |
 | retained-browser-pages-per-tab | [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md) | Accepted |
 | 0318 | [Publish native Linux arm64 artifacts](0318-linux-arm64-release-lane.md) | Accepted (D638) |
@@ -412,3 +413,7 @@ Each ADR includes:
 | 0344 | [Computer use grants the whole desktop automatically, and Stop is the boundary](0344-computer-use-whole-desktop-grant.md) | Accepted (D682; amends ADR 0342 §4 and §6) |
 | 0345 | [One settings destination owns one subject](0345-one-settings-destination-one-subject.md) | Accepted (D684; amends D143, D166, D678) |
 | 0346 | [`@agent` mentions route a turn to a named subagent](0346-composer-agent-mentions.md) | Accepted (issue #986; extends 0024 / 0062) |
+| 0347 | [Session subagent inspection: a session-scoped directory and explicit TaskRead](0347-session-subagent-inspection.md) | Accepted |
+| 0348 | [User-owned subagent control without a parent-model round trip](0348-user-owned-subagent-control.md) | Implemented candidate |
+| 0349 | [Project capability selections and app-owned instructions](0349-project-agent-settings.md) | Implemented candidate |
+| 0350 | [Parent-directed recovery of a stalled child provider attempt](0350-parent-directed-subagent-recovery.md) | Implemented candidate |

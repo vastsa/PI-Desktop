@@ -265,3 +265,16 @@ only the last organization copy, which is replaced after renderer bootstrap.
 Menu command readiness is acknowledged after bootstrap's initial navigation,
 so a tray click cannot be overwritten by the startup draft or pending-plan
 selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
+### Desktop native DNS ownership
+
+Device-local `AppSettings.networkDns` is opt-in. Electron owns the native resolver
+and supplies it to the authenticated relay used by local provider and Host HTTP
+routes. Strict failures do not silently use system DNS. Proxied destinations
+remain under upstream proxy resolution; OS/remote/headless settings are unchanged.
+
+Boot restores persisted networking and enabled plugins before sidecar admission.
+Setup failure, Host replacement, or confirmed shutdown disposes unpublished
+sidecars. Partial settings writes preserve DNS, which remains excluded from
+portable config sync. Child execution ownership and parent-only Stop remain
+independent. See [native DNS ADR](../../../adr/native-desktop-dns.md).

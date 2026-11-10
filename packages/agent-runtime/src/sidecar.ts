@@ -1,3 +1,4 @@
+import { parseSubagentControlRequest } from "@pi-desktop/shared";
 import { parseMcpServerIds, parseMcpToolNames } from "./mcp-tool-selection.js";
 /**
  * Node pi agent sidecar.
@@ -40,6 +41,9 @@ import {
   normalizeNetworkProxy,
   OAUTH_AUTH_KIND,
   readNdjsonLines,
+  normalizeProviderRetryMaxAttempts,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryFixedDelayMs,
 } from "@pi-desktop/shared";
 import type {
   AgentEventEnvelope,
@@ -118,6 +122,9 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
+  providerRetryMaxAttempts?: number;
+  providerRetryInitialDelayMs?: number;
+  providerRetryFixedDelayMs?: number;
   /** Session `/fast` switch AND the model's opt-in, resolved by main (ADR 0334). */
   fastMode?: boolean;
   /** Opt-in TypeSafe classifier credential resolved by Electron main. */
@@ -216,6 +223,9 @@ async function runtimeFor(
   const trustedExtensions = params.trustedExtensions ?? [];
   const subagents = params.subagents ?? [];
   const subagentModelKeys = params.subagentModelKeys ?? [];
+  const providerRetryMaxAttempts = normalizeProviderRetryMaxAttempts(params.providerRetryMaxAttempts);
+  const providerRetryInitialDelayMs = normalizeProviderRetryInitialDelayMs(params.providerRetryInitialDelayMs);
+  const providerRetryFixedDelayMs = normalizeProviderRetryFixedDelayMs(params.providerRetryFixedDelayMs);
   const subagentProviders = Object.fromEntries(
     Object.entries(params.subagentProviders ?? {}).map(([key, pinned]) => [
       key,
@@ -265,6 +275,12 @@ async function runtimeFor(
   const mismatch = existing?.firstMismatch(config) ?? null;
   const reusable = existing && mismatch === null ? existing : undefined;
   if (existing && !reusable) {
+    if (existing.hasActiveSubagents()) {
+      throw Object.assign(new Error("Wait for or stop active subagents before changing runtime configuration"), {
+        rpcCode: -32000,
+        errorCode: "AGENT_BUSY",
+      });
+    }
     console.error(
       `[runtime] rebuilding ${sessionId}: runtime config mismatch (${mismatch ?? "unknown"})`,
     );
@@ -275,6 +291,7 @@ async function runtimeFor(
     reusable.setPluginSkills(pluginSkills);
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
+    reusable.setProviderRetryLimits(providerRetryMaxAttempts, providerRetryInitialDelayMs, providerRetryFixedDelayMs);
     reusable.setFastMode(params.fastMode === true);
     reusable.setMode(mode, modeDefinition);
     return reusable;
@@ -327,6 +344,9 @@ async function runtimeFor(
     commandShell: params.commandShell,
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
+    providerRetryMaxAttempts,
+    providerRetryInitialDelayMs,
+    providerRetryFixedDelayMs,
     fastMode: params.fastMode === true,
     jevApiKey: params.jevApiKey,
     history,
@@ -412,13 +432,20 @@ async function handle(method: string, params: any): Promise<unknown> {
   switch (method) {
     case "sidecar.configure": {
       // Main owns host-core; sidecar only keeps config metadata.
-      if (params && typeof params === "object" && "networkProxy" in params) {
+      if (params && typeof params === "object" &&
+        ("networkProxy" in params || "desktopDnsEnabled" in params)) {
+        if ("desktopDnsEnabled" in params && typeof params.desktopDnsEnabled !== "boolean") {
+          throw Object.assign(new Error("desktopDnsEnabled must be a boolean"), {
+            errorCode: "INVALID_PARAMS",
+          });
+        }
         applyNodeNetworkProxy(
           normalizeNetworkProxy(params.networkProxy),
           process.env,
           typeof params.systemProxyRelayUrl === "string"
             ? params.systemProxyRelayUrl
             : undefined,
+          params.desktopDnsEnabled === true,
         );
       }
       return { ok: true, mode: "host-proxy" };
@@ -579,9 +606,22 @@ async function handle(method: string, params: any): Promise<unknown> {
       if (!matchesExpectedTurnId(runtime?.getStatus().currentTurnId, turnId)) return { ok: false, aborted: false };
       await hostProxy.call("plans.abort", { sessionId, ...(turnId ? { turnId } : {}) }).catch(() => undefined);
       if (runtime && runtimes.get(sessionId) === runtime && matchesExpectedTurnId(runtime.getStatus().currentTurnId, turnId)) {
-        await runtime.abort();
+        await runtime.abort("parent");
       }
       return { ok: true };
+    }
+    case "agent.controlSubagent": {
+      const request = parseSubagentControlRequest(params.request);
+      const turnId = typeof params.turnId === "string" ? params.turnId.trim() : "";
+      if (!turnId || request.sessionId !== params.sessionId || request.sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
+        throw Object.assign(new Error("Invalid direct subagent control target"), { errorCode: "INVALID_REQUEST" });
+      }
+      const existing = runtimes.get(request.sessionId);
+      if (params.existingTurn && (!existing?.getStatus().isRunning || existing.getStatus().currentTurnId !== turnId)) {
+        throw Object.assign(new Error("The target turn has ended"), { errorCode: "TURN_NOT_FOUND" });
+      }
+      const runtime = existing?.getStatus().isRunning ? existing : await runtimeFor(params);
+      return runtime.controlSubagent(request, turnId);
     }
     case "agent.stopSubagents": {
       const runtime = runtimes.get(String(params.sessionId));

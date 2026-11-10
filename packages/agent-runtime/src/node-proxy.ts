@@ -63,6 +63,7 @@ export type NodeTransportRoute =
 /** Settings behind the installed pair, so a rebuild reproduces exactly them. */
 let activeCustomSettings: NetworkProxySettings | null = null;
 let activeSystemProxyRelayUrl: string | null = null;
+let activeRelayRoute: NodeTransportRoute = "system-proxy";
 /** Negative infinity: a process that has never rebuilt is never throttled. */
 let lastTransportRebuildAt = Number.NEGATIVE_INFINITY;
 
@@ -82,7 +83,7 @@ function routeForSettings(settings: NetworkProxySettings): NodeTransportRoute {
  */
 export function activeNodeTransportRoute(): NodeTransportRoute {
   if (activeCustomSettings) return routeForSettings(activeCustomSettings);
-  return activeSystemProxyRelayUrl ? "system-proxy" : defaultRoute();
+  return activeSystemProxyRelayUrl ? activeRelayRoute : defaultRoute();
 }
 
 function ensurePatched(): void {
@@ -119,9 +120,25 @@ export function applyNodeNetworkProxy(
   settings: NetworkProxySettings,
   env: Record<string, string | undefined> = process.env,
   systemProxyRelayUrl?: string,
+  requireDesktopRelay = false,
 ): void {
+  const requiredRelay = requireDesktopRelay
+    ? createSystemProxyDispatcher(systemProxyRelayUrl ?? "")
+    : null;
+  if (requireDesktopRelay && !requiredRelay) {
+    throw new Error("Desktop secure DNS requires an authenticated proxy relay");
+  }
   ensurePatched();
   applyProxyEnvAssignments(proxyEnvAssignments(settings), env);
+  if (requiredRelay) {
+    installCustomProxyDispatchers(requiredRelay);
+    activeCustomSettings = null;
+    activeSystemProxyRelayUrl = systemProxyRelayUrl ?? null;
+    activeRelayRoute = settings.mode === "system"
+      ? "system-proxy"
+      : settings.mode === "direct" ? "direct" : routeForSettings(settings);
+    return;
+  }
   if (settings.mode !== "custom") {
     activeSystemProxyRelayUrl = null;
     if (settings.mode === "system" && systemProxyRelayUrl) {
@@ -130,6 +147,7 @@ export function applyNodeNetworkProxy(
         installCustomProxyDispatchers(built);
         activeCustomSettings = null;
         activeSystemProxyRelayUrl = systemProxyRelayUrl;
+        activeRelayRoute = "system-proxy";
         return;
       }
     }
@@ -263,7 +281,7 @@ export function rebuildNodeNetworkTransport(
       : null;
   if (rebuilt) {
     installCustomProxyDispatchers(rebuilt);
-    return { rebuilt: true, route: rebuilt.route };
+    return { rebuilt: true, route };
   }
 
   const previous = getGlobalDispatcher();

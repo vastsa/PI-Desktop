@@ -11,7 +11,20 @@ import {
 
 const HOST_DISPOSE_GRACE_MS = 3_000;
 const HOST_FORCE_KILL_GRACE_MS = 1_000;
-const HOST_OVERLOAD_RETRY_DELAYS_MS = [50, 100, 200, 400] as const;
+/**
+ * Saturation is back-pressure, not a failure. The Host rejects a request
+ * before it handles it (`rpc/mod.rs`, -32029) whenever all in-flight request
+ * slots are taken, and a tool waiting on its class/session budget holds its
+ * slot for up to `TOOL_QUEUE_WAIT_MS`. Retrying far less than that window
+ * turned ordinary concurrency into failed tool calls — a Write issued while
+ * parallel tools or subagents were queued was reported as `HOST_OVERLOADED`
+ * although capacity returned seconds later. Keep retrying for at least as long
+ * as the Host's own queue can hold a request. A rejection is produced before
+ * the request runs, so a retry cannot repeat an executed write.
+ */
+const HOST_OVERLOAD_RETRY_DELAYS_MS = [
+  50, 100, 200, 400, 800, 1_600, 3_200, 6_400, 8_000, 9_000,
+] as const;
 
 export type HostNotificationHandler = (method: string, params: unknown) => void;
 export type ProcessExitHandler = (info: {

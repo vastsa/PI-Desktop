@@ -19,6 +19,7 @@ import { api } from "../../lib/api";
 import { Button, Input, SegmentedControl, SettingsToggle, cx } from "../ui";
 import { SettingsRow } from "../../features/settings/primitives";
 import { useAppStore } from "../../stores/app-store";
+import { NetworkDnsSection } from "./NetworkDnsSection";
 
 const MODES: NetworkProxyMode[] = ["system", "direct", "custom"];
 
@@ -270,7 +271,7 @@ export function NetworkProxySection({
             </SettingsRow>
           </>
         ) : null}
-
+        <NetworkDnsSection settings={settings} saveSettings={saveSettings} />
       </div>
     </section>
   );

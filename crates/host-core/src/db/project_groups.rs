@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::model::{ProjectMemoryEntryRecord, ProjectMemoryRecord, ProjectRecord};
+use super::project_group_options::{deserialize_present, validate_instructions};
 use super::repositories::{
     canonical_project_path, normalize_project_memory_entries, project_display_name,
     render_project_memory_entries, MAX_PROJECT_MEMORY_BYTES,
@@ -12,7 +13,6 @@ const GROUP_NAMESPACE: &str = "projectGroups";
 const GROUP_MEMORY_NAMESPACE: &str = "projectGroupMemory";
 const GROUP_INSTRUCTIONS_NAMESPACE: &str = "projectGroupInstructions";
 pub const MAX_PROJECT_GROUP_NAME_CHARS: usize = 80;
-pub const MAX_PROJECT_GROUP_INSTRUCTIONS_BYTES: usize = 32 * 1024;
 
 pub const REMOTE_PROJECT_PREFIX: &str = "remote-project:";
 
@@ -65,6 +65,12 @@ pub struct ProjectGroupRecord {
     pub detached_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote: Option<RemoteWorkspace>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_present"
+    )]
+    pub capabilities: Option<ProjectCapabilities>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +82,8 @@ pub struct ProjectGroupContextRecord {
     pub memory: ProjectMemoryRecord,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote: Option<RemoteWorkspace>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ProjectCapabilities>,
 }
 
 fn group_from_value(raw: &str) -> Result<ProjectGroupRecord> {
@@ -119,6 +127,7 @@ fn legacy_group(project: &ProjectRecord) -> ProjectGroupRecord {
         legacy: true,
         detached_paths: Vec::new(),
         remote: None,
+        capabilities: None,
     }
 }
 
@@ -139,11 +148,22 @@ impl Database {
             .ok_or_else(|| anyhow!("remote project binding missing"))
     }
 
+    #[cfg(test)]
     pub fn create_remote_project_group(
         &self,
         name: &str,
         remote: RemoteWorkspace,
     ) -> Result<ProjectGroupRecord> {
+        self.create_remote_project_group_with_options(name, remote, &ProjectGroupOptions::default())
+    }
+
+    pub fn create_remote_project_group_with_options(
+        &self,
+        name: &str,
+        remote: RemoteWorkspace,
+        options: &ProjectGroupOptions,
+    ) -> Result<ProjectGroupRecord> {
+        let options = options.normalized()?;
         remote.validate()?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > MAX_PROJECT_GROUP_NAME_CHARS {
@@ -175,6 +195,7 @@ impl Database {
             legacy: false,
             detached_paths: Vec::new(),
             remote: Some(remote),
+            capabilities: options.capabilities,
         };
         let transaction = self.conn.unchecked_transaction()?;
         // The synthetic row owns local session metadata; no remote directory is
@@ -184,6 +205,9 @@ impl Database {
             params![primary_path, name, now],
         )?;
         self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
+        if let Some(content) = options.instructions {
+            self.set_project_group_instructions(&group.id, &content)?;
+        }
         transaction.commit()?;
         Ok(group)
     }
@@ -269,6 +293,16 @@ impl Database {
     }
 
     pub fn create_project_group(&self, name: &str, paths: &[String]) -> Result<ProjectGroupRecord> {
+        self.create_project_group_with_options(name, paths, &ProjectGroupOptions::default())
+    }
+
+    pub fn create_project_group_with_options(
+        &self,
+        name: &str,
+        paths: &[String],
+        options: &ProjectGroupOptions,
+    ) -> Result<ProjectGroupRecord> {
+        let options = options.normalized()?;
         let name = name.trim();
         if name.is_empty() {
             return Err(anyhow!("project group name must not be blank"));
@@ -310,6 +344,7 @@ impl Database {
                 position: position as i64,
             })
             .collect::<Vec<_>>();
+        let transaction = self.conn.unchecked_transaction()?;
         for path in &canonical_paths {
             self.ensure_project(path, false)?;
         }
@@ -325,8 +360,13 @@ impl Database {
             legacy: false,
             detached_paths: Vec::new(),
             remote: None,
+            capabilities: options.capabilities,
         };
         self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
+        if let Some(content) = options.instructions {
+            self.set_project_group_instructions(&group.id, &content)?;
+        }
+        transaction.commit()?;
         Ok(group)
     }
 
@@ -336,6 +376,7 @@ impl Database {
     /// stored primary is kept when it is `None`, and dropping it from `paths`
     /// without naming a replacement is refused. The primary root always stays
     /// first, so naming another root reorders the group around it.
+    #[cfg(test)]
     pub fn update_project_group(
         &self,
         id: &str,
@@ -343,6 +384,24 @@ impl Database {
         paths: &[String],
         primary: Option<&str>,
     ) -> Result<ProjectGroupRecord> {
+        self.update_project_group_with_options(
+            id,
+            name,
+            paths,
+            primary,
+            &ProjectGroupOptions::default(),
+        )
+    }
+
+    pub fn update_project_group_with_options(
+        &self,
+        id: &str,
+        name: &str,
+        paths: &[String],
+        primary: Option<&str>,
+        options: &ProjectGroupOptions,
+    ) -> Result<ProjectGroupRecord> {
+        let options = options.normalized()?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > MAX_PROJECT_GROUP_NAME_CHARS {
             return Err(anyhow!("project group name is invalid"));
@@ -355,7 +414,7 @@ impl Database {
             if paths != [current.primary_path.clone()] || !keeps_current_primary {
                 return Err(anyhow!("remote project folder binding cannot be changed"));
             }
-            return self.rename_project_group(&current.id, name);
+            return self.rename_project_group_with_options(&current.id, name, &options);
         }
         let current_primary = canonical_project_path(&current.primary_path)
             .ok_or_else(|| anyhow!("project group primary path is invalid"))?;
@@ -421,16 +480,22 @@ impl Database {
                 removed_without_sessions.push(*path);
             }
         }
+        let transaction = self.conn.unchecked_transaction()?;
         for path in &ordered {
             self.ensure_project(path, false)?;
         }
 
-        if current.legacy && ordered.len() == 1 {
+        if current.legacy
+            && ordered.len() == 1
+            && primary == current.primary_path
+            && !options.has_changes()
+        {
             self.conn
                 .prepare_cached("UPDATE projects SET name = ?1 WHERE path = ?2")?
                 .execute(params![name, primary])?;
             let mut legacy = current;
             legacy.name = name.to_string();
+            transaction.commit()?;
             return Ok(legacy);
         }
 
@@ -444,6 +509,7 @@ impl Database {
                 position: position as i64,
             })
             .collect::<Vec<_>>();
+        let legacy_id = current.legacy.then(|| current.id.clone());
         let mut detached_paths = current.detached_paths;
         for path in removed_without_sessions {
             if !detached_paths.iter().any(|candidate| candidate == path) {
@@ -468,6 +534,7 @@ impl Database {
             legacy: false,
             detached_paths,
             remote: None,
+            capabilities: options.capabilities.or(current.capabilities),
         };
         if current.legacy {
             // A legacy project may already have path-scoped memory. Merge the
@@ -507,6 +574,17 @@ impl Database {
             }
         }
         self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
+        if let Some(content) = options.instructions {
+            self.set_project_group_instructions(&group.id, &content)?;
+        } else if let Some(id) = &legacy_id {
+            if let Some(instructions) = self.kv_get(GROUP_INSTRUCTIONS_NAMESPACE, id)? {
+                self.kv_set(GROUP_INSTRUCTIONS_NAMESPACE, &group.id, &instructions)?;
+            }
+        }
+        if let Some(id) = legacy_id {
+            self.kv_delete(GROUP_INSTRUCTIONS_NAMESPACE, &id)?;
+        }
+        transaction.commit()?;
         Ok(group)
     }
 
@@ -581,12 +659,24 @@ impl Database {
             legacy: false,
             detached_paths: current.detached_paths,
             remote: current.remote,
+            capabilities: current.capabilities,
         };
         self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
         Ok(Some(group))
     }
 
+    #[cfg(test)]
     pub fn rename_project_group(&self, id: &str, name: &str) -> Result<ProjectGroupRecord> {
+        self.rename_project_group_with_options(id, name, &ProjectGroupOptions::default())
+    }
+
+    pub fn rename_project_group_with_options(
+        &self,
+        id: &str,
+        name: &str,
+        options: &ProjectGroupOptions,
+    ) -> Result<ProjectGroupRecord> {
+        let options = options.normalized()?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > MAX_PROJECT_GROUP_NAME_CHARS {
             return Err(anyhow!("project group name is invalid"));
@@ -594,6 +684,17 @@ impl Database {
         let Some(mut group) = self.group_by_id(id.trim())? else {
             return Err(anyhow!("project group not found"));
         };
+        if group.legacy && options.has_changes() {
+            return self.update_project_group_with_options(
+                &group.id,
+                name,
+                std::slice::from_ref(&group.primary_path),
+                None,
+                &options,
+            );
+        }
+        let transaction = self.conn.unchecked_transaction()?;
+        group.capabilities = options.capabilities.or(group.capabilities);
         if group.legacy {
             self.conn
                 .prepare_cached("UPDATE projects SET name = ?1 WHERE path = ?2")?
@@ -610,6 +711,10 @@ impl Database {
             group.updated_at = now_ms();
             self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
         }
+        if let Some(content) = options.instructions {
+            self.set_project_group_instructions(&group.id, &content)?;
+        }
+        transaction.commit()?;
         group.name = name.to_string();
         Ok(group)
     }
@@ -683,9 +788,6 @@ impl Database {
         let Some(group) = self.group_by_id(id)? else {
             return Err(anyhow!("project group not found"));
         };
-        if group.legacy {
-            return Ok(String::new());
-        }
         Ok(self
             .kv_get(GROUP_INSTRUCTIONS_NAMESPACE, &group.id)?
             .and_then(|value| {
@@ -701,14 +803,7 @@ impl Database {
         let Some(group) = self.group_by_id(id)? else {
             return Err(anyhow!("project group not found"));
         };
-        if group.legacy {
-            return Err(anyhow!("legacy project groups use folder instructions"));
-        }
-        if content.len() > MAX_PROJECT_GROUP_INSTRUCTIONS_BYTES {
-            return Err(anyhow!(
-                "project instructions exceed {MAX_PROJECT_GROUP_INSTRUCTIONS_BYTES} bytes"
-            ));
-        }
+        validate_instructions(content)?;
         self.kv_set(
             GROUP_INSTRUCTIONS_NAMESPACE,
             &group.id,
@@ -724,7 +819,11 @@ impl Database {
         let Some(group) = self.project_group_for_path(path)? else {
             return Ok(None);
         };
-        if group.legacy {
+        if group.legacy
+            && self
+                .kv_get(GROUP_INSTRUCTIONS_NAMESPACE, &group.id)?
+                .is_none()
+        {
             return Ok(None);
         }
         Ok(Some(ProjectGroupContextRecord {
@@ -733,6 +832,7 @@ impl Database {
             instructions: self.get_project_group_instructions(&group.id)?,
             memory: self.get_project_group_memory(&group.id)?,
             remote: group.remote,
+            capabilities: group.capabilities,
         }))
     }
 }

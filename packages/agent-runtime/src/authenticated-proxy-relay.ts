@@ -6,7 +6,7 @@
  */
 import { createServer, type Server, type Socket } from "node:net";
 import type { ParsedProxyUrl } from "@pi-desktop/shared";
-import { connectViaProxy, SocketReader } from "./socks5.js";
+import { connectViaProxy, SocketReader, type ProxyConnectionOptions } from "./socks5.js";
 
 export type AuthenticatedProxyRelay = {
   port: number;
@@ -16,6 +16,7 @@ export type AuthenticatedProxyRelay = {
 
 export async function startAuthenticatedProxyRelay(
   upstream: ParsedProxyUrl,
+  options: Pick<ProxyConnectionOptions, "lookup"> = {},
 ): Promise<AuthenticatedProxyRelay> {
   const clients = new Set<Socket>();
   const server = createServer((client) => {
@@ -23,7 +24,7 @@ export async function startAuthenticatedProxyRelay(
     const forget = () => clients.delete(client);
     client.once("close", forget);
     client.once("error", forget);
-    void handleClient(client, upstream);
+    void handleClient(client, upstream, options);
   });
   server.on("error", () => {
     // Accept errors are surfaced per-connection; listen() uses the callback.
@@ -69,11 +70,22 @@ function listenLoopback(server: Server): Promise<number> {
 async function handleClient(
   client: Socket,
   upstream: ParsedProxyUrl,
+  options: Pick<ProxyConnectionOptions, "lookup">,
 ): Promise<void> {
   const reader = new SocketReader(client);
+  const controller = new AbortController();
+  const onClientClose = () => controller.abort();
+  client.once("close", onClientClose);
   try {
     const dest = await acceptSocks5Connect(reader, client);
-    const remote = await connectViaProxy(upstream, dest.host, dest.port);
+    const remote = await connectViaProxy(upstream, dest.host, dest.port, {
+      ...options,
+      signal: controller.signal,
+    });
+    if (client.destroyed) {
+      remote.destroy();
+      return;
+    }
     reader.dispose();
     client.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 0]));
     pipeSockets(client, remote);
@@ -89,6 +101,8 @@ async function handleClient(
       }
       client.destroy();
     }
+  } finally {
+    client.off("close", onClientClose);
   }
 }
 

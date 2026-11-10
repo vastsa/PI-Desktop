@@ -15,7 +15,11 @@ mod window_corner_rpc;
 mod worktree_rpc;
 
 #[cfg(test)]
+mod network_dns_settings_tests;
+#[cfg(test)]
 mod plugin_reviews_rpc_tests;
+#[cfg(test)]
+mod project_group_options_tests;
 #[cfg(test)]
 mod review_rpc_tests;
 #[cfg(test)]
@@ -46,6 +50,7 @@ use crate::review;
 use crate::scratch;
 use crate::sessions::{self, UiMessage};
 use crate::state::{AppState, HOST_VERSION, PROTOCOL_VERSION};
+use crate::tool_budget::{MAX_IN_FLIGHT_TOOLS, MAX_QUEUED_TOOLS};
 use crate::tools::{self, ToolsExecuteParams};
 use crate::transcripts::{self, CompactionRecord};
 use crate::turn_queue;
@@ -312,7 +317,16 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
     // Keep request tasks bounded as well as tool executions. Tool calls have
     // their own class/session budgets below; this cap protects the host from
     // non-tool RPC bursts and prevents an unbounded tokio task fan-out.
-    const MAX_IN_FLIGHT_RPC: usize = 32;
+    //
+    // It must never undercut the tool budget's own bound. A tool call that is
+    // waiting for its class/session capacity (up to `MAX_QUEUED_TOOLS`) is
+    // already holding one of these slots, so a smaller cap refuses a Write the
+    // tool budget would have queued and reports it as `HOST_OVERLOADED` — the
+    // saturation the client then has to ride out. Deriving the cap keeps the
+    // two bounds from drifting apart.
+    const NON_TOOL_RPC_HEADROOM: usize = 32;
+    const MAX_IN_FLIGHT_RPC: usize =
+        MAX_IN_FLIGHT_TOOLS + MAX_QUEUED_TOOLS + NON_TOOL_RPC_HEADROOM;
     let request_slots = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RPC));
     let mut request_tasks = tokio::task::JoinSet::new();
 
@@ -871,9 +885,29 @@ fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<Strin
     None
 }
 
+const PROVIDER_RETRY_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const PROVIDER_RETRY_FIELDS: [&str; 3] = [
+    "providerRetryMaxAttempts",
+    "providerRetryInitialDelayMs",
+    "providerRetryFixedDelayMs",
+];
+
+fn provider_retry_limit(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .filter(|limit| *limit <= PROVIDER_RETRY_MAX_SAFE_INTEGER)
+}
+
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
+        let dns = crate::network_dns::normalize_network_dns(object.get("networkDns"));
+        object.insert("networkDns".into(), dns);
         object.remove("planApprovalPermissionMode");
+        for field in PROVIDER_RETRY_FIELDS {
+            if object.get(field).and_then(provider_retry_limit).is_none() {
+                object.remove(field);
+            }
+        }
         if object.get("defaultMode").and_then(Value::as_str) == Some("chat") {
             object.insert("defaultMode".into(), Value::String("plan".into()));
         }
@@ -1185,6 +1219,17 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    for field in PROVIDER_RETRY_FIELDS {
+        if let Some(value) = object.get(field) {
+            if !value.is_null() && provider_retry_limit(value).is_none() {
+                return Err(rpc_err(
+                    1002,
+                    format!("{field} must be a nonnegative safe integer or null"),
+                    "INVALID_PARAMS",
+                ));
+            }
+        }
+    }
     if let Some(keep_awake) = object.get("keepAwakeWhileRunning") {
         if !keep_awake.is_boolean() {
             return Err(rpc_err(
@@ -1213,6 +1258,9 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
         }
     }
     if let Err(message) = crate::network_proxy::validate_network_proxy(value) {
+        return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+    }
+    if let Err(message) = crate::network_dns::validate_network_dns(value) {
         return Err(rpc_err(1002, message, "INVALID_PARAMS"));
     }
     let Some(shell_value) = object.get("defaultCommandShell") else {
@@ -2103,10 +2151,12 @@ async fn handle_request(
             let remote: crate::db::RemoteWorkspace =
                 serde_json::from_value(params.get("remote").cloned().unwrap_or(Value::Null))
                     .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let options = crate::db::ProjectGroupOptions::from_json(&params)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
             let group = st
                 .db
-                .create_remote_project_group(name, remote)
+                .create_remote_project_group_with_options(name, remote, &options)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             Ok(json!({ "group": group }))
         }
@@ -2123,10 +2173,12 @@ async fn handle_request(
                 .filter_map(Value::as_str)
                 .map(str::to_string)
                 .collect::<Vec<_>>();
+            let options = crate::db::ProjectGroupOptions::from_json(&params)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
             let group = st
                 .db
-                .create_project_group(name, &folders)
+                .create_project_group_with_options(name, &folders, &options)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             Ok(json!({ "group": group }))
         }
@@ -2148,10 +2200,12 @@ async fn handle_request(
                 .map(str::to_string)
                 .collect::<Vec<_>>();
             let primary = params.get("primary").and_then(Value::as_str);
+            let options = crate::db::ProjectGroupOptions::from_json(&params)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
             let group = st
                 .db
-                .update_project_group(group_id, name, &folders, primary)
+                .update_project_group_with_options(group_id, name, &folders, primary, &options)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             Ok(json!({ "group": group }))
         }
@@ -2164,10 +2218,12 @@ async fn handle_request(
                 .get("name")
                 .and_then(Value::as_str)
                 .ok_or_else(|| rpc_err(1002, "name required", "INVALID_PARAMS"))?;
+            let options = crate::db::ProjectGroupOptions::from_json(&params)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let st = state.lock().await;
             let group = st
                 .db
-                .rename_project_group(id, name)
+                .rename_project_group_with_options(id, name, &options)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             Ok(json!({ "group": group }))
         }
@@ -2300,7 +2356,7 @@ async fn handle_request(
             // deleting that project also removes the now-empty group record.
             if let Some(group) = st
                 .db
-                .stored_project_group_for_path(&path)
+                .project_group_for_path(&path)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
             {
                 if group.roots.len() > 1 {
@@ -5687,7 +5743,9 @@ async fn handle_request(
                 .get("url")
                 .and_then(Value::as_str)
                 .ok_or_else(|| rpc_err(1002, "url required", "INVALID_PARAMS"))?;
-            crate::network_proxy::set_system_proxy_relay(url)
+            let dns_enabled = crate::network_dns::desktop_dns_enabled(&params)
+                .map_err(|message| rpc_err(1002, message, "INVALID_PARAMS"))?;
+            crate::network_proxy::set_system_proxy_relay(url, dns_enabled)
                 .map_err(|message| rpc_err(1002, message, "INVALID_PARAMS"))?;
             Ok(json!({ "ok": true }))
         }
@@ -11276,5 +11334,126 @@ mod update_settings_tests {
         ] {
             assert!(validate_settings_value(&value).is_err(), "{value}");
         }
+    }
+}
+
+#[cfg(test)]
+mod provider_retry_settings_tests {
+    use super::*;
+
+    const FIELDS: [&str; 3] = [
+        "providerRetryMaxAttempts",
+        "providerRetryInitialDelayMs",
+        "providerRetryFixedDelayMs",
+    ];
+
+    #[test]
+    fn validates_provider_retry_writes_and_normalizes_reads() {
+        for field in FIELDS {
+            for valid in [json!(0), json!(3), json!(9_007_199_254_740_991u64)] {
+                let value = json!({field: valid});
+                assert!(validate_settings_value(&value).is_ok(), "{value}");
+                assert_eq!(normalize_settings_value(value)[field], valid);
+            }
+            for invalid in [
+                json!(-1),
+                json!(1.5),
+                json!("3"),
+                json!(true),
+                json!(9_007_199_254_740_992u64),
+                json!({}),
+                json!([]),
+            ] {
+                let value = json!({field: invalid});
+                let error = validate_settings_value(&value).expect_err(&value.to_string());
+                assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+                assert!(normalize_settings_value(value).get(field).is_none());
+            }
+            assert!(validate_settings_value(&json!({field: null})).is_ok());
+            assert!(normalize_settings_value(json!({field: null}))
+                .get(field)
+                .is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_retry_settings_save_reload_omit_reset_and_reject() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "providerRetryMaxAttempts": 0,
+                "providerRetryInitialDelayMs": 0,
+                "providerRetryFixedDelayMs": 45_000,
+                "theme": "dark",
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({"theme": "light"}),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(settings["providerRetryMaxAttempts"], 0);
+        assert_eq!(settings["providerRetryInitialDelayMs"], 0);
+        assert_eq!(settings["providerRetryFixedDelayMs"], 45_000);
+        for field in FIELDS {
+            assert!(handle_request(
+                state.clone(),
+                "settings.set",
+                json!({field: -1}),
+                tx.clone(),
+            )
+            .await
+            .is_err());
+        }
+        let unchanged = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(unchanged, settings);
+        drop(state);
+
+        // Reopen the isolated persisted profile, not just the in-memory value.
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let reloaded = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(reloaded, settings);
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "providerRetryMaxAttempts": null,
+                "providerRetryInitialDelayMs": null,
+                "providerRetryFixedDelayMs": null,
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let cleared = handle_request(state.clone(), "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        let persisted = state.lock().await.db.get_setting("app").unwrap().unwrap();
+        for field in FIELDS {
+            assert!(cleared.get(field).is_none());
+            assert!(persisted.get(field).is_none());
+        }
+        assert_eq!(cleared["theme"], "light");
     }
 }
