@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-test("Git timeout releases file listing and preview even when child pipes never close", async t => {
+test("Git timeout releases file listing and preview even when child pipes never close", { timeout: 5_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), "fm-git-timeout-"));
   await writeFile(join(root, "note.txt"), "preview bytes");
   const require = createRequire(import.meta.url);
@@ -36,7 +36,7 @@ test("Git timeout releases file listing and preview even when child pipes never 
     const read = plugin.onPanelInvoke("fm.read", { path: "note.txt" }).then(value => { preview = value; });
     await ready;
     t.mock.timers.tick(plugin.internals.GIT_TIMEOUT_MS);
-    await new Promise(resolve => setImmediate(resolve));
+    await list;
     assert.equal(killed, true);
     assert.equal(listing?.ok, true, "listing must not wait for close after the deadline");
     assert.deepEqual(listing.entries.map(item => item.name), ["note.txt"]);
@@ -44,7 +44,6 @@ test("Git timeout releases file listing and preview even when child pipes never 
     await read;
     assert.equal(preview.ok, true);
     assert.equal(preview.text, "preview bytes");
-    await list;
   } finally {
     t.mock.timers.reset();
     await plugin.onUnload();

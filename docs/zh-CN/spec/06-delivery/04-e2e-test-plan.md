@@ -1,5 +1,17 @@
 # 04. E2E 测试 Plan
 
+### E2E-FILE-MANAGER-markdown-images
+
+Open synthetic `notes/guide.md` with `../images/fig%2002.png`; switch Edit to
+Preview and require decoded pixels, preserved alt text and panel-bounded width.
+Cover encoded Chinese names, nested lists/tables and PNG/JPEG/SVG. Reload bytes
+and switch documents/roots while reads are pending; discard obsolete results.
+Missing, invalid, oversized, protected, traversal and symlink-escape targets keep
+placeholders. Absolute paths, remote URLs and external-document siblings trigger
+no read. Repeat through a scoped remote root. `e2e-remote-file-manager.mjs` checks
+native bundled-view pixels through the production broker, RACP and Host filesystem,
+including encoded relative paths, missing-image fallback and URL/path rejection.
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环

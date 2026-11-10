@@ -1,5 +1,15 @@
 # 08. 组件规格
 
+### File Manager Markdown images
+
+Project-relative Markdown images render inline through bounded `fm.read`,
+relative to the document directory inside the selected folder root. Encoded
+filenames and parent segments within that root work. Missing, denied,
+oversized and undecodable images retain alt-text placeholders. Remote URLs,
+absolute image paths and siblings of external documents remain placeholders.
+Document reloads refresh images; document/root changes discard pending view
+updates. File permissions and filesystem/network authority remain unchanged.
+
 全量会话读取仅在请求期间缓存未改变时写入该会话缓存。新的流式消息或编辑
 快照保留所有权；调用方仍得到读取的历史，用于独立动作校验。
 

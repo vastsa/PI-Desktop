@@ -37,6 +37,22 @@ provider, overflow, silent and progress recovery in `runtime.test.ts`.
 `e2e-transcript-render.mjs` verifies production event projection and the
 existing one-bubble overflow recovery when no steering is consumed.
 
+### E2E-FILE-MANAGER-markdown-images
+
+Open synthetic `notes/guide.md` containing an image at
+`../images/fig%2002.png`, switch Edit to Preview and require inline pixels,
+preserved alt text and width constrained to the panel. Cover Chinese names,
+nested lists/tables and PNG/JPEG/SVG. Reload changed image bytes; switch
+documents/roots with reads pending and reject old results. Missing, invalid,
+oversized, protected, traversal and symlink-escape targets retain placeholders.
+Absolute paths, remote URLs and external-document siblings trigger no read.
+Repeat against a scoped SSH root and preserve directory navigation and search
+themes. Controlled source verification reads actual fixture Markdown/PNG via
+the production plugin receiver; it does not establish Electron pixel results.
+`e2e-remote-file-manager.mjs` additionally checks decoded pixels and bounded width
+for an encoded Chinese relative image through the actual bundled view, broker,
+RACP and Host filesystem; missing/remote/absolute sources retain placeholders.
+
 ### E2E-COMPOSER-screenshot-without-directory-scan
 
 Paste a native folder, then a synthetic screenshot through real Composer,

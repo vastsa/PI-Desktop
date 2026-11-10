@@ -55,10 +55,12 @@ try {
   await writeFile(join(localPath, "nested/deep.txt"), "WRONG LOCAL FILE\n");
   await writeFile(join(localPath, "page.html"), "<h1>Local page</h1>");
   await mkdir(join(temp, "host-data"));
-  await writeFile(join(remotePath, "docs/guide.md"), "REMOTE CONTENT\n");
+  await mkdir(join(remotePath, "images"));
+  await writeFile(join(remotePath, "docs/guide.md"), "REMOTE CONTENT\n\n![relative preview](../images/%E5%9B%BE%2002.png)\n\n![missing](missing.png)\n\n![remote](https://example.invalid/private.png)\n\n![absolute](/private.png)\n");
   await writeFile(join(remotePath, "late.txt"), "LATE REMOTE CONTENT\n");
   await writeFile(join(remotePath, ".env"), "PRIVATE FIXTURE");
   await writeFile(join(remotePath, "pixel.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l8sAAAAASUVORK5CYII=", "base64"));
+  await writeFile(join(remotePath, "images/图 02.png"), await readFile(join(remotePath, "pixel.png")));
   await writeFile(join(localPath, "local.txt"), "LOCAL CONTROL\n");
   const identity = "remote-project:e2e";
   let workspace = identity;
@@ -141,7 +143,7 @@ app.whenReady().then(async()=>{
   assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
   await page.locator(".cm-content").click(); await page.keyboard.type("MUST NOT EDIT");
   await page.keyboard.press(process.platform === "darwin" ? "Meta+s" : "Control+s");
-  assert.equal(await readFile(join(remotePath, "docs/guide.md"), "utf8"), "REMOTE CONTENT\n");
+  assert.ok((await readFile(join(remotePath, "docs/guide.md"), "utf8")).startsWith("REMOTE CONTENT\n"));
   assert.equal((await page.locator(".cm-content").textContent()).includes("MUST NOT EDIT"), false);
   await page.locator('[data-path="docs/guide.md"]').click({ button: "right" });
   assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Copy relative path", "Copy absolute path", "Refresh"]);
@@ -149,6 +151,17 @@ app.whenReady().then(async()=>{
   assert.equal(await page.locator('[data-path=".env"]').count(), 0);
   checks.push("remote nested navigation, real text, credentials hidden, editor/save/menu read-only");
   await capture(page, "remote-files-text.png");
+  const beforePreview = invocations.length;
+  await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll(".md-image-preview")].some(image => image.complete && image.naturalWidth === 1));
+  const preview = page.locator('.md-image-preview[alt="relative preview"]');
+  assert.equal(await preview.count(), 1);
+  assert.ok((await preview.boundingBox()).width <= (await page.locator(".md-body").boundingBox()).width);
+  assert.ok(invocations.slice(beforePreview).some(call => call.channel === "fm.read" && call.payload?.path === "images/图 02.png"));
+  assert.ok(!invocations.slice(beforePreview).some(call => call.channel === "fm.read" && /^(https?:|\/)/.test(call.payload?.path ?? "")));
+  await page.locator(".md-image").filter({ hasText: "missing" }).waitFor();
+  checks.push("Markdown encoded relative image decodes through remote scoped reads; missing/remote/absolute sources retain placeholders");
+  await capture(page, "remote-markdown-relative-image.png");
   await page.locator('[data-path="pixel.png"]').click();
   await page.waitForFunction(() => [...document.images].some(image => image.complete && image.naturalWidth === 1));
   checks.push("real remote image bytes decoded in Chromium");
@@ -174,12 +187,11 @@ app.whenReady().then(async()=>{
   await page.locator(".cm-content").click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("\nLOCAL EDIT VERIFIED");
+  await page.getByText("Unsaved changes", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await page.waitForFunction(async () => {
-    const result = await window.pluginBridge.invoke("fm.read", { path: "local.txt" });
-    return result.text?.includes("LOCAL EDIT VERIFIED");
-  });
-  assert((await readFile(join(localPath, "local.txt"), "utf8")).includes("LOCAL EDIT VERIFIED"));
+  await page.getByText("Saved", { exact: true }).waitFor();
+  const savedText = await readFile(join(localPath, "local.txt"), "utf8");
+  assert(savedText.includes("LOCAL EDIT VERIFIED"), JSON.stringify({ savedText, recentInvocations: invocations.slice(-12) }));
   checks.push("project switch rejects late remote contents and restores real local editing and saving");
   await page.locator('[data-path="page.html"]').click({ button: "right" });
   await page.getByRole("menuitem", { name: /^Open with/ }).hover();
