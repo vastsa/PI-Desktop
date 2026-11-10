@@ -7400,6 +7400,24 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Specs linked**: `04-ux/08-component-spec.md` §3.7, `04-ux/07-ui-design-system.md`
 - **Acceptance**: Quality
 - **Milestone**: M5
+
+#### E2E-099AA: Plugin panel palette follows a native OS appearance transition
+
+- **Status**: Automated on Windows (`node scripts/e2e-native-appearance.mjs`; skips elsewhere)
+- **Priority**: P1
+- **Covers**: Quality / #2215, #2228 — palette refresh on native theme updates
+- **Preconditions**: Windows host; app theme preference stays `system`; the shipped `pi.browser` plugin is enabled; the OS app theme (`AppsUseLightTheme`) can be flipped and is restored afterwards.
+- **Steps**:
+  1. Boot the real desktop (Electron + Host + agent sidecar) and start a temp conversation so the work panel enables.
+  2. Open the work-panel launcher entry contributed by `pi.browser` and attach to its `browser.html` panel page.
+  3. Read the panel's resolved base (`documentElement.dataset.base`) with the OS in its original appearance.
+  4. Flip the real OS app theme through the registry and broadcast `WM_SETTINGCHANGE("ImmersiveColorSet")` the way Windows Settings does.
+  5. Wait for the panel base to flip away from the original; verify it matches the new OS appearance.
+  6. Restore the original OS appearance and wait for the panel base to flip back.
+- **Expected**: The palette flips both directions without a reload: OS flip → Electron `nativeTheme.updated` → lifecycle re-resolve → `appearance:changed` broadcast → shipped panel `setBaseTheme` repaint. The original OS setting is restored even when assertions fail.
+- **Specs linked**: ADR 0280, `04-ux/07-ui-design-system.md`
+- **Acceptance**: Quality
+
 #### E2E-077: Theme-aware selection and CJK section labels
 
 - **Status**: Partially automated (`user-select.test.mjs`, `interaction-polish.test.mjs`)
