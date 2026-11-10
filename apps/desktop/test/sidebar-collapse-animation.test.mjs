@@ -16,14 +16,14 @@ const topbarSource = await readFile(
 const globalStyles = await loadStyles();
 
 test("the sidebar forwards collapse-animation props to the aside element", () => {
-  assert.match(sidebarSource, /cx\("sidebar", "sidebar-surface", className\)/);
+  assert.match(sidebarSource, /cx\("sidebar", "sidebar-surface", floating && "is-floating", className\)/);
   assert.match(sidebarSource, /onAnimationEnd=\{onAnimationEnd\}/);
   assert.match(sidebarSource, /className\?:\s*string;/);
   assert.match(sidebarSource, /onAnimationEnd\?:\s*ReactAnimationEventHandler<HTMLElement>;/);
 });
 
 test("collapsing keeps the sidebar mounted until its exit animation ends", () => {
-  assert.match(appSource, /!sidebarCollapsed \|\| sidebarExiting \?/);
+  assert.match(appSource, /!sidebarCollapsed \|\| sidebarExiting \|\| sidebarPreview\.open \?/);
   assert.match(appSource, /className=\{cx\(sidebarEntering && "is-entering", sidebarExiting && "is-exiting"\)\}/);
   assert.match(appSource, /onAnimationEnd=\{handleSidebarAnimationEnd\}/);
   assert.match(appSource, /event\.target !== event\.currentTarget/);

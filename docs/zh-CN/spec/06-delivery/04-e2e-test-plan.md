@@ -1,5 +1,19 @@
 # 04. E2E 测试 Plan
 
+#### E2E-SIDEBAR-hover-preview: Select navigation without docking
+
+With collapsed navigation, exercise deliberate/short hover, pointer travel,
+conversation/route selection, child portals/dialogs, Escape, outside press, blur,
+keyboard entry, touch exclusion and docking. Preview must preserve pane width,
+restore focus, keep portals usable and suspend/restore native views. Navigation
+and unmount cancel pending timers. Repeat both themes, reduced motion and
+Windows/Linux. Specs: `04-ux/08-component-spec.md` and
+[Sidebar hover navigation](/adr/sidebar-hover-navigation).
+Native candidate command: `node scripts/e2e-three-column-layout.mjs --sidebar-hover-only`
+with the built app and candidate Host. It drives Chromium pointer/keyboard input
+through the real shell and native Browser view; it does not establish physical
+mouse-device or Windows/Linux coverage. The proposal still needs direction approval.
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
