@@ -1,5 +1,9 @@
 # 04. E2E Test Plan
 
+### E2E-TRANSCRIPT-window-cache-edit-race
+
+Hold a bounded production session read, publish an idle edit cache with a different history window, then return the older window. Navigate/render from cache and observe the edited content. Also cover unchanged hydration and running live-tail merge. `session-window-cache-race.test.mjs` exercises the runtime API; `e2e-session-window-cache-race.mjs` renders the recovered snapshot through production MessageRow in real Electron. The API is controlled and no provider executes.
+
 ### E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and
