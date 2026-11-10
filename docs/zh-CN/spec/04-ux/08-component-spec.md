@@ -3147,4 +3147,4 @@ At four references, another paste warns and inserts plain text without removing
 the existing chips. Main and Composer normalize workspace spelling consistently;
 lexical and real-path containment remain mandatory. The runtime reads the saved
 range at execution time through the scoped Host Read, including queued sends.
-See [File Manager line references ADR](../../adr/file-manager-line-references.md).
+See [File Manager line references ADR](/adr/file-manager-line-references).
