@@ -1370,42 +1370,50 @@ row 而不是在转录本中添加树镶边。
   会话面板内，并在滚动、窗口调整或面板几何变化时重新定位；指针离开后经过
   短暂宽限关闭（触发器仍保持键盘焦点时除外），也可用 Escape 或外部指针按下
   关闭；减少动态效果时禁用过渡。
-  紧凑的 Codex 风格上下文检查器放在输入框右侧工具栏、模型 × 推理芯片左侧，
-  始终对应当前最新一条已报告用量的助手回合（D347）。占用、剩余容量、已用/
-  窗口计数、本轮合计以及模型 input/output/cache/reasoning/命中率取该回合
-  最新一条已报告用量的助手消息（最后一次模型请求），占用为
-  `input + output + cacheRead + cacheWrite`（D355；`output` 已包含推理令牌，
-  因此不再重复加上 `reasoningTokens`）；它们不是视觉工具循环里每一次请求
-  的加总，最后一次请求的占用与胶囊的回合合计刻意保持不同。没有用量时不显示。
-  触发器保留容量
-  圆环和百分比，去掉重复的 `Context` 文字；引导数值（圆弧、百分比、令牌
-  标签、弹层标题、tooltip 与 `aria-label`）跟随
-  `settings.contextUsageDisplay`——`"remaining"`（默认）或 `"used"`——
-  因此圆环按 `remainingRatio` 或 `usedRatio` 填充。低容量时根据剩余容量
-  改变语义颜色（剩余 ≤ 25 % 警告、≤ 10 % 临界），不随显示模式变化，
-  不让颜色成为唯一信号。点击触发器（或使用键盘激活）会打开非模态摘要
-  面板，标题跟随同一显示模式，并展示已用/窗口计数以及两个无卡片的本轮/
-  速度数值，随后是费用行：最新回合费用和整个会话累计。会话累计只在面板打开时向 Host
-  （`session/usageCost`）读取，有新请求计费时原地刷新，且不会显示其他会话的数值。费用措辞与胶囊一致：
-  实际计费直接显示，目录估算前缀 `≈`，遗漏无价格请求的合计前缀 `≥`，订阅账号（OAuth 登录或 Kimi Coding）
-  的用量显示“订阅”，tooltip 给出按 API 价格的等价金额，且不计入按量金额。没有可计价内容的范围不显示。模型用量压缩为一条内联摘要，保留精确的最后一次请求
-  input/output/cache/reasoning 数值和可用的缓存命中率。工具用量压缩为
-  一条聚合摘要，展示工具种类、调用次数和带 `~` 的估算令牌数；默认视图
-  不再显示逐工具行、占比条、来源徽章或解释性提示。标题下方的行共用
-  左标签/右数值节奏，只用留白分隔，弹层保留浮层描边、不画内部分隔线
-  （D297）。生成速度只代表已完成回合，流式响应期间不更新。上下文窗口
-  总计使用与 agent sidecar 相同的 effective model window：已发布的
-  `models.dev` `limit.context` 会替换遗留的 128k 通用 binding seed，
-  非默认的按模型 Advanced 值仍然优先；未知模型回退到提供商目录或默认
-  窗口。面板仍通过 document body 传送为固定视口覆盖层，在触发器上方/
-  下方翻转、水平边界限制在会话面板内——工作面板的原生浏览器/插件视图
-  合成在所有渲染层之上，越过会话面板右缘的部分无论 z-index 多高都会被
-  覆盖（D357）——并在滚动、窗口调整或会话面板几何变化时重新定位（侧
-  边栏与工作面板的开关、拖宽和入场动画不会发出 resize 或 scroll 事件，
-  因此通过面板上的 `ResizeObserver` 观察），避免被裁剪容器或原生表面
-  遮挡（D103、D184、D244、D347）。活动会话存在上下文
-  检查点时，面板底部增加一条静音摘要，显示压缩次数和最新摘要的估算
-  成本；记录仍为每次压缩绘制一行（D203）。
+  The Composer context inspector retains the capacity trigger, last-request
+  occupancy and pane-clamped portal. Click or keyboard activation opens a
+  non-modal insights dashboard (D686, amending the compact D244 body).
+  Cards show context statistics, provider token composition, measured timing,
+  current capacity, request trends, recorded history, tool usage and compactions.
+  Trend selection updates the token breakdown and history browser; the capacity
+  card always describes the newest parent request. Step/Turn and Total/Delta
+  controls change the trend projection. History can be searched and expanded,
+  is labelled as recorded estimates rather than an assembled prompt, and warns
+  when earlier transcript pages are not loaded. CJK/Hangul/Kana estimates use
+  one token per character; other characters use one quarter before rounding.
+  Provider totals remain authoritative and need not equal those estimates.
+  Network/provider wait and streamed response remain separate; parallel
+  top-level tools count overlapping time once, and nested delegate timing is
+  excluded. Older messages cannot contribute missing request-wait metadata.
+  The cost row shows the newest turn's cost
+  and the whole-session total; the session figure is read from Host
+  (`session/usageCost`) only while the panel is open, refreshes in place when
+  another request is billed, and never shows another session's figure. Cost
+  wording is shared with the capsule: a provider-billed amount reads plainly,
+  a catalog estimate is prefixed `≈`, a total that omits unpriced requests is
+  prefixed `≥`, and usage on a subscription account (OAuth sign-in, or Kimi
+  Coding) reads "Subscription" with its API-price equivalent in the tooltip and
+  is never added to the pay-as-you-go amount. A scope with nothing to price is
+  left out.
+  Generation speed is a completed-turn value in tokens
+  per second and is not updated while a response is streaming. The
+  context-window total uses the same effective model window as the agent
+  sidecar: a published models.dev `limit.context` replaces a legacy 128k
+  generic binding seed, while a non-default per-model Advanced value remains
+  explicit. Unknown models use the provider's generic default window. The
+  panel is portaled to the document body as a fixed viewport overlay, flips
+  above or below the trigger, clamps its horizontal bounds to the
+  conversation pane — the work panel's native browser/plugin surfaces
+  composite above every renderer layer, so anything crossing the pane's
+  right edge would be covered regardless of z-index (D357) — and
+  repositions on scroll, window resize, or conversation-pane geometry
+  changes (sidebar and work-panel toggle, resize, and entrance animation
+  are observed through a pane `ResizeObserver`, since none of them emit
+  resize or scroll events) so no clipping ancestor or native surface can
+  hide it (D103, D184, D244, D347). When the active session has an
+  installed context checkpoint,
+  the dashboard includes the compaction events and their summaries; the
+  transcript still shows one row per compaction (D203).
 - 间隙：连续消息行之间的 12px 垂直填充（比
   消费者聊天，更接近 WorkBuddy 任务记录）；助理轮流添加一个
   底部空气很少，因此完整的答案与下一个提示分开
