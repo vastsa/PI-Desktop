@@ -1,5 +1,9 @@
 # 04. E2E 测试 Plan
 
+### E2E-MODEL-discovery-retry
+
+在生产 Composer 模型列表中使用缓存标记未列出的已配置模型。首次发现失败，关闭再打开列表，返回已列出结果；无需重置提供商即可选择模型。失败保留缓存，成功缓存结果。`model-discovery-retry.test.mjs` 覆盖抛错、带错误回退及缓存保留；`e2e-model-discovery-retry.mjs` 使用真实 Electron、生产 store/模型列表及受控 preload API 结果。
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环

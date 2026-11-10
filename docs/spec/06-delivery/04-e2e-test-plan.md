@@ -1,5 +1,9 @@
 # 04. E2E Test Plan
 
+### E2E-MODEL-discovery-retry
+
+Open the production Composer model picker with a configured model marked unlisted in cache. Fail the first discovery, close and reopen the picker, then return a listed model. The model becomes selectable without resetting providers. Preserve cached results on failure and memoize a successful result. `model-discovery-retry.test.mjs` covers thrown/fallback errors and cache retention; `e2e-model-discovery-retry.mjs` uses real Electron, production store/picker, and controlled preload API results.
+
 ### E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and

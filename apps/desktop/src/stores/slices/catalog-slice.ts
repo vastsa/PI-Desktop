@@ -132,12 +132,9 @@ export function createCatalogSlice({
               },
             }));
           }
+          if (!refreshed.error) refreshedProviderModels.add(providerId);
         } catch {
           // Keep the cached catalog; the menu already has a usable fallback.
-        } finally {
-          if (generation === catalogRuntime.providerGeneration()) {
-            refreshedProviderModels.add(providerId);
-          }
         }
       })();
       providerModelLoads.set(providerId, load);

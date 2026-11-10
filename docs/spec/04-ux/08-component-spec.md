@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+A failed provider model discovery remains retryable when the Composer picker is reopened. Cached metadata stays visible; only a successful discovery is memoized. A fallback response carrying a discovery error is not a successful refresh. Only explicitly configured models become selectable (Refs #1617).
+
 A full transcript read may fill its session cache only when that cache has not
 changed during the request. New streaming or edit snapshots retain ownership;
 the caller still receives the requested history for its own action validation.
