@@ -56,6 +56,19 @@ describe("host ports", () => {
     expect(await createHostSessionPort(() => null).get("s1")).toBeNull();
   });
 
+  it("bounds the transcript read for metadata lookups but not for history pages", async () => {
+    const calls: Array<Record<string, unknown> | undefined> = [];
+    const port = createHostSessionPort(() => ({
+      async call<T>(_method: string, params?: Record<string, unknown>) {
+        calls.push(params);
+        return { session: { id: "s1", messages: [] } } as T;
+      },
+    }));
+    await port.get("s1");
+    await port.history("s1", { limit: 10 });
+    expect(calls).toEqual([{ id: "s1", messageLimit: 1 }, { id: "s1" }]);
+  });
+
   it("round-trips queue records through the host-core RPC shape", async () => {
     const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
     const store = createHostQueueStore(() => ({

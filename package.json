@@ -73,6 +73,7 @@
     "test:e2e:window-surface": "node scripts/e2e-window-surface.mjs",
     "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",
     "test:e2e:browser-local-files": "node scripts/e2e-browser-local-file-access.mjs",
+    "test:e2e:session-metadata-reads": "node scripts/e2e-session-metadata-reads.mjs",
     "test:e2e:browser-background": "node scripts/e2e-browser-background.mjs",
     "test:e2e:work-panel-drag": "node scripts/e2e-work-panel-drag.mjs",
     "test:e2e:work-panel-tab-close": "node scripts/e2e-work-panel-tab-close.mjs",

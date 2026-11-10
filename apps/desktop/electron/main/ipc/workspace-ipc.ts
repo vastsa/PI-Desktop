@@ -606,7 +606,7 @@ export function registerWorkspaceIpc({
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      const session = (await host.call("session.get", { id: sessionId })) as {
+      const session = (await host.call("session.get", { id: sessionId, messageLimit: 1 })) as {
         session?: unknown;
       };
       if (!session.session) {
@@ -656,7 +656,7 @@ handleWithEvent(
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      const session = (await host.call("session.get", { id: sessionId })) as {
+      const session = (await host.call("session.get", { id: sessionId, messageLimit: 1 })) as {
         session?: unknown;
       };
       if (!session.session) {

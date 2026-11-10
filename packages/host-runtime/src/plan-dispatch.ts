@@ -128,7 +128,7 @@ export class PlanExecutionDispatcher {
         claimed = true;
         const [settings, sessionResult] = await Promise.all([
           host.call<Record<string, unknown>>("settings.get"),
-          host.call<{ session?: Record<string, unknown> | null }>("session.get", { id: execution.sessionId }),
+          host.call<{ session?: Record<string, unknown> | null }>("session.get", { id: execution.sessionId, messageLimit: 1 }),
         ]);
         if (!sessionResult.session) {
           throw Object.assign(new Error("Session not found"), { errorCode: ErrorCodes.NOT_FOUND });
