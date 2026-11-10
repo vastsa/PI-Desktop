@@ -100,6 +100,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.sidebarRunningBadge",
       "settings.sidebarRunningRail",
       "settings.sidebarSessionTime",
+      "settings.sidebarScheduledTasks",
       "settings.radialMenu",
       "settings.radialMenuDesc",
       "settings.radialMenuEnable",

@@ -18,7 +18,7 @@ const deferred = () => {
 };
 
 // Exercise the production hook with controlled API promises and poll ticks.
-function harness(api) {
+function harness(api, requestedTaskId) {
   const slots = [], effects = [], timers = new Set();
   let cursor = 0, dirty = true, output;
   const equal = (a, b) => a?.length === b?.length && a?.every((value, index) => value === b[index]);
@@ -60,7 +60,7 @@ function harness(api) {
     get output() { return output; },
     async settle() {
       for (let round = 0; round < 30; round++) {
-        if (dirty) { dirty = false; cursor = 0; output = exports.useScheduledWorkspace(() => {}); }
+        if (dirty) { dirty = false; cursor = 0; output = exports.useScheduledWorkspace(() => {}, requestedTaskId); }
         while (effects.length) effects.shift()();
         await Promise.resolve();
       }
@@ -126,6 +126,20 @@ test("return restores the selected task, run and bounded history", async t => {
   assert.equal(next.output.selectedRunId, record.id);
   assert.equal(next.output.runsLoaded, true);
   assert.deepEqual(next.output.runs, [record]);
+});
+
+test("explicit sidebar task overrides cached selection and conversation return without reusing their run", async t => {
+  cache.snapshot.tasks = [task("a"), task("b")];
+  cache.snapshot.selection = { taskId: "a", runId: "cached-a" };
+  cache.snapshot.history = { taskId: "a", runs: [run("cached-a", "a")] };
+  returns.rememberScheduledReturn({ taskId: "a", taskTitle: "a", runId: "returned-a", sessionId: "synthetic" });
+  const h = harness(api({ listScheduled: () => new Promise(() => {}), listScheduledRuns: () => new Promise(() => {}) }), "b");
+  t.after(() => h.close()); await h.settle();
+  assert.equal(h.output.loaded, true);
+  assert.equal(h.output.selectedTaskId, "b");
+  assert.equal(h.output.selectedRunId, null);
+  assert.equal(h.output.runsLoaded, false);
+  assert.deepEqual(h.output.runs, []);
 });
 
 test("failed summaries and task histories stay distinguishable from successful empty results", async t => {

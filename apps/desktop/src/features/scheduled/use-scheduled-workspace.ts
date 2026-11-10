@@ -52,12 +52,13 @@ export type ScheduledWorkspace = {
  */
 export function useScheduledWorkspace(
   onError: (message: string) => void,
+  requestedTaskId?: string,
 ): ScheduledWorkspace {
   // Coming back from a run's conversation restores the same task and run.
-  const restored = peekScheduledReturn();
+  const restored = requestedTaskId ? null : peekScheduledReturn();
   const snapshot = cache.snapshot;
   const cachedTaskId = snapshot.selection?.taskId;
-  const initialTaskId = restored?.taskId ?? (snapshot.tasks?.some((task) => task.id === cachedTaskId) ? cachedTaskId : snapshot.tasks?.[0]?.id) ?? null;
+  const initialTaskId = requestedTaskId ?? restored?.taskId ?? (snapshot.tasks?.some((task) => task.id === cachedTaskId) ? cachedTaskId : snapshot.tasks?.[0]?.id) ?? null;
   const [tasks, setTasks] = useState<ScheduledTask[]>(snapshot.tasks ?? []);
   const [latestPerTaskRuns, setLatestPerTaskRuns] = useState<ScheduledTaskRun[]>(snapshot.latestPerTaskRuns ?? []);
   const [taskRuns, setTaskRuns] = useState<ScheduledTaskRun[]>(snapshot.history?.runs ?? []);
@@ -70,7 +71,7 @@ export function useScheduledWorkspace(
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(restored?.runId ?? (snapshot.selection?.taskId === initialTaskId ? snapshot.selection.runId : null));
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(requestedTaskId ? null : restored?.runId ?? (snapshot.selection?.taskId === initialTaskId ? snapshot.selection.runId : null));
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(snapshot.tasks !== undefined);
   const [error, setError] = useState("");
