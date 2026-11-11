@@ -434,8 +434,10 @@ classified from that 400-599 code the same way as a `<status>:` message:
 `MODEL_NOT_CONFIGURED`, 429 stays retryable, and 5xx stay retryable unless
 the body reports a context overflow that is not a rate limit, which is
 terminal `CONTEXT_TOO_LARGE`. A 400 or 422 that explicitly rejects the API
-key (`invalid api key`, `api key not valid`, or `API_KEY_INVALID`, including
-Gemini's `API key not valid` body) is terminal `PROVIDER_UNAUTHORIZED`;
+key (`invalid api key`, `invalid x-api-key`, `incorrect api key`,
+`api key expired`, `api key not valid`, or `API_KEY_INVALID`, including
+Gemini's `API key not valid` body and OpenAI's statusless
+`Incorrect API key provided`) is terminal `PROVIDER_UNAUTHORIZED`;
 `permission denied` and a bare `unauthorized` on those statuses stay
 `PROVIDER_ERROR`.
 

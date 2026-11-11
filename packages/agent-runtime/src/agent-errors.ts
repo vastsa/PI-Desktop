@@ -484,7 +484,10 @@ export function networkFailureDiagnostics(
  * Explicit API-key rejection. Safe on HTTP 400/422 as well as on a
  * statusless message: Gemini's `@google/genai` ApiError reports a bad key
  * as 400 `API key not valid` / `API_KEY_INVALID`, and some OpenAI-compatible
- * gateways do the same.
+ * gateways do the same. OpenAI's own SDK says `Incorrect API key provided`
+ * or `API key expired`; Anthropic's Messages API says `invalid x-api-key`.
+ * pi-ai often flattens those to a statusless errorMessage, so the wording
+ * — not only an HTTP 401 field — must count.
  *
  * Broader words such as "unauthorized" and "permission denied" stay out of
  * this pattern. On a 400 they can describe a bad parameter or a tool
@@ -492,7 +495,7 @@ export function networkFailureDiagnostics(
  * below treats them as an auth failure.
  */
 const API_KEY_REJECTION_PATTERN =
-  /invalid[ _]api[ _]key|api key not valid|API_KEY_INVALID/i;
+  /invalid[ _]api[ _]key|invalid[ _]x-api-key|incorrect[ _]api[ _]key|api[ _]key[ _]expired|api key not valid|API_KEY_INVALID/i;
 
 /**
  * Credential rejection worded without an HTTP status.

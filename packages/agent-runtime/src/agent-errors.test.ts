@@ -281,6 +281,27 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // OpenAI's classic rejection and Anthropic's header name never say
+  // "invalid api key". pi-ai often flattens them to a statusless
+  // errorMessage, so the pattern — not only HTTP 401 — must catch them.
+  it.each([
+    "Incorrect API key provided",
+    "Incorrect API key provided: sk-****. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "API key expired. Please renew the API key.",
+    "invalid x-api-key",
+    '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+  ])("classifies statusless Incorrect/expired API-key wording as unauthorized: %s", (message) => {
+    expect(classifyAgentError(message)).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error(message))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+  });
+
+
   it("classifies pi-ai '<status>: <body>' errorMessage strings", () => {
     expect(classifyAgentError('429: {"error":{"type":"rate_limit_error"}}'))
       .toMatchObject({ code: "PROVIDER_RATE_LIMITED", retriable: true });
