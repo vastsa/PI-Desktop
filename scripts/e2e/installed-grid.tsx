@@ -285,9 +285,10 @@ Object.assign(globalThis, {
     );
     const panelRail = controlsOf(cardByName("Acme Panel"));
     check(
-      panelRail.length === 2 &&
+      panelRail.length === 3 &&
         panelRail[0].classList.contains("scope-control") &&
-        panelRail[1].classList.contains("plugins-menu-wrap"),
+        panelRail[1].textContent?.includes("Open panel") === true &&
+        panelRail[2].classList.contains("plugins-menu-wrap"),
       `panel rail: ${panelRail.map((node) => node.className).join(" | ")}`,
     );
     const settingsRail = controlsOf(cardByName("Acme Settings"));
@@ -515,14 +516,12 @@ Object.assign(globalThis, {
     );
     await settle(() => !maybe(".plugins-install-modal"), "install dialog stepped aside");
 
-    // --- Installed cards do not offer a panel shortcut ---------------------
-    check(
-      [...cardByName("Acme Panel").querySelectorAll("button")].every(
-        (button) => button.textContent?.trim() !== "Open panel",
-      ),
-      "installed card offered the panel action",
-    );
-    check(panels.length === 0, `unexpected panel call: ${JSON.stringify(panels)}`);
+    // --- Open panel names the plugin ---------------------------------------
+    cardByName("Acme Panel")
+      .querySelector<HTMLButtonElement>(".plugins-row-controls .btn-secondary")!
+      .click();
+    await settle(() => panels.length === 1, "openPluginPanel recorded");
+    check(panels[0] === "acme.panel", `panel call: ${JSON.stringify(panels)}`);
 
     // --- Settings opens only where declared --------------------------------
     cardByName("Acme Updater")
@@ -558,7 +557,7 @@ Object.assign(globalThis, {
 
     root.unmount();
     host.remove();
-    return "PASS: update->permission->marketInstall(v1.2.3), no panel shortcut or dispatch, settings sheet opens/closes, overflow auto-update false + uninstall";
+    return "PASS: update->permission->marketInstall(v1.2.3), panel id, settings sheet opens/closes, overflow auto-update false + uninstall";
   },
 });
 

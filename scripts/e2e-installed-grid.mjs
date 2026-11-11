@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Real installed-grid components and Chromium behaviour; only host APIs are
 // fixtures. Drives the installed user path: groups and counts, control-rail
-// order and gating (scope first, updates when available, no panel shortcut), the detail
+// order and gating (scope first, update OR panel, disabled none), the detail
 // disclosure, the real compact scope menu, chip-in-meta and long-id
 // truncation, the 340px grid floor with the sub-340 fallback, narrow rail
 // wrapping, and the action path update -> permission review -> marketInstall,
-// no panel action, settings sheet, and the overflow auto-update/uninstall
+// open-panel id, settings sheet, and the overflow auto-update/uninstall
 // controls. Nothing installs outside the renderer.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
