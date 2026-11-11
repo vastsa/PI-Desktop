@@ -13,6 +13,16 @@ old read. The caller receives history while the session cache keeps the newer
 snapshot. Coverage: `full-transcript-refresh-race.test.mjs` plus existing
 session-runtime update regressions. No provider execution is required.
 
+### E2E-SESSION-metadata-reads-skip-transcript
+
+Seed real host-core with a ~40 MB transcript beside a short session. A
+`messageLimit: 1` `session.get` must return the same project, worktree, mode
+and model metadata as an unbounded read. Then launch the built desktop app on
+that data and drive composer paste and Browser navigate through the real
+preload IPC on both sessions: the long session may not add half an unbounded
+read's time to either call. Coverage: `pnpm test:e2e:session-metadata-reads`
+(`scripts/e2e-session-metadata-reads.mjs`). No provider execution is required.
+
 ### E2E-SESSION-rejected-stop-state
 
 Reject a remote Stop at the API boundary: the production session slice keeps

@@ -450,7 +450,7 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
 
     const [settings, sessionResult] = await Promise.all([
       runtimeState.host.call("settings.get"),
-      runtimeState.host.call<{ session?: any }>("session.get", { id: execution.sessionId }),
+      runtimeState.host.call<{ session?: any }>("session.get", { id: execution.sessionId, messageLimit: 1 }),
     ]);
     if (!sessionResult.session) {
       throw Object.assign(new Error("Session not found"), {
