@@ -11,6 +11,10 @@ Unicode 字节分块及深层搜索。
 
 呈现两个排队提示，保持生产刷新，发送 queueChanged 事件移除第一个提示，再返回旧读取；只显示第二个提示，后续权威刷新继续生效。`queue-refresh-event-order.test.mjs` 覆盖事件与读取顺序、逆序响应及会话独立性；`e2e-queue-refresh-event-order.mjs` 在真实 Electron 中呈现生产 ComposerStatus/useAppStore。不向提供商发送提示。
 
+### E2E-TRANSCRIPT-window-cache-edit-race
+
+保持生产有界会话读取，发布带新历史窗口的空闲编辑缓存，再返回旧窗口；从缓存恢复并呈现编辑后的正文。同时覆盖未变化时正常填充及运行中实时尾部合并。`session-window-cache-race.test.mjs` 验证 runtime API；`e2e-session-window-cache-race.mjs` 在真实 Electron 中使用生产 MessageRow 呈现恢复快照。仅控制 API，不执行提供商。
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
