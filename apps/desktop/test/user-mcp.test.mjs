@@ -560,6 +560,175 @@ test("testing a server retries it and reports the tools it found", async (t) => 
   assert.deepEqual(ready.toolNames, ["lookup", "ping"]);
 });
 
+test("testing a server clears failed workspace caches without an enable toggle", async (t) => {
+  const dir = stubDir();
+  const firstProject = projectDir("retry-a");
+  const secondProject = projectDir("retry-b");
+  const readyFile = join(dir, "ready");
+  const original = readFileSync(join(dir, "server.mjs"), "utf8");
+  writeFileSync(join(dir, "server.mjs"),
+    `import { existsSync } from "node:fs";
+if (!existsSync(${JSON.stringify(readyFile)})) process.exit(1);
+${original}`);
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, { env: { STUB_REPORT_CWD: "1" } })]);
+  assert.deepEqual(await rt.toolsForProject(firstProject), []);
+  assert.deepEqual(await rt.toolsForProject(secondProject), []);
+  writeFileSync(readyFile, "ready");
+
+  // The default settings test used to repair only the home-directory cache.
+  const status = await rt.test("stub");
+  assert.equal(status.state, "ready");
+  assert.ok((await rt.toolsForProject(firstProject)).some((tool) => tool.fullName === "mcp_stub_cwd"));
+  assert.ok((await rt.toolsForProject(secondProject)).some((tool) => tool.fullName === "mcp_stub_cwd"));
+  assert.equal((await rt.callTool("mcp_stub_cwd", {}, firstProject)).content[0].text.split("|")[0], firstProject);
+  assert.equal((await rt.callTool("mcp_stub_cwd", {}, secondProject)).content[0].text.split("|")[0], secondProject);
+});
+
+test("testing a server handshakes its requested workspace", async (t) => {
+  const dir = stubDir();
+  const projectPath = projectDir("requested");
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, { env: { STUB_TOOL_ONLY_IN_CWD: projectPath } })]);
+
+  const status = await rt.test("stub", projectPath);
+  assert.equal(status.state, "ready");
+  assert.ok(status.toolNames.includes("project_only"), "the test must not discover a home-directory catalog");
+  assert.equal(await rt.callTool("mcp_stub_project_only", {}, projectPath).then((value) => value.content[0].text), "untagged:project_only");
+});
+
+for (const sameProject of [false, true]) {
+test(`testing a server does not interrupt a tool call in ${sameProject ? "the same" : "another"} workspace`, async (t) => {
+  const firstProject = projectDir("active");
+  const testedProject = sameProject ? firstProject : projectDir("tested");
+  let started;
+  let finish;
+  const callStarted = new Promise((resolve) => { started = resolve; });
+  const clients = new Map();
+  const rt = new UserMcpRuntime({
+    createClient: ({ rootPath }) => {
+      let connected = false;
+      const tools = [{ name: "lookup" }];
+      const client = {
+        connect: async () => { connected = true; return tools; },
+        getTools: () => connected ? tools : [],
+        isConnected: () => connected,
+        callTool: async () => new Promise((resolve, reject) => {
+          finish = resolve;
+          client.failCall = reject;
+          started();
+        }),
+        close: () => { connected = false; client.failCall?.(new Error("active call interrupted")); },
+        ping: async () => {},
+      };
+      clients.set(rootPath, client);
+      return client;
+    },
+  });
+  t.after(() => rt.disposeAll());
+  rt.setRecords([stubRecord("/unused")]);
+  await rt.toolsForProject(firstProject);
+  const activeClient = clients.get(firstProject);
+  const pending = rt.callTool("mcp_stub_lookup", {}, firstProject);
+  await callStarted;
+
+  assert.equal((await rt.test("stub", testedProject)).state, "ready");
+  assert.equal(activeClient.isConnected(), true);
+  finish("completed");
+  assert.equal(await pending, "completed");
+  assert.equal(clients.get(firstProject), activeClient);
+});
+
+}
+
+test("testing a server reuses its pending workspace handshake", async (t) => {
+  const projectPath = projectDir("connecting");
+  let release;
+  let closeCount = 0;
+  let handshakes = 0;
+  let connected = false;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const tools = [{ name: "lookup" }];
+  const rt = new UserMcpRuntime({
+    createClient: () => ({
+      connect: async () => { handshakes += 1; await gate; connected = true; return tools; },
+      getTools: () => connected ? tools : [],
+      isConnected: () => connected,
+      close: () => { closeCount += 1; connected = false; },
+      callTool: async () => "called",
+      ping: async () => {},
+    }),
+  });
+  t.after(() => rt.disposeAll());
+  rt.setRecords([stubRecord("/unused")]);
+  const pendingTools = rt.toolsForProject(projectPath);
+  const pendingTest = rt.test("stub", projectPath);
+  assert.equal(closeCount, 0);
+  release();
+  assert.equal((await pendingTools)[0].fullName, "mcp_stub_lookup");
+  assert.equal((await pendingTest).state, "ready");
+  assert.equal(handshakes, 1);
+});
+
+for (const pendingHandshake of [false, true]) {
+  test(`testing HTTP MCP during token rotation preserves a pending ${pendingHandshake ? "handshake" : "call"}`, async (t) => {
+    let token = "first";
+    let release;
+    let markStarted;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const started = new Promise((resolve) => { markStarted = resolve; });
+    const clients = [];
+    const tools = [{ name: "lookup" }];
+    const rt = new UserMcpRuntime({
+      oauth: { getValidAccessToken: async () => token, hasOAuth: async () => true },
+      createClient: ({ server }) => {
+        let connected = false;
+        let rejectCall;
+        const client = {
+          token: server.headers.Authorization,
+          closes: 0,
+          connect: async () => {
+            if (pendingHandshake && clients.length === 1) { markStarted(); await gate; }
+            connected = true;
+            return tools;
+          },
+          getTools: () => connected ? tools : [],
+          isConnected: () => connected,
+          callTool: () => new Promise((resolve, reject) => {
+            rejectCall = reject;
+            markStarted();
+            gate.then(() => resolve("completed"));
+          }),
+          close: () => { client.closes += 1; connected = false; rejectCall?.(new Error("call interrupted")); },
+          ping: async () => {},
+        };
+        clients.push(client);
+        return client;
+      },
+    });
+    t.after(() => rt.disposeAll());
+    rt.setRecords([stubRecord("/unused", { transport: "http", command: undefined, args: undefined, url: "http://127.0.0.1:9999/mcp" })]);
+    let pending;
+    if (pendingHandshake) pending = rt.toolsForProject("/repo");
+    else {
+      await rt.toolsForProject("/repo");
+      pending = rt.callTool("mcp_stub_lookup", {}, "/repo");
+    }
+    await started;
+    token = "second";
+    const tested = rt.test("stub", "/repo");
+    // Explicitly release the old operation, then verify no replacement killed it.
+    release();
+    assert.equal((await tested).state, "ready");
+    if (pendingHandshake) assert.equal((await pending)[0].fullName, "mcp_stub_lookup");
+    else assert.equal(await pending, "completed");
+    assert.equal(clients[0].closes, 0);
+    await rt.toolsForProject("/repo");
+    assert.equal(clients.at(-1).token, "Bearer second");
+    assert.equal(clients[0].closes, 1, "rotation is deferred until the original operation is idle");
+  });
+}
+
 test("testing a server that is not saved reports it instead of throwing", async (t) => {
   const rt = runtime(t);
   rt.setRecords([]);
