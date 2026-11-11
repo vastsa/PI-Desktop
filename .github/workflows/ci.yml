@@ -115,14 +115,18 @@ jobs:
       - name: Build host-core
         run: cargo build -p host-core --locked
 
-      - name: Build Host RPC helper dependency
-        run: pnpm --filter @pi-desktop/shared build
+      - name: Build agent runtime and its workspace dependencies for Host E2E
+        run: pnpm --filter @pi-desktop/agent-runtime... build
 
       - name: Test GenUI document file boundaries on Windows
         run: node --test apps/desktop/test/gen-ui-file-safety.test.mjs
 
       - name: Run transcript cache Host RPC E2E
         run: node scripts/e2e-transcript-cache.mjs
+
+      - name: Run session background jobs Host E2E
+        timeout-minutes: 5
+        run: node scripts/e2e-session-background-jobs.mjs
 
   trusted-extensions-e2e:
     name: Trusted extensions Electron E2E

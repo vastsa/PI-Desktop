@@ -10475,6 +10475,7 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 ### E2E-TOOLS-session-background-jobs
 
 - 构建 shared、agent-runtime、host-runtime 与 Host 后，运行 `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`。
+- Windows Host CI 构建 agent-runtime 及其工作区依赖，使用同一 job 编译的 debug Host 执行此脚本。
 - 使用隔离 Host 数据、工作目录、生产 runtime/pi 循环与本地 HTTP 模型夹具。
 - 后台启动测试，列举并等待失败结果；启动常驻命令，等待超时、无参停止，再显式停止并等待。
 - 验证退出码、两路末尾输出、UTF-8 上限、跨会话列表/读/停隔离、超时和无参停止保留 Bash、显式停止终态、重复查询及桌面输出一致；拒绝 Plan 模式。
