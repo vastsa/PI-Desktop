@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
@@ -34,7 +34,8 @@ process.stdin.on("data", (chunk) => {
 
 for (const explicitProject of [false, true]) {
   test(`MCP Test connection restores the ${explicitProject ? "selected" : "current"} project's real stdio tools`, async (t) => {
-    const root = mkdtempSync(join(tmpdir(), "pi-mcp-retry-ipc-"));
+    // Resolve the temp root so it matches the child cwd on macOS (/var -> /private/var).
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-mcp-retry-ipc-")));
     const project = mkdtempSync(join(root, "project-"));
     const otherProject = mkdtempSync(join(root, "other-"));
     const server = join(root, "server.mjs");
