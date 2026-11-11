@@ -816,7 +816,7 @@ describe("classifyAgentError", () => {
 
   it("keeps a structured status ahead of an OpenAI Error code prefix", () => {
     expect(classifyAgentError(Object.assign(
-      new Error("Error code: 402 - Insufficient Balance"),
+      new Error("Error code: 402 - Payment failed upstream"),
       { status: 503 },
     ))).toMatchObject({
       code: "PROVIDER_ERROR",
