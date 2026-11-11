@@ -2010,7 +2010,9 @@ Bash background startup and Task startup return an additive `job: {kind, id}`
 reference, where kind is `bash` or `delegation`; their original identifiers
 remain available. TaskList preserves `delegations` and `resumable` and adds
 `backgroundJobs: {supported, tasks}`. Delegation summaries also include job
-references. Bash summaries contain no logs and bound command text to 1 KiB.
+references. Bash summaries contain no logs. The command preview retains the
+first 1 KiB at a UTF-8 boundary. `commandTruncated` marks a shortened command
+independently of output truncation; older Hosts may omit the field.
 
 TaskWait and TaskStop accept one explicit `job`. For a delegation job,
 `delegationIds` may be omitted, empty, or contain only that job's id (duplicates

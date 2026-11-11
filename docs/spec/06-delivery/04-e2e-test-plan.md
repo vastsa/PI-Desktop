@@ -20491,6 +20491,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 
 ### E2E-TOOLS-session-background-jobs
 
+- Split follow-up regression: command previews retain a UTF-8 prefix with an independent truncation flag; old snapshots omit the flag and output still retains final errors.
+
+
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
   `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`.
 - Environment: isolated Host data and workspace, production runtime and pi tool

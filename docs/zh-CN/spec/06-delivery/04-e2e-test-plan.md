@@ -10474,6 +10474,9 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 
 ### E2E-TOOLS-session-background-jobs
 
+- 拆分修复回归：命令摘要保留 UTF-8 前缀并独立标记截断；兼容没有标记的旧快照，错误输出仍保留末尾。
+
+
 - 构建 shared、agent-runtime、host-runtime 与 Host 后，运行 `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`。
 - 使用隔离 Host 数据、工作目录、生产 runtime/pi 循环与本地 HTTP 模型夹具。
 - 后台启动测试，列举并等待失败结果；启动常驻命令，等待超时、无参停止，再显式停止并等待。

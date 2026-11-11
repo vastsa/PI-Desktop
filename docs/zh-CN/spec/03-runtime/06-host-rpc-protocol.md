@@ -1178,7 +1178,7 @@ tools.execute 增加可选 fileBatchTicket，绑定封存后的单次调用。�
 
 接口要求已存在的本地 Agent 会话。未知与其他会话作业均返回 NOT_FOUND；非法参数返回 INVALID_PARAMS；合约模式返回 PERMISSION_DENIED。作业归属不变，会话身份取自 runtime，模型工具参数不提供会话选择。
 
-timeoutMs 为 0–1000 的整数，默认 0。wait 观察单作业完成信号，释放全局锁；stop 先向已有主管发停止信号，再观察结果。返回 state 为实际状态，stopRequested 仅表示请求已发出。摘要含 job、最多 1024 UTF-8 字节的 command、elapsedMs、state、可空 exitCode 和 stopRequested。wait/stop 另含分别最多 8192 UTF-8 字节的 stdout/stderr，以及表示 Host 缓冲丢失或本次裁剪的 truncated。
+timeoutMs 为 0–1000 的整数，默认 0。wait 观察单作业完成信号，释放全局锁；stop 先向已有主管发停止信号，再观察结果。返回 state 为实际状态，stopRequested 仅表示请求已发出。摘要含 job、最多 1024 UTF-8 字节的 command、elapsedMs、state、可空 exitCode 和 stopRequested。wait/stop 另含分别最多 8192 UTF-8 字节的 stdout/stderr，以及表示 Host 缓冲丢失或本次裁剪的 truncated。 命令保留最多 1024 字节的完整 UTF-8 前缀；commandTruncated 表示命令是否裁剪，旧 Host 可省略该字段。
 
 终态和最终输出在同一作业锁下读取。读操作不消耗输出，进行中的观察持有作业句柄直至有界请求结束，历史淘汰不会拆散这次读取。等待后重新校验会话。放弃请求不会停止进程。旧 Host 能力缺失会明确报告，其他错误不会转为空列表。桌面原 RPC 结构保持兼容。
 
