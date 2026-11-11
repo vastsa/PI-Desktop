@@ -20497,9 +20497,11 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   loop, deterministic localhost HTTP provider. No external model account.
 - Sequence: start a background test, list it, wait for failure and Unicode
   output tails; start a service, time out waiting, call default stop, then
-  explicitly stop and wait for the same job. The first waits include empty
-  `delegationIds`, `mode: all/any`, and `minCompleted: 1`; explicit stop includes
-  empty `delegationIds`, matching model-generated redundant defaults.
+  explicitly stop and wait for the same job using plain `{job}` selectors.
+  Then re-read the failed job with empty `delegationIds`, `mode: all`, and
+  `minCompleted: 1`; start a second service, time out with `mode: any` and the
+  same defaults, stop with empty `delegationIds`, and confirm it is stopped.
+  Both plain and model-generated redundant forms retain independent coverage.
 - Expected: correct exit code and both final tails, per-stream UTF-8 limits,
   cross-session list/read/stop isolation, timeout and default stop preserve Bash,
   explicit stop reaches terminal state, repeated reads and desktop output agree.
@@ -20507,8 +20509,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 - Runtime tests cover new input/parent abort during a pending Host wait, late
   Host rejection, old Host/remote capability behavior, conflicting/malformed
   delegation selectors, harmless Bash defaults and conflicting/malformed Bash
-  selector rejection, existing delegation
-  controls and registration without a subagent catalog.
+  selector rejection, existing delegation controls and registration without a
+  subagent catalog. Plain-job timeout/abort cases remain intact; additional
+  cases exercise both `all` and `any` defaults through those same lifecycles.
 - Host tests cover pre-settled observation, repeatable output, Unicode clipping,
   ownership lookup, idempotent stop and stop acknowledgement before termination.
   Existing Windows child/grandchild cleanup tests remain required; record native

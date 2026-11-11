@@ -28,7 +28,7 @@ const host = new Host(resolveHostBinary(), join(scratch, "data"), {
   env: { PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter) },
 });
 let round = 0;
-let failedJob, serviceJob, foreign;
+let failedJob, serviceJob, foreign, failedSnapshot;
 let fixtureFailure;
 const calls = [];
 const toolResult = (body, id) => {
@@ -54,10 +54,11 @@ const server = createServer(async (req, res) => {
         break;
       case 2:
         assert(toolResult(body, "call-2").includes(failedJob.id));
-        name = "TaskWait"; args = { job: failedJob, delegationIds: [], mode: "all", minCompleted: 1, timeoutSeconds: 20 };
+        name = "TaskWait"; args = { job: failedJob, timeoutSeconds: 20 };
         break;
       case 3: {
         const result = parseResult(body, "call-3");
+        failedSnapshot = result;
         assert.equal(result.state, "failed");
         assert.equal(result.exitCode, 1);
         assert.equal(result.truncated, true);
@@ -84,7 +85,7 @@ const server = createServer(async (req, res) => {
         await host.call("backgroundJobs.capabilities", { sessionId: owner.id });
         assert.equal(observed, false, "waiting must release the global Host lock");
         assert.equal((await pending).state, "running");
-        name = "TaskWait"; args = { job: serviceJob, delegationIds: [], mode: "any", minCompleted: 1, timeoutSeconds: 1 };
+        name = "TaskWait"; args = { job: serviceJob, timeoutSeconds: 1 };
         break;
       case 5:
         assert.equal(parseResult(body, "call-5").status, "timeout");
@@ -93,7 +94,7 @@ const server = createServer(async (req, res) => {
         break;
       case 6:
         assert.equal((await host.call("backgroundJobs.wait", { sessionId: owner.id, id: serviceJob.id })).state, "running");
-        name = "TaskStop"; args = { job: serviceJob, delegationIds: [] };
+        name = "TaskStop"; args = { job: serviceJob };
         break;
       case 7:
         assert.equal(parseResult(body, "call-7").stopRequested, true);
@@ -101,6 +102,32 @@ const server = createServer(async (req, res) => {
         break;
       case 8:
         assert.equal(parseResult(body, "call-8").state, "stopped");
+        name = "TaskWait"; args = { job: failedJob, delegationIds: [], mode: "all", minCompleted: 1, timeoutSeconds: 20 };
+        break;
+      case 9: {
+        const result = parseResult(body, "call-9");
+        for (const key of ["state", "exitCode", "stdout", "stderr", "truncated"]) {
+          assert.deepEqual(result[key], failedSnapshot[key], "redundant wait must preserve " + key);
+        }
+        name = "Bash"; args = { command: "node service.cjs", runInBackground: true };
+        break;
+      }
+      case 10:
+        serviceJob = parseResult(body, "call-10").job;
+        assert.equal(serviceJob.kind, "bash");
+        name = "TaskWait"; args = { job: serviceJob, delegationIds: [], mode: "any", minCompleted: 1, timeoutSeconds: 1 };
+        break;
+      case 11:
+        assert.equal(parseResult(body, "call-11").status, "timeout");
+        assert.equal(parseResult(body, "call-11").state, "running");
+        name = "TaskStop"; args = { job: serviceJob, delegationIds: [] };
+        break;
+      case 12:
+        assert.equal(parseResult(body, "call-12").stopRequested, true);
+        name = "TaskWait"; args = { job: serviceJob, timeoutSeconds: 20 };
+        break;
+      case 13:
+        assert.equal(parseResult(body, "call-13").state, "stopped");
         break;
       default: throw new Error("Unexpected provider round");
     }
@@ -147,7 +174,7 @@ try {
   });
   await runtime.prompt("Run the background fixtures and inspect their outcomes.", "fixture-user", turnId);
   if (fixtureFailure) throw fixtureFailure;
-  assert.equal(round, 9);
+  assert.equal(round, 14);
   assert.equal(events.some(event => event.type === "error"), false);
   const repeated = await host.call("backgroundJobs.wait", { sessionId: owner.id, id: failedJob.id });
   assert.equal(repeated.exitCode, 1);
@@ -159,7 +186,7 @@ try {
   turnId = undefined;
   await configureSession(host, owner, "plan", "auto");
   await assert.rejects(host.call("backgroundJobs.wait", { sessionId: owner.id, id: failedJob.id }), error => error.errorCode === "PERMISSION_DENIED");
-  console.log(JSON.stringify({ ok: true, calls, rounds: round, shell: shell.id, checks: ["real model tool loop", "no subagents configured", "failure and bounded Unicode output", "cross-session read/stop denied", "wait releases Host lock", "timeout preserves process", "default stop preserves Bash", "explicit stop settles", "repeated reads", "desktop parity", "plan mode denied"] }, null, 2));
+  console.log(JSON.stringify({ ok: true, calls, rounds: round, shell: shell.id, checks: ["real model tool loop", "no subagents configured", "failure and bounded Unicode output", "cross-session read/stop denied", "wait releases Host lock", "timeout preserves process", "default stop preserves Bash", "plain job wait/timeout/stop", "redundant defaults wait/timeout/stop", "explicit stop settles", "repeated reads", "desktop parity", "plan mode denied"] }, null, 2));
 } finally {
   await runtime?.dispose();
   if (turnId) await endTurn(host, turnId, "aborted").catch(() => {});

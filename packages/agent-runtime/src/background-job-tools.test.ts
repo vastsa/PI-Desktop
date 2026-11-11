@@ -125,7 +125,7 @@ describe("session job controls", () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       return { ...snapshot, state: "running", exitCode: null };
     });
-    const result = wait.execute("wait", { job: snapshot.job, delegationIds: [], mode: "all", minCompleted: 1, timeoutSeconds: 2 });
+    const result = wait.execute("wait", { job: snapshot.job, timeoutSeconds: 2 });
     await vi.advanceTimersByTimeAsync(2000);
     expect((await result).details).toMatchObject({ status: "timeout", job: { state: "running", exitCode: null } });
     expect(dispatch.mock.calls.map(call => call[0])).not.toContain("backgroundJobs.stop");
@@ -138,7 +138,38 @@ describe("session job controls", () => {
       ? { version: 1, supported: true }
       : new Promise((_, reject) => { fail = reject; }));
     const controller = new AbortController();
-    const result = wait.execute("wait", { job: snapshot.job, delegationIds: [], mode: "any", minCompleted: 1 }, controller.signal);
+    const result = wait.execute("wait", { job: snapshot.job }, controller.signal);
+    const assertion = expect(result).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith("backgroundJobs.wait", expect.anything()));
+    controller.abort();
+    await assertion;
+    fail(new Error("late transport failure"));
+    await Promise.resolve();
+    expect(dispatch.mock.calls.map(call => call[0])).not.toContain("backgroundJobs.stop");
+  });
+
+  it.each(["all", "any"])("redundant %s defaults preserve the wait deadline without stopping", async mode => {
+    vi.useFakeTimers();
+    const { wait, dispatch, snapshot } = fixture();
+    dispatch.mockImplementation(async method => {
+      if (method.endsWith("capabilities")) return { version: 1, supported: true };
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { ...snapshot, state: "running", exitCode: null };
+    });
+    const result = wait.execute("wait", { job: snapshot.job, delegationIds: [], mode, minCompleted: 1, timeoutSeconds: 2 });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect((await result).details).toMatchObject({ status: "timeout", job: { state: "running", exitCode: null } });
+    expect(dispatch.mock.calls.map(call => call[0])).not.toContain("backgroundJobs.stop");
+  });
+
+  it.each(["all", "any"])("redundant %s defaults preserve cancellation and late-failure handling", async mode => {
+    const { wait, dispatch, snapshot } = fixture();
+    let fail: (error: Error) => void = () => {};
+    dispatch.mockImplementation(async method => method.endsWith("capabilities")
+      ? { version: 1, supported: true }
+      : new Promise((_, reject) => { fail = reject; }));
+    const controller = new AbortController();
+    const result = wait.execute("wait", { job: snapshot.job, delegationIds: [], mode, minCompleted: 1 }, controller.signal);
     const assertion = expect(result).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith("backgroundJobs.wait", expect.anything()));
     controller.abort();
