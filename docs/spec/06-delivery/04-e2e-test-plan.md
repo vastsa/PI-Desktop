@@ -1,5 +1,12 @@
 # 04. E2E Test Plan
 
+### E2E-FILE-INDEX-git-deadline
+
+Drive `getWorkspaceFileIndex` and `searchWorkspaceFiles` against real fixture
+files. Hold Git's close event beyond its deadline: both calls return the bounded
+filesystem listing. Coverage: `fs-index-git-deadline.test.mjs`. Existing index
+tests cover Git ignore semantics, Unicode chunk boundaries and deep search.
+
 ### E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and

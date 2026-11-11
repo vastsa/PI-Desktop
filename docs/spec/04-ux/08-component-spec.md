@@ -1,5 +1,9 @@
 # 08. Component Spec
 
+Workspace file index Git queries settle at their deadline or output limit,
+even when inherited child pipes do not close. Composer file search and the
+Files index then use the existing bounded filesystem fallback (Refs #1731).
+
 A full transcript read may fill its session cache only when that cache has not
 changed during the request. New streaming or edit snapshots retain ownership;
 the caller still receives the requested history for its own action validation.
