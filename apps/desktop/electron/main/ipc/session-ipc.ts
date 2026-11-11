@@ -238,13 +238,19 @@ export function registerSessionIpc({
   });
   handle(IPC.invoke.sessionCreate, async (input = {}) => {
     if (!host) throw new Error("host unavailable");
+    const mode = Reflect.get(input, "mode") ?? "agent";
+    const modeSnapshot = await modeCatalog.snapshotFor(mode);
     const capabilityPromise = sessionCapabilityContext();
-    const res = await host.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
+    let res = await host.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
       "session.create",
       input,
     );
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
+    if (modeSnapshot) {
+      res = await host.call("session.configure", { id: res.session.id, mode, modeSnapshot });
+      if (!res.session) throw new Error("Created session was not configured");
+    }
     const { providers, defaults } = await capabilityPromise;
     return { ...res, session: enrichSession(res.session, providers, defaults) };
   });

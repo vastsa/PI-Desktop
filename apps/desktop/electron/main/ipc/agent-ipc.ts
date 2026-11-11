@@ -1,6 +1,7 @@
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
+import type { ModeDefinition } from "@pi-desktop/shared";
 import { modeContinuationOrigin, type ModeRunCoordinator, type PreparedModeTurn } from "../runtime/mode-runs";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
@@ -52,7 +53,7 @@ export type AgentIpcDependencies = {
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
   /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
-  modeRuns: Pick<ModeRunCoordinator, "canContinue" | "prepareTurn" | "abandonTurn">;
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -361,6 +362,7 @@ export function registerAgentIpc({
     // A staged mode claims its run for this durable turn before anything runs;
     // the sidecar then executes the run's own definition snapshot.
     let preparedMode: PreparedModeTurn | undefined;
+    let modeDefinition: ModeDefinition | undefined;
     try {
       preparedMode = await modeRuns.prepareTurn({
         sessionId: req.sessionId,
@@ -369,6 +371,7 @@ export function registerAgentIpc({
         content: req.content,
         origin: modeOrigin ?? "user",
       });
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
     } catch (error) {
       await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
         turnId: durableTurnId,
@@ -583,6 +586,7 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
+          ...(modeDefinition ? { modeDefinition } : {}),
           ...(preparedMode
             ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
             : {}),

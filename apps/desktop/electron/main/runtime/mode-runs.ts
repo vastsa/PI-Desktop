@@ -111,6 +111,7 @@ export function createModeRunCoordinator(deps: {
 
   return {
     async definitionForPrompt(modeId: string): Promise<ModeDefinition | undefined> {
+      if (isPlainMode(modeId)) return undefined;
       const definition = await deps.catalog.definition(modeId);
       if (!definition && modeId !== "agent" && modeId !== "plan") {
         throw Object.assign(new Error("Mode is not available"), { errorCode: "MODE_NOT_FOUND" });
@@ -136,15 +137,20 @@ export function createModeRunCoordinator(deps: {
       content: string;
       origin: ModeTurnOrigin;
     }): Promise<PreparedModeTurn | undefined> {
-      const selected = await deps.catalog.definition(input.sessionMode);
-      if (!selected || selected.stages.length === 0) {
+      if (isPlainMode(input.sessionMode)) {
         if (input.origin !== "user") throw Object.assign(new Error("mode run is not staged"), { errorCode: "MODE_NOT_STAGED" });
         return undefined;
       }
       const hostCaller = host();
       const { run } = await hostCaller.call<ModeRunResult>("modes.get", { sessionId: input.sessionId });
+      let selected: ModeDefinition | undefined;
       let claim: ModeClaimResult;
       if (!run) {
+        selected = await deps.catalog.definition(input.sessionMode);
+        if (!selected || selected.stages.length === 0) {
+          if (input.origin !== "user") throw Object.assign(new Error("mode run is not staged"), { errorCode: "MODE_NOT_STAGED" });
+          return undefined;
+        }
         if (input.origin !== "user") throw Object.assign(new Error("no open mode run"), { errorCode: "MODE_RUN_NOT_FOUND" });
         claim = await hostCaller.call<ModeClaimResult>("modes.start", {
           sessionId: input.sessionId,
@@ -168,10 +174,15 @@ export function createModeRunCoordinator(deps: {
         return undefined;
       }
       turnRuns.set(input.turnId, { sessionId: input.sessionId, runId: claim.run.id });
+      const definition = claim.definition ?? selected;
+      if (!definition) {
+        await this.abandonTurn(input.sessionId, input.turnId);
+        throw Object.assign(new Error("Mode run snapshot is unavailable"), { errorCode: "MODE_NOT_FOUND" });
+      }
       return {
         // The run executes the snapshot it started with; editing the file
         // during a run never changes it.
-        definition: claim.definition ?? selected,
+        definition,
         modeTurn: {
           runId: claim.run.id,
           stageId: claim.run.stageId,
