@@ -1,5 +1,25 @@
 # 08. Component Spec
 
+Workspace file index Git queries settle at their deadline or output limit,
+even when inherited child pipes do not close. Composer file search and the
+Files index then use the existing bounded filesystem fallback (Refs #1731).
+
+The Composer queue mirror accepts only the current read for each session. A newer queueChanged event invalidates earlier reads so an already delivered prompt cannot reappear. Reads in other sessions remain independent, and future refreshes still reconcile authoritative entries (Refs #1699).
+
+A bounded session detail read must not overwrite an idle transcript cache changed while that read was pending. Keep its newer messages and history window together. Running sessions still merge unflushed live rows, and the requesting caller receives its own read response (Refs #2086).
+
+Idle session model writes participate in the same per-session configuration
+queue as running-turn changes. Rapid choices serialize; the newest queued
+choice is applied after the in-flight write, rather than racing older replies.
+
+A full transcript read may fill its session cache only when that cache has not
+changed during the request. New streaming or edit snapshots retain ownership;
+the caller still receives the requested history for its own action validation.
+
+A rejected session Stop request retains the last known running state. A
+transport failure is not confirmation of process settlement; successful Stop
+and authoritative terminal events continue to clear the running indicator.
+
 Live delegation reconstruction crosses system notices as well as steering
 messages. An ordinary user prompt remains the run boundary. A running Task
 behind a system notice must not become aborted on navigation (Refs #1990).
@@ -3811,9 +3831,11 @@ Anatomy:
   full path and Copy relative path on every surface that names it. Unpositioned
   `.html` and `.htm` references also offer an **Open with** submenu containing
   File Manager, built-in browser, and default browser. Each choice completes the
-  reference first and opens that exact resolved file. Other file types keep the
-  copy actions only; the transcript menu has no **Show in folder** action. A
-  file outside the project has no relative path to copy and reports that fact.
+  reference first and opens that exact resolved file. In a session that may use
+  local files, every reference also offers **Show in folder**, which reveals the
+  same resolved file in the system file manager; a remote workspace keeps the
+  copy actions only. A file outside the project has no relative path to copy
+  and reports that fact.
   The OS default application is no longer what this click does. HTTP(S)
   URLs stay text links. Plain clicks follow the Link open destination setting,
   and right-clicking a URL exposes the same external, work-panel, and copy
@@ -4777,6 +4799,10 @@ Closing the connected Browser tab clears its connection. Subsequent session-only
 ### Issue #2164 correction
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+### Fork activation selection ownership (#2086)
+
+Activating a completed session fork clears the previous selectingSessionId together with its visible pane switch. A superseded fork only lists its durable child and does not clear a newer pending selection. This prevents stale switching UI from hiding the activated branch.
 
 ### File Manager mutation validation (#2184)
 

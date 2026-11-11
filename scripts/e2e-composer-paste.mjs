@@ -203,7 +203,8 @@ app.whenReady().then(async () => {
         creates = 0;
         prompts = [];
         saved.length = 0;
-        const window = new BrowserWindow({ show: false, webPreferences: {
+        // A never-shown window throttles animation frames; the probe waits on them.
+        const window = new BrowserWindow({ show: true, webPreferences: {
           preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
           sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
         } });
@@ -233,7 +234,7 @@ app.whenReady().then(async () => {
   }
   if (process.argv.includes("--history-check")) {
     try {
-      const window = new BrowserWindow({ show: false, webPreferences: {
+      const window = new BrowserWindow({ show: true, webPreferences: {
         preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
         sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
       } });
@@ -261,7 +262,7 @@ app.whenReady().then(async () => {
   await fs.mkdir(path.join(__dirname, "copied folder"));
   await fs.writeFile(path.join(__dirname, "attachments", "a".repeat(64)), Buffer.alloc(512 * 1024 + 1));
   await fs.writeFile(path.join(__dirname, "attachments", "b".repeat(64)), Buffer.from([0, 1, 2, 0]));
-  const window = new BrowserWindow({ show: false, webPreferences: {
+  const window = new BrowserWindow({ show: true, webPreferences: {
     preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
     sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
   } });

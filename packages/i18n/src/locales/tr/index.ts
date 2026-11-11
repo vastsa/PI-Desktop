@@ -485,6 +485,8 @@ export const tr = {
     fileManagerOpenFailed: "Dosya, dosya yöneticisinde açılamadı.",
     builtInBrowserUnavailable: "Yerleşik tarayıcı kullanılamıyor.",
     defaultBrowserOpenFailed: "Dosya varsayılan tarayıcıda açılamadı.",
+    revealFileInFolder: "Klasörde göster",
+    fileRevealFailed: "Dosya klasörde gösterilemedi.",
     copyFullPath: "Tam yolu kopyala",
     copyRelativePath: "Göreli yolu kopyala",
     relativePathUnavailable: "Dosya proje dışında olduğu için göreli yolu yok",

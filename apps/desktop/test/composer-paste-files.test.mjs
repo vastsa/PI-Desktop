@@ -106,7 +106,9 @@ test("paste IPC is a typed renderer-to-main bridge", () => {
   assert.match(api, /recordClipboardPaste: \(text: string\)/);
   assert.match(api, /IPC\.invoke\.clipboardRecordPaste/);
   assert.match(api, /IPC\.invoke\.composerImportFiles/);
-  assert.match(main, /host\.call\("session\.get", \{ id: sessionId \}\)/);
+  // The session check needs metadata only; an unbounded read loads the whole transcript.
+  assert.equal(main.match(/host\.call\("session\.get", \{ id: sessionId, messageLimit: 1 \}\)/g)?.length, 2);
+  assert.doesNotMatch(main, /host\.call\("session\.get", \{ id: sessionId \}\)/);
   assert.match(main, /saveComposerPasteFiles\(dataDir, sessionId, files\)/);
   assert.match(main, /recordPastedClipboardFiles\(files\)/);
   assert.match(main, /assertMainWindowSender\(event\)/);

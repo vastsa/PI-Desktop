@@ -145,12 +145,33 @@ function fileOperationPath(args: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Assistant stop reasons whose tool calls never ran.
+ *
+ * pi-agent-core returns before `executeToolCalls` when a turn stops with
+ * `error` or `aborted`, so those tool results stay empty. `deferred` is the
+ * third reason compaction-tail drops from the rebuilt context
+ * (`DROPPED_STOP_REASONS`); session-context and subagent-context treat the
+ * same three rows as transcript-only. The toolCall blocks stay on the
+ * message anyway, often cut off mid-argument. `messageForSummary` does not
+ * look at stop reason, so `messagesToSummarize` and a split turn's prefix
+ * still contain them. Counting the paths would list files that were never
+ * read or written in the checkpoint's `readFiles` / `modifiedFiles` and in
+ * the summary prompt, and every later compaction copies that list forward.
+ */
+const UNEXECUTED_ASSISTANT_STOP_REASONS: ReadonlySet<string> = new Set([
+  "error",
+  "aborted",
+  "deferred",
+]);
+
 /** Record one assistant message's Read/Write/Edit paths. Mutates `fileOps`. */
 export function collectMessageFileOperations(
   message: AgentMessage,
   fileOps: FileOperations,
 ): void {
   if (message.role !== "assistant" || !Array.isArray(message.content)) return;
+  if (UNEXECUTED_ASSISTANT_STOP_REASONS.has(message.stopReason)) return;
   for (const block of message.content) {
     if (!block || block.type !== "toolCall") continue;
     const path = fileOperationPath(block.arguments);

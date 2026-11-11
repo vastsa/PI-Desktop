@@ -1,5 +1,9 @@
 # 02. Agent Runtime
 
+Trusted-extension `setThinkingLevel` updates both the runtime's public value and
+the Pi Agent state used by subsequent provider requests. Capability clamping
+remains authoritative; a reported change must not leave request effort stale.
+
 Consumed steering closes any pre-steering streaming reservation and separates
 the next assistant reply, including during provider/overflow/silent/progress
 recovery. Recovery stays within the durable turn but never replaces a reply
@@ -301,7 +305,10 @@ the generated output-limit fields removed: `max_tokens`,
 `max_completion_tokens`, and `max_output_tokens`. The same one attempt clamps
 those fields down to the ceiling when the body states one (`at most N
 completion tokens`, `max_tokens: N > M, which is the maximum allowed number of
-output tokens`, or `expected a value <= N`) instead of deleting them.
+output tokens`, `expected a value <= N`, a `max_tokens` range such as
+DeepSeek's `valid range of max_tokens is [1, N]` or DashScope's `Range of
+max_tokens should be [1, N]`, or Groq's `max_tokens must be less than or equal
+to N`) instead of deleting them.
 Anthropic rejects a request that omits `max_tokens`. A field that is absent or
 already within the ceiling is left unchanged. Credit exhaustion and context
 overflow stay on their existing terminal paths. This repair does not consume
@@ -715,6 +722,9 @@ the argument spelling the model sent, because `normalizeToolParams` folds
 alias names only when the call executes (D273). The collector therefore reads
 the path from `path` or from the same aliases (`file_path`, `filepath`,
 `filePath`, `filename`, `fileName`, `file`), with the same precedence.
+Calls on an assistant that stopped with `error`, `aborted`, or `deferred` are
+not counted: pi returns before executing them, and the rebuilt context drops
+the same turns, so they never read or changed a file.
 
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of

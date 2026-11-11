@@ -1,5 +1,8 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { prepareCompaction } from "./pi-runtime-compaction-plan.js";
+import {
+  collectMessageFileOperations,
+  prepareCompaction,
+} from "./pi-runtime-compaction-plan.js";
 import type { Entry } from "./pi-runtime-types.js";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +12,7 @@ function toolCallWithArguments(
   name: string,
   args: Record<string, unknown>,
   id = "call-1",
+  stopReason: "toolUse" | "error" | "aborted" | "deferred" = "toolUse",
 ): AgentMessage {
   return {
     role: "assistant",
@@ -24,7 +28,7 @@ function toolCallWithArguments(
       totalTokens: 2,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
-    stopReason: "toolUse",
+    stopReason,
     timestamp: 2,
   } as AgentMessage;
 }
@@ -245,5 +249,58 @@ describe("pi's file-op collection through the adapter", () => {
     // `path: ""` wins over `file_path` at execution too, so nothing was written.
     expect([...preparation!.fileOps.written]).toEqual([]);
     expect([...preparation!.fileOps.edited]).toEqual(["src/lower.ts"]);
+  });
+
+  it("leaves an aborted turn's write out of file ops and still records a toolUse edit", () => {
+    // A stopped turn keeps its toolCall block, but pi never runs it. The
+    // completed edit in the same session did run and must stay listed.
+    const entries = [
+      messageEntry("u1", userMessage("edit src/real.ts", 1), 1),
+      messageEntry("a1", toolCallWithArguments("Edit", { path: "src/real.ts" }, "call-1"), 2),
+      messageEntry("u2", userMessage("write src/never.ts", 3), 3),
+      messageEntry(
+        "a2",
+        toolCallWithArguments("Write", { path: "src/never.ts", content: "x" }, "call-2", "aborted"),
+        4,
+      ),
+      messageEntry("u3", userMessage("latest question", 5), 5),
+    ];
+
+    const preparation = preparationOf(entries, true);
+
+    expect(preparation).toBeDefined();
+    expect([...preparation!.fileOps.written]).toEqual([]);
+    expect([...preparation!.fileOps.edited]).toEqual(["src/real.ts"]);
+  });
+});
+
+describe("collectMessageFileOperations", () => {
+  it("skips read, write, and edit calls on aborted, error, and deferred turns", () => {
+    const ops = {
+      read: new Set<string>(),
+      written: new Set<string>(),
+      edited: new Set<string>(),
+    };
+
+    collectMessageFileOperations(
+      toolCallWithArguments("write", { path: "src/never.ts", content: "x" }, "c1", "aborted"),
+      ops,
+    );
+    collectMessageFileOperations(
+      toolCallWithArguments("write", { path: "src/errored.ts", content: "x" }, "c2", "error"),
+      ops,
+    );
+    collectMessageFileOperations(
+      toolCallWithArguments("read", { path: "src/deferred.ts" }, "c3", "deferred"),
+      ops,
+    );
+    collectMessageFileOperations(
+      toolCallWithArguments("edit", { path: "src/done.ts" }, "c4", "toolUse"),
+      ops,
+    );
+
+    expect([...ops.written]).toEqual([]);
+    expect([...ops.read]).toEqual([]);
+    expect([...ops.edited]).toEqual(["src/done.ts"]);
   });
 });

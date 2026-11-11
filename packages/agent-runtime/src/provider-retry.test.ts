@@ -18,6 +18,7 @@ import {
   STREAM_IDLE_TIMEOUT_DEFAULT_MS,
   STREAM_IDLE_TIMEOUT_FLOOR_MS,
   streamIdleTimeoutMs,
+  outputTokenCeiling,
   stripOutputLimitFields,
   withoutDerivedOutputLimit,
   withStreamIdleTimeout,
@@ -1117,6 +1118,57 @@ const OPENAI_OUTPUT_CEILING =
   "OpenAI API error (400): max_tokens is too large: 16384. This model supports at most 4096 completion tokens, whereas you provided 16384.";
 const ANTHROPIC_OUTPUT_CEILING =
   'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: 65537 > 64000, which is the maximum allowed number of output tokens for claude-opus-4-5-20251101"}}';
+const DEEPSEEK_OUTPUT_CEILING =
+  "400 Invalid max_tokens value, the valid range of max_tokens is [1, 8192]";
+const GROQ_OUTPUT_CEILING =
+  "`max_tokens` must be less than or equal to `16384`, the maximum value for `max_tokens` is less than the `context_window` for this model";
+
+describe("outputTokenCeiling", () => {
+  it("reads the upper bound of a DeepSeek max_tokens range", () => {
+    expect(outputTokenCeiling(DEEPSEEK_OUTPUT_CEILING)).toBe(8192);
+  });
+
+  it("reads DashScope ranges, including the native error prefix", () => {
+    expect(outputTokenCeiling("Range of max_tokens should be [1, 8192]")).toBe(8192);
+    expect(
+      outputTokenCeiling(
+        "<400> InternalError.Algo.InvalidParameter: Range of max_tokens should be [1, 65536]",
+      ),
+    ).toBe(65536);
+  });
+
+  it("reads a max_completion_tokens range the same way", () => {
+    expect(
+      outputTokenCeiling("valid range of max_completion_tokens is [1, 8192]"),
+    ).toBe(8192);
+    expect(
+      outputTokenCeiling("valid range of `max_completion_tokens` is [`1`, `8192`]"),
+    ).toBe(8192);
+  });
+
+  it("reads a Groq ceiling with or without backticks", () => {
+    expect(outputTokenCeiling(GROQ_OUTPUT_CEILING)).toBe(16384);
+    expect(
+      outputTokenCeiling(
+        "max_tokens must be less than or equal to 16384, the maximum value for max_tokens is less than the context_window for this model",
+      ),
+    ).toBe(16384);
+  });
+
+  it("keeps comma-grouped bounds", () => {
+    expect(
+      outputTokenCeiling("Range of max_tokens should be [1, 65,536]"),
+    ).toBe(65536);
+    expect(
+      outputTokenCeiling("max_completion_tokens must be less than or equal to 16,384"),
+    ).toBe(16384);
+  });
+
+  it("does not treat a context-length message as an output ceiling", () => {
+    expect(outputTokenCeiling("maximum context length is 131072 tokens")).toBeUndefined();
+    expect(outputTokenCeiling("Range of input length should be [1, 30720]")).toBeUndefined();
+  });
+});
 
 describe("explicit output-limit repair", () => {
   async function repairPayload(
@@ -1212,6 +1264,20 @@ describe("explicit output-limit repair", () => {
     expect(overflow.attempts).toBe(1);
     expect(credit.claim).toHaveBeenCalledTimes(1);
     expect(overflow.claim).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps a DeepSeek max_tokens range instead of failing the turn", async () => {
+    const result = await repairPayload(DEEPSEEK_OUTPUT_CEILING, {
+      max_tokens: 32000,
+    });
+
+    expect(result.attempts).toBe(2);
+    expect(result.claim).not.toHaveBeenCalled();
+    expect(result.sleep).not.toHaveBeenCalled();
+    expect(result.repaired).toEqual({
+      marked: true,
+      max_tokens: 8192,
+    });
   });
 
   it("clamps a proxy expected-value ceiling without adding a missing field", async () => {

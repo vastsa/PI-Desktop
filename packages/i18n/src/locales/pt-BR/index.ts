@@ -475,6 +475,8 @@ export const ptBR = {
     fileManagerOpenFailed: "Não foi possível abrir o arquivo no gerenciador de arquivos.",
     builtInBrowserUnavailable: "O navegador integrado está indisponível.",
     defaultBrowserOpenFailed: "Não foi possível abrir o arquivo no navegador padrão.",
+    revealFileInFolder: "Mostrar na pasta",
+    fileRevealFailed: "Não foi possível mostrar o arquivo na pasta.",
     copyFullPath: "Copiar caminho completo",
     copyRelativePath: "Copiar caminho relativo",
     relativePathUnavailable: "O arquivo está fora do projeto e não tem caminho relativo",

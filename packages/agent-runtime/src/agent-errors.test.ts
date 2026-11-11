@@ -281,6 +281,27 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // OpenAI's classic rejection and Anthropic's header name never say
+  // "invalid api key". pi-ai often flattens them to a statusless
+  // errorMessage, so the pattern — not only HTTP 401 — must catch them.
+  it.each([
+    "Incorrect API key provided",
+    "Incorrect API key provided: sk-****. You can find your API key at https://platform.openai.com/account/api-keys.",
+    "API key expired. Please renew the API key.",
+    "invalid x-api-key",
+    '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+  ])("classifies statusless Incorrect/expired API-key wording as unauthorized: %s", (message) => {
+    expect(classifyAgentError(message)).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error(message))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+  });
+
+
   it("classifies pi-ai '<status>: <body>' errorMessage strings", () => {
     expect(classifyAgentError('429: {"error":{"type":"rate_limit_error"}}'))
       .toMatchObject({ code: "PROVIDER_RATE_LIMITED", retriable: true });
@@ -732,6 +753,11 @@ describe("classifyAgentError", () => {
     "Insufficient credits",
     "Payment Required",
     '429: {"error":{"message":"Insufficient credits"}}',
+    // DeepSeek / SiliconFlow / MiniMax use "balance", not "credits".
+    "Insufficient Balance",
+    "Sorry, your account balance is insufficient",
+    "insufficient balance of the account",
+    '{"code":30001,"message":"Sorry, your account balance is insufficient","data":null}',
   ])("treats HTTP 402 and credit-exhaustion wording as terminal: %s", (message) => {
     expect(classifyAgentError(new Error(message))).toMatchObject({
       code: "PROVIDER_ERROR",
@@ -747,6 +773,81 @@ describe("classifyAgentError", () => {
       code: "PROVIDER_ERROR",
       retriable: false,
       details: { providerStatus: 402 },
+    });
+  });
+
+  // pi-ai often keeps only the OpenAI SDK string "Error code: <status> - <body>"
+  // and drops err.status. The prefix is the HTTP status; a bare business code is not.
+  it.each([
+    [
+      "Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'invalid_request_error'}}",
+      "PROVIDER_ERROR",
+      false,
+      402,
+    ],
+    [
+      "Error code: 401 - Incorrect API key provided",
+      "PROVIDER_UNAUTHORIZED",
+      false,
+      401,
+    ],
+    [
+      "Error code: 429 - Rate limit reached for model",
+      "PROVIDER_RATE_LIMITED",
+      true,
+      429,
+    ],
+    [
+      "Error code: 404 - The model does not exist",
+      "MODEL_NOT_CONFIGURED",
+      false,
+      404,
+    ],
+    [
+      "Error code: 402 - see note (500)",
+      "PROVIDER_ERROR",
+      false,
+      402,
+    ],
+  ])(
+    "reads an OpenAI SDK Error code prefix as the HTTP status: %s",
+    (message, code, retriable, status) => {
+      expect(classifyAgentError(new Error(message))).toMatchObject({
+        code,
+        retriable,
+        details: { providerStatus: status },
+      });
+    },
+  );
+
+  it("does not read a business code or prose as an OpenAI Error code status", () => {
+    const silicon = classifyAgentError(new Error("Error code: 30001 - account balance"));
+    expect(silicon.details?.providerStatus).toBeUndefined();
+    expect(silicon).toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+
+    const bare = classifyAgentError(new Error("provider said code: 401"));
+    expect(bare.details?.providerStatus).toBeUndefined();
+    expect(bare).toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+
+    const prose = classifyAgentError(new Error("see the error code: 500 in the handbook"));
+    expect(prose.details?.providerStatus).toBeUndefined();
+    expect(prose).toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+
+    const zhipu = classifyAgentError(
+      '{"error":{"code":"1308","message":"Usage limit reached"}}',
+    );
+    expect(zhipu.details?.providerStatus).toBeUndefined();
+    expect(zhipu).toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
+  });
+
+  it("keeps a structured status ahead of an OpenAI Error code prefix", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("Error code: 402 - Payment failed upstream"),
+      { status: 503 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 503 },
     });
   });
 

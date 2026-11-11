@@ -1,5 +1,57 @@
 # 04. E2E Test Plan
 
+### E2E-FILE-INDEX-git-deadline
+
+Drive `getWorkspaceFileIndex` and `searchWorkspaceFiles` against real fixture
+files. Hold Git's close event beyond its deadline: both calls return the bounded
+filesystem listing. Coverage: `fs-index-git-deadline.test.mjs`. Existing index
+tests cover Git ignore semantics, Unicode chunk boundaries and deep search.
+
+### E2E-QUEUE-late-read-after-event
+
+Render two queued prompts, hold a production refresh, deliver a queueChanged event removing the first prompt, then return the old read. Only the second remains visible; a later authoritative refresh still applies. `queue-refresh-event-order.test.mjs` covers event/read order, reversed reads and session independence; `e2e-queue-refresh-event-order.mjs` renders production ComposerStatus/useAppStore in real Electron. No prompt is dispatched to a provider.
+
+### E2E-TRANSCRIPT-window-cache-edit-race
+
+Hold a bounded production session read, publish an idle edit cache with a different history window, then return the older window. Navigate/render from cache and observe the edited content. Also cover unchanged hydration and running live-tail merge. `session-window-cache-race.test.mjs` exercises the runtime API; `e2e-session-window-cache-race.mjs` renders the recovered snapshot through production MessageRow in real Electron. The API is controlled and no provider executes.
+
+### E2E-MODEL-idle-write-order
+
+Hold the first idle configuration response, select a second model, then release
+both responses. Assert a single in-flight write and the final newest model.
+Coverage: `session-model-write-order.test.mjs`, using real slice/coordination
+with only Host API controlled. Running-turn configuration remains queued.
+
+### E2E-EXTENSION-thinking-request-state
+
+Set high thinking through the production extension bridge, send a prompt and
+capture the provider stream options. The actual Agent loop sends high, matching
+the extension getter. `runtime.test.ts` mocks only the provider stream.
+
+### E2E-TRANSCRIPT-full-read-cache-race
+
+Hold a full-history read, publish a newer streaming snapshot, then resolve the
+old read. The caller receives history while the session cache keeps the newer
+snapshot. Coverage: `full-transcript-refresh-race.test.mjs` plus existing
+session-runtime update regressions. No provider execution is required.
+
+### E2E-SESSION-metadata-reads-skip-transcript
+
+Seed real host-core with a ~40 MB transcript beside a short session. A
+`messageLimit: 1` `session.get` must return the same project, worktree, mode
+and model metadata as an unbounded read. Then launch the built desktop app on
+that data and drive composer paste and Browser navigate through the real
+preload IPC on both sessions: the long session may not add half an unbounded
+read's time to either call. Coverage: `pnpm test:e2e:session-metadata-reads`
+(`scripts/e2e-session-metadata-reads.mjs`). No provider execution is required.
+
+### E2E-SESSION-rejected-stop-state
+
+Reject a remote Stop at the API boundary: the production session slice keeps
+its running state and rethrows the error. Retry successfully: both the active
+indicator and owning session running entry clear. Coverage:
+`failed-session-stop-state.test.mjs`, without provider execution.
+
 ### E2E-SUBAGENT-system-notice-reconstruction
 
 Reconstruct a transcript with a running Task followed by a system notice.
@@ -91,6 +143,44 @@ being fetched on every subsequent poll.
   Structured status takes precedence and prose numbers are ignored.
 - **Automated coverage:** `agent-errors.test.ts` and `provider-retry.test.ts`.
 - **Specs:** `03-runtime/08-error-codes.md` §3.2.
+
+## E2E-PROVIDER-openai-error-code-status
+
+- **Preconditions:** Isolated Agent runtime classifier; no credentials, network,
+  or user history.
+- **Steps:** Classify messages that begin `Error code: 402`, `Error code: 401`,
+  `Error code: 429`, and `Error code: 404`, including a body that also contains
+  a parenthesized status. Also classify SiliconFlow-style `Error code: 30001`,
+  prose that only mentions `error code: 500`, a bare `code: 401`, and a Zhipu
+  `"code":1308` body.
+- **Expected:** `providerStatus` is the prefix and the status table applies:
+  402 is terminal `PROVIDER_ERROR`, 401 is `PROVIDER_UNAUTHORIZED`, 429 is
+  `PROVIDER_RATE_LIMITED`, and 404 is `MODEL_NOT_CONFIGURED`. The prefix wins
+  over a later parenthesized number. Business codes and prose do not become an
+  HTTP status; Zhipu `1308` stays terminal `PROVIDER_ERROR` without
+  `providerStatus`. A structured `status` field still wins over the prefix.
+- **Automated coverage:** `packages/agent-runtime/src/agent-errors.test.ts`.
+- **Specs:** `03-runtime/08-error-codes.md` §3.2.
+
+
+## E2E-PROVIDER-anthropic-oauth-claude-code-identity
+
+- **Preconditions:** Built desktop, isolated Host data directory and Electron
+  profile, and a seeded Claude (Anthropic OAuth) account row with a synthetic,
+  unexpired credential. Every `api.anthropic.com` / `platform.claude.com`
+  request from Electron main and the agent sidecar is redirected to a local
+  fixture; no real Anthropic request is made.
+- **Steps:** Launch the app, type a prompt in the Composer, and press Enter.
+  The fixture rejects Claude Code identities older than 2.1.290 with HTTP 400
+  `claude_code_version_too_old`, as Claude Pro/Max models do (issue #2239),
+  and otherwise streams a reply.
+- **Expected:** The model request carries the OAuth bearer token, `x-app: cli`
+  and a `claude-cli/<version>` User-Agent of at least 2.1.290. The chat shows
+  the streamed reply and no version rejection.
+- **Automated coverage:** `pnpm test:e2e:anthropic-oauth-identity`
+  (`scripts/e2e-anthropic-oauth-identity.mjs`) and
+  `packages/agent-runtime/src/anthropic-oauth-identity.test.ts`.
+- **Specs:** `03-runtime/12-provider-config-schema.md`.
 
 
 ## E2E-TASK-DOCK-tab-content-isolation
@@ -3848,6 +3938,13 @@ identify the platform validation still needed.
 
 #### E2E-091: Appearance card selects searchable theme and language pickers
 
+macOS OS-event acceptance: `PI_E2E_SYSTEM_APPEARANCE=1 node scripts/e2e-browser-system-appearance.mjs`.
+The opt-in probe temporarily changes OS appearance and restores it in a finalizer.
+It mounts the bundled Browser with production lifecycle functions in sandboxed
+Electron, checks light/dark/light paint, fixed app/plugin palettes, view recreation,
+process restart and listener removal. Host/plugin-registry edges are synthetic;
+this does not claim an installed full-app settings journey.
+
 - **Preconditions**: App running on macOS; the harness can exercise English,
   Simplified Chinese, Traditional Chinese, Turkish, German, Spanish, French,
   Korean, and Brazilian Portuguese system locales.
@@ -3856,7 +3953,11 @@ identify the platform validation still needed.
   2) In the Appearance card, open the Theme picker. Confirm System, Light, and
      Dark are pinned at the top; select Dark and confirm the trigger shows Dark
      and the UI switches to dark.
-  3) Select Light and confirm the UI switches to light.
+  3) Select Light and confirm the UI switches to light. With a Browser tab open,
+     select System and change OS appearance light → dark → light. Confirm the
+     shell and Browser address/navigation toolbar update together without a
+     settings write or restart. Repeat with explicit Light and Dark: OS changes
+     must not override the selected app palette.
   4) In the Language row, open the searchable picker. Confirm Auto is pinned
      at the top with the detected native name and that English, 简体中文,
      繁體中文, Türkçe, Deutsch, Español, Français, 한국어, and Português (Brasil)
@@ -8215,7 +8316,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     fixtures complete on their second request. A second opaque failure remains
     terminal. A 400/422 that names an output ceiling (`at most N completion
     tokens`, `max_tokens: N > M, which is the maximum allowed number of output
-    tokens`, or `expected a value <= N`) gets one silent repair that clamps
+    tokens`, `expected a value <= N`, `valid range of max_tokens is [1, N]`,
+    `Range of max_tokens should be [1, N]`, or `max_tokens must be less than
+    or equal to N`) gets one silent repair that clamps
     those fields to that ceiling instead of removing them. Credit exhaustion
     and context overflow do not take this repair.
   - If the turn is aborted after the first opaque failure, the repair request is
@@ -9380,7 +9483,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     override so the next connection uses the default handshake timeout.
   - The broken command records `failed` with a message, contributes no tools,
      and is not re-dialled on the following session assembly; pressing Test
-     retries it.
+     retries it. After a transient failure in two projects, repair the stub
+     without editing its saved record and test the server. Both projects regain
+     tools on their next session without an enable toggle. Testing a selected
+     project uses that project's cwd and tool catalog; an active call or
+     handshake in another project completes without interruption.
    - A stopped HTTP server loses its `ready` status on settings refresh and
      reports `failed`; Test connection restores `ready` after it restarts.
 - **Specs linked**: `07-plugins/01-plugin-system.md` §12,
@@ -14654,13 +14761,15 @@ are withdrawn with ADR 0165.
   that matches nothing. On an HTML reference, open the Open with submenu and
   choose File Manager, built-in browser, and default browser; repeat for the
   scratch HTML file. 9) Use Copy full path and Copy relative path, then do the
-  same on a reference that resolves in the session scratch store.
+  same on a reference that resolves in the session scratch store. 10) Choose
+  Show in folder on a project file and on a scratch file.
 - **Expected**:
   - Right-clicking a file reference offers Copy full path and Copy relative
-    path on each transcript surface that names it. The transcript menu has no
-    Show in folder item. An unpositioned HTML reference also has a second-level
-    Open with submenu for File Manager, built-in browser, and default browser;
-    non-HTML references keep only the copy actions. Each open choice resolves
+    path on each transcript surface that names it, plus Show in folder in a
+    local session. An unpositioned HTML reference also has a second-level
+    Open with submenu for File Manager, built-in browser, and default browser.
+    Show in folder reveals the resolved file in the system file manager and a
+    missing reference reports itself instead. Each open choice resolves
     the reference first, and a missing reference reports itself without opening
     a same-named file elsewhere.
   - A copy writes exactly what it names: the absolute address for the full copy
@@ -20491,6 +20600,10 @@ isolated Host, the production runtime loop and Electron main's run coordinator.
 - Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
 - Acceptance: wait, report re-read and running-delegate cancellation complete
   through the real tool loop. Milestone: maintenance. Status: automated.
+
+#### E2E-ISSUE-2086-fork-selection
+
+While the parent is revalidating, invoke sidebar forkSession and complete the Host response. The child becomes active/retained and selectingSessionId clears. If a newer selection supersedes a reply fork, its selection remains. Cover existing running-parent transcript and fork-error paths through session-fork-running.test.mjs.
 
 #### E2E-ISSUE-1707
 

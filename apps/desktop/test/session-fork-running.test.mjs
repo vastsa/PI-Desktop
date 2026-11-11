@@ -19,6 +19,7 @@ function harness(t) {
     workPanelContexts: {}, workPanelTabs: [], workPanelOpen: false,
     navStack: [{ page: "chat", sessionId: "parent" }], navIndex: 0,
     restorePendingPlan: async () => {},
+    restorePendingInteractive: async () => {},
   };
   let intent = 0;
   const cache = new Map([["parent", state.messages]]);
@@ -76,6 +77,28 @@ test("a fork that finishes after navigation lists the child without stealing the
   assert.deepEqual(h.get().messages, []);
   assert.equal(h.get().runningSessions.parent, true);
   assert.deepEqual(h.get().sessions.map(s => s.id), ["child", "parent"]);
+});
+
+test("a superseded fork does not clear the newer session selection", async (t) => {
+  const h = harness(t);
+  const action = h.slice.forkAssistantMessage("old");
+  h.runtime.beginNavigationIntent();
+  h.set({ selectingSessionId: "other" });
+  h.complete();
+  await action;
+  assert.equal(h.get().selectingSessionId, "other");
+  assert.equal(h.get().activeSessionId, "parent");
+});
+
+test("fork activation clears an in-flight selection so the child is visible immediately", async (t) => {
+  const h = harness(t);
+  // 侧边栏分支可以在旧会话后台重新验证时触发。
+  h.set({ isRunning: false, runningSessions: {}, selectingSessionId: "parent" });
+  t.mock.method(api, "forkSession", async () => ({ session: { id: "child", title: "Branch", mode: "agent", messages: [] } }));
+  await h.slice.forkSession("parent");
+  assert.equal(h.get().activeSessionId, "child");
+  assert.equal(h.get().selectingSessionId, undefined);
+  assert.equal(h.get().retainedSessionIds[0], "child");
 });
 
 test("a rejected fork reports the error and keeps the original turn and transcript", async (t) => {

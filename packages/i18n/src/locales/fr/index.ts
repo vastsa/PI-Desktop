@@ -473,6 +473,8 @@ export const fr = {
     "fileManagerOpenFailed": "Impossible d'ouvrir le fichier dans le gestionnaire de fichiers.",
     "builtInBrowserUnavailable": "Le navigateur intégré est indisponible.",
     "defaultBrowserOpenFailed": "Impossible d'ouvrir le fichier dans le navigateur par défaut.",
+    "revealFileInFolder": "Afficher dans le dossier",
+    "fileRevealFailed": "Impossible d'afficher le fichier dans son dossier.",
     "copyFullPath": "Copier le chemin complet",
     "copyRelativePath": "Copier le chemin relatif",
     "relativePathUnavailable": "Ce fichier est hors du projet et n'a pas de chemin relatif",
