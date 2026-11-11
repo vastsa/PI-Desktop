@@ -719,6 +719,9 @@ the argument spelling the model sent, because `normalizeToolParams` folds
 alias names only when the call executes (D273). The collector therefore reads
 the path from `path` or from the same aliases (`file_path`, `filepath`,
 `filePath`, `filename`, `fileName`, `file`), with the same precedence.
+Calls on an assistant that stopped with `error`, `aborted`, or `deferred` are
+not counted: pi returns before executing them, and the rebuilt context drops
+the same turns, so they never read or changed a file.
 
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of
