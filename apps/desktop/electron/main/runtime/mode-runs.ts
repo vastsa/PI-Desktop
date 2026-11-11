@@ -49,7 +49,7 @@ export function modeContinuationOrigin(request: object): Exclude<ModeTurnOrigin,
   return continuationOrigins.get(request);
 }
 
-export type PreparedModeTurn = { modeTurn: ModeTurnContext; definition: ModeDefinition };
+export type PreparedModeTurn = { modeTurn?: ModeTurnContext; definition: ModeDefinition };
 
 export type ModeTurnEnd = { reason: "completed" | "aborted" | "error"; usage?: MessageUsage; errorCode?: string };
 
@@ -125,9 +125,8 @@ export function createModeRunCoordinator(deps: {
     },
 
     /**
-     * Claim the session's run for a durable turn. Returns nothing for simple
-     * modes, or when a user turn cannot claim (it then runs as a plain turn of
-     * the selected mode). A continuation that cannot claim throws, so the
+     * Claim the session's run for a durable turn, or return a simple mode's
+     * definition without a claim. A continuation that cannot claim throws, so the
      * caller closes the empty turn instead of running it.
      */
     async prepareTurn(input: {
@@ -146,10 +145,10 @@ export function createModeRunCoordinator(deps: {
       let selected: ModeDefinition | undefined;
       let claim: ModeClaimResult;
       if (!run) {
-        selected = await deps.catalog.definition(input.sessionMode);
+        selected = await this.definitionForPrompt(input.sessionMode);
         if (!selected || selected.stages.length === 0) {
           if (input.origin !== "user") throw Object.assign(new Error("mode run is not staged"), { errorCode: "MODE_NOT_STAGED" });
-          return undefined;
+          return selected ? { definition: selected } : undefined;
         }
         if (input.origin !== "user") throw Object.assign(new Error("no open mode run"), { errorCode: "MODE_RUN_NOT_FOUND" });
         claim = await hostCaller.call<ModeClaimResult>("modes.start", {

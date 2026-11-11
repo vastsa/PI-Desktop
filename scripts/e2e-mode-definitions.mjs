@@ -84,8 +84,9 @@ await withScenario("mode-snapshot-dispatch", async ({ host, workspace, dataDir }
   const catalog = createModeCatalogService({ dir: join(dataDir, "modes") });
   await catalog.write("review", "---\nname: review\npermission: contract\nstages:\n  work:\n    prompt: Keep the original stage.\n    exit: [{ ask: user }]\n---\nOriginal instructions.\n");
   const definition = await catalog.definition("review");
-  const session = await createSession(host, workspace, "Snapshot dispatch");
-  await host.call("session.configure", { id: session.id, mode: "review", modeSnapshot: definition });
+  const { session } = await host.call("session.create", {
+    title: "Snapshot dispatch", projectPath: workspace, mode: "review", modeSnapshot: definition,
+  });
   const handlers = new Map();
   const prompts = [];
   const activeTurns = new Map();

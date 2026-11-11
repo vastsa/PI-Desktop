@@ -869,9 +869,14 @@ or making the catalog definition simple does not change an existing run.
 Without a claim, simple custom modes carry the current catalog definition to the
 runtime. An unavailable mode closes the admission turn without persisting a user
 message or invoking the sidecar. Plan-state projection may rename only Agent/Plan
-sessions; an inactive projection preserves Goal and custom-mode identity.
-New Goal/custom sessions persist the catalog snapshot before returning from
-Desktop creation, including sessions created directly in the default mode.
+sessions; an inactive projection preserves Goal and custom-mode identity unless
+a legacy Goal proposal was approved. Live approval and restoration of a pending
+legacy proposal then show Agent; unrelated historical approvals do not rename
+a newly selected staged Goal.
+New Goal/custom sessions pass the catalog snapshot in the single Host creation
+call. Host validation, snapshot storage and session insertion share a transaction;
+a rejected snapshot or failed insert leaves neither an incomplete session nor
+an orphan snapshot. Legacy callers without a snapshot keep their existing behavior.
 
 ### Notes
 - `contract` hard-denies Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host

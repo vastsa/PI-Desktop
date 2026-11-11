@@ -20631,7 +20631,12 @@ subsequent dispatch retains the run snapshot in both cases. Controlled coverage:
 acceptance is separate from these stubbed Host/sidecar boundary checks.
 Also create directly in Goal or a staged custom mode without switching modes:
 the first send starts a run. `mode-session-create.test.mjs` checks the production
-creation registrar persists its snapshot before returning.
+creation registrar validates input and sends its snapshot in one creation RPC.
+Host RPC tests cover snapshot/policy persistence, invalid snapshots and rollback
+after an injected session-insert failure. Approve a legacy Goal proposal: live
+events and pending-proposal restoration show Agent. Inactive polling with no
+approval preserves staged Goal/custom modes, including after older Goal history.
+Coverage: `mode-planning-approval.test.mjs`, `session_mode_create_tests.rs`.
 `scripts/e2e-mode-definitions.mjs` also exercises production prompt IPC and the
 coordinator against an isolated real Host, including edit/removal, durable claim
 settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this

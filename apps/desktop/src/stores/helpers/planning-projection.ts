@@ -1,4 +1,4 @@
-import type { Mode, PlanningState } from "@pi-desktop/shared";
+import type { Mode, PlanningState, PlanProposal } from "@pi-desktop/shared";
 
 /**
  * Which sessions the plan proposal pipeline (ADR 0053) speaks for
@@ -27,15 +27,16 @@ export function visiblePlanningState(
 }
 
 /**
- * The proposal pipeline can change only Agent and Plan modes. An inactive
- * projection also belongs to custom modes and staged Goal, so it does not
- * establish that either session switched back to Agent.
+ * An approved legacy Goal proposal returns to Agent. Snapshot-defined modes
+ * can also report inactive, so require that approval evidence before renaming.
  */
 export function modeAfterPlanningUpdate(
   mode: Mode | undefined,
-  _hostState: PlanningState,
+  hostState: PlanningState,
   projectedMode: () => Mode,
+  checkpoint?: Pick<PlanProposal, "kind" | "status">,
 ): Mode {
   if (mode === undefined || planningOwnsMode(mode)) return projectedMode();
+  if (mode === "goal" && hostState === "inactive" && checkpoint?.kind === "goal" && checkpoint.status === "approved") return "agent";
   return mode;
 }

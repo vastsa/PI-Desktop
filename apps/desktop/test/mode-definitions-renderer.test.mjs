@@ -247,6 +247,9 @@ test("Goal and user modes are never shown as Plan-style planning and keep their 
   }
   // A legacy Goal proposal still awaiting approval stays resolvable.
   assert.equal(planning.visiblePlanningState("goal", "awaiting_approval", true), "awaiting_approval");
+  assert.equal(planning.modeAfterPlanningUpdate("goal", "inactive", agent, {
+    kind: "goal", status: "approved",
+  }), "agent");
   // Inactive Plan state does not establish a mode change for other modes.
   for (const mode of ["goal", "review"]) {
     assert.equal(planning.modeAfterPlanningUpdate(mode, "inactive", agent), mode);

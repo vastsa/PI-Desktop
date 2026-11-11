@@ -1483,6 +1483,16 @@ pub fn create_session_with_options(
     db: &Database,
     options: SessionCreateOptions,
 ) -> Result<SessionSummary> {
+    create_session_with_mode_snapshot(db, options, None)
+}
+
+/// Store a selected definition and its new session in one transaction.
+/// Legacy callers without a snapshot retain their existing creation semantics.
+pub fn create_session_with_mode_snapshot(
+    db: &Database,
+    options: SessionCreateOptions,
+    mode_snapshot: Option<&Value>,
+) -> Result<SessionSummary> {
     let SessionCreateOptions {
         title,
         mode,
@@ -1502,10 +1512,21 @@ pub fn create_session_with_options(
         TITLE_SOURCE_MANUAL
     };
     let mode = normalize_mode(mode.as_deref());
+    let prepared = mode_snapshot
+        .filter(|value| !value.is_null())
+        .map(|value| crate::mode_runs::prepare_session_mode(db, &id, &mode, Some(value)))
+        .transpose()?;
     let thinking_level = thinking_level.unwrap_or_else(default_thinking_level);
     validate_thinking_level(&thinking_level)?;
     let permission_mode = permission_mode.unwrap_or_else(default_permission_mode);
     validate_permission_mode(&permission_mode)?;
+    let transaction = prepared
+        .as_ref()
+        .map(|_| db.conn().unchecked_transaction())
+        .transpose()?;
+    if let Some(prepared) = &prepared {
+        crate::mode_runs::store_session_snapshot(db, prepared)?;
+    }
     let project_id = match project_path
         .as_deref()
         .filter(|path| !path.trim().is_empty())
@@ -1521,8 +1542,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, title_source, fast_mode, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
+                permission_mode, title_source, fast_mode, created_at, updated_at, mode_snapshot_hash
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12)",
         )?
         .execute(params![
             id,
@@ -1535,8 +1556,12 @@ pub fn create_session_with_options(
             permission_mode,
             title_source,
             fast_mode,
-            now
+            now,
+            prepared.as_ref().and_then(|value| value.snapshot_hash())
         ])?;
+    if let Some(transaction) = transaction {
+        transaction.commit()?;
+    }
     Ok(SessionSummary {
         id,
         title,

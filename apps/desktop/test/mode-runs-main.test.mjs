@@ -117,7 +117,8 @@ test("Agent and Plan dispatch use builtin runtime instructions without a snapsho
 test("a user turn in a simple mode claims nothing", async () => {
   const { coordinator, calls } = fixture();
   const prepared = await coordinator.prepareTurn({ sessionId: "s1", turnId: "t1", sessionMode: "review", content: "x", origin: "user" });
-  assert.equal(prepared, undefined);
+  assert.equal(prepared.definition.id, "review");
+  assert.equal(prepared.modeTurn, undefined);
   assert.deepEqual(calls.map(call => call.method), ["modes.get"]);
 });
 
