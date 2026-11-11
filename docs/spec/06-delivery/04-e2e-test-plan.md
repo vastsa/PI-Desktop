@@ -20491,6 +20491,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 
 ### E2E-TOOLS-session-background-jobs
 
+- Split follow-up regression: cancel TaskStop during capability discovery (zero stop requests) and after dispatch (one stop request); late RPC failure stays observed.
+
+
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
   `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`.
 - Environment: isolated Host data and workspace, production runtime and pi tool
