@@ -8,6 +8,10 @@ The Composer queue mirror accepts only the current read for each session. A newe
 
 A bounded session detail read must not overwrite an idle transcript cache changed while that read was pending. Keep its newer messages and history window together. Running sessions still merge unflushed live rows, and the requesting caller receives its own read response (Refs #2086).
 
+Idle session model writes participate in the same per-session configuration
+queue as running-turn changes. Rapid choices serialize; the newest queued
+choice is applied after the in-flight write, rather than racing older replies.
+
 A full transcript read may fill its session cache only when that cache has not
 changed during the request. New streaming or edit snapshots retain ownership;
 the caller still receives the requested history for its own action validation.

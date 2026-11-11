@@ -34,7 +34,7 @@ test("staged next-turn configuration merges per field instead of replacing", () 
   // The direct (idle) path folds a leftover staged entry under the new fields.
   assert.match(
     sessionSlice,
-    /const payload = runtime\.mergeSessionConfiguration\(\n\s*runtime\.pendingSessionConfigurations\.get\(sessionId\),\n\s*config,\n\s*\);\n\s*runtime\.pendingSessionConfigurations\.delete\(sessionId\);\n\s*const result = await api\.configureSession\(sessionId, payload\);/,
+    /const payload = runtime\.mergeSessionConfiguration\(\n\s*runtime\.pendingSessionConfigurations\.get\(sessionId\),\n\s*config,\n\s*\);\n\s*runtime\.pendingSessionConfigurations\.delete\(sessionId\);\n\s*const write = api\.configureSession\(sessionId, payload\)/,
   );
 });
 
