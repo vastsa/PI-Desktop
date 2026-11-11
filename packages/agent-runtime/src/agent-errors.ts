@@ -127,11 +127,12 @@ function redactSensitiveErrorText(message: string): string {
 
 /**
  * Probe the HTTP status across SDK error shapes: `status`/`statusCode`
- * fields (walking the `cause` chain), then a leading "<status>:" or a
- * "(status)" / "status code NNN" marker, or a DashScope "Code: <status>"
- * envelope in the message. Gemini's
+ * fields (walking the `cause` chain), then a leading "<status>:", an
+ * OpenAI SDK "Error code: NNN" prefix, a "(status)" / "status code NNN"
+ * marker, or a DashScope "Code: <status>" envelope in the message. Gemini's
  * `@google/genai` ApiError.message is the JSON body with no prefix, so the
- * last probe reads a 400-599 `code` from that object.
+ * last probe reads a 400-599 `code` from that object. A bare `code: NNN`
+ * business field is not an HTTP status.
  */
 function extractStatus(err: unknown, message: string): number | undefined {
   let current: any = err;
@@ -144,6 +145,10 @@ function extractStatus(err: unknown, message: string): number | undefined {
     /^\s*[A-Za-z][A-Za-z0-9_.-]*:\s*<(\d{3})>/,
     /^\s*(\d{3})\s*:/,
     /^\s*(\d{3})\b/,
+    // OpenAI Node/Python SDK: "Error code: 402 - …". Anchored so a later
+    // "(NNN)" or a business `code` field cannot replace the prefix. The
+    // word boundary keeps a longer code such as 30001 from matching.
+    /^\s*error\s+code\s*:\s*(\d{3})\b/i,
     /\((\d{3})\)/,
     /status(?: code)?[ :]+(\d{3})\b/i,
   ];

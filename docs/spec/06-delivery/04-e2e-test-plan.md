@@ -112,6 +112,24 @@ being fetched on every subsequent poll.
 - **Automated coverage:** `agent-errors.test.ts` and `provider-retry.test.ts`.
 - **Specs:** `03-runtime/08-error-codes.md` §3.2.
 
+## E2E-PROVIDER-openai-error-code-status
+
+- **Preconditions:** Isolated Agent runtime classifier; no credentials, network,
+  or user history.
+- **Steps:** Classify messages that begin `Error code: 402`, `Error code: 401`,
+  `Error code: 429`, and `Error code: 404`, including a body that also contains
+  a parenthesized status. Also classify SiliconFlow-style `Error code: 30001`,
+  prose that only mentions `error code: 500`, a bare `code: 401`, and a Zhipu
+  `"code":1308` body.
+- **Expected:** `providerStatus` is the prefix and the status table applies:
+  402 is terminal `PROVIDER_ERROR`, 401 is `PROVIDER_UNAUTHORIZED`, 429 is
+  `PROVIDER_RATE_LIMITED`, and 404 is `MODEL_NOT_CONFIGURED`. The prefix wins
+  over a later parenthesized number. Business codes and prose do not become an
+  HTTP status; Zhipu `1308` stays terminal `PROVIDER_ERROR` without
+  `providerStatus`. A structured `status` field still wins over the prefix.
+- **Automated coverage:** `packages/agent-runtime/src/agent-errors.test.ts`.
+- **Specs:** `03-runtime/08-error-codes.md` §3.2.
+
 
 ## E2E-TASK-DOCK-tab-content-isolation
 
