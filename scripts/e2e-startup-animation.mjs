@@ -44,7 +44,7 @@ function writePlayableVideo(target) {
     [
       "-v", "error",
       "-f", "lavfi",
-      "-i", "testsrc=size=640x360:rate=24:duration=1.5",
+      "-i", "testsrc=size=640x360:rate=24:duration=6",
       "-c:v", "libvpx-vp9",
       "-b:v", "300k",
       "-an",
@@ -72,7 +72,14 @@ function writeUnplayableVideo(target) {
 const PROBE = `(() => {
   const surface = document.querySelector('[data-testid="startup-animation"]');
   const video = surface?.querySelector("video") ?? null;
+  if (video && !video.dataset.completionObserved) {
+    video.dataset.completionObserved = "true";
+    video.addEventListener("ended", () => {
+      window.__startupAnimationEnd = { time: video.currentTime, duration: video.duration };
+    }, { once: true });
+  }
   return {
+    ended: window.__startupAnimationEnd ?? null,
     surface: !!surface,
     splash: !!document.querySelector('[data-testid="startup-splash"]'),
     recovery: !!document.querySelector('[data-testid="startup-recovery"]'),
@@ -101,7 +108,7 @@ function waitFor(check, timeoutMs, label) {
  * Boot the app against a throwaway data directory holding one animation, and
  * hand `run` a renderer probe. Everything is torn down on either outcome.
  */
-async function withLaunch(writeFixture, run) {
+async function withLaunch(writeFixture, run, { missLoadedData = false } = {}) {
   const dataDir = createTempDataDir("pi-desktop-startup-animation-");
   const userDataDir = join(dataDir, "user-data");
   mkdirSync(userDataDir, { recursive: true });
@@ -170,6 +177,17 @@ async function withLaunch(writeFixture, run) {
         pending.set(id, { resolve, reject, timer });
         ws.send(JSON.stringify({ id, method, params }));
       });
+    if (missLoadedData) {
+      await send("Page.enable");
+      await send("Page.addScriptToEvaluateOnNewDocument", {
+        // Reset only this temporary window's one-play guard to inject the media event loss.
+        source: `sessionStorage.removeItem("pi-desktop.startup-animation.played");
+          document.addEventListener("loadeddata", (event) => {
+            if (event.target instanceof HTMLVideoElement) event.stopImmediatePropagation();
+          }, true);`,
+      });
+      await send("Page.reload");
+    }
     const probe = async () => {
       const result = await send("Runtime.evaluate", {
         expression: PROBE,
@@ -191,9 +209,9 @@ async function withLaunch(writeFixture, run) {
   }
 }
 
-async function playableScenario() {
+async function playableScenario(missLoadedData = false) {
   await withLaunch(writePlayableVideo, async ({ probe, byteLength }) => {
-    console.log(`playable fixture: ${byteLength} bytes`);
+    console.log(`playable fixture: ${byteLength} bytes (missLoadedData=${missLoadedData})`);
 
     // `readyState >= 2` means Chromium has frames for the current position,
     // which is only true if `pi-startup:` served playable bytes under the CSP.
@@ -226,13 +244,25 @@ async function playableScenario() {
     }, 10_000, "playback to advance");
     console.log("PASS playback — the stream advances");
 
+    // A short clip can finish before the first-frame timeout and hide a false timeout.
+    await waitFor(async () => {
+      const state = await probe();
+      if (state.ended?.time >= 5.75) return true;
+      if (!state.surface || state.revealing || state.currentTime === null) {
+        throw new Error(`playable animation ended before its six-second fixture finished: ${JSON.stringify(state)}`);
+      }
+      if (state.error) throw new Error(`playback error ${state.error}`);
+      return state.currentTime >= 5.75;
+    }, 15_000, "playback beyond the first-frame timeout and through the full clip");
+    console.log("PASS completion — playback reaches the final quarter-second");
+
     await waitFor(async () => {
       const state = await probe();
       if (state.recovery) throw new Error("the launch stalled into the recovery surface");
       return !state.surface && state.shell;
     }, 30_000, "the animation to reveal the shell");
     console.log("PASS reveal — the shell owns the window");
-  });
+  }, { missLoadedData });
 }
 
 async function unplayableScenario() {
@@ -252,6 +282,7 @@ async function unplayableScenario() {
 
 try {
   await playableScenario();
+  await playableScenario(true);
   await unplayableScenario();
 } catch (error) {
   console.error("FAIL startup-animation —", error.message);

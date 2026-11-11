@@ -177,6 +177,12 @@ export async function transcriptMinimapJumpProbe() {
       "outline mounts",
     );
     const scroller = element(".thread-scroll");
+    // Compare native movement against fixed, measured turn offsets rather than
+    // content-visibility estimates; dynamic-height arrival has its own journey.
+    for (const node of scroller.querySelectorAll<HTMLElement>(".message-row")) {
+      node.style.contentVisibility = "visible";
+      node.getBoundingClientRect();
+    }
     const distanceFromBottom = () =>
       scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
     // The transcript mounts pinned to the bottom: that is the state the reported
@@ -227,8 +233,44 @@ export async function transcriptMinimapJumpProbe() {
       turnTop() > -8 && turnTop() < 96,
       `the clicked turn is not on screen: ${JSON.stringify(readout())}`,
     );
+    const nativeMove = scroller.scrollTo.bind(scroller);
+    const calls: { top: number; behavior: ScrollBehavior; displacement: number }[] = [];
+    let ended = false;
+    const onEnd = (event: Event) => { if (event.target === scroller) ended = true; };
+    scroller.addEventListener("scrollend", onEnd);
+    scroller.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
+      const before = scroller.scrollTop;
+      if (typeof options === "number") nativeMove(options, y ?? 0);
+      else nativeMove(options);
+      calls.push({ top: typeof options === "number" ? y ?? 0 : options?.top ?? before,
+        behavior: typeof options === "number" ? "auto" : options?.behavior ?? "auto",
+        displacement: scroller.scrollTop - before });
+    };
+    let intermediateFrames = 0;
+    const start = scroller.scrollTop;
+    try {
+      element<HTMLButtonElement>(".jump-latest-btn").click();
+      for (let index = 0; index < 400; index++) {
+        await frame();
+        if (scroller.scrollTop > start + 2 && distanceFromBottom() > 2) intermediateFrames++;
+        if (ended && Math.abs(distanceFromBottom()) <= 2) break;
+      }
+      assert(ended && Math.abs(distanceFromBottom()) <= 2, "native return did not finish at bottom");
+      assert(calls.filter(call => call.behavior === "smooth").length === 1,
+        `fixed-layout latest must use one browser animation: ${JSON.stringify(calls)}`);
+      assert(calls.every(call => call.behavior === "smooth" || Math.abs(call.displacement) <= 2),
+        `latest still writes instantaneous animation positions: ${JSON.stringify(calls)}`);
+      assert(intermediateFrames >= 3, `native latest snapped instead of travelling: ${JSON.stringify({ start, intermediateFrames, calls, ...readout() })}`);
+      for (let index = 0; index < 12; index++) {
+        await frame();
+        assert(Math.abs(distanceFromBottom()) <= 2, "native latest bounced after arrival");
+      }
+    } finally {
+      scroller.scrollTo = nativeMove;
+      scroller.removeEventListener("scrollend", onEnd);
+    }
     assert(errors.length === 0, `render errors: ${errors.map(String)}`);
-    return { ok: true, dashes: dashes.length, ...readout() };
+    return { ok: true, dashes: dashes.length, nativeLatest: { calls, intermediateFrames }, ...readout() };
   } catch (error) {
     return {
       ok: false,

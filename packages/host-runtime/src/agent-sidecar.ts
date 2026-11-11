@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
+import { COMPUTER_CALL_TIMEOUT_MS, DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
@@ -50,6 +50,10 @@ export type VendorAuthResolver = (input: {
 // session, so it cannot reach a credential the session was not launched with.
 const HOST_PROXY_ALLOWED = new Set([
   "tools.execute",
+  "backgroundJobs.capabilities",
+  "backgroundJobs.list",
+  "backgroundJobs.wait",
+  "backgroundJobs.stop",
   "tools.fileBatchCapabilities",
   "tools.fileBatchRegister",
   "tools.fileBatchSeal",
@@ -275,12 +279,22 @@ export class AgentSidecar {
     const controller = new AbortController();
     this.localToolControllers.set(key, controller);
     const imageGeneration = params.toolName === "GenerateImages";
+    const computerUse = params.toolName === "Computer";
+    // High-risk local tools must be authorised by host-core before the local
+    // handler runs. Running first and asking later would let a local tool
+    // bypass the permission broker, which is the whole point of the gate.
+    const hostAuthorised = imageGeneration || computerUse;
+    const budget = imageGeneration
+      ? IMAGE_BATCH_TIMEOUT_MS + 130_000
+      : computerUse
+        ? COMPUTER_CALL_TIMEOUT_MS + 30_000
+        : DEFAULT_RPC_TIMEOUT_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
         (async () => {
-          if (imageGeneration) {
-            imageGenerationPrompts(input.args);
+          if (hostAuthorised) {
+            if (imageGeneration) imageGenerationPrompts(input.args);
             if (!this.host) throw new Error("host unavailable");
             const gate = await this.host.call<LocalToolResult>("tools.execute", params);
             if (!gate.ok) return gate;
@@ -292,7 +306,7 @@ export class AgentSidecar {
           timer = setTimeout(() => {
             controller.abort();
             reject(new Error("host-local tool timeout"));
-          }, imageGeneration ? IMAGE_BATCH_TIMEOUT_MS + 130_000 : DEFAULT_RPC_TIMEOUT_MS);
+          }, budget);
           this.localToolTimers.add(timer);
         }),
       ]);

@@ -101,8 +101,12 @@ export type FsChatRefProjectRoot = {
  * file is expressed to the work panel as a path relative to the project's
  * **primary** folder, while any other project folder — and every scratch or
  * attachment file — can only be addressed by its absolute path.
+ *
+ * `external` is an existing regular file the reference named by its exact
+ * absolute path outside every managed root (ADR 0339). It is never produced by
+ * a shorthand, and its `relativePath` is the file name.
  */
-export type FsChatRefRoot = "workspace" | "scratch" | "attachments";
+export type FsChatRefRoot = "workspace" | "scratch" | "attachments" | "external";
 
 /** Which rule produced the match; the shallow tiers are informational. */
 export type FsChatRefMatchKind =
@@ -121,6 +125,13 @@ export type FsChatRefMatch = {
   absolutePath: string;
   matchedBy: FsChatRefMatchKind;
   /**
+   * What the match names. Absent means a regular file. `"directory"` is
+   * produced only for an exact reference resolved with `allowDirectory` —
+   * never by a shorthand or fuzzy match — and the chat open flow routes it to
+   * the file manager instead of the file view.
+   */
+  target?: "file" | "directory";
+  /**
    * Which folder of the project answered, for `root: "workspace"`. The caller
    * needs it to decide how to address the file: relative for the primary
    * folder, absolute for any other.
@@ -130,6 +141,10 @@ export type FsChatRefMatch = {
 
 export type FsChatRefResolveResult = {
   match: FsChatRefMatch | null;
-  /** The supplied absolute path is not inside a project, scratch, or attachment root. */
+  /**
+   * The reference lies outside the managed roots and is not an exact absolute
+   * path, so it cannot be opened from there. An exact absolute path to an
+   * existing file outside the roots opens instead (ADR 0339).
+   */
   reason?: "outside-allowed-roots";
 };

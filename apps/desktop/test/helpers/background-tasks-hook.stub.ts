@@ -15,6 +15,7 @@ export type DockFixture = {
   tasks: BackgroundTaskSummary[];
   sessionTasks: BackgroundTaskSummary[];
   collapsed?: boolean;
+  activeTab?: "todo" | "tasks";
 };
 
 declare global {
@@ -27,7 +28,7 @@ export function useBackgroundTasks() {
   return {
     tasks: fixture.tasks,
     sessionTasks: fixture.sessionTasks,
-    activeTab: "tasks" as const,
+    activeTab: fixture.activeTab ?? "tasks",
     openTasksTab() {},
     openTodoTab() {},
     collapsed: fixture.collapsed ?? true,

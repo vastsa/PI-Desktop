@@ -297,6 +297,29 @@ describe("classifyAgentError", () => {
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
   });
 
+  it.each([
+    ["InvalidParameter: <400> InternalError.Algo.InvalidParameter: Repetitive tool calls detected in the conversation history.", "PROVIDER_ERROR", false, 400],
+    ["InvalidParameter: <422> Invalid tool arguments.", "PROVIDER_ERROR", false, 422],
+    ["InvalidApiKey: <401> Invalid API key.", "PROVIDER_UNAUTHORIZED", false, 401],
+    ["Throttling: <429> Too many requests.", "PROVIDER_RATE_LIMITED", true, 429],
+    ["InternalError: <500> The service is temporarily unavailable.", "PROVIDER_ERROR", true, 500],
+  ])("classifies DashScope code/status envelopes: %s", (message, code, retriable, status) => {
+    expect(classifyAgentError(message)).toMatchObject({
+      code, retriable, details: { providerStatus: status },
+    });
+  });
+
+  it("does not infer an HTTP status from an angle-bracket number in prose", () => {
+    expect(classifyAgentError("Provider failed while processing item <400>."))
+      .toMatchObject({ code: "PROVIDER_ERROR", retriable: true });
+    expect(classifyAgentError("InvalidParameter: <400> Unknown parameter. <429>"))
+      .toMatchObject({ code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 400 } });
+    expect(classifyAgentError(Object.assign(
+      new Error("InvalidParameter: <400> Unknown parameter."),
+      { status: 503 },
+    ))).toMatchObject({ code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 503 } });
+  });
+
   // @google/genai ApiError.message is JSON.stringify(errorBody). pi-ai does
   // not prefix "<status>:", and the Google adapter never records
   // providerResponseStatus, so the main session and subagents classify this
@@ -406,6 +429,65 @@ describe("classifyAgentError", () => {
     },
   );
 
+  // Gemini's native API and some OpenAI-compatible gateways reject a bad key
+  // with HTTP 400, not 401. The status table must still call that a
+  // credential failure. A 400 that only says "permission denied" or
+  // "unauthorized" stays a malformed request.
+  it("classifies an HTTP 400 API-key rejection as unauthorized", () => {
+    const errorMessage = JSON.stringify({
+      error: {
+        code: 400,
+        message: "API key not valid. Please pass a valid API key.",
+        status: "INVALID_ARGUMENT",
+        details: [
+          {
+            "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            reason: "API_KEY_INVALID",
+            domain: "googleapis.com",
+          },
+        ],
+      },
+    });
+    const expected = {
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+      details: { providerStatus: 400 },
+    };
+    const message = { role: "assistant", stopReason: "error", errorMessage };
+    expect(classifyAgentError(errorMessage)).toMatchObject(expected);
+    expect(classifyAgentError(new Error(errorMessage))).toMatchObject(expected);
+    expect(classifyAgentError(message)).toMatchObject(expected);
+    expect(classifyProviderError(message)).toMatchObject(expected);
+    expect(classifyAgentError(`400: ${errorMessage}`)).toMatchObject(expected);
+    expect(classifyProviderError({
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "400: API key not valid. Please pass a valid API key.",
+    })).toMatchObject(expected);
+    expect(classifyAgentError("400: Invalid API key")).toMatchObject(expected);
+    expect(classifyAgentError('400: {"reason":"API_KEY_INVALID"}')).toMatchObject(expected);
+    expect(classifyAgentError("422: invalid_api_key")).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+      details: { providerStatus: 422 },
+    });
+
+    for (const ordinary of [
+      "400: Invalid value at 'contents'",
+      "400: permission denied",
+      "422: unauthorized",
+      "400: unknown parameter",
+    ]) {
+      expect(classifyAgentError(ordinary)).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+    }
+    expect(classifyAgentError(
+      "400: The input token count exceeds the maximum number of tokens allowed.",
+    )).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
+  });
+
   it("does not treat a non-HTTP JSON code as a provider status", () => {
     const cases = [
       JSON.stringify({ error: { code: 123, message: "not an http status" } }),
@@ -460,6 +542,93 @@ describe("classifyAgentError", () => {
     ).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
     expect(classifyAgentError("prompt is too long: 210000 tokens"))
       .toMatchObject({ code: "CONTEXT_TOO_LARGE" });
+  });
+
+  // Ollama's MLX runner returns this as HTTP 500, and other gateways wrap the
+  // same upstream overflow as 502/503. pi-ai's LiteLLM rule wants "(8192)" or
+  // " of 8192 tokens", so "(8192 tokens)" is invisible to isContextOverflow.
+  // The status table must not retry it as a generic 5xx.
+  it("classifies a 5xx-wrapped context overflow as terminal CONTEXT_TOO_LARGE", () => {
+    const body =
+      "input length (9000 tokens) exceeds the model's maximum context length (8192 tokens)";
+    const json = (status: number) =>
+      `${status} {"error":{"message":"${body}"}}`;
+    const assistant = (errorMessage: string) =>
+      ({ role: "assistant", stopReason: "error", errorMessage }) as AssistantMessage;
+
+    expect(isContextOverflow(assistant(body))).toBe(false);
+    expect(isContextOverflow(assistant(json(500)))).toBe(false);
+
+    expect(classifyAgentError(json(500))).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { providerStatus: 500 },
+    });
+    expect(classifyAgentError(Object.assign(new Error(body), { status: 500 }))).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { providerStatus: 500 },
+    });
+    expect(classifyProviderError(assistant(json(500)))).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { providerStatus: 500 },
+    });
+    for (const status of [502, 503]) {
+      expect(classifyAgentError(json(status))).toMatchObject({
+        code: "CONTEXT_TOO_LARGE",
+        retriable: false,
+        details: { providerStatus: status },
+      });
+    }
+  });
+
+  it("keeps ordinary and rate-limited 5xx responses retryable", () => {
+    for (const message of [
+      "500 Internal Server Error",
+      "500: Internal Server Error",
+      "502: upstream connect error or disconnect/reset before headers",
+      "503 Service Unavailable",
+      "503: Service Unavailable",
+      "503: overloaded",
+      "503: Too many requests",
+      "503: rate limit exceeded",
+      // CONTEXT_PATTERN matches "too many tokens", but this is a throttle.
+      // pi-ai excludes "rate limit"; the 5xx branch must not undo that.
+      "503: Throttling error: Too many tokens, please wait before trying again.",
+      "503: rate limit: too many tokens, please wait before trying again.",
+    ]) {
+      const classified = classifyAgentError(message);
+      expect(classified.code, message).not.toBe("CONTEXT_TOO_LARGE");
+      expect(classified, message).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+    }
+    expect(classifyAgentError(Object.assign(
+      new Error("Internal Server Error"),
+      { status: 500 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 500 },
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("Service Unavailable"),
+      { status: 503 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 503 },
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("upstream connect error or disconnect/reset before headers"),
+      { status: 502 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+      details: { providerStatus: 502 },
+    });
   });
 
   // Each message is what pi-ai 1.1.0 reports for that provider's overflow:
@@ -521,6 +690,25 @@ describe("classifyAgentError", () => {
       code: "PROVIDER_ERROR",
       retriable: false,
     });
+  });
+
+  // Zhipu/Z.ai code 1308 is the plan usage cap, sent as 429; it resets after
+  // hours, so the rate-limit budget must not replay it (pi #11537).
+  it.each([
+    '429 {"error":{"code":"1308","message":"已达到 5 小时的使用上限。您的限额将在 2026-11-06 23:00:00 重置。"}}',
+    '429: {"error":{"code":1308,"message":"Usage limit reached for 5 hour."}}',
+  ])("does not retry the Zhipu usage-limit code: %s", (message) => {
+    expect(classifyAgentError(Object.assign(new Error(message), { status: 429 }))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("keeps a 429 that only mentions 1308 elsewhere retryable", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error('429 {"error":{"code":"1302","message":"rate limit, request 13080"}}'),
+      { status: 429 },
+    ))).toMatchObject({ code: "PROVIDER_RATE_LIMITED", retriable: true });
   });
 
   it("classifies structured 429 quota errors before generic status handling", () => {

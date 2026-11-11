@@ -13,11 +13,11 @@ use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 mod fork_files;
 mod history_mutations;
 pub use history_mutations::{
-    activate_message_revision_canonical, delete_message, retract_pending_prompt,
+    activate_message_revision_canonical, delete_message, retract_pending_prompt, running_turn,
 };
 mod model_system;
 mod usage;
-pub use usage::record_usage;
+pub use usage::{record_usage, session_usage_cost};
 
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
@@ -39,26 +39,44 @@ pub struct AutoTitleContext {
     pub model_key: Option<String>,
 }
 
-/// Compatibility normalization for v7 callers and imported records. The
-/// persisted operating profile is now always `plan`, `goal` or `agent`.
+/// Compatibility normalization for v7 callers and imported records. `chat`
+/// is the old name of `plan`; any valid mode id (builtin or user-defined,
+/// ADR mode-definitions) is kept, and anything else reads as `agent`.
 pub fn normalize_mode(mode: Option<&str>) -> String {
     match mode {
-        Some("plan") | Some("chat") => "plan".into(),
-        Some("goal") => "goal".into(),
-        Some("agent") => "agent".into(),
+        Some("chat") => "plan".into(),
+        Some(mode) if is_valid_mode(mode) => mode.into(),
         _ => "agent".into(),
     }
 }
 
+/// Builtin-only normalization for surfaces that never carry a custom mode
+/// (scheduled tasks): unknown ids read as `agent`.
+pub fn normalize_builtin_mode(mode: Option<&str>) -> String {
+    match mode {
+        Some("plan") | Some("chat") => "plan".into(),
+        Some("goal") => "goal".into(),
+        _ => "agent".into(),
+    }
+}
+
+/// Any id a session may persist: a builtin or a user-defined mode.
 pub fn is_valid_mode(mode: &str) -> bool {
+    crate::mode_runs::is_mode_id(mode)
+}
+
+pub fn is_builtin_mode(mode: &str) -> bool {
     MODES.contains(&mode)
 }
 
 /// Plan and Goal negotiate a contract before executing (D198), so they share one
-/// tool allowlist and one hard deny. Agent is the only executing mode.
+/// tool allowlist and one hard deny. Agent is the only executing mode. This
+/// names the builtin modes only; authorization uses `tool_policy`.
 pub fn is_contract_mode(mode: &str) -> bool {
     matches!(mode, "plan" | "goal")
 }
+
+pub use crate::mode_runs::{tool_policy, ToolPolicy};
 
 /// Values accepted by the persisted per-session thinking selector.  Keep this
 /// list in the host boundary so old clients cannot write arbitrary provider
@@ -204,6 +222,9 @@ pub struct UiMessage {
     /// Validated Skill tokens in `command`, with UTF-16 offsets for the renderer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_mentions: Option<Vec<SkillMention>>,
+    /// Validated `@agent` tokens in `command`, with UTF-16 offsets for the renderer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_mentions: Option<Vec<AgentMention>>,
     /// Host-authenticated agent-to-agent origin, never a human authorization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_message: Option<Value>,
@@ -224,6 +245,11 @@ pub struct UiMessage {
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
+    /// Concrete model the provider reports serving this turn when it differs
+    /// from `model_id` (virtual or fallback models). Stored in record meta; no
+    /// SQL migration, and older builds ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<MessageUsage>,
     /// Elapsed model streaming time for the response throughput statistic.
@@ -290,6 +316,14 @@ pub struct SkillMention {
     pub start: usize,
     pub end: usize,
     pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMention {
+    pub start: usize,
+    pub end: usize,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +441,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     if let Some(mentions) = &message.skill_mentions {
         meta_obj.insert("skillMentions".into(), json!(mentions));
     }
+    if let Some(mentions) = &message.agent_mentions {
+        meta_obj.insert("agentMentions".into(), json!(mentions));
+    }
     if let Some(origin) = &message.session_message {
         meta_obj.insert("sessionMessage".into(), origin.clone());
     }
@@ -424,6 +461,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     }
     if let Some(provider_id) = &message.provider_id {
         meta_obj.insert("providerId".into(), json!(provider_id));
+    }
+    if let Some(response_model_id) = &message.response_model_id {
+        meta_obj.insert("responseModelId".into(), json!(response_model_id));
     }
     if let Some(usage) = &message.usage {
         meta_obj.insert("usage".into(), json!(usage));
@@ -565,6 +605,9 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let skill_mentions = meta
         .get("skillMentions")
         .and_then(|value| serde_json::from_value(value.clone()).ok());
+    let agent_mentions: Option<Vec<AgentMention>> = meta
+        .get("agentMentions")
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
     let session_message = meta.get("sessionMessage").cloned();
     let voice_origin = meta.get("voiceOrigin").cloned();
     let steering = meta.get("steering").and_then(Value::as_bool);
@@ -615,6 +658,10 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let error = meta.get("error").cloned();
     let response_duration_ms = meta.get("responseDurationMs").and_then(|v| v.as_i64());
     let response_output_tokens = meta.get("responseOutputTokens").and_then(|v| v.as_i64());
+    let response_model_id = meta
+        .get("responseModelId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let revision_root_id = meta
         .get("revisionRootId")
         .and_then(|v| v.as_str())
@@ -698,6 +745,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             content: text,
             command: command.clone(),
             skill_mentions: skill_mentions.clone(),
+            agent_mentions: agent_mentions.clone(),
             session_message,
             voice_origin: voice_origin.clone(),
             attachments: None,
@@ -710,6 +758,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             usage,
             response_duration_ms,
             response_output_tokens,
+            response_model_id: response_model_id.clone(),
             error,
             revision_root_id,
             revision_count,
@@ -753,6 +802,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             content,
             command,
             skill_mentions,
+            agent_mentions,
             session_message,
             voice_origin,
             attachments,
@@ -765,6 +815,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             usage,
             response_duration_ms,
             response_output_tokens,
+            response_model_id: response_model_id.clone(),
             error,
             revision_root_id,
             revision_count,
@@ -1847,11 +1898,11 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, fast_mode, source, pinned, last_seq, created_at,
-                    updated_at
+                    permission_mode, fast_mode, mode_snapshot_hash, source, pinned, last_seq,
+                    created_at, updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, fast_mode, NULL, 0, ?3, ?4, ?4
+                        permission_mode, fast_mode, mode_snapshot_hash, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1940,7 +1991,8 @@ pub fn configure_session_with_thinking(
 }
 
 /// Full configurator. Every `None` preserves the persisted value, including
-/// the `/fast` switch (ADR 0334).
+/// the `/fast` switch (ADR 0334). The mode snapshot is cleared: a builtin
+/// mode configured here never carries one.
 #[allow(clippy::too_many_arguments)]
 pub fn configure_session_with_fast_mode(
     db: &Database,
@@ -1952,8 +2004,35 @@ pub fn configure_session_with_fast_mode(
     permission_mode: Option<&str>,
     fast_mode: Option<bool>,
 ) -> Result<Option<SessionSummary>> {
+    configure_session_with_mode_snapshot(
+        db,
+        id,
+        mode,
+        provider_id,
+        model_id,
+        thinking_level,
+        permission_mode,
+        fast_mode,
+        None,
+    )
+}
+
+/// `configure_session_with_fast_mode` that also writes the session's mode
+/// snapshot hash (ADR mode-definitions) in the same statement as the mode.
+#[allow(clippy::too_many_arguments)]
+pub fn configure_session_with_mode_snapshot(
+    db: &Database,
+    id: &str,
+    mode: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    thinking_level: Option<&str>,
+    permission_mode: Option<&str>,
+    fast_mode: Option<bool>,
+    mode_snapshot_hash: Option<&str>,
+) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
-        return Err(anyhow!("mode must be plan or agent"));
+        return Err(anyhow!("mode must be a valid mode id"));
     }
     let mode = normalize_mode(Some(mode));
     if let Some(level) = thinking_level {
@@ -1979,7 +2058,8 @@ pub fn configure_session_with_fast_mode(
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
                  permission_mode = COALESCE(?6, permission_mode),
-                 fast_mode = COALESCE(?8, fast_mode), updated_at = ?7
+                 fast_mode = COALESCE(?8, fast_mode), mode_snapshot_hash = ?9,
+                 updated_at = ?7
              WHERE id = ?1",
         )?
         .execute(params![
@@ -1990,7 +2070,8 @@ pub fn configure_session_with_fast_mode(
             thinking_level,
             permission_mode,
             now_ms(),
-            fast_mode
+            fast_mode,
+            mode_snapshot_hash
         ])?;
     if changed == 0 {
         return Ok(None);
@@ -4428,6 +4509,28 @@ mod tests {
         Database::open(&dir.join("test.sqlite")).unwrap()
     }
 
+    #[test]
+    fn agent_mentions_round_trip_through_record_meta() {
+        let mut message = user_msg("u1", "Call the `Task` tool", "2026-01-01T00:00:00Z");
+        message.command = Some("look @explorer here".into());
+        message.agent_mentions = Some(vec![AgentMention {
+            start: 5,
+            end: 14,
+            name: "explorer".into(),
+        }]);
+        let (record, _) = ui_to_record(&message);
+        let restored = record_to_ui(record);
+        let mentions = restored.agent_mentions.expect("agent mentions survive");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!((mentions[0].start, mentions[0].end), (5, 14));
+        assert_eq!(mentions[0].name, "explorer");
+        assert_eq!(restored.command.as_deref(), Some("look @explorer here"));
+
+        // A row written before the field existed reads back without it.
+        let (legacy, _) = ui_to_record(&user_msg("u2", "plain", "2026-01-01T00:00:00Z"));
+        assert!(record_to_ui(legacy).agent_mentions.is_none());
+    }
+
     fn user_msg(id: &str, content: &str, ts: &str) -> UiMessage {
         UiMessage {
             id: id.into(),
@@ -4435,6 +4538,7 @@ mod tests {
             content: content.into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -4446,6 +4550,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -4873,7 +4978,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(preserved.thinking_level, "high");
-        assert!(configure_session(&db, &session.id, "invalid", None, None).is_err());
+        assert!(configure_session(&db, &session.id, "Not A Mode", None, None).is_err());
         assert!(configure_session_with_thinking(
             &db,
             &session.id,
@@ -5399,6 +5504,7 @@ mod tests {
             content: "ok".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -5410,6 +5516,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -6194,6 +6301,7 @@ mod tests {
             content: "final answer".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -6213,6 +6321,7 @@ mod tests {
             }),
             response_duration_ms: Some(2_000),
             response_output_tokens: Some(34),
+            response_model_id: Some("vendor/concrete-model".into()),
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -6272,6 +6381,10 @@ mod tests {
         assert_eq!(usage.total_tokens, 48);
         assert_eq!(detail.messages[0].response_duration_ms, Some(2_000));
         assert_eq!(detail.messages[0].response_output_tokens, Some(34));
+        assert_eq!(
+            detail.messages[0].response_model_id.as_deref(),
+            Some("vendor/concrete-model")
+        );
     }
 
     #[test]
@@ -6342,6 +6455,7 @@ mod tests {
             content: "answer with sources".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -6353,6 +6467,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,

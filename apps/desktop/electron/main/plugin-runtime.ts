@@ -17,6 +17,15 @@ import type { LoadedSkillDocument } from "./skill-document";
 import { assertLocalPluginRoot, pluginFsReadOptions, readRemotePluginFiles, type PluginRemoteFilesRead } from "./plugin-remote-files";
 import { getModuleDirectory } from "./module-path";
 import {
+  SESSION_WRITE_GRANTS,
+  describeSessionWriteProblem,
+  resolveSessionScope,
+  type SessionAccessScope,
+  type SessionAccessVerb,
+  type SessionWriteApi,
+  type SessionWriteShape,
+} from "./plugin-session-access";
+import {
   busTopicAllowed,
   isDeniedFsPath,
   isFsPathInScope,
@@ -112,6 +121,7 @@ import {
 import { desktopDataDir } from "./data-paths";
 import { McpServerClient, type McpServerClientOptions } from "./plugin-mcp";
 import { PluginToolInvocations, type PluginToolInvocation } from "./plugin-tool-invocations";
+import { pluginWorkspaceForCall, pluginWorkspacePath } from "./plugin-workspace-context";
 import { McpCallRegistry } from "./mcp-call-registry";
 import {
   RendererCallRelay,
@@ -322,7 +332,7 @@ export type PluginHostServices = {
    * The workspace plus the project group behind it, when the caller can supply
    * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
    */
-  getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
+  getWorkspaceInfo?: (workspacePath?: string | null) => PluginWorkspaceInfo | null;
   /** Durable project metadata only; unavailable hosts resolve to an empty list. */
   listProjects?: () => Promise<PluginProjectInfo[]>;
   /**
@@ -511,6 +521,10 @@ export type PluginHostServices = {
     importBatch: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     rename: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     delete: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    appendMessage: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    replaceMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    deleteMessage: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    truncateFrom: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
   /**
    * The session the user is looking at, as the shell shows it. Read from the
@@ -647,6 +661,10 @@ const HOST_API_ALLOWLIST = new Set([
   "session.importBatch",
   "session.rename",
   "session.delete",
+  "session.appendMessage",
+  "session.replaceMessages",
+  "session.deleteMessage",
+  "session.truncateFrom",
   "usage.listTurns",
   "agent.complete",
   "providers.oauth.prompt",
@@ -1058,6 +1076,25 @@ function normalizePluginSessionInput(
 ): Record<string, unknown> {
   validatePluginSessionPayload(input, kind);
   return { ...(input as Record<string, unknown>) };
+}
+
+/**
+ * Bound one message-level write payload (ADR 0339).
+ *
+ * The policy lives in `plugin-session-access` so it can be tested without a
+ * plugin host; this wrapper only turns a problem into the broker's own error and
+ * strips a scope the plugin must never set for itself.
+ */
+function normalizePluginMessageWriteInput(
+  input: unknown,
+  shape: SessionWriteShape,
+): Record<string, unknown> {
+  const rejected = describeSessionWriteProblem(input, shape);
+  if (rejected) throw apiError(rejected.code, rejected.message);
+  const record = { ...(input as Record<string, unknown>) };
+  // A plugin never chooses its own scope: the gateway sets it from the grants.
+  delete record.scope;
+  return record;
 }
 
 /** Longest session or turn id a plugin may name, matching the host's own bound. */
@@ -3230,45 +3267,84 @@ export class PluginRuntime {
         return this.services.providerOAuthNotify(pluginId, loginId, event as PluginProviderOAuthEvent);
       }
       case "session.list": {
-        this.assertPermission(loaded, "session.read.own");
+        const scope = this.assertSessionScope(loaded, "read", api);
         const input = normalizePluginSessionInput(args[0] ?? {}, "other");
-        if (input.source !== undefined) this.sessionSource(loaded, input.source);
+        // A declared source only bounds the `.own` importer; `.all` reaches every
+        // session but has no source declaration to check it against.
+        if (scope === "own" && input.source !== undefined) {
+          this.sessionSource(loaded, input.source);
+        }
         if (!this.services.session?.list) {
           throw apiError("UNSUPPORTED", "host api not available: session.list");
         }
-        return this.services.session.list(loaded.manifest.id, input);
+        return this.services.session.list(loaded.manifest.id, { ...input, scope });
       }
       case "session.get": {
-        this.assertPermission(loaded, "session.read.own");
+        const scope = this.assertSessionScope(loaded, "read", api);
         const input = normalizePluginSessionInput(args[0] ?? {}, "other");
         if (!this.services.session?.get) {
           throw apiError("UNSUPPORTED", "host api not available: session.get");
         }
-        return this.services.session.get(loaded.manifest.id, input);
+        return this.services.session.get(loaded.manifest.id, { ...input, scope });
       }
       case "session.listMessages": {
-        this.assertPermission(loaded, "session.read.own");
+        const scope = this.assertSessionScope(loaded, "read", api);
         const input = normalizePluginSessionInput(args[0] ?? {}, "other");
         if (!this.services.session?.listMessages) {
           throw apiError("UNSUPPORTED", "host api not available: session.listMessages");
         }
-        return this.services.session.listMessages(loaded.manifest.id, input);
+        return this.services.session.listMessages(loaded.manifest.id, { ...input, scope });
       }
       case "session.rename": {
-        this.assertPermission(loaded, "session.update.own");
+        const scope = this.assertSessionScope(loaded, "update", api);
         const input = normalizePluginSessionInput(args[0] ?? {}, "other");
         if (!this.services.session?.rename) {
           throw apiError("UNSUPPORTED", "host api not available: session.rename");
         }
-        return this.services.session.rename(loaded.manifest.id, input);
+        return this.services.session.rename(loaded.manifest.id, { ...input, scope });
       }
       case "session.delete": {
-        this.assertPermission(loaded, "session.delete.own");
+        const scope = this.assertSessionScope(loaded, "delete", api);
         const input = normalizePluginSessionInput(args[0] ?? {}, "other");
         if (!this.services.session?.delete) {
           throw apiError("UNSUPPORTED", "host api not available: session.delete");
         }
-        return this.services.session.delete(loaded.manifest.id, input);
+        return this.services.session.delete(loaded.manifest.id, { ...input, scope });
+      }
+      // Message-level writes (ADR 0339). These have no `.own` form: rewriting a
+      // transcript is only ever an `.all` capability, so each case names its
+      // grant directly.
+      case "session.appendMessage": {
+        const scope = this.assertSessionWriteScope(loaded, "appendMessage", api);
+        const input = normalizePluginMessageWriteInput(args[0] ?? {}, "message");
+        if (!this.services.session?.appendMessage) {
+          throw apiError("UNSUPPORTED", "host api not available: session.appendMessage");
+        }
+        return this.services.session.appendMessage(loaded.manifest.id, { ...input, scope });
+      }
+      case "session.replaceMessages": {
+        const scope = this.assertSessionWriteScope(loaded, "replaceMessages", api);
+        const input = normalizePluginMessageWriteInput(args[0] ?? {}, "messages");
+        if (!this.services.session?.replaceMessages) {
+          throw apiError("UNSUPPORTED", "host api not available: session.replaceMessages");
+        }
+        return this.services.session.replaceMessages(loaded.manifest.id, { ...input, scope });
+      }
+      case "session.deleteMessage": {
+        const scope = this.assertSessionWriteScope(loaded, "deleteMessage", api);
+        const input = normalizePluginMessageWriteInput(args[0] ?? {}, "messageId");
+        if (!this.services.session?.deleteMessage) {
+          throw apiError("UNSUPPORTED", "host api not available: session.deleteMessage");
+        }
+        return this.services.session.deleteMessage(loaded.manifest.id, { ...input, scope });
+      }
+      case "session.truncateFrom": {
+        const scope = this.assertSessionWriteScope(loaded, "truncateFrom", api);
+        const input = normalizePluginMessageWriteInput(args[0] ?? {}, "truncate");
+        if (!this.services.session?.truncateFrom) {
+          throw apiError("UNSUPPORTED", "host api not available: session.truncateFrom");
+        }
+        return this.services.session.truncateFrom(loaded.manifest.id, { ...input, scope });
       }
       case "usage.listTurns": {
         // Read-only completed-turn facts (spec 07-plugins/03 §usage): flat
@@ -4919,6 +4995,66 @@ export class PluginRuntime {
     }
   }
 
+  /**
+   * Resolve and audit the session-data scope for one call (ADR 0339).
+   *
+   * `*.all` is a separate grant from `*.own`, never a widening of it, and it
+   * wins when a manifest declares both. The audit line records the scope that
+   * actually authorised the call, which is what lets an operator tell an
+   * imported-session read from a read of the user's own conversation.
+   */
+  private assertSessionScope(
+    loaded: LoadedPlugin,
+    verb: SessionAccessVerb,
+    api: string,
+  ): SessionAccessScope {
+    this.toolInvocations.current(loaded);
+    const scope = resolveSessionScope(loaded.permissions, verb);
+    if (!scope) {
+      const own = `session.${verb}.own`;
+      const all = `session.${verb}.all`;
+      this.services.audit?.({
+        pluginId: loaded.manifest.id,
+        api,
+        ok: false,
+        errorCode: "PERMISSION_DENIED",
+        required: `${own}|${all}`,
+        ts: Date.now(),
+      });
+      throw apiError("PERMISSION_DENIED", `missing permission: ${own} or ${all}`);
+    }
+    this.auditSessionCall(loaded, api, scope);
+    return scope;
+  }
+
+  /**
+   * Message-level writes have no `.own` form, so the grant is named exactly.
+   * `key` picks the grant from the one policy table in `plugin-session-access`.
+   */
+  private assertSessionWriteScope(
+    loaded: LoadedPlugin,
+    key: SessionWriteApi,
+    api: string,
+  ): SessionAccessScope {
+    this.assertPermission(loaded, SESSION_WRITE_GRANTS[key]);
+    this.auditSessionCall(loaded, api, "all");
+    return "all";
+  }
+
+  private auditSessionCall(
+    loaded: LoadedPlugin,
+    api: string,
+    scope: "own" | "all",
+  ): void {
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api,
+      ok: true,
+      scope,
+      ts: Date.now(),
+    });
+  }
+
   private assertHasOAuthProvider(loaded: LoadedPlugin): void {
     const providers = (loaded.manifest.contributes?.providers ?? []) as PluginProviderContrib[];
     if (!providers.some((provider) => provider.authKind === "oauth")) {
@@ -4994,10 +5130,7 @@ export class PluginRuntime {
   private fsRoot(loaded: LoadedPlugin, rule: PluginFsRule): string | null {
     if (rule.root === "userSelected") return loaded.userRoot ?? null;
     const sessionId = this.inFlightTool(loaded.manifest.id)?.sessionId.trim() || undefined;
-    const scoped = sessionId
-      ? (this.services.getWorkspacePathForSession?.(sessionId) ?? null)
-      : null;
-    return scoped ?? this.services.getWorkspacePath();
+    return pluginWorkspacePath(this.services, sessionId);
   }
 
   private remoteFsRead(loaded: LoadedPlugin, operation: "list" | "preview", ref: string, options?: PluginFsReadOptions) {
@@ -5164,7 +5297,7 @@ export class PluginRuntime {
     if (!isAbsolute(String(requestPath ?? ""))) return null;
     const rule: PluginFsRule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
     if (rule.root !== "workspace") return null;
-    const roots = (this.services.getWorkspaceInfo?.()?.roots ?? [])
+    const roots = (pluginWorkspaceForCall(this.services, this.inFlightTool(loaded.manifest.id)?.sessionId.trim() || undefined)?.roots ?? [])
       .map((entry) => entry?.path)
       .filter((path): path is string => Boolean(path));
     if (roots.length === 0) return null;
@@ -5644,14 +5777,7 @@ export class PluginRuntime {
       },
       workspace: {
         get: async () => {
-          // The enriched payload carries the project group behind the visible
-          // workspace (ADR 0263); the path-only fallback keeps `get` working for
-          // any caller whose services never bound the richer provider.
-          const info = this.services.getWorkspaceInfo?.();
-          if (info !== undefined) return info;
-          const path = this.services.getWorkspacePath();
-          if (!path) return null;
-          return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
+          return pluginWorkspaceForCall(this.services, this.inFlightTool(pluginId)?.sessionId.trim() || undefined);
         },
       },
       projects: {

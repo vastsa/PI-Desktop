@@ -395,6 +395,10 @@ are detached before publication so later extension mutations cannot rewrite them
 SDK `exec` owns its process group/tree and terminates it on scope retirement or
 its explicit timeout;
 disposal waits for tracked process cleanup, with cleanup failures diagnosed.
+Output is decoded across chunk boundaries. `maxBuffer` (default 10 MiB) caps
+stdout and stderr combined in bytes; overflow terminates the command and returns
+`truncated: true` with a nonzero `code`. A command that cannot be spawned
+resolves with `code: 1` and the spawn error in `stderr` instead of rejecting.
 Processes deliberately escaping the group and direct Node API spawns are outside
 this ownership contract.
 

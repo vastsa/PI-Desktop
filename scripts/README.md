@@ -23,7 +23,7 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 | Script | Alias | Purpose |
 |---|---|---|
 | `notarize-and-staple-macos-release-dmg.sh` | `scripts/notarize-and-staple-macos-release-dmg.sh [release-dir]` | Submit the single DMG a native macOS job produced to Apple's notary service (`xcrun notarytool submit --wait`), require `status: Accepted`, then attach and validate the ticket (`xcrun stapler staple` / `validate`); run by the Release workflow when `sign_macos` is set. electron-builder only notarizes the `.app`, so the DMG needs this separate submission |
-| `macos-stapler-retry-shim.sh` | injected by `macos-signing-watchdog.mjs` when `PI_STAPLER_MAX_ATTEMPTS` is set | Retry only `xcrun stapler staple` up to the configured bound; all other `xcrun` commands pass through unchanged |
+| `macos-stapler-retry-shim.sh` | injected by `macos-signing-watchdog.mjs` when `PI_STAPLER_MAX_ATTEMPTS` is set; also called by the DMG notarization and release verification scripts | Retry `xcrun stapler staple` and `xcrun stapler validate` up to the configured bound; all other `xcrun` commands pass through unchanged |
 | `verify-macos-release.sh` | `scripts/verify-macos-release.sh [release-dir]` | Fail unless the one `PI-Desktop.app` and DMG under the release directory are Developer ID-signed, notarized, and stapled; run by the Release workflow after stapling |
 | `macos-signing-diagnostics.sh` | `scripts/macos-signing-diagnostics.sh [--require-identity]` | Print the non-secret signing baseline before packaging (system, `codesign`, keychain identities/list/default, Xcode notary tools, Apple timestamp reachability). Informational by default, because the Developer ID identity is imported from `CSC_LINK` during packaging; `--require-identity` makes a missing Developer ID fatal |
 | `macos-bundle-inventory.mjs` | `node scripts/macos-bundle-inventory.mjs <app-or-release-dir>` | Count what the signing phase has to touch: entries, Mach-O binaries, `.dylib`/`.node`/frameworks/nested bundles, per-directory cost, and the largest binaries (`signing-candidates`). Informational; run after every macOS package build |
@@ -58,10 +58,13 @@ The scenarios are specified in
 | `e2e-transcript-cache.mjs` | `pnpm test:e2e:transcript-cache` | Isolated Host RPC regression for large transcript cache creation, append plus middle Task rewrite, legacy cache recovery, paging, message navigation, invalid UTF-8 recovery, and process restart |
 | `e2e-plan-ui.mjs` | `pnpm test:e2e:plan-ui` | Plan approval through the rendered UI |
 | `e2e-electron-boot.mjs` | `pnpm test:e2e:boot` | Electron boot probe |
+| `e2e-computer-use-device.mjs` | `PI_DESKTOP_COMPUTER_USE_DEVICE=1 node scripts/e2e-computer-use-device.mjs` | Real-device computer-use acceptance against host-core: capabilities, window enumeration and its order, the automatic desktop grant, a real accessibility inspection, a rebind, the self-target/denylist/unknown-window refusals, and the Stop cooldown. Opt-in because it reads the operator's screen; `--act-app "<app>"` dispatches one real action, `--deny "<app>"` proves the denylist, `--titles` prints window titles (withheld by default). macOS only until stage 2 |
 | `e2e-provider-client-certificate.mjs` | `pnpm test:e2e:provider-client-certificate` | Isolated Electron 43 model discovery with optional client certificates, authenticated proxy routing, redirects and cancellation |
 | `e2e-provider-recovery.mjs` | `node scripts/e2e-provider-recovery.mjs` | Isolated desktop with a localhost fault-injection provider: socket failures, interrupted streams, Responses recovery, exhausted retries, Continue, and recovery across eleven real Read calls. Requires a built desktop/runtime and host binary (`PI_DESKTOP_HOST_BIN` when outside the checkout); retains screenshots and JSON under `.artifacts/issue-699/` |
 | `e2e-settings-scroll.mjs` | `pnpm test:e2e:settings-scroll` | Production Settings component navigation, search anchoring, focus-on-mount, and scroll behavior |
 | `e2e-transcript-render.mjs` | `pnpm test:e2e:transcript` | Production transcript render boundaries, runtime status geometry, and deterministic smooth-text cadence |
+| `e2e-transcript-history-loading.mjs` | `node scripts/e2e-transcript-history-loading.mjs [--manual]` | Production transcript and `SessionPane`/store probe for unlocked ahead-loading prefetch (`100px` mid-IO scroll + `<= 2px` prepend anchor), adaptive speed/latency lead and unlocked hard-edge fallback, paired idle/running × tail/paginated smooth return-to-latest (`>= 3` intermediate frames, `<= 2px` reversal, no blank frame), native wheel input, and error/empty/hide recovery; included by `e2e-transcript-render.mjs`. `--manual` opens a disposable 1,000-message synthetic conversation (40 initially loaded, 100 per page) with page-complete/fail controls and request status; `--manual-smoke` verifies toolbar paging/reset and bidirectional native-wheel frame gaps; see [manual cases](../tests/history-loading-scroll-test-cases.md) |
+| `manual-transcript-desktop.mjs` | `node scripts/manual-transcript-desktop.mjs [--smoke\|--interaction-smoke]` | Complete PI-Desktop sidebar/chat/Composer with scratch-isolated Host data and 1,000-message plus long-answer sessions. `--smoke` checks readiness; `--interaction-smoke` crosses a real Host page with native wheel input and checks the actual latest button, nonblank navigation and <=2px arrival drift. Automated modes confirm normal application quit; no provider is configured |
 | `e2e-gen-ui.mjs` | `pnpm test:e2e:gen-ui` | Offline production GenUI card/protocol journey: slider, theme, expand/Escape, viewport cleanup, global frame quota, and response-level cross-session sandbox |
 | `e2e-renderer-responsiveness.mjs` | `pnpm test:e2e:renderer-responsiveness` | Native Electron click, typing, session switching, disclosure, and scroll while an isolated child process streams large transcript deltas |
 | `e2e-config-sync-multidevice.mjs` | `pnpm test:e2e:config-sync` | Four isolated host-core processes against a SigV4-validating local S3 fixture; covers credential opt-out, approvals, concurrent edits/conflict resolution, mapped skill resources, deletion, sync/backup restore, restart, password rewrap, encrypted storage and cleanup |
@@ -125,6 +128,13 @@ the publish job assembles the GitHub Release. Tag builds Developer ID-sign,
 notarize, and staple macOS artifacts; `workflow_dispatch` may set
 `sign_macos: false` only for unsigned debug artifacts. See the [release
 runbook](../docs/spec/06-delivery/06-release-runbook.md).
+
+### Packaged startup regression
+
+For a packaged startup check, run
+`node scripts/e2e-electron-boot.mjs <packaged-executable>` after `pack`.
+It exercises the installed layout with an isolated profile and the same boot
+probe as `pnpm test:e2e:boot`.
 
 ### Provider certificate regression
 

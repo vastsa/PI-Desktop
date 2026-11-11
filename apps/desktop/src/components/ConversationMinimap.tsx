@@ -18,7 +18,7 @@ import {
 import { TooltipButton } from "./ui";
 
 /* Codex-style conversation minimap: a packed stack of dashes on the left edge
- * of the thread, one per user turn or assistant response. Moving the cursor
+ * of the thread, one per user message. Moving the cursor
  * along the rail magnifies nearby dashes with a macOS-Dock cosine falloff, the
  * nearest turn shows a preview popover, and clicking jumps to that turn. Dashes
  * grow horizontally only, so magnification never shifts the stack layout. */
@@ -362,8 +362,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     return null;
   }
 
-  const roleLabel = (role: ConversationMinimapMarker["role"]) =>
-    role === "user" ? t("chat.userMessage") : t("chat.assistantMessage");
+  const userLabel = t("chat.userMessage");
   const earlierLabel = loadingEarlier
     ? t("chat.loadingEarlierMessages")
     : t("chat.showEarlierMessages");
@@ -403,10 +402,10 @@ export const ConversationMinimap = memo(function ConversationMinimap({
             if (node) markerEls.current.set(marker.id, node);
             else markerEls.current.delete(marker.id);
           }}
-          className={`minimap-marker ${marker.role} ${
+          className={`minimap-marker user ${
             marker.id === activeId ? "active" : ""
           }`}
-          aria-label={roleLabel(marker.role)}
+          aria-label={userLabel}
           aria-current={marker.id === activeId ? "true" : undefined}
           onFocus={(event) =>
             setHovered({
@@ -425,7 +424,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
           style={{ top: `${hovered.top}px` }}
         >
           <div className="minimap-popover-role">
-            {roleLabel(hovered.marker.role)}
+            {userLabel}
           </div>
           <div className="minimap-popover-text">{hovered.marker.preview}</div>
         </div>

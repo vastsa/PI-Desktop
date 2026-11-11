@@ -409,15 +409,21 @@ This read-only metadata needs no permission and is also available through the
 panel bridge channel `projects.list`. It never creates, opens, switches, or
 grants access to a project. Filesystem and session permissions are unchanged.
 
-`workspace.get` answers with the primary root — `path` and its leaf `name`,
-both unchanged — plus, when that folder belongs to a project group (ADR 0249),
-`projectId` and `roots`: every registered folder of the group in its own order,
-primary first, each `{ path, name, primary }` (ADR 0263). `workspace:changed`
-carries the same object, and main answers both from the host-owned group
-records, so the event and the pull cannot disagree. A host that cannot resolve
-the group omits `projectId` and `roots` — the same `{ path, name }` a plugin
-already handles — and reading this metadata needs no new permission and adds no
-SDK method.
+`workspace.get` uses the same trusted tool-session project as workspace-rooted
+filesystem calls (ADR 0266). A background session therefore receives its own
+`path`, `name`, `projectId`, group `roots`, and remote metadata even when another
+project is visible or no project is selected. Tool arguments do not select a
+workspace or impersonate a session. Panel calls and untracked sessions retain
+the visible-workspace fallback; `workspace:changed` continues to describe that
+visible workspace, so a background tool's pull can intentionally differ from
+the foreground event.
+
+Group metadata is resolved from the host-owned group snapshot for the selected
+path. An older metadata provider that answers for a different path is discarded
+in favor of the session's `{ path, name }`, without copying another group's
+roots or remote identity. The existing return shape, SDK method, permissions,
+and storage schema do not change. Absolute `openDefault`, `openInBrowser`, and
+`reveal` requests use the same invoking project's registered roots.
 
 `fs.readPreview` classifies one existing readable file for in-app display. It
 uses the same `fs.read` checks as `fs.readText`, rejects directories, and
@@ -740,14 +746,27 @@ update makes the result `{ updated: false }`. Both methods require
 `session.autoTitle`, which is high risk because the first-turn text can be sent
 to a model by a plugin holding `agent.complete`.
 
-### plugin-owned sessions (P0/P1; requires the matching permission)
+### plugin-owned and host-wide sessions (requires the matching permission)
 
-Plugins may import and manage only sessions whose origin belongs to that same
-plugin. The source must be declared in `manifest.contributes.sessionSources`;
-the host supplies the localized source label and generates the durable session
-and message ids. Imported sessions never bind a workspace, provider, or model;
-they bind a project only when the caller supplies an existing `projectId`. The
-original import values remain available in `get().history`.
+Plugins address sessions through two grants that share one set of verbs:
+
+- `session.read.own` / `session.update.own` / `session.delete.own` — the
+  ADR 0200 boundary: only sessions whose origin belongs to the calling plugin.
+- `session.read.all` / `session.update.all` / `session.delete.all` — every live
+  session, including the conversations the user created in this app (ADR 0340).
+
+`.all` is a separate grant, never a widening of `.own`, so an existing install
+keeps exactly the reach it was reviewed for. A manifest may declare both, and
+`.all` wins. The Electron broker resolves the scope from the granted
+permissions; a plugin never passes one, and a `scope` field in the payload is
+dropped. Every call is audited with the scope that authorised it.
+
+Import additionally requires the source to be declared in
+`manifest.contributes.sessionSources`; the host supplies the localized source
+label and generates the durable session and message ids. Imported sessions never
+bind a workspace, provider, or model; they bind a project only when the caller
+supplies an existing `projectId`. The original import values remain available in
+`get().history`.
 
 ```ts
 type PluginSessionSourceContrib = {
@@ -785,6 +804,7 @@ pi.session.importBatch(input: {
   mode?: "skip" | "fail"
 }): Promise<PluginSessionBatchImportResult>
 
+// session.read.own or session.read.all
 pi.session.list(input?: {
   limit?: number; cursor?: string; source?: string; updatedAfter?: string
 }): Promise<PluginSessionListResult>
@@ -793,37 +813,93 @@ pi.session.listMessages(input: {
   sessionId: string; limit?: number; cursor?: string
   order?: "asc" | "desc"; contentLimit?: number
 }): Promise<PluginSessionMessageListResult>
+
+// session.update.own or session.update.all
 pi.session.rename(input: { sessionId: string; title: string }): Promise<{ updated: boolean }>
+
+// session.delete.own or session.delete.all
 pi.session.delete(input: {
   sessionId: string; mode?: "trash" | "purge"
 }): Promise<{ deleted: boolean }>
+
+// Message-level writes exist only under `.all`: rewriting a transcript is never
+// an imported-session operation.
+type PluginSessionMessageInput = {
+  id?: string // host-generated when omitted; a supplied id makes a retry a no-op
+  role: "user" | "assistant" | "tool"
+  content: string
+  createdAt: string // monotonic within one call, newest last
+  modelId?: string
+  providerId?: string
+  toolName?: string
+  toolCallId?: string
+  toolStatus?: "success" | "error"
+  toolArgs?: unknown
+  toolResult?: unknown
+}
+
+// session.update.all
+pi.session.appendMessage(input: {
+  sessionId: string; message: PluginSessionMessageInput
+}): Promise<{ messageId: string }>
+pi.session.replaceMessages(input: {
+  sessionId: string; messages: PluginSessionMessageInput[] // at most 2,000
+}): Promise<{ messageCount: number }>
+
+// session.delete.all
+pi.session.deleteMessage(input: {
+  sessionId: string; messageId: string
+}): Promise<{ deleted: boolean; deletedCount: number }>
+pi.session.truncateFrom(input: {
+  sessionId: string; fromMessageId?: string; keepCount?: number
+}): Promise<{ keptCount: number; discardedCount: number }>
 ```
 
 Import is idempotent on `(pluginId, source, externalId)`. `skip` batches
 continue per item; `fail` batches validate and commit atomically. `trash` hides
 the session while retaining its transcript and origin; `purge` removes both and
-allows a later re-import. Reads, rename, and delete are ownership-scoped, and
-undeclared sources fail with `PERMISSION_DENIED`.
+allows a later re-import. Reads, rename, and delete are scope-checked, and
+undeclared sources fail with `PERMISSION_DENIED`. A session outside the scope is
+reported as `NOT_FOUND`, never as a permission error, so a plugin cannot probe
+for the existence of a row it may not see.
+
+Non-imported sessions report their real shape instead of an import projection:
+`originKind` is `"created"`, `source` is `"desktop"`, `externalId` is `null`,
+`modelId` / `providerId` / `bound.model` come from the session row, and every
+message carries `origin: "desktop"`. Imported sessions keep
+`originKind: "imported"`, their declared source id, and `origin: "external"`.
 
 When a session has an explicit project binding, `projectId` and
 `bound.workspace` report that binding, and `get().projectPath` resolves the
 bound project's current path. The original import `projectPath` remains in
 `get().history`.
 
-After a successful import, rename, or delete, Electron main emits one
-host-owned `sessionsChanged` event for the affected mutation. The renderer
-refreshes its authoritative session list and the Projects page refreshes its
-durable project index from that list. Plugins do not emit or coordinate this
-event themselves. A project created through this API is not automatically
-opened as a sidebar tab, preserving the existing closed-project behavior.
+After a successful import, rename, delete, or message-level write, Electron main
+emits one host-owned `sessionsChanged` event for the affected mutation, naming
+the `sessionId` it touched so the shell can repaint an open transcript. The
+renderer refreshes its authoritative session list and the Projects page
+refreshes its durable project index from that list. Plugins do not emit or
+coordinate this event themselves. A project created through this API is not
+automatically opened as a sidebar tab, preserving the existing closed-project
+behavior.
+
+`rename` claims the manual title source, so an installed `session.autoTitle`
+plugin cannot replace a title this plugin — and therefore the user — chose.
 
 The host enforces a 2,000-message/session, 100-session/batch, 512 KiB/message,
 256 KiB/tool-value, 32 MiB/payload, and JSON-depth-8 limit. Import is limited
 to 10 calls/minute plus 5 batch calls/minute per plugin; delete is limited to
-20 calls/minute. Tool `__pi*` and `piDesktop.*` object keys are removed before
-storage. P2/P3 operations (session create, message mutation, arbitrary re-binding,
-provider/model binding, batch delete, and tags) are intentionally not part of
-this contract.
+20 calls/minute; the four message-level writes share a 60 calls/minute budget.
+Tool `__pi*` and `piDesktop.*` object keys are removed before storage.
+
+Every message-level rewrite is refused with `TURN_RUNNING` while a turn owns the
+session, because the running agent is writing the same transcript; retry after
+the turn settles. `appendMessage` is the documented exception — appending is how
+a turn's own rows land. `deleteMessage` on a user prompt removes that prompt and
+its replies, and a missing target is a success with `deleted: false`, so a
+retried delete is safe. Remaining P3 operations (session create, arbitrary
+re-binding, provider/model binding, batch delete, and tags) are intentionally
+not part of this contract.
 
 ### usage (requires `usage.read`)
 
@@ -1394,6 +1470,21 @@ elsewhere), `UNAVAILABLE` (a host service such as the browser is missing),
 adapter returned empty output), `WORKSPACE_CHANGED`, `OPEN_FAILED`,
 `REVEAL_FAILED`, and `CONNECT_FAILED`. Branch on the codes you handle and treat
 the rest as a generic failure.
+
+Additional host-originated errors:
+
+| Code | Trigger and meaning |
+|---|---|
+| `PLUGIN_INVALID_RESULT` | `onComposerTransform` returned a non-string, or the host received a string whose JavaScript `length` exceeds 100,000 UTF-16 code units. Return a string within that bound. |
+| `PLUGIN_TOOL_ABORTED` | A plugin tool invocation is cancelled, finished, unknown/expired, or no longer belongs to the calling plugin process. Pending and late host calls in that invocation are refused. An explicit Error abort reason may retain its own code. |
+| `SPEECH_PROTOCOL_UNSUPPORTED` | `runSpeechAdapter` found no registered adapter for the binding's protocol. An invalid adapter reply instead uses `INVALID_ARGUMENT`; empty text/audio uses `PROVIDER_ERROR`. The code is also documented in the [shared registry](../03-runtime/08-error-codes.md) and [speech specification](../03-runtime/20-speech.md). |
+
+Implementation evidence: `apps/desktop/electron/main/plugin-runtime.ts`
+(`MAX_COMPOSER_TRANSFORM_TEXT_LENGTH`, `runComposerTransform`,
+`runSpeechAdapter`, `sendToChild`), `plugin-tool-invocations.ts`
+(`run`, `assertActive`, `finish`) and `plugin-host-process.mjs`
+(`toolAbortedError`, `cancelInvocation`, `composer.transform`) in the same
+directory. The codes extend the open set above; no new SDK enum is introduced.
 
 ## 5. Events (host -> plugin)
 

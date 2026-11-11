@@ -35,7 +35,7 @@ import {
   matchPresetIndex,
 } from "../../lib/model-limit-presets";
 import { api } from "../../lib/api";
-import { Button, Field, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
+import { Badge, Button, Checkbox, Field, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconGripVertical, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
 import { ReasoningEffortSelect } from "./ReasoningEffortSelect";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
@@ -672,6 +672,7 @@ export function ModelSelectionPanes({
                     {binding.alias?.trim() ? (
                       <span className="provider-chosen-row-alias">{binding.alias.trim()}</span>
                     ) : null}
+                    {imageModelSelected ? <Badge>{t("settings.imageModelSelected")}</Badge> : null}
                     <span className="provider-chosen-row-limits">
                       {formatTokenCount(displayedContextWindow)} ·{" "}
                       {formatTokenCount(displayedMaxTokens)}
@@ -974,9 +975,9 @@ export function ModelSelectionPanes({
                           }
                         />
                         {onImageModelChange ? (
-                          <label className="provider-chosen-capability">
-                            <input
-                              type="checkbox"
+                          <span className="provider-chosen-delegation">
+                            <Checkbox
+                              className="provider-chosen-capability"
                               checked={imageModelSelected}
                               disabled={busy}
                               aria-label={t(
@@ -987,15 +988,14 @@ export function ModelSelectionPanes({
                               onChange={(event) =>
                                 onImageModelChange(binding.id, event.target.checked)
                               }
-                            />
-                            <span>
-                              {t(
+                              label={t(
                                 imageModelSelected
                                   ? "settings.imageModelSelected"
                                   : "settings.setImageModel",
                               )}
-                            </span>
-                          </label>
+                            />
+                            <HelpIcon label={t("settings.imageModelChatExclusionHint")} />
+                          </span>
                         ) : null}
                         <span className="provider-chosen-delegation">
                           <label className="provider-chosen-capability">

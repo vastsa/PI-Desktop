@@ -237,12 +237,20 @@
   gap: 1px;
 }
 
+/*
+ * A cluster heading, not a destination: it drops to the smallest legible step
+ * and spaces its letters, so the eye separates the four clusters before it
+ * reads any single row (D684). Latin labels read as small caps; CJK labels are
+ * unaffected by the transform.
+ */
 .settings-nav-group-label {
   padding: 0 10px 6px;
   color: var(--ds-text-muted);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-wide);
   line-height: var(--leading-tight);
+  text-transform: uppercase;
 }
 
 .settings-nav-empty {
@@ -256,8 +264,8 @@
   width: 100%;
   align-items: center;
   gap: 10px;
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
   color: var(--ds-text-secondary);
   font-size: var(--text-md);
   line-height: var(--leading-tight);
@@ -270,8 +278,13 @@
   color: var(--ds-text-primary);
 }
 
+/*
+ * The selected destination carries a tint of the accent rather than another
+ * step of gray, and its glyph takes the accent outright: with fifteen rows in
+ * four clusters, "where am I" has to survive a glance (D684).
+ */
 .settings-nav-item.active {
-  background: var(--ds-settings-nav-active);
+  background: color-mix(in oklab, var(--ds-accent) 12%, var(--ds-settings-nav-active));
   color: var(--ds-text-primary);
 }
 
@@ -283,6 +296,11 @@
   align-items: center;
   justify-content: center;
   opacity: 0.9;
+}
+
+.settings-nav-item.active .settings-nav-icon {
+  color: var(--ds-accent);
+  opacity: 1;
 }
 
 .settings-nav-label {
@@ -318,11 +336,50 @@
   width: 100%;
 }
 
+/*
+ * D684: a page opens with the rail's glyph at page scale, the title, and one
+ * line saying what the destination decides. The icon is a tinted fill, not a
+ * stroked chip, so it stays inside the in-flow surface rule (D297) while
+ * giving each destination a landmark the rail can be read against.
+ */
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 28px;
+}
+
+.settings-page-icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md-plus);
+  background: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-tile));
+  color: var(--ds-accent);
+}
+
+.settings-page-heading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-page-subtitle {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+}
+
 .settings-section-title {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 28px;
+  margin: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-strong);
@@ -359,34 +416,44 @@
 }
 
 /* The heading's help mark sits beside the heading rather than inside it: a
-   nested button would join the heading's accessible name.
-   The 10px gap below the heading belongs to this flex row: a margin inside it
-   would extend the icon's centering box and lift the question mark off the
-   heading text. */
+   nested button would join the heading's accessible name. The gap below the
+   headline belongs to the headline block: a margin inside this row would
+   extend the icon's centering box and lift the question mark off the heading
+   text. */
 .settings-card-heading-help {
   display: flex;
   align-items: center;
-  margin-bottom: 10px;
 }
 
 .settings-card-heading-help .settings-card-heading {
   margin-bottom: 0;
 }
 
-/* A card heading that carries a card-level action keeps heading, help mark and
+/* Heading line plus the optional caption under it (D684). */
+.settings-card-headline {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+/* One always-visible line of orientation for the group, so a reader does not
+   have to open every row's help mark to learn what the card decides. */
+.settings-card-caption {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+}
+
+/* A card heading that carries a card-level action keeps the headline and the
    action on one line, centered on each other. */
 .settings-card-heading-row.settings-card-heading-with-action {
   align-items: center;
 }
 
-.settings-card-heading-row.settings-card-heading-with-action .settings-card-heading-help {
-  min-width: 0;
-  margin-bottom: 0;
-}
-
-.settings-card-heading-row.settings-card-heading-with-action
-  .settings-card-heading-help
-  .settings-card-heading {
+.settings-card-heading-row.settings-card-heading-with-action .settings-card-headline {
   margin-bottom: 0;
 }
 
@@ -400,6 +467,12 @@
 
 .settings-card-heading-row .settings-card-heading {
   margin-bottom: 3px;
+}
+
+/* Beats the row rule above on declaration order: inside a headline the gap
+   below the heading is the headline's, not the heading's. */
+.settings-card-headline .settings-card-heading {
+  margin-bottom: 0;
 }
 
 .settings-text-action {
@@ -1130,6 +1203,15 @@
   padding: 14px 16px;
   border-radius: var(--radius-md-plus);
   background: var(--ds-tile);
+}
+
+/*
+ * A row that exists only because the row above it is on ("Show thinking",
+ * "Transcript display") indents one step. It keeps the parent's tile surface, so
+ * the pair reads as one setting with a condition instead of two siblings.
+ */
+.settings-row.settings-row-nested {
+  margin-inline-start: 20px;
 }
 
 .settings-row-copy {

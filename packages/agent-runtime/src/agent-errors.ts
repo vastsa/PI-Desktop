@@ -58,7 +58,15 @@ const RATE_LIMIT_PATTERN =
  * phrases.
  */
 const EXHAUSTED_QUOTA_CODE_PATTERN =
-  /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded)\b/i;
+  /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded|FreeUsageLimitError)\b/i;
+
+/**
+ * Zhipu/Z.ai (open.bigmodel.cn) error code 1308: the plan usage limit is
+ * reached. It arrives as HTTP 429 but resets after hours, so it is terminal
+ * like pi-ai 1.5 treats it. Only a JSON `code` field matches; a bare 1308 in
+ * a byte count or request id does not.
+ */
+const ZHIPU_USAGE_LIMIT_PATTERN = /"code"\s*:\s*"?1308(?![0-9])/;
 
 const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
   /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b/i;
@@ -119,7 +127,8 @@ function redactSensitiveErrorText(message: string): string {
 /**
  * Probe the HTTP status across SDK error shapes: `status`/`statusCode`
  * fields (walking the `cause` chain), then a leading "<status>:" or a
- * "(status)" / "status code NNN" marker in the message. Gemini's
+ * "(status)" / "status code NNN" marker, or a DashScope "Code: <status>"
+ * envelope in the message. Gemini's
  * `@google/genai` ApiError.message is the JSON body with no prefix, so the
  * last probe reads a 400-599 `code` from that object.
  */
@@ -131,6 +140,7 @@ function extractStatus(err: unknown, message: string): number | undefined {
     current = current.cause;
   }
   const patterns = [
+    /^\s*[A-Za-z][A-Za-z0-9_.-]*:\s*<(\d{3})>/,
     /^\s*(\d{3})\s*:/,
     /^\s*(\d{3})\b/,
     /\((\d{3})\)/,
@@ -471,16 +481,32 @@ export function networkFailureDiagnostics(
 }
 
 /**
+ * Explicit API-key rejection. Safe on HTTP 400/422 as well as on a
+ * statusless message: Gemini's `@google/genai` ApiError reports a bad key
+ * as 400 `API key not valid` / `API_KEY_INVALID`, and some OpenAI-compatible
+ * gateways do the same.
+ *
+ * Broader words such as "unauthorized" and "permission denied" stay out of
+ * this pattern. On a 400 they can describe a bad parameter or a tool
+ * argument rather than a rejected credential, so only the statusless path
+ * below treats them as an auth failure.
+ */
+const API_KEY_REJECTION_PATTERN =
+  /invalid[ _]api[ _]key|api key not valid|API_KEY_INVALID/i;
+
+/**
  * Credential rejection worded without an HTTP status.
  *
- * Bare "authentication" is not enough. Keep the API-key / unauthorized
- * phrases, and keep "authentication" only beside an API key, bearer token,
- * or credentials — or as a short provider phrase such as "authentication
- * failed". Handshake, TLS/SSL, and certificate text is transport, so it
- * never counts.
+ * Bare "authentication" is not enough. Explicit API-key phrases live in
+ * `API_KEY_REJECTION_PATTERN`. This pattern keeps the broader
+ * "unauthorized" / "permission denied" words, which are only trusted when
+ * no status is present. "authentication" counts only beside an API key,
+ * bearer token, or credentials — or as a short provider phrase such as
+ * "authentication failed". Handshake, TLS/SSL, and certificate text is
+ * transport, so it never counts.
  */
 const STATUSLESS_CREDENTIAL_PATTERN =
-  /invalid[ _]api[ _]key|api key not valid|unauthorized|permission denied/i;
+  /unauthorized|permission denied/i;
 
 const AUTHENTICATION_WITH_CREDENTIAL_PATTERN =
   /(?:api[-_ ]?key|credentials|bearer).{0,48}\bauthentication\b|\bauthentication\b.{0,48}(?:api[-_ ]?key|credentials|bearer)/i;
@@ -489,6 +515,7 @@ const AUTHENTICATION_FAILURE_PATTERN =
   /\bauthentication[_ ](?:failed|failure|error)\b/i;
 
 function isStatuslessCredentialFailure(message: string): boolean {
+  if (API_KEY_REJECTION_PATTERN.test(message)) return true;
   if (STATUSLESS_CREDENTIAL_PATTERN.test(message)) return true;
   if (isTlsTransportText(message)) return false;
   return (
@@ -629,6 +656,7 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
   if (
     EXHAUSTED_QUOTA_CODE_PATTERN.test(rawMessage) ||
     EXHAUSTED_QUOTA_MESSAGE_PATTERN.test(rawMessage) ||
+    ZHIPU_USAGE_LIMIT_PATTERN.test(rawMessage) ||
     (typeof providerCode === "string" &&
       EXHAUSTED_QUOTA_CODE_PATTERN.test(providerCode))
   ) {
@@ -643,9 +671,32 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     if (status === 413) return result("CONTEXT_TOO_LARGE", false);
     if (status === 429) return result("PROVIDER_RATE_LIMITED", true);
     if (status === 404) return result("MODEL_NOT_CONFIGURED", false);
-    if (status >= 500) return result("PROVIDER_ERROR", true);
+    // Gateways wrap an upstream context overflow as 500/502/503. Ollama's MLX
+    // runner returns HTTP 500 for "input length (N tokens) exceeds the model's
+    // maximum context length (M tokens)", which pi-ai's LiteLLM rule does not
+    // match ("(M)" or " of M tokens", not "(M tokens)"). Re-sending that prompt
+    // fails the same way, so it is terminal. A throttle that also says "too
+    // many tokens" stays retryable: `CONTEXT_PATTERN` would undo the rate-limit
+    // exclusion inside `isContextOverflow`, and the statusless branch already
+    // probes `RATE_LIMIT_PATTERN` first. 400/422 skip that probe because both
+    // of their outcomes are terminal.
+    if (status >= 500) {
+      if (
+        !RATE_LIMIT_PATTERN.test(rawMessage) &&
+        isContextOverflowMessage(rawMessage)
+      ) {
+        return result("CONTEXT_TOO_LARGE", false);
+      }
+      return result("PROVIDER_ERROR", true);
+    }
     if (status === 400 || status === 422) {
       if (isContextOverflowMessage(rawMessage)) return result("CONTEXT_TOO_LARGE", false);
+      // Only an explicit API-key rejection is a credential failure here.
+      // "unauthorized" / "permission denied" stay PROVIDER_ERROR: a 400 often
+      // uses those words for a parameter or tool problem, not the key.
+      if (API_KEY_REJECTION_PATTERN.test(rawMessage)) {
+        return result("PROVIDER_UNAUTHORIZED", false);
+      }
       // Malformed request (wrong apiStyle, bad params) — retrying won't help.
       return result("PROVIDER_ERROR", false);
     }

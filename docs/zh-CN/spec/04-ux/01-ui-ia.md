@@ -180,8 +180,9 @@
   揭示完整的项目路径。
 - **运行活动**：有任务正在运行的项目组会在标题上显示状态，因为折叠组会隐藏所有会话行状态。
   项目名后面的**数量徽标**把运行中和等待权限的会话数分开显示；左侧的**活动流光**
-  则是带有移动脉冲的 2px 轨道，展开时沿会话列表显示，折叠时收缩至标题。远程项目组使用相同显示。
-  “设置 → 常规 → 侧边栏”控制一个总开关及两个子开关。未设置时总开关和数量徽标默认开启，
+  则是带有移动脉冲的 2px 轨道，展开时沿会话列表显示，折叠时收缩至标题。计数只归属一个标识：
+  数量徽标开启时数字在徽标里，徽标关闭后才由流光接管，两者同开不会把同一个数字显示两遍。远程项目组使用相同显示。
+  “设置 → 外观 → 侧边栏”控制一个总开关及两个子开关。未设置时总开关和数量徽标默认开启，
   活动流光默认关闭；已保存的值优先生效。关闭总开关会隐藏两种提示，但保留子开关的已保存选项。
   减少动态效果时两种提示都保持静态且可辨识。
 - **项目操作**：打开文件夹显示项目目录；重命名只修改
@@ -218,6 +219,18 @@
   焦点。
 
 ### 3. 3 定时任务
+
+Task definitions render as soon as their own read completes; latest outcomes
+and the selected task's bounded history load independently. Pending or failed
+run reads never imply that a task has not run. Returning to the route displays
+the renderer's last successful in-memory snapshot while refreshing. Host loss
+or restart invalidates that snapshot and rejects late responses from the old
+lifecycle. Project options load only when opening Create/Edit; the form waits
+for that read to succeed and exposes retry on failure. Run now and Delete wait
+for known run status; Host admission remains authoritative. If Host loss/restart
+invalidates pending editor options, the next normal page poll replaces that
+read without closing the editor or waiting for the old request to settle.
+A replacement failure exposes the existing Retry action.
 任务列与所选任务的页面并排展示，支持创建、编辑、暂停、启用和确认删除。表单可为每个任务单独选择项目、权限、模型与会话模式（每次新开会话或复用同一会话）。周期保留下拉选择，并与时分统一为自定义主题菜单。每小时按一小时间隔执行，不显示时间选择；保存、启用、启动或上次自动准入后重新计时。
 间隔直接给出跨度：数量加分钟或小时单位（5 分钟至 24 小时），从准入时刻起算。
 每天通过下拉框选择上午 09:00、下午 14:00、晚上 19:00、夜间 22:00；

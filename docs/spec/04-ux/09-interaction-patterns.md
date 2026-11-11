@@ -363,6 +363,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   transcript on the same frame rather than waiting for `session.get`. The
   durable row is inserted from the `session.create` summary; send and paste wait
   for that in-flight create instead of opening a second slot (ADR 0154).
+  Concurrent first-input materializations share the same project-scoped
+  creation result, including cancellation and failure. A first send does not
+  supersede an in-flight New Task's navigation intent or adopt an unrelated
+  session selected while waiting. A failed create releases the slot for retry.
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
   activation no longer resets manual-scroll state for a revisit (ADR 0137).
@@ -739,6 +743,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   second rather than after it.
 - A boot that outlasts the video shows the splash's indeterminate bar after 3s
   of black, so an opaque mask is not mistaken for a hang.
+- Either `loadeddata` or `playing` acknowledges a decoded first frame; a
+  playing video must not hit the missing-first-frame timeout when `loadeddata`
+  was missed. The first-frame timeout also checks the actual video ref for
+  HAVE_CURRENT_DATA in case both initial events raced their handlers. The total
+  playback bound remains active.
 - Four bounds end the animation, and each runs the same reveal: no first frame
   within 2s, 15s of total playback, a `<video>` `error`, or `Escape`. The
   startup watchdog's bounds are unchanged and outrank it — at 30s the boot
@@ -814,26 +823,42 @@ may be retained while exactly one workspace supplies the visible shell context.
 - The first upward manual scroll movement pauses auto-scroll immediately and
   cancels any pending follow frame; small trackpad deltas must not snap back to
   the bottom
-- Scroll input owned by the transcript also cancels an in-flight browser smooth
-  navigation at its current offset. A previous minimap or jump navigation must
-  not resume after the reader takes over; nested-scroll input and ordinary row
-  controls do not cancel the transcript's navigation.
+- Scroll input owned by the transcript cancels an in-flight browser smooth
+  navigation or native return-to-latest animation at its current offset. A
+  previous minimap or return-to-latest move must not resume after the reader
+  takes over; horizontal, zero-delta, or `Ctrl`+wheel input, nested-scroll
+  input, editable fields, and ordinary row controls do not cancel it.
   Space on a button activates that button, and selection keys inside a select
   belong to the select. The same ownership and cancellation rules apply to
   delegated transcript scrollers. Releasing follow after a completed turn's
   prompt navigation does not cancel that newly started navigation.
-  A manual disclosure or history navigation also cancels the prior browser
-  navigation before taking ownership; completion's state-only follow release
-  is separate from these reader-driven moves.
+  A manual disclosure or search/history navigation also cancels any active
+  return-to-latest or browser smooth navigation before taking ownership;
+  completion's state-only follow release is separate from these reader-driven moves.
 - Sending a new prompt, retrying, or regenerating always re-pins follow mode and jumps to the bottom before the turn continues, even if the user had scrolled up
 - "Scroll to bottom" floating button appears as soon as manual upward scrolling
   releases follow mode
-- Click "Scroll to bottom" button: resumes auto-scroll and snaps to bottom.
-  Record the pinned bookmark synchronously, before any smooth-scroll event:
-  immediately switching sessions or projects must preserve this follow intent
-  even if the original pane is hidden or unmounted before scrolling finishes.
-  Returning follows the latest output rather than restoring the old reading
-  offset. Manual upward reading without that click still retains its position.
+- Return-to-latest ("Scroll to bottom" button, context menu, radial menu) uses
+  browser `scrollTo({ behavior: "smooth" })`, matching conversation turn markers;
+  reduced motion uses `auto`. Duration and easing belong to the browser, not
+  a custom frame loop. Competing follow, layout, previous search alignment, and
+  turn-completion owners yield until `scrollend` or cancellation. Record the pinned bookmark
+  synchronously and prepare any active historical `transcriptViews` slice by
+  replacing its identity with `loading: null` while keeping visible messages
+  mounted; only that exact prepared view's arrival closure exits historical
+  ownership. Tail-connected older pages and their cursor remain available for
+  later upward reading, without entering model input; live output remains
+  authoritative. Pane hide or unmount commits the accepted latest intent once
+  without continuing an invisible animation. Explicit disjoint search or history
+  views animate across currently mounted rows and join the canonical live tail
+  on arrival without fetching or animating unloaded intermediate ranges.
+  Returning to a switched session follows the latest output rather than
+  restoring the old reading offset; manual upward reading without return-to-latest
+  retains its position, and reader interruption cancels the animation in place
+  without committing arrival.
+  Native travel is not interrupted by per-frame position corrections. At
+  `scrollend`, recheck the current bottom; a late card or layout change extends
+  native travel before arrival rather than causing an instantaneous final jump.
 - Stream completion (D676): if the user was following a turn that completes,
   its prompt scrolls to 16px below the titlebar band at the top of the
   viewport so the answer reads from its start, follow mode is released, and
@@ -862,12 +887,15 @@ may be retained while exactly one workspace supplies the visible shell context.
   transitions to preserve.
 - A restored reading range that has reached the canonical live tail presents
   the session's running phase, elapsed time, and interaction waits normally.
-  Keeping its reading bookmark does not mean the turn has finished. Rejoining
-  live output preserves the viewport rather than acting like a new turn.
-  Explicit search, unread later pages, and disjoint snapshots remain historical.
-  Reading ranges require a non-empty canonical message identity, compared by
-  message id across history object copies. The ordinary canonical surface still
-  shows the first-event wait before its first message arrives.
+  Runtime `isRunning` state remains real rather than being faked stopped by a
+  historical reading view; keeping a reading bookmark does not mean the turn has
+  finished, and `turnStarted` re-pin skips an active historical reading window
+  so rejoining live output or browsing history preserves the viewport rather
+  than acting like a new turn. Explicit search, unread later pages, and disjoint
+  snapshots remain historical. Reading ranges require a non-empty canonical
+  message identity, compared by message id across history object copies. The
+  ordinary canonical surface still shows the first-event wait before its first
+  message arrives.
 
 ### 2.5 Turn outcome closure
 
@@ -941,9 +969,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   with Saving tooltips and a Saving label on Send now; edit/remove leave both
   the queue and composer draft unchanged.
 - Send now promotes its row in click order and asks the Host to deliver it as
-  steering input into the active turn. It does not request a stop. An active
-  `TaskWait` returns early so the parent handles the new input while its
-  delegates keep working. Other started tools retain their normal boundaries.
+  steering input into the active turn. Local foreground shell and read calls
+  receive cancellation; an active `TaskWait` returns without stopping delegates.
+  The turn waits for tool settlement before delivering the input.
   An idle Send now dispatches immediately. Refused input or an input admitted
   under a different permission mode stays queued for the next turn. Promoted
   rows retain Remove until delivery and show Waiting to send. Removal
@@ -975,8 +1003,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 - `Shift+Enter` and `Alt+Shift+Enter` insert a newline. An Enter confirming an
   IME candidate (`isComposing` or key code 229) never sends or steers.
 - Steering appears as a user message in the current transcript, clears the
-  draft immediately, and reaches the next model request after the current
-  response/tool batch. It creates no FIFO row and does not interrupt tools.
+  draft immediately, and reaches the next model request after current operations
+  settle. It creates no FIFO row. Local foreground shell and read calls receive
+  cancellation; background commands and delegates continue. Other operations
+  settle normally. Show a waiting status while a tool remains active.
 - Submission captures the session and current turn identity. If that target
   ends, rejects input, or is awaiting approval, the draft is restored in its
   own session and a concise error is shown. New text typed after submission
@@ -1077,14 +1107,17 @@ may be retained while exactly one workspace supplies the visible shell context.
   nested group header shares its left edge; the group body then indents child
   rows by 12px with the hover/focus collapse rail in that gutter, while a run
   row lifted out of a group keeps the turn's left edge.
-- No item payload opens itself, except the display mode's Thinking default: a
-  tool, hosted-search or plan call stays a header row until the user opens it,
-  including the literal final item of the last activity group. With `Show thinking`
-  on, Thinking rows default expanded in every display mode and collapse only on
-  user action. A collapsed row shows only the Thinking indicator, with no excerpt.
+- No item payload opens itself except reasoning: a tool, hosted-search or plan
+  call stays a header row until the user opens it, including the literal final
+  item of the last activity group. With `Show thinking` on, only the reasoning a
+  live turn is still streaming starts expanded; completed rows start folded and
+  open on user action, or stay open when `Auto-fold finished thinking` is off. A
+  folded row shows only the Thinking indicator, with no excerpt.
   With `Show thinking` off, no completed reasoning row renders; only a live
   whole-run TextShimmer `Thinking` indicator remains while reasoning streams.
   Stored reasoning is retained and reappears when the preference is turned back on.
+  A group and its reasoning answer to their own switches: neither inherits the
+  other's state, so folding a group hides the expanded reasoning inside it.
 - Activating a group or item header toggles only that level. Closing a parent
   preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.
@@ -1547,9 +1580,11 @@ Project drag/drop follows these patterns:
   path on every surface that names it. Unpositioned `.html` and `.htm`
   references also offer an **Open with** submenu containing File Manager,
   built-in browser, and default browser. Each choice completes the reference
-  first and opens that exact resolved file. Other file types keep the copy
-  actions only; the transcript menu has no **Show in folder** action. A file
-  outside the project has no relative path to copy and reports that fact.
+  first and opens that exact resolved file. In a session that may use local
+  files, every reference also offers **Show in folder**, which completes the
+  reference the same way and reveals that resolved file in the system file
+  manager; a remote workspace keeps the copy actions only. A file outside the
+  project has no relative path to copy and reports that fact.
 - In the host `file:` tab, a conversation MP4 that cannot be previewed because
   it is binary or exceeds the text preview limit offers **Open with default
   application**. This applies to named `.mp4` files and extensionless
@@ -1603,6 +1638,47 @@ Project drag/drop follows these patterns:
 ### 9.1 Transcript scrolling
 
 - Default: auto-scroll to bottom on new content during stream while pinned
+- Loading earlier messages uses two-stage single-flight escalation — mounting
+  cached withheld rows before requesting a Host page — anchored to the actual
+  visible message node and its viewport offset rather than total scroll-height
+  growth or an enclosing answer/minimap group whose first id can change when
+  earlier fragments prepend. Existing message, page, mounted-window, snapshot,
+  and retained session-pane data caches remain unchanged, with no idle TTL or
+  session-data reclamation.
+- Assistant prose may release its Markdown renderer outside a five-screen
+  retention buffer and restore it inside a three-screen entry buffer, keeping
+  measured-height message/prose shells. Measurements must match the current
+  width; unknown geometry is rendered, not estimated. Streaming, focus,
+  selection, and search targets protect mounted content. Fenced blocks and
+  tables also stay mounted because they can own diagram/plugin state or a
+  portalled table preview. Collapsed disclosure scopes still release their prose
+  without losing explicit disclosure choices.
+  This bounds expensive offscreen prose, not retained data, row shells, or the
+  size of a single intersecting answer; it never initiates a history request.
+- A real upward scroll gesture starts ahead-loading within a base lead of
+  `min(2400px, max(120px, 3 * clientHeight))`. Upward speed times measured read
+  latency plus `150ms` can increase the lead, capped at
+  `max(base, min(12000px, 12 * clientHeight))`. Cached history mounts before Host
+  IO; requests stay single-flight. The actual-message anchor tracks user
+  displacement and corrects prepend/layout changes before paint. Request
+  settlement does not release the reading anchor: ordinary reading retains its
+  actual message and, where available, visible prose block until follow or
+  explicit navigation takes over. Row-level resize observation catches changes
+  whose total heights cancel. Corrections run in the current layout/resize
+  delivery, not in a later painted frame, and unchanged/subpixel alignment does
+  not write `scrollTop` and interrupt native smooth scrolling.
+- All paging paths leave `overflow-y` and input untouched, including the
+  `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
+  top-boundary observer. Wheel/trackpad, touch and keyboard input continue
+  through IO and the three stable layout frames used for settlement. Nested
+  scroll owners, editable fields, and title activation retain their own input.
+  The loading label keeps identical layout space when hidden; there is no
+  early-threshold observer or eager page draining at rest.
+- Search/minimap navigation, return-to-latest, manual disclosure, a new turn
+  outside a historical reading window, pane hide, and unmount retire the hold;
+  a late page cannot reclaim that navigation. A failed or empty page ends the
+  transaction and waits for a new scroll gesture or explicit earlier-history
+  action before retrying. Requests remain single-flight after their hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement
@@ -1638,7 +1714,12 @@ Project drag/drop follows these patterns:
 - User send / retry / regenerate: re-pins, hides the jump control, and positions the latest content in the layout phase so the new turn is visible without a top-of-history flash; subsequent persisted and streamed rows continue to follow the bottom
 - Scroll-to-bottom button: position fixed at bottom-right of transcript area, offset 12px
 - Button appears as soon as upward scrolling releases follow mode
-- Click button: scrolls to bottom, resumes auto-scroll
+- Click button: retires the prior scroll gesture and history hold, prepares any
+  historical view without removing visible messages until arrival (or commits on
+  hide/unmount), and starts browser-native smooth scrolling like a turn marker
+  (`auto` under reduced motion) while suppressing competing scroll owners until
+  native completion. Queued scroll events or a pending page cannot reopen historical
+  reading or start another page read during that trip.
 - Button disappears when at bottom
 - A delegation tab uses the same single-body scroll owner as the work panel.
   It renders the delegate's conversation — each `Task` call's prompt as a user
@@ -1827,8 +1908,9 @@ This does not prevent state changes — it makes them instant.
 
 - Session activation uses an immediate layout-phase bottom position so the
   first visible frame is already stable at the latest record.
-- Jump-to-latest and minimap navigation use smooth scrolling only when the OS
-  has not requested reduced motion.
+- Return-to-latest and minimap navigation both use browser-native smooth
+  scrolling with browser-owned timing. Under `prefers-reduced-motion: reduce`,
+  both use immediate `auto` positioning.
 - Turn-start following uses an immediate layout-phase update and then a
   frame-coalesced instant follow; it does not start overlapping smooth-scroll
   animations for token groups.

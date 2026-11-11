@@ -1,4 +1,24 @@
-# 04. Data Storage (Schema v27)
+# 04. Data Storage (Schema v28)
+
+### Project path aliases (#2148)
+
+The v27-to-v28 upgrade creates a verified database backup and atomically merges
+case/separator spellings that native filesystem resolution identifies as the
+same local directory. Prefer a row with sessions, then the latest last-opened
+time and lowest id. Rebind every session and schedule before deleting duplicate
+rows; retain pinned state, the earliest creation and latest opening timestamps,
+and update the current project id. Transcript files are never rewritten or
+deleted by this repair. Original path-keyed memory records remain intact; a
+missing canonical memory record inherits the preferred row's value.
+
+Upsert, listing and removal repeat this reconciliation for directories that
+become available after startup. Missing directories retain their normalized
+spelling until resolution proves an alias. Do not lowercase all Windows/macOS
+paths: case-sensitive directories/volumes remain distinct, remote project ids
+are opaque, and a retargeted symlink must not redirect stored ownership.
+After reconciliation, removal prefers an exact stored path before filesystem
+canonicalization. Existing busy checks and permanent-deletion confirmation apply
+to the resulting unified project and all of its sessions.
 
 
 ### Lossless tool-image storage (#1868)
@@ -90,7 +110,7 @@ or transcript format change is required.
 
 ### User-selected storage location (issue #1213)
 
-Settings → General → Storage can select an empty directory on a different
+Settings → System → Storage can select an empty directory on a different
 volume. A selected directory contains `data/` (the complete host/application
 profile) and `browser/` (Chromium default and persistent plugin/browser session
 state). The existing default directories remain unchanged until the user
@@ -250,7 +270,8 @@ This does not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
-Successful workspace `Write`/`Edit` tool results carry the bounded
+Successful authorized `Write`/`Edit` tool results, including scratch,
+visualization and approved external paths, carry the bounded
 `details.review` record described in [03-tools-and-permissions](03-tools-and-permissions.md).
 The transcript JSONL is the durable index for the visible card; the previous
 bytes and hashes live outside the workspace in
@@ -513,11 +534,22 @@ plugin's private data directory; the host settings schema does not change.
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
 
+#### Renderer review display preference
+
+The native Review context-line choice is stored as `1`, `3` or `5` under
+renderer localStorage key `pi.desktop.reviewContextLines`. It is shared across
+conversations and projects in the same application profile, survives panel and
+application reopening, and is not synchronized across devices. Missing, invalid
+or unreadable values fall back to 3; failed writes do not block the current
+view. Reading the preference does not rewrite storage. This presentation-only
+key does not change database schemas, transcript evidence or saved context hunks.
+
 #### Renderer sidebar preferences (D093)
 
-Sidebar organization is non-authoritative presentation state stored
-best-effort under renderer localStorage key
-`pi.desktop.sidebarPreferences`:
+Sidebar organization is non-authoritative presentation state. Main keeps an
+atomic `sidebar-preferences.json` backup in the selected app data root;
+renderer localStorage key `pi.desktop.sidebarPreferences` supplies first paint.
+See [sidebar layout recovery](../../adr/sidebar-layout-recovery.md).
 
 ```ts
 type SidebarPreferences = {
@@ -549,9 +581,16 @@ type SidebarPreferences = {
   Missing or invalid values fall back to stable path order; pinned and archived
   priority remains applied before manual order. Session `manual`/`order` remain
   compatibility fields and are not exposed by the sidebar.
-- Missing, malformed, or unwritable preferences fall back to empty metadata,
-  `recent`, archived hidden, and the host-selected project. Preference failure
-  never blocks a host operation.
+- Restore the application backup before bootstrap persists the selected Project.
+  Without a backup, migrate a valid legacy cache, including an explicitly empty
+  tab list. Only if neither copy is valid, recover registered Projects from
+  `projects.list`. Existing valid layouts never reopen intentionally closed tabs.
+- An unreadable backup must not be replaced with empty startup state; a failed
+  catalog read must not persist an empty recovery result. Writes are limited to
+  2 MiB, flushed and atomically renamed through dedicated trusted-Main-frame IPC.
+  Project/Session/Workspace authority remains with Rust. Offline storage
+  relocation remaps internal retained paths and Project metadata keys while
+  preserving external Projects and display labels.
 - The record never contains transcript content, tool arguments, provider
   configuration, or secrets. Clearing it changes presentation only.
 - `openProjectPaths` retains sidebar tabs. The selected workspace remains
@@ -1591,6 +1630,11 @@ prefix length those offsets describe. Serving a window seeks to its first
 selected line instead of parsing the history in front of it, so the common
 cached read is proportional to the requested page. Consequences:
 
+- A bounded tail page includes checkpoints appended after its last message,
+  so reopening a just-compacted session returns the newest checkpoint and its
+  context estimate. Middle pages retain the active checkpoint and only those
+  within their message offsets; they do not load the complete chain (#2163).
+
 - The layout is derived data, cached in memory and, when reliable file identity
   is available, in the sibling `<sessionId>.jsonl.layout` file. Unix uses the
   device and inode; Windows uses the volume serial number and file ID. If the
@@ -2053,3 +2097,37 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+## Round review reader
+
+New native review snapshots may include a bounded `contexts.json` containing
+only 1/3/5-line context hunks and optional execution-root/context-availability
+metadata. No complete after-image or full-file context cache is written. Existing `before` bytes
+and post-tool hashes retain their rollback roles. Extended context never reads
+current workspace bytes; legacy snapshots without the preview remain readable
+and report that extended context is unavailable. No database schema change or
+second capture store is introduced; normal session-owned cleanup applies.
+
+Preview computation removes identical line prefixes/suffixes before allocating
+its LCS matrix, then reattaches those equal lines to preserve original hunk
+coordinates and finite context. The existing 512 KiB-per-image, 4000-total-lines
+per side, 2,000,000-middle-cell, and context serialization caps are unchanged.
+This affects new captures only; missing historical previews are not reconstructed
+from current disk contents.
+
+
+## User-defined mode runs (schema 29)
+
+ADR `mode-definitions` adds one v28-to-v29 migration. It backs up the existing
+database before adding `mode_snapshots`, `mode_runs`, `mode_gate_results` and
+`sessions.mode_snapshot_hash`. Existing sessions and Plan approvals are retained.
+Mode ids remain in `sessions.mode`; `chat` still normalizes to `plan`.
+
+A run references an immutable definition snapshot, its current stage, revision,
+claim, permission origin, budgets, token usage and completed-round count.
+Gate results record the stage, action, outcome and bounded evidence. At most
+one open run exists per session. Restart clears in-flight claims and pauses
+those runs without replaying work. Deleting a session cascades its run records.
+
+Host-started turns evaluate Auto as Accept edits. A run's original snapshot
+remains authoritative even when its source file changes.

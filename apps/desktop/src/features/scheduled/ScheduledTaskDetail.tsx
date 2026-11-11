@@ -33,8 +33,11 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 export function ScheduledTaskDetail({
   task,
   runs,
+  runsLoaded = true,
+  runsError = "",
   selectedRunId,
   running,
+  runningKnown = true,
   busy,
   now,
   locale,
@@ -48,8 +51,11 @@ export function ScheduledTaskDetail({
 }: {
   task: ScheduledTask;
   runs: ScheduledTaskRun[];
+  runsLoaded?: boolean;
+  runsError?: string;
   selectedRunId: string | null;
   running: boolean;
+  runningKnown?: boolean;
   busy: boolean;
   now: number;
   locale: string;
@@ -101,7 +107,7 @@ export function ScheduledTaskDetail({
           </div>
         </div>
         <div className="scheduled-detail-actions">
-          <Button size="sm" variant="primary" disabled={busy || running} onClick={onRunNow}>
+          <Button size="sm" variant="primary" disabled={busy || running || !runningKnown} onClick={onRunNow}>
             {t(running ? "scheduled.statusRunning" : "scheduled.runNow")}
           </Button>
           <Button size="sm" disabled={busy} onClick={onEdit}>
@@ -110,7 +116,7 @@ export function ScheduledTaskDetail({
           <Button size="sm" disabled={busy} onClick={onToggleEnabled}>
             {t(task.enabled ? "scheduled.pause" : "scheduled.resume")}
           </Button>
-          <Button size="sm" variant="ghost" disabled={busy || running} onClick={onDelete}>
+          <Button size="sm" variant="ghost" disabled={busy || running || !runningKnown} onClick={onDelete}>
             {t("scheduled.delete")}
           </Button>
         </div>
@@ -126,7 +132,7 @@ export function ScheduledTaskDetail({
               {latestDuration === null ? "" : ` · ${formatDuration(latestDuration)}`}
             </span>
           ) : (
-            t("scheduled.neverRun")
+            runsError || t(runsLoaded ? "scheduled.neverRun" : "common.loading")
           )}
         </Fact>
         <Fact label={t("scheduled.nextRun")}>{nextRun}</Fact>
@@ -171,6 +177,8 @@ export function ScheduledTaskDetail({
 
       <ScheduledRunHistory
         runs={runs}
+        loaded={runsLoaded}
+        error={runsError}
         selectedRunId={selectedRun?.id ?? null}
         busy={busy}
         locale={locale}

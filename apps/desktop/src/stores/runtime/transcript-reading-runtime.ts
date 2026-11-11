@@ -21,7 +21,11 @@ type ReadSession = (
 ) => Promise<{ session: SessionDetail | null }>;
 type ReadingActions = Pick<
   AppState,
-  "navigateTranscript" | "loadTranscriptPage" | "returnToLatestTranscript" | "restoreTranscriptReading"
+  | "navigateTranscript"
+  | "loadTranscriptPage"
+  | "returnToLatestTranscript"
+  | "prepareReturnToLatestTranscript"
+  | "restoreTranscriptReading"
 >;
 
 /** Read workflows publish renderer views and never write the runtime/model cache. */
@@ -49,12 +53,35 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
     set((state) => ({ transcriptViews: { ...state.transcriptViews, [sessionId]: view } }));
   }
 
-  function returnToLatestTranscript(sessionId: string) {
+  function clearTranscriptView(sessionId: string) {
     set((state) => {
       if (!state.transcriptViews[sessionId]) return {};
       const { [sessionId]: _released, ...transcriptViews } = state.transcriptViews;
       return { transcriptViews };
     });
+  }
+
+  function returnToLatestTranscript(sessionId: string) {
+    const state = get();
+    const view = state.transcriptViews[sessionId];
+    if (!view) return;
+    const live = state.activeSessionId === sessionId
+      ? state.messages : (state.retainedTranscripts[sessionId] ?? EMPTY_TRANSCRIPT);
+    // Keep pages that extend the live tail, without joining across an unread
+    // search/bookmark gap or copying historical data into the model cache.
+    if (!view.hasMoreAfter && view.messages.findIndex(row => row.id === live[0]?.id) > 0) {
+      publish(sessionId, { ...view, focus: null, restored: false, loading: null });
+    } else clearTranscriptView(sessionId);
+  }
+
+  function prepareReturnToLatestTranscript(sessionId: string): () => void {
+    const current = get().transcriptViews[sessionId];
+    if (!current) return () => {};
+    const prepared: TranscriptView = { ...current, loading: null };
+    publish(sessionId, prepared);
+    return () => {
+      if (get().transcriptViews[sessionId] === prepared) returnToLatestTranscript(sessionId);
+    };
   }
 
   function reportError(sessionId: string, pending: TranscriptView, error: unknown) {
@@ -66,6 +93,7 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
 
   const actions: ReadingActions = {
     returnToLatestTranscript,
+    prepareReturnToLatestTranscript,
     restoreTranscriptReading: async (sessionId, position, signal) => {
       if (signal.aborted || get().activeSessionId !== sessionId || !position.messageId) return false;
       const previous = get().transcriptViews[sessionId];
@@ -211,7 +239,8 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
         !(view.restored && previous.selectingSessionId === id) &&
         state.messages !== previous.messages &&
         transcriptWasRewritten(previous.messages, state.messages);
-      if (evicted || started || rewritten) returnToLatestTranscript(id);
+      if (evicted || rewritten) clearTranscriptView(id);
+      else if (started) returnToLatestTranscript(id);
     }
   }
 

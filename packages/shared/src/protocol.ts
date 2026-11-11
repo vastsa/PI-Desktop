@@ -14,6 +14,9 @@ export const APP_MENU_COMMANDS = [
   "openHelp",
   "openLogs",
   "checkForUpdates",
+  /** Brings the main window forward on the plugin market page (launcher empty
+   * state, and any other surface that wants to send the user shopping). */
+  "openPluginMarket",
 ] as const;
 
 export type AppMenuCommand = (typeof APP_MENU_COMMANDS)[number];
@@ -130,6 +133,18 @@ export const IPC = {
     liveVoiceWidgetAction: "pi-desktop/voice/live/widget/action",
     liveVoiceWidgetOwnerState: "pi-desktop/voice/live/widget/ownerState",
     liveVoiceWidgetVisibility: "pi-desktop/voice/live/widget/visibility",
+    /**
+     * Computer use (ADR 0342, ADR 0344). The renderer may read capabilities,
+     * read the live grant, and revoke it. It can neither mint nor act: the
+     * grant is minted by main's tool handler against the host's own rules, and
+     * `computer.act` is reachable only from that handler. Enumerating windows
+     * is not a renderer channel either — nothing in the UI picks a target.
+     */
+    computerCapabilities: "pi-desktop/computer/capabilities",
+    /** Ask the OS for the grant the platform needs; the user's click starts it. */
+    computerRequestPermission: "pi-desktop/computer/permission/request",
+    computerGrantRevoke: "pi-desktop/computer/grant/revoke",
+    computerGrantDescribe: "pi-desktop/computer/grant/describe",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStopSubagents: "pi-desktop/agent/stop-subagents",
@@ -150,6 +165,7 @@ export const IPC = {
     sessionSearchContext: "pi-desktop/session/searchContext",
     sessionGet: "pi-desktop/session/get",
     sessionCollaboration: "pi-desktop/session/collaboration",
+    sessionUsageCost: "pi-desktop/session/usageCost",
     /** Validate and select a durable session from a reviewed host operation. */
     sessionOpen: "pi-desktop/session/open",
     sessionDelete: "pi-desktop/session/delete",
@@ -187,6 +203,8 @@ export const IPC = {
     projectOpenFolder: "pi-desktop/project/openFolder",
     settingsGet: "pi-desktop/settings/get",
     settingsSet: "pi-desktop/settings/set",
+    sidebarPreferencesGet: "pi-desktop/sidebar/preferences/get",
+    sidebarPreferencesSet: "pi-desktop/sidebar/preferences/set",
     configSyncGetState: "pi-desktop/configSync/getState",
     backgroundTasksList: "pi-desktop/backgroundTasks/list",
     backgroundTasksOutput: "pi-desktop/backgroundTasks/output",
@@ -241,6 +259,15 @@ export const IPC = {
     plansPending: "pi-desktop/plans/pending",
     pendingInteractive: "pi-desktop/agent/pendingInteractive",
     plansResolve: "pi-desktop/plans/resolve",
+    modesCatalog: "pi-desktop/modes/catalog",
+    modesRead: "pi-desktop/modes/read",
+    modesValidate: "pi-desktop/modes/validate",
+    modesWrite: "pi-desktop/modes/write",
+    modesDelete: "pi-desktop/modes/delete",
+    modesRunGet: "pi-desktop/modes/run/get",
+    modesRunControl: "pi-desktop/modes/run/control",
+    modesRunUpdate: "pi-desktop/modes/run/update",
+    modesRunResolve: "pi-desktop/modes/run/resolve",
     /**
      * List every paired remote `pi-host` this desktop knows, redacted so no
      * device token reaches the renderer. See ADR 0286 (R2b pairing UX).
@@ -339,6 +366,12 @@ export const IPC = {
     pluginOpenPanel: "pi-desktop/plugin/openPanel",
     pluginLauncherToggle: "pi-desktop/pluginLauncher/toggle",
     pluginLauncherDismiss: "pi-desktop/pluginLauncher/dismiss",
+    pluginLauncherCatalog: "pi-desktop/pluginLauncher/catalog",
+    pluginLauncherOpenApp: "pi-desktop/pluginLauncher/openApp",
+    /** Content-driven window height, measured by the panel itself. */
+    pluginLauncherContentHeight: "pi-desktop/pluginLauncher/contentHeight",
+    /** Close the panel, focus the main window, and open the plugin market. */
+    pluginLauncherOpenMarket: "pi-desktop/pluginLauncher/openMarket",
     pluginThemes: "pi-desktop/plugin/themes",
     pluginProviderCatalog: "pi-desktop/plugin/providerCatalog",
     pluginScenicThemesDestinations: "pi-desktop/plugin/scenicThemes/destinations",
@@ -420,10 +453,16 @@ export const IPC = {
     composerPickPhotos: "pi-desktop/composer/pickPhotos",
     composerImportFiles: "pi-desktop/composer/importFiles",
     composerPasteFiles: "pi-desktop/composer/pasteFiles",
+    composerReadClipboardDirectories: "pi-desktop/composer/readClipboardDirectories",
     clipboardRecordPaste: "pi-desktop/clipboard/recordPaste",
     composerCommands: "pi-desktop/composer/commands",
     workspaceDiff: "pi-desktop/workspace/diff",
     workspaceReviewRollback: "pi-desktop/workspace/review/rollback",
+    workspaceReviewTurns: "pi-desktop/workspace/review/turns",
+    workspaceReviewChanges: "pi-desktop/workspace/review/changes",
+    workspaceReviewContext: "pi-desktop/workspace/review/context",
+    workspaceReviewOpenFile: "pi-desktop/workspace/review/openFile",
+    workspaceReviewRollbackFile: "pi-desktop/workspace/review/rollbackFile",
     browserNavigate: "pi-desktop/browser/navigate",
     browserAction: "pi-desktop/browser/action",
     browserSetBounds: "pi-desktop/browser/setBounds",
@@ -508,6 +547,8 @@ export const IPC = {
     notificationActivated: "pi-desktop/notification/event/activated",
     notificationSound: "pi-desktop/notification/event/sound",
     plansChanged: "pi-desktop/plans/event/changed",
+    modesChanged: "pi-desktop/modes/event/changed",
+    modesCatalogChanged: "pi-desktop/modes/event/catalogChanged",
     todosChanged: "pi-desktop/todos/event/changed",
     providersOauth: "pi-desktop/providers/oauth/event",
     mcpOauth: "pi-desktop/mcp/oauth/event",
@@ -520,6 +561,12 @@ export const IPC = {
     liveVoiceTranscript: "pi-desktop/voice/live/event/transcript",
     liveVoiceWidgetState: "pi-desktop/voice/live/event/widgetState",
     liveVoiceWidgetAction: "pi-desktop/voice/live/event/widgetAction",
+    /** Active grant view for the indicator; `null` once the grant closes. */
+    computerGrantChanged: "pi-desktop/computer/event/grantChanged",
+    /** Draw commands for the click-through cursor overlay. Visualization only. */
+    computerCursor: "pi-desktop/computer/event/cursor",
+    /** One completed loop step, for the indicator's progress line. */
+    computerStep: "pi-desktop/computer/event/step",
   },
 } as const;
 

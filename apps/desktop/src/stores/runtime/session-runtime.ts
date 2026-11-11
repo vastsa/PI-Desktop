@@ -48,7 +48,7 @@ export type SessionConfiguration = Pick<
 export type SessionSelection = { id: string; intent: number };
 
 export type SessionRuntime = {
-  readonly pendingNewSessionRequests: Map<string, Promise<void>>;
+  readonly pendingNewSessionRequests: Map<string, Promise<string | null>>;
   readonly sessionTranscriptCache: Map<string, UiMessage[]>;
   readonly liveSessionTranscripts: Set<string>;
   readonly sessionHistoryCache: Map<string, SessionHistoryWindow>;
@@ -126,7 +126,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   let pendingSessionSelection: SessionSelection | null = null;
   let sessionWorkspaceQueue: Promise<unknown> = Promise.resolve();
 
-  const pendingNewSessionRequests = new Map<string, Promise<void>>();
+  const pendingNewSessionRequests = new Map<string, Promise<string | null>>();
   const sessionTranscriptCache = new Map<string, UiMessage[]>();
   const liveSessionTranscripts = new Set<string>();
   const sessionHistoryCache = new Map<string, SessionHistoryWindow>();
@@ -214,10 +214,11 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   }
 
   async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
+    const previous = sessionTranscriptCache.get(id);
     const detail = await api.getSession(id);
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
-    if (cache) cacheSessionTranscript(id, messages, {
+    if (cache && sessionTranscriptCache.get(id) === previous) cacheSessionTranscript(id, messages, {
         messageStart: 0,
         hasMoreBefore: false,
       });

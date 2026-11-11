@@ -19,10 +19,13 @@ optimistic input and restores rejected drafts. The agent IPC handler reuses
 attachment validation against the running model and workspace; the sidecar
 rechecks the target after asynchronous preparation and calls `Agent.steer`.
 
-Steering keeps the active configuration and durable turn. Started tools finish
-before the next model request consumes input, except `TaskWait`, which yields
-to accepted user input without canceling its delegates (issue #1607). The
-runtime handles admission at its closing boundary and while awaiting delegates.
+Steering keeps the active configuration and durable turn. Local foreground
+shell and read calls receive cancellation; the runtime waits for their results
+before the next request, without the normal Stop grace timeout. An unconfirmed
+shell lifecycle failure remains pending until Stop. Remote and other operations
+continue to settlement. Calls not yet started are skipped. `TaskWait` yields
+without canceling its delegates (issue #1607); background commands keep running.
+The runtime handles admission at its closing boundary and while awaiting delegates.
 Stop closes admission
 and retains accepted input as history without independently replaying it.
 

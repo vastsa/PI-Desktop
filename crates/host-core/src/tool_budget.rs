@@ -11,6 +11,7 @@ pub const MAX_IN_FLIGHT_SHELL: usize = 4;
 pub const MAX_IN_FLIGHT_READS: usize = 8;
 pub const MAX_IN_FLIGHT_MUTATIONS: usize = 2;
 pub const MAX_IN_FLIGHT_MUTATIONS_PER_SESSION: usize = 1;
+const MAX_IN_FLIGHT_COORDINATED_MUTATIONS_PER_SESSION: usize = 2;
 pub const MAX_IN_FLIGHT_PLUGINS: usize = 4;
 pub const MAX_IN_FLIGHT_PER_SESSION: usize = 4;
 pub const MAX_QUEUED_TOOLS: usize = 64;
@@ -172,10 +173,24 @@ struct Request {
     ticket: Option<String>,
 }
 
+impl Request {
+    // Eligibility stays immutable through release, including after batches.finish.
+    // Admission separately checks the ticket's validated, submitted source order.
+    fn coordinated_mutation(&self) -> bool {
+        self.class == ToolClass::Mutation
+            && self.ticket.is_some()
+            && self
+                .resources
+                .as_ref()
+                .is_some_and(|r| r.is_identified_write())
+    }
+}
+
 #[derive(Default)]
 struct SessionUsage {
     active: usize,
     mutations: usize,
+    conservative_mutations: usize,
     /// Of `active`, calls rooted in a subagent's own worktree.
     own_worktree: usize,
 }
@@ -263,7 +278,12 @@ impl BudgetState {
         self.sessions.get(&request.session_id).is_none_or(|usage| {
             usage.active < MAX_IN_FLIGHT_PER_SESSION
                 && (request.class != ToolClass::Mutation
-                    || usage.mutations < MAX_IN_FLIGHT_MUTATIONS_PER_SESSION)
+                    || if request.coordinated_mutation() {
+                        usage.conservative_mutations == 0
+                            && usage.mutations < MAX_IN_FLIGHT_COORDINATED_MUTATIONS_PER_SESSION
+                    } else {
+                        usage.mutations < MAX_IN_FLIGHT_MUTATIONS_PER_SESSION
+                    })
         })
     }
 
@@ -280,6 +300,9 @@ impl BudgetState {
         usage.active += 1;
         if request.class == ToolClass::Mutation {
             usage.mutations += 1;
+            if !request.coordinated_mutation() {
+                usage.conservative_mutations += 1;
+            }
         }
         if request.own_worktree {
             usage.own_worktree += 1;
@@ -308,6 +331,9 @@ impl BudgetState {
         usage.active -= 1;
         if request.class == ToolClass::Mutation {
             usage.mutations -= 1;
+            if !request.coordinated_mutation() {
+                usage.conservative_mutations -= 1;
+            }
         }
         if request.own_worktree {
             usage.own_worktree -= 1;
@@ -343,30 +369,35 @@ impl BudgetState {
             return true;
         };
         self.waiting.iter().take(before).all(|entry| {
-            entry.granted
-                || match &entry.request.resources {
-                    Some(prior) => {
-                        // An unready DAG successor cannot become a fairness
-                        // barrier for another batch: that batch could otherwise
-                        // block the successor's own predecessor and form a cycle.
-                        if entry
-                            .request
-                            .ticket
-                            .as_deref()
-                            .is_some_and(|ticket| !self.batches.can_run(ticket, prior))
-                        {
-                            return true;
-                        }
-                        // Source-order predecessors must pass a later call that arrived
-                        // first; otherwise RPC arrival fairness would deadlock the DAG.
-                        let source_predecessor = match (&request.ticket, &entry.request.ticket) {
-                            (Some(ours), Some(theirs)) => self.batches.precedes(ours, theirs),
-                            _ => false,
-                        };
-                        source_predecessor || !resources.conflicts(prior)
-                    }
-                    None => true,
+            if entry.granted {
+                return true;
+            }
+            let prior = &entry.request;
+            // An unready successor must not fence another batch that could be
+            // needed by its own predecessor. Preserve this before capacity fairness.
+            if let (Some(ticket), Some(claims)) = (&prior.ticket, &prior.resources) {
+                if !self.batches.can_run(ticket, claims) {
+                    return true;
                 }
+            }
+            if let (Some(ours), Some(theirs)) = (&request.ticket, &prior.ticket) {
+                if self.batches.precedes(ours, theirs) {
+                    return true;
+                }
+            }
+            // Let an older conservative mutation drain its session. Otherwise
+            // independent coordinated writes could keep refilling its second slot.
+            if request.coordinated_mutation()
+                && prior.session_id == request.session_id
+                && prior.class == ToolClass::Mutation
+                && !prior.coordinated_mutation()
+            {
+                return false;
+            }
+            prior
+                .resources
+                .as_ref()
+                .is_none_or(|claims| !resources.conflicts(claims))
         })
     }
 }

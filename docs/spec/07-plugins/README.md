@@ -24,6 +24,8 @@ this directory define the normative contracts and implementation boundaries.
 | [14-plugin-roadmap.md](14-plugin-roadmap.md) | Plugin roadmap |
 | [15-plugin-center.md](15-plugin-center.md) | Plugin center (publishing side) |
 | [16-trusted-extensions.md](16-trusted-extensions.md) | Trusted extensions (in-sidecar extension surface) |
+| [17-plugin-glossary.md](17-plugin-glossary.md) | English–Chinese plugin terminology and usage |
+| [18-plugin-launcher.md](18-plugin-launcher.md) | Plugin launcher surface (`Alt+Space`), triggers, and local applications |
 
 ## Read the code behind the contract
 

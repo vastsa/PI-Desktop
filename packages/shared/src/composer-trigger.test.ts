@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCompletion,
+  composeMentionPrompt,
   detectTrigger,
+  findAgentMentions,
+  findSkillMentions,
   fileReferenceLabel,
   formatCommandInsert,
   formatFileInsert,
@@ -10,8 +13,30 @@ import {
   rewriteIdeographicCommaTrigger,
   serializeComposerFileReferences,
   serializeInlineComposerFileReferences,
+  splitComposerDirectoryPrompt,
   stripInlineComposerFileReferenceTokens,
 } from "./composer-trigger.js";
+
+describe("splitComposerDirectoryPrompt", () => {
+  const path = "/tmp/a & <b> &lt;";
+
+  it("removes generated markers and guidance from old and current user messages", () => {
+    const reference = { path, kind: "directory" };
+    for (const content of [
+      serializeInlineComposerFileReferences("before after", [reference]),
+      serializeInlineComposerFileReferences("before \ue001after", [{ ...reference, token: "\ue001" }]),
+    ]) {
+      expect(splitComposerDirectoryPrompt(content)).toEqual({ text: "before after", paths: [path] });
+    }
+    expect(splitComposerDirectoryPrompt(serializeInlineComposerFileReferences("", [reference]))).toEqual({ text: "", paths: [path] });
+  });
+
+  it("keeps literal markup in the prompt body when the generated folder block is present", () => {
+    const text = "Explain <dir>/tmp/example</dir>";
+    expect(splitComposerDirectoryPrompt(text)).toEqual({ text, paths: [] });
+    expect(splitComposerDirectoryPrompt(serializeInlineComposerFileReferences(text, [{ path, kind: "directory" }]))).toEqual({ text, paths: [path] });
+  });
+});
 
 describe("detectTrigger — slash mode", () => {
   it("triggers on a bare slash at position 0", () => {
@@ -299,5 +324,62 @@ describe("compact file references", () => {
     // Token or not, a session reference never becomes an appended @path.
     expect(serializeComposerFileReferences("", [reference])).toBe("");
     expect(serializeComposerFileReferences("", [{ path: id, kind: "session" }])).toBe("");
+  });
+});
+
+describe("agent mentions (ADR 0346)", () => {
+  const agents = new Set(["explorer", "code-reviewer"]);
+
+  it("reads @name only at a word start and only for a catalog name", () => {
+    expect(findAgentMentions("@explorer 帮我查找一下是否存在沙箱", agents)).toEqual([
+      { start: 0, end: 9, name: "explorer" },
+    ]);
+    expect(findAgentMentions("ask @code-reviewer, then @nobody", agents)).toEqual([
+      { start: 4, end: 18, name: "code-reviewer" },
+    ]);
+    expect(findAgentMentions("mail user@explorer now", agents)).toEqual([]);
+    expect(findAgentMentions("open @explorer.ts and @explorer/x", agents)).toEqual([]);
+    expect(findAgentMentions("end with @explorer.", agents)).toEqual([
+      { start: 9, end: 18, name: "explorer" },
+    ]);
+  });
+
+  it("an agent chip serializes to a resolvable @name even mid-word", () => {
+    const reference = { path: "explorer", kind: "agent", token: "\ue010" };
+    const content = serializeInlineComposerFileReferences("look\ue010where", [reference]);
+    expect(content).toBe("look @explorer where");
+    expect(findAgentMentions(content, agents).map((m) => m.name)).toEqual(["explorer"]);
+    // A chip-less agent reference never leaks into the trailing path list.
+    expect(serializeComposerFileReferences("hi", [{ path: "explorer", kind: "agent" }])).toBe("hi");
+  });
+
+  it("keeps the file serialization byte-for-byte unchanged", () => {
+    const file = { path: "src/a.ts", kind: "file", token: "\ue011" };
+    expect(serializeInlineComposerFileReferences("see\ue011now", [file])).toBe("see@src/a.ts now");
+  });
+
+  it("prompts a Task call and keeps the addressed body", () => {
+    const content = "@explorer find the sandbox";
+    const prompt = composeMentionPrompt(content, [], findAgentMentions(content, agents));
+    expect(prompt).toMatch(/^The user explicitly delegated.*`Task`.*"explorer"/);
+    expect(prompt.endsWith("\n\n@explorer find the sandbox")).toBe(true);
+  });
+
+  it("is unchanged for a Skill-only draft and orders Skills before agents", () => {
+    const skills = new Map([["skill:review", "review"]]);
+    const skillOnly = "/skill:review check this";
+    expect(composeMentionPrompt(skillOnly, findSkillMentions(skillOnly, skills), [])).toBe(
+      'Call the `Skill` tool with each of these ids before answering this request, in order: "review". Follow the loaded skill instructions.\n\ncheck this',
+    );
+    const both = "/skill:review @code-reviewer check this";
+    const prompt = composeMentionPrompt(
+      both,
+      findSkillMentions(both, skills),
+      findAgentMentions(both, agents),
+    );
+    const [skill, agent, body] = prompt.split("\n\n");
+    expect(skill).toMatch(/`Skill`/);
+    expect(agent).toMatch(/"code-reviewer"/);
+    expect(body).toBe("@code-reviewer check this");
   });
 });

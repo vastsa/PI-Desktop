@@ -1,6 +1,7 @@
+import { ReviewHistoryPanel } from "./ReviewHistoryPanel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useReviewFocusRequest } from "../../lib/review-focus-request";
+import { scrollReviewToAnchor, useReviewFocusRequest } from "../../lib/review-focus-request";
 import { reviewChangesFromMessages, summarizeReviewChanges } from "../../lib/workspace-review";
 import { useAppStore } from "../../stores/app-store";
 import { IconDiff } from "../icons";
@@ -20,6 +21,14 @@ type AppliedFocus = {
 };
 
 export function ReviewTab() {
+  const sessionId = useAppStore(state => state.activeSessionId);
+  const session = useAppStore(state => state.sessions.find(item => item.id === sessionId));
+  return sessionId && !sessionId.startsWith("remote:") && !session?.remoteWorkspace && session?.source !== "pi-native"
+    ? <ReviewHistoryPanel key={sessionId} sessionId={sessionId} />
+    : <LegacyReviewTab />;
+}
+
+function LegacyReviewTab() {
   const { t } = useTranslation();
   const messages = useAppStore((state) => state.messages);
   const entries = useMemo(() => reviewChangesFromMessages(messages), [messages]);
@@ -46,9 +55,7 @@ export function ReviewTab() {
 
   useEffect(() => {
     if (!focus) return;
-    scrollRef.current
-      ?.querySelector<HTMLElement>(`[data-snapshot-id="${CSS.escape(focus.anchor)}"]`)
-      ?.scrollIntoView({ block: "start" });
+    scrollReviewToAnchor(scrollRef.current, `[data-snapshot-id="${CSS.escape(focus.anchor)}"]`);
   }, [focus]);
 
   if (entries.length === 0) {

@@ -426,6 +426,9 @@ test("the surface is opaque black and the video is inert and silent", () => {
   // Muted: an unmuted autoplay is blocked by Chromium and hostile besides.
   assert.match(surface, /\bmuted\b/);
   assert.match(surface, /\bplaysInline\b/);
+  assert.match(surface, /onPlaying=\{onFirstFrame\}/);
+  assert.match(surface, /ref=\{videoRef\}/);
+  assert.match(shell, /videoRef=\{startupAnimation.videoRef\}/);
   assert.match(surface, /controls=\{false\}/);
   assert.match(surface, /tabIndex=\{-1\}/);
   assert.match(surface, /data-testid="startup-animation"/);

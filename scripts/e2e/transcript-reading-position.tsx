@@ -94,13 +94,18 @@ globalThis.transcriptReadingPositionProbe = async () => {
     a.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -500 }));
     a.scrollTop = 650;
     a.dispatchEvent(new Event("scroll", { bubbles: true }));
-    await frame();
     const row = a.querySelector<HTMLElement>('[data-message-id="m47"]');
     assert(row, "reading row exists");
+    const messageOffset = () => row.getBoundingClientRect().top - a.getBoundingClientRect().top;
+    const beforeGrowthOffset = messageOffset();
+    await frame();
+    const warmOffset = messageOffset();
+    const warmTop = a.scrollTop;
+    assert(Math.abs(warmOffset - beforeGrowthOffset) < 2, "ahead-mount changed the visible reading row");
     select("B");
     await frame();
     select("A");
-    assert(Math.abs(a.scrollTop - 650) < 2, `warm return lost offset: ${a.scrollTop}`);
+    assert(Math.abs(messageOffset() - warmOffset) < 2, `warm return lost reading offset: ${messageOffset()} vs ${warmOffset}`);
     flushSync(() => row.querySelector<HTMLButtonElement>("button")!.click());
     await frame();
     a.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 400 }));
@@ -149,7 +154,7 @@ globalThis.transcriptReadingPositionProbe = async () => {
     finishDeferredRestore = undefined;
     await until(() => Math.abs(deferredScroller.scrollTop - 650) < 2,
       "the saved offset applies after a successful restore lookup");
-    return { ok: true, warmOffset: 650, restoredOffset, panes: host.querySelectorAll("[data-pane]").length };
+    return { ok: true, warmTop, warmOffset, restoredOffset, panes: host.querySelectorAll("[data-pane]").length };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.stack : String(error) };
   } finally {

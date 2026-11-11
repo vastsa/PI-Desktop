@@ -50,7 +50,11 @@ Unix 对支持的本地文件系统使用已打开文件的 dev/ino；Windows �
 
 ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位。后来的冲突调用不能
 越过等待中的独占者；同批较早源序调用可越过后到达的后继，避免队列与依赖图死锁。
-额度仍为总 16、读 8、写 2、每会话 4、每会话写 1；准入等待 30 秒仍返回 HOST_OVERLOADED。
+额度仍为总 16、读 8、写 2、每会话 4。同一会话最多两个写可以重叠，但两者都必须有
+已验证的批次 ticket 和可信本地文件身份，且通过现有资源冲突检查。其他 mutation 保持
+单写准入，并在两种到达顺序下都与协调写互斥。较早且源序已就绪的保守写等待者阻止
+后来协调写持续补位；未就绪后继与源序前驱绕行仍保留依赖图例外。
+准入等待 30 秒仍返回 HOST_OVERLOADED。
 本地 audit/debug 记录总准入等待与初始原因 source_order、resource、capacity；不将它们
 宣称为互不重叠的分段耗时。
 
@@ -72,10 +76,10 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
-| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
+| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 活动作用域授权下的 Computer + 已注册的插件工具 |
 | Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
 | Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
-| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
+| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / Computer / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
 | 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 本地权限确认 | 无自动截止时间；必须明确决定或取消 |
 | 允许会话范围 | 工具名称 |
@@ -103,6 +107,7 @@ ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位
 | `Write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
 | `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
 | `Bash` | 高 | 执行命令 |
+| `Computer` | 高 | 检查并操作用户授权的那一个原生窗口或应用；没有活动作用域授权时不可用（[computer-use](computer-use.md)，ADR 0342） |
 | `asktool` | 低 | 询问一个或多个用户问题并将提交的答案作为工具输出返回 |
 | `TodoWrite` | 低 | 替换当前 Agent 会话清单；由主机校验并持久化完整有序快照 |
 
@@ -587,6 +592,11 @@ MCP 工具调用会显示审批卡片，原因为 "MCP server tool requires appr
 - `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
   会议；在 `BrowserPreview`/`ask` 下，根本不需要它们。
 - 暂存目录写入 (D114) 在每种模式下都保持无提示。
+- `Computer` 由它的作用域授权治理，而不只由模式治理：创建授权始终是桌面 UI
+  的显式决定，`auto` 从不签发授权，该工具也不存在 `allow-session` 授权。
+  在活动授权内，检查类动作自动允许，输入遵循授权的 `confirm-each`（`ask`
+  下唯一可用的策略）或 `autonomous-in-scope` 策略。Plan 与 Goal 直接拒绝该
+  工具（[computer-use](computer-use.md)）。
 - UI：设置→分段全局默认；输入框在中显示每个会话的芯片
   Agent、Plan 和 Goal 的菜单提供了三种有效模式，无需
   单独的 global-default/inherit 条目。芯片和选定的菜单项
@@ -641,37 +651,31 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 ## 10. 操作模式矩阵
 
-| 模式 | Read/Glob/Grep | BrowserPreview | Write/Edit | 重击 | 插件 |
+模式是一份定义文档（ADR mode-definitions）。它的工具策略只有两档，由定义（或分阶段运行的当前阶段）决定，并由 host-core 根据持久化的定义快照解析，从不采信运行时自报的模式：
+
+| 策略 | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | 插件 |
 |---|---|---|---|---|---|
-| Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
-| Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
-| Goal | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
+| `agent` | 允许 | 允许 | 权限策略 | 权限策略 | 已注册的风险策略 |
+| `contract` | 允许 | 允许 | 拒绝 | `ask`/`accept-edits`：确认；`auto`：允许 | 仅 plan-safe 操作 |
 
-### 注释
-- 权限 UI 之前，Plan 和 Goal 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
-  调用不能绕过矩阵。声明了非空列表的插件工具会被放行；运行器仍会拒绝列表外的任何动作（ADR 0211）。
-- Agent 模式使用权限卡或选定的自动策略
-  Write/Edit/Bash 和注册的插件工具。
-- 当用户选择“自动”时，Plan 和 Goal Bash 可能会改变工作区或暂存状态；
-  用户界面必须使这种权衡可见。
-- 仅针对活动会话记住每个 toolName 的允许会话
-- 会话授权遵循 `sessionId` 跨项目选项卡开关，并且永远不会
-  由另一个会话或临时会话继承
+内置模式：Agent 使用 `agent`；Plan 使用 `contract`；Goal 是分阶段运行，其 `work` 阶段使用 `agent`。没有快照的旧 Goal 会话，以及 Host 无法解析的模式 id，一律回退为 `contract`（失败即关闭）。
 
-### 10. 1 Plan 和 Goal 控制工具
+### 说明
+- `contract` 在权限 UI 之前硬性拒绝 Write/Edit 和未声明 `planSafeActions` 的插件工具；直接调用 host 也无法绕过该矩阵。声明了非空列表的插件工具会被放行，但运行器仍会拒绝列表之外的操作（ADR 0211）。
+- `agent` 对 Write/Edit/Bash 和已注册插件工具使用权限卡片或所选的自动策略。
+- 用户选择 Auto 时，`contract` 下的 Bash 可能修改工作区或 scratch 状态；UI 必须让这一取舍可见。
+- `Computer` 和定时任务工具只在内置 Agent 模式中可用，用户自定义模式中永远不可用。
+- Host 为分阶段运行自行发起的回合（loop 续跑、`onFail.goto`）会把 `auto` 按 `accept-edits` 处理。用户发起的回合，以及审批通过后的回合，保持会话的权限模式。
+- allow-session 只按 toolName 在当前会话内记住
+- 会话授权跟随 `sessionId` 跨项目标签页切换，不会被其他会话或临时会话继承
 
-`new_context` 在每种模式下都可用，无需确认：它只询问
-在下一回合边界压缩的运行时间，主机将在其上执行此操作
-一旦达到硬预算（参见
-[02-代理运行时](/zh-CN/spec/03-runtime/02-agent-runtime) §5.1)。提交
-工具仅在其自己的合同模式下可用，并且必须是其辅助批次中唯一的工具调用。它保留了
-类型目录下新的独特工件中的确切 Markdown 字节
-（`.pi/plan/*.md` 为 `SubmitPlan`，`.pi/goal/*.md` 为 `SubmitGoal`）
-在创建一项待批准之前通过 host-core。 `EnterPlanMode` 和
-`EnterGoalMode` 仅在 Agent 中可用，并且每个工具调用必须是唯一的
-在其批次中。主机验证持久模式、提案类型和
-任何转换之前的 active-turn/configuration 边界；可见的工具列表
-是指导，而不是安全边界。
+### 10. 1 Plan 控制工具与阶段完成
+
+`new_context` 在所有模式下可用且无需确认：它只是请求运行时在下一个回合边界压缩上下文，达到硬预算时 host 本来也会这样做（见 [02-agent-runtime](02-agent-runtime.md) §5.1）。`SubmitPlan` 只在 Plan 中可用，并且必须是其助手批次中唯一的工具调用。它通过 host-core 把完整 Markdown 字节保存为 `.pi/plan/*.md` 下的一个新唯一产物，然后创建一个待审批项。`EnterPlanMode` 只在 Agent 中可用，并且必须是其批次中唯一的工具调用。host 在任何切换之前校验持久化模式、提案类型和活动回合/配置边界；可见的工具列表只是指引，不是安全边界。
+
+不再提供 `EnterGoalMode` 和 `SubmitGoal`。host 以 `PLAN_GOAL_ACTIVATION_DISABLED` 拒绝新的 Goal 提案；已存储的 Goal 审批仍可读取，且永远不会被转换为自主执行授权。
+
+`CompleteStage { summary, artifacts? }` 只在分阶段模式运行的回合中提供。Host 把声明的产物写入其声明的工作区路径（`contract` 阶段写这些产物不需要 Write 权限），然后按顺序评估阶段的退出检查。`run` 检查通过正常的 Bash 权限路径（`tools.execute` 上的 `modeGate`）执行定义中的原样命令；命令、运行、检查序号或回合声明不匹配的调用会被 Host 拒绝。
 
 ### 10. 2 委派和子代理工具范围（D201、ADR 0062）
 
@@ -755,3 +759,9 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 ## 图片生成与编辑
 
 `GenerateImages` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。
+
+### 模型访问后台命令
+
+Agent 模式下，模型通过 TaskList、TaskWait、TaskStop 管理本会话的后台 Bash，桌面和模型读取同一 Host 作业记录。runtime 带入已绑定会话身份，模型参数不能选择其他会话。Host 要求会话存在、属于本地并处于 Agent 模式，按 sessionId 与 id 校验读取和停止。未知与其他会话的 ID 均返回 NOT_FOUND。
+
+等待不会终止进程。单次 Host 观察最多一秒，可在新输入或取消时放弃，等待期间不持有全局状态锁。终态通知在输出收尾后发出。显式停止复用主管的进程树清理，并返回实际终态或带 stopRequested 的运行中快照。查询互不消耗日志。有限历史与 Host 重启仍限制旧 ID 可查询的时间。

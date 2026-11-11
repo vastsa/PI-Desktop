@@ -1404,3 +1404,67 @@
     transition: none;
   }
 }
+
+.directory-reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  margin-bottom: 6px;
+}
+
+.directory-reference-list + .composer-input-stage .composer-input {
+  min-height: 1lh;
+}
+
+.directory-reference-card {
+  display: inline-flex;
+  align-items: flex-start;
+  max-width: min(100%, 240px);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-lg);
+  color: var(--ds-text-primary);
+}
+
+.directory-reference-main,
+.directory-reference-main.btn {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  padding: 6px 8px;
+  color: inherit;
+  text-align: start;
+}
+
+.directory-reference-main > svg {
+  flex: none;
+}
+
+.directory-reference-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+}
+
+.directory-reference-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-reference-type {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
+.directory-reference-remove.btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  margin: 2px 2px 0 0;
+}

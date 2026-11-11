@@ -1,0 +1,55 @@
+/*
+ * Computer-use indicator and settings status.
+ *
+ * In-flow surfaces follow the borderless tone scheme (D297): tile and raised
+ * backgrounds, no strokes. There is no target picker since ADR 0344 — the
+ * indicator is the whole live surface.
+ */
+.computer-use-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-raised);
+  font-size: var(--text-sm);
+}
+
+.computer-use-indicator-target {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+
+.computer-use-indicator-budget {
+  color: var(--text-muted);
+}
+
+/* Permission and backend diagnostics under the platform row. */
+.computer-use-status-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.computer-use-platform-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.computer-use-permission-button {
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-warning) 16%, transparent);
+  color: var(--ds-warning);
+}
+
+.computer-use-permission-button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ds-warning) 24%, transparent);
+}

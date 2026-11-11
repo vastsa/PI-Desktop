@@ -26,5 +26,6 @@
 | [19-remote-agent-control-protocol.md](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol) | 远程 Agent 控制协议 |
 | [20-speech.md](/zh-CN/spec/03-runtime/20-speech) | 宿主语音（转写/朗读） |
 | [live-voice.md](/zh-CN/spec/03-runtime/live-voice) | 应用托管的实时语音通话 |
+| [computer-use.md](/zh-CN/spec/03-runtime/computer-use) | 受授权的原生应用操作 |
 
 - [图片生成与编辑](/zh-CN/spec/03-runtime/21-image-generation)

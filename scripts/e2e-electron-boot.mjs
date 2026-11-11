@@ -5,31 +5,37 @@
  * E2E-SESSION-list-refresh-keeps-desktop-responsive against 800 synthetic
  * sessions (BOOT_PROBE emitted by electron/main/bootstrap/startup.ts).
  *
- * Prereqs: `pnpm --filter @pi-desktop/desktop build` and a host-core binary
- * (target/debug or target/release, or PI_DESKTOP_HOST_BIN).
+ * Pass a packaged executable path to run the same assertions against an
+ * installed-layout artifact. Without it, build out/ and a host-core binary
+ * (target/debug or target/release, or PI_DESKTOP_HOST_BIN) are required.
  */
 import { spawn } from "node:child_process";
 import { rmSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   createTempDataDir,
+  desktopPaths,
   repositoryRoot,
   resolveElectronBinary,
 } from "./e2e/boot.mjs";
 
 const root = repositoryRoot();
-const { appDir, electronBinary: electronBin } = resolveElectronBinary(root);
+const packagedExecutable = process.argv[2];
+const { appDir } = desktopPaths(root);
+const executable = packagedExecutable
+  ? resolve(packagedExecutable)
+  : resolveElectronBinary(root).electronBinary;
 
-if (!existsSync(join(appDir, "out/main/index.js"))) {
+if (!packagedExecutable && !existsSync(join(appDir, "out/main/index.js"))) {
   console.error("desktop app not built. Run: pnpm --filter @pi-desktop/desktop build");
   process.exit(1);
 }
-if (!existsSync(electronBin)) {
-  console.error("Electron binary missing:", electronBin);
+if (!existsSync(executable)) {
+  console.error("Electron executable missing:", executable);
   process.exit(1);
 }
 
-for (const preloadPath of [
+for (const preloadPath of packagedExecutable ? [] : [
   join(appDir, "out/preload/index.cjs"),
   join(appDir, "out/preload/plugin-panel.js"),
 ]) {
@@ -49,7 +55,7 @@ for (const preloadPath of [
 const dataDir = createTempDataDir("pi-desktop-boot-");
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(electronBin, ["."], {
+const child = spawn(executable, packagedExecutable ? [] : ["."], {
   cwd: appDir,
   env: {
     ...env,

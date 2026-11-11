@@ -1,13 +1,16 @@
 //! Host-owned P0/P1 session API for plugins.
 //!
-//! This module deliberately does not reuse the renderer's session RPCs. Every
-//! query is scoped by the `(plugin_id, source_id, external_id)` origin sidecar,
-//! and imported sessions do not acquire project/provider bindings unless an
+//! This module deliberately does not reuse the renderer's session RPCs. A call
+//! is either scoped to the `(plugin_id, source_id, external_id)` origin sidecar
+//! (`SessionScope::Own`, the ADR 0200 boundary) or — for a plugin holding a
+//! `*.all` grant — to every live session (`SessionScope::All`, ADR 0339).
+//! Imported sessions do not acquire project/provider bindings unless an
 //! explicit host-created project id is supplied.
 
 use anyhow::{anyhow, Result};
 use chrono::DateTime;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::types::Value as SqlValue;
+use rusqlite::{params, params_from_iter, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -33,6 +36,51 @@ pub const DEFAULT_MESSAGE_LIMIT: usize = 100;
 pub const MAX_MESSAGE_LIMIT: usize = 500;
 pub const DEFAULT_CONTENT_LIMIT: usize = 64_000;
 pub const MAX_CONTENT_LIMIT: usize = 512_000;
+
+/// Which sessions one `pi.session` call may address.
+///
+/// Electron main resolves the scope from the plugin's granted permissions and
+/// sends the literal `scope` parameter; host-core holds no permission data of
+/// its own (ADR 0200), so it enforces exactly the scope it is handed. An absent
+/// parameter means [`SessionScope::Own`], which keeps any caller that predates
+/// ADR 0339 on the original ownership boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionScope {
+    /// Only sessions imported by the calling plugin (ADR 0200).
+    Own,
+    /// Every live session, imported or user-created (ADR 0339).
+    All,
+}
+
+impl SessionScope {
+    /// Read `scope` from an RPC payload. Unknown values are rejected rather than
+    /// coerced, so a typo can never widen access.
+    pub fn from_params(params_value: &Value) -> Result<Self> {
+        match params_value.get("scope") {
+            None | Some(Value::Null) => Ok(SessionScope::Own),
+            Some(Value::String(value)) if value == "own" => Ok(SessionScope::Own),
+            Some(Value::String(value)) if value == "all" => Ok(SessionScope::All),
+            Some(_) => Err(invalid("scope must be \"own\" or \"all\"")),
+        }
+    }
+
+    fn owns_only(self) -> bool {
+        self == SessionScope::Own
+    }
+}
+
+/// `originKind` of a session, from whether an import origin row exists.
+fn origin_kind(imported: bool) -> &'static str {
+    if imported {
+        "imported"
+    } else {
+        "created"
+    }
+}
+
+/// `source` of a session. A user-created session carries no import source, so it
+/// reports `desktop` instead of an empty string.
+const SESSION_SOURCE_EXPR: &str = "COALESCE(NULLIF(s.source, ''), 'desktop')";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,6 +281,7 @@ fn parse_message(
         content: input.content.clone(),
         command: None,
         skill_mentions: None,
+        agent_mentions: None,
         attachments: None,
         voice_origin: None,
         steering: None,
@@ -244,6 +293,7 @@ fn parse_message(
         usage: None,
         response_duration_ms: None,
         response_output_tokens: None,
+        response_model_id: None,
         error: None,
         revision_root_id: None,
         revision_count: None,
@@ -764,27 +814,37 @@ fn history_from_json(raw: Option<String>) -> Value {
         .unwrap_or_else(|| json!({ "projectPath": null, "modelId": null, "providerId": null }))
 }
 
+/// The `sessionId` every addressing call carries, bounded like a turn id.
+fn session_id_param(params_value: &Value) -> Result<String> {
+    required_text(
+        params_value
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "sessionId",
+        128,
+    )
+}
+
 struct SessionViewParams {
     session_id: String,
     title: String,
     source: String,
-    external_id: String,
+    external_id: Option<String>,
     project_id: Option<i64>,
     message_count: i64,
     created_at: i64,
     updated_at: i64,
+    imported: bool,
+    model_id: Option<String>,
+    provider_id: Option<String>,
 }
 
-type OwnedSessionRow = (
-    String,
-    String,
-    String,
-    i64,
-    i64,
-    i64,
-    Option<i64>,
-    Option<String>,
-);
+/// A conversation is model-bound only when the session row carries both halves
+/// of the binding; an imported session has neither.
+fn model_bound(provider_id: &Option<String>, model_id: &Option<String>) -> bool {
+    provider_id.is_some() && model_id.is_some()
+}
 
 fn session_view(params: SessionViewParams) -> Value {
     let SessionViewParams {
@@ -796,6 +856,9 @@ fn session_view(params: SessionViewParams) -> Value {
         message_count,
         created_at,
         updated_at,
+        imported,
+        model_id,
+        provider_id,
     } = params;
     json!({
         "sessionId": session_id,
@@ -804,14 +867,22 @@ fn session_view(params: SessionViewParams) -> Value {
         "externalId": external_id,
         "projectId": project_id,
         "messageCount": message_count,
-        "originKind": "imported",
-        "bound": { "workspace": project_id.is_some(), "model": false },
+        "originKind": origin_kind(imported),
+        "bound": {
+            "workspace": project_id.is_some(),
+            "model": model_bound(&provider_id, &model_id),
+        },
         "createdAt": ms_to_ts(created_at),
         "updatedAt": ms_to_ts(updated_at),
     })
 }
 
-pub fn list(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+pub fn list(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
     validate_payload(params_value)?;
     let page_limit = match params_value.get("limit") {
         None => DEFAULT_LIST_LIMIT,
@@ -839,61 +910,50 @@ pub fn list(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Valu
         .and_then(Value::as_str)
         .map(|value| strict_timestamp(value, "updatedAfter").map(|(_, ms)| ms))
         .transpose()?;
-    let mut sql = String::from(
-        "SELECT s.id, s.title, s.source, oi.external_id, s.project_id, s.last_seq,
-                s.created_at, s.updated_at
+    // The origin sidecar is LEFT-joined so an `All` caller also sees sessions
+    // that no plugin imported. Each predicate is pushed together with its bind,
+    // which keeps the positional `?` numbering correct for every combination.
+    let mut binds: Vec<SqlValue> = Vec::new();
+    let mut sql = format!(
+        "SELECT s.id, s.title, {SESSION_SOURCE_EXPR}, oi.external_id, s.project_id,
+                s.last_seq, s.created_at, s.updated_at, oi.session_id,
+                s.model_id, s.provider_id
          FROM sessions s
-         JOIN session_import_origins oi ON oi.session_id = s.id
-         WHERE oi.plugin_id = ?1 AND s.deleted_at IS NULL",
+         LEFT JOIN session_import_origins oi ON oi.session_id = s.id
+         WHERE s.deleted_at IS NULL"
     );
-    if source.is_some() {
-        sql.push_str(" AND oi.source_id = ?2");
+    if scope.owns_only() {
+        sql.push_str(" AND oi.plugin_id = ?");
+        binds.push(SqlValue::Text(plugin_id.to_string()));
     }
-    if updated_after.is_some() {
-        sql.push_str(if source.is_some() {
-            " AND s.updated_at > ?3"
-        } else {
-            " AND s.updated_at > ?2"
-        });
+    if let Some(source) = source {
+        sql.push_str(&format!(" AND {SESSION_SOURCE_EXPR} = ?"));
+        binds.push(SqlValue::Text(source));
     }
-    sql.push_str(if source.is_some() && updated_after.is_some() {
-        " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?4 OFFSET ?5"
-    } else if source.is_some() || updated_after.is_some() {
-        " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?3 OFFSET ?4"
-    } else {
-        " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?2 OFFSET ?3"
-    });
+    if let Some(updated_after) = updated_after {
+        sql.push_str(" AND s.updated_at > ?");
+        binds.push(SqlValue::Integer(updated_after));
+    }
+    sql.push_str(" ORDER BY s.updated_at DESC, s.id DESC LIMIT ? OFFSET ?");
+    binds.push(SqlValue::Integer(page_limit as i64));
+    binds.push(SqlValue::Integer(offset as i64));
     let mut stmt = db.conn().prepare(&sql)?;
-    let mut rows = match (source, updated_after) {
-        (Some(source), Some(updated_after)) => stmt.query(params![
-            plugin_id,
-            source,
-            updated_after,
-            page_limit as i64,
-            offset as i64
-        ])?,
-        (Some(source), None) => {
-            stmt.query(params![plugin_id, source, page_limit as i64, offset as i64])?
-        }
-        (None, Some(updated_after)) => stmt.query(params![
-            plugin_id,
-            updated_after,
-            page_limit as i64,
-            offset as i64
-        ])?,
-        (None, None) => stmt.query(params![plugin_id, page_limit as i64, offset as i64])?,
-    };
+    let mut rows = stmt.query(params_from_iter(binds))?;
     let mut items = Vec::new();
     while let Some(row) = rows.next()? {
+        let origin_session_id: Option<String> = row.get(8)?;
         items.push(session_view(SessionViewParams {
             session_id: row.get(0)?,
             title: row.get(1)?,
-            source: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            source: row.get(2)?,
             external_id: row.get(3)?,
             project_id: row.get(4)?,
             message_count: row.get(5)?,
             created_at: row.get(6)?,
             updated_at: row.get(7)?,
+            imported: origin_session_id.is_some(),
+            model_id: row.get(9)?,
+            provider_id: row.get(10)?,
         }));
     }
     let next_cursor = (items.len() == page_limit).then(|| (offset + items.len()).to_string());
@@ -905,33 +965,101 @@ pub fn list(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Valu
     Ok(Value::Object(response))
 }
 
-fn own_session_row(
+/// One session as the plugin surface sees it, resolved under a scope.
+struct PluginSessionRow {
+    title: String,
+    source: String,
+    external_id: Option<String>,
+    message_count: i64,
+    created_at: i64,
+    updated_at: i64,
+    project_id: Option<i64>,
+    origin_json: Option<String>,
+    imported: bool,
+    model_id: Option<String>,
+    provider_id: Option<String>,
+}
+
+fn session_row(
     db: &Database,
     plugin_id: &str,
     session_id: &str,
-) -> Result<Option<OwnedSessionRow>> {
-    Ok(db
+    scope: SessionScope,
+) -> Result<Option<PluginSessionRow>> {
+    // `?1` is bound in both variants: SQLite numbers positional parameters by
+    // the highest index used, so the `All` statement keeps an unused hole while
+    // both share one bind list.
+    let mut sql = format!(
+        "SELECT s.title, {SESSION_SOURCE_EXPR}, oi.external_id,
+                s.last_seq, s.created_at, s.updated_at, s.project_id, oi.origin_json,
+                oi.session_id, s.model_id, s.provider_id
+         FROM sessions s
+         LEFT JOIN session_import_origins oi ON oi.session_id = s.id
+         WHERE s.id = ?2 AND s.deleted_at IS NULL"
+    );
+    if scope.owns_only() {
+        sql.push_str(" AND oi.plugin_id = ?1");
+    }
+    let row = db
         .conn()
-        .prepare_cached(
-            "SELECT s.title, s.source, oi.external_id, s.last_seq,
-                    s.created_at, s.updated_at, s.project_id, oi.origin_json
-             FROM sessions s
-             JOIN session_import_origins oi ON oi.session_id = s.id
-             WHERE oi.plugin_id = ?1 AND s.id = ?2 AND s.deleted_at IS NULL",
-        )?
+        .prepare_cached(&sql)?
         .query_row(params![plugin_id, session_id], |row| {
             Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
             ))
         })
-        .optional()?)
+        .optional()?;
+    Ok(row.map(
+        |(
+            title,
+            source,
+            external_id,
+            message_count,
+            created_at,
+            updated_at,
+            project_id,
+            origin_json,
+            origin_session_id,
+            model_id,
+            provider_id,
+        )| PluginSessionRow {
+            title,
+            source,
+            external_id,
+            message_count,
+            created_at,
+            updated_at,
+            project_id,
+            origin_json,
+            imported: origin_session_id.is_some(),
+            model_id,
+            provider_id,
+        },
+    ))
+}
+
+/// Assert that a live (not trashed) session is addressable under `scope`.
+fn require_session(
+    db: &Database,
+    plugin_id: &str,
+    session_id: &str,
+    scope: SessionScope,
+) -> Result<()> {
+    if session_row(db, plugin_id, session_id, scope)?.is_some() {
+        Ok(())
+    } else {
+        Err(not_found("session not found"))
+    }
 }
 
 fn owns_session(db: &Database, plugin_id: &str, session_id: &str) -> Result<bool> {
@@ -947,49 +1075,58 @@ fn owns_session(db: &Database, plugin_id: &str, session_id: &str) -> Result<bool
         .query_row(params![plugin_id, session_id], |row| row.get(0))?)
 }
 
-pub fn get(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+/// Existence check for the delete path, which must still see a trashed row:
+/// `trash` then `purge` is the documented lifecycle of the same session.
+fn deletable_session(
+    db: &Database,
+    plugin_id: &str,
+    session_id: &str,
+    scope: SessionScope,
+) -> Result<bool> {
+    if scope.owns_only() {
+        return owns_session(db, plugin_id, session_id);
+    }
+    Ok(db
+        .conn()
+        .prepare_cached("SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)")?
+        .query_row(params![session_id], |row| row.get(0))?)
+}
+
+pub fn get(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
     validate_payload(params_value)?;
-    let session_id = required_text(
-        params_value
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        "sessionId",
-        128,
-    )?;
-    let Some((
-        title,
-        source,
-        external_id,
-        message_count,
-        created_at,
-        updated_at,
-        project_id,
-        origin_json,
-    )) = own_session_row(db, plugin_id, &session_id)?
-    else {
+    let session_id = session_id_param(params_value)?;
+    let Some(row) = session_row(db, plugin_id, &session_id, scope)? else {
         return Err(not_found("session not found"));
     };
-    let project_path = project_id
+    let project_path = row
+        .project_id
         .map(|id| db.project_path(id))
         .transpose()?
         .flatten();
-    let history = history_from_json(origin_json);
+    let history = history_from_json(row.origin_json);
     Ok(json!({
         "sessionId": session_id,
-        "title": title,
-        "source": source,
-        "externalId": external_id,
-        "originKind": "imported",
-        "projectId": project_id,
+        "title": row.title,
+        "source": row.source,
+        "externalId": row.external_id,
+        "originKind": origin_kind(row.imported),
+        "projectId": row.project_id,
         "projectPath": project_path,
-        "modelId": Value::Null,
-        "providerId": Value::Null,
-        "bound": { "workspace": project_id.is_some(), "model": false },
+        "modelId": row.model_id,
+        "providerId": row.provider_id,
+        "bound": {
+            "workspace": row.project_id.is_some(),
+            "model": model_bound(&row.provider_id, &row.model_id),
+        },
         "history": history,
-        "messageCount": message_count,
-        "createdAt": ms_to_ts(created_at),
-        "updatedAt": ms_to_ts(updated_at),
+        "messageCount": row.message_count,
+        "createdAt": ms_to_ts(row.created_at),
+        "updatedAt": ms_to_ts(row.updated_at),
     }))
 }
 
@@ -1000,7 +1137,7 @@ fn truncate_chars(value: &str, limit: usize) -> (String, bool) {
     (result, truncated)
 }
 
-fn plugin_message(record: MessageRecord, content_limit: usize) -> Value {
+fn plugin_message(record: MessageRecord, content_limit: usize, imported: bool) -> Value {
     let message = sessions::record_to_ui(record);
     let (content, content_truncated) = truncate_chars(&message.content, content_limit);
     let mut result = json!({
@@ -1008,7 +1145,7 @@ fn plugin_message(record: MessageRecord, content_limit: usize) -> Value {
         "role": message.role,
         "content": content,
         "createdAt": message.created_at,
-        "origin": "external",
+        "origin": if imported { "external" } else { "desktop" },
     });
     if content_truncated {
         result["contentTruncated"] = Value::Bool(true);
@@ -1025,19 +1162,17 @@ fn plugin_message(record: MessageRecord, content_limit: usize) -> Value {
     result
 }
 
-pub fn list_messages(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+pub fn list_messages(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
     validate_payload(params_value)?;
-    let session_id = required_text(
-        params_value
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        "sessionId",
-        128,
-    )?;
-    if own_session_row(db, plugin_id, &session_id)?.is_none() {
+    let session_id = session_id_param(params_value)?;
+    let Some(row) = session_row(db, plugin_id, &session_id, scope)? else {
         return Err(not_found("session not found"));
-    }
+    };
     let page_limit = match params_value.get("limit") {
         None => DEFAULT_MESSAGE_LIMIT,
         Some(value) => value
@@ -1081,7 +1216,7 @@ pub fn list_messages(db: &Database, plugin_id: &str, params_value: &Value) -> Re
         records[offset..end]
             .iter()
             .cloned()
-            .map(|record| plugin_message(record, content_limit))
+            .map(|record| plugin_message(record, content_limit, row.imported))
             .collect::<Vec<_>>()
     };
     let next_cursor = (end < records.len()).then(|| end.to_string());
@@ -1093,16 +1228,14 @@ pub fn list_messages(db: &Database, plugin_id: &str, params_value: &Value) -> Re
     Ok(Value::Object(response))
 }
 
-pub fn rename(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+pub fn rename(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
     validate_payload(params_value)?;
-    let session_id = required_text(
-        params_value
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        "sessionId",
-        128,
-    )?;
+    let session_id = session_id_param(params_value)?;
     let title = required_text(
         params_value
             .get("title")
@@ -1111,13 +1244,17 @@ pub fn rename(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Va
         "title",
         MAX_TITLE_CHARS,
     )?;
-    if own_session_row(db, plugin_id, &session_id)?.is_none() {
-        return Err(not_found("session not found"));
-    }
-    db.conn().execute(
-        "UPDATE sessions SET title = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+    require_session(db, plugin_id, &session_id, scope)?;
+    // Claiming the manual title source is what stops the auto-title plugin from
+    // later replacing a title a plugin — and therefore the user — chose.
+    let changed = db.conn().execute(
+        "UPDATE sessions SET title = ?1, title_source = 'manual'
+         WHERE id = ?2 AND deleted_at IS NULL",
         params![title, session_id],
     )?;
+    if changed == 0 {
+        return Err(not_found("session not found"));
+    }
     Ok(json!({ "updated": true }))
 }
 
@@ -1177,16 +1314,14 @@ pub fn set_auto_title(db: &Database, plugin_id: &str, params_value: &Value) -> R
     Ok(json!({ "updated": updated }))
 }
 
-pub fn delete(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+pub fn delete(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
     validate_payload(params_value)?;
-    let session_id = required_text(
-        params_value
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        "sessionId",
-        128,
-    )?;
+    let session_id = session_id_param(params_value)?;
     let mode = params_value
         .get("mode")
         .and_then(Value::as_str)
@@ -1194,32 +1329,233 @@ pub fn delete(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Va
     if !matches!(mode, "trash" | "purge") {
         return Err(invalid("mode must be trash or purge"));
     }
-    if !owns_session(db, plugin_id, &session_id)? {
+    // A trashed row is still addressable: trash then purge is the documented
+    // lifecycle of the same session.
+    if !deletable_session(db, plugin_id, &session_id, scope)? {
+        return Err(not_found("session not found"));
+    }
+    // The ownership predicate is the scope's job; the statement must not embed a
+    // second copy of it or an `All` delete would match zero rows.
+    let changed = if mode == "purge" {
+        match scope {
+            SessionScope::Own => db.conn().execute(
+                "DELETE FROM sessions WHERE id = ?1 AND EXISTS (
+                    SELECT 1 FROM session_import_origins
+                    WHERE session_id = ?1 AND plugin_id = ?2
+                 )",
+                params![session_id, plugin_id],
+            )?,
+            SessionScope::All => db
+                .conn()
+                .execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?,
+        }
+    } else {
+        match scope {
+            SessionScope::Own => db.conn().execute(
+                "UPDATE sessions SET deleted_at = ?1
+                 WHERE id = ?2 AND EXISTS (
+                    SELECT 1 FROM session_import_origins
+                    WHERE session_id = ?2 AND plugin_id = ?3
+                 )",
+                params![now_ms(), session_id, plugin_id],
+            )?,
+            SessionScope::All => db.conn().execute(
+                "UPDATE sessions SET deleted_at = ?1 WHERE id = ?2",
+                params![now_ms(), session_id],
+            )?,
+        }
+    };
+    if changed == 0 {
         return Err(not_found("session not found"));
     }
     if mode == "purge" {
-        let changed = db.conn().execute(
-            "DELETE FROM sessions WHERE id = ?1 AND EXISTS (
-                SELECT 1 FROM session_import_origins
-                WHERE session_id = ?1 AND plugin_id = ?2
-             )",
-            params![session_id, plugin_id],
-        )?;
-        if changed == 0 {
-            return Err(not_found("session not found"));
-        }
         transcripts::remove_session_files(db.data_dir(), &session_id);
-    } else {
-        db.conn().execute(
-            "UPDATE sessions SET deleted_at = ?1
-             WHERE id = ?2 AND EXISTS (
-                SELECT 1 FROM session_import_origins
-                WHERE session_id = ?2 AND plugin_id = ?3
-             )",
-            params![now_ms(), session_id, plugin_id],
-        )?;
     }
     Ok(json!({ "deleted": true }))
+}
+
+// ---------------------------------------------------------------------------
+// Message-level writes (`session.update.all` / `session.delete.all`, ADR 0339)
+// ---------------------------------------------------------------------------
+
+/// One message a plugin writes. Same shape as a `session.import` message, plus
+/// an optional `id`: host-core still generates the id when the plugin omits it,
+/// but a caller that supplies one gets retry-safe idempotency.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginMutationMessageInput {
+    id: Option<String>,
+    role: String,
+    content: String,
+    created_at: String,
+    model_id: Option<String>,
+    provider_id: Option<String>,
+    tool_name: Option<String>,
+    tool_call_id: Option<String>,
+    tool_status: Option<String>,
+    tool_args: Option<Value>,
+    tool_result: Option<Value>,
+}
+
+impl PluginMutationMessageInput {
+    fn as_import_input(&self) -> PluginMessageInput {
+        PluginMessageInput {
+            role: self.role.clone(),
+            content: self.content.clone(),
+            created_at: self.created_at.clone(),
+            model_id: self.model_id.clone(),
+            provider_id: self.provider_id.clone(),
+            tool_name: self.tool_name.clone(),
+            tool_call_id: self.tool_call_id.clone(),
+            tool_status: self.tool_status.clone(),
+            tool_args: self.tool_args.clone(),
+            tool_result: self.tool_result.clone(),
+        }
+    }
+}
+
+/// Validate a plugin-written message batch with the same rules `session.import`
+/// applies, so a mutation can never store a row the importer would reject.
+fn parse_mutations(items: &[Value]) -> Result<Vec<UiMessage>> {
+    if items.len() > MAX_IMPORT_MESSAGES {
+        return Err(limit(format!(
+            "messages must contain at most {MAX_IMPORT_MESSAGES} entries"
+        )));
+    }
+    let mut previous_ms = None;
+    let mut tool_call_map = HashMap::new();
+    let mut messages = Vec::with_capacity(items.len());
+    for item in items {
+        let input: PluginMutationMessageInput = serde_json::from_value(item.clone())
+            .map_err(|error| invalid(format!("invalid message: {error}")))?;
+        let mut message = parse_message(
+            &input.as_import_input(),
+            &mut previous_ms,
+            &mut tool_call_map,
+        )?;
+        if let Some(id) = input.id.as_deref() {
+            message.id = required_text(id, "message.id", 128)?;
+        }
+        messages.push(message);
+    }
+    Ok(messages)
+}
+
+/// A transcript rewrite must not race the turn that is writing it. `appendMessage`
+/// is deliberately exempt: appending is how a turn's own rows land.
+fn refuse_running_turn(db: &Database, session_id: &str) -> Result<()> {
+    if sessions::running_turn(db, session_id)? {
+        return Err(code_error(
+            "TURN_RUNNING",
+            "cannot rewrite a session transcript during a running turn",
+        ));
+    }
+    Ok(())
+}
+
+fn mutation_messages(params_value: &Value) -> Result<Vec<UiMessage>> {
+    let items = params_value
+        .get("messages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("messages must be an array"))?;
+    parse_mutations(items)
+}
+
+/// Append one message to any session the caller can address.
+pub fn append_message(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
+    validate_payload(params_value)?;
+    let session_id = session_id_param(params_value)?;
+    require_session(db, plugin_id, &session_id, scope)?;
+    let raw = params_value
+        .get("message")
+        .ok_or_else(|| invalid("message required"))?;
+    let mut messages = parse_mutations(std::slice::from_ref(raw))?;
+    let message = messages.pop().ok_or_else(|| invalid("message required"))?;
+    sessions::append_message(db, &session_id, &message, None)?;
+    Ok(json!({ "messageId": message.id }))
+}
+
+/// Replace the whole live transcript with the supplied messages.
+pub fn replace_messages(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
+    validate_payload(params_value)?;
+    let session_id = session_id_param(params_value)?;
+    require_session(db, plugin_id, &session_id, scope)?;
+    refuse_running_turn(db, &session_id)?;
+    let messages = mutation_messages(params_value)?;
+    sessions::replace_messages(db, &session_id, &messages)?;
+    Ok(json!({ "messageCount": messages.len() }))
+}
+
+/// Delete one message, or — when it is a user prompt — the prompt and its
+/// replies. A missing target is a successful no-op, matching the renderer path.
+pub fn delete_message(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
+    validate_payload(params_value)?;
+    let session_id = session_id_param(params_value)?;
+    require_session(db, plugin_id, &session_id, scope)?;
+    let message_id = required_text(
+        params_value
+            .get("messageId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "messageId",
+        128,
+    )?;
+    refuse_running_turn(db, &session_id)?;
+    let result = sessions::delete_message(db, &session_id, &message_id)?;
+    Ok(json!({
+        "deleted": result.deleted,
+        "deletedCount": result.deleted_count,
+    }))
+}
+
+/// Keep the prefix before `fromMessageId` (or the first `keepCount` messages)
+/// and discard the rest. No transcript snapshot crosses the process boundary.
+pub fn truncate_from(
+    db: &Database,
+    plugin_id: &str,
+    scope: SessionScope,
+    params_value: &Value,
+) -> Result<Value> {
+    validate_payload(params_value)?;
+    let session_id = session_id_param(params_value)?;
+    require_session(db, plugin_id, &session_id, scope)?;
+    let from_message_id = params_value
+        .get("fromMessageId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    let keep_count = match params_value.get("keepCount") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(
+            value
+                .as_i64()
+                .ok_or_else(|| invalid("keepCount must be a number"))?,
+        ),
+    };
+    if from_message_id.is_none() && keep_count.is_none() {
+        return Err(invalid("fromMessageId or keepCount required"));
+    }
+    refuse_running_turn(db, &session_id)?;
+    let result = sessions::truncate_from(db, &session_id, from_message_id, keep_count)?;
+    Ok(json!({
+        "keptCount": result.kept_count,
+        "discardedCount": result.discarded_count,
+    }))
 }
 
 #[cfg(test)]
@@ -1227,6 +1563,16 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use tempfile::tempdir;
+
+    /// The ADR 0200 boundary: only sessions this plugin imported.
+    fn own() -> SessionScope {
+        SessionScope::Own
+    }
+
+    /// The ADR 0339 boundary: every live session, imported or user-created.
+    fn all() -> SessionScope {
+        SessionScope::All
+    }
 
     fn db() -> (tempfile::TempDir, Database) {
         let dir = tempdir().unwrap();
@@ -1269,6 +1615,48 @@ mod tests {
         sessions::append_message(db, session_id, &message, None).unwrap();
     }
 
+    fn import_owned(db: &Database, plugin_id: &str, external_id: &str) -> String {
+        let mut input = item(external_id, "2026-01-01T00:00:01Z");
+        input["source"] = json!("legacy");
+        import(db, plugin_id, &input).unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    /// A user-created, model-bound conversation: exactly the shape the ADR 0200
+    /// ownership filter could never reach.
+    fn user_session(db: &Database) -> String {
+        sessions::create_session_with_options(
+            db,
+            sessions::SessionCreateOptions {
+                provider_id: Some("provider".into()),
+                model_id: Some("model".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .id
+    }
+
+    fn message(role: &str, content: &str, second: u8) -> Value {
+        json!({
+            "role": role,
+            "content": content,
+            "createdAt": format!("2026-01-01T00:00:{second:02}Z")
+        })
+    }
+
+    fn run_turn(db: &Database, session_id: &str) {
+        db.conn()
+            .execute(
+                "INSERT INTO turns (id, session_id, status, started_at)
+                 VALUES ('turn-1', ?1, 'running', ?2)",
+                params![session_id, now_ms()],
+            )
+            .unwrap();
+    }
+
     #[test]
     fn import_is_host_owned_idempotent_and_keeps_history_unbound() {
         let (_dir, db) = db();
@@ -1292,7 +1680,7 @@ mod tests {
         let second = import(&db, "plugin.one", &request).unwrap();
         assert_eq!(second["sessionId"], id);
         assert_eq!(second["skipped"], true);
-        let detail = get(&db, "plugin.one", &json!({ "sessionId": id })).unwrap();
+        let detail = get(&db, "plugin.one", own(), &json!({ "sessionId": id })).unwrap();
         assert_eq!(detail["projectPath"], Value::Null);
         assert_eq!(detail["modelId"], Value::Null);
         assert_eq!(detail["history"]["projectPath"], "/history/project");
@@ -1310,12 +1698,18 @@ mod tests {
 
         let result = import(&db, "plugin.one", &input).unwrap();
         let session_id = result["sessionId"].as_str().unwrap();
-        let detail = get(&db, "plugin.one", &json!({ "sessionId": session_id })).unwrap();
+        let detail = get(
+            &db,
+            "plugin.one",
+            own(),
+            &json!({ "sessionId": session_id }),
+        )
+        .unwrap();
         assert_eq!(detail["projectId"], project_id);
         assert_eq!(detail["projectPath"], "/history/project");
         assert_eq!(detail["bound"]["workspace"], true);
 
-        let listed = list(&db, "plugin.one", &json!({})).unwrap();
+        let listed = list(&db, "plugin.one", own(), &json!({})).unwrap();
         assert_eq!(listed["items"][0]["projectId"], project_id);
         assert_eq!(listed["items"][0]["bound"]["workspace"], true);
 
@@ -1328,8 +1722,13 @@ mod tests {
         )
         .unwrap();
         let batch_session_id = batch["results"][0]["sessionId"].as_str().unwrap();
-        let batch_detail =
-            get(&db, "plugin.one", &json!({ "sessionId": batch_session_id })).unwrap();
+        let batch_detail = get(
+            &db,
+            "plugin.one",
+            own(),
+            &json!({ "sessionId": batch_session_id }),
+        )
+        .unwrap();
         assert_eq!(batch_detail["projectId"], project_id);
         assert_eq!(batch_detail["bound"]["workspace"], true);
     }
@@ -1404,10 +1803,11 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
-        assert!(get(&db, "plugin.two", &json!({ "sessionId": id })).is_err());
+        assert!(get(&db, "plugin.two", own(), &json!({ "sessionId": id })).is_err());
         assert!(delete(
             &db,
             "plugin.one",
+            own(),
             &json!({ "sessionId": id, "mode": "purge" })
         )
         .is_ok());
@@ -1419,33 +1819,30 @@ mod tests {
     #[test]
     fn list_rename_trash_and_purge_follow_plugin_ownership() {
         let (_dir, db) = db();
-        let mut input = item("lifecycle", "2026-01-01T00:00:01Z");
-        input["source"] = json!("legacy");
-        let id = import(&db, "plugin.one", &input).unwrap()["sessionId"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let id = import_owned(&db, "plugin.one", "lifecycle");
 
-        let listed = list(&db, "plugin.one", &json!({ "source": "legacy" })).unwrap();
+        let listed = list(&db, "plugin.one", own(), &json!({ "source": "legacy" })).unwrap();
         assert_eq!(listed["items"].as_array().unwrap().len(), 1);
         assert_eq!(
-            list(&db, "plugin.two", &json!({})).unwrap()["items"],
+            list(&db, "plugin.two", own(), &json!({})).unwrap()["items"],
             json!([])
         );
 
         rename(
             &db,
             "plugin.one",
+            own(),
             &json!({ "sessionId": id, "title": "Renamed" }),
         )
         .unwrap();
         assert_eq!(
-            get(&db, "plugin.one", &json!({ "sessionId": id })).unwrap()["title"],
+            get(&db, "plugin.one", own(), &json!({ "sessionId": id })).unwrap()["title"],
             "Renamed"
         );
         assert!(rename(
             &db,
             "plugin.two",
+            own(),
             &json!({ "sessionId": id, "title": "Nope" }),
         )
         .unwrap_err()
@@ -1455,24 +1852,25 @@ mod tests {
         delete(
             &db,
             "plugin.one",
+            own(),
             &json!({ "sessionId": id, "mode": "trash" }),
         )
         .unwrap();
-        assert!(list(&db, "plugin.one", &json!({})).unwrap()["items"]
+        assert!(list(&db, "plugin.one", own(), &json!({})).unwrap()["items"]
             .as_array()
             .unwrap()
             .is_empty());
-        assert!(get(&db, "plugin.one", &json!({ "sessionId": id })).is_err());
+        assert!(get(&db, "plugin.one", own(), &json!({ "sessionId": id })).is_err());
 
         delete(
             &db,
             "plugin.one",
+            own(),
             &json!({ "sessionId": id, "mode": "purge" }),
         )
         .unwrap();
-        let reimported = import(&db, "plugin.one", &input).unwrap();
-        assert_eq!(reimported["imported"], true);
-        assert_ne!(reimported["sessionId"], id);
+        let reimported = import_owned(&db, "plugin.one", "lifecycle");
+        assert_ne!(reimported, id);
     }
 
     #[test]
@@ -1546,7 +1944,8 @@ mod tests {
         }]);
         input["source"] = json!("legacy");
         let id = import(&db, "plugin.one", &input).unwrap()["sessionId"].clone();
-        let messages = list_messages(&db, "plugin.one", &json!({ "sessionId": id })).unwrap();
+        let messages =
+            list_messages(&db, "plugin.one", own(), &json!({ "sessionId": id })).unwrap();
         assert_eq!(
             messages["items"][0]["tool"]["args"],
             json!({ "keep": true })
@@ -1577,6 +1976,7 @@ mod tests {
         let page = list_messages(
             &db,
             "plugin.one",
+            own(),
             &json!({
                 "sessionId": id,
                 "limit": 1,
@@ -1587,5 +1987,388 @@ mod tests {
         assert_eq!(page["items"][0]["origin"], "external");
         assert_eq!(page["items"][0]["contentTruncated"], true);
         assert_eq!(page["nextCursor"], "1");
+    }
+
+    #[test]
+    fn scope_parameter_defaults_to_own_and_rejects_unknown_values() {
+        assert_eq!(SessionScope::from_params(&json!({})).unwrap(), own());
+        assert_eq!(
+            SessionScope::from_params(&json!({ "scope": "own" })).unwrap(),
+            own()
+        );
+        assert_eq!(
+            SessionScope::from_params(&json!({ "scope": "all" })).unwrap(),
+            all()
+        );
+        assert!(SessionScope::from_params(&json!({ "scope": "everything" }))
+            .unwrap_err()
+            .to_string()
+            .starts_with("INVALID_PARAMS"));
+        assert!(SessionScope::from_params(&json!({ "scope": true }))
+            .unwrap_err()
+            .to_string()
+            .starts_with("INVALID_PARAMS"));
+    }
+
+    #[test]
+    fn own_scope_stays_blind_to_a_user_created_session() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "hi", 1);
+
+        assert_eq!(
+            list(&db, "plugin.one", own(), &json!({})).unwrap()["items"],
+            json!([])
+        );
+        assert!(get(&db, "plugin.one", own(), &json!({ "sessionId": id }))
+            .unwrap_err()
+            .to_string()
+            .starts_with("NOT_FOUND"));
+        assert!(list_messages(&db, "plugin.one", own(), &json!({ "sessionId": id })).is_err());
+        assert!(rename(
+            &db,
+            "plugin.one",
+            own(),
+            &json!({ "sessionId": id, "title": "Nope" }),
+        )
+        .is_err());
+        assert!(delete(
+            &db,
+            "plugin.one",
+            own(),
+            &json!({ "sessionId": id, "mode": "purge" }),
+        )
+        .is_err());
+        // The refusal is a property of the scope, not of the write: the row and
+        // its title survive every rejected call above.
+        assert_eq!(
+            db.conn()
+                .query_row(
+                    "SELECT title FROM sessions WHERE id = ?1",
+                    params![id],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "New task"
+        );
+        assert_eq!(
+            db.conn()
+                .query_row("SELECT COUNT(*) FROM sessions", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn all_scope_reads_a_user_created_session_with_its_real_metadata() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "hi", 1);
+        append_text_message(&db, &id, "a1", "assistant", "hello", 2);
+
+        let detail = get(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(detail["originKind"], "created");
+        assert_eq!(detail["source"], "desktop");
+        assert_eq!(detail["externalId"], Value::Null);
+        assert_eq!(detail["modelId"], "model");
+        assert_eq!(detail["providerId"], "provider");
+        assert_eq!(detail["bound"]["model"], true);
+        assert_eq!(detail["messageCount"], 2);
+        // The import-time snapshot stays empty rather than inventing a binding.
+        assert_eq!(detail["history"]["modelId"], Value::Null);
+
+        let listed = list(&db, "plugin.one", all(), &json!({})).unwrap();
+        assert_eq!(listed["items"].as_array().unwrap().len(), 1);
+        assert_eq!(listed["items"][0]["originKind"], "created");
+        assert_eq!(listed["items"][0]["source"], "desktop");
+        assert_eq!(listed["items"][0]["externalId"], Value::Null);
+        assert_eq!(listed["items"][0]["bound"]["model"], true);
+
+        assert_eq!(
+            list(&db, "plugin.one", all(), &json!({ "source": "desktop" })).unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            list(&db, "plugin.one", all(), &json!({ "source": "legacy" })).unwrap()["items"],
+            json!([])
+        );
+
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(messages["items"][0]["origin"], "desktop");
+        assert_eq!(messages["items"][1]["content"], "hello");
+    }
+
+    #[test]
+    fn all_scope_reads_an_imported_session_as_imported() {
+        let (_dir, db) = db();
+        let id = import_owned(&db, "plugin.one", "theirs");
+        let detail = get(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(detail["originKind"], "imported");
+        assert_eq!(detail["source"], "legacy");
+        assert_eq!(detail["bound"]["model"], false);
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(messages["items"][0]["origin"], "external");
+        // A second plugin without an import grant reaches the same row through
+        // `.all`, which is the whole point of ADR 0339.
+        assert!(get(&db, "plugin.two", all(), &json!({ "sessionId": id })).is_ok());
+    }
+
+    #[test]
+    fn all_scope_renames_and_deletes_a_user_created_session() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "first prompt", 1);
+
+        rename(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "title": "Plugin named" }),
+        )
+        .unwrap();
+        assert_eq!(
+            get(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap()["title"],
+            "Plugin named"
+        );
+        // A plugin-chosen title must not be replaceable by the auto-title
+        // plugin afterwards, so the write claims the manual title source.
+        assert_eq!(
+            auto_title_context(&db, "plugin.title", &json!({ "sessionId": id })).unwrap(),
+            Value::Null
+        );
+
+        delete(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "mode": "trash" }),
+        )
+        .unwrap();
+        assert!(get(&db, "plugin.one", all(), &json!({ "sessionId": id })).is_err());
+        assert_eq!(
+            list(&db, "plugin.one", all(), &json!({})).unwrap()["items"],
+            json!([])
+        );
+
+        delete(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "mode": "purge" }),
+        )
+        .unwrap();
+        assert_eq!(
+            db.conn()
+                .query_row("SELECT COUNT(*) FROM sessions", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn all_scope_append_message_is_idempotent_per_message_id() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        let request = json!({
+            "sessionId": id,
+            "message": {
+                "id": "plugin-message-1",
+                "role": "user",
+                "content": "suggested follow-up",
+                "createdAt": "2026-01-01T00:00:01Z"
+            }
+        });
+        let first = append_message(&db, "plugin.one", all(), &request).unwrap();
+        assert_eq!(first["messageId"], "plugin-message-1");
+        // A retry after a lost reply must not duplicate the row.
+        append_message(&db, "plugin.one", all(), &request).unwrap();
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(messages["items"].as_array().unwrap().len(), 1);
+        assert_eq!(messages["items"][0]["id"], "plugin-message-1");
+    }
+
+    #[test]
+    fn all_scope_replace_messages_rewrites_the_transcript() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "one", 1);
+        append_text_message(&db, &id, "a1", "assistant", "two", 2);
+        append_text_message(&db, &id, "u2", "user", "three", 3);
+
+        let replaced = replace_messages(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({
+                "sessionId": id,
+                "messages": [message("user", "rewritten", 1), message("assistant", "reply", 2)]
+            }),
+        )
+        .unwrap();
+        assert_eq!(replaced["messageCount"], 2);
+
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        let contents = messages["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["content"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(contents, vec!["rewritten", "reply"]);
+        assert_eq!(
+            get(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap()["messageCount"],
+            2
+        );
+    }
+
+    #[test]
+    fn all_scope_delete_message_removes_a_prompt_and_its_replies() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "keep", 1);
+        append_text_message(&db, &id, "a1", "assistant", "kept reply", 2);
+        append_text_message(&db, &id, "u2", "user", "drop", 3);
+        append_text_message(&db, &id, "a2", "assistant", "dropped reply", 4);
+
+        let deleted = delete_message(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "messageId": "u2" }),
+        )
+        .unwrap();
+        assert_eq!(deleted["deleted"], true);
+        assert_eq!(deleted["deletedCount"], 2);
+
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        let ids = messages["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["u1", "a1"]);
+
+        // A missing target is a successful no-op, so a retried delete is safe.
+        let again = delete_message(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "messageId": "u2" }),
+        )
+        .unwrap();
+        assert_eq!(again["deleted"], false);
+    }
+
+    #[test]
+    fn all_scope_truncate_from_keeps_the_prefix() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "one", 1);
+        append_text_message(&db, &id, "a1", "assistant", "two", 2);
+        append_text_message(&db, &id, "u2", "user", "three", 3);
+
+        let truncated = truncate_from(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "fromMessageId": "u2" }),
+        )
+        .unwrap();
+        assert_eq!(truncated["keptCount"], 2);
+        assert_eq!(truncated["discardedCount"], 1);
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(messages["items"].as_array().unwrap().len(), 2);
+
+        assert!(
+            truncate_from(&db, "plugin.one", all(), &json!({ "sessionId": id }))
+                .unwrap_err()
+                .to_string()
+                .starts_with("INVALID_PARAMS")
+        );
+    }
+
+    #[test]
+    fn message_writes_refuse_a_running_turn() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        append_text_message(&db, &id, "u1", "user", "one", 1);
+        run_turn(&db, &id);
+
+        for error in [
+            replace_messages(
+                &db,
+                "plugin.one",
+                all(),
+                &json!({ "sessionId": id, "messages": [message("user", "x", 1)] }),
+            )
+            .unwrap_err(),
+            delete_message(
+                &db,
+                "plugin.one",
+                all(),
+                &json!({ "sessionId": id, "messageId": "u1" }),
+            )
+            .unwrap_err(),
+            truncate_from(
+                &db,
+                "plugin.one",
+                all(),
+                &json!({ "sessionId": id, "keepCount": 0 }),
+            )
+            .unwrap_err(),
+        ] {
+            assert!(
+                error.to_string().starts_with("TURN_RUNNING"),
+                "unexpected error: {error}"
+            );
+        }
+        // Nothing was rewritten while the turn owned the transcript.
+        let messages =
+            list_messages(&db, "plugin.one", all(), &json!({ "sessionId": id })).unwrap();
+        assert_eq!(messages["items"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn message_writes_bound_their_payload() {
+        let (_dir, db) = db();
+        let id = user_session(&db);
+        let too_many = (0..=MAX_IMPORT_MESSAGES)
+            .map(|_| message("user", "x", 1))
+            .collect::<Vec<_>>();
+        assert!(replace_messages(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({ "sessionId": id, "messages": too_many }),
+        )
+        .unwrap_err()
+        .to_string()
+        .starts_with("LIMIT_EXCEEDED"));
+
+        let huge = "x".repeat(MAX_CONTENT_BYTES + 1);
+        assert!(append_message(
+            &db,
+            "plugin.one",
+            all(),
+            &json!({
+                "sessionId": id,
+                "message": { "role": "user", "content": huge, "createdAt": "2026-01-01T00:00:01Z" }
+            }),
+        )
+        .unwrap_err()
+        .to_string()
+        .starts_with("LIMIT_EXCEEDED"));
     }
 }

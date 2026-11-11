@@ -53,6 +53,9 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `session.read.own` | medium | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads only sessions imported by the calling plugin; no cross-plugin access |
 | `session.update.own` | medium | `pi.session.rename` | Confirm at install | Renames only the calling plugin's active imported sessions |
 | `session.delete.own` | high | `pi.session.delete` | Confirm at install | Trash/purge only the calling plugin's imported sessions; rate-limited |
+| `session.read.all` | high | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads **any** live session, including the conversations the user created in this app: title, project, model binding, and full message history with tool payloads. `.all` is a separate grant from `session.read.own` and wins when both are declared; the audit line records which scope authorised the call (ADR 0340) |
+| `session.update.all` | high | `pi.session.rename`, `pi.session.appendMessage`, `pi.session.replaceMessages` | Confirm at install | Renames any session and rewrites its transcript: append, replace, or delete-single-message. Rewrites are refused while a turn is running (`TURN_RUNNING`) and rate-limited. A rename claims the manual title source, so `session.autoTitle` cannot overwrite it afterwards |
+| `session.delete.all` | high | `pi.session.delete`, `pi.session.deleteMessage`, `pi.session.truncateFrom` | Confirm at install | Trash/purge any session and cut or delete its messages. Keeps the session-delete rate limit; message rewrites share a 60/min message-write budget |
 | `usage.read` | medium | `pi.usage.listTurns` | Confirm at install | Read-only listing of completed-turn facts (per-turn token counters and identifiers, keyset-paginated); no message body and no write path |
 | `agent.complete` | high | `pi.agent.complete` | Confirm at install | Host-owned one-shot; spends user quota; `includeSessionContext` also needs `session.read` |
 | `speech.adapter.register` | high | `pi.speech.registerAdapter` / `unregisterAdapter` | Confirm at install | Registers a speech protocol. Handles stay in the guest; HTTP plans are executed by the host with the bound provider key and must stay on that origin. Built-in protocol ids are reserved |
@@ -127,6 +130,13 @@ plugin, so it carries three bounds the other modes do not:
   `appearance:changed`, `session:modelChanged`, `session:turnEnded`,
   `session:activated`, and `plugin:settingsChanged` arrive on the existing plugin event channel, and subscribing to an unknown
   event name does not error
+- `session.read.all` / `session.update.all` / `session.delete.all` each replace
+  the matching `.own` grant rather than extending it: a manifest may declare
+  both, and `.all` wins. Message-level writes (`pi.session.appendMessage`,
+  `replaceMessages`, `deleteMessage`, `truncateFrom`) exist only under `.all`,
+  because rewriting a transcript is never an imported-session operation
+  (ADR 0340). `session.autoTitle` stays the narrow title path and does not
+  imply any session read grant
 
 ## 3A. Plan operating-state rule
 
@@ -190,6 +200,9 @@ plugin's row (Files), so "Edit files" is followed by the list.
 | `desktop.control` | Control the desktop | 控制桌面操作 |
 | `net.anyHost` | Access any network address | 访问任意网络地址 |
 | `session.autoTitle` | Read first-turn title context and update automatic titles | 读取首轮标题上下文并更新自动标题 |
+| `session.read.all` | Read any conversation, including yours | 读取任意会话，包括你自己的对话 |
+| `session.update.all` | Rewrite any conversation, including its messages | 改写任意会话，包括修改其消息 |
+| `session.delete.all` | Delete any conversation, including yours | 删除任意会话，包括你自己的对话 |
 
 These permissions have no catalog entry today and are shown as their raw key:
 `ui.settings`, `session.import`, `session.read.own`, `session.update.own`, `session.delete.own`, `ui.view`, `project.create`.

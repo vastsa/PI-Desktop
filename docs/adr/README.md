@@ -18,8 +18,13 @@ Each ADR includes:
 
 ## Index
 
+
 | ID | Title | Status |
 |---|---|---|
+| mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
+| sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |
+| steering-local-tool-interruption | [Steering waits for confirmed tool settlement](steering-local-tool-interruption.md) | Accepted |
+| composer-pasted-directory-references | [Composer pasted directory references](composer-pasted-directory-references.md) | Accepted |
 | plugin-projects-list | [Read-only durable project enumeration for plugins](plugin-projects-list.md) | Accepted |
 | append-only-review-state | [Append-only review state](append-only-review-state.md) | Implemented candidate |
 | lossless-tool-image-storage | [Lossless tool-image storage and bounded history mutations](lossless-tool-image-storage.md) | Implemented candidate |
@@ -395,6 +400,15 @@ Each ADR includes:
 | 0332 | [macOS keeps its translucent window surface with an opaque opt-out](0332-macos-opaque-window-surface.md) | Accepted (D665, amended by D666 and D667; supersedes the macOS vibrancy window backing from D348; issue #1064) |
 | gen-ui-inline-visualization | [Inline generative UI visualizations](gen-ui-inline-visualization.md) | Accepted (D671) |
 | 0337 | [Keep the request prefix stable across delegation settlements](0337-stable-prompt-prefix-across-delegation.md) | Accepted (supersedes ADR 0279 §9) |
+| 0341 | [Explicit actions on reviewed files](0341-explicit-reviewed-file-actions.md) | Accepted |
 | 0338 | [A user-supplied video owns the boot surface, served over a host-owned scheme](0338-user-supplied-startup-animation.md) | Accepted (D679) |
+| 0339 | [Chat file references open absolute files outside the managed roots](0339-chat-file-refs-open-absolute-files-outside-managed-roots.md) | Accepted (amends ADR 0262 §4) |
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
+
+| 0342 | [Built-in computer use is a host-owned capability behind a user-picked scope grant](0342-os-computer-use-capability.md) | Proposed (D681; amends non-goal 9) |
+| 0340 | [Let a granted plugin reach every session, not only its imports](0340-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
+| 0343 | [The plugin launcher enumerates and opens local applications](0343-plugin-launcher-local-apps.md) | Accepted (issue #2085) |
+| 0344 | [Computer use grants the whole desktop automatically, and Stop is the boundary](0344-computer-use-whole-desktop-grant.md) | Accepted (D682; amends ADR 0342 §4 and §6) |
+| 0345 | [One settings destination owns one subject](0345-one-settings-destination-one-subject.md) | Accepted (D684; amends D143, D166, D678) |
+| 0346 | [`@agent` mentions route a turn to a named subagent](0346-composer-agent-mentions.md) | Accepted (issue #986; extends 0024 / 0062) |

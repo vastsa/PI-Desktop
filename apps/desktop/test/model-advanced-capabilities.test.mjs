@@ -107,7 +107,7 @@ test("image generation selection hides the summary when nothing can be chosen", 
 });
 
 test("the Composer model rows use the provider binding for vision badges", () => {
-  assert.match(composerSource, /composerModelBadges\(model, group\.provider\)/);
+  assert.match(composerSource, /composerModelBadges\(model, provider\)/);
 });
 
 test("capability overrides reach the transport modality arrays", () => {

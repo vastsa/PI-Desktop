@@ -19,7 +19,8 @@ import {
   useContextMenu,
 } from "../../apps/desktop/src/components/ContextMenu";
 import { Markdown } from "../../apps/desktop/src/components/Markdown";
-import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
+import { AssistantTurn, TranscriptHistory } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
+import { collectLiveDelegationEntries } from "../../apps/desktop/src/lib/live-delegation-entries";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
 import { assistantErrorMessage } from "../../apps/desktop/src/stores/helpers/store-helpers";
@@ -548,6 +549,37 @@ globalThis.transcriptRenderProbe = async () => {
       "a standalone Bash row must not render an activity group",
     );
 
+    // A stop acknowledgement can arrive while the command is still running.
+    // Verify the transcript head, where a completed tool call used to say
+    // "Stopped subagents" even when there were no delegates.
+    const job = { kind: "bash", id: "background-command" };
+    render([
+      message("jobs-user", "user", "Check the background test"),
+      message("jobs-stop", "tool", "", {
+        toolName: "TaskStop", toolCallId: "jobs-stop", toolStatus: "success",
+        toolArgs: { job },
+        toolResult: { details: { status: "stopPending", job: {
+          job, command: "npm test", state: "running", stopRequested: true,
+        } } },
+      }),
+      message("jobs-list", "tool", "", {
+        toolName: "TaskList", toolCallId: "jobs-list", toolStatus: "success",
+        toolResult: { details: {
+          delegations: [{ agent: "reviewer", delegationId: "review", status: "running" }],
+          backgroundJobs: { supported: true, tasks: [{ job }] },
+        } },
+      }),
+    ]);
+    const jobHead = (id: string, selector = ".tool-row-header") => container.querySelector(
+      `[data-message-id="${id}"] ${selector}`,
+    )?.textContent;
+    assert(jobHead("jobs-stop", ".tool-row-name") === "Task Stop",
+      "the Bash stop title must not report a completed subagent stop");
+    assert(jobHead("jobs-stop")?.includes("npm test") && jobHead("jobs-stop")?.includes("Stopping"),
+      "the acknowledged Bash stop must identify a command that is still stopping");
+    assert(jobHead("jobs-list")?.includes("reviewer") && jobHead("jobs-list")?.includes("1 background"),
+      "the mixed job list must identify both its delegate and its background command count");
+
     // Keep Task's own message stable: a later lifecycle result must still
     // update its terminal status and timing (#238), unlike unrelated text.
     const start = Date.now() - 12_000;
@@ -648,6 +680,27 @@ globalThis.transcriptRenderProbe = async () => {
       taskDuration() === "4s",
       "Task completion timing did not update to 4s",
     );
+
+    // 系统通知后重建会话时，仍运行的 Task 不应变成已停止。
+    for (const smoothStreaming of [false, true]) {
+      for (const inlineVisualizations of [false, true]) {
+        flushSync(() => useAppStore.setState({ settings: {
+          ...useAppStore.getState().settings!, smoothStreaming, inlineVisualizations,
+        } }));
+        const entries = buildTranscriptEntries([
+          message("native-user", "user", "Delegate"), task,
+          message("system-notice", "system", "Runtime configuration updated"),
+        ]).entries;
+        const history = entries.slice(0, -1);
+        const live = collectLiveDelegationEntries(history, entries.at(-1), true);
+        flushSync(() => root.render(<I18nextProvider i18n={i18n}><span>Other session</span></I18nextProvider>));
+        flushSync(() => root.render(<I18nextProvider i18n={i18n}>
+          <TranscriptHistory entries={history} isRunning liveDelegations={live} />
+        </I18nextProvider>));
+        assert(container.querySelector(".has-subagents")?.classList.contains("active"),
+          "a system-tailed running Task was stopped after session reconstruction");
+      }
+    }
 
     const statusLifecycle = await transcriptStatusProbe();
     const markdownLinks = await markdownLinkInteractionProbe(i18n);

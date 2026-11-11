@@ -6,6 +6,7 @@ export const trEntries: ChangelogEntry[] = [
     date: "2026-10-24",
     highlights: [
       "README önizlemeleri dahil Mermaid diyagramlarını SVG metni olarak kopyalayın veya bağımsız SVG dosyaları olarak dışa aktarın.",
+      "Her turun ve tüm konuşmanın maliyetini bağlam denetçisinde ve tur kullanım kapsülünde görün; abonelik kullanımı kullandıkça öde harcamasından ayrı gösterilir.",
       "Kendi videonuzu başlangıç animasyonu olarak kullanın: \"startup\" klasörüne bir video bırakın, oynatma bitince arayüz yavaşça belirir.",
       "Eklentiler, etkin oturumu değiştirmeden kayıtlı projeleri ve klasörlerini listeleyebilir.",
       "Daha güvenli araç çağrısı doğrulaması ve geçmiş yeniden oynatımı için Pi 1.3.0 motoruna geçin.",

@@ -160,19 +160,28 @@ export function createPluginServices({
       throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
     }
     const result = await getHost()!.call(method, { ...input, pluginId });
+    const body = (result ?? {}) as Record<string, unknown>;
     const changed =
-      (method === "plugin.session.import" &&
-        (result as { imported?: unknown })?.imported === true) ||
-      (method === "plugin.session.importBatch" &&
-        Number((result as { imported?: unknown })?.imported ?? 0) > 0) ||
-      (method === "plugin.session.rename" &&
-        (result as { updated?: unknown })?.updated === true) ||
-      (method === "plugin.session.setAutoTitle" &&
-        (result as { updated?: unknown })?.updated === true) ||
-      (method === "plugin.session.delete" &&
-        (result as { deleted?: unknown })?.deleted === true);
+      (method === "plugin.session.import" && body.imported === true) ||
+      (method === "plugin.session.importBatch" && Number(body.imported ?? 0) > 0) ||
+      (method === "plugin.session.rename" && body.updated === true) ||
+      (method === "plugin.session.setAutoTitle" && body.updated === true) ||
+      (method === "plugin.session.delete" && body.deleted === true) ||
+      // Message-level writes (ADR 0339) also change what the user sees in the
+      // open transcript, so they announce themselves like the session writes.
+      (method === "plugin.session.appendMessage" && typeof body.messageId === "string") ||
+      (method === "plugin.session.replaceMessages" && typeof body.messageCount === "number") ||
+      (method === "plugin.session.deleteMessage" && typeof body.deletedCount === "number") ||
+      (method === "plugin.session.truncateFrom" && typeof body.keptCount === "number");
     if (changed) {
-      sendToRenderer(IPC.event.sessionsChanged, { reason: method, pluginId });
+      // `sessionId` scopes the refresh to the session that actually changed, so
+      // the shell can repaint an open transcript without re-selecting it.
+      const sessionId = typeof input.sessionId === "string" ? input.sessionId : undefined;
+      sendToRenderer(IPC.event.sessionsChanged, {
+        reason: method,
+        pluginId,
+        ...(sessionId ? { sessionId } : {}),
+      });
     }
     return result;
   };
@@ -396,6 +405,14 @@ export function createPluginServices({
         callPluginSessionHost("plugin.session.importBatch", pluginId, input),
       rename: (pluginId, input) => callPluginSessionHost("plugin.session.rename", pluginId, input),
       delete: (pluginId, input) => callPluginSessionHost("plugin.session.delete", pluginId, input),
+      appendMessage: (pluginId, input) =>
+        callPluginSessionHost("plugin.session.appendMessage", pluginId, input),
+      replaceMessages: (pluginId, input) =>
+        callPluginSessionHost("plugin.session.replaceMessages", pluginId, input),
+      deleteMessage: (pluginId, input) =>
+        callPluginSessionHost("plugin.session.deleteMessage", pluginId, input),
+      truncateFrom: (pluginId, input) =>
+        callPluginSessionHost("plugin.session.truncateFrom", pluginId, input),
     },
     project: {
       create: (pluginId, input) => callPluginProjectHost(pluginId, input),
@@ -715,7 +732,7 @@ export function createPluginServices({
      * `workspace:changed` event both expose the open project's folder roots
      * (ADR 0263) instead of the bare primary path.
      */
-    getWorkspaceInfo: () => pluginWorkspaceInfo(getWorkspacePath()),
+    getWorkspaceInfo: (path = getWorkspacePath()) => pluginWorkspaceInfo(path),
     listProjects: createPluginProjectLister(getHost, (operation) => {
       logger.app("plugin", "warn", "plugin.projects.unavailable", {
         code: "HOST_UNAVAILABLE", data: { operation },

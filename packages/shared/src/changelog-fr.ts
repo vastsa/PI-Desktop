@@ -6,6 +6,7 @@ export const frEntries: ChangelogEntry[] = [
     date: "2026-10-24",
     highlights: [
       "Copiez les diagrammes Mermaid en texte SVG ou exportez-les en fichiers SVG autonomes, y compris depuis les aperçus README.",
+      "Voyez le coût de chaque tour et de toute la conversation dans l’inspecteur de contexte et la capsule d’usage du tour, l’usage d’abonnement restant distinct des dépenses à l’usage.",
       "Utilisez votre propre vidéo comme animation de démarrage : déposez-en une dans le dossier « startup » ; l’interface apparaît ensuite en fondu.",
       "Les plugins peuvent lister les projets enregistrés et leurs dossiers sans changer de session active.",
       "Le moteur Pi 1.3.0 améliore la validation des appels d’outils et la relecture sécurisée de l’historique.",

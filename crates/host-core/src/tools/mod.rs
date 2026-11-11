@@ -679,6 +679,18 @@ pub struct ToolsExecuteParams {
     /// execute time.
     #[serde(default)]
     pub plan_safe_actions: Option<Vec<String>>,
+    /// A Bash call that runs a staged mode's pending `run` exit gate (ADR
+    /// mode-definitions). host-core verifies it against the run before
+    /// executing and records the exit code for `modes.gateResult`.
+    #[serde(default)]
+    pub mode_gate: Option<ModeGateRef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModeGateRef {
+    pub run_id: String,
+    pub gate_index: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1176,7 +1188,10 @@ async fn run_file_tool(
         // retain the lease until the actual filesystem body has returned.
         let _file_lease = lease;
         #[cfg(test)]
-        file_lease_tests::pause(workspace.as_deref());
+        file_lease_tests::pause(
+            workspace.as_deref(),
+            args.get("path").and_then(Value::as_str),
+        );
         if let Some((_, resources)) = &_file_lease {
             resources
                 .validate(
@@ -1275,7 +1290,10 @@ pub async fn execute_tool_with_file_lease(
     let result: Result<Value, hashline::ToolError> = match tool_name {
         // Authorize the desktop-owned image request through the normal host gate.
         // Only the trusted desktop runner performs the external call.
-        "GenerateImages" => Ok(serde_json::json!({ "authorized": true })),
+        // Both run in Electron main after the host authorises them:
+        // image generation needs a provider SDK, and computer use needs
+        // a provider plus Chromium capture (ADR 0342).
+        "GenerateImages" | "Computer" => Ok(serde_json::json!({ "authorized": true })),
         "Read" | "Glob" | "Grep" | "Write" | "Edit" => {
             run_file_tool(
                 workspace,
@@ -2998,6 +3016,7 @@ async fn tool_bash(
         .await?;
         return Ok(serde_json::json!({
             "backgroundTaskId": started,
+            "job": { "kind": "bash", "id": started },
             "command": command,
             "commandShellId": options.command_shell_id,
         }));

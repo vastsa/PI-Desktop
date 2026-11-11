@@ -5,6 +5,7 @@ import ts from "typescript";
 import { IPC } from "../../../packages/shared/src/protocol.ts";
 import { pluginProviderCatalogEntries } from "../electron/main/plugin-provider-catalog.ts";
 import { createSessionPushGate } from "../electron/main/plugin-session-push-gate.ts";
+import { normalizeLauncherLaunch } from "../electron/main/ipc/plugin-launcher-ipc.ts";
 
 /** Load the real main-process registration function with unrelated hosts stubbed. */
 function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}) {
@@ -30,6 +31,11 @@ function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}
     "../plugin-panel-host": {},
     "../plugin-provider-catalog": { pluginProviderCatalogEntries },
     "../plugin-session-push-gate": { createSessionPushGate: gateFactory },
+    /**
+     * The launcher's payload check is a pure function; load the real one rather
+     * than a stub so the open-panel handler runs as shipped.
+     */
+    "./plugin-launcher-ipc": { normalizeLauncherLaunch },
   };
   new Function("require", "exports", "module", outputText)(
     (id) => {

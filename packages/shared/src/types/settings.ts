@@ -72,7 +72,15 @@ export type AppSettings = {
   speech?: SpeechSettings;
   /** App-owned real-time voice bindings; separate from local dictation. */
   liveVoice?: LiveVoiceSettings;
+  /** Granted native application control (ADR 0342); off and unbound by default. */
+  computerUse?: import("../computer-use.js").ComputerUseSettings;
   defaultMode: Mode;
+  /**
+   * Budget a new builtin Goal run starts with. Absent or null keeps the
+   * builtin default (20 turns, unlimited tokens); a null field is unlimited.
+   * A running run keeps its own budget.
+   */
+  goalBudget?: import("./mode-runs.js").ModeRunBudget | null;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.
    * Absent and false use the bounded ten-retry policy.
@@ -148,6 +156,23 @@ export type AppSettings = {
    * This is presentation only and never changes tool execution or stored data.
    */
   transcriptDisplayMode?: TranscriptDisplayMode;
+  /**
+   * Fold a settled activity group by default (issue #2094).
+   *
+   * `false` keeps every settled group open; absent and `true` fold them, so a
+   * completed turn expands to a compact list of what the agent did. There is no
+   * other tier: the old "groups of up to four rows stay open" rule is gone,
+   * because a switch labelled auto-collapse must not still collapse something.
+   */
+  autoCollapseSettledGroups?: boolean;
+  /**
+   * Fold reasoning that is no longer being generated (issue #2094).
+   *
+   * Only meaningful while `showThinking` renders reasoning rows. `false` keeps
+   * every rendered Thinking row open; absent and `true` fold all of them except
+   * the row the live turn is still streaming.
+   */
+  autoCollapseThinking?: boolean;
   /**
    * @deprecated Replaced by `transcriptDisplayMode`. Retained for persisted
    * settings and older clients; current rendering no longer reads it.

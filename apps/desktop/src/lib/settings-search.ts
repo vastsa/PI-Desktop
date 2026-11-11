@@ -3,21 +3,30 @@
  * the global search dialog. Keyword keys are the i18n keys of the rows
  * rendered inside each tab; search matches their translations, so a query
  * like "主题" or "theme" can surface the tab that owns the row.
+ *
+ * One destination owns one subject (D684). A destination that mixed subjects —
+ * the old General, which carried appearance next to proxies and disk
+ * maintenance, and the old AI, whose Defaults card collected transcript
+ * display, composer input and run behavior — is split rather than reordered,
+ * because no card order makes two subjects one page.
  */
 
 export type SettingsTabId =
-  | "general"
-  | "ai"
+  | "appearance"
+  | "chat"
   | "shortcuts"
-  | "instructions"
+  | "voice"
+  | "behavior"
   | "agent"
+  | "instructions"
   | "skills"
   | "mcp"
   | "subagents"
+  | "modes"
   | "projects"
+  | "system"
   | "sync"
   | "remoteHosts"
-  | "voice"
   | "about";
 
 export type SettingsNavGroupId =
@@ -33,12 +42,27 @@ export const SETTINGS_NAV_GROUP_LABELS: Record<SettingsNavGroupId, string> = {
   system: "settings.groupSystem",
 };
 
+/** Destination Settings opens on when nothing else is requested. */
+export const DEFAULT_SETTINGS_TAB: SettingsTabId = "appearance";
+
+/** Where a destination id retired by the D684 split lands now. */
+const RETIRED_SETTINGS_TABS: Record<string, SettingsTabId> = {
+  general: "appearance",
+  ai: "behavior",
+};
+
 export type SettingsNavEntry = {
   id: SettingsTabId;
   /** Short label used by the rail and settings search results. */
   labelKey: string;
   /** Descriptive title used at the top of the selected settings page. */
   titleKey: string;
+  /**
+   * One line under the page title saying what the destination decides. It is
+   * set only for destinations whose own content does not already open with a
+   * description — the capability, model and project workbenches do.
+   */
+  subtitleKey?: string;
   /** Visual-only rail grouping; search remains a flat destination index. */
   group: SettingsNavGroupId;
   /** i18n keys of the rows inside the tab; search matches their translations. */
@@ -56,51 +80,26 @@ export type SettingsNavEntry = {
 
 export const SETTINGS_NAV: SettingsNavEntry[] = [
   {
-    id: "general",
-    labelKey: "settings.nav.general",
-    titleKey: "settings.general",
+    id: "appearance",
+    labelKey: "settings.nav.appearance",
+    titleKey: "settings.appearance",
+    subtitleKey: "settings.appearanceSubtitle",
     group: "preferences",
     keywordKeys: [
       "settings.appearance",
-      "settings.storage.title",
-      "settings.storage.dataPath",
-      "settings.storage.cache",
-      "settings.storage.clearCache",
-      "settings.storage.backup",
       "settings.theme",
       "settings.language",
       "settings.languageAuto",
       "settings.font",
       "settings.fontSize",
-      "settings.closeBehaviorTitle",
-      "settings.closeBehaviorTray",
-      "settings.closeBehaviorQuit",
-      "settings.power",
-      "settings.keepAwakeWhileRunning",
-      "settings.keepAwakeWhileRunningDesc",
-      "settings.network",
-      "settings.proxy",
-      "settings.proxySystem",
-      "settings.proxyDirect",
-      "settings.proxyCustom",
-      "settings.proxyUrl",
-      "settings.networkRelaxedModeDesc",
-      "settings.networkRelaxedModeStrictDesc",
-      "settings.preventScreenSleep",
-      "settings.preventScreenSleepDesc",
-      "settings.scheduledTasks",
-      "settings.scheduledTasksDesc",
+      "settings.windowTranslucency",
+      "settings.windowTranslucencyDesc",
       "settings.sidebar",
       "settings.sidebarRunningIndicators",
       "settings.sidebarRunningIndicatorsDesc",
       "settings.sidebarRunningBadge",
+      "settings.sidebarRunningRail",
       "settings.sidebarSessionTime",
-      "settings.windowTranslucency",
-      "settings.windowTranslucencyDesc",
-      "settings.startupAnimation",
-      "settings.startupAnimationDesc",
-      "settings.startupAnimationSkipWhenReady",
-      "settings.startupAnimationSkipWhenReadyDesc",
       "settings.radialMenu",
       "settings.radialMenuDesc",
       "settings.radialMenuEnable",
@@ -110,39 +109,56 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.radialMenuDown",
       "settings.radialMenuLeft",
       "settings.radialMenuActionNone",
+      "settings.startupAnimation",
+      "settings.startupAnimationDesc",
+      "settings.startupAnimationSkipWhenReady",
+      "settings.startupAnimationSkipWhenReadyDesc",
     ],
   },
   {
-    id: "ai",
-    labelKey: "settings.nav.ai",
-    titleKey: "settings.ai",
+    id: "chat",
+    labelKey: "settings.nav.chat",
+    titleKey: "settings.conversation",
+    subtitleKey: "settings.conversationSubtitle",
     group: "preferences",
+    // Indexed in the order the rows render, so a search result and the page it
+    // opens read the same way.
     keywordKeys: [
-      "settings.permissions",
-      "settings.permissionMode",
-      "settings.permissionModeAsk",
-      "settings.permissionModeAcceptEdits",
-      "settings.permissionModeAuto",
-      "settings.defaultsTitle",
-      "settings.imageModel",
-      "settings.mode",
-      "settings.commandShell",
-      "settings.linkOpenTarget",
-      "settings.enterToSend",
-      "settings.infiniteProviderRetry",
-      "settings.infiniteProviderRetryDesc",
-      "settings.smoothStreaming",
-      "settings.inlineVisualizations",
-      "settings.inlineVisualizationsDesc",
-      "settings.smoothStreamingDesc",
+      "settings.chatDisplay",
       "settings.showThinking",
       "settings.showThinkingDesc",
+      "settings.autoCollapseThinking",
+      "settings.autoCollapseThinkingDesc",
       "settings.transcriptDisplayMode",
       "settings.transcriptDisplayModeDesc",
+      "settings.autoCollapseSettledGroups",
+      "settings.autoCollapseSettledGroupsDesc",
       "settings.contextUsageDisplay",
       "settings.contextUsageDisplayRemaining",
       "settings.contextUsageDisplayUsed",
+      "settings.smoothStreaming",
+      "settings.smoothStreamingDesc",
+      "settings.inlineVisualizations",
+      "settings.inlineVisualizationsDesc",
+      "settings.chatInput",
+      "settings.enterToSend",
+      "settings.enterToSendDesc",
       "settings.largePasteThreshold",
+      "settings.linkOpenTarget",
+    ],
+  },
+  {
+    id: "shortcuts",
+    labelKey: "settings.nav.shortcuts",
+    titleKey: "settings.shortcuts",
+    subtitleKey: "settings.shortcutsSubtitle",
+    group: "preferences",
+    keywordKeys: [
+      "settings.keyboard",
+      "settings.shortcutAction.openSearch",
+      "settings.shortcutAction.openCommandPalette",
+      "settings.shortcutAction.toggleSidebar",
+      "settings.shortcutAction.openWorkPanel",
     ],
   },
   {
@@ -163,26 +179,28 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     ],
   },
   {
-    id: "shortcuts",
-    labelKey: "settings.nav.shortcuts",
-    titleKey: "settings.shortcuts",
-    group: "preferences",
-    keywordKeys: [
-      "settings.keyboard",
-      "settings.shortcutAction.openSearch",
-      "settings.shortcutAction.openCommandPalette",
-      "settings.shortcutAction.toggleSidebar",
-      "settings.shortcutAction.openWorkPanel",
-    ],
-  },
-  {
-    id: "instructions",
-    labelKey: "settings.nav.instructions",
-    titleKey: "settings.instructions",
+    id: "behavior",
+    labelKey: "settings.nav.behavior",
+    titleKey: "settings.agentBehavior",
+    subtitleKey: "settings.agentBehaviorSubtitle",
     group: "agent",
     keywordKeys: [
-      "settings.instructionsGlobal",
-      "settings.instructionsPath",
+      "settings.sessionDefaults",
+      "settings.execution",
+      "settings.mode",
+      "settings.modeDesc",
+      "settings.permissions",
+      "settings.permissionMode",
+      "settings.permissionModeDesc",
+      "settings.permissionModeAsk",
+      "settings.permissionModeAcceptEdits",
+      "settings.permissionModeAuto",
+      "settings.commandShell",
+      "settings.infiniteProviderRetry",
+      "settings.infiniteProviderRetryDesc",
+      "settings.scheduledTasks",
+      "settings.scheduledTasksDesc",
+      "computerUse.title",
     ],
   },
   {
@@ -196,6 +214,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.apiKey",
       "settings.baseUrl",
       "settings.apiStyle",
+      "settings.imageModel",
       // Subscription accounts share the service list (D625).
       "settings.vendorAccounts",
       "settings.vendorSubscription",
@@ -207,6 +226,16 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.importSourceCodex",
       "settings.importSourcePi",
       "settings.importSourceCcSwitch",
+    ],
+  },
+  {
+    id: "instructions",
+    labelKey: "settings.nav.instructions",
+    titleKey: "settings.instructions",
+    group: "agent",
+    keywordKeys: [
+      "settings.instructionsGlobal",
+      "settings.instructionsPath",
     ],
   },
   {
@@ -277,6 +306,23 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     ],
   },
   {
+    id: "modes",
+    labelKey: "settings.nav.modes",
+    titleKey: "modes.settings.title",
+    subtitleKey: "modes.settings.subtitle",
+    group: "agent",
+    keywordKeys: [
+      "modes.settings.listTitle",
+      "modes.settings.directory",
+      "modes.settings.newMode",
+      "modes.settings.duplicate",
+      "modes.settings.source",
+      "modes.settings.builtin",
+      "modes.settings.user",
+      "modes.settings.staged",
+    ],
+  },
+  {
     id: "projects",
     labelKey: "settings.nav.projects",
     titleKey: "settings.projectArchive",
@@ -287,6 +333,36 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.archive",
       "project.restore",
       "project.delete",
+    ],
+  },
+  {
+    id: "system",
+    labelKey: "settings.nav.system",
+    titleKey: "settings.system",
+    subtitleKey: "settings.systemSubtitle",
+    group: "system",
+    keywordKeys: [
+      "settings.network",
+      "settings.proxy",
+      "settings.proxySystem",
+      "settings.proxyDirect",
+      "settings.proxyCustom",
+      "settings.proxyUrl",
+      "settings.networkRelaxedModeDesc",
+      "settings.networkRelaxedModeStrictDesc",
+      "settings.storage.title",
+      "settings.storage.dataPath",
+      "settings.storage.cache",
+      "settings.storage.clearCache",
+      "settings.storage.backup",
+      "settings.power",
+      "settings.keepAwakeWhileRunning",
+      "settings.keepAwakeWhileRunningDesc",
+      "settings.preventScreenSleep",
+      "settings.preventScreenSleepDesc",
+      "settings.closeBehaviorTitle",
+      "settings.closeBehaviorTray",
+      "settings.closeBehaviorQuit",
     ],
   },
   {
@@ -331,6 +407,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     id: "about",
     labelKey: "settings.nav.info",
     titleKey: "settings.about",
+    subtitleKey: "settings.aboutSubtitle",
     group: "system",
     keywordKeys: [
       "settings.application",
@@ -344,6 +421,16 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     ],
   },
 ];
+
+/**
+ * Resolve a destination id that may predate the D684 split: an id the index
+ * still owns is returned unchanged, a retired id maps to its successor, and
+ * anything else falls back to the default destination.
+ */
+export function resolveSettingsTab(tab: string): SettingsTabId {
+  if (SETTINGS_NAV.some((entry) => entry.id === tab)) return tab as SettingsTabId;
+  return RETIRED_SETTINGS_TABS[tab] ?? DEFAULT_SETTINGS_TAB;
+}
 
 /**
  * Destinations the current mode offers. Unavailable destinations are omitted

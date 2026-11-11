@@ -1,4 +1,5 @@
 import type {
+  BuiltinMode,
   ModelInfo,
   Mode,
   PermissionMode,
@@ -33,7 +34,8 @@ export const PLACEHOLDER_KEYS = {
 
 export const MODE_CYCLE: readonly Mode[] = ["agent", "plan", "goal"];
 
-export const MODE_LABEL_KEYS: Record<Mode, string> = {
+/** Builtin modes only; a user mode is labelled as written (features/modes). */
+export const MODE_LABEL_KEYS: Record<BuiltinMode, string> = {
   agent: "settings.modeAgent",
   plan: "settings.modePlan",
   goal: "settings.modeGoal",
@@ -61,7 +63,7 @@ export type ComposerFileReference = {
   sessionId: string;
   path: string;
   name: string;
-  kind: "image" | "file" | "session";
+  kind: "image" | "file" | "session" | "directory" | "agent";
   mimeType?: string;
   token?: string;
   plugin?: ComposerPluginPart;

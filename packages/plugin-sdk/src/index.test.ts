@@ -14,6 +14,7 @@ import {
   PLUGIN_PERMISSIONS,
   PLUGIN_VIEW_ICONS,
   type PluginProviderContrib,
+  type PluginManifest,
 } from "./index.js";
 
 const base = { schemaVersion: 1, id: "demo.x", name: "X", version: "0.1.0", main: "main.js" };
@@ -646,6 +647,25 @@ describe("contributes.globalShortcuts", () => {
     expect(
       validateContributions(withShortcuts(shortcuts.slice(0, MAX_GLOBAL_SHORTCUTS_PER_PLUGIN))),
     ).toBeUndefined();
+  });
+});
+
+describe("contributes.launcherTriggers", () => {
+  it("types a declared trigger and keeps it on the parsed manifest", () => {
+    const contributes: NonNullable<PluginManifest["contributes"]> = {
+      launcherTriggers: [
+        {
+          id: "calculator",
+          pattern: "^[0-9+\\-*/(). ]+$",
+          title: { en: "Calculator", "zh-CN": "计算器" },
+        },
+        { id: "kilometres", pattern: "^\\d+\\s*km$", flags: "iu", title: "Kilometres" },
+      ],
+    };
+    expect(validateContributions(contributes)).toBeUndefined();
+    const result = validateManifest({ ...base, permissions: ["ui.panel"], contributes });
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.contributes?.launcherTriggers).toEqual(contributes.launcherTriggers);
   });
 });
 

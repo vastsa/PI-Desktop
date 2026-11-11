@@ -324,6 +324,20 @@ pub fn relocate(source: &Path, destination: &Path) -> Result<()> {
             roots.stored_queue(value)
         })?;
     }
+    rewrite_json(
+        &roots.destination.join("sidebar-preferences.json"),
+        |value| {
+            let mut changed = roots.structured(value);
+            if let Some(meta) = value.get_mut("projectMeta").and_then(Value::as_object_mut) {
+                for (key, item) in std::mem::take(meta) {
+                    let next = roots.remap(&key).unwrap_or_else(|| key.clone());
+                    changed |= next != key;
+                    meta.insert(next, item);
+                }
+            }
+            changed
+        },
+    )?;
     let capabilities = roots.destination.join("agent-capabilities");
     if regular_directory(&capabilities)? {
         for name in ["mcp", "skills", "subagents", "subagent-builtins"] {

@@ -58,15 +58,35 @@ export function captureTranscriptReadingPosition(
   if (!transcriptHasLayout(scroller)) return;
   if (pinned) return { pinned, offset: 0, scrollTop: scroller.scrollTop, windowSize };
   const viewport = scroller.getBoundingClientRect();
-  // Prefer the outer message/turn: its offset also describes reading inside an
-  // expanded tool body, whose explicit disclosure choices survive eviction.
-  for (const row of content.querySelectorAll<HTMLElement>("[data-minimap-id], [data-message-id]")) {
-    const rect = row.getBoundingClientRect();
-    if (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.height === 0) continue;
-    const messageId = row.dataset.minimapId ?? row.dataset.messageId;
-    if (messageId) return { pinned, messageId, offset: rect.top - viewport.top,
-      scrollTop: scroller.scrollTop, windowSize };
+  // Answer groups can acquire an earlier first message when a page is prepended.
+  // Anchor the visible message itself, whose identity and local offset survive
+  // regrouping; use a turn only for visible content without a message node.
+  for (const selector of ["[data-message-id]", "[data-minimap-id]"]) {
+    for (const row of content.querySelectorAll<HTMLElement>(selector)) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.height === 0) continue;
+      const messageId = row.dataset.messageId ?? row.dataset.minimapId;
+      if (messageId) return { pinned, messageId, offset: rect.top - viewport.top,
+        scrollTop: scroller.scrollTop, windowSize };
+    }
   }
+}
+
+function readingPositionRow(content: HTMLElement, messageId: string): HTMLElement | null {
+  const id = CSS.escape(messageId);
+  return content.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
+    ?? content.querySelector<HTMLElement>(`[data-minimap-id="${id}"]`);
+}
+
+/** Test the intended reading offset, before compensating a changed layout. */
+export function isTranscriptReadingAnchorVisible(
+  scroller: HTMLElement,
+  content: HTMLElement,
+  position: TranscriptReadingPosition,
+): boolean {
+  if (!transcriptHasLayout(scroller) || !position.messageId) return false;
+  const height = readingPositionRow(content, position.messageId)?.getBoundingClientRect().height ?? 0;
+  return height > 0 && position.offset < scroller.clientHeight && position.offset + height > 0;
 }
 
 /** Returns false until the bookmarked row is actually mounted. */
@@ -77,12 +97,14 @@ export function restoreTranscriptReadingPosition(
 ): boolean {
   if (!transcriptHasLayout(scroller)) return false;
   if (position.messageId) {
-    const id = CSS.escape(position.messageId);
-    const row = content.querySelector<HTMLElement>(`[data-minimap-id="${id}"], [data-message-id="${id}"]`);
+    const row = readingPositionRow(content, position.messageId);
     if (row) {
       const rect = row.getBoundingClientRect();
       if (rect.height > 0) {
-        scroller.scrollTop += rect.top - scroller.getBoundingClientRect().top - position.offset;
+        const delta = rect.top - scroller.getBoundingClientRect().top - position.offset;
+        // Even assigning the same scrollTop interrupts native smooth travel.
+        // Ignore subpixel rounding instead of repeatedly cancelling that input.
+        if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
         return true;
       }
     }
@@ -97,6 +119,6 @@ export function restoreTranscriptReadingPosition(
   // back to it for an approximate position. `false` is reserved for a bookmark
   // with no usable offset at all, which only a never-laid-out pane produces.
   if (!Number.isFinite(position.scrollTop) || position.scrollTop < 0) return false;
-  scroller.scrollTop = position.scrollTop;
+  if (Math.abs(scroller.scrollTop - position.scrollTop) > 0.5) scroller.scrollTop = position.scrollTop;
   return true;
 }

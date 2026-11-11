@@ -1,5 +1,14 @@
 # 02. Agent Runtime
 
+Trusted-extension `setThinkingLevel` updates both the runtime's public value and
+the Pi Agent state used by subsequent provider requests. Capability clamping
+remains authoritative; a reported change must not leave request effort stale.
+
+Consumed steering closes any pre-steering streaming reservation and separates
+the next assistant reply, including during provider/overflow/silent/progress
+recovery. Recovery stays within the durable turn but never replaces a reply
+located before the steering user row (Refs #1699).
+
 ## 1. Goal
 
 Applied decisions: **D002/D003/D008/D158/D189/D190/D193/D194/D278/D378**.
@@ -73,6 +82,10 @@ runtime returns `{ requested: false }`; immediate `abort()` remains the
 separate cancellation path. `abort()` resolves only after the named active
 operation has completed its cancellation cleanup, so the same runtime can
 accept a follow-up prompt as soon as the abort request returns.
+Cancellation remains busy until both the parent operation and all running
+delegates have retired. Concurrent aborts join that same cleanup. A parent's
+terminal event cannot make a new prompt admissible while a child is still
+retiring. Graceful turn-boundary stop remains a separate operation.
 
 On a headless Host, prompt and approved-plan admission share a per-session
 operation queue with immediate abort and its durable settlement. An abort
@@ -203,8 +216,8 @@ claim the same counter, so a setup 429 followed by a stream 429 cannot reset or
 multiply the budget. The captured response status is applied before classifying
 the provider message in both phases, so a generic 429 body still enters the
 429 budget while known non-retryable classifications remain terminal. Explicit
-billing/account exhaustion (including `insufficient_quota` and spend-limit
-codes) is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
+billing/account exhaustion (including `insufficient_quota`, spend-limit
+codes, and Zhipu/Z.ai usage-limit code `1308`) is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
 builtin subagents use the same controller and policy.
 
 429 retries are silent at the transcript lifecycle: no intermediate assistant
@@ -274,13 +287,31 @@ re-executed. Other malformed context remains subject to strict validation.
 Tool token estimates are optional telemetry: an invalid call identity must not
 prevent the corresponding terminal tool event from being delivered.
 
+Complete Qwen-style `<tool_call><function=Name><parameter=...>...</parameter>
+</function></tool_call>` blocks emitted as assistant text for a known tool
+receive a visible `TOOL_CALL_NOT_EXECUTED` diagnostic on that response. This
+also applies when normal text precedes the block or structured sibling calls
+execute successfully. The original text is preserved; the affected message
+has error status, while valid structured calls and normal continuation remain
+unchanged. Text is never parsed into executable arguments, tools are never
+silently activated, and no provider retry is spent. Fenced, inline, quoted and
+indented examples, unknown tool names and incomplete blocks are not diagnosed.
+This is a conservative format diagnostic, not a general XML parser or proof
+that the model intended an action.
+
 Before surfacing a pre-stream `PROVIDER_ERROR` for HTTP 400/422 whose message
 ends in `(no body)`, the runtime makes at most one silent repair attempt with
 the generated output-limit fields removed: `max_tokens`,
-`max_completion_tokens`, and `max_output_tokens`. This repair does not consume
+`max_completion_tokens`, and `max_output_tokens`. The same one attempt clamps
+those fields down to the ceiling when the body states one (`at most N
+completion tokens`, `max_tokens: N > M, which is the maximum allowed number of
+output tokens`, or `expected a value <= N`) instead of deleting them.
+Anthropic rejects a request that omits `max_tokens`. A field that is absent or
+already within the ceiling is left unchanged. Credit exhaustion and context
+overflow stay on their existing terminal paths. This repair does not consume
 the transient retry budget or add backoff, and the caller's `onPayload` rewrite
-remains active. A second opaque failure is terminal, and an abort before the
-repair starts prevents the repair request.
+remains active. A second failure of the same kind is terminal, and an abort
+before the repair starts prevents the repair request.
 
 The non-429 delay honors the server first: `retry-after-ms`, `retry-after`
 seconds, then `retry-after` HTTP-date, capped at 8 seconds. Captured headers are
@@ -537,7 +568,11 @@ and every record written before the marker existed — is normalized to its late
 user message only, so a restart cannot restore a sequence of
 executable-looking old requests. Dropping an assistant message also drops its
 tool calls, and the fallback drops the results of calls it did not keep, so no
-orphaned tool call or unmatched result can reach the provider. The retained tail
+orphaned tool call or unmatched result can reach the provider. Assistant
+thinking shares the same character budget as text. Answer text is reserved
+first; a thinking block that has to be shortened drops its provider signature,
+so the replay is not a mutated signed trace. A block that still fits keeps its
+signature, and redacted thinking is left unchanged. The retained tail
 is re-estimated with the summary before persistence and before continuation, so
 an oversized request still cannot pass the guard. A fallback also records
 `details.failureReason` — `no_new_history`, `summary_budget`,
@@ -742,8 +777,8 @@ submitted Markdown bytes in a new immutable
 structured title/question in `plan_approvals`, and moves the live state to
 `awaiting_approval`.
 
-Plan/Goal requests retain Write/Edit declarations and, when subagents are
-configured, the Task/TaskWait/TaskList/TaskStop declarations. They are marked
+Plan/Goal requests retain Write/Edit and TaskWait/TaskList/TaskStop declarations,
+plus Task when subagents are configured. They are marked
 unavailable in the active mode. The execution allowlist remains unchanged:
 prohibited calls are blocked before extension call hooks and handlers, and a
 handler retained across a mode change rechecks that mode before executing.
@@ -870,7 +905,8 @@ safety bound, and restored history has a 30 MB aggregate raw-byte budget.
 The newest refs are considered first; all eligible images remain image blocks
 when the history fits, while over-budget or oversized images become safe
 `@path` fallbacks; so do images whose header reports a longest edge above
-8000 px (D675). Every provider request also replaces any image block past that
+8000 px (D675). A pixel-limit rejection does not consume the aggregate byte
+budget, so an older image that still fits is inlined. Every provider request also replaces any image block past that
 pixel limit, in user prompts and tool results alike, with a text notice naming
 its size, so a session that already holds one recovers. An image whose message names it inline (`inlinePath`) is
 spliced back into the prompt at that position, so a restored turn keeps the
@@ -960,9 +996,9 @@ not override the parent session by default: they follow `auto` completely
 their normal approval behavior. An explicit builtin or user scope remains an
 intentional override.
 
-**Tools (ADR 0089).** Delegation is a four-tool lifecycle, built only in Agent
-mode and only when the catalog is non-empty, and all four belong to the Agent
-core set rather than the on-demand catalog of §7.1:
+**Tools (ADR 0089).** Task requires a non-empty subagent catalog. The three
+job controls are always declared and belong to the Agent core set rather than
+the on-demand catalog of §7.1. Execution of all four is restricted to Agent mode:
 
 - `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
@@ -1614,10 +1650,8 @@ execution activation rules:
 - Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
   `# Skills` section and a user-typed `/skill:<skill-id>` both ask the model to call
   it, and a tool that is missing from the schema cannot be called at all
-- Agent: `Task`, `TaskWait`, `TaskList`, and `TaskStop` as well, whenever the
-  subagent catalog is non-empty (§5f) — a capability the model has to go
-  looking for is one it will not use, and the delegation lifecycle is worth
-  the extra schemas per request
+- Agent: `TaskWait`, `TaskList` and `TaskStop` for session jobs, plus `Task`
+  when the subagent catalog is non-empty (§5f)
 - Plan: `Read`, `Glob`, `Grep`, `BrowserPreview`, and `Bash`
 - both modes: `ToolSearch` when at least one deferred capability exists
 
@@ -1958,3 +1992,53 @@ retries and images retain physical account/model attribution. Nested immediate
 parent and owning Task remain distinct. The migration does not add coding-agent
 AgentSession, Codemode or virtual routing. See the coding-agent design review for
 future adoption conditions.
+
+
+### Session job controls
+
+Agent-mode TaskWait, TaskList and TaskStop are available even without configured
+subagents. Task itself still requires a subagent catalog. Plan/Goal retain the
+declarations for conversation compatibility and reject their execution.
+
+Bash background startup and Task startup return an additive `job: {kind, id}`
+reference, where kind is `bash` or `delegation`; their original identifiers
+remain available. TaskList preserves `delegations` and `resumable` and adds
+`backgroundJobs: {supported, tasks}`. Delegation summaries also include job
+references. Bash summaries contain no logs and bound command text to 1 KiB.
+
+TaskWait and TaskStop accept one explicit `job`. For a delegation job,
+`delegationIds` may be omitted, empty, or contain only that job's id (duplicates
+are harmless); conflicting or malformed selectors fail before dispatch with
+instructions to omit `job` for multi-subagent selection. `mode` and
+`minCompleted` are ignored for this single-target form; TaskWait still honors
+`timeoutSeconds`. For a Bash job, combining it with `delegationIds`, `mode` or
+`minCompleted` remains an error with corrective usage instructions. Omitting
+`job` preserves the existing delegation defaults, including stop-all-delegates.
+A Bash job never joins those implicit target sets. A legacy backgroundTaskId
+can be addressed as `{kind: "bash", id: backgroundTaskId}`.
+
+For Bash, TaskWait returns a snapshot with state, nullable exitCode,
+stopRequested, separate stdout/stderr tails and truncated. Each stream is
+bounded to 8 KiB at UTF-8 boundaries; truncation also reflects Host ring loss.
+Reads are repeatable and do not consume desktop output. The wait defaults to
+600 seconds and accepts 1–900 seconds. `details.status` describes the wait
+(completed/timeout/interrupted), independently of the job's state. New input
+interrupts the wait; cancelling the parent releases it without stopping Bash.
+TaskStop returns completed or stopPending based on the actual snapshot. A
+stopRequested flag alone does not confirm termination.
+
+The wait deadline includes capability discovery and in-flight requests.
+On timeout the tool returns its last observed snapshot. If the first
+observation has not arrived, it returns the job reference with
+`snapshotAvailable: false` and no process state. Transcript rows identify
+explicit Bash targets and include background commands in mixed job lists.
+
+Bash is still owned by Host and does not auto-deliver completion or keep the
+parent turn open. Delegation report delivery and resumability retain their
+existing lifecycle. Runtime capability probing is connection-scoped; older
+Hosts and remote workspaces explicitly report Bash controls unavailable,
+while delegation controls remain usable. Transport and Host failures propagate.
+
+### Shared prefix and scratch identity (#1926)
+
+The base runtime system section keeps shell dialect, scratch-variable syntax and temporary-file policy stable across sessions. The exact scratch directory is appended after project/memory context rather than embedded twice in the leading runtime rules. Bash tool descriptions retain their exact path guidance. This preserves a shared system-text prefix, without promising provider cache hits or changing history reconstruction.

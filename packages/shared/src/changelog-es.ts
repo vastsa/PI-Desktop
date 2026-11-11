@@ -6,6 +6,7 @@ export const esEntries: ChangelogEntry[] = [
     date: "2026-10-24",
     highlights: [
       "Copia diagramas Mermaid como texto SVG o expórtalos como archivos SVG independientes, también desde las vistas previas de README.",
+      "Consulta cuánto cuesta cada turno y la conversación completa en el inspector de contexto y la cápsula de uso del turno, con el uso de suscripción separado del gasto por uso.",
       "Usa tu propio vídeo como animación de inicio: coloca uno en la carpeta «startup» y la interfaz aparece con un fundido al terminar.",
       "Los plugins pueden listar los proyectos guardados y sus carpetas sin cambiar la sesión activa.",
       "El motor Pi 1.3.0 mejora la validación de llamadas a herramientas y la reproducción segura del historial.",

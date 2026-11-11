@@ -2054,6 +2054,182 @@ fn global_shortcut_entries_are_validated() {
 }
 
 #[test]
+fn launcher_triggers_are_accepted_and_preserved() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("launcher-triggers");
+    let triggers = json!([
+        {
+            "id": "calculator",
+            "pattern": "^[0-9+\\-*/(). ]+$",
+            "title": { "en": "Calculator", "zh-CN": "计算器" }
+        },
+        {
+            "id": "kilometres",
+            "pattern": "^\\d+\\s*km$",
+            "flags": "iu",
+            "title": "Kilometres"
+        },
+        { "id": "handles", "pattern": "^@\\w+$" }
+    ]);
+    write_plugin(
+        &root,
+        capability_manifest(json!({ "launcherTriggers": triggers }), json!(["ui.panel"])),
+        &[],
+    );
+    let manifest = PluginManager::read_manifest(&root).unwrap();
+    let contributes = manifest.contributes.as_ref().expect("contributes parsed");
+    assert_eq!(contributes["launcherTriggers"], triggers);
+
+    // An empty list activates nothing, so it needs no permission.
+    let empty = dir.path().join("launcher-triggers-empty");
+    write_plugin(
+        &empty,
+        capability_manifest(json!({ "launcherTriggers": [] }), json!([])),
+        &[],
+    );
+    PluginManager::read_manifest(&empty).unwrap();
+}
+
+#[test]
+fn launcher_triggers_require_the_ui_panel_permission() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("launcher-triggers-no-permission");
+    write_plugin(
+        &root,
+        capability_manifest(
+            json!({ "launcherTriggers": [{ "id": "calc", "pattern": "^\\d+$" }] }),
+            json!(["ui.view"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&root).contains("launcher triggers require the ui.panel permission"));
+}
+
+#[test]
+fn launcher_trigger_patterns_are_rejected_when_unsafe() {
+    let dir = tempdir().unwrap();
+    let cases: Vec<(&str, String)> = vec![
+        ("nested-quantifier", "(a+)+".to_string()),
+        ("nested-wildcard", "(.*)*".to_string()),
+        ("ambiguous-alternation", "(a|a)+".to_string()),
+        ("unbalanced-parens", "^(\\d+".to_string()),
+        ("unbalanced-brackets", "^[0-9+$".to_string()),
+        ("empty", "   ".to_string()),
+        ("over-long", format!("^{}$", "9".repeat(200))),
+    ];
+    for (name, pattern) in cases {
+        let root = dir.path().join(name);
+        write_plugin(
+            &root,
+            capability_manifest(
+                json!({ "launcherTriggers": [{ "id": "calc", "pattern": pattern }] }),
+                json!(["ui.panel"]),
+            ),
+            &[],
+        );
+        let error = read_manifest_err(&root);
+        assert!(
+            error.contains("launcher trigger calc pattern"),
+            "{name} should be rejected, got: {error}"
+        );
+    }
+}
+
+#[test]
+fn launcher_trigger_ids_and_flags_are_validated() {
+    let dir = tempdir().unwrap();
+
+    let duplicate = dir.path().join("launcher-triggers-duplicate");
+    write_plugin(
+        &duplicate,
+        capability_manifest(
+            json!({
+                "launcherTriggers": [
+                    { "id": "calc", "pattern": "^\\d+$" },
+                    { "id": "calc", "pattern": "^[0-9]+$" }
+                ]
+            }),
+            json!(["ui.panel"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&duplicate).contains("duplicate launcher trigger id calc"));
+
+    let bad_id = dir.path().join("launcher-triggers-bad-id");
+    write_plugin(
+        &bad_id,
+        capability_manifest(
+            json!({ "launcherTriggers": [{ "id": "1calc", "pattern": "^\\d+$" }] }),
+            json!(["ui.panel"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&bad_id).contains("launcher trigger id is missing or invalid"));
+
+    for (name, flags) in [
+        ("unknown", json!("x")),
+        ("duplicate", json!("ii")),
+        ("too-many", json!("ismuu")),
+        ("not-a-string", json!(42)),
+    ] {
+        let root = dir.path().join(format!("launcher-triggers-flags-{name}"));
+        write_plugin(
+            &root,
+            capability_manifest(
+                json!({ "launcherTriggers": [{ "id": "calc", "pattern": "^\\d+$", "flags": flags }] }),
+                json!(["ui.panel"]),
+            ),
+            &[],
+        );
+        let error = read_manifest_err(&root);
+        assert!(
+            error.contains("launcher trigger calc flags is invalid"),
+            "{name} flags should be rejected, got: {error}"
+        );
+    }
+}
+
+#[test]
+fn launcher_trigger_entries_are_capped_and_must_be_an_array() {
+    let dir = tempdir().unwrap();
+
+    let too_many = dir.path().join("launcher-triggers-too-many");
+    write_plugin(
+        &too_many,
+        capability_manifest(
+            json!({
+                "launcherTriggers": (0..9)
+                    .map(|index| json!({ "id": format!("slot{index}"), "pattern": "^\\d+$" }))
+                    .collect::<Vec<_>>()
+            }),
+            json!(["ui.panel"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&too_many)
+        .contains("contributes.launcherTriggers allows at most 8 entries"));
+
+    let not_an_array = dir.path().join("launcher-triggers-not-an-array");
+    write_plugin(
+        &not_an_array,
+        capability_manifest(json!({ "launcherTriggers": "^\\d+$" }), json!(["ui.panel"])),
+        &[],
+    );
+    assert!(
+        read_manifest_err(&not_an_array).contains("contributes.launcherTriggers must be an array")
+    );
+
+    let not_an_object = dir.path().join("launcher-triggers-not-an-object");
+    write_plugin(
+        &not_an_object,
+        capability_manifest(json!({ "launcherTriggers": ["calc"] }), json!(["ui.panel"])),
+        &[],
+    );
+    assert!(read_manifest_err(&not_an_object)
+        .contains("contributes.launcherTriggers entry must be an object"));
+}
+
+#[test]
 fn composer_transforms_require_permission_and_localized_titles() {
     let dir = tempdir().unwrap();
     let transform = json!({
