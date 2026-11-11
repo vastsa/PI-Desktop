@@ -730,6 +730,10 @@ describe("classifyAgentError", () => {
     "402: gateway said something unexpected",
     "This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 1000.",
     "Insufficient credits",
+    "Insufficient Balance",
+    "Sorry, your account balance is insufficient",
+    '429: {"code":30001,"message":"Sorry, your account balance is insufficient","data":null}',
+    '402: {"error":{"message":"Insufficient Balance","type":"unknown_error","code":"invalid_request_error"}}',
     "Payment Required",
     '429: {"error":{"message":"Insufficient credits"}}',
   ])("treats HTTP 402 and credit-exhaustion wording as terminal: %s", (message) => {
@@ -756,6 +760,11 @@ describe("classifyAgentError", () => {
       retriable: true,
     });
     expect(classifyAgentError(new Error("credits remaining will reset"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    // A bare "balance" mention is not exhaustion on its own.
+    expect(classifyAgentError(new Error("balance low"))).toMatchObject({
       code: "PROVIDER_ERROR",
       retriable: true,
     });

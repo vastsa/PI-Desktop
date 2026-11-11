@@ -49,7 +49,9 @@ const RATE_LIMIT_PATTERN =
 /**
  * Billing, spending, credit, and disk exhaustion are terminal, including
  * OpenAI's `insufficient_quota` type, OpenRouter-style "insufficient credits"
- * / "requires more credits" / "Payment Required" wording, and explicit 429
+ * / "requires more credits" / "Payment Required" wording, DeepSeek's
+ * "Insufficient Balance", SiliconFlow's "account balance is insufficient",
+ * MiniMax's "insufficient balance of the account", and explicit 429
  * error codes. Checked before the status table because those conditions do
  * not recover by backing off. Generic "quota exceeded" wording remains
  * eligible for rate-limit classification below. A bare "credits" is not
@@ -69,7 +71,7 @@ const EXHAUSTED_QUOTA_CODE_PATTERN =
 const ZHIPU_USAGE_LIMIT_PATTERN = /"code"\s*:\s*"?1308(?![0-9])/;
 
 const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
-  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b/i;
+  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+credits\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b|\binsufficient\s+balance\b|\bbalance\s+is\s+insufficient\b/i;
 
 /**
  * Whether a provider message reports a context overflow.
