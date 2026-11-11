@@ -305,7 +305,10 @@ the generated output-limit fields removed: `max_tokens`,
 `max_completion_tokens`, and `max_output_tokens`. The same one attempt clamps
 those fields down to the ceiling when the body states one (`at most N
 completion tokens`, `max_tokens: N > M, which is the maximum allowed number of
-output tokens`, or `expected a value <= N`) instead of deleting them.
+output tokens`, `expected a value <= N`, a `max_tokens` range such as
+DeepSeek's `valid range of max_tokens is [1, N]` or DashScope's `Range of
+max_tokens should be [1, N]`, or Groq's `max_tokens must be less than or equal
+to N`) instead of deleting them.
 Anthropic rejects a request that omits `max_tokens`. A field that is absent or
 already within the ceiling is left unchanged. Credit exhaustion and context
 overflow stay on their existing terminal paths. This repair does not consume
