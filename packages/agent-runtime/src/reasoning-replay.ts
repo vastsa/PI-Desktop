@@ -105,8 +105,19 @@ function assistantThinkingText(message: AssistantMessage): {
 }
 
 /**
+ * Stop reasons the live context never resends. session-context
+ * `isContextMessage` and compaction-tail `DROPPED_STOP_REASONS` treat error,
+ * aborted, and deferred assistants as transcript rows, not model context.
+ * A partial think from one of those turns is not completed reasoning, and it
+ * must not take a retained slot away from a finished turn.
+ */
+const DROPPED_STOP_REASONS = new Set<string>(["error", "aborted", "deferred"]);
+
+/**
  * Collect the newest assistant turns that still carry thinking, newest-last,
  * for storage in checkpoint details. Tool-call blocks are dropped on purpose.
+ * Error, aborted, and deferred turns are skipped for the same reason the live
+ * context drops them.
  */
 export function harvestRetainedReasoning(
   messages: readonly AgentMessage[],
@@ -117,6 +128,7 @@ export function harvestRetainedReasoning(
     const message = messages[index];
     if (!message || message.role !== "assistant") continue;
     const assistant = message as AssistantMessage;
+    if (DROPPED_STOP_REASONS.has(assistant.stopReason)) continue;
     const parts = assistantThinkingText(assistant);
     if (!parts.thinking) continue;
     selected.push({

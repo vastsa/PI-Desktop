@@ -434,7 +434,9 @@ Rules:
   message. When the bound model requires DeepSeek-style reasoning replay,
   `details.retainedReasoning` may hold a bounded list of prior thinking turns
   (text + thinking only) so post-compaction Completions requests can echo
-  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). If the active message crossed the retention limit it is stored in
+  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). Only
+  completed turns are harvested: an `error`, `aborted`, or `deferred` assistant
+  is left out, as it is from the rebuilt context. If the active message crossed the retention limit it is stored in
   marked, truncated form; the original message lines stay complete and
   authoritative for UI/diagnostics. An automatic compaction failure may store
   `details.fallback = "retained_tail"` and a short recovery summary instead of
