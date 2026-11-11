@@ -2021,11 +2021,11 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   `fs/open`, the image reader) already accept it, so such a path completes
   instead of reporting a restriction. A shorthand never completes from that
   wider store; it still searches the session's own one. A reference that matches
-  A Windows drive path rooted the POSIX way (`/c:/dir/file.md`, the shape a
-  Markdown link copies from a POSIX example) is read as `C:\dir\file.md` before
-  matching, so that spelling reaches the file its drive names instead of
-  reporting a miss; a POSIX host keeps `/c:/...`, which is a real path there.
-  nothing returns `match: null`. An exact absolute path outside every allowed
+  nothing returns `match: null`. A Windows drive path rooted the POSIX way
+  (`/c:/dir/file.md`, the shape a Markdown link copies from a POSIX example)
+  is read as `C:\dir\file.md` before matching, so that spelling reaches the
+  file its drive names instead of reporting a miss; a POSIX host keeps
+  `/c:/...`, which is a real path there. An exact absolute path outside every allowed
   root never tries a same-name file inside a root; it is answered by the
   `fs/read` external-file rule instead (ADR 0339): an existing regular file
   that passes it returns `root: "external"` with `matchedBy: "exact-absolute"`
