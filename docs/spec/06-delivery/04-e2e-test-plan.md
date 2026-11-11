@@ -8235,7 +8235,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     fixtures complete on their second request. A second opaque failure remains
     terminal. A 400/422 that names an output ceiling (`at most N completion
     tokens`, `max_tokens: N > M, which is the maximum allowed number of output
-    tokens`, or `expected a value <= N`) gets one silent repair that clamps
+    tokens`, `expected a value <= N`, `valid range of max_tokens is [1, N]`,
+    `Range of max_tokens should be [1, N]`, or `max_tokens must be less than
+    or equal to N`) gets one silent repair that clamps
     those fields to that ceiling instead of removing them. Credit exhaustion
     and context overflow do not take this repair.
   - If the turn is aborted after the first opaque failure, the repair request is
