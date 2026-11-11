@@ -421,10 +421,11 @@ replayed by either retry budget, and a delegate reports it as
 `SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
 messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
 `credit_balance_exhausted`,
-organization/project spend-limit codes, `insufficient credits`, and
-`requires more credits`, and Zhipu/Z.ai JSON error code `1308` for a reached plan
-usage limit) map to terminal `PROVIDER_ERROR` even when the HTTP
-status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
+organization/project spend-limit codes, `insufficient credits`,
+`insufficient balance` / `balance is insufficient` (DeepSeek, SiliconFlow,
+MiniMax), and `requires more credits`, and Zhipu/Z.ai JSON error code `1308`
+for a reached plan usage limit) map to terminal `PROVIDER_ERROR` even when the
+HTTP status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
 omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
 stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
