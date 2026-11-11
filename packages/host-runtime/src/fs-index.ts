@@ -70,7 +70,7 @@ function gitListFiles(root: string): Promise<string[] | null> {
     };
     const timer = setTimeout(() => {
       failed = true;
-      // 截止时间直接结束等待，继承 stdout 的进程可能永远不发 close。
+      // Settle at the deadline: a descendant that inherited stdout may never emit close.
       finish(null);
       child.kill();
       child.stdout.destroy();
