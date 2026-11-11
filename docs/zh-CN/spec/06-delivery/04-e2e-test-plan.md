@@ -7,6 +7,10 @@
 覆盖：`fs-index-git-deadline.test.mjs`。原有索引测试覆盖 Git 忽略规则、
 Unicode 字节分块及深层搜索。
 
+### E2E-QUEUE-late-read-after-event
+
+呈现两个排队提示，保持生产刷新，发送 queueChanged 事件移除第一个提示，再返回旧读取；只显示第二个提示，后续权威刷新继续生效。`queue-refresh-event-order.test.mjs` 覆盖事件与读取顺序、逆序响应及会话独立性；`e2e-queue-refresh-event-order.mjs` 在真实 Electron 中呈现生产 ComposerStatus/useAppStore。不向提供商发送提示。
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
