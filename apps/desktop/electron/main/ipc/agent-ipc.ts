@@ -645,11 +645,28 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentCompact, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!host || !sidecar) throw new Error("backend unavailable");
-    if (activeTurns.has(req.sessionId)) {
-      throw Object.assign(new Error("Session already has an active turn"), {
-        errorCode: ErrorCodes.AGENT_BUSY,
-      });
+    // The busy check below is stale the moment it passes: between it and the
+    // sidecar call sit the settings read, the session detail, and the launch
+    // resolution, so a prompt submitted meanwhile used to start a turn that
+    // this compaction then ran against mid-stream. Hold the same session
+    // operation the prompt and abort paths use, from before the check until
+    // the call settles.
+    const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
+    try {
+      if (activeTurns.has(req.sessionId)) {
+        throw Object.assign(new Error("Session already has an active turn"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      return await compactSession(req.sessionId);
+    } finally {
+      releaseSessionOperation();
     }
+  });
+
+  const compactSession = async (sessionId: string) => {
+    if (!host || !sidecar) throw new Error("backend unavailable");
+    const req = { sessionId };
     const settings = await host.call<any>("settings.get");
     const detail = await host.call<{ session?: any }>("session.get", {
       id: req.sessionId,
@@ -690,7 +707,7 @@ export function registerAgentIpc({
       data: { providerId: launch.providerId, modelId: launch.modelId },
     });
     return result;
-  });
+  };
 
   handle(IPC.invoke.agentAbort, async (req: { sessionId: string; turnId?: string }) => {
     if (!sidecar) throw new Error("sidecar unavailable");
