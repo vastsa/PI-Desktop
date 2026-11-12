@@ -291,6 +291,45 @@ test("FOREIGN KEY constraint failed drops the orphaned entry and keeps draining 
 
 const DEAD_LETTER_FILE = "session-message-outbox.dead-letter.json";
 
+test("a 0-byte outbox quarantines and boots with an empty queue instead of failing (#2272)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-outbox-zerobyte-"));
+  const path = join(dir, "session-message-outbox.json");
+  await writeFile(path, "");
+  const logs = [];
+  const outbox = new PersistenceOutbox(dir, (level, message, data) => logs.push({ level, message, data }));
+  // Boot must not reject: enqueue works and the corrupt file is preserved.
+  await outbox.enqueue({ key: "message:s:m", sessionId: "s", message: { id: "m" } }, () => null);
+  assert.equal(outbox.size(), 1);
+  const quarantined = await readFile(`${path}.corrupt`, "utf8");
+  assert.equal(quarantined, "", "the raw corrupt file is kept for manual recovery");
+  const after = JSON.parse(await readFile(path, "utf8"));
+  assert.deepEqual(after.map((entry) => entry.key), ["message:s:m"]);
+  assert.ok(
+    logs.some((row) => row.level === "warn" && /corrupt file quarantined/.test(row.message)),
+    "quarantine is observable in the persistence log",
+  );
+});
+
+test("a torn non-empty outbox also quarantines instead of failing the boot (#2272)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-outbox-torn-"));
+  const path = join(dir, "session-message-outbox.json");
+  await writeFile(path, '[{"key":"message:s:m","session');
+  const outbox = new PersistenceOutbox(dir, () => undefined);
+  await outbox.enqueue({ key: "message:s:new", sessionId: "s", message: { id: "new" } }, () => null);
+  assert.equal(outbox.size(), 1);
+  assert.equal(await readFile(`${path}.corrupt`, "utf8"), '[{"key":"message:s:m","session');
+});
+
+test("a torn dead-letter file quarantines instead of failing the boot (#2272)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-outbox-dead-torn-"));
+  const path = join(dir, DEAD_LETTER_FILE);
+  await writeFile(path, "[");
+  const outbox = new PersistenceOutbox(dir, () => undefined);
+  await outbox.enqueue({ key: "message:s:m", sessionId: "s", message: { id: "m" } }, () => null);
+  assert.equal(outbox.size(), 1);
+  assert.equal(await readFile(`${path}.corrupt`, "utf8"), "[");
+});
+
 /** Let every pending microtask settle before counting host calls. */
 function settle() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -686,12 +725,13 @@ test("strict mutation accepts duplicate message IDs as durable acknowledgements"
   assert.equal(outbox.size(), 0);
 });
 
-test("delayed consumption of a rejected outbox load stays observed and fails closed", async () => {
+test("delayed consumption of a rejected outbox load stays observed and fails open (#2272)", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pi-outbox-load-observer-"));
   await writeFile(join(dir, "session-message-outbox.json"), "invalid JSON");
   const moduleUrl = new URL("../electron/main/persistence-outbox.ts", import.meta.url).href;
   const source = `
     import assert from "node:assert/strict";
+    import { readFileSync } from "node:fs";
     import { PersistenceOutbox } from ${JSON.stringify(moduleUrl)};
     const unhandled = [];
     process.on("unhandledRejection", (error) => unhandled.push(String(error)));
@@ -702,10 +742,14 @@ test("delayed consumption of a rejected outbox load stays observed and fails clo
     await loadReported;
     await new Promise(setImmediate);
     await new Promise(setImmediate);
-    assert.deepEqual(unhandled, [], "constructor must observe load rejection before a later caller awaits it");
-    assert.ok(logs.some((entry) => entry.level === "error"), "load rejection remains observable");
-    await assert.rejects(outbox.flush(() => null), SyntaxError);
-    await assert.rejects(outbox.enqueue({ key: "new", sessionId: "s", message: { id: "new" } }, () => null), SyntaxError);
+    assert.deepEqual(unhandled, [], "constructor must observe the corrupt load before a later caller awaits it");
+    assert.ok(logs.some((entry) => entry.level === "warn" && /corrupt file quarantined/.test(entry.message)), "corrupt outbox load stays observable as a warning");
+    assert.equal(readFileSync(${JSON.stringify(dir)} + "/session-message-outbox.json.corrupt", "utf8"), "invalid JSON", "the corrupt bytes are preserved for recovery");
+    // Fail open: the backend boots with an empty queue instead of rejecting
+    // every launch on a 0-byte/torn outbox file (#2272).
+    await outbox.enqueue({ key: "new", sessionId: "s", message: { id: "new" } }, () => null);
+    assert.equal(outbox.size(), 1);
+    await outbox.flush(() => null);
   `;
   const child = spawnSync(process.execPath, ["--input-type=module", "-e", source], { encoding: "utf8" });
   assert.equal(child.status, 0, child.stderr || child.stdout);
