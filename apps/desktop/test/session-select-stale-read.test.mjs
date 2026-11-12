@@ -96,3 +96,41 @@ test("a running session still merges its live tail over the detail window", asyn
   assert.equal(runtime.sessionTranscriptCache.get("session").length, 3, "the live tail survives for running sessions");
   assert.equal(stateRef().messages.length, 3);
 });
+
+test("a cold first read also keeps an idle edit that lands during the read", async t => {
+  // No cache entry exists when the read starts, so the pre-read capture is
+  // undefined. An edit that lands in the window moves the cache from
+  // undefined to the edit writer's entry — the same movement the #2233
+  // runtime guard catches with a plain `!== previous`; the caller guard must
+  // not require a defined capture to see it.
+  const stored = { id: "answer", role: "assistant", content: "before edit" };
+  const edited = [{ ...stored, content: "after edit" }];
+  const { stateRef, runtime, slice } = buildStore();
+  let finish;
+  t.mock.method(api, "getSession", () => new Promise(resolve => { finish = resolve; }));
+  const selecting = slice.selectSession("session");
+  await new Promise(resolve => setImmediate(resolve));
+  runtime.cacheSessionTranscript("session", edited, { messageStart: 0, hasMoreBefore: false });
+  stateRef().messages = edited;
+  finish({ session: { id: "session", messages: [stored], messageStart: 0, hasMoreBefore: false } });
+  await selecting;
+  assert.equal(runtime.sessionTranscriptCache.get("session"), edited, "the edit cache survives the cold read");
+  assert.equal(stateRef().messages, edited, "the visible transcript keeps the edit");
+  assert.equal(stateRef().selectingSessionId, undefined, "the selection still completes");
+});
+
+test("a cold first read without edits still hydrates the detail window", async t => {
+  // The runtime caches this read's own detail (nothing moved before it), so
+  // the guard trips on that self-write and falls back to the cache entry —
+  // the same content the plain path would have committed.
+  const saved = { id: "answer", role: "assistant", content: "saved answer" };
+  const { stateRef, runtime, slice } = buildStore();
+  t.mock.method(api, "getSession", async () => ({
+    session: { id: "session", messages: [saved], messageStart: 5, hasMoreBefore: true },
+  }));
+  await slice.selectSession("session");
+  assert.deepEqual(stateRef().messages, [saved]);
+  assert.deepEqual(runtime.sessionTranscriptCache.get("session"), [saved]);
+  assert.deepEqual(stateRef().sessionHistory.session,
+    { messageStart: 5, hasMoreBefore: true, contentLimited: true });
+});
