@@ -10,6 +10,7 @@ import { resolveElectronBinary } from "./e2e/boot.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const { build } = createRequire(join(root, "packages/agent-runtime/package.json"))("esbuild");
 const { electronBinary } = resolveElectronBinary(root);
+const injectDrift = process.argv.includes("--inject-drift");
 const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? root, "transcript-anchor-"));
 try {
   await build({ entryPoints: [join(root, "scripts/e2e/transcript-anchor-repair.tsx")],
@@ -27,6 +28,7 @@ try {
   await writeFile(join(temp, "index.html"), '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:"><title>Transcript anchor repair</title><script type="module" src="renderer.js"></script>');
   await writeFile(join(temp, "main.cjs"), `
 const {app,BrowserWindow}=require('electron');
+const assert=require('node:assert/strict');
 app.setPath('userData',require('node:path').join(__dirname,'profile'));
 app.disableHardwareAcceleration();
 app.whenReady().then(async()=>{
@@ -34,7 +36,37 @@ app.whenReady().then(async()=>{
  win.webContents.on('console-message',e=>console.error(e.message));
  try{
   await win.loadFile(require('node:path').join(__dirname,'index.html'));
-  const results=await win.webContents.executeJavaScript('globalThis.transcriptAnchorRepairProbe()');
+  const js=expression=>win.webContents.executeJavaScript(expression);
+  const call=expression=>js('globalThis.transcriptAnchorRepairFixture.'+expression);
+  const results=[];
+  for(const kind of ['ordinary-shrink','browser-clamp','paragraph-remount','balanced-remount','reader-scroll','unreachable']) {
+    const prepared=await call('prepareCase('+JSON.stringify(kind)+')');
+    const before=(await win.webContents.capturePage(prepared.crop)).toBitmap();
+    assert(new Set(before).size>8,'Empty/uniform painted text');
+    const result=await call('mutateCase(${injectDrift})');
+    const painted=(await win.webContents.capturePage(prepared.crop)).toBitmap();
+    if(!['reader-scroll','unreachable'].includes(kind)) result.identicalPaint=before.equals(painted);
+    results.push(result);
+  }
+  const text=await call('textContracts()');
+  console.log('TRANSCRIPT_TEXT_ANCHOR '+JSON.stringify(text));
+  assert(text.character>0&&text.reconstructed&&text.resolved&&text.rejectedEdit&&text.rejectedMissing&&text.fallbackLegal&&text.fallbackStable,'Text identity/fallback contract failed');
+  assert(text.drift<2&&text.maxFrameDrift<2,'Intra-paragraph character moved');
+  const nativeResults=[];
+  for(const withLayout of [false,true]) {
+    const input=await call('prepareNative('+withLayout+')');
+    win.focus();
+    win.webContents.sendInputEvent({type:'mouseMove',x:input.x,y:input.y});
+    win.webContents.sendInputEvent({type:'mouseWheel',x:input.x,y:input.y,deltaY:60,deltaX:0,canScroll:true});
+    const native=await call('nativeResult()');
+    nativeResults.push({input,native});
+    assert(!native.nativeLayout&&native.top>2&&native.top<280,'Native input did not move the reader without hitting a boundary');
+    assert.equal(native.observerWarnings.length,0,'Unexpected ResizeObserver notification loop');
+    assert(Math.abs(native.actual-input.baseline-(300-native.top))<2,'Native input was confused with layout movement');
+    if(withLayout) assert(native.clamped<800,'Same-delivery layout did not clamp');
+  }
+  console.log('TRANSCRIPT_NATIVE_CLAMP '+JSON.stringify(nativeResults));
+  assert(Math.abs(nativeResults[0].native.top-nativeResults[1].native.top)<2,'Layout swallowed part of native input');
   console.log('TRANSCRIPT_ANCHOR_REPAIR '+JSON.stringify(results));
   app.exit(0);
  }catch(e){console.error(e.stack||String(e));app.exit(1);}
@@ -54,5 +86,13 @@ app.whenReady().then(async()=>{
   const clamp = results.find(result => result.kind === "browser-clamp");
   assert(clamp.clamped < clamp.oldTop, "Fixture did not trigger native boundary clamping");
   assert.equal(results.find(result => result.kind === "paragraph-remount").replaced, true);
+  for (const result of results) {
+    assert(result.samples >= 8 && result.maxFrameDrift < 2, "A sampled frame drifted: " + JSON.stringify(result));
+    assert.equal(result.repeatedWrites, 0, "Stable/boundary restore repeated a scroll write");
+    if (result.identicalPaint !== undefined) assert.equal(result.identicalPaint, true, "Painted text changed: " + result.kind);
+    if (result.kind.includes("remount")) assert.equal(result.replaced && !result.connected, true);
+    if (result.kind === "balanced-remount") assert.equal(result.oldHeight, result.height);
+    if (result.kind === "unreachable") assert.equal(result.top, 0);
+  }
   assert(results.every(result => result.drift < 2), "Same readable paragraph moved: " + JSON.stringify(results));
 } finally { await rm(temp, { recursive: true, force: true }); }

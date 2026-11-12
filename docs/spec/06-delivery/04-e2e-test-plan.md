@@ -13989,10 +13989,18 @@ This test plan spec is accepted when:
   `node scripts/e2e-transcript-anchor-repair.mjs` additionally mounts the real
   paging hook and Markdown in Chromium. It verifies actual native boundary
   clamping, reconstructed paragraph nodes with unchanged parser source ranges,
-  ordinary non-clamping shrinkage, and reader movement. The same readable
-  content must remain within <2 CSS px when reachable. Extend this regression
-  with simultaneous input/layout, legal-boundary fallback, frame/paint samples,
-  and the production transcript journey before declaring the repair complete.
+  ordinary non-clamping shrinkage, balanced internal reflow, reader movement,
+  and unreachable-target legal-boundary fallback without repeated scroll writes.
+  A known-character oracle covers long-paragraph width reflow and rejects
+  edited/missing text. Identical native wheel input is compared with and without
+  same-delivery layout/clamping at equivalent geometry. Reachable readable content
+  must stay within <2 CSS px in eight post-layout samples; stable-content painted
+  crops must be nonempty and byte-identical. `--inject-drift` adds a real 20px
+  displacement after sampling and must fail the final geometry/paint checks.
+  This focused fixture uses inline layout, so production CSS/recycling, native
+  navigation, disclosure and long-history journeys remain separate required
+  checks. Painted crops are not a claim of every-frame or human visual approval.
+  The regression runs from the existing `e2e-transcript-render.mjs` CI entry.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
 - **Status**: Automated Electron fixture and unit regressions implemented; run

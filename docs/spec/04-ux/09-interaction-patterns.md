@@ -1672,9 +1672,11 @@ Project drag/drop follows these patterns:
   a second time. Native input in the same layout delivery still advances the
   reading target. An unreachable target degrades to the legal scroll boundary.
   Where parser-owned source positions exist, the anchor identifies the message,
-  source block, and text position rather than treating a DOM node as identity.
-  Reconstructed unchanged content is re-resolved; changed/missing content falls
-  back to the message anchor without inventing an equivalent sentence.
+  source block, exact rendered text version, and visible character rather than
+  treating a DOM node as identity. Reconstructed unchanged content is re-resolved,
+  including line wrapping within a long paragraph. Changed/missing content falls
+  back to the message anchor without inventing an equivalent sentence. Boundary
+  fallback rebases the held target so repeated restores do not repeat writes.
 - All paging paths leave `overflow-y` and input untouched, including the
   `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
   top-boundary observer. Wheel/trackpad, touch and keyboard input continue
