@@ -241,6 +241,9 @@ pub struct UiMessage {
     pub thinking: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Additive transcript metadata; older records have no truncation marker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_truncated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -456,6 +459,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     if let Some(status) = &message.status {
         meta_obj.insert("status".into(), json!(status));
     }
+    if let Some(truncated) = message.output_truncated {
+        meta_obj.insert("outputTruncated".into(), json!(truncated));
+    }
     if let Some(model_id) = &message.model_id {
         meta_obj.insert("modelId".into(), json!(model_id));
     }
@@ -658,6 +664,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let error = meta.get("error").cloned();
     let response_duration_ms = meta.get("responseDurationMs").and_then(|v| v.as_i64());
     let response_output_tokens = meta.get("responseOutputTokens").and_then(|v| v.as_i64());
+    let output_truncated = meta.get("outputTruncated").and_then(Value::as_bool);
     let response_model_id = meta
         .get("responseModelId")
         .and_then(|v| v.as_str())
@@ -749,6 +756,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             session_message,
             voice_origin: voice_origin.clone(),
             attachments: None,
+            output_truncated,
             steering,
             created_at: record.created_at,
             thinking,
@@ -806,6 +814,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             session_message,
             voice_origin,
             attachments,
+            output_truncated,
             steering,
             created_at: record.created_at,
             thinking,
@@ -4533,6 +4542,7 @@ mod tests {
 
     fn user_msg(id: &str, content: &str, ts: &str) -> UiMessage {
         UiMessage {
+            output_truncated: None,
             id: id.into(),
             role: "user".into(),
             content: content.into(),
@@ -5499,6 +5509,7 @@ mod tests {
         )
         .unwrap();
         let tool = UiMessage {
+            output_truncated: None,
             id: "m2".into(),
             role: "tool".into(),
             content: "ok".into(),
@@ -6292,10 +6303,49 @@ mod tests {
     }
 
     #[test]
+    fn output_truncation_survives_host_restart_and_legacy_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        let session_id = {
+            let db = Database::open(&path).unwrap();
+            let session = create_session(&db, None, None, None, None, None).unwrap();
+            for (id, truncated) in [
+                ("truncated", Some(true)),
+                ("legacy", None),
+                ("normal", Some(false)),
+            ] {
+                let mut wire = json!({
+                    "id": id, "role": "assistant", "content": "Original answer",
+                    "status": "complete", "createdAt": "2026-11-12T00:00:00Z"
+                });
+                if let Some(value) = truncated {
+                    wire["outputTruncated"] = json!(value);
+                }
+                let message: UiMessage = serde_json::from_value(wire).unwrap();
+                append_message(&db, &session.id, &message, None).unwrap();
+            }
+            session.id
+        };
+        let db = Database::open(&path).unwrap();
+        let detail = get_session(&db, &session_id).unwrap().unwrap();
+        assert_eq!(detail.messages.len(), 3);
+        let messages = serde_json::to_value(&detail.messages).unwrap();
+        assert_eq!(messages[0]["outputTruncated"], json!(true));
+        assert!(messages[1].get("outputTruncated").is_none());
+        assert_eq!(messages[2]["outputTruncated"], json!(false));
+        for message in &detail.messages {
+            assert_eq!(message.content, "Original answer");
+            assert_eq!(message.status.as_deref(), Some("complete"));
+            assert!(message.error.is_none());
+        }
+    }
+
+    #[test]
     fn assistant_thinking_roundtrips_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let assistant = UiMessage {
+            output_truncated: None,
             id: "assistant-1".into(),
             role: "assistant".into(),
             content: "final answer".into(),
@@ -6450,6 +6500,7 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let assistant = UiMessage {
+            output_truncated: None,
             id: "assistant-search-1".into(),
             role: "assistant".into(),
             content: "answer with sources".into(),

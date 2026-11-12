@@ -145,6 +145,19 @@ title therefore win concurrent updates. Host-core owns the title source in
 schema v23; this state survives renderer restart and does not expose a general
 transcript-read API. The core runs no title completion of its own.
 
+### 4.2 Output-token truncation (#2277)
+
+A visible text answer ending with `stopReason: "length"` and no tool calls
+retains its original content and records `UiMessage.outputTruncated: true`.
+Host-core round-trips the optional flag through transcript record metadata;
+legacy messages without the flag remain unchanged. No database migration is needed.
+The transcript renders a localized output-token-limit warning below that answer,
+including after history restoration. This annotation is not a terminal error,
+does not enter model context, and does not automatically retry or continue the
+answer. Subsequent prompts remain available. Normal replies, aborts, context
+overflow recovery, empty-response recovery, and Pi's rejection/recovery of
+truncated tool calls retain their existing behavior.
+
 ## 5. Prompt flow
 
 1. load the durable session and reject a missing session

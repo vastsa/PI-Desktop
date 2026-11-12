@@ -1,5 +1,21 @@
 # 04. E2E Test Plan
 
+### E2E-CHAT-output-token-truncation (#2277)
+
+Use the real Desktop runtime and Pi loop with a controlled provider stream
+ending in `length` after text output. Preserve the answer, emit truncation
+metadata exactly once, make no extra provider request, and accept a follow-up.
+Normal stops and aborts have no truncation annotation; a truncated tool call
+is rejected and recovered by Pi without an additional answer warning.
+Coverage: `output-truncation.test.ts`. The production persistence test in
+`empty-assistant-persistence.test.mjs` retains the text and metadata in the
+outbox. `e2e-transcript-render.mjs` renders production AssistantTurn in Electron,
+checks the visible localized warning for live and JSON-restored snapshots, and
+checks its absence on normal replies. No paid provider is used.
+The Host test `output_truncation_survives_host_restart_and_legacy_rows`
+deserializes the wire message, appends it to a real transcript, reopens the
+database, and checks that true/false flags and absent legacy flags survive.
+
 ### E2E-FILE-INDEX-git-deadline
 
 Drive `getWorkspaceFileIndex` and `searchWorkspaceFiles` against real fixture

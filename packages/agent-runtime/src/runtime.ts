@@ -8932,6 +8932,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             modelId: this.provider.modelId,
             providerId: this.provider.id,
             responseModelId: concreteResponseModel(event.message, this.provider.modelId),
+            // Tool-call truncation is recovered by Pi; annotate only a visible
+            // text answer, without turning the settled run into an error.
+            outputTruncated: !failed && !aborted && stopReason === "length" &&
+              Boolean(responseText.trim()) && !messageRequestsTools(event.message) || undefined,
             ...(usage ? { usage } : {}),
             ...(responseDurationMs !== undefined ? { responseDurationMs } : {}),
             ...(streamMs !== undefined ? { modelStreamDurationMs } : {}),
