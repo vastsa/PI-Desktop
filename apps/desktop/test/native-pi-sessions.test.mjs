@@ -172,7 +172,9 @@ test("native model readiness never depends on a Desktop provider but read-only f
   assert.equal(ready(false, {}, { enabled: true, hasSecret: true }, "model"), true);
   const settings = { imageGeneration: { providerId: "images", modelId: "model" } };
   const imageProvider = { id: "images", enabled: true, hasSecret: true };
-  assert.equal(ready(false, {}, imageProvider, "model", settings), false);
+  // An image-generation designation no longer blocks chat readiness: the
+  // image binding is independent of the conversation route.
+  assert.equal(ready(false, {}, imageProvider, "model", settings), true);
   assert.equal(ready(false, {}, { ...imageProvider, id: "chat" }, "model", settings), true);
   assert.equal(ready(false, {}, imageProvider, "other-model", settings), true);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, imageProvider, "model", settings), true);
