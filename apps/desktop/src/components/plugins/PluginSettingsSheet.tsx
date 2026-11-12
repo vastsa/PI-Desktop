@@ -67,6 +67,18 @@ function serializeJson(value: unknown): string {
   }
 }
 
+/**
+ * A json setting's draft is the stored value until the user edits its
+ * textarea, and the textarea text afterwards. Only text needs parsing:
+ * `String({})` is `"[object Object]"`, so parsing an untouched object made
+ * every save fail with "invalid JSON" for the first json setting.
+ */
+export function parseJsonSettingDraft(draft: unknown): unknown {
+  if (typeof draft !== "string") return draft ?? {};
+  const text = draft.trim();
+  return JSON.parse(text === "" ? "{}" : text);
+}
+
 export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Props) {
   // Native plugin views composite above the renderer; hide them while this
   // host sheet is open so the right edge of the dialog stays clickable.
@@ -124,7 +136,7 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
     for (const setting of settings) {
       if (setting.type !== "json") continue;
       try {
-        payload[setting.key] = JSON.parse(String(payload[setting.key] ?? "{}"));
+        payload[setting.key] = parseJsonSettingDraft(payload[setting.key]);
       } catch {
         setError(t("plugins.settingsInvalidJson", { name: setting.title }));
         return;
