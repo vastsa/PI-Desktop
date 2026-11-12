@@ -291,7 +291,7 @@ pub fn find_message_position(
         match decoded {
             Ok(identity) if identity.id == message_id => return Ok(Some(position)),
             Ok(_) => {}
-            Err(error) if invalid_utf8 => {
+            Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
                 tracing::warn!(%error, "skipping invalid indexed transcript identity");
             }
             Err(error) => return Err(error).context("decode indexed transcript message identity"),
@@ -323,7 +323,7 @@ pub fn read_tool_call(
         }
         let identity: Value = match serde_json::from_str(&line) {
             Ok(value) => value,
-            Err(error) if invalid_utf8 => {
+            Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
                 tracing::warn!(%error, "skipping invalid indexed transcript tool-call identity");
                 continue;
             }
@@ -359,8 +359,10 @@ pub fn read_tool_call(
                     apply_tool_review_states(std::slice::from_mut(&mut record), &updates);
                     return Ok(Some(record));
                 }
-                Err(error) if binary_storage::is_error(&error) => return Err(error),
-                Err(error) if invalid_utf8 => {
+                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                    return Err(error)
+                }
+                Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
                     tracing::warn!(%error, "skipping invalid indexed tool-call message");
                 }
                 Err(error) => {
@@ -425,6 +427,21 @@ fn read_layout_line(
 #[cfg(test)]
 thread_local! {
     static LAYOUT_LINE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether a decode failure on a transcript line is a crash-truncated prefix.
+///
+/// `append_line` terminates a torn tail with a newline before appending, which
+/// promotes the torn bytes into a complete line. The line still sniffs as its
+/// leading `type` (the discriminator precedes the truncation point), so the
+/// layout indexes it and even the sequential path classifies it as a message
+/// line, but it can never decode: serde reports the missing tail as an
+/// EOF-category parse error, which surfaces verbatim for plain lines and
+/// inside the `invalid binary storage` reason for encoded ones. Such a line
+/// is unrecoverable -- its tail was lost to a killed process -- so readers
+/// skip it with a warning instead of failing every subsequent read forever.
+fn is_torn_prefix(error: &impl std::fmt::Display) -> bool {
+    error.to_string().contains("EOF while parsing")
 }
 
 /// Whether a JSON string for this value is the value itself.
@@ -1131,16 +1148,20 @@ pub fn read_transcript_window_with_layout(
         match kind {
             "message" => match binary_storage::read::<MessageRecord>(trimmed) {
                 Ok(record) => out.messages.push(record),
-                Err(error) if binary_storage::is_error(&error) => return Err(error),
-                Err(error) if invalid_utf8 => {
+                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                    return Err(error)
+                }
+                Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
                     tracing::warn!(path = %path.display(), %error, "skipping invalid indexed message line");
                 }
                 Err(error) => return Err(error).context("decode indexed transcript message"),
             },
             "compaction" => match binary_storage::read::<CompactionRecord>(trimmed) {
                 Ok(record) => out.compactions.push(record),
-                Err(error) if binary_storage::is_error(&error) => return Err(error),
-                Err(error) if invalid_utf8 => {
+                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                    return Err(error)
+                }
+                Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
                     tracing::warn!(path = %path.display(), %error, "skipping invalid indexed compaction line");
                 }
                 Err(error) => {
@@ -1209,7 +1230,11 @@ pub fn read_transcript_window(
                 if selected {
                     match binary_storage::read::<MessageRecord>(line.trim()) {
                         Ok(record) => out.messages.push(record),
-                        Err(error) if binary_storage::is_error(&error) => return Err(error),
+                        Err(error)
+                            if binary_storage::is_error(&error) && !is_torn_prefix(&error) =>
+                        {
+                            return Err(error)
+                        }
                         Err(error) => {
                             tracing::warn!(path = %path.display(), %error, "skipping invalid message line");
                         }
@@ -1218,7 +1243,9 @@ pub fn read_transcript_window(
             }
             "compaction" => match binary_storage::read::<CompactionRecord>(line.trim()) {
                 Ok(record) => out.compactions.push(record),
-                Err(error) if binary_storage::is_error(&error) => return Err(error),
+                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                    return Err(error)
+                }
                 Err(error) => {
                     tracing::warn!(path = %path.display(), %error, "skipping invalid compaction line");
                 }
@@ -1754,6 +1781,88 @@ mod tests {
             vec!["m1", "m2"],
             "the record after a torn tail must survive"
         );
+    }
+
+    /// A legal-UTF-8 torn tail terminated by `append_line`'s fix-up becomes a
+    /// complete line that still sniffs as a message. It must be skipped by
+    /// every read path, not fail the session forever (#2298).
+    #[test]
+    fn terminated_torn_prefix_is_skipped_by_every_read_path() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
+        let path = dir.path().join("sessions").join("s1.jsonl");
+        // Crash mid-append: a legal-UTF-8 JSON prefix without its newline.
+        {
+            let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+            file.write_all(br#"{"type":"message","id":"torn","role":"user""#)
+                .unwrap();
+        }
+        // The next append terminates the torn prefix, "completing" the line.
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m2", "two"),
+        )
+        .unwrap();
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+
+        let read = read_transcript_window_with_layout(dir.path(), "s1", &layout, 0, None).unwrap();
+        let ids: Vec<&str> = read.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["m1", "m2"],
+            "the torn prefix must not fail the indexed read"
+        );
+
+        let sequential = read_transcript_window(dir.path(), "s1", 0, None).unwrap();
+        let sequential_ids: Vec<&str> = sequential.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(sequential_ids, ["m1", "m2"]);
+
+        assert_eq!(
+            find_message_position(dir.path(), "s1", &layout, "m2").unwrap(),
+            Some(2),
+            "the reverse scan must not fail on the torn prefix; the torn line \
+             occupies a layout position, and the returned position indexes layout offsets"
+        );
+    }
+
+    /// The binaryStorage variant: a torn encoded line terminated by the fix-up
+    /// classifies as `InvalidStorage`, which previously hard-failed even the
+    /// sequential read path (#2298). Writes keep blocking on it (indistinguishable
+    /// from real corruption, by design), so the fixture is written directly.
+    #[test]
+    fn terminated_torn_encoded_prefix_is_skipped_too() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
+        let path = dir.path().join("sessions").join("s1.jsonl");
+        let mut body = fs::read_to_string(&path).unwrap();
+        body.push_str(r#"{"type":"message","id":"img","binaryStorage":{"image":"#);
+        body.push('\n');
+        body.push_str(&tagged("message", &record("m2", "two")).unwrap());
+        body.push('\n');
+        fs::write(&path, body).unwrap();
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+
+        let read = read_transcript_window_with_layout(dir.path(), "s1", &layout, 0, None).unwrap();
+        let ids: Vec<&str> = read.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["m1", "m2"]);
+
+        let sequential = read_transcript_window(dir.path(), "s1", 0, None).unwrap();
+        let sequential_ids: Vec<&str> = sequential.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(sequential_ids, ["m1", "m2"]);
     }
 
     fn record(id: &str, text: &str) -> MessageRecord {
