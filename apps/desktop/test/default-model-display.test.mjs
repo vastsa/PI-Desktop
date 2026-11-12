@@ -197,19 +197,16 @@ test("a disabled default provider lets the new provider take over", () => {
 });
 
 test("a default provider with nothing left to run lets the new provider take over", () => {
-  // Either no chat model at all, or only the image model the default picker
-  // excludes: both leave the default provider unable to run anything.
+  // Only a provider that names no model at all cannot run anything: an
+  // image-generation designation does not exclude a model from chat.
   const bare = provider({ models: [], defaultModelId: undefined });
   const imageOnly = provider({ models: [binding("gpt-image-1")] });
   const added = provider({ id: "p2", name: "Provider Two", models: [binding("llama-4")] });
   assert.equal(providerServesChatModels(bare), false);
   assert.equal(keepsAppDefaultModel([bare], "p1", ""), false);
   assert.equal(
-    keepsAppDefaultModel([imageOnly], "p1", "gpt-image-1", {
-      providerId: "p1",
-      modelId: "gpt-image-1",
-    }),
-    false,
+    keepsAppDefaultModel([imageOnly], "p1", "gpt-image-1"),
+    true,
   );
   assert.equal(
     addProvider([bare], { defaultProviderId: "p1", defaultModelId: "" }, added)
@@ -305,10 +302,10 @@ test("an account that cannot run a chat model claims nothing", () => {
   assert.equal(loginDefaultModel([account()], "missing", {}), null);
 });
 
-test("a login skips the image model the chat default may not use", () => {
+test("a login may claim an image-designated model as the chat default", () => {
   const images = account({ models: [binding("gpt-image-1"), binding("gpt-5")] });
   assert.deepEqual(
-    loginDefaultModel([images], "acct", {}, { providerId: "acct", modelId: "gpt-image-1" }),
-    { providerId: "acct", modelId: "gpt-5" },
+    loginDefaultModel([images], "acct", {}),
+    { providerId: "acct", modelId: "gpt-image-1" },
   );
 });

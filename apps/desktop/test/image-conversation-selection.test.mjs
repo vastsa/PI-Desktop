@@ -11,27 +11,31 @@ const providers = [
   { id: "other", models: [{ id: "gpt-image-2.5" }] },
 ];
 
-test("conversation candidates exclude only the configured image binding", () => {
-  assert.deepEqual(defaultModelOptions(providers, image).map(x => [x.provider.id, x.modelId]), [
-    ["images", "chat"], ["other", "gpt-image-2.5"],
+test("an image-generation designation keeps the model usable for chat", () => {
+  assert.deepEqual(defaultModelOptions(providers).map(x => [x.provider.id, x.modelId]), [
+    ["images", "gpt-image-2.5"], ["images", "chat"], ["other", "gpt-image-2.5"],
   ]);
-  assert.deepEqual(composerModelsForProvider(providers[0], undefined, image).map(x => x.modelId), ["chat"]);
+  assert.deepEqual(
+    composerModelsForProvider(providers[0], undefined).map(x => x.modelId),
+    ["gpt-image-2.5", "chat"],
+  );
   assert.equal(isImageGenerationModel(image, "other", image.modelId), false);
   assert.equal(isImageGenerationModel(image, "images", image.modelId), true);
 });
 
-test("replacement and clearing recompute candidates without removing provider models", () => {
-  const replacement = { providerId: "other", modelId: "gpt-image-2.5" };
-  assert.equal(defaultModelOptions(providers, replacement).length, 2);
-  assert.equal(composerModelsForProvider(providers[0], undefined, replacement).length, 2);
-  assert.equal(defaultModelOptions(providers, null).length, 3);
+test("clearing candidates never removes provider models", () => {
+  assert.equal(defaultModelOptions(providers).length, 3);
+  assert.equal(composerModelsForProvider(providers[0], undefined).length, 2);
   assert.equal(providers[0].models.length, 2);
   const legacy = { id: "images", models: [], defaultModelId: image.modelId };
-  assert.deepEqual(defaultModelOptions([legacy], image), []);
-  assert.deepEqual(composerModelsForProvider(legacy, undefined, image), []);
+  assert.deepEqual(defaultModelOptions([legacy]).map(x => x.modelId), [image.modelId]);
+  assert.deepEqual(
+    composerModelsForProvider(legacy, undefined).map(x => x.modelId),
+    [image.modelId],
+  );
 });
 
-test("runtime rejects an image binding retained by an existing conversation", async () => {
+test("runtime no longer rejects an image-designated model for conversation", async () => {
   register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
   const { createSessionLaunchRuntime } = await import("../electron/main/runtime/session-launch.ts");
   const shell = { id: "cmd", label: "Command Prompt", dialect: "cmd", available: true, isDefault: true };
@@ -44,8 +48,13 @@ test("runtime rejects an image binding retained by an existing conversation", as
     } } },
     modelsDevCatalog: { configureAccount: () => {}, ensureLoaded: async () => {} },
   });
-  await assert.rejects(
-    runtime.resolveAgentRuntimeLaunch("session", { providerId: "images", modelId: image.modelId }, { imageGeneration: image }),
-    error => error.errorCode === "MODEL_NOT_CONFIGURED" && /image model/.test(error.message),
+  // The launch path no longer fails the pairing up front; whatever happens
+  // beyond that point, the old image-model guard is gone.
+  await assert.doesNotReject(
+    runtime.resolveAgentRuntimeLaunch(
+      "session", { providerId: "images", modelId: image.modelId }, { imageGeneration: image },
+    ).catch((error) => {
+      assert.equal(/image model/.test(String(error?.message)), false);
+    }),
   );
 });

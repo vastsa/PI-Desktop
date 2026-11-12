@@ -1,8 +1,6 @@
 import {
   bindingSupportsImages,
   effectiveContextWindow,
-  isImageGenerationModel,
-  type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
   type ModelBinding,
@@ -36,12 +34,12 @@ function configuredModelIds(provider: ConfiguredProvider): string[] {
 export function composerModelsForProvider(
   provider: ConfiguredProvider,
   discovered: readonly ModelInfo[] | undefined,
-  imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
   return configuredModelIds(provider).filter((modelId) =>
-    !isImageGenerationModel(imageGeneration, provider.id, modelId)
-      && !(discovered ?? []).some((model) =>
-        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted"),
+    // An image-generation designation does not exclude a model from chat:
+    // the image binding is host-owned and independent of the chat route.
+    !(discovered ?? []).some((model) =>
+      sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted"),
   ).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),

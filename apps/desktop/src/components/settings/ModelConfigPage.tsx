@@ -74,12 +74,13 @@ function imageCandidates(
   return result;
 }
 
-function chatModelOptions(providers: readonly ProviderPublic[], imageModels: readonly ImageGenerationBinding[]) {
+function chatModelOptions(providers: readonly ProviderPublic[]) {
   return providers.flatMap((provider) => {
     const ids = provider.models?.length
       ? provider.models.map((model) => model.id)
       : [provider.defaultModelId ?? ""];
-    return ids.filter((id) => !!id.trim() && !isImageGenerationPickerCandidate(imageModels, provider.id, id))
+    // An image-generation designation does not exclude a model from chat.
+    return ids.filter((id) => !!id.trim())
       .map((modelId) => ({ provider, modelId }));
   });
 }
@@ -149,7 +150,7 @@ export function ModelConfigPage() {
     [settings?.imageGenerationModels, settings?.imageGeneration, providers],
   );
   const providerReady = (provider: ProviderPublic) =>
-    providerServesChatModels(provider, imageGenerationCandidates);
+    providerServesChatModels(provider);
 
   if (!settings) return null;
 
@@ -168,18 +169,9 @@ export function ModelConfigPage() {
     models: ModelBinding[],
     imageModelIds?: string[],
   ) => {
-    const selectedImageIds = imageModelIds ?? imageGenerationCandidates
-      .filter((entry) => entry.providerId === saved.id)
-      .map((entry) => entry.modelId);
-    const firstModelId = models.find((model) =>
-      !selectedImageIds.some((id) => sameWireId(id, model.id)),
-    )?.id;
-    const replacementChatModelId =
-      settings.defaultProviderId === saved.id && firstModelId &&
-      !models.some((model) => sameWireId(model.id, settings.defaultModelId ?? "") &&
-        !selectedImageIds.some((id) => sameWireId(id, model.id)))
-    ? firstModelId
-    : undefined;
+    // An image-generation designation does not exclude a model from chat, so
+    // the head binding is a legitimate chat default even when image-marked.
+    const firstModelId = models[0]?.id;
     try {
       if (pluginCatalogSetup?.providerId === saved.id) {
         const defaultsProviders = [...providers.filter((provider) => provider.id !== saved.id), saved];
@@ -187,8 +179,8 @@ export function ModelConfigPage() {
           (provider) => provider.id === settings.defaultProviderId,
         );
         const keepsCurrentDefault = !!currentDefault &&
-          providerServesChatModels(currentDefault, imageGenerationCandidates) &&
-          chatModelOptions([currentDefault], imageGenerationCandidates).some(
+          providerServesChatModels(currentDefault) &&
+          chatModelOptions([currentDefault]).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
           );
         if (!keepsCurrentDefault && firstModelId) {
@@ -215,7 +207,6 @@ export function ModelConfigPage() {
         const nextSettings = {
           ...current,
           ...plan,
-          ...(replacementChatModelId ? { defaultModelId: replacementChatModelId } : {}),
         };
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
@@ -230,7 +221,7 @@ export function ModelConfigPage() {
         // provider is still runnable — until they change it themselves.
         const currentProvider = providers.find((provider) => provider.id === settings.defaultProviderId);
         const keepsCurrentDefault = !!currentProvider && providerReady(currentProvider) &&
-          chatModelOptions([currentProvider], imageGenerationCandidates).some(
+          chatModelOptions([currentProvider]).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
           );
         if (!keepsCurrentDefault && firstModelId) {
@@ -242,9 +233,6 @@ export function ModelConfigPage() {
         }
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else {
-        if (replacementChatModelId) {
-          await api.setSettings({ ...settings, defaultModelId: replacementChatModelId });
-        }
         showToast(t("settings.providerUpdated"), { variant: "success" });
       }
       setSetupFor(null);

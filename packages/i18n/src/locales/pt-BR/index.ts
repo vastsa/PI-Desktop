@@ -1021,7 +1021,7 @@ export const ptBR = {
     imageModelSaveFailed: "Não foi possível salvar o modelo de imagem.",
     clearImageModel: "Limpar",
     setImageModel: "Definir como modelo de geração de imagens",
-    imageModelChatExclusionHint: "Os modelos marcados são removidos dos menus de chat e modelo padrão ao salvar. Isto é geração de imagens, não entrada de imagens. Marque apenas modelos com os quais seu endpoint possa gerar imagens.",
+    imageModelChatExclusionHint: "Um modelo marcado como modelo de geração de imagens continua utilizável para chat e subagents; o vínculo de imagens é independente da rota de conversa. Isto é geração de imagens, não entrada de imagens. Marque apenas modelos com os quais seu endpoint possa gerar imagens.",
     imageModelSelected: "Modelo de imagens selecionado",
     generatedImage: "Imagem gerada {{index}}",
     downloadGeneratedImage: "Baixar",

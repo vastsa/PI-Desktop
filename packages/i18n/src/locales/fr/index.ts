@@ -1024,7 +1024,7 @@ export const fr = {
     "imageModelSaveFailed": "Impossible d’enregistrer le modèle.",
     "clearImageModel": "Effacer",
     "setImageModel": "Définir comme modèle d’images",
-    imageModelChatExclusionHint: "Après enregistrement, les modèles marqués sont retirés des menus de chat et de modèle par défaut. Il s’agit de génération, pas d’entrée d’images. Marquez uniquement les modèles capables de générer des images sur votre endpoint.",
+    imageModelChatExclusionHint: "Un modèle marqué comme modèle de génération d’images reste utilisable pour le chat et les subagents ; la liaison d’images est indépendante de la route de conversation. Il s’agit de génération, pas d’entrée d’images. Marquez uniquement les modèles capables de générer des images sur votre endpoint.",
     "imageModelSelected": "Modèle d’images sélectionné",
     "generatedImage": "Image générée {{index}}",
     "downloadGeneratedImage": "Télécharger",
