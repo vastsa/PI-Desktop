@@ -302,10 +302,33 @@ export class PersistenceOutbox {
     await this.loadDeadLetters();
   }
 
+  private async quarantineCorruptFile(path: string, error: unknown): Promise<void> {
+    const quarantinePath = `${path}.corrupt`;
+    try {
+      await rename(path, quarantinePath);
+    } catch (renameError) {
+      this.logger("warn", "session persistence outbox corrupt file could not be quarantined", String(renameError));
+    }
+    this.logger("warn", "session persistence outbox corrupt file quarantined, starting with an empty queue", {
+      file: quarantinePath,
+      data: String(error),
+    });
+  }
+
   private async loadEntries(): Promise<void> {
     try {
       const raw = await readFile(this.path, "utf8");
-      const parsed: unknown = JSON.parse(raw);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (parseError: unknown) {
+        // A 0-byte or torn write (e.g. the process is force-killed between
+        // truncate and write) is recoverable data loss, not a boot failure:
+        // quarantining the file and starting with an empty queue lets the
+        // backend boot instead of failing every launch (#2272).
+        await this.quarantineCorruptFile(this.path, parseError);
+        return;
+      }
       if (!Array.isArray(parsed)) throw new Error("Invalid session persistence outbox: expected an array");
       this.entries = parsed.map(decodeAppend);
     } catch (error: unknown) {
@@ -319,7 +342,15 @@ export class PersistenceOutbox {
   private async loadDeadLetters(): Promise<void> {
     try {
       const raw = await readFile(this.deadLetterPath, "utf8");
-      const parsed: unknown = JSON.parse(raw);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (parseError: unknown) {
+        // Same reasoning as loadEntries: a torn dead-letter file must not
+        // fail the backend boot (#2272).
+        await this.quarantineCorruptFile(this.deadLetterPath, parseError);
+        return;
+      }
       if (!Array.isArray(parsed)) throw new Error("Invalid session persistence dead letters: expected an array");
       this.deadLetters = parsed.map((value) => {
         const entry = decodeAppend(value);
