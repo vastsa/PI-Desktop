@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -266,6 +266,29 @@ test("cloneGitRepository gates a plain http remote on the user's endpoint policy
     assert.equal(dest, join(root, "demo"));
   } finally {
     setAllowInsecureUserEndpoints(false);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("cloneGitRepository cleans up a half-built destination after a timeout", async () => {
+  // git was killed mid-clone; keeping the residue made every retry of the
+  // same name hit CONFLICT until the user found and deleted it by hand.
+  const root = mkdtempSync(join(tmpdir(), "pi-clone-"));
+  try {
+    await assert.rejects(
+      cloneGitRepository({
+        url: "https://github.com/org/demo.git",
+        parentPath: root,
+        // git created the checkout before it was killed mid-clone.
+        run: async (_cwd, args) => {
+          mkdirSync(join(String(args[3]), ".git", "objects"), { recursive: true });
+          return { code: 1, stderr: "git clone timed out", errorCode: "TIMEOUT" };
+        },
+      }),
+      { errorCode: "TIMEOUT" },
+    );
+    assert.equal(existsSync(join(root, "demo")), false);
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
