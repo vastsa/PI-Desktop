@@ -200,7 +200,12 @@ function executedToolCallIds(messages: AgentMessage[]): Set<string> {
  * full range keeps those successes counted while still dropping calls with no
  * row or only an error row.
  */
-function executedToolCallIdsInEntries(entries: Entry[]): Set<string> {
+/**
+ * The full-range lookup for callers that collect a slice pi already guarded
+ * elsewhere — a retained tail folded back into a shaped preparation, say —
+ * so the same executed-call contract applies outside prepareCompaction.
+ */
+export function executedToolCallIdsInEntries(entries: Entry[]): Set<string> {
   const messages: AgentMessage[] = [];
   for (const entry of entries) {
     if (entry.type === "message") messages.push(entry.message);
