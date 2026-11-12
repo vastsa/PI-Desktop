@@ -55,6 +55,55 @@ function userMessage(text: string, timestamp: number): AgentMessage {
   return { role: "user", content: [{ type: "text", text }], timestamp } as AgentMessage;
 }
 
+function assistantTextMessage(text: string, timestamp: number): AgentMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openai-completions",
+    provider: "local",
+    model: "local-model",
+    usage: {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 2,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp,
+  } as AgentMessage;
+}
+
+/** A `role: "custom"` row: a valid cut point in pi's session log. */
+function customMessage(text: string, timestamp: number): AgentMessage {
+  return { role: "custom", content: text, timestamp } as unknown as AgentMessage;
+}
+
+/** One assistant message carrying a parallel tool batch. */
+function assistantBatch(
+  calls: Array<{ name: string; args: Record<string, unknown>; id: string }>,
+  timestamp: number,
+): AgentMessage {
+  return {
+    role: "assistant",
+    content: calls.map(({ name, args, id }) => ({ type: "toolCall", id, name, arguments: args })),
+    api: "openai-completions",
+    provider: "local",
+    model: "local-model",
+    usage: {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 2,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "toolUse",
+    timestamp,
+  } as AgentMessage;
+}
+
 function messageEntry(id: string, message: AgentMessage, second: number): Entry {
   return {
     type: "message",
@@ -84,10 +133,10 @@ function toolCallNames(messages: AgentMessage[]): Array<string | undefined> {
 /** Small enough that the history ends up in `messagesToSummarize`. */
 const settings = { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 };
 
-function preparationOf(entries: Entry[], converted: boolean) {
+function preparationOf(entries: Entry[], converted: boolean, compactionSettings = settings) {
   const prepared = converted
-    ? prepareCompaction(withPiFileOpToolNames(entries), settings)
-    : prepareCompaction(entries, settings);
+    ? prepareCompaction(withPiFileOpToolNames(entries), compactionSettings)
+    : prepareCompaction(entries, compactionSettings);
   if (!prepared.ok) throw new Error("prepareCompaction refused the fixture");
   return prepared.value;
 }
@@ -369,6 +418,97 @@ describe("pi's file-op collection through the adapter", () => {
     expect(preparation).toBeDefined();
     expect([...preparation!.fileOps.edited]).toEqual(["src/done.ts"]);
     expect([...preparation!.fileOps.written]).toEqual([]);
+  });
+
+  it("keeps a split turn's failed and unexecuted prefix calls out", () => {
+    // The cut lands inside the turn (a long final assistant text against
+    // keepRecentTokens=1), so the whole batch goes to turnPrefixMessages. The
+    // first call completed, the second's only row reports an error, and the
+    // third never got a row at all (a Stop broke the batch before preparing
+    // it) — only the completed call touched its file.
+    const entries = [
+      messageEntry("u1", userMessage("edit the three files", 1), 1),
+      messageEntry(
+        "a1",
+        assistantBatch([
+          { name: "Edit", args: { path: "src/done.ts" }, id: "call-1" },
+          { name: "Edit", args: { path: "src/failed.ts" }, id: "call-2" },
+          { name: "Edit", args: { path: "src/never.ts" }, id: "call-3" },
+        ], 2),
+        2,
+      ),
+      messageEntry("r1", toolResultMessage("call-1"), 3),
+      messageEntry("r2", toolResultMessage("call-2", true), 4),
+      messageEntry("a2", assistantTextMessage("All three are handled.", 5), 5),
+    ];
+
+    const preparation = preparationOf(entries, true);
+
+    expect(preparation).toBeDefined();
+    expect(preparation!.isSplitTurn).toBe(true);
+    // The batch really sits in the prefix, not in the summarized history.
+    expect(preparation!.turnPrefixMessages).toHaveLength(4);
+    expect([...preparation!.fileOps.edited]).toEqual(["src/done.ts"]);
+  });
+
+  it("counts a split turn's success whose result row lies past the cut", () => {
+    // A custom message is a valid cut point, so the boundary can land between
+    // the batch and its result row: both calls sit in turnPrefixMessages while
+    // the successful call's row is in retainedTail and the skipped call has no
+    // row anywhere. A prefix-only lookup would drop the success; the guard has
+    // to derive ids from the full transcript range. Ops carried from the
+    // previous checkpoint must survive unchanged.
+    const previousCompaction = {
+      type: "compaction",
+      id: "c0",
+      parentId: null,
+      seq: 0,
+      timestamp: "2026-09-22T00:00:00.000Z",
+      summary: "earlier work",
+      retainedTail: [],
+      tokensBefore: 100,
+      details: {
+        readFiles: ["src/carried-read.ts"],
+        modifiedFiles: ["src/carried-edit.ts"],
+      },
+    } as unknown as Entry;
+    const entries = [
+      previousCompaction,
+      messageEntry("u1", userMessage("edit across the cut", 1), 1),
+      messageEntry(
+        "a1",
+        assistantBatch([
+          { name: "Edit", args: { path: "src/across.ts" }, id: "call-1" },
+          { name: "Edit", args: { path: "src/never.ts" }, id: "call-2" },
+        ], 2),
+        2,
+      ),
+      // Heavy enough that the boundary lands here, between batch and result.
+      messageEntry("c1", customMessage("x".repeat(40_000), 3), 3),
+      messageEntry("r1", toolResultMessage("call-1"), 4),
+      messageEntry("a2", assistantTextMessage("done", 5), 5),
+    ];
+
+    const preparation = preparationOf(
+      entries,
+      true,
+      { ...settings, keepRecentTokens: 100 },
+    );
+
+    expect(preparation).toBeDefined();
+    expect(preparation!.isSplitTurn).toBe(true);
+    expect(preparation!.turnPrefixMessages).toHaveLength(2);
+    // The successful call's row really is past the cut.
+    expect(preparation!.retainedTail.map((message) => message.role)).toEqual([
+      "custom",
+      "toolResult",
+      "assistant",
+    ]);
+    expect([...preparation!.fileOps.edited]).toEqual([
+      "src/carried-edit.ts",
+      "src/across.ts",
+    ]);
+    expect([...preparation!.fileOps.read]).toEqual(["src/carried-read.ts"]);
   });
 });
 

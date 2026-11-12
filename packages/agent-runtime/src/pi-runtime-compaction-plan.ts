@@ -189,6 +189,25 @@ function executedToolCallIds(messages: AgentMessage[]): Set<string> {
   return ids;
 }
 
+/**
+ * Ids from every toolResult row in `entries`.
+ *
+ * The lookup has to span the whole compactable range, not one message slice:
+ * a split turn's prefix ends at the cut, but the result rows for calls in that
+ * prefix can sit past it in `retainedTail` (a custom/branch boundary between
+ * the call and its result), and the same is true for the last calls of
+ * `messagesToSummarize` when the cut lands mid-turn. Deriving the set from the
+ * full range keeps those successes counted while still dropping calls with no
+ * row or only an error row.
+ */
+function executedToolCallIdsInEntries(entries: Entry[]): Set<string> {
+  const messages: AgentMessage[] = [];
+  for (const entry of entries) {
+    if (entry.type === "message") messages.push(entry.message);
+  }
+  return executedToolCallIds(messages);
+}
+
 /** Record one assistant message's Read/Write/Edit paths. Mutates `fileOps`. */
 export function collectMessageFileOperations(
   message: AgentMessage,
@@ -214,6 +233,7 @@ function collectFileOperations(
   messages: AgentMessage[],
   entries: Entry[],
   previousCompactionIndex: number,
+  executedCallIds: ReadonlySet<string> = executedToolCallIds(messages),
 ): FileOperations {
   const fileOps = createFileOperations();
   if (previousCompactionIndex >= 0) {
@@ -229,7 +249,6 @@ function collectFileOperations(
       }
     }
   }
-  const executedCallIds = executedToolCallIds(messages);
   for (const message of messages) collectMessageFileOperations(message, fileOps, executedCallIds);
   return fileOps;
 }
@@ -293,9 +312,21 @@ export function prepareCompaction(
       const message = messageForSummary(compactableEntries[index]!);
       if (message) retainedTail.push(message);
     }
-    const fileOps = collectFileOperations(messagesToSummarize, pathEntries, previousCompactionIndex);
+    // One lookup for both slices: the prefix ends at the cut, so its calls'
+    // result rows can live in `retainedTail`, and the same is true across the
+    // `messagesToSummarize` boundary. A per-slice set would drop those
+    // successes.
+    const executedCallIds = executedToolCallIdsInEntries(compactableEntries);
+    const fileOps = collectFileOperations(
+      messagesToSummarize,
+      pathEntries,
+      previousCompactionIndex,
+      executedCallIds,
+    );
     if (cutPoint.isSplitTurn) {
-      for (const message of turnPrefixMessages) collectMessageFileOperations(message, fileOps);
+      for (const message of turnPrefixMessages) {
+        collectMessageFileOperations(message, fileOps, executedCallIds);
+      }
     }
     const contextMessages = buildContextEntries(pathEntries).flatMap((entry) =>
       sessionEntryToContextMessages(entry),
