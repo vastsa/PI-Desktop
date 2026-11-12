@@ -572,9 +572,11 @@ export function createSessionSlice({
         // cache entry; committing the stale window now would revert that edit
         // on screen. #2233 taught loadSessionDetail itself to refuse caching
         // such a read — the caller-level cache write and commit need the same
-        // guard.
+        // guard. The comparison needs no "captured an entry" precondition: a
+        // cold read captures undefined, and an edit that lands in the window
+        // moves the cache from undefined to an entry — exactly the movement
+        // the runtime guard's plain `!== previous` catches there.
         const transcriptMovedWhileReading =
-          cacheBeforeDetailRead !== undefined &&
           runtime.sessionTranscriptCache.get(id) !== cacheBeforeDetailRead &&
           !runtime.liveSessionTranscripts.has(id) &&
           currentState.runningSessions[id] !== true;
