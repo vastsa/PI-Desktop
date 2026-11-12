@@ -419,21 +419,37 @@ export function registerSessionIpc({
       });
     }
     if (!host) throw new Error("host unavailable");
-    const res = await host.call("session.delete", { id });
-    await persistenceOutbox.dropSession(id);
-    forgetTranscriptRewriteHistory(id);
-    // Drop the session's pi-agent so a later session with the same id (or a
-    // stale runtime) can't answer with this session's context.
-    if (sidecar) {
-      sidecar.clearProjectInstructionRoot(id);
-      sidecar.clearVendorAuthBindings(id);
-      await sidecar
-        .call("agent.disposeSession", { sessionId: id })
-        .catch(() => undefined);
+    // A running turn's rows cascade away with the session while the sidecar
+    // keeps streaming into them: every later outbox append fails its foreign
+    // key, and the renderer keeps receiving events for a session that no
+    // longer exists. Fork refuses the same thing; holding the operation as
+    // well closes the check-to-delete window for a turn that starts between
+    // the check and the host call.
+    if (activeTurns.has(id)) {
+      throw Object.assign(new Error("Cannot delete a running session"), {
+        errorCode: ErrorCodes.AGENT_BUSY,
+      });
     }
-    sessionProjects.delete(id);
-    logger.app("session", "info", "session deleted", { sessionId: id });
-    return res;
+    const releaseSessionOperation = await acquireSessionOperation(id);
+    try {
+      const res = await host.call("session.delete", { id });
+      await persistenceOutbox.dropSession(id);
+      forgetTranscriptRewriteHistory(id);
+      // Drop the session's pi-agent so a later session with the same id (or a
+      // stale runtime) can't answer with this session's context.
+      if (sidecar) {
+        sidecar.clearProjectInstructionRoot(id);
+        sidecar.clearVendorAuthBindings(id);
+        await sidecar
+          .call("agent.disposeSession", { sessionId: id })
+          .catch(() => undefined);
+      }
+      sessionProjects.delete(id);
+      logger.app("session", "info", "session deleted", { sessionId: id });
+      return res;
+    } finally {
+      releaseSessionOperation();
+    }
   });
   handle(IPC.invoke.sessionRename, async (id: string, title: string) => {
     if (id.startsWith("native-pi:")) {
