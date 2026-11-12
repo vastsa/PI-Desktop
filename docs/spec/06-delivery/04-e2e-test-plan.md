@@ -2612,6 +2612,23 @@ identify the platform validation still needed.
   quarantine, dead-letter persistence and cap tests); desktop journey
   outstanding
 
+#### E2E-SESSION-outbox-empty-snapshot-is-atomic
+
+- **Preconditions**: An isolated profile has one queued append or dead letter.
+- **Steps**: Delete its session through `PersistenceOutbox.dropSession` and
+  terminate the writer after the empty write opens/truncates its target but
+  before writing the payload. Restart the outbox. Repeat with an injected
+  `EPERM` at rename, then clear normally and restart again.
+- **Expected**: Both failures preserve the previous committed bytes. A pending
+  append remains replayable; a dead letter remains readable without replay.
+  Rename failure rejects the caller. A successful clear commits `[]` and
+  remains readable on restart. Already-corrupt files still fail closed.
+- **Specs linked**: `03-runtime/04-data-storage.md`, ADR 0041
+- **Acceptance**: F (persistence)
+- **Status**: Process/filesystem regression coverage in
+  `persistence-outbox-atomic-clear.test.mjs`; full Electron and native Windows
+  force-close journeys not run.
+
 
 #### E2E-011: Switch between project and temporary sessions
 

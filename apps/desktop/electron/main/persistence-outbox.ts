@@ -340,14 +340,6 @@ export class PersistenceOutbox {
   private async persist(): Promise<void> {
     const write = this.persistChain.then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
-      if (this.entries.length === 0) {
-        try {
-          await writeFile(this.path, "[]\n", "utf8");
-        } catch (error) {
-          this.logger("warn", "session persistence outbox clear failed", String(error));
-        }
-        return;
-      }
       await writeFile(this.tempPath, `${JSON.stringify(this.entries.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempPath, this.path);
     });
@@ -358,14 +350,6 @@ export class PersistenceOutbox {
   private async persistDeadLetters(): Promise<void> {
     const write = this.persistChain.then(async () => {
       await mkdir(dirname(this.deadLetterPath), { recursive: true });
-      if (this.deadLetters.length === 0) {
-        try {
-          await writeFile(this.deadLetterPath, "[]\n", "utf8");
-        } catch (error) {
-          this.logger("warn", "session persistence outbox dead letter clear failed", String(error));
-        }
-        return;
-      }
       await writeFile(this.tempDeadLetterPath, `${JSON.stringify(this.deadLetters.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempDeadLetterPath, this.deadLetterPath);
     });
