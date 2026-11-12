@@ -149,7 +149,11 @@ function fileOperationPath(args: unknown): string | undefined {
  * Assistant stop reasons whose tool calls never ran.
  *
  * pi-agent-core returns before `executeToolCalls` when a turn stops with
- * `error` or `aborted`, so those tool results stay empty. `deferred` is the
+ * `error` or `aborted`, so those tool results stay empty. A `length` stop is
+ * the opposite guarantee: agent-loop fails every tool call on the message
+ * with an error result ("was not executed: the response hit the output
+ * token limit") without running any of them, because the arguments
+ * themselves may be truncated mid-JSON. `deferred` is the
  * third reason compaction-tail drops from the rebuilt context
  * (`DROPPED_STOP_REASONS`); session-context and subagent-context treat the
  * same three rows as transcript-only. The toolCall blocks stay on the
@@ -163,17 +167,39 @@ const UNEXECUTED_ASSISTANT_STOP_REASONS: ReadonlySet<string> = new Set([
   "error",
   "aborted",
   "deferred",
+  "length",
 ]);
+
+/**
+ * Ids of tool calls whose transcript shows a completed, non-error run.
+ * pi-agent-core stamps every toolResult row with `isError`; calls whose only
+ * row is an error row (a failed call touched nothing) or that has no row at
+ * all (a Stop pressed mid-batch breaks a sequential batch before preparing
+ * the remaining calls, and a parallel batch marks the skipped calls aborted)
+ * never took effect on disk.
+ */
+function executedToolCallIds(messages: AgentMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "toolResult") continue;
+    const row = message as AgentMessage & { toolCallId?: unknown; isError?: unknown };
+    if (row.isError === true) continue;
+    if (typeof row.toolCallId === "string") ids.add(row.toolCallId);
+  }
+  return ids;
+}
 
 /** Record one assistant message's Read/Write/Edit paths. Mutates `fileOps`. */
 export function collectMessageFileOperations(
   message: AgentMessage,
   fileOps: FileOperations,
+  executedCallIds?: ReadonlySet<string>,
 ): void {
   if (message.role !== "assistant" || !Array.isArray(message.content)) return;
   if (UNEXECUTED_ASSISTANT_STOP_REASONS.has(message.stopReason)) return;
   for (const block of message.content) {
     if (!block || block.type !== "toolCall") continue;
+    if (executedCallIds && !executedCallIds.has(block.id)) continue;
     const path = fileOperationPath(block.arguments);
     if (!path) continue;
     switch (block.name) {
@@ -203,7 +229,8 @@ function collectFileOperations(
       }
     }
   }
-  for (const message of messages) collectMessageFileOperations(message, fileOps);
+  const executedCallIds = executedToolCallIds(messages);
+  for (const message of messages) collectMessageFileOperations(message, fileOps, executedCallIds);
   return fileOps;
 }
 
