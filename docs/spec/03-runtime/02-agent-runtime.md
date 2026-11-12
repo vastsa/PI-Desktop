@@ -1490,11 +1490,16 @@ a published vendor host (`NAMED_ENDPOINT_PRESETS`), on the
 and not on the OpenCode path that already carries its own session header
 (§6.2):
 
-- For Completions and Anthropic, the built model's `compat` gains
+- For Completions, the built model's `compat` gains
   `sendSessionAffinityHeaders: true` with
-  `sessionAffinityFormat: "openai"`, so the adapter writes `x-session-affinity`
-  and `x-client-request-id` beside `session_id`. That default is spread under
-  the row's own `compat`, so an explicit catalog entry still wins.
+  `sessionAffinityFormat: "openai-nosession"`, so the adapter writes
+  `x-session-affinity` and `x-client-request-id` without `session_id`. Strict
+  gateways can reject the underscore header before authentication (issue
+  #2278); the two hyphenated headers preserve session routing. Anthropic keeps
+  `sendSessionAffinityHeaders: true` with `sessionAffinityFormat: "openai"`,
+  which emits only `x-session-affinity` on that adapter. These defaults are
+  spread under the row's own `compat`, so an explicit catalog entry still wins,
+  including an explicit Completions `openai` format requiring `session_id`.
 - A custom Responses endpoint keeps the adapter's existing `session_id`,
   `x-client-request-id`, and `prompt_cache_key`; agent-runtime adds the stable
   `x-session-affinity` alias through stream options so a reverse proxy can
