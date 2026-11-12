@@ -13986,6 +13986,13 @@ This test plan spec is accepted when:
   Full-Desktop interaction smoke repeats the painted reading check after a real
   Host page. Original native smooth input, resumed follow, search, disclosure,
   hide/reveal and turn-completion paths remain required.
+  `node scripts/e2e-transcript-anchor-repair.mjs` additionally mounts the real
+  paging hook and Markdown in Chromium. It verifies actual native boundary
+  clamping, reconstructed paragraph nodes with unchanged parser source ranges,
+  ordinary non-clamping shrinkage, and reader movement. The same readable
+  content must remain within <2 CSS px when reachable. Extend this regression
+  with simultaneous input/layout, legal-boundary fallback, frame/paint samples,
+  and the production transcript journey before declaring the repair complete.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
 - **Status**: Automated Electron fixture and unit regressions implemented; run
