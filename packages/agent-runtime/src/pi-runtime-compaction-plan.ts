@@ -149,7 +149,11 @@ function fileOperationPath(args: unknown): string | undefined {
  * Assistant stop reasons whose tool calls never ran.
  *
  * pi-agent-core returns before `executeToolCalls` when a turn stops with
- * `error` or `aborted`, so those tool results stay empty. `deferred` is the
+ * `error` or `aborted`, so those tool results stay empty. A `length` stop is
+ * the opposite guarantee: agent-loop fails every tool call on the message
+ * with an error result ("was not executed: the response hit the output
+ * token limit") without running any of them, because the arguments
+ * themselves may be truncated mid-JSON. `deferred` is the
  * third reason compaction-tail drops from the rebuilt context
  * (`DROPPED_STOP_REASONS`); session-context and subagent-context treat the
  * same three rows as transcript-only. The toolCall blocks stay on the
@@ -163,17 +167,58 @@ const UNEXECUTED_ASSISTANT_STOP_REASONS: ReadonlySet<string> = new Set([
   "error",
   "aborted",
   "deferred",
+  "length",
 ]);
+
+/**
+ * Ids of tool calls whose transcript shows a completed, non-error run.
+ * pi-agent-core stamps every toolResult row with `isError`; calls whose only
+ * row is an error row (a failed call touched nothing) or that has no row at
+ * all (a Stop pressed mid-batch breaks a sequential batch before preparing
+ * the remaining calls, and a parallel batch marks the skipped calls aborted)
+ * never took effect on disk.
+ */
+function executedToolCallIds(messages: AgentMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "toolResult") continue;
+    const row = message as AgentMessage & { toolCallId?: unknown; isError?: unknown };
+    if (row.isError === true) continue;
+    if (typeof row.toolCallId === "string") ids.add(row.toolCallId);
+  }
+  return ids;
+}
+
+/**
+ * Ids from every toolResult row in `entries`.
+ *
+ * The lookup has to span the whole compactable range, not one message slice:
+ * a split turn's prefix ends at the cut, but the result rows for calls in that
+ * prefix can sit past it in `retainedTail` (a custom/branch boundary between
+ * the call and its result), and the same is true for the last calls of
+ * `messagesToSummarize` when the cut lands mid-turn. Deriving the set from the
+ * full range keeps those successes counted while still dropping calls with no
+ * row or only an error row.
+ */
+function executedToolCallIdsInEntries(entries: Entry[]): Set<string> {
+  const messages: AgentMessage[] = [];
+  for (const entry of entries) {
+    if (entry.type === "message") messages.push(entry.message);
+  }
+  return executedToolCallIds(messages);
+}
 
 /** Record one assistant message's Read/Write/Edit paths. Mutates `fileOps`. */
 export function collectMessageFileOperations(
   message: AgentMessage,
   fileOps: FileOperations,
+  executedCallIds?: ReadonlySet<string>,
 ): void {
   if (message.role !== "assistant" || !Array.isArray(message.content)) return;
   if (UNEXECUTED_ASSISTANT_STOP_REASONS.has(message.stopReason)) return;
   for (const block of message.content) {
     if (!block || block.type !== "toolCall") continue;
+    if (executedCallIds && !executedCallIds.has(block.id)) continue;
     const path = fileOperationPath(block.arguments);
     if (!path) continue;
     switch (block.name) {
@@ -188,6 +233,7 @@ function collectFileOperations(
   messages: AgentMessage[],
   entries: Entry[],
   previousCompactionIndex: number,
+  executedCallIds: ReadonlySet<string> = executedToolCallIds(messages),
 ): FileOperations {
   const fileOps = createFileOperations();
   if (previousCompactionIndex >= 0) {
@@ -203,7 +249,7 @@ function collectFileOperations(
       }
     }
   }
-  for (const message of messages) collectMessageFileOperations(message, fileOps);
+  for (const message of messages) collectMessageFileOperations(message, fileOps, executedCallIds);
   return fileOps;
 }
 
@@ -266,9 +312,21 @@ export function prepareCompaction(
       const message = messageForSummary(compactableEntries[index]!);
       if (message) retainedTail.push(message);
     }
-    const fileOps = collectFileOperations(messagesToSummarize, pathEntries, previousCompactionIndex);
+    // One lookup for both slices: the prefix ends at the cut, so its calls'
+    // result rows can live in `retainedTail`, and the same is true across the
+    // `messagesToSummarize` boundary. A per-slice set would drop those
+    // successes.
+    const executedCallIds = executedToolCallIdsInEntries(compactableEntries);
+    const fileOps = collectFileOperations(
+      messagesToSummarize,
+      pathEntries,
+      previousCompactionIndex,
+      executedCallIds,
+    );
     if (cutPoint.isSplitTurn) {
-      for (const message of turnPrefixMessages) collectMessageFileOperations(message, fileOps);
+      for (const message of turnPrefixMessages) {
+        collectMessageFileOperations(message, fileOps, executedCallIds);
+      }
     }
     const contextMessages = buildContextEntries(pathEntries).flatMap((entry) =>
       sessionEntryToContextMessages(entry),
