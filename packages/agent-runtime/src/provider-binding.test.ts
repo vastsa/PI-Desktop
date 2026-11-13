@@ -1705,10 +1705,10 @@ describe("session affinity for the adapters' anonymous endpoints (#1634)", () =>
   ): Record<string, unknown> | undefined =>
     buildProviderModel(provider).compat as Record<string, unknown> | undefined;
 
-  it("gives the built model the adapter's non-OpenRouter session shape", () => {
+  it("gives Completions proxy-safe affinity without changing Anthropic", () => {
     expect(compatOf(ownEndpoint())).toMatchObject({
       sendSessionAffinityHeaders: true,
-      sessionAffinityFormat: "openai",
+      sessionAffinityFormat: "openai-nosession",
     });
     expect(
       compatOf(
@@ -1753,7 +1753,12 @@ describe("session affinity for the adapters' anonymous endpoints (#1634)", () =>
     ).toBeUndefined();
   });
 
-  it("spreads the default under a catalog entry that already answers", () => {
+  it.each([
+    { sendSessionAffinityHeaders: false, sessionAffinityFormat: "openrouter" as const, sessionHeader: null },
+    { sendSessionAffinityHeaders: true, sessionAffinityFormat: "openai" as const, sessionHeader: "session-9" },
+  ])("honors explicit catalog affinity settings: $sessionAffinityFormat / $sendSessionAffinityHeaders", async ({
+    sendSessionAffinityHeaders, sessionAffinityFormat, sessionHeader,
+  }) => {
     const provider = ownEndpoint();
     const model = buildProviderModel({
       ...provider,
@@ -1767,18 +1772,33 @@ describe("session affinity for the adapters' anonymous endpoints (#1634)", () =>
         contextWindow: 128_000,
         maxTokens: 8_192,
         compat: {
-          sendSessionAffinityHeaders: false,
-          sessionAffinityFormat: "openrouter",
+          sendSessionAffinityHeaders,
+          sessionAffinityFormat,
         },
       },
     });
     expect(model.compat).toMatchObject({
-      sendSessionAffinityHeaders: false,
-      sessionAffinityFormat: "openrouter",
+      sendSessionAffinityHeaders,
+      sessionAffinityFormat,
     });
+    let headers: Headers | undefined;
+    await createProviderModels(provider, model).streamSimple(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
+      {
+        sessionId: "session-9",
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          headers = new Headers(init?.headers);
+          return new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+        },
+      },
+    ).result();
+    expect(headers?.get("session_id")).toBe(sessionHeader);
+    expect(headers?.get("x-session-affinity")).toBe(sessionHeader);
+    expect(headers?.get("x-client-request-id")).toBe(sessionHeader);
   });
 
-  it("reaches the wire as the three headers §6.3 names", async () => {
+  it("reaches the wire without the session_id header rejected by strict gateways", async () => {
     const provider = ownEndpoint();
     const model = buildProviderModel(provider);
     let headers: Headers | undefined;
@@ -1801,7 +1821,7 @@ describe("session affinity for the adapters' anonymous endpoints (#1634)", () =>
       )
       .result();
 
-    expect(headers?.get("session_id")).toBe("session-9");
+    expect(headers?.get("session_id")).toBeNull();
     expect(headers?.get("x-client-request-id")).toBe("session-9");
     expect(headers?.get("x-session-affinity")).toBe("session-9");
   });

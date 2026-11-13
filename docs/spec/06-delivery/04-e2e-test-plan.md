@@ -8013,11 +8013,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   subagent turn and a plugin one-shot that carry a session id, and capture both.
   5) Repeat step 1 on the row whose base URL host is a published vendor host.
   6) Repeat step 1 on a row whose API style is `opencode_go`.
+  7) For Chat Completions, reject `session_id` with a plain-text 400 at the
+  capture endpoint and send two turns in one session and one in the other.
 - **Expected**:
   - Both captured requests carry a stable per-session identifier that differs
     between the two sessions: `x-session-affinity` and `x-client-request-id`
-    beside `session_id`, plus `prompt_cache_key` in the body, all holding the
+    without `session_id`, plus `prompt_cache_key` in the body, all holding the
     session's own conversation id and unchanged across that session's turns.
+  - All three Chat Completions turns finish with a complete assistant reply
+    through the strict endpoint. Explicit model `compat` can still opt into
+    the legacy `openai` headers or disable affinity headers.
   - The custom Responses request also carries `x-session-affinity` alongside
     the adapter's existing `session_id`, `x-client-request-id`, and
     `prompt_cache_key`, so a reverse proxy that drops underscore headers can
@@ -8029,11 +8034,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - A one-shot call with no session id gains no `prompt_cache_key` or
     `x-session-affinity` header.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` (§6.2, §6.3),
-  `03-runtime/11-provider-model-system.md`, issue #1634
+  `03-runtime/11-provider-model-system.md`, issues #1634 and #2278
 - **Acceptance**: C (chat/stream) + Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`session-affinity.test.ts`); full gateway capture
-  journey Draft
+- **Status**: Adapter-covered (`session-affinity.test.ts`); the real Runtime /
+  HTTP gateway regression (`session-affinity-flow.test.ts`, issue #2278) covers
+  repeated Chat Completions turns in two sessions against an edge that returns
+  400 for `session_id`, verifying completed replies, stable hyphenated headers,
+  distinct session ids, and the body cache key. Full cross-path gateway capture
+  journey Draft.
 
 #### E2E-AGENTS-001: Project instruction chain configures an agent session
 
