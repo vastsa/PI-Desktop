@@ -20536,6 +20536,9 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   cases exercise both `all` and `any` defaults through those same lifecycles.
 - Host tests cover pre-settled observation, repeatable output, Unicode clipping,
   ownership lookup, idempotent stop and stop acknowledgement before termination.
+  On macOS, after a successful group stop and child exit, check that a cleanup
+  denial followed by a missing group settles as stopped; a persistent denial
+  or still-present group must retain the cleanup failure.
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.

@@ -1025,3 +1025,7 @@ the supervisor's process-tree cleanup and reports its actual settled outcome
 or a still-running snapshot with stopRequested. The model's reads and desktop
 reads do not consume each other's logs. Retention and Host restart still bound
 how long a finished ID can be queried.
+
+On macOS, if exit cleanup is denied after the Host successfully signalled the
+group and reaped the child, it briefly checks whether the process group still
+exists. Only a confirmed disappearance clears that denial.
