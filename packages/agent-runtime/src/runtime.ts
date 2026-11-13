@@ -166,6 +166,7 @@ import { withExplicitRequired } from "./tool-schema.js";
 import { buildSessionContext } from "./session-context.js";
 import {
   collectMessageFileOperations,
+  executedToolCallIdsInEntries,
   prepareCompaction,
 } from "./pi-runtime-compaction-plan.js";
 import { compact } from "./pi-runtime-compaction-summary.js";
@@ -7307,14 +7308,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // pi records file operations for `messagesToSummarize` and, on a split
     // turn, `turnPrefixMessages`. The tail is summarized too — including the
     // suffix a split left uncollected — so copy the sets and record it there.
-    // The sets pi returned stay unchanged.
+    // The sets pi returned stay unchanged. The tail's own collection obeys
+    // the executed-call contract those guarded slices follow: a mid-batch
+    // Stop leaves trailing calls with no result row and failed calls keep
+    // an error row — either way the call never touched its file. The
+    // lookup spans the whole transcript because a tail call's result row
+    // can sit anywhere in it.
     const fileOps: CompactionPreparation["fileOps"] = {
       read: new Set(preparation.fileOps.read),
       written: new Set(preparation.fileOps.written),
       edited: new Set(preparation.fileOps.edited),
     };
+    const executedCallIds = executedToolCallIdsInEntries(this.fullEntries);
     for (const message of preparation.retainedTail) {
-      collectMessageFileOperations(message, fileOps);
+      collectMessageFileOperations(message, fileOps, executedCallIds);
     }
     const latestUser = messagesToSummarize
       .filter((message): message is UserMessage => message.role === "user")
@@ -9550,11 +9557,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       next.onPayload = async (payload, payloadModel) => {
         const base = await options.onPayload?.(payload, payloadModel);
         const current = base ?? payload;
-        const replaced = await runner.emit<unknown>(
-          "before_provider_request",
-          { type: "before_provider_request", payload: current },
-          (_acc, value) => value,
-        );
+        const replaced = await runner.emitBeforeProviderRequest(current);
         return replaced ?? base;
       };
     }

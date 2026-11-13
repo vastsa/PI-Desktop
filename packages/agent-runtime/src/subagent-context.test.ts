@@ -237,6 +237,44 @@ describe("prepareDelegateTurnContext", () => {
     expect(prompts).toHaveLength(1);
   });
 
+  it("threads the prior in-run summary past the system row at a second boundary", async () => {
+    // The delegate's state keeps its system row at the head. Detecting the
+    // prior summary at index 0 read that row instead, so the second (and
+    // every later) in-run boundary compaction lost previousSummary and
+    // re-summarized the earlier checkpoint summary under the from-scratch
+    // prompt — exactly what the previous-summary thread exists to avoid.
+    const messages: AgentMessage[] = [
+      { role: "system", content: "delegate system prompt", timestamp: 0 } as AgentMessage,
+      {
+        role: "compactionSummary",
+        summary: "PRIOR CHECKPOINT SUMMARY",
+        tokensBefore: 1_000,
+        timestamp: 1,
+      } as AgentMessage,
+      userMessage("continue the work"),
+      assistantToolCall("big"),
+      toolResult("x".repeat(7_000), "big"),
+    ];
+    const { factory, prompts } = summaryModels(() => summarySuccess("UPDATED SUMMARY"));
+
+    const outcome = await prepareDelegateTurnContext({
+      messages,
+      model: smallModel(),
+      taskBrief: "continue the work",
+      retentionMode: "active_turn",
+      summaryModels: factory,
+      signal: new AbortController().signal,
+    });
+
+    expect(outcome.kind).toBe("compacted");
+    expect(prompts).toHaveLength(1);
+    // The update prompt carries the prior summary forward instead of
+    // treating it as ordinary history under the from-scratch prompt.
+    expect(prompts[0]).toContain("<previous-summary>");
+    expect(prompts[0]).toContain("PRIOR CHECKPOINT SUMMARY");
+    expect(prompts[0]).not.toContain("delegate system prompt");
+  });
+
   it("includes cached input in the delegate's usage anchor", async () => {
     const taskBrief = "Read the permission flow.";
     const messages: AgentMessage[] = [
