@@ -2680,6 +2680,7 @@ sklm: {
     "fsAsksEachTime": "pregunta usted cada vez",
     "legacyFsDowngraded": "Este complemento declara permisos de archivos anteriores a que existieran los ámbitos, por lo que su alcance se ha reducido. Actualícelo para restaurar la función completa.",
     "permissions": {
+      "ui.shell": "Controlar la barra lateral y el panel de trabajo",
       "ui.panel": "Mostrar un panel de complementos",
       "ui.microphone": "Usar el micrófono",
       "clipboard.read": "Leer el portapapeles y su historial",
@@ -2726,6 +2727,7 @@ sklm: {
       "session.delete.all": "Eliminar cualquier conversación, incluidas las tuyas",
     },
     "permissionHelp": {
+      "ui.shell": "Puede cambiar el tamaño y la visibilidad de la barra lateral y del panel de trabajo y activar pestañas existentes.",
       "ui.panel": "Permite que el complemento muestre su propio panel dentro de la aplicación.",
       "ui.microphone": "Permite que el panel aislado solicite audio del micrófono; no concede acceso a la cámara.",
       "clipboard.read": "Puede leer lo que esté actualmente en su portapapeles y el historial del portapapeles retenido.",

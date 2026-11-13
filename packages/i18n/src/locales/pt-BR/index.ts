@@ -2646,6 +2646,7 @@ export const ptBR = {
     fsAsksEachTime: "solicita sua permissão a cada vez",
     legacyFsDowngraded: "As permissões de arquivos declaradas por este plugin são anteriores à existência de escopos, por isso seu alcance foi reduzido. Atualize o plugin para restaurar o funcionamento completo.",
     permissions: {
+      "ui.shell": "Controlar a barra lateral e o painel de trabalho",
       "ui.panel": "Exibir painéis de interface",
       "ui.microphone": "Usar o microfone",
       "clipboard.read": "Ler a área de transferência e seu histórico",
@@ -2692,6 +2693,7 @@ export const ptBR = {
       "session.delete.all": "Excluir qualquer conversa, incluindo as suas",
     },
     permissionHelp: {
+      "ui.shell": "Pode redimensionar ou mostrar a barra lateral e o painel de trabalho e ativar uma aba existente.",
       "ui.panel": "Permite que o plugin exiba seu próprio painel no aplicativo.",
       "ui.microphone": "Permite que o painel isolado solicite áudio do microfone. Não dá acesso à câmera.",
       "clipboard.read": "Pode ler o conteúdo atual da área de transferência e o histórico retido.",

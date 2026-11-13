@@ -1,3 +1,4 @@
+import type { PluginShellLayoutMessage, PluginShellLayoutSnapshot, PluginShellLayoutResponse } from "@pi-desktop/shared";
 import type { ReviewContextLines, ReviewContextResult, ReviewTurnsPage, ReviewChangesPage } from "@pi-desktop/shared";
 type ClipboardDirectoryPaste = {
   items: Array<{ kind: "directory"; path: string; name: string } | { kind: "file"; name: string }>;
@@ -787,6 +788,14 @@ export const api = {
      * main-side high-water mark restarts with it (#1753). */
     bootId?: string;
   }) => invoke<{ ok: boolean }>(IPC.invoke.pluginSessionActive, input),
+  publishPluginShellLayout: (snapshot: PluginShellLayoutSnapshot) =>
+    invoke<{ ok: boolean }>(IPC.invoke.pluginShellLayoutPublish, snapshot),
+  answerPluginShellLayout: (response: PluginShellLayoutResponse) =>
+    invoke<{ ok: boolean }>(IPC.invoke.pluginShellLayoutResult, response),
+  onPluginShellLayoutRequest: (listener: (message: PluginShellLayoutMessage) => void) => {
+    if (!window.piDesktop?.on) throw new Error("UNAVAILABLE: Shell layout IPC is unavailable");
+    return window.piDesktop.on(IPC.event.pluginShellLayoutRequest, (payload) => listener(payload as PluginShellLayoutMessage));
+  },
   listSessions: () =>
     invoke<{ sessions: SessionSummary[]; runningSessionIds?: string[] }>(IPC.invoke.sessionList).then((result) => ({
       ...result,

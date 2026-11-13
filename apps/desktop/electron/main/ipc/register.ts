@@ -1,3 +1,4 @@
+import type { PluginShellLayoutRelay } from "../services/plugin-shell-layout";
 import { join } from "node:path";
 import { dialog, shell, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
 import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type Result } from "@pi-desktop/shared";
@@ -74,6 +75,7 @@ export type RegisterIpcDependencies = {
   ) => void;
   /** The shell's answer to a composer suggestion it was offered (ADR 0333). */
   settleComposerSuggestion: (answer: ComposerSuggestionAnswer) => boolean;
+  shellLayout: PluginShellLayoutRelay;
   activeUserSubagentDocuments: (...args: any[]) => Promise<any>;
   disabledBuiltinSubagents: () => Promise<string[]>;
   disabledBuiltinSkills: () => Promise<string[]>;
@@ -116,6 +118,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     setNotificationViewingSessionId,
     setActivePluginSession,
     settleComposerSuggestion,
+    shellLayout,
     getPluginLauncherWindow,
     togglePluginLauncher,
     openPluginMarket,
@@ -532,6 +535,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getPluginPanelTheme,
     setActivePluginSession,
     settleComposerSuggestion,
+    shellLayout,
   });
   registerPluginLauncherIpc({
     registrar,

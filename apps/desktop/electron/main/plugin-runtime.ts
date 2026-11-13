@@ -1,3 +1,4 @@
+import { isPluginShellLayoutCommand, type PluginShellLayout, type PluginShellLayoutCommand } from "@pi-desktop/shared";
 import {
   readFileSync,
   existsSync,
@@ -278,6 +279,7 @@ export type PluginPanelRequest = {
 export type PluginPanelBridgeContext = {
   /** Absolute path recorded by the panel preload for a real drop gesture. */
   droppedPath?: string;
+  signal?: AbortSignal;
 };
 
 /** Transport to one plugin host process (ADR 0008). */
@@ -531,6 +533,8 @@ export type PluginHostServices = {
    * host's own selection and turn maps, so a plugin never infers it.
    */
   getActiveSession?: () => PluginActiveSession | null;
+  shellLayout?: (pluginId: string, command: PluginShellLayoutCommand, signal?: AbortSignal) => Promise<PluginShellLayout>;
+  clearShellLayout?: (pluginId: string) => void;
   /**
    * Whether a plugin's contributions still apply to the shell's current
    * project. The same scope check every view IPC applies, so a project-scoped
@@ -616,6 +620,11 @@ const HOST_API_ALLOWLIST = new Set([
   "clipboard.readText",
   "clipboard.writeText",
   "clipboard.getHistory",
+  "shell.getLayout",
+  "shell.setSidebar",
+  "shell.setWorkPanel",
+  "workPanel.listTabs",
+  "workPanel.activateTab",
   "shell.openExternal",
   "net.fetch",
   "net.getCapabilities",
@@ -2278,6 +2287,7 @@ export class PluginRuntime {
     const loaded = this.loaded.get(pluginId);
     if (loaded) {
       loaded.disposing = true;
+      this.services.clearShellLayout?.(pluginId);
       this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
       if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
@@ -2496,6 +2506,8 @@ export class PluginRuntime {
       );
     }
     const api = this.hostApi(loaded);
+    const shellCall = (command: PluginShellLayoutCommand) => this.runShellLayout(loaded, command, channel, context?.signal);
+    const shellTabs = (layout: PluginShellLayout) => ({ tabs: layout.workPanel.tabs, activeTabId: layout.workPanel.activeTabId });
     switch (channel) {
       case "ui.showToast":
         await api.ui.showToast(String(payload?.message ?? ""), payload?.level as any);
@@ -2574,6 +2586,11 @@ export class PluginRuntime {
         return { ok: true };
       case "clipboard.getHistory":
         return api.clipboard.getHistory();
+      case "shell.getLayout": return shellCall({ kind: "get" });
+      case "shell.setSidebar": return shellCall({ kind: "setSidebar", input: payload as any });
+      case "shell.setWorkPanel": return shellCall({ kind: "setWorkPanel", input: payload as any });
+      case "workPanel.listTabs": return shellTabs(await shellCall({ kind: "get" }));
+      case "workPanel.activateTab": return shellTabs(await shellCall({ kind: "activateTab", tabId: payload?.tabId as string }));
       case "shell.openExternal":
         await api.shell.openExternal(String(payload?.url ?? ""));
         return { ok: true };
@@ -3386,6 +3403,7 @@ export class PluginRuntime {
     if (loaded.disposing) return;
     if (this.loaded.get(loaded.manifest.id) !== loaded) return;
     const pluginId = loaded.manifest.id;
+    this.services.clearShellLayout?.(pluginId);
     // The exit code is the diagnosis for a crash report: a Windows hard fault
     // (0xC0000005 and friends) and a plugin's own process.exit(1) are different
     // bugs. Do not copy plugin stdout/stderr into user-visible errors or crash
@@ -4610,6 +4628,26 @@ export class PluginRuntime {
     }
     current.count += 1;
     return current.count > MAX_COMPLETES_PER_WINDOW;
+  }
+
+  /** Enforce mutation grants and active scope on both sides of the renderer hop. */
+  private async runShellLayout(loaded: LoadedPlugin, command: PluginShellLayoutCommand, api: string, signal?: AbortSignal): Promise<PluginShellLayout> {
+    const pluginId = loaded.manifest.id;
+    try {
+      if (command.kind !== "get") this.assertPermission(loaded, "ui.shell");
+      if (!isPluginShellLayoutCommand(command)) throw apiError("INVALID_ARGUMENT", "invalid shell layout arguments");
+      if (!this.services.isPluginActiveInProject?.(pluginId)) throw apiError("PERMISSION_DENIED", "plugin is not active in this project");
+      if (!this.services.shellLayout) throw apiError("UNSUPPORTED", `host api not available: ${api}`);
+      if (loaded.disposing) throw apiError("UNAVAILABLE", "plugin is unloading");
+      const layout = await this.services.shellLayout(pluginId, command, signal);
+      if (loaded.disposing || this.loaded.get(pluginId) !== loaded) throw apiError("UNAVAILABLE", "plugin unloaded");
+      if (!this.services.isPluginActiveInProject?.(pluginId)) throw apiError("PERMISSION_DENIED", "plugin is not active in this project");
+      this.services.audit?.({ pluginId, api, ok: true, ts: Date.now() });
+      return layout;
+    } catch (error) {
+      this.services.audit?.({ pluginId, api, ok: false, errorCode: (error as PluginApiError).code ?? "INTERNAL", ts: Date.now() });
+      throw error;
+    }
   }
 
   /**
@@ -6439,7 +6477,20 @@ export class PluginRuntime {
           }
         },
       },
+      workPanel: {
+        listTabs: async () => {
+          const layout = await this.runShellLayout(loaded, { kind: "get" }, "workPanel.listTabs");
+          return { tabs: layout.workPanel.tabs, activeTabId: layout.workPanel.activeTabId };
+        },
+        activateTab: async (tabId: string) => {
+          const layout = await this.runShellLayout(loaded, { kind: "activateTab", tabId }, "workPanel.activateTab");
+          return { tabs: layout.workPanel.tabs, activeTabId: layout.workPanel.activeTabId };
+        },
+      },
       shell: {
+        getLayout: () => this.runShellLayout(loaded, { kind: "get" }, "shell.getLayout"),
+        setSidebar: (input: import("@pi-desktop/shared").PluginSidebarLayoutInput) => this.runShellLayout(loaded, { kind: "setSidebar", input }, "shell.setSidebar"),
+        setWorkPanel: (input: import("@pi-desktop/shared").PluginWorkPanelLayoutInput) => this.runShellLayout(loaded, { kind: "setWorkPanel", input }, "shell.setWorkPanel"),
         openExternal: async (url: string) => {
           this.assertPermission(loaded, "shell.openExternal");
           const allowed = parseAllowedExternalUrl(url);

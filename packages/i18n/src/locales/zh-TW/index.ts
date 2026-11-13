@@ -2672,6 +2672,7 @@ sklm: {
     fsAsksEachTime: "每次都會詢問",
     legacyFsDowngraded: "此外掛宣告的是舊版檔案許可權，實際範圍已被收窄。更新外掛可恢復完整功能。",
     permissions: {
+      "ui.shell": "控制側邊欄和工作面板",
       "ui.panel": "顯示外掛面板",
       "ui.microphone": "使用麥克風",
       "clipboard.read": "讀取剪貼簿及其歷史",
@@ -2720,6 +2721,7 @@ sklm: {
       "session.delete.all": "刪除任意工作階段，包括你自己的對話",
     },
     permissionHelp: {
+      "ui.shell": "可調整側邊欄和工作面板的寬度及顯示狀態，並切換到既有分頁。",
       "ui.panel": "允許外掛在應用內顯示獨立面板。",
       "ui.microphone": "允許隔離面板請求麥克風音訊，不授予相機權限。",
       "clipboard.read": "可能讀取當前剪貼簿內容以及應用執行期間保留的剪貼簿歷史。",

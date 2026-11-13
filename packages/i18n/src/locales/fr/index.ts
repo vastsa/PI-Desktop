@@ -2680,6 +2680,7 @@ sklm: {
     "fsAsksEachTime": "demande vous à chaque fois",
     "legacyFsDowngraded": "Ce plugin déclare les autorisations de fichiers antérieures à l'existence des scopes, sa portée a donc été réduite. Mettez-le à jour pour restaurer toutes les fonctions.",
     "permissions": {
+      "ui.shell": "Contrôler la barre latérale et le panneau de travail",
       "ui.panel": "Afficher un panneau de plug-in",
       "ui.microphone": "Utiliser le microphone",
       "clipboard.read": "Lire le presse-papiers et son historique",
@@ -2726,6 +2727,7 @@ sklm: {
       "session.delete.all": "Supprimer n'importe quelle conversation, y compris les vôtres",
     },
     "permissionHelp": {
+      "ui.shell": "Peut redimensionner ou afficher la barre latérale et le panneau de travail et activer un onglet existant.",
       "ui.panel": "Permet au plugin d'afficher son propre panneau dans l'application.",
       "ui.microphone": "Permet au panneau isolé de demander l'audio du microphone, sans accès à la caméra.",
       "clipboard.read": "Peut lire tout ce qui se trouve actuellement dans votre presse-papiers et l'historique conservé du presse-papiers.",

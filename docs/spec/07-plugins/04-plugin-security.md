@@ -25,6 +25,22 @@ Main risks:
 - `pi.browser.cdp` methods not on the CDP allowlist = `PERMISSION_DENIED` (no
   cookies, storage, Target, or Fetch; no DevTools websocket)
 
+### Shell layout boundary
+
+`ui.shell` is a separate medium-risk grant for `shell.setSidebar`,
+`shell.setWorkPanel` and `workPanel.activateTab`; `ui.view` and `desktop.control`
+do not confer it. Main authenticates the caller, enforces its current project
+activation scope and grant, then asks the renderer to apply the change. A
+session/context switch before application rejects the stale mutation. Plugins
+cannot address a historical session or mutate a Main-owned layout mirror.
+
+`getLayout`, `listTabs` and `shell:layout` subscriptions need no grant and expose
+only layout and current-session tab metadata, never tab contents or transcripts.
+Subscriptions stop on unsubscribe or disposal; pending calls are rejected when
+their caller or renderer disappears. Renderer failures remain observable rather than
+returning guessed success. See [the API contract](03-plugin-api.md#shell-layout)
+and [ADR](../../adr/plugin-shell-layout-api.md).
+
 ## 3. Isolation strategy
 
 ### Must
@@ -590,3 +606,10 @@ Not enforced yet:
   <permission>`); a load with no recorded grant takes the declared set
 - A `userSelected` root does not survive a restart, so a plugin has to ask again
   each session
+
+Shell layout authorization uses the renderer snapshot's displayed project,
+independently of Main's workspace during asynchronous project switches. A
+selection-in-progress read is unavailable; an out-of-project snapshot is never
+returned or broadcast to a project-scoped plugin. Panel/view document reloads
+and crashes cancel outstanding shell calls, including calls made through the
+legacy bridge.

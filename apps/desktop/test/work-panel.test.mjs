@@ -263,7 +263,7 @@ test("work panel uses the fixed-window internal dock", () => {
   );
 });
 
-test("work panel header exposes a scrollable tab strip and direct new-page action", () => {
+test("work panel header exposes a scrollable tab strip and direct new-page action", async () => {
   const headerIndex = panelSource.indexOf('className="work-panel-header"');
   const stripIndex = panelSource.indexOf('className="work-panel-tab-strip no-drag"');
   const actionsIndex = panelSource.indexOf('className="work-panel-actions no-drag"');
@@ -303,7 +303,9 @@ test("work panel header exposes a scrollable tab strip and direct new-page actio
   assert.doesNotMatch(panelSource, /work-panel-collapse/);
   assert.doesNotMatch(panelSource, /onCollapse/);
   assert.doesNotMatch(panelSource, /work-panel-toolbar-collapse/);
-  assert.match(panelSource, /panel\.tabs\.file/);
+  assert.match(panelSource, /work-panel-tab-label/);
+  const labelSource = await readFile(new URL("../src/lib/work-panel-tab-label.ts", import.meta.url), "utf8");
+  assert.match(labelSource, /panel\.tabs\.file/);
   // Every native surface in the panel — the preview browser and each plugin
   // view — composites above the renderer. Exit and panel-wide overlays hide
   // it; the launcher is rendered in the panel body and needs no floating layer.

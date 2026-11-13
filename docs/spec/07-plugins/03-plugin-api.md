@@ -1078,6 +1078,78 @@ pi.shell.openExternal(url: string): Promise<void>
 `openExternal` parses `url` and opens only `http:`, `https:`, and `mailto:`
 hrefs (D330 / ADR 0168). Other schemes fail with `INVALID_ARGUMENT`.
 
+### Shell layout
+
+```ts
+pi.shell.getLayout(): Promise<PluginShellLayout>
+pi.shell.setSidebar(input: { collapsed?: boolean; width?: number }): Promise<PluginShellLayout>
+pi.shell.setWorkPanel(input: { visible?: boolean; width?: number }): Promise<PluginShellLayout>
+pi.workPanel.listTabs(): Promise<{ tabs: PluginWorkPanelTab[]; activeTabId: string | null }>
+pi.workPanel.activateTab(tabId: string): Promise<{ tabs: PluginWorkPanelTab[]; activeTabId: string | null }>
+
+type PluginWorkPanelTab = {
+  id: string
+  kind: "new" | "review" | "file" | "plugin" | "subagent"
+  label: string // the displayed, localized tab label
+  resource?: string // resource metadata, never the resource contents
+}
+type PluginShellLayout = {
+  sidebar: { collapsed: boolean; width: number; minWidth: number; maxWidth: number }
+  workPanel: {
+    visible: boolean; width: number; minWidth: number
+    tabs: PluginWorkPanelTab[]; activeTabId: string | null
+  }
+}
+```
+
+Reads and `pi.events.on/off("shell:layout", handler)` need no permission. Both
+setters and `activateTab` require declared and granted `ui.shell`; `ui.view` and
+`desktop.control` do not imply it. Calls work through the plugin-process API and
+the corresponding panel/view bridge channels. No method creates, closes or
+reorders tabs, changes their contents, or targets a background session.
+
+Widths are finite numbers in DIP, clamped by the existing shell limits and live
+three-column budget. The sidebar exposes its minimum and maximum; the work
+panel has no fixed maximum. Its `minWidth` is the regular requested minimum
+(244 DIP), while a sidebar-reopen loan may temporarily display less. A visible
+snapshot reports the applied width; a collapsed/hidden snapshot reports the
+retained preferred width. Hiding preserves tabs, active id and width. Showing
+restores those tabs, or the existing blank panel when there are none.
+
+`listTabs` reads the current session only. With no session/tabs it returns
+`{ tabs: [], activeTabId: null }`. Activating an existing tab never expands a
+hidden panel. An unknown or closed id is a no-op and returns the unchanged tab
+snapshot. Repeating an identical setter is also a no-op.
+
+Each new layout listener receives one current `PluginShellLayout`, followed by
+changed committed snapshots: toggles, tab/session changes, applied plugin writes,
+completed resize gestures and geometry changes. Intermediate drag previews and
+identical snapshots are suppressed; an initial replay cannot follow a newer
+change with stale state. `getLayout` still reads the live layout during a drag.
+Use a stable handler reference and remove it when the plugin unloads:
+
+```ts
+import type { PluginShellLayout } from "@pi-desktop/plugin-sdk";
+
+const onLayout = (layout: PluginShellLayout) => console.log(layout);
+export async function onLoad() {
+  onLayout(await pi.shell.getLayout());
+  pi.events.on("shell:layout", onLayout);
+}
+export function onUnload() {
+  pi.events.off("shell:layout", onLayout);
+}
+```
+
+Mutations resolve only after the renderer applies them. Invalid fields/widths
+reject with `INVALID_ARGUMENT`; missing grants with `PERMISSION_DENIED`.
+Unavailable/reloading renderers, timeouts, stale contexts and disposed callers
+reject observably using the host's coded errors (§4), never a fabricated layout.
+Listeners and pending calls are released on unload, surface destruction and
+renderer loss. Older hosts reject unknown bridge methods with `UNSUPPORTED`;
+feature-detect process methods before calling them and handle that refusal.
+No new persistence or host-core migration is involved.
+
 ### browser (requires `browser.cdp`)
 ```ts
 pi.browser.reveal(): Promise<void>
@@ -1507,6 +1579,8 @@ that `pi.bus.subscribe` consumes (`plugin-host-process.mjs`), so an `on`
 handler sees every frame the host delivers to this plugin and nothing else.
 Delivered today:
 
+- `shell:layout` — `PluginShellLayout`, with one current snapshot per listener
+  followed by committed changes; see [shell layout](#shell-layout). No grant.
 - `bus.message` — a bus delivery, with the `PluginBusMessage` as the single
   argument. `pi.bus.subscribe` is the normal way to receive these; `events.on`
   sees the raw stream of every subscription the plugin holds.
@@ -1646,6 +1720,8 @@ which handles these built-in channels before falling back to `onPanelInvoke`:
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
 | `shell.openExternal` | `shell.openExternal` |
+| `shell.getLayout`, `workPanel.listTabs` | None |
+| `shell.setSidebar`, `shell.setWorkPanel`, `workPanel.activateTab` | `ui.shell` |
 | `net.fetch` | `net.fetch` |
 | `net.getCapabilities` | None |
 | `session.getActive` | None |
@@ -1667,6 +1743,8 @@ channels, not general host bridge APIs.
 sends the same events to detached panel windows and to docked work-panel views.
 Delivered today:
 
+- `shell:layout` — the `PluginShellLayout` snapshot described in §3, including
+  initial replay for each listener and committed changes; no grant required.
 - `appearance:changed` — payload is the `PluginAppearance` above, sent whenever
   the app's palette or language changes, so a panel can restyle and relabel live.
 - `workspace:changed` — payload is the `workspace.get()` object or `null`,
@@ -1699,6 +1777,7 @@ Any of the following calls must be logged for audit:
   MCP servers)
 - net.fetch
 - shell.openExternal
+- shell.setSidebar / shell.setWorkPanel / workPanel.activateTab (result/error code, never tab contents)
 - clipboard.read/write (may be sampled)
 - clipboard.getHistory (with the returned entry count)
 - bus.publish / bus.subscribe / bus.unsubscribe (with the topic and fan-out size)

@@ -2699,6 +2699,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     legacyFsDowngraded:
       "This plugin declares file permissions from before scopes existed, so its reach has been reduced. Update it to restore full function.",
     permissions: {
+      "ui.shell": "Control the sidebar and work panel",
       "ui.panel": "Show a plugin panel",
       "ui.microphone": "Use the microphone",
       "clipboard.read": "Read the clipboard and its history",
@@ -2747,6 +2748,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "session.delete.all": "Delete any conversation, including yours",
     },
     permissionHelp: {
+      "ui.shell": "Can resize or show the sidebar and work panel and activate an existing tab.",
       "ui.panel": "Lets the plugin show its own panel inside the app.",
       "ui.microphone":
         "Lets the isolated panel request microphone audio. It does not grant camera access.",

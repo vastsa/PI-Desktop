@@ -2695,6 +2695,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     legacyFsDowngraded:
       "이 플러그인은 범위 기능이 생기기 전의 파일 권한을 선언했으므로 접근 범위가 줄었습니다. 전체 기능을 복원하려면 업데이트하세요.",
     permissions: {
+      "ui.shell": "사이드바 및 작업 패널 제어",
       "ui.panel": "플러그인 패널 표시",
       "ui.microphone": "마이크 사용",
       "clipboard.read": "클립보드와 기록 읽기",
@@ -2743,6 +2744,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "session.delete.all": "모든 대화 삭제(직접 만든 대화 포함)",
     },
     permissionHelp: {
+      "ui.shell": "사이드바와 작업 패널의 크기 및 표시 상태를 변경하고 기존 탭을 활성화할 수 있습니다.",
       "ui.panel": "플러그인이 앱 안에 자체 패널을 표시할 수 있습니다.",
       "ui.microphone": "격리된 패널이 마이크 오디오를 요청할 수 있습니다. 카메라 권한은 부여하지 않습니다.",
       "clipboard.read":

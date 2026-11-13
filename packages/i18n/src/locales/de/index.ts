@@ -2680,6 +2680,7 @@ sklm: {
     "fsAsksEachTime": "fragt Sie jedes Mal",
     "legacyFsDowngraded": "Dieses Plugin deklariert Dateiberechtigungen von vor der Existenz von Bereichen, daher wurde seine Reichweite reduziert. Aktualisieren Sie es, um die volle Funktion wiederherzustellen.",
     "permissions": {
+      "ui.shell": "Seitenleiste und Arbeitsbereich steuern",
       "ui.panel": "Plugin-Panel anzeigen",
       "ui.microphone": "Mikrofon verwenden",
       "clipboard.read": "Zwischenablage und Verlauf lesen",
@@ -2726,6 +2727,7 @@ sklm: {
       "session.delete.all": "Beliebige Unterhaltungen löschen, auch deine eigenen",
     },
     "permissionHelp": {
+      "ui.shell": "Kann die Größe und Sichtbarkeit der Seitenleiste und des Arbeitsbereichs ändern und vorhandene Tabs aktivieren.",
       "ui.panel": "Lässt das Plugin sein eigenes Panel innerhalb der App anzeigen.",
       "ui.microphone": "Erlaubt dem isolierten Panel, Mikrofon-Audio anzufordern; Kamerazugriff wird nicht gewährt.",
       "clipboard.read": "Kann alles lesen, was sich derzeit in Ihrer Zwischenablage und im gespeicherten Zwischenablageverlauf befindet.",

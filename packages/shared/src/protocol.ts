@@ -393,6 +393,8 @@ export const IPC = {
      * whether it went on screen and, if not, why. The main process is waiting
      * on this invoke, so a suggestion's caller learns what happened to it.
      */
+    pluginShellLayoutPublish: "pi-desktop/plugin/shell/layoutPublish",
+    pluginShellLayoutResult: "pi-desktop/plugin/shell/layoutResult",
     pluginComposerSuggestionResult: "pi-desktop/plugin/composer/suggestionResult",
     mcpList: "pi-desktop/mcp/list",
     mcpUpsert: "pi-desktop/mcp/upsert",
@@ -533,6 +535,7 @@ export const IPC = {
      * it shows. The shell owns the composer, so it decides and answers over
      * `pluginComposerSuggestionResult`.
      */
+    pluginShellLayoutRequest: "pi-desktop/plugin/shell/event/layoutRequest",
     pluginComposerSuggestion: "pi-desktop/plugin/composer/event/suggestion",
     windowMaximized: "pi-desktop/window/event/maximized",
     windowFullScreen: "pi-desktop/window/event/fullscreen",
