@@ -10483,17 +10483,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   normal field and the shortcut, then save. 3) Reload the plugin list and press
   the new shortcut while the app window is focused. 4) Try a reserved app
   shortcut and repeat with the plugin scoped away from the current project.
+  5) For JSON fields, save, reopen and save again with `"hello"`, `"42"`,
+  `"true"`, `"null"`, `""`, a null default, a number, a boolean, an array and an
+  object. Edit a JSON string, reset to a string default, and submit malformed
+  JSON before correcting it.
 - **Expected**: Controls are generated from the manifest, values persist in the
   plugin-private settings file, and `plugin:settingsChanged` is delivered. The
   new shortcut invokes the plugin command only in the focused app window and
   matching activation scope. Reserved/conflicting bindings are rejected; no OS
-  global shortcut is registered.
+  global shortcut is registered. JSON strings remain quoted in the editor and
+  retain their type after save/reopen/reset. Invalid JSON leaves the draft and
+  sheet open without an IPC settings write.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`,
   `07-plugins/03-plugin-api.md`, `07-plugins/11-plugin-storage-isolation.md`,
   ADR 0159
 - **Acceptance**: F (persistence), G (plugins), Security, Quality
 - **Milestone**: M6+
-- **Status**: Source-contract and focused integration coverage; full desktop
+- **Status**: Source-contract and focused integration coverage. JSON
+  save/reopen/edit/reset is covered by `plugin-settings-json-user-path.test.mjs`
+  in an isolated Electron renderer with a settings IPC fixture; full desktop
   journey Draft (run only in a capable environment when this surface changes)
 
 #### E2E-OAUTH-anthropic-rate-limit-retry: Bounded token retries preserve the account
