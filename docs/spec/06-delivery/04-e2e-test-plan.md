@@ -2463,6 +2463,12 @@ identify the platform validation still needed.
   forms render with KaTeX, with `\[…\]` using display layout. The renderer does
   not start a second animation-frame typewriter loop, raise React error 185, or
   reject Vite-inlined KaTeX fonts under CSP.
+- **CJK emphasis regression**: Stream and reload `这是**“重点内容”**，请查看。`,
+  `这是**重点。**后续内容。` and `这是**（重点）**后续内容。`; each marked
+  phrase is bold without visible markers. Inline/fenced code and escaped
+  asterisks remain literal, English emphasis remains intact, and source-copy
+  bytes/selection anchors remain unchanged. React/Vite SSR and every-prefix
+  grammar tests cover this boundary; native E2E remains unexecuted.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   `05-security/01-security.md`
