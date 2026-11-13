@@ -463,6 +463,7 @@ export const zhTW = {
     diagramTooLarge: "此圖表過大，無法安全渲染，已改為顯示原始碼。",
     responseError: "這次回覆未能完成",
     responseFailed: "助手沒能完成這次回覆。",
+    outputTruncated: "回覆因達到模型輸出 token 上限而被截斷，內容可能不完整。",
     showErrorDetails: "顯示詳情",
     hideErrorDetails: "隱藏詳情",
     dismissError: "關閉錯誤訊息",

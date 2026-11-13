@@ -1300,6 +1300,14 @@ open an existing durable session. Plugin-originated `session/create` and
 `agent/prompt` calls refresh session state without changing the active
 renderer session; `session/open` is explicit navigation.
 
+The catalog also includes the read `agent/pendingInteractive({ sessionId })`
+(`sessionId` is required), which returns `{ asks, permissions }`: the session's
+pending ask-tool and tool permission requests, the same payload the renderer
+reads to rebuild its cards. A plugin uses it to discover the `requestId` that
+the dangerous `agent/askTool/resolve` and `tool/resolvePermission` operations
+need. Like every shared catalog operation, it is also reachable through the
+local MCP control plane.
+
 This is the first-party plugin gateway to the reviewed operation catalog shared
 with the opt-in local MCP control plane (ADR 0203 / D370). The two catalogs
 differ only for operations marked plugin-only: the six

@@ -276,11 +276,18 @@ async function compactDelegateContext(
 > {
   // A prior in-memory compaction left its summary message at the head; it
   // threads into the next summary as `previousSummary` instead of being
-  // summarized a second time.
-  const head = input.messages[0];
+  // summarized a second time. The delegate's state keeps its system row at
+  // the head, so the detection — and the compactable range — start past
+  // it: reading index 0 made every in-run boundary compaction see the
+  // system row, `previousSummary` never threaded, and the earlier
+  // checkpoint summary was re-summarized under the from-scratch prompt.
+  // The system row itself is never compactable; the caller reinstalls it.
+  const historyOffset = input.messages[0]?.role === "system" ? 1 : 0;
+  const head = input.messages[historyOffset];
   const previousSummary = isCompactionSummary(head) ? head.summary : undefined;
-  const compactable =
-    previousSummary === undefined ? input.messages : input.messages.slice(1);
+  const compactable = input.messages.slice(
+    historyOffset + (previousSummary === undefined ? 0 : 1),
+  );
   const prepared = prepareCompaction(delegateMessageEntries(compactable), {
     enabled: true,
     reserveTokens: budget.requestHeadroom,

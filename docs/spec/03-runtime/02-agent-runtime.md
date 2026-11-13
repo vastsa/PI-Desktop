@@ -148,6 +148,19 @@ title therefore win concurrent updates. Host-core owns the title source in
 schema v23; this state survives renderer restart and does not expose a general
 transcript-read API. The core runs no title completion of its own.
 
+### 4.2 Output-token truncation (#2277)
+
+A visible text answer ending with `stopReason: "length"` and no tool calls
+retains its original content and records `UiMessage.outputTruncated: true`.
+Host-core round-trips the optional flag through transcript record metadata;
+legacy messages without the flag remain unchanged. No database migration is needed.
+The transcript renders a localized output-token-limit warning below that answer,
+including after history restoration. This annotation is not a terminal error,
+does not enter model context, and does not automatically retry or continue the
+answer. Subsequent prompts remain available. Normal replies, aborts, context
+overflow recovery, empty-response recovery, and Pi's rejection/recovery of
+truncated tool calls retain their existing behavior.
+
 ## 5. Prompt flow
 
 1. load the durable session and reject a missing session
@@ -308,7 +321,10 @@ the generated output-limit fields removed: `max_tokens`,
 `max_completion_tokens`, and `max_output_tokens`. The same one attempt clamps
 those fields down to the ceiling when the body states one (`at most N
 completion tokens`, `max_tokens: N > M, which is the maximum allowed number of
-output tokens`, or `expected a value <= N`) instead of deleting them.
+output tokens`, `expected a value <= N`, a `max_tokens` range such as
+DeepSeek's `valid range of max_tokens is [1, N]` or DashScope's `Range of
+max_tokens should be [1, N]`, or Groq's `max_tokens must be less than or equal
+to N`) instead of deleting them.
 Anthropic rejects a request that omits `max_tokens`. A field that is absent or
 already within the ceiling is left unchanged. Credit exhaustion and context
 overflow stay on their existing terminal paths. This repair does not consume
@@ -494,6 +510,16 @@ See E2E-146a.
 The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
+
+When restoring a checkpoint, tool-call reconstruction respects its
+`throughMessageId` boundary. A surviving tool row must not attach its call to
+an assistant that the checkpoint removes. Legacy checkpoints can cut through
+a tool batch; the surviving rows reconstruct a carrier after the boundary from
+their stored call ids, names, and arguments, retaining the original carrier's
+provider/model identity and function-call signatures. A call-only assistant
+with no remaining content still anchors the checkpoint. This changes only the
+model projection: stored history is not rewritten, results are not discarded,
+and historical tools are not executed again (issue #2306).
 
 PI-Desktop uses pi-agent-core for the agent loop and stable agent/event/tool
 types, and pi-ai for provider-facing requests and message estimation. The
@@ -741,6 +767,9 @@ the argument spelling the model sent, because `normalizeToolParams` folds
 alias names only when the call executes (D273). The collector therefore reads
 the path from `path` or from the same aliases (`file_path`, `filepath`,
 `filePath`, `filename`, `fileName`, `file`), with the same precedence.
+Calls on an assistant that stopped with `error`, `aborted`, or `deferred` are
+not counted: pi returns before executing them, and the rebuilt context drops
+the same turns, so they never read or changed a file.
 
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of
@@ -1660,11 +1689,16 @@ a published vendor host (`NAMED_ENDPOINT_PRESETS`), on the
 and not on the OpenCode path that already carries its own session header
 (§6.2):
 
-- For Completions and Anthropic, the built model's `compat` gains
+- For Completions, the built model's `compat` gains
   `sendSessionAffinityHeaders: true` with
-  `sessionAffinityFormat: "openai"`, so the adapter writes `x-session-affinity`
-  and `x-client-request-id` beside `session_id`. That default is spread under
-  the row's own `compat`, so an explicit catalog entry still wins.
+  `sessionAffinityFormat: "openai-nosession"`, so the adapter writes
+  `x-session-affinity` and `x-client-request-id` without `session_id`. Strict
+  gateways can reject the underscore header before authentication (issue
+  #2278); the two hyphenated headers preserve session routing. Anthropic keeps
+  `sendSessionAffinityHeaders: true` with `sessionAffinityFormat: "openai"`,
+  which emits only `x-session-affinity` on that adapter. These defaults are
+  spread under the row's own `compat`, so an explicit catalog entry still wins,
+  including an explicit Completions `openai` format requiring `session_id`.
 - A custom Responses endpoint keeps the adapter's existing `session_id`,
   `x-client-request-id`, and `prompt_cache_key`; agent-runtime adds the stable
   `x-session-affinity` alias through stream options so a reverse proxy can
@@ -2186,15 +2220,21 @@ Bash background startup and Task startup return an additive `job: {kind, id}`
 reference, where kind is `bash` or `delegation`; their original identifiers
 remain available. TaskList preserves `delegations` and `resumable` and adds
 `backgroundJobs: {supported, tasks}`. Delegation summaries also include job
-references. Bash summaries contain no logs and bound command text to 1 KiB.
+references. Bash summaries contain no logs. The command preview retains the
+first 1 KiB at a UTF-8 boundary. `commandTruncated` marks a shortened command
+independently of output truncation; older Hosts may omit the field.
 
 TaskWait and TaskStop accept one explicit `job`. For a delegation job,
 `delegationIds` may be omitted, empty, or contain only that job's id (duplicates
 are harmless); conflicting or malformed selectors fail before dispatch with
 instructions to omit `job` for multi-subagent selection. `mode` and
 `minCompleted` are ignored for this single-target form; TaskWait still honors
-`timeoutSeconds`. For a Bash job, combining it with `delegationIds`, `mode` or
-`minCompleted` remains an error with corrective usage instructions. Omitting
+`timeoutSeconds`. For a Bash job, `delegationIds` may be omitted or empty,
+`mode` may be omitted, `all`, or `any`, and `minCompleted` may be omitted or 1.
+These redundant single-target options do not change the selected Bash job.
+Nonempty delegation IDs (even the Bash job ID), malformed options, or a
+completion count other than 1 fail before dispatch with corrective usage
+instructions. Omitting
 `job` preserves the existing delegation defaults, including stop-all-delegates.
 A Bash job never joins those implicit target sets. A legacy backgroundTaskId
 can be addressed as `{kind: "bash", id: backgroundTaskId}`.
@@ -2207,7 +2247,9 @@ Reads are repeatable and do not consume desktop output. The wait defaults to
 (completed/timeout/interrupted), independently of the job's state. New input
 interrupts the wait; cancelling the parent releases it without stopping Bash.
 TaskStop returns completed or stopPending based on the actual snapshot. A
-stopRequested flag alone does not confirm termination.
+stopRequested flag alone does not confirm termination. Cancelling TaskStop
+before dispatch leaves the job alone. After dispatch, cancellation releases
+the caller's wait while Host continues processing the stop request.
 
 The wait deadline includes capability discovery and in-flight requests.
 On timeout the tool returns its last observed snapshot. If the first

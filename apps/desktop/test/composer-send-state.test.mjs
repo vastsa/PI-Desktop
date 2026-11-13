@@ -67,7 +67,7 @@ test("composer send/stop button follows draft content and the visible session's 
   assert.match(composer, /const runActive = isRunning \|\| executionActive;/);
   assert.match(composer, /const isRunning = useAppStore\(\(s\) => s\.isRunning\);/);
   assert.match(submitSlot, /stopGenerating/);
-  assert.match(submitSlot, /onClick=\{\(\) => void abort\(\)\}/);
+  assert.match(submitSlot, /onClick=\{\(\) => void abort\(\)\.catch/);
   assert.doesNotMatch(composerRight, /\{runActive \? \(/);
   const modelIndex = composerRight.indexOf("<ComposerModelPicker");
   const transformIndex = composerRight.indexOf("composerTransforms.map");

@@ -80,6 +80,9 @@
 
 - **界面**卡：
   - **主题**：可搜索的选择行（与语言相同的锚定菜单）。关闭时的触发器按当前文案收缩，不超过设置控件列，并显示当前名称。菜单把系统、浅色、深色钉在顶部，插件主题在分隔线之后列出，并带「由…提供」提示。搜索匹配名称、描述、id 和插件 id。选择更新 `settings.theme`。
+    With System selected, OS appearance changes refresh the resolved plugin
+    palette and open Browser chrome without another settings write or restart.
+    Explicit light/dark and registered plugin palettes remain fixed.
   - **语言**：可搜索的选择行（不是卡片网格）。关闭时的触发器按当前文案收缩，不超过设置控件列，显示当前语言的本地名称，或「跟随系统」。菜单把「跟随系统」钉在顶部并内嵌显示检测到的语言（例如「当前：简体中文」），然后按本地名称（永不翻译的 endonym）和英文名称列出每个已发布语言，供搜索和排序。选择更新 `settings.language`。新增语言只需加一份目录和一行注册表；选择器不硬编码选项列表。
   - **字体**：可搜索的选择行（触发器以该字体的字样显示当前字体）
     提供「跟随系统」以及由 Electron 主进程枚举的系统已安装字体；

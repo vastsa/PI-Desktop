@@ -458,6 +458,7 @@ export const de = {
     "diagramTooLarge": "Dieses Diagramm ist zu groß, um sicher gerendert zu werden. Stattdessen wird die Quelle angezeigt.",
     "responseError": "Diese Antwort konnte nicht fertiggestellt werden.",
     "responseFailed": "Der Assistent konnte diese Antwort nicht fertigstellen.",
+    "outputTruncated": "Diese Antwort wurde abgeschnitten, weil das Modell sein Ausgabe-Token-Limit erreicht hat. Der Inhalt ist möglicherweise unvollständig.",
     "showErrorDetails": "Details anzeigen",
     "hideErrorDetails": "Details ausblenden",
     "dismissError": "Fehlermeldung schließen",

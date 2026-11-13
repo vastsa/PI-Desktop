@@ -417,3 +417,4 @@ Each ADR includes:
 | 0348 | [User-owned subagent control without a parent-model round trip](0348-user-owned-subagent-control.md) | Implemented candidate |
 | 0349 | [Project capability selections and app-owned instructions](0349-project-agent-settings.md) | Implemented candidate |
 | 0350 | [Parent-directed recovery of a stalled child provider attempt](0350-parent-directed-subagent-recovery.md) | Implemented candidate |
+| composer-local-file-references | [Pasted local files are live references](composer-local-file-references.md) | Accepted (issue #2314) |

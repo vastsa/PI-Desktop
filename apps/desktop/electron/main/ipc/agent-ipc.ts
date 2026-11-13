@@ -53,7 +53,7 @@ export type AgentIpcDependencies = {
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
   /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
-  modeRuns: Pick<ModeRunCoordinator, "canContinue" | "prepareTurn" | "abandonTurn">;
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -364,6 +364,7 @@ export function registerAgentIpc({
     // A staged mode claims its run for this durable turn before anything runs;
     // the sidecar then executes the run's own definition snapshot.
     let preparedMode: PreparedModeTurn | undefined;
+    let modeDefinition: PreparedModeTurn["definition"] | undefined;
     try {
       preparedMode = await modeRuns.prepareTurn({
         sessionId: req.sessionId,
@@ -372,6 +373,7 @@ export function registerAgentIpc({
         content: req.content,
         origin: modeOrigin ?? "user",
       });
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
     } catch (error) {
       await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
         turnId: durableTurnId,
@@ -544,7 +546,7 @@ export function registerAgentIpc({
         turnId: durableTurnId,
       });
     } catch (error) {
-      if (preparedMode) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(
         req.sessionId,
         "error",
@@ -586,7 +588,8 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
-          ...(preparedMode
+          ...(modeDefinition ? { modeDefinition } : {}),
+          ...(preparedMode?.modeTurn
             ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
             : {}),
           // The host-created durable turn is the approval identity used by
@@ -628,7 +631,7 @@ export function registerAgentIpc({
       );
     } catch (e) {
       completionNoticeTurns.delete(durableTurnId);
-      if (preparedMode) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(req.sessionId, "error", (e as any)?.errorCode, {
         turnId: durableTurnId,
       });

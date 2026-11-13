@@ -384,7 +384,7 @@ export function createSidecarRuntime({
     if (!host) return null;
     const res = await host.call<{
       session: { projectPath?: string; worktree?: unknown } | null;
-    }>("session.get", { id: sessionId });
+    }>("session.get", { id: sessionId, messageLimit: 1 });
     if (res?.session?.worktree) {
       const location = await host.call<{ path?: string }>("worktree.location", { sessionId });
       return location.path?.trim() || null;

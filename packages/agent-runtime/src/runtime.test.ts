@@ -5840,6 +5840,32 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     await runtime.dispose();
     await restored.dispose();
   });
+  it("preserves local file reference size in live input and restored history", async () => {
+    const attachment = {
+      kind: "file" as const, name: "large.png", ref: "/external/large.png",
+      size: 67108865, localReference: "11111111-2222-4333-8444-555555555555",
+    };
+    const restored = createRuntime({ history: [{
+      id: "reference-user", role: "user", content: "Inspect",
+      createdAt: "2026-11-13T00:00:00Z", attachments: [attachment],
+    }] });
+    const live = createRuntime();
+    try {
+      const message = (restored as unknown as { agent: Agent }).agent.state.messages.find(row => row.role === "user");
+      expect(typeof message?.content).toBe("string");
+      expect(message?.content).toContain("/external/large.png");
+      expect(message?.content).toContain("67108865 bytes");
+      const agent = (live as unknown as { agent: Agent }).agent;
+      const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+      vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+      await live.prompt({ text: "Inspect", attachments: [{ ...attachment, path: attachment.ref }] }, "user", "turn");
+      expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ role: "user", content: message?.content }));
+    } finally {
+      await live.dispose();
+      await restored.dispose();
+    }
+  });
+
   it("replays every under-budget historical image as a provider image block", async () => {
     const history: UiMessage[] = Array.from({ length: 6 }, (_, index) => {
       const payload = Buffer.from(`historical-image-${index + 1}`).toString("base64");
@@ -8502,11 +8528,37 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         timestamp: Date.parse("2026-07-28T00:00:05Z"),
         message: writeAssistant,
       },
+      // Every executed call carries a non-error result row, the way
+      // agent-loop stamps them; the shaped preparation's guard reads these.
+      {
+        type: "message",
+        id: "read-result",
+        seq: 4,
+        parentId: "read-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:02Z"),
+        message: { role: "toolResult", toolCallId: "read-a", toolName: "read", isError: false, content: [], details: {}, timestamp: 2 },
+      },
+      {
+        type: "message",
+        id: "edit-result",
+        seq: 5,
+        parentId: "edit-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:04Z"),
+        message: { role: "toolResult", toolCallId: "edit-b", toolName: "edit", isError: false, content: [], details: {}, timestamp: 4 },
+      },
+      {
+        type: "message",
+        id: "write-result",
+        seq: 6,
+        parentId: "write-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:05.5Z"),
+        message: { role: "toolResult", toolCallId: "write-c", toolName: "write", isError: false, content: [], details: {}, timestamp: 5 },
+      },
       {
         type: "message",
         id: "user-next",
-        seq: 4,
-        parentId: "write-assistant",
+        seq: 7,
+        parentId: "write-result",
         timestamp: Date.parse("2026-07-28T00:00:06Z"),
         message: { role: "user", content: "next", timestamp: 6 },
       },
@@ -12432,6 +12484,84 @@ describe("DesktopAgentRuntime compaction request headers", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.headers).toEqual({ "X-Team": "platform" });
+    await runtime.dispose();
+  });
+});
+
+describe("DesktopAgentRuntime retained-tail file operations (#2287 follow-up to #2276)", () => {
+  /** The shape `prepareCompaction` returns, with a tail pi did not collect. */
+  function preparationWithTail() {
+    const tailCall = (id: string, path: string) => ({
+      role: "assistant",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path } }],
+      api: "openai-completions",
+      provider: "local",
+      model: "local-model",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: 2,
+    });
+    return {
+      messagesToSummarize: [
+        { role: "user", content: [{ type: "text", text: "older task context" }], timestamp: 1 },
+      ],
+      turnPrefixMessages: [],
+      retainedTail: [
+        tailCall("call-1", "src/ran.ts"),
+        tailCall("call-2", "src/no-row.ts"),
+        tailCall("call-3", "src/failed.ts"),
+      ],
+      isSplitTurn: false,
+      tokensBefore: 240_000,
+      fileOps: {
+        read: new Set<string>(),
+        edited: new Set<string>(),
+        written: new Set<string>(),
+      },
+      settings: { enabled: true, reserveTokens: 16_384, keepRecentTokens: 20_000 },
+    };
+  }
+
+  it("keeps a retained tail's unexecuted calls out of the shaped file operations", async () => {
+    const runtime = createRuntime({ provider });
+    // The transcript pi's planner never saw: one call ran, one has no result
+    // row (a Stop broke the batch), one keeps an error row. The lookup must
+    // span the full transcript, since a tail call's result sits anywhere in it.
+    (runtime as any).fullEntries = [
+      {
+        type: "message",
+        id: "e1",
+        parentId: null,
+        seq: 0,
+        timestamp: 3,
+        message: { role: "toolResult", toolCallId: "call-1", isError: false, content: [], timestamp: 3 },
+      },
+      {
+        type: "message",
+        id: "e2",
+        parentId: "e1",
+        seq: 1,
+        timestamp: 4,
+        message: { role: "toolResult", toolCallId: "call-3", isError: true, content: [], timestamp: 4 },
+      },
+    ];
+
+    const shaped = (runtime as any).codexShapedPreparation(
+      preparationWithTail(),
+      0,
+      "completed_turn",
+    );
+
+    expect([...shaped.fileOps.read]).toEqual(["src/ran.ts"]);
+    expect([...shaped.fileOps.written]).toEqual([]);
+    expect([...shaped.fileOps.edited]).toEqual([]);
     await runtime.dispose();
   });
 });

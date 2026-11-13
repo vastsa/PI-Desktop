@@ -88,6 +88,11 @@
   reasoning or provider replay. The default parent context still skips child rows; only a requested
   `TaskRead` output enters the turn. See
   [agent runtime §5f](../spec/03-runtime/02-agent-runtime.md) and ADR 0347.
+- Fixed MCP servers staying unavailable in project sessions after Test connection
+  reported success. Testing now uses the selected project's working directory
+  and clears that server's idle failed workspace connections without interrupting
+  active tool calls or handshakes.
+
 - Fixed the composer context ring staying at the pre-compaction figure after
   `/compact` or an automatic compaction until another turn ran (#2015). The
   ring now shows the compacted context's estimated size as soon as the

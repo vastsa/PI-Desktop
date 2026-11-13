@@ -2021,7 +2021,11 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   `fs/open`, the image reader) already accept it, so such a path completes
   instead of reporting a restriction. A shorthand never completes from that
   wider store; it still searches the session's own one. A reference that matches
-  nothing returns `match: null`. An exact absolute path outside every allowed
+  nothing returns `match: null`. A Windows drive path rooted the POSIX way
+  (`/c:/dir/file.md`, the shape a Markdown link copies from a POSIX example)
+  is read as `C:\dir\file.md` before matching, so that spelling reaches the
+  file its drive names instead of reporting a miss; a POSIX host keeps
+  `/c:/...`, which is a real path there. An exact absolute path outside every allowed
   root never tries a same-name file inside a root; it is answered by the
   `fs/read` external-file rule instead (ADR 0339): an existing regular file
   that passes it returns `root: "external"` with `matchedBy: "exact-absolute"`
@@ -2348,19 +2352,38 @@ renderer receives the token but never receives the selected absolute paths.
 ### composer/importFiles
 
 ```ts
-composer/importFiles({ sessionId, token }) -> {
+composer/importFiles({ sessionId, token, reference?: boolean }) -> {
   files: ComposerPastedFile[];
 }
 ```
 
 Electron main consumes the sender-bound picker token, resolves each recorded
 path through `realpath`, requires an existing regular file, applies the same
-20-file / 64 MiB per file / 128 MiB total limits as clipboard transfer, and
+20-file / 64 MiB per file / 128 MiB total limits as clipboard byte transfer, and
 copies the bytes into `<data_dir>/scratch/<sessionId>/pasted/` under a
 UUID-backed sanitized name. The token is deleted before import starts, so it
 cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
+
+For native clipboard files, `reference: true` consumes the same one-shot token
+but registers metadata instead of copying bytes. Main requires a local project,
+stores a durable UUID selection record, and returns the canonical original path,
+name, MIME, exact byte size and additive `localReference` id. Only the main window
+may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
+both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
+apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
+`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+
+Drafts, queue entries and message attachments retain `localReference` and `size`.
+On dispatch, main matches the id/path to the selection record and current local
+project, rejects missing files or canonical-target changes, and refreshes size.
+The Agent receives path and byte size as reference context. No referenced file
+or image contents are read, hashed, snapshotted or uploaded by dispatch; normal
+tool access policy governs subsequent reads, including outside-project approval.
+Input history can restore the live reference into another session in the same
+project. Original contents can change and the reference can become unavailable.
+See [the decision record](../../adr/composer-local-file-references.md).
 
 ### composer/pasteFiles
 
@@ -2378,6 +2401,7 @@ type ComposerPasteFile = {
 };
 
 type ComposerPastedFile = {
+  localReference?: string; // main-owned metadata record for a live disk reference
   path: string;     // UUID-backed absolute storage path
   name: string;     // sanitized original leaf display name
   kind: "image" | "file";

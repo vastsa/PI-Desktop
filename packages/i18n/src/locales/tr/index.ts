@@ -470,6 +470,7 @@ export const tr = {
     diagramTooLarge: "Bu diyagram güvenle oluşturulmak için çok büyük. Bunun yerine kaynak gösteriliyor.",
     responseError: "Bu yanıt tamamlanamadı",
     responseFailed: "Asistan bu yanıtı tamamlayamadı.",
+    outputTruncated: "Model çıktı token sınırına ulaştığı için bu yanıt kesildi. İçerik eksik olabilir.",
     showErrorDetails: "Ayrıntıları göster",
     hideErrorDetails: "Ayrıntıları gizle",
     dismissError: "Hata mesajını kapat",

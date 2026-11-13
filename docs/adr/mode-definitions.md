@@ -215,6 +215,12 @@ Only the Host records a gate as passed and moves the run to another stage.
 
 ### 8. Persistence
 
+Desktop attaches the catalog definition to the additive `session.create`
+`modeSnapshot` input. The Host validates and stores it in the same transaction
+as the session, rather than configuring an already-visible session in a second
+RPC. This avoids an incomplete session if configuration or the process fails;
+legacy callers may still omit the snapshot and retain fail-closed policy.
+
 One migration after the current schema:
 
 - `sessions.mode` keeps its column. Its values become mode ids, and the

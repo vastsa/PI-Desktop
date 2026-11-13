@@ -458,6 +458,7 @@ export const fr = {
     "diagramTooLarge": "Ce diagramme est trop grand pour être rendu en toute sécurité. Afficher la source à la place.",
     "responseError": "Impossible de terminer cette réponse",
     "responseFailed": "L'assistant n'a pas pu terminer cette réponse.",
+    "outputTruncated": "Cette réponse a été tronquée car le modèle a atteint sa limite de tokens de sortie. Le contenu peut être incomplet.",
     "showErrorDetails": "Afficher les détails",
     "hideErrorDetails": "Masquer les détails",
     "dismissError": "Fermer le message d’erreur",

@@ -665,6 +665,21 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 内置模式：Agent 使用 `agent`；Plan 使用 `contract`；Goal 是分阶段运行，其 `work` 阶段使用 `agent`。没有快照的旧 Goal 会话，以及 Host 无法解析的模式 id，一律回退为 `contract`（失败即关闭）。
 
+Prompt admission first claims an existing staged run through the Host and uses
+its persisted snapshot without consulting the current catalog. Editing, removing,
+or making the catalog definition simple does not change an existing run.
+Without a claim, simple custom modes carry the current catalog definition to the
+runtime. An unavailable mode closes the admission turn without persisting a user
+message or invoking the sidecar. Plan-state projection may rename only Agent/Plan
+sessions; an inactive projection preserves Goal and custom-mode identity unless
+a legacy Goal proposal was approved. Live approval and restoration of a pending
+legacy proposal then show Agent; unrelated historical approvals do not rename
+a newly selected staged Goal.
+New Goal/custom sessions pass the catalog snapshot in the single Host creation
+call. Host validation, snapshot storage and session insertion share a transaction;
+a rejected snapshot or failed insert leaves neither an incomplete session nor
+an orphan snapshot. Legacy callers without a snapshot keep their existing behavior.
+
 ### 说明
 - `contract` 在权限 UI 之前硬性拒绝 Write/Edit 和未声明 `planSafeActions` 的插件工具；直接调用 host 也无法绕过该矩阵。声明了非空列表的插件工具会被放行，但运行器仍会拒绝列表之外的操作（ADR 0211）。
 - `agent` 对 Write/Edit/Bash 和已注册插件工具使用权限卡片或所选的自动策略。
@@ -784,3 +799,5 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 Agent 模式下，模型通过 TaskList、TaskWait、TaskStop 管理本会话的后台 Bash，桌面和模型读取同一 Host 作业记录。runtime 带入已绑定会话身份，模型参数不能选择其他会话。Host 要求会话存在、属于本地并处于 Agent 模式，按 sessionId 与 id 校验读取和停止。未知与其他会话的 ID 均返回 NOT_FOUND。
 
 等待不会终止进程。单次 Host 观察最多一秒，可在新输入或取消时放弃，等待期间不持有全局状态锁。终态通知在输出收尾后发出。显式停止复用主管的进程树清理，并返回实际终态或带 stopRequested 的运行中快照。查询互不消耗日志。有限历史与 Host 重启仍限制旧 ID 可查询的时间。
+
+在 macOS 上，如果 Host 已成功向进程组发送停止信号并回收了子进程，但退出清理被拒绝，Host 会在短时间内复查进程组是否仍存在。只有确认进程组已消失，才清除这次权限错误。

@@ -463,6 +463,7 @@ export const zhCN = {
     diagramTooLarge: "此图表过大，无法安全渲染，已改为显示源码。",
     responseError: "这次回复未能完成",
     responseFailed: "助手没能完成这次回复。",
+    outputTruncated: "回复因达到模型输出 token 上限而被截断，内容可能不完整。",
     showErrorDetails: "显示详情",
     hideErrorDetails: "隐藏详情",
     dismissError: "关闭错误消息",

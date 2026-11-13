@@ -17,7 +17,7 @@ const [composer, editor, hoverCard, hoverHook, card, cardStyles, styles, submitH
 ]);
 
 test("pasted images stay inline chips like every other attachment", () => {
-  assert.match(editor, /const image = chipIconKey\(reference\) === "image";/);
+  assert.match(editor, /const image = !reference\.localReference && chipIconKey\(reference\) === "image";/);
   assert.match(editor, /if \(image\) chip\.dataset\.image = "";/);
   assert.match(editor, /const editableText = !image && !session && isEditableTextReference\(reference\);/);
   // Activating an image chip opens the preview; it never expands draft text.

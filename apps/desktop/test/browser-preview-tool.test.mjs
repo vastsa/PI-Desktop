@@ -76,7 +76,8 @@ test("main serves BrowserPreview from its originating session workspace", async 
   assert.match(handler, /browserHost\.previewFile\(\)/);
   const services = await readFile(new URL("../electron/main/services/plugin-services.ts", import.meta.url), "utf8");
   const roots = services.slice(services.indexOf("getFileRoots: async"), services.indexOf("getScratchDir:"));
-  assert.match(roots, /"session\.get", \{ id: sessionId \}/);
+  // Roots need project/worktree metadata only, never the transcript.
+  assert.match(roots, /"session\.get", \{ id: sessionId, messageLimit: 1 \}/);
   assert.match(roots, /res\.session\.worktree/);
   assert.match(roots, /"worktree\.location", \{ sessionId \}/);
   assert.match(roots, /return \[path, join\(dataDir, "scratch", sessionId\)\]/);

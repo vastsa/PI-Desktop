@@ -9,6 +9,11 @@ index de2b2d8c209f5576c18b020de297d4ef5fad5960..037ecdaea6efcb76f827ba2dd69bc3a0
  import Anthropic, {} from "@anthropic-ai/sdk";
  import { ANTHROPIC_FEDERATION_RULE_ID_ENV, ANTHROPIC_IDENTITY_TOKEN_FILE_ENV, ANTHROPIC_ORGANIZATION_ID_ENV, ANTHROPIC_SERVICE_ACCOUNT_ID_ENV, ANTHROPIC_WORKSPACE_ID_ENV, } from "../env-api-keys.js";
  import { calculateCost } from "../models.js";
+@@ -44,3 +47,3 @@ function mergeHeaders(...headerSources) {
+ // Stealth mode: Mimic Claude Code's tool naming exactly
+-const claudeCodeVersion = "2.1.280";
++const claudeCodeVersion = "2.1.322";
+ // Claude Code 2.x tool names (canonical casing)
 @@ -377,8 +380,6 @@ async function* iterateAnthropicEvents(response, signal) {
  }
  export const stream = (model, context, options) => {

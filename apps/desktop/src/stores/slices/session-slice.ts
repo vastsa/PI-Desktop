@@ -61,6 +61,7 @@ import { switchWorkPanelSession } from "./work-panel-slice";
 
 export type SessionSliceDependencies = StoreAccess & {
   runtime: SessionRuntime;
+  flushPendingSessionConfiguration: (sessionId: string) => Promise<void>;
   decorateSessions: (
     sessions: SessionSummary[],
     meta: Record<string, SessionMeta>,
@@ -156,6 +157,7 @@ export function createSessionSlice({
   rememberSessionCompactions,
   commitForkedSession,
   persistSessionAndSelect,
+  flushPendingSessionConfiguration,
 }: SessionSliceDependencies): Pick<
   AppState,
   | "refreshSessions"
@@ -261,6 +263,7 @@ export function createSessionSlice({
                   ...session,
                   mode: modeAfterPlanningUpdate(durableMode, hostState, () =>
                     sessionModeForPlanningState(hostState, nextKind),
+                    wasPending ? checkpoint : undefined,
                   ),
                 }
               : session,
@@ -849,8 +852,7 @@ export function createSessionSlice({
         config,
       );
       runtime.pendingSessionConfigurations.delete(sessionId);
-      const result = await api.configureSession(sessionId, payload);
-      set((state) => ({
+      const write = api.configureSession(sessionId, payload).then((result) => set((state) => ({
         sessions: state.sessions.map((session) =>
           session.id === sessionId
             ? {
@@ -864,7 +866,16 @@ export function createSessionSlice({
           ...state.planningStates,
           [sessionId]: result.session.mode === "plan" ? "planning" : "inactive",
         },
-      }));
+      })));
+      runtime.sessionConfigurationFlushes.set(sessionId, write);
+      try {
+        await write;
+      } finally {
+        if (runtime.sessionConfigurationFlushes.get(sessionId) === write) {
+          runtime.sessionConfigurationFlushes.delete(sessionId);
+        }
+        await flushPendingSessionConfiguration(sessionId);
+      }
     },
 
     /** Abort one session's running turn, whether or not it is the visible one. */

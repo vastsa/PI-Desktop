@@ -1076,6 +1076,12 @@ pi.desktop.invoke(input: {
 `session/create` 和 `agent/prompt` 只刷新会话状态，不改变渲染器当前活动会话；
 `session/open` 则是显式导航。
 
+目录还包含只读操作 `agent/pendingInteractive({ sessionId })`（`sessionId` 必填），
+返回 `{ asks, permissions }`，即该会话待处理的 ask 工具请求与工具权限请求，与渲染器
+重建卡片时读取的内容相同。插件借此获取危险操作 `agent/askTool/resolve` 和
+`tool/resolvePermission` 所需的 `requestId`。与其他共享目录操作一样，它也可通过
+本地 MCP 控制平面调用。
+
 这是第一方插件通往与可选启用的本地 MCP 控制平面共用同一份已审查操作目录的
 网关（ADR 0203 / D370）。两份目录的差异仅在于标记为 plugin-only 的操作：六个
 `session/collaboration/*` 操作可以通过该网关调用，却被刻意排除在 MCP 可见目录

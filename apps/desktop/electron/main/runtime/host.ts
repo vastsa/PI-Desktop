@@ -256,7 +256,7 @@ export function createHostRuntime({
                     modelId?: string;
                     thinkingLevel?: string;
                   };
-                }>("session.get", { id: q.sessionId });
+                }>("session.get", { id: q.sessionId, messageLimit: 1 });
                 const session = detail?.session;
                 if (session?.mode === "agent" || session?.mode === "plan" || session?.mode === "goal") {
                   sessionMode = session.mode;

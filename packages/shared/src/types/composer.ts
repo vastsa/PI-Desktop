@@ -41,9 +41,11 @@ export type ComposerPasteFile = {
   data: ArrayBuffer;
 };
 
-/** A clipboard file materialized in the originating session's scratch root. */
+/** One pasted item: an original disk-file reference or a materialized payload. */
 export type ComposerPastedFile = {
-  /** UUID-backed canonical path used by the prompt and file tools. */
+  /** Durable main-owned selection record; contents are read only through tools. */
+  localReference?: string;
+  /** Canonical original path for references, or a unique session scratch path. */
   path: string;
   /** Sanitized original leaf name used only for compact composer display. */
   name: string;

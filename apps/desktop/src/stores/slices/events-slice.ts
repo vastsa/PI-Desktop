@@ -177,6 +177,7 @@ export function createEventsSlice({
         )?.mode;
         const nextMode = modeAfterPlanningUpdate(currentMode, event.state, () =>
           sessionModeForPlanningState(event.state, event.kind ?? checkpoint?.kind),
+          event.proposal ?? (previousCheckpoint?.status === "pending" ? checkpoint : undefined),
         );
         const executionActive = isActivePlanExecution(checkpoint);
         const planExecutionWasActive = isActivePlanExecution(previousCheckpoint);

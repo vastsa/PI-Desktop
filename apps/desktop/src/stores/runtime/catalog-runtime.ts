@@ -12,10 +12,28 @@ export type CatalogRuntime = {
   notificationClearedAt: () => number | null;
   setNotificationClearedAt: (timestamp: number) => void;
   refreshedProviderModels: Set<string>;
+  /** Failed live model discovery per provider: when the next attempt may run. */
+  providerModelRetry: Map<string, ProviderModelRetry>;
   providerModelLoads: Map<string, Promise<void>>;
   getPluginRefresh: () => Promise<void> | null;
   setPluginRefresh: (request: Promise<void> | null) => void;
 };
+
+export type ProviderModelRetry = { failures: number; retryAt: number };
+
+const PROVIDER_MODEL_RETRY_BASE_MS = 10_000;
+const PROVIDER_MODEL_RETRY_MAX_MS = 5 * 60_000;
+
+/**
+ * Delay before live model discovery is tried again after `failures` failed
+ * attempts. A transient failure is retried on a later menu open; an endpoint
+ * that keeps failing (no /models route, bad key) backs off instead of being
+ * probed on every open.
+ */
+export function providerModelRetryDelayMs(failures: number): number {
+  const exponent = Math.max(0, Math.min(failures - 1, 10));
+  return Math.min(PROVIDER_MODEL_RETRY_BASE_MS * 2 ** exponent, PROVIDER_MODEL_RETRY_MAX_MS);
+}
 
 /** Coalesces catalog reads without putting mutable request state in the store. */
 export function createCatalogRuntime(): CatalogRuntime {
@@ -25,6 +43,7 @@ export function createCatalogRuntime(): CatalogRuntime {
   let notificationsClearedAt: number | null = null;
   let pluginRefreshInFlight: Promise<void> | null = null;
   const refreshedProviderModels = new Set<string>();
+  const providerModelRetry = new Map<string, ProviderModelRetry>();
   const providerModelLoads = new Map<string, Promise<void>>();
   const notificationReadIds = new Set<string>();
 
@@ -46,6 +65,7 @@ export function createCatalogRuntime(): CatalogRuntime {
     beginProviderRefresh: () => {
       providerModelsGeneration += 1;
       refreshedProviderModels.clear();
+      providerModelRetry.clear();
       return providerModelsGeneration;
     },
     providerGeneration: () => providerModelsGeneration,
@@ -67,6 +87,7 @@ export function createCatalogRuntime(): CatalogRuntime {
       notificationsClearedAt = Math.max(notificationsClearedAt ?? 0, timestamp);
     },
     refreshedProviderModels,
+    providerModelRetry,
     providerModelLoads,
     getPluginRefresh: () => pluginRefreshInFlight,
     setPluginRefresh: (request) => {

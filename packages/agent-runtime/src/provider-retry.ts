@@ -137,11 +137,21 @@ export function withoutDerivedOutputLimit(
  * - OpenAI: "max_tokens is too large: 16384. This model supports at most 4096 completion tokens"
  * - Anthropic: "max_tokens: 65537 > 64000, which is the maximum allowed number of output tokens"
  * - Anthropic-compatible proxies: "expected a value <= 32768, but got 64000 instead"
+ * - DeepSeek: "Invalid max_tokens value, the valid range of max_tokens is [1, 8192]"
+ * - DashScope / Bailian (Qwen): "Range of max_tokens should be [1, 8192]"
+ *   and "<400> InternalError.Algo.InvalidParameter: Range of max_tokens should be [1, 65536]"
+ * - Groq: "`max_tokens` must be less than or equal to `16384`" (backticks optional)
+ *
+ * The same shapes apply to `max_completion_tokens` and `max_output_tokens`.
+ * A bracketed range contributes its upper bound. Context-length wording such
+ * as "maximum context length is 131072 tokens" is not an output ceiling.
  */
 const OUTPUT_TOKEN_CEILING_PATTERNS = [
   /max_(?:completion_|output_)?tokens is too large:[\s\S]{0,240}?at most (\d[\d,]*) completion tokens/i,
   /max_tokens:\s*\d[\d,]*\s*>\s*(\d[\d,]*)\s*,\s*which is the maximum allowed number of\s+output tokens/i,
   /max_tokens[\s\S]{0,180}?expected a value <=\s*(\d[\d,]*)/i,
+  /range of `?max_(?:completion_|output_)?tokens`?(?: is| should be) \[`?\d+`?,\s*`?(\d[\d,]*)`?\]/i,
+  /`?max_(?:completion_|output_)?tokens`? must be less than or equal to `?(\d[\d,]*)`?/i,
 ];
 
 /** The completion cap named in `message`, when it is one of the shapes above. */

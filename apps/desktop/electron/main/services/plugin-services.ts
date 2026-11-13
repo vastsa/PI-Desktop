@@ -701,7 +701,7 @@ export function createPluginServices({
       const host = getHost();
       if (!host) throw new Error("Browser preview host is unavailable.");
       const res = await host.call<{ session: { projectPath?: string; worktree?: unknown } | null }>(
-        "session.get", { id: sessionId },
+        "session.get", { id: sessionId, messageLimit: 1 },
       );
       if (!res?.session) throw new Error("Browser preview session is unavailable.");
       if (res.session.worktree) {
