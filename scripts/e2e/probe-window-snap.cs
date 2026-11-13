@@ -79,9 +79,16 @@ public static class WindowSnapProbe {
         try { keybd_event(0x5b,0,0,UIntPtr.Zero); keybd_event(key,0,0,UIntPtr.Zero); Thread.Sleep(60); }
         finally { keybd_event(key,0,2,UIntPtr.Zero); keybd_event(0x5b,0,2,UIntPtr.Zero); }
     }
+    static void WriteCommand(string json) {
+        var temporary=FilePath("command.json.tmp");
+        File.WriteAllText(temporary,json);
+        var destination=FilePath("command.json");
+        if(File.Exists(destination))File.Delete(destination);
+        File.Move(temporary,destination);
+    }
     static Dictionary<string, object> Command(string action, bool value = false) {
         int id=++sequence;
-        File.WriteAllText(FilePath("command.json"),Json.Serialize(new Dictionary<string,object>{{"id",id},{"action",action},{"value",value}}));
+        WriteCommand(Json.Serialize(new Dictionary<string,object>{{"id",id},{"action",action},{"value",value}}));
         Dictionary<string,object> state=null;
         Wait(() => { state=Read("state.json"); return state!=null && Number(state,"id")==id; },"fixture command timed out: "+action,15000);
         return state;
@@ -192,13 +199,13 @@ public static class WindowSnapProbe {
             Command("fullscreen",false);ClientEqualsWindow(window);Pixels(window,"after-fullscreen");
             Key(window,0x25);Wait(() => IsRect(window,x,y,half,height),"snapping was lost after fullscreen");
             Result["ok"]=true;
-            File.WriteAllText(FilePath("command.json"),"{\"action\":\"quit\"}");
+            WriteCommand("{\"action\":\"quit\"}");
             Check(child.WaitForExit(10000),"fixture did not retire its Host");
             File.WriteAllText(FilePath("stdout.txt"),stdout.Result);File.WriteAllText(FilePath("stderr.txt"),stderr.Result);
         } catch(Exception error) {Result["ok"]=false;Result["error"]=error.ToString();}
         finally {
             if(child!=null && !child.HasExited){
-                File.WriteAllText(FilePath("command.json"),"{\"action\":\"quit\"}");
+                WriteCommand("{\"action\":\"quit\"}");
                 if(!child.WaitForExit(10000)){child.Kill();child.WaitForExit();}
             }
             foreign.DestroyHandle();if(saved)SetCursorPos(pointer.X,pointer.Y);
