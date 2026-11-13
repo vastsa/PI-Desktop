@@ -70,6 +70,12 @@ The native driver verifies cursor positions, crosses the drag threshold near
 the press point and waits for Windows to enter the target HWND's move/size
 loop before sweeping to the edge. An accepted button injection alone is not
 proof that a drag began; failure to enter that loop fails acceptance.
+Keyboard maximize/restore runs before physical resizing. Windows Server can
+retain the earlier user-resized restore width after a programmatic bounds
+reset; independent scenarios must not inherit that history. Win+Down must
+still restore the exact initial 1200x800 rectangle, and its actual rectangle
+is retained even on failure. Maximized client/visible work-area and pixel
+assertions remain unchanged.
 
 ## Verdict and evidence
 

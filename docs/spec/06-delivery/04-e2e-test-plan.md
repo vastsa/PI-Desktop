@@ -14143,6 +14143,8 @@ desktops, session 0, input failures and startup errors must fail the job.
 Before each native drag sweep, cross the drag threshold near the press point
 and confirm the target HWND owns Windows' move/size loop. A registered mouse
 button or correct cursor coordinate alone must not qualify a drag.
+Run keyboard maximize/restore before physical resizing to isolate it from
+the Shell's user-resize restore history; retain its exact normal bounds check.
 Retain SHA/tree/source hashes, binary hashes, OS/session/display metadata,
 baseline/candidate JSON, timestamped logs, stdout/stderr and normal/snapped/
 maximized/restored client PNGs. Upload artifacts even on failure; exclude
