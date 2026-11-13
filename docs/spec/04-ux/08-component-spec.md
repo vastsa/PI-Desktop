@@ -2299,6 +2299,9 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   the reader navigates away. The tool block's Copy action still copies the full
   result.
 - **Plugins**: `remark-gfm` (tables, task lists, strikethrough, autolinks),
+  `remark-cjk-friendly/parseOnly` (CJK emphasis adjacent to quotes, brackets
+  and punctuation, including `这是**“重点”**。`, without rewriting source or
+  changing literal code/escaped markers; shared by splitting and rendering),
   `remark-math` + `rehype-katex` (inline `$…$` or `\(…\)`, display `$$…$$`
   or `\[…\]`). Raw HTML is
   parsed by `rehype-raw` and immediately constrained by the extended
