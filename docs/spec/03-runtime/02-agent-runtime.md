@@ -2035,7 +2035,9 @@ Reads are repeatable and do not consume desktop output. The wait defaults to
 (completed/timeout/interrupted), independently of the job's state. New input
 interrupts the wait; cancelling the parent releases it without stopping Bash.
 TaskStop returns completed or stopPending based on the actual snapshot. A
-stopRequested flag alone does not confirm termination.
+stopRequested flag alone does not confirm termination. Cancelling TaskStop
+before dispatch leaves the job alone. After dispatch, cancellation releases
+the caller's wait while Host continues processing the stop request.
 
 The wait deadline includes capability discovery and in-flight requests.
 On timeout the tool returns its last observed snapshot. If the first
