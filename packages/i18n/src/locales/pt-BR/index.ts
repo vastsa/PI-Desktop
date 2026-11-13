@@ -334,6 +334,11 @@ export const ptBR = {
     sessionMissing: "Essa sessão não existe mais"
   },
   chat: {
+    thinkingActions: "Controles do raciocínio",
+    expandAllThinking: "Expandir todo o raciocínio",
+    collapseAllThinking: "Recolher todo o raciocínio",
+    thinkingActionFailed: "Não foi possível atualizar o raciocínio: {{error}}",
+
     promptRetractionFailed: "Não foi possível restaurar o rascunho com segurança. A conversa foi preservada.",
     tableActions: "Ações da tabela",
     markdownPlainTextFallback: "Respostas extensas são exibidas como texto simples para manter a interface responsiva.",

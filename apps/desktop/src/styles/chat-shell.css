@@ -977,3 +977,12 @@
     padding-bottom: 18px;
   }
 }
+
+.transcript-thinking-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 16px;
+}

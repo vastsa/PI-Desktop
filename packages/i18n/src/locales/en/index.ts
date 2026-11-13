@@ -342,6 +342,11 @@ export const en = {
     sessionMissing: "That session no longer exists",
   },
   chat: {
+    thinkingActions: "Thinking controls",
+    expandAllThinking: "Expand all thinking",
+    collapseAllThinking: "Collapse all thinking",
+    thinkingActionFailed: "Could not update thinking: {{error}}",
+
     promptRetractionFailed: "Could not safely restore the draft. Your conversation has been preserved.",
     tableActions: "Table actions",
     markdownPlainTextFallback: "Large response shown as plain text to keep the conversation responsive.",

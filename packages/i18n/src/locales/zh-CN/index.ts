@@ -337,6 +337,11 @@ export const zhCN = {
     sessionMissing: "该会话已不存在",
   },
   chat: {
+    thinkingActions: "思考内容操作",
+    expandAllThinking: "展开全部思考",
+    collapseAllThinking: "收起全部思考",
+    thinkingActionFailed: "无法更新思考展开状态：{{error}}",
+
     promptRetractionFailed: "无法安全恢复草稿。会话内容已保留。",
     tableActions: "表格操作",
     markdownPlainTextFallback: "内容较长，为保持界面响应速度，现以纯文本显示。",

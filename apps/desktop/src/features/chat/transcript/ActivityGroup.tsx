@@ -265,10 +265,13 @@ export const ActivityGroup = memo(function ActivityGroup({
     groupActive: live,
     collapseSettled: collapseSettledGroups,
   });
+  const thinkingIds = useMemo(() => items.filter((item) => item.kind === "thinking")
+    .map((item) => item.message.id), [items]);
   const disclosure = useAutomaticDisclosure(
     automaticallyOpen,
     revealRequest,
     disclosureKey("activity", first?.message.id ?? "", first?.kind ?? "", first?.kind === "hostedSearch" ? first.round.id : ""),
+    thinkingIds,
   );
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure, claim: claimDisclosure, titleRef } = disclosure;
   // A subagent card is its own disclosure, so it reads the same parent gate the

@@ -1,5 +1,15 @@
 # 04. E2E 测试 Plan
 
+### E2E-TRANSCRIPT-bulk-thinking
+
+运行 `node scripts/e2e-transcript-disclosure-anchor.mjs --bulk-thinking`，在真实 Electron
+中使用生产 ChatTranscript、展开状态与操作按钮。会话读取使用隔离测试数据，包含挂载窗口
+以外的历史思考。通过按钮展开和收起，然后加载历史、单独切换思考块、切换显示模式、切换
+会话并重新挂载窗格。已有思考及祖先展开；收起保留工具详情与父级状态。新回合遵循自动
+默认值，“显示思考”仍有效；历史读取失败时明确提示且不部分应用。原有 disclosure-anchor
+测试继续验证滚动行为。
+
+
 ### E2E-FILE-INDEX-git-deadline
 
 对真实测试文件调用 `getWorkspaceFileIndex` 和 `searchWorkspaceFiles`，

@@ -344,6 +344,11 @@ export const tr = {
     sessionMissing: "Bu oturum artık mevcut değil",
   },
   chat: {
+    thinkingActions: "Düşünme denetimleri",
+    expandAllThinking: "Tüm düşünceleri genişlet",
+    collapseAllThinking: "Tüm düşünceleri daralt",
+    thinkingActionFailed: "Düşünceler güncellenemedi: {{error}}",
+
     promptRetractionFailed: "Taslak güvenli biçimde geri yüklenemedi. Konuşmanız korundu.",
     tableActions: "Tablo işlemleri",
     markdownPlainTextFallback: "Büyük yanıtlar arayüzün duyarlı kalması için düz metin olarak gösterilir.",

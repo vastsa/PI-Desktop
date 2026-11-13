@@ -337,6 +337,11 @@ export const zhTW = {
     sessionMissing: "該對話已不存在",
   },
   chat: {
+    thinkingActions: "思考內容操作",
+    expandAllThinking: "展開全部思考",
+    collapseAllThinking: "收起全部思考",
+    thinkingActionFailed: "無法更新思考展開狀態：{{error}}",
+
     promptRetractionFailed: "無法安全恢復草稿。對話內容已保留。",
     tableActions: "表格操作",
     markdownPlainTextFallback: "內容較長，為維持介面回應速度，現以純文字顯示。",

@@ -951,6 +951,20 @@ reading surface of the workstation.
 
 ### Turn process and thinking display
 
+The current conversation offers **Expand all thinking** and **Collapse all
+thinking** above the transcript (#2174). These are explicit, session-local
+operations on existing main-conversation reasoning, including history outside the
+loaded window. Expansion also reveals the owning process and activity groups;
+collapse changes only reasoning rows. Tools and delegated transcripts keep their
+own choices. Later manual toggles win, and newly generated reasoning still uses
+the existing automatic defaults. The controls are hidden while Show thinking is
+off and never change that preference. Each operation reads session history on demand, following pagination when
+required, disables the controls while pending, and reports a read failure
+without applying a partial batch. It retains only disclosure metadata, preserves
+the visible reading anchor, and does not replace the paged message window.
+Batch choices survive paging and pane eviction for the renderer lifetime, remain
+isolated by session, and are released on session deletion or renderer restart.
+
 One unified turn-process presentation projects each loaded assistant turn into a
 single collapsible process disclosure plus its trailing answer. Reasoning, tools,
 hosted searches and intermediate assistant text keep their transcript order inside

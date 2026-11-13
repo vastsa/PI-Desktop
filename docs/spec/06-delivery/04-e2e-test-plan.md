@@ -1,5 +1,18 @@
 # 04. E2E Test Plan
 
+### E2E-TRANSCRIPT-bulk-thinking
+
+Run `node scripts/e2e-transcript-disclosure-anchor.mjs --bulk-thinking` in real
+Electron with production ChatTranscript, disclosure state and action buttons.
+Supply an isolated session-read fixture with older reasoning outside the mounted
+window. Expand and collapse through the controls, then page older rows in, toggle
+individual rows, change display modes, switch sessions and remount a pane.
+Existing reasoning and its ancestors expand; collapse leaves tools and parent
+choices intact. New turns keep automatic defaults, Show thinking remains
+authoritative, and a failed history read reports an error without partial changes.
+The ordinary disclosure-anchor probe remains the scrolling regression gate.
+
+
 ### E2E-CHAT-output-token-truncation (#2277)
 
 Use the real Desktop runtime and Pi loop with a controlled provider stream
