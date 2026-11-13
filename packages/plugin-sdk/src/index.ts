@@ -1756,6 +1756,15 @@ export function validateManifest(raw: unknown): {
   if (typeof m.id !== "string" || !m.id) {
     return { ok: false, error: "manifest.id is required" };
   }
+  // The id names the plugin's install and data directories and its browser
+  // session partition, which map any other character to `_`; only these
+  // characters keep two plugins apart (the host enforces the same rule).
+  if (!/^[A-Za-z0-9._-]+$/.test(m.id) || m.id === "." || m.id === "..") {
+    return {
+      ok: false,
+      error: "manifest.id may only contain letters, digits, '.', '-' and '_'",
+    };
+  }
   if (typeof m.name !== "string" || !m.name) {
     return { ok: false, error: "manifest.name is required" };
   }

@@ -576,7 +576,10 @@ OAuth 贡献使用宿主管理的服务商账号界面。`onProviderOAuth` 处�
 ## 7. 验证规则
 
 1. `schemaVersion` 必填且必须是数字。当前格式为 `1`，但不会校验具体取值
-2. 需要 `id` / `name` / `version` / `main`
+2. 需要 `id` / `name` / `version` / `main`。安装和加载时，`id` 含
+   `[A-Za-z0-9._-]` 以外的字符或等于 `.` / `..` 会被拒绝：id 决定插件的安装目录、
+   数据目录和浏览器会话分区，这些位置都会把其他字符替换为 `_`，这样的 id 可能与另一个
+   插件共用文件、存储和网络策略。`pi-plugin check` 仍要求 §1 中更严格的格式
 3. 打开 `ui.panel` 需要显式声明和用户授予 `ui.panel`，路径不会隐式授权
 4. 如果存在 `agentTools`，则必须声明 `agent.tool.register`。缺少该权限时
    `pi-plugin check` 报错（`permission.tools-missing`），安装器不会拒绝，

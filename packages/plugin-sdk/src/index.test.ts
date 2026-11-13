@@ -85,6 +85,18 @@ describe("validateManifest", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("rejects ids that would share another plugin's directory or partition", () => {
+    for (const id of ["foo!bar", "foo/bar", "foo bar", "插件", ".", ".."]) {
+      expect(validateManifest({ ...base, id })).toEqual({
+        ok: false,
+        error: "manifest.id may only contain letters, digits, '.', '-' and '_'",
+      });
+    }
+    for (const id of ["foo_bar", "pi.browser", "io.github.b1eight.pi-desktop-claude-theme", "a..b"]) {
+      expect(validateManifest({ ...base, id }).ok).toBe(true);
+    }
+  });
+
   it("accepts enabledByDefault as a boolean", () => {
     expect(validateManifest({ ...base, enabledByDefault: false }).ok).toBe(true);
     expect(validateManifest({ ...base, enabledByDefault: "no" }).error).toMatch(

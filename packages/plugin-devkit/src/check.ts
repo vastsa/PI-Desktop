@@ -159,6 +159,10 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+function invalidIdMessage(id: string): string {
+  return `manifest.id "${id}" must be a lowercase dotted id such as "acme.notes" (${PLUGIN_ID_PATTERN.source})`;
+}
+
 /**
  * Validate a plugin directory against every rule host-core enforces at install
  * time, so a clean `check` means `install` will not reject the package.
@@ -195,6 +199,12 @@ export async function check(dirInput: string): Promise<CheckResult> {
 
   const validated = validateManifest(parsed);
   if (!validated.ok || !validated.manifest) {
+    // An id the installer refuses also breaks the schema shape; keep the
+    // devkit's own code and hint for it.
+    const id = (parsed as { id?: unknown } | null)?.id;
+    if (validated.error?.startsWith("manifest.id may only") && typeof id === "string") {
+      return fail("manifest.invalid-id", invalidIdMessage(id));
+    }
     return fail("manifest.invalid", validated.error ?? "manifest is invalid");
   }
   const manifest = validated.manifest;
@@ -202,7 +212,7 @@ export async function check(dirInput: string): Promise<CheckResult> {
   if (!PLUGIN_ID_PATTERN.test(manifest.id)) {
     errors.push({
       code: "manifest.invalid-id",
-      message: `manifest.id "${manifest.id}" must be a lowercase dotted id such as "acme.notes" (${PLUGIN_ID_PATTERN.source})`,
+      message: invalidIdMessage(manifest.id),
     });
   }
 

@@ -632,7 +632,12 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
 
 1. `schemaVersion` is required and must be a number. The current format is `1`;
    the value itself is not checked
-2. `id` / `name` / `version` / `main` are required
+2. `id` / `name` / `version` / `main` are required. The installer and loader
+   reject an `id` with characters outside `[A-Za-z0-9._-]` or equal to `.` /
+   `..`: the id names the plugin's install and data directories and its
+   browser session partition, and each of those maps every other character to
+   `_`, so such ids could share another plugin's files, storage, and network
+   policy. `pi-plugin check` still asks for the stricter shape in §1
 3. Opening `ui.panel` requires the explicit declared and granted `ui.panel`
    permission; a panel path does not implicitly grant it
 4. If `agentTools` are present, `agent.tool.register` must be declared.

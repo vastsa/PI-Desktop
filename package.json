@@ -104,6 +104,7 @@
     "test:e2e:plugin-fetch-redirect": "node --test apps/desktop/test/plugin-fetch-redirect.test.mjs",
     "test:e2e:plugin-command-ownership": "node --test --test-timeout=60000 apps/desktop/test/plugin-command-ownership.test.mjs",
     "test:e2e:plugin-projects": "node scripts/e2e-plugin-projects.mjs",
+    "test:e2e:plugin-id-collision": "node scripts/e2e-plugin-id-collision.mjs",
     "test:e2e:plugin-import-deps": "node scripts/e2e-plugin-import-deps.mjs",
     "test:e2e:trusted-extensions": "node scripts/e2e-trusted-extensions.mjs",
     "test:e2e:plugin-ui-slots": "node scripts/e2e-plugin-ui-slots.mjs",
