@@ -234,6 +234,7 @@ import {
   effectiveModelContextWindow,
   estimateOutputCapInputTokens,
   requestTranscript,
+  truncateTextWithinOutputCap,
 } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
@@ -1584,11 +1585,6 @@ function appendToolProgress(current: string, chunk: string): string {
   return `${head}${TOOL_PROGRESS_TRUNCATION_MARKER}${tail}`;
 }
 
-/** Bound a checkpoint message's text, naming the cut the way pi's tail does. */
-function truncateTextForCheckpoint(text: string, maxChars: number): string {
-  return truncateTextWithMarker(text, maxChars, CHECKPOINT_TRUNCATION_MARKER);
-}
-
 /**
  * Flatten a user message to plain text so it can be truncated at a token
  * budget. Images and other non-text blocks are named rather than kept: a
@@ -1609,11 +1605,20 @@ function truncateUserMessageForCheckpoint(
   message: UserMessage,
   tokenBudget: number,
 ): UserMessage {
+  const text = userMessageTextForCheckpoint(message);
+  // Same ASCII ceiling as before (budget * 3.5). CJK is then shrunk to the
+  // output-cap estimate, which charges about one token per character.
+  const ceiling = Math.max(
+    1,
+    Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+  );
   return {
     ...message,
-    content: truncateTextForCheckpoint(
-      userMessageTextForCheckpoint(message),
-      Math.max(1, Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN)),
+    content: truncateTextWithinOutputCap(
+      text,
+      tokenBudget,
+      CHECKPOINT_TRUNCATION_MARKER,
+      ceiling,
     ),
   };
 }
@@ -1632,7 +1637,15 @@ function selectRetainedUserMessages(
   let remaining = Math.max(0, maxTokens);
   for (let index = candidates.length - 1; index >= 0 && remaining > 0; index -= 1) {
     const message = candidates[index];
-    const tokens = estimateTokens(message);
+    // pi-ai's chars/3.5 estimate under-counts Han, kana, and Hangul, so a long
+    // CJK message looks like it fits and is kept whole. The output-cap
+    // estimate is the one the next request is gated on.
+    const tokens = Math.max(
+      estimateTokens(message),
+      estimateOutputCapInputTokens({
+        messages: [{ role: "user", content: message.content }],
+      }),
+    );
     if (tokens <= remaining) {
       selected.push(message);
       remaining -= tokens;
