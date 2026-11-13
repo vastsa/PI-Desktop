@@ -133,6 +133,8 @@ export type UiMessage = {
   thinking?: string;
   createdAt: string;
   status?: "streaming" | "complete" | "error" | "aborted";
+  /** The provider cut off this text response at its output-token limit. */
+  outputTruncated?: boolean;
   /** Provider/model that produced this assistant turn, when known. */
   modelId?: string;
   providerId?: string;

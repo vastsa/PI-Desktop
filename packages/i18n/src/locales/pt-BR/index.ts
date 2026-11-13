@@ -453,6 +453,7 @@ export const ptBR = {
     diagramTooLarge: "Este diagrama é grande demais para ser renderizado com segurança. Exibindo o código-fonte.",
     responseError: "Não foi possível concluir esta resposta",
     responseFailed: "O assistente não conseguiu concluir esta resposta.",
+    outputTruncated: "Esta resposta foi truncada porque o modelo atingiu o limite de tokens de saída. O conteúdo pode estar incompleto.",
     showErrorDetails: "Mostrar detalhes",
     hideErrorDetails: "Ocultar detalhes",
     dismissError: "Dispensar mensagem de erro",
