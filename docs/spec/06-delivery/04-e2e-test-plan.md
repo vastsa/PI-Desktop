@@ -9754,6 +9754,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   delivery are controlled external boundaries; this is not a manual Finder gesture
   or a live external provider call. Full paste coverage also verifies restoring
   the actual pre-preview focus target, including Chromium's editing-host focus.
+  Restore the saved selection before focusing the original control so selection
+  updates cannot steal its final focus. Stale session/project previews restore
+  neither focus nor selection (`composer-image-preview-focus.test.mjs`).
 
 #### E2E-102h: Composer picker imports files into session scratch
 

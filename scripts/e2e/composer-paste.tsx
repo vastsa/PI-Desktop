@@ -770,9 +770,8 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
       assert(readEditorValue(editor) === beforePreview && submitted === 0,
         "preview key altered or sent the draft");
       await globalThis.composerPreviewPressKey("Escape");
-      await until(() => !dialog(), "native Escape did not dismiss the preview");
-      assert(!dialog() && document.activeElement === focusBeforePreview,
-        "cancel did not close and restore the original attachment focus");
+      await until(() => !dialog() && document.activeElement === focusBeforePreview,
+        "native Escape did not dismiss the preview and restore the original focus");
     }
     // The isolated host supplies real images within the allowed scratch directory.
     const wide = createFileReference(imageReference.path.replace(/[^/\\]+$/, "wide-fixture.png"), "wide.png", "paste-a", {
