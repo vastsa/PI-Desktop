@@ -60,6 +60,46 @@ jobs:
         run: |
           cargo build -p host-core --locked 2>&1 | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/build.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Configure the ephemeral desktop for native minimum sizes
+        shell: pwsh
+        run: |
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class SnapDisplay {
+            [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]
+            public struct Mode {
+              [MarshalAs(UnmanagedType.ByValTStr,SizeConst=32)] public string device;
+              public ushort spec,driver,size,extra; public uint fields;
+              public int x,y; public uint orientation,fixedOutput;
+              public short color,duplex,yResolution,tt,collate;
+              [MarshalAs(UnmanagedType.ByValTStr,SizeConst=32)] public string form;
+              public ushort logPixels;
+              public uint bpp,width,height,flags,frequency,icmMethod,icmIntent,media,dither,reserved1,reserved2,panningWidth,panningHeight;
+            }
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern bool EnumDisplaySettings(string device,int index,ref Mode mode);
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int ChangeDisplaySettings(ref Mode mode,uint flags);
+            static Mode Current() {
+              var mode=new Mode();mode.size=(ushort)Marshal.SizeOf(typeof(Mode));
+              if(!EnumDisplaySettings(null,-1,ref mode))throw new Exception("Cannot read the CI desktop mode");
+              return mode;
+            }
+            public static string Configure() {
+              var before=Current();var mode=before;
+              if(mode.width<1920 || mode.height<1080 || mode.bpp!=32) {
+                mode.width=1920;mode.height=1080;mode.bpp=32;mode.fields=0x1C0000;
+                int tested=ChangeDisplaySettings(ref mode,2);
+                if(tested!=0)throw new Exception("CI desktop rejects 1920x1080x32: "+tested);
+                int changed=ChangeDisplaySettings(ref mode,0);
+                if(changed!=0)throw new Exception("CI desktop mode change failed: "+changed);
+              }
+              var after=Current();
+              if(after.width<1920 || after.height<1080 || after.bpp!=32)throw new Exception("CI desktop did not reach the required mode");
+              return "before="+before.width+"x"+before.height+"x"+before.bpp+" after="+after.width+"x"+after.height+"x"+after.bpp;
+            }
+          }
+          '@
+          [SnapDisplay]::Configure() | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/display.log"
       - name: Run interactive native acceptance
         shell: pwsh
         run: |

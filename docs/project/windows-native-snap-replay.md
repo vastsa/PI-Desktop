@@ -7,6 +7,10 @@ pinned Electron. The job uses read-only permissions, no credentials, and no
 deployment. Its artifact is named `native-snap-<head SHA>-<attempt>`.
 The job artifact has `job.json`, build/preparation logs, and a `native/`
 directory containing the acceptance summary, screenshots and replay payload.
+The ephemeral runner's display is configured to at least 1920×1080×32 so the
+native minimum width fits in a work-area half. The mode change is checked and
+recorded; an unsupported display mode fails the job. Manual replay leaves the
+reviewer's desktop settings unchanged and requires the display below.
 
 ## Independent interactive Windows run
 
@@ -115,9 +119,9 @@ captures; the matrix baseline failed precisely at Win+Left as required.
 
 Download [its manifest](windows-native-snap-evidence/2b52999879a6/manifest.json),
 [matrix summary](windows-native-snap-evidence/2b52999879a6/summary.json),
-[runner log](windows-native-snap-evidence/2b52999879a6/runner.log),
+[runner log](https://github.com/Linuxdazhao/PI-Desktop/blob/e45ac351547f3cb0c448435c69524bbe78a3ee2a/docs/project/windows-native-snap-evidence/2b52999879a6/runner.log),
 [candidate results](windows-native-snap-evidence/2b52999879a6/candidate/result.json),
-[native RPC replies](windows-native-snap-evidence/2b52999879a6/candidate/native-rpc.jsonl),
+[native RPC replies](https://github.com/Linuxdazhao/PI-Desktop/blob/e45ac351547f3cb0c448435c69524bbe78a3ee2a/docs/project/windows-native-snap-evidence/2b52999879a6/candidate/native-rpc.jsonl),
 [maximized pixels](windows-native-snap-evidence/2b52999879a6/candidate/maximized.png)
 and [restored maximized pixels](windows-native-snap-evidence/2b52999879a6/candidate/restoredMaximized.png).
 These are author replay records, distinct from an independent Actions run.
