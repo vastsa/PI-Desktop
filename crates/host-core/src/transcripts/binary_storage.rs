@@ -8,11 +8,33 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, thiserror::Error)]
 #[error("invalid binary storage: {0}")]
 struct InvalidStorage(String);
+/// `InvalidStorage` caused by a serde EOF parse error on the encoded line
+/// itself — a crash-truncated torn prefix, not data corruption. Same category
+/// and Display as `InvalidStorage` (so writes keep blocking on it), but
+/// separately downcastable so readers can skip it.
+#[derive(Debug, thiserror::Error)]
+#[error("invalid binary storage: {0}")]
+struct InvalidStorageEof(String);
 fn invalid(reason: impl Into<String>) -> anyhow::Error {
     InvalidStorage(reason.into()).into()
 }
+fn invalid_eof(reason: impl Into<String>) -> anyhow::Error {
+    InvalidStorageEof(reason.into()).into()
+}
 pub(super) fn is_error(error: &anyhow::Error) -> bool {
     error.downcast_ref::<InvalidStorage>().is_some()
+        || error.downcast_ref::<InvalidStorageEof>().is_some()
+}
+/// Typed classification of a crash-truncated line: either a wrapped
+/// `InvalidStorageEof` from the encoded-line path, or a direct
+/// `serde_json::Error` in the EOF category kept downcastable by `parse_line`.
+/// Never searches `Display` text, so corruption errors that merely contain
+/// "EOF while parsing" as a value stay hard errors.
+pub(super) fn is_torn_eof(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<InvalidStorageEof>().is_some()
+        || error
+            .downcast_ref::<serde_json::Error>()
+            .is_some_and(serde_json::Error::is_eof)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -639,9 +661,17 @@ pub(crate) fn decode(mut value: Value) -> Result<Value> {
 fn parse_line(text: &str) -> Result<Value> {
     serde_json::from_str(text).map_err(|e| {
         if text.contains("\"binaryStorage\"") {
-            invalid(e.to_string())
+            // Keep the EOF category typed so a crash-truncated torn prefix can
+            // be distinguished from real corruption by `is_torn_eof`, instead
+            // of searching the Display text for "EOF while parsing".
+            if e.is_eof() {
+                invalid_eof(e.to_string())
+            } else {
+                invalid(e.to_string())
+            }
         } else {
-            anyhow!(e)
+            // Store the serde error itself so its EOF category stays typed.
+            anyhow::Error::new(e)
         }
     })
 }

@@ -291,7 +291,7 @@ pub fn find_message_position(
         match decoded {
             Ok(identity) if identity.id == message_id => return Ok(Some(position)),
             Ok(_) => {}
-            Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
+            Err(error) if invalid_utf8 || error.is_eof() => {
                 tracing::warn!(%error, "skipping invalid indexed transcript identity");
             }
             Err(error) => return Err(error).context("decode indexed transcript message identity"),
@@ -323,7 +323,7 @@ pub fn read_tool_call(
         }
         let identity: Value = match serde_json::from_str(&line) {
             Ok(value) => value,
-            Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
+            Err(error) if invalid_utf8 || error.is_eof() => {
                 tracing::warn!(%error, "skipping invalid indexed transcript tool-call identity");
                 continue;
             }
@@ -359,10 +359,12 @@ pub fn read_tool_call(
                     apply_tool_review_states(std::slice::from_mut(&mut record), &updates);
                     return Ok(Some(record));
                 }
-                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                Err(error)
+                    if binary_storage::is_error(&error) && !binary_storage::is_torn_eof(&error) =>
+                {
                     return Err(error)
                 }
-                Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
+                Err(error) if invalid_utf8 || binary_storage::is_torn_eof(&error) => {
                     tracing::warn!(%error, "skipping invalid indexed tool-call message");
                 }
                 Err(error) => {
@@ -427,21 +429,6 @@ fn read_layout_line(
 #[cfg(test)]
 thread_local! {
     static LAYOUT_LINE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Whether a decode failure on a transcript line is a crash-truncated prefix.
-///
-/// `append_line` terminates a torn tail with a newline before appending, which
-/// promotes the torn bytes into a complete line. The line still sniffs as its
-/// leading `type` (the discriminator precedes the truncation point), so the
-/// layout indexes it and even the sequential path classifies it as a message
-/// line, but it can never decode: serde reports the missing tail as an
-/// EOF-category parse error, which surfaces verbatim for plain lines and
-/// inside the `invalid binary storage` reason for encoded ones. Such a line
-/// is unrecoverable -- its tail was lost to a killed process -- so readers
-/// skip it with a warning instead of failing every subsequent read forever.
-fn is_torn_prefix(error: &impl std::fmt::Display) -> bool {
-    error.to_string().contains("EOF while parsing")
 }
 
 /// Whether a JSON string for this value is the value itself.
@@ -1148,20 +1135,24 @@ pub fn read_transcript_window_with_layout(
         match kind {
             "message" => match binary_storage::read::<MessageRecord>(trimmed) {
                 Ok(record) => out.messages.push(record),
-                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                Err(error)
+                    if binary_storage::is_error(&error) && !binary_storage::is_torn_eof(&error) =>
+                {
                     return Err(error)
                 }
-                Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
+                Err(error) if invalid_utf8 || binary_storage::is_torn_eof(&error) => {
                     tracing::warn!(path = %path.display(), %error, "skipping invalid indexed message line");
                 }
                 Err(error) => return Err(error).context("decode indexed transcript message"),
             },
             "compaction" => match binary_storage::read::<CompactionRecord>(trimmed) {
                 Ok(record) => out.compactions.push(record),
-                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                Err(error)
+                    if binary_storage::is_error(&error) && !binary_storage::is_torn_eof(&error) =>
+                {
                     return Err(error)
                 }
-                Err(error) if invalid_utf8 || is_torn_prefix(&error) => {
+                Err(error) if invalid_utf8 || binary_storage::is_torn_eof(&error) => {
                     tracing::warn!(path = %path.display(), %error, "skipping invalid indexed compaction line");
                 }
                 Err(error) => {
@@ -1231,7 +1222,8 @@ pub fn read_transcript_window(
                     match binary_storage::read::<MessageRecord>(line.trim()) {
                         Ok(record) => out.messages.push(record),
                         Err(error)
-                            if binary_storage::is_error(&error) && !is_torn_prefix(&error) =>
+                            if binary_storage::is_error(&error)
+                                && !binary_storage::is_torn_eof(&error) =>
                         {
                             return Err(error)
                         }
@@ -1243,7 +1235,9 @@ pub fn read_transcript_window(
             }
             "compaction" => match binary_storage::read::<CompactionRecord>(line.trim()) {
                 Ok(record) => out.compactions.push(record),
-                Err(error) if binary_storage::is_error(&error) && !is_torn_prefix(&error) => {
+                Err(error)
+                    if binary_storage::is_error(&error) && !binary_storage::is_torn_eof(&error) =>
+                {
                     return Err(error)
                 }
                 Err(error) => {
@@ -1863,6 +1857,45 @@ mod tests {
         let sequential = read_transcript_window(dir.path(), "s1", 0, None).unwrap();
         let sequential_ids: Vec<&str> = sequential.messages.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(sequential_ids, ["m1", "m2"]);
+    }
+
+    /// Corruption that merely contains "EOF while parsing" as a *value* must
+    /// stay a hard error: a complete, newline-terminated message whose
+    /// binaryStorage version field is that string decodes as InvalidStorage on
+    /// main, and must not be silently dropped as a torn prefix (#2298).
+    #[test]
+    fn complete_encoded_line_with_eof_text_value_is_a_hard_error() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
+        let path = dir.path().join("sessions").join("s1.jsonl");
+        let mut body = fs::read_to_string(&path).unwrap();
+        body.push_str(
+            r#"{"type":"message","id":"bad","binaryStorage":{"version":"EOF while parsing","data":[],"refs":[],"texts":[]}}"#,
+        );
+        body.push('\n');
+        body.push_str(&tagged("message", &record("m2", "two")).unwrap());
+        body.push('\n');
+        fs::write(&path, body).unwrap();
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+
+        let indexed = read_transcript_window_with_layout(dir.path(), "s1", &layout, 0, None);
+        assert!(
+            indexed.is_err(),
+            "a complete structurally-invalid encoded line must fail the read, \
+             not be skipped as a torn prefix"
+        );
+
+        let sequential = read_transcript_window(dir.path(), "s1", 0, None);
+        assert!(
+            sequential.is_err(),
+            "the sequential read must keep the same hard-error behavior"
+        );
     }
 
     fn record(id: &str, text: &str) -> MessageRecord {
