@@ -647,7 +647,10 @@ rejects. None of these values are configurable.
 number, corrected against observed request usage. The runtime estimator anchors
 on the last assistant usage and delegates provider-message estimation to
 pi-ai, whose 1.1.0 text estimate is 3.5 characters per token; text truncation
-converts token budgets with the same ratio. Desktop-only rows keep the existing
+starts from that ratio, then shrinks the cut until the output-cap estimate
+(chars/4 plus the CJK correction) fits the same token budget. Retained tails,
+checkpoint user messages, and a delegate's retained task brief share that
+bound. Desktop-only rows keep the existing
 character heuristic. With no usage
 anchor, the budget also computes the output-cap estimator
 over non-system conversation messages plus the current system prompt and active
