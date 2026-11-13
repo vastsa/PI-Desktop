@@ -337,7 +337,7 @@ hold `project.create` when it supplies a project id. Omitting `projectId` keeps
 the imported session unbound; `projectPath` remains historical source metadata
 and never creates a project by itself.
 
-### projects / workspace / fs
+### projects / workspace / fs {#projects-workspace-fs}
 ```ts
 pi.projects.list(): Promise<PluginProjectInfo[]>
 
