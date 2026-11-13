@@ -668,6 +668,33 @@ describe("rebuildChainsFromTranscript", () => {
     });
   });
 
+  it.each(["delegation-id", "call-id", "reused-handle"])("retains a continuation restored before its parent: %s", format => {
+    const root = taskRow("call-1", "d1", "Original task");
+    const latestId = format === "reused-handle" ? "d1" : "d2";
+    const resumed = taskRow("call-2", latestId, "Continuation", { resume: format === "call-id" ? "call-1" : "d1" });
+    const transcript = [resumed, root];
+    const before = JSON.stringify(transcript);
+    const chains = rebuildChainsFromTranscript(transcript);
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toMatchObject({
+      originalTask: "Original task", toolCallIds: ["call-1", "call-2"],
+      latestDelegationId: latestId, latestObjective: "Continuation",
+    });
+    expect(JSON.stringify(transcript)).toBe(before);
+  });
+
+  it("keeps repeated legacy handles in task order after shuffled restoration", () => {
+    const root = taskRow("call-1", "same", "Original task");
+    const middle = { ...taskRow("call-2", "same", "First continuation", { resume: "same" }),
+      createdAt: "2026-11-03T00:00:01.000Z" };
+    const latest = { ...taskRow("call-3", "same", "Last continuation", { resume: "same" }),
+      createdAt: "2026-11-03T00:00:02.000Z" };
+    const chains = rebuildChainsFromTranscript([latest, middle, root]);
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toMatchObject({ originalTask: "Original task",
+      toolCallIds: ["call-1", "call-2", "call-3"], latestObjective: "Last continuation" });
+  });
+
   it("starts a new chain when a Task call carries no resume link", () => {
     const transcript: UiMessage[] = [
       taskRow("call-1", "d1", "first"),

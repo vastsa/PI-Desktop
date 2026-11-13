@@ -1517,6 +1517,22 @@ first child reply, a persisted original task is sufficient to seed the new
 user-requested run; missing original tasks still fail. Saved child rows remain
 chain-scoped, unfinished tools are not replayed, and model-issued Task resume
 permissions are unchanged.
+
+Restoration accepts both legacy direct Task results and current `details`
+envelopes, including namespaced Task/Subagent spellings and resume links that
+recorded the original tool-call id. Only issued delegation handles become
+continuation targets; rejected calls do not create children. Repeated legacy
+handles and settled copies retain one chronological chain and its original task.
+Missing continuation model metadata retains the last known chain binding.
+
+When old Task results lack an exact account/model, only that call's own
+agent-attributed assistant replies can supply it. Parent or sibling replies
+cannot. A newer explicit binding wins over an old reply, including a switch
+between accounts serving the same model. If the recorded account is unavailable,
+admission rejects clearly instead of selecting the parent or another account.
+The renderer keeps a rejected resume visible as an attempt, but its detail and
+composer resolve a compatible same-session resume target to the original chain;
+the rejected call id is never sent as a fabricated child handle.
 An admitted command still resolving its model keeps the durable turn open. Once
 the parent and children settle, the runtime emits `turn_end` and `agent_end`
 exactly once for the deferred ending, so Main releases its turn before a later

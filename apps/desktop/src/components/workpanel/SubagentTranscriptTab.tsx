@@ -1,7 +1,7 @@
 import type { UiMessage } from "@pi-desktop/shared";
 import { SubagentStopButton } from "../../features/chat/transcript/SubagentStopButton";
 import { SubagentMessageComposer } from "../../features/subagents/SubagentMessageComposer";
-import { buildSessionSubagents } from "../../features/subagents/model";
+import { buildSessionSubagents, continuationSubagent } from "../../features/subagents/model";
 import { delegationIdForMessage } from "../../lib/subagent-panel";
 import { Fragment, useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,7 +24,7 @@ import {
 } from "../ReviewChangeCard";
 import { ToolRow } from "../../features/chat/transcript/ToolRow";
 import { Markdown } from "../Markdown";
-import { delegateModelId, delegateThinkingLevel } from "../../features/chat/transcript/model";
+import { delegateThinkingLevel } from "../../features/chat/transcript/model";
 
 /**
  * The work-panel tab showing one delegation as a conversation (issue #917).
@@ -64,18 +64,22 @@ function SubagentTranscriptSurface({ delegationId, messages: snapshotMessages, r
   const isRunning = useAppStore(
     (state) => (activeSessionId ? state.runningSessions[activeSessionId] ?? false : false),
   );
-  const chain = useMemo(() => buildSessionSubagents(messages, running ?? isRunning).find((agent) =>
-    agent.calls.some((call) => delegationIdForMessage(call) === delegationId)),
-  [messages, delegationId, running, isRunning]);
+  const { selected, chain } = useMemo(() => {
+    const agents = buildSessionSubagents(messages, running ?? isRunning);
+    const selected = agents.find((agent) => agent.calls.some((call) => delegationIdForMessage(call) === delegationId));
+    return { selected, chain: continuationSubagent(agents, selected) };
+  }, [messages, delegationId, running, isRunning]);
   const delegateRunning = running ?? chain?.status === "running";
   const latestCall = chain?.calls[chain.calls.length - 1];
   const delegateSettings = {
-    modelId: latestCall ? delegateModelId(latestCall) : "",
+    modelId: chain?.modelId ?? selected?.modelId ?? "",
+    modelKey: chain?.modelKey ?? selected?.modelKey ?? "",
     thinkingLevel: latestCall ? delegateThinkingLevel(latestCall) : undefined,
   };
+  const conversationId = chain?.delegationId ?? delegationId;
   const transcriptResult = useMemo(
-    () => buildSubagentTranscript(messages, delegationId),
-    [messages, delegationId],
+    () => buildSubagentTranscript(messages, conversationId),
+    [messages, conversationId],
   );
   const {
     scrollRef,
@@ -210,9 +214,9 @@ function SubagentTranscriptSurface({ delegationId, messages: snapshotMessages, r
           </TooltipButton>
         ) : null}
         <SubagentMessageComposer sessionId={activeSessionId ?? ""} delegationId={chain?.delegationId ?? delegationId}
-          draftKey={draftKey ?? chain?.key ?? delegationId} running={delegateRunning}
-          ready={ready && Boolean(transcriptResult) && !chain?.creating} onDelivered={onDelivered}
-          modelId={delegateSettings.modelId} thinkingLevel={delegateSettings.thinkingLevel}>
+          draftKey={draftKey ?? selected?.key ?? delegationId} running={delegateRunning}
+          ready={ready && Boolean(chain?.continuationId) && Boolean(transcriptResult) && !chain?.creating} onDelivered={onDelivered}
+          modelId={delegateSettings.modelId} modelKey={delegateSettings.modelKey} thinkingLevel={delegateSettings.thinkingLevel}>
           {delegateRunning ? <SubagentStopButton delegationId={chain?.delegationId ?? delegationId}
             name={transcriptResult?.agentName} running compact /> : null}
         </SubagentMessageComposer>

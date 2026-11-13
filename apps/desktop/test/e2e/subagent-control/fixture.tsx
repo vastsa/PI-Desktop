@@ -96,6 +96,7 @@ function accept(request: AgentSubagentControlRequest): AgentSubagentControlRespo
   if (prior) return { ...prior, delivery: "recorded" };
   const rows = histories[request.sessionId];
   const previous = request.action === "message" ? rows.find((row) => delegationSnapshot(row)?.delegationId === request.delegationId) : undefined;
+  if (request.action === "message" && !previous) throw new Error("Fixture subagent does not belong to this session");
   const active = previous && delegationSnapshot(previous)?.status === "running";
   const rootId = `user-subagent-${request.operationId}`;
   const delegationId = request.action === "start" || !active ? `delegate-${operations.size + 1}` : request.delegationId;
@@ -312,21 +313,31 @@ Object.assign(window, { subagentControlProbe: async () => {
     const original: UiMessage = { id: "failed-resume-root", role: "tool", content: "", createdAt: stamp(),
       toolName: "Task", toolCallId: "failed-resume-root", toolStatus: "success",
       toolArgs: { agent: "explorer", task: "Completed legacy child" },
-      toolResult: { details: { delegationId: "retained-id", status: "completed", modelId: "fixture-model" } } };
+      toolResult: { details: { delegationId: "retained-id", status: "completed",
+        modelId: "fixture-model", modelKey: "fixture-provider/fixture-model" } } };
+    const originalReply: UiMessage = { id: "original-child-reply", role: "assistant", content: "ORIGINAL-CHILD-HISTORY",
+      createdAt: stamp(), status: "complete", parentToolCallId: "failed-resume-root", agentName: "explorer",
+      providerId: "fixture-provider", modelId: "fixture-model" };
     const rejected: UiMessage = { id: "failed-resume-call", role: "tool", content: "", createdAt: stamp(),
       toolName: "Task", toolCallId: "failed-resume-call", toolStatus: "error", isError: true,
       toolArgs: { agent: "explorer", task: "Rejected continuation", resume: "retained-id" },
       toolResult: { details: { error: "Recorded model unavailable" } } };
-    histories["session-b"] = [original, rejected];
+    histories["session-b"] = [original, originalReply, rejected];
     activate("session-b"); await settle();
     await click(button(t("panel.sessionSubagents.view", { name: "Completed legacy child" })));
     check(modelPicker()?.textContent?.includes("fixture-model"), "Rejected resume cleared the original model");
+    await click(button(t("panel.sessionSubagents.back")));
+    await click(button(t("panel.sessionSubagents.view", { name: "Rejected continuation" })));
+    await until(() => document.querySelector('[data-message-id="original-child-reply"]'),
+      "A rejected continuation did not open the original child conversation");
+    check(modelPicker()?.textContent?.includes("Fixture Provider · fixture-model"), "The continuation lost the recorded account");
+    check(!modelPicker()?.textContent?.includes("— · —"), "Inherited model still displays empty placeholders");
     await edit(messageText(), "Continue after a rejected Task attempt");
     await click(textButton(t("panel.sessionSubagents.control.continue")));
     const afterRejected = commands.at(-1);
     check(afterRejected?.action === "message" && afterRejected.delegationId === "retained-id",
       "Rejected Task replaced the original continuation identity");
-    checks.push("rejected Task resume preserves the original model and usable child identity");
+    checks.push("rejected Task card opens the original account and history and continues its usable child identity");
 
     const denied: SessionSummary[] = [
       { ...sessions[0], id: "remote:fixture", source: "remote" },

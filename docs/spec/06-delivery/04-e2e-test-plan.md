@@ -13727,6 +13727,16 @@ This test plan spec is accepted when:
       Stop; neither can dispatch an uncommitted direction. A queued model change
       blocks later plain messages from overtaking it. The running composer shows
       safe-boundary guidance; explicit model selection keeps model-change guidance.
+  13. Restore a completed legacy Task with a direct result envelope, namespaced
+      spelling, and bare tool-call-id resume link. Continue it through the user
+      controller; verify the original task/history, exact reply account, actual
+      next fake-provider request, and no parent request. Remove that account
+      while leaving another account with the same model: expect clear rejection,
+      not fallback. Select a rejected Task-resume card in the isolated renderer;
+      verify original child history, account/model caption without empty thinking
+      placeholders, and a message request addressed to the issued original chain.
+      Rejected new tasks and unknown/foreign-agent targets stay non-actionable;
+      failed attempts remain visible and recorded newer model switches still win.
 - **Expected**: No parent-model round trip admits a command. Main and runtime
   independently enforce current authority. User commands stay child-owned and
   never become forged provider Task calls or implicit parent context. Running
@@ -13749,6 +13759,10 @@ This test plan spec is accepted when:
   `parent-stop-independent.test.ts` covers parent-scoped cancellation;
   `subagent-content-runtime.test.ts` covers explicit child-content inspection;
   `subagent-settlement-persistence.test.mjs` covers child-owned terminal snapshots.
+  `packages/shared/src/subagent-history.test.ts`, `session-subagents-model.test.mjs`,
+  and `delegation-history.test.ts` cover shared legacy/account projection and chain
+  reconstruction; the isolated user-control fixture covers selecting a rejected
+  resume card and sending to its real chain instead of the rejected call id.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.4,
   `04-ux/08-component-spec.md` §5.8, ADR 0348.
 - **Status**: Implemented source candidate. Isolated fixtures and unit/contract

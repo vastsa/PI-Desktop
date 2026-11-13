@@ -89,13 +89,15 @@ test("the work panel renders the delegation tab like every other resource", () =
 
 test("the delegation tab renders a message list with a session-scoped child composer", () => {
   assert.match(tabSource, /data-testid="subagent-transcript-tab"/);
-  assert.match(tabSource, /buildSubagentTranscript\(messages, delegationId\)/);
+  assert.match(tabSource, /const conversationId = chain\?\.delegationId \?\? delegationId;/);
+  assert.match(tabSource, /buildSubagentTranscript\(messages, conversationId\)/);
+  assert.match(tabSource, /continuationSubagent\(agents, selected\)/);
   assert.match(tabSource, /className="message-row user"/);
   assert.match(tabSource, /className="message-user-text selectable"/);
   assert.match(tabSource, /className="message-row assistant"/);
   assert.match(tabSource, /data-message-id=\{row\.message\.id\}/);
   assert.match(tabSource, /<SubagentMessageComposer sessionId=\{activeSessionId \?\? ""\}/);
-  assert.match(tabSource, /ready=\{ready && Boolean\(transcriptResult\) && !chain\?\.creating\}/);
+  assert.match(tabSource, /ready=\{ready && Boolean\(chain\?\.continuationId\) && Boolean\(transcriptResult\) && !chain\?\.creating\}/);
   assert.match(composerSource, /const editable = control\.allowed && ready;/);
   assert.match(composerSource, /<Textarea disabled=\{!editable\}/);
   assert.match(composerSource, /rows=\{2\}/);
@@ -104,7 +106,8 @@ test("the delegation tab renders a message list with a session-scoped child comp
   assert.match(composerSource, /subagent-transcript-model-picker/);
   assert.match(composerSource, /<SubagentModelPicker/);
   assert.match(tabSource, /modelId=\{delegateSettings\.modelId\}/);
-  assert.match(tabSource, /delegateModelId\(latestCall\)/);
+  assert.match(tabSource, /modelId: chain\?\.modelId/);
+  assert.match(tabSource, /modelKey: chain\?\.modelKey/);
   assert.match(tabSource, /delegateThinkingLevel\(latestCall\)/);
   assert.match(tabSource, /<SubagentStopButton delegationId=\{chain\?\.delegationId \?\? delegationId\}/);
   assert.doesNotMatch(tabSource, /subagent-transcript-actions/);

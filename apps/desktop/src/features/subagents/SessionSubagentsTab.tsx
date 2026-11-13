@@ -4,10 +4,11 @@ import { useTranslation } from "react-i18next";
 import { IconBot, IconChevronLeft, IconCopy, IconRefresh } from "../../components/icons";
 import { Badge, Button, Input, SegmentedControl, TooltipButton } from "../../components/ui";
 import { SubagentTranscriptTab } from "../../components/workpanel/SubagentTranscriptTab";
+import { subagentModelLabel } from "../../components/settings/subagent-models";
 import { SubagentStopButton } from "../chat/transcript/SubagentStopButton";
 import { useAppStore } from "../../stores/app-store";
 import { buildSessionSubagents, filterSessionSubagents, mergeSubagentMessages,
-  canControlSubagents, type SessionSubagent, type SubagentFilter } from "./model";
+  canControlSubagents, continuationSubagent, type SessionSubagent, type SubagentFilter } from "./model";
 import { useSubagentIndex, useSubagentTranscriptHistory } from "./use-subagent-history";
 import { SubagentCreateForm } from "./SubagentCreateForm";
 
@@ -17,6 +18,12 @@ function Outcome({ agent }: { agent: SessionSubagent }) {
     : agent.status === "failed" || agent.status === "denied" ? "error"
       : agent.status === "running" ? "neutral" : "warning";
   return <Badge tone={tone}>{t(agent.creating ? "chat.subagentCreating" : `chat.subagentStatus.${agent.status}`)}</Badge>;
+}
+
+function RecordedModel({ agent, className, fallback }: { agent: SessionSubagent; className?: string; fallback?: string }) {
+  const providers = useAppStore((state) => state.providers);
+  const label = subagentModelLabel(agent, providers);
+  return label.text || fallback ? <p className={className} title={label.title}>{label.text || fallback}</p> : null;
 }
 
 function HistoryError({ error, retry }: { error: Error | null; retry: () => void }) {
@@ -57,7 +64,7 @@ function SubagentDetail({ sessionId, agent, live, onBack }: {
       <TooltipButton type="button" tooltip={t("panel.sessionSubagents.back")}
         ariaLabel={t("panel.sessionSubagents.back")} onClick={onBack}><IconChevronLeft size={16} /></TooltipButton>
       <div className="session-subagents-heading"><h2>{agent.agentName || t("chat.subagentUnnamed")}</h2>
-        <p className="selectable">{agent.modelId || agent.description}</p></div>
+        <RecordedModel agent={agent} className="selectable" fallback={agent.description} /></div>
       <Outcome agent={agent} />
       <TooltipButton type="button" tooltip={t("panel.sessionSubagents.copyId")}
         ariaLabel={t("panel.sessionSubagents.copyId")} disabled={agent.creating}
@@ -91,8 +98,9 @@ export function SessionSubagentsTab() {
     [index.messages, live, running, sessionId]);
   const visible = useMemo(() => filterSessionSubagents(agents, query, filter), [agents, query, filter]);
   const selectedId = selection?.sessionId === sessionId ? selection?.callId : undefined;
-  const selected = selectedId ? agents.find((agent) =>
+  const selectedAttempt = selectedId ? agents.find((agent) =>
     agent.calls.some((call) => (call.toolCallId ?? call.id) === selectedId)) : undefined;
+  const selected = continuationSubagent(agents, selectedAttempt) ?? selectedAttempt;
   if (selected && sessionId) return <SubagentDetail key={`${sessionId}:${selected.key}`}
     sessionId={sessionId} agent={selected} live={live} onBack={() => setSelection(null)} />;
   const runningCount = agents.filter((agent) => agent.status === "running").length;
@@ -133,7 +141,7 @@ export function SessionSubagentsTab() {
           <div className="session-subagent-identity"><strong>{agent.agentName || t("chat.subagentUnnamed")}</strong>
             <Outcome agent={agent} /><SubagentStopButton delegationId={agent.delegationId}
               name={agent.agentName} running={agent.status === "running" && !agent.creating} compact /></div>
-          {agent.modelId && <p className="session-subagent-model selectable">{agent.modelId}</p>}
+          <RecordedModel agent={agent} className="session-subagent-model selectable" />
           <Button variant="ghost" className="session-subagent-open"
             aria-label={t("panel.sessionSubagents.view", { name: agent.description || agent.agentName })}
             onClick={() => sessionId && setSelection({ sessionId,

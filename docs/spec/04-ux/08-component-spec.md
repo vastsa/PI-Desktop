@@ -1576,6 +1576,12 @@ subagents** row in the New launcher (§5.1).
   its `Task` call ids, and its `delegationId` is the chain's latest established
   handle. Paging makes older delegations discoverable even when their rows are
   outside the main transcript's loaded window.
+  Where recorded, model captions identify the exact account as well as the
+  model, even if that account/model is retired. A removed account keeps its
+  recorded identifier; a different live account's name cannot substitute for it.
+  Legacy metadata may be recovered from that chain's own reply history without
+  borrowing parent or sibling settings. The inherited-model picker omits absent
+  or `off` thinking suffixes rather than displaying a second empty placeholder.
 - The toolbar offers task/agent/model search and
   All / Running / Completed / Issues filters. Refresh reloads the index; a read
   failure renders a localized error with a retry action, not an empty list.
@@ -1602,6 +1608,10 @@ subagents** row in the New launcher (§5.1).
   chain's `Task` call and then forward. Live snapshots win by message id;
   streaming comes from the real store, and these reads never overwrite the main
   transcript.
+  A rejected Task resume remains a visible failed attempt. Selecting it resolves
+  only a compatible same-session, same-agent issued resume target, showing that
+  child's original history/model and directing the composer to the usable chain.
+  A rejected new task or unknown/foreign target cannot enable direct input.
 - Selection is keyed by session and `Task` call identity, not the pending
   delegation handle. Before the handle arrives, the capsule says **Creating**,
   copy-id is disabled, and individual Stop is unavailable. The selected detail

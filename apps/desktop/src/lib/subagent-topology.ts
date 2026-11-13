@@ -1,4 +1,4 @@
-import type { UiMessage } from "@pi-desktop/shared";
+import { subagentTaskPayload, type UiMessage } from "@pi-desktop/shared";
 import type { AssistantActivityItem } from "./assistant-turns";
 import {
   delegationLifecycleKind,
@@ -6,7 +6,6 @@ import {
   isDelegationStartTool,
   type DelegationLifecycleKind,
 } from "./tool-display";
-import { toolResultPayload } from "./tool-presentation";
 
 export type DelegationActivityItem = Extract<
   AssistantActivityItem,
@@ -127,7 +126,7 @@ export function collectDelegationTimings(
   const timings = new Map<string, SubagentTiming>();
   for (const item of items) {
     if (item.kind !== "tool") continue;
-    const payload = asRecord(toolResultPayload(item.message));
+    const payload = subagentTaskPayload(item.message);
     if (!payload) continue;
     if (isDelegationActivityItem(item)) addTiming(timings, payload);
     const delegations = [
@@ -154,7 +153,7 @@ export function delegationTimingBounds(
   let completedAt: number | undefined;
   let pending = false;
   for (const item of items) {
-    const payload = asRecord(toolResultPayload(item.message));
+    const payload = subagentTaskPayload(item.message);
     const id = payload?.delegationId;
     if (typeof id !== "string" || !id) continue;
     const timing = timings.get(id);
@@ -199,7 +198,7 @@ export function collectDelegationStatuses(
     // potential delegation node, so excluding them leaves TS with `never`.
     const { message } = item;
     if (isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(message));
+    const payload = subagentTaskPayload(message);
     if (!payload) continue;
     ingestLifecycleStatuses(statuses, payload.delegations, false);
     ingestLifecycleStatuses(statuses, payload.stopped, true);
@@ -209,7 +208,7 @@ export function collectDelegationStatuses(
   // even though those lifecycle rows appear later in transcript order.
   for (const item of items) {
     if (!isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(item.message));
+    const payload = subagentTaskPayload(item.message);
     const status = asDelegationStatus(payload?.status);
     const id = payload?.delegationId;
     if (typeof id === "string" && id && status && status !== "running") {
@@ -222,7 +221,7 @@ export function collectDelegationStatuses(
   const detachedRunning = new Set<string>();
   for (const item of items) {
     if (item.kind !== "tool") continue;
-    const payload = asRecord(toolResultPayload(item.message));
+    const payload = subagentTaskPayload(item.message);
     const id = payload?.delegationId;
     if (typeof id !== "string" || !id) continue;
     if (payload?.status === "running" && payload.detached === true) detachedRunning.add(id);
@@ -232,7 +231,7 @@ export function collectDelegationStatuses(
   if (options?.turnLive === false) {
     for (const item of items) {
       if (item.kind !== "tool" || !isDelegationActivityItem(item)) continue;
-      const payload = asRecord(toolResultPayload(item.message));
+      const payload = subagentTaskPayload(item.message);
       const id = payload?.delegationId;
       if (typeof id !== "string" || !id) continue;
       if (detachedRunning.has(id)) continue;
@@ -286,7 +285,7 @@ export function collectDelegationFailures(
     // potential delegation node, so excluding them leaves TS with `never`.
     const { message } = item;
     if (isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(message));
+    const payload = subagentTaskPayload(message);
     if (!payload) continue;
     for (const entries of [payload.delegations, payload.stopped]) {
       if (!Array.isArray(entries)) continue;
@@ -301,7 +300,7 @@ export function collectDelegationFailures(
   }
   for (const item of items) {
     if (!isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(item.message));
+    const payload = subagentTaskPayload(item.message);
     const id = payload?.delegationId;
     const failure = readDelegationFailure(payload);
     if (typeof id === "string" && id && failure) failures.set(id, failure);
@@ -330,7 +329,7 @@ export function delegationRoster(
   message: UiMessage,
 ): DelegationRosterEntry[] {
   if (!delegationLifecycleKind(message.toolName)) return [];
-  const payload = asRecord(toolResultPayload(message));
+  const payload = subagentTaskPayload(message);
   if (!payload) return [];
   const roster: DelegationRosterEntry[] = [];
   const pushEntries = (entries: unknown, fromStopped: boolean) => {
@@ -402,7 +401,7 @@ export function lifecycleKindOf(
 export function backgroundJobRowOf(message: UiMessage) {
   const kind = lifecycleKindOf(message);
   if (!kind) return null;
-  const details = asRecord(toolResultPayload(message));
+  const details = subagentTaskPayload(message);
   if (kind === "list") {
     const jobs = asRecord(details?.backgroundJobs);
     if (jobs?.supported === true && Array.isArray(jobs.tasks)) {
@@ -426,7 +425,7 @@ export function subagentOutcome(
   message: UiMessage,
   statuses?: ReadonlyMap<string, SubagentOutcome>,
 ): SubagentOutcome {
-  const payload = asRecord(toolResultPayload(message));
+  const payload = subagentTaskPayload(message);
   if (payload) {
     const delegationId = payload.delegationId;
     if (typeof delegationId === "string") {
@@ -455,7 +454,7 @@ export function subagentOutcome(
  */
 export function delegationIsCreating(message: UiMessage): boolean {
   if (message.toolStatus !== "running") return false;
-  const payload = asRecord(toolResultPayload(message));
+  const payload = subagentTaskPayload(message);
   if (payload && typeof payload.delegationId === "string") return false;
   return true;
 }

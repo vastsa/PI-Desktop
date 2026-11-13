@@ -263,6 +263,58 @@ it("restores a user-created chain after a fresh runtime and continues its own mo
   expect([...restored.rows.values()].filter((row) => row.subagentControl?.action === "start")).toHaveLength(2);
 });
 
+it.each(["wrapped", "direct", "namespaced", "call-id-link", "report", "key-only", "out-of-order"] as const)("continues a completed legacy Task after restart with its recorded account and history: %s", async format => {
+  const server = await loopback();
+  const parent = server.provider("parent");
+  const recorded = server.provider("recorded", "deepseek-fixture");
+  const stamp = (second: number) => new Date(Date.UTC(2026, 10, 3, 0, 0, second)).toISOString();
+  const details = { delegationId: "legacy-id", status: "completed",
+    ...(format === "key-only" ? { modelKey: `${recorded.id}/${recorded.modelId}` } : {}) };
+  const history: UiMessage[] = [{
+    id: "legacy-task", role: "tool", content: "", createdAt: stamp(0),
+    toolName: format === "namespaced" ? "functions.Task" : "Task", toolCallId: "legacy-call",
+    toolArgs: { agent: "explorer", task: "Original bounded fixture brief" }, toolStatus: "success",
+    toolResult: format === "report" ? { ...details, content: [{ type: "text", text: "Saved child finding" }] }
+      : format === "direct" ? details : { details },
+  }, {
+    id: "legacy-reply", role: "assistant", content: "Saved child finding", createdAt: stamp(1),
+    parentToolCallId: "legacy-call", agentName: "explorer", status: "complete",
+    ...(format === "key-only" ? {} : { providerId: recorded.id, modelId: recorded.modelId }),
+  }];
+  const hasContinuation = format === "call-id-link" || format === "out-of-order";
+  if (hasContinuation) history.push({
+    id: "legacy-followup", role: "tool", content: "", createdAt: stamp(2),
+    toolName: "Task", toolCallId: "followup-call", toolStatus: "success",
+    toolArgs: { agent: "explorer", task: "Earlier continuation", resume: "legacy-call" },
+    toolResult: { details: { delegationId: "followup-id", status: "completed",
+      modelId: recorded.modelId, modelKey: `${recorded.id}/${recorded.modelId}` } },
+  }, {
+    id: "followup-reply", role: "assistant", content: "Saved continuation finding", createdAt: stamp(3),
+    parentToolCallId: "followup-call", agentName: "explorer", status: "complete",
+    providerId: recorded.id, modelId: recorded.modelId,
+  });
+  if (format === "out-of-order") history.reverse();
+  const before = JSON.stringify(history);
+  const f = fixture(history, { provider: parent, ...modelCatalog(recorded) });
+  const selected = hasContinuation ? "followup-id" : "legacy-id";
+  const resumed = await control(f.runtime, { sessionId: "control-fixture", operationId: `legacy-${format}`,
+    action: "message", delegationId: selected, content: "Continue from the saved finding" }, "legacy-resume-turn");
+  await f.waitForTurn("legacy-resume-turn");
+  expect(resumed.delivery).toBe("started");
+  expect(resumed.delegationId).not.toBe(selected);
+  expect(server.requests).toHaveLength(1);
+  expect(server.requests[0].account).toBe(recorded.id);
+  expect(server.requests[0].body.model).toBe(recorded.modelId);
+  expect(userMessages(server.requests[0])[0]).toBe("Original bounded fixture brief");
+  expect(userMessages(server.requests[0]).at(-1)).toBe("Continue from the saved finding");
+  expect(JSON.stringify(server.requests[0].body.messages)).toContain("Saved child finding");
+  if (hasContinuation) expect(JSON.stringify(server.requests[0].body.messages)).toContain("Saved continuation finding");
+  expect(f.rows.get(resumed.messageId)?.subagentControl).toMatchObject({
+    resume: selected, status: "completed", modelId: recorded.modelId, modelKey: `${recorded.id}/${recorded.modelId}`,
+  });
+  expect(JSON.stringify(history)).toBe(before);
+});
+
 it("continues a user-selected interrupted chain after restart and releases the main conversation", async () => {
   const requested = deferred();
   const bodies: Array<{ model: string; messages: unknown[] }> = [];

@@ -23,7 +23,8 @@
  * `toolResultFromUi`.
  */
 
-import { subagentTaskDisplayMessage } from "@pi-desktop/shared";
+import { buildSubagentReplyIndex, inheritSubagentRecordedModel, isSubagentTaskTool,
+  subagentRecordedModel, subagentTaskDisplayMessage, subagentTaskPayload } from "@pi-desktop/shared";
 import { estimateTokens } from "./pi-runtime-estimates.js";
 import type {
   AssistantMessage,
@@ -196,7 +197,7 @@ export function originalTaskFromTranscript(
   const row = transcript.find(
     (candidate) =>
       candidate.role === "tool" &&
-      candidate.toolName === "Task" &&
+      isSubagentTaskTool(candidate.toolName) &&
       candidate.toolCallId === first,
   );
   if (!row) return undefined;
@@ -530,26 +531,16 @@ export function rebuildChainsFromTranscript(
 ): DelegationChain[] {
   const calls: RebuiltTaskCall[] = [];
   const callIndexByToolCallId = new Map<string, number>();
-  // Legacy Task results omitted modelKey, while child replies already recorded
-  // the real account. Only this call's own agent-attributed rows are evidence.
-  const lastReplies = new Map<string, UiMessage>();
-  for (const row of transcript) {
-    if (row.role === "assistant" && row.parentToolCallId && row.agentName && row.modelId?.trim()) {
-      lastReplies.set(JSON.stringify([row.parentToolCallId, row.agentName]), row);
-    }
-  }
+  const replies = buildSubagentReplyIndex(transcript);
   for (const source of transcript) {
     const row = subagentTaskDisplayMessage(source);
-    if (row.role !== "tool" || row.toolName !== "Task" || !row.toolCallId) {
+    if (row.role !== "tool" || !isSubagentTaskTool(row.toolName) || !row.toolCallId) {
       continue;
     }
     const args = isRecord(row.toolArgs) ? row.toolArgs : undefined;
-    const details =
-      isRecord(row.toolResult) && isRecord(row.toolResult.details)
-        ? row.toolResult.details
-        : undefined;
+    const details = subagentTaskPayload(row);
     const delegationId =
-      typeof details?.delegationId === "string" ? details.delegationId : "";
+      typeof details?.delegationId === "string" ? details.delegationId.trim() : "";
     // A `Task` row with no delegation id never produced a delegate — the call
     // was rejected (unknown agent, empty brief) and its "result" is the tool
     // error. Such a row is not a chain and must not become one.
@@ -567,17 +558,7 @@ export function rebuildChainsFromTranscript(
     if (!agentName) continue;
     const resume = typeof args?.resume === "string" ? args.resume.trim() : "";
     const task = typeof args?.task === "string" ? args.task.trim() : "";
-    const reply = lastReplies.get(JSON.stringify([row.toolCallId, agentName]));
-    const modelId = (typeof details?.modelId === "string" ? details.modelId.trim() : "") || reply?.modelId?.trim();
-    const replyMatches = reply?.modelId?.trim().toLowerCase() === modelId?.toLowerCase();
-    const requestedKey = typeof args?.model === "string" ? args.model.trim() : "";
-    const requestedModel = requestedKey.slice(requestedKey.indexOf("/") + 1);
-    const recordedKey = typeof details?.modelKey === "string" ? details.modelKey.trim() : "";
-    const replyKey = replyMatches && reply?.providerId?.trim() ? `${reply.providerId.trim()}/${modelId}` : undefined;
-    // A newer explicit binding wins over old replies. A legacy echoed alias
-    // can be made exact using the actual account that answered that Task.
-    const modelKey = recordedKey && recordedKey !== requestedKey ? recordedKey : replyKey || recordedKey ||
-      (requestedKey.indexOf("/") > 0 && requestedModel.toLowerCase() === modelId?.toLowerCase() ? requestedKey : undefined);
+    const { modelId, modelKey } = subagentRecordedModel(row, replies, agentName);
     const call: RebuiltTaskCall = {
       toolCallId: row.toolCallId,
       delegationId,
@@ -602,35 +583,43 @@ export function rebuildChainsFromTranscript(
     }
   }
 
-  const byDelegationId = new Map(calls.map((call) => [call.delegationId, call]));
+  // Restored snapshots can arrive out of order; repeated handles follow task time.
+  calls.sort((a, b) => a.createdAt - b.createdAt || Number(Boolean(a.resume)) - Number(Boolean(b.resume)));
+  const byDelegationId = new Map<string, RebuiltTaskCall>();
+  const byToolCallId = new Map<string, RebuiltTaskCall>();
+  for (const call of calls) {
+    if (!byDelegationId.has(call.delegationId) && call.resume !== call.delegationId) {
+      byDelegationId.set(call.delegationId, call);
+    }
+    byToolCallId.set(call.toolCallId, call);
+  }
   const children = new Map<string, RebuiltTaskCall[]>();
   const roots: RebuiltTaskCall[] = [];
   for (const call of calls) {
     if (!call.resume) {
       roots.push(call);
-      continue;
+    } else {
+      const parent = byDelegationId.get(call.resume) ?? byToolCallId.get(call.resume);
+      if (parent && parent !== call && parent.agentName === call.agentName) {
+        const siblings = children.get(parent.toolCallId) ?? [];
+        siblings.push(call);
+        children.set(parent.toolCallId, siblings);
+      }
     }
-    const parent = byDelegationId.get(call.resume);
-    if (!parent) {
-      // A resume whose parent is gone is not a chain; skip it.
-      continue;
-    }
-    const siblings = children.get(parent.delegationId) ?? [];
-    siblings.push(call);
-    children.set(parent.delegationId, siblings);
+    // Advance only after resolving: old resumes may return the same handle.
+    byDelegationId.set(call.delegationId, call);
   }
 
   const chains: DelegationChain[] = [];
   for (const root of roots) {
     const ordered: RebuiltTaskCall[] = [];
-    const walk = (call: RebuiltTaskCall) => {
+    const pending = [root];
+    while (pending.length > 0) {
+      const call = pending.pop();
+      if (!call) break;
       ordered.push(call);
-      for (const child of children.get(call.delegationId) ?? []) {
-        if (child.agentName !== root.agentName) continue;
-        walk(child);
-      }
-    };
-    walk(root);
+      pending.push(...[...(children.get(call.toolCallId) ?? [])].reverse());
+    }
     const toolCallIds = ordered.map((call) => call.toolCallId);
     const rows = selectChainRows(transcript, {
       toolCallIds,
@@ -638,6 +627,8 @@ export function rebuildChainsFromTranscript(
     });
     const reads = extractReadFiles(rows);
     const latest = ordered[ordered.length - 1];
+    const model = ordered.reduce((previous, call) => inheritSubagentRecordedModel(previous,
+      { modelId: call.modelId ?? "", modelKey: call.modelKey ?? "" }), { modelId: "", modelKey: "" });
     chains.push({
       delegateSessionId: root.delegationId,
       toolCallIds,
@@ -648,8 +639,8 @@ export function rebuildChainsFromTranscript(
       originalTask: root.task,
       latestDelegationId: latest?.delegationId,
       latestObjective: latest?.objective ?? root.objective,
-      latestModelId: latest?.modelId,
-      latestModelKey: latest?.modelKey,
+      latestModelId: model.modelId || undefined,
+      latestModelKey: model.modelKey || undefined,
       latestStatus: latest?.status,
       lastActivityAt: latest?.createdAt ?? root.createdAt,
     });

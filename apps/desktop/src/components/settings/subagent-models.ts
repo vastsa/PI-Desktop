@@ -233,3 +233,18 @@ export function subagentModelOrphanPin(
   if (choices.some((choice) => pinMatchesChoice(trimmed, choice))) return null;
   return trimmed;
 }
+
+/** Historical identity is named even when its account or model was retired. */
+export function subagentModelLabel(
+  model: { modelId?: string; modelKey?: string }, providers: readonly ProviderPublic[],
+): { text: string; title: string } {
+  const pin = model.modelKey?.trim() ?? "";
+  const parts = pin ? subagentModelPinParts(pin) : null;
+  const modelId = model.modelId?.trim() || parts?.modelId || "";
+  const providerId = parts?.providerPart ?? "";
+  // A missing exact account must not be relabeled as a different live account
+  // merely because its display name or vendor alias happens to match.
+  const account = providers.find((provider) => provider.id === providerId)?.name.trim() || providerId;
+  const text = [account, modelId].filter(Boolean).join(" · ");
+  return { text, title: pin || text };
+}

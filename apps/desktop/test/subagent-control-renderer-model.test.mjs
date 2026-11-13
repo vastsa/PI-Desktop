@@ -3,9 +3,9 @@ import { register } from "node:module";
 import test from "node:test";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { buildSessionSubagents } = await import("../src/features/subagents/model.ts");
+const { buildSessionSubagents, continuationSubagent } = await import("../src/features/subagents/model.ts");
 const { buildSubagentTranscript } = await import("../src/lib/subagent-transcript.ts");
-const { subagentMessageModelChoices, subagentModelChoices } = await import("../src/components/settings/subagent-models.ts");
+const { subagentMessageModelChoices, subagentModelChoices, subagentModelLabel } = await import("../src/components/settings/subagent-models.ts");
 
 const stamp = (n) => new Date(Date.UTC(2026, 10, 3, 0, 0, n)).toISOString();
 const start = (operationId, delegationId, extra = {}) => ({
@@ -88,4 +88,71 @@ test("a rejected Task resume cannot clear the original model or replace its usab
   assert.equal(chain.delegationId, "original-id");
   assert.equal(chain.status, "completed");
   assert(directory.some(item => item.calls.some(call => call.id === failed.id)), "Rejected attempt remains visible");
+  const attempt = directory.find(item => item.calls.some(call => call.id === failed.id));
+  assert.equal(attempt.modelId, "retained-model");
+  assert.equal(attempt.continuationId, "original-id");
+  assert.equal(attempt.status, "failed", "The rejection remains visible without inventing a successor");
+});
+
+test("a rejected new task or a foreign-agent resume has no continuation authority", () => {
+  const original = { id: "original", role: "tool", content: "", createdAt: stamp(0),
+    toolName: "Task", toolCallId: "original-call", toolArgs: { agent: "explorer", task: "Original" },
+    toolResult: { details: { delegationId: "original-id", status: "completed" } } };
+  const rejected = { id: "rejected", role: "tool", content: "", createdAt: stamp(1),
+    toolName: "Task", toolCallId: "rejected-call", toolArgs: { agent: "fixer", task: "Continue", resume: "original-id" },
+    toolStatus: "error", isError: true, toolResult: { details: { error: "Agent mismatch" } } };
+  for (const args of [rejected.toolArgs, { agent: "explorer", task: "New rejected task" }]) {
+    const attempt = buildSessionSubagents([original, { ...rejected, toolArgs: args }], false)
+      .find(agent => agent.key === "rejected-call");
+    assert.equal(attempt.continuationId, undefined);
+  }
+});
+
+test("recorded account labels survive retirement without identifying a different live account", () => {
+  const providers = [{ id: "current-account", name: "Current", vendorKey: "custom", enabled: true }];
+  assert.deepEqual(subagentModelLabel({ modelId: "fixture-model", modelKey: "current-account/fixture-model" }, providers),
+    { text: "Current · fixture-model", title: "current-account/fixture-model" });
+  assert.deepEqual(subagentModelLabel({ modelId: "fixture-model", modelKey: "retired-account/fixture-model" }, providers),
+    { text: "retired-account · fixture-model", title: "retired-account/fixture-model" });
+  assert.equal(subagentModelLabel({ modelId: "fixture-model", modelKey: "retired-account/fixture-model" },
+    [{ ...providers[0], name: "retired-account" }]).title, "retired-account/fixture-model");
+  assert.equal(subagentModelLabel({ modelId: "fixture-model" }, providers).text, "fixture-model");
+  assert.equal(subagentModelLabel({}, providers).text, "");
+});
+
+test("legacy report-bearing results retain actionable chain metadata", () => {
+  const original = { id: "original", role: "tool", content: "", createdAt: stamp(0), toolStatus: "success",
+    toolName: "Task", toolCallId: "original-call", toolArgs: { agent: "explorer", task: "Original brief" },
+    toolResult: { content: [{ type: "text", text: "Original report" }], delegationId: "original-id",
+      status: "completed", modelId: "retained", modelKey: "recorded/retained" } };
+  for (const status of ["completed", "failed"]) {
+    const resumed = { ...original, id: "resumed", createdAt: stamp(1), toolCallId: "resumed-call",
+      toolArgs: { agent: "explorer", task: "Continuation", resume: "original-id" },
+      toolResult: { content: [{ type: "text", text: "Continuation report" }], delegationId: "resumed-id", status } };
+    const rows = [original, resumed];
+    const agents = buildSessionSubagents(rows, false);
+    assert.equal(agents.length, 1, "Report content must not break the resume link");
+    assert.equal(agents[0].delegationId, "resumed-id");
+    assert.equal(continuationSubagent(agents, agents[0])?.delegationId, "resumed-id");
+    assert.equal(agents[0].modelKey, "recorded/retained");
+    assert.equal(agents[0].status, status);
+    assert.deepEqual(buildSubagentTranscript(rows, "resumed-id")?.turns.map(turn => turn.task), ["Original brief", "Continuation"]);
+  }
+});
+
+test("a key-only legacy binding survives selection of its rejected continuation", () => {
+  const original = { id: "original", role: "tool", content: "", createdAt: stamp(0),
+    toolName: "Task", toolCallId: "original-call", toolArgs: { agent: "explorer", task: "Original" },
+    toolResult: { details: { delegationId: "original-id", status: "completed", modelKey: "recorded/retained" } } };
+  const rejected = { ...original, id: "rejected", createdAt: stamp(1), toolCallId: "rejected-call",
+    toolArgs: { agent: "explorer", task: "Continue", resume: "original-id" }, toolStatus: "error", isError: true,
+    toolResult: { details: { error: "Recorded account unavailable" } } };
+  const agents = buildSessionSubagents([original, rejected], false);
+  const attempt = agents.find(agent => agent.key === "rejected-call");
+  const chain = continuationSubagent(agents, attempt);
+  assert.equal(chain.delegationId, "original-id");
+  assert.equal(attempt.modelId, "retained");
+  assert.equal(attempt.modelKey, "recorded/retained");
+  assert.deepEqual(subagentModelLabel(chain, [{ id: "recorded", name: "Recorded" }]),
+    { text: "Recorded · retained", title: "recorded/retained" });
 });

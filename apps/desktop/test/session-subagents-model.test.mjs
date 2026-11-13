@@ -131,3 +131,39 @@ test("bounded restored metadata preserves resume identity and issue outcomes des
   assert.deepEqual(new Set(filterSessionSubagents(agents, "", "failed").map((agent) => agent.status)),
     new Set(["failed", "stopped", "timed_out"]));
 });
+
+test("legacy delegations recover their own account and model without borrowing a sibling or parent", () => {
+  const legacy = task("legacy", "legacy-id", {
+    toolResult: { delegationId: "legacy-id", status: "completed" },
+  });
+  const messages = [legacy,
+    row("old-reply", { parentToolCallId: "legacy", agentName: "explorer", providerId: "old-account", modelId: "old-model" }),
+    row("reply", { parentToolCallId: "legacy", agentName: "explorer", providerId: "recorded-account", modelId: "deepseek-fixture" }),
+    row("parent", { providerId: "parent-account", modelId: "parent-model" }),
+    row("foreign-agent", { parentToolCallId: "legacy", agentName: "fixer", providerId: "wrong-account", modelId: "wrong-model" }),
+    row("sibling", { parentToolCallId: "other-call", agentName: "explorer", providerId: "sibling-account", modelId: "sibling-model" }),
+  ];
+  const before = JSON.stringify(messages);
+  const [agent] = buildSessionSubagents(messages, false);
+  assert.equal(agent.modelId, "deepseek-fixture");
+  assert.equal(agent.modelKey, "recorded-account/deepseek-fixture");
+  assert.equal(agent.delegationId, "legacy-id");
+  assert.equal(JSON.stringify(messages), before);
+});
+
+test("an explicit settled binding wins over older replies and missing continuation metadata retains it", () => {
+  const original = task("original", "original-id", {
+    toolResult: { details: { delegationId: "original-id", status: "completed",
+      modelId: "retained-model", modelKey: "recorded-account/retained-model" } },
+  });
+  const continuation = task("continuation", "continuation-id", {
+    toolArgs: { agent: "explorer", task: "Continue", resume: "original-id" },
+    toolResult: { details: { delegationId: "continuation-id", status: "completed" } },
+  });
+  const [agent] = buildSessionSubagents([original,
+    row("stale-reply", { parentToolCallId: "original", agentName: "explorer",
+      providerId: "stale-account", modelId: "stale-model" }), continuation], false);
+  assert.equal(agent.modelId, "retained-model");
+  assert.equal(agent.modelKey, "recorded-account/retained-model");
+  assert.equal(agent.delegationId, "continuation-id");
+});

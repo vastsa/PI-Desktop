@@ -1,5 +1,7 @@
-import { subagentTaskDisplayMessage, type SessionSummary, type UiMessage } from "@pi-desktop/shared";
-import { delegateAgentName, delegateModelId } from "../chat/transcript/model";
+import { buildSubagentReplyIndex, inheritSubagentRecordedModel, normalizeSubagentName,
+  subagentRecordedModel, subagentTaskDisplayMessage, subagentTaskPayload,
+  type SessionSummary, type UiMessage } from "@pi-desktop/shared";
+import { delegateAgentName } from "../chat/transcript/model";
 import { delegationChainMaps } from "../../lib/assistant-turns";
 import { delegationIdForMessage } from "../../lib/subagent-panel";
 import { collectDelegationStatuses, delegationIsCreating, subagentOutcome, type SubagentOutcome } from "../../lib/subagent-topology";
@@ -13,6 +15,9 @@ export type SessionSubagent = {
   description: string;
   task: string;
   modelId: string;
+  modelKey: string;
+  /** Only an issued handle can authorize continuation; rejected calls have none. */
+  continuationId?: string;
   status: SubagentOutcome;
   creating: boolean;
   calls: UiMessage[];
@@ -41,6 +46,7 @@ export function buildSessionSubagents(
   turnLive: boolean,
 ): SessionSubagent[] {
   const display = messages.map(subagentTaskDisplayMessage);
+  const replies = buildSubagentReplyIndex(messages);
   const calls = display.filter((message) => message.role === "tool" &&
     !message.parentToolCallId && message.toolCallId && isDelegationStartTool(message.toolName));
   const { childOf } = delegationChainMaps(calls);
@@ -64,20 +70,49 @@ export function buildSessionSubagents(
   const items = display.filter((message) => message.role === "tool")
     .map((message) => ({ kind: "tool" as const, message }));
   const statuses = collectDelegationStatuses(items, { turnLive });
-  return [...groups].map(([key, chain]) => {
+  const agents: SessionSubagent[] = [...groups].map(([key, chain]) => {
     const latest = chain[chain.length - 1];
+    const agentName = delegateAgentName(latest);
+    const model = chain.reduce((previous, call) => inheritSubagentRecordedModel(previous,
+      subagentRecordedModel(call, replies, delegateAgentName(call))), { modelId: "", modelKey: "" });
+    const handle = subagentTaskPayload(latest)?.delegationId;
     return {
       key,
       delegationId: delegationIdForMessage(latest),
-      agentName: delegateAgentName(latest),
+      continuationId: typeof handle === "string" && handle.trim() ? handle.trim() : undefined,
+      agentName,
       description: argument(latest, "description") || argument(latest, "task"),
       task: argument(latest, "task"),
-      modelId: delegateModelId(latest),
+      ...model,
       status: subagentOutcome(latest, statuses),
       creating: delegationIsCreating(latest),
       calls: chain,
     };
   }).reverse();
+  const byHandle = new Map<string, SessionSubagent>();
+  for (const agent of agents) {
+    if (!agent.continuationId) continue;
+    for (const call of agent.calls) {
+      byHandle.set(delegationIdForMessage(call), agent);
+      byHandle.set(call.toolCallId ?? call.id, agent);
+    }
+  }
+  return agents.map((agent) => {
+    if (agent.continuationId || agent.creating) return agent;
+    const latest = agent.calls[agent.calls.length - 1];
+    const target = byHandle.get(argument(latest, "resume"));
+    if (!target || normalizeSubagentName(target.agentName) !== normalizeSubagentName(agent.agentName)) return agent;
+    // The rejection is still its own visible attempt, never a new child. Its
+    // controls point to the real chain and preserve that child's model.
+    return { ...agent, continuationId: target.continuationId, modelId: target.modelId, modelKey: target.modelKey };
+  });
+}
+
+/** Resolve a selected error card to its actual child without creating authority. */
+export function continuationSubagent(
+  agents: readonly SessionSubagent[], selected: SessionSubagent | undefined,
+): SessionSubagent | undefined {
+  return selected?.continuationId ? agents.find((agent) => agent.delegationId === selected.continuationId) : undefined;
 }
 
 export function filterSessionSubagents(
