@@ -297,7 +297,7 @@ pi.project.create(input: { path: string }): Promise<{
 持有 `project.create`；省略 `projectId` 的导入会保持未绑定状态，`projectPath` 只是历史来源
 元数据，本身不会创建项目。
 
-### 工作区/fs
+### 工作区/fs {#projects-workspace-fs}
 ```ts
 pi.projects.list(): Promise<PluginProjectInfo[]>
 

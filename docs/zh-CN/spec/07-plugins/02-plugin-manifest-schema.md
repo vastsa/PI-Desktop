@@ -430,7 +430,7 @@ type PluginPermission =
 其中某个项目。两者都只读取元数据，无需 manifest 权限。列表包含未分组项目，每项提供
 稳定的十进制 `projects.id` 字符串、显示名称、主路径，以及非空且主根优先的根目录列表。
 项目查询不可用时返回 `[]`。排序、项目组根目录补充，以及项目 ID 与项目组 ID 的区别，见
-[项目 / 工作区 API](/zh-CN/spec/07-plugins/03-plugin-api#工作区-fs)。
+[项目 / 工作区 API](/zh-CN/spec/07-plugins/03-plugin-api#projects-workspace-fs)。
 
 `fs.read.workspace`、`fs.write.workspace`、`fs.delete.workspace` 是文件范围机制
 之前的旧权限名。它们仍然能通过校验，主机会在加载时把它们改写成最小安全等价物
