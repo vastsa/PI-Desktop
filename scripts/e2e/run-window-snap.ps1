@@ -71,20 +71,23 @@ try {
         if (-not $completed) { throw "$case native probe timed out; see retained artifacts." }
         $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
         if ($case -eq 'baseline' -and $Matrix) {
-            $unchanged = $true
-            foreach ($field in @('x', 'y', 'width', 'height')) {
-                if ($result.before.$field -ne $result.left.$field) { $unchanged = $false }
+            $passed = $false
+            if ($result.before -and $result.left -and $result.before.style -match '^0x[0-9A-Fa-f]{8}$') {
+                $unchanged = $true
+                foreach ($field in @('x', 'y', 'width', 'height')) {
+                    if ($result.before.$field -ne $result.left.$field) { $unchanged = $false }
+                }
+                $style = [Convert]::ToUInt32($result.before.style.Substring(2), 16)
+                $passed = ($result.ok -eq $false -and $result.baseline -eq $true -and
+                    $result.failure -ceq 'Win+Left did not snap to the work-area half' -and
+                    $unchanged -and ($style -band 0x00C40000) -eq 0)
             }
-            $style = [Convert]::ToUInt32($result.before.style.Substring(2), 16)
-            $passed = ($result.ok -eq $false -and $result.baseline -eq $true -and
-                $result.failure -ceq 'Win+Left did not snap to the work-area half' -and
-                $unchanged -and ($style -band 0x00C40000) -eq 0)
         } else {
             $passed = ($result.ok -eq $true -and $result.baseline -eq $false)
         }
         $summary.cases += [ordered]@{ name = $case; runId = $result.runId; passed = $passed; checks = $result.checks }
         Write-RunnerLog ($case + ' passed=' + $passed + ' checks=' + $result.checks)
-        if (-not $passed) { throw "$case did not satisfy its acceptance contract; see retained artifacts." }
+        if (-not $passed) { throw "$case did not satisfy its acceptance contract: $($result.failure); see retained artifacts." }
     }
     $summary.ok = $true
 } catch {

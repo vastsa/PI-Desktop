@@ -51,6 +51,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build workspace fixture dependencies
         run: pnpm build:js
+      - name: Verify preserved original-head evidence
+        run: node --test apps/desktop/test/window-native-snap-evidence.test.mjs
       - name: Install pinned Electron
         run: pnpm --filter @pi-desktop/desktop exec install-electron
       - name: Build native Host

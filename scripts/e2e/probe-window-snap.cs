@@ -30,6 +30,10 @@ public static class WindowSnapProbe {
     [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll",SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint access);
     [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr window);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr window,IntPtr dc);
+    [DllImport("gdi32.dll")] static extern int GetDeviceCaps(IntPtr dc,int index);
+    [DllImport("dwmapi.dll")] static extern int DwmIsCompositionEnabled(out bool enabled);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out SnapRect r, int size);
     [DllImport("dwmapi.dll",EntryPoint="DwmGetWindowAttribute")] static extern int DwmGetColor(IntPtr h, int attribute, out uint color, int size);
     static readonly string Root = AppDomain.CurrentDomain.BaseDirectory;
@@ -178,6 +182,10 @@ public static class WindowSnapProbe {
             var desktop=OpenInputDesktop(0,false,0x101);
             Check(desktop!=IntPtr.Zero,"the interactive input desktop is unavailable or locked");
             CloseDesktop(desktop);
+            var dc=GetDC(IntPtr.Zero);
+            try { Result["desktopBitsPerPixel"]=GetDeviceCaps(dc,12)*GetDeviceCaps(dc,14); }
+            finally { ReleaseDC(IntPtr.Zero,dc); }
+            bool composition;Result["dwmCompositionResult"]=DwmIsCompositionEnabled(out composition);Result["dwmComposition"]=composition;
             SetThreadDpiAwarenessContext(new IntPtr(-4));
             var options=Read("options.json"); bool baseline=(bool)options["baseline"];
             externalPointer=options.ContainsKey("externalPointer") && (bool)options["externalPointer"];

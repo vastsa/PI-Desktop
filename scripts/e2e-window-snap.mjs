@@ -40,6 +40,7 @@ await copyFile(join(root, "scripts/e2e/run-window-snap.ps1"), join(directory, "r
 const git = async (...args) => (await run("git", args, { cwd: root })).stdout.trim();
 const files = ["scripts/e2e-window-snap.mjs", "scripts/e2e/run-window-snap.ps1", "scripts/e2e/probe-window-snap.cs",
   "scripts/e2e/fixtures/window-snap/main.cjs", "scripts/e2e/host.mjs", "pnpm-lock.yaml", "Cargo.lock",
+  "Cargo.toml", "crates/host-core/Cargo.toml", ".cargo/config.toml",
   "apps/desktop/package.json", "apps/desktop/electron/main/window-native-snap.ts",
   "apps/desktop/electron/main/window-native-corners.ts", "apps/desktop/electron/main/window-native-handle.ts",
   "apps/desktop/electron/main/window-fullscreen.ts", "apps/desktop/electron/main/window-shape.ts",
@@ -48,6 +49,7 @@ const hashes = {};
 for (const file of files) hashes[file] = createHash("sha256").update(await readFile(join(root, file))).digest("hex");
 await writeFile(join(directory, "source.json"), JSON.stringify({
   revision: await git("rev-parse", "HEAD"), tree: await git("rev-parse", "HEAD^{tree}"),
+  hostTree: await git("rev-parse", "HEAD:crates/host-core"),
   clean: (await git("status", "--porcelain", "--untracked-files=no")) === "", hashes,
 }, null, 2));
 await writeFile(join(directory, "options.json"), JSON.stringify({
