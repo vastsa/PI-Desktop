@@ -239,6 +239,9 @@ export function useTranscriptScroll({
       if (latestNavigation.isActive()) {
         latestNavigation.cancel(); leaveFollow(); rememberReadingPosition();
       }
+      // Settle pending geometry before the browser applies this input. A recent
+      // wheel timestamp cannot distinguish its movement from a same-frame clamp.
+      restoreHistoryAnchor();
       if (!(event instanceof WheelEvent) || (!event.ctrlKey && event.deltaY !== 0)) retryHistoryPaging();
       // Minimap / jump navigation runs in the browser, independently of our
       // follow rAF. Real input must retire that animation at its current offset
@@ -249,7 +252,7 @@ export function useTranscriptScroll({
       // Real input takes the viewport back from a held disclosure position.
       releaseDisclosureAnchor();
     },
-    [cancelReadingPosition, latestNavigation, leaveFollow, releaseDisclosureAnchor, rememberReadingPosition, retryHistoryPaging],
+    [cancelReadingPosition, latestNavigation, leaveFollow, releaseDisclosureAnchor, rememberReadingPosition, restoreHistoryAnchor, retryHistoryPaging],
   );
 
   useEffect(() => {
