@@ -45,8 +45,99 @@ describe("withExplicitRequired", () => {
     expect(withExplicitRequired(writeTool)).toBe(writeTool);
   });
 
-  it("ignores schemas that are not object-shaped", () => {
+  it("ignores a non-object root but still walks its combinator branches", () => {
     const union = toolWith({ anyOf: [{ type: "object" }] });
-    expect(withExplicitRequired(union)).toBe(union);
+    const fixed = withExplicitRequired(union).parameters as {
+      required?: unknown;
+      anyOf: Record<string, unknown>[];
+    };
+    // The root itself is not object-shaped, so it never gains `required`.
+    expect(fixed.required).toBeUndefined();
+    // But an object branch nested in a combinator does (#2337).
+    expect(fixed.anyOf[0]).toMatchObject({ type: "object", required: [] });
+  });
+
+  it("fills required on an all-optional nested object (#2337)", () => {
+    const raw = Type.Object({
+      path: Type.String(),
+      options: Type.Optional(
+        Type.Object({
+          path: Type.Optional(Type.String()),
+          file_path: Type.Optional(Type.String()),
+        }),
+      ),
+    }) as unknown as {
+      properties: Record<string, { required?: string[] }>;
+    };
+    const schema = toolWith(raw);
+    const fixed = withExplicitRequired(schema).parameters as {
+      properties: Record<string, { required?: string[] }>;
+    };
+    expect(fixed.properties.options).toMatchObject({
+      type: "object",
+      required: [],
+    });
+    expect(fixed).toMatchObject({ type: "object", required: ["path"] });
+    // The input schema is not mutated.
+    expect(raw.properties.options).not.toHaveProperty("required");
+  });
+
+  it("fills required inside items, prefixItems, additionalProperties, and combinators", () => {
+    const raw = {
+      type: "object",
+      properties: {
+        list: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { name: { type: "string" } },
+          },
+        },
+        tuple: {
+          type: "array",
+          prefixItems: [{ type: "object", properties: {} }],
+        },
+        map: {
+          type: "object",
+          additionalProperties: { type: "object", properties: {} },
+        },
+        branch: {
+          anyOf: [{ type: "object", properties: {} }],
+          oneOf: [{ type: "string" }],
+          allOf: [{ type: "object", properties: {} }],
+        },
+      },
+      required: ["list"],
+    };
+    const schema = toolWith(raw);
+    const fixed = withExplicitRequired(schema).parameters as {
+      properties: Record<string, any>;
+    };
+    const leaves: unknown[] = [
+      fixed.properties.list.items,
+      fixed.properties.tuple.prefixItems?.[0],
+      fixed.properties.map.additionalProperties,
+      fixed.properties.branch.anyOf?.[0],
+      fixed.properties.branch.allOf?.[0],
+    ];
+    for (const leaf of leaves) {
+      expect(leaf).toMatchObject({ type: "object", required: [] });
+    }
+    expect(fixed).toMatchObject({ required: ["list"] });
+  });
+
+  it("leaves an existing nested empty required list untouched", () => {
+    const raw = {
+      type: "object",
+      properties: {
+        options: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+    };
+    const fixed = withExplicitRequired(toolWith(raw)).parameters;
+    expect((fixed as any).properties.options).toMatchObject({ required: [] });
   });
 });
