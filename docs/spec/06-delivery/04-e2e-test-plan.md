@@ -20514,15 +20514,21 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   loop, deterministic localhost HTTP provider. No external model account.
 - Sequence: start a background test, list it, wait for failure and Unicode
   output tails; start a service, time out waiting, call default stop, then
-  explicitly stop and wait for the same job.
+  explicitly stop and wait for the same job using plain `{job}` selectors.
+  Then re-read the failed job with empty `delegationIds`, `mode: all`, and
+  `minCompleted: 1`; start a second service, time out with `mode: any` and the
+  same defaults, stop with empty `delegationIds`, and confirm it is stopped.
+  Both plain and model-generated redundant forms retain independent coverage.
 - Expected: correct exit code and both final tails, per-stream UTF-8 limits,
   cross-session list/read/stop isolation, timeout and default stop preserve Bash,
   explicit stop reaches terminal state, repeated reads and desktop output agree.
   Plan-mode access is rejected.
 - Runtime tests cover new input/parent abort during a pending Host wait, late
   Host rejection, old Host/remote capability behavior, conflicting/malformed
-  delegation selectors and mixed Bash selector rejection, existing delegation
-  controls and registration without a subagent catalog.
+  delegation selectors, harmless Bash defaults and conflicting/malformed Bash
+  selector rejection, existing delegation controls and registration without a
+  subagent catalog. Plain-job timeout/abort cases remain intact; additional
+  cases exercise both `all` and `any` defaults through those same lifecycles.
 - Host tests cover pre-settled observation, repeatable output, Unicode clipping,
   ownership lookup, idempotent stop and stop acknowledgement before termination.
   Existing Windows child/grandchild cleanup tests remain required; record native
@@ -20609,7 +20615,8 @@ isolated Host, the production runtime loop and Electron main's run coordinator.
   and confirm its stopped state through TaskWait.
 - Expected: reports remain readable, redundant selectors do not cause errors,
   single-job mode/minCompleted are ignored, and cancellation settles the target.
-  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+  Unit tests also reject conflicting/malformed IDs and nonempty or malformed
+  Bash selectors; harmless empty/default Bash options remain accepted.
 - Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
 - Acceptance: wait, report re-read and running-delegate cancellation complete
   through the real tool loop. Milestone: maintenance. Status: automated.
