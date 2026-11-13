@@ -7,7 +7,7 @@
  * is not configured, so these helpers keep the two notions apart: what a
  * provider itself offers, and what is safe to display for it.
  */
-import { modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
+import { isImageOnlyChatModel, type ImageGenerationBindings, modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
 
 export type DefaultModelOption = {
   provider: ProviderPublic;
@@ -17,16 +17,18 @@ export type DefaultModelOption = {
 /** Expand runnable providers into the model choices they actually configure. */
 export function defaultModelOptions(
   providers: readonly ProviderPublic[],
+  imageGeneration?: ImageGenerationBindings | null,
 ): DefaultModelOption[] {
   return providers.flatMap((provider) => {
     const modelIds = (provider.models ?? [])
       .map((binding) => binding.id.trim())
       .filter(Boolean);
     const ids = modelIds.length > 0 ? modelIds : [defaultModelIdOf(provider)?.trim() ?? ""];
-    // An image-generation designation does not exclude a model from chat: the
-    // image binding is host-owned and independent of the conversation route.
-    return [...new Set(ids)].filter((modelId) => !!modelId)
-      .map((modelId) => ({ provider, modelId }));
+    return [...new Set(ids)].filter((modelId) => !!modelId &&
+      // Only a pure image-generation endpoint is excluded; a dual-capability
+      // model the user marked for image generation stays selectable (#2253).
+      !isImageOnlyChatModel(imageGeneration, provider.id, modelId),
+    ).map((modelId) => ({ provider, modelId }));
   });
 }
 
@@ -96,10 +98,13 @@ export function hasResolvedDefaultModel(
  * `defaultModelOptions` is the same expansion the default picker lists, so a
  * provider the picker would not offer cannot hold a default either.
  */
-export function providerServesChatModels(provider: ProviderPublic): boolean {
+export function providerServesChatModels(
+  provider: ProviderPublic,
+  imageGeneration?: ImageGenerationBindings | null,
+): boolean {
   return provider.enabled &&
     (provider.hasSecret || !!provider.hasOauth || provider.authKind === "none") &&
-    defaultModelOptions([provider]).length > 0;
+    defaultModelOptions([provider], imageGeneration).length > 0;
 }
 
 /**
@@ -116,9 +121,10 @@ export function keepsAppDefaultModel(
   providers: readonly ProviderPublic[],
   defaultProviderId?: string,
   defaultModelId?: string,
+  imageGeneration?: ImageGenerationBindings | null,
 ): boolean {
   const provider = providers.find((candidate) => candidate.id === defaultProviderId);
-  if (!provider || !providerServesChatModels(provider)) return false;
+  if (!provider || !providerServesChatModels(provider, imageGeneration)) return false;
   return hasResolvedDefaultModel(providers, defaultProviderId, defaultModelId);
 }
 
@@ -134,14 +140,16 @@ export function loginDefaultModel(
   providers: readonly ProviderPublic[],
   providerId: string,
   defaults: { defaultProviderId?: string; defaultModelId?: string },
+  imageGeneration?: ImageGenerationBindings | null,
 ): { providerId: string; modelId: string } | null {
   if (keepsAppDefaultModel(
     providers,
     defaults.defaultProviderId,
     defaults.defaultModelId,
+    imageGeneration,
   )) return null;
   const account = providers.find((candidate) => candidate.id === providerId);
-  if (!account || !providerServesChatModels(account)) return null;
-  const modelId = defaultModelOptions([account])[0]?.modelId;
+  if (!account || !providerServesChatModels(account, imageGeneration)) return null;
+  const modelId = defaultModelOptions([account], imageGeneration)[0]?.modelId;
   return modelId ? { providerId: account.id, modelId } : null;
 }

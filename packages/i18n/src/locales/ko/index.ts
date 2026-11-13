@@ -1031,7 +1031,7 @@ export const ko = {
     "imageModelSaveFailed": "이미지 모델을 저장할 수 없습니다.",
     "clearImageModel": "지우기",
     "setImageModel": "이미지 모델로 설정",
-    imageModelChatExclusionHint: "생성 모델로 표시된 모델은 채팅과 subagent에서 계속 사용할 수 있습니다. 이미지 바인딩은 대화 경로와 별개입니다. 이미지 입력이 아닌 이미지 생성 설정이며, 엔드포인트에서 이미지를 생성할 수 있는 모델만 표시하세요.",
+    imageModelChatExclusionHint: "대화도 지원하는 표시된 모델은 채팅과 subagent에서 계속 사용할 수 있으며, 순수 이미지 생성 엔드포인트는 저장 후 채팅 및 기본 모델 메뉴에서 제외됩니다. 이미지 입력이 아닌 이미지 생성 설정이며, 엔드포인트에서 이미지를 생성할 수 있는 모델만 표시하세요.",
     "imageModelSelected": "선택된 이미지 모델",
     "generatedImage": "생성된 이미지 {{index}}",
     "downloadGeneratedImage": "다운로드",

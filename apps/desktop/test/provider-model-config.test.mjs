@@ -255,7 +255,7 @@ test("model ids are matched case-insensitively across picking and hand entry", (
 
 test("provider edits retain legacy defaults for non-chat consumers", () => {
   assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
-  assert.match(pageSource, /const firstModelId = models\[0\]\?\.id/);
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>/);
   assert.doesNotMatch(pageSource, /setDefaultModel|displayedChatModelId/);
 });
 
@@ -367,8 +367,8 @@ test("adding a service only claims the app default while none resolves", () => {
   // default provider to be runnable (enabled, credentialed, a chat model
   // configured), so a keyless default row cannot block the new provider.
   // Provider readiness and default selection use the same exact chat choices.
-  assert.match(pageSource, /chatModelOptions\(\[currentProvider\]\)/);
-  assert.match(pageSource, /providerServesChatModels\(provider\)/);
+  assert.match(pageSource, /chatModelOptions\(\[currentProvider\], imageGenerationCandidates\)/);
+  assert.match(pageSource, /providerServesChatModels\(provider, imageGenerationCandidates\)/);
 });
 
 test("a saved image selection never takes the app's image default", () => {
@@ -413,10 +413,10 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.match(setupSource, /entry\.toLowerCase\(\) !== id\.toLowerCase\(\)/);
 });
 
-test("new chat default keeps an image-designated first model", () => {
-  // An image-generation designation no longer excludes a model from chat, so
-  // the head binding is a legitimate chat default even when image-marked.
-  assert.match(pageSource, /const firstModelId = models\[0\]\?\.id/);
+test("new chat default skips only a pure image-generation endpoint", () => {
+  // A dual-capability image-marked model is a legitimate chat default (#2253);
+  // only a model no chat route can serve is skipped.
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!isImageOnlyChatModel\(imageGenerationCandidates, saved\.id, model\.id\)/);
   assert.match(pageSource, /if \(!keepsCurrentDefault && firstModelId\)/);
 });
 

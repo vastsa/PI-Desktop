@@ -4,8 +4,10 @@ import type {
   SessionThinkingLevel,
 } from "@pi-desktop/shared";
 import {
+  imageGenerationBindings,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
+  isImageOnlyChatModel,
 } from "@pi-desktop/shared";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -66,6 +68,12 @@ export function useComposerModelMenu({
 }: UseComposerModelMenuOptions) {
   const providers = useAppStore((s) => s.providers);
   const recentModels = useAppStore((s) => s.recentModels);
+  const imageGeneration = useAppStore((s) => s.settings?.imageGeneration);
+  const imageGenerationModels = useAppStore((s) => s.settings?.imageGenerationModels);
+  const imageGenerationCandidates = useMemo(
+    () => imageGenerationBindings(imageGenerationModels, imageGeneration),
+    [imageGenerationModels, imageGeneration],
+  );
   const providerModels = useAppStore((s) => s.providerModels);
   const loadProviderModels = useAppStore((s) => s.loadProviderModels);
   const showToast = useAppStore((s) => s.showToast);
@@ -136,6 +144,7 @@ export function useComposerModelMenu({
           const models = composerModelsForProvider(
             candidate,
             providerModels[candidate.id],
+            imageGenerationCandidates,
           );
           return {
             provider: candidate,
@@ -145,7 +154,7 @@ export function useComposerModelMenu({
           };
         })
         .filter((group) => group.models.length > 0),
-    [providers, providerModels],
+    [providers, providerModels, imageGenerationCandidates],
   );
   const recentEntries = useMemo(() => {
     const entries = modelGroups.flatMap(group => group.models.map(model => ({ provider: group.provider, model })));
@@ -280,8 +289,10 @@ export function useComposerModelMenu({
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
-    // An image-generation designation must not block chat selection: the
-    // image binding is independent of the conversation route.
+    // A pure image-generation endpoint cannot be selected for chat; a
+    // dual-capability model marked for image generation stays selectable
+    // (#2253).
+    if (isImageOnlyChatModel(imageGenerationCandidates, candidate.id, nextModelId)) return;
     try {
       const nextModelProvider = thinkingProviderForModel(
         candidate,

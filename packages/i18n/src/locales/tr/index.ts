@@ -1031,7 +1031,7 @@ export const tr = {
     "imageModelSaveFailed": "Görsel modeli kaydedilemedi.",
     "clearImageModel": "Temizle",
     "setImageModel": "Görsel modeli olarak ayarla",
-    imageModelChatExclusionHint: "Görsel üretim modeli olarak işaretlenen bir model sohbet ve subagent için kullanılabilir kalır; görsel bağlaması konuşma rotasından bağımsızdır. Bu, görsel girdisi değil görsel üretimidir. Yalnızca uç noktanızda görsel üretebilen modelleri işaretleyin.",
+    imageModelChatExclusionHint: "Konuşmayı da destekleyen işaretli bir model sohbet ve subagent için kullanılabilir kalır; yalnızca görsel üreten bir uç nokta kaydedildikten sonra sohbet ve varsayılan model menülerinden çıkar. Bu, görsel girdisi değil görsel üretimidir. Yalnızca uç noktanızda görsel üretebilen modelleri işaretleyin.",
     "imageModelSelected": "Seçili görsel modeli",
     "generatedImage": "Oluşturulan görsel {{index}}",
     "downloadGeneratedImage": "İndir",

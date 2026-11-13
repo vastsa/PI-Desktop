@@ -240,8 +240,8 @@ try {
   await waitFor(() => evaluate(`!!document.querySelector('.composer-menu-entry')`),5000,"composer model root");
   await evaluate(`document.querySelector('.composer-menu-entry').click()`);
   await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-option').length>0`),5000,"composer model options");
-  assert.equal(await evaluate(`document.querySelectorAll('.composer-model-option').length`),1,"image-only provider must not be a chat candidate");
-  assert.ok(await evaluate(`![...document.querySelectorAll('.composer-model-group-label')].some(e=>e.textContent.includes('Image-only fixture'))`));
+  assert.equal(await evaluate(`document.querySelectorAll('.composer-model-option').length`),2,"the image-marked fixture also supports conversation, so both providers stay chat candidates (#2253)");
+  assert.ok(await evaluate(`[...document.querySelectorAll('.composer-model-group-label')].some(e=>e.textContent.includes('Image-only fixture'))`));
   await key("Escape",27);
   await key("Escape",27);
   const prompt = async (content) => {

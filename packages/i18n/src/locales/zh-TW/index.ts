@@ -1027,7 +1027,7 @@ export const zhTW = {
     imageModelSaveFailed: "無法儲存生圖模型。",
     clearImageModel: "清除",
     setImageModel: "設為生圖模型",
-    imageModelChatExclusionHint: "標記為生圖模型後，該模型仍可正常用於對話和 subagent；生圖綁定與對話通道相互獨立。這是圖片生成，不是圖片輸入；請只標記端點確實支援生圖的模型。",
+    imageModelChatExclusionHint: "標記為生圖模型且支援對話的模型仍可正常用於對話和 subagent；純生圖端點儲存後會從聊天和預設模型選單中移除。這是圖片生成，不是圖片輸入；請只標記端點確實支援生圖的模型。",
     imageModelSelected: "已設為生圖模型",
     generatedImage: "生成圖片 {{index}}",
     downloadGeneratedImage: "下載",

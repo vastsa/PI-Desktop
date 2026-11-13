@@ -58,6 +58,7 @@ async function claimLoginDefault(providerId: string): Promise<void> {
     providers,
     providerId,
     current,
+    imageGenerationBindings(current.imageGenerationModels, current.imageGeneration),
   );
   if (!claim) return;
   await api.setSettings({

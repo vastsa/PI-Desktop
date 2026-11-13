@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  isImageOnlyChatModel,
   vendorAccountImageCandidates,
   type ImageGenerationBinding,
   type ModelBinding,
@@ -74,13 +75,17 @@ function imageCandidates(
   return result;
 }
 
-function chatModelOptions(providers: readonly ProviderPublic[]) {
+function chatModelOptions(
+  providers: readonly ProviderPublic[],
+  imageModels: readonly ImageGenerationBinding[],
+) {
   return providers.flatMap((provider) => {
     const ids = provider.models?.length
       ? provider.models.map((model) => model.id)
       : [provider.defaultModelId ?? ""];
-    // An image-generation designation does not exclude a model from chat.
-    return ids.filter((id) => !!id.trim())
+    // Only a pure image-generation endpoint is excluded from chat; a
+    // dual-capability model stays selectable (#2253).
+    return ids.filter((id) => !!id.trim() && !isImageOnlyChatModel(imageModels, provider.id, id))
       .map((modelId) => ({ provider, modelId }));
   });
 }
@@ -150,7 +155,7 @@ export function ModelConfigPage() {
     [settings?.imageGenerationModels, settings?.imageGeneration, providers],
   );
   const providerReady = (provider: ProviderPublic) =>
-    providerServesChatModels(provider);
+    providerServesChatModels(provider, imageGenerationCandidates);
 
   if (!settings) return null;
 
@@ -169,9 +174,12 @@ export function ModelConfigPage() {
     models: ModelBinding[],
     imageModelIds?: string[],
   ) => {
-    // An image-generation designation does not exclude a model from chat, so
-    // the head binding is a legitimate chat default even when image-marked.
-    const firstModelId = models[0]?.id;
+    // An image-generation designation does not exclude a dual-capability
+    // model from chat, so an image-marked head binding is a legitimate chat
+    // default; only a pure image-generation endpoint cannot hold one (#2253).
+    const firstModelId = models.find((model) =>
+      !isImageOnlyChatModel(imageGenerationCandidates, saved.id, model.id),
+    )?.id;
     try {
       if (pluginCatalogSetup?.providerId === saved.id) {
         const defaultsProviders = [...providers.filter((provider) => provider.id !== saved.id), saved];
@@ -179,8 +187,8 @@ export function ModelConfigPage() {
           (provider) => provider.id === settings.defaultProviderId,
         );
         const keepsCurrentDefault = !!currentDefault &&
-          providerServesChatModels(currentDefault) &&
-          chatModelOptions([currentDefault]).some(
+          providerServesChatModels(currentDefault, imageGenerationCandidates) &&
+          chatModelOptions([currentDefault], imageGenerationCandidates).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
           );
         if (!keepsCurrentDefault && firstModelId) {
@@ -221,7 +229,7 @@ export function ModelConfigPage() {
         // provider is still runnable — until they change it themselves.
         const currentProvider = providers.find((provider) => provider.id === settings.defaultProviderId);
         const keepsCurrentDefault = !!currentProvider && providerReady(currentProvider) &&
-          chatModelOptions([currentProvider]).some(
+          chatModelOptions([currentProvider], imageGenerationCandidates).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
           );
         if (!keepsCurrentDefault && firstModelId) {

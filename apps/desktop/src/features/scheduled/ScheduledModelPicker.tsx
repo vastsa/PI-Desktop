@@ -23,7 +23,9 @@ export function ScheduledModelPicker({ value, disabled, onChange }: {
   const providerModels = useAppStore(s => s.providerModels);
   const settings = useAppStore(s => s.settings);
   const provider = providers.find(p => p.id === value.providerId);
-  const selected = provider && composerModelsForProvider(provider, providerModels[provider.id])
+  const images = useMemo(() => imageGenerationBindings(settings?.imageGenerationModels,
+    settings?.imageGeneration), [settings?.imageGenerationModels, settings?.imageGeneration]);
+  const selected = provider && composerModelsForProvider(provider, providerModels[provider.id], images)
     .find(model => sameComposerModelId(model.modelId, value.modelId ?? ""));
   const thinkingProvider = thinkingProviderForModel(provider, value.modelId,
     provider ? providerModels[provider.id] : undefined);

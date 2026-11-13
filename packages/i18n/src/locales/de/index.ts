@@ -1024,7 +1024,7 @@ export const de = {
     "imageModelSaveFailed": "Bildmodell konnte nicht gespeichert werden.",
     "clearImageModel": "Löschen",
     "setImageModel": "Als Bildmodell festlegen",
-    imageModelChatExclusionHint: "Ein als Bilderzeugungsmodell markiertes Modell bleibt für Chat und Subagents nutzbar; die Bildbindung ist unabhängig von der Unterhaltungsroute. Dies ist Bilderzeugung, keine Bildeingabe. Markieren Sie nur Modelle, mit denen Ihr Endpunkt Bilder erzeugen kann.",
+    imageModelChatExclusionHint: "Ein markiertes Modell, das auch Unterhaltungen unterstützt, bleibt für Chat und Subagents nutzbar; ein reiner Bilderzeugungs-Endpunkt verschwindet nach dem Speichern aus Chat- und Standardmodell-Menüs. Dies ist Bilderzeugung, keine Bildeingabe. Markieren Sie nur Modelle, mit denen Ihr Endpunkt Bilder erzeugen kann.",
     "imageModelSelected": "Ausgewähltes Bildmodell",
     "generatedImage": "Generiertes Bild {{index}}",
     "downloadGeneratedImage": "Herunterladen",
