@@ -224,6 +224,25 @@ impl PluginManager {
             .collect()
     }
 
+    /// Refuses an id that differs from a registered plugin's id only in
+    /// letter case. Case-insensitive file systems (macOS and Windows
+    /// defaults) resolve both to the same install and data directory, so the
+    /// newcomer would overwrite the other plugin's files. Existing rows and
+    /// directories keep their names; only the new id is refused.
+    pub(crate) fn ensure_storage_identity_free(&self, id: &str) -> Result<()> {
+        if let Some(other) = self
+            .runtime
+            .iter()
+            .find(|p| p.id != id && p.id.eq_ignore_ascii_case(id))
+        {
+            bail!(
+                "PLUGIN_INVALID: id {id} differs from installed plugin {} only in letter case",
+                other.id
+            );
+        }
+        Ok(())
+    }
+
     pub fn get(&self, id: &str) -> Option<PluginSummary> {
         self.runtime
             .iter()
@@ -300,6 +319,7 @@ impl PluginManager {
     pub fn load_dev(&mut self, plugin_path: &str) -> Result<PluginSummary> {
         let path = PathBuf::from(plugin_path);
         let manifest = Self::read_manifest(&path)?;
+        self.ensure_storage_identity_free(&manifest.id)?;
         let now = Utc::now().to_rfc3339();
         let summary = PluginSummary {
             id: manifest.id.clone(),

@@ -199,11 +199,14 @@ export async function check(dirInput: string): Promise<CheckResult> {
 
   const validated = validateManifest(parsed);
   if (!validated.ok || !validated.manifest) {
-    // An id the installer refuses also breaks the schema shape; keep the
-    // devkit's own code and hint for it.
+    // Report an id the installer refuses under the devkit's own code, with
+    // the schema-shape hint when the id breaks that shape too.
     const id = (parsed as { id?: unknown } | null)?.id;
-    if (validated.error?.startsWith("manifest.id may only") && typeof id === "string") {
-      return fail("manifest.invalid-id", invalidIdMessage(id));
+    if (validated.error?.startsWith("manifest.id ") && typeof id === "string" && id) {
+      return fail(
+        "manifest.invalid-id",
+        PLUGIN_ID_PATTERN.test(id) ? validated.error : invalidIdMessage(id),
+      );
     }
     return fail("manifest.invalid", validated.error ?? "manifest is invalid");
   }

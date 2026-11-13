@@ -1765,6 +1765,14 @@ export function validateManifest(raw: unknown): {
       error: "manifest.id may only contain letters, digits, '.', '-' and '_'",
     };
   }
+  // Windows drops a trailing `.` and maps device names to devices, so such
+  // ids cannot name a directory of their own.
+  if (m.id.endsWith(".")) {
+    return { ok: false, error: "manifest.id must not end with '.'" };
+  }
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(m.id)) {
+    return { ok: false, error: "manifest.id must not start with a Windows device name" };
+  }
   if (typeof m.name !== "string" || !m.name) {
     return { ok: false, error: "manifest.name is required" };
   }

@@ -84,12 +84,27 @@ impl PluginManager {
 /// outside `[A-Za-z0-9._-]` to `_`, so only ids already made of those
 /// characters keep distinct plugins in distinct places, and `.` / `..`
 /// would name a parent or current directory instead of the plugin's own.
+/// Windows also drops a trailing `.` from a path segment and resolves
+/// device names (`con`, `nul.x`, ...) to devices, so those ids could not
+/// name a directory of their own either. Ids that differ only in letter
+/// case are a registry-level conflict, see `ensure_storage_identity_free`.
 fn validate_plugin_id(id: &str) -> Result<()> {
     let allowed = id
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
     if !allowed || id == "." || id == ".." {
         bail!("PLUGIN_INVALID: id may only contain letters, digits, '.', '-' and '_'");
+    }
+    if id.ends_with('.') {
+        bail!("PLUGIN_INVALID: id must not end with '.'");
+    }
+    let stem = id.split('.').next().unwrap_or(id).to_ascii_lowercase();
+    let reserved = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
+        || ((stem.starts_with("com") || stem.starts_with("lpt"))
+            && stem.len() == 4
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+    if reserved {
+        bail!("PLUGIN_INVALID: id must not start with a Windows device name");
     }
     Ok(())
 }
@@ -156,11 +171,31 @@ mod tests {
                 "{id}"
             );
         }
+        for (id, message) in [
+            ("e2e.foo.", "PLUGIN_INVALID: id must not end with '.'"),
+            (
+                "con",
+                "PLUGIN_INVALID: id must not start with a Windows device name",
+            ),
+            (
+                "NUL.plugin",
+                "PLUGIN_INVALID: id must not start with a Windows device name",
+            ),
+            (
+                "com1.x",
+                "PLUGIN_INVALID: id must not start with a Windows device name",
+            ),
+        ] {
+            assert_eq!(read_with_id(id).unwrap_err().to_string(), message, "{id}");
+        }
         for id in [
             "foo_bar",
             "pi.browser",
             "io.github.b1eight.pi-desktop-claude-theme",
             "a..b",
+            "console.tools",
+            "com.example.x",
+            "com10.x",
         ] {
             assert_eq!(read_with_id(id).unwrap().id, id);
         }

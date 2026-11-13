@@ -5,10 +5,10 @@
  * directory, or browser session partition (issue #2297).
  *
  * Runs the real host-core binary against a scratch data directory: installs
- * `e2e.foo_bar`, then tries to install `e2e.foo!bar` and to load it as a
- * development plugin. The second plugin must be refused with PLUGIN_INVALID,
- * and the first plugin's installed files, data directory, and registry row
- * must be untouched.
+ * `e2e.foo_bar`, then tries to install and to load as a development plugin
+ * `e2e.foo!bar`, `e2e.Foo_Bar` and `e2e.foo_bar.`. Each must be refused with
+ * PLUGIN_INVALID, and the first plugin's installed files, data directory,
+ * and registry row must be untouched.
  */
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
@@ -29,6 +29,7 @@ async function writePlugin(dir, id, marker) {
   await writeFile(join(dir, "main.js"), `// ${marker}\nexport function onLoad() {}\n`);
 }
 
+const attempts = [];
 const host = new Host(hostBinary, dataDir, { quiet: true });
 try {
   await host.start();
@@ -41,20 +42,30 @@ try {
   assert.match(await readFile(installedMain, "utf8"), /first plugin/);
   await writeFile(dataMarker, "first plugin data");
 
-  const second = join(scratch, "src-second");
-  await writePlugin(second, "e2e.foo!bar", "second plugin");
-  for (const [method, params] of [
-    ["plugins.installFromPath", { path: second, enable: true }],
-    ["plugins.loadDev", { path: second }],
+  // Each look-alike id would resolve to the first plugin's directory: by
+  // character replacement, by letter case on case-insensitive file systems
+  // (macOS / Windows defaults), or by Windows dropping a trailing dot.
+  for (const [lookAlike, reason] of [
+    ["e2e.foo!bar", /PLUGIN_INVALID: id may only contain/],
+    ["e2e.Foo_Bar", /PLUGIN_INVALID: id e2e\.Foo_Bar differs from installed plugin e2e\.foo_bar only in letter case/],
+    ["e2e.foo_bar.", /PLUGIN_INVALID: id must not end with '\.'/],
   ]) {
-    await assert.rejects(
-      host.call(method, params),
-      (error) => {
-        assert.match(String(error.message), /PLUGIN_INVALID: id may only contain/);
-        return true;
-      },
-      `${method} must refuse an id that maps onto another plugin's directory`,
-    );
+    const second = join(scratch, `src-${attempts.length}`);
+    attempts.push(lookAlike);
+    await writePlugin(second, lookAlike, "second plugin");
+    for (const [method, params] of [
+      ["plugins.installFromPath", { path: second, enable: true }],
+      ["plugins.loadDev", { path: second }],
+    ]) {
+      await assert.rejects(
+        host.call(method, params),
+        (error) => {
+          assert.match(String(error.message), reason);
+          return true;
+        },
+        `${method} must refuse ${lookAlike}, which maps onto another plugin's directory`,
+      );
+    }
   }
 
   assert.match(await readFile(installedMain, "utf8"), /first plugin/, "first plugin's files stay its own");
@@ -64,7 +75,7 @@ try {
   const ids = plugins.map((plugin) => plugin.id).filter((id) => id.startsWith("e2e."));
   assert.deepEqual(ids, ["e2e.foo_bar"]);
 
-  console.log("PASS: a plugin id that maps onto another plugin's directory is refused");
+  console.log("PASS: plugin ids that map onto another plugin's directory are refused");
 } finally {
   await host.stop().catch(() => {});
   await rm(scratch, { recursive: true, force: true });
