@@ -1,4 +1,4 @@
-# Plan approval defaults to the owning Session's permission
+# ADR: Plan approval defaults to the owning Session's permission
 
 - Status: Accepted
 - Date: 2026-11-13
@@ -24,12 +24,14 @@ choice remains part of the user approval request. Host validation, matching
 proposal identity, artifact ownership, and the atomic approved-mode write to
 the Session remain unchanged. Reject carries no permission mode.
 
-## Alternatives and consequences
+## Alternatives
 
 Keeping device-wide history as the default would retain cross-Session policy
 changes. Changing Host resolution to ignore the submitted mode would instead
 break explicit approval choices. Reading the existing Session projection fixes
 the default at its UI owner without changing protocol or storage schema.
+
+## Consequences
 
 The same Session now carries its effective permission through Plan approval.
 An explicit approval choice still changes that Session's permission. This does
