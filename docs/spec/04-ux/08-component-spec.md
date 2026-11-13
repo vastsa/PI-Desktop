@@ -2978,6 +2978,12 @@ fields. It is never a JSON dump.
 - Buttons: primary (Allow once), secondary (Allow session), danger (Deny)
 - No countdown is shown; the card remains pending until an explicit decision or
   cancellation.
+- A decision that fails to reach the Host keeps the card pending with its
+  buttons re-enabled and shows the error, so the same request can be retried.
+  If the Host reports the request no longer exists (`NOT_FOUND`), the card is
+  removed without an error. AskTool cards follow the same rule, keeping their
+  answer draft on a retriable failure; `ASKTOOL_NOT_FOUND` and `NOT_FOUND` mean
+  the request is gone.
 - The first action locks all buttons. Resolution errors use an error toast;
   successful or failed completion returns focus to the current composer.
 - The originating session's composer cannot send during pending permission,
@@ -3326,6 +3332,10 @@ reasoning-level control.
   returns to the textarea and file references return as leaf-name chips; their
   canonical paths never become textarea text. After a reply begins, Abort keeps
   the partial transcript and restores no draft.
+  If the stop request itself fails, the turn stays running: its rows, Stop
+  control and submitted draft are unchanged, an error toast is shown, and Stop
+  can be retried. Permission cards whose denial the Host already settled are
+  removed; the rest stay pending.
 - Stop never clears queued prompts. Removing a row is explicit; the queue itself
   is Host-owned and durable (D386 / ADR 0213, ADR 0265), so a restart restores it
   in delivery order, held until the desktop attaches as the owner.
@@ -3411,6 +3421,11 @@ reasoning-level control.
   entered. The first visible rows use cached metadata or configured bindings;
   live discovery updates them in the background without replacing a configured
   alias with the wire ID or a second visible name.
+  A successful live discovery is not repeated until providers are reloaded. A
+  failed one (thrown, or a fallback that reports a discovery error) keeps the
+  rows already shown and is retried on a later open after a per-provider
+  backoff (10 s, doubling to at most 5 min); callers waiting on the failed
+  attempt do not each start another probe.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
   `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
   the menu lists more than one level, a drag slider with one labeled stop per
