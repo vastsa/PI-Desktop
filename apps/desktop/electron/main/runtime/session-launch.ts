@@ -114,7 +114,9 @@ export function createSessionLaunchRuntime({
         projectPath: projectPath ?? null,
       });
       const servers = result.servers ?? [];
-      userMcp.setRecords(servers);
+      // Each workspace keeps its own active list; refreshing this one must not
+      // take another project's servers away from a turn running there.
+      userMcp.setRecords(servers, projectPath ?? null);
       return servers;
     } catch (error) {
       if (!isHostUnavailable(error)) {

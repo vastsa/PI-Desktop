@@ -34,6 +34,17 @@ export function registerMcpIpc({
   searchMcpMarket,
 }: McpIpcDependencies): void {
   let host: HostProcess | null = null;
+  /**
+   * Re-read every workspace the runtime holds a list for. A saved server can
+   * be active in several projects, so deleting, disabling or rescoping it has
+   * to reach all of them, not only the project open in the window.
+   */
+  const refreshAllWorkspaces = async (): Promise<void> => {
+    const current = currentWorkspacePath();
+    const others = userMcp.listedWorkspaces().filter((projectPath) => projectPath !== current);
+    for (const projectPath of others) await refreshUserMcp(projectPath);
+    await refreshUserMcp(current);
+  };
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, async (...args) => {
       host = getHost();
@@ -61,9 +72,10 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     );
     // Status belongs to the currently open project's active runtime, while the
     // list itself must include disabled records for the settings page.
-    await refreshUserMcp(currentWorkspacePath());
+    const current = currentWorkspacePath();
+    await refreshUserMcp(current);
     const statuses = await Promise.all(
-      (await userMcp.refreshStatuses()).map(async (status) => ({
+      (await userMcp.refreshStatuses(current)).map(async (status) => ({
         ...status,
         hasOauth: oauth ? await oauth.hasOAuth(status.serverId) : false,
       })),
@@ -74,7 +86,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
   handle(IPC.invoke.mcpUpsert, async (server: McpServerInput) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call<{ server: McpServerRecord }>("mcp.upsert", { server });
-    await refreshUserMcp(currentWorkspacePath());
+    await refreshAllWorkspaces();
     sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server?.id });
     if (res.server && res.server.enabled !== false) {
       void userMcp
@@ -93,7 +105,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.remove", payload);
       await oauth?.deleteOAuth(payload.id);
-      await refreshUserMcp(currentWorkspacePath());
+      await refreshAllWorkspaces();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
     },
@@ -104,7 +116,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     async (payload: { id: string; enabled: boolean } & Partial<AgentCapabilityQuery>) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.setEnabled", payload);
-      await refreshUserMcp(currentWorkspacePath());
+      await refreshAllWorkspaces();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
     },
@@ -115,7 +127,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     async (payload: { id: string; scope: ActivationScope }) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.setScope", payload);
-      await refreshUserMcp(currentWorkspacePath());
+      await refreshAllWorkspaces();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
     },
@@ -134,7 +146,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     if (res.server?.id && payload.id && payload.id !== res.server.id) {
       await oauth?.transferOAuth(payload.id, res.server.id);
     }
-    await refreshUserMcp(currentWorkspacePath());
+    await refreshAllWorkspaces();
     sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: res.server?.id });
     return res;
   });
@@ -148,14 +160,10 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
         ...(payload.projectPath ? { projectPath: payload.projectPath } : {}),
       } satisfies Partial<AgentCapabilityQuery>;
       const listed = await host.call<{ servers: McpServerRecord[] }>("mcp.list", query);
-      // Test may target a project different from the current session. Keep the
-      // requested record long enough for the handshake, then restore the
-      // current project's active runtime below.
-      userMcp.setRecords([
-        ...userMcp.listRecords().filter((record) => !listed.servers.some((item) => item.id === record.id)),
-        ...(listed.servers ?? []),
-      ]);
-      const status = await userMcp.test(payload.id, payload.projectPath ?? currentWorkspacePath());
+      // Test the saved record directly: it may be disabled or belong to a
+      // project other than the open one, and no workspace's list changes.
+      const saved = (listed.servers ?? []).find((record) => record.id === payload.id);
+      const status = await userMcp.test(payload.id, payload.projectPath ?? currentWorkspacePath(), saved);
       await refreshUserMcp(currentWorkspacePath());
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       const hasOauth = oauth ? await oauth.hasOAuth(payload.id) : false;
@@ -209,7 +217,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
         failed.push({ id: server.id, reason: describeError(error) });
       }
     }
-    await refreshUserMcp(currentWorkspacePath());
+    await refreshAllWorkspaces();
     if (imported.length) {
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp" });
     }
