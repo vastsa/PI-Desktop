@@ -20,7 +20,6 @@ public static class WindowSnapProbe {
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr window);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
-    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint processId);
     [DllImport("user32.dll")] static extern bool GetCursorPos(out SnapPoint p);
@@ -107,6 +106,7 @@ public static class WindowSnapProbe {
     }
     static void Drag(int x, int y, int endX, int endY) {
         if(externalPointer) {Pointer("drag",x,y,endX,endY);return;}
+        Log("native drag from "+x+","+y+" to "+endX+","+endY);
         MovePointer(x,y); Application.DoEvents(); Thread.Sleep(80); InjectMouse(2); Application.DoEvents(); Thread.Sleep(50);
         try {
             Check((GetAsyncKeyState(1)&0x8000)!=0,"physical mouse down was not registered");
@@ -126,9 +126,9 @@ public static class WindowSnapProbe {
         Check(SendInput(1,new[]{input},Marshal.SizeOf(typeof(SnapInput)))==1,"native mouse input was rejected");
     }
     static void MovePointer(int x, int y) {
-        uint absoluteX=(uint)Math.Round((x-GetSystemMetrics(76))*65535.0/(GetSystemMetrics(78)-1));
-        uint absoluteY=(uint)Math.Round((y-GetSystemMetrics(77))*65535.0/(GetSystemMetrics(79)-1));
-        InjectMouse(0xC001,absoluteX,absoluteY);
+        Check(SetCursorPos(x,y),"native cursor movement was rejected");
+        SnapPoint actual=new SnapPoint();
+        Wait(() => GetCursorPos(out actual) && actual.X==x && actual.Y==y,"native cursor did not reach the requested screen point");
     }
     static void Pixels(IntPtr window, string label, bool clientOnly = false) {
         Focus(window); var r=Rect(window); int width=r.Right-r.Left,height=r.Bottom-r.Top;
