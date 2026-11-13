@@ -398,6 +398,53 @@ test("changing only scope or label keeps the connection", async (t) => {
   assert.equal(rt.hasTool("mcp_stub_lookup"), true);
 });
 
+test("refreshing one project's records keeps another project's scoped server connected", async (t) => {
+  const dir = stubDir();
+  const projectA = projectDir("project-a");
+  const projectB = projectDir("project-b");
+  const rt = runtime(t);
+  rt.setRecords(
+    [stubRecord(dir, { scope: { mode: "projects", projects: [projectA] } })],
+    projectA,
+  );
+  const tools = await rt.toolsForProject(projectA);
+  assert.deepEqual(
+    tools.map((tool) => tool.fullName),
+    ["mcp_stub_lookup", "mcp_stub_ping"],
+  );
+  assert.equal(rt.statusFor("stub").state, "ready");
+
+  // Project B has no active servers, and its refresh (refreshUserMcp(projectB))
+  // must not evict project A's scoped server or kill its stdio process.
+  rt.setRecords([], projectB);
+  assert.equal(rt.statusFor("stub").state, "ready");
+  assert.match(JSON.stringify(await rt.callTool("mcp_stub_lookup", {}, projectA)), /lookup/);
+
+  // The retained record stays invisible to project B's sessions.
+  assert.deepEqual(await rt.toolsForProject(projectB), []);
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, projectB), (error) => {
+    assert.equal(error.errorCode, "TOOL_NOT_FOUND");
+    assert.match(error.message, /not active for this session/);
+    return true;
+  });
+});
+
+test("a scoped server removed from its own project's refresh loses its connection", async (t) => {
+  const dir = stubDir();
+  const projectA = projectDir("project-a");
+  const rt = runtime(t);
+  rt.setRecords(
+    [stubRecord(dir, { scope: { mode: "projects", projects: [projectA] } })],
+    projectA,
+  );
+  await rt.toolsForProject(projectA);
+  assert.equal(rt.statusFor("stub").state, "ready");
+
+  rt.setRecords([], projectA);
+  assert.equal(rt.statusFor("stub").state, "idle");
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, projectA), { errorCode: "TOOL_NOT_FOUND" });
+});
+
 /** A transport disconnect clears the client's tools, just like onClose. */
 function reconnectingRuntime(t) {
   let connected = false;

@@ -89,7 +89,10 @@ export class UserMcpRuntime {
   // Routing identity must survive a transport clearing its own tools on close.
   // These names are hints only: dispatch revalidates the fresh handshake list.
   private discoveredTools = new Map<string, Set<string>>();
-  private records: McpServerRecord[] = [];
+  // The active record list, bucketed per workspace. host-core's "mcp.active"
+  // answers for one project at a time, so a flat list would let one
+  // workspace's refresh drop another active project's scoped servers.
+  private recordsByScope = new Map<string, McpServerRecord[]>();
   private options: UserMcpRuntimeOptions;
 
   // Spelled out rather than a constructor parameter property, because the test
@@ -99,13 +102,18 @@ export class UserMcpRuntime {
   }
 
   /**
-   * Adopt a fresh list from host-core. Servers whose configuration changed —
-   * or that vanished — lose their connection so the next call re-handshakes
-   * against what the user actually saved.
+   * Adopt a fresh list from host-core for one workspace. Records live in a
+   * per-workspace bucket: a refresh for workspace B must not evict workspace
+   * A's scoped servers, whose sessions and stdio processes are still live.
+   * Servers whose configuration changed — or that vanished from every
+   * bucket — lose their connection so the next call re-handshakes against
+   * what the user actually saved.
    */
-  setRecords(records: McpServerRecord[]): void {
-    this.records = records.map((record) => ({ ...record }));
-    const byId = new Map(this.records.map((record) => [record.id, record]));
+  setRecords(records: McpServerRecord[], projectPath?: string | null): void {
+    const scopeKey = workspaceIdentity(projectPath);
+    this.recordsByScope.set(scopeKey, records.map((record) => ({ ...record })));
+    const all = this.allRecords();
+    const byId = new Map(all.map((record) => [record.id, record]));
     for (const id of this.discoveredTools.keys()) {
       if (!byId.has(id)) this.discoveredTools.delete(id);
     }
@@ -120,13 +128,29 @@ export class UserMcpRuntime {
     }
   }
 
+  /**
+   * Every bucket's records, deduplicated by id. Global servers appear in each
+   * bucket, so first-wins keeps them from stacking per workspace. Project
+   * visibility is still decided by `isActiveInProject`, never by bucket
+   * membership alone.
+   */
+  private allRecords(): McpServerRecord[] {
+    const seen = new Map<string, McpServerRecord>();
+    for (const records of this.recordsByScope.values()) {
+      for (const record of records) {
+        if (!seen.has(record.id)) seen.set(record.id, record);
+      }
+    }
+    return [...seen.values()];
+  }
+
   listRecords(): McpServerRecord[] {
-    return this.records.map((record) => ({ ...record }));
+    return this.allRecords().map((record) => ({ ...record }));
   }
 
   /** Per-server connection state for the Extensions page. */
   listStatuses(): McpServerStatus[] {
-    return this.records.map((record) => this.statusFor(record.id));
+    return this.allRecords().map((record) => this.statusFor(record.id));
   }
 
   /** Confirm ready remote connections when the settings page refreshes. */
@@ -184,7 +208,7 @@ export class UserMcpRuntime {
    * status rather than thrown.
    */
   async toolsForProject(projectPath: string | null | undefined): Promise<UserMcpToolDescriptor[]> {
-    const active = this.records.filter((record) => isActiveInProject(record, projectPath));
+    const active = this.allRecords().filter((record) => isActiveInProject(record, projectPath));
     const admitted = active.slice(0, MAX_ACTIVE_SERVERS);
     if (admitted.length < active.length) {
       this.options.log?.("warn", "user mcp servers skipped over the active cap", {
@@ -243,7 +267,7 @@ export class UserMcpRuntime {
         errorCode: "TOOL_NOT_FOUND",
       });
     }
-    const record = this.records.find((entry) => entry.id === found.serverId);
+    const record = this.allRecords().find((entry) => entry.id === found.serverId);
     if (!record || !isActiveInProject(record, projectPath)) {
       throw Object.assign(
         new Error(`mcp server ${found.serverId} is not active for this session`),
@@ -258,7 +282,7 @@ export class UserMcpRuntime {
     }
     try {
       // Configuration or scope can change while the handshake is in flight.
-      const current = this.records.find((entry) => entry.id === found.serverId);
+      const current = this.allRecords().find((entry) => entry.id === found.serverId);
       if (!current || !isActiveInProject(current, projectPath)) {
         throw Object.assign(
           new Error(`mcp server ${found.serverId} is not active for this session`),
@@ -308,7 +332,7 @@ export class UserMcpRuntime {
     serverId: string,
     projectPath: string | null | undefined = null,
   ): Promise<McpServerStatus> {
-    const record = this.records.find((entry) => entry.id === serverId);
+    const record = this.allRecords().find((entry) => entry.id === serverId);
     if (!record) {
       return {
         serverId,
@@ -556,10 +580,18 @@ function workspacePath(projectPath: string | null | undefined): string {
   return projectPath ? resolve(projectPath) : homedir();
 }
 
+/**
+ * The normalized workspace a bucket of records belongs to. Empty string for
+ * the home/global bucket. Same normalization stdio connection keys use.
+ */
+function workspaceIdentity(projectPath: string | null | undefined): string {
+  const rootPath = projectPath ? resolve(projectPath) : "";
+  return process.platform === "win32" ? rootPath.toLowerCase() : rootPath;
+}
+
 function connectionKey(record: McpServerRecord, projectPath: string | null | undefined): string {
   if (record.transport !== "stdio") return JSON.stringify([record.id, "http"]);
-  const rootPath = workspacePath(projectPath);
-  const identity = process.platform === "win32" ? rootPath.toLowerCase() : rootPath;
+  const identity = workspaceIdentity(projectPath) || homedir();
   return JSON.stringify([record.id, identity]);
 }
 

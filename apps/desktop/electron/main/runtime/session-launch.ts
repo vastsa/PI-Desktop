@@ -114,7 +114,7 @@ export function createSessionLaunchRuntime({
         projectPath: projectPath ?? null,
       });
       const servers = result.servers ?? [];
-      userMcp.setRecords(servers);
+      userMcp.setRecords(servers, projectPath);
       return servers;
     } catch (error) {
       if (!isHostUnavailable(error)) {

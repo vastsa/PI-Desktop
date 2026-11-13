@@ -154,7 +154,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
       userMcp.setRecords([
         ...userMcp.listRecords().filter((record) => !listed.servers.some((item) => item.id === record.id)),
         ...(listed.servers ?? []),
-      ]);
+      ], payload.projectPath ?? currentWorkspacePath());
       const status = await userMcp.test(payload.id, payload.projectPath ?? currentWorkspacePath());
       await refreshUserMcp(currentWorkspacePath());
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
