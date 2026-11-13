@@ -3152,3 +3152,16 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 ### Native Pi 文件引用（#1853）
 
 用户发起的文件读取、目录列表、引用解析和文件搜索使用 sidecar 投影的 native 会话项目路径。Native 身份不查询 Desktop 会话存储，也不回退到当前选中的工作区。来源丢失或更换时拒绝请求。现有本地文件范围和显式外部文件规则继续生效，不增加模型工具或附件权限。Native 会话没有 Desktop scratch 目录。
+
+### File Manager line references
+
+Saved local source selections use **Add to chat** or clipboard paste to insert
+the same removable `gpt.py (85:86)` chip; one line displays as `gpt.py (85)`.
+The draft carries only path and inclusive line numbers. Ordinary clipboard
+consumers keep the selected text. Unsaved selections, ranges over 4,000 lines,
+invalid signed 32-bit coordinates and another project's metadata use plain text.
+At four references, another paste warns and inserts plain text without removing
+the existing chips. Main and Composer normalize workspace spelling consistently;
+lexical and real-path containment remain mandatory. The runtime reads the saved
+range at execution time through the scoped Host Read, including queued sends.
+See [File Manager line references ADR](/adr/file-manager-line-references).

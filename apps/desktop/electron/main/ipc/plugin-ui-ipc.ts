@@ -18,6 +18,7 @@ import {
   type PluginComposerSuggestionRefusal,
 } from "@pi-desktop/plugin-sdk";
 import type { ComposerSuggestionAnswer } from "../services/composer-suggestion";
+import { canUseFileLineView, FILE_LINES_VIEW_KEY } from "../file-line-reference";
 
 export type PluginUiIpcDependencies = {
   registrar: IpcRegistrar;
@@ -324,6 +325,7 @@ export function registerPluginUiIpc({
         locale: getUpdaterLocale(),
         theme: getPluginPanelTheme(),
         htmlPath,
+        composerFileLines: pluginViewKey(pluginId, viewId) === FILE_LINES_VIEW_KEY && canUseFileLineView(loaded),
         netDomains: loaded.manifest.net?.domains?.map((domain) => String(domain)),
         netAnyHost: loaded.permissions.has("net.anyHost"),
         // The browser view owns an address bar and its own history, so its

@@ -1947,6 +1947,8 @@ export const api = {
    * only the renderer knows whether the draft can take it. A malformed message
    * is ignored — nothing here decides whether a plugin's suggestion is valid.
    */
+  onComposerFileLines: (listener: (payload: { sessionId: string; reference: import("@pi-desktop/shared").FileLineReference }) => void) =>
+    window.piDesktop?.on?.(IPC.event.composerFileLines, (payload) => listener(payload as Parameters<typeof listener>[0])) ?? (() => {}),
   onPluginComposerSuggestion: (
     listener: (
       event:
