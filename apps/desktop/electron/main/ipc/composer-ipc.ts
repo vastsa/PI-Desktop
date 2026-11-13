@@ -125,11 +125,11 @@ export function createComposerCommandService({
       id: trustedExtensionCommandId(command.name),
     }));
     const skillCommands = await loadComposerSkillCommands(root, options.remote === true).catch(() => []);
-    const statuses = userMcp?.listStatuses() ?? [];
+    const statuses = userMcp?.listStatuses(root) ?? [];
     const ready = new Set(statuses
       .filter((status) => status.state === "ready" && status.toolCount > 0)
       .map((status) => status.serverId));
-    const mcpCommands: ComposerCommand[] = (userMcp?.listRecords() ?? [])
+    const mcpCommands: ComposerCommand[] = (userMcp?.listRecords(root) ?? [])
       .filter((record) => ready.has(record.id) && isActiveInProject(record, root))
       .flatMap((record) => {
         const server: ComposerCommand = {
