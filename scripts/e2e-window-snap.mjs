@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir, copyFile, readFile, writeFile, mkdtemp } from "node:fs/promises";
@@ -10,6 +11,8 @@ import { promisify } from "node:util";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const prepare = process.argv.includes("--prepare");
+const matrix = process.argv.includes("--matrix");
+const run = promisify(execFile);
 assert.ok(prepare || process.platform === "win32", "run on an interactive Windows desktop, or use --prepare <directory>");
 const output = process.argv[process.argv.indexOf("--prepare") + 1];
 const directory = prepare ? resolve(output) : await mkdtemp(join(tmpdir(), "window-snap-"));
@@ -33,6 +36,20 @@ await build({
   } }],
 });
 await copyFile(join(root, "scripts/e2e/probe-window-snap.cs"), join(directory, "probe.cs"));
+await copyFile(join(root, "scripts/e2e/run-window-snap.ps1"), join(directory, "run.ps1"));
+const git = async (...args) => (await run("git", args, { cwd: root })).stdout.trim();
+const files = ["scripts/e2e-window-snap.mjs", "scripts/e2e/run-window-snap.ps1", "scripts/e2e/probe-window-snap.cs",
+  "scripts/e2e/fixtures/window-snap/main.cjs", "scripts/e2e/host.mjs", "pnpm-lock.yaml", "Cargo.lock",
+  "apps/desktop/package.json", "apps/desktop/electron/main/window-native-snap.ts",
+  "apps/desktop/electron/main/window-native-corners.ts", "apps/desktop/electron/main/window-native-handle.ts",
+  "apps/desktop/electron/main/window-fullscreen.ts", "apps/desktop/electron/main/window-shape.ts",
+  "crates/host-core/src/rpc/window_snap_rpc.rs", "crates/host-core/src/rpc/window_owner.rs"];
+const hashes = {};
+for (const file of files) hashes[file] = createHash("sha256").update(await readFile(join(root, file))).digest("hex");
+await writeFile(join(directory, "source.json"), JSON.stringify({
+  revision: await git("rev-parse", "HEAD"), tree: await git("rev-parse", "HEAD^{tree}"),
+  clean: (await git("status", "--porcelain", "--untracked-files=no")) === "", hashes,
+}, null, 2));
 await writeFile(join(directory, "options.json"), JSON.stringify({
   hostBinary: process.env.PI_DESKTOP_HOST_BIN || join(root, "target/debug/pi-desktop-host-core.exe"),
   electronBinary: process.env.PI_DESKTOP_SNAP_ELECTRON || (prepare ? "electron/electron.exe" : require("electron")),
@@ -44,13 +61,13 @@ await writeFile(join(directory, "options.json"), JSON.stringify({
 }));
 if (prepare) console.log(directory);
 else {
-  const run = promisify(execFile);
-  const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-  const compile = `Add-Type -Path ${quote(join(directory, "probe.cs"))} -OutputAssembly ${quote(join(directory, "probe.exe"))} -OutputType WindowsApplication -ReferencedAssemblies System.dll,System.Drawing.dll,System.Windows.Forms.dll,System.Web.Extensions.dll`;
-  await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    compile]);
-  await run(join(directory, "probe.exe"), [], { timeout: 300_000 });
-  const result = JSON.parse(await readFile(join(directory, "result.json"), "utf8"));
+  const index = process.argv.indexOf("--artifacts");
+  const artifacts = index < 0 ? join(directory, "artifacts") : resolve(process.argv[index + 1]);
+  try {
+    await run("powershell.exe", ["-NoProfile", "-File", join(directory, "run.ps1"),
+      "-ArtifactDirectory", artifacts, ...(matrix ? ["-Matrix"] : [])], { timeout: 660_000 });
+  } finally { console.log(`Native snap artifacts: ${artifacts}`); }
+  const result = JSON.parse(await readFile(join(artifacts, "summary.json"), "utf8"));
   assert.equal(result.ok, true, JSON.stringify(result));
-  console.log(JSON.stringify({ ...result, artifacts: directory }));
+  console.log(JSON.stringify(result));
 }

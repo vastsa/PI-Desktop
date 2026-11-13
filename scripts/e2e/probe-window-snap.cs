@@ -28,6 +28,8 @@ public static class WindowSnapProbe {
     [DllImport("user32.dll")] static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll",SetLastError=true)] static extern uint SendInput(uint count, SnapInput[] input, int size);
     [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll",SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint access);
+    [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out SnapRect r, int size);
     static readonly string Root = AppDomain.CurrentDomain.BaseDirectory;
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
@@ -35,6 +37,7 @@ public static class WindowSnapProbe {
     static readonly Dictionary<string, object> Result = new Dictionary<string, object>();
     static int sequence, pointerSequence, checks;
     static bool externalPointer;
+    static void Log(string message) { File.AppendAllText(FilePath("probe.log"),DateTime.UtcNow.ToString("o")+" "+message+Environment.NewLine); }
     static void Check(bool condition, string message) { if (!condition) throw new Exception(message); checks++; }
     static string FilePath(string name) { return Path.Combine(Root, name); }
     static int Number(Dictionary<string, object> value, string key) { return Convert.ToInt32(value[key]); }
@@ -91,6 +94,7 @@ public static class WindowSnapProbe {
         File.Move(temporary,destination);
     }
     static Dictionary<string, object> Command(string action, bool value = false) {
+        Log("window command: "+action+" "+value);
         int id=++sequence;
         WriteCommand(Json.Serialize(new Dictionary<string,object>{{"id",id},{"action",action},{"value",value}}));
         Dictionary<string,object> state=null;
@@ -122,8 +126,14 @@ public static class WindowSnapProbe {
         uint absoluteY=(uint)Math.Round((y-GetSystemMetrics(77))*65535.0/(GetSystemMetrics(79)-1));
         InjectMouse(0xC001,absoluteX,absoluteY);
     }
-    static void Pixels(IntPtr window, string label) {
+    static void Pixels(IntPtr window, string label, bool clientOnly = false) {
         Focus(window); var r=Rect(window); int width=r.Right-r.Left,height=r.Bottom-r.Top;
+        if(clientOnly) {
+            SnapRect client;var origin=new SnapPoint();
+            Check(GetClientRect(window,out client) && ClientToScreen(window,ref origin),"read maximized pixels");
+            r.Left=origin.X;r.Top=origin.Y;width=client.Right;height=client.Bottom;
+        }
+        Log("checking pixels: "+label);
         using(var bitmap=new Bitmap(width,height)) using(var graphics=Graphics.FromImage(bitmap)) {
             string mismatch="";
             try {
@@ -151,22 +161,31 @@ public static class WindowSnapProbe {
         var b=Bounds(window); Result[label]=b;
         Check(Number(b,"clientX")==Number(area,"x") && Number(b,"clientY")==Number(area,"y") && Number(b,"clientWidth")==Number(area,"width") && Number(b,"clientHeight")==Number(area,"height"),label+" client extends beyond the work area");
         Check(Number(b,"visibleX")==Number(area,"x") && Number(b,"visibleY")==Number(area,"y") && Number(b,"visibleWidth")==Number(area,"width") && Number(b,"visibleHeight")==Number(area,"height"),label+" visible frame extends beyond the work area");
+        Pixels(window,label,true);
     }
     [STAThread] public static void Main() {
         Process child=null; SnapPoint pointer; bool saved=GetCursorPos(out pointer);
+        System.Threading.Tasks.Task<string> stdout=null,stderr=null;
         NativeWindow foreign=new NativeWindow();
         try {
+            Result["runId"]=RunId;Result["startedAt"]=DateTime.UtcNow.ToString("o");
+            Result["sessionId"]=Process.GetCurrentProcess().SessionId;
+            Log("starting native snap acceptance");
+            Check(Process.GetCurrentProcess().SessionId>0,"an interactive Windows session is required; session 0 is unsupported");
+            var desktop=OpenInputDesktop(0,false,0x101);
+            Check(desktop!=IntPtr.Zero,"the interactive input desktop is unavailable or locked");
+            CloseDesktop(desktop);
             SetThreadDpiAwarenessContext(new IntPtr(-4));
             var options=Read("options.json"); bool baseline=(bool)options["baseline"];
             externalPointer=options.ContainsKey("externalPointer") && (bool)options["externalPointer"];
             Result["pointerInput"]=externalPointer?"external":"native";
             var parameters=new CreateParams(); parameters.Style=unchecked((int)0x80000000); parameters.Width=1; parameters.Height=1;
             foreign.CreateHandle(parameters); int originalStyle=GetWindowLong(foreign.Handle,-16);
-            foreach(var name in new[]{"ready.json","state.json","command.json","fixture-error.txt","pointer-request.json","pointer-response.json"}) File.Delete(FilePath(name));
+            foreach(var name in new[]{"result.json","ready.json","state.json","command.json","fixture-error.txt","pointer-request.json","pointer-response.json"}) File.Delete(FilePath(name));
             string electron=(string)options["electronBinary"]; if(!Path.IsPathRooted(electron))electron=FilePath(electron);
             var info=new ProcessStartInfo(electron,"\""+FilePath("main.cjs")+"\" "+(baseline?"--baseline ":"")+"--foreign-handle="+foreign.Handle.ToInt64()+" --user-data-dir=\""+FilePath("electron-profile")+"\"");
             info.UseShellExecute=false;info.CreateNoWindow=true;info.RedirectStandardOutput=true;info.RedirectStandardError=true;
-            child=Process.Start(info); var stdout=child.StandardOutput.ReadToEndAsync(); var stderr=child.StandardError.ReadToEndAsync();
+            child=Process.Start(info); stdout=child.StandardOutput.ReadToEndAsync(); stderr=child.StandardError.ReadToEndAsync();
             Dictionary<string,object> ready=null;
             Wait(() => {ready=Read("ready.json");return ready!=null;},"fixture startup timed out",45000);
             var window=new IntPtr(long.Parse((string)ready["nativeHandle"])); uint owner;
@@ -175,6 +194,7 @@ public static class WindowSnapProbe {
             var area=(Dictionary<string,object>)ready["workArea"]; int x=Number(area,"x"),y=Number(area,"y"),half=Number(area,"width")/2,height=Number(area,"height");
             Check(half>=Number(options,"minWidth"),"work-area half is smaller than the nominal minimum width");
             Result["baseline"]=baseline;Result["environment"]=ready;Result["before"]=Bounds(window);
+            Log("checking Win+Left");
             Key(window,0x25); Thread.Sleep(300); Result["left"]=Bounds(window);
             Wait(() => IsRect(window,x,y,half,height),"Win+Left did not snap to the work-area half"); ClientEqualsWindow(window);Pixels(window,"left");
             Command("reset"); Key(window,0x27);
@@ -200,20 +220,27 @@ public static class WindowSnapProbe {
             var state=Command("fullscreen",true);Check((bool)state["fullscreen"],"fullscreen state was lost");
             var display=(Dictionary<string,object>)ready["displayBounds"];
             Wait(() => IsRect(window,Number(display,"x"),Number(display,"y"),Number(display,"width"),Number(display,"height")),"fullscreen does not fill the display");
+            Result["fullscreen"]=Bounds(window);
             Command("fullscreen",false);ClientEqualsWindow(window);Pixels(window,"after-fullscreen");
             Key(window,0x25);Wait(() => IsRect(window,x,y,half,height),"snapping was lost after fullscreen");
+            Result["afterFullscreenSnap"]=Bounds(window);
             Result["ok"]=true;
             WriteCommand("{\"action\":\"quit\"}");
             Check(child.WaitForExit(10000),"fixture did not retire its Host");
-            File.WriteAllText(FilePath("stdout.txt"),stdout.Result);File.WriteAllText(FilePath("stderr.txt"),stderr.Result);
-        } catch(Exception error) {Result["ok"]=false;Result["error"]=error.ToString();}
+        } catch(Exception error) {Result["ok"]=false;Result["failure"]=error.Message;Result["error"]=error.ToString();Log("failed: "+error.Message);}
         finally {
             if(child!=null && !child.HasExited){
                 WriteCommand("{\"action\":\"quit\"}");
-                if(!child.WaitForExit(10000)){child.Kill();child.WaitForExit();}
+                if(!child.WaitForExit(10000)){
+                    var kill=Process.Start(new ProcessStartInfo("taskkill.exe","/PID "+child.Id+" /T /F"){UseShellExecute=false,CreateNoWindow=true});
+                    kill.WaitForExit(10000);child.WaitForExit(5000);
+                }
             }
+            if(stdout!=null)File.WriteAllText(FilePath("stdout.txt"),stdout.Wait(5000)?stdout.Result:"stdout collection timed out");
+            if(stderr!=null)File.WriteAllText(FilePath("stderr.txt"),stderr.Wait(5000)?stderr.Result:"stderr collection timed out");
             foreign.DestroyHandle();if(saved)SetCursorPos(pointer.X,pointer.Y);
-            Result["checks"]=checks;File.WriteAllText(FilePath("result.json"),Json.Serialize(Result));
+            Result["checks"]=checks;Result["finishedAt"]=DateTime.UtcNow.ToString("o");
+            File.WriteAllText(FilePath("result.json"),Json.Serialize(Result));Log("completed: "+Result["ok"]+" checks="+checks);
         }
     }
 }

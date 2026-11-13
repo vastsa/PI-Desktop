@@ -14136,6 +14136,16 @@ record actual OS/DPI, source revision, Host, Electron version, result and artifa
 from the Windows run separately. Native Windows 10 and mixed-monitor DPI checks
 remain separate qualification, and hover Snap Layouts is outside this regression.
 
+For independent review, run `--matrix --artifacts <new-directory>` or the
+`Windows native snap acceptance` workflow. Only the exact unchanged-bounds
+Win+Left baseline failure plus a fully passing candidate qualifies. Locked
+desktops, session 0, input failures and startup errors must fail the job.
+Retain SHA/tree/source hashes, binary hashes, OS/session/display metadata,
+baseline/candidate JSON, timestamped logs, stdout/stderr and normal/snapped/
+maximized/restored client PNGs. Upload artifacts even on failure; exclude
+profiles and redact runtime/user paths. See
+[native replay procedure](../../project/windows-native-snap-replay.md).
+
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
   macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must
   have no visible native border. Run the case with the work panel closed and once

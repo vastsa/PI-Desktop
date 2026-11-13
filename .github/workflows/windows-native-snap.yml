@@ -1,0 +1,61 @@
+name: Windows native snap acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/windows-native-snap.yml'
+      - 'scripts/e2e-window-snap.mjs'
+      - 'scripts/e2e/run-window-snap.ps1'
+      - 'scripts/e2e/probe-window-snap.cs'
+      - 'scripts/e2e/fixtures/window-snap/**'
+      - 'apps/desktop/electron/main/window-*.ts'
+      - 'crates/host-core/src/rpc/window_*.rs'
+  pull_request:
+    paths:
+      - '.github/workflows/windows-native-snap.yml'
+      - 'scripts/e2e-window-snap.mjs'
+      - 'scripts/e2e/run-window-snap.ps1'
+      - 'scripts/e2e/probe-window-snap.cs'
+      - 'scripts/e2e/fixtures/window-snap/**'
+      - 'apps/desktop/electron/main/window-*.ts'
+      - 'crates/host-core/src/rpc/window_*.rs'
+
+permissions:
+  contents: read
+
+jobs:
+  native-snap:
+    name: Interactive baseline / candidate / frame pixels
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install pinned Electron
+        run: pnpm --filter @pi-desktop/desktop exec install-electron
+      - name: Build native Host
+        run: cargo build -p host-core --locked
+      - name: Run interactive native acceptance
+        shell: pwsh
+        run: node scripts/e2e-window-snap.mjs --matrix --artifacts "$env:RUNNER_TEMP/native-snap-evidence"
+      - name: Retain native results, logs, screenshots and replay sources
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-snap-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-snap-evidence
+          if-no-files-found: error
+          retention-days: 30

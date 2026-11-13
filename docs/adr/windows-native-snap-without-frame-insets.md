@@ -51,6 +51,12 @@ on the available Windows version, not a real Windows 10 installation.
 `ok: true`. Native geometry/pixel assertions are identical for both input paths;
 the fixture never treats an input acknowledgement alone as success.
 
+`--matrix --artifacts <new-directory>` runs the expected failing baseline and
+passing candidate as one acceptance job. The portable `run.ps1` and Windows
+workflow retain revision/hash provenance, results, logs and pixel captures on
+failure as well as success. A baseline startup/input failure cannot qualify
+the reproduction. See [independent replay](../project/windows-native-snap-replay.md).
+
 The renderer's custom maximize button still needs separate `HTMAXBUTTON`
 integration for hover-triggered Snap Layouts. This keyboard/drag fix introduces
 no global key interception or renderer snapping implementation. Requalify native
