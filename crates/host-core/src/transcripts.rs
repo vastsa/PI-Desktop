@@ -1859,6 +1859,39 @@ mod tests {
         assert_eq!(sequential_ids, ["m1", "m2"]);
     }
 
+    /// The write side must match the read side: a terminated torn encoded
+    /// line must not make `append_message` reject the whole file, or the
+    /// session survives reads but can never persist another message (#2298).
+    #[test]
+    fn append_message_succeeds_after_terminated_torn_encoded_prefix() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
+        let path = dir.path().join("sessions").join("s1.jsonl");
+        let mut body = fs::read_to_string(&path).unwrap();
+        body.push_str(r#"{"type":"message","id":"img","binaryStorage":{"image":"#);
+        body.push('\n');
+        fs::write(&path, body).unwrap();
+
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m2", "two"),
+        )
+        .expect("a terminated torn encoded prefix must not block writes");
+
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+        let read = read_transcript_window_with_layout(dir.path(), "s1", &layout, 0, None).unwrap();
+        let ids: Vec<&str> = read.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["m1", "m2"], "the appended message must be readable");
+    }
+
     /// Corruption that merely contains "EOF while parsing" as a *value* must
     /// stay a hard error: a complete, newline-terminated message whose
     /// binaryStorage version field is that string decodes as InvalidStorage on
