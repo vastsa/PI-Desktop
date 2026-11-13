@@ -309,7 +309,7 @@
   Sidebar session status marks share one glyph language with the project
   header badge (sidebar-threads.css):
 
-    running     open arc        — work in flight, not yet a closed circle
+    running     dot + ripple    — work in flight, breathing halo
     permission  dot + halo      — needs the user; the row is tinted too
     selected    accent bar      — the session on screen
     completed   filled chip ✓   — settled
@@ -335,14 +335,13 @@
 
 .thread-item-status.running::before {
   box-sizing: border-box;
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid color-mix(in oklab, var(--ds-warning) 22%, transparent);
-  border-top-color: var(--ds-warning);
-  border-right-color: var(--ds-warning);
+  width: 7px;
+  height: 7px;
   border-radius: var(--radius-full);
+  background: var(--ds-warning);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-warning) 15%, transparent);
   content: "";
-  animation: sidebar-status-spin 0.9s cubic-bezier(0.4, 0.15, 0.6, 0.85) 2;
+  animation: sidebar-status-breathe 1.6s ease-in-out 2;
 }
 
 .thread-item-status.permission::before {
@@ -413,12 +412,15 @@
   color: var(--ds-text-primary);
 }
 
-@keyframes sidebar-status-spin {
-  from {
-    transform: rotate(0deg);
+@keyframes sidebar-status-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  to {
-    transform: rotate(360deg);
+  50% {
+    opacity: 0.68;
+    transform: scale(0.78);
   }
 }
 
