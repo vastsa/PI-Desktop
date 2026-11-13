@@ -465,6 +465,8 @@ primary-first roots. Unavailable project lookup returns `[]`. See the
 [projects / workspace API](03-plugin-api.md#projects-workspace-fs) for ordering,
 group-root enrichment, and the distinction between project and group ids.
 
+For application layout rather than project metadata, `pi.shell.getLayout()` and
+`pi.workPanel.listTabs()` read the foreground shell and its existing tabs.
 `ui.shell` permits `shell.setSidebar`, `shell.setWorkPanel` and
 `workPanel.activateTab`. Layout reads and `shell:layout` subscriptions need no
 grant. Neither `ui.view` nor `desktop.control` implies `ui.shell`. DevKit checks

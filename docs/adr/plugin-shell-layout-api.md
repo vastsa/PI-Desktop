@@ -1,4 +1,4 @@
-# Plugin shell layout API
+# ADR: Plugin shell layout API
 
 - Status: Accepted
 - Date: 2026-11-13

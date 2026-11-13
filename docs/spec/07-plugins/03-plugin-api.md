@@ -355,7 +355,16 @@ pi.workspace.get(): Promise<{
   roots?: Array<{ path: string; name: string; primary: boolean }>;
   remote?: { path: string; readOnly: true }; // SSH projects only, see below
 } | null>
+```
 
+`workspace.get` describes project metadata. For the foreground application's
+sidebar/work-panel visibility, widths and existing tabs, use
+[`shell.getLayout` and `workPanel.listTabs`](#shell-layout). These reads and
+`shell:layout` subscriptions need no new permission; layout setters and existing
+tab activation require `ui.shell`. They always target the displayed session,
+including when the caller is a background tool.
+
+```ts
 pi.fs.readText(pathFromRoot: string): Promise<string>
 pi.fs.stat(pathFromRoot: string, grantId?: string): Promise<{
   size: number;
