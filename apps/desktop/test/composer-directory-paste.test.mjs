@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { FILE_LINES_CLIPBOARD_TYPE } from "@pi-desktop/shared";
 
 function extract(source, name) {
   const tree = ts.createSourceFile("module.ts", source, ts.ScriptTarget.Latest, true);
@@ -39,7 +40,7 @@ function harness(native, { files = [], text = "", items = [], paused, sourceSess
   };
   let sequence = 0;
   const environment = {
-    module: { exports: {} }, Array, TextEncoder, crypto,
+    module: { exports: {} }, Array, TextEncoder, crypto, FILE_LINES_CLIPBOARD_TYPE,
     context: () => context, ...context, draft: context, isInputBlocked: false,
     setPasting() {}, readEditorValue: editor => editor.textContent,
     editorSelectionRange: () => ({ start: 7, end: 7 }),
@@ -78,7 +79,11 @@ function harness(native, { files = [], text = "", items = [], paused, sourceSess
     edit(text) { element.textContent = text; revision++; },
     switchSession() { activeSessionId = "other"; },
     switchProject() { workspacePath = "/synthetic/other-project"; },
-    paste: () => environment.module.exports({ currentTarget: element, preventDefault() {}, clipboardData: { files, items, types: ["Files"], getData: () => text } }),
+    paste: () => environment.module.exports({
+      currentTarget: element,
+      preventDefault() {},
+      clipboardData: { files, items, types: ["Files"], getData: (type) => type === "text/plain" ? text : "" },
+    }),
   };
 }
 

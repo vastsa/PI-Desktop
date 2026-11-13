@@ -1,5 +1,5 @@
 import i18n from "i18next";
-import { formatFileInsert } from "@pi-desktop/shared";
+import { fileLineLabel, formatFileInsert } from "@pi-desktop/shared";
 import type {
   AgentQueueChangedEvent,
   AgentPromptAttachment,
@@ -87,7 +87,9 @@ export function createQueueSlice({
       draft: queuedDrafts.get(entry.id) ?? {
         text: entry.content,
         fileReferences: (entry.attachments ?? []).map((attachment) => {
-          const token = formatFileInsert(attachment.path, "file").trim();
+          const token = attachment.lineRange
+            ? fileLineLabel(attachment.path, attachment.lineRange)
+            : formatFileInsert(attachment.path, "file").trim();
           return {
             ...attachment,
             // Keep restored inline files removable with their visible @path.

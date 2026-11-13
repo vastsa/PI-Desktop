@@ -20785,3 +20785,63 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+### E2E-FILE-LINES — File Manager selections in Composer
+
+Install the File Manager normally. In a temporary local project, open a source
+file with two distinct lines and select both. Verify **Add to chat** adds one
+removable `gpt.py (85:86)` chip
+without sending. Delete it, copy the selection, and paste into the Composer:
+the same chip appears, while paste into an ordinary editor yields the selected
+text. End a selection at the start of the next line and verify that line is
+excluded. A one-line selection displays one line number.
+
+Open the same view from a development-loaded File Manager and verify that
+the host does not advertise `composerFileLines`.
+
+With the Host unavailable, open an eligible installed File Manager view.
+Verify opening completes immediately and `composerFileLines` remains true.
+**Add to chat** reports Host unavailability. Reconnect the Host and retry
+from the same view. The selection is added after registration is checked.
+
+Insert an unsaved line before the range. Copying still pastes the original
+text and the selection menu has no **Add to chat** action. Save the file and
+verify that both actions use the new saved line numbers.
+
+Change the saved text after adding the chip, then send it. Observe one scoped
+Read with offset 84 and limit 2 and the saved result in the model request.
+Restart and verify the reference is still visible and there is no synthetic
+Read in the transcript or restored model history. Submit again after deleting
+the file and verify a failed reference marker in the model request. Repeat
+with Read permission denied and verify a blocked marker. Neither marker is
+quoted as file content. Repeat with a queued turn and a project switch. A
+different project's clipboard metadata cannot add the chip.
+Fill the draft with four distinct line references, then paste another range.
+Verify a limit warning, four unchanged references, and the pasted plain text.
+Paste metadata for a 4,001-line selection or an out-of-bounds line number and
+verify ordinary text paste. A trailing workspace separator must behave the same
+for the context-menu and clipboard paths; another workspace must still fail.
+Submit five references or a malformed range directly to the prompt boundary
+and runtime boundary: both reject with `INVALID_ARGUMENT` before any Read.
+Restore a historical attachment with range metadata and a recorded excerpt;
+verify the excerpt remains a file-lines block without an assistant tool call.
+Repeat a file-reference prompt in a staged Goal run: the current objective is
+already in the system prompt when the scoped Read executes, and the provider
+input retains the file context. Controlled coverage: `runtime.test.ts`.
+
+Add a line selection and a native disk-file reference to the same draft. Recall
+it from input history and verify the range, disk identity and byte size remain.
+Send and restart: the model context retains the scoped file-lines block and the
+disk path/size metadata, with no synthetic tool history or eager disk-file read.
+An attachment combining `lineRange` and `localReference` is rejected before any
+Read. Coverage: `composer-input-history.test.mjs`, `composer-file-reference-draft.test.mjs`,
+`composer-file-references.test.mjs` and `runtime.test.ts`.
+
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.

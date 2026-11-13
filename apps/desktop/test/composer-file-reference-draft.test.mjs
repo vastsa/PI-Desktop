@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
-import { isRenderableAttachment } from "@pi-desktop/shared";
+import { fileLineLabel, isRenderableAttachment } from "@pi-desktop/shared";
 import { snapshotComposerDraft } from "../src/lib/composer-draft-cache.ts";
 
 function loadFunction(path, name, globals = {}) {
@@ -35,6 +35,21 @@ test("draft snapshot and dispatch preserve reference identity and exact size", (
   assert.equal(retry.size, reference.size);
 });
 
+test("mixed draft dispatch and message retry retain both reference contracts", () => {
+  const line = { path: "/project/gpt.py", name: "gpt.py", kind: "file", token: "\ue002", lineRange: { start: 85, end: 86 } };
+  const draft = snapshotComposerDraft("Compare \ue001 and \ue002", [reference, line].map(row => ({ ...row, sessionId: "source" })), "source");
+  const fromDraft = loadFunction("../src/stores/helpers/store-helpers.ts", "promptAttachmentsFromDraft");
+  const attachments = fromDraft(draft.fileReferences);
+  assert.equal(attachments.length, 2);
+  assert.equal(attachments[0].localReference, reference.localReference);
+  assert.equal(attachments[0].size, reference.size);
+  assert.deepEqual({ ...attachments[1].lineRange }, line.lineRange);
+  const fromMessage = loadFunction("../src/stores/helpers/store-helpers.ts", "promptAttachmentsFromMessage", { isRenderableAttachment });
+  const retry = fromMessage(attachments.map(row => ({ ...row, ref: row.path })));
+  assert.equal(retry[0].localReference, reference.localReference);
+  assert.deepEqual({ ...retry[1].lineRange }, line.lineRange);
+});
+
 test("file card shows size, remains removable, and does not expand or preview contents", () => {
   function element() {
     return { dataset: {}, attrs: {}, events: {}, children: [], title: "", textContent: "",
@@ -43,7 +58,7 @@ test("file card shows size, remains removable, and does not expand or preview co
       append(...items) { this.children.push(...items); },
     };
   }
-  const globals = { document: { createElement: element }, chipIconKey: () => "file", chipSvg: () => "", isPluginMark: () => false };
+  const globals = { document: { createElement: element }, chipIconKey: () => "file", chipSvg: () => "", isPluginMark: () => false, fileLineLabel };
   globals.isEditableTextReference = loadFunction("../src/features/chat/composer/editor.ts", "isEditableTextReference", globals);
   const build = loadFunction("../src/features/chat/composer/editor.ts", "buildChipElement", globals);
   let removed;

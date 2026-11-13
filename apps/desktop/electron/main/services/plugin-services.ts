@@ -5,6 +5,7 @@ import { createPluginWorkspaceReader } from "../remote/plugin-workspace-files";
 import {
   IPC,
   ErrorCodes,
+  FILE_LINES_ADD_CHANNEL,
   type ActivationScope,
   type AppSettings,
   type BrowserState,
@@ -63,6 +64,8 @@ import { createPluginProjectLister } from "./plugin-projects";
 import { createComposerSuggestionRelay } from "./composer-suggestion";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
+
+import { addFileLinesFromView } from "../file-line-reference";
 
 export type PluginServicesDependencies = {
   dataDir: string;
@@ -131,8 +134,13 @@ export function createPluginServices({
     (error as { errorCode?: string } | null | undefined)?.errorCode ===
     ErrorCodes.HOST_UNAVAILABLE;
   const pluginPanels = new PluginPanelHost(
-    async (pluginId, channel, payload, context) =>
-      plugins.invokePanelBridge(pluginId, channel, payload, context),
+    async (pluginId, channel, payload, context) => {
+      if (channel !== FILE_LINES_ADD_CHANNEL) return plugins.invokePanelBridge(pluginId, channel, payload, context);
+      return addFileLinesFromView(pluginId, context?.senderId, payload, {
+        plugins, pluginViews, pluginSession, pluginActiveInProject, getHost, getWorkspacePath,
+        publish: (selection) => sendToRenderer(IPC.event.composerFileLines, selection),
+      });
+    },
     // A panel reaching for an undeclared host is the shape an exfiltration
     // attempt takes, so it is logged like a denied API call rather than dropped
     // silently in the network layer.

@@ -528,8 +528,18 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       const expectedTurnId = String(params.expectedTurnId ?? "");
       if (method === "agent.steeringContext") return runtime.steeringContext(expectedTurnId);
+      const prompt: RuntimePrompt = {
+        text: String(params.content ?? ""),
+        attachments: Array.isArray(params.attachments) ? params.attachments : undefined,
+        mcpServerIds: parseMcpServerIds(params.mcpServerIds),
+        mcpToolNames: parseMcpToolNames(params.mcpToolNames),
+      };
+      if (prompt.attachments?.some(attachment => attachment.lineRange !== undefined)) {
+        runtime.steeringContext(expectedTurnId);
+        return runtime.steer(await runtime.resolveFileLineReferences(prompt), expectedTurnId, params.message);
+      }
       return runtime.steer(
-        { text: String(params.content ?? ""), attachments: params.attachments, mcpServerIds: parseMcpServerIds(params.mcpServerIds), mcpToolNames: parseMcpToolNames(params.mcpToolNames) },
+        prompt,
         expectedTurnId,
         params.message,
       );
