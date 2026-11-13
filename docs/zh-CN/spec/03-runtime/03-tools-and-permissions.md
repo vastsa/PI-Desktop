@@ -660,6 +660,21 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 内置模式：Agent 使用 `agent`；Plan 使用 `contract`；Goal 是分阶段运行，其 `work` 阶段使用 `agent`。没有快照的旧 Goal 会话，以及 Host 无法解析的模式 id，一律回退为 `contract`（失败即关闭）。
 
+Prompt admission first claims an existing staged run through the Host and uses
+its persisted snapshot without consulting the current catalog. Editing, removing,
+or making the catalog definition simple does not change an existing run.
+Without a claim, simple custom modes carry the current catalog definition to the
+runtime. An unavailable mode closes the admission turn without persisting a user
+message or invoking the sidecar. Plan-state projection may rename only Agent/Plan
+sessions; an inactive projection preserves Goal and custom-mode identity unless
+a legacy Goal proposal was approved. Live approval and restoration of a pending
+legacy proposal then show Agent; unrelated historical approvals do not rename
+a newly selected staged Goal.
+New Goal/custom sessions pass the catalog snapshot in the single Host creation
+call. Host validation, snapshot storage and session insertion share a transaction;
+a rejected snapshot or failed insert leaves neither an incomplete session nor
+an orphan snapshot. Legacy callers without a snapshot keep their existing behavior.
+
 ### 说明
 - `contract` 在权限 UI 之前硬性拒绝 Write/Edit 和未声明 `planSafeActions` 的插件工具；直接调用 host 也无法绕过该矩阵。声明了非空列表的插件工具会被放行，但运行器仍会拒绝列表之外的操作（ADR 0211）。
 - `agent` 对 Write/Edit/Bash 和已注册插件工具使用权限卡片或所选的自动策略。

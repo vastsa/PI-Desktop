@@ -257,6 +257,9 @@ type ToolBudgetHealth = {
 至 `off`。可选布尔值 `fastMode`（ADR 0334）保存会话的 `/fast` 开关；缺省/null 表示
 `false`，非布尔值返回 `INVALID_PARAMS`。可选的 `isolated: true`（ADR 0329）同时要求 `projectPath`，并在返回前为新会话
 创建专属 git worktree；无法创建时会话会被删除，调用以 `WORKTREE_*` 错误（§7）失败。
+  Optional `modeSnapshot` is validated for the selected mode and committed with
+  the session atomically. A rejected snapshot or failed insert leaves no partial
+  session or orphan snapshot; omitting it retains legacy creation semantics.
 - `session.fork` — accepts `sessionId`, an optional caller-provided display
   `title`, and optional `throughMessageId`; creates
   one independent session from the source's current active canonical

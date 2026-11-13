@@ -10591,6 +10591,29 @@ Desktop 工作区后，列出、读取和解析 native 文件，再拒绝不存�
 `native-workspace-files.test.mjs` 另验证 sidecar 更换后拒绝旧响应。
 不执行模型或访问用户 native 会话。
 
+#### E2E-custom-mode-prompt-admission
+
+Select a simple custom mode with a distinctive prompt and contract policy, send a
+message, and refresh planning state. The runtime receives the selected definition
+and the session retains its mode. Remove the definition before another send: reject
+without persisting a user message or invoking the sidecar; the admission turn is
+closed. For a staged run, edit the catalog into a simple mode and then remove it;
+subsequent dispatch retains the run snapshot in both cases. Controlled coverage:
+`apps/desktop/test/custom-mode-dispatch.test.mjs`. Native Electron/provider
+acceptance is separate from these stubbed Host/sidecar boundary checks.
+Also create directly in Goal or a staged custom mode without switching modes:
+the first send starts a run. `mode-session-create.test.mjs` checks the production
+creation registrar validates input and sends its snapshot in one creation RPC.
+Host RPC tests cover snapshot/policy persistence, invalid snapshots and rollback
+after an injected session-insert failure. Approve a legacy Goal proposal: live
+events and pending-proposal restoration show Agent. Inactive polling with no
+approval preserves staged Goal/custom modes, including after older Goal history.
+Coverage: `mode-planning-approval.test.mjs`, `session_mode_create_tests.rs`.
+`scripts/e2e-mode-definitions.mjs` also exercises production prompt IPC and the
+coordinator against an isolated real Host, including edit/removal, durable claim
+settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this
+does not qualify native Electron interaction or live-provider execution.
+
 #### E2E-ISSUE-1926-scratch-prefix
 
 创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。

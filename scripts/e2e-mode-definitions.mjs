@@ -3,9 +3,16 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { register } from "node:module";
 import { resolveHostBinary } from "./e2e/host.mjs";
 import { withScenario } from "./e2e/fixture.mjs";
 import { beginTurn, createSession, endTurn } from "./e2e/session.mjs";
+
+register(new URL("../apps/desktop/test/helpers/ts-import-hooks.mjs", import.meta.url));
+const { createModeRunCoordinator } = await import("../apps/desktop/electron/main/runtime/mode-runs.ts");
+const { createModeCatalogService } = await import("../apps/desktop/electron/main/runtime/mode-catalog.ts");
+const { registerAgentIpc } = await import("../apps/desktop/electron/main/ipc/agent-ipc.ts");
+const { IPC } = await import("@pi-desktop/shared");
 
 const root = process.env.PI_SCRATCH_DIR;
 assert.ok(root, "PI_SCRATCH_DIR is required for isolated test state");
@@ -71,4 +78,76 @@ await withScenario("mode-workflow", async ({ host, workspace }) => {
   assert.equal((await host.call("session.get", { id: sessionId, messageLimit: 1 })).session.mode, "agent");
   assert.equal((await host.call("modes.get", { sessionId })).run, null);
   console.log("PASS mode snapshot -> artifact checks -> approval -> command gate -> completion -> Agent");
+}, resolveHostBinary(), temp);
+
+await withScenario("mode-snapshot-dispatch", async ({ host, workspace, dataDir }) => {
+  const catalog = createModeCatalogService({ dir: join(dataDir, "modes") });
+  await catalog.write("review", "---\nname: review\npermission: contract\nstages:\n  work:\n    prompt: Keep the original stage.\n    exit: [{ ask: user }]\n---\nOriginal instructions.\n");
+  const definition = await catalog.definition("review");
+  const { session } = await host.call("session.create", {
+    title: "Snapshot dispatch", projectPath: workspace, mode: "review", modeSnapshot: definition,
+  });
+  const handlers = new Map();
+  const prompts = [];
+  const activeTurns = new Map();
+  const coordinator = createModeRunCoordinator({
+    getHost: () => host, catalog, logger: { app() {} }, isQuitting: () => false,
+    startContinuation: async () => assert.fail("non-looping stage must not continue automatically"),
+  });
+  registerAgentIpc({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    modeRuns: coordinator, getHost: () => host, getAgentHostBridge: () => null,
+    getSidecar: () => ({
+      setProjectInstructionRoot() {},
+      async call(method, params) {
+        assert.equal(method, "agent.prompt");
+        prompts.push(params);
+        return { accepted: true, turnId: params.turnId };
+      },
+    }),
+    logger: { app() {} }, persistenceOutbox: {}, dataDir, activeTurns,
+    activeTurnUsages: new Map(), approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
+    recordTurnStart() {}, acquireSessionOperation: async () => () => {},
+    resolveAgentRuntimeLaunch: async () => ({
+      providerId: "fixture", modelId: "fixture", workspaceRoot: workspace,
+      sidecarParams: { sessionId: session.id, mode: "review", provider: { modelConfig: { input: ["text"] } } },
+    }),
+    finishTurn: async (_sessionId, status, _error, { turnId }) => {
+      await endTurn(host, turnId, status);
+      activeTurns.delete(session.id);
+    },
+    emitAgentEvent() {}, setNotificationViewingSessionId() {},
+  });
+  const send = async () => {
+    const result = await handlers.get(IPC.invoke.agentPrompt)({ sessionId: session.id, content: "Review the change." });
+    assert.equal(result.accepted, true);
+    await endTurn(host, result.turnId);
+    await coordinator.settleTurn(session.id, result.turnId, { reason: "completed" });
+    activeTurns.delete(session.id);
+    return prompts.at(-1);
+  };
+  const first = await send();
+  assert.deepEqual(first.modeDefinition, definition);
+  assert.ok(first.modeTurn.runId);
+  await catalog.write("review", "---\nname: review\npermission: agent\n---\nReplacement simple mode.\n");
+  const edited = await send();
+  assert.deepEqual(edited.modeDefinition, definition);
+  assert.equal(edited.modeTurn.runId, first.modeTurn.runId);
+  await catalog.remove("review");
+  const removed = await send();
+  assert.deepEqual(removed.modeDefinition, definition);
+  assert.equal(removed.modeTurn.runId, first.modeTurn.runId);
+  const current = (await host.call("modes.get", { sessionId: session.id })).run;
+  await coordinator.control({ sessionId: session.id, runId: current.id, expectedRevision: current.revision, action: "remove" });
+  await host.call("session.configure", { id: session.id, mode: "review", modeSnapshot: { ...definition, stages: [] } });
+  const before = (await host.call("session.get", { id: session.id })).session.messages;
+  assert.equal(before.length, 3);
+  await assert.rejects(
+    handlers.get(IPC.invoke.agentPrompt)({ sessionId: session.id, content: "Unavailable mode." }),
+    { errorCode: "MODE_NOT_FOUND" },
+  );
+  assert.equal(prompts.length, 3);
+  assert.equal(activeTurns.size, 0);
+  assert.deepEqual((await host.call("session.get", { id: session.id })).session.messages, before);
+  console.log("PASS production prompt IPC -> coordinator -> real Host snapshot after catalog edit/removal; missing mode closes admission");
 }, resolveHostBinary(), temp);
