@@ -322,7 +322,11 @@ session gets a scratch directory outside the workspace:
 <data_dir>/scratch/<sessionId>/
 ```
 
-OS clipboard files and images pasted into the composer are materialized by
+Native disk-file pastes retain main-registered live paths and byte sizes; they
+do not copy or read file contents, including referenced images. Subsequent reads
+use normal tool permissions. See [local file references](../../adr/composer-local-file-references.md).
+
+Generated clipboard files and images pasted into the composer are materialized by
 Electron main below `<data_dir>/scratch/<sessionId>/pasted/` before their
 paths and metadata are captured as transient composer references. At dispatch,
 main validates the source against the session scratch/project roots. Images are

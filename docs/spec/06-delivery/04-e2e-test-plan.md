@@ -9729,6 +9729,43 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   candidate and record its revision; PR integration validation follows the
   authoritative `AGENTS.md` workflow without merging into local main first.
 
+#### E2E-COMPOSER-local-file-references: Native file paste keeps paths and sizes
+
+- **Preconditions**: Local project and synthetic disk files, including a sparse
+  64 MiB + 1 byte file outside the project, a small text file and an image.
+- **Steps**: Copy each file in the OS file manager and paste into Composer;
+  also paste a mixed file/folder selection. Remove a card, switch sessions,
+  restore input history, queue a prompt and restart before delivery. Modify,
+  move, delete or replace a source with a symlink before sending. Separately
+  paste a screenshot and a large text selection.
+- **Expected**: Native disk files retain original paths and exact byte sizes;
+  removable inline cards show human-readable size. No source contents cross
+  paste IPC or enter scratch/content-addressed snapshots. Small and large disk
+  files use the same reference flow; screenshots and generated text retain their
+  existing scratch/image behavior. Dispatch refreshes size, preserves metadata
+  through messages and model history, and clearly rejects unavailable or
+  redirected sources. Forged ids/paths, another project and remote contexts are
+  refused. Agent reads use normal permissions; referencing an external file does
+  not grant access. Metadata-only input history restores the live path and size.
+- **Targeted coverage**: `composer-file-references.test.mjs`,
+  `composer-directory-paste.test.mjs`, `composer-clipboard-directories.test.mjs`,
+  draft/history tests and the host attachment roundtrip test. Native clipboard
+  gestures and full provider delivery require a separate desktop E2E run.
+- **Electron coverage**: `node scripts/e2e-composer-paste.mjs --file-references-only`
+  drives real React hooks, native disk-backed `File` objects, preload IPC,
+  selection tokens, reference registration, prompt preparation and Composer
+  history. A sparse 64 MiB + 1 byte source and a small file outside the project
+  retain size cards without renderer byte reads or scratch writes. The fixture
+  edits the large source before send and verifies refreshed size in model context.
+  A second Electron process recalls the stored metadata and dispatches through
+  the persisted reference records. Native clipboard metadata and provider
+  delivery are controlled external boundaries; this is not a manual Finder gesture
+  or a live external provider call. Full paste coverage also verifies restoring
+  the actual pre-preview focus target, including Chromium's editing-host focus.
+  Restore the saved selection before focusing the original control so selection
+  updates cannot steal its final focus. Stale session/project previews restore
+  neither focus nor selection (`composer-image-preview-focus.test.mjs`).
+
 #### E2E-102h: Composer picker imports files into session scratch
 
 - **Preconditions**: The app is running with a home or Agent composer and a
@@ -10491,17 +10528,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   normal field and the shortcut, then save. 3) Reload the plugin list and press
   the new shortcut while the app window is focused. 4) Try a reserved app
   shortcut and repeat with the plugin scoped away from the current project.
+  5) For JSON fields, save, reopen and save again with `"hello"`, `"42"`,
+  `"true"`, `"null"`, `""`, a null default, a number, a boolean, an array and an
+  object. Edit a JSON string, reset to a string default, and submit malformed
+  JSON before correcting it.
 - **Expected**: Controls are generated from the manifest, values persist in the
   plugin-private settings file, and `plugin:settingsChanged` is delivered. The
   new shortcut invokes the plugin command only in the focused app window and
   matching activation scope. Reserved/conflicting bindings are rejected; no OS
-  global shortcut is registered.
+  global shortcut is registered. JSON strings remain quoted in the editor and
+  retain their type after save/reopen/reset. Invalid JSON leaves the draft and
+  sheet open without an IPC settings write.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`,
   `07-plugins/03-plugin-api.md`, `07-plugins/11-plugin-storage-isolation.md`,
   ADR 0159
 - **Acceptance**: F (persistence), G (plugins), Security, Quality
 - **Milestone**: M6+
-- **Status**: Source-contract and focused integration coverage; full desktop
+- **Status**: Source-contract and focused integration coverage. JSON
+  save/reopen/edit/reset is covered by `plugin-settings-json-user-path.test.mjs`
+  in an isolated Electron renderer with a settings IPC fixture; full desktop
   journey Draft (run only in a capable environment when this surface changes)
 
 #### E2E-OAUTH-anthropic-rate-limit-retry: Bounded token retries preserve the account

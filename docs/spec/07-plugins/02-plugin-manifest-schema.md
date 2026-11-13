@@ -680,7 +680,13 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
    `skills` is the exception — it predates the permission gate, so a manifest
    without `agent.prompt.inject` still validates and the runtime simply skips
    the skills
-13. Settings keys are unique. `shortcut` settings require `command`, may only
+13. JSON settings accept JSON-serializable values, including strings and null.
+    The generated editor initializes JSON fields as serialized JSON text on
+    open, settings refresh and reset. Saving parses that text once, preserving
+    the supplied value's type across reopen; a string such as `"42"` remains a
+    string. Missing JSON values/defaults use `{}`. Invalid edits retain the
+    draft and prevent submission. Non-JSON setting types retain their controls.
+    Settings keys are unique. `shortcut` settings require `command`, may only
     use the `plugin` scope, and are validated as modifier-plus-key or F-key
     bindings. Secrets are rejected until secure plugin-secret storage exists.
 14. `fs.<mode>` requires the matching `fs.<mode>` permission — a scope nobody can

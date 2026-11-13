@@ -44,6 +44,8 @@ function readReference(value: unknown): HistoryReference | null {
     path: row.path,
     name: row.name,
     kind,
+    ...(typeof row.size === "number" && Number.isSafeInteger(row.size) && row.size >= 0 ? { size: row.size } : {}),
+    ...(typeof row.localReference === "string" ? { localReference: row.localReference } : {}),
     ...(typeof row.mimeType === "string" && row.mimeType ? { mimeType: row.mimeType } : {}),
     ...(typeof row.token === "string" && row.token ? { token: row.token } : {}),
   };

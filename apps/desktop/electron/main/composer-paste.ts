@@ -87,7 +87,7 @@ function fileNameOf(name: unknown, mimeType: string, index: number): string {
   return extname(candidate) ? candidate : `${candidate}${extension}`;
 }
 
-function mimeTypeForPath(path: string): string {
+export function mimeTypeForPath(path: string): string {
   return MIME_BY_EXTENSION[extname(path).toLowerCase()] ?? "application/octet-stream";
 }
 

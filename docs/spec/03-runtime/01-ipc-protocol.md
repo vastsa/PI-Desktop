@@ -2352,19 +2352,38 @@ renderer receives the token but never receives the selected absolute paths.
 ### composer/importFiles
 
 ```ts
-composer/importFiles({ sessionId, token }) -> {
+composer/importFiles({ sessionId, token, reference?: boolean }) -> {
   files: ComposerPastedFile[];
 }
 ```
 
 Electron main consumes the sender-bound picker token, resolves each recorded
 path through `realpath`, requires an existing regular file, applies the same
-20-file / 64 MiB per file / 128 MiB total limits as clipboard transfer, and
+20-file / 64 MiB per file / 128 MiB total limits as clipboard byte transfer, and
 copies the bytes into `<data_dir>/scratch/<sessionId>/pasted/` under a
 UUID-backed sanitized name. The token is deleted before import starts, so it
 cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
+
+For native clipboard files, `reference: true` consumes the same one-shot token
+but registers metadata instead of copying bytes. Main requires a local project,
+stores a durable UUID selection record, and returns the canonical original path,
+name, MIME, exact byte size and additive `localReference` id. Only the main window
+may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
+both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
+apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
+`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+
+Drafts, queue entries and message attachments retain `localReference` and `size`.
+On dispatch, main matches the id/path to the selection record and current local
+project, rejects missing files or canonical-target changes, and refreshes size.
+The Agent receives path and byte size as reference context. No referenced file
+or image contents are read, hashed, snapshotted or uploaded by dispatch; normal
+tool access policy governs subsequent reads, including outside-project approval.
+Input history can restore the live reference into another session in the same
+project. Original contents can change and the reference can become unavailable.
+See [the decision record](../../adr/composer-local-file-references.md).
 
 ### composer/pasteFiles
 
@@ -2382,6 +2401,7 @@ type ComposerPasteFile = {
 };
 
 type ComposerPastedFile = {
+  localReference?: string; // main-owned metadata record for a live disk reference
   path: string;     // UUID-backed absolute storage path
   name: string;     // sanitized original leaf display name
   kind: "image" | "file";
