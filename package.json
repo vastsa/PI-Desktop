@@ -72,6 +72,7 @@
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
     "test:e2e:window-resize-native": "node scripts/e2e-window-controls.mjs --native-edge-drag",
     "test:e2e:window-surface": "node scripts/e2e-window-surface.mjs",
+    "test:e2e:window-snap": "node scripts/e2e-window-snap.mjs",
     "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",
     "test:e2e:browser-local-files": "node scripts/e2e-browser-local-file-access.mjs",
     "test:e2e:session-metadata-reads": "node scripts/e2e-session-metadata-reads.mjs",

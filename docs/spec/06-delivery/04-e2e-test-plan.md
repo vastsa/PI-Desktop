@@ -14121,6 +14121,21 @@ This test plan spec is accepted when:
 
 #### E2E-167: Window edge resize stays smooth and persists the settled bounds
 
+Native Windows snapping regression (issue #2330): on an interactive Windows
+desktop with a work-area half at least the nominal minimum width, run
+`pnpm test:e2e:window-snap` against the candidate Windows Host and pinned Electron.
+The isolated fixture uses production Main snapping/corner/fullscreen services,
+real Host RPC, HWND-owner rejection checks, physical Win+Left/Right and titlebar
+drag input, edge pixels, native resize/minimums, maximize/minimize/restore and
+fullscreen/restore. Left/right snapping must equal the work-area halves; normal
+and snapped client edges have no native insets or painted rim. Maximized client
+and DWM-visible bounds must equal the work area. `--baseline` must fail the
+keyboard assertion. `--legacy-surface` covers the older transparent surface on
+the available OS only. `--prepare <directory>` stages portable fixture sources;
+record actual OS/DPI, source revision, Host, Electron version, result and artifacts
+from the Windows run separately. Native Windows 10 and mixed-monitor DPI checks
+remain separate qualification, and hover Snap Layouts is outside this regression.
+
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
   macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must
   have no visible native border. Run the case with the work panel closed and once
