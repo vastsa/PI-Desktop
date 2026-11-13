@@ -229,7 +229,9 @@ public static class WindowSnapProbe {
             Command("reset");normal=Rect(window);Drag(window,normal.Left+300,normal.Bottom-1,normal.Left+300,normal.Top+10);
             Wait(() => Rect(window).Bottom-Rect(window).Top==Number(options,"minHeight"),"native minimum height was not enforced");Result["minimumHeight"]=Bounds(window);
             Command("reset");Key(window,0x26);Command("snapshot");Maximized(window,area,"keyboardMaximized");
-            Key(window,0x28);Wait(() => IsRect(window,200,140,1200,800),"Win+Down did not restore the normal window");
+            Key(window,0x28);
+            try { Wait(() => IsRect(window,200,140,1200,800),"Win+Down did not restore the normal window"); }
+            finally { Result["keyboardRestored"]=Bounds(window); }
             Key(window,0x28);Wait(() => IsIconic(window),"Win+Down did not minimize the normal window");Command("restore");
             Command("reset");Command("maximize");Maximized(window,area,"maximized");
             Command("minimize");Command("restore");Maximized(window,area,"restoredMaximized");
