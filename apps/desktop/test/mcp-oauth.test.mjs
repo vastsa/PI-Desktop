@@ -1027,3 +1027,61 @@ test("McpOAuthManager: a server without DCR fails loudly instead of opening a de
     event.kind === "error" && event.errorCode === "MCP_OAUTH_DCR_UNAVAILABLE",
   ));
 });
+
+test("McpOAuthManager: a failure after the callback still settles the login", async (t) => {
+  // The callback handler consumed the state and then awaited the token
+  // endpoint and the secret write. A throw there used to fall into a catch
+  // gated on the same settled flag the callback had already latched, so the
+  // login never settled: no error event, no timeout, no cancel, the loopback
+  // server stayed open, and every later start() for this server deadlocked
+  // awaiting `finished`. Here the secret store rejects.
+  const host = fakeHost();
+  const { mockFetch } = createMockFetch();
+  const { mockCreateServer, simulateCallback, isClosed } = createMockServerFactory();
+  const events = [];
+  let openedUrl = null;
+  let secretWrites = 0;
+  const manager = new McpOAuthManager({
+    call: async (method, params) => {
+      if (method === "secrets.set") {
+        secretWrites += 1;
+        throw new Error("secret store unavailable");
+      }
+      return host.call(method, params);
+    },
+    fetchImpl: mockFetch,
+    createServer: mockCreateServer,
+    emit: (event) => events.push(event),
+    openExternal: async (url) => {
+      openedUrl = url;
+    },
+  });
+  t.after(() => manager.disposeAll());
+
+  const startResult = await manager.start("exchange-throw", "https://notion.test/mcp");
+  assert.equal(startResult.ok, true);
+  for (let i = 0; i < 50; i++) {
+    if (openedUrl) break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.ok(openedUrl, "the authorization URL should open");
+  const state = new URL(openedUrl).searchParams.get("state");
+  assert.ok(state);
+
+  const callbackRes = await simulateCallback(`/callback?code=valid-code&state=${encodeURIComponent(state)}`);
+  assert.equal(callbackRes.statusCode, 500, "the browser gets a failure page, not a hang");
+  assert.ok(callbackRes.body.includes("Authorization failed"));
+
+  // The rejection must reach the run loop: an error event, a closed loopback
+  // server, and a login that a later start() can move past.
+  await waitUntil(() => events.some((event) => event.kind === "error"));
+  const errorEvent = events.find((event) => event.kind === "error");
+  assert.match(errorEvent.message, /secret store unavailable/);
+  assert.equal(secretWrites, 1);
+  await waitUntil(() => isClosed());
+  assert.equal(isClosed(), true, "the loopback server is shut down");
+
+  const restart = await manager.start("exchange-throw", "https://notion.test/mcp");
+  assert.equal(restart.ok, true, "a retry after the failure must not deadlock");
+  assert.notEqual(restart.loginId, startResult.loginId);
+});

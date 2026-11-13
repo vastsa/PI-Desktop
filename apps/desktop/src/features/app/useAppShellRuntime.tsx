@@ -951,7 +951,9 @@ export function useAppShellRuntime() {
             break;
           }
           case "abort":
-            void abort();
+            void abort().catch((error) => {
+              showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+            });
             break;
           case "toggleWindow":
             // The same native action the menu item runs (D438): hide the window

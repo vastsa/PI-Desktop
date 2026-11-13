@@ -26,7 +26,7 @@ function assistant(
   thinking: string,
   text = "ok",
   thinkingSignature = "reasoning_content",
-  stopReason: "stop" | "error" | "aborted" | "deferred" = "stop",
+  stopReason: "stop" | "error" | "aborted" | "deferred" | "length" = "stop",
 ): AgentMessage {
   const content: unknown[] = [
     { type: "thinking", thinking, thinkingSignature },
@@ -139,6 +139,14 @@ describe("harvestRetainedReasoning", () => {
       assistant("held back", "partial", "reasoning_content", "deferred"),
     ]);
     expect(turns.map((turn) => turn.thinking)).toEqual(["kept"]);
+  });
+
+  it("skips a length-stopped turn: the token limit cut its think mid-sentence", () => {
+    const turns = harvestRetainedReasoning([
+      assistant("settled plan"),
+      assistant("truncated pla", "partial", "reasoning_content", "length"),
+    ]);
+    expect(turns.map((turn) => turn.thinking)).toEqual(["settled plan"]);
   });
 });
 

@@ -330,6 +330,9 @@ to later refresh and inference; the vendor picker does not collect them.
   `inheritPermissionFromSessionId`; when present, the host copies the existing
   session's persisted permission mode atomically, while omission preserves the
   existing `inherit` default. Missing/null thinking level defaults to `off`.
+  Optional `modeSnapshot` is validated for the selected mode and committed with
+  the session atomically. A rejected snapshot or failed insert leaves no partial
+  session or orphan snapshot; omitting it retains legacy creation semantics.
   Optional boolean `fastMode` (ADR 0334) stores the session `/fast` switch;
   missing/null means `false` and a non-boolean returns `INVALID_PARAMS`.
   Optional `isolated: true` (ADR 0329) also requires `projectPath` and gives
@@ -1603,7 +1606,8 @@ timeoutMs is an integer in 0–1000, default 0. Wait observes a per-job completi
 signal without holding AppState. Stop signals the existing supervisor before
 observing completion. The returned state is authoritative; stopRequested is
 only an acknowledgement, and a running job may need another wait. Snapshot
-metadata includes job {kind: bash, id}, command (at most 1024 UTF-8 bytes),
+metadata includes job {kind: bash, id}, command (a UTF-8 prefix of at most 1024 bytes),
+commandTruncated (whether that prefix omits bytes; older Hosts may omit the flag),
 elapsedMs, state, nullable exitCode and stopRequested. Wait/stop additionally
 return stdout and stderr (each at most 8192 UTF-8 bytes), and truncated for
 either Host retention loss or this observation's clipping.

@@ -296,3 +296,4 @@ app.whenReady().then(async () => {
 
 // Keep history paging's real native-input regression in the existing CI suite.
 await import("./e2e-transcript-history-loading.mjs");
+await import("./e2e-transcript-anchor-repair.mjs");

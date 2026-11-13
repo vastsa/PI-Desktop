@@ -466,6 +466,7 @@ export const en = {
     diagramTooLarge: "This diagram is too large to render safely. Showing source instead.",
     responseError: "Couldn't finish this reply",
     responseFailed: "The assistant couldn't complete this reply.",
+    outputTruncated: "This reply was truncated because the model reached its output token limit. The content may be incomplete.",
     showErrorDetails: "Show details",
     hideErrorDetails: "Hide details",
     dismissError: "Dismiss error message",

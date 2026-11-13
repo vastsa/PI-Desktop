@@ -109,15 +109,17 @@ function assistantThinkingText(message: AssistantMessage): {
  * `isContextMessage` and compaction-tail `DROPPED_STOP_REASONS` treat error,
  * aborted, and deferred assistants as transcript rows, not model context.
  * A partial think from one of those turns is not completed reasoning, and it
- * must not take a retained slot away from a finished turn.
+ * must not take a retained slot away from a finished turn. A `length` stop
+ * cuts the response off at the output token limit, so its think is partial
+ * by construction.
  */
-const DROPPED_STOP_REASONS = new Set<string>(["error", "aborted", "deferred"]);
+const DROPPED_STOP_REASONS = new Set<string>(["error", "aborted", "deferred", "length"]);
 
 /**
  * Collect the newest assistant turns that still carry thinking, newest-last,
  * for storage in checkpoint details. Tool-call blocks are dropped on purpose.
- * Error, aborted, and deferred turns are skipped for the same reason the live
- * context drops them.
+ * Error, aborted, deferred, and length-stopped turns are skipped for the same
+ * reason the live context drops them.
  */
 export function harvestRetainedReasoning(
   messages: readonly AgentMessage[],

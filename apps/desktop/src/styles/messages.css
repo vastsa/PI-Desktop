@@ -2125,6 +2125,13 @@
    `--ds-tile` card belongs only to `.tool-activity-group.has-subagents`
    (D319) and the nested `.subagent-run`. */
 
+.message-output-notice {
+  margin: 12px 0 0;
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
 .message-error {
   /* The message column owns the dynamic chat width; do not add a second cap. */
   width: 100%;
