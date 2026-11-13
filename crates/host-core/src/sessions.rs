@@ -5960,7 +5960,11 @@ mod tests {
     fn local_file_attachments_roundtrip_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
-        let mut user = user_msg("local-file", "Inspect the reference", "2026-11-13T00:00:00Z");
+        let mut user = user_msg(
+            "local-file",
+            "Inspect the reference",
+            "2026-11-13T00:00:00Z",
+        );
         user.attachments = Some(vec![MessageAttachment {
             local_reference: Some("11111111-2222-4333-8444-555555555555".into()),
             kind: "file".into(),

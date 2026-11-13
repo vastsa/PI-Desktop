@@ -29,6 +29,12 @@ Read path. Screenshots and other generated clipboard payloads retain existing
 scratch materialization and model image checks. Native picker and drop behavior
 is unchanged.
 
+Input history retains the original path, reference id, display metadata and size
+captured with the draft. Recording and restoring a reference perform no source
+reads or snapshots. Unavailable sources remain restorable and are reported at
+dispatch. Restored cards retain their removable inline tokens; dispatch refreshes
+the byte size again.
+
 ## Consequences
 
 The file transfer byte limits still protect actual transfers, while native
