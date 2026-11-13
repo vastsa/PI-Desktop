@@ -216,6 +216,12 @@ public static class WindowSnapProbe {
             Wait(() => IsRect(window,x,y,half,height),"Win+Left did not snap to the work-area half"); ClientEqualsWindow(window);Pixels(window,"left");
             Command("reset"); Key(window,0x27);
             Wait(() => IsRect(window,x+half,y,Number(area,"width")-half,height),"Win+Right did not snap to the work-area half");Result["right"]=Bounds(window);ClientEqualsWindow(window);Pixels(window,"right");
+            // Keep keyboard restore independent of the Shell's later user-resize history.
+            Command("reset");Key(window,0x26);Command("snapshot");Maximized(window,area,"keyboardMaximized");
+            Key(window,0x28);
+            try { Wait(() => IsRect(window,200,140,1200,800),"Win+Down did not restore the normal window"); }
+            finally { Result["keyboardRestored"]=Bounds(window); }
+            Key(window,0x28);Wait(() => IsIconic(window),"Win+Down did not minimize the normal window");Command("restore");
             Command("reset");Focus(window); var normal=Rect(window);
             Check(SendMessage(window,0x84,IntPtr.Zero,new IntPtr(((normal.Top+22)<<16)|((normal.Left+250)&0xffff))).ToInt64()==2,"titlebar does not expose native HTCAPTION");
             Drag(window,normal.Left+250,normal.Top+22,x,y+height/2);
@@ -228,11 +234,6 @@ public static class WindowSnapProbe {
             Wait(() => Rect(window).Right-Rect(window).Left==Number(options,"minWidth"),"native minimum width was not enforced");Result["minimumWidth"]=Bounds(window);
             Command("reset");normal=Rect(window);Drag(window,normal.Left+300,normal.Bottom-1,normal.Left+300,normal.Top+10);
             Wait(() => Rect(window).Bottom-Rect(window).Top==Number(options,"minHeight"),"native minimum height was not enforced");Result["minimumHeight"]=Bounds(window);
-            Command("reset");Key(window,0x26);Command("snapshot");Maximized(window,area,"keyboardMaximized");
-            Key(window,0x28);
-            try { Wait(() => IsRect(window,200,140,1200,800),"Win+Down did not restore the normal window"); }
-            finally { Result["keyboardRestored"]=Bounds(window); }
-            Key(window,0x28);Wait(() => IsIconic(window),"Win+Down did not minimize the normal window");Command("restore");
             Command("reset");Command("maximize");Maximized(window,area,"maximized");
             Command("minimize");Command("restore");Maximized(window,area,"restoredMaximized");
             Command("unmaximize");ClientEqualsWindow(window);Pixels(window,"restored");
