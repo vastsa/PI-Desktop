@@ -18,21 +18,28 @@ function Resolve-Binary($value) {
 function Write-Json($path, $value) {
     [IO.File]::WriteAllText($path, ($value | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
 }
+function Write-RunnerLog($message) {
+    [IO.File]::AppendAllText((Join-Path $ArtifactDirectory 'runner.log'), [DateTime]::UtcNow.ToString('o') + ' ' + $message + [Environment]::NewLine)
+}
 try {
+    Write-RunnerLog 'checking source and desktop metadata'
     if (-not $source.clean) { throw 'Native acceptance requires a clean source checkout.' }
-    $summary.os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber
+    $summary.os = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | Select-Object ProductName, CurrentBuildNumber, UBR, EditionID, InstallationType
     $summary.sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
     $summary.interactive = [Environment]::UserInteractive
     $options.hostBinary = Resolve-Binary $options.hostBinary
     $options.electronBinary = Resolve-Binary $options.electronBinary
+    Write-RunnerLog 'hashing native binaries'
     $summary.hostSha256 = (Get-FileHash $options.hostBinary -Algorithm SHA256).Hash.ToLowerInvariant()
     $summary.electronSha256 = (Get-FileHash $options.electronBinary -Algorithm SHA256).Hash.ToLowerInvariant()
     New-Item -ItemType Directory $scratch | Out-Null
+    Write-RunnerLog 'compiling native probe'
     Add-Type -Path (Join-Path $root 'probe.cs') -OutputAssembly (Join-Path $scratch 'probe.exe') -OutputType WindowsApplication -ReferencedAssemblies System.dll,System.Drawing.dll,System.Windows.Forms.dll,System.Web.Extensions.dll
     $cases = @('candidate')
     if ($options.baseline) { $cases = @('baseline') }
     if ($Matrix) { $cases = @('baseline', 'candidate') }
     foreach ($case in $cases) {
+        Write-RunnerLog ("starting " + $case)
         $runtime = Join-Path $scratch $case
         $evidence = Join-Path $ArtifactDirectory $case
         New-Item -ItemType Directory $runtime, $evidence | Out-Null
@@ -76,11 +83,13 @@ try {
             $passed = ($result.ok -eq $true -and $result.baseline -eq $false)
         }
         $summary.cases += [ordered]@{ name = $case; runId = $result.runId; passed = $passed; checks = $result.checks }
+        Write-RunnerLog ($case + ' passed=' + $passed + ' checks=' + $result.checks)
         if (-not $passed) { throw "$case did not satisfy its acceptance contract; see retained artifacts." }
     }
     $summary.ok = $true
 } catch {
     $summary.error = $_.Exception.Message
+    Write-RunnerLog ('failed: ' + $_.Exception.Message)
     throw
 } finally {
     $summary.finishedAt = [DateTime]::UtcNow.ToString('o')
