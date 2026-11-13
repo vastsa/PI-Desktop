@@ -5,6 +5,8 @@ one Windows job and uploads evidence even when acceptance fails. It checks out
 the exact pull request head, builds Host with `Cargo.lock`, and installs the
 pinned Electron. The job uses read-only permissions, no credentials, and no
 deployment. Its artifact is named `native-snap-<head SHA>-<attempt>`.
+The job artifact has `job.json`, build/preparation logs, and a `native/`
+directory containing the acceptance summary, screenshots and replay payload.
 
 ## Independent interactive Windows run
 
@@ -101,3 +103,24 @@ retain the original `38c5a5bd77ef910849ce3c1bc5f5d8577dad1a71` author run:
 and stdout/stderr. The manifest was reconstructed from preserved files and
 the staging record after the run; it is not independent attestation. The
 current replay job records provenance before launching the probe.
+
+## Activation follow-up evidence
+
+The PowerShell-launched replay exposed a border after actual focus transfer.
+Refreshing the existing native hint on focus and blur fixed the exact pixel
+failure without changing frame options, native sizing or fullscreen ownership.
+The clean-source candidate `2b52999879a65d35ce7c29dc0dcf29047ee3a02d`
+passed **144 native assertions**, including the new maximized client pixel
+captures; the matrix baseline failed precisely at Win+Left as required.
+
+Download [its manifest](windows-native-snap-evidence/2b52999879a6/manifest.json),
+[matrix summary](windows-native-snap-evidence/2b52999879a6/summary.json),
+[runner log](windows-native-snap-evidence/2b52999879a6/runner.log),
+[candidate results](windows-native-snap-evidence/2b52999879a6/candidate/result.json),
+[native RPC replies](windows-native-snap-evidence/2b52999879a6/candidate/native-rpc.jsonl),
+[maximized pixels](windows-native-snap-evidence/2b52999879a6/candidate/maximized.png)
+and [restored maximized pixels](windows-native-snap-evidence/2b52999879a6/candidate/restoredMaximized.png).
+These are author replay records, distinct from an independent Actions run.
+The manifest records the clean replay revision and Host producer; the producer
+and replay share the exact Host source tree and lockfile. Committed artifact
+tests verify every retained byte across platforms, including raw CRLF streams.

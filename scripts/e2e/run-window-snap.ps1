@@ -7,8 +7,8 @@ $root = $PSScriptRoot
 $ArtifactDirectory = [IO.Path]::GetFullPath($ArtifactDirectory)
 if (Test-Path $ArtifactDirectory) { throw 'Use a new artifact directory for every run.' }
 New-Item -ItemType Directory $ArtifactDirectory | Out-Null
-$options = Get-Content (Join-Path $root 'options.json') -Raw | ConvertFrom-Json
-$source = Get-Content (Join-Path $root 'source.json') -Raw | ConvertFrom-Json
+$options = Get-Content (Join-Path $root 'options.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$source = Get-Content (Join-Path $root 'source.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $summary = [ordered]@{ schemaVersion = 1; source = $source; startedAt = [DateTime]::UtcNow.ToString('o'); ok = $false; cases = @() }
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('native-snap-' + [Guid]::NewGuid().ToString('N'))
 function Resolve-Binary($value) {
@@ -75,7 +75,7 @@ try {
         }
         Get-ChildItem $runtime -Filter '*.png' | Copy-Item -Destination $evidence
         if (-not $completed) { throw "$case native probe timed out; see retained artifacts." }
-        $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+        $result = Get-Content (Join-Path $evidence 'result.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($case -eq 'baseline' -and $Matrix) {
             $passed = $false
             if ($result.before -and $result.left -and $result.before.style -match '^0x[0-9A-Fa-f]{8}$') {

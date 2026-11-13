@@ -6,6 +6,21 @@ import test from "node:test";
 const evidence = new URL("../../../docs/project/windows-native-snap-evidence/38c5a5bd77ef/", import.meta.url);
 const json = async (name) => JSON.parse(await readFile(new URL(name, evidence), "utf8"));
 
+test("activation replay artifacts retain their exact source revision and bytes", async () => {
+  const root = new URL("../2b52999879a6/", evidence);
+  const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
+  assert.equal(manifest.sourceRevision, "2b52999879a65d35ce7c29dc0dcf29047ee3a02d");
+  for (const [name, expected] of Object.entries(manifest.files)) {
+    assert.equal(createHash("sha256").update(await readFile(new URL(name, root))).digest("hex"), expected, name);
+  }
+  const summary = JSON.parse(await readFile(new URL("summary.json", root), "utf8"));
+  assert.equal(summary.source.revision, manifest.sourceRevision);
+  assert.equal(summary.source.clean, true);
+  assert.equal(summary.hostSha256, manifest.hostSha256);
+  assert.equal(summary.ok, true);
+  assert.deepEqual(summary.cases.map(({ name, passed }) => [name, passed]), [["baseline", true], ["candidate", true]]);
+});
+
 test("preserved native evidence verifies after checkout without changing stream bytes", async () => {
   const manifest = await json("manifest.json");
   assert.equal(manifest.sourceRevision, "38c5a5bd77ef910849ce3c1bc5f5d8577dad1a71");
