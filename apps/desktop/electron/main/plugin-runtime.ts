@@ -11,6 +11,8 @@ import {
 import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import type { AudioCaptureFactory } from "@pi-desktop/voice-runtime";
+import { PluginAudioCapture } from "./plugin-audio-capture";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
@@ -405,6 +407,8 @@ export type PluginHostServices = {
   fetch?: PluginFetchTransport;
   /** The reviewed desktop operation controller shared with MCP. */
   desktopControl?: McpControlController;
+  /** Host-owned microphone backend; absent on headless/test hosts. */
+  audioCaptureFactory?: AudioCaptureFactory;
   /**
    * Blocking, native consent for a plugin-originated dangerous desktop
    * operation (session delete, permission-mode change, tool approval). The
@@ -640,6 +644,7 @@ const HOST_API_ALLOWLIST = new Set([
   "net.websocket.close",
   "audio.getInputDevices",
   "audio.openInput",
+  "audio.ackInputFrame",
   "audio.closeInput",
   "audio.getCaptureState",
   "audio.onInputFrame",
@@ -1508,6 +1513,7 @@ export class PluginRuntime {
   private loaded = new Map<string, LoadedPlugin>();
   private toasts: Array<{ message: string; level?: string }> = [];
   private services: PluginHostServices;
+  private readonly audioCapture = new PluginAudioCapture(() => this.services.audioCaptureFactory);
   /**
    * Development plugins under watch, with the permission ceiling the user
    * approved when they picked the folder. Survives a failed reload so the fix
@@ -2278,6 +2284,7 @@ export class PluginRuntime {
     const loaded = this.loaded.get(pluginId);
     if (loaded) {
       loaded.disposing = true;
+      this.audioCapture.release(loaded);
       this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
       if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
@@ -2375,6 +2382,7 @@ export class PluginRuntime {
     // stopping must already be covered by the guard in `handleChildExit`.
     for (const loaded of loadedPlugins) {
       loaded.disposing = true;
+      this.audioCapture.release(loaded);
       this.toolInvocations.cancelOwner(loaded, "Application shutting down");
       this.cancelRestarts(loaded.manifest.id);
     }
@@ -3667,6 +3675,8 @@ export class PluginRuntime {
   }
 
   private clearContributions(pluginId: string): void {
+    const audioOwner = this.loaded.get(pluginId);
+    if (audioOwner) this.audioCapture.release(audioOwner);
     for (const [id, cmd] of this.commands) {
       if (cmd.pluginId === pluginId) this.commands.delete(id);
     }
@@ -5492,13 +5502,19 @@ export class PluginRuntime {
     return loaded.deletes.length > MAX_DELETES_PER_WINDOW;
   }
 
-  /** Host-side implementation of the allowlisted APIs; shared with panel bridge. */
-  /**
-   * The audio surface fails closed. The permission gate runs first, so an
-   * ungranted plugin gets the same `PERMISSION_DENIED` as any other API, and a
-   * granted one gets an audited `UNSUPPORTED` instead of a silent success or an
-   * uncoded crash. Nothing here touches a device.
-   */
+  /** Audit capture control only; never log PCM samples or frame payloads. */
+  private async captureCall<T>(loaded: LoadedPlugin, method: string, run: () => T | Promise<T>): Promise<T> {
+    this.assertPermission(loaded, "audio.capture.background");
+    try {
+      const result = await run();
+      this.services.audit?.({ pluginId: loaded.manifest.id, api: `audio.${method}`, ok: true, ts: Date.now() });
+      return result;
+    } catch (error) {
+      this.services.audit?.({ pluginId: loaded.manifest.id, api: `audio.${method}`, ok: false, errorCode: (error as { code?: string }).code ?? "INTERNAL", ts: Date.now() });
+      throw error;
+    }
+  }
+
   private refuseAudio(loaded: LoadedPlugin, api: string): never {
     this.assertPermission(
       loaded,
@@ -5514,6 +5530,7 @@ export class PluginRuntime {
     throw apiError("UNSUPPORTED", `host api not available: ${api}`);
   }
 
+  /** Host-side implementation of the allowlisted APIs; shared with panel bridge. */
   private hostApi(loaded: LoadedPlugin, browserContext?: { sessionId: string; tabId: string }) {
     const pluginId = loaded.manifest.id;
     const pluginPath = loaded.path;
@@ -6456,20 +6473,18 @@ export class PluginRuntime {
           });
         },
       },
-      /**
-       * Background audio is declared, gated, and not implemented: the host has
-       * no device backend yet, so every call runs the permission gate and then
-       * answers with a coded `UNSUPPORTED`. That is the contract a plugin can
-       * branch on — without it a call would fail as a bare `TypeError` with no
-       * `code` at all, and nothing would reach the audit log.
-       */
       audio: {
-        getInputDevices: async () => this.refuseAudio(loaded, "audio.getInputDevices"),
-        openInput: async () => this.refuseAudio(loaded, "audio.openInput"),
-        closeInput: async () => this.refuseAudio(loaded, "audio.closeInput"),
-        getCaptureState: async () => this.refuseAudio(loaded, "audio.getCaptureState"),
-        onInputFrame: async () => this.refuseAudio(loaded, "audio.onInputFrame"),
-        offInputFrame: async () => this.refuseAudio(loaded, "audio.offInputFrame"),
+        getInputDevices: async () => this.captureCall(loaded, "getInputDevices", () => this.audioCapture.getDevices()),
+        openInput: async (options = {}) => this.captureCall(loaded, "openInput", () => this.audioCapture.open(
+          loaded, options, () => !loaded.disposing && this.loaded.get(pluginId) === loaded,
+          (frame) => loaded.child?.postMessage({ t: "event", event: "audio.inputFrame", frame: { ...frame, data: Array.from(frame.data) } }),
+        )),
+        closeInput: async (streamId: string) => this.captureCall(loaded, "closeInput", () => this.audioCapture.close(loaded, streamId)),
+        getCaptureState: async () => this.captureCall(loaded, "getCaptureState", () => this.audioCapture.state(loaded)),
+        ackInputFrame: async (streamId: string, sequence: number) => {
+          this.assertPermission(loaded, "audio.capture.background");
+          this.audioCapture.acknowledge(loaded, streamId, sequence);
+        },
         openOutput: async () => this.refuseAudio(loaded, "audio.openOutput"),
         writeOutput: async () => this.refuseAudio(loaded, "audio.writeOutput"),
         stopOutput: async () => this.refuseAudio(loaded, "audio.stopOutput"),

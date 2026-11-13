@@ -1362,30 +1362,35 @@ filesystem access (ADR 0288).
 
 ### audio (requires `audio.capture.background` / `audio.playback.background`)
 
-**Callable, but the device backend is not implemented in this branch.**
-`pi.audio` is present in the plugin host process and exposes exactly the ten
-methods below. Each one keeps its permission requirement: the six capture
-methods (`getInputDevices`, `openInput`, `closeInput`, `getCaptureState`,
-`onInputFrame`, `offInputFrame`) require `audio.capture.background` and the
-four playback methods (`openOutput`, `writeOutput`, `stopOutput`,
-`closeOutput`) require `audio.playback.background`. Without the grant the call
-is refused with `PERMISSION_DENIED` and audited under the permission name,
-exactly like every other gated API. With the grant the host still has no device
-backend, so every call is answered with a coded `UNSUPPORTED` refusal: the
-message is `host api not available: audio.<method>` and the audit entry is
-`{ api: "audio.<method>", ok: false, errorCode: "UNSUPPORTED" }`. The eight
-asynchronous methods reject with that error; `onInputFrame` / `offInputFrame`
-are synchronous registration helpers that cannot reject, so they throw an
-`Error` carrying the same `code: "UNSUPPORTED"` instead of registering a
-handler that could never fire. Nothing touches a device and no frame is ever
-produced. `onInputFrame` registers a callback — it is not an event name — and
-the frame shape is `PluginAudioInputFrame` in
-`packages/plugin-sdk/src/index.ts`. When the device service lands, the
-permission and this surface stay as they are and only the refusal is replaced
-by real behaviour: the host owns the device, a plugin exchanges PCM16 frames
-and never receives a device handle, `MediaStream`, OS device path, or Node
-stream, one input stream per plugin is allowed, and disable, unload, or crash
-stops capture and drops queued playback.
+**Capture is implemented; playback remains unsupported.** The host uses the
+existing PvRecorder backend. `getInputDevices`, `openInput`, `closeInput`, and
+`getCaptureState` require `audio.capture.background` and are audited. OS
+microphone consent is checked before enumeration or capture. Local
+`onInputFrame` / `offInputFrame` registration opens no device and grants no
+access; only the authorized owning process receives frames. Without a capture
+backend, enumeration/open reject `UNSUPPORTED`; playback retains its coded,
+audited `UNSUPPORTED` refusal after its own permission gate.
+
+Capture currently supports mono, little-endian PCM16 at 16000 Hz, without
+optional echo cancellation, noise suppression, or gain control. Unsupported
+requested formats/processing reject `UNSUPPORTED` rather than silently changing
+format. Invalid or stale device IDs reject `INVALID_ARGUMENT`. Omit `deviceId`
+or pass `""` for the system default. A second plugin capture, including another
+open by the same owner, rejects `RESOURCE_BUSY` until the first is closed.
+
+The host sends at most one unacknowledged frame per capture. The plugin process
+acknowledges after its handlers settle; slow consumers drop subsequent frames,
+reported by `droppedFrames` and sequence gaps. No device handle, MediaStream or
+OS path crosses the boundary. The host backend retains no recording. The plugin
+owns any audio it buffers, stores, or sends to a provider.
+
+Disable, unload, crash, failed initialization and app shutdown release capture.
+An open cancelled during OS consent or startup cannot revive after unload.
+Capture also expires after 60 seconds even if its process becomes unresponsive;
+`getCaptureState` then reports inactive. A plugin must show recording state and
+provide Stop/Cancel in its UI; start only on an explicit user action. A composer
+renderer can use the declared `plugin.call` relay to start/stop its plugin's
+capture without opening a panel or calling renderer `getUserMedia`.
 
 ```ts
 pi.audio.getInputDevices(): Promise<PluginAudioInputDevice[]>
@@ -1750,12 +1755,10 @@ The desktop plugin runtime now implements the MVP host API surface used by local
 - `net.websocket.connect` / `send` / `close` (`net.websocket`; host-owned
   sockets, allowlist-confined, bounded, released with the plugin)
 
-`pi.audio.*` is present in the plugin host process and callable: all ten
-methods are gated by `audio.capture.background` / `audio.playback.background`,
-and this branch ships no device backend, so an authorized call is answered with
-a coded `UNSUPPORTED` refusal under the method's own audit entry
-(`audio.<method>`, `ok: false`); `onInputFrame` / `offInputFrame` throw the same
-code synchronously because they cannot reject. No device is opened.
+`pi.audio` capture uses the permission-gated host backend described above.
+Playback remains callable but returns audited `UNSUPPORTED` after its permission
+gate. Input callback registration is local; capturing data requires the host's
+`audio.capture.background` grant and OS microphone consent.
 
 Native plugin notifications use the Electron main-process notification surface;
 they do not create durable rows in the task notification inbox and do not
