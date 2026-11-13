@@ -1,1 +1,1 @@
-*.txt -text
+*.txt -text whitespace=cr-at-eol

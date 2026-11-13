@@ -35,6 +35,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Initialize evidence before building
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/native-snap-evidence" | Out-Null
+          @{ revision = (git rev-parse HEAD); startedAt = [DateTime]::UtcNow.ToString('o'); sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/native-snap-evidence/job.json"
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -44,13 +49,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build workspace fixture dependencies
+        run: pnpm build:js
       - name: Install pinned Electron
         run: pnpm --filter @pi-desktop/desktop exec install-electron
       - name: Build native Host
-        run: cargo build -p host-core --locked
+        shell: pwsh
+        run: |
+          cargo build -p host-core --locked 2>&1 | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run interactive native acceptance
         shell: pwsh
-        run: node scripts/e2e-window-snap.mjs --matrix --artifacts "$env:RUNNER_TEMP/native-snap-evidence"
+        run: |
+          node scripts/e2e-window-snap.mjs --matrix --artifacts "$env:RUNNER_TEMP/native-snap-evidence/native" 2>&1 | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/acceptance.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain native results, logs, screenshots and replay sources
         if: always()
         uses: actions/upload-artifact@v7
