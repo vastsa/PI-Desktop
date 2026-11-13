@@ -70,6 +70,7 @@ export type SessionUsageCost = {
 export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
+  localReference?: string;
   kind: "image" | "file" | "session";
   name: string;
   /** Workspace-relative path, session-scratch absolute path, or a session id. */
