@@ -21,6 +21,20 @@ Unicode 字节分块及深层搜索。
 进行中且最终保留最新模型。`session-model-write-order.test.mjs` 使用真实 slice
 与协调器，仅控制 Host API 边界。运行中配置继续排队。
 
+#### E2E-SIDEBAR-hover-preview: Select navigation without docking
+
+With collapsed navigation, exercise deliberate/short hover, pointer travel,
+conversation/route selection, child portals/dialogs, Escape, outside press, blur,
+keyboard entry, touch exclusion and docking. Preview must preserve pane width,
+restore focus, keep portals usable and suspend/restore native views. Navigation
+and unmount cancel pending timers. Repeat both themes, reduced motion and
+Windows/Linux. Specs: `04-ux/08-component-spec.md` and
+[Sidebar hover navigation](/adr/sidebar-hover-navigation).
+Native candidate command: `node scripts/e2e-three-column-layout.mjs --sidebar-hover-only`
+with the built app and candidate Host. It drives Chromium pointer/keyboard input
+through the real shell and native Browser view; it does not establish physical
+mouse-device or Windows/Linux coverage. The proposal still needs direction approval.
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环

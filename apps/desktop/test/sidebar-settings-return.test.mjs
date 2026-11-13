@@ -66,7 +66,7 @@ test("home and settings use the same material without animating the settings pla
     readFile(new URL("../src/components/Sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/features/settings/SettingsPage.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(sidebar, /cx\("sidebar", "sidebar-surface", className\)/);
+  assert.match(sidebar, /cx\("sidebar", "sidebar-surface", floating && "is-floating", className\)/);
   assert.match(settings, /className="settings-nav sidebar-surface"/);
   assert.match(styles, /\.sidebar-surface,\s*\.sidebar-rail\s*\{[^}]*background-color:\s*var\(--ds-bg-sidebar[^}]*background-image:\s*var\(--ds-bg-sidebar-image/);
   assert.match(styles, /:root\[data-platform="darwin"\] \.sidebar-surface,/);

@@ -1,3 +1,4 @@
+import type { SidebarPreviewTriggerProps } from "./useSidebarPreview";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import i18n from "i18next";
 import { useTranslation } from "react-i18next";
@@ -34,10 +35,12 @@ export class ErrorBoundary extends Component<
 
 export function CollapsedTitlebarActions({
   onToggleSidebar,
+  sidebarPreview,
   onNewTask,
   sidebarToggleShortcut,
 }: {
   onToggleSidebar: () => void;
+  sidebarPreview?: SidebarPreviewTriggerProps;
   onNewTask: () => void;
   sidebarToggleShortcut: string;
 }) {
@@ -54,6 +57,7 @@ export function CollapsedTitlebarActions({
         }
         ariaLabel={toggleLabel}
         aria-expanded={false}
+        {...sidebarPreview}
         data-nav="toggle-sidebar"
         onClick={onToggleSidebar}
       >

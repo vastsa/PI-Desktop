@@ -462,7 +462,8 @@ titles are host-owned. The editor closes if the active session changes.
 Scoped project and session navigation, management, and notification access. The
 expanded sidebar shows a global `Pinned` section when pins exist, followed by
 path-less history under `Sessions` and retained project tabs under `Projects`; the
-collapsed state is an icon rail. Retained tabs are renderer presentation state,
+collapsed state keeps a titlebar toggle and a selectable hover preview.
+Retained tabs are renderer presentation state,
 not additional host workspaces.
 The sidebar body is reserved for Pinned, Sessions, and Projects; the footer exposes the
 Plugins and Scheduled destinations beside Settings. Scheduled uses a clock
@@ -473,6 +474,23 @@ Section-level create and sort controls stay visually quiet at rest and reveal
 when the owning Sessions or Projects toolbar is hovered or keyboard-focused.
 Project-group `+` and overflow controls follow the same hover/focus treatment;
 their hit areas remain in the layout so revealing them does not shift labels.
+
+### Collapsed navigation preview
+
+Hover the collapsed titlebar sidebar button for 180ms to float the existing
+sidebar below native chrome. The preview allocates no chat/work-panel width
+and has no resize handle. A 180ms departure delay bridges pointer travel;
+focused controls and child menus/dialogs keep navigation usable. Selecting a
+different conversation or route closes it without docking. Outside press,
+Escape and window blur dismiss it; child overlays keep their own dismissal
+handling. Escape restores the connected trigger. ArrowDown on the focused
+trigger opens the preview and focuses its first visible action; hidden macOS
+header controls are skipped. Touch stays click-only.
+Clicking the titlebar or preview-header button, or using the sidebar shortcut,
+opens the ordinary dock with existing committed-width and panel-budget rules.
+Native browser/plugin views yield through the existing blocking-overlay owner
+while the preview is visible. File content and the window edge never open it.
+See [Sidebar hover navigation](../../adr/sidebar-hover-navigation.md).
 
 ### 3.2 Anatomy
 

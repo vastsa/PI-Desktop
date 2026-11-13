@@ -31,6 +31,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Host } from "./e2e/host.mjs";
 import { checkSidebarProjectMenuPlacement, checkSidebarRowStates } from "./e2e/sidebar-row-states.mjs";
 import { checkSidebarSettings } from "./e2e/sidebar-settings.mjs";
+import { checkSidebarHoverPreview } from "./e2e/sidebar-hover-preview.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -347,6 +348,7 @@ async function main() {
       env: {
         ...process.env,
         PI_DESKTOP_DATA_DIR: dataDir,
+        PI_DESKTOP_AGENTS_DIR: join(dataDir, "agents"),
         PI_DESKTOP_HOST_BIN: hostBinary,
         PI_DESKTOP_START_MAXIMIZED: "0",
         ELECTRON_RENDERER_URL: "",
@@ -513,6 +515,17 @@ async function main() {
       "work-panel toggle enabled",
     );
 
+    if (process.argv.includes("--sidebar-hover-only")) {
+      await checkSidebarHoverPreview({ cdp, check, waitFor, measure, clickSidebarToggle,
+        targets: () => listTargets(cdpPort), connect: url => CdpClient.connect(url),
+        openBrowser: () => rig('window.__PI_DESKTOP__.openWorkPanelArtifact("browser", "about:blank")'),
+      });
+      const failed = results.filter(entry => !entry.ok);
+      console.log(`E2E-SIDEBAR-hover-preview: ${results.length - failed.length}/${results.length} checks passed`);
+      cleanup();
+      clearTimeout(timeout);
+      process.exit(failed.length ? 1 : 0);
+    }
     if (process.argv.includes("--sidebar-only")) {
       await cdp.send("Page.enable");
       const sidebarPreferences = {
