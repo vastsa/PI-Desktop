@@ -9743,6 +9743,17 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `composer-directory-paste.test.mjs`, `composer-clipboard-directories.test.mjs`,
   draft/history tests and the host attachment roundtrip test. Native clipboard
   gestures and full provider delivery require a separate desktop E2E run.
+- **Electron coverage**: `node scripts/e2e-composer-paste.mjs --file-references-only`
+  drives real React hooks, native disk-backed `File` objects, preload IPC,
+  selection tokens, reference registration, prompt preparation and Composer
+  history. A sparse 64 MiB + 1 byte source and a small file outside the project
+  retain size cards without renderer byte reads or scratch writes. The fixture
+  edits the large source before send and verifies refreshed size in model context.
+  A second Electron process recalls the stored metadata and dispatches through
+  the persisted reference records. Native clipboard metadata and provider
+  delivery are controlled external boundaries; this is not a manual Finder gesture
+  or a live external provider call. Full paste coverage also verifies restoring
+  the actual pre-preview focus target, including Chromium's editing-host focus.
 
 #### E2E-102h: Composer picker imports files into session scratch
 
