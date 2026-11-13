@@ -14140,6 +14140,9 @@ For independent review, run `--matrix --artifacts <new-directory>` or the
 `Windows native snap acceptance` workflow. Only the exact unchanged-bounds
 Win+Left baseline failure plus a fully passing candidate qualifies. Locked
 desktops, session 0, input failures and startup errors must fail the job.
+Before each native drag sweep, cross the drag threshold near the press point
+and confirm the target HWND owns Windows' move/size loop. A registered mouse
+button or correct cursor coordinate alone must not qualify a drag.
 Retain SHA/tree/source hashes, binary hashes, OS/session/display metadata,
 baseline/candidate JSON, timestamped logs, stdout/stderr and normal/snapped/
 maximized/restored client PNGs. Upload artifacts even on failure; exclude

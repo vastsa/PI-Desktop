@@ -12,6 +12,7 @@ public struct SnapRect { public int Left, Top, Right, Bottom; }
 public struct SnapPoint { public int X, Y; }
 public struct SnapMouseInput { public int x,y; public uint data,flags,time; public UIntPtr extra; }
 public struct SnapInput { public uint type; public SnapMouseInput mouse; }
+public struct SnapGuiThreadInfo { public uint size,flags; public IntPtr active,focus,capture,menuOwner,moveSize,caret; public SnapRect caretRect; }
 public static class WindowSnapProbe {
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int index);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out SnapRect r);
@@ -22,6 +23,7 @@ public static class WindowSnapProbe {
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint processId);
+    [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref SnapGuiThreadInfo info);
     [DllImport("user32.dll")] static extern bool GetCursorPos(out SnapPoint p);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
@@ -104,12 +106,18 @@ public static class WindowSnapProbe {
         Wait(() => { state=Read("state.json"); return state!=null && Number(state,"id")==id; },"fixture command timed out: "+action,15000);
         return state;
     }
-    static void Drag(int x, int y, int endX, int endY) {
+    static void Drag(IntPtr window, int x, int y, int endX, int endY) {
         if(externalPointer) {Pointer("drag",x,y,endX,endY);return;}
         Log("native drag from "+x+","+y+" to "+endX+","+endY);
         MovePointer(x,y); Application.DoEvents(); Thread.Sleep(80); InjectMouse(2); Application.DoEvents(); Thread.Sleep(50);
         try {
             Check((GetAsyncKeyState(1)&0x8000)!=0,"physical mouse down was not registered");
+            // Cross the drag threshold locally before sweeping out of the titlebar.
+            MovePointer(x+Math.Sign(endX-x)*8,y+Math.Sign(endY-y)*8);
+            uint processId; var thread=GetWindowThreadProcessId(window,out processId);
+            var gui=new SnapGuiThreadInfo();gui.size=(uint)Marshal.SizeOf(typeof(SnapGuiThreadInfo));
+            Wait(() => GetGUIThreadInfo(thread,ref gui) && gui.moveSize==window,"native mouse down did not enter the target move/size loop");
+            Log("entered target native move/size loop");
             for(int step=1;step<=12;step++){MovePointer(x+(endX-x)*step/12,y+(endY-y)*step/12);Application.DoEvents();Thread.Sleep(50);}
         }
         finally { InjectMouse(4); }
@@ -121,8 +129,8 @@ public static class WindowSnapProbe {
         Wait(() => {response=Read("pointer-response.json");return response!=null && Number(response,"id")==id && (string)response["runId"]==RunId;},"external pointer adapter did not acknowledge input",30000);
         Check(response.ContainsKey("ok") && (bool)response["ok"],"external pointer input failed");
     }
-    static void InjectMouse(uint flags, uint x=0, uint y=0) {
-        var input=new SnapInput();input.mouse.x=(int)x;input.mouse.y=(int)y;input.mouse.flags=flags;
+    static void InjectMouse(uint flags) {
+        var input=new SnapInput();input.mouse.flags=flags;
         Check(SendInput(1,new[]{input},Marshal.SizeOf(typeof(SnapInput)))==1,"native mouse input was rejected");
     }
     static void MovePointer(int x, int y) {
@@ -210,15 +218,15 @@ public static class WindowSnapProbe {
             Wait(() => IsRect(window,x+half,y,Number(area,"width")-half,height),"Win+Right did not snap to the work-area half");Result["right"]=Bounds(window);ClientEqualsWindow(window);Pixels(window,"right");
             Command("reset");Focus(window); var normal=Rect(window);
             Check(SendMessage(window,0x84,IntPtr.Zero,new IntPtr(((normal.Top+22)<<16)|((normal.Left+250)&0xffff))).ToInt64()==2,"titlebar does not expose native HTCAPTION");
-            Drag(normal.Left+250,normal.Top+22,x,y+height/2);
+            Drag(window,normal.Left+250,normal.Top+22,x,y+height/2);
             Result["dragLeft"]=Bounds(window);
             Wait(() => IsRect(window,x,y,half,height),"titlebar drag did not snap to the work-area half");Result["dragLeft"]=Bounds(window);ClientEqualsWindow(window);
             Command("reset");Pixels(window,"normal");normal=Rect(window);
-            Drag(normal.Right-1,normal.Top+height/3,normal.Right+99,normal.Top+height/3);
+            Drag(window,normal.Right-1,normal.Top+height/3,normal.Right+99,normal.Top+height/3);
             Wait(() => Rect(window).Right-Rect(window).Left>=1290,"native right edge did not resize");Result["resized"]=Bounds(window);ClientEqualsWindow(window);Pixels(window,"resized");
-            Command("reset");normal=Rect(window);Drag(normal.Left+1,normal.Top+300,normal.Right-10,normal.Top+300);
+            Command("reset");normal=Rect(window);Drag(window,normal.Left+1,normal.Top+300,normal.Right-10,normal.Top+300);
             Wait(() => Rect(window).Right-Rect(window).Left==Number(options,"minWidth"),"native minimum width was not enforced");Result["minimumWidth"]=Bounds(window);
-            Command("reset");normal=Rect(window);Drag(normal.Left+300,normal.Bottom-1,normal.Left+300,normal.Top+10);
+            Command("reset");normal=Rect(window);Drag(window,normal.Left+300,normal.Bottom-1,normal.Left+300,normal.Top+10);
             Wait(() => Rect(window).Bottom-Rect(window).Top==Number(options,"minHeight"),"native minimum height was not enforced");Result["minimumHeight"]=Bounds(window);
             Command("reset");Key(window,0x26);Command("snapshot");Maximized(window,area,"keyboardMaximized");
             Key(window,0x28);Wait(() => IsRect(window,200,140,1200,800),"Win+Down did not restore the normal window");

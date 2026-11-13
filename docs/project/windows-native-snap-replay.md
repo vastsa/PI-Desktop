@@ -35,6 +35,7 @@ a reviewer with an existing development environment reuses it per AGENTS.md.
 
 ```powershell
 cargo build -p host-core --locked
+pnpm build:js
 pnpm --filter @pi-desktop/desktop exec install-electron
 $artifacts = Join-Path $env:TEMP ('native-snap-evidence-' + [Guid]::NewGuid())
 node scripts/e2e-window-snap.mjs --matrix --artifacts $artifacts
@@ -65,6 +66,10 @@ available for remote desktops that cannot use native SendInput:
 `active-directory.txt` while the job runs. An adapter acknowledges the same
 `runId`/`id`; the geometry and pixel assertions still determine the result.
 The standard workflow and native path require no private adapter or account.
+The native driver verifies cursor positions, crosses the drag threshold near
+the press point and waits for Windows to enter the target HWND's move/size
+loop before sweeping to the edge. An accepted button injection alone is not
+proof that a drag began; failure to enter that loop fails acceptance.
 
 ## Verdict and evidence
 
