@@ -79,6 +79,21 @@ test("records per conversation, newest-first, collapsing consecutive duplicates 
   assert.deepEqual(texts("s1"), ["b", "a"]);
 });
 
+test("local file history restores path, size and reference metadata without a source snapshot", () => {
+  const storage = installStorage();
+  const reference = {
+    path: "/synthetic/unavailable-large-file.bin", name: "large-file.bin", kind: "file",
+    size: 67108865, localReference: "11111111-2222-4333-8444-555555555555", token: "\ue001",
+  };
+  rememberComposerInput("source", snap("Inspect \ue001", [reference]));
+  assert.deepEqual(loadComposerInputHistory("source")[0].fileReferences, [reference]);
+  const stored = JSON.parse(storage.get(KEY)).sessions[0].entries[0].fileReferences[0];
+  assert.deepEqual(stored, reference, "history stores only the live reference metadata");
+  const harness = createHarness("store", { sessionId: "source" });
+  harness.run("older", { draftEmpty: true });
+  assert.deepEqual(harness.state.applied[0].references, [{ ...reference, attached: true }]);
+});
+
 test("a conversation never recalls another conversation's prompts (AC1)", () => {
   installStorage();
   rememberComposerInput("s1", snap("from A"));

@@ -190,6 +190,8 @@ pub struct MessageUsage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageAttachment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_reference: Option<String>,
     pub kind: String,
     pub name: String,
     #[serde(rename = "ref")]
@@ -570,6 +572,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
                 if let Some(size) = attachment.size {
                     block.insert("size".into(), json!(size));
                 }
+                if let Some(reference) = &attachment.local_reference {
+                    block.insert("localReference".into(), json!(reference));
+                }
                 if let Some(text) = &attachment.text {
                     block.insert("text".into(), json!(text));
                 }
@@ -714,6 +719,10 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
                 return None;
             }
             Some(MessageAttachment {
+                local_reference: block
+                    .get("localReference")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
                 kind: block.get("kind").and_then(|v| v.as_str())?.to_string(),
                 name: block.get("name").and_then(|v| v.as_str())?.to_string(),
                 reference: block.get("ref").and_then(|v| v.as_str())?.to_string(),
@@ -5948,11 +5957,36 @@ mod tests {
     }
 
     #[test]
+    fn local_file_attachments_roundtrip_as_canonical_blocks() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut user = user_msg(
+            "local-file",
+            "Inspect the reference",
+            "2026-11-13T00:00:00Z",
+        );
+        user.attachments = Some(vec![MessageAttachment {
+            local_reference: Some("11111111-2222-4333-8444-555555555555".into()),
+            kind: "file".into(),
+            name: "large.bin".into(),
+            reference: "/synthetic/large.bin".into(),
+            mime_type: None,
+            size: Some(67_108_865),
+            text: None,
+            inline_path: Some("@/synthetic/large.bin".into()),
+        }]);
+        append_message(&db, &session.id, &user, None).unwrap();
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(detail.messages[0].attachments, user.attachments);
+    }
+
+    #[test]
     fn user_attachments_roundtrip_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let mut user = user_msg("image-1", "这是什么", "2025-05-01T00:00:00Z");
         user.attachments = Some(vec![MessageAttachment {
+            local_reference: None,
             kind: "image".into(),
             name: "image.png".into(),
             reference: "attachments/abc123".into(),
