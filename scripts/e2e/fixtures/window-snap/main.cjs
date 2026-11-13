@@ -19,6 +19,11 @@ let corners;
 let quitting = false;
 const logger = { app: (...args) => console.error(...args) };
 const resolve = (name) => path.isAbsolute(name) ? name : path.join(root, name);
+const publish = (name, value) => {
+  const destination = path.join(root, name);
+  fs.writeFileSync(destination + ".tmp", JSON.stringify(value));
+  fs.renameSync(destination + ".tmp", destination);
+};
 
 app.whenReady().then(async () => {
   const legacySurface = options.legacySurface || !usesWindows11NativeCorners(process.platform, process.getSystemVersion());
@@ -60,7 +65,7 @@ app.whenReady().then(async () => {
     scaleFactor: screen.getDisplayMatching(window.getBounds()).scaleFactor });
   const flush = async () => { if (snap) await snap.flush(); if (corners) await corners.flush(); };
   await flush();
-  fs.writeFileSync(path.join(root, "ready.json"), JSON.stringify(snapshot()));
+  publish("ready.json", snapshot());
   let active = false;
   timer = setInterval(async () => {
     const file = path.join(root, "command.json");
@@ -81,7 +86,7 @@ app.whenReady().then(async () => {
       if (command.action === "fullscreen") setWindowFullScreen(window, command.value, true);
       await new Promise((done) => setTimeout(done, 500));
       await flush();
-      fs.writeFileSync(path.join(root, "state.json"), JSON.stringify({ ...snapshot(), id: command.id }));
+      publish("state.json", { ...snapshot(), id: command.id });
     } catch (error) {
       fs.writeFileSync(path.join(root, "fixture-error.txt"), String(error.stack || error));
     } finally { active = false; }

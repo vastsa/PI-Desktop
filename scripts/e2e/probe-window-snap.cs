@@ -40,7 +40,11 @@ public static class WindowSnapProbe {
     static int Number(Dictionary<string, object> value, string key) { return Convert.ToInt32(value[key]); }
     static Dictionary<string, object> Read(string name) {
         if (!File.Exists(FilePath(name))) return null;
-        try { return Json.Deserialize<Dictionary<string, object>>(File.ReadAllText(FilePath(name))); }
+        try {
+            using(var stream=new FileStream(FilePath(name),FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete))
+            using(var reader=new StreamReader(stream)) return Json.Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
+        }
+        catch (FileNotFoundException) { return null; }
         catch (ArgumentException) { return null; }
     }
     static void Wait(Func<bool> predicate, string message, int milliseconds = 5000) {
