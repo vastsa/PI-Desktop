@@ -1329,7 +1329,7 @@ that the model intended an action.
 
 Agent 模式下，即使没有配置子代理，也提供 TaskWait、TaskList 和 TaskStop。Task 仍要求子代理目录。Plan/Goal 保留声明以兼容对话历史，执行时拒绝这些工具。
 
-后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令文字限制为 1 KiB。
+后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令摘要按 UTF-8 字符边界保留最多 1 KiB 的前缀。`commandTruncated` 单独标记命令裁剪，旧 Host 可省略该字段。
 
 TaskWait/TaskStop 接受单个显式 job，与 delegationIds、mode、minCompleted 混用会报错。无 job 时保留原委派默认集合。旧 backgroundTaskId 可写成 `{kind: "bash", id: backgroundTaskId}`。
 

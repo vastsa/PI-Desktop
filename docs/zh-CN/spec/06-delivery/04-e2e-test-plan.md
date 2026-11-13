@@ -10476,6 +10476,8 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 
 - 拆分修复回归：TaskStop 在能力探测时取消不派发停止请求，派发后取消不重复停止，迟到的 RPC 错误仍被观察。
 
+- 拆分修复回归：命令摘要保留 UTF-8 前缀并独立标记截断；兼容没有标记的旧快照，错误输出仍保留末尾。
+
 
 - 构建 shared、agent-runtime、host-runtime 与 Host 后，运行 `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`。
 - 使用隔离 Host 数据、工作目录、生产 runtime/pi 循环与本地 HTTP 模型夹具。

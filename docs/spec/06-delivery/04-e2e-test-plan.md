@@ -20510,6 +20510,8 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 
 - Split follow-up regression: cancel TaskStop during capability discovery (zero stop requests) and after dispatch (one stop request); late RPC failure stays observed.
 
+- Split follow-up regression: command previews retain a UTF-8 prefix with an independent truncation flag; old snapshots omit the flag and output still retains final errors.
+
 
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
   `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`.
