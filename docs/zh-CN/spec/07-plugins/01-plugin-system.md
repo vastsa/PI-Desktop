@@ -328,6 +328,13 @@ Host Main (PI-Desktop)
 尽力返回原生权限状态（`granted`、`denied`、`unknown` 或 `unsupported`）。
 这些通知不是持久化的任务收件箱记录，点击通知也不会激活会话。
 
+### Shell layout
+
+`pi.shell.getLayout()` 和 `pi.workPanel.listTabs()` 无需新权限即可读取当前外壳及显示中会话的标签元数据。
+`shell.setSidebar`、`shell.setWorkPanel` 和 `workPanel.activateTab` 需要 `ui.shell`。
+布局仍由 renderer 所有；这些 API 不创建标签、不访问标签内容，也不操作后台会话。
+`shell:layout` 提供初始快照和已提交的变化。参见 [API 契约](03-plugin-api.md#shell-layout)。
+
 ### 明确不直接提供
 - 任意主机内部 Electron 对象
 - 通过代理的 `pi.fs` API 进行任意绝对路径访问
@@ -345,6 +352,7 @@ Host Main (PI-Desktop)
 |---|---|---|
 | `ui.panel` | 低 | 显示面板 |
 | `ui.view` | 低 | 贡献工作面板视图 |
+| `ui.shell` | 中等 | 设置侧栏和工作面板的宽度、显隐，以及激活已有标签 |
 | `ui.theme` | 低 | 贡献主题 CSS 文件 |
 | `clipboard.read` | 中等 | 读取当前剪贴板和主机保留的剪贴板历史 |
 | `clipboard.write` | 中等 | 写入剪贴板 |

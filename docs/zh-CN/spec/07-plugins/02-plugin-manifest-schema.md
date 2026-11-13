@@ -374,6 +374,7 @@ type PluginProviderModelContrib = {
 type PluginPermission =
  | "ui.panel"
  | "ui.view"
+ | "ui.shell"
  | "ui.theme"
  | "ui.settings"
  | "ui.window.appearance"
@@ -431,6 +432,12 @@ type PluginPermission =
 稳定的十进制 `projects.id` 字符串、显示名称、主路径，以及非空且主根优先的根目录列表。
 项目查询不可用时返回 `[]`。排序、项目组根目录补充，以及项目 ID 与项目组 ID 的区别，见
 [项目 / 工作区 API](/zh-CN/spec/07-plugins/03-plugin-api#工作区-fs)。
+
+应用布局由 `pi.shell.getLayout()` 和 `pi.workPanel.listTabs()` 描述，它们读取当前外壳和已有标签。
+`ui.shell` 允许 `shell.setSidebar`、`shell.setWorkPanel`、`workPanel.activateTab`。
+读取布局及订阅 `shell:layout` 无需新权限；`ui.view` 和 `desktop.control` 不隐含此权限。
+DevKit 提示入口源码中未声明的布局修改（`permission.shell-missing`）及未使用的权限；
+运行时仍对每次修改强制检查授权。参见 [外壳布局](03-plugin-api.md#shell-layout)。
 
 `fs.read.workspace`、`fs.write.workspace`、`fs.delete.workspace` 是文件范围机制
 之前的旧权限名。它们仍然能通过校验，主机会在加载时把它们改写成最小安全等价物

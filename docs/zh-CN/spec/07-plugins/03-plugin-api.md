@@ -315,7 +315,14 @@ pi.workspace.get(): Promise<{
   roots?: Array<{ path: string; name: string; primary: boolean }>;
   remote?: { path: string; readOnly: true }; // SSH projects only, see below
 } | null>
+```
 
+`workspace.get` 描述项目元数据。当前应用的侧栏、工作面板显隐、宽度和已有标签由
+[`shell.getLayout` 和 `workPanel.listTabs`](#shell-layout) 描述。
+这些读取和 `shell:layout` 订阅无需新权限；修改布局和激活已有标签需要 `ui.shell`。
+即使调用方是后台工具，也始终作用于当前显示的会话。
+
+```ts
 pi.fs.readText(pathFromRoot: string): Promise<string>
 pi.fs.stat(pathFromRoot: string, grantId?: string): Promise<{
   size: number;
@@ -893,6 +900,66 @@ pi.shell.openExternal(url: string): Promise<void>
 `openExternal` 解析 `url`，只打开 `http:`、`https:` 和 `mailto:`（D330 / ADR 0168）。
 其他 scheme 以 `INVALID_ARGUMENT` 失败。
 
+### Shell layout
+
+```ts
+pi.shell.getLayout(): Promise<PluginShellLayout>
+pi.shell.setSidebar(input: { collapsed?: boolean; width?: number }): Promise<PluginShellLayout>
+pi.shell.setWorkPanel(input: { visible?: boolean; width?: number }): Promise<PluginShellLayout>
+pi.workPanel.listTabs(): Promise<{ tabs: PluginWorkPanelTab[]; activeTabId: string | null }>
+pi.workPanel.activateTab(tabId: string): Promise<{ tabs: PluginWorkPanelTab[]; activeTabId: string | null }>
+
+type PluginWorkPanelTab = {
+  id: string
+  kind: "new" | "review" | "file" | "plugin" | "subagent"
+  label: string // the displayed, localized tab label
+  resource?: string // resource metadata, never the resource contents
+}
+type PluginShellLayout = {
+  sidebar: { collapsed: boolean; width: number; minWidth: number; maxWidth: number }
+  workPanel: {
+    visible: boolean; width: number; minWidth: number
+    tabs: PluginWorkPanelTab[]; activeTabId: string | null
+  }
+}
+```
+
+读取和 `pi.events.on/off("shell:layout", handler)` 无需新权限。两个 setter 和 `activateTab`
+需要声明并获授 `ui.shell`；`ui.view`、`desktop.control` 不隐含此权限。独立插件进程和
+面板/视图桥接均支持这些调用。它们不创建、关闭、重排标签，不改变标签内容，也不操作后台会话。
+
+宽度以 DIP 表示，只接受有限数值，并沿用现有外壳限制和三栏实时预算进行钳制。
+侧栏公开最小值和最大值；工作面板没有固定最大值。`minWidth` 是常规请求的最小宽度
+（244 DIP），重开侧栏时临时借出的宽度可以更小。可见时返回实际宽度，隐藏时返回保留的
+首选宽度。隐藏保留标签、激活项和宽度；显示恢复这些标签，没有标签时显示现有空面板。
+
+`listTabs` 只读取当前会话。没有会话或标签时返回 `{ tabs: [], activeTabId: null }`。
+激活已有标签不会展开隐藏的面板。未知或已关闭的 id 是空操作，并返回不变的标签快照。
+重复设置相同值也是空操作。
+
+每个新监听器先收到当前 `PluginShellLayout`，随后接收已提交的变化：折叠、标签/会话切换、
+插件写入、拖拽结束及几何变化。中间拖拽预览和相同快照不会重复发送；较晚返回的初始快照
+不会覆盖更新的事件。`getLayout` 在拖拽时仍读取实时布局。使用稳定的 handler 引用，卸载时取消订阅：
+
+```ts
+import type { PluginShellLayout } from "@pi-desktop/plugin-sdk";
+
+const onLayout = (layout: PluginShellLayout) => console.log(layout);
+export async function onLoad() {
+  onLayout(await pi.shell.getLayout());
+  pi.events.on("shell:layout", onLayout);
+}
+export function onUnload() {
+  pi.events.off("shell:layout", onLayout);
+}
+```
+
+修改在 renderer 应用后才完成。无效字段/宽度以 `INVALID_ARGUMENT` 拒绝，缺少权限以
+`PERMISSION_DENIED` 拒绝。renderer 不可用或重载、超时、上下文过期、调用方被销毁时，
+使用宿主已有错误码（§4）显式拒绝，不返回伪造布局。卸载、表面销毁或 renderer 丢失时
+释放监听器和待执行调用。旧宿主对未知桥接方法返回 `UNSUPPORTED`；调用前检查进程 API
+是否存在，并处理拒绝。此 API 不引入新的持久化或 host-core 迁移。
+
 ### browser（需要 `browser.cdp`）
 ```ts
 pi.browser.reveal(): Promise<void>
@@ -1255,6 +1322,7 @@ pi.events.off(event, handler)
 使用的同一条插件级总线流的别名（`plugin-host-process.mjs`）；因此 `on` 处理器只会看到
 宿主实际发给本插件的全部帧。当前已投递：
 
+- `shell:layout` —— `PluginShellLayout`；每个监听器先收到当前快照，再收到已提交变化，参见 [外壳布局](#shell-layout)。无需新权限。
 - `bus.message` —— 总线投递，以 `PluginBusMessage` 为唯一参数。通常使用 `pi.bus.subscribe`
   接收；`events.on` 可以看到插件所持有的全部订阅的原始事件流。
 - `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在缓存的工作区路径变化时发送：
@@ -1356,6 +1424,8 @@ window.pluginBridge.on(event, handler)
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
 | `shell.openExternal` | `shell.openExternal` |
+| `shell.getLayout`, `workPanel.listTabs` | 无 |
+| `shell.setSidebar`, `shell.setWorkPanel`, `workPanel.activateTab` | `ui.shell` |
 | `net.fetch` | `net.fetch` |
 | `net.getCapabilities` | 无 |
 | `session.getActive` | 无 |
@@ -1372,6 +1442,8 @@ window.pluginBridge.on(event, handler)
 
 `window.pluginBridge.on(event, handler)` 接收主机推送的事件。宿主会把同样的
 事件发给独立面板窗口和停靠的工作面板视图。今天已投递的事件：
+
+- `shell:layout` —— §3 的 `PluginShellLayout` 快照；包含每个监听器的初始快照和已提交变化，无需新权限。
 
 - `appearance:changed` —— 载荷是上面的 `PluginAppearance`，在应用的配色或
   语言发生变化时发送，因此面板可以实时重新着色和重新标注文案。
@@ -1400,6 +1472,7 @@ window.pluginBridge.on(event, handler)
 - agent.registerTool 注册后的工具执行（包括从插件 MCP 服务器发现的工具）
 - net.fetch
 - shell.openExternal
+- shell.setSidebar / shell.setWorkPanel / workPanel.activateTab（记录结果或错误码，不记录标签内容）
 - clipboard.read/write（可能采用采样记录）
 - clipboard.getHistory（记录返回的条目数）
 - bus.publish / bus.subscribe / bus.unsubscribe（记录主题和扇出数量）

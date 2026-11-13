@@ -28,6 +28,18 @@
 - `pi.browser.cdp` 不在 CDP 白名单上的方法 = `PERMISSION_DENIED`（无
   cookies、storage、Target 或 Fetch；无 DevTools websocket）
 
+### 外壳布局边界
+
+`ui.shell` 是独立的中风险权限，允许 `shell.setSidebar`、`shell.setWorkPanel` 和
+`workPanel.activateTab`；`ui.view` 和 `desktop.control` 不授予此能力。
+Main 验证调用方、项目激活范围和授权，再请求 renderer 应用修改。应用前发生会话或上下文
+切换时拒绝过期请求。插件不能指定历史会话，也不能修改 Main 中的布局镜像。
+
+`getLayout`、`listTabs` 和 `shell:layout` 无需新权限，只提供布局和当前会话的标签元数据，
+不提供标签内容或会话记录。取消订阅或销毁时停止投递；调用方或 renderer 消失时拒绝待执行请求。
+renderer 失败会显式暴露，不返回猜测的成功结果。参见 [API 契约](03-plugin-api.md#shell-layout)
+和 [ADR](../../../adr/plugin-shell-layout-api.md)。
+
 ## 3. 隔离策略
 
 ### 必须
@@ -458,6 +470,10 @@ PI-Desktop 当前占用（插件启动器默认为 `Alt+Space`，窗口显示 / 
   安装器会拒绝（`PLUGIN_PERMISSION_DENIED: missing grant for <permission>`）；
   没有已记录授权的加载直接使用声明的权限集合
 - `userSelected` root 不跨重启保留，插件每个会话都得重新问一次
+
+外壳布局依据 renderer 快照中的显示项目授权，不依赖异步项目切换时 Main 已先更新的工作区。
+正在选中会话时读取不可用；项目范围不匹配的快照不会返回或广播给插件。
+面板/视图文档重载或崩溃会取消未完成的布局调用，包括旧版桥接调用。
 
 ### Fetch 重定向策略 {#fetch-redirect-policy}
 

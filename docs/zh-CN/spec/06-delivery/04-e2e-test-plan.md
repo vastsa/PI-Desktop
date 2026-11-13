@@ -10617,3 +10617,14 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
+
+
+#### E2E-ISSUE-1997-plugin-shell-layout
+
+运行 `node scripts/e2e-plugin-shell-layout.mjs`，使用隔离的 Electron profile 和真实测试插件，
+不访问个人数据或供应商。通过进程和面板/视图桥接读取并订阅布局，验证初始事件、折叠与恢复、
+宽度钳制、空面板、已有及未知标签激活，以及隐藏重开后的标签保留。
+断言返回值与实际渲染宽度一致、拖拽结束仅一次事件、重复 setter 不重复投递、当前会话隔离
+以及取消订阅/卸载后的清理。无 `ui.shell` 时读取/订阅仍可用，三种修改均被拒绝。
+renderer 丢失时必须显式拒绝未完成请求。拖拽阻塞队列时重载文档，验证异步 invoke 与旧版
+send 都会取消请求；单元测试另覆盖 Main/renderer 项目切换竞态中的显示项目授权。

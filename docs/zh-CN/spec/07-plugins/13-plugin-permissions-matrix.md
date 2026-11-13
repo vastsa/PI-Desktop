@@ -13,6 +13,7 @@
 |---|---|---|---|---|
 | `ui.panel` | 低 | 打开插件面板 | 安装时授予 | 几乎所有 UI 插件都需要 |
 | `ui.view` | 低 | `contributes.views` 在工作面板中列出并可打开 | 安装时授予 | 与面板窗口同级隔离：沙箱页面、按插件划分的会话分区、`net.domains` 出口限制。按激活范围过滤 |
+| `ui.shell` | 中等 | `shell.setSidebar`、`shell.setWorkPanel`、`workPanel.activateTab` | 安装时确认 | 只控制当前外壳和显示中的会话；不创建标签或访问内容。读取和 `shell:layout` 无需新权限；`ui.view` 和 `desktop.control` 不隐含此权限 |
 | `ui.theme` | 低 | `contributes.themes` CSS 已在“设置”中加载并提供 | 安装时授予 | CSS 由主机清理；它无法编写脚本。已声明的 `assets` 通过主机的只读 `plugin-asset:` 协议提供 |
 | `ui.settings` | 低 | `contributes.scenicThemes` 在“扩展”中添加沙盒设置项 | 安装时授予 | 仅在宿主“扩展”分组中呈现；使用与面板视图相同沙箱的隔离视图宿主（ADR 0261） |
 | `ui.window.appearance` | 低 | 该插件主题被选中时，用 `contributes.windowAppearance` 设置原生窗口背景 | 安装时授予 | 仅接受 `#rrggbb` / `#rrggbbaa`；按解析后的明暗生效，主题消失后回到宿主默认值。macOS 保持 vibrancy |
