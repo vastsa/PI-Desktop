@@ -381,48 +381,63 @@
 
 .project-run-badge {
   display: inline-flex;
-  height: 17px;
+  height: 18px;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 5px;
+  padding: 0 7px 0 5px;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-warning) 18%, transparent);
-  /* The figure stays neutral ink: the dot and the tint carry the meaning, so
+  background: color-mix(in oklab, var(--ds-warning) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ds-warning) 30%, transparent);
+  /* The figure stays neutral ink: the glyph and the tint carry the meaning, so
      the count keeps its contrast in every theme instead of riding on a
-     semantic colour that is tuned for a dot, not for 11px text. */
+     semantic colour that is tuned for a glyph, not for 11px text. */
   color: var(--ds-text-primary);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
+  line-height: var(--leading-none, 1);
 }
 
 .project-run-badge.waiting {
-  background: color-mix(in oklab, var(--ds-purple) 18%, transparent);
+  background: color-mix(in oklab, var(--ds-purple) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ds-purple) 30%, transparent);
 }
 
+/* Running: the same open arc as the session row mark. Rotation is a pure
+   compositor transform and only exists while work is live. */
 .project-run-badge-dot {
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 1.5px solid color-mix(in oklab, var(--ds-warning) 24%, transparent);
+  border-top-color: var(--ds-warning);
+  border-right-color: var(--ds-warning);
+  border-radius: var(--radius-round);
+  animation: project-run-spin 1s linear infinite;
+}
+
+/* Waiting: the row's dot + halo. Static — a permission wait can sit for a
+   long time and must not keep the window repainting. */
+.project-run-badge.waiting .project-run-badge-dot {
   width: 6px;
   height: 6px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-round);
-  background: var(--ds-warning);
-  animation: project-run-breathe 1.6s ease-in-out infinite;
-}
-
-.project-run-badge.waiting .project-run-badge-dot {
+  margin: 0 1.5px;
+  border: 0;
   background: var(--ds-purple);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-purple) 26%, transparent);
   animation: none;
 }
 
 /* A collapsed group is the case this badge exists for, so it keeps a
    slightly stronger tint once the session rows are gone. */
 .project-group.is-collapsed .project-run-badge {
-  background: color-mix(in oklab, var(--ds-warning) 26%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 20%, transparent);
 }
 
 .project-group.is-collapsed .project-run-badge.waiting {
-  background: color-mix(in oklab, var(--ds-purple) 26%, transparent);
+  background: color-mix(in oklab, var(--ds-purple) 20%, transparent);
 }
 
 /*
@@ -477,16 +492,24 @@
 }
 
 .project-run-pip::before {
-  width: 6px;
-  height: 6px;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
   flex: 0 0 auto;
+  border: 1.5px solid color-mix(in oklab, var(--ds-warning) 24%, transparent);
+  border-top-color: var(--ds-warning);
+  border-right-color: var(--ds-warning);
   border-radius: var(--radius-round);
-  background: var(--ds-warning);
   content: "";
 }
 
 .project-run-pip.waiting::before {
+  width: 6px;
+  height: 6px;
+  margin: 0 1px;
+  border: 0;
   background: var(--ds-purple);
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--ds-purple) 26%, transparent);
 }
 
 /* Two adjacent pips would otherwise read as one two-digit number. */
@@ -495,15 +518,12 @@
   border-left: 1px solid var(--ds-border-default);
 }
 
-@keyframes project-run-breathe {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
+@keyframes project-run-spin {
+  from {
+    transform: rotate(0deg);
   }
-  50% {
-    opacity: 0.82;
-    transform: scale(0.86);
+  to {
+    transform: rotate(360deg);
   }
 }
 

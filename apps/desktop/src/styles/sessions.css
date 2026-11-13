@@ -305,85 +305,132 @@
   opacity: 0.68;
 }
 
+/*
+  Sidebar session status marks share one glyph language with the project
+  header badge (sidebar-threads.css):
+
+    running     open arc        — work in flight, not yet a closed circle
+    permission  dot + halo      — needs the user; the row is tinted too
+    selected    accent bar      — the session on screen
+    completed   filled chip ✓   — settled
+    failed      filled chip !   — settled, needs a look
+
+  Each shape stays legible with motion removed. Motion is bounded to a finite
+  cycle count (issue #1064): an idle window must stop submitting frames.
+*/
 .thread-item-status {
   display: inline-flex;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   color: var(--ds-text-muted);
   position: absolute;
-  left: 4px;
+  left: 3px;
   top: 50%;
   transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .thread-item-status.running::before {
-  width: 7px;
-  height: 7px;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid color-mix(in oklab, var(--ds-warning) 22%, transparent);
+  border-top-color: var(--ds-warning);
+  border-right-color: var(--ds-warning);
   border-radius: var(--radius-full);
-  background: var(--ds-warning);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-warning) 15%, transparent);
   content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out 2;
+  animation: sidebar-status-spin 0.9s cubic-bezier(0.4, 0.15, 0.6, 0.85) 2;
 }
 
 .thread-item-status.permission::before {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: var(--radius-full);
   background: var(--ds-purple);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-purple) 15%, transparent);
+  box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--ds-purple) 24%, transparent);
   content: "";
-  animation: sidebar-status-pulse-purple 1.2s ease-in-out 2;
+  animation: sidebar-status-ping 1.4s cubic-bezier(0, 0, 0.2, 1) 2;
 }
 
 .thread-item-status.selected::before {
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--ds-accent);
+  width: 3px;
+  height: 14px;
   border-radius: var(--radius-full);
+  background: var(--ds-accent);
   content: "";
 }
 
+.thread-item-status.completed,
+.thread-item-status.failed {
+  width: 13px;
+  height: 13px;
+  left: 3.5px;
+  border-radius: var(--radius-full);
+}
+
 .thread-item-status.completed {
+  background: color-mix(in oklab, var(--ds-success) 16%, transparent);
   color: var(--ds-success);
 }
 
 .thread-item-status.failed {
+  background: color-mix(in oklab, var(--ds-error) 16%, transparent);
   color: var(--ds-error);
 }
 
 .thread-item-status.completed svg {
-  stroke-width: 3;
+  width: 8px;
+  height: 8px;
+  stroke-width: 3.5;
 }
 
+/* The alert glyph draws its own circle; the chip already is one, so only the
+   exclamation mark is kept. */
 .thread-item-status.failed svg {
-  stroke-width: 2.25;
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.5;
 }
 
-@keyframes sidebar-status-breathe {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
+.thread-item-status.failed svg circle {
+  stroke: none;
+}
+
+/* A running row lifts its title to primary ink so live work stands out from
+   history without adding another mark. */
+.thread-item:has(> .thread-item-status.running) .thread-item-title {
+  color: var(--ds-text-primary);
+}
+
+/* A permission wait blocks the agent on the user, so the whole row carries a
+   faint purple wash in addition to the mark. Selection and hover keep their
+   own surfaces. */
+.thread-item:not(.active):not(:hover):has(> .thread-item-status.permission) {
+  background: color-mix(in oklab, var(--ds-purple) 9%, transparent);
+  color: var(--ds-text-primary);
+}
+
+@keyframes sidebar-status-spin {
+  from {
+    transform: rotate(0deg);
   }
-  50% {
-    opacity: 0.68;
-    transform: scale(0.78);
+  to {
+    transform: rotate(360deg);
   }
 }
 
-@keyframes sidebar-status-pulse-purple {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
+@keyframes sidebar-status-ping {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ds-purple) 55%, transparent);
   }
-  50% {
-    opacity: 0.5;
-    transform: scale(1.15);
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--ds-purple) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--ds-purple) 24%, transparent);
   }
 }
 
