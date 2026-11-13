@@ -1,4 +1,4 @@
-import type { UiMessage } from "@pi-desktop/shared";
+import { subagentTaskDisplayMessage, type UiMessage } from "@pi-desktop/shared";
 import {
   delegationChainMaps,
   messageThinking,
@@ -7,8 +7,10 @@ import {
 import { isDelegationStartTool } from "./tool-display";
 import { delegationIdForMessage } from "./subagent-panel";
 
+export type SubagentTranscriptRow = SubagentRunItem | { kind: "user"; message: UiMessage };
+
 /** One user/assistant exchange of a delegate session. */
-export type SubagentTranscriptTurn = { task: string; rows: SubagentRunItem[] };
+export type SubagentTranscriptTurn = { task: string; rows: SubagentTranscriptRow[] };
 
 /**
  * A delegate's conversation as alternating turns: each Task call of the
@@ -71,9 +73,10 @@ function resumedCalls(
  * the tab can show its unavailable state instead of an empty conversation.
  */
 export function buildSubagentTranscript(
-  messages: readonly UiMessage[],
+  sourceMessages: readonly UiMessage[],
   delegationId: string,
 ): SubagentTranscript | null {
+  const messages = sourceMessages.map(subagentTaskDisplayMessage);
   const target = delegationId.trim();
   const { childOf, callByDelegationId } = delegationChainMaps(messages);
   // A resumed call may cite the prior delegation id (the runtime's shape) or
@@ -145,9 +148,13 @@ export function buildSubagentTranscript(
   for (const call of calls) {
     const callId = call.toolCallId as string;
     if (!chain.has(callId)) continue;
-    const rows: SubagentRunItem[] = [];
+    const rows: SubagentTranscriptRow[] = [];
     for (const message of messages) {
       if (message.parentToolCallId !== callId) continue;
+      if (message.role === "user") {
+        rows.push({ kind: "user", message });
+        continue;
+      }
       if (message.role === "tool") {
         rows.push({ kind: "tool", message });
         continue;

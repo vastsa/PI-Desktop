@@ -20,6 +20,7 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { RuntimeState } from "./context";
 import { syncPluginDisplayLocale } from "../plugin-display-locale";
 import { RuntimeSupervisor } from "@pi-desktop/host-runtime";
+import { currentNetworkDns, currentSystemProxyRelayUrl } from "../network-proxy";
 
 type RestartKind = "host" | "sidecar";
 export type RuntimeLifecycleDependencies = {
@@ -232,14 +233,24 @@ export function createRuntimeLifecycle({
     // the process answers. The startup sequence re-applies it with the stored
     // settings; this keeps a host that boots without that write honest.
     await syncPluginDisplayLocale(runtimeState.host, getDisplayLocale());
-    try {
-      const stored = await runtimeState.host!.call("settings.get");
-      await applyNetworkProxyFromAppSettings(stored);
-    } catch {
-      await applyNetworkProxyFromAppSettings({ mode: "system" });
+    const startupHost = runtimeState.host;
+    if (!startupHost) throw new Error("host unavailable during network setup");
+    const stored = await startupHost.call("settings.get");
+    if (runtimeState.host !== startupHost) throw new Error("host changed during network setup");
+    // A failed secure-DNS apply must not silently start a system-DNS sidecar.
+    await applyNetworkProxyFromAppSettings(stored);
+    if (runtimeState.host !== startupHost) throw new Error("host changed during network setup");
+    const relayUrl = currentSystemProxyRelayUrl();
+    const desktopDnsEnabled = currentNetworkDns().mode === "doh";
+    if (relayUrl) {
+      await startupHost.call("network.configureSystemProxyRelay", {
+        url: relayUrl,
+        desktopDnsEnabled,
+      });
+    } else if (desktopDnsEnabled) {
+      throw new Error("Desktop secure DNS requires an authenticated proxy relay");
     }
-    await startSidecar();
-
+    if (runtimeState.host !== startupHost) throw new Error("host changed during network setup");
     // Keep plugin host services wired to live workspace / app metadata.
     plugins.setServices({
       getWorkspacePath: () => {
@@ -295,6 +306,12 @@ export function createRuntimeLifecycle({
         data: String(error),
       });
     }
+
+    // Plugin initialization and resident services must finish before the agent
+    // imports its provider modules. Loading them afterward races first use and
+    // cannot repair module-level initialization in an already-running process.
+    if (isQuitting()) return;
+    await startSidecar();
 
     // The user's MCP servers are only registered here; each one connects the
     // first time a session that can see it is assembled.

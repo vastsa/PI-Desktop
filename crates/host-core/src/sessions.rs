@@ -10,12 +10,14 @@ use std::collections::HashMap;
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
+mod delegation_display;
 mod fork_files;
 mod history_mutations;
 pub use history_mutations::{
     activate_message_revision_canonical, delete_message, retract_pending_prompt, running_turn,
 };
 mod model_system;
+mod subagent_control;
 mod usage;
 pub use usage::{record_usage, session_usage_cost};
 
@@ -212,6 +214,36 @@ pub struct MessageAttachment {
     pub inline_path: Option<String>,
 }
 
+/// Additive metadata for a user-created subagent root or live direction.
+///
+/// The row stays a real child-owned `user` message: this never forges a
+/// provider `Task` call. It exists so operation dedup, chain ownership, resume,
+/// and the delegation directories survive a Host restart without a SQL
+/// migration — the value travels in `record.meta.subagentControl`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentControlMetadata {
+    pub operation_id: String,
+    pub request_hash: String,
+    /// `start` for a delegated root, `message` for a live direction.
+    pub action: String,
+    pub delegation_id: String,
+    pub agent: String,
+    /// Terminal snapshots replace `running`; a terminal status never reopens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UiMessage {
@@ -301,6 +333,10 @@ pub struct UiMessage {
     /// Subagent definition name that produced the row.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
+    /// Direct user command that created this child-owned user row. Additive
+    /// transcript metadata; never a forged provider `Task` call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent_control: Option<SubagentControlMetadata>,
     /// Provider-hosted web search activity for this assistant turn. Persisted
     /// as an additive `hostedSearch` transcript block; no SQL migration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -502,6 +538,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     }
     if let Some(agent) = &message.agent_name {
         meta_obj.insert("agentName".into(), json!(agent));
+        if let Some(control) = &message.subagent_control {
+            meta_obj.insert("subagentControl".into(), json!(control));
+        }
     }
     let meta = if meta_obj.is_empty() {
         None
@@ -609,6 +648,9 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let meta = record.meta.unwrap_or(Value::Null);
     let model_system = meta.get("modelSystem").cloned();
     let provider_replay = meta.get("providerReplay").cloned();
+    let subagent_control = meta
+        .get("subagentControl")
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
     let command = meta
         .get("command")
         .and_then(Value::as_str)
@@ -800,6 +842,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             parent_tool_call_id,
             nested_parent_tool_call_id,
             agent_name,
+            subagent_control: None,
             hosted_search: hosted_search.clone(),
             model_system: None,
             provider_replay: None,
@@ -849,6 +892,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             parent_tool_call_id,
             nested_parent_tool_call_id,
             agent_name,
+            subagent_control,
             hosted_search,
             model_system,
             provider_replay,
@@ -957,10 +1001,20 @@ fn cap_record_blocks_for_display(record: &mut MessageRecord, limit: usize) {
                 }
             }
             Some("tool_call") => {
-                for key in ["args", "result"] {
-                    if let Some(value) = object.get_mut(key) {
-                        *value = preview_value(std::mem::take(value), limit);
-                    }
+                let args = object.remove("args");
+                let result = object.remove("result");
+                let name = record
+                    .tool_name
+                    .as_deref()
+                    .or_else(|| object.get("name").and_then(Value::as_str));
+                let args = args.map(|value| delegation_display::preview_args(name, value, limit));
+                let result =
+                    result.map(|value| delegation_display::preview_result(name, value, limit));
+                if let Some(args) = args {
+                    object.insert("args".into(), args);
+                }
+                if let Some(result) = result {
+                    object.insert("result".into(), result);
                 }
                 if let Some(text) = object.get_mut("text") {
                     cap_record_block_value(text, &mut text_budget);
@@ -984,13 +1038,26 @@ fn record_to_ui_for_display(mut record: MessageRecord, limit: usize) -> UiMessag
         message.thinking = Some(thinking);
     }
     if let Some(args) = message.tool_args.take() {
-        message.tool_args = Some(preview_value(args, limit));
+        message.tool_args = Some(delegation_display::preview_args(
+            message.tool_name.as_deref(),
+            args,
+            limit,
+        ));
     }
     if let Some(result) = message.tool_result.take() {
-        message.tool_result = Some(preview_value(result, limit));
+        message.tool_result = Some(delegation_display::preview_result(
+            message.tool_name.as_deref(),
+            result,
+            limit,
+        ));
     }
     if let Some(error) = message.error.take() {
         message.error = Some(preview_value(error, limit));
+    }
+    // Command identity, request hash, delegation/agent routing, and the model
+    // binding stay verbatim; only the human-readable description is bounded.
+    if let Some(control) = message.subagent_control.as_mut() {
+        subagent_control::bound_for_display(control, limit);
     }
     message
 }
@@ -2338,6 +2405,7 @@ pub fn append_message(
 ) -> Result<()> {
     model_system::validate(message)?;
     let message = crate::session_collaboration::prepare_append(db, session_id, message, turn_id)?;
+    subagent_control::validate(&message)?;
     let session_created = ensure_session_for_append(db, session_id)?;
     let (mut record, text) = ui_to_record(&message);
     let had_turn_reference = turn_id.is_some();
@@ -2657,6 +2725,12 @@ fn update_delegation_snapshot(
     session_id: &str,
     incoming: &MessageRecord,
 ) -> Result<()> {
+    // A direct user command persists a real child-owned user row, not a Task
+    // result. Its settlement updates that root's metadata through its own
+    // domain helper; only model-created Task rows take the legacy path below.
+    if incoming.role == "user" {
+        return subagent_control::update_root_snapshot(db, session_id, incoming);
+    }
     if incoming.role != "tool" || incoming.tool_name.as_deref() != Some("Task") {
         return Ok(());
     }
@@ -4614,6 +4688,7 @@ mod tests {
             model_system: None,
             provider_replay: None,
             session_message: None,
+            subagent_control: None,
         }
     }
 
@@ -5581,6 +5656,7 @@ mod tests {
             model_system: None,
             provider_replay: None,
             session_message: None,
+            subagent_control: None,
         };
         append_message(&db, &session.id, &tool, None).unwrap();
         // Host recovery may replay the Electron persistence outbox; a message
@@ -5830,6 +5906,345 @@ mod tests {
                 .unwrap()
                 .messages,
         );
+    }
+
+    #[test]
+    fn subagent_control_metadata_survives_host_persistence() {
+        // Baseline: a direct-control root travels as an ordinary child-owned
+        // user row. Its command identity lives only in transcript metadata, so
+        // losing `subagentControl` on the Host roundtrip breaks dedup, routing,
+        // and resume with no visible error.
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let root: UiMessage = serde_json::from_value(json!({
+            "id": "user-subagent-start-1",
+            "role": "user",
+            "content": "Inspect the code",
+            "createdAt": "2026-11-03T00:00:00Z",
+            "status": "complete",
+            "parentToolCallId": "user-subagent-start-1",
+            "agentName": "explorer",
+            "subagentControl": {
+                "operationId": "start-1",
+                "requestHash": "a".repeat(64),
+                "action": "start",
+                "delegationId": "delegate-1",
+                "agent": "explorer",
+                "status": "running",
+                "modelId": "fixture/model",
+                "modelKey": "fixture/fixture-model",
+                "thinkingLevel": "off"
+            }
+        }))
+        .unwrap();
+        append_message(&db, &session.id, &root, None).unwrap();
+        let read = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(
+            serde_json::to_value(&read.messages[0]).unwrap()["subagentControl"],
+            json!({
+                "operationId": "start-1",
+                "requestHash": "a".repeat(64),
+                "action": "start",
+                "delegationId": "delegate-1",
+                "agent": "explorer",
+                "status": "running",
+                "modelId": "fixture/model",
+                "modelKey": "fixture/fixture-model",
+                "thinkingLevel": "off"
+            })
+        );
+    }
+
+    const SUBAGENT_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn subagent_root() -> UiMessage {
+        serde_json::from_value(json!({
+            "id": "user-subagent-start-1",
+            "role": "user",
+            "content": "Inspect the code",
+            "createdAt": "2026-11-03T00:00:00Z",
+            "status": "complete",
+            "parentToolCallId": "user-subagent-start-1",
+            "agentName": "explorer",
+            "subagentControl": {
+                "operationId": "start-1",
+                "requestHash": SUBAGENT_HASH,
+                "action": "start",
+                "delegationId": "delegate-1",
+                "agent": "explorer",
+                "status": "running",
+                "modelId": "fixture/one",
+                "modelKey": "fixture/one",
+                "thinkingLevel": "off",
+                "description": "bounded description ".repeat(100)
+            }
+        }))
+        .unwrap()
+    }
+
+    fn control(message: &UiMessage) -> &SubagentControlMetadata {
+        message.subagent_control.as_ref().unwrap()
+    }
+
+    /// A settlement snapshot keeps the identity and drops the optional binding
+    /// fields, exactly like the runtime's spread of the original root.
+    fn settled(root: &UiMessage, status: &str) -> UiMessage {
+        let mut next = root.clone();
+        let control = next.subagent_control.as_mut().unwrap();
+        control.status = Some(status.into());
+        control.model_id = None;
+        control.model_key = None;
+        control.thinking_level = None;
+        control.description = None;
+        next
+    }
+
+    #[test]
+    fn user_subagent_root_reply_and_followup_survive_host_restart() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let root = subagent_root();
+        append_message(&db, &session.id, &root, None).unwrap();
+        let reply: UiMessage = serde_json::from_value(json!({
+            "id": "child-reply-1", "role": "assistant", "content": "Child report",
+            "createdAt": "2026-11-03T00:00:01Z", "status": "complete",
+            "parentToolCallId": "user-subagent-start-1", "agentName": "explorer"
+        }))
+        .unwrap();
+        append_message(&db, &session.id, &reply, None).unwrap();
+        let followup: UiMessage = serde_json::from_value(json!({
+            "id": "user-subagent-message-1", "role": "user", "content": "Also check tests",
+            "createdAt": "2026-11-03T00:00:02Z", "status": "complete", "steering": true,
+            "parentToolCallId": "user-subagent-start-1", "agentName": "explorer",
+            "subagentControl": {
+                "operationId": "message-1", "requestHash": SUBAGENT_HASH,
+                "action": "message", "delegationId": "delegate-1", "agent": "explorer"
+            }
+        }))
+        .unwrap();
+        append_message(&db, &session.id, &followup, None).unwrap();
+        // The child's settlement arrives as the same durable root, twice, and a
+        // replayed live direction must not duplicate its row either.
+        let terminal = settled(&root, "completed");
+        append_message(&db, &session.id, &terminal, None).unwrap();
+        append_message(&db, &session.id, &terminal, None).unwrap();
+        append_message(&db, &session.id, &followup, None).unwrap();
+
+        let assert_detail = |detail: &SessionDetail| {
+            assert_eq!(detail.messages.len(), 3);
+            let root = &detail.messages[0];
+            assert_eq!(root.role, "user");
+            assert_eq!(root.content, "Inspect the code");
+            assert_eq!(root.id, root.parent_tool_call_id.clone().unwrap());
+            assert_eq!(root.agent_name.as_deref(), Some("explorer"));
+            let metadata = control(root);
+            assert_eq!(metadata.operation_id, "start-1");
+            assert_eq!(metadata.request_hash, SUBAGENT_HASH);
+            assert_eq!(metadata.delegation_id, "delegate-1");
+            assert_eq!(metadata.model_key.as_deref(), Some("fixture/one"));
+            assert_eq!(metadata.status.as_deref(), Some("completed"));
+            let reply = &detail.messages[1];
+            assert_eq!(
+                reply.parent_tool_call_id.as_deref(),
+                Some("user-subagent-start-1")
+            );
+            assert_eq!(reply.agent_name.as_deref(), Some("explorer"));
+            let followup = &detail.messages[2];
+            assert_eq!(followup.content, "Also check tests");
+            assert_eq!(
+                followup.parent_tool_call_id.as_deref(),
+                Some("user-subagent-start-1")
+            );
+            let metadata = control(followup);
+            assert_eq!(metadata.action, "message");
+            assert_eq!(metadata.operation_id, "message-1");
+            assert_eq!(metadata.delegation_id, "delegate-1");
+            assert_eq!(metadata.status, None);
+        };
+        assert_detail(&get_session(&db, &session.id).unwrap().unwrap());
+        let records = transcripts::read_transcript(db.data_dir(), &session.id).unwrap();
+        assert_eq!(
+            records
+                .iter()
+                .filter(|record| record.id == "user-subagent-start-1")
+                .count(),
+            1
+        );
+        assert_eq!(
+            records[0].meta.as_ref().unwrap()["subagentControl"]["requestHash"],
+            SUBAGENT_HASH
+        );
+
+        let path = db.data_dir().join("test.sqlite");
+        drop(db);
+        let reopened = Database::open(&path).unwrap();
+        assert_detail(&get_session(&reopened, &session.id).unwrap().unwrap());
+
+        let page = get_session_with_options(
+            &reopened,
+            &session.id,
+            SessionReadOptions {
+                message_limit: Some(16),
+                content_limit: Some(64),
+                message_around: Some("user-subagent-start-1".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(page.messages.len(), 3);
+        let root = &page.messages[0];
+        assert_eq!(root.id, "user-subagent-start-1");
+        assert_eq!(root.content, "Inspect the code");
+        let metadata = control(root);
+        assert_eq!(metadata.operation_id, "start-1");
+        assert_eq!(metadata.request_hash, SUBAGENT_HASH);
+        assert_eq!(metadata.delegation_id, "delegate-1");
+        assert_eq!(metadata.model_key.as_deref(), Some("fixture/one"));
+        assert_eq!(metadata.description.as_ref().unwrap().chars().count(), 64);
+        // Host never forges a Task projection for the self-owned user root.
+        assert!(page.navigation_parent.is_none());
+        let full = get_session(&reopened, &session.id).unwrap().unwrap();
+        assert_eq!(
+            control(&full.messages[0])
+                .description
+                .as_ref()
+                .unwrap()
+                .chars()
+                .count(),
+            "bounded description ".repeat(100).chars().count()
+        );
+    }
+
+    #[test]
+    fn user_subagent_snapshot_updates_only_a_matching_running_root() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let root = subagent_root();
+        append_message(&db, &session.id, &root, None).unwrap();
+        let mut running = root.clone();
+        {
+            let metadata = running.subagent_control.as_mut().unwrap();
+            metadata.model_id = Some("fixture/two".into());
+            metadata.model_key = Some("fixture/two".into());
+            metadata.thinking_level = Some("high".into());
+        }
+        append_message(&db, &session.id, &running, None).unwrap();
+        let read_root = || {
+            let mut messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+            assert_eq!(messages.len(), 1);
+            messages.remove(0)
+        };
+
+        let message = read_root();
+        let metadata = control(&message);
+        assert_eq!(metadata.status.as_deref(), Some("running"));
+        assert_eq!(metadata.model_id.as_deref(), Some("fixture/two"));
+        assert_eq!(metadata.model_key.as_deref(), Some("fixture/two"));
+        assert_eq!(metadata.thinking_level.as_deref(), Some("high"));
+
+        // A snapshot for another request, delegation, or agent is not this
+        // operation: nothing changes and nothing is appended.
+        let mut other_hash = settled(&running, "failed");
+        other_hash.subagent_control.as_mut().unwrap().request_hash = "f".repeat(64);
+        append_message(&db, &session.id, &other_hash, None).unwrap();
+        let mut other_delegation = settled(&running, "failed");
+        other_delegation
+            .subagent_control
+            .as_mut()
+            .unwrap()
+            .delegation_id = "delegate-other".into();
+        append_message(&db, &session.id, &other_delegation, None).unwrap();
+        let mut other_agent = settled(&running, "failed");
+        other_agent.subagent_control.as_mut().unwrap().agent = "reviewer".into();
+        other_agent.agent_name = Some("reviewer".into());
+        append_message(&db, &session.id, &other_agent, None).unwrap();
+        let message = read_root();
+        let metadata = control(&message);
+        assert_eq!(metadata.status.as_deref(), Some("running"));
+        assert_eq!(metadata.request_hash, SUBAGENT_HASH);
+        assert_eq!(metadata.delegation_id, "delegate-1");
+        assert_eq!(metadata.agent, "explorer");
+
+        // The settlement may omit the binding fields; the running snapshot's
+        // binding and the original task text stay intact.
+        append_message(&db, &session.id, &settled(&running, "completed"), None).unwrap();
+        let message = read_root();
+        assert_eq!(message.content, "Inspect the code");
+        let metadata = control(&message);
+        assert_eq!(metadata.status.as_deref(), Some("completed"));
+        assert_eq!(metadata.model_id.as_deref(), Some("fixture/two"));
+        assert_eq!(metadata.model_key.as_deref(), Some("fixture/two"));
+        assert_eq!(metadata.thinking_level.as_deref(), Some("high"));
+        assert!(metadata.description.is_some());
+
+        // A stale running snapshot cannot reopen or rebind the settled root.
+        let mut stale = settled(&running, "running");
+        stale.subagent_control.as_mut().unwrap().model_id = Some("fixture/three".into());
+        stale.subagent_control.as_mut().unwrap().model_key = Some("fixture/three".into());
+        append_message(&db, &session.id, &stale, None).unwrap();
+        // Nor can another terminal status replace the first terminal one.
+        append_message(&db, &session.id, &settled(&running, "failed"), None).unwrap();
+        let message = read_root();
+        let metadata = control(&message);
+        assert_eq!(metadata.status.as_deref(), Some("completed"));
+        assert_eq!(metadata.model_id.as_deref(), Some("fixture/two"));
+        assert_eq!(metadata.model_key.as_deref(), Some("fixture/two"));
+
+        // Ordinary human input keeps its existing shape.
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("plain-user", "no control", "2026-11-03T00:00:09Z"),
+            None,
+        )
+        .unwrap();
+        let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].role, "user");
+        assert_eq!(messages[1].content, "no control");
+        assert!(messages[1].subagent_control.is_none());
+    }
+
+    #[test]
+    fn forged_user_subagent_control_is_rejected_before_persistence() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut bad_operation = subagent_root();
+        bad_operation
+            .subagent_control
+            .as_mut()
+            .unwrap()
+            .operation_id = "bad id".into();
+        assert!(append_message(&db, &session.id, &bad_operation, None).is_err());
+        let mut bad_hash = subagent_root();
+        bad_hash.subagent_control.as_mut().unwrap().request_hash = "abc".into();
+        assert!(append_message(&db, &session.id, &bad_hash, None).is_err());
+        let mut oversized_delegation = subagent_root();
+        oversized_delegation
+            .subagent_control
+            .as_mut()
+            .unwrap()
+            .delegation_id = "d".repeat(201);
+        assert!(append_message(&db, &session.id, &oversized_delegation, None).is_err());
+        let mut wrong_agent = subagent_root();
+        wrong_agent.agent_name = Some("reviewer".into());
+        assert!(append_message(&db, &session.id, &wrong_agent, None).is_err());
+        let mut wrong_id = subagent_root();
+        wrong_id.id = "user-subagent-other".into();
+        assert!(append_message(&db, &session.id, &wrong_id, None).is_err());
+        let mut on_tool = subagent_root();
+        on_tool.role = "tool".into();
+        on_tool.tool_name = Some("Task".into());
+        assert!(append_message(&db, &session.id, &on_tool, None).is_err());
+        assert!(get_session(&db, &session.id)
+            .unwrap()
+            .unwrap()
+            .messages
+            .is_empty());
+        assert!(transcripts::read_transcript(db.data_dir(), &session.id)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -6450,6 +6865,7 @@ mod tests {
             model_system: None,
             provider_replay: None,
             session_message: None,
+            subagent_control: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
 
@@ -6618,6 +7034,7 @@ mod tests {
                 ]
             })),
             session_message: None,
+            subagent_control: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
 

@@ -401,3 +401,21 @@ only the last organization copy, which is replaced after renderer bootstrap.
 Menu command readiness is acknowledged after bootstrap's initial navigation,
 so a tray click cannot be overwritten by the startup draft or pending-plan
 selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
+### Desktop native DNS ownership
+
+`AppSettings.networkDns` is device-local and opt-in. Electron Main owns the
+Chromium resolver configuration and lookup generation. It supplies lookups to
+the existing authenticated loopback relay; local Node provider and Host HTTP
+clients route through it in every proxy mode while DNS is enabled. Proxied
+destination resolution remains with the upstream proxy. Strict failure never
+silently selects system DNS; explicit fallback is a saved user preference.
+
+Boot restores the persisted network snapshot before sidecar admission and keeps
+plugin recovery before agent startup. A sidecar is published only after its
+network configuration succeeds against the current Host and current settings.
+Host replacement, setup failure, or confirmed shutdown disposes the candidate.
+DNS does not change child execution owners or parent-only Stop. Rust retains
+exclusive settings persistence; remote/headless hosts and portable config sync
+do not inherit this local preference. See
+[native DNS ADR](../../adr/native-desktop-dns.md).

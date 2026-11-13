@@ -93,7 +93,7 @@ function assertPassesRequiredKeys(interfaceSource, interfaceName, callSource, ca
   assert.ok(keys.length > 3, `${interfaceName} should declare several members`);
   const argument = callArgument(callSource, callee);
   const missing = keys.filter(
-    (key) => !new RegExp(`(^|\\n)\\s*${key}\\s*[,:]`, "m").test(argument),
+    (key) => !new RegExp(`(^|[,\\n])\\s*${key}\\s*[,:]`, "m").test(argument),
   );
   assert.deepEqual(
     missing,
@@ -101,6 +101,15 @@ function assertPassesRequiredKeys(interfaceSource, interfaceName, callSource, ca
     `${callee} must pass every required ${interfaceName} member`,
   );
 }
+
+test("required wiring recognizes inline members but still rejects missing dependencies", () => {
+  const declaration = "export type Dependencies = {\n  first: unknown;\n  second: unknown;\n  third: unknown;\n  fourth: unknown;\n}";
+  assertPassesRequiredKeys(declaration, "Dependencies", "create({\n  first, second,\n  third: value, fourth,\n})", "create");
+  assert.throws(
+    () => assertPassesRequiredKeys(declaration, "Dependencies", "create({\n  first, second, third: value,\n})", "create"),
+    /must pass every required Dependencies member/,
+  );
+});
 
 test("the composition root passes every required factory dependency", () => {
   const index = read("index.ts");

@@ -4,10 +4,9 @@ import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { register } from "node:module";
-import { pathToFileURL } from "node:url";
 
 const here = new URL(".", import.meta.url);
-register(pathToFileURL(new URL("helpers/ts-import-hooks.mjs", here).pathname));
+register(new URL("helpers/ts-import-hooks.mjs", here));
 const { migrateLegacyPromptEnhancementSettings } = await import(
   "../electron/main/plugin-prompt-enhancement-migration.ts"
 );

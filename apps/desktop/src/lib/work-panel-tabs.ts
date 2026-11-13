@@ -3,7 +3,8 @@ export type WorkPanelTabKind =
   | "review"
   | "file"
   | "plugin"
-  | "subagent";
+  | "subagent"
+  | "subagents";
 
 export type WorkPanelTab = {
   id: string;
@@ -248,7 +249,7 @@ export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
     Boolean(tab) &&
     (tab.kind === "new" || tab.kind === "review" ||
       tab.kind === "file" || tab.kind === "plugin" ||
-      tab.kind === "subagent")
+      tab.kind === "subagent" || tab.kind === "subagents")
   );
 }
 
@@ -275,12 +276,12 @@ export function sanitizeWorkPanelTabsState(
 }
 
 /**
- * Only plugin-contributed views are launchable tools. Review and file tabs
- * are transcript resources even though their tab ids are singleton-shaped, so
- * they remain visible in the opened-resource section.
+ * The session subagent directory and plugin-contributed views are tools.
+ * Review and file tabs are transcript resources even though their tab ids are
+ * singleton-shaped, so they remain in the opened-resource section.
  */
 export function isToolWorkPanelTab(tab: WorkPanelTab): boolean {
-  return tab.kind === "plugin";
+  return tab.kind === "plugin" || tab.kind === "subagents";
 }
 
 export function normalizeWorkPanelFilePath(path: string): string {

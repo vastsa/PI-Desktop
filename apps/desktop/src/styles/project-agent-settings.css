@@ -1,0 +1,52 @@
+.project-agent-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-agent-settings-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.project-agent-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-agent-settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.project-agent-settings-options .ui-checkbox {
+  align-items: flex-start;
+  /* Keep multiline labels at their natural height inside the bounded scroller. */
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.project-agent-settings-option {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.project-agent-settings-option small {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.project-agent-settings textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+}

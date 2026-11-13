@@ -118,7 +118,12 @@ test("host transport rejects oversized request lines before writing", () => {
 });
 
 test("host transport retries transient RPC overload with a bounded backoff", () => {
-  assert.match(hostSource, /HOST_OVERLOAD_RETRY_DELAYS_MS = \[50, 100, 200, 400\]/);
+  // A write waits out a domain-fenced search instead of failing the edit, so the
+  // retry window covers the Host's own tool queue wait (host-file-batch-admission).
+  assert.match(
+    hostSource,
+    /HOST_OVERLOAD_RETRY_DELAYS_MS = \[\s*50, 100, 200, 400, 800, 1_600, 3_200, 6_400, 8_000, 9_000,\s*\]/,
+  );
   assert.match(hostSource, /typeof msg\.error\.data\.errorCode === "string"/);
   assert.match(hostSource, /function isHostOverloaded\(/);
   assert.match(hostSource, /private async callOnce<.*>\(/);

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
-import { createAssistantMessageEventStream, type Message } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, normalizeContext, type Message } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   composeSubagentSystemPrompt,
@@ -226,13 +226,19 @@ describe("SubagentRun event forwarding", () => {
     expect(JSON.stringify(requests)).not.toContain("bad-call");
   });
 
-  it("keeps the no-pass selection out of the agent's canonical state", () => {
-    const { run } = createRun({ thinkingLevel: "omit" });
-
+  it("keeps the no-pass selection out of canonical state and provider reasoning parameters", async () => {
+    const { run } = createRun({ thinkingLevel: "omit", provider: { ...provider, apiStyle: "openai-chat", supportsReasoning: true } });
+    let body: Record<string, unknown> | undefined;
+    const fetch: typeof globalThis.fetch = async (_input, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+    };
+    await run.agent.streamFunction(run.agent.state.model, normalizeContext({
+      messages: [{ role: "user", content: "Fixture", timestamp: 1 }],
+    }), { fetch }).result();
     expect(run.agent.state.thinkingLevel).toBe("off");
-    expect(run.agent.streamFunction.toString()).toContain(
-      "models.stream(omitThinkingModel, requestContext, retryOptions)",
-    );
+    expect(body).toMatchObject({ model: "local-model" });
+    expect(body).not.toHaveProperty("reasoning_effort");
   });
   it("retains completed same-id rounds in a resumed subagent request", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);

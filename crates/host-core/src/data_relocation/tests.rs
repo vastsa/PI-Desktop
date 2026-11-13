@@ -285,7 +285,10 @@ fn relocates_a_real_copied_profile_without_recovery_or_changing_user_content() {
         .unwrap();
     assert_eq!(
         serde_json::from_str::<Value>(&group).unwrap()["roots"][0]["path"],
-        json!(destination.join("project"))
+        json!(
+            crate::db::canonical_project_path(&destination.join("project").to_string_lossy())
+                .unwrap()
+        )
     );
     assert_eq!(
         SecretStore::open(&destination)
@@ -579,4 +582,76 @@ fn encoded_tool_images_remain_lossless_in_all_relocated_file_kinds() {
             1
         );
     }
+}
+
+#[test]
+fn project_group_options_relocation_preserves_ids_selection_and_instruction_bytes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("old-profile");
+    let destination = temporary.path().join("new-profile");
+    let root = source.join("project");
+    let legacy_root = source.join("legacy");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&legacy_root).unwrap();
+    fs::write(root.join("AGENTS.md"), "Repository\r\n").unwrap();
+    let db = Database::open_in_dir(&source).unwrap();
+    // Capability identifiers and Markdown that resemble paths are opaque data.
+    let capabilities = json!({"skillIds": [source.to_string_lossy()], "mcpServerIds": []});
+    let instructions = format!("# App\r\n中文\n{}", source.display());
+    let options = crate::db::ProjectGroupOptions::from_json(&json!({
+        "capabilities": capabilities, "instructions": instructions,
+    }))
+    .unwrap();
+    let group = db
+        .create_project_group_with_options(
+            "Stored",
+            &[root.to_string_lossy().into_owned()],
+            &options,
+        )
+        .unwrap();
+    db.ensure_project(&legacy_root.to_string_lossy(), false)
+        .unwrap();
+    let legacy = db
+        .project_group_for_path(&legacy_root.to_string_lossy())
+        .unwrap()
+        .unwrap();
+    db.set_project_group_instructions(&legacy.id, &instructions)
+        .unwrap();
+    drop(db);
+    copy_directory(&source, &destination);
+    relocate(&source, &destination).unwrap();
+    let db = Database::open_in_dir(&destination).unwrap();
+    let moved = db
+        .project_group_for_path(&destination.join("project").to_string_lossy())
+        .unwrap()
+        .unwrap();
+    assert_eq!(moved.id, group.id);
+    assert_eq!(
+        serde_json::to_value(&moved.capabilities).unwrap(),
+        capabilities
+    );
+    let context = db
+        .project_group_context_for_path(&moved.primary_path)
+        .unwrap()
+        .unwrap();
+    assert_eq!(context.instructions, instructions);
+    assert_eq!(context.capabilities, group.capabilities);
+    let legacy_context = db
+        .project_group_context_for_path(&destination.join("legacy").to_string_lossy())
+        .unwrap()
+        .unwrap();
+    assert_eq!(legacy_context.instructions, instructions);
+    assert!(db
+        .kv_get("projectGroupInstructions", &legacy.id)
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        fs::read_to_string(destination.join("project/AGENTS.md")).unwrap(),
+        "Repository\r\n"
+    );
+    let original = Database::open_in_dir(&source).unwrap();
+    assert_eq!(
+        original.get_project_group_instructions(&legacy.id).unwrap(),
+        instructions
+    );
 }

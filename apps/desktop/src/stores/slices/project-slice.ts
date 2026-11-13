@@ -1,6 +1,6 @@
 import { forgetTranscriptReadingState } from "../../lib/transcript-reading-position";
 import i18n from "i18next";
-import type { ProjectWorkspace } from "@pi-desktop/shared";
+import type { ProjectAgentSettings, ProjectWorkspace } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import {
   rememberProject,
@@ -70,7 +70,8 @@ async function createNamedProjectGroup(
     name,
     folders,
     primaryPath,
-  }: { name: string; folders: string[]; primaryPath?: string },
+    agentSettings,
+  }: { name: string; folders: string[]; primaryPath?: string; agentSettings?: ProjectAgentSettings },
 ): Promise<void> {
   const normalizedName = name.trim();
   if (!normalizedName) {
@@ -108,6 +109,10 @@ async function createNamedProjectGroup(
       group.roots.some((root) => normalizeProjectPath(root.path) === selectedPath),
     );
     if (existing) {
+      if (agentSettings && Object.keys(agentSettings).length > 0) {
+        await api.renameProjectGroup(existing.id, existing.name, agentSettings);
+        if (!runtime.navigationIntentIsCurrent(intent)) return;
+      }
       const existingPrimary = existing.primaryPath || orderedFolders[0];
       const workspace = await get().activateProject(existingPrimary, {
         navigationIntent: intent,
@@ -119,7 +124,7 @@ async function createNamedProjectGroup(
       return;
     }
   }
-  const created = await api.createProjectGroup(normalizedName, orderedFolders);
+  const created = await api.createProjectGroup(normalizedName, orderedFolders, agentSettings);
   if (!runtime.navigationIntentIsCurrent(intent)) return;
   const groupPrimary = created.group.primaryPath || primary;
   const workspace = await get().activateProject(groupPrimary, {
@@ -400,16 +405,16 @@ export function createProjectSlice({
     closeProjectDialog: () => {
       set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined });
     },
-    createProjectFromFolders: async ({ name, folders, primaryPath }) =>
+    createProjectFromFolders: async ({ name, folders, primaryPath, agentSettings }) =>
       createNamedProjectGroup(
         { get, set, runtime },
-        { name, folders, primaryPath },
+        { name, folders, primaryPath, agentSettings },
       ),
-    createProjectFromRemote: async ({ name, hostKey, path }) => {
+    createProjectFromRemote: async ({ name, hostKey, path, agentSettings }) => {
       const normalizedName = normalizeProjectName(name);
       if (!normalizedName) throw new Error(i18n.t("errors.projectNameLength"));
       const intent = runtime.beginNavigationIntent();
-      const { group } = await api.createRemoteProjectGroup(normalizedName, hostKey, path);
+      const { group } = await api.createRemoteProjectGroup(normalizedName, hostKey, path, agentSettings);
       if (!runtime.navigationIntentIsCurrent(intent)) return;
       const workspace = await get().activateProject(group.primaryPath, { navigationIntent: intent });
       if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
@@ -418,13 +423,13 @@ export function createProjectSlice({
       if (!runtime.navigationIntentIsCurrent(intent)) return;
       set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
     },
-    createProjectFromGit: async ({ name, url, parentPath }) => {
+    createProjectFromGit: async ({ name, url, parentPath, agentSettings }) => {
       // Clone first, then create the project through the same group path, so a
       // checkout and a folder pick produce identical project semantics.
       const checkout = await api.cloneProjectInto(url, parentPath);
       await createNamedProjectGroup(
         { get, set, runtime },
-        { name, folders: [checkout.path], primaryPath: checkout.path },
+        { name, folders: [checkout.path], primaryPath: checkout.path, agentSettings },
       );
     },
 

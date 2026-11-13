@@ -139,6 +139,17 @@ discovered
 4. 跳过单个失败的插件而不影响其他插件或主应用程序
 5. 这一步跑完后发出 `pluginChanged`（`reason: "restore"`），让渲染器重新读取
    它可能在恢复完成之前就取过的插件清单
+6. Start the agent sidecar only after this restore pass has awaited each enabled
+   plugin's `onLoad` and resident-service startup. Detached work started by a
+   plugin is not a readiness promise; initialization required before model
+   modules load must be awaited by the plugin. A failed plugin or registry read
+   remains logged and does not suppress sidecar startup.
+7. If application shutdown began during restoration, do not spawn a late sidecar
+   or drain queued agent work. No running sidecar is restarted by plugin restore.
+8. Background renderer catalog refreshes observe rejected host reads as
+   diagnostic warnings, preserve the last successful catalog, and remain
+   subscribed for recovery. Teardown notifications after host shutdown must
+   not cause unhandled promise rejections; unmount removes the subscription.
 
 ## 6. 开发者模式
 
@@ -152,6 +163,18 @@ discovered
 热重载时：
 - 尽可能保留插件设置
 - 不保证保留面板内存中状态
+- File notifications are hints: compare source identity, modification time,
+  size, and mode before scheduling a reload. Access-time-only notifications
+  (including NTFS updates caused by reading injection modules) must not unload
+  the plugin or interrupt its resident-service connections.
+- Inventory at most 10,000 non-ignored entries without following symlinks or
+  descending into dependency/build directories. An unavailable or oversized
+  inventory produces a diagnostic and leaves manual reload available.
+- Debounce genuine edits, replacements, additions, and deletions. Refresh the
+  inventory before loading new sources; loader reads must not trigger another
+  reload. Removed/replaced watcher callbacks cannot act on a later instance.
+- Permission ceilings, explicit reload, disable, uninstall, and shutdown keep
+  their existing validation and service teardown behavior.
 
 ## 7. 贡献点register/unregister交易
 

@@ -531,3 +531,29 @@ test("settled Task snapshots outrank stale lifecycle polling during a parallel f
   // History reconstruction must preserve success, rather than infer abortion.
   assert.equal(collectDelegationStatuses(items, { turnLive: false }).get("first"), "completed");
 });
+
+test("a detached child that still runs is not rewritten as aborted when the parent turn ended", () => {
+  const detached = task("detached-1", "running", "running", { detached: true, startedAt: 1 });
+  const statuses = collectDelegationStatuses([detached], { turnLive: false });
+  assert.equal(statuses.get("detached-1"), "running");
+  assert.equal(subagentOutcome(detached.message, statuses), "running");
+  assert.equal(
+    summarizeSubagentActivity([detached], statuses).running,
+    1,
+    "the parent's ended turn must not hide a child that is still working",
+  );
+  const plain = task("aborted-1", "running", "running", { startedAt: 1 });
+  assert.equal(
+    collectDelegationStatuses([plain], { turnLive: false }).get("aborted-1"),
+    "aborted",
+    "an unattached running child still settles when its turn ends",
+  );
+});
+
+test("a settled detached child drops the detached marker", () => {
+  const settled = task("settled-1", "success", "completed", { detached: true, startedAt: 1, completedAt: 2 });
+  assert.equal(
+    collectDelegationStatuses([settled], { turnLive: false }).get("settled-1"),
+    "completed",
+  );
+});

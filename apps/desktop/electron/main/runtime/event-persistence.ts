@@ -303,7 +303,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     })());
     return;
   }
-  if (event.type === "message_end" && event.message.role === "user" && !envelope.parentToolCallId) {
+  if (event.type === "message_end" && event.message.role === "user" && !envelope.parentToolCallId && !event.message.subagentControl) {
     // Accepted user steering revokes the silent completion-notice exception.
     const messageTurnId = envelope.turnId ?? turnId;
     if (event.message.steering && messageTurnId) completionNoticeTurns.delete(messageTurnId);
@@ -383,7 +383,8 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
   }
   // Runtime settlement refreshes the original Task row through the existing
   // full-message event; persist it as well as updating the live renderer.
-  if (event.type === "message_end" && event.message.role === "tool") {
+  if (event.type === "message_end" && (event.message.role === "tool" ||
+    (event.message.role === "user" && event.message.subagentControl))) {
     void persistenceOutbox
       .enqueue(
         {

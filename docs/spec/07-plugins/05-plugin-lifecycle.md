@@ -149,6 +149,17 @@ On app startup:
 4. Skip a single failed plugin without affecting other plugins or the main app
 5. Emit `pluginChanged` (`reason: "restore"`) once the pass is done, so the
    renderer re-reads a plugin list it may have fetched before the restore
+6. Start the agent sidecar only after this restore pass has awaited each enabled
+   plugin's `onLoad` and resident-service startup. Detached work started by a
+   plugin is not a readiness promise; initialization required before model
+   modules load must be awaited by the plugin. A failed plugin or registry read
+   remains logged and does not suppress sidecar startup.
+7. If application shutdown began during restoration, do not spawn a late sidecar
+   or drain queued agent work. No running sidecar is restarted by plugin restore.
+8. Background renderer catalog refreshes observe rejected host reads as
+   diagnostic warnings, preserve the last successful catalog, and remain
+   subscribed for recovery. Teardown notifications after host shutdown must
+   not cause unhandled promise rejections; unmount removes the subscription.
 
 ## 6. Developer mode
 
@@ -162,6 +173,18 @@ On app startup:
 On hot reload:
 - Preserve plugin settings as much as possible
 - Panel in-memory state is not guaranteed to be preserved
+- File notifications are hints: compare source identity, modification time,
+  size, and mode before scheduling a reload. Access-time-only notifications
+  (including NTFS updates caused by reading injection modules) must not unload
+  the plugin or interrupt its resident-service connections.
+- Inventory at most 10,000 non-ignored entries without following symlinks or
+  descending into dependency/build directories. An unavailable or oversized
+  inventory produces a diagnostic and leaves manual reload available.
+- Debounce genuine edits, replacements, additions, and deletions. Refresh the
+  inventory before loading new sources; loader reads must not trigger another
+  reload. Removed/replaced watcher callbacks cannot act on a later instance.
+- Permission ceilings, explicit reload, disable, uninstall, and shutdown keep
+  their existing validation and service teardown behavior.
 
 ## 7. Contribution-point register/unregister transaction
 

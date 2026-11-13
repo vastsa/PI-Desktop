@@ -7,6 +7,9 @@ import {
   useState,
 } from "react";
 import { ConversationTopbar } from "../../components/ConversationTopbar";
+import { RendererRefreshButton } from "./RendererRefreshButton";
+import { restoreRendererRefreshView } from "./renderer-refresh";
+import { useAppStore } from "../../stores/app-store";
 import { ExtensionPromptHost } from "../../components/ExtensionPromptDialog";
 import { PluginRendererHost } from "../../plugins/renderer-host/PluginRendererHost";
 import {
@@ -105,6 +108,14 @@ export function AppShell() {
   useCopyTex();
 
   useEffect(() => {
+    if (!ready) return;
+    void restoreRendererRefreshView().catch((error: unknown) => {
+      console.warn("Renderer refresh view could not be restored", error instanceof Error ? error.name : "UnknownError");
+      useAppStore.getState().showToast(t("app.refreshRestoreFailed"), { variant: "error" });
+    });
+  }, [ready, t]);
+
+  useEffect(() => {
     void loadChatSurface().catch((error: unknown) => {
       console.error("Failed to preload the chat surface", error);
     });
@@ -191,6 +202,7 @@ export function AppShell() {
                     <IconNewSession size={15} />
                   </TooltipButton>
                 )}
+                <RendererRefreshButton className="title-nav-btn no-drag" />
                 <div className="window-chrome-drag" aria-hidden />
               </div>
             )}
@@ -221,6 +233,7 @@ export function AppShell() {
                         />
                       </div>
                     )}
+                    <RendererRefreshButton className="title-nav-btn no-drag" />
                   </div>
                 )}
                 {page !== "settings" ? <UpdateBanner /> : null}

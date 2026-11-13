@@ -17,6 +17,7 @@ function respond(res: ServerResponse, name?: string) {
   const send = (data: { type: string; [key: string]: unknown }) => res.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
   send({ type: "response.created", response: { id: "resp_fixture" } });
   const args = name === "Task" ? { agent: "worker", task: "Inspect the fixture." }
+    : name === "TaskRead" ? { delegationId: "unknown-delegation" }
     : name === "Write" ? { path: "fixture.txt", content: "must not be written" }
       : { path: "fixture.txt", tag: "ABCD", ops: "PUT >$:\n+must not be written" };
   const text = "This mode cannot perform that action. I will continue with a read-only plan.";
@@ -34,8 +35,8 @@ function respond(res: ServerResponse, name?: string) {
 }
 
 it.each([
-  ["plan", "Edit"], ["plan", "Write"], ["plan", "Task"],
-  ["goal", "Edit"], ["goal", "Write"], ["goal", "Task"],
+  ["plan", "Edit"], ["plan", "Write"], ["plan", "Task"], ["plan", "TaskRead"],
+  ["goal", "Edit"], ["goal", "Write"], ["goal", "Task"], ["goal", "TaskRead"],
 ] as const)("%s declares %s but returns a paired denial before any host action", async (mode, name) => {
   const requests: Request[] = [];
   let firstReceived!: () => void;

@@ -220,13 +220,61 @@ test("unknown retained tabs are discarded without losing a known selection", () 
   assert.equal(staleSelected.activeTabId, "review");
 });
 
-test("only plugin views are launchable tools", () => {
+test("plugin views and the session directory are launchable tools", () => {
   assert.equal(isToolWorkPanelTab(browserPluginTab()), true);
+  assert.equal(isToolWorkPanelTab(toolWorkPanelTab("subagents")), true);
+  assert.equal(isToolWorkPanelTab(subagentWorkPanelTab("del-1")), false);
   assert.equal(isToolWorkPanelTab(toolWorkPanelTab("review")), false);
   assert.equal(isToolWorkPanelTab(fileWorkPanelTab("README.md")), false);
   assert.equal(isToolWorkPanelTab(pluginWorkPanelTab("pi.file-manager", "manager")), true);
   assert.equal(isKnownWorkPanelTab({ id: "browser", kind: "browser" }), false);
   assert.equal(isKnownWorkPanelTab(newWorkPanelTab()), true);
+});
+
+test("the session directory is a singleton alongside independent delegate tabs", () => {
+  const directory = toolWorkPanelTab("subagents");
+  const detail = subagentWorkPanelTab("del-1", "explorer");
+  const opened = openWorkPanelTabState(emptyWorkPanelContext(), directory);
+  const withDetail = openWorkPanelTabState(opened, detail);
+  const reopened = openWorkPanelTabState(withDetail, toolWorkPanelTab("subagents"));
+
+  assert.deepEqual(directory, { id: "subagents", kind: "subagents" });
+  assert.equal(isKnownWorkPanelTab(directory), true);
+  assert.deepEqual(reopened.tabs, [directory, detail]);
+  assert.equal(reopened.activeTabId, directory.id);
+  assert.deepEqual(sanitizeWorkPanelTabsState(reopened), reopened);
+
+  const launcher = newWorkPanelTab();
+  const fromLauncher = replaceWorkPanelTabState(
+    openWorkPanelTabState(reopened, launcher),
+    launcher.id,
+    toolWorkPanelTab("subagents"),
+  );
+  assert.deepEqual(fromLauncher, reopened);
+  const closed = closeWorkPanelTabState(fromLauncher, directory.id);
+  assert.deepEqual(closed.tabs, [detail]);
+  assert.equal(closed.activeTabId, detail.id);
+});
+
+test("session switches retain the directory only in its owning context", () => {
+  const directory = toolWorkPanelTab("subagents");
+  const sessionA = {
+    ...emptyWorkPanelContext(),
+    open: true,
+    tabs: [directory],
+    activeTabId: directory.id,
+  };
+  const toB = switchWorkPanelContextState({}, "session-a", sessionA, "session-b");
+  assert.deepEqual(toB.visible, emptyWorkPanelContext());
+
+  const backToA = switchWorkPanelContextState(
+    toB.contexts,
+    "session-b",
+    toB.visible,
+    "session-a",
+  );
+  assert.deepEqual(backToA.visible, sessionA);
+  assert.deepEqual(backToA.contexts["session-b"], emptyWorkPanelContext());
 });
 
 test("a host-chosen project file prefers the bundled file view", () => {

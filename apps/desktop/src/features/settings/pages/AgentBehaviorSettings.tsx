@@ -13,6 +13,7 @@ import { SegmentedControl, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { ComputerUseSettings } from "../computer-use/ComputerUseSettings";
 import { GoalBudgetSettingsRow } from "../../modes/GoalBudgetSettingsRow";
+import { ProviderRetrySettingsRows } from "../provider-retry-settings";
 import { CommandShellRow, SettingsCard, SettingsRow } from "../primitives";
 
 export function AgentBehaviorSettings({
@@ -70,16 +71,7 @@ export function AgentBehaviorSettings({
       </SettingsCard>
 
       <SettingsCard title={t("settings.execution")}>
-        <SettingsRow
-          title={t("settings.infiniteProviderRetry")}
-          description={t("settings.infiniteProviderRetryDesc")}
-        >
-          <SettingsToggle
-            checked={settings.infiniteProviderRetry === true}
-            label={t("settings.infiniteProviderRetry")}
-            onChange={() => void saveSettings({ infiniteProviderRetry: settings.infiniteProviderRetry !== true })}
-          />
-        </SettingsRow>
+        <ProviderRetrySettingsRows settings={settings} saveSettings={saveSettings} />
         <SettingsRow
           title={t("settings.scheduledTasks")}
           description={t("settings.scheduledTasksDesc")}

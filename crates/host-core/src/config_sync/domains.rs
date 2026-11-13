@@ -16,7 +16,9 @@ pub(crate) use capture_impl::{
     capture, global_instruction_path_for_sync, remove_instruction_file, write_instruction_file,
 };
 #[cfg(test)]
-pub(crate) use capture_impl::{capture_instructions, capture_memory};
+pub(crate) use capture_impl::{
+    capture_instructions, capture_memory, capture_project_group_instructions,
+};
 
 pub const DOMAIN_APPLICATION: &str = "application";
 pub const DOMAIN_PROVIDERS: &str = "providers";
@@ -45,6 +47,9 @@ pub(crate) const PORTABLE_APPLICATION_FIELDS: &[&str] = &[
     "defaultModelId",
     "defaultMode",
     "infiniteProviderRetry",
+    "providerRetryMaxAttempts",
+    "providerRetryInitialDelayMs",
+    "providerRetryFixedDelayMs",
     "keybindings",
     "linkOpenTarget",
     "contextUsageDisplay",
@@ -109,6 +114,9 @@ pub const DOMAIN_ADAPTERS: &[DomainAdapterSpec] = &[
             "keepCommandsExpanded",
             "autoCollapseSettledGroups",
             "autoCollapseThinking",
+            "providerRetryMaxAttempts",
+            "providerRetryInitialDelayMs",
+            "providerRetryFixedDelayMs",
             "keybindings",
             "display bindings",
             "provider/model bindings",
@@ -118,6 +126,7 @@ pub const DOMAIN_ADAPTERS: &[DomainAdapterSpec] = &[
             "window geometry",
             "default command shell",
             "network proxy",
+            "native DNS",
             "developer mode",
             "onboarding state",
             "permission mode",
@@ -631,9 +640,50 @@ mod tests {
     use crate::state::AppState;
 
     #[test]
+    fn provider_retry_overrides_are_portable_application_settings() {
+        let application = adapter_for(DOMAIN_APPLICATION).unwrap();
+        for field in [
+            "providerRetryMaxAttempts",
+            "providerRetryInitialDelayMs",
+            "providerRetryFixedDelayMs",
+        ] {
+            assert!(PORTABLE_APPLICATION_FIELDS.contains(&field), "{field}");
+            assert!(application.exportable_fields.contains(&field), "{field}");
+        }
+
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut state = AppState::open(data_dir.path()).unwrap();
+        let settings = json!({
+            "providerRetryMaxAttempts": 0,
+            "providerRetryInitialDelayMs": 9_007_199_254_740_991u64,
+            "providerRetryFixedDelayMs": 45_000,
+        });
+        state.db.set_setting("app", &settings).unwrap();
+        let selection = CategorySelection(
+            ALL_DOMAINS
+                .iter()
+                .map(|domain| ((*domain).to_string(), *domain == DOMAIN_APPLICATION))
+                .collect(),
+        );
+        let snapshot = capture(
+            &mut state,
+            &VaultKey([0; 32]),
+            &selection,
+            false,
+            &BTreeMap::new(),
+            &ProjectIdentityOverrides::default(),
+        )
+        .unwrap();
+        assert_eq!(snapshot.manifest.entities.len(), 1);
+        assert_eq!(snapshot.manifest.entities[0].domain, DOMAIN_APPLICATION);
+        assert_eq!(snapshot.manifest.entities[0].payload, settings);
+    }
+
+    #[test]
     fn adapter_registry_covers_every_portable_domain() {
         assert_eq!(DOMAIN_ADAPTERS.len(), ALL_DOMAINS.len());
         assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"defaultPermissionMode"));
+        assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"networkDns"));
         // The reasoning-display boolean, its legacy fallback, the transcript
         // display mode and the deprecated command-folding preference are portable,
         // and each is advertised by the application adapter.
@@ -642,6 +692,7 @@ mod tests {
         assert!(PORTABLE_APPLICATION_FIELDS.contains(&"thinkingDisplayMode"));
         assert!(PORTABLE_APPLICATION_FIELDS.contains(&"keepCommandsExpanded"));
         let application = adapter_for(DOMAIN_APPLICATION).expect("application adapter");
+        assert!(application.local_overlays.contains(&"native DNS"));
         assert!(application.exportable_fields.contains(&"showThinking"));
         assert!(application
             .exportable_fields

@@ -1702,6 +1702,15 @@ palettes remain fixed across OS changes; repeat after shutdown/restart.
 - **接受**：G（热重载），D（未经审查不得扩大权限）
 - **里程碑**：后 MVP
 - **状态**：部分自动化（`apps/desktop/test/plugin-hot-reload.test.mjs`：反跳、忽略列表、权限上限、恢复、拆卸）；手动编辑循环记录
+- **Resident-stream regression**: `plugin-watcher-behavior.test.mjs` covers
+  access-time notifications, same-size edits, atomic replacement, new/deleted
+  nested sources, ignored paths, and stale watcher teardown. The real child
+  process in `plugin-hot-reload-stream.test.mjs` keeps an HTTP stream open across
+  native metadata events, then checks genuine edit reload, permission-ceiling
+  rejection without disconnecting the stream, and explicit unload without revival.
+  Packaged proxy acceptance uses an isolated profile and loopback streaming model;
+  record actual elapsed time, metadata rounds, requests, and reloads. Accelerated
+  metadata triggers are not evidence of an overnight production run.
 
 #### E2E-022C：检查、打包、安装往返
 
@@ -1818,9 +1827,10 @@ palettes remain fixed across OS changes; repeat after shutdown/restart.
 - **前提条件**：至少有一个已启用的插件、一个已禁用的插件以及一个加载失败的插件。
 - **步骤**：1) 打开扩展→已安装。 2) 读取选项卡和组计数。 3) 确认失败的插件位于需要注意及其错误消息下。 4) 按作者和许可进行搜索。 5) 清除搜索。
 - **预期**：行分组为需要注意/可用更新/活动/已关闭（带计数）； `status: "error" | "load_error"` 内联呈现错误消息而不是静默；每行默认为两行 name/id/version 摘要，而详细信息披露则揭示了带有风险色彩的权限芯片、功能和常驻服务状态；单范围触发器打开解释关闭/此项目/到处选择和项目选择器；行图标操作公开 hover/focus 标签；结果计数反映了过滤的子集，清除会恢复每个组。
+- **卡片操作**：在英文和简体中文下，分别点击有更新和无更新的已启用 `ui.panel` 插件卡片上的“打开面板”，每次均通过既有宿主 API 打开对应插件。未声明面板和已禁用的插件不提供启动操作。打开并关闭插件设置，通过行菜单切换自动更新，再通过作用域控件禁用面板插件；启动操作随即消失，但菜单保留。更新和设置控件不依赖面板是否可用。宿主拒绝打开时通过页面错误提示报告，不绕过权限检查。插件启动器仍是另一入口。
 - **链接规格**：`04-ux/01-ui-ia.md`、`07-plugins/13-plugin-permissions-matrix.md`
 - **接受**：G（已安装插件管理）
-- **状态**：已记录
+- **状态**：卡片操作由 `apps/desktop/test/installed-plugin-panel-user-path.test.mjs` 自动化覆盖（真实插件页、hook、store 和 API，隔离 renderer，仅替换 preload 边界）。原生面板创建单独归入 E2E-024D；上述其余场景保留为文档验收。
 
 #### E2E-024D：隔离插件面板主桥
 
@@ -5130,9 +5140,11 @@ eleven-tool-round desktop paths are verified by
   - 步骤 6 像 `completed` 一样恢复失败的链：它已经做出的读取成为新运行的种子，而它失败的助手行
     不会被重放。
   - 步骤 7 以工具错误拒绝：恢复后的运行沿用链的模型，错误信息指向「换模型要新建委派」。
-  - 步骤 8 仍然可以恢复，走定义现在解析到的绑定，并且该委派的生命周期 details 带上先前模型的 id
-    作为 `modelChangedFrom`。父级通过它轮询的生命周期快照看到它，卡片也随该运行显示它，因此这次
-    切换不是静默的。
+  - Step 8 rejects an unavailable recorded binding before any model request or
+    successor starts. No definition/session default is substituted. The original
+    model and continuation id remain visible; explicit user selection can recover
+    it. Legacy Task rows without `modelKey` recover the actual account from their
+    own child replies. Rejected Task attempts never replace the original chain.
   - 步骤 9 每个定义最多保留两条可复用链：最久未活动的已结束链被整条淘汰，因此它的每个 id 都按
     未知委派作答并附上当前可复用清单；而最新运行仍在工作的链永不被淘汰——该组可以暂时超出上限，
     也不会让一个仍在运行的委派搁浅。
@@ -5260,6 +5272,208 @@ eleven-tool-round desktop paths are verified by
 - **验收**：C — 对话和直播；品质
 - **里程碑**：M6+
 - **状态**：草稿。必需套件：`test:e2e`、`test:e2e:subagents`。
+
+#### E2E-SUBAGENT-session-directory
+
+- **先决条件**：Agent 会话中有运行中、已完成/恢复、失败、停止和超时的委派，主转录
+  窗口之外的旧 Task 行，以及一个稳定句柄尚未返回的 Task。另一个会话有自己的委派。
+  工作面板关闭；保留的 Task/生命周期结果包含超过显示预览限额的报告和错误。
+- **步骤**：
+  1. 打开对话顶栏的机器人动作，确认只有一个会话子代理标签；关闭后从工作面板的
+     `+` New 启动器行重新打开。
+  2. 读取代理、任务、模型和状态，确认最近的链在前，恢复链只占一行。
+  3. 按任务、代理和模型搜索，切换“全部 / 运行中 / 已完成 / 问题”。
+  4. 显式加载更早历史并选择旧链；读取记录文本/工具、翻页、重试失败的读取，再为
+     已加载的行送达更新的实时快照。
+  5. 在句柄到达前选择创建中的 Task，检查复制 id 和停止；无需重新选择就送达稳定句柄。
+  6. 复制已建立链的最新 id，单独停止后全部停止；待定时重复点击，并延迟确认。
+  7. 刷新包含长报告和错误的有界 Host 历史。
+  8. 在面板关闭和另一个标签活动时启动 Task；读取待定时切换会话、关闭/重开标签后返回。
+  9. 打开远程会话和没有活动对话的工作区，确认既有转录拓扑/详情入口仍可用。
+- **预期**：只显示活动会话的委派。搜索和过滤生效；即使 Task 工具调用本身成功，失败、
+  停止和超时的委派仍属于“问题”。正文预览之外独立保留完整有效的身份/状态/续接
+  元数据，恢复链不会被长报告拆散。索引只保留元数据而不是子转录或报告，更早历史
+  需显式分页。详情有独立的有界读取器，更新的实时行胜出且不替换主转录。创建中显示
+  本地化胶囊、禁用复制 id，不提供单独停止，也不会仅因创建中而提供全部停止。稳定
+  句柄到达后保持选择并启用对应操作。复制使用链中最新的 id；父级 Task 续跑仍可用。
+  直接命令遵循下方 E2E-SUBAGENT-user-control。停止保持去重与确认式语义，在确认前
+  保持待定，不会乐观改标，也不会停止父级。Task 启动不会打开、激活或聚焦标签。
+  迟到的读取不会绘制到另一个会话或已释放的详情。
+  顶栏动作在远程/无会话上下文隐藏；
+  既有的拓扑与详情行为保持不变。
+- **链接规格**：`04-ux/01-ui-ia.md` §3、`04-ux/08-component-spec.md` §5.1 与 §5.8、
+  `04-ux/09-interaction-patterns.md` §1.8、`03-runtime/02-agent-runtime.md` §5f、ADR 0347
+- **验收**：C — 对话和直播；品质
+- **里程碑**：M6+
+- **状态**：2026-11-02 本地自动化覆盖。隔离渲染器用户路径
+  `apps/desktop/test/session-subagents-user-path.test.mjs` 使用虚构会话和模拟的 preload/
+  剪贴板边界，覆盖真实顶栏/启动器/存储/页面连线、操作、分页、重试、流式更新、创建
+  和会话/释放边界。模型/历史测试覆盖索引和结果；
+  `crates/host-core/src/sessions/delegation_display.rs` 覆盖真实有界 Host 读取、长报告、
+  元数据保留及原始历史不变。这不是已安装客户端或 PR 集成资格。本地入口：
+  `node --test --test-concurrency=1 apps/desktop/test/session-subagents-user-path.test.mjs`。
+
+#### E2E-SUBAGENT-user-control
+
+- **先决条件**：虚构的受支持本地 Agent 会话、当前子代理定义/模型绑定、运行中和
+  已结算的链，以及模拟的外部 preload/Host/提供商边界。另有不受支持的模式与外来句柄。
+- **步骤**：
+  1. 打开会话子代理，选定定义并填写任务与可选模型后启动，检查接纳的子代理根与活动。
+  2. 选择显式启用子代理的模型，在子代理运行时发送后续消息；分别带模型选择和不带
+     选择续跑已结算链。确认不可用模型不能被选择或接纳。
+  3. 在确认待定时编辑草稿、重新挂载标签、刷新 Renderer、切换会话，检查草稿与结果归属。
+  4. 拒绝接纳后重试，测试过期配置、不受支持的模式、外来句柄、重复操作 id 与冲突复用。
+  5. 恢复已记入日志的操作，并通过既有确认式取消路径停止运行中的子代理。
+  6. 停止一个子代理，再结束两个同定义的新子代理，然后追加消息继续较早的链；分别
+     在运行时存活和恢复后验证。对提供商 Task 创建的链重复此过程，确认新用户消息、
+     运行中状态、实际发出的下一次模型请求及可见回复。
+  7. 让父代理在用户子代理运行中或模型授权待定时结束，确认 turn 仍可接收操作，
+     待工作结算后只发一次最终 `agent_end`。授权待定时停止会话，取消须立即返回，
+     不得启动迟到的子代理。
+  8. 分别启动提供商创建和用户创建的子代理，在父级等待模型、等待子代理时停止父级。
+     确认子代理模型请求与运行时工具信号未被取消；父级新输入真正发出模型请求，
+     子代理无需重启即可自然完成。覆盖跨主停止执行的工具及停止后新发起的工具。
+     明确的子代理 Stop 与会话销毁仍须取消对应子代理。
+  9. 创建子代理、发送追问，再让父级通过 TaskList/TaskRead 查看，确认初始任务、
+     追问和回复按时间排序；只有明确读取的内容才能进入父模型历史。
+     缓存淘汰和移除全部定义后重复：分页 TaskList 历史，再用初始及续跑 id 读取
+     TaskRead；确认分页、外来 id 拒绝，且模型可恢复清单不扩大。
+  10. 子插件/MCP/远程调用已经接纳或仍在等待接纳时停止父级；子调用继续，根调用
+      仍拒绝过期 turn。停止任一执行，只取消其调用信号。迟到准入返回前撤销 owner
+      或替换 Host，不得再派发。子清理使用独立合成 id，不得使用旧/新父回合 id，
+      且只通知实际参与、仍在项目作用域内的插件。子代理活动期间变更启动配置须
+      返回 AGENT_BUSY，不得取消子代理。
+  11. Persist a running child, recreate the runtime, and Continue its existing
+      directory row. Cover a saved checkpoint and a provider Task interrupted
+      before its first reply. Preserve task/history/model and the single chain;
+      do not replay unfinished tools or request the parent model automatically.
+      The next parent prompt is available; model-issued resume, foreign handles,
+      and running-target rejection rules remain unchanged.
+  12. Hold a real child tool batch, send two plain directions from its composer,
+      and release the tool. The first subsequent model request includes both
+      saved directions in order and the original tool result, without cancelling
+      or rerunning the tool. Assert one persisted command per operation and no
+      parent-context leakage. Cover a delayed/failed write and concurrent child
+      Stop; neither can dispatch an uncommitted direction. A queued model change
+      blocks later plain messages from overtaking it. The running composer shows
+      safe-boundary guidance; explicit model selection keeps model-change guidance.
+- **预期**：接纳命令无需父模型往返。Main 与运行时独立执行当前权限裁决。用户命令
+  始终归子代理所有，不会变成伪造的提供商 Task 调用或隐式父级上下文。运行中的
+  后续消息有序。所选模型、思考策略、传输与凭据仅在下一条消息的回合边界一起
+  应用，当前工作、重试和回退先完成。已结算链保留历史，并使用所选模型的上下文
+  预算；父代理模型和提供商 Task 续跑限制不变。重复请求不会执行两次，日志恢复
+  不重放已接纳的工作。迟到的结果不会清除更新的草稿或影响其他会话。回执中的
+  `started` / `queued` / `recorded` 不等于权威完成状态；停止仍是协作式取消。
+  续跑缓存淘汰不得把本会话子代理误判为外来任务。最终 turn 释放后，下次继续不得
+  再路由到 sidecar 中已经空闲的旧 turn。
+- **覆盖**：`apps/desktop/test/subagent-control-user-path.test.mjs`、
+  `subagent-control-ipc.test.mjs`、`subagent-control-drafts.test.mjs` 和
+  `subagent-control-renderer-model.test.mjs`；共享请求测试与
+  `packages/agent-runtime/src/subagent-control-runtime.test.ts` 覆盖接纳、执行、
+  重放和归属。Host 元数据测试位于 `crates/host-core/src/sessions/subagent_control.rs`
+  与会话持久化测试。
+  `parent-stop-independent.test.ts` 覆盖仅父级取消，`subagent-content-runtime.test.ts`
+  覆盖显式查看子代理内容，`subagent-settlement-persistence.test.mjs` 覆盖子代理终态快照。
+- **链接规格**：`03-runtime/02-agent-runtime.md` §5f.4、
+  `04-ux/08-component-spec.md` §5.8、ADR 0348。
+- **状态**：已实现源码候选。隔离夹具与单元/契约覆盖不代表已安装客户端、原生持久化
+  或 PR 集成资格。
+  `subagent-execution-user-path.test.mjs` 使用真实 Main IPC、源码 sidecar、回环
+  提供商、隔离 profile、真实插件调用取消机制与内存 Host 适配器，覆盖 Task/用户
+  子代理、父级两种等待阶段、新父回合、配置拒绝、子 Stop 与运行时销毁。
+  `subagent-tool-execution-boundary.test.mjs` 覆盖可信 owner/调用准入、重放和伪造
+  拒绝、await 后取消与 Host 替换；远程工作区和用户 MCP 测试覆盖各自精确调用信号。
+  适配器刻意从 Host 通知中移除新增 owner 字段，要求 Main 查找已登记调用。
+  原生 Host 转发/持久化及已安装插件/客户端仍需单独验收；不得放松 stale-turn 门禁。
+
+#### E2E-UI-renderer-refresh
+
+- **先决条件**：隔离 Electron 应用外壳，采用生产环境本地 `file:` 导航保护，
+  虚构会话与模拟的外部 Host/preload；主会话、子代理草稿和工作面板选择均已填写。
+- **步骤**：点击界面刷新，确认新 Renderer 文档恢复草稿与展示状态，并尝试外部地址
+  和其他文件导航。取消重载，推进受控的 10 秒期限，再重试；在取消的重载待定时
+  卸载刷新按钮。
+- **预期**：只有当前已授权的精确本地文档可以重载，其他导航仍被阻止。不会新增
+  Agent 执行、停止或消息重放。取消的重载恢复按钮、显示本地化错误、保留实时草稿
+  并删除过期检查点；重试可用，卸载清理期限计时器。
+- **覆盖**：`apps/desktop/test/renderer-refresh-navigation.test.mjs`、
+  `renderer-refresh-user-path.test.mjs` 和 `renderer-refresh-checkpoint.test.mjs`。
+- **状态**：隔离本地用户路径覆盖，不代表已安装客户端或 PR 集成资格。
+
+#### E2E-PROJECT-agent-settings
+
+- **先决条件**：隔离 Electron 配置、真实项目对话框和 store、虚构目录及 preload
+  持久化边界；原生测试使用临时 SQLite 和项目目录，不触及用户数据或外部服务。
+- **步骤**：创建时选择一个 Skill、零个 MCP 并填写独立 Markdown；重开编辑，恢复
+  Skill 继承并选择一个 MCP。输入超过 UTF-8 字节上限的说明，修正后保存；从旧项目
+  的独立说明入口编辑。重开既有项目时先不编辑，再明确清空设置。制造目录请求竞态、
+  失败重试并移除不可用 ID。原生覆盖本地/远程创建与编辑、重命名、省略/重置、损坏
+  配置、存储失败、根目录变化、配置同步及数据迁移。
+  In both Create and Edit, load twelve skills and twelve MCP entries with long
+  English/CJK descriptions and unbroken names at 900, 660, and 420px window widths.
+  Check rendered label bounds, focus/scroll to each group's last checkbox, change
+  the selection through its label, and save in English and Simplified Chinese.
+- **预期**：设置完整回读且不写仓库文件；空列表与继承区分，迟到响应不替换草稿。
+  原生写入原子化，组上下文隔离。禁用、越界、未选或已撤销能力无法分发；启动仅读取
+  一次组上下文。
+  Long descriptions stay within their own rows without horizontal overflow or
+  adjacent-row overlap; the bounded lists scroll and save the intended choices.
+- **覆盖**：`project-settings-user-path.test.mjs`、`project-settings-ipc.test.mjs`、
+  `project-capabilities.test.mjs`、`skill-tool.test.mjs`、shared
+  `project-capabilities.test.ts`、host-runtime `launch-resolver.test.ts` 与原生
+  `project_group_options` 测试。
+- **状态**：隔离候选覆盖；已安装客户端与远程提供商验收独立进行。
+
+#### E2E-SUBAGENT-provider-recovery
+
+- **先决条件**：真实运行时连线、虚构会话、回环 SSE 提供商、实时模型授权边界与受控时钟。
+- **步骤**：父级 Task 启动子代理；子代理完成工具后下一供应商请求卡顿。TaskWait 在
+  120 秒时返回，父级用另一个已授权供应商调用 TaskRecover 并收取完成结果。验证
+  思考重置活动时间、工具/重试等待不符合条件、重复等待不空转。授权期间制造活动恢复、
+  Stop、销毁、结算、模式/回合/子代理变化；尝试重复、相同、撤销和外来目标。发送迟到
+  事件/回调，并在恢复待定时排队用户消息。
+- **预期**：每次必须重新授权；只中止物理卡顿请求。已完成工具仅执行一次，用户消息
+  有序，父级绑定不变，迟到输出隔离，结算/报告一次。Task resume 携带模型仍被拒绝；
+  子代理与 Plan/Goal 不能恢复。测试不访问真实提供商和生产数据。
+- **覆盖**：`subagent-provider-attempt.test.ts`、`subagent-recovery-runtime.test.ts`、
+  shared `subagent-definition.test.ts`。
+- **状态**：隔离候选覆盖，不代表已安装客户端验收。
+
+#### E2E-SUBAGENT-parent-recorded-content
+
+- **先决条件**：真实 `agent.prompt` 和恢复连线，虚构的 380 行会话、模拟的外部 Host
+  和回环 SSE 提供商。恢复链包含可见窗口之外的行、规范化的 `agents/explorer` 行、
+  唯一可归属的缺名行、并行/名称不匹配行，以及仅思考/非文本内容。当前定义可以为空。
+- **步骤**：
+  1. 让父代理通过 `TaskRead` 检查已结算委派，检查默认 offset/limit 和显式小页大小。
+  2. 沿 `nextOffset` 翻页至结束，再请求超过 `total` 的 offset。
+  3. 检查一条连续恢复序列；包含规范化匹配和有说明的旧行，排除并行/名称不匹配与仅思考行。
+  4. 在新的 sidecar 中用 `subagents: []` 恢复会话并读取。
+  5. 请求外来委派 id、文件路径和会话 id，并测试 Plan/Goal 和显式/继承的子代理定义。
+  6. 检查父级默认提供商输入和被请求的工具输出。
+- **预期**：默认 limit 为 40，最多 100；每个值最多 2000 字符，序列化信封/页保持在
+  20000 字符以内。`total`、`returned`、`offset`、`hasMore`、`nextOffset`、
+  `truncatedValues`、`source` 和 `status` 描述无间隙的页；超范围 offset 返回合法空页。
+  只有所属链调用且规范化代理名匹配的可见助手文本或工具参数/文本结果被投影。唯一
+  归属的旧行计入 `unattributedRows` 并说明；不会投影思考、模型系统/提供商重放或
+  附件有效载荷。记录的工具文本可以含路径，但工具不做文件系统/会话路径查找。外来
+  id/路径/会话 id 返回稳定错误；Plan/Goal 拒绝工具，子代理永远得不到它，包括
+  `tools: inherit`。没有当前定义时 Agent 模式仍声明该工具。恢复使用保留链
+  （`source: chain`），实时记录使用 `source: live`。默认重放仍排除全部原始子行；只有
+  显式请求的输出进入普通父级工具历史，不新增自动重放或提示词章节。
+- **链接规格**：`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/03-tools-and-permissions.md` §10.2、ADR 0089、ADR 0337、ADR 0347
+- **验收**：C、E、F、安全、品质
+- **里程碑**：M6+
+- **状态**：2026-11-02 本地自动化覆盖。新 sidecar 路径
+  `apps/desktop/test/subagent-content-sidecar.test.mjs` 使用真实运行时连线与模拟的 Host/
+  回环提供商边界，覆盖恢复历史、分页、归属、默认不重放、空定义和外来 id 拒绝。
+  `packages/agent-runtime/src/subagent-content.test.ts` 与
+  `subagent-content-runtime.test.ts` 覆盖默认值、限额、实时/链解析和纯文本提取；
+  `mode-tool-access.test.ts` 与 `packages/shared/src/subagent-definition.test.ts` 覆盖
+  模式/子代理拒绝。这些是任务工作区检查，不是已安装客户端、真实提供商、PR 集成或
+  发布资格。本地入口：
+  `node --test --test-concurrency=1 apps/desktop/test/subagent-content-sidecar.test.mjs`。
 
 #### E2E-145：工具结果读取为结构化块，从不 JSON
 
@@ -6248,6 +6462,15 @@ eleven-tool-round desktop paths are verified by
 | G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | C / E / F / 品质 —— 后台 Bash 任务在回合结束后继续运行 | E2E-265 |
+| C — 对话和直播（会话子代理目录） | E2E-SUBAGENT-session-directory |
+| 品质（会话子代理目录） | E2E-SUBAGENT-session-directory |
+| M6+（会话子代理目录） | E2E-SUBAGENT-session-directory |
+| C — 对话和直播（父级检查已记录的委派内容） | E2E-SUBAGENT-parent-recorded-content |
+| E — 工具和权限（父级检查已记录的委派内容） | E2E-SUBAGENT-parent-recorded-content |
+| F — 持久化（父级检查已记录的委派内容） | E2E-SUBAGENT-parent-recorded-content |
+| 安全（父级检查已记录的委派内容） | E2E-SUBAGENT-parent-recorded-content |
+| 品质（父级检查已记录的委派内容） | E2E-SUBAGENT-parent-recorded-content |
+| M6+（父级检查已记录的委派内容） | E2E-SUBAGENT-parent-recorded-content |
 | F — 持久化（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | 品质（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 
@@ -10617,3 +10840,22 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
+#### E2E-NETWORK-native-dns
+
+- **Preconditions**: Isolated Electron profile, loopback DoH/HTTP fixtures,
+  production native resolver and authenticated relay, process-local fixture SPKI.
+  No installed-client data, paid provider, TLS bypass, or host-resolver override.
+- **Steps**: Enable, validate, save, disable/reopen/re-enable, and fail a DNS save.
+  Resolve `.invalid` via local DoH, request through system/direct/custom proxy
+  modes, switch resolver, disable DNS, and fail a strict endpoint. Reopen temporary
+  Host settings and import config sync. Race sidecar setup with settings, Host
+  replacement, and confirmed quit.
+- **Expected**: Local preferences survive partial saves and sync. Strict failure
+  does not silently fall back; Host/SNI, proxy policy, retry and child ownership
+  remain intact. Failed/stale/shutdown candidates are disposed before publication.
+- **Coverage**: Desktop `network-dns-settings-user-path`, `network-dns-native`,
+  `network-dns`, `network-settings-ipc`, `network-runtime-startup`,
+  `network-sidecar-quit`, `network-sidecar-rpc`, `network-catalog-dns` tests;
+  runtime `system-proxy-relay-dns` and Host DNS/settings/config-sync tests.
+- **Qualification**: Source checks do not assert installed-package acceptance.
+  See `docs/adr/native-desktop-dns.md`.

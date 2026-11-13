@@ -62,6 +62,12 @@ test("startup plugin restore notifies the renderer after every enabled plugin lo
       schemaTooNewOf: () => null,
     },
     "../plugin-display-locale": { syncPluginDisplayLocale: async () => {} },
+    // Native desktop DNS and the system-proxy relay are read while the sidecar
+    // is configured; this test never reaches either.
+    "../network-proxy": {
+      currentNetworkDns: () => ({ mode: "system" }),
+      currentSystemProxyRelayUrl: () => null,
+    },
     "@pi-desktop/host-runtime": {
       RuntimeSupervisor: class {
         superviseRestart() {

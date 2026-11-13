@@ -2,10 +2,14 @@ export const DEFAULT_RPC_TIMEOUT_MS = 130_000;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 export const COMMAND_RPC_BUFFER_MS = 10_000;
 /**
- * host-core's admission queue wait: what a call costs when its tool class is
- * saturated. It is spent after the permission gate and before the tool runs.
- * Mirrors `TOOL_QUEUE_WAIT_MS` in
- * `crates/host-core/src/tool_budget.rs`.
+ * host-core's shared admission queue wait: what a call costs when its tool class
+ * is saturated. It is spent after the permission gate and before the tool runs.
+ * Mirrors `TOOL_QUEUE_WAIT_MS` in `crates/host-core/src/tool_budget.rs`.
+ *
+ * An exclusive write waits longer there (`MUTATION_QUEUE_WAIT_MS`, ten minutes):
+ * the holder it conflicts with is a domain-fenced `Glob`/`Grep` that is still
+ * scanning. `rpcTimeoutMs` therefore leaves `tools.execute` without a transport
+ * deadline, so that wait is never cut short by the client.
  */
 export const TOOL_QUEUE_WAIT_MS = 30_000;
 /**

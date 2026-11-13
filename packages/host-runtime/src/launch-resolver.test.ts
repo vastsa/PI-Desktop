@@ -5,7 +5,11 @@ import { createHeadlessLaunchResolver, type HostProviderRecord } from "./launch-
 
 type Call = { method: string; params: Record<string, unknown> };
 
-function hostWith(providers: HostProviderRecord[], secrets: Record<string, string> = {}) {
+function hostWith(
+  providers: HostProviderRecord[],
+  secrets: Record<string, string> = {},
+  project: { context: unknown } | Error = { context: null },
+) {
   const calls: Call[] = [];
   return {
     calls,
@@ -31,7 +35,8 @@ function hostWith(providers: HostProviderRecord[], secrets: Record<string, strin
           case "agents.disabledBuiltins":
             return { disabled: [] } as T;
           case "project.group.context":
-            return { context: null } as T;
+            if (project instanceof Error) throw project;
+            return project as T;
           case "project.memory.get":
             return { memory: { content: "remember me" } } as T;
           default:
@@ -56,6 +61,18 @@ const provider: HostProviderRecord = {
 };
 
 describe("createHeadlessLaunchResolver", () => {
+  it("forwards configured retry pacing and removes invalid legacy values", async () => {
+    const { host } = hostWith([provider], { p1: "test-key" });
+    const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
+    const settings = { providerRetryMaxAttempts: 12, providerRetryInitialDelayMs: 60_000, providerRetryFixedDelayMs: 45_000 };
+    const launch = await resolver.resolve("s1", { providerId: "p1", modelId: "gpt-a" }, settings);
+    expect(launch.sidecarParams).toMatchObject(settings);
+    const reset = await resolver.resolve("s1", { providerId: "p1", modelId: "gpt-a" }, {
+      providerRetryMaxAttempts: null, providerRetryInitialDelayMs: -1, providerRetryFixedDelayMs: "1000",
+    });
+    for (const key of Object.keys(settings)) expect(reset.sidecarParams).not.toHaveProperty(key);
+  });
+
   it("resolves the session's provider, its secret, the shell, skills and project memory", async () => {
     const { host, calls } = hostWith([provider], { p1: "sk-test" });
     const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
@@ -76,6 +93,42 @@ describe("createHeadlessLaunchResolver", () => {
     expect(launch.sidecarParams.commandShell).toMatchObject({ id: "bash" });
     expect(launch.sidecarParams.infiniteProviderRetry).toBe(false);
     expect(calls.some((call) => call.method === "providers.getSecret")).toBe(true);
+  });
+
+  it.each([
+    [undefined, ["review"]],
+    [[], []],
+    [["review"], ["review"]],
+    [["missing"], []],
+  ])("applies project skill selections %j to a launched session", async (skillIds, expected) => {
+    const { host, calls } = hostWith([provider], { p1: "sk-test" }, {
+      context: {
+        capabilities: skillIds === undefined ? {} : { skillIds },
+        roots: [{ path: "/work/project" }, { path: "/work/shared" }],
+        instructions: "Project instructions",
+        memory: { content: "Project memory" },
+      },
+    });
+    const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
+    const launch = await resolver.resolve("s1", { providerId: "p1", projectPath: "/work/project" }, {});
+    expect(launch.sidecarParams.pluginSkills?.map((skill) => skill.id)).toEqual(expected);
+    expect(launch.sidecarParams.projectMemory).toBe("Project memory");
+    expect(launch.sidecarParams.projectInstructions?.entries).toEqual(expect.arrayContaining([
+      { source: "ChatGPT Project instructions", content: "Project instructions" },
+      { source: "ChatGPT Project folders", content: expect.stringContaining("Additional root: /work/shared") },
+    ]));
+    expect(calls.filter((call) => call.method === "project.group.context")).toHaveLength(1);
+    expect(calls.some((call) => call.method === "project.memory.get")).toBe(false);
+  });
+
+  it.each([
+    new Error("project settings unavailable"),
+    { context: { capabilities: { skillIds: null } } },
+  ])("fails closed when project authorization cannot be read", async (project) => {
+    const { host, calls } = hostWith([provider], { p1: "sk-test" }, project);
+    const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
+    await expect(resolver.resolve("s1", { providerId: "p1", projectPath: "/work/project" }, {})).rejects.toThrow();
+    expect(calls.some((call) => call.method === "skills.active")).toBe(false);
   });
 
   it("uses only the full wire ID binding for a routed model, retaining its request ID", async () => {

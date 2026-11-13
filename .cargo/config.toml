@@ -3,3 +3,7 @@
 # Visual C++ Redistributable installation before the local service can boot.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# Local GNU builds must not depend on MinGW DLLs from the developer's PATH.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]

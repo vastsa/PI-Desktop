@@ -6,10 +6,17 @@ import {
   normalizeRadialMenuPreferences,
   radialMenuWriteError,
   validateNetworkProxy,
+  normalizeNetworkDns,
+  validateNetworkDns,
   validateSpeechSettings,
   type CommandShellId,
   type ModelBinding,
   type SessionThinkingLevel,
+  normalizeProviderRetryMaxAttempts,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryFixedDelayMs,
+  providerRetrySettingsWriteError,
+  type ProviderRetrySettingsInput,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -169,8 +176,18 @@ export function createProviderCatalogRuntime({
     const value = (
       settings && typeof settings === "object" ? settings : {}
     ) as T & { defaultCommandShell?: unknown; radialMenu?: unknown };
+    const normalized = { ...value } as T & ProviderRetrySettingsInput;
+    for (const [key, normalize] of [
+      ["providerRetryMaxAttempts", normalizeProviderRetryMaxAttempts],
+      ["providerRetryInitialDelayMs", normalizeProviderRetryInitialDelayMs],
+      ["providerRetryFixedDelayMs", normalizeProviderRetryFixedDelayMs],
+    ] as const) {
+      const setting = normalize(normalized[key]);
+      if (setting === undefined) delete normalized[key];
+      else normalized[key] = setting;
+    }
     return {
-      ...(value as T),
+      ...normalized,
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
         .infiniteProviderRetry === true,
       keepAwakeWhileRunning: (value as T & { keepAwakeWhileRunning?: unknown })
@@ -189,6 +206,7 @@ export function createProviderCatalogRuntime({
       autoCollapseThinking:
         (value as T & { autoCollapseThinking?: unknown }).autoCollapseThinking !== false,
       radialMenu: normalizeRadialMenuPreferences(value.radialMenu),
+      networkDns: normalizeNetworkDns((value as T & { networkDns?: unknown }).networkDns),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
@@ -199,7 +217,7 @@ export function createProviderCatalogRuntime({
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
       return settings;
     }
-    const value = settings as T & {
+    const value = settings as T & ProviderRetrySettingsInput & {
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
       keepAwakeWhileRunning?: unknown;
@@ -208,6 +226,7 @@ export function createProviderCatalogRuntime({
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
       networkProxy?: unknown;
+      networkDns?: unknown;
       macosWindowTranslucency?: unknown;
       startupAnimation?: unknown;
       transcriptDisplayMode?: unknown;
@@ -230,6 +249,10 @@ export function createProviderCatalogRuntime({
       throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
+    }
+    const retryError = providerRetrySettingsWriteError(value);
+    if (retryError) {
+      throw Object.assign(new Error(retryError), { errorCode: ErrorCodes.INVALID_PARAMS });
     }
     if (
       Object.prototype.hasOwnProperty.call(value, "keepAwakeWhileRunning") &&
@@ -339,6 +362,15 @@ export function createProviderCatalogRuntime({
         });
       }
       value.networkProxy = proxy.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(value, "networkDns")) {
+      const dns = validateNetworkDns(value.networkDns);
+      if (!dns.ok) {
+        throw Object.assign(new Error(dns.error), {
+          errorCode: ErrorCodes.INVALID_PARAMS,
+        });
+      }
+      value.networkDns = dns.value;
     }
     if (Object.prototype.hasOwnProperty.call(value, "speech")) {
       (value as T & { speech?: unknown }).speech = validateSpeechSettings(

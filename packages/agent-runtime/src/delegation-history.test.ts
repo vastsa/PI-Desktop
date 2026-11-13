@@ -613,6 +613,41 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
 });
 
 describe("rebuildChainsFromTranscript", () => {
+  it.each([undefined, "custom/retained"])("recovers the exact legacy reply account instead of alias %s", modelKey => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolArgs = { agent: "explorer", task: "Original task", model: "custom/retained" };
+    task.toolResult = { details: { delegationId: "d1", status: "completed", modelId: "retained", modelKey } };
+    const reply = { ...delegateAssistant("a1", "Result", "call-1"), providerId: "original", modelId: "retained" };
+    const foreign = { ...reply, id: "foreign", agentName: "fixer", providerId: "wrong" };
+    const sibling = { ...reply, id: "sibling", parentToolCallId: "other", providerId: "wrong" };
+    expect(rebuildChainsFromTranscript([task, reply, foreign, sibling])[0]).toMatchObject({
+      latestModelId: "retained", latestModelKey: "original/retained",
+    });
+  });
+
+  it("does not restore a stale reply account after a recorded model switch", () => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolResult = { details: { delegationId: "d1", status: "interrupted", modelId: "new-model", modelKey: "new/new-model" } };
+    const reply = { ...delegateAssistant("a1", "Old result", "call-1"), providerId: "old", modelId: "old-model" };
+    expect(rebuildChainsFromTranscript([task, reply])[0]).toMatchObject({ latestModelKey: "new/new-model", latestModelId: "new-model" });
+  });
+
+  it("keeps a recorded same-model account switch before its first reply", () => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolResult = { details: { delegationId: "d1", status: "interrupted", modelId: "retained", modelKey: "new/retained" } };
+    const reply = { ...delegateAssistant("a1", "Old result", "call-1"), providerId: "old", modelId: "retained" };
+    expect(rebuildChainsFromTranscript([task, reply])[0].latestModelKey).toBe("new/retained");
+  });
+
+  it("uses a matching recorded Task choice only when no child account was recorded", () => {
+    const task = taskRow("call-1", "d1", "Original task");
+    task.toolArgs = { agent: "explorer", task: "Original task", model: "original/retained" };
+    task.toolResult = { details: { delegationId: "d1", status: "completed", modelId: "retained" } };
+    expect(rebuildChainsFromTranscript([task])[0].latestModelKey).toBe("original/retained");
+    task.toolResult = { details: { delegationId: "d1", status: "completed", modelId: "fallback" } };
+    expect(rebuildChainsFromTranscript([task])[0].latestModelKey).toBeUndefined();
+  });
+
   it("groups resume links into one chain with the latest objective", () => {
     const transcript: UiMessage[] = [
       taskRow("call-1", "d1", "explore the parser", { description: "explore" }),
@@ -631,6 +666,33 @@ describe("rebuildChainsFromTranscript", () => {
       latestObjective: "now cover the lexer",
       originalTask: "explore the parser",
     });
+  });
+
+  it.each(["delegation-id", "call-id", "reused-handle"])("retains a continuation restored before its parent: %s", format => {
+    const root = taskRow("call-1", "d1", "Original task");
+    const latestId = format === "reused-handle" ? "d1" : "d2";
+    const resumed = taskRow("call-2", latestId, "Continuation", { resume: format === "call-id" ? "call-1" : "d1" });
+    const transcript = [resumed, root];
+    const before = JSON.stringify(transcript);
+    const chains = rebuildChainsFromTranscript(transcript);
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toMatchObject({
+      originalTask: "Original task", toolCallIds: ["call-1", "call-2"],
+      latestDelegationId: latestId, latestObjective: "Continuation",
+    });
+    expect(JSON.stringify(transcript)).toBe(before);
+  });
+
+  it("keeps repeated legacy handles in task order after shuffled restoration", () => {
+    const root = taskRow("call-1", "same", "Original task");
+    const middle = { ...taskRow("call-2", "same", "First continuation", { resume: "same" }),
+      createdAt: "2026-11-03T00:00:01.000Z" };
+    const latest = { ...taskRow("call-3", "same", "Last continuation", { resume: "same" }),
+      createdAt: "2026-11-03T00:00:02.000Z" };
+    const chains = rebuildChainsFromTranscript([latest, middle, root]);
+    expect(chains).toHaveLength(1);
+    expect(chains[0]).toMatchObject({ originalTask: "Original task",
+      toolCallIds: ["call-1", "call-2", "call-3"], latestObjective: "Last continuation" });
   });
 
   it("starts a new chain when a Task call carries no resume link", () => {

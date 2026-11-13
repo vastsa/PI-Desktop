@@ -1,3 +1,4 @@
+import { registerRendererRefreshCapture } from "../../../../lib/renderer-refresh-capture";
 import {
   useEffect,
   useLayoutEffect,
@@ -461,6 +462,8 @@ export function useComposerDraft({
       persistDraft(draftKeyRef.current);
     };
   }, []);
+
+  useEffect(() => registerRendererRefreshCapture(() => persistDraft()), []);
 
   useEffect(() => {
     const onVisibility = () => {

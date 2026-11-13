@@ -2,7 +2,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Mode } from "@pi-desktop/shared";
 
 /** Known editing/delegation names stay declared across contract-mode changes. */
-const RETAINED_MODE_TOOLS = new Set(["Write", "Edit", "Task", "TaskWait", "TaskList", "TaskStop"]);
+const RETAINED_MODE_TOOLS = new Set(["Write", "Edit", "Task", "TaskRead", "TaskWait", "TaskList", "TaskStop"]);
 
 export function retainModeToolDeclaration(name: string): boolean {
   return RETAINED_MODE_TOOLS.has(name);

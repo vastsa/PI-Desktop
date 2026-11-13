@@ -181,3 +181,34 @@ test("independent usage aggregates survive an unavailable Host and outbox restar
     assert.ok(written.every(row => row.turnId === "turn"));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("a user-created child's stopped snapshot survives outbox recovery", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-user-child-settlement-"));
+  try {
+    const outbox = new PersistenceOutbox(dir, () => undefined);
+    const pending = [];
+    const enqueue = outbox.enqueue.bind(outbox);
+    outbox.enqueue = (...args) => { const write = enqueue(...args); pending.push(write); return write; };
+    const { persistAgentEvent } = createEventPersistence({
+      runtimeState: { host: null }, activeTurns: new Map([["session", "new-parent-turn"]]),
+      activeToolCalls: new Map(), activeToolCallKey: (s, t) => `${s}:${t}`,
+      approvedExecutionIdsBySession: new Map(), approvedExecutionTurns: new Map(),
+      pendingExecutionFinishes: new Map(), planSubmissionTurnIds: new Set(),
+      persistenceOutbox: outbox, transcriptRewrite, logger: { app() {} },
+    });
+    const message = {
+      id: "user-child", role: "user", content: "Inspect tests", status: "complete", createdAt: "2026-09-13T00:00:00.000Z",
+      subagentControl: { operationId: "child-start", requestHash: "fixture", action: "start", delegationId: "child", agent: "explorer", status: "stopped" },
+    };
+    persistAgentEvent({ sessionId: "session", turnId: "child-turn", parentToolCallId: "user-child", agentName: "explorer", ts: 1000,
+      event: { type: "message_end", message } });
+    await Promise.all(pending);
+    assert.equal(outbox.size(), 1);
+    const recovered = new PersistenceOutbox(dir, () => undefined);
+    const writes = [];
+    await recovered.flush(() => ({ isAvailable: () => true, async call(method, params) { writes.push({ method, params }); return {}; } }));
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].params.turnId, "child-turn");
+    assert.deepEqual(writes[0].params.message, { ...message, parentToolCallId: "user-child", agentName: "explorer" });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

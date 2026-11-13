@@ -263,13 +263,15 @@ test("compaction lifecycle keeps the renderer busy until its actual terminal eve
     store,
     /event\.type === "compaction_end" && event\.reason === "manual"/,
   );
+  // Delegate-scoped events never drive the parent's running flag, so both
+  // branches are guarded by `childScoped`.
   assert.match(
     store,
-    /case "compaction_start":\s*set\(\{ isRunning: true \}\)/,
+    /case "compaction_start":\s*if \(!childScoped\) set\(\{ isRunning: true \}\);/,
   );
   assert.match(
     store,
-    /case "compaction_end":[\s\S]*event\.reason === "manual"\) set\(\{ isRunning: false \}\)/,
+    /case "compaction_end":[\s\S]*event\.reason === "manual" && !childScoped\) set\(\{ isRunning: false \}\)/,
   );
   assert.match(store, /contextCompaction\.recovered/);
 });

@@ -145,6 +145,7 @@ fn refusal(status: u16, payload: &[u8]) -> anyhow::Error {
 /// file and the status is read from `--write-out`, so an error answer still
 /// yields the platform's error envelope instead of a curl diagnostic.
 fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>)> {
+    let proxy_args = crate::network_proxy::curl_proxy_args().map_err(anyhow::Error::msg)?;
     let body_path = super::install::download_scratch_path();
     let response_path = super::install::download_scratch_path();
     fs::write(&body_path, body).with_context(|| format!("write resolve body for {url}"))?;
@@ -177,7 +178,7 @@ fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>)> {
         "--user-agent".into(),
         "pi-desktop-host-core".into(),
     ];
-    args.extend(crate::network_proxy::curl_proxy_args());
+    args.extend(proxy_args);
     args.extend(crate::network_proxy::curl_tls_args());
     if url.starts_with("https://") {
         args.push("--proto".into());

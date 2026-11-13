@@ -309,15 +309,16 @@ See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
 
 ### 2.1 Purpose
 
-Global controls bar: the conversation's project breadcrumb, its task title, and
-window actions. A local task title is editable in place. The active session's
+Global controls bar: the conversation's project breadcrumb, its task title,
+window actions, and the interface Refresh control. A local task title is
+editable in place. The active session's
 Agent/Plan/Goal control and model selection belong to the Composer. (Settings is
 reached from the command palette / application menu, not the top bar.)
 
 ### 2.2 Anatomy
 
 ```text
-[☰ Sidebar] [Folder · Project / Task title]       [＋ New] [🔍 Search]
+[☰ Sidebar] [Folder · Project / Task title]       [＋ New] [🔍 Search] [↻ Refresh]
 ```
 
 (Icons described functionally; actual render uses Lucide SVGs. The `[☰ Sidebar]`
@@ -334,7 +335,8 @@ localized action label.
 
 The conversation top bar renders for the chat route only; Scheduled, Plugins,
 and Settings keep the frameless drag band. It owns the project breadcrumb, the
-task title, and window actions only. The crumb resolves from the active
+task title, window actions, and the interface Refresh control. The crumb resolves
+from the active
 session's project — a remote session's workspace label, a local session's
 project path and naming preference — and is omitted for a temporary chat with
 no project. Before the first prompt there is no session yet, so the active
@@ -342,6 +344,13 @@ workspace names the draft. The title follows the crumb after a `/` separator.
 Its full text remains in the native tooltip as `Project · Task title`. The
 Composer owns the Agent/Plan/Goal control and the combined model × reasoning
 selection (§11).
+
+Interface refresh captures main/child drafts and work-panel presentation before
+reloading the renderer only. It does not execute, stop, or replay agent work.
+The packaged navigation guard permits only the exact authorized local document
+to reload. If navigation is cancelled, the 10-second deadline restores the
+button, reports a localized error, preserves live drafts, and discards the stale
+checkpoint so the user can retry. Unmount clears the deadline.
 
 The local task title is a rename trigger. Activating it swaps the heading for a
 boxless inline editor seeded with the stored title; Enter or blur commits the
@@ -666,6 +675,23 @@ visually distinct from list content.
   windows retain a single column and reachable actions. Light and dark themes
   preserve readable filled surfaces and visible keyboard focus, and transitions
   respect reduced motion.
+- Create and Edit project share skill and MCP checkboxes plus independent
+  Markdown (ADR 0349). Each capability group can inherit enabled/scoped choices
+  or save an explicit selection; clearing every item selects none. Unavailable
+  saved IDs remain visible and removable. Catalog loading, errors, and retry do
+  not discard drafts; responses from an earlier project path cannot replace the
+  current catalog. Enumeration does not connect MCP servers.
+  Capability rows retain their content height inside each bounded scrolling
+  list. Long names and multiline descriptions wrap without overlapping adjacent
+  choices; the last checkbox remains focusable and clickable at narrow widths.
+  The Markdown field shows its UTF-8 byte count and prevents saving over 32 KiB.
+  It is app-owned project context, including for legacy and remote groups, and
+  does not write repository files. The separate Project instructions dialog uses
+  the same storage. Creation saves settings atomically with the group; Edit
+  round-trips them. Reopening an existing project preserves untouched settings
+  and applies explicit edits. Selection only narrows existing enablement and
+  scope; instructions/catalog additions apply at the next runtime launch and
+  revoked Skill/MCP choices are checked again before dispatch.
 - Right-click the `Projects` heading or empty project-list chrome: open a
   single-item create menu that runs the same Create project dialog action
 - Click project `+`: activate that project, then select its most recent empty
@@ -1117,9 +1143,9 @@ The window chrome and conversation viewport stay in place.
 ### 5.1 Purpose
 
 Docked right work column for inspecting and steering the agent's workspace.
-Launchable surfaces are the host-owned Review row and plugin views (ADR 0104),
-including the vendored file manager `pi.file-manager` (project browsing and
-editing) and bundled `pi.browser`
+Launchable surfaces are the host-owned Session subagents and Review rows plus
+plugin views (ADR 0104), including the vendored file manager `pi.file-manager`
+(project browsing and editing) and bundled `pi.browser`
 (work-panel browser chrome; the guest page stays host-owned, ADR 0170). File
 resources are *artifact* surfaces: the host renders them, but the conversation
 opens them, so they are absent from the launcher. There is no interactive
@@ -1146,15 +1172,16 @@ terminal surface; agent Bash output remains in the transcript.
 ```
 
 The header is a horizontally scrollable `tablist`. Each open New launcher,
-Review, file, or plugin view is one tab with an icon, an ellipsized label, and a
-close button shown on hover, focus, or the active tab. Middle-click closes a
-tab. The `+` button sits outside the scroller and remains visible when tabs
-overflow. Clicking it creates and activates a unique New launcher tab. The
-launcher body contains host-owned Review followed by every in-scope
-`contributes.views` entry as buttons; Files and Browser are not hardcoded in
-the renderer (ADR 0104). The header reserves a tokenized 44px right-side safe
-lane for the viewport-fixed work-panel toggle: the 28px control, its 12px
-viewport inset, and the header's own 4px control gap
+Session subagents, Review, file, or plugin view is one tab with an icon, an
+ellipsized label, and a close button shown on hover, focus, or the active tab.
+Middle-click closes a tab. The `+` button sits outside the scroller and remains
+visible when tabs overflow. Clicking it creates and activates a unique New
+launcher tab. The
+launcher body contains host-owned Session subagents and Review followed by
+every in-scope `contributes.views` entry as buttons; Files and Browser are not
+hardcoded in the renderer (ADR 0104). The header reserves a tokenized 44px
+right-side safe lane for the viewport-fixed work-panel toggle: the 28px control,
+its 12px viewport inset, and the header's own 4px control gap
 (`--ds-work-panel-control-gap`). That one gap spaces the whole row — the tab
 strip to the action group, `+` to maximize, and maximize to the viewport-fixed
 toggle — so the three panel buttons read as one group instead of a rail behind
@@ -1175,8 +1202,10 @@ singleton without duplicating it:
 ```text
 +---------------------------------------+
 |                 New                   |  launcher title
-|        ◫ Review   ▤ Files              |
-|        ◉ Browser                       |  tool rows
+|        ◎ Subagents                    |  host-owned rows
+|        ◫ Review                       |
+|        ◉ Browser                      |  plugin views
+|        ▤ Files                        |
 +---------------------------------------+
 ```
 
@@ -1324,13 +1353,13 @@ entirely inside the plugin's isolated page:
 | Closed (default) | Not rendered; startup has no retained tabs. The viewport-fixed toggle or `Cmd/Ctrl + J` reveals the active session's panel context without creating a tab. Inline review cards remain available in the transcript because they are message-scoped and do not require the work panel. |
 | Open | Docked flex row right of the main pane; opened by an artifact, the viewport-fixed toggle, or `Cmd/Ctrl + J` at a committed preferred width of at least 244px (new-profile default 360px), capped by the live three-column budget. The toggle or `Cmd/Ctrl + J` again collapses it, retaining the session context. |
 | Preview (maximize) | MainChat is unmounted and the panel fills the client area beside the sidebar. The mode is transient and restores the prior panel width and sidebar state when left. |
-| Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Review and all in-scope plugin views without duplicating open resource tabs. |
+| Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Session subagents, Review, and all in-scope plugin views without duplicating open resource tabs. |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
 | Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window on every platform. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the New launcher. Clicking `+` creates an explicit, closable New tab with the same launcher rows. Activating a row from that tab replaces it with or selects the singleton view. Closing the final tab leaves the panel open in the no-resource state. |
 | Constrained work area | The panel is capped by the shared three-column budget inside the existing client area; MainChat never drops below its 450px floor and the expanded sidebar yields at the threshold |
-| New launcher active | The body hosts concise Review and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
+| New launcher active | The body hosts concise Session subagents, Review, and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
 | Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. Embedded plugin documents start with zero root/body margin and border and a transparent background, so the host panel and plugin theme own the visible surface edge. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open. While any plugin view is active, a tab context menu uses a native popup above the `WebContentsView`; this platform styling is required by native-view z-order, while labels, ordering, and enabled actions match the renderer menu. The menu anchor follows the pointer at the current app zoom. A full main-frame navigation of the host renderer, including reload, detaches the visible native view without closing its cached page; opening the tab again reattaches the same page. Same-document and child-frame navigations keep it attached. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the New launcher when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
 
@@ -1379,9 +1408,10 @@ entirely inside the plugin's isolated page:
   post-tool hash and
   returns a conflict without overwriting later work.
 - Header tabs: the strip is a `tablist` containing one `tab` for every open
-  Review, file, or plugin view. Clicking a tab activates it; the active tab is
-  scrolled into view. Its close button and middle-click close it, selecting the
-  right neighbor and then the left. ArrowLeft/ArrowRight/Home/End move between
+  Session subagents, Review, file, or plugin view. Clicking a tab activates it;
+  the active tab is scrolled into view. Its close button and middle-click close
+  it, selecting the right neighbor and then the left.
+  ArrowLeft/ArrowRight/Home/End move between
   tabs and Delete/Backspace closes the focused tab. Pressing and moving a tab
   by 8px starts reordering; dropping on either half of another tab inserts the
   source before or after it. Holding the pointer near either edge auto-scrolls
@@ -1541,6 +1571,90 @@ It does not render separate Details or Output tabs.
 - A session switch or leaving the chat route hides the selection. A stale or
   deleted delegation shows a localized unavailable state and never displays
   another session's rows.
+
+### 5.8 Session subagent directory
+
+**Session subagents** is the singleton work-panel tab (id `subagents`) that
+lists the delegations of the currently active conversation. It is a directory
+of this session's work, not the global subagent-definition destination in
+Settings (`04-ux/06-settings-ia.md`), and it never lists another session's
+delegations. One entry point is the bot action in the conversation topbar; that
+action is hidden when no session is active and for remote sessions, where the
+renderer has no local delegation history. The other is the **Session
+subagents** row in the New launcher (§5.1).
+
+- Each row shows the agent name, task description, effective model, and outcome
+  capsule. Recent chains come first; one resumed chain is one row, grouped by
+  its `Task` call ids, and its `delegationId` is the chain's latest established
+  handle. Paging makes older delegations discoverable even when their rows are
+  outside the main transcript's loaded window.
+  Where recorded, model captions identify the exact account as well as the
+  model, even if that account/model is retired. A removed account keeps its
+  recorded identifier; a different live account's name cannot substitute for it.
+  Legacy metadata may be recovered from that chain's own reply history without
+  borrowing parent or sibling settings. The inherited-model picker omits absent
+  or `off` thinking suffixes rather than displaying a second empty placeholder.
+- The toolbar offers task/agent/model search and
+  All / Running / Completed / Issues filters. Refresh reloads the index; a read
+  failure renders a localized error with a retry action, not an empty list.
+- The index is bounded. A request scans at most four 256-row `getSession` pages
+  with a 512-character body/value preview budget, stops early once it finds
+  Task or user-owned start rows, and retains only bounded Task/lifecycle or
+  user-owned root metadata: delegation id, status, agent/task/model labels, and
+  resume links. Child transcripts and reports are not retained by the index.
+  **Load earlier** explicitly exposes remaining history.
+- The Host preserves delegation identity, status, and resume metadata
+  independently of the body preview. Additional metadata is capped at 64 KiB
+  serialized per payload, with at most 256 entries per roster and 256-character
+  labels. Handles are kept whole only when they are nonempty strings of at most
+  256 bytes; oversized handles are not clipped into different actionable ids.
+  Body/value previews remain capped and canonical uncapped history is unchanged.
+  Failed, stopped, and timed-out delegates remain Issues even if their `Task`
+  tool call itself succeeded. These are projection/batch bounds, not a
+  whole-process memory guarantee.
+- Selecting a row opens its recorded chain activity in place, using the user
+  prompts, assistant text, tool rows, and session-scoped child composer of
+  `SubagentTranscriptTab`. Direct input is unavailable while creating or outside
+  a supported local Agent session. Detail history pages independently: 256 rows with
+  `contentLimit: 8000` for display body/value previews, anchored around the
+  chain's `Task` call and then forward. Live snapshots win by message id;
+  streaming comes from the real store, and these reads never overwrite the main
+  transcript.
+  A rejected Task resume remains a visible failed attempt. Selecting it resolves
+  only a compatible same-session, same-agent issued resume target, showing that
+  child's original history/model and directing the composer to the usable chain.
+  A rejected new task or unknown/foreign target cannot enable direct input.
+- Selection is keyed by session and `Task` call identity, not the pending
+  delegation handle. Before the handle arrives, the capsule says **Creating**,
+  copy-id is disabled, and individual Stop is unavailable. The selected detail
+  stays selected when the stable handle arrives; handle-dependent controls then
+  become available. Stop-all is offered only when an established delegation is
+  running, never solely for a pending creation.
+- The detail header copies the chain's latest `delegationId`; a parent-agent
+  `Task(resume: ...)` remains available. The ready local Agent detail also sends
+  messages directly: running children queue follow-ups, while settled chains
+  resume with their history. The model menu offers explicitly delegation-enabled
+  bindings and a keep-current option. The choice accompanies the next message;
+  it does not interrupt current work or change the parent model. Selection is
+  retained after acknowledgement, and unavailable selections block submission.
+  The UI explains this next-message boundary and preserves newer draft edits.
+- **New subagent** opens a form for the current definition, task, and optional
+  model. Main and the runtime independently admit the declarative command using
+  fresh session configuration and the existing delegation lifecycle; neither
+  command requires a parent-model request. User commands are child-owned user
+  rows, not forged Task calls. The additive control protocol and metadata are
+  specified in `03-runtime/02-agent-runtime.md` §5f.4; no database migration is needed.
+- Drafts are keyed by session and chain and survive tab remount and renderer
+  refresh. Pending sends preserve newer edits; failure retains the draft with
+  localized feedback, and late acknowledgements never clear another session.
+- Established running rows use the existing confirmed cancellation contract:
+  individual Stop and directory stop-all share `TaskStop`'s routine and remain
+  pending until termination is confirmed. No parent stop is issued and no row
+  is optimistically relabeled `stopped`.
+- Hook-owned abort signals reject stale or disposed completions on session
+  change and tab close, so a late page cannot paint into another session.
+- A `Task` start never opens, activates, or focuses this tab; the existing
+  delegation topology node and detail dock (§5.7) keep working unchanged.
 
 ## 6. SessionList
 
@@ -2735,8 +2849,9 @@ never summarizes from its own arguments:
 ```
 
 Clicking a topology node opens a dedicated `subagent` tab in the work panel —
-the same tab strip that hosts Review, files, and plugin views — instead of
-expanding the transcript. Re-opening the same delegation activates its tab;
+the same tab strip that hosts Session subagents, Review, files, and plugin
+views — instead of expanding the transcript. Re-opening the same delegation
+activates its tab;
 parallel delegates coexist as independent tabs. The tab renders the delegation
 as a conversation:
 

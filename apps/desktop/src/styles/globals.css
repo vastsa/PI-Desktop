@@ -29,6 +29,7 @@
 @import "./sessions.css";
 @import "./worktree.css";
 @import "./work-panel.css";
+@import "./session-subagents.css";
 @import "./providers.css";
 @import "./model-config.css";
 @import "./service-setup.css";

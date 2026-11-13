@@ -10,6 +10,7 @@ import { net, session } from "electron";
 import type { SkillCatalogEntry, SkillMarketSource } from "@pi-desktop/shared";
 import { fetchPinnedDirect } from "./public-https-direct";
 import { createPublicHttpsClient } from "./public-https-fetch";
+import { lookupDesktopHost } from "./network-proxy";
 import {
   allowInsecureUserEndpointsEnabled,
   noteInsecureUserEndpoint,
@@ -37,6 +38,7 @@ const client = createPublicHttpsClient({
   // is direct, pinning the selected acceptable address keeps net.fetch from
   // choosing the rejected ULA result itself.
   pinnedFetchImpl: (url, init, address) => fetchPinnedDirect(url, init, address),
+  lookupImpl: lookupDesktopHost,
   routeImpl: (url) => session.defaultSession.resolveProxy(url),
   // Fake-IP answers come from the network policy, not from the proxy switch:
   // the relaxed mode is what tolerates a transparent router's placeholder

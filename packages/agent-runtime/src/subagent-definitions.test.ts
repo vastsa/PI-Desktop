@@ -44,6 +44,7 @@ describe("builtin subagent documents", () => {
       expect(definition.source).toBe("builtin");
       expect(definition.description.length).toBeGreaterThan(20);
       expect(definition.prompt.length).toBeGreaterThan(50);
+      expect(definition.tools).toContain("Skill");
     }
     // Only `fixer` and `ui-designer` may write to the workspace; every other
     // builtin is read-only (the shell delegate reads and runs commands, which
@@ -57,7 +58,7 @@ describe("builtin subagent documents", () => {
     expect(mutating.map((d) => d.name)).toEqual(["fixer", "ui-designer"]);
     expect(mutating[0]?.permission ?? "inherit").toBe("inherit");
     const explorer = definitions.find((definition) => definition.name === "explorer")!;
-    expect(explorer.tools).toEqual(["Read", "Glob", "Grep", "Bash"]);
+    expect(explorer.tools).toEqual(["Read", "Glob", "Grep", "Bash", "Skill"]);
     expect(subagentCanMutate(explorer)).toBe(true);
     expect("maxTurns" in explorer).toBe(false);
     expect(explorer.idleTimeoutSeconds).toBe(

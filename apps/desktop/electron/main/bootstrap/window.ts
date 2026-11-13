@@ -50,6 +50,7 @@ import {
   mainWindowBackgroundOptions,
 } from "../window-background";
 import { recoverRendererAfterGone } from "../renderer-recovery";
+import { registerAppShellNavigationGuard } from "../app-shell-navigation";
 
 function windowsIconPath(): string | undefined {
   if (process.platform !== "win32") return undefined;
@@ -831,11 +832,9 @@ export async function createWindow({
   });
 
   // Block navigation away from the app shell (dev server origin or local file).
-  window.webContents.on("will-navigate", (event, url) => {
-    const devOrigin = process.env.ELECTRON_RENDERER_URL;
-    if (devOrigin && url.startsWith(devOrigin)) return;
-    event.preventDefault();
-    logger.app("diagnostics", "warn", "blocked navigation attempt", { data: { url } });
+  registerAppShellNavigationGuard(window.webContents, {
+    developmentUrl: process.env.ELECTRON_RENDERER_URL,
+    onBlocked: (url) => logger.app("diagnostics", "warn", "blocked navigation attempt", { data: { url } }),
   });
 
   // Codex-like default footprint. CG bounds are truth under Stage Manager.

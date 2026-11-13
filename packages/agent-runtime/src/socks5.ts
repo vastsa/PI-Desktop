@@ -2,9 +2,14 @@
  * Outbound SOCKS5 and HTTP CONNECT tunnels used by the sidecar dispatcher
  * and by the Chromium auth relay (issue #490).
  */
-import { connect as netConnect, type Socket } from "node:net";
+import { connect as netConnect, type LookupFunction, type Socket } from "node:net";
 import { connect as tlsConnect } from "node:tls";
 import type { ParsedProxyUrl } from "@pi-desktop/shared";
+
+export type ProxyConnectionOptions = {
+  lookup?: LookupFunction;
+  signal?: AbortSignal;
+};
 
 export function proxyListenPort(proxy: ParsedProxyUrl): number {
   if (proxy.port) return proxy.port;
@@ -23,18 +28,20 @@ export async function connectViaProxy(
   proxy: ParsedProxyUrl,
   destHost: string,
   destPort: number,
+  options: ProxyConnectionOptions = {},
 ): Promise<Socket> {
   return proxy.isSocks
-    ? socks5Connect(proxy, destHost, destPort)
-    : httpProxyConnect(proxy, destHost, destPort);
+    ? socks5Connect(proxy, destHost, destPort, options)
+    : httpProxyConnect(proxy, destHost, destPort, options);
 }
 
 export async function socks5Connect(
   proxy: ParsedProxyUrl,
   destHost: string,
   destPort: number,
+  options: ProxyConnectionOptions = {},
 ): Promise<Socket> {
-  const socket = await connectTcp(proxy.host, proxyListenPort(proxy));
+  const socket = await connectTcp(proxy.host, proxyListenPort(proxy), options);
   const reader = new SocketReader(socket);
   try {
     const methods =
@@ -88,8 +95,9 @@ export async function httpProxyConnect(
   proxy: ParsedProxyUrl,
   destHost: string,
   destPort: number,
+  options: ProxyConnectionOptions = {},
 ): Promise<Socket> {
-  const raw = await connectTcp(proxy.host, proxyListenPort(proxy));
+  const raw = await connectTcp(proxy.host, proxyListenPort(proxy), options);
   const socket =
     proxy.scheme === "https" ? await tlsWrap(raw, proxy.host) : raw;
   const reader = new SocketReader(socket);
@@ -212,16 +220,23 @@ async function readSocksBind(reader: SocketReader, atyp: number): Promise<void> 
   }
 }
 
-export function connectTcp(host: string, port: number): Promise<Socket> {
+export function connectTcp(
+  host: string,
+  port: number,
+  options: ProxyConnectionOptions = {},
+): Promise<Socket> {
   return new Promise((resolve, reject) => {
-    const socket = netConnect({ host, port });
+    const socket = netConnect({ host, port, ...options });
     const onError = (error: Error) => {
       socket.destroy();
       reject(error);
     };
     socket.once("error", onError);
+    const onClose = () => reject(new Error("TCP connection closed before connecting"));
+    socket.once("close", onClose);
     socket.once("connect", () => {
       socket.off("error", onError);
+      socket.off("close", onClose);
       socket.setNoDelay(true);
       resolve(socket);
     });

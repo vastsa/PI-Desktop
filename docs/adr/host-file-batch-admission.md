@@ -44,8 +44,10 @@ ToolBudget checks batch predecessors, active resources, conflicting waiters and
 capacity in one synchronous reservation. No capacity is held while awaiting a
 resource. Source predecessors may bypass a later same-batch RPC-arrival waiter;
 otherwise a reversed arrival could deadlock. Conflicting later shared requests
-do not bypass an exclusive waiter. Global capacity limits and 30-second
-HOST_OVERLOADED behavior stay unchanged. Local diagnostics report total
+do not bypass an exclusive waiter. Global capacity limits stay unchanged, and so
+does the shared 30-second HOST_OVERLOADED window; an exclusive write now waits
+up to ten minutes for its conflicting holder (see the amendment below). Local
+diagnostics report total
 admission wait and the initial reason, not invented non-overlapping timings.
 
 After admission, the persisted workspace binding and resource identity/address
@@ -102,3 +104,18 @@ independent resources, cancellation during blocking work, queue cleanup,
 permission denial, argument tampering/replay, review rollback and legacy remote
 fallback. Diagrams and source inspection are not substitutes for execution.
 See E2E-TOOLS-parallel-read-batches and the corresponding Rust/runtime tests.
+
+## Amendment (2026-11-10)
+
+A live session showed what the shared window costs. One `Glob` over this
+repository held the file domain for 5m45s while fourteen `Write` and seven
+`Edit` calls in the same session failed at the 30-second mark with
+`HOST_OVERLOADED`. The write could not have run earlier — the fence was doing
+its job — so the deadline reported progress as failure, the user saw errors,
+and the model retried into the same fence.
+
+`ToolBudget` therefore gives an exclusive request `MUTATION_QUEUE_WAIT_MS` (ten
+minutes) while shared requests keep `TOOL_QUEUE_WAIT_MS` (30 seconds).
+`tools.abort` still ends the wait, the queue stays bounded, and
+`packages/host-runtime` retries a pre-execution saturation rejection for about
+as long as the shared window instead of the previous 0.75s.

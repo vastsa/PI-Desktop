@@ -2,6 +2,7 @@
 import type { CommandShellId } from "../command-shells.js";
 import type { KeybindingOverrides } from "../keyboard-shortcuts.js";
 import type { NetworkProxySettings } from "../network-proxy.js";
+import type { NetworkDnsSettings } from "../network-dns.js";
 import type { NetworkPolicySettings } from "../network-policy.js";
 import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
@@ -83,9 +84,15 @@ export type AppSettings = {
   goalBudget?: import("./mode-runs.js").ModeRunBudget | null;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.
-   * Absent and false use the bounded ten-retry policy.
+   * Wins over a configured ceiling; absent and false preserve that ceiling.
    */
   infiniteProviderRetry?: boolean;
+  /** Retries after the initial request; 0 is unlimited, absence keeps ten, null resets. */
+  providerRetryMaxAttempts?: number | null;
+  /** Nonnegative safe integer milliseconds; 0 is immediate, null restores class defaults. */
+  providerRetryInitialDelayMs?: number | null;
+  /** Fixed interval overriding backoff, jitter and Retry-After; 0 is immediate, null resets. */
+  providerRetryFixedDelayMs?: number | null;
   /** Allow Agent mode to call TypeSafe Jev for explicit structured classifications. */
   jevEnabled?: boolean;
   /** Prevent idle system sleep while this desktop app runs; off when absent. */
@@ -213,6 +220,8 @@ export type AppSettings = {
    * is set. See `network-proxy.ts`.
    */
   networkProxy?: NetworkProxySettings;
+  /** Desktop-local native DNS override; absent leaves system defaults untouched. */
+  networkDns?: NetworkDnsSettings;
   /**
    * Trust policy for the network endpoints the user enters themselves: how a
    * user-supplied model base URL, MCP server, or market source is judged.

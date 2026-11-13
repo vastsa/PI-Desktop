@@ -6,7 +6,9 @@ const source = await readFile(new URL("../electron/main/mcp-registry-catalog.ts"
 const panel = await readFile(new URL("../src/components/settings/McpMarketPanel.tsx", import.meta.url), "utf8");
 
 test("market source requests pin the checked DNS address", () => {
-  assert.match(source, /lookup\(host, \{ all: true, verbatim: true \}\)/);
+  assert.match(source, /import \{ lookupDesktopHost \} from "\.\/network-proxy"/);
+  assert.match(source, /lookupDesktopHost\(host\)/);
+  assert.doesNotMatch(source, /from ["']node:dns/);
   assert.match(source, /hostname: resolved\.address/);
   assert.match(source, /servername: isIP\(host\) \? undefined : host/);
   assert.match(source, /if \(response\.status >= 300 && response\.status < 400\)/);

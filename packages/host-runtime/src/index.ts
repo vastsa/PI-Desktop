@@ -1,5 +1,6 @@
 export * from "./host-process.js";
 export * from "./agent-sidecar.js";
+export type { ToolExecution, ToolExecutionIdentity, ToolExecutionPolicy, ChildExecutionOwner, ChildExecutionEnd } from "./tool-executions.js";
 export * from "./runtime-supervisor.js";
 export * from "./host-ports.js";
 export * from "./launch-resolver.js";

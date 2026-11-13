@@ -140,6 +140,13 @@ Windows/Linux 上的**关闭行为**。平台相关的关闭行为放在这里�
 - **网络**卡：
   - **代理**：分段控件 — 系统 / 直连 / 自定义。默认是系统（Chromium 跟随操作系统代理）。直连禁用代理。自定义将一个 HTTP、HTTPS 或 SOCKS5 URL 应用到应用自有出站请求（模型调用、扩展市场、更新、模型目录、插件 `net.fetch`、内置浏览器）。工作区 Bash 和 OAuth 用的系统浏览器不会被改写。
   - 自定义显示代理 URL（含 `user:pass@`）、默认 `localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16` 的绕过列表（本机、本地模型与所有局域网服务直连，不被代理吞掉），以及一次走该代理的测试。带认证的 URL 通过回环 SOCKS5 中继交给 Chromium（issue #490）。选择持久化为可选 `AppSettings.networkProxy`；系统/直连模式下同样保留用户填写的 `url` 与 `bypass`（只有 `mode` 决定谁生效），因此再次选择自定义会恢复它们而不是内置的 `socks5://127.0.0.1:1080`（issue #1541）。无协议/存储版本升级（D340 / ADR 0177）。
+  - **Secure DNS (DoH)**: device-local `AppSettings.networkDns` defaults to
+    system mode. Enabling uses an HTTPS POST endpoint (blank restores
+    `https://1.1.1.1/dns-query`) and an explicit, default-off system fallback
+    toggle. Invalid endpoints are rejected. Disabling retains preferences;
+    pending writes disable duplicate input and save/apply failures remain visible.
+    Unrelated saves preserve DNS. No OS DNS or portable remote-host setting changes.
+    See [native DNS ADR](../../../adr/native-desktop-dns.md).
   - **网络宽松模式**：一个开关，持久化为 `AppSettings.networkPolicy.mode`（`relaxed` | `strict`），**默认开启**。开启时，你自己填写的端点（模型服务、MCP 服务器、git 远端）可以是回环或局域网地址、可以使用明文 `http`，并容忍透明代理的 fake-IP 答案；关闭则回到"只允许公网 https"。首次用明文访问这类端点时会弹一次告知。它取代的三个旧确认开关（`networkProxy.allowFakeIp`、`configSync.allowInsecureHttp`、以及自填明文开关）都已删除（ADR 0304）。
 - **关闭行为**卡，仅 Windows/Linux：窗口关闭按钮的行为。
 - 文件打开目标、菜单栏行为和底部面板行为不是

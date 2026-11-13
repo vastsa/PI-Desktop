@@ -215,3 +215,99 @@ test("settings write round-trips command folding through the preload boundary", 
     else globalThis.window = previousWindow;
   }
 });
+
+const retryFields = ["providerRetryMaxAttempts", "providerRetryInitialDelayMs", "providerRetryFixedDelayMs"];
+
+test("renderer rejects invalid retry overrides before preload mutation", () => {
+  const previousWindow = globalThis.window;
+  let calls = 0;
+  globalThis.window = { piDesktop: { platform: "win32", invoke: async () => { calls++; return { ok: true }; } } };
+  try {
+    for (const field of retryFields) {
+      for (const value of [-1, 1.5, "3", true, undefined, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, {}, []]) {
+        assert.throws(() => renderer.api.setSettings({ [field]: value }), {
+          errorCode: "INVALID_PARAMS", message: `${field} is invalid`,
+        });
+      }
+      for (const value of [null, 0, 3, Number.MAX_SAFE_INTEGER]) {
+        assert.deepEqual(renderer.validateSettingsWrite({ [field]: value }), { [field]: value });
+      }
+    }
+    assert.equal(calls, 0);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("renderer normalizes invalid retry reads to absence without changing valid zero", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { piDesktop: { platform: "win32" } };
+  try {
+    for (const field of retryFields) {
+      for (const value of [null, undefined, -1, 0.5, "3", true, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+        const normalized = renderer.normalizeSettings({ [field]: value });
+        assert.equal(Object.hasOwn(normalized, field), false);
+      }
+      for (const value of [0, 3, Number.MAX_SAFE_INTEGER]) {
+        assert.equal(renderer.normalizeSettings({ [field]: value })[field], value);
+      }
+    }
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("native DNS settings default off and survive a renderer/main read-modify-write", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { piDesktop: { platform: "win32" } };
+  try {
+    for (const networkDns of [
+      undefined,
+      { mode: "doh" },
+      { mode: "system", serverUrl: "https://192.168.1.2/dns-query", allowSystemFallback: true },
+    ]) {
+      const base = { defaultMode: "agent", theme: "light", enterToSend: true, networkDns };
+      const displayed = renderer.normalizeSettings(main.normalizeSettings(base));
+      const persisted = main.validateSettingsWrite(renderer.validateSettingsWrite({ ...displayed, theme: "dark" }));
+      assert.equal(persisted.networkDns.mode, networkDns?.mode ?? "system");
+      if (networkDns?.mode === "doh") {
+        assert.equal(persisted.networkDns.serverUrl, "https://1.1.1.1/dns-query");
+        assert.equal(persisted.networkDns.allowSystemFallback, false);
+      } else if (networkDns) {
+        assert.deepEqual(persisted.networkDns, networkDns);
+      }
+      assert.equal(persisted.theme, "dark");
+    }
+    assert.equal(Object.hasOwn(renderer.validateSettingsWrite({ theme: "dark" }), "networkDns"), false);
+    assert.equal(Object.hasOwn(main.validateSettingsWrite({ theme: "dark" }), "networkDns"), false);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("native DNS rejects invalid writes and normalizes malformed saved data without enabling DNS", () => {
+  const previousWindow = globalThis.window;
+  let invoked = 0;
+  globalThis.window = { piDesktop: { platform: "win32", invoke: async () => { invoked++; return { ok: true }; } } };
+  try {
+    for (const networkDns of [
+      true, [], { mode: "unknown" },
+      { mode: "doh", serverUrl: "http://resolver.invalid/dns-query" },
+      { mode: "doh", serverUrl: "https://user:password@resolver.invalid/dns-query" },
+      { mode: "doh", allowSystemFallback: "true" },
+    ]) {
+      assert.throws(() => renderer.validateSettingsWrite({ networkDns }), { errorCode: "INVALID_PARAMS" });
+      assert.throws(() => renderer.api.setSettings({ networkDns }), { errorCode: "INVALID_PARAMS" });
+      assert.throws(() => main.validateSettingsWrite({ networkDns }), { errorCode: "INVALID_PARAMS" });
+      assert.deepEqual(main.normalizeSettings({ networkDns }).networkDns, { mode: "system" });
+      assert.deepEqual(renderer.normalizeSettings({ networkDns }).networkDns, { mode: "system" });
+    }
+    assert.equal(invoked, 0, "invalid DNS must not reach the preload boundary");
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

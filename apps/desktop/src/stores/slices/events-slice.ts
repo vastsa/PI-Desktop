@@ -242,7 +242,13 @@ export function createEventsSlice({
         }
       }
       const event = envelope.event;
-      if (event.type === "agent_end" || event.type === "error") {
+      // A delegate's own events carry `parentToolCallId`: they describe the
+      // child, never the parent turn. Letting them drive the session's running
+      // state kept the composer blocked after a parent Stop while a detached
+      // child kept working, and let a child's `agent_end` settle a live parent
+      // turn (#2304).
+      const childScoped = Boolean(envelope.parentToolCallId);
+      if ((event.type === "agent_end" || event.type === "error") && !childScoped) {
         runtime.submittedComposerDrafts.delete(envelope.sessionId);
       }
       if (!flushingStreamUpdates) {
@@ -317,7 +323,7 @@ export function createEventsSlice({
       ) {
         runtime.liveSessionTranscripts.add(envelope.sessionId);
       }
-      if (event.type === "status") {
+      if (event.type === "status" && !childScoped) {
         set((state) => ({
           agentStatuses: {
             ...state.agentStatuses,
@@ -326,9 +332,10 @@ export function createEventsSlice({
         }));
       }
       if (
-        event.type === "agent_start" ||
-        event.type === "turn_start" ||
-        event.type === "compaction_start"
+        !childScoped &&
+        (event.type === "agent_start" ||
+          event.type === "turn_start" ||
+          event.type === "compaction_start")
       ) {
         set((state) => ({
           runningSessions: {
@@ -344,7 +351,7 @@ export function createEventsSlice({
             envelope.sessionId,
           ),
         }));
-      } else if (event.type === "compaction_end" && event.reason === "manual") {
+      } else if (!childScoped && event.type === "compaction_end" && event.reason === "manual") {
         set((state) => ({
           runningSessions: {
             ...state.runningSessions,
@@ -353,7 +360,7 @@ export function createEventsSlice({
         }));
         void flushPendingSessionConfiguration(envelope.sessionId);
         void get().refreshQueuedPrompts(envelope.sessionId);
-      } else if (event.type === "agent_end" || event.type === "error") {
+      } else if (!childScoped && (event.type === "agent_end" || event.type === "error")) {
         set((state) => ({
           runningSessions: {
             ...state.runningSessions,
@@ -529,10 +536,10 @@ export function createEventsSlice({
         case "agent_start":
         case "turn_start":
         case "compaction_start":
-          set({ isRunning: true });
+          if (!childScoped) set({ isRunning: true });
           break;
         case "compaction_end":
-          if (event.reason === "manual") set({ isRunning: false });
+          if (event.reason === "manual" && !childScoped) set({ isRunning: false });
           if (event.ok) {
             get().showToast(i18n.t("contextCompaction.longThreadWarning"), {
               variant: "warning",
@@ -558,8 +565,10 @@ export function createEventsSlice({
           }
           break;
         case "agent_end":
-          set({ isRunning: false });
-          void get().refreshSessions();
+          if (!childScoped) {
+            set({ isRunning: false });
+            void get().refreshSessions();
+          }
           break;
         case "turn_end":
           break;

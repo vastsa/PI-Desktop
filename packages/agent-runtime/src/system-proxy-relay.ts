@@ -7,6 +7,7 @@ import {
   connectViaProxy,
   proxyListenPort,
   SocketReader,
+  type ProxyConnectionOptions,
 } from "./socks5.js";
 
 const MAX_PROXY_RESOLUTION_LENGTH = 8_192;
@@ -29,6 +30,7 @@ type ConnectedRoute =
  */
 export async function startSystemProxyRelay(
   resolveProxy: (url: string) => Promise<string>,
+  options: Pick<ProxyConnectionOptions, "lookup"> = {},
 ): Promise<SystemProxyRelay> {
   const password = randomBytes(32).toString("hex");
   const clients = new Set<Socket>();
@@ -37,7 +39,7 @@ export async function startSystemProxyRelay(
     const forget = () => clients.delete(client);
     client.once("close", forget);
     client.once("error", forget);
-    void handleClient(client, password, resolveProxy);
+    void handleClient(client, password, resolveProxy, options);
   });
   server.on("error", (error) => {
     process.stderr.write(
@@ -85,8 +87,12 @@ async function handleClient(
   client: Socket,
   expectedPassword: string,
   resolveProxy: (url: string) => Promise<string>,
+  options: Pick<ProxyConnectionOptions, "lookup">,
 ): Promise<void> {
   const reader = new SocketReader(client);
+  const controller = new AbortController();
+  const onClientClose = () => controller.abort();
+  client.once("close", onClientClose);
   let connectReplySent = false;
   let guardClientError: ((error: Error) => void) | null = null;
   try {
@@ -115,6 +121,7 @@ async function handleClient(
       host,
       port,
       scheme,
+      { ...options, signal: controller.signal },
     );
     if (client.destroyed) {
       if (guardClientError) client.off("error", guardClientError);
@@ -151,6 +158,8 @@ async function handleClient(
       }
       client.destroy();
     }
+  } finally {
+    client.off("close", onClientClose);
   }
 }
 
@@ -273,21 +282,23 @@ async function connectByResolvedRoute(
   host: string,
   port: number,
   scheme: "http" | "https",
+  options: ProxyConnectionOptions,
 ): Promise<ConnectedRoute> {
   let lastError: unknown;
   for (const route of routes) {
     try {
+      options.signal?.throwIfAborted();
       if (route.kind === "direct") {
-        return { socket: await connectTcp(host, port), kind: "tunnel" };
+        return { socket: await connectTcp(host, port, options), kind: "tunnel" };
       }
       if (route.proxy.isSocks || scheme === "https") {
         return {
-          socket: await connectViaProxy(route.proxy, host, port),
+          socket: await connectViaProxy(route.proxy, host, port, options),
           kind: "tunnel",
         };
       }
       return {
-        socket: await connectHttpProxyTransport(route.proxy),
+        socket: await connectHttpProxyTransport(route.proxy, options),
         kind: "http-forward",
         proxy: route.proxy,
       };
@@ -301,8 +312,11 @@ async function connectByResolvedRoute(
     : new Error("system proxy routes could not connect");
 }
 
-async function connectHttpProxyTransport(proxy: ParsedProxyUrl): Promise<Socket> {
-  const socket = await connectTcp(proxy.host, proxyListenPort(proxy));
+async function connectHttpProxyTransport(
+  proxy: ParsedProxyUrl,
+  options: ProxyConnectionOptions,
+): Promise<Socket> {
+  const socket = await connectTcp(proxy.host, proxyListenPort(proxy), options);
   if (proxy.scheme !== "https") return socket;
   return new Promise((resolve, reject) => {
     const secureSocket = tlsConnect({

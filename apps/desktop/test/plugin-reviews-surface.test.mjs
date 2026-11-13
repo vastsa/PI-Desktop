@@ -35,11 +35,11 @@ test("installed plugins keep their state groups and their disclosure", () => {
   assert.match(pageSrc, /GROUP_ORDER: GroupId\[\] = \["attention", "updates", "active", "disabled"\]/);
 });
 
-test("installed cards offer updates without a panel shortcut", () => {
+test("installed cards gate update and settings actions on enablement", () => {
   // The update button names the version it lands on.
   assert.match(installedPanel, /t\("plugins\.updateTo", \{ version: update\.version \}\)/);
   assert.match(installedPanel, /variant="primary"/);
-  assert.doesNotMatch(installedPanel, /plugins\.openPanel|api\.openPluginPanel/);
+  // Panel launch availability and clicks are covered by the installed-plugin-panel user-path test.
   // Settings stay behind enabled + declared settings.
   assert.match(installedPanel, /plugin\.enabled && plugin\.settings\?\.length/);
   // A disabled plugin has no primary action.

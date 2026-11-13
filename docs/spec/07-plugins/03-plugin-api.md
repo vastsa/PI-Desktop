@@ -237,7 +237,7 @@ permissions, such as `agent.complete` and `models.list`.
 
 ```js
 pi.events.on("session:turnEnded", async (event) => {
-  if (event.reason !== "completed") return;
+  if (event.scope === "subagent" || event.reason !== "completed") return;
   const active = await pi.session.getActive();
   if (active?.sessionId !== event.sessionId) return;
   const text = await writeNextLine(active); // the plugin's own model request
@@ -535,8 +535,13 @@ type ToolExecContext = {
 }
 ```
 
-`turnId` is populated for host-driven turns and matches the `turnId` of the
-corresponding `session:turnEnded` event (§5).
+`turnId` matches the corresponding cleanup `session:turnEnded` event (§5).
+Root calls use the durable host turn. Child calls use an independent synthetic
+execution-owner id, not the original or current parent turn; treat it as an
+opaque resource key, not authority for durable session-turn APIs. `signal`
+cancels this exact invocation: parent Stop does not cancel a surviving child's
+call; explicit child cancellation and session disposal do. Plugin MCP tools
+receive the same signal without stopping the shared MCP server.
 
 ### models (requires `models.list`)
 ```ts
@@ -1541,6 +1546,18 @@ Delivered today:
   also needs no new permission: it travels on the existing event channel, and
   subscribing to an unknown event name does not error. A plugin that depends on it must verify the host version it supports;
   historical hosts may not emit this additive event.
+  Child executions additionally use this event as a compatibility cleanup notice:
+  `scope: "subagent"`, `parentTurnId`, and `executionOwnerId` are added, and
+  `turnId === executionOwnerId` matches the child tool context. It is sent once
+  per child lifetime only to plugins that actually executed a tool for that child
+  and remain active in its project. It does not create or settle a durable turn,
+  delay the parent's event, or mean the whole session ended. Listeners concerned
+  only with durable parent turns must ignore `scope === "subagent"`; cleanup
+  listeners must key resources by the exact context id, not by session alone.
+- `subagent:executionEnded` — the same child-scoped payload and recipients as
+  that compatibility notice, emitted on completion, failure, explicit child Stop,
+  or runtime/transport disposal. Plugins subscribing to both names must make
+  cleanup idempotent. Delivery has the same no-ack/no-replay limits above.
 
 - `session:activated` — payload is the `PluginActiveSession` object or `null`,
   sent whenever that snapshot changes: the user selected another session (or

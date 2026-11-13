@@ -11,9 +11,11 @@ import { ErrorBoundary, RoutePending } from "./features/app/chrome";
 import { initLanguageSync } from "./lib/app-language";
 import { installScrollbarReveal } from "./lib/scrollbar-reveal";
 import "./styles/globals.css";
+import { restoreRendererRefreshDrafts } from "./features/app/renderer-refresh";
 
 const rendererSurface = new URLSearchParams(window.location.search).get("surface");
 if (rendererSurface) document.documentElement.dataset.surface = rendererSurface;
+if (!rendererSurface) restoreRendererRefreshDrafts();
 document.documentElement.dataset.theme = "dark";
 // Window-chrome layout differs per OS (traffic lights left on macOS,
 // controls overlay right on Windows/Linux); set before first paint.

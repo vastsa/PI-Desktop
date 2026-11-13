@@ -64,6 +64,18 @@ blob directory, new file cleanup lifecycle or lossy image transform is added.
    哈希值和大小；现有的批准行还带有执行字段。
    启动中断是进程纪元栅栏，并且不会重播任何工作。
 
+项目组复用现有 `kv` 边界：组记录在 `projectGroups`，共享记忆在
+`projectGroupMemory`，独立 Markdown 在 `projectGroupInstructions`。
+组记录可带 `capabilities: { skillIds?, mcpServerIds? }`（ADR 0349）：省略列表
+表示继承已启用且作用域匹配的能力，`[]` 表示不选，`{}` 恢复继承。ID 区分大小写、
+精确去重，并保留暂不可用的选项；每类最多 512 个 ID，每个最多 512 UTF-8 字节，
+拒绝空白、控制字符、null 和未知能力字段。损坏的持久化配置必须报错，不能扩大权限。
+`project.group.create`、`createRemote`、`update`、`rename` 接受可选顶层
+`capabilities` 和 `instructions`：省略保留原值，空说明清除内容。Markdown
+最多 32 KiB UTF-8；旧路径项目可在保存时提升为持久组并保留身份和记忆。
+组和说明在同一事务保存，任何写入失败均不留下部分结果。迁移保留 ID 与设置，
+配置同步通过既有组说明实体携带选择。无需数据库版本升级，也不会写入仓库 Markdown。
+
 ## 2. 文件布局
 
 正式打包版把上述目录树放在 `~/.pi-desktop`；开发构建放在 `~/.pi-desktop-dev`，

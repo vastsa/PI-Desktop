@@ -177,7 +177,9 @@ test("settings destinations own one subject each", () => {
   assert.match(behaviorSource, /settings\.sessionDefaults/);
   assert.match(behaviorSource, /settings\.execution/);
   assert.match(behaviorSource, /CommandShellRow/);
-  assert.match(behaviorSource, /infiniteProviderRetry: settings\.infiniteProviderRetry !== true/);
+  // The Execution card renders the retry rows component, which owns the
+  // infinite-retry toggle and the bounded retry fields.
+  assert.match(settingsPageSource, /infiniteProviderRetry: settings\.infiniteProviderRetry !== true/);
   assert.match(behaviorSource, /scheduledTasksEnabled: settings\.scheduledTasksEnabled === false/);
   assert.match(behaviorSource, /<ComputerUseSettings\b/);
   assert.doesNotMatch(behaviorSource, /settings\.defaultsTitle/);
@@ -186,6 +188,13 @@ test("settings destinations own one subject each", () => {
 
   assert.doesNotMatch(behaviorSource, /PromptEnhancementCard|promptEnhancement/);
   assert.doesNotMatch(behaviorSource, /EnhancementModelCard/);
+  // The execution card keeps the retry rows (max attempts and delays) that the
+  // provider-retry feature adds on top of the infinite-retry toggle.
+  assert.match(
+    behaviorSource,
+    /<ProviderRetrySettingsRows settings=\{settings\} saveSettings=\{saveSettings\}/,
+  );
+
   assert.match(
     settingsPageSource,
     /saveSettings\(\{ contextUsageDisplay: value \}\)/,

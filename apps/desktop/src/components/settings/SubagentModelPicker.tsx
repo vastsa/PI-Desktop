@@ -41,6 +41,7 @@ export function SubagentModelPicker({
   emptyLabel,
   label,
   allowInherit = true,
+  inheritLabel,
   onChange,
 }: {
   /** Current pin, or the empty string for inherit-session. */
@@ -52,6 +53,7 @@ export function SubagentModelPicker({
   emptyLabel?: string;
   label?: string;
   allowInherit?: boolean;
+  inheritLabel?: string;
   onChange: (next: string) => void;
 }) {
   const { t } = useTranslation();
@@ -64,7 +66,7 @@ export function SubagentModelPicker({
     const list: ModelMenuRow[] = allowInherit ? [
       {
         id: "",
-        label: t("extensions.subagents.modelInherit"),
+        label: inheritLabel ?? t("extensions.subagents.modelInherit"),
         groupName: "",
         startsGroup: false,
         divided: false,
@@ -91,7 +93,7 @@ export function SubagentModelPicker({
       });
     }
     return list;
-  }, [groups, orphanPin, t, allowInherit]);
+  }, [groups, orphanPin, t, allowInherit, inheritLabel]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();

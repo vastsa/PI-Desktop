@@ -8,10 +8,11 @@
  * containment path as the parent's.
  *
  * Two boundaries define the design:
- * - The parent's model context only ever gains the delegate's final report
- *   (and a one-line heartbeat while it runs). Child messages and tool rows
- *   are emitted for the transcript and persisted for review, but the session
- *   runtime filters them out when it rebuilds model context.
+ * - The parent's model context automatically gains only the final report and
+ *   a one-line heartbeat while it runs. TaskRead explicitly pages recorded
+ *   public steps. Child messages and tool rows are emitted for the transcript
+ *   and persisted for review, but the session runtime filters those raw rows
+ *   out when it rebuilds model context.
  * - A delegate's lifecycle never reaches Electron main's turn handling. It
  *   runs in the background under the session runtime (ADR 0089 / D328):
  *   `Task` starts it and returns, `TaskWait` may converge early, and when it
@@ -50,6 +51,8 @@ import {
   type SubagentRunStatus as SharedSubagentRunStatus,
   type SubagentThinkingLevel,
   type UiMessage,
+  resolveProviderRetryPolicy,
+  type ProviderRetryPolicy,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
@@ -62,7 +65,8 @@ import {
 } from "./agent-messages.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { clampThinkingLevel } from "./thinking-level.js";
-import { subagentModelBinding, type SubagentProviderRetryState } from "./subagent-model-binding.js";
+import { subagentModelBinding, type SubagentMessageModel, type SubagentProviderRetryState } from "./subagent-model-binding.js";
+import { SubagentProviderAttempt, SUBAGENT_RECOVERY_ERROR, type RecoveryTicket } from "./subagent-provider-attempt.js";
 import { contextBudgetFor } from "./context-budget.js";
 import { convertToLlm } from "./pi-runtime-messages.js";
 import {
@@ -81,8 +85,6 @@ import { removeTrailingAssistantMessages } from "./system-transcript.js";
 import {
   classifyProviderError,
   delayWithAbort,
-  PROVIDER_RATE_LIMIT_MAX_RETRIES,
-  PROVIDER_TRANSIENT_MAX_RETRIES,
   isTransientProviderRetryCode,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
@@ -95,9 +97,11 @@ export const SUBAGENT_WAIT_TOOL_NAME = "TaskWait";
 export const SUBAGENT_LIST_TOOL_NAME = "TaskList";
 /** Stop running delegations (ADR 0089). */
 export const SUBAGENT_STOP_TOOL_NAME = "TaskStop";
+/** Read a delegate's recorded steps, not only its report (ADR 0089). */
+export const SUBAGENT_READ_TOOL_NAME = "TaskRead";
 
-/** The report is the only thing that enters the parent's context; keep it
- * from becoming the context problem delegation was supposed to avoid. */
+/** Reports enter the parent's context automatically; keep them readable and
+ * bounded. TaskRead is a separate, explicitly requested transcript page. */
 export const MAX_SUBAGENT_REPORT_CHARS = 12_000;
 
 export type SubagentRunStatus = SharedSubagentRunStatus;
@@ -154,14 +158,20 @@ export type SubagentRunOptions = {
   /** Provider resolved by Electron main (the definition's pin, or the
    * session's provider when the definition pins nothing). */
   provider: RuntimeProviderConfig;
+  modelKey?: string;
+  onProgress?: () => void;
   /** Inherited session policy for retrying transient provider failures. */
   infiniteProviderRetry?: boolean;
+  /** Retry settings inherited for this child execution, including detached runs. */
+  providerRetryMaxAttempts?: number;
+  providerRetryInitialDelayMs?: number;
+  providerRetryFixedDelayMs?: number;
   thinkingLevel: SubagentThinkingLevel;
   /** User-owned definition pins only, in configured order. Missing bindings fail visibly. */
   fallbackModels?: Array<{ key: string; provider?: RuntimeProviderConfig }>;
   /** Original parent thinking selection, before primary-model clamping. */
   inheritedThinkingLevel?: SubagentThinkingLevel;
-  onModelChange?: (provider: RuntimeProviderConfig, thinkingLevel: SubagentThinkingLevel) => void;
+  onModelChange?: (provider: RuntimeProviderConfig, thinkingLevel: SubagentThinkingLevel, modelKey?: string, previousModelKey?: string) => void;
   /** Fully composed child system prompt (see `composeSubagentSystemPrompt`). */
   systemPrompt: string;
   /** Host-backed tools, built by the session runtime so a delegate's calls
@@ -207,17 +217,14 @@ export function composeSubagentSystemPrompt(options: {
 }): string {
   const { definition } = options;
   const resolved = options.toolNames;
-  const toolList =
-    resolved && resolved.length > 0
-      ? resolved.join(", ")
-      : subagentToolsLabel(definition);
+  const toolList = resolved ? resolved.join(", ") || "(none)" : subagentToolsLabel(definition);
   const framing = [
-    `You are the \"${definition.name}\" subagent inside PI-Desktop, working on one task delegated by the main agent.`,
-    `You cannot see the user, ask questions, or delegate further. Finish the task with the tools you have: ${toolList}.`,
+    `You are the \"${definition.name}\" subagent inside PI-Desktop, working on a task delegated by the main agent or created directly by the user.`,
+    `The user may send follow-up instructions through the host. Follow those instructions in this delegation only. You cannot ask questions through tools or delegate further. Finish the task with the tools you have: ${toolList}.`,
     subagentCanMutate(definition, resolved)
       ? "You may change files, but only the ones the task is about; leave everything else untouched. If the final report would exceed ~8,000 characters, write the full report to a file yourself and make the final message a compact summary plus the file path."
       : "You have no tools that change files or run commands, so never report an edit you could not have made.",
-    "Your final message is the report the main agent receives when you finish. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.",
+    "Your final message is the report shown in the delegation detail; model-started tasks also deliver it to the main agent. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.",
     "Keep the report tight. Report findings, not narration, and never pad it with a summary of your own process.",
     "If you discover in the first few turns that you lack a tool essential to the task (e.g. no Bash when shell commands are needed), stop immediately with a one-sentence report naming the missing capability. Do not attempt workarounds or pad the report with unrelated reading.",
   ].join("\n");
@@ -252,6 +259,7 @@ export class SubagentRun {
   private readonly uniqueToolCalls: ReturnType<typeof createToolCallIdentity>;
   private readonly agent: Agent;
   private readonly opts: SubagentRunOptions;
+  private readonly providerRetryPolicy: ProviderRetryPolicy;
   private currentAssistant?: UiMessage;
   private lastReportText = "";
   private lastReportTruncated = false;
@@ -283,9 +291,18 @@ export class SubagentRun {
     claim: (error, phase) => this.claimProviderRetry(error, phase),
   };
   private readonly runAbortController = new AbortController();
+  readonly providerAttempt: SubagentProviderAttempt;
+  private modelKey: string;
+  private recovery?: { selection: SubagentMessageModel; binding: ReturnType<typeof subagentModelBinding>; ticket: RecoveryTicket;
+    resolve: () => void; reject: (error: Error) => void };
 
   constructor(opts: SubagentRunOptions) {
     this.opts = opts;
+    this.providerRetryPolicy = resolveProviderRetryPolicy(opts);
+    this.retryState.initialDelayMs = this.providerRetryPolicy.initialDelayMs;
+    this.retryState.fixedDelayMs = this.providerRetryPolicy.fixedDelayMs;
+    this.providerAttempt = new SubagentProviderAttempt(opts.onProgress);
+    this.modelKey = opts.modelKey ?? `${opts.provider.id}/${opts.provider.modelId}`;
     const initialMessages = recoverMalformedToolCalls(opts.initialMessages ?? []);
     this.uniqueToolCalls = createToolCallIdentity(initialMessages);
     this.provider = opts.provider;
@@ -334,9 +351,78 @@ export class SubagentRun {
     this.agent.state.messages = replaceSystemPrompt(this.agent.state.messages, prompt);
   }
 
+  private acceptingUserMessages = true;
+  private userMessages: Array<{
+    text: string;
+    selection?: SubagentMessageModel & { binding: ReturnType<typeof subagentModelBinding> };
+  }> = [];
+  private userMessageWrites = new Set<Promise<void>>();
+
+  /** Commit before enqueueing; settlement waits for accepted writes so the
+   * last stream cannot race an acknowledged user instruction. */
+  async sendUserMessage(text: string, persist: () => Promise<void>, model?: SubagentMessageModel): Promise<boolean> {
+    if (!this.acceptingUserMessages || this.runSignal().aborted || this.turnAborted || this.mutationTermination) return false;
+    // Construct the complete binding before committing, without issuing a request.
+    const selection = model ? { ...model, binding: this.bindingFor(model.provider, model.thinkingLevel) } : undefined;
+    const write = persist().then(() => {
+      if (!this.acceptingUserMessages || this.runSignal().aborted || this.turnAborted || this.mutationTermination) {
+        throw new Error("The subagent was stopped or changed before the message was accepted");
+      }
+      this.userMessages.push({ text, selection });
+    });
+    this.userMessageWrites.add(write);
+    try { await write; return true; }
+    finally { this.userMessageWrites.delete(write); }
+  }
+
+  /** Reserve before authorization, then commit only if the same silent attempt survives. */
+  async recoverProvider(key: string, authorize: () => Promise<SubagentMessageModel>, validate: () => void): Promise<{ oldModelKey: string; newModelKey: string }> {
+    const check = () => {
+      validate();
+      if (!this.acceptingUserMessages || this.runSignal().aborted || this.turnAborted || this.mutationTermination) throw new Error("The subagent stopped or settled during recovery");
+    };
+    check();
+    if (key === this.modelKey) throw new Error("Recovery requires a different provider/model binding");
+    const ticket = this.providerAttempt.reserve();
+    try {
+      const selection = await authorize();
+      check();
+      this.providerAttempt.validate(ticket);
+      if (selection.key !== key || `${selection.provider.id}/${selection.provider.modelId}` === `${this.provider.id}/${this.provider.modelId}`) throw new Error("Recovery requires a different exact provider/model binding");
+      const binding = this.bindingFor(selection.provider, selection.thinkingLevel);
+      const oldModelKey = `${this.provider.id}/${this.provider.modelId}`;
+      await new Promise<void>((resolve, reject) => {
+        this.recovery = { selection, binding, ticket, resolve, reject };
+        this.providerAttempt.recover(ticket);
+      });
+      return { oldModelKey, newModelKey: selection.key };
+    } finally { this.providerAttempt.release(ticket); }
+  }
+
+  private applyRecovery(): void {
+    const recovery = this.recovery;
+    if (!recovery) return;
+    const carried = this.failedProviderContext();
+    if (!carried) throw new Error("The interrupted provider context cannot be recovered");
+    this.recordModelFailure(`${this.provider.id}/${this.provider.modelId}`, { code: SUBAGENT_RECOVERY_ERROR, message: `Parent switched the stalled attempt to ${recovery.selection.key}.` });
+    this.applyModelBinding(recovery.selection, recovery.binding);
+    this.agent.state.messages = carried;
+    this.streamError = undefined;
+    this.pendingProviderRetry = undefined;
+    this.pendingContextOverflow = undefined;
+    this.providerTransientRetryAttempt = this.providerRateLimitRetryAttempt = 0;
+    this.attemptedModels.add(`${this.provider.id}/${this.provider.modelId}`);
+    this.lastReportText = "";
+    this.lastReportTruncated = false;
+    this.recovery = undefined;
+    this.providerAttempt.release(recovery.ticket);
+    recovery.resolve();
+  }
+
   async run(): Promise<SubagentRunResult> {
     const { signal } = this.opts;
     if (signal?.aborted) {
+      this.acceptingUserMessages = false;
       return this.result("aborted", "The delegated task was aborted before it started.");
     }
     const onAbort = () => {
@@ -346,38 +432,7 @@ export class SubagentRun {
     signal?.addEventListener("abort", onAbort, { once: true });
     let caughtError: ReturnType<typeof classifyAgentError> | undefined;
     try {
-      const initialTaskMessage: AgentMessage = {
-        role: "user",
-        content: this.opts.task,
-        timestamp: Date.now(),
-      };
-      const agentState = this.agent.state;
-      const preflightModel = agentState?.model ?? this.modelBinding().model;
-      const preflightMessages = (agentState?.messages ?? []).filter(
-        (message) => message.role !== "system",
-      );
-      const preflightSystemPrompt =
-        agentState?.systemPrompt ?? this.opts.systemPrompt;
-      const preflightTools = agentState?.tools ?? this.opts.tools;
-      const initialContext = await prepareDelegateTurnContext({
-        messages: preflightMessages,
-        additionalMessages: [initialTaskMessage],
-        model: preflightModel,
-        taskBrief: this.opts.task,
-        retentionMode: "active_turn",
-        summaryModels: () =>
-          delegateSummaryModels(
-            this.provider,
-            preflightModel,
-            this.opts.sessionId,
-            usage => this.recordUsage(usage),
-          ),
-        systemPrompt: preflightSystemPrompt,
-        tools: preflightTools,
-        retainTaskBriefOnDegradation: false,
-        thinkingLevel: agentState?.thinkingLevel ?? this.thinkingLevel,
-        signal: this.runSignal(),
-      });
+      const initialContext = await this.prepareRequestContext(this.opts.task);
       if (this.runSignal().aborted) {
         return this.result("aborted", "The delegated task was aborted.");
       }
@@ -393,11 +448,60 @@ export class SubagentRun {
       }
       await this.agent.prompt(this.opts.task);
       await this.agent.waitForIdle();
-      while (!signal?.aborted) {
-        if (this.pendingProviderRetry) {
+      while (!this.runSignal().aborted && !this.turnAborted && !this.mutationTermination) {
+        // Admission can add another write while an earlier batch settles.
+        // Drain all accepted writes before closing the last idle boundary.
+        while (this.userMessageWrites.size > 0) {
+          await Promise.all([...this.userMessageWrites].map(write => write.catch(() => undefined)));
+        }
+        if (this.runSignal().aborted || this.turnAborted || this.mutationTermination) break;
+        if (this.recovery) {
+          this.applyRecovery();
+          // continue() can issue its first request before the loop's budget hook.
+          // Preflight carried tools/history against the replacement binding.
+          const context = await this.prepareRequestContext();
+          if (this.runSignal().aborted || this.turnAborted || this.mutationTermination) break;
+          if (context.kind === "overflow") {
+            return this.result("failed", "", subagentContextOverflowError(this.provider.modelId));
+          }
+          if (context.kind !== "unchanged") this.installContextOutcome(context);
+          await this.agent.continue();
+          await this.agent.waitForIdle();
+        } else if (this.pendingProviderRetry) {
           await this.retryPendingProviderFailure();
         } else if (this.streamError && this.useNextModel()) {
           await this.agent.continue();
+          await this.agent.waitForIdle();
+        } else if (this.userMessages.length > 0) {
+          if (this.streamError) {
+            const carried = this.failedProviderContext();
+            if (!carried) break;
+            const identity = `${this.provider.id}/${this.provider.modelId}`;
+            if (!this.modelFailures.some(failure => failure.model === identity && failure.code === this.streamError?.code && failure.message === this.streamError?.message)) {
+              this.recordModelFailure(identity, this.streamError);
+            }
+            // A new user turn follows exhausted recovery; it never replays tools.
+            this.agent.state.messages = carried;
+          }
+          const message = this.userMessages.shift();
+          if (!message) continue;
+          if (message.selection) this.applyModelBinding(message.selection, message.selection.binding);
+          this.streamError = undefined;
+          this.pendingContextOverflow = undefined;
+          this.providerTransientRetryAttempt = 0;
+          this.providerRateLimitRetryAttempt = 0;
+          this.fallbackIndex = 0;
+          this.attemptedModels.clear();
+          this.attemptedModels.add(`${this.provider.id}/${this.provider.modelId}`);
+          this.lastReportText = "";
+          this.lastReportTruncated = false;
+          const userContext = await this.prepareRequestContext(message.text);
+          if (this.runSignal().aborted || this.turnAborted || this.mutationTermination) break;
+          if (userContext.kind === "overflow") {
+            return this.result("failed", "", subagentContextOverflowError(this.provider.modelId));
+          }
+          if (userContext.kind !== "unchanged") this.installContextOutcome(userContext);
+          await this.agent.prompt(message.text);
           await this.agent.waitForIdle();
         } else {
           break;
@@ -406,6 +510,10 @@ export class SubagentRun {
     } catch (error) {
       caughtError = classifyAgentError(error);
     } finally {
+      this.acceptingUserMessages = false;
+      this.recovery?.reject(new Error("The subagent stopped or settled before recovery could continue"));
+      this.recovery = undefined;
+      this.providerAttempt.settle();
       signal?.removeEventListener("abort", onAbort);
       this.finalizeCurrentAssistant();
     }
@@ -481,6 +589,7 @@ export class SubagentRun {
       maxTokens: this.opts.definition.maxTokens,
       onUsage: usage => this.recordUsage(usage),
       uniqueToolCalls: this.uniqueToolCalls,
+      attempts: this.providerAttempt,
     }, this.retryState);
   }
 
@@ -501,6 +610,27 @@ export class SubagentRun {
     }
   }
 
+  /** Preflight user prompts and recovered continuations against the active binding. */
+  private async prepareRequestContext(text?: string): Promise<DelegateTurnUpdate> {
+    const state = this.agent.state;
+    const model = state?.model ?? this.modelBinding().model;
+    return prepareDelegateTurnContext({
+      messages: (state?.messages ?? []).filter(message => message.role !== "system"),
+      additionalMessages: text === undefined ? [] : [{ role: "user", content: text, timestamp: Date.now() }],
+      model,
+      taskBrief: this.opts.task,
+      retentionMode: "active_turn",
+      summaryModels: () => delegateSummaryModels(
+        this.provider, model, this.opts.sessionId, usage => this.recordUsage(usage),
+      ),
+      systemPrompt: state?.systemPrompt ?? this.opts.systemPrompt,
+      tools: state?.tools ?? this.opts.tools,
+      retainTaskBriefOnDegradation: false,
+      thinkingLevel: state?.thinkingLevel ?? this.thinkingLevel,
+      signal: this.runSignal(),
+    });
+  }
+
   /**
    * Shape the delegate's next in-run turn, mirroring the session's
    * `prepareNextTurn` (ADR 0299, decisions 2-4). A compaction rewrites only
@@ -510,6 +640,22 @@ export class SubagentRun {
     turn: PrepareNextTurnContext,
     signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate | undefined> {
+    // A tool batch has finished. Admit only committed, same-binding directions
+    // before preparing the next request; never interrupt a tool or overtake an
+    // explicit model change, which still owns its separate follow-up boundary.
+    while (this.userMessageWrites.size > 0) {
+      await Promise.all([...this.userMessageWrites].map(write => write.catch(() => undefined)));
+    }
+    if (signal?.aborted || this.runSignal().aborted || this.turnAborted || this.mutationTermination) return undefined;
+    let steered = false;
+    while (this.userMessages.length > 0 && !this.userMessages[0]?.selection) {
+      const message = this.userMessages.shift();
+      if (!message) break;
+      this.agent.state.messages.push({
+        role: "user", content: [{ type: "text", text: message.text }], timestamp: Date.now(),
+      });
+      steered = true;
+    }
     const outcome = await prepareDelegateTurnContext({
       messages: this.agent.state.messages,
       systemPrompt: this.agent.state.systemPrompt,
@@ -527,7 +673,7 @@ export class SubagentRun {
       thinkingLevel: this.agent.state.thinkingLevel,
       signal: signal ?? this.runSignal(),
     });
-    if (outcome.kind === "unchanged") return undefined;
+    if (outcome.kind === "unchanged" && !steered) return undefined;
     if (outcome.kind === "overflow") {
       // The Agent wrapper converts this throw into the normal error/agent_end
       // sequence; `message_end` picks the pending overflow up so the run
@@ -538,7 +684,7 @@ export class SubagentRun {
       );
       throw new Error(this.pendingContextOverflow.message);
     }
-    this.installContextOutcome(outcome);
+    if (outcome.kind !== "unchanged") this.installContextOutcome(outcome);
     return {
       context: {
         // The loop owns its context array: pi appends every streamed assistant
@@ -554,22 +700,35 @@ export class SubagentRun {
     };
   }
 
+  /** Only terminal provider failures may be followed by recovery or a user turn. */
+  private failedProviderContext(): AgentMessage[] | undefined {
+    if (this.runSignal().aborted || this.turnAborted || this.mutationTermination || !this.streamError || this.streamError.code === "TURN_ABORTED") return undefined;
+    const failed = this.agent.state.messages.at(-1);
+    if (failed?.role !== "assistant" || failed.stopReason !== "error" || readLocalRequestErrorDetails(failed)) return undefined;
+    return this.agent.state.messages.slice(0, -1);
+  }
+
+  /** Model, thinking, transport and credentials always change at the same boundary. */
+  private applyModelBinding(selection: SubagentMessageModel, binding = this.bindingFor(selection.provider, selection.thinkingLevel)): void {
+    const previousModelKey = `${this.provider.id}/${this.provider.modelId}`;
+    this.modelKey = selection.key;
+    this.provider = selection.provider;
+    this.thinkingLevel = selection.thinkingLevel;
+    this.agent.state.model = binding.model;
+    this.agent.state.thinkingLevel = binding.agentThinkingLevel;
+    this.agent.streamFunction = binding.streamFn;
+    this.agent.getApiKey = binding.getApiKey;
+    this.opts.onModelChange?.(this.provider, this.thinkingLevel, selection.key, previousModelKey);
+  }
+
   /** Continue the same agent at the failed request; never replay completed tools. */
   private useNextModel(): boolean {
-    // An aborted turn never continues, whether the signal flipped yet or the
-    // cancel was only visible on the settled message.
-    if (this.runSignal().aborted || this.turnAborted || !this.streamError || this.streamError.code === "TURN_ABORTED") return false;
     if (!this.opts.fallbackModels?.length) return false;
-    const failed = this.agent.state.messages.at(-1);
-    // Only a provider's terminal assistant error permits fallback. Host/tool
-    // failures, cancellation, and unexpected internal exceptions do not.
-    if (failed?.role !== "assistant" || failed.stopReason !== "error") return false;
-    if (readLocalRequestErrorDetails(failed)) return false;
-    this.recordModelFailure(`${this.provider.id}/${this.provider.modelId}`, this.streamError);
-    // What an alternative would actually carry: the current context minus the
-    // failed assistant row (ADR 0299 decision 6 re-evaluates it against each
-    // alternative's own window before switching).
-    const carried = this.agent.state.messages.slice(0, -1);
+    const carried = this.failedProviderContext();
+    const error = this.streamError;
+    if (!carried || !error) return false;
+    this.recordModelFailure(`${this.provider.id}/${this.provider.modelId}`, error);
+    // Re-evaluate the carried context against each alternative's own window.
     while (this.fallbackIndex < this.opts.fallbackModels.length) {
       const next = this.opts.fallbackModels[this.fallbackIndex++];
       if (!next.provider) {
@@ -596,18 +755,12 @@ export class SubagentRun {
         });
         continue;
       }
-      this.provider = next.provider;
-      this.thinkingLevel = thinking;
-      this.agent.state.model = binding.model;
-      this.agent.state.thinkingLevel = binding.agentThinkingLevel;
-      this.agent.streamFunction = binding.streamFn;
-      this.agent.getApiKey = binding.getApiKey;
+      this.applyModelBinding({ key: next.key, provider: next.provider, thinkingLevel: thinking }, binding);
       this.agent.state.messages = carried;
       this.streamError = undefined;
       this.providerTransientRetryAttempt = 0;
       this.providerRateLimitRetryAttempt = 0;
       this.lastReportText = "";
-      this.opts.onModelChange?.(this.provider, this.thinkingLevel);
       return !this.runSignal().aborted;
     }
     return false;
@@ -630,10 +783,11 @@ export class SubagentRun {
     error: ReturnType<typeof classifyAgentError>,
     phase: "request" | "stream",
   ): number | undefined {
+    if (this.recovery) return undefined;
     if (!error.retriable) return undefined;
-    const infinite = this.opts.infiniteProviderRetry === true;
+    const { maxAttempts } = this.providerRetryPolicy;
     if (error.code === "PROVIDER_RATE_LIMITED") {
-      if (!infinite && this.providerRateLimitRetryAttempt >= PROVIDER_RATE_LIMIT_MAX_RETRIES) {
+      if (this.providerRateLimitRetryAttempt >= maxAttempts) {
         return undefined;
       }
       return ++this.providerRateLimitRetryAttempt;
@@ -642,7 +796,7 @@ export class SubagentRun {
     // session does, so a delegate is not abandoned on a single gateway 502.
     void phase;
     if (!isTransientProviderRetryCode(error.code)) return undefined;
-    if (!infinite && this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
+    if (this.providerTransientRetryAttempt >= maxAttempts) {
       return undefined;
     }
     return ++this.providerTransientRetryAttempt;
@@ -665,11 +819,13 @@ export class SubagentRun {
           ? providerRateLimitDelayMs(
               this.providerRateLimitRetryAttempt,
               this.retryState.headers,
+              Date.now(), Math.random(), this.providerRetryPolicy,
             )
           : providerSetupRetryDelayMs(
               this.providerTransientRetryAttempt,
               undefined,
               this.retryState.headers,
+              Date.now(), this.providerRetryPolicy,
             );
       await delayWithAbort(delayMs, this.runSignal());
       if (this.opts.signal?.aborted) return;
@@ -919,7 +1075,9 @@ export class SubagentRun {
         if (failed) {
           const overflow = this.pendingContextOverflow;
           this.pendingContextOverflow = undefined;
-          if (overflow) {
+          if (this.recovery && message.errorMessage === SUBAGENT_RECOVERY_ERROR) {
+            this.streamError = { code: SUBAGENT_RECOVERY_ERROR, message: "The parent is replacing a stalled provider attempt." };
+          } else if (overflow) {
             // The boundary guard threw after degradation still did not fit.
             // The synthetic failure message carries the thrown text; keep the
             // actionable code instead of classifying it as a provider error.
@@ -988,6 +1146,7 @@ export class SubagentRun {
         break;
       }
       case "tool_execution_start":
+        this.providerAttempt.toolStarted(event.toolCallId);
         this.toolCalls += 1;
         this.emit({
           type: "tool_start",
@@ -1004,6 +1163,7 @@ export class SubagentRun {
         });
         break;
       case "tool_execution_end":
+        this.providerAttempt.toolEnded(event.toolCallId);
         this.emit({
           type: "tool_end",
           toolCallId: event.toolCallId,

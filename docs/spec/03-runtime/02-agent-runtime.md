@@ -82,10 +82,13 @@ runtime returns `{ requested: false }`; immediate `abort()` remains the
 separate cancellation path. `abort()` resolves only after the named active
 operation has completed its cancellation cleanup, so the same runtime can
 accept a follow-up prompt as soon as the abort request returns.
-Cancellation remains busy until both the parent operation and all running
-delegates have retired. Concurrent aborts join that same cleanup. A parent's
-terminal event cannot make a new prompt admissible while a child is still
-retiring. Graceful turn-boundary stop remains a separate operation.
+Desktop `agent.abort` uses parent-scoped cancellation: it retires the parent
+operation and releases its durable turn without aborting or waiting for running
+delegates. Their provider requests and runtime-owned tool signals remain live.
+Detached delegates neither block a new parent prompt nor get pruned when it starts.
+Explicit child Stop / `TaskStop` and runtime disposal still cancel child work.
+The internal default `abort()` is session-scoped cleanup and waits for both the
+parent and its delegates to retire. Graceful turn-boundary stop remains separate.
 
 On a headless Host, prompt and approved-plan admission share a per-session
 operation queue with immediate abort and its durable settlement. An abort
@@ -361,6 +364,25 @@ status event. The `retrying` activity carries the classified error code, the
 bounded/redacted provider message, and the HTTP status when known. The main
 session, builtin subagents, and plugin one-shot completions use the same
 codes, budget size, and precedence.
+
+The limits and delays above are the released defaults. AI settings also expose
+`providerRetryMaxAttempts`, `providerRetryInitialDelayMs`, and
+`providerRetryFixedDelayMs` as optional nonnegative JavaScript safe integers.
+The count denotes retries after the initial request; `0`, or the existing
+infinite toggle, removes the ceiling. Delay `0` means immediate. An explicit
+fixed interval replaces both exponential schedules and takes precedence over
+`Retry-After`; without it, the configured initial wait raises the category cap
+when necessary. Long waits are scheduled incrementally in timer-safe slices
+and remain abortable without preallocating the whole schedule.
+
+The UI commits numeric edits on blur/Enter, rejects invalid input, and reverts
+a failed save with a localized error. Empty fields display runtime defaults;
+clearing a stored override writes `null`. Omitted fields preserve stored values,
+invalid writes are rejected at renderer/IPC/native boundaries, and invalid
+persisted reads normalize to absence. Config sync carries these preferences.
+Main and builtin-subagent launches share the resolved policy, including reused
+sidecars on the next turn; an active turn retains its starting policy. One-shot
+completions and compaction retain their separately bounded policies.
 
 When the retry budget is exhausted, the final assistant error and lifecycle
 `error` are emitted once. Provider failures carry bounded diagnostics in
@@ -806,8 +828,8 @@ submitted Markdown bytes in a new immutable
 structured title/question in `plan_approvals`, and moves the live state to
 `awaiting_approval`.
 
-Plan/Goal requests retain Write/Edit and TaskWait/TaskList/TaskStop declarations,
-plus Task when subagents are configured. They are marked
+Plan/Goal requests retain Write/Edit, TaskRead, TaskWait, TaskList, and TaskStop
+declarations, plus Task and TaskRecover when subagents are configured. They are marked
 unavailable in the active mode. The execution allowlist remains unchanged:
 prohibited calls are blocked before extension call hooks and handlers, and a
 handler retained across a mode change rechecks that mode before executing.
@@ -1025,9 +1047,11 @@ not override the parent session by default: they follow `auto` completely
 their normal approval behavior. An explicit builtin or user scope remains an
 intentional override.
 
-**Tools (ADR 0089).** Task requires a non-empty subagent catalog. The three
-job controls are always declared and belong to the Agent core set rather than
-the on-demand catalog of §7.1. Execution of all four is restricted to Agent mode:
+**Tools (ADR 0089, ADR 0347).** `Task` and `TaskRecover` require a non-empty
+subagent catalog; the three job controls are always declared, and `TaskRead` is
+declared regardless of the catalog (ADR 0347). All six belong to the Agent core set
+rather than the on-demand catalog of §7.1. Execution of the whole delegation
+lifecycle is restricted to Agent mode:
 
 - `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
@@ -1082,21 +1106,59 @@ the on-demand catalog of §7.1. Execution of all four is restricted to Agent mod
   heartbeat (agent, status, elapsed, turns, last tool) plus any finished
   reports. The runtime keeps the parent turn open and delivers remaining
   reports when they finish, even if the parent already stopped calling tools.
-  Only `TaskStop` or user Stop aborts a delegate.
-- `TaskList()` — reports every delegation of the session with status and a
-  running heartbeat, plus the resumable chains (`details.resumable`) the parent
-  can continue with `Task(resume: ...)`; this is the only read path for that
-  list (ADR 0337).
+  `TaskStop` or the explicit subagent Stop controls abort a delegate; parent Stop does not.
+- `TaskList(offset?, limit?)` — reports live delegation status/heartbeats and the
+  unchanged resumable list (`details.resumable`, ADR 0337), plus a separate
+  `details.recorded` history page. That page includes user-created, stopped, and
+  evicted chains; it is not a resume grant. Offset defaults to 0, limit to 40
+  (max 100), with `total`, `returned`, `hasMore`, `nextOffset`, and `entries`
+  containing agent, latest delegationId, status, and a 512-character objective
+  preview. These parameters page recorded metadata only. TaskList and TaskRead
+  remain declared without definitions; both are Agent-only and excluded from children.
 - `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
   waits for each abort to settle, then persists `status: "stopped"` with
   `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
+- `TaskRecover(delegationId, model)` — continues a live parent-owned child's
+  stalled provider attempt with another exact, currently opted-in model key
+  (ADR 0350). The provider must have emitted no events, including thinking, for
+  at least 120000 ms. Tool execution, retry backoff, and idle duration do not
+  qualify. Main freshly authorizes every recovery; cached Task grants and
+  definition pins cannot bypass `availableForSubagents`. Reject unchanged
+  bindings, duplicate recovery, user-owned chains, and stale ownership,
+  turn/session/mode/cancellation state or renewed provider activity after awaits.
+  The prepared model/thinking/transport/credentials replace only the aborted
+  attempt; late events are ignored, completed tools and ordered follow-ups are
+  retained, and the parent model is unchanged. Results include `oldModelKey` and
+  `newModelKey`. `Task(resume, model)` remains rejected.
+  TaskList/TaskWait expose `phase`, `providerAttempt`, `providerAttemptStartedAt`,
+  `lastProviderEventAt`, `stalled`, and `recoveryPending`. TaskWait can return
+  early once for each newly stalled selected attempt; repeated waits do not spin
+  on the same stall. Observation never automatically cancels or selects a model.
+- `TaskRead(delegationId, offset?, limit?)` — pages one delegate's recorded
+  visible steps: initial task, ordered user follow-ups, assistant text, and tool
+  calls and results, never hidden reasoning, model-system rows, provider replay, or attachments. It
+  performs no file/path/session lookup (ADR 0347). Recorded tool text may
+  contain paths. Identity is a `Task` or `TaskList` `delegationId` of this
+  conversation, resolved against live records or this session's recorded chains,
+  even after resume-cache eviction. Reading never grants model resume permission.
+  A resumed chain pages as one sequence. `offset` defaults to 0,
+  `limit` to 40 (max 100). Text values are clipped to 2000 characters; pages stay
+  inside 20000 characters. The result reports `total`, `returned`, `offset`,
+  `hasMore`, `nextOffset`, `truncatedValues`, `source` (`live` or `chain`) and
+  `status`; `nextOffset` counts the steps actually emitted, so following it
+  cannot skip a step, and an out-of-range `offset` is a valid empty page.
+  Rows must belong to the owned Task-call ids and match the normalized agent
+  name. Missing-name rows require unique Task-call attribution and are counted
+  and disclosed in `unattributedRows`. The tool is registered as a core Agent
+  tool even without current definitions, so retained history remains readable
+  after fresh sidecar restore; it is denied in Plan and Goal.
 
 **Explicit desktop cancellation.** A running delegate can be stopped from its
 card or detail panel. The subagent group header also offers session-wide stop-all.
 These controls call the same cancellation routine as `TaskStop` without a model
 round trip. Cancellation is cooperative: the UI shows a pending state until
-termination is confirmed, preserving partial output and existing parent Stop
-semantics. A completed delegate is not relabeled by a late stop request.
+termination is confirmed and preserves partial output. Parent Stop is separate:
+it does not stop delegates. A completed delegate is not relabeled by a late stop request.
 
 **Live settlement.** When a delegate settles, the runtime refreshes its original
 `Task` transcript row with the terminal delegation summary (`status`,
@@ -1120,7 +1182,7 @@ saved in Settings for its effective thinking capability; Pi catalog supplies
 the baseline only. It runs under
 the same bounded provider retry policy as the parent. A delegate has no turn
 limit: it ends when it finishes, when the parent calls `TaskStop`, when the user
-Stops, or when a terminal parent error aborts it (ADR 0253). A document that
+explicitly stops that child, or when an attached parent's terminal error aborts it (ADR 0253). A document that
 still declares `maxTurns` loads normally and the key is ignored like any other
 unrecognized frontmatter key. `maxTokens` is an optional per-definition
 output cap (maximum 200000); omitted, `none`, or `0` follows the model's
@@ -1152,19 +1214,44 @@ duration only covers starting the background work.
 **Delegate lifetime (D328).** The runtime does not idle-timeout or
 duration-timeout a delegate. `idle-timeout` / `max-duration` frontmatter still
 parses so old documents load, but those values are not armed. A delegate runs
-until it finishes, fails, is `TaskStop`'d, or the user Stops / the runtime is
-disposed. The parent agent judges whether to cancel via `TaskStop`; a one-line
-heartbeat (who, status, elapsed, turns, last tool) is what it has to go on while
-the delegate is running.
+until it finishes, fails, is `TaskStop`'d, explicitly stopped as a child, or the runtime is
+disposed. Parent Stop detaches rather than cancels it. The parent may separately
+recover a silent provider attempt with `TaskRecover` (ADR 0350). Progress
+observation does not restore idle/duration watchdog cancellation.
 
 When the parent stops calling tools while delegates are still running, the
 runtime swallows that `agent_end`, keeps the durable turn open, waits for the
 delegates, and prompts the parent with their reports. Every terminal result
 resolves the parent wait before best-effort transcript publication; a failed
 `SubagentRun` initialization returns a tool error and never leaves a running
-record. User Stop and runtime disposal also abort the parent wait signal, so
-they can end the parent turn even if a delegate ignores its abort. Ending the
-parent loop does not otherwise abort delegates.
+record. Parent Stop aborts the parent wait signal, detaches running delegates,
+and retires the parent turn without waiting for or cancelling child work.
+Session disposal still aborts both the parent wait and the delegates.
+
+**Independent child tool authority (ADR 0348).** Before starting a child, the
+trusted runtime registers `tools.execution.start` with immutable `sessionId`,
+original `turnId`, `runtimeId`, and `executionOwnerId`. The desktop sidecar owns
+the ephemeral owner/call registry; lifecycle RPCs do not become durable Host
+turns. Every forwarded `tools.execute` is registered before Host dispatch. Main
+resolves that live call from the current sidecar/Host generation using the
+existing session/call/turn/tool fields, not arbitrary notification metadata.
+Root tools still require `isTurnDispatchable`. Child tools require a live owner;
+missing, forged, revoked, or cross-session/runtime/turn identities fail closed.
+Admission is rechecked synchronously after awaits, including permission/session
+lookup. A child never borrows a newer parent's turn. `tools.abort` cancels only
+the matching call signal and still forwards native cancellation; plugin tools,
+plugin MCP, user MCP, and remote workspace tools consume that signal without
+closing shared MCP servers. End/dispose/transport replacement revoke owners and
+their calls. Pre-dispatch cancellations and retired owners are bounded and fail
+closed on saturation. Worktree identity and TodoWrite's owned-turn rules do not change.
+
+Child plugin tools receive their synthetic `executionOwnerId` as `ctx.turnId`.
+On child end, participating project-active plugins receive
+`subagent:executionEnded` and a compatibility `session:turnEnded`, both scoped
+to that child id with `parentTurnId` and `scope: "subagent"` (plugin API §5).
+The parent's ordinary terminal event is unchanged. While any child or pending
+user control remains active, an incompatible runtime reconfiguration returns
+`AGENT_BUSY` rather than disposing it; unchanged launches reuse the runtime.
 
 Fatal provider/stream errors (including exhausted HTTP 429) and parent aborts
 retain their existing `failed` and `aborted` outcomes. If an assistant response
@@ -1173,11 +1260,12 @@ ends at the provider's output-token limit (`stopReason: "length"` or
 `failed` with `SUBAGENT_OUTPUT_TRUNCATED` and `outputTruncated: true`; its
 bounded partial report remains under the failure explanation for diagnosis. A
 later delegate turn that ends normally clears the marker and can complete. A
-terminal parent error also aborts leftover delegates, skips the resume prompt,
-and returns the session to idle so Continue is not `AGENT_BUSY` (D352). The
+terminal parent error also aborts attached leftover delegates, skips the resume prompt,
+and returns the session to idle so Continue is not `AGENT_BUSY` (D352). Previously detached
+delegates are not cancelled by a later parent's error. The
 interrupted delegates settle as `failed` with `SUBAGENT_PARENT_FAILED` and keep
 their transcript-backed resume eligibility. This does not automatically restart
-them; user Stop, TaskStop and dispose still settle as non-resumable cancellations.
+them; explicit child Stop, TaskStop and dispose still settle as non-resumable model cancellations.
 
 **Resumable delegations (ADR 0279).** `Task` accepts an optional `resume`
 parameter carrying the `delegationId` of a settled delegation in the same
@@ -1200,10 +1288,10 @@ name normalized on rebuild — so resumability survives a sidecar restart.
 Chain identity (`delegateSessionId`) stays internal; the parent only
 ever passes a `delegationId`, and the reverse map resolves it.
 
-Only `completed` and `failed` chains are resumable; `stopped` and `aborted` runs
-are terminal and revive only by starting a new delegation, and a run the app
-closed while it still worked rebuilds as `interrupted`, which is not resumable
-either. A chain whose read-only tool output exceeds `MAX_RESUMABLE_READ_LINES`
+Model-issued `Task(resume)` accepts `completed`, `failed`, and `timed_out`
+chains. It cannot resume `stopped`, `aborted`, or restart-reconstructed
+`interrupted` runs; those remain available for explicit user continuation under
+§5f.4. A chain whose read-only tool output exceeds `MAX_RESUMABLE_READ_LINES`
 (50000) leaves the reusable list without an in-chain trim, so a resume never
 silently drops history. The registry keeps at most
 `MAX_RESUMABLE_CHAINS_PER_AGENT` (2) reusable chains per definition name and
@@ -1216,17 +1304,17 @@ delegation is a tool error telling the parent to converge with `TaskWait`
 first, and a chain has at most one live record at a time. `model` and `resume`
 together are rejected, and a resumed run keeps the chain's recorded binding:
 the `providerId/modelId` key it resolved is preferred and reauthorized on demand
-when its turn grant has expired. A chain rebuilt from the transcript is matched
-by model id only among the current definition pin/fallbacks, the session binding,
-and currently authorized overrides. Other definitions' private pins are excluded.
+when its turn grant has expired. Legacy rows that omitted that key recover the
+exact provider account from the child reply's own `providerId/modelId` metadata;
+the same-model fallback is used only when that account identity is unambiguous.
 A known key never falls through to another account just because its model id
-matches. When nothing authorized resolves it the run
-continues on the definition's current binding and records the previous model id
-as `modelChangedFrom` in its lifecycle details. Changing models on purpose means
-starting a new delegation. An unknown id, an id belonging to another definition,
-a non-resumable status, an over-budget chain, and a chain whose rows are gone
-each return a tool error naming the reason and, for an unknown id, the reusable
-ids when there are any.
+matches. When nothing authorized resolves it, resume is rejected with an
+explicit model-selection error and no successor is started; the original
+chain, model display, and continuation id remain intact. Changing models on
+purpose means starting a new delegation. An unknown id, an id belonging to
+another definition, a non-resumable status, an over-budget chain, and a chain
+whose rows are gone each return a tool error naming the reason and, for an
+unknown id, the reusable ids when there are any.
 
 The parent discovers reusable chains through `TaskList`, whose result lists
 each chain's latest `delegationId`, its objective, and up to
@@ -1321,24 +1409,32 @@ request.
 Delegate compaction affects the delegate's model context only. It rewrites no
 persisted transcript row, writes no host-core checkpoint, and adds no
 compaction row, warning toast, or context-inspector line; the delegate keeps
-its complete visible rows and the parent still sees only reports. Compaction
-is entirely automatic: `new_context` remains denied to delegates, because
-executing it would set the parent runtime's pending-compaction flag.
+its complete visible rows, and the parent's default view of the delegate stays
+its reports. `TaskRead` is the explicit, opt-in exception: it pages those
+recorded steps on request (ADR 0347). Its bounded output enters ordinary parent
+tool history, but raw child rows are never appended to the parent protocol
+transcript. Compaction is entirely automatic: `new_context` remains denied to
+delegates, because executing it would set the parent runtime's
+pending-compaction flag.
 
 **Events and context.** Every event a delegate emits carries
 `parentToolCallId` and `agentName` on its envelope, and Electron main copies both
 onto the persisted row. When the runtime rebuilds model context it skips every
-row with `parentToolCallId`: the parent only ever saw reports through
-`TaskWait` or the runtime's completion prompt (D328), and replaying delegate
-rows would both contradict that and reintroduce the context cost delegation
-exists to avoid.
+row with `parentToolCallId` by default: the parent saw reports through
+`TaskWait` or the runtime's completion prompt (D328), and automatically
+replaying delegate rows would both contradict that and reintroduce the context
+cost delegation exists to avoid. The one exception is the parent's own tool
+output: a `TaskRead` result enters the parent turn like any other tool result,
+so the parent sees exactly the step page it asked for and nothing else. Child
+rows are never replayed automatically, and no earlier `TaskRead` page is
+re-injected.
 
-**Turn ownership.** A delegate's lifecycle never reaches Electron main's turn
-handling. The parent may keep working or talk to the user after `Task`. If it
-stops calling tools while delegates still run, the runtime keeps the durable
-turn open and delivers the reports when they finish. User Stop, `TaskStop`,
-runtime dispose, or a parent fatal error (D352) abort a still-running
-delegate.
+**Turn ownership.** Child terminal events never finalize the parent's durable
+turn. The parent may keep working after `Task`; normal idle waiting keeps its
+turn open until reports arrive. Explicit parent Stop instead detaches running
+children and releases only the parent turn. Detached children survive subsequent
+parent prompts, while explicit child Stop, `TaskStop`, and runtime disposal retain
+their cancellation paths. Fatal parent errors cancel only attached children (D352).
 
 **Isolated worktrees (ADR 0329).** In an isolated session, a delegate whose
 tools include `Write` or `Edit` gets its own worktree before its first turn
@@ -1386,7 +1482,8 @@ ADR 0164) are withdrawn.
 
 Coordination stays on the existing delegation contract: the parent writes
 independent briefs, starts `Task`s, and collects self-contained reports through
-`TaskWait` / `TaskList` / `TaskStop`. A later round of work, if needed, is a
+`TaskWait` / `TaskList` / `TaskStop`, and may inspect a settled chain's
+recorded steps with `TaskRead` (ADR 0347). A later round of work, if needed, is a
 new `Task` whose brief includes earlier reports. `A2A` and `Peer` are not
 assignable tools; a definition that names either is treated as an unknown
 tool name and dropped with a parse warning.
@@ -1408,6 +1505,85 @@ human authorization. A completion callback is durable and at-most-once, and
 does not automatically trigger another callback. This path does not restore
 the withdrawn `A2A` or `Peer` tools and does not change `Task`, `TaskWait`,
 `TaskList`, or `TaskStop` semantics.
+
+### 5f.4 User-owned desktop subagent commands (ADR 0348)
+
+The session directory can start a delegate or send a message to an owned chain
+without a parent-model round trip. Its declarative control request carries
+`sessionId`, `operationId`, and either `start` (`agent`, `task`, optional `model`)
+or `message` (`delegationId`, `content`, optional `model`). Renderer input cannot
+supply launch credentials, permission state, or provider configuration. Main
+resolves current session/launch state and the runtime independently admits the
+operation; only
+supported local Agent sessions are eligible, never Plan/Goal, Remote, or Native Pi.
+
+The existing delegation factory and cancellation owner execute accepted work.
+A running child receives an ordered follow-up. An explicit user model is resolved
+before admission and applied at that follow-up's turn boundary, after the current
+request, retry, and fallback finish; model, transport, and credentials move together.
+A settled chain resumes with its history and the selected model's context budget.
+Without an override, the existing binding is retained. Parent-provider
+`Task(resume, model)` remains rejected, and the parent's own model never changes.
+Admission returns `started`, `queued`, or `recorded`, not proof of completion.
+
+Plain messages to a running child use safe steering. At the next in-run model
+boundary, after the current tool batch completes, the runtime waits for admitted
+message writes and consumes the committed plain-message prefix in order. It
+budgets the updated child context before requesting the model. Active requests
+and tools are not cancelled, completed actions are not undone, and commands are
+neither duplicated nor added to parent context. An explicit model selection is
+an ordering barrier: it and later messages retain the existing separate follow-up
+boundary after current work/retry/fallback. Failed writes and stopped/disposed
+children cannot start a steering request. Queued receipts remain admission-only.
+
+The model-facing bounded resume cache is not an ownership boundary for explicit
+user continuation. A missing cached chain is reconstructed only from this
+session's transcript; foreign handles, incompatible states, model authorization,
+and read/context budgets remain enforced. The resumed run retains the full chain.
+This explicit user path also accepts `stopped`, `aborted`, and `interrupted`
+chains. A restart does not resume work automatically. If shutdown preceded the
+first child reply, a persisted original task is sufficient to seed the new
+user-requested run; missing original tasks still fail. Saved child rows remain
+chain-scoped, unfinished tools are not replayed, and model-issued Task resume
+permissions are unchanged.
+
+Restoration accepts both legacy direct Task results and current `details`
+envelopes, including namespaced Task/Subagent spellings and resume links that
+recorded the original tool-call id. Only issued delegation handles become
+continuation targets; rejected calls do not create children. Repeated legacy
+handles and settled copies retain one chronological chain and its original task.
+Missing continuation model metadata retains the last known chain binding.
+
+When old Task results lack an exact account/model, only that call's own
+agent-attributed assistant replies can supply it. Parent or sibling replies
+cannot. A newer explicit binding wins over an old reply, including a switch
+between accounts serving the same model. If the recorded account is unavailable,
+admission rejects clearly instead of selecting the parent or another account.
+The renderer keeps a rejected resume visible as an attempt, but its detail and
+composer resolve a compatible same-session resume target to the original chain;
+the rejected call id is never sent as a fabricated child handle.
+An admitted command still resolving its model keeps the durable turn open. Once
+the parent and children settle, the runtime emits `turn_end` and `agent_end`
+exactly once for the deferred ending, so Main releases its turn before a later
+Continue. Cancellation does not wait for pending model authorization.
+
+Commands are durable child-owned user rows with additive `subagentControl`
+metadata, operation identity, and request hash. Identical retries share admission;
+conflicting reuse fails. After restore, a journaled operation is acknowledged
+without replaying it. The directory adapts roots to Task-shaped presentation
+only; no synthetic provider Task is persisted or sent. Existing transcripts
+need no database migration, and Rust keeps exclusive persistence ownership.
+Main persists child-owned user snapshots, including terminal control metadata,
+through the same message outbox as child tool rows; they are not parent steering.
+`TaskRead` includes the initial task and follow-ups in chronological order without
+automatically injecting them into the parent's model history.
+
+Default parent replay still excludes child-owned rows. User-created reports do
+not automatically trigger a parent-model request; TaskRead/TaskWait are explicit
+inspection paths. This does not restore sibling or cross-session communication.
+Drafts and explicit model choices remain session/chain-scoped across remount and
+renderer refresh. A late acknowledgement clears only the submitted text revision,
+never newer edits. The selected account/model binding is retained in chain metadata.
 
 ## 6. Providers & models
 
@@ -1684,8 +1860,14 @@ execution activation rules:
 - Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
   `# Skills` section and a user-typed `/skill:<skill-id>` both ask the model to call
   it, and a tool that is missing from the schema cannot be called at all
-- Agent: `TaskWait`, `TaskList` and `TaskStop` for session jobs, plus `Task`
-  when the subagent catalog is non-empty (§5f)
+- Agent: `Task`, `TaskWait`, `TaskStop`, and `TaskRecover`, whenever the
+  subagent catalog is non-empty (§5f) — a capability the model has to go
+  looking for is one it will not use, and the delegation lifecycle is worth
+  the extra schemas per request
+- Agent: `TaskRead` and `TaskList` unconditionally, even with no configured subagent
+  definitions (§5f, ADR 0347) — it reads this conversation's retained
+  delegation history, so removing a definition must not remove the parent's
+  ability to review what it already recorded
 - Plan: `Read`, `Glob`, `Grep`, `BrowserPreview`, and `Bash`
 - both modes: `ToolSearch` when at least one deferred capability exists
 

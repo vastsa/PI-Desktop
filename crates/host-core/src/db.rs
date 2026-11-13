@@ -20,6 +20,7 @@ mod mode_runs_migration;
 mod model;
 mod model_discovery_migration;
 mod plugin_providers_migration;
+mod project_group_options;
 mod project_groups;
 mod project_path_migration;
 mod repositories;
@@ -39,6 +40,7 @@ pub(crate) use migrations::{
 pub(crate) use mode_runs_migration::MODE_RUNS_SCHEMA;
 pub(crate) use model::PlanWorkRow;
 pub use model::{Database, ProjectMemoryEntryRecord, ProjectMemoryRecord, ProjectRecord};
+pub use project_group_options::{ProjectCapabilities, ProjectGroupOptions};
 pub use project_groups::{
     ProjectGroupContextRecord, ProjectGroupRecord, ProjectGroupRoot, RemoteWorkspace,
     REMOTE_PROJECT_PREFIX,

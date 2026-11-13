@@ -107,11 +107,17 @@ destination, chat as the home surface, tools and permissions inline.
   header's 4px control gap) keeps the `+`, maximize, and viewport-fixed
   work-panel toggle one button group, spaced by that same gap, while the trigger
   keeps a distinct hit target. Clicking `+` creates and activates
-  a unique New launcher tab; its body presents the same data-driven Review and
-  plugin-view rows as buttons, so the user chooses a destination in the page
-  instead of opening a dropdown. Selecting a row replaces that launcher tab with
-  the destination or activates an existing singleton. File paths stay distinct
-  while plugin views deduplicate by view reference. The viewport-fixed toggle
+  a unique New launcher tab; its body presents the same data-driven Review,
+  Session subagents, and plugin-view rows as buttons, so the user chooses a
+  destination in the page instead of opening a dropdown. Selecting a row
+  replaces that launcher tab with the destination or activates an existing
+  singleton: Review, the Session subagents directory, and each plugin view are
+  singletons, while file paths stay distinct and plugin views deduplicate by
+  view reference. **Session subagents** is the currently active conversation's
+  delegation directory, separate from the global subagent-definition
+  destination in Settings (`04-ux/06-settings-ia.md`); its header action in the
+  conversation topbar is hidden when no session is active and for remote
+  sessions. The viewport-fixed toggle
   and `Cmd/Ctrl + J` both toggle the active session's retained panel context —
   revealing it without creating a resource tab and collapsing it without
   discarding one; the create trigger remains unavailable while the panel is
@@ -119,7 +125,9 @@ destination, chat as the home surface, tools and permissions inline.
   No agent or tool result opens, activates, or resizes the panel: Review is
   reached only through an explicit user action, so a successful workspace
   Write/Edit leaves the panel exactly as the user left it and shows its
-  evidence as a transcript card instead. The inner
+  evidence as a transcript card instead. A `Task` start likewise never opens,
+  activates, or focuses the Session subagents tab, so delegation never takes
+  the panel away from what the user was reading. The inner
   divider resizes the panel through the shared three-column budget; moving it
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual
@@ -414,6 +422,13 @@ draws no dividers: header, toolbar, cards and the detail sheet's sections are
 set apart by tone and spacing, and hairlines are reserved for floating layers
 (menus, sheet, dialogs). MCP, Skills, and Subagents are not tabs or sections of
 Extensions.
+
+Installed cards offer a localized **Open panel** icon action when the plugin is
+enabled and declares `ui.panel`, whether or not an update is available. It uses
+the existing Host panel-opening API and reports failures through the page's
+error toast; Host permission checks remain authoritative. Disabled plugins and
+plugins without a panel have no launch action. Scope, update, settings, and
+overflow controls remain independent of panel availability.
 
 ### 3.5 Settings (full-page takeover)
 ### 3.5 Settings (full-page takeover)

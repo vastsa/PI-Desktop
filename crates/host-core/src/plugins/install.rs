@@ -754,7 +754,7 @@ pub(crate) fn download_url_observed(
         "--user-agent".into(),
         "pi-desktop-host-core".into(),
     ];
-    args.extend(crate::network_proxy::curl_proxy_args());
+    args.extend(crate::network_proxy::curl_proxy_args().map_err(anyhow::Error::msg)?);
     args.extend(crate::network_proxy::curl_tls_args());
     if package_guard.is_some() && url.starts_with("https://") {
         // Downgrading to plain HTTP mid-redirect would take the request off

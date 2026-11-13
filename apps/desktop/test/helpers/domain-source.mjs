@@ -26,7 +26,7 @@ async function readDomainSource(facadeRelativePath, domainRelativePath) {
   const chunks = await Promise.all(
     paths.map(async (path) => {
       const source = await readFile(path, "utf8");
-      return `\n/* ${relative(desktopSourceRoot, path)} */\n${source}`;
+      return `\n/* ${relative(desktopSourceRoot, path).replaceAll("\\", "/")} */\n${source}`;
     }),
   );
   return chunks.join("\n");
@@ -46,7 +46,7 @@ function readDomainSourceSync(facadeRelativePath, domainRelativePath) {
   const facade = join(desktopSourceRoot, facadeRelativePath);
   const domainRoot = join(desktopSourceRoot, domainRelativePath);
   return [facade, ...sourceFilesSync(domainRoot)]
-    .map((path) => `\n/* ${relative(desktopSourceRoot, path)} */\n${readFileSync(path, "utf8")}`)
+    .map((path) => `\n/* ${relative(desktopSourceRoot, path).replaceAll("\\", "/")} */\n${readFileSync(path, "utf8")}`)
     .join("\n");
 }
 

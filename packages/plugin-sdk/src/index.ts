@@ -970,12 +970,19 @@ export type PluginTool = {
 
 export type PluginToolExecContext = {
   sessionId?: string;
+  /**
+   * Opaque resource lifetime id matching session:turnEnded cleanup.
+   * Root calls use a durable turn id; child calls use a synthetic execution-owner
+   * id, never authority for durable turn APIs. Child cleanup adds scope: "subagent"
+   * and parentTurnId and also emits subagent:executionEnded (plugin API §5).
+   */
   turnId?: string;
   /** Durable session operating mode. Host-core is authoritative (ADR 0211). */
   mode?: "agent" | "plan" | "goal";
   /** Executor model for this session, `providerId/modelId`. Configuration, not transcript. */
   modelKey?: string;
   thinkingLevel?: string;
+  /** Exact invocation cancellation; parent Stop does not cancel child-owned calls. */
   signal?: AbortSignal;
   log: (msg: string) => void;
 };

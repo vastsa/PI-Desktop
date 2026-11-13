@@ -5,7 +5,8 @@ import { useBlockingOverlay } from "../lib/blocking-overlay";
 import { MAX_PROJECT_NAME_CHARS } from "../lib/sidebar-preferences";
 import { api } from "../lib/api";
 import { parseGitCloneUrl } from "../lib/git-clone-url";
-import { allowInsecureUserEndpoints } from "@pi-desktop/shared";
+import { allowInsecureUserEndpoints, type ProjectAgentSettings } from "@pi-desktop/shared";
+import { ProjectAgentSettingsFields, projectInstructionsTooLarge } from "./ProjectAgentSettingsFields";
 import {
   defaultProjectName,
   folderNameFromPath,
@@ -69,6 +70,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
   const [gitUrl, setGitUrl] = useState("");
   const [cloneParent, setCloneParent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [agentSettings, setAgentSettings] = useState<ProjectAgentSettings>({});
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -111,7 +113,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
       }
       if (event.key !== "Tab") return;
       const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'input:not([disabled]), button:not([disabled]), select:not([disabled])',
+        'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), select:not([disabled])',
       );
       if (!focusable?.length) return;
       const first = focusable[0];
@@ -183,7 +185,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
 
   const submit = async () => {
     const projectName = resolveProjectName(name, defaultName);
-    if (busyRef.current) return;
+    if (busyRef.current || projectInstructionsTooLarge(agentSettings.instructions)) return;
     if (!projectName || (source === "remote" && !remoteProject)) return;
     if (source === "git") {
       if (!cloneTarget || !cloneParent) return;
@@ -194,16 +196,18 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
     setBusy(true);
     try {
       if (source === "remote" && remoteProject) {
-        await createProjectFromRemote({ name: projectName, hostKey: remoteProject.hostKey, path: remoteProject.path });
+        await createProjectFromRemote({ name: projectName, hostKey: remoteProject.hostKey, path: remoteProject.path, agentSettings });
       } else if (source === "git" && cloneTarget) {
         await createProjectFromGit({
           name: projectName,
+          agentSettings,
           url: cloneTarget.url,
           parentPath: cloneParent,
         });
       } else {
         await createProject({
           name: projectName,
+          agentSettings,
           folders,
           primaryPath: folders[0],
         });
@@ -415,6 +419,10 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
                 </p>
               </section>
             )}
+            <ProjectAgentSettingsFields
+              projectPath={source === "local" ? folders[0] : source === "git" && cloneParent && cloneTarget
+                ? `${cloneParent.replace(/[\\/]+$/, "")}/${cloneTarget.name}` : undefined}
+              remote={source === "remote"} value={agentSettings} onChange={setAgentSettings} disabled={busy} />
           </div>
 
           <div className="project-create-dialog-actions">
@@ -425,7 +433,7 @@ function ProjectCreateDialogContent({ initialRemoteHostKey }: { initialRemoteHos
               type="submit"
               variant="primary"
               disabled={
-                source === "remote" ? !projectName || !remoteProject || busy : source === "git"
+                projectInstructionsTooLarge(agentSettings.instructions) ? true : source === "remote" ? !projectName || !remoteProject || busy : source === "git"
                   ? !projectName || !cloneTarget || !cloneParent || busy
                   : !projectName || folders.length === 0 || busy
               }

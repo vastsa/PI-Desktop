@@ -1,4 +1,5 @@
 import type { RemoteHostsBoot } from "../bootstrap/remote-hosts";
+import type { ToolExecution } from "@pi-desktop/host-runtime";
 
 export type RemoteWorkspaceToolRequest = {
   requestId: string;
@@ -18,6 +19,7 @@ type Dependencies = {
   getBoot: () => RemoteHostsBoot | null;
   isCurrent: () => boolean;
   isTurnDispatchable: (sessionId: string, turnId: string) => boolean;
+  getExecution?: (request: RemoteWorkspaceToolRequest) => ToolExecution | undefined;
   log: (message: string, error: unknown) => void;
 };
 
@@ -40,16 +42,24 @@ export function createRemoteWorkspaceToolRelay(host: HostReply, deps: Dependenci
   return {
     async execute(request: RemoteWorkspaceToolRequest) {
       const key = keyFor(request);
+      const execution = deps.getExecution?.(request);
+      const onAbort = () => {
+        if (cancelled.has(key)) return;
+        cancelled.add(key);
+        void abort(request).catch((error) => deps.log("remote tool cancellation failed", error));
+      };
       let result: unknown;
       let ownsActive = false;
       try {
-        if (!deps.isCurrent() || !deps.isTurnDispatchable(request.sessionId, request.turnId)
-          || cancelled.has(key)) throw Object.assign(new Error("remote tool turn was cancelled"), { errorCode: "TOOL_ABORTED" });
+        if (!deps.isCurrent() || (deps.getExecution && !execution) || execution?.signal.aborted ||
+          (!execution?.owner && !deps.isTurnDispatchable(request.sessionId, request.turnId)) ||
+          cancelled.has(key)) throw Object.assign(new Error("remote tool turn was cancelled"), { errorCode: "TOOL_ABORTED" });
         const boot = deps.getBoot();
         if (!boot) throw new Error("remote host is unavailable");
         if (active.has(key)) throw new Error("duplicate remote tool dispatch");
         active.set(key, request);
         ownsActive = true;
+        execution?.signal.addEventListener("abort", onAbort, { once: true });
         result = await boot.executeWorkspaceTool({ ...request.remoteWorkspace,
           sessionId: request.sessionId, turnId: request.turnId, toolCallId: request.toolCallId,
           toolName: request.toolName, args: request.args,
@@ -61,6 +71,7 @@ export function createRemoteWorkspaceToolRelay(host: HostReply, deps: Dependenci
       } catch (error) {
         result = failure(error);
       } finally {
+        execution?.signal.removeEventListener("abort", onAbort);
         if (ownsActive) {
           active.delete(key);
           cancelled.delete(key);
@@ -73,6 +84,7 @@ export function createRemoteWorkspaceToolRelay(host: HostReply, deps: Dependenci
     cancel(input: { sessionId: string; toolCallId: string }) {
       const key = keyFor(input);
       const request = active.get(key);
+      if (cancelled.has(key)) return;
       if (!request) return;
       cancelled.add(key);
       void abort(request).catch((error) => deps.log("remote tool cancellation failed", error));

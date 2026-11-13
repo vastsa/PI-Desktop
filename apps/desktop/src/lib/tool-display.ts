@@ -1,3 +1,5 @@
+import { isSubagentTaskTool } from "@pi-desktop/shared";
+
 export type ToolAction =
   | "read"
   | "list"
@@ -70,8 +72,7 @@ export function isAskToolName(toolName?: string): boolean {
  * (TaskWait/TaskList/TaskStop) drive an existing delegation and are not
  * delegation activity items themselves. */
 export function isDelegationStartTool(toolName?: string): boolean {
-  const bare = bareToolName(toolName);
-  return bare === "task" || bare === "subagent";
+  return isSubagentTaskTool(toolName);
 }
 
 /**

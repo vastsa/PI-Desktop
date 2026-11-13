@@ -5,6 +5,8 @@ import {
   ErrorCodes,
   OAUTH_AUTH_KIND,
   isActiveInProject,
+  parseProjectCapabilities,
+  projectCapabilityAllowed,
   isCommandShellCatalog,
   normalizeMode,
   resolveBindingLimits,
@@ -15,6 +17,9 @@ import {
   type SessionThinkingLevel,
   type UserSkillRecord,
   type UserSubagentRecord,
+  normalizeProviderRetryMaxAttempts,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryFixedDelayMs,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -257,13 +262,19 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
     );
     const projectPath =
       typeof session.projectPath === "string" && session.projectPath.trim() ? session.projectPath.trim() : undefined;
+    // Capability lookup is required; a read failure must not expand access.
+    const projectContext = projectPath
+      ? await host.call<{
+          context?: { capabilities?: unknown; roots?: Array<{ path?: string }>;
+            instructions?: string; memory?: { content?: string } } | null;
+        }>("project.group.context", { path: projectPath })
+      : { context: null };
+    const projectCapabilities = parseProjectCapabilities(projectContext?.context?.capabilities);
     let projectInstructions = await loadInstructionChain(projectPath);
     let projectMemory: string | undefined;
     if (projectPath) {
       try {
-        const result = await host.call<{
-          context?: { roots?: Array<{ path?: string }>; instructions?: string; memory?: { content?: string } } | null;
-        }>("project.group.context", { path: projectPath });
+        const result = projectContext;
         const groupRoots = result.context?.roots ?? [];
         const groupRootGuide =
           groupRoots.length > 1
@@ -301,7 +312,8 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
       }
     }
 
-    const userSkills = (await activeUserSkills(projectPath)).filter((skill) => isActiveInProject(skill, projectPath ?? null));
+    const userSkills = (await activeUserSkills(projectPath)).filter((skill) =>
+      isActiveInProject(skill, projectPath ?? null) && projectCapabilityAllowed(projectCapabilities?.skillIds, skill.id));
     const pluginSkills = userSkills.map((skill) => ({ id: skill.id, name: skill.name, description: skill.description }));
 
     const subagentCatalog = await loadSubagentDefinitions(projectPath, {
@@ -366,6 +378,9 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
 
     const sessionMode = typeof session.mode === "string" ? session.mode : undefined;
     const defaultMode = typeof settings.defaultMode === "string" ? settings.defaultMode : undefined;
+    const providerRetryMaxAttempts = normalizeProviderRetryMaxAttempts(settings.providerRetryMaxAttempts);
+    const providerRetryInitialDelayMs = normalizeProviderRetryInitialDelayMs(settings.providerRetryInitialDelayMs);
+    const providerRetryFixedDelayMs = normalizeProviderRetryFixedDelayMs(settings.providerRetryFixedDelayMs);
     return {
       providerId: provider.id,
       modelId,
@@ -376,6 +391,9 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        ...(providerRetryMaxAttempts === undefined ? {} : { providerRetryMaxAttempts }),
+        ...(providerRetryInitialDelayMs === undefined ? {} : { providerRetryInitialDelayMs }),
+        ...(providerRetryFixedDelayMs === undefined ? {} : { providerRetryFixedDelayMs }),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),

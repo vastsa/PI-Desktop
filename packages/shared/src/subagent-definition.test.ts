@@ -177,6 +177,20 @@ Rename it.`);
     expect(subagentCanMutate(result.definition)).toBe(true);
   });
 
+  it("accepts an explicit Skill without granting parent meta or mutation tools", () => {
+    const result = parse(`---
+description: Uses the session's authorized skills.
+tools: [Read, Skill]
+---
+Load the relevant skill and explain it.`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.definition.tools).toEqual(["Read", "Skill"]);
+    expect(result.warnings).toEqual([]);
+    expect(result.definition.inheritTools).not.toBe(true);
+    expect(subagentCanMutate(result.definition)).toBe(false);
+  });
+
   it("expands `*` to every assignable tool", () => {
     const result = parse(`---
 description: Does everything.
@@ -188,7 +202,8 @@ Go.`);
     if (!result.ok) return;
     expect(result.definition.tools).toContain("Bash");
     expect(result.definition.tools).toContain("Write");
-    // Plugin, skill and mode tools stay out of a delegate's reach.
+    // Plugin and mode tools stay out; Skill uses the session's authorization.
+    expect(result.definition.tools).toContain("Skill");
     expect(result.definition.tools).not.toContain("Task");
     expect(result.definition.tools).not.toContain("ToolSearch");
     expect(result.definition.tools).not.toContain("A2A");
@@ -497,6 +512,7 @@ describe("resolveSubagentToolNames", () => {
     "Skill",
     "ToolSearch",
     "Task",
+    "TaskRead",
     "TaskWait",
     "asktool",
     "EnterPlanMode",
@@ -523,6 +539,17 @@ describe("resolveSubagentToolNames", () => {
     for (const denied of SUBAGENT_INHERIT_DENY_TOOLS) {
       expect(resolved).not.toContain(denied);
     }
+  });
+
+  it.each(["TaskRead", "TaskRecover"])("keeps %s parent-only", (name) => {
+    // Delegates cannot inspect or change another delegate's execution.
+    expect(SUBAGENT_INHERIT_DENY_TOOLS).toContain(name);
+    expect(SUBAGENT_ASSIGNABLE_TOOLS as readonly string[]).not.toContain(name);
+    const inherited = resolveSubagentToolNames(
+      { tools: [], inheritTools: true },
+      [name, "Read"],
+    );
+    expect(inherited).toEqual(["Read"]);
   });
 
   it("keeps declared extras and does not duplicate parent names", () => {

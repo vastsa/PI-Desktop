@@ -9,9 +9,11 @@
 import {
   MAX_RESUMABLE_CHAINS_PER_AGENT,
   MAX_RESUMABLE_READ_LINES,
+  type UiMessage,
 } from "@pi-desktop/shared";
 import {
   formatResumableList,
+  rebuildChainsFromTranscript,
   isChainWithinReadBudget,
   type DelegationChain,
   type ResumableChain,
@@ -25,6 +27,16 @@ export type ChainLookupError =
   | { kind: "not-resumable"; status: string }
   | { kind: "agent-mismatch"; expected: string; actual: string }
   | { kind: "over-budget" };
+
+type ReadableDelegation = { delegationId: string; agentName: string; status: string };
+export type DelegationReadTarget<T extends ReadableDelegation> = {
+  delegationId: string;
+  agentName: string;
+  status: string;
+  record?: T;
+  chain?: DelegationChain;
+  requestedDelegationIds: string[];
+};
 
 export class DelegationChainRegistry {
   private readonly chains = new Map<string, DelegationChain>();
@@ -44,12 +56,63 @@ export class DelegationChainRegistry {
     return this.chains.get(sessionId);
   }
 
+  /** Read-only lookup includes evicted history without adding execution authority. */
+  lookupRecorded(delegationId: string, transcript: readonly UiMessage[]): DelegationChain | undefined {
+    return this.lookup(delegationId) ?? rebuildChainsFromTranscript(transcript)
+      .find(chain => chain.delegationIds.includes(delegationId));
+  }
+
+  /** Resolve successors for observation only; never restore a model resume grant. */
+  resolveRead<T extends ReadableDelegation>(
+    delegationId: string, transcript: readonly UiMessage[], records: ReadonlyMap<string, T>,
+  ): DelegationReadTarget<T> | undefined {
+    const chain = this.lookupRecorded(delegationId, transcript);
+    const latestId = chain?.latestDelegationId ?? delegationId;
+    const record = records.get(latestId);
+    if (!record && !chain) return undefined;
+    return {
+      delegationId: latestId,
+      agentName: record?.agentName ?? chain?.agentName ?? "subagent",
+      status: record?.status ?? chain?.latestStatus ?? "unknown",
+      record, chain, requestedDelegationIds: [delegationId],
+    };
+  }
+
+  readTargets<T extends ReadableDelegation>(
+    ids: readonly string[], transcript: readonly UiMessage[], records: ReadonlyMap<string, T>,
+  ): { selected: DelegationReadTarget<T>[]; unknownIds: string[] } {
+    const selected = new Map<string, DelegationReadTarget<T>>();
+    const unknownIds: string[] = [];
+    for (const id of new Set(ids)) {
+      const target = this.resolveRead(id, transcript, records);
+      if (!target) { unknownIds.push(id); continue; }
+      const previous = selected.get(target.delegationId);
+      if (previous) previous.requestedDelegationIds.push(id);
+      else selected.set(target.delegationId, target);
+    }
+    return { selected: [...selected.values()], unknownIds };
+  }
+
+  /** User selection is verified against this session, not the model's bounded cache. */
+  lookupForUser(delegationId: string, transcript: readonly UiMessage[]): DelegationChain | undefined {
+    return this.lookupRecorded(delegationId, transcript);
+  }
+
+  recordedList(transcript: readonly UiMessage[]): DelegationChain[] {
+    const recorded = new Map(rebuildChainsFromTranscript(transcript).map(chain => [chain.delegateSessionId, chain]));
+    for (const chain of this.chains.values()) recorded.set(chain.delegateSessionId, chain);
+    return [...recorded.values()].sort((left, right) => right.lastActivityAt - left.lastActivityAt);
+  }
+
   resolveResume(options: {
     resume: string;
     agentName: string;
     runningDelegationIds: ReadonlySet<string>;
+    /** Only explicit user commands may restore older, stopped, or interrupted chains. */
+    userTranscript?: readonly UiMessage[];
   }): { ok: true; chain: DelegationChain } | { ok: false; error: ChainLookupError } {
-    const chain = this.lookup(options.resume);
+    const chain = options.userTranscript
+      ? this.lookupForUser(options.resume, options.userTranscript) : this.lookup(options.resume);
     if (!chain) return { ok: false, error: { kind: "unknown" } };
     if (chain.agentName !== options.agentName) {
       return {
@@ -69,7 +132,8 @@ export class DelegationChainRegistry {
     // at launch, where live records are gone: its last run is settled by
     // definition. A settled chain carries its own status, which survives
     // `pruneFinishedDelegations` deleting the runtime's records.
-    if (chain.latestStatus && !RESUMABLE_STATUSES.has(chain.latestStatus)) {
+    if (chain.latestStatus && !RESUMABLE_STATUSES.has(chain.latestStatus) &&
+      !(options.userTranscript && ["stopped", "aborted", "interrupted"].includes(chain.latestStatus))) {
       return {
         ok: false,
         error: { kind: "not-resumable", status: chain.latestStatus },
@@ -94,7 +158,7 @@ export class DelegationChainRegistry {
     resumedFrom?: DelegationChain;
   }): DelegationChain {
     const existing = options.resumedFrom
-      ? this.chains.get(options.resumedFrom.delegateSessionId)
+      ? this.chains.get(options.resumedFrom.delegateSessionId) ?? options.resumedFrom
       : undefined;
     const chain: DelegationChain = existing
       ? {
@@ -126,6 +190,15 @@ export class DelegationChainRegistry {
     this.install(chain);
     return chain;
   }
+  /** Roll back a start whose user command could not be committed. */
+  discardStart(delegationId: string, previous?: DelegationChain): void {
+    const chain = this.lookup(delegationId);
+    if (!chain || chain.latestDelegationId !== delegationId) return;
+    this.chains.delete(chain.delegateSessionId);
+    for (const id of chain.delegationIds) this.byDelegationId.delete(id);
+    if (previous) this.install(previous);
+  }
+
 
   noteReads(
     delegateSessionId: string,

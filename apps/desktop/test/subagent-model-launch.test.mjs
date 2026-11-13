@@ -34,6 +34,7 @@ test("launch resolves definition-only pins without granting Task.model selection
         if (method === "skills.disabledBuiltins") return { disabled: [] };
         if (method === "skills.active") return { skills: [] };
         if (method === "mcp.active") return { servers: [] };
+        if (method === "project.group.context") return { context: null };
         if (method === "project.memory.get") return {};
         throw new Error(`Unexpected host call ${method}`);
       },

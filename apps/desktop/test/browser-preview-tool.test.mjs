@@ -3,10 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const sidecarSource = await readFile(
-  new URL("../../../packages/host-runtime/src/agent-sidecar.ts", import.meta.url),
-  "utf8",
-);
+import { AgentSidecar } from "@pi-desktop/host-runtime";
 const mainSource = await readMainSource();
 const appSource = await readAppSource();
 const apiSource = await readFile(
@@ -34,31 +31,44 @@ const pluginServicesSource = await readFile(
   "utf8",
 );
 
-test("sidecar routes main-local tools before the host-core proxy", () => {
-  // Local tools short-circuit tools.execute; other methods still proxy.
-  assert.match(sidecarSource, /setLocalTool\(name: string, handler: LocalToolHandler\)/);
-  assert.match(
-    sidecarSource,
-    /method === "tools\.execute"\s*\?\s*this\.localTools\.get/,
-  );
-  // Host availability is only required on the proxy path, after local
-  // dispatch — a local tool must work even if host-core is restarting.
-  const proxyBranch = sidecarSource.slice(
-    sidecarSource.indexOf('msg.method === "host.proxy"'),
-  );
-  assert.ok(
-    proxyBranch.indexOf("this.localTools.get") <
-      proxyBranch.indexOf('throw new Error("host unavailable")'),
-  );
+test("sidecar routes main-local tools before the host-core proxy", { timeout: 10_000 }, async (t) => {
+  const source = `
+    const rl = require('node:readline').createInterface({ input: process.stdin });
+    let requestId;
+    rl.on('line', line => {
+      const request = JSON.parse(line);
+      if (request.method === 'ping') {
+        console.log(JSON.stringify({ id: request.id, result: { ok: true } }));
+      } else if (request.method === 'probe') {
+        requestId = request.id;
+        console.log(JSON.stringify({ id: 'proxy', method: 'host.proxy', params: request.params }));
+      } else if (request.id === 'proxy') {
+        console.log(JSON.stringify({ id: requestId, result: request }));
+      }
+    });`;
+  const sidecar = new AgentSidecar({
+    launch: { command: process.execPath, args: ["-e", source] },
+  });
+  t.after(() => sidecar.dispose());
+  sidecar.setLocalTool("BrowserPreview", async ({ sessionId, args }) => ({ sessionId, args }));
+  const params = { sessionId: "fixture", toolCallId: "local", toolName: "BrowserPreview", args: { path: "index.html" } };
+  const local = await sidecar.call("probe", { method: "tools.execute", params });
+  assert.deepEqual(local.result, { sessionId: "fixture", args: { path: "index.html" } });
+  const proxy = await sidecar.call("probe", { method: "tools.execute", params: { ...params, toolCallId: "proxy", toolName: "Read" } });
+  assert.match(proxy.error.message, /host unavailable/);
+  const lifecycle = await sidecar.call("probe", { method: "tools.execution.start", params: {} });
+  assert.match(lifecycle.error.message, /host unavailable/);
 });
 
 test("main serves BrowserPreview from its originating session workspace", async () => {
   assert.match(mainSource, /s\.setLocalTool\("BrowserPreview"/);
   // The local tool receives session identity from the sidecar and resolves the
   // workspace from that durable session, never from the visible shell project.
+  // `startSidecar` registers the local tools in order: BrowserPreview, then
+  // Skill. Slicing to the next registration bounds this handler exactly.
   const handler = mainSource.slice(
     mainSource.indexOf('s.setLocalTool("BrowserPreview"'),
-    mainSource.indexOf("sidecar = s;"),
+    mainSource.indexOf('s.setLocalTool("Skill"'),
   );
   assert.match(handler, /async \(\{ args, sessionId \}\)/);
   assert.match(handler, /browserHost\.getFileRoots\(sessionId\)/);

@@ -7,10 +7,9 @@ import {
   classifySidecarCrash,
   sidecarCrashErrorCode,
 } from "@pi-desktop/agent-runtime";
-import {
-  assertBuiltinSkillEnabled,
-  loadBuiltinSkillBody,
-} from "../builtin-skills";
+import { createSkillToolHandler } from "../skill-tool";
+import { loadProjectCapabilities } from "../project-capabilities";
+import type { LoadedSkillDocument } from "../skill-document";
 import { createImageGenerationTool } from "../services/image-generation-service";
 import { createComputerUseTool } from "../computer-use/service";
 import { resolveComputerUseProvider } from "../computer-use/provider";
@@ -29,8 +28,9 @@ import type { ModelsDevCatalog } from "../models-dev-catalog";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { RuntimeState } from "./context";
 import type { FinishTurn } from "./plans";
-import { formatSkillToolContent, type LoadedSkillDocument } from "../skill-document";
-import { currentSystemProxyRelayUrl } from "../network-proxy";
+import { currentNetworkDns, currentSystemProxyRelayUrl } from "../network-proxy";
+import { activateSidecar } from "./sidecar-startup";
+import { wireChildExecutionLifecycle } from "./child-execution-lifecycle";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
@@ -39,6 +39,7 @@ export type SidecarRuntimeDependencies = {
   sendToRenderer: (channel: string, payload: unknown) => void;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
   activeTurns: Map<string, string>;
+  isTurnDispatchable: (sessionId: string, turnId: string | null | undefined) => boolean;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
   inflightCheckpointer: InflightCheckpointer;
@@ -82,6 +83,7 @@ export function createSidecarRuntime({
   sendToRenderer,
   persistAgentEvent,
   activeTurns,
+  isTurnDispatchable,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
@@ -194,6 +196,8 @@ export function createSidecarRuntime({
     }
   };
   const wireSidecar = (s: AgentSidecar) => {
+  wireChildExecutionLifecycle(s, { isCurrent: () => runtimeState.sidecar === s,
+    isTurnDispatchable, plugins, pluginActiveInProject, sessionProjects });
 
   s.onNotification((method, params) => {
     if (method === "native.agent.event") {
@@ -641,47 +645,9 @@ export function createSidecarRuntime({
   // Plugin skills (D174): the model loads a declared skill document by id.
   // Served in main because the plugin runtime — and the plugin directories —
   // live here, not in host-core.
-  s.setLocalTool("Skill", async ({ args, sessionId }) => {
-    const id = String((args as { id?: unknown })?.id ?? "").trim();
-    if (!id) {
-      return {
-        ok: false,
-        isError: true,
-        content: "Skill: `id` is required. Use an id from the Skills section.",
-      };
-    }
-    const projectPath = sessionProjects.get(sessionId) ?? null;
-    try {
-      await assertBuiltinSkillEnabled(id, disabledBuiltinSkills);
-      // Bundled skills answer first; they are not owned by any plugin. A user
-      // skill is looked up next, and only then a plugin's — the ids cannot
-      // collide, since a plugin skill id always carries a `<pluginId>/` prefix.
-      const skill: LoadedSkillDocument =
-        loadBuiltinSkillBody(id) ??
-        (await loadUserSkillBody(id, projectPath)) ??
-        plugins.loadSkillBody(id);
-      return {
-        ok: true,
-        content: formatSkillToolContent(skill),
-      };
-    } catch (error) {
-      const userIds = (await activeUserSkills(projectPath ?? undefined)).map(
-        (skill) => skill.id,
-      );
-      const pluginIds = plugins
-        .getSkills()
-        .filter((skill) => pluginActiveInProject(skill.pluginId, projectPath))
-        .map((skill) => skill.id);
-      const available = [...userIds, ...pluginIds].join(", ");
-      return {
-        ok: false,
-        isError: true,
-        content: `Skill: ${error instanceof Error ? error.message : String(error)}.${
-          available ? ` Available skills: ${available}.` : ""
-        }`,
-      };
-    }
-  });
+  s.setLocalTool("Skill", createSkillToolHandler({ sessionProjects, disabledBuiltinSkills,
+    selectedSkillIds: async (root) => (await loadProjectCapabilities(runtimeState.host, root))?.skillIds,
+    loadUserSkillBody, activeUserSkills, plugins, pluginActiveInProject }));
   // Plugin authoring (D171): scaffold, validate and package a plugin without
   // leaving the session. Paths stay inside the open workspace.
   registerPluginDevTools(s, {
@@ -711,14 +677,11 @@ export function createSidecarRuntime({
       sendToRenderer(IPC.event.pluginChanged,{ reason: "scaffold" });
     },
   });
-  runtimeState.sidecar = s;
-  if (runtimeState.host) s.setHost(runtimeState.host);
-  await s.call("sidecar.configure", {
-    hostBinary: runtimeState.host?.binaryPath,
-    dataDir,
+  await activateSidecar(runtimeState, s, dataDir, () => ({
     networkProxy: currentNetworkProxy(),
     systemProxyRelayUrl: currentSystemProxyRelayUrl(),
-  });
+    desktopDnsEnabled: currentNetworkDns().mode === "doh",
+  }), isQuitting);
   logger.app("runtime", "info", "agent sidecar configured");
   };
   return { emitAgentEvent, wireSidecar, startSidecar };

@@ -15,6 +15,7 @@ import {
 } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
+import { toolWorkPanelTab } from "../lib/work-panel-tabs";
 import {
   scheduledReturnFor,
   scheduledReturnUsesHistory,
@@ -25,8 +26,10 @@ import {
   IconSidebar,
   IconNewSession,
   IconSearch,
+  IconBot,
 } from "./icons";
 import { TooltipButton } from "./ui";
+import { RendererRefreshButton } from "../features/app/RendererRefreshButton";
 
 function projectName(path?: string | null, name?: string | null) {
   if (name) return name;
@@ -56,6 +59,7 @@ export function ConversationTopbar({
 }) {
   const { t } = useTranslation();
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const openWorkPanelTab = useAppStore((state) => state.openWorkPanelTab);
   const sessions = useAppStore((s) => s.sessions);
   const workspace = useAppStore((s) => s.workspace);
   const projectMeta = useAppStore((s) => s.projectMeta);
@@ -322,6 +326,18 @@ export function ConversationTopbar({
 
       <div className="ct-right">
         <div className="ct-actions">
+          {activeSessionId && !remoteSession && (
+            <TooltipButton
+              type="button"
+              className="ct-icon-btn"
+              tooltip={t("panel.sessionSubagents.open")}
+              ariaLabel={t("panel.sessionSubagents.open")}
+              onClick={() => openWorkPanelTab(toolWorkPanelTab("subagents"))}
+            >
+              <IconBot size={15} />
+            </TooltipButton>
+          )}
+          <RendererRefreshButton className="ct-icon-btn" />
           <TooltipButton
             type="button"
             className="ct-icon-btn"

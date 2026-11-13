@@ -24,12 +24,22 @@ import type { AgentOptions } from "@earendil-works/pi-agent-core";
 import type { SubagentThinkingLevel } from "@pi-desktop/shared";
 import type { ClassifiedAgentError } from "./agent-errors.js";
 import type { ProviderFetchFailure } from "./provider-transport-recovery.js";
+import type { SubagentProviderAttempt } from "./subagent-provider-attempt.js";
 
 export type SubagentProviderRetryState = {
   headers?: Record<string, string>;
   status?: number;
   failure?: ProviderFetchFailure;
+  initialDelayMs?: number;
+  fixedDelayMs?: number;
   claim: (error: ClassifiedAgentError, phase: "request" | "stream") => number | undefined;
+};
+
+/** Freshly authorized binding for one ordered user message. */
+export type SubagentMessageModel = {
+  key: string;
+  provider: RuntimeProviderConfig;
+  thinkingLevel: SubagentThinkingLevel;
 };
 
 /** Transport and credentials for one exact provider/model; replace together on fallback. */
@@ -40,6 +50,7 @@ export function subagentModelBinding(opts: {
   maxTokens?: number;
   onUsage?: UsageObserver;
   uniqueToolCalls?: ReturnType<typeof createToolCallIdentity>;
+  attempts?: SubagentProviderAttempt;
 }, retry: SubagentProviderRetryState) {
   // A definition may cap the delegate's own output (issue #171). The
   // catalog's published limit keeps applying otherwise, so this is an
@@ -79,19 +90,6 @@ export function subagentModelBinding(opts: {
             maxTokens: clampOutputToContext(m, requestContext, options?.maxTokens),
             maxRetries: 0,
             sessionId: opts.sessionId,
-            fetch: providerRequestFetch(
-              m.api,
-              captureProviderResponse(options?.fetch, (response, _bytes, failure) => {
-                retry.failure = failure;
-                retry.status = response?.status;
-                retry.headers = carriesRetryDelayHeaders(
-                  response?.status,
-                )
-                  ? response?.headers
-                  : undefined;
-              }),
-              opts.provider.authKind,
-            ),
           },
           {
             ...openCodeEndpointFromProvider(opts.provider, m),
@@ -117,19 +115,38 @@ export function subagentModelBinding(opts: {
         m,
         requestContext,
         sessionOptions,
-        (retryOptions) => accountModelStream(m, () =>
-          omitThinking
-            ? models.stream(omitThinkingModel, requestContext, retryOptions)
-            : models.streamSimple(m, requestContext, retryOptions), {
-              providerId: opts.provider.id,
-              nativeCost: opts.provider.modelConfig?.nativeCost,
-              onUsage: opts.onUsage,
-            }),
+        (retryOptions) => accountModelStream(m, () => {
+          const create = (attemptOptions: typeof retryOptions, isCurrent = () => true) => {
+            retry.headers = undefined;
+            retry.status = undefined;
+            retry.failure = undefined;
+            const physicalOptions = {
+              ...attemptOptions,
+              fetch: providerRequestFetch(m.api, captureProviderResponse(options?.fetch, (response, _bytes, failure) => {
+                // Abandoned transports may finish after a new binding is active.
+                if (!isCurrent()) return;
+                retry.failure = failure;
+                retry.status = response?.status;
+                retry.headers = carriesRetryDelayHeaders(response?.status) ? response?.headers : undefined;
+              }), opts.provider.authKind),
+            };
+            return omitThinking
+              ? models.stream(omitThinkingModel, requestContext, physicalOptions)
+              : models.streamSimple(m, requestContext, physicalOptions);
+          };
+          return opts.attempts ? opts.attempts.stream(m, retryOptions, create) : create(retryOptions);
+        }, {
+          providerId: opts.provider.id,
+          nativeCost: opts.provider.modelConfig?.nativeCost,
+          onUsage: opts.onUsage,
+        }),
         {
           claim: (error, phase) => retry.claim(error, phase),
           headers: () => retry.headers,
           status: () => retry.status,
           failure: () => retry.failure,
+          initialDelayMs: retry.initialDelayMs,
+          fixedDelayMs: retry.fixedDelayMs,
         },
       ), context.messages);
     },

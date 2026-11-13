@@ -10,6 +10,7 @@ import {
   withoutReasoningReplayPlaceholder,
 } from "@pi-desktop/shared";
 import { getToolAction, isDelegationStartTool } from "./tool-display";
+import { delegationIdForMessage } from "./subagent-panel";
 import { messageContentFacts } from "./transcript-summary";
 
 export type AssistantActivityItem =
@@ -38,8 +39,8 @@ export type SubagentRunItem =
  *
  * Delegate rows arrive on the session stream interleaved with the parent's —
  * parallel delegates guarantee it — so they are collected by the `Task` call
- * that spawned them and rendered under it. That mirrors the model's view: the
- * parent only ever sees the report, never these rows.
+ * that spawned them and rendered under it. The parent's default model input
+ * includes only reports; TaskRead explicitly opts into bounded recorded steps.
  */
 export type SubagentRun = {
   /** Definition name, when the runtime attributed the rows to one. */
@@ -149,34 +150,30 @@ export function delegationChainMaps(messages: readonly UiMessage[]): {
 } {
   const callByDelegationId = new Map<string, string>();
   const childOf = new Map<string, string>();
+  const priorCalls = new Set<string>();
   for (const message of messages) {
     if (message.role !== "tool" || !isDelegationStartTool(message.toolName)) {
       continue;
     }
     const toolCallId = message.toolCallId;
     if (!toolCallId) continue;
-    const result = message.toolResult;
-    const details =
-      result && typeof result === "object" && !Array.isArray(result)
-        ? (result as { details?: unknown }).details
-        : undefined;
-    const delegationId =
-      details && typeof details === "object" && !Array.isArray(details)
-        ? (details as { delegationId?: unknown }).delegationId
-        : undefined;
-    if (typeof delegationId === "string" && delegationId) {
-      callByDelegationId.set(delegationId, toolCallId);
-    }
+    // A rejected Task did not create a successor. Keep its error visible as
+    // a separate attempt without replacing the original chain's identity.
+    if ((message.isError || message.toolStatus === "error") &&
+      delegationIdForMessage(message) === toolCallId) continue;
     const args = message.toolArgs;
     const resume =
       args && typeof args === "object" && !Array.isArray(args)
         ? (args as { resume?: unknown }).resume
         : undefined;
-    const prior =
-      typeof resume === "string" && resume.trim()
-        ? callByDelegationId.get(resume.trim())
-        : undefined;
-    if (prior) childOf.set(prior, toolCallId);
+    const target = typeof resume === "string" ? resume.trim() : "";
+    const prior = callByDelegationId.get(target) ??
+      (priorCalls.has(target) ? target : undefined);
+    if (prior && prior !== toolCallId) childOf.set(prior, toolCallId);
+    // Resolve the previous handle before recording this call: legacy resumes
+    // can return the same delegation id and must never link to themselves.
+    callByDelegationId.set(delegationIdForMessage(message), toolCallId);
+    priorCalls.add(toolCallId);
   }
   return { callByDelegationId, childOf };
 }
