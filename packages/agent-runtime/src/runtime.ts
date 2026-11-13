@@ -2130,7 +2130,7 @@ export class DesktopAgentRuntime {
     const runtimeApiKey = providerRequestKey(this.provider);
 
     this.transcriptHistory = [...(opts.history ?? [])];
-    this.fullEntries = this.historyToEntries(this.transcriptHistory);
+    this.fullEntries = this.historyToEntries(this.transcriptHistory, opts.compaction?.throughMessageId);
     this.uniqueToolCalls = createToolCallIdentity(this.fullEntries.map((entry) => entry.message));
     this.activeCompaction = opts.compaction;
     this.delegationChains.hydrate(
@@ -3123,7 +3123,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * turns after a restart. Losing either (the pre-D120 tool behavior)
    * collapsed a reseeded session to bare chat text. Failed assistant turns
    * stay transcript-only. */
-  private historyToEntries(history: UiMessage[]): MessageEntry[] {
+  private historyToEntries(history: UiMessage[], compactionThroughMessageId?: string): MessageEntry[] {
     const api = apiBindingForProviderModel(this.provider).api;
     const deepSeekCompletionsReplay =
       api === "openai-completions" &&
@@ -3151,7 +3151,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     let toolCarrier: AssistantMessage | undefined;
     // Function-call signatures of the carrier's row, restored by call id.
     let carrierToolSignatures = new Map<string, string>();
+    let compactedCarrier: AssistantMessage | undefined;
+    let previousRowId: string | undefined;
     for (const m of orderSystemRows(history)) {
+      // A carrier before this boundary is removed by context compaction. Tool
+      // rows after it must reconstruct their calls on a surviving carrier.
+      if (compactionThroughMessageId && previousRowId === compactionThroughMessageId) {
+        compactedCarrier = toolCarrier;
+        toolCarrier = undefined;
+      }
+      previousRowId = m.id;
       // Subagent rows belong to the transcript and to review, never to the
       // parent's model context (ADR 0062): the parent only ever saw the `Task`
       // report, and replaying a delegate's messages would both contradict that
@@ -3165,6 +3174,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         append(m.id, this.systemJournal.restore(m));
       } else if (m.role === "user") {
         toolCarrier = undefined;
+        compactedCarrier = undefined;
         const attachments = (m.attachments ?? []).map((attachment) =>
           runtimeAttachmentFromMessage(
             attachment,
@@ -3184,6 +3194,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         append(m.id, { role: "user", content, timestamp });
       } else if (m.role === "assistant") {
         toolCarrier = undefined;
+        compactedCarrier = undefined;
         // Failed provider responses belong in the transcript for diagnosis,
         // but must never become model context on the next turn.
         if (m.status === "error" || m.isError || m.error) continue;
@@ -3249,15 +3260,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           toolCarrier = {
             role: "assistant",
             content: [],
-            api,
-            provider: this.model.provider,
-            model: this.model.id,
+            api: compactedCarrier?.api ?? api,
+            provider: compactedCarrier?.provider ?? this.model.provider,
+            model: compactedCarrier?.model ?? this.model.id,
             usage: usageToPi(undefined),
             stopReason: "toolUse",
             timestamp,
           };
           append(`${m.id}:carrier`, toolCarrier);
-          carrierToolSignatures = new Map();
+          if (!compactedCarrier) carrierToolSignatures = new Map();
+          compactedCarrier = undefined;
         }
         const thoughtSignature = carrierToolSignatures.get(m.toolCallId);
         toolCarrier.content.push({
@@ -3273,6 +3285,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     return entries.filter(
       (entry) =>
+        // An empty call-only boundary still anchors the persisted checkpoint.
+        entry.id === compactionThroughMessageId ||
         entry.message.role !== "assistant" || entry.message.content.length > 0,
     );
   }

@@ -18936,6 +18936,29 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status:** Unit-covered (`context-calibration.test.ts`, including the CJK and
   boundary cases); desktop E2E pending
 
+### E2E-CONTEXT-restored-checkpoint-tool-pairs
+
+- **Preconditions:** A production sidecar, isolated Host fixture with serialized
+  session history/checkpoint, and a loopback Chat Completions gateway that
+  rejects tool results without matching preceding calls; no live credentials.
+- **Steps:** Restore a checkpoint through an assistant call carrier, then
+  through the first of two results. Send two prompts, stop the sidecar, start
+  a fresh process and repeat. Compare with a boundary after the full batch and
+  a session without a checkpoint.
+- **Expected:** All prompts complete. Only post-boundary tool results reach
+  the gateway, paired with their original ids, names and arguments; their
+  contents survive, historical tools never execute, and the stored fixture
+  stays unchanged. Empty call-only boundary rows still apply the summary.
+  Signed function calls retain their signatures. A retained-tail carrier is
+  deduplicated with the reconstructed call, rather than replayed twice.
+- **Automation:** `node scripts/e2e-compaction-restore-tool-pairs.mjs` after
+  shared/runtime build and production sidecar bundling. Adapter regressions in
+  `compaction-restore-tool-pairs.test.ts` cover empty boundaries, absent
+  boundaries, retained tails and signed Gemini calls through public prompts.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1, issue #2306.
+- **Limits:** Serialized Host data and the real sidecar/HTTP boundary are
+  exercised; this is not a native Windows UI reproduction or a paid-provider run.
+
 ### E2E-CONTEXT-reported-occupancy-drives-compaction
 
 - **Preconditions:** A production sidecar, isolated Host fixture and localhost

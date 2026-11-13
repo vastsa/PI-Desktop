@@ -489,6 +489,16 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
+When restoring a checkpoint, tool-call reconstruction respects its
+`throughMessageId` boundary. A surviving tool row must not attach its call to
+an assistant that the checkpoint removes. Legacy checkpoints can cut through
+a tool batch; the surviving rows reconstruct a carrier after the boundary from
+their stored call ids, names, and arguments, retaining the original carrier's
+provider/model identity and function-call signatures. A call-only assistant
+with no remaining content still anchors the checkpoint. This changes only the
+model projection: stored history is not rewritten, results are not discarded,
+and historical tools are not executed again (issue #2306).
+
 PI-Desktop uses pi-agent-core for the agent loop and stable agent/event/tool
 types, and pi-ai for provider-facing requests and message estimation. The
 runtime owns its context projection, LLM-message conversion, token-estimation
