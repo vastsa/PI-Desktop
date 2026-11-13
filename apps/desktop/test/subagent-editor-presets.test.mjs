@@ -95,7 +95,7 @@ test("the editor can prefill a create draft from a catalog definition", () => {
 test("the model picker uses the configured provider catalog", () => {
   // The picker uses the shared provider catalog and preserves an existing
   // orphan pin instead of silently changing it to session inheritance.
-  assert.match(editorSource, /subagentModelChoices\(providers\)/);
+  assert.match(editorSource, /subagentModelChoices\(providers, imageGenerationBindings\(/);
   assert.match(editorSource, /groupSubagentModelChoices\(modelChoices\)/);
   assert.match(editorSource, /subagentModelOrphanPin\(draft\.model, modelChoices\)/);
 });
@@ -116,7 +116,7 @@ test("the model picker keeps existing pins visible", async () => {
 test("the model picker offers every configured provider model, with no free-text path", () => {
   // The picker is the only way to set a model: every option comes from the
   // configured provider catalog, so a saved pin is always resolvable.
-  assert.match(editorSource, /subagentModelChoices\(providers\)/);
+  assert.match(editorSource, /subagentModelChoices\(providers, imageGenerationBindings\(/);
   assert.match(editorSource, /groupSubagentModelChoices\(modelChoices\)/);
   assert.match(editorSource, /subagentModelOrphanPin\(draft\.model, modelChoices\)/);
   assert.doesNotMatch(editorSource, /CUSTOM_SUBAGENT_MODEL_VALUE/);
