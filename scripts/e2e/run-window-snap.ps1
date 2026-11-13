@@ -55,7 +55,7 @@ try {
             & taskkill.exe /PID $process.Id /T /F | Out-Null
         }
         # Never upload profiles, databases, user paths or unrelated desktop captures.
-        foreach ($name in @('result.json', 'ready.json', 'probe.log', 'stdout.txt', 'stderr.txt', 'fixture-error.txt')) {
+        foreach ($name in @('result.json', 'ready.json', 'probe.log', 'stdout.txt', 'stderr.txt', 'host-stderr.txt', 'native-rpc.jsonl', 'fixture-error.txt')) {
             $file = Join-Path $runtime $name
             if (Test-Path $file) {
                 $text = [IO.File]::ReadAllText($file)

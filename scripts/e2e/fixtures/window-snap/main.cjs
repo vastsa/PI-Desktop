@@ -31,6 +31,16 @@ app.whenReady().then(async () => {
     env: { PI_DESKTOP_ELECTRON_PID: String(process.pid) }, quiet: true,
   });
   await host.start();
+  const observedHost = { async call(method, params, timeout) {
+    try {
+      const result = await host.call(method, params, timeout);
+      fs.appendFileSync(path.join(root, "native-rpc.jsonl"), JSON.stringify({ at: new Date().toISOString(), method, result }) + "\n");
+      return result;
+    } catch (error) {
+      fs.appendFileSync(path.join(root, "native-rpc.jsonl"), JSON.stringify({ at: new Date().toISOString(), method, error: String(error) }) + "\n");
+      throw error;
+    }
+  } };
   window = new BrowserWindow({
     x: 200, y: 140, width: 1200, height: 800,
     minWidth: options.minWidth, minHeight: options.minHeight,
@@ -47,9 +57,9 @@ app.whenReady().then(async () => {
   assert.ok(foreignHandle);
   await assert.rejects(host.call("window.enableNativeSnap", { nativeHandle: foreignHandle, ownerPid: process.pid }),
     (error) => error.errorCode === "INTERNAL");
-  if (!baseline) snap = await installWindowsNativeSnap(window, () => host, logger);
+  if (!baseline) snap = await installWindowsNativeSnap(window, () => observedHost, logger);
   if (legacySurface) installWindowShape(window, 12, screen);
-  else corners = await installWindows11CornerController(window, 12, () => host, screen, logger);
+  else corners = await installWindows11CornerController(window, 12, () => observedHost, screen, logger);
   window.webContents.on("page-title-updated", (event) => event.preventDefault());
   await window.loadURL("data:text/html," + encodeURIComponent(`<style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:linear-gradient(90deg,#f6f6f6 50%,#181818 50%)}
@@ -93,6 +103,7 @@ app.whenReady().then(async () => {
   }, 25);
 }).catch(async (error) => {
   fs.writeFileSync(path.join(root, "fixture-error.txt"), String(error.stack || error));
+  if (host) fs.writeFileSync(path.join(root, "host-stderr.txt"), host.stderr);
   if (host) await host.stop().catch((cleanupError) => console.error("fixture Host cleanup failed", cleanupError));
   app.exit(1);
 });
@@ -101,7 +112,10 @@ app.on("before-quit", (event) => {
   if (quitting) return;
   event.preventDefault(); quitting = true; clearInterval(timer);
   void (async () => {
-    try { if (host) await host.stop(); app.exit(0); }
+    try {
+      if (host) { await host.stop(); fs.writeFileSync(path.join(root, "host-stderr.txt"), host.stderr); }
+      app.exit(0);
+    }
     catch (error) { console.error("fixture Host cleanup failed", error); app.exit(1); }
   })();
 });
