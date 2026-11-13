@@ -4,6 +4,7 @@ export type JobReference = { kind: "bash" | "delegation"; id: string };
 export type BackgroundJobSummary = {
   job: JobReference;
   command: string;
+  commandTruncated?: boolean;
   state: "running" | "exited" | "failed" | "stopped";
   elapsedMs: number;
   exitCode: number | null;

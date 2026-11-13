@@ -1,5 +1,12 @@
 # 02. Agent 运行时
 
+受信扩展的 `setThinkingLevel` 同时更新运行时公开值和后续请求使用的 Pi Agent
+状态。继续按模型能力限制档位，已报告的调整不会留下旧的请求思考强度。
+
+接收 steering 后结束此前尚未落定的回复片段，下一条回复使用新身份。
+提供商、溢出、空回复及进度恢复仍属于原持久化回合，但不会覆盖位于用户
+补充消息之前的旧回复（Refs #1699）。
+
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/02-agent-runtime) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
@@ -386,7 +393,9 @@ pi 0.84.4+ 只在循环将要在同一次运行中开启另一个助手回合时
 以及标记出现之前写入的记录——仍会归一化为只保留最新的用户消息，因此重启无法
 恢复一串看起来可执行的旧请求。放弃助理消息也会丢弃其工具调用，回退还会丢弃
 它没有保留的调用所对应的结果，因此没有孤立的工具调用或不匹配的结果可以到达
-提供商。保留的尾部用持久化之前的摘要重新估计，并且在继续之前再次估计，
+提供商。助手思考与正文共用同一字符预算。正文先保留；必须缩短的思考块会丢掉
+提供商签名，以免回放一段被改过的已签名推理。仍然放得下的块保留签名，脱敏思考
+块保持不变。保留的尾部用持久化之前的摘要重新估计，并且在继续之前再次估计，
 所以超大的请求仍然无法通过警卫。回退还会记录 `details.failureReason`——
 `no_new_history`、`summary_budget`、`summary_provider` 或 `checkpoint_oversized`——
 一个封闭词表，而不是可能带有端点细节的提供商错误文本。
@@ -1320,12 +1329,16 @@ that the model intended an action.
 
 Agent 模式下，即使没有配置子代理，也提供 TaskWait、TaskList 和 TaskStop。Task 仍要求子代理目录。Plan/Goal 保留声明以兼容对话历史，执行时拒绝这些工具。
 
-后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令文字限制为 1 KiB。
+后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令摘要按 UTF-8 字符边界保留最多 1 KiB 的前缀。`commandTruncated` 单独标记命令裁剪，旧 Host 可省略该字段。
 
 TaskWait/TaskStop 接受单个显式 job，与 delegationIds、mode、minCompleted 混用会报错。无 job 时保留原委派默认集合。旧 backgroundTaskId 可写成 `{kind: "bash", id: backgroundTaskId}`。
 
-Bash 等待返回状态、可空退出码、停止请求标记及分别最多 8 KiB 的 stdout/stderr 尾部，按 UTF-8 边界截断。truncated 同时表示 Host 历史丢失或本次截断。查询可重复且不消耗桌面日志。等待默认 600 秒，接受 1–900 秒；details.status 为 completed、timeout 或 interrupted，与作业状态独立。新输入或父回合取消只结束等待。停止返回 completed 或 stopPending，stopRequested 本身不代表进程已退出。
+Bash 等待返回状态、可空退出码、停止请求标记及分别最多 8 KiB 的 stdout/stderr 尾部，按 UTF-8 边界截断。truncated 同时表示 Host 历史丢失或本次截断。查询可重复且不消耗桌面日志。等待默认 600 秒，接受 1–900 秒；details.status 为 completed、timeout 或 interrupted，与作业状态独立。新输入或父回合取消只结束等待。停止返回 completed 或 stopPending，stopRequested 本身不代表进程已退出。TaskStop 在派发前取消时，作业继续运行；派发后取消只结束调用者的等待，Host 继续处理停止请求。
 
 Bash 由 Host 管理，完成后不自动投递结果或延长父回合。原委派报告交付和恢复规则继续生效。能力按连接探测；旧 Host 和远程工作区明确返回后台 Bash 控制不可用，委派操作仍可用。其他传输或 Host 错误会正常呈现。
 
 等待时限包含能力探测和在途请求。超时返回最近一次已观察的快照。如果首次观察尚未返回，工具返回作业引用和 `snapshotAvailable: false`，省略进程状态。聊天记录区分显式 Bash 目标，混合作业列表显示后台命令数量。
+
+### 公共提示前缀与 scratch（#1926）
+
+基础 runtime 段保留 shell、scratch 变量及临时文件规则，具体路径移到项目/记忆上下文之后，Bash 工具描述继续提供路径。改善跨会话系统文本公共前缀，不承诺供应商缓存命中，不更改历史重建。

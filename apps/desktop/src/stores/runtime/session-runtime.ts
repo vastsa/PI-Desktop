@@ -165,6 +165,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   ) {
     const active = sessionDetailLoads.get(id);
     if (active && options?.messageBefore === undefined) return active;
+    const previous = sessionTranscriptCache.get(id);
     const request = api.getSession(id, options).then((detail) => {
       if (detail.session && options?.messageBefore === undefined) {
         const state = get();
@@ -179,6 +180,8 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
         // would then re-serve that emptiness on every later open, and the
         // session could not recover without a restart.
         if (messages.length > 0 || !sessionReadLooksEmpty(detail.session)) {
+          if (sessionTranscriptCache.get(id) !== previous &&
+            !liveSessionTranscripts.has(id) && !state.runningSessions[id]) return detail;
           cacheSessionTranscript(id, messages, {
             messageStart: detail.session.messageStart ?? 0,
             hasMoreBefore: detail.session.hasMoreBefore === true,
@@ -214,10 +217,11 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   }
 
   async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
+    const previous = sessionTranscriptCache.get(id);
     const detail = await api.getSession(id);
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
-    if (cache) cacheSessionTranscript(id, messages, {
+    if (cache && sessionTranscriptCache.get(id) === previous) cacheSessionTranscript(id, messages, {
         messageStart: 0,
         hasMoreBefore: false,
       });

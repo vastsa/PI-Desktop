@@ -243,14 +243,15 @@ tickets before any artifact upload. The per-architecture `latest-mac.yml` files
 are renamed before upload; the publish job merges them into one feed after
 downloading both artifacts.
 
-For the app ticket, the signing watchdog injects a temporary `xcrun` shim when
-`PI_STAPLER_MAX_ATTEMPTS` is set. It retries only the exact `stapler staple`
-operation, at most six total attempts with a 10-second delay; `notarytool` and
-all other `xcrun` commands pass through unchanged. electron-notarize reaches
-that command only after Apple accepts the app submission. The DMG script has
-its own bounded retry after its separate submission is accepted. Both retry
-paths fail the job if their limit is exhausted, and artifact verification
-still requires valid stapled tickets on the app and DMG.
+For app and DMG tickets, the release path retries the exact `stapler staple`
+and `stapler validate` operations, at most six total attempts with a
+10-second delay. The signing watchdog injects the temporary `xcrun` shim for
+app packaging when `PI_STAPLER_MAX_ATTEMPTS` is set; the DMG notarization and
+release verification scripts call the same shim directly. `notarytool` and
+all other `xcrun` commands pass through unchanged. Stapling and validation run
+only after Apple accepts the matching submission. Retries fail the job if the
+limit is exhausted, and artifact verification still requires valid stapled
+tickets on the app and DMG.
 
 The shared electron-builder configuration applies the architecture-labelled
 pattern at the macOS platform level for ZIPs and overrides it at the DMG target
@@ -352,7 +353,7 @@ hide in that gap, and the macOS lanes now expose all three:
 | Per-file signing | `codesign --force --sign <identity> --timestamp --entitlements ... <file>` runs serially, deepest file first, the app bundle last | `DEBUG=electron-osx-sign*` prints `Signing... <file>` and `Executing... <file> codesign ...`; the codesign shim times every invocation. If a keychain ever refuses to hand the key to a wrapped `codesign`, `PI_SIGNING_NO_CODESIGN_SHIM=1` runs the phase without the shim |
 | Silent retry | A failing pass is retried up to three more times with a 5s/10s/15s backoff and no log line | The watchdog's `codesign-calls` and `failures` lines expose repeated passes |
 | App notarization | `@electron/notarize` zips the app, uploads it, and waits for Apple's queue (`mac.notarize=true`) | `DEBUG=electron-notarize*` prints `zipping application to`, `attempting to upload file to Apple`, `notarization success`, then electron-builder prints `notarization successful` |
-| App ticket stapling | `xcrun stapler staple` attaches the accepted app ticket; the watchdog retries only this exact command up to six attempts with a 10-second delay | `stapler-shim=on` appears in the watchdog header and each failed attempt is reported |
+| App ticket stapling and validation | `xcrun stapler staple` attaches the accepted app ticket and `xcrun stapler validate` verifies it; the release path retries either exact operation up to six attempts with a 10-second delay | `stapler-shim=on` appears in the watchdog header and each failed attempt is reported |
 | DMG notarization | The DMG carries its own signature, so the next step submits it again with `xcrun notarytool submit --wait` | The same watchdog keeps that wait observable and bounded |
 
 `scripts/macos-signing-watchdog.mjs` wraps both long phases. It forwards every
@@ -372,8 +373,8 @@ block. The knobs:
 | `PI_SIGNING_TIMEOUT_SECONDS` | 2400 (CI: 1800 packaging, 1200 DMG) | Hard limit for the wrapped phase: diagnostics are dumped, the process group is killed, and the step exits 124 instead of hanging |
 | `PI_SIGNING_STALL_SECONDS` | 300 | Silence with no codesign activity for this long triggers one diagnostics dump; the phase keeps running, because Apple's notarization queue is a legitimate wait |
 | `PI_SIGNING_HEARTBEAT_SECONDS` | 60 | Heartbeat interval while the child produces no output |
-| `PI_STAPLER_MAX_ATTEMPTS` | unset (no stapler shim) | When set for signed app packaging, enables at most six attempts for `xcrun stapler staple` |
-| `PI_STAPLER_RETRY_DELAY_SECONDS` | 10 | Delay between failed app stapler attempts (maximum 60 seconds) |
+| `PI_STAPLER_MAX_ATTEMPTS` | unset for app packaging; release validation scripts default to 6 | Enables bounded retries for `xcrun stapler staple` and `xcrun stapler validate` |
+| `PI_STAPLER_RETRY_DELAY_SECONDS` | 10 | Delay between failed stapler attempts (maximum 60 seconds) |
 | `DEBUG` | `electron-osx-sign*,electron-notarize*` | Namespaces that expose walking, per-file signing, and notarization progress |
 
 `DEBUG` lists only the two namespaces that sanitize their own command lines,
@@ -424,12 +425,14 @@ artifact per submission and electron-builder only covers the app:
 
 | Artifact | Submitted by | Ticket |
 |---|---|---|
-| `PI-Desktop.app` (inside the ZIP) | electron-builder `-c.mac.notarize=true` | stapled by electron-builder through the watchdog's bounded `xcrun stapler staple` retry shim |
-| `PI-Desktop-<version>-<arch>.dmg` | `scripts/notarize-and-staple-macos-release-dmg.sh` (`notarytool submit --wait`) | stapled by the same script after `status: Accepted` |
+| `PI-Desktop.app` (inside the ZIP) | electron-builder `-c.mac.notarize=true` | stapled and validated by electron-builder through the watchdog's bounded stapler retry shim |
+| `PI-Desktop-<version>-<arch>.dmg` | `scripts/notarize-and-staple-macos-release-dmg.sh` (`notarytool submit --wait`) | stapled and validated by the same script after `status: Accepted` |
 
 A DMG that was never submitted has no ticket, so stapling it fails with
 `Could not find base64 encoded ticket ... Error 65`. Stapler retries are only
-allowed after Apple returns `Accepted`.
+allowed after Apple returns `Accepted`. Ticket validation also retries
+transient Apple ticket-lookup failures, but still fails closed when the
+configured attempt limit is exhausted.
 
 Run after every signed release build:
 

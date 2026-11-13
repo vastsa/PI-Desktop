@@ -402,7 +402,8 @@ export function backgroundJobRowOf(message: UiMessage) {
   if (ref?.kind !== "bash") return null;
   const state = snapshot?.state;
   return {
-    kind, command: typeof snapshot?.command === "string" ? snapshot.command : "Bash",
+    kind, command: typeof snapshot?.command === "string"
+      ? snapshot.command + (snapshot.commandTruncated === true ? "…" : "") : "Bash",
     state: state === "running" && snapshot?.stopRequested ? "stopping" as const :
       state === "running" || state === "exited" || state === "failed" || state === "stopped" ? state : undefined,
   };

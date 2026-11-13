@@ -824,7 +824,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   cancels any pending follow frame; small trackpad deltas must not snap back to
   the bottom
 - Scroll input owned by the transcript cancels an in-flight browser smooth
-  navigation or custom return-to-latest animation at its current offset. A
+  navigation or native return-to-latest animation at its current offset. A
   previous minimap or return-to-latest move must not resume after the reader
   takes over; horizontal, zero-delta, or `Ctrl`+wheel input, nested-scroll
   input, editable fields, and ordinary row controls do not cancel it.
@@ -838,16 +838,17 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Sending a new prompt, retrying, or regenerating always re-pins follow mode and jumps to the bottom before the turn continues, even if the user had scrolled up
 - "Scroll to bottom" floating button appears as soon as manual upward scrolling
   releases follow mode
-- Return-to-latest ("Scroll to bottom" button, context menu, radial menu) runs
-  one custom interruptible viewport animation (`180–420ms` cubic ease-out,
-  monotonic retargeting across late stream growth without reversing; immediate
-  when `prefers-reduced-motion: reduce` is active) instead of browser smooth
-  scroll, suppressing competing follow, layout, previous search alignment, and turn-completion scroll
-  owners until it settles or is cancelled. Record the pinned bookmark
+- Return-to-latest ("Scroll to bottom" button, context menu, radial menu) uses
+  browser `scrollTo({ behavior: "smooth" })`, matching conversation turn markers;
+  reduced motion uses `auto`. Duration and easing belong to the browser, not
+  a custom frame loop. Competing follow, layout, previous search alignment, and
+  turn-completion owners yield until `scrollend` or cancellation. Record the pinned bookmark
   synchronously and prepare any active historical `transcriptViews` slice by
   replacing its identity with `loading: null` while keeping visible messages
-  mounted; only that exact prepared view's arrival closure clears the historical
-  view, while pane hide or unmount commits the accepted latest intent once
+  mounted; only that exact prepared view's arrival closure exits historical
+  ownership. Tail-connected older pages and their cursor remain available for
+  later upward reading, without entering model input; live output remains
+  authoritative. Pane hide or unmount commits the accepted latest intent once
   without continuing an invisible animation. Explicit disjoint search or history
   views animate across currently mounted rows and join the canonical live tail
   on arrival without fetching or animating unloaded intermediate ranges.
@@ -855,6 +856,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   restoring the old reading offset; manual upward reading without return-to-latest
   retains its position, and reader interruption cancels the animation in place
   without committing arrival.
+  Native travel is not interrupted by per-frame position corrections. At
+  `scrollend`, recheck the current bottom; a late card or layout change extends
+  native travel before arrival rather than causing an instantaneous final jump.
 - Stream completion (D676): if the user was following a turn that completes,
   its prompt scrolls to 16px below the titlebar band at the top of the
   viewport so the answer reads from its start, follow mode is released, and
@@ -1576,9 +1580,11 @@ Project drag/drop follows these patterns:
   path on every surface that names it. Unpositioned `.html` and `.htm`
   references also offer an **Open with** submenu containing File Manager,
   built-in browser, and default browser. Each choice completes the reference
-  first and opens that exact resolved file. Other file types keep the copy
-  actions only; the transcript menu has no **Show in folder** action. A file
-  outside the project has no relative path to copy and reports that fact.
+  first and opens that exact resolved file. In a session that may use local
+  files, every reference also offers **Show in folder**, which completes the
+  reference the same way and reveals that resolved file in the system file
+  manager; a remote workspace keeps the copy actions only. A file outside the
+  project has no relative path to copy and reports that fact.
 - In the host `file:` tab, a conversation MP4 that cannot be previewed because
   it is binary or exceeds the text preview limit offers **Open with default
   application**. This applies to named `.mp4` files and extensionless
@@ -1637,28 +1643,52 @@ Project drag/drop follows these patterns:
   visible message node and its viewport offset rather than total scroll-height
   growth or an enclosing answer/minimap group whose first id can change when
   earlier fragments prepend. Existing message, page, mounted-window, snapshot,
-  and retained session-pane caches remain unchanged, with no idle TTL or memory
-  reclamation.
-- A real upward scroll gesture within `min(2400px, max(120px, 3 * clientHeight))`
-  starts background ahead-loading: it mounts cached history before Host IO,
-  stays single-flight, leaves `overflow-y` and transcript scroll input unlocked,
-  tracks the reader's newest visible message anchor across ongoing scroll
-  movement, and restores that anchor before paint only when prepended rows or
-  layout measurements change geometry or the head message.
-- Reaching the `<= 120px` hard edge, activating the earlier-history continuation,
-  or intersecting the underfilled `120px` top boundary retains the brief
-  `overflow-y: hidden` and transcript scroll-input lock through IO and three
-  consecutive stable layout frames, discarding (never queueing) main-scroller
-  vertical wheel/trackpad, touch-scroll, and scrolling-key input until
-  settlement. Horizontal, zero-delta, and `Ctrl`+wheel input, nested scroll
-  owners, editable fields, and title activation retain their own input. The
-  loading label keeps identical layout space when hidden, and there is no
+  and retained session-pane data caches remain unchanged, with no idle TTL or
+  session-data reclamation.
+- Assistant prose may release its Markdown renderer outside a five-screen
+  retention buffer and restore it inside a three-screen entry buffer, keeping
+  measured-height message/prose shells. Measurements must match the current
+  width; unknown geometry is rendered, not estimated. Streaming, focus,
+  selection, and search targets protect mounted content. Fenced blocks and
+  tables also stay mounted because they can own diagram/plugin state or a
+  portalled table preview. Collapsed disclosure scopes still release their prose
+  without losing explicit disclosure choices.
+  This bounds expensive offscreen prose, not retained data, row shells, or the
+  size of a single intersecting answer; it never initiates a history request.
+- A real upward scroll gesture starts ahead-loading within a base lead of
+  `min(2400px, max(120px, 3 * clientHeight))`. Upward speed times measured read
+  latency plus `150ms` can increase the lead, capped at
+  `max(base, min(12000px, 12 * clientHeight))`. Cached history mounts before Host
+  IO; requests stay single-flight. The actual-message anchor tracks user
+  displacement and corrects prepend/layout changes before paint. Request
+  settlement does not release the reading anchor: ordinary reading retains its
+  actual message and, where available, visible prose block until follow or
+  explicit navigation takes over. Row-level resize observation catches changes
+  whose total heights cancel. Corrections run in the current layout/resize
+  delivery, not in a later painted frame, and unchanged/subpixel alignment does
+  not write `scrollTop` and interrupt native smooth scrolling.
+- Reading displacement excludes the browser's mandatory boundary clamp after
+  content/viewport shrinkage; that clamp must not shift the intended text offset
+  a second time. Native input in the same layout delivery still advances the
+  reading target. An unreachable target degrades to the legal scroll boundary.
+  Where parser-owned source positions exist, the anchor identifies the message,
+  source block, exact rendered text version, and visible character rather than
+  treating a DOM node as identity. Reconstructed unchanged content is re-resolved,
+  including line wrapping within a long paragraph. Changed/missing content falls
+  back to the message anchor without inventing an equivalent sentence. Boundary
+  fallback rebases the held target so repeated restores do not repeat writes.
+- All paging paths leave `overflow-y` and input untouched, including the
+  `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
+  top-boundary observer. Wheel/trackpad, touch and keyboard input continue
+  through IO and the three stable layout frames used for settlement. Nested
+  scroll owners, editable fields, and title activation retain their own input.
+  The loading label keeps identical layout space when hidden; there is no
   early-threshold observer or eager page draining at rest.
 - Search/minimap navigation, return-to-latest, manual disclosure, a new turn
   outside a historical reading window, pane hide, and unmount retire the hold;
-  a late page cannot reclaim that navigation. A failed or empty page releases
-  any lock and waits for a new scroll gesture or explicit earlier-history action
-  before retrying. Requests remain single-flight even after their hold ends.
+  a late page cannot reclaim that navigation. A failed or empty page ends the
+  transaction and waits for a new scroll gesture or explicit earlier-history
+  action before retrying. Requests remain single-flight after their hold ends.
 - The first upward scroll **gesture** (wheel / trackpad / touch / scrollbar /
   keyboard) pauses auto-scroll and shows the "↓ Scroll to bottom" button;
   queued stream or resize follow work must not reverse that movement
@@ -1696,9 +1726,9 @@ Project drag/drop follows these patterns:
 - Button appears as soon as upward scrolling releases follow mode
 - Click button: retires the prior scroll gesture and history hold, prepares any
   historical view without removing visible messages until arrival (or commits on
-  hide/unmount), and drives the custom `180–420ms` cubic ease-out animation to
-  bottom (immediate under reduced motion) while suppressing competing scroll
-  owners. Queued scroll events or a pending page cannot reopen historical
+  hide/unmount), and starts browser-native smooth scrolling like a turn marker
+  (`auto` under reduced motion) while suppressing competing scroll owners until
+  native completion. Queued scroll events or a pending page cannot reopen historical
   reading or start another page read during that trip.
 - Button disappears when at bottom
 - A delegation tab uses the same single-body scroll owner as the work panel.
@@ -1888,10 +1918,9 @@ This does not prevent state changes — it makes them instant.
 
 - Session activation uses an immediate layout-phase bottom position so the
   first visible frame is already stable at the latest record.
-- Return-to-latest runs its `180–420ms` cubic ease-out viewport animation and
-  minimap navigation uses browser smooth scrolling only when the OS has not
-  requested reduced motion; under `prefers-reduced-motion: reduce` both position
-  immediately.
+- Return-to-latest and minimap navigation both use browser-native smooth
+  scrolling with browser-owned timing. Under `prefers-reduced-motion: reduce`,
+  both use immediate `auto` positioning.
 - Turn-start following uses an immediate layout-phase update and then a
   frame-coalesced instant follow; it does not start overlapping smooth-scroll
   animations for token groups.

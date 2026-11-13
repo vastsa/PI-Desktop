@@ -306,6 +306,18 @@ destination, chat as the home surface, tools and permissions inline.
   focus.
 
 ### 3.3 Scheduled
+Task definitions render as soon as their own read completes; latest outcomes
+and the selected task's bounded history load independently. Pending or failed
+run reads never imply that a task has not run. Returning to the route displays
+the renderer's last successful in-memory snapshot while refreshing. Host loss
+or restart invalidates that snapshot and rejects late responses from the old
+lifecycle. Project options load only when opening Create/Edit; the form waits
+for that read to succeed and exposes retry on failure. Run now and Delete wait
+for known run status; Host admission remains authoritative. If Host loss/restart
+invalidates pending editor options, the next normal page poll replaces that
+read without closing the editor or waiting for the old request to settle.
+A replacement failure exposes the existing Retry action.
+
 Settings → Behavior → Execution → Scheduled tasks controls this feature, on by default
 (`scheduledTasksEnabled` absent or true). Off hides the footer and search page
 entries and prevents new runs without deleting tasks or run history. The

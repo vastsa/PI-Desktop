@@ -70,6 +70,12 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
   const scroller = () => host.querySelector<HTMLDivElement>(".thread-scroll")!;
   const busy = () => host.querySelector('.transcript-history-loading[aria-hidden="false"]') !== null;
   const bottom = () => Math.abs(scroller().scrollHeight - scroller().clientHeight - scroller().scrollTop) <= 2;
+  // Arrival replaces the prepared identity; connected history data may survive.
+  const latestArrival = () => {
+    const prepared = useAppStore.getState().transcriptViews[id];
+    return () => !prepared || useAppStore.getState().transcriptViews[id] !== prepared ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches;
+  };
   const render = (visible = true) => flushSync(() => root.render(<I18nextProvider i18n={i18n}>
     <div className="session-panes"><SessionPane key={id} sessionId={id} visible={visible} /></div>
   </I18nextProvider>));
@@ -78,10 +84,12 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
     for (const item of pending.splice(0)) item.resolve(item.response);
     searchRead?.resolve({ session: null }); searchRead = undefined; deferSearch = false;
     id = `navigation-${name}`;
-    const count = tailOnly ? 35 : 280;
+    const count = tailOnly ? 35 : name === "continuous-pages" ? 1035 : 280;
     data = Array.from({ length: count }, (_, index) => ({ id: `${id}-${index}`,
-      role: role === "user" || index % 30 === 0 ? "user" : "assistant",
-      content: `Message ${index}\n\n${"Stationary visible reading paragraph. ".repeat(80)}`,
+      role: role === "user" || index % (name.startsWith("motion-") && !tailOnly ? 100 : 30) === 0 ? "user" : "assistant",
+      content: name === "content-window-long" && index === count - 1
+        ? `Message ${index}\n\n${Array.from({ length: 1600 }, (_, paragraph) => `Long answer paragraph ${paragraph}. ${"Readable long-answer content. ".repeat(3)}`).join("\n\n")}`
+        : `Message ${index}\n\n${"Stationary visible reading paragraph. ".repeat(80)}`,
       createdAt, status: running && index === count - 1 ? "streaming" : "complete" }));
     summary = { id, title: id, mode: "agent", permissionMode: "ask", thinkingLevel: "off",
       providerId: "fixture", modelId: "fixture", createdAt, updatedAt: createdAt, messageCount: data.length };
@@ -127,6 +135,52 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
   const results: unknown[] = [];
   const failures: string[] = [];
   try {
+    for (const variant of reducedOnly ? [] : ["collapsed", "expanded", "long"]) {
+      const expanded = variant !== "collapsed";
+      await reset(`content-window-${variant}`, "mixed", false, true);
+      const el = scroller();
+      if (expanded) {
+        const toggles = [...el.querySelectorAll<HTMLButtonElement>('.turn-process > button[aria-expanded="false"]')];
+        assert(toggles.length > 0, "expanded resource fixture needs collapsed process groups");
+        flushSync(() => { for (const toggle of toggles) toggle.click(); });
+        await until(() => toggles.every(toggle => toggle.getAttribute("aria-expanded") === "true"), "process groups did not expand");
+        await frame();
+      }
+      const shells = () => [...el.querySelectorAll<HTMLElement>(".assistant-turn-fragment .prose-chat")];
+      const resources = () => shells().filter(node => node.childElementCount > 0).length;
+      const visibleReady = () => {
+        const viewport = el.getBoundingClientRect();
+        return shells().every(node => {
+          const rect = node.getBoundingClientRect();
+          return rect.bottom <= viewport.top || rect.top >= viewport.bottom || node.childElementCount > 0;
+        });
+      };
+      assert(shells().length > 20, "resource fixture must contain enough assistant content");
+      const readsBefore = reads.length;
+      const counts: number[] = [];
+      for (const fraction of [1, 0, 0.5, 1, 0]) {
+        el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: fraction === 1 ? 400 : -400 }));
+        el.scrollTo({ top: (el.scrollHeight - el.clientHeight) * fraction, behavior: "instant" });
+        el.dispatchEvent(new Event("scroll", { bubbles: true }));
+        // Let scroll delivery, shared observation, and React layout commit run
+        // before accepting a result from the destination viewport.
+        for (let n = 0; n < 3; n++) await frame();
+        try {
+          await until(() => resources() <= 20 && visibleReady(), "content window did not recycle and restore visible prose");
+        } catch (error) {
+          console.log("CONTENT_WINDOW_FAILURE", JSON.stringify({ fraction, resources: resources(), visibleReady: visibleReady(),
+            height: el.clientHeight, top: el.scrollTop, shells: shells().map(node => ({
+              state: node.dataset.transcriptContent, height: node.getBoundingClientRect().height,
+              width: node.getBoundingClientRect().width, top: node.getBoundingClientRect().top,
+            })) }));
+          throw error;
+        }
+        counts.push(resources());
+      }
+      assert(reads.length === readsBefore, "content recycling initiated a history request");
+      console.log("CONTENT_WINDOW_RESOURCES", JSON.stringify({ variant, expanded, total: shells().length, counts }));
+      results.push({ contentWindow: counts });
+    }
     for (const tailOnly of [true, false]) for (const running of [false, true]) {
       await reset(`motion-${tailOnly ? "tail" : "history"}-${running ? "running" : "idle"}`, "mixed", running, tailOnly);
       const el = scroller();
@@ -138,10 +192,16 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         }
         await until(() => Boolean(host.querySelector(".jump-latest-btn")), "latest control did not appear");
         let blankFrames = 0;
+        const textOffsets: number[] = [];
+        const bottomOffsets: number[] = [];
+        const arrivalSamples: { distance: number; history: boolean; rowTop: number; textTop: number | null; sameNode: boolean }[] = [];
+        let previousLatest: HTMLElement | null = null;
+        const latestMessageId = data.at(-1)!.id;
         const distance = () => Math.max(0, el.scrollHeight - el.clientHeight - el.scrollTop);
         const start = distance();
         const samples: number[] = [start];
         let sampling = true;
+        let arrived = () => false;
         const observers = new Set<ResizeObserver>();
         const sample = () => {
           if (!sampling) return;
@@ -152,6 +212,29 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
             observer.disconnect(); observers.delete(observer);
             if (!sampling) return;
             const viewport = el.getBoundingClientRect();
+            const latest = el.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(latestMessageId)}"]`);
+            if (latest) {
+              const rect = latest.getBoundingClientRect();
+              if (rect.top < viewport.bottom && rect.bottom > viewport.top) {
+                textOffsets.push(rect.top - viewport.top);
+                // Near-bottom is not arrival: the last animation frames still
+                // travel legitimately. Historical arrival commits the live view.
+                if (bottom() && arrived()) {
+                  bottomOffsets.push(rect.top - viewport.top);
+                }
+                if (bottom()) {
+                  const walker = document.createTreeWalker(latest, NodeFilter.SHOW_TEXT);
+                  let text = walker.nextNode();
+                  while (text && !text.textContent?.trim()) text = walker.nextNode();
+                  const range = document.createRange();
+                  if (text) range.selectNodeContents(text);
+                  arrivalSamples.push({ distance: distance(), history: !arrived(),
+                    rowTop: rect.top - viewport.top, textTop: text ? range.getBoundingClientRect().top - viewport.top : null,
+                    sameNode: latest === previousLatest });
+                }
+                previousLatest = latest;
+              }
+            }
             const painted = [...el.querySelectorAll<HTMLElement>("[data-message-id]")].some(node => {
               const rect = node.getBoundingClientRect();
               return rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom &&
@@ -164,17 +247,26 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         };
         requestAnimationFrame(sample);
         host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
+        arrived = latestArrival();
         try {
-          await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), "smooth latest did not finish");
-          for (let n = 0; n < 5; n++) await frame();
+          await until(() => arrived() && bottom(), "smooth latest did not finish");
+          if (!tailOnly) assert((useAppStore.getState().transcriptViews[id]?.messages.length ?? 0) >= 135,
+            "latest arrival discarded the previously loaded page");
+          for (let n = 0; n < 30; n++) await frame();
         } finally { sampling = false; for (const observer of observers) observer.disconnect(); }
         const intermediateFrames = samples.filter(value => value > 2 && value < start - 2).length;
         const reversal = Math.max(0, ...samples.slice(1).map((value, i) => value - samples[i]));
         const result = { tailOnly, running, start, intermediateFrames, reversal, blankFrames, firstDistances: samples.slice(0, 8) };
+        const textReversal = Math.max(0, ...textOffsets.slice(1).map((value, i) => value - textOffsets[i]));
+        const settledTextDrift = bottomOffsets.length ? Math.max(...bottomOffsets) - Math.min(...bottomOffsets) : 0;
+        console.log("LATEST_TEXT_TRAJECTORY " + JSON.stringify({ tailOnly, running, textReversal, settledTextDrift, bottomOffsets }));
+        console.log("LATEST_ARRIVAL_PHASES " + JSON.stringify({ tailOnly, running, arrivalSamples }));
         console.log("LATEST_MOTION " + JSON.stringify(result));
         assert(matchMedia("(prefers-reduced-motion: reduce)").matches || intermediateFrames >= 3,
           `latest snapped instead of scrolling: ${JSON.stringify(result)}`);
         assert(reversal <= 2, `latest moved away from bottom: ${JSON.stringify(result)}`);
+        assert(textReversal <= 2 && settledTextDrift <= 2,
+          `latest text bounced despite bottom distance: ${JSON.stringify({ tailOnly, running, textReversal, settledTextDrift })}`);
         assert(blankFrames === 0, `latest painted an empty viewport: ${JSON.stringify(result)}`);
         results.push(result);
       } catch (error) { failures.push(String(error)); console.log("LATEST_MOTION_ERROR " + String(error)); }
@@ -185,7 +277,7 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
       assert(failures.length === 0 && unexpected.length === 0, failures.join("\n"));
       return { ok: true, reducedMotion: true, cases: results };
     }
-    for (const action of ["interrupt", "press", "growth", "complete", "hide", "unmount", "new-search", "failed-search"] as const) {
+    for (const action of ["interrupt", "press", "growth", "layout-above", "complete", "hide", "unmount", "new-search", "failed-search"] as const) {
       await reset(`lifecycle-${action}`, "mixed", action === "growth" || action === "complete");
       const anchor = begin();
       try {
@@ -194,6 +286,7 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         const el = scroller();
         const oldTop = el.scrollTop;
         host.querySelector<HTMLButtonElement>(".jump-latest-btn")!.click();
+        const arrived = latestArrival();
         await until(() => el.scrollTop > oldTop + 20 && !bottom(), "trip did not enter an intermediate position");
         if (action === "failed-search") {
           deferSearch = true;
@@ -235,7 +328,17 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
           assert(Math.abs(el.scrollTop - stopped) <= 2 && !bottom(), "reader input did not retire the trip");
           assert(Boolean(useAppStore.getState().transcriptViews[id]), "interruption committed latest");
         } else {
-          if (action === "growth") {
+          if (action === "layout-above") {
+            const content = el.querySelector<HTMLElement>(".thread-content")!;
+            const beforeLayout = el.scrollTop;
+            const previousPadding = content.style.paddingTop;
+            content.style.paddingTop = "2400px";
+            await frame();
+            const afterLayout = el.scrollTop;
+            content.style.paddingTop = previousPadding;
+            assert(afterLayout >= beforeLayout - 2,
+              `native latest reversed during layout: before=${beforeLayout}, after=${afterLayout}`);
+          } else if (action === "growth") {
             const live = useAppStore.getState().messages.map(message => ({ ...message, status: "complete" as const }));
             useAppStore.setState({ messages: [...live, { ...data.at(-1)!, id: `${id}-new`,
               content: "New live output. ".repeat(300), status: "streaming" }] });
@@ -244,14 +347,14 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
               messages: useAppStore.getState().messages.map(message => ({ ...message, status: "complete" })) });
           } else if (action === "hide") {
             render(false);
-            await until(() => !useAppStore.getState().transcriptViews[id], "hide did not commit accepted latest intent");
+            await until(arrived, "hide did not commit accepted latest intent");
             render();
           } else if (action === "unmount") {
             flushSync(() => root.render(null));
-            assert(!useAppStore.getState().transcriptViews[id], "unmount did not commit accepted latest intent");
+            assert(arrived(), "unmount did not commit accepted latest intent");
             render();
           }
-          await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), `${action} lost latest`);
+          await until(() => arrived() && bottom(), `${action} lost latest`);
           for (let n = 0; n < 15; n++) { await frame(); assert(bottom(), `${action} reversed accepted latest`); }
         }
         results.push({ lifecycle: action, ok: true });
@@ -312,15 +415,16 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
       } catch (error) { failures.push(String(error)); console.log("PREFETCH_REPIN_ERROR " + String(error)); }
       finally { anchor.stop(); }
     }
-    for (const { role, lateEntry } of [
-      { role: "user", lateEntry: false }, { role: "mixed", lateEntry: false },
-      { role: "user", lateEntry: true },
+    for (const { role, lateEntry, fast } of [
+      { role: "user", lateEntry: false, fast: false }, { role: "mixed", lateEntry: false, fast: false },
+      { role: "user", lateEntry: true, fast: false }, { role: "user", lateEntry: false, fast: true },
     ] as const) {
-      await reset(`prefetch-${role}${lateEntry ? "-late-entry" : ""}`, role);
-      const anchor = begin(scroller().clientHeight * 2);
+      await reset(`prefetch-${role}${lateEntry ? "-late-entry" : ""}${fast ? "-fast" : ""}`, role);
+      const anchor = begin(fast ? 4000 : scroller().clientHeight * 2);
       try {
         await until(() => pending.length === 1, "history was not requested before reaching the top");
         assert(scroller().scrollTop > scroller().clientHeight, "prefetch started too close to the edge");
+        if (fast) assert(scroller().scrollTop > 2400, "fast prefetch fell back to the old fixed band");
         assert(scroller().style.overflowY !== "hidden", "background prefetch locked scrolling");
         let previous: HTMLElement | undefined;
         if (lateEntry) {
@@ -349,12 +453,60 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         const offset = anchor.measure();
         await finish();
         const drift = Math.abs(anchor.measure() - offset);
-        const result = { role, lateEntry, prefetch: true, drift, top: scroller().scrollTop };
+        const result = { role, lateEntry, fast, prefetch: true, drift, top: scroller().scrollTop };
         console.log("EARLY_HISTORY " + JSON.stringify(result));
         assert(drift <= 2, `prefetched page moved the reading point: ${JSON.stringify(result)}`);
         results.push(result);
       } catch (error) { failures.push(String(error)); console.log("EARLY_HISTORY_ERROR " + String(error)); }
       finally { anchor.stop(); }
+    }
+    await reset("continuous-pages");
+    {
+      const firstRead = reads.length;
+      const pages: { cursor: number; drift: number; mounted: number }[] = [];
+      for (let page = 0; page < 3; page++) {
+        // Cached window expansion may precede the physical read. Each attempt
+        // is a new upward gesture, never an observer-driven idle drain.
+        for (let attempt = 0; pending.length === 0 && attempt < 12; attempt++) {
+          const mounted = begin(scroller().clientHeight * 2);
+          mounted.stop();
+          await frame();
+          await until(() => pending.length > 0 || !busy(), "cached expansion did not settle");
+          let previousGeometry = "";
+          let stableFrames = 0;
+          await until(() => {
+            if (pending.length > 0) return true;
+            const el = scroller();
+            const geometry = `${el.scrollTop}:${el.scrollHeight}:${el.querySelectorAll("[data-message-id]").length}`;
+            stableFrames = geometry === previousGeometry ? stableFrames + 1 : 0;
+            previousGeometry = geometry;
+            return stableFrames >= 3 && !busy();
+          }, "cached expansion geometry did not stabilize");
+        }
+        assert(pending.length === 1, "continuous history lost single-flight paging");
+        const anchor = begin(scroller().clientHeight * 2);
+        try {
+          await frame(); await frame();
+          const before = anchor.measure();
+          const el = scroller();
+          el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+          el.scrollTo({ top: el.scrollTop - 100, behavior: "instant" });
+          await frame(); await frame();
+          assert(Math.abs(anchor.measure() - before - 100) <= 2, "continuous read swallowed movement");
+          const offset = anchor.measure();
+          await finish();
+          const drift = Math.abs(anchor.measure() - offset);
+          assert(drift <= 2, `continuous prepend drifted by ${drift}`);
+          assert(reads.length === firstRead + page + 1, "page settlement eagerly requested more history");
+          pages.push({ cursor: reads.at(-1)!, drift,
+            mounted: el.querySelectorAll("[data-message-id]").length });
+        } finally { anchor.stop(); }
+      }
+      assert(pages.every((page, index) => index === 0 || page.cursor === pages[index - 1].cursor - 100),
+        `continuous history skipped or duplicated a page: ${JSON.stringify(pages)}`);
+      assert(useAppStore.getState().transcriptViews[id]?.hasMoreBefore, "fixture drained all history");
+      console.log("CONTINUOUS_HISTORY " + JSON.stringify(pages));
+      results.push({ continuousPages: pages });
     }
     for (const role of ["user", "mixed"] as const) {
       await reset(`quiet-${role}`, role);
@@ -385,12 +537,13 @@ globalThis.transcriptHistoryNavigationProbe = async (reducedOnly = false) => {
         assert(button, "actual return-to-latest button missing");
         const readsBeforeJump = reads.length;
         button.click();
+        const arrived = latestArrival();
         if (timing === "pending") { const item = pending.shift()!; item.resolve(item.response); }
-        await until(() => !useAppStore.getState().transcriptViews[id] && bottom(), `latest button failed after ${timing} page`);
+        await until(() => arrived() && bottom(), `latest button failed after ${timing} page`);
         for (let n = 0; n < 15; n++) { await frame(); assert(bottom(), "latest navigation was reversed after reaching bottom"); }
         assert(pending.length === 0 && reads.length === readsBeforeJump, "latest navigation started another history page");
         const result = { timing, role, top: scroller().scrollTop, height: scroller().scrollHeight,
-          historical: Boolean(useAppStore.getState().transcriptViews[id]), reduced: matchMedia("(prefers-reduced-motion: reduce)").matches };
+          historical: !arrived(), reduced: matchMedia("(prefers-reduced-motion: reduce)").matches };
         console.log("REAL_HISTORY_LATEST " + JSON.stringify(result));
         results.push(result);
       } catch (error) {

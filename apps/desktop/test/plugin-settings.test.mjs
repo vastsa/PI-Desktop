@@ -28,6 +28,25 @@ test("plugin settings expose generated fields and plugin-local shortcut metadata
   assert.match(sheet, /api\.setPluginSettings/);
 });
 
+test("saving parses only json drafts the user edited; untouched objects pass through", async () => {
+  // Regression: the sheet stringified every json draft before parsing, so an
+  // untouched object became "[object Object]" and the save was refused.
+  assert.match(sheet, /payload\[setting\.key\] = parseJsonSettingDraft\(payload\[setting\.key\]\)/);
+  assert.doesNotMatch(sheet, /JSON\.parse\(String\(/);
+  const source = sheet.match(/export function parseJsonSettingDraft[\s\S]*?\n\}\n/)[0];
+  const { parseJsonSettingDraft } = await import(
+    `data:text/javascript,${encodeURIComponent(source.replace(/\(draft: unknown\): unknown/, "(draft)"))}`
+  );
+  assert.deepEqual(parseJsonSettingDraft({}), {});
+  assert.deepEqual(parseJsonSettingDraft({ mode: "auto" }), { mode: "auto" });
+  assert.deepEqual(parseJsonSettingDraft(["a"]), ["a"]);
+  assert.deepEqual(parseJsonSettingDraft(undefined), {});
+  assert.deepEqual(parseJsonSettingDraft(null), {});
+  assert.deepEqual(parseJsonSettingDraft(""), {});
+  assert.deepEqual(parseJsonSettingDraft('{"rules": []}'), { rules: [] });
+  assert.throws(() => parseJsonSettingDraft("{nope"), SyntaxError);
+});
+
 test("generated plugin settings stay author-language; plugins localize from the host locale", () => {
   assert.match(sdk, /export type PluginSettingContrib = \{[\s\S]*?title: string;/);
   assert.doesNotMatch(

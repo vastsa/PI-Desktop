@@ -322,7 +322,11 @@ session gets a scratch directory outside the workspace:
 <data_dir>/scratch/<sessionId>/
 ```
 
-OS clipboard files and images pasted into the composer are materialized by
+Native disk-file pastes retain main-registered live paths and byte sizes; they
+do not copy or read file contents, including referenced images. Subsequent reads
+use normal tool permissions. See [local file references](../../adr/composer-local-file-references.md).
+
+Generated clipboard files and images pasted into the composer are materialized by
 Electron main below `<data_dir>/scratch/<sessionId>/pasted/` before their
 paths and metadata are captured as transient composer references. At dispatch,
 main validates the source against the session scratch/project roots. Images are
@@ -849,37 +853,75 @@ for the current key-log policy.
 
 ## 10. Operating-mode matrix
 
-| Mode | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | Plugins |
+A mode is a definition document (ADR mode-definitions). Its tool policy is one
+of two levels, chosen by the definition (or the current stage of a staged run)
+and resolved by host-core from the persisted definition snapshot, never from a
+mode the runtime claims:
+
+| Policy | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | Plugins |
 |---|---|---|---|---|---|
-| Agent | allow | allow | permission policy | permission policy | registered risk policy |
-| Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
-| Goal | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
+| `agent` | allow | allow | permission policy | permission policy | registered risk policy |
+| `contract` | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
+
+Builtins: Agent uses `agent`; Plan uses `contract`; Goal is a staged run whose
+`work` stage uses `agent`. A legacy Goal session without a snapshot, and any
+mode id the Host cannot resolve, falls back to `contract` (fail closed).
+
+Prompt admission first claims an existing staged run through the Host and uses
+its persisted snapshot without consulting the current catalog. Editing, removing,
+or making the catalog definition simple does not change an existing run.
+Without a claim, simple custom modes carry the current catalog definition to the
+runtime. An unavailable mode closes the admission turn without persisting a user
+message or invoking the sidecar. Plan-state projection may rename only Agent/Plan
+sessions; an inactive projection preserves Goal and custom-mode identity unless
+a legacy Goal proposal was approved. Live approval and restoration of a pending
+legacy proposal then show Agent; unrelated historical approvals do not rename
+a newly selected staged Goal.
+New Goal/custom sessions pass the catalog snapshot in the single Host creation
+call. Host validation, snapshot storage and session insertion share a transaction;
+a rejected snapshot or failed insert leaves neither an incomplete session nor
+an orphan snapshot. Legacy callers without a snapshot keep their existing behavior.
 
 ### Notes
-- Plan and Goal hard-deny Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
+- `contract` hard-denies Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
   call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).
-- Agent mode uses permission cards or the selected automatic policy for
+- `agent` uses permission cards or the selected automatic policy for
   Write/Edit/Bash and registered plugin tools.
-- Plan and Goal Bash may mutate workspace or scratch state when the user selected Auto;
+- `contract` Bash may mutate workspace or scratch state when the user selected Auto;
   the UI must make that tradeoff visible.
+- `Computer` and scheduled-task tools are available only in the builtin Agent
+  mode, never in a user-defined mode.
+- A turn the Host starts by itself for a staged run (loop continuation,
+  `onFail.goto`) evaluates `auto` as `accept-edits`. Turns the user starts, and
+  the turn after an approval, keep the session permission mode.
 - allow-session is remembered per toolName for the active session only
 - Session grants follow `sessionId` across project-tab switches and are never
   inherited by another session or Temporary conversation
 
-### 10.1 Plan and Goal control tools
+### 10.1 Plan control tools and stage completion
 
 `new_context` is available in every mode and needs no confirmation: it only asks
 the runtime to compact at the next turn boundary, which the host would do on its
 own once the hard budget is reached (see
-[02-agent-runtime](02-agent-runtime.md) §5.1). A submit
-tool is available only in its own contract mode and must be the only tool call in its assistant batch. It preserves
-the exact Markdown bytes in a new unique artifact under the kind's directory
-(`.pi/plan/*.md` for `SubmitPlan`, `.pi/goal/*.md` for `SubmitGoal`)
-through host-core before creating one pending approval. `EnterPlanMode` and
-`EnterGoalMode` are available only in Agent, and each must be the only tool call
-in its batch. The host validates the durable mode, the proposal kind, and the
-active-turn/configuration boundary before any transition; the visible tool list
-is guidance, not the security boundary.
+[02-agent-runtime](02-agent-runtime.md) §5.1). `SubmitPlan` is available only in
+Plan and must be the only tool call in its assistant batch. It preserves the
+exact Markdown bytes in a new unique artifact under `.pi/plan/*.md` through
+host-core before creating one pending approval. `EnterPlanMode` is available
+only in Agent and must be the only tool call in its batch. The host validates
+the durable mode, the proposal kind, and the active-turn/configuration boundary
+before any transition; the visible tool list is guidance, not the security
+boundary.
+
+`EnterGoalMode` and `SubmitGoal` are no longer offered. The host rejects new
+Goal proposals with `PLAN_GOAL_ACTIVATION_DISABLED`; stored Goal approvals stay
+readable and are never converted into autonomous authorization.
+
+`CompleteStage { summary, artifacts? }` is offered only during a staged mode
+run turn. The Host writes declared artifacts to their declared workspace paths
+(a `contract` stage needs no Write permission for them), then evaluates the
+stage exit gates in order. A `run` gate executes its exact definition command
+through the normal Bash permission path (`modeGate` on `tools.execute`); the
+Host rejects a gate call whose command, run, gate index or claim does not match.
 
 ### 10.2 Delegation and subagent tool scope (D201, ADR 0062)
 
@@ -1002,3 +1044,7 @@ the supervisor's process-tree cleanup and reports its actual settled outcome
 or a still-running snapshot with stopRequested. The model's reads and desktop
 reads do not consume each other's logs. Retention and Host restart still bound
 how long a finished ID can be queried.
+
+On macOS, if exit cleanup is denied after the Host successfully signalled the
+group and reaped the child, it briefly checks whether the process group still
+exists. Only a confirmed disappearance clears that denial.

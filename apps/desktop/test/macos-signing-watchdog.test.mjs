@@ -340,7 +340,7 @@ test(
   },
 );
 
-test("the app stapler shim retries only stapler staple and preserves arguments", async (t) => {
+test("the app stapler shim retries stapling and validation while preserving arguments", async (t) => {
   const root = await makeTempDir(t);
   const fakeBin = join(root, "fakebin");
   const callLog = join(root, "xcrun-calls.log");
@@ -352,8 +352,22 @@ test("the app stapler shim retries only stapler staple and preserves arguments",
 printf '<%s>\\n' "$@" >> "$PI_TEST_XCRUN_LOG"
 printf 'call\\n' >> "$PI_TEST_XCRUN_INVOCATIONS"
 if [[ "$1 $2" == "stapler staple" ]]; then
-  PI_TEST_CALLS="$(wc -l < "$PI_TEST_XCRUN_INVOCATIONS" | tr -d ' ')"
-  if (( PI_TEST_CALLS <= PI_TEST_XCRUN_FAILURES )); then
+  PI_TEST_OPERATION="staple"
+  PI_TEST_FAILURE_LIMIT="$PI_TEST_XCRUN_STAPLE_FAILURES"
+elif [[ "$1 $2" == "stapler validate" ]]; then
+  PI_TEST_OPERATION="validate"
+  PI_TEST_FAILURE_LIMIT="$PI_TEST_XCRUN_VALIDATE_FAILURES"
+else
+  PI_TEST_OPERATION=""
+  PI_TEST_FAILURE_LIMIT="0"
+fi
+if [[ -n "$PI_TEST_OPERATION" ]]; then
+  PI_TEST_COUNT_FILE="$PI_TEST_XCRUN_INVOCATIONS.$PI_TEST_OPERATION"
+  PI_TEST_CALLS=0
+  if [[ -f "$PI_TEST_COUNT_FILE" ]]; then PI_TEST_CALLS="$(cat "$PI_TEST_COUNT_FILE")"; fi
+  PI_TEST_CALLS=$((PI_TEST_CALLS + 1))
+  echo "$PI_TEST_CALLS" > "$PI_TEST_COUNT_FILE"
+  if (( PI_TEST_CALLS <= PI_TEST_FAILURE_LIMIT )); then
     echo "The network connection was lost." >&2
     exit 68
   fi
@@ -372,7 +386,7 @@ exit 0
       "--",
       "bash",
       "-c",
-      'xcrun "$@"',
+      'xcrun "$@" && xcrun stapler validate "/tmp/PI Desktop.app"',
       "bash",
       "stapler",
       "staple",
@@ -383,7 +397,8 @@ exit 0
         PATH: `${fakeBin}:${process.env.PATH}`,
         PI_TEST_XCRUN_LOG: callLog,
         PI_TEST_XCRUN_INVOCATIONS: invocationLog,
-        PI_TEST_XCRUN_FAILURES: "2",
+        PI_TEST_XCRUN_STAPLE_FAILURES: "2",
+        PI_TEST_XCRUN_VALIDATE_FAILURES: "1",
         PI_STAPLER_MAX_ATTEMPTS: "3",
         PI_STAPLER_RETRY_DELAY_SECONDS: "0",
       },
@@ -394,14 +409,15 @@ exit 0
   assert.match(stdout, /stapler-shim=on/);
   assert.match(stderr, /stapler staple attempt 1\/3 failed/);
   assert.match(stderr, /stapler staple attempt 2\/3 failed/);
+  assert.match(stderr, /stapler validate attempt 1\/3 failed/);
   assert.equal(
     (await readFile(callLog, "utf8")).split("\n").filter(Boolean).length,
-    9,
-    "three attempts must each preserve the three xcrun arguments",
+    15,
+    "five attempts must each preserve the three xcrun arguments",
   );
   assert.equal(
     (await readFile(invocationLog, "utf8")).trim().split("\n").length,
-    3,
+    5,
   );
   assert.ok(stdout.includes("[sign] fake xcrun completed"));
 });

@@ -18,6 +18,7 @@ import {
   discoverMacApps,
   discoverWindowsApps,
 } from "./local-apps-platform.ts";
+import { loadPlatformIcon } from "./local-app-icon.ts";
 import { joinPath } from "./local-app-parse.ts";
 
 export {
@@ -428,7 +429,7 @@ export async function createDefaultLocalAppDeps(): Promise<LocalAppDeps> {
     import("node:fs"),
     import("electron"),
   ]);
-  const { app, shell } = electron;
+  const { app, nativeImage, shell } = electron;
   const homeDir = app.getPath("home");
   const platform = process.platform;
 
@@ -502,12 +503,11 @@ export async function createDefaultLocalAppDeps(): Promise<LocalAppDeps> {
       }
     },
     async getFileIcon(target) {
-      try {
-        const icon = await app.getFileIcon(target, { size: "small" });
-        return icon ?? null;
-      } catch {
-        return null;
-      }
+      return loadPlatformIcon(platform, target, {
+        thumbnail: (path, size) =>
+          nativeImage.createThumbnailFromPath(path, { width: size, height: size }),
+        fileIcon: (path) => app.getFileIcon(path, { size: "small" }),
+      });
     },
     async openPath(target) {
       return shell.openPath(target);

@@ -154,6 +154,9 @@ export type ContextCompactionStatus = {
  */
 export type ContextCompactionMark = ContextCompactionStatus & {
   id: string;
+  /** Model that rebuilt the compacted context, when recorded by the runtime. */
+  providerId?: string;
+  modelId?: string;
   /** Last message the checkpoint covers; the row renders right after it. */
   throughMessageId: string;
   /** False when the window rolled over without asking for a summary. */

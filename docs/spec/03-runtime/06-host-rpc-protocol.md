@@ -330,6 +330,9 @@ to later refresh and inference; the vendor picker does not collect them.
   `inheritPermissionFromSessionId`; when present, the host copies the existing
   session's persisted permission mode atomically, while omission preserves the
   existing `inherit` default. Missing/null thinking level defaults to `off`.
+  Optional `modeSnapshot` is validated for the selected mode and committed with
+  the session atomically. A rejected snapshot or failed insert leaves no partial
+  session or orphan snapshot; omitting it retains legacy creation semantics.
   Optional boolean `fastMode` (ADR 0334) stores the session `/fast` switch;
   missing/null means `false` and a non-boolean returns `INVALID_PARAMS`.
   Optional `isolated: true` (ADR 0329) also requires `projectPath` and gives
@@ -373,6 +376,11 @@ to later refresh and inference; the vendor picker does not collect them.
   branch (discarding unmerged work)
 - `session.getScratchPath` — the session's scratch directory (D114), created
   on demand
+- `session.usageCost({ sessionId })` — read-only cost rollup of the session's
+  `turns.usage_json` ledgers, grouped by `providerId`: `{ sessionId, turnCount,
+  requestCount, providers: [{ providerId?, total, pricedRequests,
+  reportedRequests, unpricedRequests }] }`. No schema change; a missing
+  `sessionId` is `INVALID_PARAMS`.
 - `visualizations.readFragment({ sessionId, fileName })` — private Main-to-Host
   reader for `pi-genui:` documents (D671). No renderer IPC or Plugin SDK method
   is added. Parameters contain only a validated session ID and direct `.html`
@@ -1598,7 +1606,8 @@ timeoutMs is an integer in 0–1000, default 0. Wait observes a per-job completi
 signal without holding AppState. Stop signals the existing supervisor before
 observing completion. The returned state is authoritative; stopRequested is
 only an acknowledgement, and a running job may need another wait. Snapshot
-metadata includes job {kind: bash, id}, command (at most 1024 UTF-8 bytes),
+metadata includes job {kind: bash, id}, command (a UTF-8 prefix of at most 1024 bytes),
+commandTruncated (whether that prefix omits bytes; older Hosts may omit the flag),
 elapsedMs, state, nullable exitCode and stopRequested. Wait/stop additionally
 return stdout and stderr (each at most 8192 UTF-8 bytes), and truncated for
 either Host retention loss or this observation's clipping.
@@ -1611,3 +1620,31 @@ Host limitation; other failures must not be silently converted into an empty
 list. This additive protocol preserves the existing desktop RPC shapes.
 
 The supervisor gives an observed exit precedence over a pending stop and preserves that exit outcome while draining the pipes. Elapsed time freezes when the final state and output are published.
+
+
+## User-defined mode run RPC
+
+ADR `mode-definitions` adds the following Host methods. Parameters use camelCase.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `modes.get` | `sessionId` | `{ run }`, null when no open run exists |
+| `modes.start` | `sessionId, input, turnId` | `{ claimed, run, enteredStage, definition }` |
+| `modes.claimTurn` | `sessionId, runId, expectedRevision, turnId, origin` | claim result; origins: user, approval, host |
+| `modes.completeStage` | `sessionId, runId, turnId, summary, artifacts?, input?` | failed, run, awaiting_approval, advanced, goto, blocked or finished outcome; `MODE_INPUT_CHANGED` when `input` (the input the turn was claimed with) differs from the run's current input |
+| `modes.gateResult` | `sessionId, runId, turnId, gateIndex, toolCallId` | next stage outcome |
+| `modes.settleTurn` | `sessionId, runId, turnId, tokens, outcome, error?` | `{ run, continue }` |
+| `modes.control` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; pause, resume, stop or remove. Stop and remove both end the run; Electron main interrupts the active turn only for stop |
+| `modes.update` | `sessionId, runId, expectedRevision, input?, budget?` | `{ run, continue: false }`; edits an open run's input and `{ maxTurns, maxTokens }` budget (both fields required, `null` is unlimited), effective from the next claim |
+| `modes.resolve` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; approve or reject |
+| `modes.settleReturn` | `sessionId, runId, mode?, modeSnapshot?` | `{ pending, applied }`; after a run closed, reports the custom `returnTo` the session waits on (`pending`). Called again with that `mode`, it stores `modeSnapshot` for it, or moves the session to `agent` when the snapshot is absent because the mode no longer exists |
+
+`session.configure` accepts an optional validated `modeSnapshot`. Custom mode
+ids require a snapshot. Agent and Plan retain their builtin policies. Host
+notifications use `modes.changed { sessionId, run }`. Renderer catalog editing
+uses the `pi-desktop/modes/*` IPC channels and never writes SQLite directly.
+
+`tools.execute` accepts `modeGate { runId, gateIndex }` only for the exact
+pending Bash gate command. The Host records the exit code; a model-supplied
+verdict cannot pass a command gate. Stage completion may write only declared
+artifacts within the workspace. Staged runs reject remote workspaces.

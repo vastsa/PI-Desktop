@@ -1,6 +1,7 @@
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
+import { modeContinuationOrigin, type ModeRunCoordinator, type PreparedModeTurn } from "../runtime/mode-runs";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
 import { resolveSessionReferences } from "../session-references";
@@ -50,6 +51,8 @@ export type AgentIpcDependencies = {
   optionalWorkspaceRoot: () => Promise<string | null>;
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
+  /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -107,6 +110,7 @@ export function registerAgentIpc({
   optionalWorkspaceRoot,
   composerCommandService,
   loadComposerTemplatesCached,
+  modeRuns,
 }: AgentIpcDependencies): void {
   let host: HostProcess | null = null;
   let sidecar: AgentSidecar | null = null;
@@ -186,6 +190,9 @@ export function registerAgentIpc({
   });
 
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
+    // Set only on an in-process request built by the Agent Host bridge for a
+    // Host-started mode run turn; a renderer or plugin request never has it.
+    const modeOrigin = modeContinuationOrigin(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
     if (req.sessionId.startsWith("native-pi:")) {
@@ -223,6 +230,10 @@ export function registerAgentIpc({
         ? requestedViewingSessionId
         : null,
     );
+    if (modeOrigin && !(await modeRuns.canContinue(req.sessionId))) {
+      // The run was paused, stopped or claimed meanwhile: open no durable turn.
+      throw Object.assign(new Error("mode run cannot continue"), { errorCode: "MODE_CONTINUATION_SKIPPED" });
+    }
     const settings = await host.call<any>("settings.get");
     const sessionResult = await host.call<{ session?: any }>("session.get", {
       id: req.sessionId,
@@ -346,6 +357,26 @@ export function registerAgentIpc({
     activeTurns.set(req.sessionId, durableTurnId);
     recordTurnStart(req.sessionId, durableTurnId);
     activeTurnUsages.delete(req.sessionId);
+
+    // A staged mode claims its run for this durable turn before anything runs;
+    // the sidecar then executes the run's own definition snapshot.
+    let preparedMode: PreparedModeTurn | undefined;
+    let modeDefinition: PreparedModeTurn["definition"] | undefined;
+    try {
+      preparedMode = await modeRuns.prepareTurn({
+        sessionId: req.sessionId,
+        turnId: durableTurnId,
+        sessionMode: typeof session.mode === "string" ? session.mode : "agent",
+        content: req.content,
+        origin: modeOrigin ?? "user",
+      });
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
+    } catch (error) {
+      await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
+        turnId: durableTurnId,
+      });
+      throw error;
+    }
 
     // Slash expansion (D123, ADR 0024): templates expand before persistence
     // so reseed replays exactly what the model saw; the typed form rides along
@@ -504,13 +535,15 @@ export function registerAgentIpc({
           }
         : {}),
     };
-    try {
+    // A Host-started mode turn is not user input and is never recorded as one.
+    if (!modeOrigin) try {
       await host.call("session.appendMessage", {
         sessionId: req.sessionId,
         message: userMessage,
         turnId: durableTurnId,
       });
     } catch (error) {
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(
         req.sessionId,
         "error",
@@ -523,16 +556,18 @@ export function registerAgentIpc({
       // restarting it here would run a prompt the transcript does not contain.
       throw error;
     }
-    emitAgentEvent({
-      sessionId: req.sessionId,
-      ts: Date.now(),
-      event: { type: "message_start", message: userMessage },
-    } satisfies AgentEventEnvelope);
-    emitAgentEvent({
-      sessionId: req.sessionId,
-      ts: Date.now(),
-      event: { type: "message_end", message: userMessage },
-    } satisfies AgentEventEnvelope);
+    if (!modeOrigin) {
+      emitAgentEvent({
+        sessionId: req.sessionId,
+        ts: Date.now(),
+        event: { type: "message_start", message: userMessage },
+      } satisfies AgentEventEnvelope);
+      emitAgentEvent({
+        sessionId: req.sessionId,
+        ts: Date.now(),
+        event: { type: "message_end", message: userMessage },
+      } satisfies AgentEventEnvelope);
+    }
 
     let result: { accepted: boolean; turnId: string };
     const isTrustedCompletionNotice =
@@ -550,6 +585,10 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
+          ...(modeDefinition ? { modeDefinition } : {}),
+          ...(preparedMode?.modeTurn
+            ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
+            : {}),
           // The host-created durable turn is the approval identity used by
           // Rust. The runtime must not replace it with a provider-local UUID.
           turnId: durableTurnId,
@@ -579,7 +618,7 @@ export function registerAgentIpc({
               text: attachment.text,
             })),
           ],
-          userMessageId: userMessage.id,
+          ...(modeOrigin ? {} : { userMessageId: userMessage.id }),
           // Per-turn permission ceiling override (R1 leftover; spec §7.3). The
           // sidecar records it on the turn context; enforcement of a NARROWER
           // ceiling still routes through the session's stored mode until
@@ -589,6 +628,7 @@ export function registerAgentIpc({
       );
     } catch (e) {
       completionNoticeTurns.delete(durableTurnId);
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(req.sessionId, "error", (e as any)?.errorCode, {
         turnId: durableTurnId,
       });

@@ -434,7 +434,16 @@ export function createSessionLaunchRuntime({
         apiStyle,
         modelId,
       });
-    const modelConfig = catalogModelConfig;
+    // The stored binding owns the model's effective capabilities: an explicit
+    // supportsImages/supportsDocuments pin must reach the send path even when
+    // the catalog row (or a catalog miss on a custom provider) disagrees, and
+    // the alias/id spelling a custom endpoint serves must not pick a catalog
+    // row that would undo it (#2120). The subagent path and enrichProvider
+    // already apply the binding; the main session was the one path that
+    // dropped it. Without a stored binding the catalog answer stands.
+    const modelConfig = storedModel
+      ? modelConfigWithBinding(catalogModelConfig, storedModel)
+      : catalogModelConfig;
     const thinkingCapabilities = capabilitiesFromModelConfig(modelConfig);
     const thinkingLevel = clampThinkingLevel(
       thinkingCapabilities,

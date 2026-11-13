@@ -10,6 +10,10 @@ import {
   parseDesktopEntry,
   windowsStartMenuDirs,
 } from "../electron/main/local-apps.ts";
+import {
+  MAC_APP_ICON_THUMBNAIL_SIZE,
+  loadPlatformIcon,
+} from "../electron/main/local-app-icon.ts";
 import { readMainModuleSync } from "./helpers/source-contracts.mjs";
 import {
   desktopExecutable,
@@ -386,11 +390,78 @@ test("icon failures and oversized icons never fail the scan", async () => {
 
 test("the icon budget is 32 KiB and startup uses the stable small native icon", () => {
   assert.equal(LOCAL_APP_MAX_ICON_BYTES, 32_768);
+  const source = readMainModuleSync("local-apps.ts");
   // The large lookup triggered a native startup SIGTRAP on macOS.
-  assert.match(
-    readMainModuleSync("local-apps.ts"),
-    /app\.getFileIcon\(target, \{ size: "small" \}\)/,
-  );
+  assert.match(source, /app\.getFileIcon\(path, \{ size: "small" \}\)/);
+  assert.doesNotMatch(source, /size: "large"/);
+  assert.match(source, /loadPlatformIcon\(platform, target,/);
+  assert.match(source, /nativeImage\.createThumbnailFromPath\(path,/);
+});
+
+function fakeImage(dataUrl) {
+  return { isEmpty: () => dataUrl === "", toDataURL: () => dataUrl };
+}
+
+function fakeIconProviders({ thumbnail, fileIcon }) {
+  const calls = [];
+  return {
+    calls,
+    providers: {
+      async thumbnail(target, size) {
+        calls.push(["thumbnail", target, size]);
+        if (thumbnail instanceof Error) throw thumbnail;
+        return fakeImage(thumbnail);
+      },
+      async fileIcon(target) {
+        calls.push(["fileIcon", target]);
+        if (fileIcon instanceof Error) throw fileIcon;
+        return fakeImage(fileIcon);
+      },
+    },
+  };
+}
+
+test("macOS bundles use the Quick Look thumbnail instead of the generic file icon", async () => {
+  const { providers, calls } = fakeIconProviders({
+    thumbnail: "data:image/png;base64,REAL",
+    fileIcon: "data:image/png;base64,GENERIC",
+  });
+
+  const icon = await loadPlatformIcon("darwin", "/Applications/Chrome.app", providers);
+
+  assert.equal(icon.toDataURL(), "data:image/png;base64,REAL");
+  assert.deepEqual(calls, [
+    ["thumbnail", "/Applications/Chrome.app", MAC_APP_ICON_THUMBNAIL_SIZE],
+  ]);
+});
+
+test("macOS falls back to the native file icon when the thumbnail is empty or fails", async () => {
+  for (const thumbnail of ["", new Error("quick look unavailable")]) {
+    const { providers } = fakeIconProviders({
+      thumbnail,
+      fileIcon: "data:image/png;base64,GENERIC",
+    });
+    const icon = await loadPlatformIcon("darwin", "/Applications/Tool.app", providers);
+    assert.equal(icon.toDataURL(), "data:image/png;base64,GENERIC");
+  }
+
+  const { providers } = fakeIconProviders({ thumbnail: "", fileIcon: "" });
+  assert.equal(await loadPlatformIcon("darwin", "/Applications/Tool.app", providers), null);
+});
+
+test("other platforms keep the native file icon and never request a thumbnail", async () => {
+  for (const [platform, target] of [
+    ["win32", "C:\\Program Files\\Chrome\\chrome.exe"],
+    ["linux", "/usr/share/icons/chrome.png"],
+  ]) {
+    const { providers, calls } = fakeIconProviders({
+      thumbnail: "data:image/png;base64,REAL",
+      fileIcon: "data:image/png;base64,NATIVE",
+    });
+    const icon = await loadPlatformIcon(platform, target, providers);
+    assert.equal(icon.toDataURL(), "data:image/png;base64,NATIVE");
+    assert.deepEqual(calls, [["fileIcon", target]]);
+  }
 });
 
 test("a rescan reuses the icon it already fetched", async () => {

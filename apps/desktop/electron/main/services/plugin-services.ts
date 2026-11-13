@@ -699,7 +699,7 @@ export function createPluginServices({
       const host = getHost();
       if (!host) throw new Error("Browser preview host is unavailable.");
       const res = await host.call<{ session: { projectPath?: string; worktree?: unknown } | null }>(
-        "session.get", { id: sessionId },
+        "session.get", { id: sessionId, messageLimit: 1 },
       );
       if (!res?.session) throw new Error("Browser preview session is unavailable.");
       if (res.session.worktree) {
@@ -732,7 +732,7 @@ export function createPluginServices({
      * `workspace:changed` event both expose the open project's folder roots
      * (ADR 0263) instead of the bare primary path.
      */
-    getWorkspaceInfo: () => pluginWorkspaceInfo(getWorkspacePath()),
+    getWorkspaceInfo: (path = getWorkspacePath()) => pluginWorkspaceInfo(path),
     listProjects: createPluginProjectLister(getHost, (operation) => {
       logger.app("plugin", "warn", "plugin.projects.unavailable", {
         code: "HOST_UNAVAILABLE", data: { operation },
