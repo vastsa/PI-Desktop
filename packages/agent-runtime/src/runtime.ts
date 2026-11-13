@@ -1,3 +1,4 @@
+import { appendLocalFileReferenceContext } from "@pi-desktop/shared";
 import { buildJobTools } from "./background-job-tools.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
@@ -372,9 +373,10 @@ function promptText(input: RuntimePrompt): string {
   const references = (input.attachments ?? [])
     .map((attachment) => sessionReferenceBlock(attachment))
     .filter((block): block is string => block !== null);
-  return references.length
+  const text = references.length
     ? `${input.text}\n\n${references.join("\n\n")}`.trim()
     : input.text;
+  return appendLocalFileReferenceContext(text, input.attachments ?? []);
 }
 
 /** One provider image block for an attachment whose bytes crossed this turn. */
@@ -430,6 +432,7 @@ function runtimeAttachmentFromMessage(
     kind: attachment.kind,
     ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
     ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+    ...(attachment.localReference ? { localReference: attachment.localReference } : {}),
     ...(attachment.text ? { text: attachment.text } : {}),
     // Recorded placement: the message content names this image at that spot, so
     // the restored prompt keeps the block there too.

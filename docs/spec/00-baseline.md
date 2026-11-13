@@ -2,6 +2,9 @@
 
 > [Pasted directory references](../adr/composer-pasted-directory-references.md) add
 > folder cards and lazy dir prompt context without copying trees or granting access.
+> [Pasted local file references](../adr/composer-local-file-references.md) extend
+> native clipboard paste to live file paths and byte sizes, with metadata-only
+> dispatch and unchanged tool permissions.
 
 
 - Baseline Version: `0.4.22`

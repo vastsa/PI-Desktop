@@ -5781,6 +5781,32 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     await runtime.dispose();
     await restored.dispose();
   });
+  it("preserves local file reference size in live input and restored history", async () => {
+    const attachment = {
+      kind: "file" as const, name: "large.png", ref: "/external/large.png",
+      size: 67108865, localReference: "11111111-2222-4333-8444-555555555555",
+    };
+    const restored = createRuntime({ history: [{
+      id: "reference-user", role: "user", content: "Inspect",
+      createdAt: "2026-11-13T00:00:00Z", attachments: [attachment],
+    }] });
+    const live = createRuntime();
+    try {
+      const message = (restored as unknown as { agent: Agent }).agent.state.messages.find(row => row.role === "user");
+      expect(typeof message?.content).toBe("string");
+      expect(message?.content).toContain("/external/large.png");
+      expect(message?.content).toContain("67108865 bytes");
+      const agent = (live as unknown as { agent: Agent }).agent;
+      const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+      vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+      await live.prompt({ text: "Inspect", attachments: [{ ...attachment, path: attachment.ref }] }, "user", "turn");
+      expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ role: "user", content: message?.content }));
+    } finally {
+      await live.dispose();
+      await restored.dispose();
+    }
+  });
+
   it("replays every under-budget historical image as a provider image block", async () => {
     const history: UiMessage[] = Array.from({ length: 6 }, (_, index) => {
       const payload = Buffer.from(`historical-image-${index + 1}`).toString("base64");

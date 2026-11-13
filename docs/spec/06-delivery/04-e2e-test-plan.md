@@ -9721,6 +9721,29 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   candidate and record its revision; PR integration validation follows the
   authoritative `AGENTS.md` workflow without merging into local main first.
 
+#### E2E-COMPOSER-local-file-references: Native file paste keeps paths and sizes
+
+- **Preconditions**: Local project and synthetic disk files, including a sparse
+  64 MiB + 1 byte file outside the project, a small text file and an image.
+- **Steps**: Copy each file in the OS file manager and paste into Composer;
+  also paste a mixed file/folder selection. Remove a card, switch sessions,
+  restore input history, queue a prompt and restart before delivery. Modify,
+  move, delete or replace a source with a symlink before sending. Separately
+  paste a screenshot and a large text selection.
+- **Expected**: Native disk files retain original paths and exact byte sizes;
+  removable inline cards show human-readable size. No source contents cross
+  paste IPC or enter scratch/content-addressed snapshots. Small and large disk
+  files use the same reference flow; screenshots and generated text retain their
+  existing scratch/image behavior. Dispatch refreshes size, preserves metadata
+  through messages and model history, and clearly rejects unavailable or
+  redirected sources. Forged ids/paths, another project and remote contexts are
+  refused. Agent reads use normal permissions; referencing an external file does
+  not grant access. Metadata-only input history restores the live path and size.
+- **Targeted coverage**: `composer-file-references.test.mjs`,
+  `composer-directory-paste.test.mjs`, `composer-clipboard-directories.test.mjs`,
+  draft/history tests and the host attachment roundtrip test. Native clipboard
+  gestures and full provider delivery require a separate desktop E2E run.
+
 #### E2E-102h: Composer picker imports files into session scratch
 
 - **Preconditions**: The app is running with a home or Agent composer and a
