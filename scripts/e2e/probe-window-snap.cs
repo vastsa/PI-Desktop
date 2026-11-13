@@ -127,6 +127,7 @@ public static class WindowSnapProbe {
     }
     static void MovePointer(int x, int y) {
         Check(SetCursorPos(x,y),"native cursor movement was rejected");
+        InjectMouse(0x2001); // Queue a non-coalesced move at the verified screen point.
         SnapPoint actual=new SnapPoint();
         Wait(() => GetCursorPos(out actual) && actual.X==x && actual.Y==y,"native cursor did not reach the requested screen point");
     }
