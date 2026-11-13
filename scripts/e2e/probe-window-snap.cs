@@ -31,6 +31,7 @@ public static class WindowSnapProbe {
     [DllImport("user32.dll",SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint access);
     [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out SnapRect r, int size);
+    [DllImport("dwmapi.dll",EntryPoint="DwmGetWindowAttribute")] static extern int DwmGetColor(IntPtr h, int attribute, out uint color, int size);
     static readonly string Root = AppDomain.CurrentDomain.BaseDirectory;
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     static readonly string RunId = Guid.NewGuid().ToString("N");
@@ -62,13 +63,15 @@ public static class WindowSnapProbe {
     static SnapRect Rect(IntPtr window) { SnapRect rect; Check(GetWindowRect(window, out rect), "read window bounds"); return rect; }
     static Dictionary<string, object> Bounds(IntPtr window) {
         var r = Rect(window); SnapRect client, visible; var origin = new SnapPoint();
+        uint borderColor;int borderResult=DwmGetColor(window,34,out borderColor,4);
         Check(GetClientRect(window, out client) && ClientToScreen(window, ref origin), "read client bounds");
         Check(DwmGetWindowAttribute(window, 9, out visible, 16) >= 0, "read DWM visible frame");
         return new Dictionary<string, object> {
             {"x",r.Left},{"y",r.Top},{"width",r.Right-r.Left},{"height",r.Bottom-r.Top},
             {"clientX",origin.X},{"clientY",origin.Y},{"clientWidth",client.Right},{"clientHeight",client.Bottom},
             {"visibleX",visible.Left},{"visibleY",visible.Top},{"visibleWidth",visible.Right-visible.Left},{"visibleHeight",visible.Bottom-visible.Top},
-            {"style","0x"+GetWindowLong(window,-16).ToString("X8")}
+            {"style","0x"+GetWindowLong(window,-16).ToString("X8")},
+            {"borderColorResult",borderResult},{"borderColor","0x"+borderColor.ToString("X8")}
         };
     }
     static bool IsRect(IntPtr window, int x, int y, int width, int height) {
