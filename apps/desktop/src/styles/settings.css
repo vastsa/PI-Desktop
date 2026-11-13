@@ -316,13 +316,19 @@
   flex: 1;
   overflow: auto;
   /* webContents has no traffic-light chrome; keep airy top like gold content band */
-  padding: calc(var(--ds-toolbar-height) + 8px) 48px 56px 40px;
+  padding: calc(var(--ds-toolbar-height) + 8px) 40px 64px;
   background: var(--ds-bg-primary);
 }
 
+/*
+ * The column follows the window up to a reading measure, then centres. Wide
+ * windows used to push a title and its control ~900px apart, which made each
+ * row read as two unrelated things.
+ */
 .settings-content-inner {
   width: 100%;
-  margin: 0;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 /* The renderer owns this sandboxed iframe. It stays in normal Settings flow,
@@ -344,19 +350,20 @@
  */
 .settings-page-header {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 0 0 28px;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 32px;
 }
 
 .settings-page-icon {
   display: inline-flex;
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md-plus);
+  margin-top: 1px;
+  border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-tile));
   color: var(--ds-accent);
 }
@@ -405,7 +412,11 @@
 }
 
 .settings-card-block {
-  margin-bottom: 28px;
+  margin-bottom: 36px;
+}
+
+.settings-card-block:last-child {
+  margin-bottom: 0;
 }
 
 .settings-card-heading {
@@ -436,6 +447,7 @@
   flex-direction: column;
   gap: 3px;
   margin-bottom: 10px;
+  padding-inline: 4px;
 }
 
 /* One always-visible line of orientation for the group, so a reader does not
@@ -513,12 +525,32 @@
 }
 
 /*
-  Panels that are only a stack of rows dissolve into the page: each row becomes
-  its own tile and the gap between tiles replaces the hairline that used to
-  divide them (same rhythm as the plugins index, D296). Panels with mixed
-  content (editors, form grids) stay one tile.
+  A group of rows is one tile: the section reads as a single unit and the rows
+  inside it are separated by a faint tonal seam rather than by floating each
+  row as its own tile, which made long pages read as a wall of boxes. The seam
+  is a background step between rows, not a stroke (D297).
 */
-.settings-panel:has(> .settings-row),
+.settings-panel:has(> .settings-row) {
+  gap: 1px;
+  padding: 0;
+  background: color-mix(in oklab, var(--ds-text-primary) 6%, var(--ds-tile));
+}
+
+.settings-panel > .settings-row {
+  border-radius: 0;
+}
+
+.settings-panel > .settings-row:first-child {
+  border-start-start-radius: var(--radius-lg);
+  border-start-end-radius: var(--radius-lg);
+}
+
+.settings-panel > .settings-row:last-child {
+  border-end-start-radius: var(--radius-lg);
+  border-end-end-radius: var(--radius-lg);
+}
+
+/* Panels with standalone list items keep their spaced tiles. */
 .settings-panel.shortcut-map,
 .settings-panel.agent-capability-panel,
 .settings-panel.model-provider-panel:has(> .model-provider-list) {
@@ -1200,18 +1232,24 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 14px 16px;
+  min-height: 56px;
+  padding: 10px 16px;
   border-radius: var(--radius-md-plus);
   background: var(--ds-tile);
 }
 
 /*
  * A row that exists only because the row above it is on ("Show thinking",
- * "Transcript display") indents one step. It keeps the parent's tile surface, so
- * the pair reads as one setting with a condition instead of two siblings.
+ * "Transcript display") indents its copy inside the same panel, so the pair
+ * reads as one setting with a condition instead of two siblings.
  */
 .settings-row.settings-row-nested {
-  margin-inline-start: 20px;
+  padding-inline-start: 36px;
+}
+
+.settings-row.settings-row-nested > .settings-row-copy .settings-row-title {
+  color: var(--ds-text-secondary);
+  font-weight: var(--font-weight-normal, 400);
 }
 
 .settings-row-copy {
