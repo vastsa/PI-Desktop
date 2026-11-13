@@ -4212,8 +4212,8 @@ this does not claim an installed full-app settings journey.
 #### E2E-PLUGIN-id-cannot-collide: Plugins with look-alike ids never share storage
 
 - **Preconditions**: Real host-core binary on a scratch data directory.
-- **Steps**: 1) Install a plugin with id `e2e.foo_bar` from a local folder and write a file into its data directory. 2) For each look-alike id `e2e.foo!bar` (character replacement), `e2e.Foo_Bar` (letter case on case-insensitive file systems) and `e2e.foo_bar.` (Windows trailing dot), try to install it, then to load it as a development plugin.
-- **Expected**: Every attempt fails with `PLUGIN_INVALID` naming the reason. The first plugin's installed files, data directory, and registry row are unchanged, and no second install directory appears, so two plugins can never share a directory or browser session partition (issue #2297).
+- **Steps**: 1) Install a plugin with id `e2e.foo_bar` from a local folder and write a file into its data directory. 2) For each look-alike id `e2e.foo!bar` (character replacement), `e2e.Foo_Bar` (letter case on case-insensitive file systems) and `e2e.foo_bar.` (Windows trailing dot), try to install it, then to load it as a development plugin. 3) Rewrite the state into what an older build persisted for `e2e.foo!bar` (raw id in the registry row and installed manifest, sanitized directory names), restart the host, and try to install and load `e2e.foo_bar`.
+- **Expected**: Every attempt fails with `PLUGIN_INVALID` naming the reason, including the legacy case (`would share storage with installed plugin e2e.foo!bar`). The first plugin's installed files, data directory, and registry row are unchanged, and no second install directory appears, so two plugins can never share a directory or browser session partition (issue #2297).
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md` §7
 - **Status**: Automated (`pnpm test:e2e:plugin-id-collision`, `scripts/e2e-plugin-id-collision.mjs`); unit coverage in `crates/host-core/src/plugins/manifest.rs` and `packages/plugin-sdk/src/index.test.ts`
 

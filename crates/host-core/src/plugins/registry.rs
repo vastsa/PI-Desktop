@@ -224,23 +224,31 @@ impl PluginManager {
             .collect()
     }
 
-    /// Refuses an id that differs from a registered plugin's id only in
-    /// letter case. Case-insensitive file systems (macOS and Windows
-    /// defaults) resolve both to the same install and data directory, so the
-    /// newcomer would overwrite the other plugin's files. Existing rows and
-    /// directories keep their names; only the new id is refused.
+    /// Refuses an id whose install / data directory and session partition
+    /// would resolve to those of a different registered plugin. Rows written
+    /// by older versions may carry ids the manifest check now refuses (such
+    /// as `e2e.foo!bar`, stored under `e2e.foo_bar`), so the comparison runs
+    /// on the storage name, not the raw id. Existing rows and directories
+    /// keep their names; only the new id is refused.
     pub(crate) fn ensure_storage_identity_free(&self, id: &str) -> Result<()> {
-        if let Some(other) = self
+        let identity = storage_identity(id);
+        let Some(other) = self
             .runtime
             .iter()
-            .find(|p| p.id != id && p.id.eq_ignore_ascii_case(id))
-        {
+            .find(|p| p.id != id && storage_identity(&p.id) == identity)
+        else {
+            return Ok(());
+        };
+        if other.id.eq_ignore_ascii_case(id) {
             bail!(
                 "PLUGIN_INVALID: id {id} differs from installed plugin {} only in letter case",
                 other.id
             );
         }
-        Ok(())
+        bail!(
+            "PLUGIN_INVALID: id {id} would share storage with installed plugin {}",
+            other.id
+        );
     }
 
     pub fn get(&self, id: &str) -> Option<PluginSummary> {
@@ -461,4 +469,12 @@ impl PluginManager {
         }
         Ok(None)
     }
+}
+
+/// Name a plugin id resolves to on disk and in its session partition, folded
+/// the way the platforms fold it: characters outside `[A-Za-z0-9._-]` become
+/// `_` (`sanitize_id`), Windows drops trailing dots, and case-insensitive file
+/// systems ignore letter case. Two ids with the same identity share storage.
+fn storage_identity(id: &str) -> String {
+    sanitize_id(id).trim_end_matches('.').to_ascii_lowercase()
 }

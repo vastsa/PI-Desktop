@@ -638,9 +638,12 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
    plugin's directory and share its files, storage, and network policy:
    characters outside `[A-Za-z0-9._-]` (each of those locations maps them to
    `_`), `.` / `..`, a trailing `.` or a leading Windows device name (`con`,
-   `nul.x`, ...), and an id that differs from an installed or development
-   plugin's id only in letter case (case-insensitive file systems resolve both
-   to one directory). Existing plugins keep their ids and directories.
+   `nul.x`, ...), and an id whose storage name matches that of a different
+   installed or development plugin. The storage name folds the id the way
+   the platforms do (other characters to `_`, trailing dots dropped, letter
+   case ignored), so it also covers plugins an older version stored under a
+   sanitized name, such as `e2e.foo!bar` under `e2e.foo_bar`. Existing
+   plugins keep their ids and directories.
    `pi-plugin check` still asks for the stricter shape in §1
 3. Opening `ui.panel` requires the explicit declared and granted `ui.panel`
    permission; a panel path does not implicitly grant it

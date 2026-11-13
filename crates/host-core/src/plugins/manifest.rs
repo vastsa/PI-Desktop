@@ -86,8 +86,10 @@ impl PluginManager {
 /// would name a parent or current directory instead of the plugin's own.
 /// Windows also drops a trailing `.` from a path segment and resolves
 /// device names (`con`, `nul.x`, ...) to devices, so those ids could not
-/// name a directory of their own either. Ids that differ only in letter
-/// case are a registry-level conflict, see `ensure_storage_identity_free`.
+/// name a directory of their own either. Ids that share a storage name with
+/// another registered plugin (letter case, or a legacy row stored under its
+/// sanitized name) are a registry-level conflict, see
+/// `ensure_storage_identity_free`.
 fn validate_plugin_id(id: &str) -> Result<()> {
     let allowed = id
         .chars()
