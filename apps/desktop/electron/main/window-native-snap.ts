@@ -27,6 +27,8 @@ export async function installWindowsNativeSnap(
   };
   const refresh = () => { void apply().catch(reportFailure); };
   window.on("show", refresh);
+  window.on("focus", refresh);
+  window.on("blur", refresh);
   window.on("restore", refresh);
   window.on("maximize", refresh);
   window.on("unmaximize", refresh);
@@ -34,6 +36,8 @@ export async function installWindowsNativeSnap(
   window.once("closed", () => {
     disposed = true;
     window.removeListener("show", refresh);
+    window.removeListener("focus", refresh);
+    window.removeListener("blur", refresh);
     window.removeListener("restore", refresh);
     window.removeListener("maximize", refresh);
     window.removeListener("unmaximize", refresh);

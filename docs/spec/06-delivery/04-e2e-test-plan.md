@@ -14145,6 +14145,8 @@ baseline/candidate JSON, timestamped logs, stdout/stderr and normal/snapped/
 maximized/restored client PNGs. Upload artifacts even on failure; exclude
 profiles and redact runtime/user paths. See
 [native replay procedure](../../project/windows-native-snap-replay.md).
+Repeat pixel checks after transferring focus away and back, including a
+PowerShell-launched fixture; activation must not restore the native outline.
 
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
   macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must

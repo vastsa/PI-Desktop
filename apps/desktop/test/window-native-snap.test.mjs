@@ -29,7 +29,7 @@ test("native snap is ready before startup continues and survives window transiti
     params: { nativeHandle: "305419896", ownerPid: process.pid },
     timeout: 5_000,
   });
-  for (const event of ["show", "maximize", "unmaximize", "restore"]) {
+  for (const event of ["show", "focus", "blur", "maximize", "unmaximize", "restore"]) {
     const count = f.calls.length;
     f.window.emit(event);
     await controller.flush();
@@ -64,7 +64,7 @@ test("closing a window cancels queued native mutations and removes its subscript
   f.window.emit("closed");
   await controller.flush();
   assert.equal(f.calls.length, count);
-  for (const event of ["show", "maximize", "unmaximize", "restore", "leave-full-screen"]) {
+  for (const event of ["show", "focus", "blur", "maximize", "unmaximize", "restore", "leave-full-screen"]) {
     assert.equal(f.window.listenerCount(event), 0);
   }
 });

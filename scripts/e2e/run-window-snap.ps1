@@ -21,6 +21,12 @@ function Write-Json($path, $value) {
 function Write-RunnerLog($message) {
     [IO.File]::AppendAllText((Join-Path $ArtifactDirectory 'runner.log'), [DateTime]::UtcNow.ToString('o') + ' ' + $message + [Environment]::NewLine)
 }
+function Get-Sha256($path) {
+    $stream = [IO.File]::OpenRead($path)
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose(); $stream.Dispose() }
+}
 try {
     Write-RunnerLog 'checking source and desktop metadata'
     if (-not $source.clean) { throw 'Native acceptance requires a clean source checkout.' }
@@ -30,8 +36,8 @@ try {
     $options.hostBinary = Resolve-Binary $options.hostBinary
     $options.electronBinary = Resolve-Binary $options.electronBinary
     Write-RunnerLog 'hashing native binaries'
-    $summary.hostSha256 = (Get-FileHash $options.hostBinary -Algorithm SHA256).Hash.ToLowerInvariant()
-    $summary.electronSha256 = (Get-FileHash $options.electronBinary -Algorithm SHA256).Hash.ToLowerInvariant()
+    $summary.hostSha256 = Get-Sha256 $options.hostBinary
+    $summary.electronSha256 = Get-Sha256 $options.electronBinary
     New-Item -ItemType Directory $scratch | Out-Null
     Write-RunnerLog 'compiling native probe'
     Add-Type -Path (Join-Path $root 'probe.cs') -OutputAssembly (Join-Path $scratch 'probe.exe') -OutputType WindowsApplication -ReferencedAssemblies System.dll,System.Drawing.dll,System.Windows.Forms.dll,System.Web.Extensions.dll
@@ -103,7 +109,7 @@ try {
     if (Test-Path (Join-Path $scratch 'probe.exe')) { Copy-Item (Join-Path $scratch 'probe.exe') $ArtifactDirectory }
     $hashes = Get-ChildItem $ArtifactDirectory -Recurse -File | Where-Object Name -ne 'active-directory.txt' | ForEach-Object {
         $relative = $_.FullName.Substring($ArtifactDirectory.Length + 1).Replace('\', '/')
-        (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relative
+        (Get-Sha256 $_.FullName) + '  ' + $relative
     }
     [IO.File]::WriteAllLines((Join-Path $ArtifactDirectory 'SHA256SUMS'), [string[]]$hashes)
     Remove-Item (Join-Path $ArtifactDirectory 'active-directory.txt') -ErrorAction SilentlyContinue

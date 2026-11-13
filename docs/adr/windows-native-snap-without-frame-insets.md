@@ -28,11 +28,15 @@ HWND owner before mutation. Share this validation with the corner RPC. No raw
 handle or new channel is exposed to renderer, preload, plugins, or remote clients.
 
 Main awaits initial application before showing the window and reapplies after
-show, restore, maximize, unmaximize, and leaving fullscreen. Active fullscreen
+show, focus/blur, restore, maximize, unmaximize, and leaving fullscreen. Active fullscreen
 is excluded; closing cancels queued work and subscriptions. Errors are logged
 without preventing startup, and later transitions can retry with the current
 Host. Existing minimum sizes, persistence, resizing, corners, fullscreen
 interlocks, and maximize/work-area correction remain unchanged.
+
+Activation changes also refresh the border hint: DWM requires applications to
+maintain border appearance across activation, and replay exposed a painted rim
+after focus transfer when only show/restore events refreshed it.
 
 ## Consequences
 
