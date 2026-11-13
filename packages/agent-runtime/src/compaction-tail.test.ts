@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { estimateTokens } from "./pi-runtime-estimates.js";
+import { estimateOutputCapInputTokens } from "./output-cap.js";
+import {
+  ESTIMATED_TEXT_CHARS_PER_TOKEN,
+  estimateTokens,
+} from "./pi-runtime-estimates.js";
 import {
   CHECKPOINT_TRUNCATION_MARKER,
   COMPACTION_RETAINED_TAIL_SHAPE,
@@ -96,6 +100,18 @@ describe("selectRecentTail", () => {
       "user",
       "assistant",
     ]);
+  });
+
+  it("truncates CJK text the chars-per-token estimate would have kept whole", () => {
+    // 600 Han characters are ~172 tokens at 3.5 chars/token, under a 200
+    // budget, but ~600 under the output-cap estimate. The tail must still cut.
+    const budget = 200;
+    const tail = selectRecentTail([user("中".repeat(600))], budget);
+
+    expect(tail).toHaveLength(1);
+    const text = (tail[0] as { content: Array<{ text: string }> }).content[0]!.text;
+    expect(text).toContain(CHECKPOINT_TRUNCATION_MARKER.trim());
+    expect(outputCapTokens(text)).toBeLessThanOrEqual(budget);
   });
 
   it("keeps the newest message even when it alone exceeds the budget", () => {
@@ -232,6 +248,12 @@ describe("selectRecentTail", () => {
   });
 });
 
+function outputCapTokens(text: string): number {
+  return estimateOutputCapInputTokens({
+    messages: [{ role: "user", content: text }],
+  });
+}
+
 describe("truncateMessageToTail", () => {
   it("bounds every text block and keeps the tool call identity", () => {
     const message = toolCallAssistant("call-1", body(4_000));
@@ -243,6 +265,39 @@ describe("truncateMessageToTail", () => {
     expect(truncated.content).toHaveLength(2);
     expect(truncated.content[0]!.text!.length).toBeLessThan(4_000);
     expect(truncated.content[1]).toMatchObject({ type: "toolCall", id: "call-1" });
+  });
+
+  it("keeps an ASCII tail at the character ceiling", () => {
+    const budget = 200;
+    const truncated = truncateMessageToTail(user("a".repeat(1_600)), budget) as {
+      content: Array<{ text: string }>;
+    };
+    const text = truncated.content[0]!.text;
+
+    // The historical ceiling is budget * 3.5 characters. ASCII already
+    // estimates under that, so the CJK shrink must not pull it down toward
+    // `budget` characters.
+    const ceiling = Math.max(
+      64,
+      Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    );
+    expect(text.length).toBe(ceiling);
+    expect(outputCapTokens(text)).toBeLessThanOrEqual(budget);
+  });
+
+  it("shrinks a long CJK tail until the output-cap estimate fits", () => {
+    const budget = 200;
+    const truncated = truncateMessageToTail(user("中".repeat(1_600)), budget) as {
+      content: Array<{ text: string }>;
+    };
+    const text = truncated.content[0]!.text;
+
+    expect(text).toContain("中");
+    expect(text).toContain(CHECKPOINT_TRUNCATION_MARKER.trim());
+    expect(outputCapTokens(text)).toBeLessThanOrEqual(budget);
+    expect(text.length).toBeLessThan(
+      Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    );
   });
 });
 

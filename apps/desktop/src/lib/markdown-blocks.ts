@@ -1,6 +1,7 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
+import remarkCjkFriendly from "remark-cjk-friendly/parseOnly";
 import remarkMath from "remark-math";
 import { beginRenderDiagnostic } from "./render-diagnostics.ts";
 
@@ -30,7 +31,7 @@ import { beginRenderDiagnostic } from "./render-diagnostics.ts";
 // renderer's is the defect this module exists to remove. Throttling streaming
 // renders, or reading boundaries from micromark's own events, would cut the
 // cost without buying it back.
-export const markdownRemarkPlugins = [remarkGfm, remarkMath];
+export const markdownRemarkPlugins = [remarkGfm, remarkCjkFriendly, remarkMath];
 const parser = unified().use(remarkParse).use(markdownRemarkPlugins);
 
 export type MarkdownBlockSplit = {

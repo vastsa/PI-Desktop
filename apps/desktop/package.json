@@ -70,6 +70,7 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
+    "remark-cjk-friendly": "^2.3.4",
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "shiki": "^4.4.3",
@@ -104,7 +105,11 @@
       "!**/node_modules/**/*.{test,spec}.{js,cjs,mjs}",
       "!**/node_modules/node-addon-api/tools/**",
       "!**/node_modules/node-addon-api/*.{c,gyp,gypi,h,js,json}",
-      "!**/node_modules/node-addon-api/README.md"
+      "!**/node_modules/node-addon-api/README.md",
+      "!**/node_modules/koffi/{doc,vendor}/**",
+      "!**/node_modules/@picovoice/pvrecorder-node/{src/**,copy.js,jest.config.js,tsconfig.json}",
+      "!**/node_modules/@picovoice/pvrecorder-node/lib/!(${os}*|raspberry-pi)/**",
+      "!**/node_modules/@picovoice/pvrecorder-node/[!${os}]ib/raspberry-pi/**"
     ],
     "electronLanguages": [
       "en-US",
@@ -291,6 +296,8 @@
     "asarUnpack": [
       "node_modules/transcribe-cpp/**/*.node",
       "node_modules/transcribe-cpp/**/bin/**",
+      "node_modules/@transcribe-cpp/**",
+      "node_modules/@koromix/**/*.node",
       "node_modules/@picovoice/pvrecorder-node/**/*.node",
       "node_modules/@picovoice/pvrecorder-node/**/lib/**"
     ],
