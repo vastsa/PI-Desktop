@@ -3411,6 +3411,11 @@ reasoning-level control.
   entered. The first visible rows use cached metadata or configured bindings;
   live discovery updates them in the background without replacing a configured
   alias with the wire ID or a second visible name.
+  A successful live discovery is not repeated until providers are reloaded. A
+  failed one (thrown, or a fallback that reports a discovery error) keeps the
+  rows already shown and is retried on a later open after a per-provider
+  backoff (10 s, doubling to at most 5 min); callers waiting on the failed
+  attempt do not each start another probe.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
   `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
   the menu lists more than one level, a drag slider with one labeled stop per
