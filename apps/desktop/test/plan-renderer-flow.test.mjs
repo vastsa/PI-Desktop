@@ -43,12 +43,13 @@ test("terminal proposals and execution states stay session-scoped and readable",
   assert.doesNotMatch(store, /planApprovalPermissionMode/);
 });
 
-test("each pending proposal restores the remembered approval choice", () => {
-  assert.match(approvalBar, /useState<GlobalPermissionMode>\(\s*readPlanApprovalMode\(\)/);
-  assert.match(approvalBar, /setApprovalMode\(readPlanApprovalMode\(\)\)/);
-  assert.match(approvalBar, /rememberPlanApprovalMode\(selectedMode\)/);
-  assert.match(approvalBar, /\}, \[proposal\.id\]\);/);
-  assert.doesNotMatch(approvalBar, /state\.settings|planApprovalPermissionMode/);
+test("each pending proposal follows its owning session's effective permission", () => {
+  assert.match(approvalBar, /useState<GlobalPermissionMode>\(\s*readPlanApprovalMode\(permissionMode, defaultPermissionMode\)/);
+  assert.match(approvalBar, /setApprovalMode\(readPlanApprovalMode\(permissionMode, defaultPermissionMode\)\)/);
+  assert.match(approvalBar, /session\.id === proposal\.sessionId/);
+  assert.match(approvalBar, /state\.settings\?\.defaultPermissionMode/);
+  assert.match(approvalBar, /\[proposal\.id, permissionMode, defaultPermissionMode\]/);
+  assert.doesNotMatch(approvalBar, /rememberPlanApprovalMode|planApprovalPermissionMode/);
 });
 
 test("pending input is retained but every composer/model mutation control is gated", () => {

@@ -538,8 +538,10 @@ current renderer lifetime while live `plans.changed` events arrive.
 
 For `approve`, host-core and Electron require an explicit
 `targetPermissionMode`; Electron never fills it from stored settings. The
-renderer initializes each approval to Ask, which remains the product default,
-and the host does not persist the selection as the next approval default.
+renderer initializes each approval from its owning Session's effective
+permission (Session override, then global default, then Ask), and ignores old
+device-wide approval preferences. The Host still persists the explicitly
+approved mode on the Session; it does not change the global default.
 `reject` carries no permission mode.
 Responses with a wrong proposal, session, turn, tool-call, version, or expired
 host-owned deadline fail with a stable Plan/Goal approval error. There is no

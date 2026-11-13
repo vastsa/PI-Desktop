@@ -3041,8 +3041,11 @@ is rejected and resubmitted.
 | Rejected | no actions | run stops and session remains in its contract mode |
 | Expired / Interrupted | no actions | failed closed; a new contract must be submitted unless approval already committed, in which case session remains Agent |
 
-Approve opens the explicit Ask / Accept edits / Auto choice with the last selected
-mode remembered on this device. Reject carries no permission mode. The renderer keeps the latest proposal/execution snapshot per
+Approve opens the explicit Ask / Accept edits / Auto choice defaulting to the
+effective mode of the proposal's owning Session (`inherit` resolves through the
+global default, then Ask). Previous device-wide approval choices are ignored;
+explicit menu choices still set execution permission. Reject carries no
+permission mode. The renderer keeps the latest proposal/execution snapshot per
 session only for the current renderer lifetime from live Host events, while only
 a pending snapshot has actions or gates the Composer. Renderer reload calls
 `plans.pending` and restores a still-pending row with its original deadline while
@@ -3486,7 +3489,7 @@ reasoning-level control.
   The control does not imply that Write/Edit/plugin tools are available.
 - Goal shares the Plan approval surface (D198). The bar reads its copy from the
   proposal's `kind`, so a goal contract shows the matching approval label and
-  artifact opener while the layout and remembered permission split-button stay
+  artifact opener while the layout and Session-default permission split-button stay
   identical. The bar sits in the transparent composer dock, so it paints
   `--ds-bg-composer` with `--ds-shadow-composer` like queued prompt rows rather
   than the in-flow `--ds-tile` wash.
