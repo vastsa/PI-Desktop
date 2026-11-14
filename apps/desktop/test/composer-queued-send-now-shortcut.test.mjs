@@ -68,7 +68,7 @@ test("the composer submit path promotes a waiting row only for an empty steer", 
   const makeSubmit = (overrides = {}) => useComposerSubmit({
     value: "", draftKey: "session-a", activeSessionId: "session-a",
     modelReady: true, sendBlocked: false, steeringAllowed: true,
-    invalidateComposerTransforms() {}, pasting: false, activeFileReferences: [],
+    invalidateComposerTransforms() {}, pasting: false, activeFileReferences: [], excerpts: [],
     t: (key) => key, showToast() {}, queuedPrompts,
     sendPrompt: async (...args) => { calls.push(["prompt", ...args]); return true; },
     steerPrompt: async (...args) => { calls.push(["steer", ...args]); return true; },

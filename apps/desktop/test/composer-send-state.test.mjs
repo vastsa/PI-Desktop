@@ -242,7 +242,7 @@ test("send clears the composer before the round trip and restores a rejected dra
     submit,
     /const rawText = draft\.ref\.current \? readEditorValue\(draft\.ref\.current\) : value;/,
   );
-  assert.match(submit, /serializeInlineComposerFileReferences\(rawText, activeFileReferences\)/);
+  assert.match(submit, /serializeComposerExcerpts\(\s*serializeInlineComposerFileReferences\(rawText, activeFileReferences\),\s*excerpts,?\s*\)/);
   // Blocked and not-ready states are said, not swallowed.
   assert.match(submit, /if \(pasting\) showToast\(t\("chat\.pasteInProgress"\)/);
   assert.match(

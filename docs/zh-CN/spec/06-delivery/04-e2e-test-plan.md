@@ -2944,6 +2944,15 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 - **验收**：C（聊天流）、F（持久化）、质量
 - **里程碑**：M6+
 - **状态**：单元已覆盖（`delete-message-preserves-transcript.test.mjs`、`persistence-outbox.test.mjs`）；完整桌面旅程仍为草稿
+#### E2E-CHAT-selection-action-921：选中文字后直接添加到对话
+
+- **前提条件**：可见会话中有用户消息、助手回答、工具输出，以及带文件引用的未发送草稿。
+- **步骤**：选中单条消息中的文字并点击浮动按钮；重复验证助手正文、多行选区、跨消息选区、工具输出、清除选区、滚动和切换会话。打开数量卡片、移除其中一条、发送另一条，并模拟发送失败。
+- **预期**：单条消息正文的选区旁直接出现“添加到会话”，无需打开右键菜单。选中文字汇总为输入框上方的“1 条注释”卡片；点击可查看和逐条移除，原草稿和文件引用不变。发送时原文作为 Markdown 引用上下文加入请求；发送失败时恢复卡片。其他选区不显示按钮；清除选区、滚动、调整窗口或切换面板后关闭，跨会话不串内容。右键菜单仍可引用整条消息。
+- **链接规格**：`04-ux/08-component-spec.md` §8.3 / §8.5、`04-ux/09-interaction-patterns.md` §1.5、ADR selection-add-to-conversation
+- **验收**：C（聊天流）、质量
+- **里程碑**：M5
+- **状态**：Chromium 组件验证（`node scripts/e2e-message-edit-copy.mjs`）和卡片、发送恢复验证（`pnpm test:e2e:composer-paste`）已覆盖；完整应用视觉场景仍为草稿。
 
 #### E2E-CHAT-copy-formula-as-tex：复制渲染后的公式得到源码
 
@@ -6178,6 +6187,8 @@ eleven-tool-round desktop paths are verified by
 | 品质（两步删除） | E2E-SESSION-two-click-delete-arms-first |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — 对话与流式（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| C — 对话与流式（选中片段复用） | E2E-CHAT-selection-action-921 |
+| 品质（选中片段复用） | E2E-CHAT-selection-action-921 |
 | E — 工具与权限（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | D（界面表面）/ 品质 — 远程主机添加与配对表单折叠 | E2E-REMOTE-HOST-settings-compact-inventory |
 | E — 工具与权限（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
@@ -6207,6 +6218,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M5（Composer 深层文件引用） | E2E-COMPOSER-deep-file-mentions |
+| M5（选中片段复用） | E2E-CHAT-selection-action-921 |
 | M5（对话 MP4 附件） | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
