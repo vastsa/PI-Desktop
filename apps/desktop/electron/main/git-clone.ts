@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, lstatSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   isGitCloneRepoName,
@@ -68,6 +68,21 @@ export function runGitClone(
   });
 }
 
+/**
+ * A timed-out clone leaves the half-built checkout git was killed inside;
+ * keeping it makes every retry of the same name hit CONFLICT until the user
+ * finds and deletes the residue by hand. A symlink at the destination is
+ * unlinked instead of recursed into.
+ */
+function removeIncompleteClone(dest: string): void {
+  try {
+    if (lstatSync(dest).isSymbolicLink()) unlinkSync(dest);
+    else rmSync(dest, { recursive: true, force: true });
+  } catch {
+    // The clone died before creating anything; nothing to clean up.
+  }
+}
+
 export async function cloneGitRepository(input: {
   url: string;
   parentPath: string;
@@ -114,6 +129,7 @@ export async function cloneGitRepository(input: {
     throw codedError("NOT_FOUND", "Git is not installed");
   }
   if (result.errorCode === "TIMEOUT") {
+    removeIncompleteClone(dest);
     throw codedError("TIMEOUT", "git clone timed out");
   }
   if (result.code !== 0) {
