@@ -223,7 +223,8 @@ D684.
 ### System
 
 This installation rather than the product's look or the agent's behavior:
-**Network**, **Storage**, **Power**, and on Windows/Linux **Close behavior**.
+**Network**, **Storage**, **Browser login state**, **Power**, and on
+Windows/Linux **Close behavior**.
 Platform-specific close behavior lives here because it changes
 application-window behavior rather than agent behavior.
 
@@ -253,6 +254,22 @@ application-window behavior rather than agent behavior.
   by the host. Environment-controlled profiles display why maintenance is disabled.
   Confirmation gets keyboard focus, asynchronous errors remain visible, and all
   visible copy is localized. These operations affect only this local installation.
+- **Browser login state** card (macOS only; other platforms show the reason and
+  disable import): copies cookies from a local Google Chrome profile into the
+  in-app browser jar (`persist:work-browser`) so sites open signed in. It runs
+  only when the user clicks Import — opening Settings, the agent, and plugins
+  never trigger it. The user picks a Chrome profile (from `Local State`, only
+  profiles with a cookie store) and every cookie of that profile is imported.
+  The "Chrome Safe Storage" Keychain item is read by host-core
+  (`browser.chromeSafeStoragePassword`, fixed service/account, not on the
+  sidecar `host.proxy` allowlist) only when the store has cookies, so the macOS
+  consent prompt names the signed host binary; "Always Allow" binds to its code
+  signature and later imports do not prompt. Main copies
+  the cookie database to a temporary directory, decrypts `v10` values (verifying
+  the database-version-24 host-key hash), skips expired cookies, and reports
+  imported / skipped / failed counts; values never reach the renderer. **Clear**
+  removes every in-app browser cookie after an inline confirmation. Channels
+  `pi-desktop/browserCookies/{status,import,clear}` accept only the main window.
 - **Network** card:
   - **Proxy**: a segmented control — System, Direct, Custom. System is the
     default and lets Chromium follow the OS proxy; Direct disables the proxy;
