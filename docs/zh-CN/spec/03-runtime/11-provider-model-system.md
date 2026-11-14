@@ -351,6 +351,13 @@ provider id/vendor/name 查找，不得用另一账号凭据覆盖固定模型�
 而不只是 `Task.model`：`session/collaboration/spawn` 的 `modelKey` 指向未勾选的模型时
 以 `PERMISSION_DENIED` 拒绝，省略该键或写出默认模型自己的键仍按继承处理。
 
+该标志的编辑入口不限于提供商对话框。设置 → 模型在同一处用一列 **子代理模型**
+列出已加入的绑定（每行的“高级”打开勾选该选项的服务模型编辑器），读取同一个字段，并只通过
+`providers.update` 重写被改动的
+那一条绑定（`apps/desktop/src/components/settings/subagent-delegation.ts`）。
+该行不保存第二份选择，因此委托目录与页面不会互相矛盾；服务已关闭、缺少凭据或由
+插件拥有时，该行会一并说明原因，而不是直接消失。
+
 ## 8. 秘密
 
 - 通过安全存储存储的 API 密钥（`SECRET_*` API）

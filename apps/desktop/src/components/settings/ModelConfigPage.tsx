@@ -32,10 +32,22 @@ import {
 } from "./image-generation-default";
 import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-copy";
 import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
+import {
+  providerHasSubagentModel,
+  subagentModelCandidates,
+  subagentModelOptInDraft,
+  type SubagentModelCandidate,
+} from "./subagent-delegation";
+import { SubagentModelRow } from "./SubagentModelRow";
+import { SubagentModelsDialog } from "./SubagentModelsDialog";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { ServiceList } from "./ServiceList";
-import { serviceRowKind } from "./service-row-status";
+import {
+  serviceEditorTarget,
+  serviceRowKind,
+  type ServiceEditorTarget,
+} from "./service-row-status";
 import { useVendorAccounts } from "./useVendorAccounts";
 import { VendorAccountDialog, type VendorAccountForm } from "./VendorAccountDialog";
 import { ModelConfigImportPanel } from "../../features/settings/imports/ModelConfigImportPanel";
@@ -110,6 +122,8 @@ export function ModelConfigPage() {
   const rowBusy = useRowBusy();
   const testingRows = useRowBusy();
   const [changingImageModel, setChangingImageModel] = useState(false);
+  const [changingSubagentModel, setChangingSubagentModel] = useState(false);
+  const [subagentEditorOpen, setSubagentEditorOpen] = useState(false);
   const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -148,6 +162,9 @@ export function ModelConfigPage() {
     ], null),
     [settings?.imageGenerationModels, settings?.imageGeneration, providers],
   );
+
+  // Every configured model the page can offer for delegation, in service order.
+  const subagentModels = useMemo(() => subagentModelCandidates(providers), [providers]);
   const providerReady = (provider: ProviderPublic) =>
     providerServesChatModels(provider, imageGenerationCandidates);
 
@@ -289,7 +306,54 @@ export function ModelConfigPage() {
         variant: "error",
       });
     } finally {
+
       setChangingImageModel(false);
+    }
+  };
+  /**
+   * Persist one delegation opt-in.
+   *
+   * The flag lives on the service's own model binding, so this is the same write
+   * the provider dialog performs. It must start from the stored service rather
+   * than this page's snapshot: `providers.update` replaces the whole model list,
+   * and a stale list would drop a model another window added in the meantime.
+   */
+  const setSubagentDelegation = async (
+    candidate: SubagentModelCandidate,
+    selected: boolean,
+  ) => {
+    setChangingSubagentModel(true);
+    try {
+      const { providers: stored } = await api.listProviders();
+      const provider = stored.find((entry) => entry.id === candidate.providerId);
+      // A plugin-declared row has no editor and the RPC refuses it; a model that
+      // disappeared from the stored bindings has no flag left to write. The id is
+      // matched the way the write matches it, so a stored id that differs only in
+      // case or surrounding whitespace cannot fail this check while the write
+      // itself would have succeeded.
+      const writable =
+        !!provider &&
+        !provider.ownerPluginId &&
+        providerHasSubagentModel(provider.models, candidate.modelId);
+      if (!provider || !writable) {
+        showToast(t("settings.subagentModelSaveFailed"), { variant: "error" });
+        return;
+      }
+      await api.updateProvider({
+        id: provider.id,
+        models: subagentModelOptInDraft(provider.models, candidate.modelId, selected),
+      });
+      await refreshProviders();
+      showToast(
+        t(selected ? "settings.subagentModelSelected" : "settings.subagentModelUnselected"),
+        { variant: "success" },
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    } finally {
+      setChangingSubagentModel(false);
     }
   };
 
@@ -349,6 +413,29 @@ export function ModelConfigPage() {
 
   const saveEditingAccount = async (provider: ProviderPublic, form: VendorAccountForm) => {
     if (await saveAccount(provider, form)) setEditingAccountId(null);
+  };
+
+  /**
+   * Open the editor that owns a service's models.
+   *
+   * A vendor-account row is edited by `VendorAccountDialog`, not by the provider
+   * form: the provider form would offer to rewrite the account's name, endpoint
+   * and API style, which a subscription login never asked for. A plugin-declared
+   * row has no editor at all — `providers.update` refuses it — so both entry
+   * points on this page (the service list and the subagent dialog) ask
+   * `serviceEditorTarget` first and neither can open a dialog that cannot save.
+   */
+  const openServiceEditor = (target: ServiceEditorTarget) => {
+    if (target.kind === "account") setEditingAccountId(target.providerId);
+    else setSetupFor(target.providerId);
+  };
+
+  /** Resolves the editor for a row, or false when that row has none. */
+  const editService = (provider: ProviderPublic | undefined) => {
+    const target = provider ? serviceEditorTarget(provider) : null;
+    if (!target) return false;
+    openServiceEditor(target);
+    return true;
   };
 
   const testProvider = async (provider: ProviderPublic) => {
@@ -479,11 +566,7 @@ export function ModelConfigPage() {
               }
               isRowBusy={(id) => rowBusy.isBusy(id) || busyAccountId === id}
               isTesting={testingRows.isBusy}
-              onEdit={(provider) =>
-                serviceRowKind(provider) === "account"
-                  ? setEditingAccountId(provider.id)
-                  : setSetupFor(provider.id)
-              }
+              onEdit={editService}
               onTest={(provider) => void testProvider(provider)}
               onCopy={(provider) => {
                 setCopyDraft(
@@ -557,6 +640,40 @@ export function ModelConfigPage() {
             />
           </div>
         </section>
+      ) : null}
+
+      {subagentModels.length > 0 ? (
+        <section className="settings-card-block">
+          <div className="settings-panel model-default-panel">
+            <SubagentModelRow
+              candidates={subagentModels}
+              onEdit={() => setSubagentEditorOpen(true)}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {subagentEditorOpen ? (
+        <SubagentModelsDialog
+          candidates={subagentModels}
+          busy={changingSubagentModel}
+          onChange={(candidate, selected) =>
+            void setSubagentDelegation(candidate, selected)
+          }
+          onEdit={(providerId) => {
+            const provider = providers.find((entry) => entry.id === providerId);
+            const target = provider ? serviceEditorTarget(provider) : null;
+            if (!target) {
+              // The row is gone (another window removed it) or a plugin owns it.
+              // There is no editor to open, so say so instead of closing silently.
+              showToast(t("settings.subagentModelServiceGone"), { variant: "error" });
+              return;
+            }
+            setSubagentEditorOpen(false);
+            openServiceEditor(target);
+          }}
+          onClose={() => setSubagentEditorOpen(false)}
+        />
       ) : null}
 
       {setupFor !== null ? (
