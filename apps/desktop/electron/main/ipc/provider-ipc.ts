@@ -4,6 +4,7 @@ import {
   inferEndpointProfile,
   normalizeApiStyle,
   type ModelBinding,
+  type ProviderPlanQuotaResult,
   type ModelInfo,
   type ProviderReorderInput,
   type OAuthRespondInput,
@@ -14,6 +15,14 @@ import {
   probeDiscoveryCandidates,
   type DiscoveryAttempt,
 } from "../provider-endpoint-probe";
+import {
+  planQuotaFamilyForBaseUrl,
+  queryCodexPlanQuota,
+  queryDeepSeekBalance,
+  queryKimiPlanQuota,
+  queryMiniMaxPlanQuota,
+  queryZhipuPlanQuota,
+} from "../plan-quota";
 import {
   catalogModelConfigFor,
   modelInfoFromModelsDev,
@@ -304,6 +313,60 @@ export function registerProviderIpc({
       };
     } finally {
       clearTimeout(timer);
+    }
+  });
+  /**
+   * Subscription coding-plan usage for one provider row. The credential never
+   * leaves main: API-key rows go to the vendor host their saved base URL
+   * names, and OAuth vendors resolve (and refresh) through `vendorOAuth`.
+   * GitHub Copilot is deliberately unsupported here — its usage endpoint
+   * needs the GitHub OAuth refresh token, which pi-ai does not expose.
+   */
+  handle(IPC.invoke.providersPlanQuota, async (id: string): Promise<ProviderPlanQuotaResult> => {
+    if (!host) throw new Error("host unavailable");
+    const updatedAt = Date.now();
+    const unsupportedResult = (message?: string): ProviderPlanQuotaResult => ({
+      supported: false,
+      windows: [],
+      updatedAt,
+      message,
+    });
+    if (typeof id !== "string" || !id) return unsupportedResult("provider id required");
+    const detail = await host.call<{
+      provider?: { authKind?: string; vendorKey?: string; baseUrl?: string };
+    }>("providers.get", { id });
+    const provider = detail.provider;
+    if (!provider) return unsupportedResult("provider not found");
+    if (provider.authKind === OAUTH_AUTH_KIND) {
+      if (provider.vendorKey !== "openai-codex") return unsupportedResult();
+      try {
+        const auth = await vendorOAuth.resolveAuth(id);
+        const accessToken = auth.apiKey;
+        if (!accessToken) return unsupportedResult("vendor account is not signed in");
+        return await queryCodexPlanQuota({ accessToken });
+      } catch (e) {
+        return unsupportedResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+    const family = provider.baseUrl ? planQuotaFamilyForBaseUrl(provider.baseUrl) : undefined;
+    if (!family) return unsupportedResult();
+    const secret = await host.call<{ value?: string }>("providers.getSecret", { id });
+    if (!secret.value) return unsupportedResult("provider has no API key");
+    const baseUrl = provider.baseUrl ?? "";
+    try {
+      switch (family) {
+        case "zhipu":
+          return await queryZhipuPlanQuota({ apiKey: secret.value, baseUrl });
+        case "deepseek":
+          return await queryDeepSeekBalance({ apiKey: secret.value, baseUrl });
+        case "kimi":
+          return await queryKimiPlanQuota({ apiKey: secret.value });
+        case "minimax":
+          return await queryMiniMaxPlanQuota({ apiKey: secret.value, baseUrl });
+      }
+      return unsupportedResult();
+    } catch (e) {
+      return unsupportedResult(e instanceof Error ? e.message : String(e));
     }
   });
   // Vendor-account login. The renderer drives the conversation but never sees

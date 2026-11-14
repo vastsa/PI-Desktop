@@ -14,6 +14,7 @@ import type { ProviderPublic } from "@pi-desktop/shared";
 import { Badge, Button, Field, Input, SettingsToggle, cx } from "../ui";
 import { CapabilityRowMenu, type CapabilityMenuItem } from "./AgentCapabilityLayout";
 import { ServiceMonogram } from "./ServiceMonogram";
+import { PlanQuotaBadge } from "./PlanQuotaBadge";
 import {
   serviceRowBadges,
   serviceRowKind,
@@ -146,6 +147,7 @@ export function ServiceRow({
               </Badge>
             ),
           )}
+          <PlanQuotaBadge provider={provider} />
           {testing ? (
             <span className="model-provider-row-testing" role="status">
               {t("settings.testing")}
