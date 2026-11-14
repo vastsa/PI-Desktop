@@ -452,7 +452,7 @@ HTTP(S) 和 `mailto:` URL。
 
 `pi.projects.list()` 支持项目选择器，无需活动会话或 manifest 权限。条目以十进制的
 `projects.id` 作为 `projectId`，包含未分组项目，始终提供 `primaryPath` 和主路径优先的
-`roots`。Host 停止或不可用时返回 `[]`。参见[项目 API 契约](/zh-CN/spec/07-plugins/03-plugin-api#工作区-fs)。
+`roots`。Host 停止或不可用时返回 `[]`。参见[项目 API 契约](/zh-CN/spec/07-plugins/03-plugin-api#projects-workspace-fs)。
 
 ### 6.5 文件范围
 
