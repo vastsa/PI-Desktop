@@ -29,6 +29,7 @@ import {
   type RuntimeProviderConfig,
 } from "./runtime.js";
 import { estimateOutputCapInputTokens } from "./output-cap.js";
+import { builtinModeDefinition } from "./mode-definitions.js";
 
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
 import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
@@ -226,6 +227,135 @@ function createRuntime(
     onEvent: overrides.onEvent ?? vi.fn(),
   });
 }
+
+it("reads each explicit file line range once before passing its text to the model", async () => {
+  const call = vi.fn(async (method: string, _params: unknown) => {
+    if (method === "tools.fileBatchCapabilities") return { version: 1, supported: true };
+    if (method === "tools.fileBatchRegister") return { ticket: "test-ticket" };
+    if (method === "tools.fileBatchSeal") return { ok: true };
+    if (method === "tools.execute") return { ok: true, content: { content: "85: saved first\n86: saved second", totalLines: 100 } };
+  });
+  const onEvent = vi.fn();
+  const runtime = createRuntime({ host: { call }, onEvent, projectPath: "/project", workspaceRoot: "/project" });
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  const reference = { kind: "file" as const, path: "/project/src/gpt.py", name: "gpt.py", lineRange: { start: 85, end: 86 } };
+  const local = { kind: "file" as const, path: "/external/large.bin", name: "large.bin", size: 67108865, localReference: "11111111-2222-4333-8444-555555555555" };
+  try {
+    await runtime.prompt({ text: "Explain these lines", attachments: [reference, reference, local] }, "prompt", "turn");
+    expect(call.mock.calls.filter(([method]) => method === "tools.execute")).toEqual([
+      ["tools.execute", expect.objectContaining({
+        toolName: "Read",
+        turnId: "turn",
+        workspaceOnly: true,
+        args: { path: "/project/src/gpt.py", offset: 84, limit: 2 },
+      })],
+    ]);
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({
+      role: "user",
+      content: expect.stringContaining("85: saved first"),
+    }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("86: saved second") }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("/external/large.bin (67108865 bytes)") }));
+    expect(call.mock.calls.map(([method]) => method)).not.toContain("tools.fileBatchRegister");
+    expect(onEvent.mock.calls.map(([event]) => event.type)).not.toContain("tool_end");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it("refreshes the staged objective before reading file references for the same prompt", async () => {
+  let readSystemPrompt: string | undefined;
+  const call = vi.fn(async (method: string) => {
+    if (method === "project.instructions.resolve") readSystemPrompt = agent.state.systemPrompt;
+    if (method === "tools.execute") {
+      return { ok: true, content: { content: "saved review line" } };
+    }
+  });
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  runtime.setMode("goal", builtinModeDefinition("goal"));
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  try {
+    await runtime.prompt({
+      text: "Review this line",
+      modeTurn: { runId: "run", stageId: "work", origin: "user", enteredStage: true,
+        input: "Review snapshot objective", artifactPaths: { goal: ".pi/goals/run.md" } },
+      attachments: [{ kind: "file", path: "/project/review.txt", name: "review.txt", lineRange: { start: 2, end: 2 } }],
+    }, "prompt", "turn");
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("saved review line") }));
+    expect(readSystemPrompt).toContain("Review snapshot objective");
+    expect(call).toHaveBeenCalledWith("tools.execute", expect.objectContaining({ workspaceOnly: true, mode: "goal" }));
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it.each([
+  { label: "too many", attachments: Array.from({ length: 5 }, (_, index) => ({
+    kind: "file" as const, path: `/project/${index}.txt`, name: `${index}.txt`, lineRange: { start: 1, end: 1 },
+  })) },
+  { label: "invalid", attachments: [
+    { kind: "file" as const, path: "/project/a.txt", name: "a.txt", lineRange: { start: 2, end: 1 } },
+  ] },
+  { label: "ambiguous local and line", attachments: [
+    { kind: "file" as const, path: "/project/a.txt", name: "a.txt", lineRange: { start: 1, end: 2 }, localReference: "11111111-2222-4333-8444-555555555555" },
+  ] },
+])("rejects $label file references before any Host read", async ({ attachments }) => {
+  const call = vi.fn();
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  try {
+    await expect(runtime.resolveFileLineReferences({ text: "Review", attachments }))
+      .rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    expect(call.mock.calls.filter(([method]) => method === "tools.execute")).toEqual([]);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it("restores a recorded line-range excerpt without synthesizing an assistant tool call", async () => {
+  const runtime = createRuntime({ history: [{
+    id: "file-lines", role: "user", content: "Review /project/a.txt (85:86)",
+    createdAt: "2026-11-08T00:00:00.000Z",
+    attachments: [{ kind: "file", ref: "/project/a.txt", name: "a.txt",
+      lineRange: { start: 85, end: 86 }, text: "recorded saved excerpt" },
+      { kind: "file", ref: "/external/large.bin", name: "large.bin", size: 67108865,
+        localReference: "11111111-2222-4333-8444-555555555555" }],
+  }] });
+  try {
+    const messages = (runtime as unknown as { agent: Agent }).agent.state.messages;
+    expect(messages.filter(message => message.role === "user")).toEqual([expect.objectContaining({
+      role: "user", content: expect.stringContaining('<file_lines source="/project/a.txt (85:86)">\nrecorded saved excerpt\n</file_lines>'),
+    })]);
+    expect(messages.some(message => message.role === "assistant" || message.role === "toolResult")).toBe(false);
+    expect(messages.find(message => message.role === "user")?.content).toContain("/external/large.bin (67108865 bytes)");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it.each([
+  { denied: true, status: "blocked", reason: "Read denied" },
+  { denied: false, status: "failed", reason: "File not found" },
+])("labels a $status file reference separately from file content", async ({ denied, status, reason }) => {
+  const call = vi.fn(async (method: string) => {
+    if (method === "tools.execute") return { ok: false, denied, content: reason };
+  });
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  const reference = { kind: "file" as const, path: "/project/sample.txt", name: "sample.txt", lineRange: { start: 2, end: 2 } };
+  try {
+    await runtime.prompt({ text: "Explain this line", attachments: [reference] });
+    const message = model.mock.calls[0]?.[0];
+    expect(message).toMatchObject({
+      content: expect.stringContaining(`status="${status}">\n${reason}\n</file_reference_error>`),
+    });
+    expect(message).not.toMatchObject({ content: expect.stringContaining("<file_lines") });
+  } finally {
+    await runtime.dispose();
+  }
+});
 
 function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   const internal = runtime as unknown as { agent: { state: { tools: AgentTool[] } } };

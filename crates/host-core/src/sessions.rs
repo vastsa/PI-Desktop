@@ -189,6 +189,13 @@ pub struct MessageUsage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FileLineRange {
+    pub start: u64,
+    pub end: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageAttachment {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_reference: Option<String>,
@@ -210,6 +217,8 @@ pub struct MessageAttachment {
     /// at that position instead of appending it after the body.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inline_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_range: Option<FileLineRange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -581,6 +590,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
                 if let Some(inline_path) = &attachment.inline_path {
                     block.insert("inlinePath".into(), json!(inline_path));
                 }
+                if let Some(range) = &attachment.line_range {
+                    block.insert("lineRange".into(), json!(range));
+                }
                 blocks.push(Value::Object(block));
             }
         }
@@ -739,6 +751,9 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
                     .get("inlinePath")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
+                line_range: block
+                    .get("lineRange")
+                    .and_then(|value| serde_json::from_value(value.clone()).ok()),
             })
         })
         .collect::<Vec<_>>();
@@ -5967,6 +5982,7 @@ mod tests {
         );
         user.attachments = Some(vec![MessageAttachment {
             local_reference: Some("11111111-2222-4333-8444-555555555555".into()),
+            line_range: None,
             kind: "file".into(),
             name: "large.bin".into(),
             reference: "/synthetic/large.bin".into(),
@@ -5985,16 +6001,30 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let mut user = user_msg("image-1", "这是什么", "2025-05-01T00:00:00Z");
-        user.attachments = Some(vec![MessageAttachment {
-            local_reference: None,
-            kind: "image".into(),
-            name: "image.png".into(),
-            reference: "attachments/abc123".into(),
-            mime_type: Some("image/png".into()),
-            size: Some(42),
-            text: None,
-            inline_path: Some("@/scratch/pasted/image.png".into()),
-        }]);
+        user.attachments = Some(vec![
+            MessageAttachment {
+                local_reference: None,
+                kind: "image".into(),
+                name: "image.png".into(),
+                reference: "attachments/abc123".into(),
+                mime_type: Some("image/png".into()),
+                size: Some(42),
+                text: None,
+                inline_path: Some("@/scratch/pasted/image.png".into()),
+                line_range: None,
+            },
+            MessageAttachment {
+                local_reference: None,
+                kind: "file".into(),
+                name: "gpt.py".into(),
+                reference: "/project/src/gpt.py".into(),
+                mime_type: None,
+                size: None,
+                text: None,
+                inline_path: Some("/project/src/gpt.py (85:86)".into()),
+                line_range: Some(FileLineRange { start: 85, end: 86 }),
+            },
+        ]);
 
         append_message(&db, &session.id, &user, None).unwrap();
 
@@ -6012,6 +6042,7 @@ mod tests {
         assert_eq!(blocks[1]["ref"], "attachments/abc123");
         assert_eq!(blocks[1]["inlinePath"], "@/scratch/pasted/image.png");
         assert!(blocks[1].get("data").is_none());
+        assert_eq!(blocks[2]["lineRange"], json!({ "start": 85, "end": 86 }));
     }
 
     #[test]

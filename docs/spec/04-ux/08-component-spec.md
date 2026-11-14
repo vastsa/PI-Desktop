@@ -4829,3 +4829,29 @@ The bundled File Manager validates each create/rename name before filesystem wri
 ### Native Pi file references (#1853)
 
 User-initiated file reads, directory listings, reference resolution and file search use the native session's sidecar-projected project path. Native identities never query Desktop session storage or fall back to the selected workspace. Missing/replaced sources fail closed. Existing local file containment and explicit external-file rules still apply; this grants no model tools or attachments. Native sessions have no Desktop scratch directory.
+
+### File Manager line references
+
+Select a saved range in the local File Manager's source editor. **Add to chat**
+and copying then pasting into the Composer insert the same removable
+`gpt.py (85:86)` chip. A single selected line displays as `gpt.py (85)`.
+Only the file path and inclusive source line numbers enter the draft. Other
+clipboard consumers still receive the original plain text. Unsaved edits allow
+plain-text copy and suppress line references until the file is saved or reloaded.
+At the four-reference limit, another paste shows the limit warning and inserts
+the plain text instead of consuming it without changing the draft.
+Selections longer than 4,000 lines or outside positive signed 32-bit line
+coordinates use plain-text paste. Main applies the same workspace spelling
+normalization as Composer (separators and trailing slash), while retaining
+the lexical and real-path project containment checks.
+
+At turn execution the Agent calls the existing Host Read for each distinct
+range and adds its bounded result to the model request. Read uses the saved
+file at execution time, including for queued sends. Source views with no
+project file identity and clipboard data from another project use normal text
+copy/paste. See [File Manager line references ADR](../../adr/file-manager-line-references.md).
+
+Line ranges coexist with native disk-file references in one prompt and input
+history. Each attachment has one reference kind: line selections retain their
+scoped Read path, while registered disk files retain metadata-only dispatch.
+Combining `lineRange` and `localReference` on one attachment is invalid.

@@ -66,6 +66,7 @@ export type AgentPromptAttachment = {
   path: string;
   name: string;
   kind: "image" | "file";
+  lineRange?: import("../file-line-reference.js").FileLineRange;
   mimeType?: string;
   size?: number;
   /**
