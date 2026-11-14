@@ -531,6 +531,7 @@ export function createSessionSlice({
           );
         }
 
+        const cacheBeforeDetailRead = runtime.sessionTranscriptCache.get(id);
         detail ??= await detailPromise;
         if (!runtime.navigationIntentIsCurrent(intent)) return;
         if (detail.session && sessionReadLooksEmpty(detail.session)) {
@@ -567,6 +568,19 @@ export function createSessionSlice({
             }
           : { messageStart: 0, hasMoreBefore: false };
         const currentState = get();
+        // An idle-session edit (message delete, revision switch) that landed
+        // while the bounded read above was in flight replaces the transcript
+        // cache entry; committing the stale window now would revert that edit
+        // on screen. #2233 taught loadSessionDetail itself to refuse caching
+        // such a read — the caller-level cache write and commit need the same
+        // guard. The comparison needs no "captured an entry" precondition: a
+        // cold read captures undefined, and an edit that lands in the window
+        // moves the cache from undefined to an entry — exactly the movement
+        // the runtime guard's plain `!== previous` catches there.
+        const transcriptMovedWhileReading =
+          runtime.sessionTranscriptCache.get(id) !== cacheBeforeDetailRead &&
+          !runtime.liveSessionTranscripts.has(id) &&
+          currentState.runningSessions[id] !== true;
         const liveMessages =
           (runningAtSelection ||
             currentState.runningSessions[id] === true ||
@@ -581,6 +595,11 @@ export function createSessionSlice({
             ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
             : detail.session.messages ?? []
           : liveMessages ?? [];
+        const committedMessages = transcriptMovedWhileReading
+          ? runtime.sessionTranscriptCache.get(id)
+            ?? currentState.retainedTranscripts[id]
+            ?? selectedMessages
+          : selectedMessages;
         if (detail.session) {
           if (isRemoteSession(detail.session)) {
           const { messages: _messages, ...summary } = detail.session;
@@ -588,9 +607,15 @@ export function createSessionSlice({
             safeSessionSummary(summary), ...state.sessions.filter((session) => session.id !== id),
           ], state.sessionMeta) }));
           }
-          runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
+          if (!transcriptMovedWhileReading) {
+            runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
+          }
         }
-        commitSelection(selectedMessages, false, historyWindow);
+        commitSelection(
+          committedMessages,
+          false,
+          transcriptMovedWhileReading ? undefined : historyWindow,
+        );
         if (
           currentState.runningSessions[id] !== true &&
           durableCoversLiveSessionMessages(detail.session?.messages ?? [], liveMessages)
@@ -611,7 +636,7 @@ export function createSessionSlice({
         ) {
           const pin = pinnedSessionModelBinding({
             session: selected,
-            messages: selectedMessages,
+            messages: committedMessages,
             settings: get().settings,
             providers: get().providers,
             recentModels: get().recentModels,

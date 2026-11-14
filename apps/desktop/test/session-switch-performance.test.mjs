@@ -73,9 +73,13 @@ test("only the latest navigation may commit a loaded transcript", () => {
   )?.[0] ?? "";
   assert.match(selection, /set\(\{ selectingSessionId: id, page: "chat" \}\)/);
   assert.match(selection, /navigationIntentIsCurrent\(intent\)/);
+  // The final commit carries the loaded detail window — unless a concurrent
+  // idle edit superseded the read while it was in flight, in which case the
+  // commit keeps the edit writer's cache content and cached window instead.
+  assert.match(selection, /commitSelection\(\s*committedMessages,/);
   assert.match(
     selection,
-    /commitSelection\(selectedMessages, false, historyWindow\)/,
+    /transcriptMovedWhileReading \? undefined : historyWindow/,
   );
   assert.ok(
     selection.indexOf("const detailPromise = runtime.loadSessionDetail(id)") <
