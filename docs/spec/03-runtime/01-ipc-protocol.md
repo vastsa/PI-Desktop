@@ -1,5 +1,17 @@
 # 01. IPC Protocol
 
+### Private native window snapping
+
+`window.enableNativeSnap` is Main-to-Host only: `{nativeHandle: string, ownerPid: number}`
+returns `{enabled: true, borderSuppressed: boolean}`. The decimal, nonzero HWND
+must belong to the Main process injected through `PI_DESKTOP_ELECTRON_PID`.
+Host validates both the requested PID and live window owner, restores the fixed
+`WS_THICKFRAME | WS_CAPTION` mask, and suppresses the Windows 11 DWM outline.
+Windows 10 reports `borderSuppressed: false` for the unsupported attribute.
+Invalid parameters, unauthorized owners, and other native failures remain errors.
+No renderer/preload/plugin channel, schema migration, or protocol version changes.
+See [native snapping ADR](../../adr/windows-native-snap-without-frame-insets.md).
+
 ### composer/readClipboardDirectories
 
 An additive main-window-only Electron channel accepting no source paths. During

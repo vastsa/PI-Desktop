@@ -12,6 +12,8 @@ mod scheduled_settings;
 mod scheduled_tools;
 mod todos;
 mod window_corner_rpc;
+mod window_owner;
+mod window_snap_rpc;
 mod worktree_rpc;
 
 #[cfg(test)]
@@ -2063,6 +2065,7 @@ async fn handle_request(
             }))
         }
         "window.setNativeCornerPreference" => window_corner_rpc::handle(params),
+        "window.enableNativeSnap" => window_snap_rpc::handle(params),
         "keyboard.setGlobalShortcut" => {
             let binding = params
                 .get("binding")
