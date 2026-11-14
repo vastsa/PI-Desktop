@@ -2131,7 +2131,7 @@ Single message render — either user (plaintext) or assistant (markdown streami
   conversation pane, repositions on scroll, resize, and pane geometry, closes
   on pointer leave after a short grace delay (unless the trigger still has
   keyboard focus), Escape, or an outside pointer press, and disables its
-  transition under reduced motion. The compact
+  transition under reduced motion. The
   Codex-style context inspector lives in the composer right toolbar,
   immediately left of the model × reasoning chip, and always mirrors the
   newest assistant turn that reported usage (D347). Occupancy, remaining
@@ -2151,9 +2151,20 @@ Single message render — either user (plaintext) or assistant (markdown streami
   on remaining capacity (remaining ≤ 25 % warning, ≤ 10 % critical)
   regardless of display mode, without making color the only signal.
   Clicking the trigger (or activating it from the keyboard) toggles a
-  non-modal panel whose heading follows the same display-mode figure,
-  followed by used/window counts, unboxed turn/speed summary values, a cost
-  row, and the elapsed session time. The cost row shows the newest turn's cost
+  non-modal insights dashboard (D686, amending the compact D244 body).
+  Cards show context statistics, provider token composition, measured timing,
+  current capacity, request trends, recorded history, tool usage and compactions.
+  Trend selection updates the token breakdown and history browser; the capacity
+  card always describes the newest parent request. Step/Turn and Total/Delta
+  controls change the trend projection. History can be searched and expanded,
+  is labelled as recorded estimates rather than an assembled prompt, and warns
+  when earlier transcript pages are not loaded. CJK/Hangul/Kana estimates use
+  one token per character; other characters use one quarter before rounding.
+  Provider totals remain authoritative and need not equal those estimates.
+  Network/provider wait and streamed response remain separate; parallel
+  top-level tools count overlapping time once, and nested delegate timing is
+  excluded. Older messages cannot contribute missing request-wait metadata.
+  The cost row shows the newest turn's cost
   and the whole-session total; the session figure is read from Host
   (`session/usageCost`) only while the panel is open, refreshes in place when
   another request is billed, and never shows another session's figure. Cost
@@ -2162,22 +2173,8 @@ Single message render — either user (plaintext) or assistant (markdown streami
   prefixed `≥`, and usage on a subscription account (OAuth sign-in, or Kimi
   Coding) reads "Subscription" with its API-price equivalent in the tooltip and
   is never added to the pay-as-you-go amount. A scope with nothing to price is
-  left out. Three compact timing rows show request-to-first-response
-  wait, streamed model response time (thinking plus answer), and top-level tool
-  execution time, each with its share of the session span. Network/provider wait
-  and streamed response are separate; parallel top-level tools count overlapping
-  time once, and nested delegate timing is excluded. Older messages retain the
-  existing response duration for the model row but cannot contribute request
-  wait. Model usage is compressed into one
-  inline summary row that retains exact last-request
-  input/output/cache/reasoning values
-  and the provider-reported cache hit rate when available. Tool usage is
-  compressed into one aggregate row showing tool types, calls, and estimated
-  tokens; per-tool rows, share bars, source badges, and the explanatory
-  estimate note are intentionally omitted from the default view. Rows below
-  the heading share one muted-label / tabular-value rhythm separated by
-  spacing; the popover keeps its floating-layer edge and draws no inner
-  section rules (D297). Generation speed is a completed-turn value in tokens
+  left out.
+  Generation speed is a completed-turn value in tokens
   per second and is not updated while a response is streaming. The
   context-window total uses the same effective model window as the agent
   sidecar: a published models.dev `limit.context` replaces a legacy 128k
@@ -2194,9 +2191,8 @@ Single message render — either user (plaintext) or assistant (markdown streami
   resize or scroll events) so no clipping ancestor or native surface can
   hide it (D103, D184, D244, D347). When the active session has an
   installed context checkpoint,
-  the panel adds one muted summary line for the compaction count and newest
-  summary's estimated token cost; the transcript still shows one row per
-  compaction (D203).
+  the dashboard includes the compaction events and their summaries; the
+  transcript still shows one row per compaction (D203).
 - Gap: 12px vertical padding between consecutive message rows (denser than
   consumer chat, closer to WorkBuddy task transcript); assistant turns add a
   little extra bottom air so a completed answer separates from the next prompt
@@ -2238,7 +2234,7 @@ message its checkpoint covers.
 - Context inspector trigger (composer toolbar) is keyboard focusable, exposes a
   localized remaining percentage and token count, carries `aria-haspopup="dialog"`,
   `aria-expanded`, and an `aria-controls` relationship to the panel, and opens
-  the same compact summary on click or keyboard activation; Escape or a click
+  the same insights dashboard on click or keyboard activation; Escape or a click
   outside closes it and returns focus to the trigger
 - The inspector panel is portaled to the document body and positioned in
   viewport coordinates, but its horizontal clamp is the conversation pane: the

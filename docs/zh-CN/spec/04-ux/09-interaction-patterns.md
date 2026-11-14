@@ -734,9 +734,19 @@
   它涵盖的最后一条消息，读取会话已压缩的次数以及
   摘要的估计代币成本（或者没有生成摘要）。行
   没有任何操作且不可选择。
-- 上下文使用检查器为最新的检查点保留一条静音线，
-  在面板打开时显示；计数和摘要成本位于紧凑的模型/工具摘要下方，
-  不再添加解释性文案。
+- The context usage inspector shows the D686 insights dashboard, including
+  compaction events and summaries. Selecting a request in the Step/Turn trend
+  updates its provider token breakdown and recorded-history browser; current
+  capacity continues to describe the newest parent request. History search and
+  expansion preserve the recorded-estimate and partial-history labels.
+- The open context usage inspector shows elapsed session wall time plus three
+  measured timing categories: request-to-first-response wait, streamed model
+  response time (thinking and answer), and top-level tool execution time.
+  Each category shows its share of measured activity; wall time is separate. Nested delegate timing
+  is excluded, and overlapping top-level tool calls count once. Long transcripts
+  load earlier timing metadata in bounded pages only while the inspector is open.
+  Older messages use their existing response duration for the model row; their
+  request-wait time is unavailable.
 
 ## 4. 长内容折叠/展开
 

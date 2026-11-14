@@ -3033,51 +3033,114 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - **里程碑**：M5
 - **状态**：单位覆盖（`transcript-style.test.mjs`）；全视觉场景草稿
 
-#### E2E-060d：助理元芯片、紧凑上下文摘要和重试操作
+#### E2E-060d: Assistant meta chips, context insights dashboard, and retry action
 
-- **前提**：一个已完成的视觉回合在多条助手消息中包含 modelId 和 token
-  用量；另一条已完成的助理消息有内容但没有用量。所选模型发布了 1m 级
-  上下文窗口，但 provider binding 仍含有历史 128k 通用种子。
-- **步骤**：1) 打开会话。2) 确认已完成回合答案下方只有模型徽章、没有
-  上下文检查器。确认回合用量胶囊紧跟模型徽章，显示平均速度和紧凑总量；
-  悬停或用键盘聚焦胶囊，检查缓存读取/输入/输出精确数值、回合合计，以及
-  仅在非零时出现的缓存写入。将鼠标移入浮层确认其保持打开，然后用 Escape
-  和外部指针按下关闭。3) 将鼠标悬停在输入框工具栏的检查器触发器上，确认面板
-  不会打开，然后点击它。4) 检查剩余令牌 + 百分比标题、已用/窗口计数、
-  无卡片的本轮/速度数值、内联模型用量摘要和聚合工具摘要，确认标题下
-  没有双线、弹层内部没有分隔线。5) 面板打开时滚动记录、调整窗口大小。
-  6) 将鼠标移出面板，然后点击触发器、面板外部，并使用 Escape 关闭。
-  7) 在浏览器预览产物上打开工作面板，打开上下文检查器，确认该摘要仍留在
-  会话面板内：完全可见、不进入面板列，且在较窄面板上收窄而不是被裁剪。
-  8) 空闲时点击该回合的重试。9) 确认没有用量的会话仍提供重试但不显示
-  输入框检查器。
-- **预期**：有模型 id 时答案下方显示模型徽章；该回合有用量时，回合用量
-  胶囊紧跟其后。胶囊速度等于总输出令牌除以总响应时长，合计为视觉回合内
-  输入/输出/缓存读取/缓存写入之和，推理令牌计入输出，子代理开销不计入。
-  浮层在指针停留其上时保持打开，并在指针离开的宽限后（触发器仍保持键盘焦点
-  时除外）、Escape 或外部按下时关闭；浮层传送到 body、限制在会话面板内，
-  流式回合不显示胶囊。有用量后，
-  紧凑上下文检查器出现在输入框右侧工具栏、模型选择器左侧，并始终对应最新
-  一条已报告用量的助手回合。触发器显示圆环和剩余容量百分比（无 Context
-  文字）以及低容量 warning/error 状态，点击或键盘激活打开同一摘要，
-  而单纯悬停不会打开或关闭。摘要保留精确的提供商数值，并用 `~` 标识
-  估算的工具合计；默认不渲染逐工具列表、来源徽章、进度条、解释性估算
-  段落或内部分隔线。占用、本轮合计和模型缓存/输入/输出/推理/命中率取
-  最后一条已报告用量的助手消息，而不是工具循环加总，因此缓存读取与
-  上下文窗口同量级；这个最后一次请求的值与胶囊的视觉回合合计刻意不同。
-  没有缓存读取元数据时省略缓存命中率而不是推算。
-  发布的 1m 级窗口（例如 `gpt-5.6-luna` 的 1,050,000 tokens）显示为
-  实际窗口而不是 128k，且与 agent runtime 使用同一个 effective window；
-  非默认 Advanced 覆盖仍然生效。生成速度只代表已完成回合。重试重新
-  发送最近的用户提示，并在回合运行时禁用；body 级面板留在会话面板内，因此
-  工作面板的原生浏览器或插件表面永远不会盖住它；会话面板较窄时它会随面板
-  收窄，而不是越过该边界，并跟随滚动或调整大小；复制仍不包含思考文本。
-- **链接规格**：`04-ux/08-component-spec.md`、
-  `04-ux/10-workbuddy-benchmark-ux.md`、`03-runtime/01-ipc-protocol.md`
-- **验收**：C（聊天流），质量
-- **里程碑**：M5
-- **状态**：单位覆盖（`transcript-style.test.mjs`、`context-usage.test.mjs`、
-  `latest-turn-context.test.mjs`、运行时用量映射）；完整场景草稿
+- **Preconditions**: A completed visual turn includes modelId and token usage
+  across more than one assistant message; another completed assistant message
+  has content but no usage. The selected model has a published 1m-class context
+  window, while its provider binding still contains the legacy 128k generic
+  seed.
+- **Steps**: 1) Open the session. 2) Confirm the completed turn shows a model
+  badge and no context inspector under the answer. Confirm the turn usage
+  capsule follows the badge with its average speed and compact total, then
+  hover or keyboard-focus it and inspect the cache-read/input/output exact
+  counts, the turn total, and cache write only when non-zero. Move the pointer
+  into the popover and confirm it stays open, then dismiss it with Escape and
+  with an outside pointer press. 3) Hover the composer
+  toolbar inspector trigger, confirm the panel stays closed, then click it.
+  4) Inspect the title bar (title, session title, close button), the
+  remaining-token-plus-percentage heading, and the dashboard cards below it:
+  context stats (turns, model requests, tool calls, compactions, speed), the
+  provider token donut with its legend and cache-hit rate, the timing donut
+  with total session duration and the three measured rows for
+  network/provider wait, streamed model response (including thinking and
+  answer), and tool execution, current capacity with its used/window counts
+  and remaining figure, the request trend, the recorded-history browser, the
+  tool ranking, and the context events list. Switch Step/Turn and
+  Total/Delta on the trend and confirm the selected bar highlights and the
+  token card and browser follow it; select an older request from the browser
+  picker and confirm negative deltas still render. Type in the browser search
+  and confirm groups filter without changing the estimated totals, then expand
+  a group and read one record. Confirm overlapping top-level tool calls are
+  counted once, nested delegate timings are excluded, and the tool ranking
+  shows one `~` aggregate. For a transcript with more than one loaded page,
+  wait for earlier timing metadata to finish loading and confirm the
+  cumulative values include it. There is no doubled heading rule or inner
+  section hairline. 5) Scroll the transcript and resize the window while the
+  panel is open. Toggle and resize the sidebar and work panel while the panel
+  remains open. 6) Move the pointer away from the panel, then dismiss it by
+  clicking the trigger again, clicking outside it, and pressing Escape from
+  the keyboard. 7) Open the work panel on a browser-preview artifact, open the
+  context inspector, and confirm the summary stays inside the conversation pane:
+  fully visible, clear of the panel column, and narrowed rather than clipped on
+  a narrow pane. 8) Click Retry on that turn while idle. 9) Confirm a session
+  without usage still offers Retry on completed turns and omits the composer
+  inspector. 10) With an API-key provider whose model has catalog prices, open
+  the inspector and the capsule popover; send another prompt with the
+  inspector open; switch sessions; repeat on a subscription (OAuth) account.
+- **Expected**: Model badge appears under completed assistant answers when a
+  model id exists, followed immediately by the turn usage capsule when that
+  turn has usage. The capsule's speed is summed output tokens over summed
+  response duration, and its total sums input/output/cache read/cache write
+  across the visual turn, counting reasoning inside output and excluding
+  subagent spend. Its popover stays open while the pointer is over it, closes
+  on pointer leave after a grace delay unless the trigger retains keyboard
+  focus, on Escape, or on an outside press; it portals to the body, clamps to
+  the conversation pane, and is absent on streaming turns. A priced
+  pay-as-you-go turn shows its cost after the capsule total (`≈` for a catalog
+  estimate) and in a popover cost row with a one-line explanation; the
+  inspector shows the newest turn cost and the whole-session total, which
+  refreshes in place after the next billed request without a loading flash and
+  never shows another session's figure. Subscription usage reads
+  "Subscription" with its API-price equivalent in the tooltip, adds nothing to
+  the pay-as-you-go amount, and shows no inline capsule cost. Automated by
+  `apps/desktop/test/usage-cost-user-path.test.mjs`.
+  The Context inspector appears in the composer
+  right toolbar, left of the model picker, once any usage exists, and always
+  mirrors the newest usage-bearing assistant turn. The trigger shows the ring
+  plus remaining-capacity percentage (no Context label) and low-space
+  warning/error states; click or keyboard activation toggles the insights
+  dashboard while pointer hover alone never opens or closes it. An open panel
+  survives the pointer leaving it, moves focus to its close button, and closes
+  on a second trigger activation, an outside click, Escape (which returns focus
+  to the trigger), or a session or account change. The dashboard's token and
+  timing cards describe the selected request, the trend and browser share that
+  selection, and the browser labels its contents as recorded history estimates
+  rather than the assembled request; counts, trend and ranking use loaded
+  parent history only and say so when it is partial. Session
+  duration runs from session creation to the latest activity (or to now while
+  running). Network request wait ends at the first model response event; model
+  response includes streamed thinking and answer, and tool time excludes nested
+  delegates and unions overlapping top-level calls. Each cumulative timing
+  percentage is relative to that wall-time span. Earlier transcript pages load
+  only while the inspector is open. Provider
+  values remain exact; tool ranking and recorded-history values are labelled
+  as estimates. Selecting an older request changes its breakdown and history,
+  while current capacity remains the newest parent request, not a summed
+  tool-loop or billing rollup. This last-request value remains distinct
+  from the capsule's visual-turn aggregate. The cache hit rate is omitted
+  when cache-read metadata is absent rather than inferred. A published 1m-class
+  limit (for example `gpt-5.6-luna` at 1,050,000 tokens) is shown instead of
+  128k, the same effective window is used by the agent runtime, and a non-default
+  Advanced override remains honored. Generation rate remains a completed-turn
+  value and does not update during streaming; Retry
+  re-sends the nearest preceding user prompt and is disabled while a turn is
+  running; the portaled panel stays inside the conversation pane so the work
+  panel's native browser or plugin surface can never cover it, narrows with a
+  narrow pane instead of crossing that edge, and follows the trigger after
+  scrolling or resize; Copy still excludes thinking text.
+- **Specs linked**: `04-ux/08-component-spec.md`,
+  `04-ux/10-workbuddy-benchmark-ux.md`, `03-runtime/01-ipc-protocol.md`
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`transcript-style.test.mjs`,
+  `context-usage.test.mjs`, `latest-turn-context.test.mjs`, runtime
+  usage mapping). Native Electron component coverage in
+  `usage-cost-user-path.test.mjs` exercises Step/Turn, Total/Delta, historical
+  selection, unchanged current capacity, estimated-window and partial-history
+  labels, six history categories, search/expansion, Escape focus return and
+  existing per-turn/session billing. Host billing is synthetic; full installed
+  E2E-060d and Windows/Linux native qualification remain pending.
 
 #### E2E-061a：重新生成替换当前回合
 
