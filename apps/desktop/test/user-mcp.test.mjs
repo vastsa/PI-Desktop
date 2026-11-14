@@ -445,6 +445,71 @@ test("a scoped server removed from its own project's refresh loses its connectio
   await assert.rejects(rt.callTool("mcp_stub_lookup", {}, projectA), { errorCode: "TOOL_NOT_FOUND" });
 });
 
+// Regression for the cross-bucket review: a global server is retained in every
+// bucket, so one project's refresh after a global disable/delete must take the
+// server away everywhere, not just in the bucket that refreshed.
+test("a global server removed in one project's refresh loses its tools everywhere", async (t) => {
+  const dir = stubDir();
+  const projectA = projectDir("project-a");
+  const projectB = projectDir("project-b");
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir)], projectA);
+  rt.setRecords([stubRecord(dir)], projectB);
+  assert.deepEqual(
+    (await rt.toolsForProject(projectA)).map((tool) => tool.fullName),
+    ["mcp_stub_lookup", "mcp_stub_ping"],
+  );
+  assert.deepEqual(
+    (await rt.toolsForProject(projectB)).map((tool) => tool.fullName),
+    ["mcp_stub_lookup", "mcp_stub_ping"],
+  );
+
+  // A's active list came back empty: the server was deleted globally.
+  rt.setRecords([], projectA);
+  assert.deepEqual(rt.listRecords(), []);
+  assert.equal(rt.statusFor("stub").state, "idle");
+  assert.deepEqual(await rt.toolsForProject(projectB), []);
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, projectB), { errorCode: "TOOL_NOT_FOUND" });
+  await assert.rejects(rt.callTool("mcp_stub_ping", {}, projectA), { errorCode: "TOOL_NOT_FOUND" });
+});
+
+test("a global server disabled in one project's refresh loses its tools everywhere", async (t) => {
+  const dir = stubDir();
+  const projectA = projectDir("project-a");
+  const projectB = projectDir("project-b");
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir)], projectA);
+  rt.setRecords([stubRecord(dir)], projectB);
+  await rt.toolsForProject(projectA);
+  await rt.toolsForProject(projectB);
+  assert.equal(rt.statusFor("stub").state, "ready");
+
+  // The disabled record still ships in A's active list, but enabled=false.
+  rt.setRecords([stubRecord(dir, { enabled: false })], projectA);
+  assert.deepEqual(await rt.toolsForProject(projectA), []);
+  assert.deepEqual(await rt.toolsForProject(projectB), []);
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, projectB), { errorCode: "TOOL_NOT_FOUND" });
+});
+
+test("a global server's config edit in one project reconciles every retained copy", async (t) => {
+  const dir = stubDir();
+  const projectA = projectDir("project-a");
+  const projectB = projectDir("project-b");
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, { env: { STUB_TAG: "first" } })], projectA);
+  rt.setRecords([stubRecord(dir, { env: { STUB_TAG: "first" } })], projectB);
+  await rt.toolsForProject(projectA);
+
+  // B refreshes with the user's new configuration; A's retained copy must
+  // follow it, or listRecords and later A sessions keep serving old args.
+  rt.setRecords([stubRecord(dir, { env: { STUB_TAG: "second" } })], projectB);
+  assert.deepEqual(rt.listRecords().map((record) => record.env), [{ STUB_TAG: "second" }]);
+  assert.equal(rt.statusFor("stub").state, "idle");
+
+  // Dispatch from the stale A session re-handshakes against the new config.
+  assert.match(JSON.stringify(await rt.callTool("mcp_stub_lookup", {}, projectA)), /second:lookup/);
+});
+
 /** A transport disconnect clears the client's tools, just like onClose. */
 function reconnectingRuntime(t) {
   let connected = false;

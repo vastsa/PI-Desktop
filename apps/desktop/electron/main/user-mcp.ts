@@ -105,13 +105,50 @@ export class UserMcpRuntime {
    * Adopt a fresh list from host-core for one workspace. Records live in a
    * per-workspace bucket: a refresh for workspace B must not evict workspace
    * A's scoped servers, whose sessions and stdio processes are still live.
-   * Servers whose configuration changed — or that vanished from every
-   * bucket — lose their connection so the next call re-handshakes against
-   * what the user actually saved.
+   * Global configuration is authoritative across buckets: a server that
+   * disappears from any refreshed bucket has been disabled or removed
+   * globally and its retained copies are dropped everywhere, while a server
+   * still listed by the refreshed bucket has its newest saved config
+   * reconciled into every retained copy. In either case the connection is
+   * dropped so the next call re-handshakes against what the user saved.
    */
   setRecords(records: McpServerRecord[], projectPath?: string | null): void {
     const scopeKey = workspaceIdentity(projectPath);
-    this.recordsByScope.set(scopeKey, records.map((record) => ({ ...record })));
+    const fresh = records.map((record) => ({ ...record }));
+    const freshIds = new Set(fresh.map((record) => record.id));
+    this.recordsByScope.set(scopeKey, fresh);
+    // A globally scoped server is visible to every project, so it appears in
+    // every bucket's active list. If such a server is missing from a freshly
+    // refreshed bucket, host-core has disabled or removed it everywhere: drop
+    // every retained copy, not just this bucket's, or another project would
+    // keep serving stale tools from its own snapshot.
+    const removed = new Set<string>();
+    for (const id of this.retainedIds()) {
+      if (freshIds.has(id) || removed.has(id)) continue;
+      const copy = this.findRetained(id);
+      if (copy && isActiveInProject(copy, null)) removed.add(id);
+    }
+    if (removed.size > 0) {
+      for (const [key, bucket] of [...this.recordsByScope]) {
+        this.recordsByScope.set(key, bucket.filter((record) => !removed.has(record.id)));
+      }
+    }
+    // The refreshed bucket carries the newest saved configuration for every
+    // server it still lists. Reconcile the copies retained for other projects
+    // so a configuration edit is authoritative across buckets immediately:
+    // this is what lets the entry sweep below see the change and drop the
+    // connections other projects were still holding on the old config.
+    for (const record of fresh) {
+      for (const [key, bucket] of [...this.recordsByScope]) {
+        if (key === scopeKey) continue;
+        const index = bucket.findIndex((candidate) => candidate.id === record.id);
+        if (index >= 0) {
+          const next = [...bucket];
+          next[index] = { ...record };
+          this.recordsByScope.set(key, next);
+        }
+      }
+    }
     const all = this.allRecords();
     const byId = new Map(all.map((record) => [record.id, record]));
     for (const id of this.discoveredTools.keys()) {
@@ -142,6 +179,24 @@ export class UserMcpRuntime {
       }
     }
     return [...seen.values()];
+  }
+
+  /** Every server id still held by any bucket. */
+  private retainedIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const records of this.recordsByScope.values()) {
+      for (const record of records) ids.add(record.id);
+    }
+    return ids;
+  }
+
+  /** Any retained copy of a server, for global-scope detection. */
+  private findRetained(id: string): McpServerRecord | undefined {
+    for (const records of this.recordsByScope.values()) {
+      const found = records.find((record) => record.id === id);
+      if (found) return found;
+    }
+    return undefined;
   }
 
   listRecords(): McpServerRecord[] {
