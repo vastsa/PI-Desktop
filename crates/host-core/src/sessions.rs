@@ -10,6 +10,8 @@ use std::collections::HashMap;
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
+#[cfg(test)]
+mod active_revision_tests;
 mod fork_files;
 mod history_mutations;
 pub use history_mutations::{
@@ -2119,7 +2121,9 @@ pub fn configure_session_with_mode_snapshot(
     if changed == 0 {
         return Ok(None);
     }
-    Ok(get_session(db, id)?.map(|detail| detail.summary))
+    // Only the summary goes back; reading it through `get_session` parsed the
+    // whole transcript on every model, mode or permission switch.
+    session_summary(db, id)
 }
 
 pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
@@ -3662,10 +3666,15 @@ pub fn save_active_branch_revision(
     db: &Database,
     session_id: &str,
 ) -> Result<Option<ActiveRevisionSave>> {
-    let Some(detail) = get_session(db, session_id)? else {
+    // This runs after every turn. A session that was never regenerated owns no
+    // revision rows, and every path that stamps a root writes its rows first,
+    // so the index answers it without touching the transcript.
+    if !session_has_revisions(db, session_id)? {
+        return Ok(None);
+    }
+    let Some(mut messages) = revision_root_window(db, session_id)? else {
         return Ok(None);
     };
-    let mut messages = detail.messages;
     let Some(root_index) = messages
         .iter()
         .rposition(|message| message.role == "user" && message.revision_count.is_some())
@@ -3709,11 +3718,23 @@ pub fn save_active_branch_revision(
     }
 
     let root = &mut messages[root_index];
-    root.revision_root_id = Some(root_user_id.clone());
-    root.revision_count = Some(total);
-    root.active_revision = Some(active);
-    let (record, _) = ui_to_record(root);
-    transcripts::update_message(db.data_dir(), session_id, &record)?;
+    let stamp = (Some(root_user_id.clone()), Some(total), Some(active));
+    let stamped = (
+        root.revision_root_id.clone(),
+        root.revision_count,
+        root.active_revision,
+    ) == stamp;
+    (
+        root.revision_root_id,
+        root.revision_count,
+        root.active_revision,
+    ) = stamp;
+    // Once the branch has its stamp, later turns leave it unchanged. The root is
+    // rarely the last line, so restating it would scan and copy the whole file.
+    if !stamped {
+        let (record, _) = ui_to_record(root);
+        transcripts::update_message(db.data_dir(), session_id, &record)?;
+    }
     Ok(Some(ActiveRevisionSave {
         root_user_id,
         revision_count: total,
@@ -3721,6 +3742,57 @@ pub fn save_active_branch_revision(
         archived,
         root: root.clone(),
     }))
+}
+
+fn session_has_revisions(db: &Database, session_id: &str) -> Result<bool> {
+    Ok(db.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM message_revisions WHERE session_id = ?1)",
+        params![session_id],
+        |row| row.get(0),
+    )?)
+}
+
+/// The newest messages of a session, as the full read lists them, reaching back
+/// to the latest user row that carries revision metadata (every message when
+/// none does). `None` when the session does not exist.
+///
+/// The root usually sits a few turns from the end while the transcript can hold
+/// hundreds of megabytes, so this reads an id-closed suffix: positions and
+/// keep-last contents inside it match the full read, and so does the branch.
+fn revision_root_window(db: &Database, session_id: &str) -> Result<Option<Vec<UiMessage>>> {
+    if !session_exists(db, session_id)? {
+        return Ok(None);
+    }
+    // The record-level form of `role == "user" && revision_count.is_some()`,
+    // which is how `save_active_branch_revision` picks the root.
+    let carries_root = |record: &MessageRecord| {
+        record.role == "user"
+            && record
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.get("revisionCount"))
+                .and_then(Value::as_i64)
+                .is_some()
+    };
+    let suffix = transcripts::read_closed_message_suffix(db.data_dir(), session_id, |records| {
+        // Keep-last: only an id's newest line decides what it carries.
+        let mut seen = std::collections::HashSet::new();
+        records
+            .iter()
+            .rev()
+            .filter(|record| seen.insert(record.id.as_str()))
+            .any(carries_root)
+    })?;
+    let records = match suffix {
+        Some(records) => records,
+        None => transcripts::read_transcript_with_compactions(db.data_dir(), session_id)?.messages,
+    };
+    Ok(Some(
+        dedupe_records(records)
+            .into_iter()
+            .map(record_to_ui)
+            .collect(),
+    ))
 }
 
 /// Activate a stored revision: replace the live transcript with prefix + branch.
@@ -3935,7 +4007,19 @@ pub fn import_session(
     if exists > 0 {
         return Ok(false);
     }
-    let (records, texts) = records_and_texts(messages);
+    // An import brings no regenerate history, so a pager stamp it carries would
+    // name revisions that do not exist. Forks drop the stamp the same way.
+    let messages: Vec<UiMessage> = messages
+        .iter()
+        .cloned()
+        .map(|mut message| {
+            message.revision_root_id = None;
+            message.revision_count = None;
+            message.active_revision = None;
+            message
+        })
+        .collect();
+    let (records, texts) = records_and_texts(&messages);
     transcripts::write_transcript(db.data_dir(), &summary.id, &summary.created_at, &records)?;
     let indexed = (|| -> Result<()> {
         let tx = conn.unchecked_transaction()?;
@@ -7882,6 +7966,8 @@ mod tests {
         root.revision_count = Some(1);
         root.active_revision = Some(1);
         append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        // Regenerate writes a family's revision rows before it stamps the root.
+        save_message_revision(&db, &session.id, "u1", &[root.clone()], true).unwrap();
 
         // Ten finished turns, each appending a sizeable answer, each archived
         // exactly the way a real turn ends.
@@ -7972,6 +8058,8 @@ mod tests {
         root.revision_count = Some(1);
         root.active_revision = Some(1);
         append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        // Regenerate writes a family's revision rows before it stamps the root.
+        save_message_revision(&db, &session.id, "u1", &[root.clone()], true).unwrap();
         let mut answer = user_msg("a1", "the answer", "2025-05-01T00:01:00Z");
         answer.role = "assistant".into();
         append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
@@ -8022,6 +8110,8 @@ mod tests {
         first.revision_count = Some(1);
         first.active_revision = Some(1);
         append_message(&db, &session.id, &first, Some(&turn)).unwrap();
+        // Regenerate writes a family's revision rows before it stamps the root.
+        save_message_revision(&db, &session.id, "u1", &[first.clone()], true).unwrap();
         let mut first_answer = user_msg("a1", "first answer", "2025-05-01T00:00:01Z");
         first_answer.role = "assistant".into();
         append_message(&db, &session.id, &first_answer, Some(&turn)).unwrap();
@@ -8033,6 +8123,7 @@ mod tests {
         second.revision_count = Some(1);
         second.active_revision = Some(1);
         append_message(&db, &session.id, &second, Some(&turn)).unwrap();
+        save_message_revision(&db, &session.id, "u2", &[second.clone()], true).unwrap();
         let mut second_answer = user_msg("a2", "second answer", "2025-05-01T00:01:01Z");
         second_answer.role = "assistant".into();
         append_message(&db, &session.id, &second_answer, Some(&turn)).unwrap();
