@@ -46,9 +46,31 @@ export type UsageOperation = Omit<MessageUsage, "operations" | "aggregation"> & 
   operationId: string;
 };
 
+/** One physical provider's share of a session's spend. */
+export type ProviderUsageCost = {
+  /** Desktop provider row; absent for legacy token-only turns. */
+  providerId?: string;
+  /** USD sum of the priced requests only. */
+  total: number;
+  pricedRequests: number;
+  /** Priced requests whose total the provider billed rather than the catalog estimated. */
+  reportedRequests: number;
+  /** Requests with no usable price; `total` is a lower bound when nonzero. */
+  unpricedRequests: number;
+};
+
+/** Host-owned cost rollup of every turn in one session (`session.usageCost`). */
+export type SessionUsageCost = {
+  sessionId: string;
+  turnCount: number;
+  requestCount: number;
+  providers: ProviderUsageCost[];
+};
+
 export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
+  localReference?: string;
   kind: "image" | "file" | "session";
   name: string;
   /** Workspace-relative path, session-scratch absolute path, or a session id. */
@@ -112,9 +134,16 @@ export type UiMessage = {
   thinking?: string;
   createdAt: string;
   status?: "streaming" | "complete" | "error" | "aborted";
+  /** The provider cut off this text response at its output-token limit. */
+  outputTruncated?: boolean;
   /** Provider/model that produced this assistant turn, when known. */
   modelId?: string;
   providerId?: string;
+  /**
+   * Concrete model the provider reports serving this turn, present only when
+   * it differs from `modelId` (for example a router or fallback model).
+   */
+  responseModelId?: string;
   /** Token usage for the assistant turn, when the provider reported it. */
   usage?: MessageUsage;
   /** Elapsed assistant response duration used to calculate output throughput. */
@@ -140,6 +169,8 @@ export type UiMessage = {
   command?: string;
   /** Validated Skill tokens in `command`, using UTF-16 offsets. */
   skillMentions?: Array<{ start: number; end: number; id: string }>;
+  /** Validated `@agent` tokens in `command`, using UTF-16 offsets (ADR 0346). */
+  agentMentions?: Array<{ start: number; end: number; name: string }>;
   toolName?: string;
   toolCallId?: string;
   toolStatus?: "running" | "success" | "error" | "denied";

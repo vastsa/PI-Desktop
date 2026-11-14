@@ -257,6 +257,9 @@ type ToolBudgetHealth = {
 至 `off`。可选布尔值 `fastMode`（ADR 0334）保存会话的 `/fast` 开关；缺省/null 表示
 `false`，非布尔值返回 `INVALID_PARAMS`。可选的 `isolated: true`（ADR 0329）同时要求 `projectPath`，并在返回前为新会话
 创建专属 git worktree；无法创建时会话会被删除，调用以 `WORKTREE_*` 错误（§7）失败。
+  Optional `modeSnapshot` is validated for the selected mode and committed with
+  the session atomically. A rejected snapshot or failed insert leaves no partial
+  session or orphan snapshot; omitting it retains legacy creation semantics.
 - `session.fork` — accepts `sessionId`, an optional caller-provided display
   `title`, and optional `throughMessageId`; creates
   one independent session from the source's current active canonical
@@ -273,6 +276,9 @@ type ToolBudgetHealth = {
 - `session.get`
 - `session.delete` — 对隔离会话还会删除其 worktree 和分支（丢弃未合并的工作）
 - `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建
+- `session.usageCost({ sessionId })` — 会话 `turns.usage_json` 账本的只读费用汇总，按 `providerId` 分组：
+  `{ sessionId, turnCount, requestCount, providers: [{ providerId?, total, pricedRequests,
+  reportedRequests, unpricedRequests }] }`。无表结构变更；缺少 `sessionId` 返回 `INVALID_PARAMS`。
 - `session.rename` — 在主机边界裁剪并校验标题，接受 1–80 个 Unicode 码点；成功后将标题来源
   标记为 `manual`，但不更新 `updated_at`、转录内容、消息数或历史通知标题快照。
 - `session.deriveTitle` — `{ id, title }`：应用确定性的首条提示兜底标题，返回
@@ -1161,3 +1167,50 @@ tools.execute 增加可选 fileBatchTicket，绑定封存后的单次调用。�
 由 Host 决定，客户端不提供权威身份。工作区绑定变化返回 TOOL_CONTEXT_CHANGED；文件身份
 或地址变化在写入前失败。Close/过期不能释放运行中的磁盘任务，不自动重放失败或结果不明
 的写。生命周期和限制见 Host 文件准入 ADR。
+
+### 会话范围的后台作业 RPC
+
+模型代理仅放行下列接口，桌面的全局 backgroundTasks 接口不在代理白名单内。
+
+| 方法 | 参数 | 结果 |
+| --- | --- | --- |
+| backgroundJobs.capabilities | sessionId | {version: 1, supported: true} |
+| backgroundJobs.list | sessionId | {tasks: BackgroundJobSummary[]} |
+| backgroundJobs.wait | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
+| backgroundJobs.stop | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
+
+接口要求已存在的本地 Agent 会话。未知与其他会话作业均返回 NOT_FOUND；非法参数返回 INVALID_PARAMS；合约模式返回 PERMISSION_DENIED。作业归属不变，会话身份取自 runtime，模型工具参数不提供会话选择。
+
+timeoutMs 为 0–1000 的整数，默认 0。wait 观察单作业完成信号，释放全局锁；stop 先向已有主管发停止信号，再观察结果。返回 state 为实际状态，stopRequested 仅表示请求已发出。摘要含 job、最多 1024 UTF-8 字节的 command、elapsedMs、state、可空 exitCode 和 stopRequested。wait/stop 另含分别最多 8192 UTF-8 字节的 stdout/stderr，以及表示 Host 缓冲丢失或本次裁剪的 truncated。 命令保留最多 1024 字节的完整 UTF-8 前缀；commandTruncated 表示命令是否裁剪，旧 Host 可省略该字段。
+
+终态和最终输出在同一作业锁下读取。读操作不消耗输出，进行中的观察持有作业句柄直至有界请求结束，历史淘汰不会拆散这次读取。等待后重新校验会话。放弃请求不会停止进程。旧 Host 能力缺失会明确报告，其他错误不会转为空列表。桌面原 RPC 结构保持兼容。
+
+监管任务优先处理已观察到的进程退出，并在排空管道时保留退出结果。终态和最终输出发布时固定运行耗时。
+
+
+## User-defined mode run RPC
+
+ADR `mode-definitions` adds the following Host methods. Parameters use camelCase.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `modes.get` | `sessionId` | `{ run }`, null when no open run exists |
+| `modes.start` | `sessionId, input, turnId` | `{ claimed, run, enteredStage, definition }` |
+| `modes.claimTurn` | `sessionId, runId, expectedRevision, turnId, origin` | claim result; origins: user, approval, host |
+| `modes.completeStage` | `sessionId, runId, turnId, summary, artifacts?, input?` | failed, run, awaiting_approval, advanced, goto, blocked or finished outcome; `MODE_INPUT_CHANGED` when `input` (the input the turn was claimed with) differs from the run's current input |
+| `modes.gateResult` | `sessionId, runId, turnId, gateIndex, toolCallId` | next stage outcome |
+| `modes.settleTurn` | `sessionId, runId, turnId, tokens, outcome, error?` | `{ run, continue }` |
+| `modes.control` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; pause, resume, stop or remove. Stop and remove both end the run; Electron main interrupts the active turn only for stop |
+| `modes.update` | `sessionId, runId, expectedRevision, input?, budget?` | `{ run, continue: false }`; edits an open run's input and `{ maxTurns, maxTokens }` budget (both fields required, `null` is unlimited), effective from the next claim |
+| `modes.resolve` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; approve or reject |
+| `modes.settleReturn` | `sessionId, runId, mode?, modeSnapshot?` | `{ pending, applied }`; after a run closed, reports the custom `returnTo` the session waits on (`pending`). Called again with that `mode`, it stores `modeSnapshot` for it, or moves the session to `agent` when the snapshot is absent because the mode no longer exists |
+
+`session.configure` accepts an optional validated `modeSnapshot`. Custom mode
+ids require a snapshot. Agent and Plan retain their builtin policies. Host
+notifications use `modes.changed { sessionId, run }`. Renderer catalog editing
+uses the `pi-desktop/modes/*` IPC channels and never writes SQLite directly.
+
+`tools.execute` accepts `modeGate { runId, gateIndex }` only for the exact
+pending Bash gate command. The Host records the exit code; a model-supplied
+verdict cannot pass a command gate. Stage completion may write only declared
+artifacts within the workspace. Staged runs reject remote workspaces.

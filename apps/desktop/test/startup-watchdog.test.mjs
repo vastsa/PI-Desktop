@@ -270,8 +270,8 @@ test("a superseded startup attempt cannot publish over the retry", () => {
   assert.match(store, /const generation = \+\+bootstrapGeneration;/);
   assert.equal(
     (store.match(/if \(generation !== bootstrapGeneration\) return;/g) ?? []).length,
-    2,
-    "both the success and the failure path must refuse to publish",
+    3,
+    "sidebar recovery, success and failure must refuse stale publication",
   );
 });
 

@@ -176,9 +176,10 @@ html[data-surface="plugin-launcher"] #root {
   color: var(--ds-text-primary);
 }
 
+/* Selection is a filled cell, not an outline: the grid stays calm while the
+   arrow keys move through it. Keyboard focus keeps its own accent ring. */
 .plugin-launcher-tile.active .plugin-launcher-tile-open {
-  border-color: var(--ds-border-strong);
-  background: var(--ds-bg-hover);
+  background: var(--ds-bg-active);
   color: var(--ds-text-primary);
 }
 
@@ -211,6 +212,22 @@ html[data-surface="plugin-launcher"] #root {
   object-fit: contain;
   /** A platform icon is already an icon; never stretch it. */
   pointer-events: none;
+}
+
+/*
+ * An installed application's own icon already carries its shape (the macOS
+ * squircle, a Windows tile), so it fills the cell instead of sitting inside a
+ * second rounded square.
+ */
+.plugin-launcher-icon.plugin-launcher-icon-native {
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+
+.plugin-launcher-icon.plugin-launcher-icon-native img {
+  width: 48px;
+  height: 48px;
 }
 
 .plugin-launcher-monogram {

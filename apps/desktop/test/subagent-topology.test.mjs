@@ -17,6 +17,7 @@ const {
   delegationTimingBounds,
   isDelegationActivityItem,
   lifecycleKindOf,
+  backgroundJobRowOf,
   subagentOutcome,
   summarizeSubagentActivity,
 } = await import("../src/lib/subagent-topology.ts");
@@ -424,6 +425,21 @@ test("a lifecycle row names the subagents it reports on (D268)", () => {
   assert.equal(delegationRosterSummary(roster), "explorer, fixer");
   // A failure in the roster outranks a completed sibling.
   assert.equal(delegationRosterOutcome(roster), "failed");
+});
+
+test("background controls describe the command, including pending stops and mixed lists", () => {
+  const ref = { kind: "bash", id: "process" };
+  const wait = lifecycle("TaskWait", { status: "timeout", job: ref }).message;
+  assert.equal(backgroundJobRowOf(wait).command, "Bash");
+  const pending = lifecycle("TaskStop", { job: { job: ref, command: "npm test", state: "running", stopRequested: true } }).message;
+  assert.deepEqual(backgroundJobRowOf(pending), { kind: "stop", command: "npm test", state: "stopping" });
+  const clipped = lifecycle("TaskWait", { job: { job: ref, command: "npm test", commandTruncated: true } }).message;
+  assert.equal(backgroundJobRowOf(clipped).command, "npm test…");
+  const mixed = lifecycle("TaskList", { delegations: [{ delegationId: "d", agent: "reviewer" }], backgroundJobs: { supported: true, tasks: [ref] } }).message;
+  assert.equal(backgroundJobRowOf(mixed).count, 1);
+  assert.equal(delegationRosterSummary(delegationRoster(mixed)), "reviewer");
+  assert.equal(backgroundJobRowOf(lifecycle("TaskStop", { stopped: [] }).message), null);
+  assert.equal(backgroundJobRowOf({ ...wait, toolArgs: { job: ref }, toolResult: undefined, toolStatus: "running" }).command, "Bash");
 });
 
 test("a repeated agent is counted, not listed twice", () => {

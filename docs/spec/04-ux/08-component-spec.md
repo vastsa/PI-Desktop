@@ -1,5 +1,39 @@
 # 08. Component Spec
 
+Workspace file index Git queries settle at their deadline or output limit,
+even when inherited child pipes do not close. Composer file search and the
+Files index then use the existing bounded filesystem fallback (Refs #1731).
+
+The Composer queue mirror accepts only the current read for each session. A newer queueChanged event invalidates earlier reads so an already delivered prompt cannot reappear. Reads in other sessions remain independent, and future refreshes still reconcile authoritative entries (Refs #1699).
+
+A bounded session detail read must not overwrite an idle transcript cache changed while that read was pending. Keep its newer messages and history window together. Running sessions still merge unflushed live rows, and the requesting caller receives its own read response (Refs #2086).
+
+Idle session model writes participate in the same per-session configuration
+queue as running-turn changes. Rapid choices serialize; the newest queued
+choice is applied after the in-flight write, rather than racing older replies.
+
+A full transcript read may fill its session cache only when that cache has not
+changed during the request. New streaming or edit snapshots retain ownership;
+the caller still receives the requested history for its own action validation.
+
+A rejected session Stop request retains the last known running state. A
+transport failure is not confirmation of process settlement; successful Stop
+and authoritative terminal events continue to clear the running indicator.
+
+Live delegation reconstruction crosses system notices as well as steering
+messages. An ordinary user prompt remains the run boundary. A running Task
+behind a system notice must not become aborted on navigation (Refs #1990).
+
+Screenshot-only Composer paste (image bytes without a native disk path) skips
+native directory discovery and uses the existing bounded attachment writer.
+Native files and folder-only or mixed file/folder selections keep the directory
+metadata path. This removes the system-process wait from screenshot paste
+(Refs #2086, #1366), without copying directory trees.
+
+File Manager Git deadlines settle the command at the deadline even when child
+output pipes remain open. A failed snapshot omits Git badges and does not block
+directory listings or file previews indefinitely (Refs #1731).
+
 ### Copied directory references
 
 Native folder paste adds compact cards in a wrapping row above the editable
@@ -1742,9 +1776,8 @@ storage but compose into one assistant turn until the next user message.
   view. Plain project-file references still prefer the bundled file view, whose
   open contract does not carry a line position.
 - Hover or focus a minimap marker: show the localized sender and a bounded
-  plaintext preview; multiple assistant fragments produced within one user
-  turn are combined into one AI-response marker and preview; nearby markers
-  magnify horizontally without reflowing the rail
+  plaintext preview of that user message; nearby markers magnify horizontally
+  without reflowing the rail
 - Click a minimap marker: smoothly scroll its message near the top of the
   transcript viewport
 - Scroll the transcript: update the active minimap marker against an anchor
@@ -1856,10 +1889,8 @@ storage but compose into one assistant turn until the next user message.
 - The minimap renders when at least two eligible turn markers exist **and** the
   transcript content overflows one viewport (scrollHeight > clientHeight), or
   whenever earlier history remains unmounted or unloaded (D269).
-  Each visible user message creates one marker; all contentful assistant
-  fragments until the next user message create one AI-response marker anchored
-  to the first contentful fragment. Tool-only rows do not create markers or
-  split an AI response, and a one-page transcript never shows the rail.
+  Each visible user message creates one marker; assistant and tool rows do
+  not create markers, and a one-page transcript never shows the rail.
 - Marker previews are capped at 280 source characters and are display-only
 - Derived visible rows, minimap rows, and activity grouping share the immutable
   `messages` projection with the Composer context inspector. After warm-up, an
@@ -2088,7 +2119,12 @@ Single message render — either user (plaintext) or assistant (markdown streami
   across the visual turn's assistant messages; `output` already carries the
   reasoning tokens, so `reasoningTokens` is never added again, and subagent
   spend is not included (D103). Speed is summed output tokens over summed
-  response duration. No meta row, and therefore no capsule, renders while the
+  response duration. When pay-as-you-go requests in the turn have a price, the
+  capsule appends the turn cost after the total and its accessible name ends
+  with it; the popover then adds a cost row and a one-line explanation
+  (provider-billed, catalog estimate, lower bound, or subscription). Turns with
+  no price, or served only by a subscription account, show no inline cost. No
+  meta row, and therefore no capsule, renders while the
   turn is streaming. The capsule's
   accessible name states the speed and total and that activating it shows the
   breakdown. The popover portals to the document body, clamps to the
@@ -2116,8 +2152,17 @@ Single message render — either user (plaintext) or assistant (markdown streami
   regardless of display mode, without making color the only signal.
   Clicking the trigger (or activating it from the keyboard) toggles a
   non-modal panel whose heading follows the same display-mode figure,
-  followed by used/window counts, unboxed turn/speed summary values, and the
-  elapsed session time. Three compact timing rows show request-to-first-response
+  followed by used/window counts, unboxed turn/speed summary values, a cost
+  row, and the elapsed session time. The cost row shows the newest turn's cost
+  and the whole-session total; the session figure is read from Host
+  (`session/usageCost`) only while the panel is open, refreshes in place when
+  another request is billed, and never shows another session's figure. Cost
+  wording is shared with the capsule: a provider-billed amount reads plainly,
+  a catalog estimate is prefixed `≈`, a total that omits unpriced requests is
+  prefixed `≥`, and usage on a subscription account (OAuth sign-in, or Kimi
+  Coding) reads "Subscription" with its API-price equivalent in the tooltip and
+  is never added to the pay-as-you-go amount. A scope with nothing to price is
+  left out. Three compact timing rows show request-to-first-response
   wait, streamed model response time (thinking plus answer), and top-level tool
   execution time, each with its share of the session span. Network/provider wait
   and streamed response are separate; parallel top-level tools count overlapping
@@ -2254,6 +2299,9 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   the reader navigates away. The tool block's Copy action still copies the full
   result.
 - **Plugins**: `remark-gfm` (tables, task lists, strikethrough, autolinks),
+  `remark-cjk-friendly/parseOnly` (CJK emphasis adjacent to quotes, brackets
+  and punctuation, including `这是**“重点”**。`, without rewriting source or
+  changing literal code/escaped markers; shared by splitting and rendering),
   `remark-math` + `rehype-katex` (inline `$…$` or `\(…\)`, display `$$…$$`
   or `\[…\]`). Raw HTML is
   parsed by `rehype-raw` and immediately constrained by the extended
@@ -2933,6 +2981,12 @@ fields. It is never a JSON dump.
 - Buttons: primary (Allow once), secondary (Allow session), danger (Deny)
 - No countdown is shown; the card remains pending until an explicit decision or
   cancellation.
+- A decision that fails to reach the Host keeps the card pending with its
+  buttons re-enabled and shows the error, so the same request can be retried.
+  If the Host reports the request no longer exists (`NOT_FOUND`), the card is
+  removed without an error. AskTool cards follow the same rule, keeping their
+  answer draft on a retriable failure; `ASKTOOL_NOT_FOUND` and `NOT_FOUND` mean
+  the request is gone.
 - The first action locks all buttons. Resolution errors use an error toast;
   successful or failed completion returns focus to the current composer.
 - The originating session's composer cannot send during pending permission,
@@ -3281,6 +3335,10 @@ reasoning-level control.
   returns to the textarea and file references return as leaf-name chips; their
   canonical paths never become textarea text. After a reply begins, Abort keeps
   the partial transcript and restores no draft.
+  If the stop request itself fails, the turn stays running: its rows, Stop
+  control and submitted draft are unchanged, an error toast is shown, and Stop
+  can be retried. Permission cards whose denial the Host already settled are
+  removed; the rest stay pending.
 - Stop never clears queued prompts. Removing a row is explicit; the queue itself
   is Host-owned and durable (D386 / ADR 0213, ADR 0265), so a restart restores it
   in delivery order, held until the desktop attaches as the owner.
@@ -3366,6 +3424,11 @@ reasoning-level control.
   entered. The first visible rows use cached metadata or configured bindings;
   live discovery updates them in the background without replacing a configured
   alias with the wire ID or a second visible name.
+  A successful live discovery is not repeated until providers are reloaded. A
+  failed one (thrown, or a fallback that reports a discovery error) keeps the
+  rows already shown and is retried on a later open after a per-provider
+  backoff (10 s, doubling to at most 5 min); callers waiting on the failed
+  attempt do not each start another probe.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
   `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
   the menu lists more than one level, a drag slider with one labeled stop per
@@ -3565,7 +3628,7 @@ See [Live Voice](../03-runtime/live-voice.md) and
 [Live Work](../03-runtime/live-work-session.md) for the unchanged ownership,
 permission, and call-scoped work contracts.
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
+### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222, ADR 0346)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -3649,6 +3712,20 @@ Anatomy:
   may be incomplete — the bare `@`, until the first search for the token
   answers, and when a search is itself capped or unavailable, as in remote
   sessions; without a workspace the menu shows an "open a project" empty state.
+- `@agent` mentions (ADR 0346): in Agent mode the `@` menu lists an
+  **Agents** group above the files — the catalog `Task` is built from, each
+  row `@name` + description with the bot glyph — and the file rows gain a
+  **Files** heading only beside it. Plan and Goal omit the group. An agent
+  whose name matches a workspace-root entry is hidden, because that token
+  belongs to the file. Accepting an agent inserts an atomic inline chip that
+  serializes to `@name`, with a separating space before and after when a
+  neighbor is not whitespace. At send, main rewrites a draft whose `@name`
+  tokens name catalog subagents (Agent mode, no same-named root entry) into an
+  explicit `Task` instruction followed by the unchanged draft; the typed text
+  persists as `command` with `agentMentions` offsets, and the transcript chips
+  each mention. Skill and agent mentions combine; a leading template or app
+  command is not rewritten. Stop restores the typed `command`, never the
+  rewritten `content`.
 - Accepting commands and directories inserts text (`/name ` / `@dir/`);
   accepting a completed file inserts the inline chip rather than deleting the
   trigger. Immediately
@@ -3772,9 +3849,11 @@ Anatomy:
   full path and Copy relative path on every surface that names it. Unpositioned
   `.html` and `.htm` references also offer an **Open with** submenu containing
   File Manager, built-in browser, and default browser. Each choice completes the
-  reference first and opens that exact resolved file. Other file types keep the
-  copy actions only; the transcript menu has no **Show in folder** action. A
-  file outside the project has no relative path to copy and reports that fact.
+  reference first and opens that exact resolved file. In a session that may use
+  local files, every reference also offers **Show in folder**, which reveals the
+  same resolved file in the system file manager; a remote workspace keeps the
+  copy actions only. A file outside the project has no relative path to copy
+  and reports that fact.
   The OS default application is no longer what this click does. HTTP(S)
   URLs stay text links. Plain clicks follow the Link open destination setting,
   and right-clicking a URL exposes the same external, work-panel, and copy
@@ -4183,7 +4262,9 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 1. **Model selection** — chat models are selected in the Composer. Its first
    menu has persistent search over a text-only source rail (Recent, then each
    provider) and the chosen source's models. A single marker slides between
-   rail items, and the pane slides in from the direction of the move. With a
+   rail items, and the pane slides in from the direction of the move. A gear at
+   the trailing edge of the search header ("Manage models") closes the menu
+   and opens the Models settings destination. With a
    single source the rail is hidden and all models show directly.
    New chats inherit the last actually used available model. Only accepted
    message submission updates that preference; selection and reasoning changes
@@ -4652,7 +4733,10 @@ instructions, memory and OAuth dialogs retain their existing bounded layouts.
 
 Local Review defaults to Last round (the latest modified user round). Its
 scope dropdown also offers History, which reveals a separate user-round selector row,
-independent of the chat's loaded message window. Rounds without changes do not
+independent of the chat's loaded message window. Transcript summary focus requests
+carry their originating session; switching back to another conversation cannot
+replay that request there or empty its file list beneath a populated history option.
+Rounds without changes do not
 replace Latest. Main and delegated Write/Edit evidence share a file list; actual
 execution roots distinguish identically named files. The file header opens all
 of that file's recorded operations in order, without claiming a net diff.
@@ -4725,3 +4809,23 @@ introducing nested vertical scrolling. Unsupported
 historical context has an explicit explanation and retains recorded evidence.
 Remote Review retains its existing presentation. Chat inline review rows retain
 their default layout and hash-guarded rollback; no Git or model behavior changes.
+
+### Issue #2162 correction
+
+Closing the connected Browser tab clears its connection. Subsequent session-only tools use that session's selected replacement page. Explicit closed targets fail; navigation never revives an invisible old tab. Verify close/reopen/snapshot/fill/click/navigate and final closure with `browser-background-session.test.mjs` and `BROWSER_CLOSE_CONNECTION_ONLY=1 node scripts/e2e-browser-background.mjs`.
+
+### Issue #2164 correction
+
+While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+### Fork activation selection ownership (#2086)
+
+Activating a completed session fork clears the previous selectingSessionId together with its visible pane switch. A superseded fork only lists its durable child and does not clear a newer pending selection. This prevents stale switching UI from hiding the activated branch.
+
+### File Manager mutation validation (#2184)
+
+The bundled File Manager validates each create/rename name before filesystem writes. Valid names return canonical entry metadata after create, rename or move. Empty names, dot segments, separators, control characters, Windows-reserved names and trailing dots fail with INVALID_NAME. Existing destinations fail with EXISTS; containment and protected-path gates remain enforced.
+
+### Native Pi file references (#1853)
+
+User-initiated file reads, directory listings, reference resolution and file search use the native session's sidecar-projected project path. Native identities never query Desktop session storage or fall back to the selected workspace. Missing/replaced sources fail closed. Existing local file containment and explicit external-file rules still apply; this grants no model tools or attachments. Native sessions have no Desktop scratch directory.

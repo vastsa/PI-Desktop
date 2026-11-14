@@ -40,9 +40,16 @@ import {
 } from "./TranscriptMenu";
 import { getExtraMessageAttachments } from "./extra-attachments";
 
-function SkillInvocationText({ message }: { message: UiMessage }) {
+/**
+ * The typed form of a Skill or `@agent` invocation (ADR 0346): each validated
+ * mention is a chip, and the text around it stays text.
+ */
+function MentionInvocationText({ message }: { message: UiMessage }) {
   const command = message.command ?? "";
-  const mentions = message.skillMentions ?? [];
+  const mentions = [
+    ...(message.skillMentions ?? []).map((mention) => ({ ...mention, sigil: "/", title: mention.id, agent: false })),
+    ...(message.agentMentions ?? []).map((mention) => ({ ...mention, sigil: "@", title: `@${mention.name}`, agent: true })),
+  ].sort((a, b) => a.start - b.start);
   const parts: ReactNode[] = [];
   let cursor = 0;
   for (const mention of mentions) {
@@ -51,7 +58,7 @@ function SkillInvocationText({ message }: { message: UiMessage }) {
       !Number.isInteger(mention.end) ||
       mention.start < cursor ||
       mention.end > command.length ||
-      !command.slice(mention.start, mention.end).startsWith("/")
+      !command.slice(mention.start, mention.end).startsWith(mention.sigil)
     ) {
       return <LinkifiedText text={command} attachments={message.attachments} />;
     }
@@ -59,7 +66,12 @@ function SkillInvocationText({ message }: { message: UiMessage }) {
       parts.push(<LinkifiedText key={`text-${cursor}`} text={command.slice(cursor, mention.start)} attachments={message.attachments} />);
     }
     parts.push(
-      <code key={`skill-${mention.start}`} className="chat-command-chip" title={mention.id}>
+      <code
+        key={`mention-${mention.start}`}
+        className="chat-command-chip"
+        title={mention.title}
+        {...(mention.agent ? { "data-agent-mention": "" } : {})}
+      >
         {command.slice(mention.start, mention.end)}
       </code>,
     );
@@ -328,8 +340,8 @@ export const MessageRow = memo(function MessageRow({
                   <div className="message-user-text selectable">
                     {editableUserMessage && message.command ? (
                       <>
-                        {message.skillMentions?.length ? (
-                          <SkillInvocationText message={message} />
+                        {message.skillMentions?.length || message.agentMentions?.length ? (
+                          <MentionInvocationText message={message} />
                         ) : (
                           // Templates retain the existing whole-invocation chip.
                           <code

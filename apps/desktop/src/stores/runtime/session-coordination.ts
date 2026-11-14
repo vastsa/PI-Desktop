@@ -196,6 +196,7 @@ export function createSessionCoordination({
         ...shared,
         ...retainSessionPane(current, summary.id, messages),
         activeSessionId: summary.id,
+        selectingSessionId: undefined,
         messages,
         page: "chat" as const,
         isRunning: false,

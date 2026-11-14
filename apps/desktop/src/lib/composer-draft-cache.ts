@@ -21,10 +21,12 @@ type CachedComposerDraft = ComposerDraftSnapshot & {
 export const HOME_DRAFT_KEY = "__home__";
 
 export type ComposerDraftFileInput = {
+  size?: number;
+  localReference?: string;
   sessionId?: string;
   path: string;
   name: string;
-  kind?: "image" | "file" | "session" | "directory";
+  kind?: "image" | "file" | "session" | "directory" | "agent";
   mimeType?: string;
   token?: string;
   plugin?: ComposerPluginPart;
@@ -32,6 +34,8 @@ export type ComposerDraftFileInput = {
 
 /** The draft-snapshot form of a live reference: its fields without session or id. */
 export function draftFileReference({
+  size,
+  localReference,
   path,
   name,
   kind,
@@ -40,6 +44,8 @@ export function draftFileReference({
   plugin,
 }: ComposerDraftFileInput): ComposerDraftFileReference {
   return {
+    ...(size !== undefined ? { size } : {}),
+    ...(localReference ? { localReference } : {}),
     path,
     name,
     kind,
@@ -72,6 +78,8 @@ export function sameDraftFileReference(
     a.name === b.name &&
     a.kind === b.kind &&
     a.mimeType === b.mimeType &&
+    a.size === b.size &&
+    a.localReference === b.localReference &&
     a.token === b.token &&
     samePluginPart(a.plugin, b.plugin)
   );

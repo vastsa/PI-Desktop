@@ -81,6 +81,7 @@ Examples:
 - `pi-desktop/session/getScratchPath`
 - `pi-desktop/session/openScratchPath`
 - `pi-desktop/session/collaboration`
+- `pi-desktop/session/usageCost`
 
 ## 3.1 Logical project groups
 
@@ -228,7 +229,9 @@ For a vision-capable model, images within the 10 MB per-image bound become
 transient pi-ai image blocks. Restored history also has a 30 MB aggregate raw
 image-byte budget: the sidecar considers persisted attachments newest-first and
 preserves every eligible image when the total fits. If the budget is exceeded,
-older images use the existing safe `@path` fallback. Unknown/custom models
+older images use the existing safe `@path` fallback. An image rejected for a
+longest edge above 8000 px does not consume that budget, so an older image
+that still fits stays inlined. Unknown/custom models
 without an explicit image override, non-vision models, oversized images, and
 unavailable refs also use the safe fallback. Main uses streamed hashing and file
 copying for oversized images. The durable user message stores `content` plus
@@ -283,6 +286,11 @@ The internal `agent.steeringContext` and `agent.steer` methods use only an
 existing runtime. They do not run launch configuration, `runtimeFor`, or
 `session.beginTurn`. Steering cannot change the active model, permission mode,
 workspace, or approved execution. Slash text is literal input on this channel.
+
+After accepted steering, status activity may be `waiting-tool-stop` while the
+current turn waits for a tool to settle. Local foreground shell and read calls
+receive cancellation; the activity does not assert that a process has exited.
+Remote or uncertain external operations retain their settlement fence.
 
 Accepted input is echoed as ordinary user message events with the current
 `turnId`, main-prepared attachment refs, and `UiMessage.steering: true`. This
@@ -990,6 +998,7 @@ type UiMessage = {
  sessionMessage?: SessionMessageOrigin;
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
+ responseModelId?: string; // concrete served model when it differs from modelId
  responseDurationMs?: number; // elapsed assistant response duration for throughput
  providerWaitMs?: number; // request start to first model response event
  modelStreamDurationMs?: number; // streamed thinking and answer duration
@@ -1070,6 +1079,27 @@ window system menu does not open. Non-Windows hosts treat the method as a
 no-op. `responseDurationMs` and `responseOutputTokens` are optional transcript
   metadata persisted in message metadata, so protocol v11 and storage schema v16
 remain unchanged.
+
+`responseModelId` is the same kind of optional message metadata. Agent Runtime
+sets it from the provider-reported response model (Pi `responseModel`) only when
+that model differs from the requested `modelId` and is not a dated snapshot of
+it; the value is trimmed, bounded to 200 characters, and rejected when it holds
+control characters. The transcript model chip shows it and names the requested
+model in its label. `MessageUsage.costStatus` is `reported` when the provider
+returned the billed total (Pi `usage.cost.totalFromProvider`), `estimated` when
+the total comes from catalog rates, and `unknown` without a usable price; a
+rollup is `reported` only when every part is.
+
+`pi-desktop/session/usageCost({ sessionId }) -> SessionUsageCost` is a
+read-only rollup of every turn the session ever ran, served by Host
+`session.usageCost`. The renderer holds only a window of the transcript, so the
+session total is never summed from loaded messages. Each physical request in a
+turn ledger is counted once and grouped by its `providerId`; turns of every
+status count, because aborted and failed requests were still billed.
+`ProviderUsageCost.total` sums only priced requests, `reportedRequests` counts
+those the provider billed, and `unpricedRequests` counts requests without a
+usable price, including legacy token-only turns grouped without a
+`providerId`. Imported `native-pi:` sessions return an empty rollup.
 
 The Settings font picker (ADR 0083) reads installed system font families
 through one Electron-only allowlisted channel:
@@ -1991,7 +2021,11 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   `fs/open`, the image reader) already accept it, so such a path completes
   instead of reporting a restriction. A shorthand never completes from that
   wider store; it still searches the session's own one. A reference that matches
-  nothing returns `match: null`. An exact absolute path outside every allowed
+  nothing returns `match: null`. A Windows drive path rooted the POSIX way
+  (`/c:/dir/file.md`, the shape a Markdown link copies from a POSIX example)
+  is read as `C:\dir\file.md` before matching, so that spelling reaches the
+  file its drive names instead of reporting a miss; a POSIX host keeps
+  `/c:/...`, which is a real path there. An exact absolute path outside every allowed
   root never tries a same-name file inside a root; it is answered by the
   `fs/read` external-file rule instead (ADR 0339): an existing regular file
   that passes it returns `root: "external"` with `matchedBy: "exact-absolute"`
@@ -2318,19 +2352,38 @@ renderer receives the token but never receives the selected absolute paths.
 ### composer/importFiles
 
 ```ts
-composer/importFiles({ sessionId, token }) -> {
+composer/importFiles({ sessionId, token, reference?: boolean }) -> {
   files: ComposerPastedFile[];
 }
 ```
 
 Electron main consumes the sender-bound picker token, resolves each recorded
 path through `realpath`, requires an existing regular file, applies the same
-20-file / 64 MiB per file / 128 MiB total limits as clipboard transfer, and
+20-file / 64 MiB per file / 128 MiB total limits as clipboard byte transfer, and
 copies the bytes into `<data_dir>/scratch/<sessionId>/pasted/` under a
 UUID-backed sanitized name. The token is deleted before import starts, so it
 cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
+
+For native clipboard files, `reference: true` consumes the same one-shot token
+but registers metadata instead of copying bytes. Main requires a local project,
+stores a durable UUID selection record, and returns the canonical original path,
+name, MIME, exact byte size and additive `localReference` id. Only the main window
+may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
+both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
+apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
+`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+
+Drafts, queue entries and message attachments retain `localReference` and `size`.
+On dispatch, main matches the id/path to the selection record and current local
+project, rejects missing files or canonical-target changes, and refreshes size.
+The Agent receives path and byte size as reference context. No referenced file
+or image contents are read, hashed, snapshotted or uploaded by dispatch; normal
+tool access policy governs subsequent reads, including outside-project approval.
+Input history can restore the live reference into another session in the same
+project. Original contents can change and the reference can become unavailable.
+See [the decision record](../../adr/composer-local-file-references.md).
 
 ### composer/pasteFiles
 
@@ -2348,6 +2401,7 @@ type ComposerPasteFile = {
 };
 
 type ComposerPastedFile = {
+  localReference?: string; // main-owned metadata record for a live disk reference
   path: string;     // UUID-backed absolute storage path
   name: string;     // sanitized original leaf display name
   kind: "image" | "file";

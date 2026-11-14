@@ -1,24 +1,21 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import { stopSmoothScroll } from "../../../../lib/scroll-input";
 import { createTranscriptLatestNavigation } from "../../../../lib/transcript-latest-navigation";
 
-export function useTranscriptLatestNavigation({ scrollRef, visible, onPosition }: {
+export function useTranscriptLatestNavigation({ scrollRef, visible }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   visible: boolean;
-  onPosition: (top: number) => void;
 }) {
-  const position = useRef(onPosition);
-  position.current = onPosition;
   const [navigation] = useState(() => createTranscriptLatestNavigation({
     geometry: () => scrollRef.current ?? undefined,
-    move: top => {
+    move: (top, behavior) => scrollRef.current?.scrollTo({ top, behavior }),
+    onScrollEnd: listener => {
       const scroller = scrollRef.current;
-      if (!scroller) return;
-      scroller.scrollTo({ top, behavior: "instant" });
-      position.current(scroller.scrollTop);
+      const handle = (event: Event) => { if (event.target === scroller) listener(); };
+      scroller?.addEventListener("scrollend", handle);
+      return () => scroller?.removeEventListener("scrollend", handle);
     },
-    request: frame => requestAnimationFrame(frame),
-    cancel: frame => cancelAnimationFrame(frame),
-    now: () => performance.now(),
+    stop: () => stopSmoothScroll(scrollRef.current),
     reducedMotion: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   }));
   // The explicit latest intent survives an immediate pane hide or eviction.

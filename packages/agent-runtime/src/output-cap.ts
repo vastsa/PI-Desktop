@@ -37,6 +37,7 @@ import {
   hostedSearchReplayProjection,
   type HostedSearchReplayOptions,
 } from "@earendil-works/pi-ai/utils/hosted-search";
+import { truncateTextWithMarker } from "./agent-messages.js";
 
 /** Structural view of the request context; assignable from pi-ai's `Context`. */
 export type OutputCapContext = {
@@ -279,6 +280,70 @@ export function estimateOutputCapInputTokens(
   }
   // CJK chars are ~1 token each; the chars/4 baseline charged them 0.25.
   return baseline + Math.ceil(cjkChars * 0.75);
+}
+
+/**
+ * Largest character budget in `1..charCeiling` for which `textAt` stays within
+ * `tokenBudget` under {@link estimateOutputCapInputTokens}.
+ *
+ * `charCeiling` is the historical ASCII cap (token budget times the 3.5
+ * chars-per-token ratio). Latin text already estimates under that cap, so it
+ * is returned unchanged. CJK text estimates near one token per character, and
+ * the cap is walked down until the same estimator that gates the output
+ * ceiling fits. A budget too small to hold the truncation marker may still
+ * exceed it by that marker alone.
+ */
+export function charBudgetWithinOutputCap(
+  tokenBudget: number,
+  charCeiling: number,
+  textAt: (maxChars: number) => string,
+): number {
+  const budget = Math.max(
+    1,
+    Math.floor(Number.isFinite(tokenBudget) ? tokenBudget : 1),
+  );
+  const ceiling = Math.max(
+    1,
+    Math.floor(Number.isFinite(charCeiling) ? charCeiling : 1),
+  );
+  const tokensAt = (maxChars: number) =>
+    estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: textAt(maxChars) }],
+    });
+  if (tokensAt(ceiling) <= budget) return ceiling;
+
+  let low = 1;
+  let high = ceiling - 1;
+  let best = 1;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (tokensAt(mid) <= budget) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return best;
+}
+
+/**
+ * Cut `text` with `marker` so {@link estimateOutputCapInputTokens} fits
+ * `tokenBudget`. See {@link charBudgetWithinOutputCap} for why ASCII keeps
+ * the character ceiling.
+ */
+export function truncateTextWithinOutputCap(
+  text: string,
+  tokenBudget: number,
+  marker: string,
+  charCeiling: number,
+): string {
+  const maxChars = charBudgetWithinOutputCap(
+    tokenBudget,
+    charCeiling,
+    (chars) => truncateTextWithMarker(text, chars, marker),
+  );
+  return truncateTextWithMarker(text, maxChars, marker);
 }
 
 /**

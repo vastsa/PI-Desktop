@@ -6,3 +6,13 @@ resolver = "2"
 edition = "2021"
 license = "LGPL-3.0-or-later"
 version = "0.21.0"
+
+# Release builds ship inside the installer; nothing reads host-core's symbol
+# table at runtime (panic messages keep their file:line locations), so strip it.
+# Whole-program LTO with one codegen unit cuts the binary by about a third
+# (19.5 MB -> 12.8 MB on macOS arm64) at the cost of a slower release build;
+# dev and test profiles are unaffected.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

@@ -42,8 +42,44 @@ function dropLegacyFontFallbacks(): Plugin {
   };
 }
 
+// Main bundles both its own imports and the workspace agent packages. pnpm
+// gives `@earendil-works/pi-ai` a separate peer variant per importer (its
+// `openai` peer resolves a different optional `undici`), and the workspace
+// packages pin different `typebox` patches, so Rollup otherwise ships two
+// copies of pi-ai, openai and typebox (~2 MB of duplicate code). Resolve these
+// bare imports from the agent runtime package, the owner of the Pi kernel pin,
+// so every importer in Main shares one copy.
+const MAIN_SHARED_PACKAGES = ["@earendil-works/pi-ai", "typebox"];
+const AGENT_RUNTIME_ANCHOR = resolve(
+  __dirname,
+  "../../packages/agent-runtime/package.json",
+);
+
+function dedupeMainPackages(): Plugin {
+  const pattern = new RegExp(
+    `^(?:${MAIN_SHARED_PACKAGES.map((name) => name.replace(/[/.]/g, "\\$&")).join("|")})(?:/|$)`,
+  );
+  return {
+    name: "pi-dedupe-main-packages",
+    apply: "build",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (!pattern.test(source) || importer === AGENT_RUNTIME_ANCHOR) return null;
+      const resolved = await this.resolve(source, AGENT_RUNTIME_ANCHOR, {
+        ...options,
+        skipSelf: true,
+      });
+      if (!resolved) {
+        this.error(`pi-dedupe-main-packages: cannot resolve ${source} from the agent runtime`);
+      }
+      return resolved;
+    },
+  };
+}
+
 export default defineConfig({
   main: {
+    plugins: [dedupeMainPackages()],
     // `ws` loads its optional native accelerators (bufferutil, utf-8-validate)
     // inside `require` + try/catch and falls back to its own JavaScript
     // implementation when they are absent. A bundle cannot fail a require, and
@@ -57,7 +93,15 @@ export default defineConfig({
       // the CommonJS `__dirname` global used by Electron's relative asset paths.
       "__dirname": "import.meta.dirname",
     },
+    // Packaged builds ship no source maps, so keep identifiers intact for
+    // readable stack traces in logs and only strip whitespace and syntax.
+    esbuild: {
+      minifyIdentifiers: false,
+    },
     build: {
+      // electron-vite leaves Main unminified; whitespace/syntax minification
+      // shrinks the packaged Main bundle without renaming anything.
+      minify: "esbuild",
       rollupOptions: {
         // Bundle JS workspace packages into Main. Native voice modules must
         // resolve from packaged node_modules because their loaders locate

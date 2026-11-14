@@ -1571,6 +1571,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+.turn-usage-cost-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.turn-usage-cost-help {
+  margin: 4px 0 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .turn-usage-capsule,
   .turn-usage-popover {
@@ -2112,6 +2124,13 @@
 /* Live parent turns stay transparent like completed prose (D323). The
    `--ds-tile` card belongs only to `.tool-activity-group.has-subagents`
    (D319) and the nested `.subagent-run`. */
+
+.message-output-notice {
+  margin: 12px 0 0;
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
 
 .message-error {
   /* The message column owns the dynamic chat width; do not add a second cap. */

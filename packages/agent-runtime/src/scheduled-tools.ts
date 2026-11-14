@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 
 const schedule = Type.Object({
   hour: Type.Integer({ minimum: 0, maximum: 23 }),

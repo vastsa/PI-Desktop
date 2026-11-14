@@ -2,9 +2,9 @@ import { useSyncExternalStore } from "react";
 
 /**
  * A one-shot "show these recorded changes" request from the transcript's
- * per-turn change summary to the Review tab. Snapshot ids are unique per
- * change, so the request needs no session key: a Review tab that does not
- * hold the ids simply ignores it. Kept out of the app store because it is
+ * per-turn change summary to the Review tab. The originating session prevents
+ * a retained request from being replayed in another conversation after remount.
+ * Kept out of the app store because it is
  * transient UI intent, not session or panel state.
  */
 export type ReviewFocusRequest = {

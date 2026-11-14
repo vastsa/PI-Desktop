@@ -1,3 +1,5 @@
+import { appendLocalFileReferenceContext } from "@pi-desktop/shared";
+import { buildJobTools } from "./background-job-tools.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -5,6 +7,7 @@ import {
 } from "./mutation-recovery.js";
 import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 import { resolveMcpToolSelection } from "./mcp-tool-selection.js";
+import { concreteResponseModel } from "./response-model.js";
 import { BatchPlanner, withBatchTurn } from "./batch-planner.js";
 import { TOOL_EXECUTION_SPECS, resolveBatchExecutionMode, toolExecutionMode, withDynamicTaskExecutionMode } from "./tool-execution-policy.js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -17,6 +20,7 @@ import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery.js";
+import { textToolCallDiagnostic } from "./text-tool-call.js";
 import { computerUseDescription, computerUseParameters } from "./computer-use/tool.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
@@ -49,7 +53,6 @@ import {
   getCurrentTools,
   getToolStateChanges,
   toToolDeclaration,
-  Type,
   type Api,
   type AssistantMessage,
   type ImageContent,
@@ -60,6 +63,7 @@ import {
   type Usage,
   type UserMessage,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
   DEFAULT_COMMAND_TIMEOUT_MS,
   OAUTH_AUTH_KIND,
@@ -91,6 +95,8 @@ import type {
   ContextCompactionSettings,
   MessageUsage,
   Mode,
+  ModeDefinition,
+  ModeTurnContext,
   MessageAttachment,
   SessionMessageOrigin,
   PlanExecution,
@@ -161,6 +167,7 @@ import { withExplicitRequired } from "./tool-schema.js";
 import { buildSessionContext } from "./session-context.js";
 import {
   collectMessageFileOperations,
+  executedToolCallIdsInEntries,
   prepareCompaction,
 } from "./pi-runtime-compaction-plan.js";
 import { compact } from "./pi-runtime-compaction-summary.js";
@@ -227,6 +234,7 @@ import {
   effectiveModelContextWindow,
   estimateOutputCapInputTokens,
   requestTranscript,
+  truncateTextWithinOutputCap,
 } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
@@ -243,6 +251,15 @@ import {
   composeModeSystemPrompt,
   DEFAULT_RUNTIME_SYSTEM_PROMPT,
 } from "./mode-prompts.js";
+import { RuntimeModeState, type ModeTurnNoticeParams } from "./modes/mode-state.js";
+import {
+  COMPLETE_STAGE_TOOL_NAME,
+  createCompleteStageTool,
+  type ModeGateCommand,
+  type ModeGateRunResult,
+} from "./modes/complete-stage-tool.js";
+import { createHostModeArtifactReader } from "./modes/mode-artifact-reader.js";
+import type { ModeArtifactReader } from "./modes/stage-brief.js";
 import { agentThinkingLevel, clampThinkingLevel, omitThinkingModel } from "./thinking-level.js";
 import {
   alignRetainedReasoningIdentity,
@@ -340,6 +357,11 @@ export type RuntimePrompt = {
   mcpToolNames?: string[];
   sessionMessage?: SessionMessageOrigin;
   attachments?: RuntimePromptAttachment[];
+  /**
+   * Trusted run context of a staged mode turn, validated by the sidecar
+   * against the session's mode definition (ADR mode-definitions).
+   */
+  modeTurn?: ModeTurnContext;
 };
 
 /**
@@ -352,9 +374,10 @@ function promptText(input: RuntimePrompt): string {
   const references = (input.attachments ?? [])
     .map((attachment) => sessionReferenceBlock(attachment))
     .filter((block): block is string => block !== null);
-  return references.length
+  const text = references.length
     ? `${input.text}\n\n${references.join("\n\n")}`.trim()
     : input.text;
+  return appendLocalFileReferenceContext(text, input.attachments ?? []);
 }
 
 /** One provider image block for an attachment whose bytes crossed this turn. */
@@ -410,6 +433,7 @@ function runtimeAttachmentFromMessage(
     kind: attachment.kind,
     ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
     ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+    ...(attachment.localReference ? { localReference: attachment.localReference } : {}),
     ...(attachment.text ? { text: attachment.text } : {}),
     // Recorded placement: the message content names this image at that spot, so
     // the restored prompt keeps the block there too.
@@ -767,7 +791,8 @@ const PATH_SCOPED_INSTRUCTION_TOOLS = new Set([
 /** Tools whose `path` argument is rewritten, and which therefore must not run
  * concurrently against the same file (see `PathMutex`). */
 const PATH_MUTATING_TOOLS = new Set(["Write", "Edit"]);
-const CHAT_CORE_TOOL_NAMES = new Set(["Read", "Glob", "Grep", ASK_TOOL_NAME]);
+/** Declared up front at the contract level (Plan and read-only modes). */
+const CONTRACT_CORE_TOOL_NAMES = new Set(["Read", "Glob", "Grep", "Bash", "BrowserPreview", ASK_TOOL_NAME]);
 const AGENT_CORE_TOOL_NAMES = new Set([
   "Read",
   "Glob",
@@ -939,6 +964,8 @@ function turnAbortedError(message: string): Error {
 }
 
 const CONTEXT_COMPACTION_TOOL_NAME = "new_context";
+/** Tools the read-only contract level may execute, besides plan-safe plugins. */
+const CONTRACT_ALLOWED_TOOL_NAMES = new Set([...CONTRACT_CORE_TOOL_NAMES, CONTEXT_COMPACTION_TOOL_NAME]);
 const CONTEXT_COMPACTION_TOOL_DESCRIPTION =
   "Start a new context window. Does not clear, reset, or otherwise affect environment state.";
 /** Codex's `NEW_CONTEXT_WINDOW_MESSAGE`, one per family. */
@@ -1003,6 +1030,11 @@ export type AgentRuntimeOptions = {
   host: RuntimeHost;
   sessionId: string;
   mode: Mode;
+  /**
+   * Definition of `mode` resolved by Electron main (ADR mode-definitions).
+   * Without one, the builtin mapping decides the tool policy.
+   */
+  modeDefinition?: ModeDefinition;
   /** Durable host turn ID for the current prompt, used by plan identity. */
   turnId?: string;
   provider: RuntimeProviderConfig;
@@ -1382,7 +1414,7 @@ function commandShellToolDescription(
     shellSyntaxGuidance(shell),
     `The session scratch directory variable is ${shellScratchVariable(shell)}.`,
     `An optional timeout from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS} seconds may be supplied; without it, the command defaults to a 60-second timeout.`,
-    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar; do not set it for commands whose output the current turn depends on.`,
+    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar. In Agent mode on supported local Hosts, use TaskList to find it, TaskWait with its job reference to read results, and TaskStop with that reference to stop it. Background completion does not automatically resume the model.`,
     ...(formattedScratch ? [`The session scratch directory is ${formattedScratch}.`] : []),
   ].join(" ");
 }
@@ -1553,11 +1585,6 @@ function appendToolProgress(current: string, chunk: string): string {
   return `${head}${TOOL_PROGRESS_TRUNCATION_MARKER}${tail}`;
 }
 
-/** Bound a checkpoint message's text, naming the cut the way pi's tail does. */
-function truncateTextForCheckpoint(text: string, maxChars: number): string {
-  return truncateTextWithMarker(text, maxChars, CHECKPOINT_TRUNCATION_MARKER);
-}
-
 /**
  * Flatten a user message to plain text so it can be truncated at a token
  * budget. Images and other non-text blocks are named rather than kept: a
@@ -1578,11 +1605,20 @@ function truncateUserMessageForCheckpoint(
   message: UserMessage,
   tokenBudget: number,
 ): UserMessage {
+  const text = userMessageTextForCheckpoint(message);
+  // Same ASCII ceiling as before (budget * 3.5). CJK is then shrunk to the
+  // output-cap estimate, which charges about one token per character.
+  const ceiling = Math.max(
+    1,
+    Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+  );
   return {
     ...message,
-    content: truncateTextForCheckpoint(
-      userMessageTextForCheckpoint(message),
-      Math.max(1, Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN)),
+    content: truncateTextWithinOutputCap(
+      text,
+      tokenBudget,
+      CHECKPOINT_TRUNCATION_MARKER,
+      ceiling,
     ),
   };
 }
@@ -1601,7 +1637,15 @@ function selectRetainedUserMessages(
   let remaining = Math.max(0, maxTokens);
   for (let index = candidates.length - 1; index >= 0 && remaining > 0; index -= 1) {
     const message = candidates[index];
-    const tokens = estimateTokens(message);
+    // pi-ai's chars/3.5 estimate under-counts Han, kana, and Hangul, so a long
+    // CJK message looks like it fits and is kept whole. The output-cap
+    // estimate is the one the next request is gated on.
+    const tokens = Math.max(
+      estimateTokens(message),
+      estimateOutputCapInputTokens({
+        messages: [{ role: "user", content: message.content }],
+      }),
+    );
     if (tokens <= remaining) {
       selected.push(message);
       remaining -= tokens;
@@ -1797,7 +1841,13 @@ export class DesktopAgentRuntime {
   private disposed = false;
   private aborting?: Promise<void>;
   readonly sessionId: string;
-  private mode: Mode;
+  /** Session mode, its definition and the claimed run turn (ADR mode-definitions). */
+  private readonly modeState: RuntimeModeState;
+  /** Gate commands CompleteStage runs through the Host Bash path, by tool-call id. */
+  private readonly modeGateCalls = new Map<string, ModeGateCommand["modeGate"]>();
+  private get mode(): Mode {
+    return this.modeState.modeId;
+  }
   private provider: RuntimeProviderConfig;
   private thinkingLevel: SessionThinkingLevel;
   private host: RuntimeHost;
@@ -2030,6 +2080,7 @@ export class DesktopAgentRuntime {
    * signal it was handed never fires, or the stop RPC stays pending forever.
    */
   private activeToolAborts = new Set<() => void>();
+  private readonly steeringToolAborts = new Map<string, () => void>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
   private compactionRequestShape?: CompactionRequestShape;
@@ -2043,7 +2094,9 @@ export class DesktopAgentRuntime {
   constructor(opts: AgentRuntimeOptions) {
     this.sessionId = opts.sessionId;
     this.turnId = opts.turnId;
-    this.mode = opts.mode;
+    // A restored checkpoint already compacted the window: stage
+    // `on.compaction` injects apply from the first run turn.
+    this.modeState = new RuntimeModeState(opts.mode, opts.modeDefinition, { compacted: Boolean(opts.compaction) });
     this.planningState = proposalKindForMode(this.mode) ? "planning" : "inactive";
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
@@ -2093,7 +2146,7 @@ export class DesktopAgentRuntime {
     const runtimeApiKey = providerRequestKey(this.provider);
 
     this.transcriptHistory = [...(opts.history ?? [])];
-    this.fullEntries = this.historyToEntries(this.transcriptHistory);
+    this.fullEntries = this.historyToEntries(this.transcriptHistory, opts.compaction?.throughMessageId);
     this.uniqueToolCalls = createToolCallIdentity(this.fullEntries.map((entry) => entry.message));
     this.activeCompaction = opts.compaction;
     this.delegationChains.hydrate(
@@ -2125,11 +2178,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Editing workflow.
       `Editing workflow: inside the advertised workspace, use Edit for small, uniquely anchored changes and Write for new files or intentional whole-file rewrites. Never modify the same path concurrently. Do not use shell apply_patch, git apply, patch, or hand-edited unified-diff files. On failure, diagnose the cause, refresh content or anchors with Read or a complete tool-provided reveal when needed, and correct the payload before retrying. After three failed edit attempts on the same path in one user turn, stop editing that path, report the exact error, and continue unblocked work. For an authorized worktree outside the advertised workspace, use a guarded, deterministic Bash edit that aborts on unexpected content, then verify the diff.`,
       // Shell dialect and scratch variable are selected by host-core.
-      commandShellGuidance(this.commandShell, this.scratchDir),
+      commandShellGuidance(this.commandShell),
       // Session scratch directory (D114).
       ...(this.scratchDir
         ? [
-            `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
+            `Store ad-hoc temporary and intermediate files in the session scratch directory using ${shellScratchVariable(this.commandShell)}. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
           ]
         : []),
       // Inline visualizations (ADR gen-ui-inline-visualization).
@@ -2335,8 +2388,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // queued renderer prompt ends a completed turn at the next boundary,
       // without treating an error or abort as a graceful stop.
       finishTurn: async ({ message }) => {
-        if (!this.gracefulStopRequested) return;
         if (message.stopReason === "error" || message.stopReason === "aborted") return;
+        // A paused run's turn has used its wrap-up requests (ADR mode-definitions).
+        if (this.modeState.closeoutExhausted()) return { action: "end" };
+        if (!this.gracefulStopRequested) return;
         this.gracefulStopRequested = false;
         return { action: "end" };
       },
@@ -2390,19 +2445,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.setAgentSystemPrompt(this.composeSystemPrompt());
   }
 
-  /** Switch the planning state on this Agent without creating another Agent. */
-  setMode(mode: Mode): void {
+  /**
+   * Switch the mode (or its definition) on this Agent without creating
+   * another Agent. Only the builtin Plan negotiates a proposal (D198); every
+   * other mode's capabilities follow its tool policy level.
+   */
+  setMode(mode: Mode, definition?: ModeDefinition): void {
     if (this.disposed) throw new Error("runtime disposed");
-    // Plan and Goal are both contract-negotiating states (D198); only Agent
-    // executes freely.
     const kind = proposalKindForMode(mode);
     const planningState: PlanningState = kind ? "planning" : "inactive";
     const details = kind ? { kind } : {};
-    if (this.mode === mode) {
+    if (!this.modeState.setMode(mode, definition)) {
       this.setPlanningState(planningState, details);
       return;
     }
-    this.mode = mode;
     this.activeDeferredToolNames.clear();
     this.rebuildToolCatalog();
     this.restoreDeferredToolsFromContext();
@@ -2447,6 +2503,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   /** Steering is consumed after next-turn preparation; sync before dispatch. */
   private prepareToolDeclarations(context: AgentContext): AgentLoopTurnUpdate {
+    this.modeState.noteModelRequest();
     const tools = this.declaredTools();
     let messages = context.messages;
     const changes = getToolStateChanges(getCurrentTools(messages), tools.map(toToolDeclaration));
@@ -2501,7 +2558,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
-      ].join("\n\n")),
+        ...(this.scratchDir ? [
+          `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}).`,
+        ] : []),
+      ].join("\n\n"), this.modeState.instructions()),
     };
     const composed = Object.values(this.composedSections).filter(Boolean).join("\n\n");
     this.composedSystemPrompt = composed;
@@ -2631,6 +2691,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private async beforeToolCall(
     context: BeforeToolCallContext,
   ): Promise<BeforeToolCallResult | undefined> {
+    if (this.pendingSteering.size && context.toolCall.name !== SUBAGENT_WAIT_TOOL_NAME) {
+      return { block: true, reason: "Skipped because new user input is waiting." };
+    }
     if (this.deferredToolNames.has(context.toolCall.name) && !this.activeDeferredToolNames.has(context.toolCall.name)) {
       return { block: true, reason: `Call ${TOOL_SEARCH_NAME} to activate ${context.toolCall.name} before using it. A tool declaration does not grant execution permission.` };
     }
@@ -2658,13 +2721,21 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
+    const submitKind = submitToolKind(context.toolCall.name);
+    // Goal is a staged mode the user selects (ADR mode-definitions); its
+    // legacy negotiation tools only survive in older transcripts.
+    if (enterKind === "goal" || submitKind === "goal") {
+      return {
+        block: true,
+        reason: `${context.toolCall.name} is no longer available. Goal mode is selected by the user and runs as a staged mode; continue in the current mode.`,
+      };
+    }
     if (enterKind && this.mode !== "agent") {
       return {
         block: true,
         reason: `${context.toolCall.name} is available only in Agent mode.`,
       };
     }
-    const submitKind = submitToolKind(context.toolCall.name);
     if (submitKind && this.mode !== submitKind) {
       return {
         block: true,
@@ -2947,6 +3018,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       getThinkingLevel: () => agentThinkingLevel(runtime.thinkingLevel),
       setThinkingLevel: (level) => {
         runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
+        runtime.agent.state.thinkingLevel = agentThinkingLevel(runtime.thinkingLevel);
       },
       isIdle: () => !runtime.agent.state.isStreaming,
       abort: () => {
@@ -3067,7 +3139,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * turns after a restart. Losing either (the pre-D120 tool behavior)
    * collapsed a reseeded session to bare chat text. Failed assistant turns
    * stay transcript-only. */
-  private historyToEntries(history: UiMessage[]): MessageEntry[] {
+  private historyToEntries(history: UiMessage[], compactionThroughMessageId?: string): MessageEntry[] {
     const api = apiBindingForProviderModel(this.provider).api;
     const deepSeekCompletionsReplay =
       api === "openai-completions" &&
@@ -3095,7 +3167,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     let toolCarrier: AssistantMessage | undefined;
     // Function-call signatures of the carrier's row, restored by call id.
     let carrierToolSignatures = new Map<string, string>();
+    let compactedCarrier: AssistantMessage | undefined;
+    let previousRowId: string | undefined;
     for (const m of orderSystemRows(history)) {
+      // A carrier before this boundary is removed by context compaction. Tool
+      // rows after it must reconstruct their calls on a surviving carrier.
+      if (compactionThroughMessageId && previousRowId === compactionThroughMessageId) {
+        compactedCarrier = toolCarrier;
+        toolCarrier = undefined;
+      }
+      previousRowId = m.id;
       // Subagent rows belong to the transcript and to review, never to the
       // parent's model context (ADR 0062): the parent only ever saw the `Task`
       // report, and replaying a delegate's messages would both contradict that
@@ -3109,6 +3190,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         append(m.id, this.systemJournal.restore(m));
       } else if (m.role === "user") {
         toolCarrier = undefined;
+        compactedCarrier = undefined;
         const attachments = (m.attachments ?? []).map((attachment) =>
           runtimeAttachmentFromMessage(
             attachment,
@@ -3128,6 +3210,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         append(m.id, { role: "user", content, timestamp });
       } else if (m.role === "assistant") {
         toolCarrier = undefined;
+        compactedCarrier = undefined;
         // Failed provider responses belong in the transcript for diagnosis,
         // but must never become model context on the next turn.
         if (m.status === "error" || m.isError || m.error) continue;
@@ -3193,15 +3276,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           toolCarrier = {
             role: "assistant",
             content: [],
-            api,
-            provider: this.model.provider,
-            model: this.model.id,
+            api: compactedCarrier?.api ?? api,
+            provider: compactedCarrier?.provider ?? this.model.provider,
+            model: compactedCarrier?.model ?? this.model.id,
             usage: usageToPi(undefined),
             stopReason: "toolUse",
             timestamp,
           };
           append(`${m.id}:carrier`, toolCarrier);
-          carrierToolSignatures = new Map();
+          if (!compactedCarrier) carrierToolSignatures = new Map();
+          compactedCarrier = undefined;
         }
         const thoughtSignature = carrierToolSignatures.get(m.toolCallId);
         toolCarrier.content.push({
@@ -3217,6 +3301,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     return entries.filter(
       (entry) =>
+        // An empty call-only boundary still anchors the persisted checkpoint.
+        entry.id === compactionThroughMessageId ||
         entry.message.role !== "assistant" || entry.message.content.length > 0,
     );
   }
@@ -3554,6 +3640,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         });
         let abortGraceTimer: ReturnType<typeof setTimeout> | undefined;
         let stopped = false;
+        let steeringAbortRequested = false;
+        const steeringAbort = () => {
+          if (steeringAbortRequested || settled) return;
+          steeringAbortRequested = true;
+          void this.host.call("tools.abort", {
+            sessionId: this.sessionId, toolCallId, toolName,
+          }).catch(() => undefined);
+        };
         const abort = () => {
           if (abortRequested || settled) return;
           abortRequested = true;
@@ -3596,6 +3690,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           signal?.removeEventListener("abort", abort);
           this.activeToolProgressCleanups.delete(cleanup);
           this.activeToolAborts.delete(abort);
+          this.steeringToolAborts.delete(toolCallId);
         };
         this.activeToolProgressCleanups.add(cleanup);
         if (signal?.aborted) {
@@ -3608,6 +3703,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           signal.addEventListener("abort", abort, { once: true });
         }
         this.activeToolAborts.add(abort);
+        // Remote cancellation only acknowledges the request, not the remote
+        // operation's settlement. Keep waiting for those calls instead.
+        if (!this.remoteWorkspace && (isBash || canAbandonWait) &&
+            this.activeToolCalls.has(toolCallId) && !this.delegateToolCalls.has(toolCallId) &&
+            !(isBash && isRecord(params) && params.runInBackground === true)) {
+          this.steeringToolAborts.set(toolCallId, steeringAbort);
+          if (this.pendingSteering.size) steeringAbort();
+        }
 
         let result: {
           ok: boolean;
@@ -3633,6 +3736,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               args: params,
               ...(this.batchPlanner.ticket(toolCallId) ? { fileBatchTicket: this.batchPlanner.ticket(toolCallId) } : {}),
               mode: this.mode,
+              // A staged mode's `run` exit gate (ADR mode-definitions): the
+              // Host checks the command against the snapshot and records the
+              // exit code under this call id for `modes.gateResult`.
+              ...(isBash && this.modeGateCalls.has(toolCallId)
+                ? { modeGate: this.modeGateCalls.get(toolCallId) }
+                : {}),
               ...(isBash
                 ? {
                     expectedCommandShellId: this.commandShell.id,
@@ -3690,6 +3799,21 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // cleanup is a no-op once the abort path has run, so the grace timer
           // it armed is released here instead.
           if (abortGraceTimer) clearTimeout(abortGraceTimer);
+        }
+        // A failed transport or process-lifecycle result does not prove that
+        // the interrupted shell and its descendants have stopped. Only an
+        // explicit whole-turn Stop may release this uncertain operation.
+        const uncertainShell = steeringAbortRequested && isBash &&
+          (executionFailed || (result?.ok === false && result.errorCode === "TOOL_FAILED"));
+        const uncertainRemote = this.pendingSteering.size > 0 && Boolean(this.remoteWorkspace) &&
+          (executionFailed || result?.ok === false);
+        const uncertainExternal = this.pendingSteering.size > 0 && !canAbandonWait && !isBash &&
+          (executionFailed || result?.errorCode === "TOOL_TIMEOUT");
+        if (!signal?.aborted && (uncertainShell || uncertainRemote || uncertainExternal)) {
+          await new Promise<void>((resolve) => {
+            if (!signal || signal.aborted) return resolve();
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
         }
         // A local read-only stop cannot depend on the same Host answering a
         // second RPC. Its abort request already observes late rejections.
@@ -4007,8 +4131,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // the work panel browser), so it ships in every mode. PluginCheck only
     // reads a directory; PluginScaffold and PluginPack write and remain
     // Agent-only. Write/Edit keep guarded declarations in contract modes.
+    // The tool policy level, not the mode name, decides the set (ADR
+    // mode-definitions): an agent-level custom mode or stage gets the Agent
+    // tools, a contract-level one the Plan tools.
+    const agentLevel = this.modeState.isAgentLevel();
     const tools =
-      this.mode === "agent"
+      agentLevel
         ? [
             "Read",
             "Bash",
@@ -4021,14 +4149,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             "TodoWrite",
           ]
         : ["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Write", "Edit"];
-    if (this.mode === "agent") {
-      tools.push("PluginScaffold", "PluginPack", "GenerateImages", ...Object.keys(scheduledToolParameters));
+    if (agentLevel) tools.push("PluginScaffold", "PluginPack", "GenerateImages");
+    // Scheduled tasks and computer use belong to the builtin Agent mode
+    // itself; the Host refuses them in every other mode.
+    if (agentLevel && this.modeState.offersAgentModeOnlyTools()) {
+      tools.push(...Object.keys(scheduledToolParameters));
       if (this.computerUseEnabled) tools.push("Computer");
     }
     const builtins = tools.map(exec);
     for (const tool of builtins) this.builtinTools.add(tool);
     const jevTools: AgentTool[] =
-      this.mode === "agent" && this.jevApiKey
+      agentLevel && this.jevApiKey
         ? [createJevClassifierTool(this.jevApiKey)]
         : [];
 
@@ -4036,7 +4167,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // expose plugins that declare plan-safe actions (ADR 0211); the
     // host still enforces the per-action restriction at execute time.
     const visiblePluginTools =
-      this.mode === "agent"
+      agentLevel
         ? this.pluginTools
         : this.pluginTools.filter(
             (def) =>
@@ -4049,7 +4180,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const baseDescription =
         def.description || `${def.name} plugin tool`;
       const description =
-        this.mode !== "agent" &&
+        !agentLevel &&
         Array.isArray(def.planSafeActions) &&
         def.planSafeActions.length > 0
           ? `${baseDescription} (${this.mode} mode: only ${def.planSafeActions.join(", ")} actions)`
@@ -4067,7 +4198,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // Only offered when a plugin actually taught a skill; Electron main serves
     // it locally (host-core never sees the skill documents).
     const skillTools: AgentTool[] =
-      this.mode === "agent" && this.pluginSkills.length
+      agentLevel && this.pluginSkills.length
       ? [
           {
             name: SKILL_TOOL_NAME,
@@ -4083,22 +4214,50 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           },
         ]
       : [];
-    const modeTools =
-      this.mode === "agent"
-        ? [this.buildEnterModeTool("plan"), this.buildEnterModeTool("goal")]
-        : [this.buildSubmitTool(this.mode)];
-    // Keep configured delegation declarations stable across mode changes.
-    // Contract modes reject execution before handlers can spawn/control a
-    // delegate; publishing a schema never grants delegation permission.
-    const subagentTools =
-      this.subagents.length
-        ? [
-            this.buildSubagentTool(),
-            this.buildSubagentWaitTool(),
-            this.buildSubagentListTool(),
-            this.buildSubagentStopTool(),
-          ]
-        : [];
+    // Only the builtin Agent enters Plan and only the builtin Plan submits a
+    // proposal (ADR 0053). Goal is selected by the user and runs as a staged
+    // mode, so EnterGoalMode and SubmitGoal are never offered. CompleteStage
+    // exists only while this turn holds a run claim.
+    const modeTools = [
+      ...(this.mode === "agent" ? [this.buildEnterModeTool("plan")] : []),
+      ...(this.mode === "plan" ? [this.buildSubmitTool("plan")] : []),
+      ...(this.modeState.modeTurn ? [this.buildCompleteStageTool()] : []),
+    ];
+    // Job controls are available without subagents. Contract modes retain
+    // declarations for history but reject execution before these handlers.
+    const subagentTools = [
+      ...(this.subagents.length ? [this.buildSubagentTool()] : []),
+      ...buildJobTools({
+        wait: this.buildSubagentWaitTool(),
+        list: this.buildSubagentListTool(),
+        stop: this.buildSubagentStopTool(),
+      }, {
+        host: this.host,
+        sessionId: this.sessionId,
+        remote: Boolean(this.remoteWorkspace),
+        defaultTimeoutSeconds: TASKWAIT_DEFAULT_TIMEOUT_SECONDS,
+        maxTimeoutSeconds: TASKWAIT_MAX_TIMEOUT_SECONDS,
+        wait: async (run, signal) => {
+          const steeringAbort = new AbortController();
+          this.steeringWaitAbort = steeringAbort;
+          if (this.pendingSteering.size) steeringAbort.abort();
+          try {
+            return await run(signal ? AbortSignal.any([signal, steeringAbort.signal]) : steeringAbort.signal);
+          } catch (error) {
+            const interruptedByInput = isRecord(error) && error.errorCode === "TOOL_ABORTED" &&
+              steeringAbort.signal.aborted && !signal?.aborted &&
+              !this.runCancelled && !this.disposed && !this.turnHadError;
+            if (!interruptedByInput) throw error;
+            return {
+              content: [{ type: "text", text: "Interrupted by new user input. The background command keeps running; handle the user's message before waiting again." }],
+              details: { status: "interrupted" },
+            };
+          } finally {
+            if (this.steeringWaitAbort === steeringAbort) this.steeringWaitAbort = undefined;
+          }
+        },
+      }),
+    ];
     for (const tool of subagentTools) this.builtinTools.add(tool);
     const contextTools = this.compactionEnabled
       ? [this.buildContextCompactionTool()]
@@ -4124,6 +4283,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * declarations. Execution activation and Host permissions remain separate
    * from the provider-visible schemas.
    */
+  private guardSteeredTool(tool: AgentTool): AgentTool {
+    return { ...tool, execute: async (id, args, signal, update) => {
+      if (tool.name !== SUBAGENT_WAIT_TOOL_NAME && this.pendingSteering.size &&
+          this.activeToolCalls.has(id) && !this.delegateToolCalls.has(id)) {
+        return { content: [{ type: "text", text: "Skipped because new user input is waiting." }], details: {}, isError: true };
+      }
+      return tool.execute(id, args, signal, update);
+    } };
+  }
+
   private rebuildToolCatalog(): void {
     const catalog = new Map<string, AgentTool>();
     for (const tool of this.buildToolDefinitions()) {
@@ -4147,8 +4316,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       );
       // Batch ordering wraps the mode guard: a call the guard rejects must
       // still release the calls ordered behind it in its batch.
+      const steeringGuarded = this.guardSteeredTool(guarded);
       const catalogTool = withDynamicTaskExecutionMode(
-        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(guarded, this.batchPlanner) : guarded,
+        builtin && TOOL_EXECUTION_SPECS[tool.name]?.file ? withBatchTurn(steeringGuarded, this.batchPlanner) : steeringGuarded,
         () => this.agent?.state.messages.at(-1),
       );
       if (builtin) this.builtinTools.add(catalogTool);
@@ -4168,10 +4338,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.deferredToolNames.size > 0) {
       this.toolCatalog.set(
         TOOL_SEARCH_NAME,
-        withExplicitRequired({
+        this.guardSteeredTool(withExplicitRequired({
           ...this.buildToolSearchTool(),
           executionMode: "sequential",
-        }),
+        })),
       );
     }
     if (this.model) this.refreshToolDeclarationPolicy();
@@ -4205,21 +4375,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private isToolAllowedInMode(name: string): boolean {
-    const kind = proposalKindForMode(this.mode);
-    if (!kind) return true;
-    // Contract modes are read-only: inspection tools, plan-safe plugin
-    // actions (ADR 0211), and the one submit tool that belongs to this kind.
+    if (this.modeState.isAgentLevel()) return true;
+    // The contract level is read-only (Plan's hard deny, ADR mode-definitions
+    // for every other contract mode or stage): inspection tools, plan-safe
+    // plugin actions (ADR 0211), Plan's own submit tool, and CompleteStage
+    // while this turn holds a run claim. Unknown modes fail closed here.
     if (this.isPlanSafePluginTool(name)) return true;
-    return new Set([
-      "Read",
-      "Glob",
-      "Grep",
-      "BrowserPreview",
-      "Bash",
-      ASK_TOOL_NAME,
-      CONTEXT_COMPACTION_TOOL_NAME,
-      SUBMIT_TOOL_NAMES[kind],
-    ]).has(name);
+    if (name === SUBMIT_TOOL_NAMES.plan) return this.mode === "plan";
+    if (name === COMPLETE_STAGE_TOOL_NAME) return this.modeState.modeTurn !== undefined;
+    return CONTRACT_ALLOWED_TOOL_NAMES.has(name);
   }
 
   private isCoreTool(name: string): boolean {
@@ -4234,18 +4398,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name === SUBAGENT_WAIT_TOOL_NAME ||
       name === SUBAGENT_LIST_TOOL_NAME ||
       name === SUBAGENT_STOP_TOOL_NAME ||
-      (this.mode === "agent"
+      // A stage's completion must never hide behind ToolSearch.
+      name === COMPLETE_STAGE_TOOL_NAME ||
+      (this.modeState.isAgentLevel()
         ? AGENT_CORE_TOOL_NAMES.has(name)
-        : proposalKindForMode(this.mode)
-          ? new Set([
-              "Read",
-              "Glob",
-              "Grep",
-              "Bash",
-              "BrowserPreview",
-              ASK_TOOL_NAME,
-            ]).has(name) || this.isPlanSafePluginTool(name)
-          : CHAT_CORE_TOOL_NAMES.has(name))
+        : CONTRACT_CORE_TOOL_NAMES.has(name) || this.isPlanSafePluginTool(name))
     );
   }
 
@@ -4383,6 +4540,66 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         };
       },
     };
+  }
+
+  /** `CompleteStage` for the run turn this prompt claimed (ADR mode-definitions). */
+  private buildCompleteStageTool(): AgentTool {
+    return createCompleteStageTool({
+      host: this.host,
+      sessionId: this.sessionId,
+      context: () => {
+        const modeTurn = this.modeState.activeTurn;
+        return modeTurn && this.turnId ? { turnId: this.turnId, modeTurn } : undefined;
+      },
+      runGateCommand: (request, signal, onUpdate) => this.runModeGateCommand(request, signal, onUpdate),
+      // A terminal outcome ends the turn at the next boundary, the same way
+      // a graceful Stop does.
+      endTurn: () => {
+        this.gracefulStopRequested = true;
+      },
+    });
+  }
+
+  /**
+   * A `run` exit gate goes through the same Host `tools.execute` Bash path as
+   * the model's own Bash calls, so permission prompting and the shell policy
+   * apply unchanged; `modeGate` lets the Host bind the exit code to the run.
+   */
+  private async runModeGateCommand(
+    request: ModeGateCommand,
+    signal: AbortSignal | undefined,
+    onUpdate: Parameters<AgentTool["execute"]>[3],
+  ): Promise<ModeGateRunResult> {
+    const bash = this.toolCatalog.get("Bash");
+    if (!bash) throw Object.assign(new Error("Bash is not available in this session"), { errorCode: "TOOL_NOT_FOUND" });
+    this.modeGateCalls.set(request.toolCallId, request.modeGate);
+    try {
+      const result = await bash.execute(
+        request.toolCallId,
+        { command: request.command, timeout: request.timeoutSeconds },
+        signal,
+        onUpdate,
+      );
+      const text = result.content
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .filter(Boolean)
+        .join("\n");
+      return { isError: (result as { isError?: boolean }).isError === true, text };
+    } finally {
+      // Not a model tool call: no afterToolCall consumes its bookkeeping.
+      this.modeGateCalls.delete(request.toolCallId);
+      this.failedHostToolCalls.delete(request.toolCallId);
+      this.terminatingToolCalls.delete(request.toolCallId);
+    }
+  }
+
+  private modeArtifactReader(): ModeArtifactReader {
+    return createHostModeArtifactReader({
+      host: this.host,
+      sessionId: this.sessionId,
+      turnId: () => this.turnId,
+      mode: () => this.mode,
+    });
   }
 
   /** Provider a delegate runs on: the definition's pin resolved by Electron
@@ -5168,11 +5385,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           content: [
             {
               type: "text",
-              text: `Delegation ${delegationId} started: the ${definition.name} subagent is working in the background${label ? ` (${label})` : ""}. Continue your own independent work, then call TaskWait with this delegationId to converge, or TaskStop to stop it.`,
+              text: `Delegation ${delegationId} started: the ${definition.name} subagent is working in the background${label ? ` (${label})` : ""}. Continue your own independent work, then call TaskWait with this delegationId to converge, or TaskStop to stop it. Job reference: ${JSON.stringify({ kind: "delegation", id: delegationId })}.`,
             },
           ],
           details: {
             delegationId,
+            job: { kind: "delegation", id: delegationId },
             agent: definition.name,
             status: "running",
             startedAt,
@@ -5873,7 +6091,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           delegations.length === 0
             ? "No subagents have been started in this session."
             : delegations
-                .map((record) => `- ${formatDelegationHeartbeat(record)}`)
+                .map((record) => `- ${formatDelegationHeartbeat(record)}; job=${JSON.stringify({ kind: "delegation", id: record.delegationId })}`)
                 .join("\n"),
           this.delegationChains.resumableBlock({ runningDelegationIds }),
         ]
@@ -5882,7 +6100,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         return {
           content: [{ type: "text", text }],
           details: {
-            delegations: delegations.map(delegationSummary),
+            delegations: delegations.map(record => ({ ...delegationSummary(record), job: { kind: "delegation", id: record.delegationId } })),
             resumable: resumable.map((chain) => ({
               agent: chain.agentName,
               delegationId: chain.latestDelegationId,
@@ -7120,14 +7338,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // pi records file operations for `messagesToSummarize` and, on a split
     // turn, `turnPrefixMessages`. The tail is summarized too — including the
     // suffix a split left uncollected — so copy the sets and record it there.
-    // The sets pi returned stay unchanged.
+    // The sets pi returned stay unchanged. The tail's own collection obeys
+    // the executed-call contract those guarded slices follow: a mid-batch
+    // Stop leaves trailing calls with no result row and failed calls keep
+    // an error row — either way the call never touched its file. The
+    // lookup spans the whole transcript because a tail call's result row
+    // can sit anywhere in it.
     const fileOps: CompactionPreparation["fileOps"] = {
       read: new Set(preparation.fileOps.read),
       written: new Set(preparation.fileOps.written),
       edited: new Set(preparation.fileOps.edited),
     };
+    const executedCallIds = executedToolCallIdsInEntries(this.fullEntries);
     for (const message of preparation.retainedTail) {
-      collectMessageFileOperations(message, fileOps);
+      collectMessageFileOperations(message, fileOps, executedCallIds);
     }
     const latestUser = messagesToSummarize
       .filter((message): message is UserMessage => message.role === "user")
@@ -7311,6 +7535,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (decision?.cancel) return false;
       }
       const compacted = await this.performCompaction(reason, willRetry, retentionMode);
+      // A run stage re-reads its `on.compaction` context into the prompt of
+      // the new window (ADR mode-definitions).
+      if (compacted && await this.modeState.afterCompaction(this.modeArtifactReader())) {
+        this.setAgentSystemPrompt(this.composeSystemPrompt());
+      }
       if (runner) {
         void runner.emit(compacted ? "session_compact" : "session_compact_failed", {
           type: compacted ? "session_compact" : "session_compact_failed",
@@ -8424,6 +8653,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const steering = this.pendingSteering.get(event.message);
           const id = steering?.id ?? this.pendingUserMessageId ?? randomUUID();
           if (steering) {
+            // 后续回复必须位于已接收的用户补充之后，恢复重试也不能复用前一气泡。
+            if (this.currentAssistant?.status === "streaming") {
+              this.emit({ type: "message_end", message: {
+                ...this.currentAssistant,
+                status: this.currentAssistant.error ? "error" : "complete",
+              } });
+            }
+            this.currentAssistant = undefined;
             if (steering.toolNames.length) {
               this.activateDeferredTools(steering.toolNames);
               this.setAgentTools(this.activeTools());
@@ -8488,6 +8725,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // inspect only the response that just ended, or a silent retry after
           // progress text would look non-silent forever.
           const responseText = content.hasText ? content.text : "";
+          // Annotate literal calls without aborting valid structured siblings.
+          const textCallDiagnostic = !failed && !aborted
+            ? textToolCallDiagnostic(responseText, this.toolCatalog)
+            : undefined;
           if (looksLikePseudoToolCall(nextText)) {
             // The visible text is a lost tool batch, not an answer. Logging it
             // separates "the model went quiet" from "the model tried to act and
@@ -8710,6 +8951,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                   thinking: nextThinking,
                 })
               : undefined;
+          // This message annotation does not become a terminal run error.
+          classifiedError ??= textCallDiagnostic;
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
@@ -8718,13 +8961,18 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               : content.hasThinking
                 ? { thinking: undefined }
                 : {}),
-            status: failed || emptyResponse
+            status: failed || emptyResponse || textCallDiagnostic
               ? "error"
               : aborted
                 ? "aborted"
                 : "complete",
             modelId: this.provider.modelId,
             providerId: this.provider.id,
+            responseModelId: concreteResponseModel(event.message, this.provider.modelId),
+            // Tool-call truncation is recovered by Pi; annotate only a visible
+            // text answer, without turning the settled run into an error.
+            outputTruncated: !failed && !aborted && stopReason === "length" &&
+              Boolean(responseText.trim()) && !messageRequestsTools(event.message) || undefined,
             ...(usage ? { usage } : {}),
             ...(responseDurationMs !== undefined ? { responseDurationMs } : {}),
             ...(streamMs !== undefined ? { modelStreamDurationMs } : {}),
@@ -8747,6 +8995,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 ),
           };
           if (!this.currentAssistant.providerReplay) delete this.currentAssistant.providerReplay;
+          if (!this.currentAssistant.responseModelId) delete this.currentAssistant.responseModelId;
           this.emit({ type: "message_end", message: this.currentAssistant });
           this.activeProviderRetryAttempt = 0;
           this.streamStartedAt = undefined;
@@ -9057,6 +9306,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.abortDelegationsFromPreviousTurns();
     this.currentAssistant = undefined;
     this.requestStartedAt = Date.now();
+    // An approved plan runs as a plain Agent turn, never as a mode run turn.
+    this.modeState.clearTurn();
     this.setMode("agent");
     this.autonomousExecution = true;
 
@@ -9152,7 +9403,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const turnId = durableTurnId?.trim() || randomUUID();
     return this.trackTurnOperation(turnId, async () => {
       try { return await this.promptTurn(input, userMessageId, turnId); }
-      finally { await this.batchPlanner.drain(); }
+      finally {
+        // The run claim belongs to this turn only.
+        this.modeState.endTurn();
+        await this.batchPlanner.drain();
+      }
     });
   }
 
@@ -9195,10 +9450,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // must include capability negotiation, not observe a falsely idle turn.
       await this.batchPlanner.negotiate(Boolean(this.remoteWorkspace));
       if (this.runCancelled || this.disposed) throw turnAbortedError("Turn aborted during Host capability negotiation");
+      // The run context decides this turn's policy level, CompleteStage and
+      // the stage brief, so it is applied before the tools are rebuilt.
+      const modeTurn = typeof input === "string" ? undefined : input.modeTurn;
+      const modePromptChanged = await this.modeState.beginTurn(modeTurn, this.modeArtifactReader());
+      if (this.runCancelled || this.disposed) throw turnAbortedError("Turn aborted while reading the mode run context");
       this.rebuildToolCatalog();
       this.resetDeferredToolsForPrompt();
       if (selectedTools.length) this.activateDeferredTools(selectedTools);
       this.setAgentTools(this.activeTools());
+      if (modePromptChanged) this.setAgentSystemPrompt(this.composeSystemPrompt());
       const content = promptContent(modelInput);
       const incomingUserMessage: AgentMessage = {
         role: "user",
@@ -9330,11 +9591,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       next.onPayload = async (payload, payloadModel) => {
         const base = await options.onPayload?.(payload, payloadModel);
         const current = base ?? payload;
-        const replaced = await runner.emit<unknown>(
-          "before_provider_request",
-          { type: "before_provider_request", payload: current },
-          (_acc, value) => value,
-        );
+        const replaced = await runner.emitBeforeProviderRequest(current);
         return replaced ?? base;
       };
     }
@@ -9387,6 +9644,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.pendingSteering.set(queued, { id: message.id, toolNames });
     this.agent.steer(queued);
     this.steeringWaitAbort?.abort();
+    for (const abortTool of this.steeringToolAborts.values()) abortTool();
+    if ([...this.activeToolCalls.values()].some((call) => call.toolName !== SUBAGENT_WAIT_TOOL_NAME)) {
+      this.setAgentActivity({ phase: "waiting-tool-stop", since: Date.now() });
+    }
     // Main persists this echo through the same outbox as assistant messages.
     this.emit({ type: "message_start", message });
     this.emit({
@@ -9494,6 +9755,29 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       settle();
     });
+  }
+
+  /**
+   * Electron main reports that the run this turn works on changed (ADR
+   * mode-definitions): `closeout` after the user paused it, `release` after
+   * the user removed it. A notice for another turn or run is ignored.
+   */
+  modeTurnNotice(notice: ModeTurnNoticeParams): { applied: boolean } {
+    if (this.disposed || !this.turnId || notice.turnId !== this.turnId) return { applied: false };
+    if (this.modeState.activeTurn?.runId !== notice.runId) return { applied: false };
+    if (notice.action === "closeout") {
+      if (!this.modeState.beginCloseout(notice.runId)) return { applied: false };
+      this.setAgentSystemPrompt(this.composeSystemPrompt());
+      return { applied: true };
+    }
+    // The turn finishes as an ordinary turn of the mode the session returned
+    // to; CompleteStage and the stage brief leave with the run context.
+    this.modeState.clearTurn();
+    this.setMode(notice.mode, notice.modeDefinition);
+    this.rebuildToolCatalog();
+    this.setAgentSystemPrompt(this.composeSystemPrompt());
+    this.setAgentTools(this.activeTools());
+    return { applied: true };
   }
 
   /** Ask pi-agent-core to stop after the current assistant/tool turn. */

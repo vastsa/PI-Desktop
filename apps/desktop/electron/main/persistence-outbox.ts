@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { decodeBinaryStorage, encodeBinaryStorage } from "@pi-desktop/host-runtime";
 import { ErrorCodes } from "@pi-desktop/shared";
@@ -302,10 +302,78 @@ export class PersistenceOutbox {
     await this.loadDeadLetters();
   }
 
+  private async quarantineCorruptFile(path: string, error: unknown): Promise<void> {
+    // Never reuse a fixed `.corrupt` name: a second corruption would rename
+    // over the first quarantine and destroy its evidence (#2284 review).
+    // Timestamp the quarantine and fall back to incrementing suffixes. `link`
+    // is refuse-if-exists, so concurrent loads can never silently overwrite
+    // one another the way `rename` onto an existing target would.
+    const stamp = new Date(this.now()).toISOString().replace(/[:.]/g, "-");
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const quarantinePath = attempt === 0 ? `${path}.corrupt.${stamp}` : `${path}.corrupt.${stamp}.${attempt}`;
+      try {
+        await link(path, quarantinePath);
+      } catch (linkError: unknown) {
+        const code = linkError instanceof Error && "code" in linkError ? String(linkError.code) : "";
+        if (code === "EEXIST") continue;
+        if (code === "ENOENT") {
+          // The original vanished between the read and the link — almost
+          // always a concurrent load that already quarantined (or removed)
+          // it. There are no un-backed-up bytes left to protect, so an empty
+          // queue cannot overwrite anything.
+          this.logger(
+            "warn",
+            "session persistence outbox corrupt file vanished before quarantine; nothing to protect, starting with an empty queue",
+            { file: path, data: String(linkError) },
+          );
+          return;
+        }
+        // Fail closed: the corrupted bytes are still in place but could not be
+        // backed up (e.g. EISDIR/EACCES). Continuing here would boot with an
+        // empty queue and the next persist would overwrite the un-backed-up
+        // file. Surface the original parse error so the boot fails exactly
+        // like before the resilient-load change and nothing is written over it.
+        this.logger(
+          "error",
+          "session persistence outbox corrupt file could not be quarantined; failing boot to protect the original bytes",
+          { file: path, quarantinePath, data: String(linkError) },
+        );
+        throw error;
+      }
+      // The corrupted bytes are now duplicated into the quarantine; only then
+      // remove the original so the app can start writing a fresh queue.
+      try {
+        await unlink(path);
+      } catch (unlinkError: unknown) {
+        this.logger(
+          "warn",
+          "session persistence outbox corrupt file quarantined but the original could not be removed",
+          { file: path, quarantinePath, data: String(unlinkError) },
+        );
+      }
+      this.logger("warn", "session persistence outbox corrupt file quarantined, starting with an empty queue", {
+        file: quarantinePath,
+        data: String(error),
+      });
+      return;
+    }
+    throw error;
+  }
+
   private async loadEntries(): Promise<void> {
     try {
       const raw = await readFile(this.path, "utf8");
-      const parsed: unknown = JSON.parse(raw);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (parseError: unknown) {
+        // A 0-byte or torn write (e.g. the process is force-killed between
+        // truncate and write) is recoverable data loss, not a boot failure:
+        // quarantining the file and starting with an empty queue lets the
+        // backend boot instead of failing every launch (#2272).
+        await this.quarantineCorruptFile(this.path, parseError);
+        return;
+      }
       if (!Array.isArray(parsed)) throw new Error("Invalid session persistence outbox: expected an array");
       this.entries = parsed.map(decodeAppend);
     } catch (error: unknown) {
@@ -319,7 +387,15 @@ export class PersistenceOutbox {
   private async loadDeadLetters(): Promise<void> {
     try {
       const raw = await readFile(this.deadLetterPath, "utf8");
-      const parsed: unknown = JSON.parse(raw);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (parseError: unknown) {
+        // Same reasoning as loadEntries: a torn dead-letter file must not
+        // fail the backend boot (#2272).
+        await this.quarantineCorruptFile(this.deadLetterPath, parseError);
+        return;
+      }
       if (!Array.isArray(parsed)) throw new Error("Invalid session persistence dead letters: expected an array");
       this.deadLetters = parsed.map((value) => {
         const entry = decodeAppend(value);
@@ -340,14 +416,6 @@ export class PersistenceOutbox {
   private async persist(): Promise<void> {
     const write = this.persistChain.then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
-      if (this.entries.length === 0) {
-        try {
-          await writeFile(this.path, "[]\n", "utf8");
-        } catch (error) {
-          this.logger("warn", "session persistence outbox clear failed", String(error));
-        }
-        return;
-      }
       await writeFile(this.tempPath, `${JSON.stringify(this.entries.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempPath, this.path);
     });
@@ -358,14 +426,6 @@ export class PersistenceOutbox {
   private async persistDeadLetters(): Promise<void> {
     const write = this.persistChain.then(async () => {
       await mkdir(dirname(this.deadLetterPath), { recursive: true });
-      if (this.deadLetters.length === 0) {
-        try {
-          await writeFile(this.deadLetterPath, "[]\n", "utf8");
-        } catch (error) {
-          this.logger("warn", "session persistence outbox dead letter clear failed", String(error));
-        }
-        return;
-      }
       await writeFile(this.tempDeadLetterPath, `${JSON.stringify(this.deadLetters.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempDeadLetterPath, this.deadLetterPath);
     });

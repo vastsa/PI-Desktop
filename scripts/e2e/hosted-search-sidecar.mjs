@@ -213,6 +213,9 @@ export function fixtureHost({ history = [], instructions = false } = {}) {
           content: "OFFLINE_NESTED_RULE: explain the search and local fixture together.",
         }] : [],
       };
+      // Declining file batching keeps the offline fixtures on the per-call
+      // tools.execute path; the runtime negotiates this before the first turn.
+      case "tools.fileBatchCapabilities": return { version: 1, supported: false };
       case "tools.execute":
         assert.equal(params.toolName, "Read", "Task must execute inside the real runtime, never fake host");
         assert.equal(params.args.path, "nested/fixture.txt");

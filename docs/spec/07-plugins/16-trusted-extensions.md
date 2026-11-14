@@ -327,7 +327,7 @@ are honored where the event type defines a result.
 | `resources_discover` | v1 note: not emitted; skills and prompt discovery stay in Electron main | n/a |
 | `before_agent_start` | Before the first provider request of a turn | Yes, returned system prompt replacements chain in handler order |
 | `context` | `transformContext`, before every provider request of a run, including the first | Yes, replacement message list for that request only; the run context and transcript keep the original messages |
-| `before_provider_request`, `before_provider_headers`, `after_provider_response` | Provider call wrapper | Request return value; headers mutate the payload in place |
+| `before_provider_request`, `before_provider_headers`, `after_provider_response` | Provider call wrapper | Yes, returned request payloads chain in handler order; headers mutate the payload in place |
 | `agent_start`, `agent_end`, `agent_settled` | Agent loop boundaries | No |
 | `turn_start`, `turn_end` | Turn boundaries | No |
 | `message_start`, `message_update`, `message_end` | Agent message events | v1 note: no, pi-agent-core offers no post-hoc replacement |
@@ -348,6 +348,10 @@ additions. Returning a different string, including an empty string, deliberately
 replaces the current prompt. Missing or non-string prompt fields, exceptions,
 timeouts, and unreturned input mutations retain the last accepted prompt.
 Cancelled dispatches return no result; late completions cannot change it.
+
+`before_provider_request` chains the same way: each handler receives its own
+copy of the payload last returned by an earlier handler, so several extensions
+can each add to the provider request. Unreturned input mutations are dropped.
 The user-run payload also carries `messageType: "user"` and `prompt`, matching
 the Pi 1.3 discriminator. This is additive to the legacy shim surface; it does
 not enable `sendMessage` or custom-message runs. Native Pi sessions continue
@@ -395,6 +399,10 @@ are detached before publication so later extension mutations cannot rewrite them
 SDK `exec` owns its process group/tree and terminates it on scope retirement or
 its explicit timeout;
 disposal waits for tracked process cleanup, with cleanup failures diagnosed.
+Output is decoded across chunk boundaries. `maxBuffer` (default 10 MiB) caps
+stdout and stderr combined in bytes; overflow terminates the command and returns
+`truncated: true` with a nonzero `code`. A command that cannot be spawned
+resolves with `code: 1` and the spawn error in `stderr` instead of rejecting.
 Processes deliberately escaping the group and direct Node API spawns are outside
 this ownership contract.
 

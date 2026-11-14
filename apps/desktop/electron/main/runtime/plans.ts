@@ -1,4 +1,4 @@
-import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
+import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type MessageUsage, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
 import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "@pi-desktop/host-runtime";
 import type { RuntimeState } from "./context";
 import type {
@@ -66,6 +66,11 @@ export type PlanRuntimeDependencies = {
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
   isQuitting: () => boolean;
   onTurnSettled?: (sessionId: string, turnId: string) => Promise<void>;
+  /**
+   * Every finalized turn, whether or not its durable end persisted. Mode runs
+   * release their claim here so a failed persistence cannot strand a run.
+   */
+  onTurnEnded?: (sessionId: string, turnId: string, end: { reason: TurnEndReason; usage?: MessageUsage; errorCode?: string }) => Promise<void>;
 };
 
 export function createPlanRuntime({
@@ -91,6 +96,7 @@ export function createPlanRuntime({
   resolveAgentRuntimeLaunch,
   isQuitting,
   onTurnSettled,
+  onTurnEnded,
 }: PlanRuntimeDependencies): {
   finishTurn: FinishTurn;
   finishApprovedExecution: (executionId: string, status: PlanExecutionFinishStatus, errorCode?: string) => Promise<void>;
@@ -304,6 +310,18 @@ function finishTurn(
       );
       runtimeState.agentHostBridge?.agentHost.kick(id);
     }
+    if (!isQuitting() && typeof onTurnEnded === "function") {
+      void onTurnEnded(id, turnId, {
+        reason,
+        ...(turnUsage ? { usage: turnUsage } : {}),
+        ...(errorCode ? { errorCode } : {}),
+      }).catch((error: unknown) => {
+        logger.app("session", "warn", "mode run settlement failed", {
+          sessionId: id,
+          data: String(error),
+        });
+      });
+    }
     // Settlement of the durable turn is the trigger for the collaborators that
     // follow it; a turn with no durable end has nothing to settle.
     if (!isQuitting() && settledTurnId && typeof onTurnSettled === "function") {
@@ -432,7 +450,7 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
 
     const [settings, sessionResult] = await Promise.all([
       runtimeState.host.call("settings.get"),
-      runtimeState.host.call<{ session?: any }>("session.get", { id: execution.sessionId }),
+      runtimeState.host.call<{ session?: any }>("session.get", { id: execution.sessionId, messageLimit: 1 }),
     ]);
     if (!sessionResult.session) {
       throw Object.assign(new Error("Session not found"), {

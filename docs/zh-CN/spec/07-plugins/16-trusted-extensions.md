@@ -253,7 +253,7 @@ OAuth 令牌、任意 Host 请求头或 Host Provider 内部信息。`registerPr
 | `resources_discover` | v1 说明：不触发；skills 与提示发现留在 Electron main | 不适用 |
 | `before_agent_start` | 回合内首个 provider 请求之前 | 是，返回的系统提示词按处理器顺序链式替换 |
 | `context` | `transformContext`，在一次运行的每个 provider 请求之前触发（包括第一个） | 是，替换消息列表，只作用于该次请求；运行上下文和 transcript 保留原消息 |
-| `before_provider_request`、`before_provider_headers`、`after_provider_response` | provider 调用包装 | 请求采纳返回值；头部原地修改 payload |
+| `before_provider_request`、`before_provider_headers`、`after_provider_response` | provider 调用包装 | 是，返回的请求 payload 按处理器顺序链式传递；头部原地修改 payload |
 | `agent_start`、`agent_end`、`agent_settled` | Agent 循环边界 | 否 |
 | `turn_start`、`turn_end` | 回合边界 | 否 |
 | `message_start`、`message_update`、`message_end` | Agent 消息事件 | v1 说明：否，pi-agent-core 不提供事后替换 |
@@ -274,6 +274,9 @@ OAuth 令牌、任意 Host 请求头或 Host Provider 内部信息。`registerPr
 改变该结果。用户发起的运行载荷还携带 `messageType: "user"` 和 `prompt`，与 Pi 1.3 的判别字段
 一致。这是对历史兼容层的增量补充，不会启用 `sendMessage` 或自定义消息运行。
 Native Pi 会话继续使用上游 SDK 的事件联合类型和生命周期。
+
+`before_provider_request` 以同样方式链式传递：每个处理器收到上一个处理器返回的 payload 的独立
+副本，因此多个扩展可以各自向 provider 请求追加内容。未通过返回值提交的输入修改会被丢弃。
 
 每一回合都从新组合的基础提示词开始执行该处理链，不会跨回合累积追加内容。同样的有序处理器、
 基础提示词和返回字符串会产生完全相同的提示词字节；这不保证 Provider 缓存命中，也不会让插件
@@ -301,6 +304,8 @@ Agent 工作。在请求前 hook 等待期间停止，不会继续请求模型�
 事件的 30 秒上限，可运行至完成、传入信号取消、Stop 或销毁；迟到的工具进度和结果被丢弃。
 已采纳的工具进度和结果会先复制再发布，扩展之后的原地修改不能改写它们。`pi.exec`
 创建的进程树随作用域退出或显式超时终止，销毁等待已登记进程清理并报告失败。
+输出跨数据块解码；`maxBuffer`（默认 10 MiB）按字节合并限制 stdout 与 stderr，超限即终止命令并返回
+`truncated: true` 与非零 `code`。无法启动的命令返回 `code: 1`，`stderr` 为启动错误，不再抛出。
 主动逃离进程组或通过 Node API 直接创建的进程不在此所有权范围。
 
 带返回值的 Hook 输入输出使用独立副本，头部修改仅在处理器及时成功后提交。

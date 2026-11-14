@@ -39,10 +39,23 @@ export async function seedReviewHistory(host, directory) {
   const second = await begin("round-two", "新增最近修改的测试文件");
   await mutate(second, "latest.txt", "Latest modified round\n"); await end(second);
   const third = await begin("round-no-edit", "只讨论方案，不修改文件"); await end(third);
+  // A second populated session exposes stale focus requests that an empty session would hide.
+  const populated = (await host.call("session.create", { title: "Other modified session", projectPath: root, mode: "agent" })).session;
+  await host.call("session.configure", { id: populated.id, mode: "agent", permissionMode: "auto" });
+  const { turnId: populatedTurn } = await host.call("session.beginTurn", { sessionId: populated.id });
+  await host.call("session.appendMessage", { sessionId: populated.id, turnId: populatedTurn, message: {
+    id: "other-modified-round", role: "user", content: "Other session modification", createdAt: new Date().toISOString(),
+  } });
+  const populatedWrite = await host.call("tools.execute", { sessionId: populated.id, turnId: populatedTurn, toolCallId: "other-write", toolName: "Write", args: { path: "other-session.txt", content: "Other session only\n" }, mode: "agent" });
+  if (!populatedWrite.ok || !populatedWrite.content.review) throw new Error("Other session Write must produce review");
+  await host.call("session.appendMessage", { sessionId: populated.id, turnId: populatedTurn, message: {
+    id: "other-write-message", role: "tool", content: "", createdAt: new Date().toISOString(), toolName: "Write", toolCallId: "other-write", toolStatus: "success", toolResult: { details: populatedWrite.content },
+  } });
+  await end(populatedTurn);
   // The disk is no longer the historical after image. Context must remain immutable.
   await writeFile(join(root, "long.ts"), "external-current-only\n");
   return {
-    session, other, round: "round-one", latest: "round-two", firstSnapshot: first.toolResult.details.review.snapshotId,
+    session, other, populated, round: "round-one", latest: "round-two", firstSnapshot: first.toolResult.details.review.snapshotId,
     lateMessage: { ...first, id: "late-refresh" },
     async appendLate() { return mutate(firstTurn, "late.txt", "Late old delegate\n", "review-task"); },
     startRunning: () => begin("round-running", "运行中首次修改测试"),

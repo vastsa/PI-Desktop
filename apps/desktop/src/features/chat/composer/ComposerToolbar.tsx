@@ -8,8 +8,9 @@ import {
   type SessionThinkingLevel,
   type PluginComposerTransformMeta,
 } from "@pi-desktop/shared";
-import type { AppState } from "../../../stores/app-store";
+import { type AppState, useAppStore } from "../../../stores/app-store";
 import { ComposerModePicker } from "./ComposerModePicker";
+import { modeErrorMessage } from "../../modes/mode-run-model";
 import { ComposerPermissionPicker } from "./ComposerPermissionPicker";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
 import { ComposerControlSlots } from "./ComposerControlSlots";
@@ -156,7 +157,8 @@ export function ComposerToolbar({
                 thinkingLevel,
               });
             } catch (error) {
-              showToast(error instanceof Error ? error.message : String(error), {
+              // MODE_RUN_ACTIVE / MODE_NOT_FOUND are named, not shown raw.
+              showToast(modeErrorMessage(t, error), {
                 variant: "error",
               });
             }
@@ -202,6 +204,7 @@ export function ComposerToolbar({
           selectedModelId={modelId}
           controlsBlocked={controlsBlocked}
           onCloseOtherMenus={() => setPermissionOpen(false)}
+          onOpenModelSettings={() => useAppStore.getState().setSettingsTab("agent")}
         />
         {composerTransforms.map((transform) => {
           const key = `${transform.pluginId}/${transform.id}`;
@@ -247,7 +250,9 @@ export function ComposerToolbar({
             tooltip={t("chat.stopGenerating")}
             ariaLabel={t("chat.stopGenerating")}
             disabled={!stopAllowed}
-            onClick={() => void abort()}
+            onClick={() => void abort().catch((error) => {
+              showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+            })}
           >
             <IconStop size={14} />
           </TooltipButton>

@@ -15,18 +15,27 @@ export const PLAN_MODE_SYSTEM_PROMPT = [
   "Do not wait for chat confirmation, continue planning, or implement changes while approval is pending.",
 ].join("\n");
 
+/**
+ * Shared prompt of the builtin staged Goal mode (ADR mode-definitions). The
+ * legacy Goal contract negotiation (EnterGoalMode / SubmitGoal) is retired;
+ * the run engine drives Goal through its `work` stage instead.
+ */
 export const GOAL_MODE_SYSTEM_PROMPT = [
-  "You are operating in Goal mode as the same PI-Desktop agent, negotiating a goal contract before any autonomous work.",
-  "A goal contract is what to achieve, not how to achieve it: the outcome the user wants, the acceptance criteria that prove it was reached, and the boundaries you must not cross. Do not enumerate implementation steps; you will decide those yourself after approval.",
-  "Inspect the workspace and ask the user about anything ambiguous first. Every acceptance criterion must be objectively checkable by you after execution, such as a command that must pass or an observable behavior.",
-  "Do not use Write, Edit, Task, TaskWait, TaskList, TaskStop, or any unknown tool in Goal mode. Their declarations may remain visible for conversation compatibility, but calls are rejected without execution.",
-  "Do not create, overwrite, delete, or otherwise mutate workspace files in Goal mode — including through Bash. Bash is available under the active permission policy for inspection only while negotiating the goal. If implementation is required, negotiate and submit the goal for approval instead of applying changes yourself.",
-  "Plugin tools that declare plan-safe actions are available for inspection; only the listed plan-safe actions may run, anything else is denied.",
-  "Do not write or edit a goal file yourself. When the goal, its acceptance criteria, and its boundaries are ready, call SubmitGoal immediately exactly once in the current turn with one complete Markdown snapshot, a title, and the question that needs approval; the host writes a new .pi/goal artifact and opens the review.",
-  "An accepted new Goal prompt means no prior approval is pending. Earlier SubmitGoal calls in the transcript are historical immutable checkpoints, not the current contract and not an active approval gate.",
-  "After reject, expiry, or interruption closes approval and returns to editable goal negotiation, revise the contract in the new turn and follow the same one-SubmitGoal rule; never edit or replace an earlier artifact.",
-  "Do not wait for chat confirmation, keep negotiating, or implement changes while approval is pending.",
-  "Once approved, the goal contract is the standard you work against: pursue it autonomously, choose your own approach, and stop only when every acceptance criterion is verified or a boundary blocks you.",
+  "You are operating in Goal mode as the same PI-Desktop agent. Goal mode pursues one objective across several turns until every acceptance criterion is verified with evidence.",
+  "The host owns the goal run: it starts the run from the user's message, starts continuation turns while the run is open, enforces the turn budget, and checks the goal artifact when you complete the stage. When this turn belongs to a run, the Mode run section below names the run, its artifact, and how to complete it.",
+  "When no Mode run section is present, no run is active for this turn: answer the user directly and do not report progress on a goal.",
+].join("\n");
+
+/** Prompt of the builtin Goal `work` stage; `{{...}}` is substituted per run. */
+export const GOAL_WORK_STAGE_PROMPT = [
+  "Work autonomously toward the objective in the run input. Choose your own approach and use the normal tools; ask the user only when the objective is genuinely ambiguous or a decision is theirs to make.",
+  "Maintain the goal artifact at {{artifacts.goal.path}}. It is a Markdown document with exactly these sections:",
+  "- `# Objective`: the user's objective restated faithfully, without narrowing or redefining it.",
+  "- `# Acceptance criteria`: objectively checkable criteria that together prove the objective is met, such as a command that must pass or a behavior you can observe.",
+  "- `# Evidence`: for each criterion, the concrete evidence you observed in the current workspace: the commands you ran and their results, the files and behaviors you checked.",
+  "Write the artifact by passing its complete Markdown as `artifacts.goal` when you call CompleteStage; the host saves it at that path. You may save drafts there with Write while you work, so the objective and criteria survive a context compaction.",
+  "Call CompleteStage only when every acceptance criterion is verified with fresh evidence. Intent, plans, earlier results, and a finished checklist are not evidence. Never call CompleteStage to report progress.",
+  "A turn may end normally with a short progress note; the host starts the next turn while the run is open and its budget allows. If a criterion cannot be met or a boundary blocks you, say which one and why instead of completing the stage.",
 ].join("\n");
 
 export const AGENT_MODE_SYSTEM_PROMPT = [
@@ -34,20 +43,40 @@ export const AGENT_MODE_SYSTEM_PROMPT = [
   "For multi-step work, keep the user's session checklist current with TodoWrite. Mark items completed only after verifying them, keep at most one item in progress, and finish with every item completed or cancelled.",
 ].join("\n");
 
+/**
+ * Read-only notice for every `contract`-level mode or stage other than the
+ * builtin Plan, whose own prompt already states the same restriction.
+ */
+export const CONTRACT_MODE_POLICY_PROMPT = [
+  "This mode is read-only at its current permission level. Do not use Write, Edit, Task, TaskWait, TaskList, TaskStop, or any unknown tool: their declarations may remain visible for conversation compatibility, but calls are rejected without execution.",
+  "Do not create, overwrite, delete, or otherwise mutate workspace files, including through Bash. Bash is available under the active permission policy for inspection only. Plugin tools that declare plan-safe actions may run only those actions.",
+].join("\n");
+
 export function composeModeSystemPrompt(
   mode: Mode,
   basePrompt = DEFAULT_RUNTIME_SYSTEM_PROMPT,
+  modeInstructions = modeSystemPrompt(mode),
 ): string {
-  return [basePrompt.trim(), modeSystemPrompt(mode)].filter(Boolean).join("\n\n");
+  return [basePrompt.trim(), modeInstructions].filter(Boolean).join("\n\n");
 }
 
-function modeSystemPrompt(mode: Mode): string {
+/**
+ * Builtin instructions for a session that carries no mode definition. The
+ * tool policy then falls back to the builtin mapping, so a Goal session
+ * without a snapshot (legacy negotiation) and an unknown id are read-only.
+ */
+export function modeSystemPrompt(mode: Mode): string {
   switch (mode) {
     case "plan":
       return PLAN_MODE_SYSTEM_PROMPT;
-    case "goal":
-      return GOAL_MODE_SYSTEM_PROMPT;
-    default:
+    case "agent":
       return AGENT_MODE_SYSTEM_PROMPT;
+    case "goal":
+      return [GOAL_MODE_SYSTEM_PROMPT, CONTRACT_MODE_POLICY_PROMPT].join("\n\n");
+    default:
+      return [
+        `You are operating in the "${mode}" mode, but its definition is not available to this session.`,
+        CONTRACT_MODE_POLICY_PROMPT,
+      ].join("\n\n");
   }
 }

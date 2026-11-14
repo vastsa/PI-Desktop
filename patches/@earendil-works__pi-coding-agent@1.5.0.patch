@@ -1,8 +1,8 @@
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
-index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cdc5a16738 100644
+index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43b72e380b 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
-@@ -69,10 +69,10 @@ function withoutDeletedHeaders(headers) {
+@@ -79,10 +79,10 @@ function withoutDeletedHeaders(headers) {
          ? Object.fromEntries(Object.entries(headers).filter((entry) => entry[1] !== null))
          : undefined;
  }
@@ -15,7 +15,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
      }
      return tokens;
  }
-@@ -418,7 +418,7 @@ export class AgentSession {
+@@ -431,7 +431,7 @@ export class AgentSession {
      _exceedsCompactionThreshold(model, projection) {
          if (model.contextWindow <= 0)
              return false;
@@ -24,7 +24,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
      }
      async _compactBeforeNextAssistantResponse(context) {
          const projection = this.sessionManager.buildSessionProjection();
-@@ -590,7 +590,7 @@ export class AgentSession {
+@@ -603,7 +603,7 @@ export class AgentSession {
                      entryId = manager.appendContextEdit(draft.targetId, draft.replacement);
                      break;
                  case "compaction": {
@@ -33,7 +33,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
                      entryId = manager.appendCompaction(draft.summary, draft.firstKeptEntryId, tokensBefore, draft.details, true, draft.usage);
                      break;
                  }
-@@ -2240,7 +2240,7 @@ export class AgentSession {
+@@ -2258,7 +2258,7 @@ export class AgentSession {
              }
              const settings = this.settingsManager.getCompactionSettings(model);
              const pathEntries = this.sessionManager.getBranch();
@@ -42,7 +42,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
              if (!preparation) {
                  // Check why we can't compact
                  const lastEntry = pathEntries[pathEntries.length - 1];
-@@ -2297,7 +2297,7 @@ export class AgentSession {
+@@ -2315,7 +2315,7 @@ export class AgentSession {
              this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
              const newEntries = this.sessionManager.getEntries();
              this._refreshFinalizedContext();
@@ -51,7 +51,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
              // Get the saved compaction entry for the extension event
              const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
              if (this._extensionRunner && savedCompactionEntry) {
-@@ -2480,11 +2480,11 @@ export class AgentSession {
+@@ -2498,11 +2498,11 @@ export class AgentSession {
          const hasContextEdits = projection.entries.some((entry) => entry.sourceEntry.type === "context_edit");
          const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
          if (hasContextEdits) {
@@ -65,7 +65,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
              // Without provider usage, estimate.tokens is the pure message-size estimate.
              // Only usage-backed estimates need the stale pre-compaction check.
              if (estimate.lastUsageIndex !== null) {
-@@ -2530,7 +2530,7 @@ export class AgentSession {
+@@ -2548,7 +2548,7 @@ export class AgentSession {
                  return false;
              }
              const pathEntries = this.sessionManager.getBranch();
@@ -74,7 +74,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
              if (!preparation) {
                  return false;
              }
-@@ -2586,7 +2586,7 @@ export class AgentSession {
+@@ -2604,7 +2604,7 @@ export class AgentSession {
              this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
              const newEntries = this.sessionManager.getEntries();
              this._refreshFinalizedContext();
@@ -83,7 +83,7 @@ index 8728a3e0d31f478f28d707cbf313225da4035aca..51f3c5bf0de0c5fedd3144e8d24957cd
              // Get the saved compaction entry for the extension event
              const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
              if (this._extensionRunner && savedCompactionEntry) {
-@@ -3524,7 +3524,7 @@ export class AgentSession {
+@@ -3542,7 +3542,7 @@ export class AgentSession {
              if (!hasPostCompactionUsage)
                  return { tokens: null, contextWindow, percent: null };
          }
@@ -121,19 +121,19 @@ index bc4af31b57f4a8696a68d4f2a529a26669955382..24a4f8e28624523112cac6c73464e93f
      const prompt = [
          messages.length < options.messages.length
 diff --git a/dist/core/compaction/branch-summarization.d.ts b/dist/core/compaction/branch-summarization.d.ts
-index 12cb88ef5398b2365d5823597b7ccf063af567d6..6ff73567bbd5289b8b3f2fb82f923a5b5dc7860e 100644
+index 4203f63b0f3d8d40421e6f6555e2ed2d6a189254..8d8a995ac0d112a28c69de407991b3215a951514 100644
 --- a/dist/core/compaction/branch-summarization.d.ts
 +++ b/dist/core/compaction/branch-summarization.d.ts
 @@ -6,7 +6,7 @@
   */
- import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
+ import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
  import type { RetryCallbacks, RetryPolicy } from "@earendil-works/pi-ai";
 -import type { Model, Usage } from "@earendil-works/pi-ai/compat";
 +import type { Api, Model, Usage } from "@earendil-works/pi-ai/compat";
- import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+ import { type ReadonlySessionManager, type SessionEntry } from "../session-manager.ts";
  import { type FileOperations } from "./utils.ts";
  export interface BranchSummaryResult {
-@@ -87,7 +87,7 @@ export declare function collectEntriesForBranchSummary(session: ReadonlySessionM
+@@ -89,7 +89,7 @@ export declare function collectEntriesForBranchSummary(session: ReadonlySessionM
   * @param entries - Entries in chronological order
   * @param tokenBudget - Maximum tokens to include (0 = no limit)
   */
@@ -143,10 +143,10 @@ index 12cb88ef5398b2365d5823597b7ccf063af567d6..6ff73567bbd5289b8b3f2fb82f923a5b
   * Generate a summary of abandoned branch entries.
   *
 diff --git a/dist/core/compaction/branch-summarization.js b/dist/core/compaction/branch-summarization.js
-index dba3462974d41ae6201ccf12a775c75ec6c7de5e..3c02d5cb0ae96362130b3c87967e55bb948028b2 100644
+index 9952cf5caeebb5d26782b7f0368175ffa41ec31d..22b959b2fbb956fd91eecc38d9c1f8cfff9dabdc 100644
 --- a/dist/core/compaction/branch-summarization.js
 +++ b/dist/core/compaction/branch-summarization.js
-@@ -95,7 +95,7 @@ function getMessageFromEntry(entry) {
+@@ -98,7 +98,7 @@ function getMessageFromEntry(entry, edit) {
   * @param entries - Entries in chronological order
   * @param tokenBudget - Maximum tokens to include (0 = no limit)
   */
@@ -155,7 +155,7 @@ index dba3462974d41ae6201ccf12a775c75ec6c7de5e..3c02d5cb0ae96362130b3c87967e55bb
      const messages = [];
      const fileOps = createFileOps();
      let totalTokens = 0;
-@@ -125,7 +125,7 @@ export function prepareBranchEntries(entries, tokenBudget = 0) {
+@@ -134,7 +134,7 @@ export function prepareBranchEntries(entries, tokenBudget = 0) {
              continue;
          // Extract file ops from assistant messages (tool calls)
          extractFileOpsFromMessage(message, fileOps);
@@ -164,7 +164,7 @@ index dba3462974d41ae6201ccf12a775c75ec6c7de5e..3c02d5cb0ae96362130b3c87967e55bb
          // Check budget before adding
          if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
              // If this is a summary entry, try to fit it anyway as it's important context
-@@ -189,7 +189,7 @@ export async function generateBranchSummary(entries, options) {
+@@ -198,7 +198,7 @@ export async function generateBranchSummary(entries, options) {
      // Token budget = context window minus reserved space for prompt + response
      const contextWindow = model.contextWindow || 128000;
      const tokenBudget = contextWindow - reserveTokens;
