@@ -69,7 +69,10 @@ await host.call("settings.set", {
 await host.stop();
 
 const { appDir, electronBinary } = resolveElectronBinary();
-const port = Number(process.env.PI_SCHEDULED_CDP_PORT || 9378);
+// Port 0 lets Chromium pick a free port, so a leftover Electron from an
+// earlier failed run can never be mistaken for this run's target.
+const requestedPort = Number(process.env.PI_SCHEDULED_CDP_PORT || 0);
+let port = requestedPort || null;
 const env = {
   ...process.env,
   HOME: home,
@@ -81,7 +84,7 @@ const env = {
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(
   electronBinary,
-  [`--remote-debugging-port=${port}`, `--user-data-dir=${join(root, "profile")}`, "."],
+  [`--remote-debugging-port=${requestedPort}`, `--user-data-dir=${join(root, "profile")}`, "."],
   { cwd: appDir, env, stdio: ["ignore", "pipe", "pipe"] },
 );
 let output = "";
@@ -90,12 +93,14 @@ child.stdout.on("data", (data) => {
 });
 child.stderr.on("data", (data) => {
   output += data;
+  port ??= Number(/DevTools listening on ws:\/\/[^:]+:(\d+)\//.exec(output)?.[1]) || null;
 });
 let ws;
 try {
   let target;
   await waitFor(
     async () => {
+      if (!port) return false;
       try {
         target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(
           (entry) =>
@@ -178,6 +183,12 @@ try {
       clickCount: 1,
     });
   };
+  // The editor loads its project options before it renders the form, so a
+  // field read right after the click would race that load.
+  const openEditor = async (label) => {
+    await click(label);
+    await waitFor(() => evaluate(`!!document.querySelector('form input') && !!document.querySelector('button[aria-label="Select project"]')`), 10_000, "task editor form");
+  };
   const key = async (name, code) => {
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: name, code: name, windowsVirtualKeyCode: code, ...(name === "Enter" ? { text: "\r" } : {}) });
     await send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name, windowsVirtualKeyCode: code });
@@ -237,7 +248,7 @@ try {
     10_000,
     "scheduled page",
   );
-  await click("Create task");
+  await openEditor("Create task");
   await fill("form input", "Daily project review");
   await fill("form textarea", "Summarize the current project status.");
   assert.equal(await evaluate(`document.querySelector('button[aria-label="Cadence"]').textContent.trim()`), "Manual");
@@ -249,7 +260,9 @@ try {
   assert.ok(await evaluate(`document.body.innerText.includes('Auto can run restricted actions')`));
   await click(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-chip').getAttribute('aria-label')`), 'button[aria-haspopup]', true);
   await waitFor(() => evaluate(`!!document.querySelector('.composer-model-menu.is-open .composer-menu-root')`), 5000, "measured root menu");
-  await evaluate(`document.querySelector('.composer-menu-root .composer-menu-entry').click()`);
+  // The picker is flat since 4a0c49915: model search sits on the root menu
+  // rather than behind a submenu entry, so the user clicks straight into it.
+  await click("Search models", ".composer-menu-root .composer-model-search input", true);
   await waitFor(() => evaluate(`document.activeElement?.getAttribute('aria-label') === 'Search models'`), 5000, "model search focus");
   await fill('.composer-model-search input', 'fixture-alt');
   await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-option').length === 1`), 5000, "filtered model");
@@ -257,8 +270,15 @@ try {
   await key("Enter", 13);
   await waitFor(() => evaluate(`!!document.querySelector('.composer-menu-root')`), 5000, "task model selection returns to root");
   // The reasoning level is an inline slider on the measured root menu (issue
-  // #417); there is no separate reasoning view left to open.
-  await click("high", ".composer-thinking-tick");
+  // #417); there is no separate reasoning view left to open. Its native range
+  // overlays the labelled segments, so the user's click lands on the range at
+  // the "high" segment rather than on the label itself.
+  const highPoint = await evaluate(`(() => { const tick = [...document.querySelectorAll('.composer-menu-root .composer-thinking-tick')].find(e => e.textContent.trim() === 'high'); if (!tick) return null; const r = tick.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2; return document.elementFromPoint(x, y)?.closest('.composer-thinking-rail') ? { x, y } : null; })()`);
+  assert.ok(highPoint, "reasoning slider hit target: high");
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await send("Input.dispatchMouseEvent", { type, ...highPoint, button: "left", clickCount: 1 });
+  }
+  await waitFor(() => evaluate(`document.querySelector('.composer-menu-root .composer-thinking-range')?.getAttribute('aria-valuetext') === 'high'`), 5000, "reasoning level high");
   await key("Escape", 27);
   const unchangedDefaults = await invoke("settingsGet");
   assert.equal(unchangedDefaults.defaultProviderId, provider.id, "task selection cannot change the conversation default provider");
@@ -329,16 +349,16 @@ try {
   assert.equal(task.providerId, alternateProvider.id);
   assert.equal(task.modelId, "fixture-alt");
   assert.equal(task.thinkingLevel, "high");
-  await click("Edit task");
+  await openEditor("Edit task");
   assert.equal(await evaluate(`document.querySelector('button[aria-label="Select project"]').textContent.trim()`), "project-alt");
   assert.equal(await evaluate(`document.querySelector('button[aria-label="Permission mode"]').textContent.trim()`), "Auto");
-  assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-model').textContent.trim()`), "fixture-alt");
+  assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-model').textContent.trim()`), "Scheduled alternate model · fixture-alt");
   assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-level').textContent.trim()`), "high");
   await click(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-chip').getAttribute('aria-label')`), 'button[aria-haspopup]', true);
   await waitFor(() => evaluate(`!!document.querySelector('.composer-model-menu.is-open')`), 5000, "composer model menu");
   await screenshot("after-model-menu.png");
-  await evaluate(`document.querySelector('.composer-menu-root .composer-menu-entry').click()`);
-  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-search')`), 5000, "shared model submenu");
+  await click("Search models", ".composer-menu-root .composer-model-search input", true);
+  await waitFor(() => evaluate(`document.activeElement?.getAttribute('aria-label') === 'Search models'`), 5000, "shared model search on the root menu");
   await screenshot("after-model-search.png");
   await key("Escape", 27);
   await choose("Cadence", "Weekly");
@@ -353,7 +373,7 @@ try {
   await click("Save task");
   await waitFor(async () => (await invoke("scheduledList")).tasks[0].schedule.weekdays?.length === 3 && !(await evaluate("!!document.querySelector('form')")), 5000, "saved custom weekdays");
   assert.deepEqual((await invoke("scheduledList")).tasks[0].schedule.weekdays, [0,5,6]);
-  await click("Edit task");
+  await openEditor("Edit task");
   await openSelect("Day of the week");
   assert.deepEqual(await selectedDays(), ["Mon", "Sat", "Sun"]);
   for (const day of ["Mon", "Sat", "Sun"]) await click(day, '[role="option"]');
@@ -382,7 +402,7 @@ try {
   await waitFor(() => evaluate(`document.body.innerText.includes('Resume')`), 5000, "paused UI");
   await click("Resume");
   await waitFor(async () => (await invoke("scheduledList")).tasks[0].enabled, 5000, "resume");
-  await click("Edit task");
+  await openEditor("Edit task");
   await fill("form input", "Project review");
   await click("Save task");
   await waitFor(
@@ -408,8 +428,10 @@ try {
   assert.equal(executedSession.session.thinkingLevel, "high", "saved thinking level reaches the executed session");
   assert.ok(model.calls > 0, "real sidecar reached the local model");
   assert.ok(model.requestedModels.includes("fixture-alt"), "task-owned model reached the sidecar");
+  // A finished run reads "Session ended" since 5e865806f; the page picks it up
+  // on its 10 s poll.
   await waitFor(
-    () => evaluate(`document.body.innerText.includes('Completed')`),
+    () => evaluate(`document.body.innerText.includes('Session ended')`),
     15_000,
     "visible run result",
   );
@@ -462,7 +484,7 @@ try {
       assert.equal(tasks[0].schedule.minute,30);
       await evaluate(`document.querySelector('[data-nav="scheduled"]').click()`);
       await waitFor(() => evaluate(`document.body.innerText.includes('AI managed task')`),15000,"AI task appears on page");
-      await click("Edit task");
+      await openEditor("Edit task");
       assert.equal(await evaluate(`document.querySelector('button[aria-label="Time"]').textContent.trim()`),'Custom · 15:30');
       await screenshot('after-ai-custom-time.png');
       await fill('form input','AI managed task renamed');
@@ -485,7 +507,15 @@ try {
   throw error;
 } finally {
   ws?.close();
-  child.kill();
+  // SIGTERM reaches before-quit, which may hold the app open behind the quit
+  // confirmation; force the exit so a failed run never leaks an instance.
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill();
+    const exited = once(child, "exit");
+    const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+    await exited;
+    clearTimeout(timer);
+  }
   server.close();
   // Preserve this uniquely named fixture profile for diagnosing failures.
 }

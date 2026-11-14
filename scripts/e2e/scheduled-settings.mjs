@@ -4,12 +4,13 @@ import { waitFor } from "./wait.mjs";
 export async function verifyScheduledSettingsSwitch({ task, invoke, evaluate, click, fill, key, send }) {
   const beforeDisable = await invoke("scheduledList");
   await evaluate(`document.querySelector('[data-nav="settings"]').click()`);
-  await click("General", ".settings-nav-item");
+  // The switch lives under Behavior since 836ccd084 grouped settings by subject.
+  await click("Behavior", ".settings-nav-item");
   await waitFor(() => evaluate(`document.querySelector('[role="switch"][aria-label="Scheduled tasks"]')?.getAttribute('aria-checked') === 'true'`), 10_000, "scheduled tasks enabled by default");
   await click("Scheduled tasks", '[role="switch"]', true);
   await waitFor(async () => (await invoke("settingsGet")).scheduledTasksEnabled === false, 5000, "disabled setting persisted");
   await click("Back to app", '[data-nav="back-to-app"]');
-  assert.equal(await evaluate(`!!document.querySelector('[data-nav="scheduled"]')`), false);
+  await waitFor(() => evaluate(`!document.querySelector('[data-nav="scheduled"]')`), 5000, "scheduled entry hidden");
   assert.deepEqual(await invoke("scheduledList"), beforeDisable, "switch cannot rewrite individual tasks");
   await assert.rejects(() => invoke("scheduledExecute", task.id), /INVALID_PARAMS/);
   await click("Search", "button", true);
@@ -21,7 +22,7 @@ export async function verifyScheduledSettingsSwitch({ task, invoke, evaluate, cl
   await waitFor(() => evaluate(`!!document.querySelector('[data-nav="settings"]') && !document.querySelector('.startup-splash')`), 30_000, "renderer reload with saved settings");
   assert.equal(await evaluate(`!!document.querySelector('[data-nav="scheduled"]')`), false);
   await evaluate(`document.querySelector('[data-nav="settings"]').click()`);
-  await click("General", ".settings-nav-item");
+  await click("Behavior", ".settings-nav-item");
   await waitFor(() => evaluate(`document.querySelector('[role="switch"][aria-label="Scheduled tasks"]')?.getAttribute('aria-checked') === 'false'`), 10_000, "disabled switch restored");
   await click("Scheduled tasks", '[role="switch"]', true);
   await waitFor(async () => (await invoke("settingsGet")).scheduledTasksEnabled === true, 5000, "enabled setting persisted");
