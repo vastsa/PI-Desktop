@@ -154,8 +154,11 @@ path. It does not render the submitted question/description, status, or
 approval validity/deadline. It offers only:
 
 - **Approve** with an explicit target permission mode (`Ask`, `Accept edits`,
-  or `Auto`; the last selected mode is remembered on this device and is the
-  default for the next approval)
+  or `Auto`). The default follows the proposal's owning Session, resolving
+  `inherit` through the global permission default and falling back to Ask.
+  Device-wide approval history is ignored. Clicking the main button preserves
+  that effective permission; choosing a mode from the menu explicitly changes
+  the Session's execution permission when approval succeeds.
 - **Reject**, which stops the run and leaves the contract state active; a later
   turn must submit a new complete snapshot/artifact
 
@@ -187,8 +190,8 @@ after a full Host/app restart.
 6. concurrent session requests remain isolated and never take over the visible
    conversation or its work panel; post-approval artifacts remain assigned to
    the request's originating session
-7. Plan/Goal approval displays only the title and artifact opener, remembers the
-   selected permission mode for the next approval on this device, and sends that
+7. Plan/Goal approval displays only the title and artifact opener, defaults to
+   its owning Session's effective permission mode, and sends that
    mode only on approval; no question/description, validity/deadline, status,
    inline Markdown/hash/byte-size, or revision/feedback action is rendered
 8. reject, expiry, abort, crash, stale response, and persistence failure close

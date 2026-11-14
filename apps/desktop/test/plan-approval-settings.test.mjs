@@ -30,7 +30,7 @@ const [approvalBar, approvalPreferences, apiSource, storeSource, settingsPage, s
   ]);
 const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
 
-test("plan approval exposes only the artifact and remembers the selected mode", () => {
+test("plan approval exposes only the artifact and follows the session permission", () => {
   assert.match(approvalBar, /proposal\.title/);
   assert.match(
     approvalBar,
@@ -39,10 +39,8 @@ test("plan approval exposes only the artifact and remembers the selected mode", 
   assert.match(approvalBar, /openWorkPanelTabForSession/);
   assert.match(approvalBar, /const isPending = proposal\.status === "pending"/);
   assert.match(approvalBar, /PLAN_APPROVAL_DEFAULT_MODE/);
-  assert.match(approvalBar, /readPlanApprovalMode\(\)/);
-  assert.match(approvalBar, /rememberPlanApprovalMode\(selectedMode\)/);
-  assert.match(approvalPreferences, /PLAN_APPROVAL_MODE_STORAGE_KEY/);
-  assert.match(approvalPreferences, /store\.setItem\(PLAN_APPROVAL_MODE_STORAGE_KEY, mode\)/);
+  assert.match(approvalBar, /readPlanApprovalMode\(permissionMode, defaultPermissionMode\)/);
+  assert.doesNotMatch(approvalPreferences, /localStorage|rememberPlanApprovalMode/);
   assert.match(approvalPreferences, /PLAN_APPROVAL_FALLBACK_MODE/);
   assert.doesNotMatch(approvalBar, /proposal\.question|proposal\.expiresAt|autoWarning|expiresAt|statusText/);
   assert.doesNotMatch(approvalBar, /planApprovalPermissionMode|feedback|changes_requested/);
