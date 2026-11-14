@@ -26,6 +26,7 @@ function assistant(
   thinking: string,
   text = "ok",
   thinkingSignature = "reasoning_content",
+  stopReason: "stop" | "error" | "aborted" | "deferred" | "length" = "stop",
 ): AgentMessage {
   const content: unknown[] = [
     { type: "thinking", thinking, thinkingSignature },
@@ -44,7 +45,7 @@ function assistant(
       totalTokens: 2,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
-    stopReason: "stop",
+    stopReason,
     timestamp: 1,
     content,
   } as AgentMessage;
@@ -110,6 +111,42 @@ describe("harvestRetainedReasoning", () => {
       text: "flash answer",
       thinkingSignature: "reasoning_text",
     });
+  });
+
+  it("skips aborted and error thinking that the live context never resends", () => {
+    const turns = harvestRetainedReasoning([
+      assistant("good"),
+      { role: "user", content: "retry", timestamp: 2 },
+      assistant("half-written plan", "partial", "reasoning_content", "aborted"),
+      assistant("failed attempt", "partial", "reasoning_content", "error"),
+    ]);
+    expect(turns.map((turn) => turn.thinking)).toEqual(["good"]);
+  });
+
+  it("does not let an aborted turn consume a retained-reasoning slot", () => {
+    const turns = harvestRetainedReasoning([
+      assistant("one"),
+      assistant("two"),
+      assistant("three"),
+      assistant("cut off", "partial", "reasoning_content", "aborted"),
+    ]);
+    expect(turns.map((turn) => turn.thinking)).toEqual(["one", "two", "three"]);
+  });
+
+  it("skips deferred thinking the same way context projection does", () => {
+    const turns = harvestRetainedReasoning([
+      assistant("kept"),
+      assistant("held back", "partial", "reasoning_content", "deferred"),
+    ]);
+    expect(turns.map((turn) => turn.thinking)).toEqual(["kept"]);
+  });
+
+  it("skips a length-stopped turn: the token limit cut its think mid-sentence", () => {
+    const turns = harvestRetainedReasoning([
+      assistant("settled plan"),
+      assistant("truncated pla", "partial", "reasoning_content", "length"),
+    ]);
+    expect(turns.map((turn) => turn.thinking)).toEqual(["settled plan"]);
   });
 });
 

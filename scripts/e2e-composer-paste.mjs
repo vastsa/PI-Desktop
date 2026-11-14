@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ const require = createRequire(
 const { build } = require("esbuild");
 const { electronBinary } = resolveElectronBinary(root);
 const temp = await mkdtemp(join(tmpdir(), "pi-composer-paste-"));
+const fileReferencesOnly = process.argv.includes("--file-references-only");
 try {
   await build({
     entryPoints: [join(root, "scripts/e2e/composer-paste.tsx")],
@@ -51,6 +52,9 @@ try {
     entryPoints: {
       writer: join(root, "apps/desktop/electron/main/composer-paste.ts"),
       directories: join(root, "apps/desktop/electron/main/composer-clipboard-directories.ts"),
+      references: join(root, "apps/desktop/electron/main/composer-file-references.ts"),
+      picker: join(root, "apps/desktop/electron/main/composer-picker.ts"),
+      prompt: join(root, "apps/desktop/electron/main/prompt-attachments.ts"),
       reader: join(root, "packages/host-runtime/src/workspace-files.ts"),
       video: join(root, "apps/desktop/electron/main/open-attachment-video.ts"),
     },
@@ -68,6 +72,12 @@ try {
     ),
   );
   await writeFile(join(temp, "native notes.txt"), "native file bytes");
+  if (fileReferencesOnly) {
+    await mkdir(join(temp, "reference-project"));
+    const file = await open(join(temp, "large reference.bin"), "w");
+    await file.truncate(64 * 1024 * 1024 + 1);
+    await file.close();
+  }
   await writeFile(join(temp, "tokens.css"), (await readFile(join(root, "apps/desktop/src/styles/tokens.css"), "utf8")).replace(/@theme(?: inline)?/g, ":root"));
   await writeFile(
     join(temp, "composer.css"),
@@ -87,6 +97,9 @@ const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
 const { saveComposerPasteFiles } = require("./writer.cjs");
 const { nativeClipboardPaths, readComposerClipboardDirectories } = require("./directories.cjs");
+const { referenceComposerFiles } = require("./references.cjs");
+const { rememberComposerPickerSelection, consumeComposerPickerSelection } = require("./picker.cjs");
+const { preparePromptAttachments, appendPromptFallbackPaths } = require("./prompt.cjs");
 const { readOpenableFile, readOpenableImage, resolveRealOpenablePath } = require("./reader.cjs");
 const { openableMp4Path } = require("./video.cjs");
 app.setPath("userData", path.join(__dirname, "profile"));
@@ -97,7 +110,17 @@ const revealedFolders = [];
 let completeOpens;
 const opensDone = new Promise(resolve => { completeOpens = resolve; });
 let directoryPastePending = true;
-ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async () => {
+let referencePrompts = 0;
+ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async (event) => {
+  if (process.argv.includes("--file-references-only")) {
+    const paths = ["large reference.bin", "native notes.txt"].map(name => path.join(__dirname, name));
+    const clipboard = { readBuffer: format => Buffer.from(format === "text/uri-list"
+      ? paths.map(source => pathToFileURL(source).href).join("\\r\\n") : "") };
+    const data = await readComposerClipboardDirectories(clipboard,
+      selected => rememberComposerPickerSelection(selected, event.sender.id),
+      () => nativeClipboardPaths(clipboard, "linux"));
+    return { ok: true, data };
+  }
   if (!directoryPastePending) return { ok: true, data: null };
   directoryPastePending = false;
   const clipboard = {
@@ -106,9 +129,37 @@ ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async () => {
   };
   const data = await readComposerClipboardDirectories(clipboard, () => {
     throw new Error("a folder-only paste must not create an import token");
-  }, () => nativeClipboardPaths(clipboard, "linux"));
+  }, () => nativeClipboardPaths(clipboard, process.platform === "win32" ? "win32" : "linux",
+    () => [path.join(__dirname, "copied folder")]));
   return { ok: true, data };
 });
+if (process.argv.includes("--file-references-only") || process.argv.includes("--file-references-history-check")) {
+  ipcMain.handle("pi-desktop/composer/importFiles", async (event, input) => {
+    assert.equal(input.reference, true);
+    assert.equal(input.sessionId, "paste-a");
+    const files = await referenceComposerFiles(__dirname, input.sessionId,
+      path.join(__dirname, "reference-project"), consumeComposerPickerSelection(input.token, event.sender.id));
+    assert.equal(files[0].size, 67108865);
+    // Simulate a source edit after registration, before the user sends the draft.
+    await fs.writeFile(path.join(__dirname, "large reference.bin"), "changed");
+    return { ok: true, data: { files } };
+  });
+  ipcMain.handle("pi-desktop/agent/prompt", async (_event, input) => {
+    assert.equal(input.attachments.length, 2);
+    const prepared = await preparePromptAttachments(__dirname, input.sessionId,
+      path.join(__dirname, "reference-project"), input.attachments, true, input.content);
+    assert(prepared.every(item => item.message.kind === "file" && !item.inlineData));
+    const large = prepared.find(item => item.message.name === "large reference.bin");
+    assert.equal(large.message.size, 7);
+    const context = appendPromptFallbackPaths(input.content, prepared);
+    assert(context.includes("7 bytes"));
+    assert(context.includes(large.fallbackPath));
+    assert.equal(saved.length, 0, "disk references must not invoke the byte writer");
+    assert.equal((await fs.readdir(path.join(__dirname, "composer-file-references"))).length, 2);
+    referencePrompts++;
+    return { ok: true, data: { accepted: true, turnId: "reference-turn" } };
+  });
+}
 ipcMain.handle("pi-desktop/composer/pasteFiles", async (_event, input) => {
   const files = await saveComposerPasteFiles(__dirname, input.sessionId, input.files);
   for (let i = 0; i < files.length; i++) {
@@ -202,7 +253,8 @@ app.whenReady().then(async () => {
         creates = 0;
         prompts = [];
         saved.length = 0;
-        const window = new BrowserWindow({ show: false, webPreferences: {
+        // A never-shown window throttles animation frames; the probe waits on them.
+        const window = new BrowserWindow({ show: true, webPreferences: {
           preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
           sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
         } });
@@ -232,7 +284,7 @@ app.whenReady().then(async () => {
   }
   if (process.argv.includes("--history-check")) {
     try {
-      const window = new BrowserWindow({ show: false, webPreferences: {
+      const window = new BrowserWindow({ show: true, webPreferences: {
         preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
         sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
       } });
@@ -256,11 +308,11 @@ app.whenReady().then(async () => {
     }
     return;
   }
-  await fs.mkdir(path.join(__dirname, "attachments"));
-  await fs.mkdir(path.join(__dirname, "copied folder"));
+  await fs.mkdir(path.join(__dirname, "attachments"), { recursive: true });
+  await fs.mkdir(path.join(__dirname, "copied folder"), { recursive: true });
   await fs.writeFile(path.join(__dirname, "attachments", "a".repeat(64)), Buffer.alloc(512 * 1024 + 1));
   await fs.writeFile(path.join(__dirname, "attachments", "b".repeat(64)), Buffer.from([0, 1, 2, 0]));
-  const window = new BrowserWindow({ show: false, webPreferences: {
+  const window = new BrowserWindow({ show: true, webPreferences: {
     preload: ${JSON.stringify(join(root, "apps/desktop/out/preload/index.cjs"))},
     sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
   } });
@@ -270,7 +322,9 @@ app.whenReady().then(async () => {
     window.webContents.debugger.attach("1.3");
     const { root } = await window.webContents.debugger.sendCommand("DOM.getDocument");
     const { nodeId } = await window.webContents.debugger.sendCommand("DOM.querySelector", { nodeId: root.nodeId, selector: "#native-files" });
-    await window.webContents.debugger.sendCommand("DOM.setFileInputFiles", { nodeId, files: [path.join(__dirname, "native-image.png"), path.join(__dirname, "native notes.txt")] });
+    await window.webContents.debugger.sendCommand("DOM.setFileInputFiles", { nodeId, files: [path.join(__dirname,
+      process.argv.includes("--file-references-only") || process.argv.includes("--file-references-history-check")
+        ? "large reference.bin" : "native-image.png"), path.join(__dirname, "native notes.txt")] });
     window.webContents.on("console-message", async (event) => {
       if (!event.message.startsWith("PI_PREVIEW_KEY:")) return;
       const key = event.message.slice("PI_PREVIEW_KEY:".length);
@@ -298,8 +352,24 @@ app.whenReady().then(async () => {
       await window.webContents.executeJavaScript("globalThis.composerPreviewPointerDone()");
     });
     await window.webContents.executeJavaScript('globalThis.composerPreviewPointer = input => new Promise(resolve => { globalThis.composerPreviewPointerDone = resolve; console.log("PI_PREVIEW_POINTER:" + JSON.stringify(input)); }); void 0');
-    const result = await window.webContents.executeJavaScript("globalThis.composerPasteProbe()");
+    const result = await window.webContents.executeJavaScript("globalThis.composerPasteProbe(" + process.argv.includes("--screenshot-only") + "," + process.argv.includes("--file-references-only") + "," + JSON.stringify(path.join(__dirname, "reference-project")) + "," + process.argv.includes("--file-references-history-check") + ")");
     assert.equal(result.ok, true, JSON.stringify(result));
+    if (process.argv.includes("--file-references-only") || process.argv.includes("--file-references-history-check")) {
+      assert.equal(saved.length, 0);
+      assert.equal(referencePrompts, 1);
+      console.log("COMPOSER_PASTE_PROBE " + JSON.stringify(result));
+      app.quit();
+      return;
+    }
+    if (process.argv.includes("--screenshot-only")) {
+      assert.equal(saved.length, 2);
+      assert.deepEqual(saved[0].mimeTypes, ["image/png"]);
+      assert.deepEqual(saved[1].mimeTypes, ["image/png"]);
+      assert.equal(revealedFolders.length, 1);
+      console.log("COMPOSER_PASTE_PROBE " + JSON.stringify({ ...result, scratchBytesVerified: true }));
+      app.quit();
+      return;
+    }
     await opensDone;
     assert.deepEqual(revealedFolders, [{ path: path.join(__dirname, "copied folder"), sessionId: "paste-a", directory: true }]);
     assert.deepEqual(opened.map(path.extname), [".mp4", ".mp4", ".mp4"]);
@@ -366,7 +436,8 @@ app.whenReady().then(async () => {
   assert.equal(draftCases.length, 4, draftRace.output.slice(-6000));
   console.log(draftCases.join("\n"));
 
-  const firstRun = await runElectron();
+  const screenshotOnly = process.argv.includes("--screenshot-only");
+  const firstRun = await runElectron(fileReferencesOnly ? ["--file-references-only"] : screenshotOnly ? ["--screenshot-only"] : []);
   const pasteLine = firstRun.output
     .split(/\r?\n/)
     .find((line) => line.startsWith("COMPOSER_PASTE_PROBE "));
@@ -379,18 +450,35 @@ app.whenReady().then(async () => {
   assert.equal(firstRun.code, 0, firstRun.output.slice(-4000));
   assert.equal(pasteResult.ok, true);
 
-  const restartRun = await runElectron(["--history-check"]);
-  const restartLine = restartRun.output
-    .split(/\r?\n/)
-    .find((line) => line.startsWith("COMPOSER_HISTORY_RESTART "));
-  assert(
-    restartLine,
-    `renderer returned no restart result (exit=${restartRun.code}): ${restartRun.output.slice(-3000)}`,
-  );
-  const restartResult = JSON.parse(restartLine.slice("COMPOSER_HISTORY_RESTART ".length));
-  console.log("COMPOSER_HISTORY_RESTART " + JSON.stringify(restartResult));
-  assert.equal(restartRun.code, 0, restartRun.output.slice(-4000));
-  assert.equal(restartResult.ok, true);
+  if (fileReferencesOnly) {
+    assert.equal(pasteResult.largeFileReference, true);
+    assert.equal(pasteResult.metadataHistory, true);
+    assert.equal(pasteResult.refreshedSize, true);
+    const restarted = await runElectron(["--file-references-history-check"]);
+    const line = restarted.output.split(/\r?\n/).find(line => line.startsWith("COMPOSER_PASTE_PROBE "));
+    assert.equal(restarted.code, 0, restarted.output.slice(-4000));
+    assert(line, "reference history restart returned no result");
+    const restored = JSON.parse(line.slice("COMPOSER_PASTE_PROBE ".length));
+    assert.equal(restored.ok, true);
+    assert.equal(restored.processRestartMetadata, true);
+    console.log("COMPOSER_FILE_REFERENCES_RESTART " + JSON.stringify(restored));
+  } else if (screenshotOnly) {
+    assert.equal(pasteResult.screenshotWithoutDirectoryScan, true);
+    assert.equal(pasteResult.nativeImagePreserved, true);
+  } else {
+    const restartRun = await runElectron(["--history-check"]);
+    const restartLine = restartRun.output
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("COMPOSER_HISTORY_RESTART "));
+    assert(
+      restartLine,
+      `renderer returned no restart result (exit=${restartRun.code}): ${restartRun.output.slice(-3000)}`,
+    );
+    const restartResult = JSON.parse(restartLine.slice("COMPOSER_HISTORY_RESTART ".length));
+    console.log("COMPOSER_HISTORY_RESTART " + JSON.stringify(restartResult));
+    assert.equal(restartRun.code, 0, restartRun.output.slice(-4000));
+    assert.equal(restartResult.ok, true);
+  }
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

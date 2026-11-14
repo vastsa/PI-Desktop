@@ -372,57 +372,58 @@
    reduced-motion block at the end).
    ============================================================ */
 
-.project-run-badges {
+.project-run-badges,
+.project-run-count {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex: 0 0 auto;
 }
 
-.project-run-badge {
+/* Badge and pip share one quiet shape: a 6px dot followed by a muted figure.
+   No capsule, no outline — colour on the dot alone carries the meaning, and
+   the number stays neutral ink so it keeps contrast in every theme. */
+.project-run-badge,
+.project-run-pip {
   display: inline-flex;
-  height: 17px;
-  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
-  padding: 0 6px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-warning) 18%, transparent);
-  /* The figure stays neutral ink: the dot and the tint carry the meaning, so
-     the count keeps its contrast in every theme instead of riding on a
-     semantic colour that is tuned for a dot, not for 11px text. */
-  color: var(--ds-text-primary);
+  color: var(--ds-text-muted);
   font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
+  line-height: var(--leading-none, 1);
 }
 
-.project-run-badge.waiting {
-  background: color-mix(in oklab, var(--ds-purple) 18%, transparent);
-}
-
-.project-run-badge-dot {
+.project-run-badge-dot,
+.project-run-pip::before {
   width: 6px;
   height: 6px;
   flex: 0 0 auto;
   border-radius: var(--radius-round);
   background: var(--ds-warning);
-  animation: project-run-breathe 1.6s ease-in-out infinite;
 }
 
-.project-run-badge.waiting .project-run-badge-dot {
+.project-run-pip::before {
+  content: "";
+}
+
+/* Running breathes gently; waiting stays still so a long permission prompt
+   never keeps the window repainting. */
+.project-run-badge.running .project-run-badge-dot,
+.project-run-pip.running::before {
+  animation: project-run-breathe 1.8s ease-in-out infinite;
+}
+
+.project-run-badge.waiting .project-run-badge-dot,
+.project-run-pip.waiting::before {
   background: var(--ds-purple);
-  animation: none;
 }
 
-/* A collapsed group is the case this badge exists for, so it keeps a
-   slightly stronger tint once the session rows are gone. */
-.project-group.is-collapsed .project-run-badge {
-  background: color-mix(in oklab, var(--ds-warning) 26%, transparent);
-}
-
-.project-group.is-collapsed .project-run-badge.waiting {
-  background: color-mix(in oklab, var(--ds-purple) 26%, transparent);
+/* A collapsed group is where the figure matters most, so it gains ink. */
+.project-group.is-collapsed .project-run-badge,
+.project-group.is-collapsed .project-run-pip {
+  color: var(--ds-text-secondary);
 }
 
 /*
@@ -432,97 +433,58 @@
 */
 .project-run-rail {
   position: absolute;
-  top: 1px;
-  bottom: 1px;
+  top: 6px;
+  bottom: 6px;
   left: 0;
   width: 2px;
   overflow: hidden;
   border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-warning) 28%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
   pointer-events: none;
 }
 
 .project-run-rail-pulse {
   position: absolute;
+  top: 0;
   left: 0;
   width: 100%;
-  height: 55%;
+  height: 40%;
   border-radius: inherit;
   background: linear-gradient(
     180deg,
-    transparent 0%,
-    color-mix(in oklab, var(--ds-warning) 85%, transparent) 45%,
-    var(--ds-warning) 60%,
-    transparent 100%
+    transparent,
+    color-mix(in oklab, var(--ds-warning) 70%, transparent),
+    transparent
   );
-  animation: project-run-comet 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-
-/* The numeric readout that stands in for the badge when the badge is off. */
-.project-run-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  font-variant-numeric: tabular-nums;
-}
-
-.project-run-pip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--ds-text-secondary);
-}
-
-.project-run-pip::before {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-round);
-  background: var(--ds-warning);
-  content: "";
-}
-
-.project-run-pip.waiting::before {
-  background: var(--ds-purple);
-}
-
-/* Two adjacent pips would otherwise read as one two-digit number. */
-.project-run-pip + .project-run-pip {
-  padding-left: 6px;
-  border-left: 1px solid var(--ds-border-default);
+  animation: project-run-flow 2.8s ease-in-out infinite;
 }
 
 @keyframes project-run-breathe {
   0%,
   100% {
     opacity: 1;
-    transform: scale(1);
   }
   50% {
-    opacity: 0.82;
-    transform: scale(0.86);
+    opacity: 0.35;
   }
 }
 
-@keyframes project-run-comet {
+@keyframes project-run-flow {
   0% {
-    transform: translateY(-120%);
+    transform: translateY(-100%);
   }
   100% {
-    transform: translateY(200%);
+    transform: translateY(250%);
   }
 }
 
 /*
-  Motion is decoration, never the message: with the animation removed the
-  pulse stays parked at the top of the track as a solid bright segment, so
-  the rail still reads as "live" for users who prefer reduced motion.
+  Motion is decoration, never the message: without it the dot stays solid and
+  the soft segment rests at the top of the track, so both still read as live.
 */
 @media (prefers-reduced-motion: reduce) {
   .project-run-badge-dot,
+  .project-run-pip::before,
   .project-run-rail-pulse {
     animation: none;
   }

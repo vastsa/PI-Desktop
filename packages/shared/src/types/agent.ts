@@ -61,6 +61,8 @@ export type AgentPromptRequest = {
 };
 
 export type AgentPromptAttachment = {
+  /** Main-owned selection id; metadata only, with no implicit file access. */
+  localReference?: string;
   path: string;
   name: string;
   kind: "image" | "file";

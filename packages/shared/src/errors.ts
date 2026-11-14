@@ -138,6 +138,7 @@ export const ErrorCodes = {
   CONTEXT_COMPACTION_FAILED: "CONTEXT_COMPACTION_FAILED",
   STREAM_FAILED: "STREAM_FAILED",
   EMPTY_MODEL_RESPONSE: "EMPTY_MODEL_RESPONSE",
+  TOOL_CALL_NOT_EXECUTED: "TOOL_CALL_NOT_EXECUTED",
   /**
    * The Node agent sidecar process died mid-turn (native crash, kill, or an
    * unclassified abort). Main and the headless runtime settle the owning turn

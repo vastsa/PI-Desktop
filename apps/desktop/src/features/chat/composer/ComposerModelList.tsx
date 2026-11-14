@@ -1,7 +1,8 @@
 import { formatTokenCount, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
 import type { TFunction } from "i18next";
 import type { CSSProperties, RefObject } from "react";
-import { IconCheck, IconEye, IconSearch, IconSparkles, IconX } from "../../../components/icons";
+import { IconCheck, IconEye, IconSearch, IconSettings, IconSparkles, IconX } from "../../../components/icons";
+import { TooltipButton } from "../../../components/ui";
 import {
   composerModelBadges,
   composerModelBinding,
@@ -100,7 +101,9 @@ export function ComposerModelList({
   t, query, setQuery, modelSearchRef, modelListRef, modelGroups,
   modelHighlight, setModelHighlight, selectedProviderId, selectedModelId, selectModel,
   recentEntries, sections, activeSection, sectionStep, selectSection, showSectionRail, searching, paneRows,
+  onOpenModelSettings,
 }: {
+  onOpenModelSettings?: () => void;
   paneRows: number;
   recentEntries: Array<{ provider: ProviderPublic; model: ModelInfo }>;
   sections: ComposerModelSection[];
@@ -158,6 +161,17 @@ export function ComposerModelList({
         >
           <IconX size={11} aria-hidden="true" />
         </button>
+      ) : null}
+      {onOpenModelSettings ? (
+        <TooltipButton
+          type="button"
+          className="composer-model-settings"
+          tooltip={t("chat.manageModels")}
+          ariaLabel={t("chat.manageModels")}
+          onClick={onOpenModelSettings}
+        >
+          <IconSettings size={14} aria-hidden="true" />
+        </TooltipButton>
       ) : null}
     </label>
     <div

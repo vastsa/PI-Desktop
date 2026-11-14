@@ -9,9 +9,11 @@ import {
 } from "./session-transcript-updates";
 
 type OptimisticFileReference = {
+  size?: number;
+  localReference?: string;
   path: string;
   name: string;
-  kind?: "image" | "file" | "session" | "directory";
+  kind?: "image" | "file" | "session" | "directory" | "agent";
   mimeType?: string;
   /** Large-text paste tokens travel inline in the text, not as attachments. */
   token?: string;
@@ -37,11 +39,11 @@ export function optimisticUserMessage(
   // an image chip is one: it also records where its path sits, so the row shows
   // the image in place before the durable echo arrives (D288).
   const rendered = fileReferences.flatMap((reference) => {
-    if (reference.kind === "directory") return [];
+    if (reference.kind === "directory" || reference.kind === "agent") return [];
     const kind =
       reference.kind ??
       (IMAGE_PATH_PATTERN.test(reference.path) ? ("image" as const) : ("file" as const));
-    return reference.token && kind !== "image" ? [] : [{ reference, kind }];
+    return reference.token && kind !== "image" && !reference.localReference ? [] : [{ reference, kind }];
   });
   const spans = locateInlinePromptPaths(
     content,
@@ -51,6 +53,8 @@ export function optimisticUserMessage(
     kind,
     name: reference.name,
     ref: reference.path,
+    ...(reference.size !== undefined ? { size: reference.size } : {}),
+    ...(reference.localReference ? { localReference: reference.localReference } : {}),
     ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
     ...(spans[index] ? { inlinePath: formatPromptPathText(reference.path) } : {}),
   }));

@@ -18,14 +18,17 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9mQAAAAASUVORK5CYII=",
   "base64",
 );
+// A PNG-signed payload whose base64 (~8.4M chars) overflowed the old validator (#2128).
+const largePng = Buffer.concat([png, Buffer.alloc(6 * 1024 * 1024, 0x5a)]);
+const LARGE_PROMPT = "large upscale";
 let requests = 0;
 const server = createServer(async (request, response) => {
-  for await (const _chunk of request) {
-    /* Drain the bounded fixture request. */
-  }
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
   requests++;
+  const image = Buffer.concat(chunks).includes(LARGE_PROMPT) ? largePng : png;
   response.setHeader("Content-Type", "application/json");
-  response.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
+  response.end(JSON.stringify({ data: [{ b64_json: image.toString("base64") }] }));
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 // Only the LLM edge is simulated; reverse RPC, authorization and execution are real.
@@ -85,6 +88,10 @@ try {
   const edited = await execute(session.id, [{ prompt: "green background", images: [source] }]);
   assert.equal(edited.ok, true, JSON.stringify(edited));
   assert.notEqual(edited.content.results[0].path, source);
+  const large = await execute(session.id, [{ prompt: LARGE_PROMPT }]);
+  assert.equal(large.ok, true, JSON.stringify(large).slice(0, 2000));
+  assert.equal(large.content.results[0].status, "succeeded", JSON.stringify(large.content.results[0]));
+  assert.ok((await readFile(large.content.results[0].path)).equals(largePng));
   await host.call("session.appendMessage", {
     sessionId: session.id,
     message: {
@@ -104,7 +111,7 @@ try {
   });
   const denied = await execute(plan.id, [{ prompt: "must not run" }]);
   assert.equal(denied.ok, false);
-  assert.equal(requests, 4);
+  assert.equal(requests, 5);
   await host.restart();
   const restored = await host.call("settings.get");
   assert.deepEqual(restored.imageGeneration, binding);
@@ -117,7 +124,7 @@ try {
     (await execute(session.id, [{ prompt: "unset" }])).errorCode,
     "IMAGE_NOT_CONFIGURED",
   );
-  assert.equal(requests, 4);
+  assert.equal(requests, 5);
   console.log(
     JSON.stringify({
       ok: true,
@@ -125,6 +132,7 @@ try {
       scenarios: [
         "batch-generation",
         "edit-result",
+        "large-image-result",
         "host-plan-denial",
         "settings-and-transcript-restart",
         "clear-binding",

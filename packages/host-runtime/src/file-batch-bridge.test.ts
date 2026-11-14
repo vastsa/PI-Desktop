@@ -25,3 +25,19 @@ it("forwards only the explicit file batch methods through the production sidecar
   await expect(sidecar.call("probe", { method: "settings.set", params: {} })).rejects.toMatchObject({ code: -32601 });
   expect(calls).toHaveLength(5);
 });
+
+
+it("allows session job methods but denies global desktop process access", async () => {
+  sidecar = new AgentSidecar({ launch: { command: process.execPath, args: ["-e", source] }, onStderr: () => {} });
+  const host: SidecarHostLink = {
+    call: async <T>() => ({ ok: true }) as T,
+    onNotification: () => () => {}, onExit: () => () => {},
+  };
+  sidecar.setHost(host);
+  for (const method of ["capabilities", "list", "wait", "stop"]) {
+    await expect(sidecar.call("probe", { method: `backgroundJobs.${method}`, params: { sessionId: "owner" } })).resolves.toEqual({ ok: true });
+  }
+  for (const method of ["list", "output", "stop"]) {
+    await expect(sidecar.call("probe", { method: `backgroundTasks.${method}`, params: { id: "foreign" } })).rejects.toMatchObject({ code: -32601 });
+  }
+});

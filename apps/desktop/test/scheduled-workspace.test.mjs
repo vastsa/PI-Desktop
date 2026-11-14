@@ -288,6 +288,24 @@ test("a run with no stored transcript says so instead of showing an empty pane",
   });
 });
 
+test("pending or failed run reads never render as a task that has not run", async () => {
+  await withVite(async server => {
+    const props = { tasks: [TASK_A], latestRuns: new Map(), selectedTaskId: TASK_A.id, now: NOW, locale: "en", onSelect() {} };
+    const loading = await render(server, "/src/features/scheduled/ScheduledTaskRail.tsx", "ScheduledTaskRail", { ...props, latestRunsLoaded: false });
+    assert.match(loading, /Loading/);
+    assert.doesNotMatch(loading, /Not run yet/);
+    const failed = await render(server, "/src/features/scheduled/ScheduledTaskRail.tsx", "ScheduledTaskRail", { ...props, latestRunsError: "Synthetic read failure" });
+    assert.match(failed, /Synthetic read failure/);
+    assert.doesNotMatch(failed, /Not run yet/);
+    const historyProps = { runs: [], selectedRunId: null, busy: false, locale: "en", onSelectRun() {}, onOpenSession() {} };
+    for (const state of [{ loaded: false }, { loaded: false, error: "Synthetic read failure" }]) {
+      const history = await render(server, "/src/features/scheduled/ScheduledRunHistory.tsx", "ScheduledRunHistory", { ...historyProps, ...state });
+      assert.match(history, state.error ? /Synthetic read failure/ : /Loading/);
+      assert.doesNotMatch(history, new RegExp(catalogs.en.scheduled.emptyRuns.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+  });
+});
+
 test("automation ownership keeps run transcripts out of the lists", async () => {
   await withVite(async (server) => {
     const { isAutomationSession } = await server.ssrLoadModule("/src/lib/session-origin.ts");

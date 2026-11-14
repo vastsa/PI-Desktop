@@ -1,9 +1,11 @@
 import { expandMcpInvocation } from "../composer-mcp";
-import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
+import { modeContinuationOrigin, type ModeRunCoordinator, type PreparedModeTurn } from "../runtime/mode-runs";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
 import { resolveSessionReferences } from "../session-references";
+import { resolvePromptAgentMentions } from "../agent-mentions";
 import { executionFromResponse, resolveSessionMessageInput } from "@pi-desktop/host-runtime";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { AgentHostBridge } from "../agent-host-bridge";
@@ -49,6 +51,8 @@ export type AgentIpcDependencies = {
   optionalWorkspaceRoot: () => Promise<string | null>;
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
+  /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -106,6 +110,7 @@ export function registerAgentIpc({
   optionalWorkspaceRoot,
   composerCommandService,
   loadComposerTemplatesCached,
+  modeRuns,
 }: AgentIpcDependencies): void {
   let host: HostProcess | null = null;
   let sidecar: AgentSidecar | null = null;
@@ -185,6 +190,9 @@ export function registerAgentIpc({
   });
 
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
+    // Set only on an in-process request built by the Agent Host bridge for a
+    // Host-started mode run turn; a renderer or plugin request never has it.
+    const modeOrigin = modeContinuationOrigin(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
     if (req.sessionId.startsWith("native-pi:")) {
@@ -222,6 +230,10 @@ export function registerAgentIpc({
         ? requestedViewingSessionId
         : null,
     );
+    if (modeOrigin && !(await modeRuns.canContinue(req.sessionId))) {
+      // The run was paused, stopped or claimed meanwhile: open no durable turn.
+      throw Object.assign(new Error("mode run cannot continue"), { errorCode: "MODE_CONTINUATION_SKIPPED" });
+    }
     const settings = await host.call<any>("settings.get");
     const sessionResult = await host.call<{ session?: any }>("session.get", {
       id: req.sessionId,
@@ -346,57 +358,89 @@ export function registerAgentIpc({
     recordTurnStart(req.sessionId, durableTurnId);
     activeTurnUsages.delete(req.sessionId);
 
+    // A staged mode claims its run for this durable turn before anything runs;
+    // the sidecar then executes the run's own definition snapshot.
+    let preparedMode: PreparedModeTurn | undefined;
+    let modeDefinition: PreparedModeTurn["definition"] | undefined;
+    try {
+      preparedMode = await modeRuns.prepareTurn({
+        sessionId: req.sessionId,
+        turnId: durableTurnId,
+        sessionMode: typeof session.mode === "string" ? session.mode : "agent",
+        content: req.content,
+        origin: modeOrigin ?? "user",
+      });
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
+    } catch (error) {
+      await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
+        turnId: durableTurnId,
+      });
+      throw error;
+    }
+
     // Slash expansion (D123, ADR 0024): templates expand before persistence
     // so reseed replays exactly what the model saw; the typed form rides along
     // as `command` for transcript display. Skill aliases are converted into a
     // short model instruction that makes the existing Skill tool call
     // explicit, while the typed form remains the visible transcript chip.
+    // `@agent` mentions (ADR 0346) take the same shape with the `Task` tool.
     // Builtin/plugin slash aliases never reach this channel, and unknown
     // /names stay literal text.
     let promptContent = mcpExpansion?.expanded ?? sessionMessage?.content ?? req.content;
     let slashCommand: string | undefined = mcpExpansion?.command;
     let skillMentions: UiMessage["skillMentions"];
-    if (!sessionMessage && !mcpExpansion && /(^|\s)\/\S/.test(req.content)) {
+    let agentMentions: UiMessage["agentMentions"];
+    const hasSlashToken = /(^|\s)\/\S/.test(req.content);
+    if (!sessionMessage && !mcpExpansion && (hasSlashToken || req.content.includes("@"))) {
       try {
-        const root = await optionalWorkspaceRoot();
-        const commandEnd = req.content.search(/\s/);
-        const commandName = req.content.startsWith("/")
-          ? req.content.slice(1, commandEnd === -1 ? undefined : commandEnd)
-          : "";
-        const commands = await composerCommandService.buildComposerCommands(
-          session.remoteWorkspace ? null : launch.projectPath ?? root,
-          { remote: Boolean(session.remoteWorkspace) },
-        );
-        const command = commands.find((item) => item.name === commandName);
-        const activeSkills = new Map(
-          commands.flatMap((item) => item.kind === "skill" && item.skillId
-            ? [[item.name, item.skillId] as const]
-            : []),
-        );
-        const mentions = findSkillMentions(req.content, activeSkills);
-        if (mentions.length > 0 && (!command || command.kind === "skill")) {
-          let body = "";
-          let end = 0;
-          for (const mention of mentions) {
-            body += req.content.slice(end, mention.start);
-            end = mention.end;
+        const foundAgents = await resolvePromptAgentMentions({
+          content: req.content,
+          mode: launch.sidecarParams?.mode,
+          subagentNames: Array.isArray(launch.sidecarParams?.subagents)
+            ? launch.sidecarParams.subagents.map((definition: { name: string }) => definition.name)
+            : [],
+          workspaceRoot: session.remoteWorkspace
+            ? null
+            : (launch.workspaceRoot ?? launch.projectPath ?? null),
+        });
+        if (!hasSlashToken) {
+          if (foundAgents.length > 0) {
+            promptContent = composeMentionPrompt(req.content, [], foundAgents);
+            slashCommand = req.content;
+            agentMentions = foundAgents;
           }
-          body = (body + req.content.slice(end)).trim();
-          const ids = [...new Set(mentions.map((mention) => mention.id))];
-          promptContent = [
-            `Call the \`Skill\` tool with each of these ids before answering this request, in order: ${ids.map((id) => JSON.stringify(id)).join(", ")}. Follow the loaded skill instructions.`,
-            body,
-          ]
-            .filter(Boolean)
-            .join("\n\n");
-          slashCommand = req.content;
-          skillMentions = mentions;
-        } else if (req.content.startsWith("/")) {
-          const templates = await loadComposerTemplatesCached(root);
-          const expansion = expandSlashInvocation(req.content, templates);
-          if (expansion) {
-            promptContent = expansion.expanded;
-            slashCommand = expansion.command;
+        } else {
+          const root = await optionalWorkspaceRoot();
+          const commandEnd = req.content.search(/\s/);
+          const commandName = req.content.startsWith("/")
+            ? req.content.slice(1, commandEnd === -1 ? undefined : commandEnd)
+            : "";
+          const commands = await composerCommandService.buildComposerCommands(
+            session.remoteWorkspace ? null : launch.projectPath ?? root,
+            { remote: Boolean(session.remoteWorkspace) },
+          );
+          const command = commands.find((item) => item.name === commandName);
+          const activeSkills = new Map(
+            commands.flatMap((item) => item.kind === "skill" && item.skillId
+              ? [[item.name, item.skillId] as const]
+              : []),
+          );
+          const mentions = findSkillMentions(req.content, activeSkills);
+          // A leading template keeps its expansion; agent mentions ride along
+          // only on a draft whose first token is no app or template command.
+          const mentionable = !command || command.kind === "skill";
+          if (mentionable && (mentions.length > 0 || foundAgents.length > 0)) {
+            promptContent = composeMentionPrompt(req.content, mentions, foundAgents);
+            slashCommand = req.content;
+            if (mentions.length > 0) skillMentions = mentions;
+            if (foundAgents.length > 0) agentMentions = foundAgents;
+          } else if (req.content.startsWith("/")) {
+            const templates = await loadComposerTemplatesCached(root);
+            const expansion = expandSlashInvocation(req.content, templates);
+            if (expansion) {
+              promptContent = expansion.expanded;
+              slashCommand = expansion.command;
+            }
           }
         }
       } catch (error) {
@@ -482,6 +526,7 @@ export function registerAgentIpc({
       ...(voiceOrigin ? { voiceOrigin } : {}),
       ...(slashCommand ? { command: slashCommand } : {}),
       ...(skillMentions ? { skillMentions } : {}),
+      ...(agentMentions ? { agentMentions } : {}),
       ...(revisionMeta?.revisionCount
         ? {
             revisionRootId: revisionMeta.rootUserId,
@@ -490,13 +535,15 @@ export function registerAgentIpc({
           }
         : {}),
     };
-    try {
+    // A Host-started mode turn is not user input and is never recorded as one.
+    if (!modeOrigin) try {
       await host.call("session.appendMessage", {
         sessionId: req.sessionId,
         message: userMessage,
         turnId: durableTurnId,
       });
     } catch (error) {
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(
         req.sessionId,
         "error",
@@ -509,16 +556,18 @@ export function registerAgentIpc({
       // restarting it here would run a prompt the transcript does not contain.
       throw error;
     }
-    emitAgentEvent({
-      sessionId: req.sessionId,
-      ts: Date.now(),
-      event: { type: "message_start", message: userMessage },
-    } satisfies AgentEventEnvelope);
-    emitAgentEvent({
-      sessionId: req.sessionId,
-      ts: Date.now(),
-      event: { type: "message_end", message: userMessage },
-    } satisfies AgentEventEnvelope);
+    if (!modeOrigin) {
+      emitAgentEvent({
+        sessionId: req.sessionId,
+        ts: Date.now(),
+        event: { type: "message_start", message: userMessage },
+      } satisfies AgentEventEnvelope);
+      emitAgentEvent({
+        sessionId: req.sessionId,
+        ts: Date.now(),
+        event: { type: "message_end", message: userMessage },
+      } satisfies AgentEventEnvelope);
+    }
 
     let result: { accepted: boolean; turnId: string };
     const isTrustedCompletionNotice =
@@ -536,6 +585,10 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
+          ...(modeDefinition ? { modeDefinition } : {}),
+          ...(preparedMode?.modeTurn
+            ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
+            : {}),
           // The host-created durable turn is the approval identity used by
           // Rust. The runtime must not replace it with a provider-local UUID.
           turnId: durableTurnId,
@@ -565,7 +618,7 @@ export function registerAgentIpc({
               text: attachment.text,
             })),
           ],
-          userMessageId: userMessage.id,
+          ...(modeOrigin ? {} : { userMessageId: userMessage.id }),
           // Per-turn permission ceiling override (R1 leftover; spec §7.3). The
           // sidecar records it on the turn context; enforcement of a NARROWER
           // ceiling still routes through the session's stored mode until
@@ -575,6 +628,7 @@ export function registerAgentIpc({
       );
     } catch (e) {
       completionNoticeTurns.delete(durableTurnId);
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(req.sessionId, "error", (e as any)?.errorCode, {
         turnId: durableTurnId,
       });

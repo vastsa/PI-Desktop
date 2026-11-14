@@ -16,9 +16,11 @@ import { installRendererApi } from "../../capture/renderer-api";
 import { StartupAnimation } from "../../components/StartupAnimation";
 import { StartupSplash } from "../../components/StartupSplash";
 import { api } from "../../lib/api";
+import { scheduledWorkspaceCache } from "../scheduled/scheduled-workspace-cache";
 import { composerSuggestion } from "../chat/composer/plugins/suggestion-bridge";
 import { usePluginBrowseState } from "../plugins/browse-state";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
+import { startModesSync } from "../modes/modes-sync";
 import { playNotificationChime } from "../../lib/notification-sound";
 import {
   clampSidebarWidth,
@@ -657,6 +659,10 @@ export function useAppShellRuntime() {
     void api.menuRendererReady().catch(() => undefined);
   }, [ready]);
 
+  // Mode catalog (Electron main) and run pushes (host-core) for the picker,
+  // the run status bar and Settings → Modes (ADR mode-definitions).
+  useEffect(() => startModesSync(), []);
+
   // The Host owns the prompt queue (D375); mirror it whenever the visible
   // session changes so a reload or a switch shows the durable entries.
   useEffect(() => {
@@ -757,6 +763,7 @@ export function useAppShellRuntime() {
       });
     });
     const offHostStatus = api.onHostStatus((status) => {
+      if (status.component !== "sidecar" && (!status.ok || status.restarted)) scheduledWorkspaceCache.clear();
       if (status.archMismatch) setArchMismatch(status.archMismatch);
       if (status.ok) {
         setBackendDown(null);
@@ -944,7 +951,9 @@ export function useAppShellRuntime() {
             break;
           }
           case "abort":
-            void abort();
+            void abort().catch((error) => {
+              showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+            });
             break;
           case "toggleWindow":
             // The same native action the menu item runs (D438): hide the window

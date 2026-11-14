@@ -36,6 +36,7 @@ const LIVE_PHASE_KEYS: Partial<Record<AgentActivity["phase"], string>> = {
   compacting: "chat.compactingContext",
   recovering: "chat.recoveringTurn",
   retrying: "chat.processRunning",
+  "waiting-tool-stop": "chat.waitingForToolStop",
   "waiting-subagents": "chat.processRunning",
 };
 

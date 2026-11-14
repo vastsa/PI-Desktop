@@ -6,83 +6,109 @@ const { createTranscriptLatestNavigation } = await import("../src/lib/transcript
 
 function fixture(reduced = false) {
   const box = { scrollTop: 80, scrollHeight: 8000, clientHeight: 600 };
-  const frames = new Map();
-  const positions = [];
-  let now = 0;
-  let id = 0;
+  const listeners = new Set();
+  const moves = [];
   let arrivals = 0;
+  let stops = 0;
   const navigation = createTranscriptLatestNavigation({
     geometry: () => box,
-    move: top => { box.scrollTop = top; positions.push(top); },
-    request: callback => { frames.set(++id, callback); return id; },
-    cancel: id => frames.delete(id),
-    now: () => now,
+    move: (top, behavior) => {
+      moves.push({ top, behavior });
+      if (behavior === "auto") box.scrollTop = top;
+    },
+    onScrollEnd: listener => { listeners.add(listener); return () => listeners.delete(listener); },
+    stop: () => { stops++; },
     reducedMotion: () => reduced,
   });
-  const advance = () => {
-    now += 16;
-    const batch = [...frames.values()];
-    frames.clear();
-    for (const frame of batch) frame(now);
+  return { box, navigation, moves, listeners,
+    start: () => navigation.start(() => arrivals++), arrivals: () => arrivals, stops: () => stops,
+    settle: (top = moves.at(-1).top) => {
+      box.scrollTop = Math.min(top, box.scrollHeight - box.clientHeight);
+      for (const listener of [...listeners]) listener();
+    },
   };
-  const finish = () => { for (let n = 0; navigation.isActive() && n < 60; n++) advance(); };
-  return { box, navigation, positions, frames, advance, finish,
-    start: () => navigation.start(() => arrivals++), arrivals: () => arrivals };
 }
 
-test("latest moves continuously to bottom before committing the new view", () => {
+test("latest delegates movement to browser smooth scroll, just like a turn marker", () => {
   const f = fixture();
   f.start();
-  assert.equal(f.box.scrollTop, 80);
-  f.advance();
-  assert(f.box.scrollTop > 80 && f.box.scrollTop < 7400);
+  assert.deepEqual(f.moves, [{ top: 7400, behavior: "smooth" }]);
+  assert.equal(f.box.scrollTop, 80, "the controller must not simulate animation frames");
   assert.equal(f.arrivals(), 0);
-  f.finish();
-  assert(f.positions.length >= 8);
-  assert(f.positions.every((top, i) => i === 0 || top >= f.positions[i - 1]));
-  assert.equal(f.box.scrollTop, 7400);
+  assert(f.navigation.isActive());
+  f.box.scrollTop = 900;
+  assert.equal(f.moves.length, 1, "intermediate browser positions need no scroll writes");
+  f.settle();
   assert.equal(f.arrivals(), 1);
-  assert.equal(f.frames.size, 0);
+  assert.equal(f.navigation.isActive(), false);
+  assert.equal(f.listeners.size, 0);
 });
 
-test("late stream growth retargets the trip without reversing or losing bottom", () => {
+test("a late changes card extends native travel without an instant height jump", () => {
   const f = fixture();
-  f.start(); f.advance();
-  f.box.scrollHeight += 800;
-  f.finish();
-  assert(f.positions.every((top, i) => i === 0 || top >= f.positions[i - 1]));
-  assert.equal(f.box.scrollTop, 8200);
+  f.start();
+  f.box.scrollTop = 900;
+  f.box.scrollHeight += 56;
+  assert.equal(f.moves.length, 1, "layout growth must not interrupt the current browser animation");
+  f.settle(7400);
+  assert.deepEqual(f.moves.at(-1), { top: 7456, behavior: "smooth" });
+  assert.equal(f.box.scrollTop, 7400, "remaining distance is animated, never snapped");
+  assert.equal(f.arrivals(), 0);
+  f.settle();
   assert.equal(f.arrivals(), 1);
 });
 
-test("reader interruption retires every queued frame without committing latest", () => {
+test("reader interruption stops native travel and detaches obsolete arrival", () => {
   const f = fixture();
-  f.start(); f.advance();
-  const top = f.box.scrollTop;
-  f.navigation.cancel(); f.advance();
-  assert.equal(f.box.scrollTop, top);
+  f.start();
+  const obsolete = [...f.listeners][0];
+  f.box.scrollTop = 900;
+  f.navigation.cancel();
+  obsolete();
+  assert.equal(f.stops(), 1);
+  assert.equal(f.box.scrollTop, 900);
   assert.equal(f.arrivals(), 0);
   assert.equal(f.navigation.isActive(), false);
-  assert.equal(f.frames.size, 0);
+  assert.equal(f.listeners.size, 0);
 });
 
-test("pane hide commits accepted latest intent once without finishing an invisible animation", () => {
+test("pane hide commits latest intent exactly once and stops invisible native motion", () => {
   const f = fixture();
-  f.start(); f.advance(); f.navigation.cancel(true); f.navigation.cancel(true); f.advance();
+  f.start();
+  f.navigation.cancel(true); f.navigation.cancel(true);
   assert.equal(f.arrivals(), 1);
-  assert.equal(f.frames.size, 0);
+  assert.equal(f.stops(), 1);
+  assert.equal(f.listeners.size, 0);
 });
 
-test("repeated navigation cannot commit an obsolete trip", () => {
+test("a repeated click cannot commit the previous native trip", () => {
   const f = fixture();
-  f.start(); f.advance(); f.start(); f.finish();
+  f.start();
+  const obsolete = [...f.listeners][0];
+  f.start(); obsolete();
+  assert.equal(f.arrivals(), 0);
+  assert.equal(f.listeners.size, 1);
+  f.settle();
   assert.equal(f.arrivals(), 1);
 });
 
-test("reduced motion reaches bottom synchronously", () => {
+test("reduced motion uses the turn marker's immediate auto behavior", () => {
   const f = fixture(true);
   f.start();
+  assert.deepEqual(f.moves, [{ top: 7400, behavior: "auto" }]);
   assert.equal(f.box.scrollTop, 7400);
   assert.equal(f.arrivals(), 1);
-  assert.equal(f.frames.size, 0);
+  assert.equal(f.listeners.size, 0);
+});
+
+test("an already-bottomed or hidden scroller does not wait for a nonexistent scrollend", () => {
+  for (const hidden of [false, true]) {
+    const f = fixture();
+    f.box.scrollTop = 7400;
+    if (hidden) f.box.clientHeight = 0;
+    f.start();
+    assert.equal(f.arrivals(), 1);
+    assert.equal(f.listeners.size, 0);
+    assert.equal(f.navigation.isActive(), false);
+  }
 });

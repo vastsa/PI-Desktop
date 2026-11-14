@@ -22,6 +22,8 @@ export type ComposerModelPickerProps = {
   controlsBlocked: boolean;
   onCloseOtherMenus: () => void;
   rootActions?: ReactNode;
+  /** Opens the Models settings destination; omitted where Settings is the host. */
+  onOpenModelSettings?: () => void;
 };
 
 /** Model/reasoning picker with its keyboard and focus contract intact. */
@@ -37,6 +39,7 @@ export function ComposerModelPicker({
   controlsBlocked,
   onCloseOtherMenus,
   rootActions,
+  onOpenModelSettings,
 }: ComposerModelPickerProps) {
   const {
     open,
@@ -121,6 +124,10 @@ export function ComposerModelPicker({
           showSectionRail={showSectionRail} searching={searching} paneRows={paneRows}
           setModelHighlight={setModelHighlight} selectModel={selectModel}
           selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
+          onOpenModelSettings={onOpenModelSettings ? () => {
+            setOpen(false);
+            onOpenModelSettings();
+          } : undefined}
         />
         {thinkingMenuLevels.length > 1 ? (
           <div className="composer-model-reasoning">

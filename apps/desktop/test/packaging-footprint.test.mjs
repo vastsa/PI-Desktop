@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
+
+const require = createRequire(import.meta.url);
 
 const packageJson = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -274,9 +277,73 @@ test("packaging keeps voice native payloads unpacked and excludes removed PTY pa
   assert.deepEqual(packageJson.build.asarUnpack, [
     "node_modules/transcribe-cpp/**/*.node",
     "node_modules/transcribe-cpp/**/bin/**",
+    // koffi hands the provider's library path straight to dlopen/LoadLibrary,
+    // which cannot read inside app.asar (see transcribe-native-library.ts).
+    "node_modules/@transcribe-cpp/**",
+    "node_modules/@koromix/**/*.node",
     "node_modules/@picovoice/pvrecorder-node/**/*.node",
     "node_modules/@picovoice/pvrecorder-node/**/lib/**",
   ]);
   assert.doesNotMatch(JSON.stringify(packageJson.build.files), /node-pty/);
   assert.doesNotMatch(JSON.stringify(packageJson.build.extraResources), /node-pty/);
+});
+
+test("packaging ships only the target platform's voice native payloads", () => {
+  // electron-builder merges platform-level `files` into a matcher that holds
+  // only exclusions and then includes the whole app directory, so per-target
+  // filtering lives in the root list through the `${os}` macro (mac | win |
+  // linux). Patterns are evaluated in order, like electron-builder's filter.
+  const builderRequire = createRequire(require.resolve("electron-builder"));
+  const { Minimatch } = createRequire(builderRequire.resolve("app-builder-lib"))("minimatch");
+  const recorderPatterns = packageJson.build.files.filter((pattern) =>
+    pattern.startsWith("!**/node_modules/@picovoice/pvrecorder-node/") && pattern.includes("${os}"),
+  );
+  assert.equal(recorderPatterns.length, 2);
+  const libDirs = ["mac/arm64", "mac/x86_64", "windows/amd64", "windows/arm64", "linux/x86_64",
+    "raspberry-pi/cortex-a72-aarch64"];
+  const shipped = (os) => {
+    const matchers = ["**/*", ...recorderPatterns].map(
+      (pattern) => new Minimatch(pattern.replaceAll("${os}", os), { dot: true }),
+    );
+    return libDirs.filter((dir) => {
+      const file = `node_modules/@picovoice/pvrecorder-node/lib/${dir}/pv_recorder.node`;
+      let match = false;
+      for (const matcher of matchers) {
+        if (match !== matcher.negate) continue;
+        match = matcher.match(file);
+      }
+      return match;
+    });
+  };
+  assert.deepEqual(shipped("mac"), ["mac/arm64", "mac/x86_64"]);
+  assert.deepEqual(shipped("win"), ["windows/amd64", "windows/arm64"]);
+  // Linux arm64 loads the Raspberry Pi builds (pvrecorder's own platform map).
+  assert.deepEqual(shipped("linux"), ["linux/x86_64", "raspberry-pi/cortex-a72-aarch64"]);
+
+  for (const platform of ["mac", "win", "linux"]) {
+    assert.equal(packageJson.build[platform].files, undefined, `${platform}.files would ship src/`);
+  }
+  for (const pattern of [
+    "!**/node_modules/koffi/{doc,vendor}/**",
+    "!**/node_modules/@picovoice/pvrecorder-node/{src/**,copy.js,jest.config.js,tsconfig.json}",
+  ]) {
+    assert.ok(packageJson.build.files.includes(pattern), `${pattern} must stay excluded`);
+  }
+  // koffi's JS entry imports src/koffi/src/static.js at runtime.
+  assert.ok(packageJson.build.files.every((pattern) => !pattern.includes("koffi/src")));
+});
+
+test("main output is minified without renaming and shares one Pi SDK copy", () => {
+  const mainConfig = viteConfigSource.slice(
+    viteConfigSource.indexOf("  main: {"),
+    viteConfigSource.indexOf("  preload: {"),
+  );
+  assert.match(mainConfig, /minify:\s*"esbuild"/);
+  // Packaged builds ship no source maps; identifiers keep stack traces readable.
+  assert.match(mainConfig, /minifyIdentifiers:\s*false/);
+  assert.match(mainConfig, /plugins:\s*\[dedupeMainPackages\(\)\]/);
+  assert.match(
+    viteConfigSource,
+    /MAIN_SHARED_PACKAGES = \["@earendil-works\/pi-ai", "typebox"\]/,
+  );
 });

@@ -381,6 +381,18 @@ test("cache cleanup removes disposable caches while preserving sessions, secrets
   assert.equal(await storage.cacheSize(value.roots), 0);
 });
 
+test("cache size ignores non-directory entries inside the partitions directory", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t);
+  await put(join(value.roots.browser, "Partitions/plugin-1/Cache/response"), "1234");
+  // Finder leaves .DS_Store files next to the partitions; treating one as a
+  // partition makes cacheSize fail with ENOTDIR on `<name>/Cache` instead of
+  // ignoring it, which surfaces as the settings storage-path error.
+  await put(join(value.roots.browser, "Partitions/.DS_Store"), "junk");
+  assert.equal(await storage.cacheSize(value.roots), 4);
+  await storage.clearCaches(value.roots);
+  assert.equal(await readFile(join(value.roots.browser, "Partitions/.DS_Store"), "utf8"), "junk");
+});
+
 test("cache cleanup does not follow plugin, partition or leaf cache links outside storage", { timeout: 60_000 }, async (t) => {
   const value = await fixture(t); const external = join(value.root, "external");
   await put(join(external, "cache/download/pkg"), "external");

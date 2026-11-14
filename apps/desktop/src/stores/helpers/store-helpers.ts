@@ -27,7 +27,8 @@ export function promptAttachmentsFromDraft(
   return references.flatMap((reference) => {
     // A session link is prompt text: main resolves it into a conversation
     // reference, and it never travels as a structured attachment.
-    if (reference.kind === "session" || reference.kind === "directory") return [];
+    // An `@agent` chip is prompt text too (ADR 0346).
+    if (reference.kind === "session" || reference.kind === "directory" || reference.kind === "agent") return [];
     const kind =
       reference.kind ??
       (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
@@ -36,12 +37,14 @@ export function promptAttachmentsFromDraft(
     // Inline chips use tokens for both files and images. Ordinary file chips
     // already serialize to @path text (the model can Read them); only image
     // chips need the structured transport for vision/fallback handling.
-    if (reference.token && kind !== "image") return [];
+    if (reference.token && kind !== "image" && !reference.localReference) return [];
     return [
       {
         path: reference.path,
         name: reference.name,
         kind,
+        ...(reference.size !== undefined ? { size: reference.size } : {}),
+        ...(reference.localReference ? { localReference: reference.localReference } : {}),
         ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
       },
     ];
@@ -61,6 +64,7 @@ export function promptAttachmentsFromMessage(
       kind: attachment.kind,
       ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
       ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+      ...(attachment.localReference ? { localReference: attachment.localReference } : {}),
     }));
 }
 

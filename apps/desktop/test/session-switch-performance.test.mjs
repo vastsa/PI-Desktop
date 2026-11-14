@@ -162,7 +162,7 @@ test("a hidden pane does no reading work off screen", () => {
   assert.match(transcript, /if \(!paneVisible\) return;\n\s*let frame = 0;/);
   assert.match(
     transcript,
-    /const loadOlder = useCallback\(\(background = false\) => \{[\s\S]*?if \(!paneVisibleRef\.current\) return;/,
+    /const loadOlder = useCallback\(\(\) => \{[\s\S]*?if \(!paneVisibleRef\.current\) return;/,
   );
   assert.match(transcript, /\{paneVisible && !veilCovering \? \(\s*<ConversationMinimap/);
 });

@@ -384,6 +384,31 @@ export function lifecycleKindOf(
   return delegationLifecycleKind(message.toolName);
 }
 
+/** New job controls share names with historical delegation-only rows. */
+export function backgroundJobRowOf(message: UiMessage) {
+  const kind = lifecycleKindOf(message);
+  if (!kind) return null;
+  const details = asRecord(toolResultPayload(message));
+  if (kind === "list") {
+    const jobs = asRecord(details?.backgroundJobs);
+    if (jobs?.supported === true && Array.isArray(jobs.tasks)) {
+      return { kind, count: jobs.tasks.length };
+    }
+    // While listing, the caller has not learned which jobs are present.
+    return message.toolStatus === "running" ? { kind } : null;
+  }
+  const snapshot = asRecord(details?.job);
+  const ref = asRecord(asRecord(message.toolArgs)?.job) ?? asRecord(snapshot?.job) ?? snapshot;
+  if (ref?.kind !== "bash") return null;
+  const state = snapshot?.state;
+  return {
+    kind, command: typeof snapshot?.command === "string"
+      ? snapshot.command + (snapshot.commandTruncated === true ? "…" : "") : "Bash",
+    state: state === "running" && snapshot?.stopRequested ? "stopping" as const :
+      state === "running" || state === "exited" || state === "failed" || state === "stopped" ? state : undefined,
+  };
+}
+
 export function subagentOutcome(
   message: UiMessage,
   statuses?: ReadonlyMap<string, SubagentOutcome>,

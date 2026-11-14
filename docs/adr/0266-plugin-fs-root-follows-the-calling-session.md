@@ -58,6 +58,27 @@ scope/consent -- were correct; only the directory they measured against was wron
    with a session project they keep working per session. A panel call in that
    state still fails closed, because it has nothing else to resolve.
 
+### Workspace metadata consistency amendment
+
+The initial implementation scoped ordinary file calls but left `workspace.get`
+and registered-folder action metadata tied to the visible project. A plugin
+could discover project B while its session-rooted file calls reached A, causing
+knowledge-library guards to reject otherwise valid saves. Absolute open/reveal
+actions could also select the visible project's registered roots.
+
+Discovery and registered-folder actions now use the same host-owned session
+mapping as `fsRoot`, through one internal resolver. The existing group snapshot
+is queried for that path; a legacy metadata provider answering a different path
+cannot attach its roots to the session. Panel and untracked-session fallbacks
+remain unchanged. `workspace:changed` remains a foreground event, while a
+background tool's pull describes its invoking session. No SDK shape, permission,
+process boundary, persistent state or migration is added.
+
+Plugins that enqueue callbacks must preserve the caller's async context for
+each job; executing every job in the queue pump's original context would retain
+the wrong invocation authority. Invocation IDs still expire on completion or
+cancellation and may not be dropped to recover through a foreground fallback.
+
 ## Consequences
 
 - Two sessions on two projects no longer cross-talk: a plugin agent tool reads and

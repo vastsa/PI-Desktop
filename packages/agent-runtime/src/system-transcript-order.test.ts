@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Agent, type AgentTool, type AgentMessage } from "@earendil-works/pi-agent-core";
-import { createAssistantMessageEventStream, Type, getCurrentTools, type SystemMessage } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, getCurrentTools, type SystemMessage } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { rebuildSystemTranscript } from "./system-transcript.js";
 
 const read = { name: "Read", description: "Read a file", parameters: Type.Object({}) };

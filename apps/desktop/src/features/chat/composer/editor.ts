@@ -39,7 +39,9 @@ export function createFileReference(
   preferredName?: string,
   sessionId = "",
   metadata?: {
-    kind?: "image" | "file" | "session" | "directory";
+    size?: number;
+    localReference?: string;
+    kind?: "image" | "file" | "session" | "directory" | "agent";
     mimeType?: string;
     token?: string;
     plugin?: ComposerPluginPart;
@@ -54,10 +56,12 @@ export function createFileReference(
     // A plugin mark's label is shown as given, and a session reference is
     // named by its conversation; neither is a path.
     name:
-      isPluginMark(metadata) || metadata?.kind === "session"
+      isPluginMark(metadata) || metadata?.kind === "session" || metadata?.kind === "agent"
         ? (preferredName ?? "")
         : fileReferenceLabel(path, preferredName),
     kind: metadata?.kind ?? (isImageFilePath(path) ? "image" : "file"),
+    ...(metadata?.size !== undefined ? { size: metadata.size } : {}),
+    ...(metadata?.localReference ? { localReference: metadata.localReference } : {}),
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
     ...(metadata?.token ? { token: metadata.token } : {}),
     ...(metadata?.plugin ? { plugin: metadata.plugin } : {}),
@@ -254,6 +258,8 @@ const CHIP_ICON_SVG: Record<string, string> = {
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   plugin:
     '<path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z"/>',
+  agent:
+    '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
   fold: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
 };
 
@@ -261,6 +267,7 @@ function chipIconKey(reference: ComposerFileReference): string {
   if (reference.plugin?.kind === "mark") return "plugin";
   if (reference.plugin?.kind === "fold") return "fold";
   if (reference.kind === "session") return "session";
+  if (reference.kind === "agent") return "agent";
   if (reference.kind === "directory") return "dir";
   const mime = reference.mimeType ?? "";
   if (reference.kind === "image" || mime.startsWith("image/")) return "image";
@@ -280,7 +287,8 @@ function chipSvg(key: string, size = 13): string {
 }
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
-  if (isPluginMark(reference) || reference.kind === "directory") return false;
+  if (reference.localReference) return false;
+  if (isPluginMark(reference) || reference.kind === "directory" || reference.kind === "agent") return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 
@@ -299,12 +307,17 @@ function buildChipElement(
   chip.contentEditable = "false";
   chip.dataset.token = token;
   // A mark names the plugin that put it there where a file names its path.
-  const origin = isPluginMark(reference) ? (reference.plugin?.pluginId ?? "") : reference.path;
+  const origin = isPluginMark(reference)
+    ? (reference.plugin?.pluginId ?? "")
+    : reference.kind === "agent"
+      ? `@${reference.path}`
+      : reference.path;
   if (isPluginMark(reference)) chip.dataset.pluginMark = reference.plugin?.kind;
+  if (reference.kind === "agent") chip.dataset.agent = reference.path;
   chip.title = origin;
   // An image keeps the compact chip and opens its preview, a session chip opens
   // that conversation, and only plain text expands into editable draft text.
-  const image = chipIconKey(reference) === "image";
+  const image = !reference.localReference && chipIconKey(reference) === "image";
   if (image) chip.dataset.image = "";
   const session = reference.kind === "session";
   if (session) chip.dataset.sessionId = reference.path;
@@ -344,6 +357,13 @@ function buildChipElement(
   const nameSpan = document.createElement("span");
   nameSpan.className = "composer-chip-name";
   nameSpan.textContent = reference.name;
+  if (reference.localReference && reference.size !== undefined) {
+    const unit = Math.min(3, Math.floor(Math.log2(Math.max(1, reference.size)) / 10));
+    const size = reference.size / 1024 ** unit;
+    nameSpan.textContent += ` · ${Number(size.toFixed(1))} ${["B", "KiB", "MiB", "GiB"][unit]}`;
+    chip.title += ` (${reference.size} B)`;
+    chip.setAttribute("aria-label", `${reference.name} — ${chip.title}`);
+  }
 
   const remove = document.createElement("button");
   remove.type = "button";

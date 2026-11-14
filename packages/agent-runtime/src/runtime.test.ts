@@ -235,6 +235,33 @@ function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
 }
 
 describe("Pi 1.4 client identity", () => {
+  it("extension thinking changes reach the next provider request", async () => {
+    const runtime = createRuntime();
+    const internal = runtime as any;
+    const bridge = internal.createExtensionBridge();
+    bridge.setThinkingLevel("high");
+    expect(bridge.getThinkingLevel()).toBe("high");
+    const levels: unknown[] = [];
+    internal.models = {
+      streamSimple: (_model: unknown, _context: unknown, options: { reasoning?: unknown }) => {
+        levels.push(options.reasoning);
+        const message = assistantMessage({ content: [{ type: "text", text: "Ready." }] }) as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: "stop", message });
+          stream.end(message);
+        });
+        return stream;
+      },
+    };
+    try {
+      await runtime.prompt("Say ready.", "thinking-user", "thinking-turn");
+      expect(levels).toEqual(["high"]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
   it("forwards the desktop identity through a user prompt to the provider adapter", async () => {
     const runtime = createRuntime();
     const internal = runtime as unknown as {
@@ -1315,6 +1342,28 @@ function runtimeFirstMismatch(
 }
 
 describe("system transcript reconstruction", () => {
+  it.each(["progressTurnRerunInProgress", "silentTurnRerunInProgress", "providerRetryInProgress", "overflowRecoveryInProgress"])("starts a new recovery reply after consumed steering during %s (#1699)", async (recovery) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent, turnId: "active-turn" });
+    const internal = runtime as any;
+    const progress = assistantMessage({ content: [{ type: "text", text: "Checking the task" }] });
+    await internal.handleAgentEvent({ type: "message_start", message: progress });
+    const firstId = internal.currentAssistant.id;
+    const steering = { role: "user", content: "Are you stuck?", timestamp: Date.now() };
+    internal.pendingSteering.set(steering, { id: "steering-user", toolNames: [] });
+    internal[recovery] = true;
+    await internal.handleAgentEvent({ type: "message_end", message: steering });
+    const next = assistantMessage({ content: [{ type: "text", text: "No, continuing now" }] });
+    await internal.handleAgentEvent({ type: "message_start", message: next });
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    const starts = events.filter(event => event.type === "message_start" && event.message.role === "assistant");
+    expect(starts).toHaveLength(2);
+    expect(starts[1].message.id).not.toBe(firstId);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "message_end", message: expect.objectContaining({ id: firstId, status: "complete" }),
+    }));
+    await runtime.dispose();
+  });
   it("keeps provider usage valid when rebuilding an unchanged prefix", async () => {
     const runtime = createRuntime();
     const internals = runtime as any;
@@ -2699,6 +2748,19 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("keeps session scratch paths behind the shared system prefix (#1926)", async () => {
+    const first = createRuntime({ scratchDir: "/fixture/scratch/one", projectMemory: "shared memory" });
+    const second = createRuntime({ scratchDir: "/fixture/scratch/two", projectMemory: "shared memory" });
+    const firstPrompt = first as unknown as { composedSections: Record<string, string> };
+    const secondPrompt = second as unknown as { composedSections: Record<string, string> };
+    expect(firstPrompt.composedSections.runtime).toBe(secondPrompt.composedSections.runtime);
+    expect(firstPrompt.composedSections.runtime).not.toContain("/fixture/scratch/one");
+    expect(firstPrompt.composedSections.context).toContain("/fixture/scratch/one");
+    expect(secondPrompt.composedSections.context).toContain("/fixture/scratch/two");
+    await first.dispose();
+    await second.dispose();
+  });
+
   it("sends the default Bash timeout and preserves explicit overrides", async () => {
     const host = {
       call: vi.fn().mockResolvedValue({ ok: true, content: "done" }),
@@ -3823,8 +3885,11 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       "Grep",
       "asktool",
       "Skill",
+      // Goal runs as a staged mode the user selects; EnterGoalMode is gone.
       "EnterPlanMode",
-      "EnterGoalMode",
+      "TaskWait",
+      "TaskList",
+      "TaskStop",
       "new_context",
       "ToolSearch",
     ]);
@@ -4194,7 +4259,10 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
     await runtime.dispose();
   });
 
-  it("gives Goal mode the read-only core, guarded editing declarations, and SubmitGoal", async () => {
+  it("keeps a Goal session without a definition read-only and offers no legacy Goal negotiation", async () => {
+    // ADR mode-definitions: Goal is a staged mode. A session that carries no
+    // Goal definition (legacy negotiation sessions) falls back to the
+    // builtin mapping, which is the contract level, and SubmitGoal is gone.
     const runtime = createRuntime({
       mode: "goal",
       pluginTools: [
@@ -4215,16 +4283,19 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
         "Grep",
         "BrowserPreview",
         "Bash",
-        "SubmitGoal",
       ]),
     );
     expect(goalTools).toEqual(expect.arrayContaining(["Write", "Edit"]));
     expect(goalTools).not.toContain("plugin_demo_run");
     expect(goalTools).not.toContain("SubmitPlan");
+    expect(goalTools).not.toContain("SubmitGoal");
     expect(goalTools).not.toContain("EnterGoalMode");
-    expect(runtime.getStatus().planningState).toBe("planning");
-    expect(agent.state.systemPrompt).toContain("SubmitGoal");
-    expect(agent.state.systemPrompt).toContain("acceptance criteria");
+    expect(goalTools).not.toContain("CompleteStage");
+    expect(runtime.getStatus().planningState).toBe("inactive");
+    expect(agent.state.systemPrompt).not.toContain("SubmitGoal");
+    expect(agent.state.systemPrompt).toContain("Do not use Write, Edit");
+    await expect(runtimeTool(runtime, "Write").execute("w1", { path: "a.txt", content: "x" }))
+      .rejects.toThrow("not allowed in goal mode");
 
     await runtime.dispose();
   });
@@ -4336,7 +4407,8 @@ describe("DesktopAgentRuntime tool schema completeness (#864)", () => {
 });
 
 describe("DesktopAgentRuntime plan transitions", () => {
-  it.each(["plan", "goal"] as const)(
+  // Goal no longer submits a contract (ADR mode-definitions); only Plan does.
+  it.each(["plan"] as const)(
     "continues the %s user turn after a missing-workspace submission",
     async (kind) => {
       const host = {
@@ -4545,68 +4617,33 @@ describe("DesktopAgentRuntime plan transitions", () => {
     await runtime.dispose();
   });
 
-  it("routes the Goal contract through the same host approval with kind goal", async () => {
+  it("denies the retired Goal negotiation tools from older transcripts", async () => {
+    // ADR mode-definitions: Goal is a staged mode the user selects. Neither
+    // EnterGoalMode nor SubmitGoal is offered, and a call replayed from an
+    // older transcript is denied without reaching the Host.
     const host = { call: vi.fn() };
     const runtime = createRuntime({ host, turnId: "turn-1" });
     const agent = (runtime as any).agent;
-
-    host.call.mockResolvedValueOnce({ ok: true, state: "planning" });
-    const enterTool = agent.state.tools.find(
-      (tool: any) => tool.name === "EnterGoalMode",
-    );
-    await enterTool.execute("enter-goal-call", {});
-    expect(runtime.getMode()).toBe("goal");
-    expect(host.call).toHaveBeenNthCalledWith(1, "plans.enter", {
-      sessionId: "session-1",
-      turnId: "turn-1",
-      toolCallId: "enter-goal-call",
-      kind: "goal",
-    });
-
-    const markdown = "# Goal\n\nCheckout works.\n\n## Acceptance criteria\n- tests pass\n";
-    const proposal = {
-      id: "proposal-goal-1",
-      sessionId: "session-1",
-      turnId: "durable-turn-1",
-      toolCallId: "submit-goal-call",
-      kind: "goal",
-      title: "Checkout works",
-      markdown,
-      plan: markdown,
-      question: "Approve this goal?",
-      artifact: {
-        relativePath: ".pi/goal/proposal-goal-1.md",
-        sha256: "def456",
-        sizeBytes: 42,
-      },
-      version: 1,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    host.call.mockResolvedValueOnce({ status: "pending", proposal });
-    const submitTool = agent.state.tools.find(
-      (tool: any) => tool.name === "SubmitGoal",
-    );
-    expect(submitTool.description).toContain("acceptance criteria");
-    const submitResult = await submitTool.execute("submit-goal-call", {
-      title: proposal.title,
-      markdown: proposal.markdown,
-      question: proposal.question,
-    });
-
-    expect(submitResult.terminate).toBe(true);
-    expect(runtime.getMode()).toBe("goal");
-    expect(runtime.getStatus().planningState).toBe("awaiting_approval");
-    expect(host.call).toHaveBeenLastCalledWith(
-      "plans.submit",
-      expect.objectContaining({
-        sessionId: "session-1",
-        toolCallId: "submit-goal-call",
-        kind: "goal",
-        markdown: proposal.markdown,
-      }),
-    );
+    const names = agent.state.tools.map((tool: any) => tool.name);
+    expect(names).toContain("EnterPlanMode");
+    expect(names).not.toContain("EnterGoalMode");
+    expect(names).not.toContain("SubmitGoal");
+    const beforeToolCall = agent.beforeToolCall as Function;
+    for (const name of ["EnterGoalMode", "SubmitGoal"]) {
+      await expect(
+        beforeToolCall({
+          assistantMessage: { content: [{ type: "toolCall", id: "g1", name, arguments: {} }] },
+          toolCall: { id: "g1", name, arguments: {} },
+          args: {},
+          context: {},
+        }),
+      ).resolves.toMatchObject({
+        block: true,
+        reason: expect.stringContaining(`${name} is no longer available`),
+      });
+    }
+    expect(host.call).not.toHaveBeenCalled();
+    expect(runtime.getMode()).toBe("agent");
 
     await runtime.dispose();
   });
@@ -5744,6 +5781,32 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     await runtime.dispose();
     await restored.dispose();
   });
+  it("preserves local file reference size in live input and restored history", async () => {
+    const attachment = {
+      kind: "file" as const, name: "large.png", ref: "/external/large.png",
+      size: 67108865, localReference: "11111111-2222-4333-8444-555555555555",
+    };
+    const restored = createRuntime({ history: [{
+      id: "reference-user", role: "user", content: "Inspect",
+      createdAt: "2026-11-13T00:00:00Z", attachments: [attachment],
+    }] });
+    const live = createRuntime();
+    try {
+      const message = (restored as unknown as { agent: Agent }).agent.state.messages.find(row => row.role === "user");
+      expect(typeof message?.content).toBe("string");
+      expect(message?.content).toContain("/external/large.png");
+      expect(message?.content).toContain("67108865 bytes");
+      const agent = (live as unknown as { agent: Agent }).agent;
+      const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+      vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+      await live.prompt({ text: "Inspect", attachments: [{ ...attachment, path: attachment.ref }] }, "user", "turn");
+      expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ role: "user", content: message?.content }));
+    } finally {
+      await live.dispose();
+      await restored.dispose();
+    }
+  });
+
   it("replays every under-budget historical image as a provider image block", async () => {
     const history: UiMessage[] = Array.from({ length: 6 }, (_, index) => {
       const payload = Buffer.from(`historical-image-${index + 1}`).toString("base64");
@@ -7438,6 +7501,31 @@ describe("DesktopAgentRuntime response duration", () => {
     }
   });
 
+  it.each([
+    ["router/auto", "vendor/served-model", "vendor/served-model"],
+    ["router/auto", undefined, undefined],
+  ])("records the concrete served model on the finished turn (%s -> %s)", async (requested, served, expected) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internals = runtime as unknown as {
+      handleAgentEvent(event: unknown): Promise<void>;
+      provider: { modelId: string };
+    };
+    internals.provider = { ...internals.provider, modelId: requested };
+    await internals.handleAgentEvent({ type: "message_start", message: { role: "assistant", content: [] } });
+    await internals.handleAgentEvent({
+      type: "message_end",
+      message: { ...assistantMessage({ content: [{ type: "text", text: "answer" }] }), ...(served ? { responseModel: served } : {}) },
+    });
+    const terminal = onEvent.mock.calls
+      .map(([envelope]) => envelope as any)
+      .find(({ event }) => event.type === "message_end")?.event.message;
+    expect(terminal).toMatchObject({ modelId: requested, status: "complete" });
+    if (expected) expect(terminal.responseModelId).toBe(expected);
+    else expect(terminal).not.toHaveProperty("responseModelId");
+    await runtime.dispose();
+  });
+
   it("accumulates request and stream timing across a provider retry", async () => {
     vi.useFakeTimers();
     try {
@@ -8381,11 +8469,37 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         timestamp: Date.parse("2026-07-28T00:00:05Z"),
         message: writeAssistant,
       },
+      // Every executed call carries a non-error result row, the way
+      // agent-loop stamps them; the shaped preparation's guard reads these.
+      {
+        type: "message",
+        id: "read-result",
+        seq: 4,
+        parentId: "read-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:02Z"),
+        message: { role: "toolResult", toolCallId: "read-a", toolName: "read", isError: false, content: [], details: {}, timestamp: 2 },
+      },
+      {
+        type: "message",
+        id: "edit-result",
+        seq: 5,
+        parentId: "edit-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:04Z"),
+        message: { role: "toolResult", toolCallId: "edit-b", toolName: "edit", isError: false, content: [], details: {}, timestamp: 4 },
+      },
+      {
+        type: "message",
+        id: "write-result",
+        seq: 6,
+        parentId: "write-assistant",
+        timestamp: Date.parse("2026-07-28T00:00:05.5Z"),
+        message: { role: "toolResult", toolCallId: "write-c", toolName: "write", isError: false, content: [], details: {}, timestamp: 5 },
+      },
       {
         type: "message",
         id: "user-next",
-        seq: 4,
-        parentId: "write-assistant",
+        seq: 7,
+        parentId: "write-result",
         timestamp: Date.parse("2026-07-28T00:00:06Z"),
         message: { role: "user", content: "next", timestamp: 6 },
       },
@@ -8469,6 +8583,47 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     ).toBeLessThanOrEqual(20_000);
     expect(retained[0].content.slice(0, 7)).toBe("newest:");
     expect(retained[0].content).toContain("[checkpoint truncated:");
+    // ASCII stays at the 3.5 chars/token ceiling (~70k), not one char per token.
+    expect(retained[0].content.length).toBeGreaterThan(20_000 * 3);
+    await runtime.dispose();
+  });
+
+  it("truncates a CJK user message the character estimate would have kept whole", async () => {
+    const runtime = createRuntime();
+    // 50k Han characters are ~14k tokens at 3.5 chars/token, under the 20k
+    // retention cap, but ~50k under the output-cap estimate. Keeping the
+    // message whole overflows the next request.
+    const asks = ["oldest", "newest"].map((label, index) => ({
+      type: "message",
+      id: `ask-${index}`,
+      parentId: index === 0 ? null : `ask-${index - 1}`,
+      timestamp: `2026-07-30T00:00:0${index}Z`,
+      message: {
+        role: "user",
+        content: `${label}:${"中".repeat(index === 1 ? 50_000 : 100)}`,
+        timestamp: index + 1,
+      },
+    }));
+    (runtime as any).fullEntries = asks;
+
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      entries.map((entry: any) => entry.message),
+    );
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
+    const retained = preparation.value.retainedTail;
+
+    expect(retained).toHaveLength(1);
+    expect(retained[0].content.slice(0, 7)).toBe("newest:");
+    expect(retained[0].content).toContain("[checkpoint truncated:");
+    expect(estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: retained[0].content }],
+    })).toBeLessThanOrEqual(20_000);
     await runtime.dispose();
   });
 
@@ -9355,6 +9510,8 @@ describe("DesktopAgentRuntime inline context compaction", () => {
           summaryTokens: 7,
           contextTokens: 40_000,
           summarized: true,
+          providerId: "local",
+          modelId: "local-model",
         },
       }),
     );
@@ -10244,6 +10401,184 @@ describe("DesktopAgentRuntime subagents", () => {
       }
     },
   );
+
+  it("waits for a steered Bash call to settle before requesting the next model response", async () => {
+    let finish!: (value: unknown) => void;
+    const host = { call: vi.fn((method: string) => {
+      if (method === "tools.execute") return new Promise((resolve) => { finish = resolve; });
+      return Promise.resolve({ ok: true });
+    }) };
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host });
+    (runtime as any).models = { streamSimple: scriptedStream([
+      [{ type: "toolCall", id: "long-bash", name: "Bash", arguments: { command: "sleep 600" } }],
+    ], requests) };
+    const running = runtime.prompt("Run the command", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(finish).toBeDefined());
+      runtime.steer({ text: "Change direction" }, "active-turn", {
+        id: "steer-user", role: "user", content: "Change direction", createdAt: new Date().toISOString(), steering: true,
+      });
+      await vi.waitFor(() => expect(host.call).toHaveBeenCalledWith("tools.abort", expect.objectContaining({ toolCallId: "long-bash" })));
+      runtime.steer({ text: "Another constraint" }, "active-turn", {
+        id: "steer-user-2", role: "user", content: "Another constraint", createdAt: new Date().toISOString(), steering: true,
+      });
+      expect(host.call.mock.calls.filter(([method]) => method === "tools.abort")).toHaveLength(1);
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(requests).toHaveLength(1);
+      finish({ ok: false, content: "Interrupted", errorCode: "TOOL_ABORTED" });
+      vi.useRealTimers();
+      await running;
+      expect(requests).toHaveLength(2);
+      expect(JSON.stringify(requests[1])).toContain("Change direction");
+      expect(requests[1].filter((message) => message.role === "user" && JSON.stringify(message.content).includes("Another constraint"))).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+      finish?.({ ok: false, content: "Stopped" });
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+    }
+  });
+
+  it.each(["remote", "background"] as const)("does not cancel a %s command on steering", async (kind) => {
+    let finish!: (value: unknown) => void;
+    const host = { call: vi.fn((method: string) => method === "tools.execute"
+      ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve({ ok: true })) };
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, ...(kind === "remote" ? { remoteWorkspace: { hostKey: "ssh", path: "/remote" } } : {}) });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      { type: "toolCall", id: "keep-running", name: "Bash", arguments: { command: "sleep 600", ...(kind === "background" ? { runInBackground: true } : {}) } },
+    ]], requests) };
+    const running = runtime.prompt("Run command", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(finish).toBeDefined());
+      runtime.steer({ text: "Change direction" }, "active-turn", {
+        id: "steer-user", role: "user", content: "Change direction", createdAt: new Date().toISOString(), steering: true,
+      });
+      expect(host.call.mock.calls.some(([method]) => method === "tools.abort")).toBe(false);
+      expect(runtime.getStatus().activity?.phase).toBe("waiting-tool-stop");
+      expect(requests).toHaveLength(1);
+      finish({ ok: true, content: "done" });
+      await running;
+      expect(JSON.stringify(requests[1])).toContain("Change direction");
+    } finally {
+      finish?.({ ok: false, content: "Stopped" });
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+    }
+  });
+
+  it.each(["local", "remote"] as const)("waits for Stop when a %s shell reports an unconfirmed failure", async (kind) => {
+    let finish!: (value: unknown) => void;
+    const host = { call: vi.fn((method: string) => method === "tools.execute"
+      ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve({ ok: true })) };
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, ...(kind === "remote" ? { remoteWorkspace: { hostKey: "ssh", path: "/remote" } } : {}) });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      { type: "toolCall", id: "uncertain", name: "Bash", arguments: { command: "sleep 600" } },
+    ]], requests) };
+    const running = runtime.prompt("Run command", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(finish).toBeDefined());
+      runtime.steer({ text: "Change direction" }, "active-turn", {
+        id: "steer-user", role: "user", content: "Change direction", createdAt: new Date().toISOString(), steering: true,
+      });
+      finish({ ok: false, content: "lifecycle failed", errorCode: "TOOL_FAILED" });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(requests).toHaveLength(1);
+      await runtime.abort();
+      await running;
+      expect(requests).toHaveLength(1);
+    } finally {
+      finish?.({ ok: false, content: "Stopped" });
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+    }
+  });
+
+  it("skips a write when steering arrives during tool preparation", async () => {
+    let finishPreparation!: (value: unknown) => void;
+    const host = { call: vi.fn((method: string) => method === "project.instructions.resolve"
+      ? new Promise((resolve) => { finishPreparation = resolve; }) : Promise.resolve({ ok: true })) };
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host, projectPath: "/root" });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      { type: "toolCall", id: "prepared-write", name: "Write", arguments: { path: "file.txt", content: "new" } },
+    ]], requests) };
+    const running = runtime.prompt("Write file", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(finishPreparation).toBeDefined());
+      runtime.steer({ text: "Do not write" }, "active-turn", {
+        id: "steer-user", role: "user", content: "Do not write", createdAt: new Date().toISOString(), steering: true,
+      });
+      finishPreparation({ entries: [] });
+      await running;
+      expect(host.call.mock.calls.some(([method]) => method === "tools.execute")).toBe(false);
+      expect(JSON.stringify(requests[1])).toContain("Do not write");
+    } finally {
+      finishPreparation?.({ entries: [] });
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+    }
+  });
+
+  it("settles each parallel read before delivering steering", async () => {
+    const fixture = gatedHost();
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host: fixture.host });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      { type: "toolCall", id: "read-a", name: "Read", arguments: { path: "a.txt" } },
+      { type: "toolCall", id: "read-b", name: "Read", arguments: { path: "b.txt" } },
+    ]], requests) };
+    const running = runtime.prompt("Read files", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(fixture.entered).toEqual(["read-a", "read-b"]));
+      runtime.steer({ text: "Change direction" }, "active-turn", {
+        id: "steer-user", role: "user", content: "Change direction", createdAt: new Date().toISOString(), steering: true,
+      });
+      await running;
+      const aborted = fixture.host.call.mock.calls.filter(([method]) => method === "tools.abort");
+      expect(aborted.map(([, args]) => args.toolCallId).sort()).toEqual(["read-a", "read-b"]);
+      expect(toolResults(requests[1]).map((result) => result.id)).toEqual(["read-a", "read-b"]);
+      expect(JSON.stringify(requests[1])).toContain("Change direction");
+    } finally {
+      fixture.drain();
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+    }
+  });
+
+  it("does not start later sequential tools after steering", async () => {
+    const fixture = gatedHost();
+    const requests: AgentMessage[][] = [];
+    const runtime = createRuntime({ host: fixture.host });
+    (runtime as any).models = { streamSimple: scriptedStream([[
+      { type: "toolCall", id: "first", name: "Bash", arguments: { command: "sleep 600" } },
+      { type: "toolCall", id: "second", name: "Bash", arguments: { command: "echo unexpected" } },
+    ]], requests) };
+    const running = runtime.prompt("Run commands", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(fixture.entered).toEqual(["first"]));
+      runtime.steer({ text: "Change direction" }, "active-turn", {
+        id: "steer-user", role: "user", content: "Change direction", createdAt: new Date().toISOString(), steering: true,
+      });
+      await running;
+      expect(fixture.entered).toEqual(["first"]);
+      expect(JSON.stringify(requests[1])).toContain("Skipped because new user input is waiting");
+      expect(JSON.stringify(requests[1])).toContain("Change direction");
+    } finally {
+      fixture.drain();
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+    }
+  });
 
   it.each(["during", "before"] as const)("handles steering %s TaskWait while its delegate continues running", async (timing) => {
     subagentRuns.calls.length = 0;
@@ -12161,6 +12496,84 @@ describe("DesktopAgentRuntime compaction request headers", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.headers).toEqual({ "X-Team": "platform" });
+    await runtime.dispose();
+  });
+});
+
+describe("DesktopAgentRuntime retained-tail file operations (#2287 follow-up to #2276)", () => {
+  /** The shape `prepareCompaction` returns, with a tail pi did not collect. */
+  function preparationWithTail() {
+    const tailCall = (id: string, path: string) => ({
+      role: "assistant",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path } }],
+      api: "openai-completions",
+      provider: "local",
+      model: "local-model",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: 2,
+    });
+    return {
+      messagesToSummarize: [
+        { role: "user", content: [{ type: "text", text: "older task context" }], timestamp: 1 },
+      ],
+      turnPrefixMessages: [],
+      retainedTail: [
+        tailCall("call-1", "src/ran.ts"),
+        tailCall("call-2", "src/no-row.ts"),
+        tailCall("call-3", "src/failed.ts"),
+      ],
+      isSplitTurn: false,
+      tokensBefore: 240_000,
+      fileOps: {
+        read: new Set<string>(),
+        edited: new Set<string>(),
+        written: new Set<string>(),
+      },
+      settings: { enabled: true, reserveTokens: 16_384, keepRecentTokens: 20_000 },
+    };
+  }
+
+  it("keeps a retained tail's unexecuted calls out of the shaped file operations", async () => {
+    const runtime = createRuntime({ provider });
+    // The transcript pi's planner never saw: one call ran, one has no result
+    // row (a Stop broke the batch), one keeps an error row. The lookup must
+    // span the full transcript, since a tail call's result sits anywhere in it.
+    (runtime as any).fullEntries = [
+      {
+        type: "message",
+        id: "e1",
+        parentId: null,
+        seq: 0,
+        timestamp: 3,
+        message: { role: "toolResult", toolCallId: "call-1", isError: false, content: [], timestamp: 3 },
+      },
+      {
+        type: "message",
+        id: "e2",
+        parentId: "e1",
+        seq: 1,
+        timestamp: 4,
+        message: { role: "toolResult", toolCallId: "call-3", isError: true, content: [], timestamp: 4 },
+      },
+    ];
+
+    const shaped = (runtime as any).codexShapedPreparation(
+      preparationWithTail(),
+      0,
+      "completed_turn",
+    );
+
+    expect([...shaped.fileOps.read]).toEqual(["src/ran.ts"]);
+    expect([...shaped.fileOps.written]).toEqual([]);
+    expect([...shaped.fileOps.edited]).toEqual([]);
     await runtime.dispose();
   });
 });
@@ -14428,5 +14841,65 @@ describe("parallel policy tool provenance", () => {
       expect(host.call.mock.calls.some(([method]) =>
         ["project.instructions.resolve", "tools.prepareFileCall"].includes(method))).toBe(false);
     } finally { internal.extensionRunner = undefined; await runtime.dispose(); }
+  });
+});
+
+
+describe("background Bash job waits in the production runtime", () => {
+  it.each(["steer", "abort"] as const)("releases a wait on %s without stopping the process", async action => {
+    let entered!: () => void;
+    const waiting = new Promise<void>(resolve => { entered = resolve; });
+    let finish!: (value: unknown) => void;
+    const host = { call: vi.fn(async (method: string) => {
+      if (method === "backgroundJobs.capabilities") return { version: 1, supported: true };
+      if (method === "backgroundJobs.wait") {
+        entered();
+        return new Promise(resolve => { finish = resolve; });
+      }
+      return {};
+    }) };
+    const runtime = createRuntime({ host, subagents: [] });
+    const requests: AgentMessage[][] = [];
+    const internals = runtime as unknown as {
+      models: { streamSimple: (model: unknown, context: { messages: AgentMessage[] }) => ReturnType<typeof createAssistantMessageEventStream> };
+    };
+    internals.models = { streamSimple: (_model, context) => {
+      requests.push([...context.messages]);
+      const first = requests.length === 1;
+      const message = assistantMessage({
+        content: first
+          ? [{ type: "toolCall", id: "wait-bash", name: "TaskWait", arguments: { job: { kind: "bash", id: "process" } } }]
+          : [{ type: "text", text: "Handled new input." }],
+        stopReason: first ? "toolUse" : "stop",
+      }) as unknown as AssistantMessage;
+      const stream = createAssistantMessageEventStream();
+      queueMicrotask(() => {
+        stream.push({ type: "start", partial: message });
+        stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
+        stream.end(message);
+      });
+      return stream;
+    } };
+    const running = runtime.prompt("Wait for the background test.", "user", "job-turn");
+    try {
+      await waiting;
+      if (action === "steer") {
+        runtime.steer({ text: "Handle this correction." }, "job-turn", {
+          id: "new-user", role: "user", content: "Handle this correction.",
+          createdAt: "2026-11-05T00:00:00.000Z", steering: true,
+        });
+      } else {
+        await runtime.abort();
+      }
+      await running;
+      if (action === "steer") {
+        expect(JSON.stringify(requests.at(-1))).toContain("Interrupted by new user input");
+        expect(JSON.stringify(requests.at(-1))).toContain("Handle this correction.");
+      }
+      expect(host.call.mock.calls.some(([method]) => method === "backgroundJobs.stop")).toBe(false);
+      finish({ state: "running" });
+    } finally {
+      await runtime.dispose();
+    }
   });
 });

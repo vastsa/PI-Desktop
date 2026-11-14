@@ -66,6 +66,7 @@ event: pi-desktop/<domain>/event/<name>
 - `pi-desktop/project-group/memory/get` / `save`
 - `pi-desktop/project-group/instructions/get` / `save`
 - `pi-desktop/session/collaboration`
+- `pi-desktop/session/usageCost`
 
 ## 3.1 逻辑项目组
 
@@ -791,6 +792,7 @@ type UiMessage = {
  sessionMessage?: SessionMessageOrigin;
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
+ responseModelId?: string; // concrete served model when it differs from modelId
  responseDurationMs?: number; // model stream duration for throughput
  responseOutputTokens?: number; // estimated partial output when stop has no final usage
  toolName?: string;
@@ -861,6 +863,19 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 无操作。 `responseDurationMs` 和 `responseOutputTokens` 是可选的转录本
 元数据保留在消息元数据中，因此协议 v11 和存储架构 v16
 保持不变。
+
+`responseModelId` 同为可选消息元数据。仅当 Provider 报告的响应模型（Pi `responseModel`）与请求的
+`modelId` 不同且不是其日期快照时，Agent Runtime 才写入；值会去除首尾空白、限制在 200 字符内，含控制字符则丢弃。
+转录本模型标签显示该值，并在标签说明中注明请求的模型。`MessageUsage.costStatus` 为 `reported` 表示 Provider
+返回了实际计费总额（Pi `usage.cost.totalFromProvider`），`estimated` 表示按目录单价估算，`unknown` 表示无可用价格；
+汇总仅在所有部分均为 `reported` 时才为 `reported`。
+
+`pi-desktop/session/usageCost({ sessionId }) -> SessionUsageCost` 是会话全部轮次的只读费用汇总，
+由 Host `session.usageCost` 提供。渲染层只持有转录本的一个窗口，因此会话累计不从已加载消息求和。
+轮次账本中的每个物理请求只计一次，并按 `providerId` 分组；所有状态的轮次都计入，因为中止或失败的请求同样计费。
+`ProviderUsageCost.total` 只累加有价格的请求，`reportedRequests` 为 Provider 实际计费的请求数，
+`unpricedRequests` 为没有可用价格的请求数，包括按无 `providerId` 分组的旧版仅 token 轮次。
+导入的 `native-pi:` 会话返回空汇总。
 
 设置字体选择器（ADR 0083）通过一个仅 Electron 的允许通道读取
 系统已安装字体：
@@ -1446,7 +1461,7 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 - `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 带 `dataUrl`，或 `missing` / `notImage` / `tooLarge`）。只做根包含检查，不适用 ADR 0339 外部文件规则，因此模型写出的图片引用无法渲染任意本地图片。从不返回非图片字节。仅渲染器使用，不是插件宿主 API。
 - `fs/reveal({path})` → 在 Finder 中显示。规则与 `fs/read` 相同，包括 ADR 0339 外部文件规则。
 - `fs/open({path, mimeType?})` → 用系统默认应用打开已有的普通文件。与 `fs/read` 规则相同：校验真实路径包含范围、拒绝通过符号链接逃逸，并适用 ADR 0339 外部文件规则。对于声明为 `video/mp4` 的无后缀 `attachments/<sha256>` blob，宿主在私有应用数据目录建立 `.mp4` 符号链接后再交给系统，不复制视频字节。
-- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments` / `external`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。隔离会话以 `worktree.location` 而不是父项目 checkout 作为查找与读取的根；落在父 checkout 内的绝对引用会先映射到 worktree 中的同一相对路径（该文件存在时），从而打开分支上的副本，而不是报 `outside-allowed-roots`。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0263），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`。位于所有受管根之外的精确绝对路径不会回退到根内同名文件，而是按外部文件规则处理（ADR 0339）：指向存在的普通文件时返回 `root: "external"`（`matchedBy: "exact-absolute"`，`relativePath` 为文件名）；没有文件时返回 `match: null`；`reason: "outside-allowed-roots"` 只留给位于受管根之外、又不是精确绝对路径的引用。`fs/read`、`fs/reveal`、`fs/open` 采用同一规则，`fs/readImageDataUrl` 仍只做根包含检查。解析本身不打开任何东西（ADR 0262）。
+- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments` / `external`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。隔离会话以 `worktree.location` 而不是父项目 checkout 作为查找与读取的根；落在父 checkout 内的绝对引用会先映射到 worktree 中的同一相对路径（该文件存在时），从而打开分支上的副本，而不是报 `outside-allowed-roots`。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0263），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`。以 POSIX 方式给盘符路径加根的写法（`/c:/dir/file.md`，Markdown 链接常照 POSIX 示例写成这样）在匹配前按 `C:\dir\file.md` 读取，因此该写法命中的就是盘符所指的那个文件；POSIX 主机保留 `/c:/...`，在那里它就是真实路径。位于所有受管根之外的精确绝对路径不会回退到根内同名文件，而是按外部文件规则处理（ADR 0339）：指向存在的普通文件时返回 `root: "external"`（`matchedBy: "exact-absolute"`，`relativePath` 为文件名）；没有文件时返回 `match: null`；`reason: "outside-allowed-roots"` 只留给位于受管根之外、又不是精确绝对路径的引用。`fs/read`、`fs/reveal`、`fs/open` 采用同一规则，`fs/readImageDataUrl` 仍只做根包含检查。解析本身不打开任何东西（ADR 0262）。
 - `fs/list` 仍只限工作区；外面的遍历被拒绝（`INVALID_ARGUMENT`）。
 
 ## 13b. 桌面菜单和窗口 API

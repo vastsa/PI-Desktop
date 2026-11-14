@@ -204,6 +204,106 @@ pub fn record_usage(db: &Database, session_id: &str, turn_id: &str, usage: &Valu
     Ok(true)
 }
 
+#[derive(Default)]
+struct CostBucket {
+    total: f64,
+    priced: i64,
+    reported: i64,
+    unpriced: i64,
+}
+
+/// Read-only cost rollup for one session, grouped by the physical provider that
+/// served each request. Every turn status counts: aborted and failed requests
+/// were still billed. A request without a usable price is counted, never
+/// guessed, so callers can say the total is a lower bound.
+pub fn session_usage_cost(db: &Database, session_id: &str) -> Result<Value> {
+    let mut stmt = db.conn().prepare_cached(
+        "SELECT usage_json, input_tokens, output_tokens FROM turns WHERE session_id = ?1",
+    )?;
+    let rows = stmt.query_map(params![session_id], |row| {
+        Ok((
+            row.get::<_, Option<String>>(0)?,
+            row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+            row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+        ))
+    })?;
+    let mut buckets: std::collections::BTreeMap<Option<String>, CostBucket> = Default::default();
+    let mut turn_count = 0_i64;
+    let mut request_count = 0_i64;
+    for row in rows {
+        let (usage_json, input_tokens, output_tokens) = row?;
+        let usage = usage_json
+            .as_deref()
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+        let records = usage.as_ref().map(operations).unwrap_or_default();
+        let recorded_tokens = usage
+            .as_ref()
+            .map(|u| count(u, "totalTokens"))
+            .unwrap_or(0)
+            .max(input_tokens.max(0).saturating_add(output_tokens.max(0)));
+        if records.is_empty() && recorded_tokens == 0 {
+            continue;
+        }
+        turn_count += 1;
+        for record in &records {
+            let provider = record
+                .get("providerId")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned);
+            let bucket = buckets.entry(provider).or_default();
+            request_count += 1;
+            if known_cost(record) {
+                bucket.priced += 1;
+                bucket.total += record
+                    .get("cost")
+                    .and_then(|c| c.get("total"))
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0);
+                if record.get("costStatus").and_then(Value::as_str) == Some("reported") {
+                    bucket.reported += 1;
+                }
+            } else {
+                bucket.unpriced += 1;
+            }
+        }
+        // Token-only legacy turns, or legacy totals beside a ledger, cannot be
+        // attributed to a provider or priced after the fact.
+        if recorded_tokens > sum_counts(&records, "totalTokens")
+            && (records.is_empty()
+                || usage
+                    .as_ref()
+                    .and_then(|u| u.get("aggregation"))
+                    .and_then(Value::as_str)
+                    == Some("aggregate"))
+        {
+            buckets.entry(None).or_default().unpriced += 1;
+            request_count += 1;
+        }
+    }
+    let providers: Vec<Value> = buckets
+        .into_iter()
+        .map(|(provider, bucket)| {
+            let mut value = json!({
+                "total": bucket.total,
+                "pricedRequests": bucket.priced,
+                "reportedRequests": bucket.reported,
+                "unpricedRequests": bucket.unpriced,
+            });
+            if let Some(provider) = provider {
+                value["providerId"] = json!(provider);
+            }
+            value
+        })
+        .collect();
+    Ok(json!({
+        "sessionId": session_id,
+        "turnCount": turn_count,
+        "requestCount": request_count,
+        "providers": providers,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,6 +349,71 @@ mod tests {
         let total = merge_usage(Some(&left), &right);
         assert_eq!(total["totalTokens"], i64::MAX);
         assert_eq!(total["inputTokens"], i64::MAX);
+    }
+
+    fn priced(id: &str, provider: &str, status: &str, total: f64) -> Value {
+        json!({"operationId": id, "usageOrigin": "pi", "providerId": provider,
+            "inputTokens": 10, "outputTokens": 2, "totalTokens": 12, "costStatus": status,
+            "cost": {"input": total, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": total}})
+    }
+
+    #[test]
+    fn session_cost_groups_by_provider_and_counts_unpriced_requests() {
+        let dir = std::env::temp_dir().join(format!("pi-usage-cost-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Database::open(&dir.join("test.sqlite")).unwrap();
+        let session = super::super::create_session(&db, None, None, None, None, None).unwrap();
+        let other = super::super::create_session(&db, None, None, None, None, None).unwrap();
+        let empty = session_usage_cost(&db, &session.id).unwrap();
+        assert_eq!(empty["requestCount"], 0);
+        assert_eq!(empty["providers"], json!([]));
+
+        // Ledger turn: a billed request, an unpriced classifier, and a replay.
+        let turn = super::super::begin_turn(&db, &session.id, None, None).unwrap();
+        let billed = priced("a", "api", "reported", 0.25);
+        record_usage(&db, &session.id, &turn, &billed).unwrap();
+        record_usage(&db, &session.id, &turn, &billed).unwrap();
+        let mut classifier = operation("b", false);
+        classifier["providerId"] = json!("api");
+        record_usage(&db, &session.id, &turn, &classifier).unwrap();
+        super::super::end_turn(&db, &turn, "aborted", None, None, false).unwrap();
+        // Token-only legacy snapshot: counted, never priced.
+        let legacy = super::super::begin_turn(&db, &session.id, None, None).unwrap();
+        let tokens = json!({"inputTokens": 5, "outputTokens": 1, "totalTokens": 6});
+        super::super::end_turn(&db, &legacy, "completed", None, Some(&tokens), false).unwrap();
+        // A still-running turn has already been billed for its first request.
+        let running = super::super::begin_turn(&db, &session.id, None, None).unwrap();
+        record_usage(
+            &db,
+            &session.id,
+            &running,
+            &priced("c", "sub", "estimated", 0.5),
+        )
+        .unwrap();
+        // Another session's spend stays out of this rollup.
+        let foreign = super::super::begin_turn(&db, &other.id, None, None).unwrap();
+        record_usage(
+            &db,
+            &other.id,
+            &foreign,
+            &priced("d", "api", "reported", 9.0),
+        )
+        .unwrap();
+
+        let summary = session_usage_cost(&db, &session.id).unwrap();
+        assert_eq!(summary["sessionId"], json!(session.id));
+        assert_eq!(summary["turnCount"], 3);
+        assert_eq!(summary["requestCount"], 4);
+        assert_eq!(
+            summary["providers"],
+            json!([
+                {"total": 0.0, "pricedRequests": 0, "reportedRequests": 0, "unpricedRequests": 1},
+                {"providerId": "api", "total": 0.25, "pricedRequests": 1, "reportedRequests": 1, "unpricedRequests": 1},
+                {"providerId": "sub", "total": 0.5, "pricedRequests": 1, "reportedRequests": 0, "unpricedRequests": 0},
+            ])
+        );
+        drop(db);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
