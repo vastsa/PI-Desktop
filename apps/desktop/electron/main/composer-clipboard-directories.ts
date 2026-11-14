@@ -100,7 +100,7 @@ export async function nativeClipboardPaths(
   return paths;
 }
 
-/** Directories stay path references; regular files use the existing picker capability. */
+/** Capture native paths without reading file contents. */
 export async function readComposerClipboardDirectories(
   clipboard: NativeClipboard,
   rememberFiles: (paths: string[]) => string,
@@ -117,7 +117,7 @@ export async function readComposerClipboardDirectories(
     if (!metadata.isDirectory() && !metadata.isFile()) throw new Error("clipboard item is not a file or directory");
     return { path: canonical, name: basename(path) || path, directory: metadata.isDirectory() };
   }));
-  if (!entries.some(entry => entry.directory)) return null;
+  if (!entries.length) return null;
   const files = entries.filter(entry => !entry.directory).map(entry => entry.path);
   return {
     items: entries.map(entry => entry.directory

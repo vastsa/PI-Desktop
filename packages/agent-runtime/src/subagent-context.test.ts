@@ -17,7 +17,14 @@ import {
   buildProviderModel,
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
-import { automaticCompactionThresholdFor, contextBudgetFor } from "./context-budget.js";
+import {
+  automaticCompactionThresholdFor,
+  contextBudgetFor,
+  contextBudgetLimitsFor,
+  retainedUserMessageBudget,
+} from "./context-budget.js";
+import { estimateOutputCapInputTokens } from "./output-cap.js";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import {
   degradedDelegateMessages,
   delegateRetentionMode,
@@ -42,6 +49,18 @@ function smallModel(): Model<Api> {
     ...buildProviderModel(provider),
     contextWindow: 4_096,
     maxTokens: 1_024,
+  };
+}
+
+/**
+ * Window whose retention cap is half the hard budget (8 000) while the summary
+ * prompt can still carry a brief larger than that cap times 3.5 characters.
+ */
+function retentionModel(): Model<Api> {
+  return {
+    ...buildProviderModel(provider),
+    contextWindow: 32_000,
+    maxTokens: 4_096,
   };
 }
 
@@ -237,6 +256,44 @@ describe("prepareDelegateTurnContext", () => {
     expect(prompts).toHaveLength(1);
   });
 
+  it("threads the prior in-run summary past the system row at a second boundary", async () => {
+    // The delegate's state keeps its system row at the head. Detecting the
+    // prior summary at index 0 read that row instead, so the second (and
+    // every later) in-run boundary compaction lost previousSummary and
+    // re-summarized the earlier checkpoint summary under the from-scratch
+    // prompt — exactly what the previous-summary thread exists to avoid.
+    const messages: AgentMessage[] = [
+      { role: "system", content: "delegate system prompt", timestamp: 0 } as AgentMessage,
+      {
+        role: "compactionSummary",
+        summary: "PRIOR CHECKPOINT SUMMARY",
+        tokensBefore: 1_000,
+        timestamp: 1,
+      } as AgentMessage,
+      userMessage("continue the work"),
+      assistantToolCall("big"),
+      toolResult("x".repeat(7_000), "big"),
+    ];
+    const { factory, prompts } = summaryModels(() => summarySuccess("UPDATED SUMMARY"));
+
+    const outcome = await prepareDelegateTurnContext({
+      messages,
+      model: smallModel(),
+      taskBrief: "continue the work",
+      retentionMode: "active_turn",
+      summaryModels: factory,
+      signal: new AbortController().signal,
+    });
+
+    expect(outcome.kind).toBe("compacted");
+    expect(prompts).toHaveLength(1);
+    // The update prompt carries the prior summary forward instead of
+    // treating it as ordinary history under the from-scratch prompt.
+    expect(prompts[0]).toContain("<previous-summary>");
+    expect(prompts[0]).toContain("PRIOR CHECKPOINT SUMMARY");
+    expect(prompts[0]).not.toContain("delegate system prompt");
+  });
+
   it("includes cached input in the delegate's usage anchor", async () => {
     const taskBrief = "Read the permission flow.";
     const messages: AgentMessage[] = [
@@ -315,6 +372,65 @@ describe("prepareDelegateTurnContext", () => {
     // Everything past the boundary fits under the hard limit again.
     const fit = contextBudgetFor(smallModel(), outcome.messages);
     expect(fit.tokens).toBeLessThan(fit.hardLimit);
+  });
+
+  it("truncates a long CJK brief to the output-cap retention budget", async () => {
+    const brief = "中".repeat(32_000);
+    const model = retentionModel();
+    const { factory } = summaryModels(() => summarySuccess("SUMMARY TEXT"));
+    const outcome = await prepareDelegateTurnContext({
+      messages: [
+        userMessage(brief),
+        assistantToolCall("call-1"),
+        toolResult("a".repeat(3_000), "call-1"),
+      ],
+      model,
+      taskBrief: brief,
+      retentionMode: "active_turn",
+      summaryModels: factory,
+      signal: new AbortController().signal,
+    });
+
+    expect(outcome.kind).toBe("compacted");
+    if (outcome.kind !== "compacted") return;
+    const retained = outcome.messages.at(-1) as { role?: string; content?: unknown };
+    expect(retained.role).toBe("user");
+    expect(typeof retained.content).toBe("string");
+    const text = retained.content as string;
+    const budget = retainedUserMessageBudget(contextBudgetLimitsFor(model));
+    expect(text).toContain("中");
+    expect(text).toContain("delegate context truncated");
+    expect(estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: text }],
+    })).toBeLessThanOrEqual(budget);
+    expect(text.length).toBeLessThan(
+      Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    );
+  });
+
+  it("keeps an ASCII brief at the character ceiling when the retention cap cuts it", async () => {
+    const brief = "a".repeat(60_000);
+    const model = retentionModel();
+    const { factory } = summaryModels(() => summarySuccess("SUMMARY TEXT"));
+    const outcome = await prepareDelegateTurnContext({
+      messages: [
+        userMessage(brief),
+        assistantToolCall("call-1"),
+        toolResult("b".repeat(3_000), "call-1"),
+      ],
+      model,
+      taskBrief: brief,
+      retentionMode: "active_turn",
+      summaryModels: factory,
+      signal: new AbortController().signal,
+    });
+
+    expect(outcome.kind).toBe("compacted");
+    if (outcome.kind !== "compacted") return;
+    const text = (outcome.messages.at(-1) as { content?: unknown }).content;
+    expect(typeof text).toBe("string");
+    const budget = retainedUserMessageBudget(contextBudgetLimitsFor(model));
+    expect((text as string).length).toBeGreaterThan(budget * 3);
   });
 
   it("retains no bare user message across a completed turn", async () => {

@@ -449,3 +449,87 @@ fn a_claim_that_loses_the_race_returns_conflict_and_rolls_back() {
     assert_eq!(turn_count(&db, &child), 0);
     assert_eq!(get(&db, &message.id).unwrap().unwrap().status, "queued");
 }
+
+#[test]
+fn a_parent_may_run_more_workers_than_the_old_fixed_cap_but_workers_cannot_recurse() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let parent = session(&db, "Parent");
+    let mut children = Vec::new();
+    for index in 0..10 {
+        let created = spawn(
+            &db,
+            &json!({
+                "sourceSessionId":parent,"pluginId":"pi.session-orchestrator",
+                "content":format!("Worker {index}"),"idempotencyKey":format!("worker-{index}"),
+                "notifyOnCompletion":true
+            }),
+        )
+        .unwrap();
+        children.push(created["sessionId"].as_str().unwrap().to_string());
+    }
+    // The host records who created each worker and leaves the ceiling to the
+    // orchestrating plugin instead of refusing the fifth one.
+    assert_eq!(children.len(), 10);
+    for child in &children {
+        assert_eq!(
+            sessions::session_mode(&db, child).unwrap().as_deref(),
+            Some("agent")
+        );
+    }
+    let denied = spawn(
+        &db,
+        &json!({
+            "sourceSessionId":children[0],"pluginId":"pi.session-orchestrator",
+            "content":"Grandchild","idempotencyKey":"grandchild","notifyOnCompletion":true
+        }),
+    )
+    .unwrap_err();
+    assert!(denied.to_string().starts_with("PERMISSION_DENIED"));
+}
+
+#[test]
+fn a_restart_reports_an_interrupted_delivery_to_its_sender_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let parent = session(&db, "Parent");
+    let child = session(&db, "Child");
+    let message = send(&db, &parent, &child, "one");
+    let turn = begin_turn(&db, &child, &message.id, None, None).unwrap();
+    recover(&db).unwrap();
+    let interrupted = get(&db, &message.id).unwrap().unwrap();
+    assert_eq!(interrupted.status, "interrupted");
+    assert_eq!(interrupted.turn_id.as_deref(), Some(turn.as_str()));
+    assert!(interrupted
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("interrupted"));
+    // The sender opted into the callback, so the fence emits the receipt it has
+    // been waiting for instead of leaving the parent to poll forever.
+    let receipt = |db: &Database| -> i64 {
+        db.conn()
+            .query_row(
+                "SELECT COUNT(*) FROM session_collaboration_messages
+                WHERE kind='completion' AND reply_to_message_id=?1",
+                params![message.id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(receipt(&db), 1);
+    let content: String = db
+        .conn()
+        .query_row(
+            "SELECT content FROM session_collaboration_messages
+            WHERE kind='completion' AND reply_to_message_id=?1",
+            params![message.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(content.contains("\"status\":\"interrupted\""), "{content}");
+    assert!(content.contains("\"result\":null"), "{content}");
+    recover(&db).unwrap();
+    assert_eq!(receipt(&db), 1);
+    assert_eq!(turn_count(&db, &child), 1);
+}

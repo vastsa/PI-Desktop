@@ -168,11 +168,20 @@ globalThis.sessionReadingPositionProbe = async () => {
     flushSync(() => loadLater.click());
     await until(() => useAppStore.getState().transcriptViews["real-A"]?.hasMoreAfter === false,
       "explicit search can still load later pages manually");
+    const connected = useAppStore.getState().transcriptViews["real-A"]!;
+    const live = useAppStore.getState().messages;
+    assert(!connected.hasMoreAfter && connected.messages.findIndex(message => message.id === live[0]?.id) > 0,
+      "exercise a loaded historical prefix connected to the live tail");
     const jump = host.querySelector<HTMLButtonElement>('[data-visible="true"] .jump-latest-btn')!;
     flushSync(() => jump.click());
-    await until(() => !useAppStore.getState().transcriptViews["real-A"] &&
-      Math.abs(scroller().scrollHeight - scroller().clientHeight - scroller().scrollTop) < 2,
-    "return to latest exits history and resumes follow");
+    await until(() => {
+      const latest = useAppStore.getState().transcriptViews["real-A"];
+      return latest?.messages === connected.messages && !latest.focus && !latest.restored && !latest.loading &&
+        Math.abs(scroller().scrollHeight - scroller().clientHeight - scroller().scrollTop) < 2;
+    }, "return to latest exits historical ownership while retaining connected pages");
+    assert(useAppStore.getState().transcriptViews["real-A"]?.messageStart === connected.messageStart,
+      "latest arrival must retain the loaded page cursor");
+    assert(useAppStore.getState().messages === live, "retained history must not replace model input");
     assert(unexpected.length === 0, `unexpected IPC: ${unexpected}`);
     return { ok: true, anchor: id, restoredOffset, aroundReads, panes: 3 };
   } catch (error) {

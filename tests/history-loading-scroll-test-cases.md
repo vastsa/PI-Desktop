@@ -68,6 +68,37 @@ The full suite still exercises native wheel/smooth travel and navigation handoff
 The full application's `--interaction-smoke` also checks a painted reading crop
 after real Host pagination. These checks do not change page-cache lifetime.
 
+## Boundary clamp and reconstructed text
+
+```bash
+node scripts/e2e-transcript-anchor-repair.mjs
+```
+
+The focused React/Markdown fixture uses actual Chromium layout, not mocked
+geometry. It covers shrinkage with and without a mandatory boundary clamp,
+unchanged paragraph reconstruction, balanced internal reflow, genuine reading
+movement, and an unreachable old offset. Reachable text must remain within
+`<2 CSS px` in eight post-layout samples. Nonempty painted text crops must be
+identical for the stable-content cases; repeated stable/boundary restores must
+perform zero additional scroll writes.
+
+A long-paragraph known-character oracle covers width reflow, source/text version
+invalidation and missing-content fallback. Identical native wheel input is tested
+with and without same-delivery shrinkage at equivalent final geometry; the
+resulting reading movement must agree within `<2 CSS px`.
+
+Negative control (expected nonzero exit):
+
+```bash
+node scripts/e2e-transcript-anchor-repair.mjs --inject-drift
+```
+
+It applies a real `translateY(20px)` after the frame samples. The final reading
+and paint assertions must reject it; it does not test transient-frame injection.
+The isolated inline-layout fixture complements, not replaces, production
+stylesheet/recycling and full-Desktop journeys. These measurements do not claim
+every painted frame, all hardware, or human visual acceptance.
+
 ## Start the controlled manual fixture
 
 ```bash
@@ -202,6 +233,7 @@ are used. It is not a mock implementation of scrolling.
 ```bash
 node --test apps/desktop/test/transcript-latest-navigation.test.mjs apps/desktop/test/transcript-reading.test.mjs apps/desktop/test/transcript-scroll.test.mjs
 node scripts/e2e-transcript-history-loading.mjs
+node scripts/e2e-transcript-anchor-repair.mjs
 node scripts/e2e-transcript-reading-position.mjs
 node scripts/e2e-transcript-minimap-jump.mjs
 node scripts/e2e-transcript-disclosure-anchor.mjs

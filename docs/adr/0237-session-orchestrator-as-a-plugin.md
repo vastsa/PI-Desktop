@@ -38,8 +38,11 @@ Ship `pi.session-orchestrator` as an ordinary marketplace plugin. It registers t
 - A parent may control only Worker Session IDs recorded under its own session
   id. A `send` or `supervise` follow-up addresses those same Session IDs, so a
   child retains its own context without creating a replacement session. Worker
-  sessions cannot use the tool to create or control more workers. Active work
-  is capped at four workers per parent and sixteen across the plugin.
+  sessions cannot use the tool to create or control more workers, and the host
+  records which session created which worker. How many workers may run at once
+  is the orchestrating plugin's own configured ceiling — `pi.session-orchestrator`
+  defaults to 8 in its `maxConcurrentSessions` setting — because a fixed host
+  constant forced every orchestration design into the same fan-out width.
 - Until a lifecycle subscription exists, `wait` performs one-second lightweight
   status polling with a 25-second default and 45-second maximum timeout. Each
   desktop read is bounded at five seconds, report transcript reads are deferred
@@ -73,10 +76,19 @@ behavior remains intact, and plugin data can restore the relationship list
 after a plugin or app restart.
 
 The first version does not receive lifecycle events and therefore has bounded
-polling latency. The plugin also has a four-worker limit and does not provide
-unscoped arbitrary-session control or worker-to-worker messaging. A dangerous
-host operation is never used for orchestration; any future extension must
-preserve the existing desktop-control permission and native-consent boundary.
+polling latency. Concurrency is the plugin's own configurable ceiling, so the
+host neither dictates a fan-out width nor silently truncates one; the plugin
+does not provide unscoped arbitrary-session control or worker-to-worker
+messaging. A dangerous host operation is never used for orchestration; any
+future extension must preserve the existing desktop-control permission and
+native-consent boundary.
+
+The startup fence reports too. A delivery interrupted by an application restart
+cannot ever settle, so `recover` emits the single completion receipt its sender
+was waiting for instead of leaving an opted-in caller to poll a status that will
+never change. The receipt carries `status: "interrupted"` and the fence's error
+text; the existing `reply_to_message_id` unique index keeps repeated starts from
+duplicating it.
 
 ## Verification
 

@@ -483,6 +483,14 @@ export class McpOAuthManager {
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
+        // A valid callback state has been consumed. Kept separate from
+        // `settled`: consuming the state starts the token exchange, whose
+        // awaits can still fail — latching `settled` here used to route those
+        // failures into the `if (!settled)` catch below, which swallowed them.
+        // The login then hung forever on the unresolved promise: no timeout,
+        // no cancel, no loopback shutdown, and every later `start()` for the
+        // same server deadlocked awaiting `finished`.
+        let stateConsumed = false;
         const codeVerifier = randomBytes(32).toString("base64url");
         const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
         const expectedState = randomBytes(16).toString("hex");
@@ -514,7 +522,7 @@ export class McpOAuthManager {
               return;
             }
 
-            if (settled) {
+            if (stateConsumed) {
               res.writeHead(409, { "content-type": "text/html; charset=utf-8" });
               res.end(this.renderHtml(false, "Authorization already completed"));
               return;
@@ -538,7 +546,7 @@ export class McpOAuthManager {
               return;
             }
 
-            settled = true;
+            stateConsumed = true;
 
             if (error) {
               const displayErr = errorDescription ? `${error}: ${errorDescription}` : error;
@@ -636,14 +644,22 @@ export class McpOAuthManager {
               ),
             );
 
-            resolveToken(storedToken);
-            resolve();
+            finish(undefined, storedToken);
           } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
-            if (!settled) {
-              settled = true;
-              rejectToken(error);
-              reject(error);
+            // A failure after the state was consumed (token endpoint down,
+            // non-JSON body, secret store unavailable) must still settle the
+            // login: `finish` no-ops only when the timeout or a cancel
+            // already decided the outcome. Without this, the awaited promise
+            // never settles and the loopback server leaks with the login
+            // stuck, deadlocking later logins for the same server.
+            finish(error);
+            try {
+              res.writeHead(500, { "content-type": "text/html; charset=utf-8" });
+              res.end(this.renderHtml(false, `Authorization failed: ${error.message}`));
+            } catch {
+              // The response socket may already be gone; the rejection above
+              // is what matters.
             }
           }
         });

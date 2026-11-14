@@ -433,6 +433,8 @@ test("background controls describe the command, including pending stops and mixe
   assert.equal(backgroundJobRowOf(wait).command, "Bash");
   const pending = lifecycle("TaskStop", { job: { job: ref, command: "npm test", state: "running", stopRequested: true } }).message;
   assert.deepEqual(backgroundJobRowOf(pending), { kind: "stop", command: "npm test", state: "stopping" });
+  const clipped = lifecycle("TaskWait", { job: { job: ref, command: "npm test", commandTruncated: true } }).message;
+  assert.equal(backgroundJobRowOf(clipped).command, "npm test…");
   const mixed = lifecycle("TaskList", { delegations: [{ delegationId: "d", agent: "reviewer" }], backgroundJobs: { supported: true, tasks: [ref] } }).message;
   assert.equal(backgroundJobRowOf(mixed).count, 1);
   assert.equal(delegationRosterSummary(delegationRoster(mixed)), "reviewer");

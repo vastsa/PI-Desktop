@@ -1,5 +1,32 @@
 # 04. E2E Test Plan
 
+### E2E-USAGE-explicit-zero-cache
+
+- Complete a controlled Pi request with nonzero input/output and explicit zero
+  cache reads/writes. Observe the request, consume the stream result, and replay
+  its usage: both cache fields remain zero, not absent.
+- Include zero reads with nonzero writes and nonzero reads with zero writes.
+  Replaying the same operation does not double-count any token bucket. Cache
+  counters that are absent, non-finite or negative remain unavailable.
+- Focused runtime coverage: `src/request-usage.test.ts`. Native/live-provider
+  execution is separate from these controlled request-accounting regressions.
+
+### E2E-CHAT-output-token-truncation (#2277)
+
+Use the real Desktop runtime and Pi loop with a controlled provider stream
+ending in `length` after text output. Preserve the answer, emit truncation
+metadata exactly once, make no extra provider request, and accept a follow-up.
+Normal stops and aborts have no truncation annotation; a truncated tool call
+is rejected and recovered by Pi without an additional answer warning.
+Coverage: `output-truncation.test.ts`. The production persistence test in
+`empty-assistant-persistence.test.mjs` retains the text and metadata in the
+outbox. `e2e-transcript-render.mjs` renders production AssistantTurn in Electron,
+checks the visible localized warning for live and JSON-restored snapshots, and
+checks its absence on normal replies. No paid provider is used.
+The Host test `output_truncation_survives_host_restart_and_legacy_rows`
+deserializes the wire message, appends it to a real transcript, reopens the
+database, and checks that true/false flags and absent legacy flags survive.
+
 ### E2E-FILE-INDEX-git-deadline
 
 Drive `getWorkspaceFileIndex` and `searchWorkspaceFiles` against real fixture
@@ -2447,6 +2474,12 @@ identify the platform validation still needed.
   forms render with KaTeX, with `\[…\]` using display layout. The renderer does
   not start a second animation-frame typewriter loop, raise React error 185, or
   reject Vite-inlined KaTeX fonts under CSP.
+- **CJK emphasis regression**: Stream and reload `这是**“重点内容”**，请查看。`,
+  `这是**重点。**后续内容。` and `这是**（重点）**后续内容。`; each marked
+  phrase is bold without visible markers. Inline/fenced code and escaped
+  asterisks remain literal, English emphasis remains intact, and source-copy
+  bytes/selection anchors remain unchanged. React/Vite SSR and every-prefix
+  grammar tests cover this boundary; native E2E remains unexecuted.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   `05-security/01-security.md`
@@ -4192,6 +4225,14 @@ this does not claim an installed full-app settings journey.
 - **Acceptance**: G (load local plugin)
 - **Milestone**: M4
 - **Status**: Automated (protocol smoke: plugins.loadDev)
+
+#### E2E-PLUGIN-id-cannot-collide: Plugins with look-alike ids never share storage
+
+- **Preconditions**: Real host-core binary on a scratch data directory.
+- **Steps**: 1) Install a plugin with id `e2e.foo_bar` from a local folder and write a file into its data directory. 2) For each look-alike id `e2e.foo!bar` (character replacement), `e2e.Foo_Bar` (letter case on case-insensitive file systems) and `e2e.foo_bar.` (Windows trailing dot), try to install it, then to load it as a development plugin. 3) Rewrite the state into what an older build persisted for `e2e.foo!bar` (raw id in the registry row and installed manifest, sanitized directory names), restart the host, and try to install and load `e2e.foo_bar`.
+- **Expected**: Every attempt fails with `PLUGIN_INVALID` naming the reason, including the legacy case (`would share storage with installed plugin e2e.foo!bar`). The first plugin's installed files, data directory, and registry row are unchanged, and no second install directory appears, so two plugins can never share a directory or browser session partition (issue #2297).
+- **Specs linked**: `07-plugins/02-plugin-manifest-schema.md` §7
+- **Status**: Automated (`pnpm test:e2e:plugin-id-collision`, `scripts/e2e-plugin-id-collision.mjs`); unit coverage in `crates/host-core/src/plugins/manifest.rs` and `packages/plugin-sdk/src/index.test.ts`
 
 #### E2E-022A: Create a plugin from a template
 
@@ -7997,11 +8038,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   subagent turn and a plugin one-shot that carry a session id, and capture both.
   5) Repeat step 1 on the row whose base URL host is a published vendor host.
   6) Repeat step 1 on a row whose API style is `opencode_go`.
+  7) For Chat Completions, reject `session_id` with a plain-text 400 at the
+  capture endpoint and send two turns in one session and one in the other.
 - **Expected**:
   - Both captured requests carry a stable per-session identifier that differs
     between the two sessions: `x-session-affinity` and `x-client-request-id`
-    beside `session_id`, plus `prompt_cache_key` in the body, all holding the
+    without `session_id`, plus `prompt_cache_key` in the body, all holding the
     session's own conversation id and unchanged across that session's turns.
+  - All three Chat Completions turns finish with a complete assistant reply
+    through the strict endpoint. Explicit model `compat` can still opt into
+    the legacy `openai` headers or disable affinity headers.
   - The custom Responses request also carries `x-session-affinity` alongside
     the adapter's existing `session_id`, `x-client-request-id`, and
     `prompt_cache_key`, so a reverse proxy that drops underscore headers can
@@ -8013,11 +8059,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - A one-shot call with no session id gains no `prompt_cache_key` or
     `x-session-affinity` header.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` (§6.2, §6.3),
-  `03-runtime/11-provider-model-system.md`, issue #1634
+  `03-runtime/11-provider-model-system.md`, issues #1634 and #2278
 - **Acceptance**: C (chat/stream) + Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`session-affinity.test.ts`); full gateway capture
-  journey Draft
+- **Status**: Adapter-covered (`session-affinity.test.ts`); the real Runtime /
+  HTTP gateway regression (`session-affinity-flow.test.ts`, issue #2278) covers
+  repeated Chat Completions turns in two sessions against an edge that returns
+  400 for `session_id`, verifying completed replies, stable hyphenated headers,
+  distinct session ids, and the body cache key. Full cross-path gateway capture
+  journey Draft.
 
 #### E2E-AGENTS-001: Project instruction chain configures an agent session
 
@@ -8527,7 +8577,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 #### E2E-106: SubmitPlan rejects into editable planning and resubmits a new artifact
 
-- **Preconditions**: A project-bound session is idle in Plan with a provider;
+- **Preconditions**: A project-bound session starts in Agent with Auto permission,
+  then enters Plan with a provider;
   `.pi/plan/` is absent or empty and the workspace permits host artifact
   creation.
 - **Steps**: 1) Let the Agent call `SubmitPlan` with fixed title, Markdown, and
@@ -8536,12 +8587,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   the opener uses the bundled file view when it is launchable and the host
   file tab otherwise (D452), and that the question/description,
   validity/deadline, and status are absent with only Approve and Reject
-  offered. 4) Open the approval mode menu, choose Auto,
-  and verify the next approval defaults to Auto. 5) Reject the
+  offered. 4) Verify the main approval button defaults to Auto even if an older
+  device-wide preference was Ask. 5) Reject the
   proposal. 6) Confirm durable mode is Plan, live state is editable `planning`,
   the approval gate is cleared, and a later prompt is accepted. 7) Let the
   Agent revise and call `SubmitPlan` once in that new turn with a complete
-  snapshot. 8) Approve the second proposal with the remembered Auto mode.
+  snapshot. 8) Approve the second proposal using the main Auto button.
+  9) Repeat with Ask and Accept edits Sessions, and an inherit Session whose
+  global default is Auto; verify each card follows its own Session even when
+  another Session is active. 10) In an Auto Session, explicitly approve with
+  Ask from the menu and verify the return to Agent uses Ask.
 - **Expected**: Host preserves the exact submitted Markdown bytes in a new
   unique artifact, records its relative path/hash/size with structured
   title/question, and never lets the renderer or sidecar write or replace it.
@@ -8550,13 +8605,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   the bundled file view, falling back to the host file tab when that view is not
   launchable (D452);
   it does not require inline question/Markdown/hash/size or a validity/deadline
-  indicator. The selected approval mode is remembered locally for the next
-  approval.
+  indicator. The approval default follows the owning Session's effective
+  permission, ignoring legacy device-wide approval history. Main-button
+  approval preserves Auto across Plan → Agent; an explicit menu choice changes
+  the execution permission. Reject sends no mode and preserves it.
   Rejection is terminal for the first row, leaves durable mode Plan, and returns
   live state to editable planning. The later prompt/resubmission creates a
   second complete Markdown snapshot and a different `.pi/plan/*.md` artifact;
   the first artifact bytes remain unchanged. Approving the second proposal with
-  the remembered Auto mode still changes the same Agent to Agent and queues execution.
+  the Session's Auto mode still changes the same Agent to Agent and queues execution.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/02-agent-runtime.md`, `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, `04-ux/03-permission-ux.md`,
@@ -8572,8 +8629,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   approved execution emitted the exact durable marker, and a private
   env-gated WeakMap check proved the same `DesktopAgentRuntime` object before
   and after approval. Main/Host/sidecar PIDs remained stable; credentials never
-  entered CDP or output. The default no-key run remains 5/5 with the live case
-  explicitly skipped.
+  entered CDP or output. The no-key run also covers
+  `E2E-106-session-permissions`: eight native main-button/menu/rejection cases
+  verify explicit Ask/Accept edits/Auto, inherited global modes, ignored legacy
+  device history, durable Plan-to-Agent permission and renderer reload. Run
+  `node scripts/e2e-plan-ui.mjs --permissions-only` for this focused gate.
+  Each seeded Session owns a distinct probe tool-call identity. No provider is
+  configured for these cases; automatic execution reports the expected missing
+  provider while approval persistence is verified through the real Host.
+  The default no-key run has six required cases; the live case is explicitly
+  skipped.
 
 #### E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Dock, Plan approval, and retry surfaces occlude transcript text
 
@@ -9696,6 +9761,43 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   candidate and record its revision; PR integration validation follows the
   authoritative `AGENTS.md` workflow without merging into local main first.
 
+#### E2E-COMPOSER-local-file-references: Native file paste keeps paths and sizes
+
+- **Preconditions**: Local project and synthetic disk files, including a sparse
+  64 MiB + 1 byte file outside the project, a small text file and an image.
+- **Steps**: Copy each file in the OS file manager and paste into Composer;
+  also paste a mixed file/folder selection. Remove a card, switch sessions,
+  restore input history, queue a prompt and restart before delivery. Modify,
+  move, delete or replace a source with a symlink before sending. Separately
+  paste a screenshot and a large text selection.
+- **Expected**: Native disk files retain original paths and exact byte sizes;
+  removable inline cards show human-readable size. No source contents cross
+  paste IPC or enter scratch/content-addressed snapshots. Small and large disk
+  files use the same reference flow; screenshots and generated text retain their
+  existing scratch/image behavior. Dispatch refreshes size, preserves metadata
+  through messages and model history, and clearly rejects unavailable or
+  redirected sources. Forged ids/paths, another project and remote contexts are
+  refused. Agent reads use normal permissions; referencing an external file does
+  not grant access. Metadata-only input history restores the live path and size.
+- **Targeted coverage**: `composer-file-references.test.mjs`,
+  `composer-directory-paste.test.mjs`, `composer-clipboard-directories.test.mjs`,
+  draft/history tests and the host attachment roundtrip test. Native clipboard
+  gestures and full provider delivery require a separate desktop E2E run.
+- **Electron coverage**: `node scripts/e2e-composer-paste.mjs --file-references-only`
+  drives real React hooks, native disk-backed `File` objects, preload IPC,
+  selection tokens, reference registration, prompt preparation and Composer
+  history. A sparse 64 MiB + 1 byte source and a small file outside the project
+  retain size cards without renderer byte reads or scratch writes. The fixture
+  edits the large source before send and verifies refreshed size in model context.
+  A second Electron process recalls the stored metadata and dispatches through
+  the persisted reference records. Native clipboard metadata and provider
+  delivery are controlled external boundaries; this is not a manual Finder gesture
+  or a live external provider call. Full paste coverage also verifies restoring
+  the actual pre-preview focus target, including Chromium's editing-host focus.
+  Restore the saved selection before focusing the original control so selection
+  updates cannot steal its final focus. Stale session/project previews restore
+  neither focus nor selection (`composer-image-preview-focus.test.mjs`).
+
 #### E2E-102h: Composer picker imports files into session scratch
 
 - **Preconditions**: The app is running with a home or Agent composer and a
@@ -10458,17 +10560,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   normal field and the shortcut, then save. 3) Reload the plugin list and press
   the new shortcut while the app window is focused. 4) Try a reserved app
   shortcut and repeat with the plugin scoped away from the current project.
+  5) For JSON fields, save, reopen and save again with `"hello"`, `"42"`,
+  `"true"`, `"null"`, `""`, a null default, a number, a boolean, an array and an
+  object. Edit a JSON string, reset to a string default, and submit malformed
+  JSON before correcting it.
 - **Expected**: Controls are generated from the manifest, values persist in the
   plugin-private settings file, and `plugin:settingsChanged` is delivered. The
   new shortcut invokes the plugin command only in the focused app window and
   matching activation scope. Reserved/conflicting bindings are rejected; no OS
-  global shortcut is registered.
+  global shortcut is registered. JSON strings remain quoted in the editor and
+  retain their type after save/reopen/reset. Invalid JSON leaves the draft and
+  sheet open without an IPC settings write.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`,
   `07-plugins/03-plugin-api.md`, `07-plugins/11-plugin-storage-isolation.md`,
   ADR 0159
 - **Acceptance**: F (persistence), G (plugins), Security, Quality
 - **Milestone**: M6+
-- **Status**: Source-contract and focused integration coverage; full desktop
+- **Status**: Source-contract and focused integration coverage. JSON
+  save/reopen/edit/reset is covered by `plugin-settings-json-user-path.test.mjs`
+  in an isolated Electron renderer with a settings IPC fixture; full desktop
   journey Draft (run only in a capable environment when this surface changes)
 
 #### E2E-OAUTH-anthropic-rate-limit-retry: Bounded token retries preserve the account
@@ -13986,6 +14096,21 @@ This test plan spec is accepted when:
   Full-Desktop interaction smoke repeats the painted reading check after a real
   Host page. Original native smooth input, resumed follow, search, disclosure,
   hide/reveal and turn-completion paths remain required.
+  `node scripts/e2e-transcript-anchor-repair.mjs` additionally mounts the real
+  paging hook and Markdown in Chromium. It verifies actual native boundary
+  clamping, reconstructed paragraph nodes with unchanged parser source ranges,
+  ordinary non-clamping shrinkage, balanced internal reflow, reader movement,
+  and unreachable-target legal-boundary fallback without repeated scroll writes.
+  A known-character oracle covers long-paragraph width reflow and rejects
+  edited/missing text. Identical native wheel input is compared with and without
+  same-delivery layout/clamping at equivalent geometry. Reachable readable content
+  must stay within <2 CSS px in eight post-layout samples; stable-content painted
+  crops must be nonempty and byte-identical. `--inject-drift` adds a real 20px
+  displacement after sampling and must fail the final geometry/paint checks.
+  This focused fixture uses inline layout, so production CSS/recycling, native
+  navigation, disclosure and long-history journeys remain separate required
+  checks. Painted crops are not a claim of every-frame or human visual approval.
+  The regression runs from the existing `e2e-transcript-render.mjs` CI entry.
 - **Specs linked**: `04-ux/09-interaction-patterns.md` §2.2 / §9.1 / §10.4, ADR 0130.
 - **Acceptance**: C (conversation), Quality.
 - **Status**: Automated Electron fixture and unit regressions implemented; run
@@ -14029,6 +14154,38 @@ This test plan spec is accepted when:
   two-display desktop journey and the relaunch/hotplug legs are pending
 
 #### E2E-167: Window edge resize stays smooth and persists the settled bounds
+
+Native Windows snapping regression (issue #2330): on an interactive Windows
+desktop with a work-area half at least the nominal minimum width, run
+`pnpm test:e2e:window-snap` against the candidate Windows Host and pinned Electron.
+The isolated fixture uses production Main snapping/corner/fullscreen services,
+real Host RPC, HWND-owner rejection checks, physical Win+Left/Right and titlebar
+drag input, edge pixels, native resize/minimums, maximize/minimize/restore and
+fullscreen/restore. Left/right snapping must equal the work-area halves; normal
+and snapped client edges have no native insets or painted rim. Maximized client
+and DWM-visible bounds must equal the work area. `--baseline` must fail the
+keyboard assertion. `--legacy-surface` covers the older transparent surface on
+the available OS only. `--prepare <directory>` stages portable fixture sources;
+record actual OS/DPI, source revision, Host, Electron version, result and artifacts
+from the Windows run separately. Native Windows 10 and mixed-monitor DPI checks
+remain separate qualification, and hover Snap Layouts is outside this regression.
+
+For independent review, run `--matrix --artifacts <new-directory>` or the
+`Windows native snap acceptance` workflow. Only the exact unchanged-bounds
+Win+Left baseline failure plus a fully passing candidate qualifies. Locked
+desktops, session 0, input failures and startup errors must fail the job.
+Before each native drag sweep, cross the drag threshold near the press point
+and confirm the target HWND owns Windows' move/size loop. A registered mouse
+button or correct cursor coordinate alone must not qualify a drag.
+Run keyboard maximize/restore before physical resizing to isolate it from
+the Shell's user-resize restore history; retain its exact normal bounds check.
+Retain SHA/tree/source hashes, binary hashes, OS/session/display metadata,
+baseline/candidate JSON, timestamped logs, stdout/stderr and normal/snapped/
+maximized/restored client PNGs. Upload artifacts even on failure; exclude
+profiles and redact runtime/user paths. See
+[native replay procedure](../../project/windows-native-snap-replay.md).
+Repeat pixel checks after transferring focus away and back, including a
+PowerShell-launched fixture; activation must not restore the native outline.
 
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
   macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must
@@ -18896,6 +19053,29 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status:** Unit-covered (`context-calibration.test.ts`, including the CJK and
   boundary cases); desktop E2E pending
 
+### E2E-CONTEXT-restored-checkpoint-tool-pairs
+
+- **Preconditions:** A production sidecar, isolated Host fixture with serialized
+  session history/checkpoint, and a loopback Chat Completions gateway that
+  rejects tool results without matching preceding calls; no live credentials.
+- **Steps:** Restore a checkpoint through an assistant call carrier, then
+  through the first of two results. Send two prompts, stop the sidecar, start
+  a fresh process and repeat. Compare with a boundary after the full batch and
+  a session without a checkpoint.
+- **Expected:** All prompts complete. Only post-boundary tool results reach
+  the gateway, paired with their original ids, names and arguments; their
+  contents survive, historical tools never execute, and the stored fixture
+  stays unchanged. Empty call-only boundary rows still apply the summary.
+  Signed function calls retain their signatures. A retained-tail carrier is
+  deduplicated with the reconstructed call, rather than replayed twice.
+- **Automation:** `node scripts/e2e-compaction-restore-tool-pairs.mjs` after
+  shared/runtime build and production sidecar bundling. Adapter regressions in
+  `compaction-restore-tool-pairs.test.ts` cover empty boundaries, absent
+  boundaries, retained tails and signed Gemini calls through public prompts.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1, issue #2306.
+- **Limits:** Serialized Host data and the real sidecar/HTTP boundary are
+  exercised; this is not a native Windows UI reproduction or a paid-provider run.
+
 ### E2E-CONTEXT-reported-occupancy-drives-compaction
 
 - **Preconditions:** A production sidecar, isolated Host fixture and localhost
@@ -20508,23 +20688,37 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 
 ### E2E-TOOLS-session-background-jobs
 
+- Split follow-up regression: cancel TaskStop during capability discovery (zero stop requests) and after dispatch (one stop request); late RPC failure stays observed.
+
+- Split follow-up regression: command previews retain a UTF-8 prefix with an independent truncation flag; old snapshots omit the flag and output still retains final errors.
+
+
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
   `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`.
 - Environment: isolated Host data and workspace, production runtime and pi tool
   loop, deterministic localhost HTTP provider. No external model account.
 - Sequence: start a background test, list it, wait for failure and Unicode
   output tails; start a service, time out waiting, call default stop, then
-  explicitly stop and wait for the same job.
+  explicitly stop and wait for the same job using plain `{job}` selectors.
+  Then re-read the failed job with empty `delegationIds`, `mode: all`, and
+  `minCompleted: 1`; start a second service, time out with `mode: any` and the
+  same defaults, stop with empty `delegationIds`, and confirm it is stopped.
+  Both plain and model-generated redundant forms retain independent coverage.
 - Expected: correct exit code and both final tails, per-stream UTF-8 limits,
   cross-session list/read/stop isolation, timeout and default stop preserve Bash,
   explicit stop reaches terminal state, repeated reads and desktop output agree.
   Plan-mode access is rejected.
 - Runtime tests cover new input/parent abort during a pending Host wait, late
   Host rejection, old Host/remote capability behavior, conflicting/malformed
-  delegation selectors and mixed Bash selector rejection, existing delegation
-  controls and registration without a subagent catalog.
+  delegation selectors, harmless Bash defaults and conflicting/malformed Bash
+  selector rejection, existing delegation controls and registration without a
+  subagent catalog. Plain-job timeout/abort cases remain intact; additional
+  cases exercise both `all` and `any` defaults through those same lifecycles.
 - Host tests cover pre-settled observation, repeatable output, Unicode clipping,
   ownership lookup, idempotent stop and stop acknowledgement before termination.
+  On macOS, after a successful group stop and child exit, check that a cleanup
+  denial followed by a missing group settles as stopped; a persistent denial
+  or still-present group must retain the cleanup failure.
   Existing Windows child/grandchild cleanup tests remain required; record native
   failures separately from protocol success.
 - Exercise a late stop with an already reaped child before the supervisor drains the pipes. Verify the original exit outcome, final output and stable elapsed time across reads. Stall capability discovery or the first Host observation to exercise the overall wait deadline. The Electron transcript fixture renders a pending Bash stop and a mixed job list.
@@ -20578,6 +20772,38 @@ recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
 run controls and Main dispatch. Runtime `modes/*` covers stage completion and
 compaction injection.
 
+### Goal input, replacement and elapsed repairs (offline)
+
+- Run `scripts/e2e-goal-run-repairs.mjs` with `PI_DESKTOP_HOST_BIN` pointing at
+  the candidate Host and `PI_SCRATCH_DIR` plus `PI_DESKTOP_AGENTS_DIR` pointing
+  at isolated test state. Production Main prompt IPC, coordinator, finalization
+  and persistent queue run against real host-core; only the model sidecar
+  boundary is controlled. No provider request is made.
+- Send a Goal and observe Agent input while its Goal claim remains running.
+  Complete its first turn; automatic continuation retains the original run,
+  snapshot and Auto permission. Send a second explicit Goal during that turn:
+  acceptance is durable before the old Goal stops, old usage/rounds settle
+  before queue release, and a distinct new run starts with the second input.
+  Stop it, and verify no further continuation. Restored transcript assistant
+  rows retain distinct turn ids and contain only the two actual user inputs.
+- `scripts/e2e-goal-layout.mjs` renders production status/budget controls with
+  the built stylesheet in isolated Electron. Check English/Chinese layouts at
+  320, 480, 720 and 1120 pixels, long objectives/day durations, metadata order,
+  nonoverlap and horizontal budget inputs. Duration uses `d`, `h`, `m`, `s`
+  with exactly one ASCII space after each number, including `0 s`, in both
+  languages. Resume/Pause/Edit/Remove are icon-only with localized accessible
+  names; native clicks still resume/pause, open/cancel editing and arm/cancel
+  removal. Stop retains its text and confirmation. Timer lifecycle is unchanged.
+  It never attaches to the user's app.
+- Rust elapsed tests cover all frozen states, deterministic clock rollback,
+  pause/resume, duplicate settlement, offline recovery and populated v29 upgrade.
+  RPC permission tests cover Auto, Ask and Accept edits after input reset, plus
+  Plan hard denies and separate accounting for a replaced run. Queue tests cover
+  restart and idempotency. Renderer user-path tests cover accepted/rejected Goal,
+  pending model settings, newer picker choices, live/background turn attribution,
+  legacy grouping and fixed Latin duration symbols with localized elapsed labels. Paid live-model checks below
+  remain opt-in and are not a prerequisite for this offline repair suite.
+
 ### Goal run controls with a live model (opt-in, paid)
 
 Command: `PI_LIVE_BASE_URL=<url> PI_LIVE_MODEL=<model> PI_LIVE_API_KEY=<key>
@@ -20609,7 +20835,8 @@ isolated Host, the production runtime loop and Electron main's run coordinator.
   and confirm its stopped state through TaskWait.
 - Expected: reports remain readable, redundant selectors do not cause errors,
   single-job mode/minCompleted are ignored, and cancellation settles the target.
-  Unit tests also reject conflicting/malformed IDs and mixed Bash selectors.
+  Unit tests also reject conflicting/malformed IDs and nonempty or malformed
+  Bash selectors; harmless empty/default Bash options remain accepted.
 - Specs: `03-runtime/02-agent-runtime.md`, Session job controls.
 - Acceptance: wait, report re-read and running-delegate cancellation complete
   through the real tool loop. Milestone: maintenance. Status: automated.
@@ -20636,6 +20863,71 @@ or scratch RPC reaches Desktop storage. `native-workspace-files.test.mjs`
 additionally rejects replaced sidecars. No provider execution or native user
 session data is used.
 
+#### E2E-custom-mode-prompt-admission
+
+Select a simple custom mode with a distinctive prompt and contract policy, send a
+message, and refresh planning state. The runtime receives the selected definition
+and the session retains its mode. Remove the definition before another send: reject
+without persisting a user message or invoking the sidecar; the admission turn is
+closed. For a staged run, edit the catalog into a simple mode and then remove it;
+subsequent dispatch retains the run snapshot in both cases. Controlled coverage:
+`apps/desktop/test/custom-mode-dispatch.test.mjs`. Native Electron/provider
+acceptance is separate from these stubbed Host/sidecar boundary checks.
+Also create directly in Goal or a staged custom mode without switching modes:
+the first send starts a run. `mode-session-create.test.mjs` checks the production
+creation registrar validates input and sends its snapshot in one creation RPC.
+Host RPC tests cover snapshot/policy persistence, invalid snapshots and rollback
+after an injected session-insert failure. Approve a legacy Goal proposal: live
+events and pending-proposal restoration show Agent. Inactive polling with no
+approval preserves staged Goal/custom modes, including after older Goal history.
+Coverage: `mode-planning-approval.test.mjs`, `session_mode_create_tests.rs`.
+`scripts/e2e-mode-definitions.mjs` also exercises production prompt IPC and the
+coordinator against an isolated real Host, including edit/removal, durable claim
+settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this
+does not qualify native Electron interaction or live-provider execution.
+
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+#### E2E-ISSUE-2350: Delegation connector centers and stem endpoints
+
+- Serve `apps/desktop` locally and open
+  `test/fixtures/subagent-connector-layout.html` in a browser. This isolated
+  fixture loads the production stylesheet and publishes `window.layoutResult`.
+- Verify `passed: true` and an empty `errors` array across mixed-height
+  70/88/112px cards, a single card, and both 760px and 420px topology widths.
+  Branches meet card centers, vertical segments remain continuous and end at
+  the outer branch centers, and narrow incoming lines share the stem axis.
+- Repeat the rendered delegation user path with running/settled workers and
+  wrapped descriptions; preserve detail navigation, Stop and responsive layout.
+- Qualification: isolated Chromium geometry checks cover this layout regression;
+  installed-client and live-provider checks remain separate.
+
+### E2E-GOAL-completion-channel: Completion and blockers stop autonomous rounds
+
+- **Environment**: Isolated Host data and `PI_DESKTOP_AGENTS_DIR`, production
+  sidecar/proxy, production Main claim/settlement services, deterministic
+  loopback-only model endpoint; no real provider or user Desktop instance.
+- **Command**: After JS/runtime and Host builds, run
+  `node scripts/e2e-goal-completion.mjs` with `PI_SCRATCH_DIR` and
+  `PI_DESKTOP_HOST_BIN`. `PI_DESKTOP_SIDECAR_ENTRY` can select the sidecar
+  extracted from the installer for payload validation.
+- **Steps**: Submit a completed report with the Goal artifact, a legacy
+  summary/artifact call, a blocked report with unfinished evidence, and a
+  completion-channel failure. Also complete a stage with a real Bash exit gate.
+  Repeat settlement and restart the isolated Host for each scenario.
+- **Expected**: Success reaches `finished`; blocked remains non-success
+  `waiting/blocked` with durable outcomes/reason; infrastructure failure emits
+  `MODE_COMPLETE_STAGE_FAILED` and settles `waiting/error`. Each scenario uses
+  exactly one model request, returns `continue: false`, releases its claim,
+  and schedules no next autonomous round. Gate results traverse the production
+  proxy and use Host-recorded execution, not a model verdict. Restart preserves
+  terminal/waiting state; duplicate settlement cannot recharge accounting.
+- **Companion negatives**: Runtime/Host tests cover invalid/oversized reports,
+  original exit gates, stale/cross-session claims, paused/stopped runs and input
+  edits. The stdio proxy tests retain denies for start/control/update/resolve/
+  settlement and configuration methods. Saved snapshots gain reporting guidance
+  without changing frozen objectives or gates.
+- **Scope**: Host validates authorization, report structure and state; it does
+  not independently prove model-reported acceptance evidence true.

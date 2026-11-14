@@ -48,6 +48,19 @@ test("TeX math and wrapped HTTP links render through the production Markdown pip
     const inline = (html) =>
       html.includes('class="katex"') && !html.includes("katex-display");
 
+    for (const streaming of [false, true]) {
+      for (const [source, body] of [
+        ['这是**“重点内容”**，请查看。', '“重点内容”'],
+        ['这是**重点。**后续内容。', '重点。'],
+        ['这是**（重点）**后续内容。', '（重点）'],
+      ]) {
+        const html = render(source, streaming);
+        assert.match(html, new RegExp(`<strong[^>]*>${body}</strong>`));
+        assert.doesNotMatch(html, /\*\*/);
+        assert.ok(html.includes(`data-source-end="${source.length}"`));
+      }
+    }
+
     // A nested linked-host destination must be normalized before the
     // production rehype sanitizer removes its invalid wrapper href.
     const wrappedLink = render(

@@ -14,8 +14,8 @@ Copying its tree into scratch would create an expensive and stale snapshot.
 On an explicit native-file paste, Electron main captures bounded native clipboard
 file metadata. Directories become typed draft references and removable folder
 cards above the editable text, with a name, localized Folder label and full-path
-tooltip. Mixed regular files use the existing sender-bound one-shot import
-capability. Main
+tooltip. Mixed regular files use the sender-bound one-shot selection
+capability to register [live file references](composer-local-file-references.md). Main
 captures the selection before filesystem awaits and accepts no renderer paths.
 The bridge is main-window-only and blocked from MCP/plugin callers. macOS reads
 raw pasteboard types, Linux reads native file URI lists, and Windows reads the
@@ -33,7 +33,8 @@ action reveals the directory in the system file manager and returns no contents.
 
 ## Consequences
 
-Normal file/image/text paste and the existing directory-drop choice remain.
+Generated image/text paste and the existing directory-drop choice remain.
+Native disk files follow the local-file-reference decision above.
 Clipboard file metadata is read only for a paste gesture, never polled or added
 to clipboard history. Draft/history metadata retains directory paths rather than
 contents. Directories may change or disappear before later use. The existing JSON

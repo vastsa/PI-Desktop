@@ -8,6 +8,7 @@ import { api } from "../../lib/api";
 import { resolveComposerSmartStop } from "../../lib/composer-smart-stop";
 import {
   clearSessionPermissions,
+  removePermission,
   sessionPermissions,
 } from "../../lib/pending-permissions";
 import {
@@ -507,16 +508,18 @@ export function createTranscriptSlice({
         .slice(submittedDraft?.messageCountBeforeSend ?? 0)
         .findLast((message) => message.role === "user")?.steering;
       const stoppedAtMs = Date.now();
+      let createdAbortResolution: Promise<boolean> | undefined;
       if (submittedDraft && !submittedDraft.abortResolution) {
-        submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
+        createdAbortResolution = new Promise<boolean>((resolve) => {
           submittedDraft.resolveAbort = resolve;
         });
+        submittedDraft.abortResolution = createdAbortResolution;
       }
       const pendingForSession = sessionPermissions(
         stateBeforeAbort.pendingPermissions,
         sessionId,
       );
-      await Promise.allSettled([
+      const [abortResult, ...denials] = await Promise.allSettled([
         api.abort(sessionId),
         ...pendingForSession.map((permission) =>
           api.resolvePermission({
@@ -525,6 +528,33 @@ export function createTranscriptSlice({
           }),
         ),
       ]);
+      if (abortResult.status === "rejected") {
+        // The turn is still running: keep its rows, running state and the
+        // submitted draft so Stop can be retried. Only a waiter this call
+        // created is released, so a submission awaiting it does not hang.
+        if (createdAbortResolution && submittedDraft?.abortResolution === createdAbortResolution) {
+          submittedDraft.resolveAbort?.(false);
+          delete submittedDraft.abortResolution;
+          delete submittedDraft.resolveAbort;
+        }
+        // A denial the Host accepted (or a request it no longer holds) is
+        // settled even though the abort failed; its card must not linger.
+        const settled = pendingForSession.filter((_, index) => {
+          const denial = denials[index];
+          return denial?.status === "fulfilled" ||
+            (denial?.reason as { code?: unknown } | undefined)?.code === "NOT_FOUND";
+        });
+        if (settled.length) {
+          set((current) => ({
+            pendingPermissions: settled.reduce(
+              (permissions, permission) =>
+                removePermission(permissions, sessionId, permission.requestId),
+              current.pendingPermissions,
+            ),
+          }));
+        }
+        throw abortResult.reason;
+      }
       set((current) => ({
         pendingPermissions: clearSessionPermissions(
           current.pendingPermissions,

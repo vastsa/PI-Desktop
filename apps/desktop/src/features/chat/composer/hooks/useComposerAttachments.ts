@@ -289,10 +289,10 @@ export function useComposerAttachments({
 
         let result;
         if (native) {
-          const imported = native.token ? await api.importFiles(sessionId, native.token) : { files: [] };
+          const imported = native.token ? await api.importFiles(sessionId, native.token, true) : { files: [] };
           let index = 0;
           result = { files: native.items.map(item => item.kind === "directory"
-            ? { path: item.path, name: item.name, kind: "directory" as const, mimeType: undefined }
+            ? { path: item.path, name: item.name, kind: "directory" as const, mimeType: undefined, size: undefined, localReference: undefined }
             : imported.files[index++]) };
         } else {
           result = await api.pasteFiles(sessionId, payload);
@@ -319,6 +319,8 @@ export function useComposerAttachments({
             reference: createFileReference(file.path, file.name, sessionId, {
               kind: file.kind,
               mimeType: file.mimeType,
+              size: file.size,
+              localReference: file.localReference,
               token,
             }),
           };
