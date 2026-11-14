@@ -709,8 +709,12 @@ Stop); deterministic failures such as quota or auth return at once. The
 preflight guard sizes the prompt pi actually serializes — tool results already
 capped — rather than the raw messages, and when that prompt still exceeds the
 window it tries exactly one reduced input (tool results cut to a short prefix,
-thinking dropped, no message removed). If even that input does not fit, the range
-is split into contiguous chunks that each do: at most 16 requests, each carrying
+thinking dropped, no message removed). That size is the chars/3.5 baseline of
+the serialized prompt plus the output-cap CJK correction, shared with the chunk
+planner, so a CJK prompt is reduced or split instead of sent whole and a single
+over-budget message is cut to the same estimate. If even that input does not
+fit, the range is split into contiguous chunks that each do: at most 16
+requests, each carrying
 the previous chunk's summary through pi's update-the-summary prompt, with the
 range's file list appended on the last one, and the checkpoint reports the summed
 usage of the requests that produced it. A budget therefore decides how many

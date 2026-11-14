@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { estimateOutputCapInputTokens } from "./output-cap.js";
 import {
   ESTIMATED_TEXT_CHARS_PER_TOKEN,
   estimateTokens,
 } from "./pi-runtime-estimates.js";
+import { convertToLlm, serializeConversation } from "./pi-runtime-messages.js";
 import {
   addSummaryUsage,
   compactionSummaryInputLimit,
   COMPACTION_REDUCED_TOOL_RESULT_CHARS,
+  COMPACTION_SUMMARY_CHUNK_MARGIN,
   COMPACTION_SUMMARY_MAX_CHUNKS,
   COMPACTION_SUMMARY_MAX_RETRIES,
   COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS,
@@ -75,6 +78,21 @@ function input(
   };
 }
 
+/** Output-cap estimate of the text the summary request actually serializes. */
+function outputCapSummaryTokens(
+  messages: AgentMessage[],
+  previousSummary = "",
+): number {
+  const text = serializeConversation(convertToLlm(messages)) + previousSummary;
+  return estimateOutputCapInputTokens({
+    messages: [{ role: "user", content: text }],
+  });
+}
+
+function messageText(message: AgentMessage): string {
+  return (message as { content: Array<{ text: string }> }).content[0]!.text;
+}
+
 describe("COMPACTION_SUMMARY_RETRY_POLICY", () => {
   it("is a bounded, enabled pi-ai retry policy", () => {
     expect(COMPACTION_SUMMARY_RETRY_POLICY).toEqual({
@@ -119,6 +137,60 @@ describe("estimateSummaryPromptTokens", () => {
     // The turn prefix only counts when pi will actually summarize it.
     const unsplit = input(history, { isSplitTurn: false, turnPrefixMessages: prefix });
     expect(estimateSummaryPromptTokens(unsplit)).toBe(estimateSummaryPromptTokens(input(history)));
+  });
+
+  it("does not treat 1600 CJK characters as a few hundred tokens", () => {
+    // chars/3.5 of the serialized user line is ~460, under an 800-token
+    // summary limit, while the model tokenizes Han at about one token each.
+    const cjk = input([user("中".repeat(1_600))]);
+    const ascii = input([user("a".repeat(1_600))]);
+    const cjkTokens = estimateSummaryPromptTokens(cjk);
+    const asciiTokens = estimateSummaryPromptTokens(ascii);
+
+    expect(cjkTokens).toBeGreaterThan(800);
+    expect(cjkTokens).toBeGreaterThanOrEqual(1_500);
+    expect(cjkTokens).toBeLessThanOrEqual(1_700);
+    expect(asciiTokens).toBeGreaterThan(400);
+    expect(asciiTokens).toBeLessThan(500);
+    expect(asciiTokens).toBeLessThan(800);
+  });
+
+  it("counts a CJK previous summary near one token per character", () => {
+    const summary = "中".repeat(1_600);
+    const base = input([user("ask")]);
+    const carried = input([user("ask")], { previousSummary: summary });
+    const delta =
+      estimateSummaryPromptTokens(carried) - estimateSummaryPromptTokens(base);
+
+    expect(delta).toBeGreaterThanOrEqual(1_500);
+    expect(delta).toBeLessThanOrEqual(1_700);
+  });
+
+  it("sizes a short CJK history above a longer ASCII turn prefix", () => {
+    const history = [user("中".repeat(800))];
+    const prefix = [user("p".repeat(1_200))];
+    const split = input(history, {
+      isSplitTurn: true,
+      turnPrefixMessages: prefix,
+    });
+
+    expect(estimateSummaryPromptTokens(split)).toBe(
+      estimateSummaryPromptTokens(input(history)),
+    );
+    expect(estimateSummaryPromptTokens(split)).toBeGreaterThan(
+      estimateSummaryPromptTokens(input(prefix)),
+    );
+  });
+
+  it("applies the CJK correction after the serialized tool-result cap", () => {
+    // pi keeps 2 000 characters of the tool result. The raw message is not
+    // the prompt, and those 2 000 Han characters are not 2 000/3.5 tokens.
+    const tokens = estimateSummaryPromptTokens(
+      input([toolResult("中".repeat(400_000))]),
+    );
+
+    expect(tokens).toBeGreaterThan(1_800);
+    expect(tokens).toBeLessThan(2_200);
   });
 });
 
@@ -335,6 +407,106 @@ describe("planSummaryChunks", () => {
         user(`plain ${index} ${"p".repeat(1_500)}`),
       ),
     });
+  });
+
+  it("splits CJK messages so each chunk stays inside the output-cap budget", () => {
+    const summaryInputLimit = 800;
+    const messages = Array.from({ length: 8 }, () => user("中".repeat(500)));
+
+    const chunks = planSummaryChunks(input(messages), {
+      summaryInputLimit,
+      reserveTokens: 0,
+    });
+
+    expect(chunks).toBeDefined();
+    expect(chunks!.length).toBeGreaterThan(1);
+    expect(chunks!.flat()).toEqual(messages);
+    for (const [index, chunk] of chunks!.entries()) {
+      expect(outputCapSummaryTokens(chunk), `output-cap chunk ${index}`).toBeLessThanOrEqual(
+        summaryInputLimit,
+      );
+      expect(
+        estimateSummaryPromptTokens(input(chunk)),
+        `guard chunk ${index}`,
+      ).toBeLessThanOrEqual(summaryInputLimit);
+    }
+  });
+
+  it("cuts one over-budget CJK message to the output-cap budget", () => {
+    const summaryInputLimit = 800;
+    const budget = Math.floor(summaryInputLimit * COMPACTION_SUMMARY_CHUNK_MARGIN);
+    const ceiling = Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN);
+    const chunks = planSummaryChunks(input([user("中".repeat(10_000))]), {
+      summaryInputLimit,
+      reserveTokens: 0,
+    });
+
+    expect(chunks).toHaveLength(1);
+    const text = messageText(chunks![0]![0]!);
+    expect(text).toContain(SUMMARY_CHUNK_TRUNCATION_MARKER.trim());
+    expect(text.length).toBeLessThan(ceiling);
+    expect(outputCapSummaryTokens(chunks![0]!)).toBeLessThanOrEqual(summaryInputLimit);
+    expect(estimateSummaryPromptTokens(input(chunks![0]!))).toBeLessThanOrEqual(
+      summaryInputLimit,
+    );
+  });
+
+  it("keeps an over-budget ASCII message at the chars/3.5 ceiling", () => {
+    const summaryInputLimit = 800;
+    const budget = Math.floor(summaryInputLimit * COMPACTION_SUMMARY_CHUNK_MARGIN);
+    const ceiling = Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN);
+    const chunks = planSummaryChunks(input([user("a".repeat(20_000))]), {
+      summaryInputLimit,
+      reserveTokens: 0,
+    });
+
+    const text = messageText(chunks![0]![0]!);
+    expect(text.length).toBe(ceiling);
+    const tokens = estimateSummaryPromptTokens(input(chunks![0]!));
+    expect(tokens).toBeGreaterThan(400);
+    expect(tokens).toBeLessThan(ceiling);
+    expect(tokens).toBeLessThanOrEqual(summaryInputLimit);
+  });
+
+  it("reserves a CJK previous summary with the same estimate as the guard", () => {
+    const previousSummary = "结".repeat(2_000);
+    const summaryInputLimit = 3_000;
+    const reserveTokens = compactionSummaryReserveTokens({
+      previousSummary,
+      outputBudget: 256,
+    });
+
+    expect(reserveTokens).toBeGreaterThan(1_800);
+
+    const messages = Array.from({ length: 6 }, (_, index) =>
+      user(`注${index}${"文".repeat(400)}`),
+    );
+    const chunks = planSummaryChunks(input(messages, { previousSummary }), {
+      summaryInputLimit,
+      reserveTokens,
+    });
+
+    expect(chunks).toBeDefined();
+    expect(chunks!.length).toBeGreaterThan(1);
+    const filler = "c".repeat(
+      Math.floor(reserveTokens * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    );
+    for (const [index, chunk] of chunks!.entries()) {
+      const carried = index === 0 ? previousSummary : filler;
+      expect(
+        estimateSummaryPromptTokens({
+          messagesToSummarize: chunk,
+          turnPrefixMessages: [],
+          isSplitTurn: false,
+          previousSummary: carried,
+        }),
+        `guard chunk ${index}`,
+      ).toBeLessThanOrEqual(summaryInputLimit);
+      expect(
+        outputCapSummaryTokens(chunk, carried),
+        `output-cap chunk ${index}`,
+      ).toBeLessThanOrEqual(summaryInputLimit);
+    }
   });
 });
 
