@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Delegation connector layout regression</title>
+<link rel="stylesheet" href="../../src/styles/messages.css">
+<style>
+  * { box-sizing: border-box; }
+  body { display: block; margin: 16px; }
+  article { container: subagent-activity / inline-size; margin-bottom: 24px; }
+  .subagent-topology-root, .subagent-topology-node { background: #eee; }
+</style>
+<body>
+<script>
+  for (const [id, width, heights] of [
+    ['mixed', 760, [70, 88, 112]], ['single', 760, [88]],
+    ['narrow', 420, [70, 112, 88]], ['narrow-single', 420, [112]],
+  ]) {
+    const article = document.createElement('article');
+    article.id = id;
+    article.style.width = width + 'px';
+    article.innerHTML = `<section class="subagent-topology">
+      <div class="subagent-topology-root">Main agent</div>
+      <span class="subagent-topology-connector"></span>
+      <div class="subagent-topology-agents">${heights.map((height, index) =>
+        `<div class="tool-row subagent-topology-node" style="height:${height}px">Worker ${index + 1}</div>`).join('')}</div>
+    </section>`;
+    document.body.append(article);
+  }
+  window.addEventListener('load', () => {
+    const errors = [];
+    let checks = 0;
+    const close = (actual, expected, name) => {
+      checks++;
+      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.51) errors.push(`${name}: ${actual} != ${expected}`);
+    };
+    const pseudo = (element, name) => {
+      const style = getComputedStyle(element, name), rect = element.getBoundingClientRect();
+      if (style.content === 'none' || style.content === 'normal') return null;
+      return { x: rect.left + parseFloat(style.left), y: rect.top + parseFloat(style.top),
+        width: parseFloat(style.width), height: parseFloat(style.height) };
+    };
+    for (const article of document.querySelectorAll('article')) {
+      const group = article.querySelector('.subagent-topology-agents');
+      const nodes = [...group.children], bounds = nodes.map(node => node.getBoundingClientRect());
+      const narrow = article.clientWidth <= 520;
+      const stemX = bounds[0].left - 14;
+      const segments = [pseudo(group, '::before'), ...nodes.map(node => pseudo(node, '::after'))]
+        .filter(segment => segment && segment.width > 0 && segment.width <= 2 && segment.height > 0)
+        .sort((a, b) => a.y - b.y);
+      nodes.forEach((node, index) => {
+        const branch = pseudo(node, '::before');
+        close(branch.y + branch.height / 2, bounds[index].top + bounds[index].height / 2, article.id + ' branch center');
+        close(branch.x, stemX, article.id + ' branch starts at stem');
+        close(branch.x + branch.width, bounds[index].left, article.id + ' branch reaches card');
+      });
+      if (nodes.length > 1 || narrow) {
+        close(segments[0]?.y ?? NaN, narrow ? group.getBoundingClientRect().top : bounds[0].top + bounds[0].height / 2, article.id + ' stem start');
+        const last = segments.at(-1), lastNode = bounds.at(-1);
+        close(last?.y + last?.height, lastNode.top + lastNode.height / 2, article.id + ' stem end');
+        for (let index = 1; index < segments.length; index++)
+          close(segments[index - 1].y + segments[index - 1].height, segments[index].y, article.id + ' stem continuity');
+      }
+      if (narrow) {
+        const connector = article.querySelector('.subagent-topology-connector').getBoundingClientRect();
+        close(connector.left, stemX, article.id + ' incoming vertical alignment');
+      }
+    }
+    window.layoutResult = { checks, errors, passed: errors.length === 0 };
+    document.title = window.layoutResult.passed ? 'PASS: delegation connectors' : 'FAIL: delegation connectors';
+  });
+</script>

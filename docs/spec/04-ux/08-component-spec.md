@@ -2690,6 +2690,12 @@ summary can wrap rather than forcing the user to resize the divider. Complete
 descriptions remain available through the node's accessible name/hover title;
 the node and its live process never create horizontal overflow.
 
+Topology connectors use actual card centers rather than fixed pixel offsets.
+Per-card vertical stem segments join across the list gap and terminate at the
+first/last branch. The narrow-layout incoming connector shares the stem's axis,
+including a single-worker topology. Variable card heights do not leave dangling
+stem tails or detached branches.
+
 An accepted steering message creates a new visual reply without ending the
 parent runtime turn. Earlier delegation cards in that running turn keep their
 live status and Stop controls across steering replies and compaction dividers.

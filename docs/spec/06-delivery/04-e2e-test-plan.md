@@ -20842,3 +20842,17 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+#### E2E-ISSUE-2350: Delegation connector centers and stem endpoints
+
+- Serve `apps/desktop` locally and open
+  `test/fixtures/subagent-connector-layout.html` in a browser. This isolated
+  fixture loads the production stylesheet and publishes `window.layoutResult`.
+- Verify `passed: true` and an empty `errors` array across mixed-height
+  70/88/112px cards, a single card, and both 760px and 420px topology widths.
+  Branches meet card centers, vertical segments remain continuous and end at
+  the outer branch centers, and narrow incoming lines share the stem axis.
+- Repeat the rendered delegation user path with running/settled workers and
+  wrapped descriptions; preserve detail navigation, Stop and responsive layout.
+- Qualification: isolated Chromium geometry checks cover this layout regression;
+  installed-client and live-provider checks remain separate.
