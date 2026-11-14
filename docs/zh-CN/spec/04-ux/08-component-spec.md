@@ -328,6 +328,18 @@ chrome 搜索入口；展开的侧边栏标题不再重复该控件。键盘快�
 项目组 `+` 和溢出控制遵循相同的 hover/focus 处理；
 它们的命中区域保留在布局中，因此显示它们不会改变标签。
 
+### Collapsed navigation preview
+
+Hover the collapsed titlebar button for 180ms to float the existing sidebar
+without changing chat/panel width. A 180ms departure grace bridges pointer travel;
+focused controls and child portals remain usable. Navigation, outside press,
+Escape and blur dismiss it; Escape restores the trigger. ArrowDown opens with
+keyboard focus on the first visible action, skipping hidden macOS header controls;
+touch stays click-only. Clicking the trigger/header or the normal
+shortcut docks with existing width-budget rules. Native views yield through the
+blocking-overlay owner. File content/window edges do not open it.
+See [Sidebar hover navigation](/adr/sidebar-hover-navigation).
+
 ### 3.2 解剖学
 
 ```text

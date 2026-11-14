@@ -20799,3 +20799,43 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+#### E2E-SIDEBAR-hover-preview: Select navigation without docking
+
+- **Preconditions**: Completed bootstrap, collapsed sidebar, two retained
+  conversations and a project group. Record chat and work-panel bounds.
+- **Steps**: Hover the titlebar toggle for less than 180ms and leave; hover
+  again for 180ms. Move into the surface across its gap; expand a project,
+  choose a different conversation and verify closure. Reopen, use a row menu,
+  submenu, notification popover and rename dialog, then move back to chat.
+  Test outside press, Escape, window blur and keyboard ArrowDown/Tab/Escape.
+  Click the titlebar or floating header action and use the sidebar shortcut
+  to dock. Repeat with touch, a non-default width, both themes, reduced motion,
+  non-chat routes, maximized work panels, native browser/plugin views and
+  Windows/Linux. Switch route/session or hide the shell during a pending hover.
+- **Expected**: Short passes and touch do not open a preview. Deliberate hover
+  shows the existing full sidebar below native chrome with no pane-width
+  change. A 180ms departure delay bridges travel; focus, menus and dialogs
+  remain usable. Navigation closes the preview without docking. Escape
+  restores the connected trigger; child overlays handle their own dismissal.
+  Outside movement closes a preview left after a portal disappears. Pinning
+  restores the ordinary width-budget rules; floating resizing is unavailable.
+  Native views yield only during the preview and restore on dismissal.
+  Shell hiding/unmount clears timers and listeners. The window edge and
+  file/plugin content never act as opening triggers.
+- **Specs linked**: `04-ux/08-component-spec.md`,
+  [Sidebar hover navigation](../../adr/sidebar-hover-navigation.md)
+- **Status**: Controlled hook interaction and opt-in native candidate coverage.
+  Native candidate command: `node scripts/e2e-three-column-layout.mjs --sidebar-hover-only`
+  with the built app and candidate Host. It drives Chromium pointer/keyboard input
+  through the real shell and native Browser view; it does not establish physical
+  mouse-device or Windows/Linux coverage. The proposal still needs direction approval.
+
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.

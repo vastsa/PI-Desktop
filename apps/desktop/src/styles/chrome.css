@@ -385,6 +385,31 @@
   position: relative;
 }
 
+/* Preview navigation overlays the conversation without spending its width. */
+.sidebar.is-floating,
+:root[data-platform="darwin"] .sidebar.is-floating {
+  position: absolute;
+  z-index: 30;
+  top: var(--ds-toolbar-height);
+  bottom: 8px;
+  left: 8px;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--ds-shadow-dialog);
+}
+
+:root .sidebar.is-floating .sidebar-header {
+  padding-left: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar.is-floating [role="separator"] {
+  display: none;
+}
+
 .sidebar.is-entering {
   animation: sidebar-in var(--motion-duration-normal) var(--motion-ease-out) both;
 }

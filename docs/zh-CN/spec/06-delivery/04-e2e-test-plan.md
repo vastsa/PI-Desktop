@@ -1,5 +1,14 @@
 # 04. E2E 测试 Plan
 
+### E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.
+
 ### E2E-FILE-INDEX-git-deadline
 
 对真实测试文件调用 `getWorkspaceFileIndex` 和 `searchWorkspaceFiles`，
@@ -20,6 +29,20 @@ Unicode 字节分块及深层搜索。
 保持空闲配置的首个响应，选择第二个模型再顺序释放响应，验证只有一个写入
 进行中且最终保留最新模型。`session-model-write-order.test.mjs` 使用真实 slice
 与协调器，仅控制 Host API 边界。运行中配置继续排队。
+
+#### E2E-SIDEBAR-hover-preview: Select navigation without docking
+
+With collapsed navigation, exercise deliberate/short hover, pointer travel,
+conversation/route selection, child portals/dialogs, Escape, outside press, blur,
+keyboard entry, touch exclusion and docking. Preview must preserve pane width,
+restore focus, keep portals usable and suspend/restore native views. Navigation
+and unmount cancel pending timers. Repeat both themes, reduced motion and
+Windows/Linux. Specs: `04-ux/08-component-spec.md` and
+[Sidebar hover navigation](/adr/sidebar-hover-navigation).
+Native candidate command: `node scripts/e2e-three-column-layout.mjs --sidebar-hover-only`
+with the built app and candidate Host. It drives Chromium pointer/keyboard input
+through the real shell and native Browser view; it does not establish physical
+mouse-device or Windows/Linux coverage. The proposal still needs direction approval.
 
 ### E2E-EXTENSION-thinking-request-state
 
