@@ -243,6 +243,22 @@ describe("CompleteStage", () => {
     expect(endTurn).not.toHaveBeenCalled();
   });
 
+  it("keeps stale-reply handling ahead of cancellation after a claim is lost", async () => {
+    const options = { claimed: true };
+    const controller = new AbortController();
+    const { host, tool, gates, failTurn, endTurn } = harness({}, options);
+    host.call.mockImplementation(async () => {
+      options.claimed = false;
+      controller.abort();
+      return { status: "run", gateIndex: 0, command: "npm test", timeoutMinutes: 1, run: RUN };
+    });
+    const result = await tool.execute("call-1", { summary: "Done" }, controller.signal);
+    expect(text(result)).toContain("earlier run turn");
+    expect(gates).toEqual([]);
+    expect(failTurn).not.toHaveBeenCalled();
+    expect(endTurn).not.toHaveBeenCalled();
+  });
+
   it("submits an explicit blocked report with unfinished criteria and ends without running gates", async () => {
     const report = {
       status: "blocked", outcomes: [{ criterion: "Build", outcome: "unverified", evidence: "Required approval is missing" }],

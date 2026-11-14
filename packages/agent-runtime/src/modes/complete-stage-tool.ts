@@ -266,6 +266,8 @@ export function createCompleteStageTool(deps: CompleteStageToolDeps): AgentTool 
       }
 
       const staleResult = (): ToolResult => textResult("This completion reply belongs to an earlier run turn.", { errorCode: "MODE_CLAIM_MISMATCH" }, { isError: true, terminate: true });
+      // Keep stale replies inert even when their old turn was also cancelled.
+      if (!ownsContext()) return staleResult();
       let previousGate = -1;
       while (outcome.status === "run") {
         if (signal?.aborted) throw abortedError();
