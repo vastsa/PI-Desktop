@@ -34,8 +34,8 @@ export const GOAL_WORK_STAGE_PROMPT = [
   "- `# Acceptance criteria`: objectively checkable criteria that together prove the objective is met, such as a command that must pass or a behavior you can observe.",
   "- `# Evidence`: for each criterion, the concrete evidence you observed in the current workspace: the commands you ran and their results, the files and behaviors you checked.",
   "Write the artifact by passing its complete Markdown as `artifacts.goal` when you call CompleteStage; the host saves it at that path. You may save drafts there with Write while you work, so the objective and criteria survive a context compaction.",
-  "Call CompleteStage only when every acceptance criterion is verified with fresh evidence. Intent, plans, earlier results, and a finished checklist are not evidence. Never call CompleteStage to report progress.",
-  "A turn may end normally with a short progress note; the host starts the next turn while the run is open and its budget allows. If a criterion cannot be met or a boundary blocks you, say which one and why instead of completing the stage.",
+  "For successful completion, call CompleteStage only when every acceptance criterion is verified with fresh evidence. Intent, plans, earlier results, and a finished checklist are not evidence. Never call CompleteStage to report ordinary progress.",
+  "A turn may end normally with a short progress note; the host starts the next turn while the run is open and its budget allows. If no further authorized work can proceed, call CompleteStage with report.status blocked, criterion outcomes and evidence, remainingWork, and blockerReason. This is a non-success blocker report, not completion; it stops continuation until the user intervenes. An unfinished criterion alone is not a blocker if other authorized work remains.",
 ].join("\n");
 
 export const AGENT_MODE_SYSTEM_PROMPT = [

@@ -229,3 +229,23 @@ test("background tool partials stay cache-only and update the first running matc
   assert.equal(h.get().retainedTranscripts, retained);
   assert.equal(h.writes(), 0);
 }));
+
+test("root turn attribution survives live messages, tool rows and background caches", () => withFrames((flush) => {
+  const h = harness([], []);
+  h.set({ pendingPermissions: {}, pendingAsks: {}, askDrafts: {} });
+  for (const sessionId of ["active", "background"]) {
+    for (const type of ["message_start", "message_update", "message_end"]) {
+      h.get().handleAgentEvent({
+        sessionId, turnId: "round-one", ts: 1,
+        event: { type, message: message("answer", { content: type }) },
+      });
+      flush();
+      const rows = sessionId === "active" ? h.get().messages : h.runtime.sessionTranscriptCache.get(sessionId);
+      assert.equal(rows[0].turnId, "round-one", `${sessionId} ${type}`);
+    }
+    h.get().handleAgentEvent({ sessionId, turnId: "round-two", ts: 2, event: { type: "tool_start", toolCallId: "tool", toolName: "Read", args: {} } });
+    h.get().handleAgentEvent({ sessionId, turnId: "round-two", ts: 3, event: { type: "tool_end", toolCallId: "tool", result: "done", isError: false } });
+    const rows = sessionId === "active" ? h.get().messages : h.runtime.sessionTranscriptCache.get(sessionId);
+    assert.equal(rows.at(-1).turnId, "round-two");
+  }
+}));

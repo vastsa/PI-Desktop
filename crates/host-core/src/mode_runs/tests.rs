@@ -159,6 +159,7 @@ pub(super) fn complete(
             summary: "done".into(),
             artifacts,
             input: None,
+            report: None,
         },
     )
 }

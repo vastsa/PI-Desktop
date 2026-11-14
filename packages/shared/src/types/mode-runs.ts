@@ -14,10 +14,10 @@ export type ModeRunState =
   | "stopped";
 
 /** Why a `waiting` run waits. */
-export type ModeRunWaitReason = "approval" | "retries" | "turn_end" | "error";
+export type ModeRunWaitReason = "approval" | "retries" | "turn_end" | "error" | "blocked";
 
-/** Who started the turn that holds the claim. `host` turns run at most
- * `accept-edits`; `user` and `approval` turns keep the session permission. */
+/** Builtin Goal keeps the session permission; other `host` turns run at most
+ * `accept-edits`. User and approval turns keep the session permission. */
 export type ModeTurnOrigin = "user" | "approval" | "host";
 
 export const MODE_RUN_OPEN_STATES: readonly ModeRunState[] = ["running", "waiting", "paused", "budget_exhausted"];
@@ -25,6 +25,14 @@ export const MODE_RUN_OPEN_STATES: readonly ModeRunState[] = ["running", "waitin
 export function isModeRunOpen(state: ModeRunState): boolean {
   return MODE_RUN_OPEN_STATES.includes(state);
 }
+
+/** Model-submitted evidence, not an independent verification of its truth. */
+export type ModeCompletionReport = {
+  status: "completed" | "blocked";
+  outcomes: Array<{ criterion: string; outcome: "met" | "unmet" | "unverified"; evidence: string }>;
+  remainingWork: string[];
+  blockerReason?: string;
+};
 
 export type ModeRun = {
   id: string;
@@ -38,11 +46,17 @@ export type ModeRun = {
   waitReason?: ModeRunWaitReason;
   /** Last gate or turn failure shown to the user. */
   lastError?: string;
+  /** Last submitted stage report; exit gates still decide successful completion. */
+  completionReport?: ModeCompletionReport;
   revision: number;
   activeTurnId?: string;
   activeOrigin?: ModeTurnOrigin;
   roundsCompleted: number;
   tokensUsed: number;
+  /** Accumulated active time; legacy hosts may omit it. */
+  elapsedMs?: number;
+  /** Epoch milliseconds of the current active interval, absent while frozen. */
+  activeSinceMs?: number;
   maxTurns: number | null;
   maxTokens: number | null;
   /** Workspace-relative artifact paths resolved for this run. */

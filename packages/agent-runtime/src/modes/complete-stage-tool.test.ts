@@ -22,6 +22,7 @@ type Harness = {
   host: { call: ReturnType<typeof vi.fn> };
   gates: ModeGateCommand[];
   endTurn: ReturnType<typeof vi.fn>;
+  failTurn: ReturnType<typeof vi.fn>;
   tool: ReturnType<typeof createCompleteStageTool>;
 };
 
@@ -41,6 +42,7 @@ function harness(
   };
   const gates: ModeGateCommand[] = [];
   const endTurn = vi.fn();
+  const failTurn = vi.fn();
   const tool = createCompleteStageTool({
     host: host as never,
     sessionId: "session-1",
@@ -50,8 +52,9 @@ function harness(
       return options.gate ? options.gate(request) : { isError: false, text: "ok" };
     },
     endTurn,
+    failTurn,
   });
-  return { host, gates, endTurn, tool };
+  return { host, gates, endTurn, failTurn, tool };
 }
 
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -188,5 +191,86 @@ describe("CompleteStage", () => {
     expect(parseCompleteStageParams({ summary: "ok", extra: 1 })).toContain("unknown argument");
     expect(parseCompleteStageParams({ summary: "ok", artifacts: { Goal: "x" } })).toContain("invalid");
     expect(parseCompleteStageParams({ summary: "ok", artifacts: { goal: 3 } })).toContain("Markdown string");
+  });
+
+  it("fails the run turn on an unavailable completion RPC instead of silently allowing another round", async () => {
+    const denied = Object.assign(new Error("host method not allowed from sidecar: modes.completeStage"), { code: -32601 });
+    const { tool, endTurn, failTurn } = harness({ "modes.completeStage": [denied] });
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean };
+    expect(result.isError).toBe(true);
+    expect(result.terminate).toBe(true);
+    expect(failTurn).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("not allowed from sidecar") }));
+    expect(endTurn).not.toHaveBeenCalled();
+  });
+
+  it("keeps a report-content rejection correctable without failing the run turn", async () => {
+    const invalid = Object.assign(new Error("report evidence is missing"), { errorCode: "MODE_INVALID_ARGUMENT" });
+    const { tool, endTurn, failTurn } = harness({ "modes.completeStage": [invalid] });
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean; terminate?: boolean };
+    expect(result.isError).toBe(true);
+    expect(result.terminate).toBeUndefined();
+    expect(failTurn).not.toHaveBeenCalled();
+    expect(endTurn).not.toHaveBeenCalled();
+  });
+
+  it("does not fail a newer turn when a stale completion reply arrives", async () => {
+    const options = { claimed: true };
+    const { host, tool, failTurn, endTurn } = harness({}, options);
+    host.call.mockImplementation(async () => {
+      options.claimed = false;
+      throw new Error("transport closed after the claim changed");
+    });
+    await tool.execute("call-1", { summary: "Done" });
+    expect(failTurn).not.toHaveBeenCalled();
+    expect(endTurn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: "finished", run: RUN },
+    { status: "run", gateIndex: 0, command: "npm test", timeoutMinutes: 1, run: RUN },
+    { status: "failed", gateIndex: 0, message: "Not ready", retriesLeft: 1, run: RUN },
+  ])("ignores a stale %s outcome without running gates or ending a newer turn", async (outcome) => {
+    const options = { claimed: true };
+    const { host, tool, gates, failTurn, endTurn } = harness({}, options);
+    host.call.mockImplementation(async () => {
+      options.claimed = false;
+      return outcome;
+    });
+    const result = await tool.execute("call-1", { summary: "Done" }) as { isError?: boolean };
+    expect(result.isError).toBe(true);
+    expect(gates).toEqual([]);
+    expect(failTurn).not.toHaveBeenCalled();
+    expect(endTurn).not.toHaveBeenCalled();
+  });
+
+  it("submits an explicit blocked report with unfinished criteria and ends without running gates", async () => {
+    const report = {
+      status: "blocked", outcomes: [{ criterion: "Build", outcome: "unverified", evidence: "Required approval is missing" }],
+      remainingWork: ["Run the approved build"], blockerReason: "User approval is required",
+    };
+    expect(parseCompleteStageParams({ summary: "Cannot proceed", report })).toEqual({ summary: "Cannot proceed", report });
+    const { host, tool, endTurn, failTurn, gates } = harness({
+      "modes.completeStage": [{ status: "blocked", message: report.blockerReason, run: RUN }],
+    });
+    const result = await tool.execute("call-1", { summary: "Cannot proceed", report }) as { terminate?: boolean };
+    expect(host.call).toHaveBeenCalledWith("modes.completeStage", expect.objectContaining({ report }));
+    expect(result.terminate).toBe(true);
+    expect(endTurn).toHaveBeenCalledTimes(1);
+    expect(failTurn).not.toHaveBeenCalled();
+    expect(gates).toEqual([]);
+  });
+
+  it("accepts a verified completion report but rejects contradictory or unbounded reports locally", () => {
+    const report = {
+      status: "completed", outcomes: [{ criterion: "Build", outcome: "met", evidence: "Build exited 0" }], remainingWork: [],
+    };
+    expect(parseCompleteStageParams({ summary: "Verified", report })).toEqual({ summary: "Verified", report });
+    for (const invalid of [
+      { ...report, outcomes: [{ ...report.outcomes[0], outcome: "unmet" }] },
+      { ...report, remainingWork: ["Build is still pending"] },
+      { ...report, outcomes: [report.outcomes[0], report.outcomes[0]] },
+      { ...report, status: "blocked" },
+      { ...report, outcomes: [{ ...report.outcomes[0], evidence: "x".repeat(100_001) }] },
+    ]) expect(typeof parseCompleteStageParams({ summary: "Invalid", report: invalid })).toBe("string");
   });
 });

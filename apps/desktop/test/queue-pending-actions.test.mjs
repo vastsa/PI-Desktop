@@ -41,6 +41,7 @@ test("sending the first prompt derives a replaceable title instead of renaming",
     };
     const runtime = {
       submittedComposerDrafts: new Map(),
+      sessionModeSelections: new Map(),
       sessionTranscriptCache: new Map(),
       insertOptimisticUserMessage() {},
       retractOptimisticUserMessage() {},
@@ -110,6 +111,7 @@ test("Send now promotes queued input without stopping the running session", asyn
       pendingPlans: {}, runningSessions: { "session-a": true }, queuedPrompts: {}, showToast: assert.fail,
     };
     const slice = createQueueSlice({
+      runtime: { sessionModeSelections: new Map() },
       get: () => state,
       set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
       promptAttachmentsFromDraft: () => [],
@@ -166,6 +168,7 @@ test("pending queue actions stay locked until admission succeeds", async (t) => 
         } } };
         let state = { activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }], queuedPrompts: {}, showToast: assert.fail };
         const slice = createQueueSlice({
+          runtime: { sessionModeSelections: new Map() },
           get: () => state,
           set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
           promptAttachmentsFromDraft: () => [],
@@ -223,6 +226,7 @@ test("pending queue actions stay locked until admission succeeds", async (t) => 
       } } };
       let state = { activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }], queuedPrompts: {}, showToast: (message) => errors.push(message) };
       const slice = createQueueSlice({
+        runtime: { sessionModeSelections: new Map() },
         get: () => state,
         set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
         promptAttachmentsFromDraft: () => [],
@@ -282,6 +286,7 @@ test("editing a restored queue preserves attachments when resubmitted", async (t
         } } };
         let state = { activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }], queuedPrompts: {}, showToast: assert.fail };
         const slice = createQueueSlice({
+          runtime: { sessionModeSelections: new Map() },
           get: () => state,
           set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
           promptAttachmentsFromDraft: (references) => references.map(({ path, name, kind, mimeType }) => ({ path, name, kind, mimeType })),

@@ -34,7 +34,7 @@ function deferred() {
 const SESSION = "s1";
 const FIRST_TURN = "initial";
 
-function fixture() {
+function fixture({ onTurnEnded } = {}) {
   const activeTurns = new Map([[SESSION, FIRST_TURN]]);
   const persistedQueue = new Map();
   const prompts = [];
@@ -131,6 +131,7 @@ function fixture() {
       throw new Error("not used by this fixture");
     },
     isQuitting: () => quitting,
+    onTurnEnded,
   });
 
   bridge.ingest({
@@ -398,4 +399,33 @@ test("a stalled turn that main finalized never blocks the queue after a restart 
   // own turn map, and Agent Host must not keep a settled turn active.
   assert.equal(f.coordination.isActiveTurn(SESSION, FIRST_TURN), false);
   assert.deepEqual(f.prompts.map((prompt) => prompt.content), ["waiting follow-up"]);
+});
+
+test("queued Goal waits for mode settlement and retains its explicit startup identity", async () => {
+  const settled = deferred();
+  let settling = false;
+  const f = fixture({ onTurnEnded: async () => { settling = true; await settled.promise; } });
+  await f.bridge.queue.push({ sessionId: SESSION, content: "replacement goal", startGoal: true });
+  const pending = f.finish("aborted");
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await setImmediate();
+  assert.equal(settling, true);
+  assert.equal(f.prompts.length, 0, "mode accounting still holds the queue");
+  settled.resolve();
+  await pending;
+  await setImmediate();
+  assert.equal(f.prompts[0].startGoal, true);
+});
+
+test("an idempotent Goal retry never repeats the accepted replacement callback", async () => {
+  const f = fixture();
+  let replacements = 0;
+  const request = { sessionId: SESSION, content: "replacement goal", startGoal: true, idempotencyKey: "same-goal" };
+  const accepted = async () => { replacements++; };
+  const first = await f.bridge.queue.push(request, accepted);
+  const retry = await f.bridge.queue.push(request, accepted);
+  assert.equal(retry.id, first.id);
+  assert.equal(replacements, 1);
+  assert.equal(f.persistedQueue.size, 1);
 });

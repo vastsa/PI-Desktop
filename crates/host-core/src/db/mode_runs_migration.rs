@@ -157,7 +157,7 @@ mod tests {
 
         let db = Database::open(&path).unwrap();
         assert_eq!(version(db.conn()), SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 29);
+        assert_eq!(SCHEMA_VERSION, 31);
         assert!(has_column(db.conn(), "sessions", "mode_snapshot_hash"));
         for table in ["mode_snapshots", "mode_runs", "mode_gate_results"] {
             assert!(has_table(db.conn(), table), "{table}");

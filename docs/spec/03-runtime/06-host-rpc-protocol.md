@@ -1630,8 +1630,10 @@ ADR `mode-definitions` adds the following Host methods. Parameters use camelCase
 | --- | --- | --- |
 | `modes.get` | `sessionId` | `{ run }`, null when no open run exists |
 | `modes.start` | `sessionId, input, turnId` | `{ claimed, run, enteredStage, definition }` |
+| `modes.startGoal` | `sessionId, input, turnId, modeSnapshot` | claim result for an explicit builtin Goal, independent of the input mode; the Host validates the Goal snapshot and rejects a second open run |
+| `modes.resetGoalInput` | `sessionId` | `{ ok: true }`; compare-and-reset only a Goal input preference to Agent, preserving the run, permission/model fields and any newer non-Goal mode |
 | `modes.claimTurn` | `sessionId, runId, expectedRevision, turnId, origin` | claim result; origins: user, approval, host |
-| `modes.completeStage` | `sessionId, runId, turnId, summary, artifacts?, input?` | failed, run, awaiting_approval, advanced, goto, blocked or finished outcome; `MODE_INPUT_CHANGED` when `input` (the input the turn was claimed with) differs from the run's current input |
+| `modes.completeStage` | `sessionId, runId, turnId, summary, artifacts?, input?, report?` | failed, run, awaiting_approval, advanced, goto, blocked or finished outcome; `MODE_INPUT_CHANGED` when `input` (the input the turn was claimed with) differs from the run's current input |
 | `modes.gateResult` | `sessionId, runId, turnId, gateIndex, toolCallId` | next stage outcome |
 | `modes.settleTurn` | `sessionId, runId, turnId, tokens, outcome, error?` | `{ run, continue }` |
 | `modes.control` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; pause, resume, stop or remove. Stop and remove both end the run; Electron main interrupts the active turn only for stop |
@@ -1648,3 +1650,44 @@ uses the `pi-desktop/modes/*` IPC channels and never writes SQLite directly.
 pending Bash gate command. The Host records the exit code; a model-supplied
 verdict cannot pass a command gate. Stage completion may write only declared
 artifacts within the workspace. Staged runs reject remote workspaces.
+
+Of the mode RPCs, only `modes.completeStage` and `modes.gateResult` traverse the
+model-directed sidecar proxy. Start, settlement, controls and budget/input edits
+remain host/user operations. Both completion methods retain Host ownership and
+live-claim checks; a report never authorizes a paused or stopped claim.
+
+Optional `report` is `{ status: "completed" | "blocked", outcomes:
+[{ criterion, outcome: "met" | "unmet" | "unverified", evidence }],
+remainingWork: string[], blockerReason?: string }`. Unknown report/outcome fields
+are rejected. Outcomes number 1–64, with unique trimmed nonblank criteria (4 KiB
+each) and nonblank evidence (16 KiB each). Remaining work has at most 64 nonblank
+4 KiB items; a supplied blocker reason is nonblank and at most 16 KiB. Total
+serialized report size is at most 256 KiB. All sizes count UTF-8 bytes.
+`completed` requires all outcomes met, no remaining work and no blocker reason;
+the existing exit gates must still pass. `blocked` requires a blocker reason and
+unfinished/unverified work, persists `completionReport`, sets `waiting/blocked`
+and returns a blocked outcome without evaluating success gates. Settlement does
+not continue it. The report validates model evidence structure, not its truth.
+Legacy calls without a report and saved definition snapshots remain valid.
+A call with a report must include the claim's frozen `input`; a missing or
+changed input is rejected with `MODE_INPUT_CHANGED` before artifact writes.
+
+An unavailable completion RPC, broken transport or malformed Host outcome ends
+the run turn with `MODE_COMPLETE_STAGE_FAILED`, not a normal completed turn.
+There is no automatic transport retry; error settlement waits for user recovery.
+Argument/artifact validation and ordinary failed exit checks remain correctable.
+
+Run snapshots add `elapsedMs` (checkpointed active milliseconds) and optional
+`activeSinceMs` (epoch milliseconds of the Running interval). Absent legacy
+fields display zero, not `now - createdAt`. Other states and startup recovery
+have no active interval.
+
+Desktop prompt/queue requests accept optional boolean `startGoal`. Main validates
+explicit input; the existing durable queue retains that choice through dispatch
+and restoration. A replacement is accepted before stopping the old Goal; mode
+settlement completes before queue release. This field never authorizes Host
+continuation. Only the in-process trusted origin and Host claim can do so.
+
+`session.get` adds display-only message `turnId` from the authoritative message
+index, including bounded windows. Root turns remain separate without synthetic
+user messages; this metadata is not an execution credential.

@@ -82,11 +82,24 @@ pub(super) async fn handle(
             let run = mode_runs::open_run(&st.db, &p.session_id).map_err(error)?;
             return Ok(json!({ "run": run_value(run.as_ref()) }));
         }
-        "modes.start" => {
-            let p: mode_runs::StartParams = parse(params)?;
+        "modes.start" | "modes.startGoal" => {
+            let p: mode_runs::StartParams = parse(params.clone())?;
             let workspace = local_workspace(st, &p.session_id)?;
-            let result = mode_runs::start(&st.db, &workspace, p).map_err(error)?;
+            let result = if method == "modes.startGoal" {
+                let value = params
+                    .get("modeSnapshot")
+                    .ok_or_else(|| error(crate::mode_runs::mode_error("MODE_SNAPSHOT_REQUIRED")))?;
+                mode_runs::start_goal(&st.db, &workspace, p, value)
+            } else {
+                mode_runs::start(&st.db, &workspace, p)
+            }
+            .map_err(error)?;
             (result.wire(), result.changed.then_some(result.run))
+        }
+        "modes.resetGoalInput" => {
+            let p: SessionParams = parse(params)?;
+            mode_runs::reset_goal_input(&st.db, &p.session_id).map_err(error)?;
+            return Ok(json!({ "ok": true }));
         }
         "modes.claimTurn" => {
             let result = mode_runs::claim_turn(&st.db, parse(params)?).map_err(error)?;

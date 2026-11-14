@@ -20757,6 +20757,38 @@ recovery, CAS, budget and permission caps; desktop `mode-definitions-user-path`,
 run controls and Main dispatch. Runtime `modes/*` covers stage completion and
 compaction injection.
 
+### Goal input, replacement and elapsed repairs (offline)
+
+- Run `scripts/e2e-goal-run-repairs.mjs` with `PI_DESKTOP_HOST_BIN` pointing at
+  the candidate Host and `PI_SCRATCH_DIR` plus `PI_DESKTOP_AGENTS_DIR` pointing
+  at isolated test state. Production Main prompt IPC, coordinator, finalization
+  and persistent queue run against real host-core; only the model sidecar
+  boundary is controlled. No provider request is made.
+- Send a Goal and observe Agent input while its Goal claim remains running.
+  Complete its first turn; automatic continuation retains the original run,
+  snapshot and Auto permission. Send a second explicit Goal during that turn:
+  acceptance is durable before the old Goal stops, old usage/rounds settle
+  before queue release, and a distinct new run starts with the second input.
+  Stop it, and verify no further continuation. Restored transcript assistant
+  rows retain distinct turn ids and contain only the two actual user inputs.
+- `scripts/e2e-goal-layout.mjs` renders production status/budget controls with
+  the built stylesheet in isolated Electron. Check English/Chinese layouts at
+  320, 480, 720 and 1120 pixels, long objectives/day durations, metadata order,
+  nonoverlap and horizontal budget inputs. Duration uses `d`, `h`, `m`, `s`
+  with exactly one ASCII space after each number, including `0 s`, in both
+  languages. Resume/Pause/Edit/Remove are icon-only with localized accessible
+  names; native clicks still resume/pause, open/cancel editing and arm/cancel
+  removal. Stop retains its text and confirmation. Timer lifecycle is unchanged.
+  It never attaches to the user's app.
+- Rust elapsed tests cover all frozen states, deterministic clock rollback,
+  pause/resume, duplicate settlement, offline recovery and populated v29 upgrade.
+  RPC permission tests cover Auto, Ask and Accept edits after input reset, plus
+  Plan hard denies and separate accounting for a replaced run. Queue tests cover
+  restart and idempotency. Renderer user-path tests cover accepted/rejected Goal,
+  pending model settings, newer picker choices, live/background turn attribution,
+  legacy grouping and fixed Latin duration symbols with localized elapsed labels. Paid live-model checks below
+  remain opt-in and are not a prerequisite for this offline repair suite.
+
 ### Goal run controls with a live model (opt-in, paid)
 
 Command: `PI_LIVE_BASE_URL=<url> PI_LIVE_MODEL=<model> PI_LIVE_API_KEY=<key>
@@ -20842,3 +20874,31 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+### E2E-GOAL-completion-channel: Completion and blockers stop autonomous rounds
+
+- **Environment**: Isolated Host data and `PI_DESKTOP_AGENTS_DIR`, production
+  sidecar/proxy, production Main claim/settlement services, deterministic
+  loopback-only model endpoint; no real provider or user Desktop instance.
+- **Command**: After JS/runtime and Host builds, run
+  `node scripts/e2e-goal-completion.mjs` with `PI_SCRATCH_DIR` and
+  `PI_DESKTOP_HOST_BIN`. `PI_DESKTOP_SIDECAR_ENTRY` can select the sidecar
+  extracted from the installer for payload validation.
+- **Steps**: Submit a completed report with the Goal artifact, a legacy
+  summary/artifact call, a blocked report with unfinished evidence, and a
+  completion-channel failure. Also complete a stage with a real Bash exit gate.
+  Repeat settlement and restart the isolated Host for each scenario.
+- **Expected**: Success reaches `finished`; blocked remains non-success
+  `waiting/blocked` with durable outcomes/reason; infrastructure failure emits
+  `MODE_COMPLETE_STAGE_FAILED` and settles `waiting/error`. Each scenario uses
+  exactly one model request, returns `continue: false`, releases its claim,
+  and schedules no next autonomous round. Gate results traverse the production
+  proxy and use Host-recorded execution, not a model verdict. Restart preserves
+  terminal/waiting state; duplicate settlement cannot recharge accounting.
+- **Companion negatives**: Runtime/Host tests cover invalid/oversized reports,
+  original exit gates, stale/cross-session claims, paused/stopped runs and input
+  edits. The stdio proxy tests retain denies for start/control/update/resolve/
+  settlement and configuration methods. Saved snapshots gain reporting guidance
+  without changing frozen objectives or gates.
+- **Scope**: Host validates authorization, report structure and state; it does
+  not independently prove model-reported acceptance evidence true.

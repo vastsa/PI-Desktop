@@ -118,6 +118,7 @@ export type HostQueueEntry = {
   idempotencyKey?: string;
   inputHash: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   userMessageId?: string;
   voiceOrigin?: VoiceOrigin;
@@ -136,6 +137,7 @@ export function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
     sessionId: entry.sessionId,
     principalSubject: entry.principal,
     content: entry.content,
+    startGoal: entry.startGoal === true,
     ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
     ...(entry.userMessageId ? { userMessageId: entry.userMessageId } : {}),
     ...(entry.voiceOrigin ? { voiceOrigin: entry.voiceOrigin } : {}),
@@ -165,6 +167,7 @@ export function createHostQueueStore(getHost: () => HostRpc | null): QueueStore 
         ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
         inputHash: record.inputHash,
         content: record.content,
+        ...(record.startGoal ? { startGoal: true } : {}),
         ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
         ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
         ...(record.voiceOrigin ? { voiceOrigin: record.voiceOrigin } : {}),

@@ -102,6 +102,7 @@ export type StartTurnParams = {
   admission?: RacpTurnAdmission;
   input: {
     text: string;
+    startGoal?: boolean;
     attachments?: AgentPromptAttachment[];
     sessionMessageId?: string;
     /** Client-chosen id for the durable user row (D288). */
@@ -470,9 +471,10 @@ export class AgentHost {
   }
 
   /** Append to the shared Host queue even when no turn is currently running. */
-  async enqueueTurn(principal: Principal, params: StartTurnParams): Promise<StartTurnResult> {
+  async enqueueTurn(principal: Principal, params: StartTurnParams, onAccepted?: () => Promise<void>): Promise<StartTurnResult> {
     this.requireRole(principal, "turn/start");
-    const result = await this.withAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params, true));
+    const result = await this.withAdmission(params.sessionId, () =>
+      this.startTurnAdmitted(principal, params, true, onAccepted));
     await this.drain(params.sessionId);
     return {
       ...result,
@@ -485,6 +487,7 @@ export class AgentHost {
     principal: Principal,
     params: StartTurnParams,
     forceQueue = false,
+    onQueued?: () => Promise<void>,
   ): Promise<StartTurnResult> {
     const summary = await this.requireSession(params.sessionId);
     if (
@@ -536,6 +539,7 @@ export class AgentHost {
         sessionId: state.id,
         principalSubject: principal.subject,
         content: params.input.text,
+        startGoal: params.input.startGoal === true,
         ...(params.input.sessionMessageId ? { sessionMessageId: params.input.sessionMessageId } : {}),
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.voiceOrigin ? { voiceOrigin: params.input.voiceOrigin } : {}),
@@ -555,11 +559,14 @@ export class AgentHost {
       turn.principalSubject = principal.subject;
       this.emit(state, "turn.queued", { turn: this.toRacpTurn(state, turn) }, { turnId: turn.id });
       this.notifyQueue(state.id);
+      // Only a newly durable entry triggers acceptance side effects, never a retry.
+      await onQueued?.();
     } else {
       const started = await this.runtime.prompt({
         ...(modeOrigin ? { [TRUSTED_MODE_ORIGIN]: modeOrigin } : {}),
         sessionId: state.id,
         content: params.input.text,
+        ...(params.input.startGoal === undefined ? {} : { startGoal: params.input.startGoal }),
         ...(params.input.sessionMessageId ? { sessionMessageId: params.input.sessionMessageId } : {}),
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.voiceOrigin ? { voiceOrigin: params.input.voiceOrigin } : {}),
@@ -996,6 +1003,7 @@ export class AgentHost {
           const started = await this.runtime.prompt({
             sessionId,
             content: record.content,
+            startGoal: record.startGoal === true,
             ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
             ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
             ...(record.voiceOrigin ? { voiceOrigin: record.voiceOrigin } : {}),
@@ -1068,7 +1076,7 @@ export class AgentHost {
     for (let attempt = 0; attempt < PROMOTED_DELIVERY_ATTEMPTS; attempt += 1) {
       const head = await this.withAdmission(state.id, async () => {
         const record = this.queue.peek(state.id);
-        if (!record || record.priority === undefined) return undefined;
+        if (!record || record.priority === undefined || record.startGoal) return undefined;
         if (this.activeRuntimeTurnId(state) !== runtimeTurnId) return undefined;
         const active = state.turns.get(state.activeTurnId!);
         const externalDesktopTurn = active?.principalSubject === undefined && active?.runtimeTurnId === undefined;
@@ -1541,6 +1549,7 @@ export function hashInput(input: StartTurnParams["input"]): string {
   const encoded = JSON.stringify({
     text: input.text,
     attachments: input.attachments ?? [],
+    ...(input.startGoal ? { startGoal: true } : {}),
     ...(input.sessionMessageId ? { sessionMessageId: input.sessionMessageId } : {}),
   });
   let hash = 5381;

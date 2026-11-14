@@ -881,6 +881,7 @@ export const zhTW = {
         budgetExhausted: "預算已用完",
       },
       rounds: "輪次 {{completed}}/{{max}}",
+      elapsed: "耗時 {{duration}}",
       lastError: "最近錯誤：{{message}}",
       pause: "暫停",
       resume: "繼續",

@@ -891,9 +891,14 @@ an orphan snapshot. Legacy callers without a snapshot keep their existing behavi
   the UI must make that tradeoff visible.
 - `Computer` and scheduled-task tools are available only in the builtin Agent
   mode, never in a user-defined mode.
-- A turn the Host starts by itself for a staged run (loop continuation,
-  `onFail.goto`) evaluates `auto` as `accept-edits`. Turns the user starts, and
-  the turn after an approval, keep the session permission mode.
+- Builtin Goal retains the session permission on its first and subsequent
+  claimed turns, including Host continuation; `auto` is not downgraded.
+  Other Host-started staged turns (loop continuation, `onFail.goto`) continue
+  to evaluate `auto` as `accept-edits`. User and approval turns retain the
+  session permission. Narrower turn ceilings and external-path checks remain.
+- After Goal input resets to Agent, its active Host-owned claim still selects
+  the run snapshot and stage policy. Ordinary Agent work does not inherit an
+  unclaimed Goal. An explicit Plan selection retains contract hard denies.
 - allow-session is remembered per toolName for the active session only
 - Session grants follow `sessionId` across project-tab switches and are never
   inherited by another session or Temporary conversation
