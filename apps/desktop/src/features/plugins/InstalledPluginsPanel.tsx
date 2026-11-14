@@ -3,6 +3,7 @@ import {
   IconCircleAlert,
   IconCloudDown,
   IconMore,
+  IconPanel,
   IconPlug,
   IconReview,
   IconSearch,
@@ -96,6 +97,12 @@ export function InstalledPluginsPanel({
                       const broken = group.id === "attention";
                       const menuOpen = rowMenu === plugin.id;
                       const update = plugin.updateAvailable;
+                      /**
+                       * The card's one call to action: an available update, or
+                       * opening the plugin's own panel. A disabled plugin has
+                       * neither, so it never carries a primary button.
+                       */
+                      const canOpenPanel = plugin.enabled && !!plugin.ui?.panel;
                       return (
                         <article
                           key={plugin.id}
@@ -193,6 +200,17 @@ export function InstalledPluginsPanel({
                                 {isPluginBusy(plugin.id)
                                   ? t("plugins.updating")
                                   : t("plugins.updateTo", { version: update.version })}
+                              </Button>
+                            ) : canOpenPanel ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  void run(() => api.openPluginPanel(plugin.id))
+                                }
+                              >
+                                <IconPanel size={14} />
+                                {t("plugins.openPanel")}
                               </Button>
                             ) : null}
                             {plugin.enabled && plugin.settings?.length ? (
