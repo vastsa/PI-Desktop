@@ -41,9 +41,13 @@ mod binary_storage_tests;
 pub mod layout;
 #[cfg(test)]
 mod review_state_tests;
+mod suffix;
+#[cfg(test)]
+mod suffix_tests;
 #[cfg(test)]
 use layout::refresh_layout;
 pub use layout::TranscriptLayout;
+pub use suffix::read_closed_message_suffix;
 
 /// Bumped when the line format changes shape incompatibly.
 pub const TRANSCRIPT_SCHEMA: i64 = 2;
@@ -425,6 +429,15 @@ fn read_layout_line(
 #[cfg(test)]
 thread_local! {
     static LAYOUT_LINE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static WHOLE_FILE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Reads of every message line — the full read, and the rewrite in
+/// `update_message` — on this thread since the last call. Tests use it to pin
+/// paths that must stay independent of history length.
+#[cfg(test)]
+pub(crate) fn take_whole_file_reads() -> usize {
+    WHOLE_FILE_READS.with(|reads| reads.replace(0))
 }
 
 /// Whether a JSON string for this value is the value itself.
@@ -1248,6 +1261,8 @@ pub fn read_transcript_with_compactions(
     data_dir: &Path,
     session_id: &str,
 ) -> Result<TranscriptRead> {
+    #[cfg(test)]
+    WHOLE_FILE_READS.with(|reads| reads.set(reads.get() + 1));
     read_transcript_window(data_dir, session_id, 0, None)
 }
 
@@ -1363,6 +1378,8 @@ pub fn update_message(data_dir: &Path, session_id: &str, record: &MessageRecord)
             return Ok(true);
         }
     }
+    #[cfg(test)]
+    WHOLE_FILE_READS.with(|reads| reads.set(reads.get() + 1));
     let raw = match fs::read(&path) {
         Ok(bytes) => match String::from_utf8(bytes) {
             Ok(raw) => raw,
