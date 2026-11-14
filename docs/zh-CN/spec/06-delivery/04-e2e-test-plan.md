@@ -1,5 +1,14 @@
 # 04. E2E 测试 Plan
 
+### E2E-106-session-permissions
+
+Run `node scripts/e2e-plan-ui.mjs --permissions-only` against the candidate
+Desktop and Host with isolated data and no provider. Eight native approval,
+menu, rejection and reload cases verify explicit Ask/Accept edits/Auto,
+inherited global permissions and ignored legacy device history. Each seeded
+Session owns a distinct probe tool-call identity. Approval persists through
+the real preload/Main/Host path; missing-provider execution is expected.
+
 ### E2E-FILE-INDEX-git-deadline
 
 对真实测试文件调用 `getWorkspaceFileIndex` 和 `searchWorkspaceFiles`，

@@ -14,12 +14,15 @@ import { resolveHostBinary } from "./e2e/host.mjs";
 const root = repositoryRoot();
 const { appDir } = desktopPaths(root);
 
-const REQUIRED_CASE_IDS = [
+const PERMISSIONS_ONLY = process.argv.includes("--permissions-only");
+const PERMISSION_CASE_ID = "E2E-106-session-permissions";
+const REQUIRED_CASE_IDS = PERMISSIONS_ONLY ? [PERMISSION_CASE_ID] : [
   "E2E-106-renderer",
   "E2E-111-renderer",
   "E2E-117-en",
   "E2E-117-zh-CN",
   "E2E-117-responsive",
+  PERMISSION_CASE_ID,
 ];
 const LIVE_CASE_ID = "E2E-106-live-agent";
 const LIVE_ENV_AVAILABLE = [
@@ -27,7 +30,7 @@ const LIVE_ENV_AVAILABLE = [
   "PI_DESKTOP_TEST_BASE_URL",
   "PI_DESKTOP_TEST_MODEL",
 ].every((name) => Boolean(process.env[name]?.trim()));
-const CASE_IDS = LIVE_ENV_AVAILABLE
+const CASE_IDS = LIVE_ENV_AVAILABLE && !PERMISSIONS_ONLY
   ? [...REQUIRED_CASE_IDS, LIVE_CASE_ID]
   : REQUIRED_CASE_IDS;
 
@@ -1072,7 +1075,7 @@ async function submitPlan(state, sessionId, revision) {
   assert(proposal.sessionId === sessionId, `proposal session mismatch: ${jsonText(proposal)}`);
   assert(proposal.turnId === result.turnId, `proposal turn mismatch: ${jsonText(proposal)}`);
   assert(
-    proposal.toolCallId === `plan-ui-probe-${revision}`,
+    proposal.toolCallId === `plan-ui-probe-${sessionId}-${revision}`,
     `proposal tool identity mismatch: ${jsonText(proposal)}`,
   );
   assert(proposal.markdown === checkpoint.markdown, "proposal Markdown is not byte-identical");
@@ -1271,6 +1274,61 @@ async function settleExpectedExecutionError(state) {
   throw new Error(`unexpected visible execution error: ${snapshot.executionErrorText}`);
 }
 
+async function runPermissionAcceptance(state) {
+  const cases = [
+    { permission: "auto", global: "ask", remembered: "ask", expected: "auto" },
+    { permission: "ask", global: "auto", remembered: "auto", expected: "ask" },
+    { permission: "accept-edits", global: "ask", remembered: "auto", expected: "accept-edits" },
+    { permission: "inherit", global: "auto", remembered: "ask", expected: "auto" },
+    { permission: "inherit", global: "accept-edits", remembered: "auto", expected: "accept-edits" },
+    { permission: "inherit", global: "ask", remembered: "auto", expected: "ask" },
+    { permission: "auto", global: "ask", remembered: "auto", expected: "auto", choice: "ask" },
+    { permission: "auto", global: "ask", remembered: "ask", expected: "auto", reject: true },
+  ];
+  for (const [index, scenario] of cases.entries()) {
+    const { defaultCommandShell: _shell, ...settings } = await getSettings(state);
+    await getPreloadResult(state, "settingsSet", [{ ...settings, defaultPermissionMode: scenario.global }]);
+    const { session } = await getPreloadResult(state, "sessionCreate", [{
+      title: `Permission acceptance ${index}`, mode: "agent", projectPath: state.workspace,
+    }]);
+    await getPreloadResult(state, "sessionConfigure", [session.id, {
+      mode: "agent", permissionMode: scenario.permission,
+    }]);
+    await getPreloadResult(state, "sessionConfigure", [session.id, { mode: "plan" }]);
+    await state.cdp.evaluate(`localStorage.setItem("pi.desktop.planApprovalMode", ${JSON.stringify(scenario.remembered)})`);
+    await reloadRenderer(state);
+    await selectSession(state, session.id);
+    const submitted = await submitPlan(state, session.id, "first");
+    await waitFor(async () => (await inspectUi(state)).bar?.status === "pending", "permission approval card", state);
+    const expectedLabel = {
+      ask: ["Ask", "每次询问"], "accept-edits": ["Accept edits", "自动接受编辑"], auto: ["Auto", "全自动"],
+    }[scenario.expected];
+    const snapshot = await inspectUi(state);
+    assert(expectedLabel.some(label => snapshot.bar.approveLabel?.includes(label)),
+      `case ${index}: approval default does not follow ${scenario.expected}: ${jsonText(snapshot.bar)}`);
+    const action = scenario.reject ? "reject" : "approve";
+    if (scenario.choice) {
+      await clickSelector(state, ".plan-approval-approve-menu", "explicit approval menu");
+      await clickSelector(state, `[data-approval-mode="${scenario.choice}"]`, "explicit Ask approval");
+    } else {
+      await clickSelector(state, scenario.reject ? ".plan-approval-reject" : ".plan-approval-approve-main", action);
+    }
+    const expectedPermission = scenario.reject ? scenario.permission : scenario.choice ?? scenario.expected;
+    await waitFor(async () => {
+      const current = await getSession(state, session.id);
+      return current?.mode === (scenario.reject ? "plan" : "agent") && current.permissionMode === expectedPermission;
+    }, `case ${index}: durable ${action} permission ${expectedPermission}`, state);
+    await settlePlanProbe(state, session.id, submitted.turnId, scenario.reject ? "aborted" : "completed");
+    await reloadRenderer(state);
+    await selectSession(state, session.id);
+    const restored = await getSession(state, session.id);
+    assert(restored.permissionMode === expectedPermission, `case ${index}: reload lost the permission`);
+    assert((await inspectUi(state)).bar === null, `case ${index}: reload restored a terminal approval`);
+    console.log(`PASS permission case ${index}: ${scenario.permission}/${scenario.global} -> ${expectedPermission} (${action})`);
+  }
+  record(PERMISSION_CASE_ID, true, "eight native approval/reload cases: explicit/inherited permissions, stale device history, override and rejection");
+}
+
 async function runLiveAcceptance(state) {
   const baselineFiles = await workspaceFiles(state.workspace);
   const setup = await runPlanProbe(state, {
@@ -1448,6 +1506,11 @@ async function runAcceptance(state) {
   await setViewport(state, 1280, 800);
   await selectSession(state, state.sessionId);
 
+  if (PERMISSIONS_ONLY) {
+    await runPermissionAcceptance(state);
+    return;
+  }
+
   const settings = await getSettings(state);
   assert(settings.defaultMode === "agent", `new-session default is not Agent: ${jsonText(settings)}`);
   // The shell no longer creates a session at boot (temporary chats start on
@@ -1604,6 +1667,8 @@ async function runAcceptance(state) {
     true,
     "zh-CN labels, Ask default, terminal Agent state, pending-only reload hydration, and no stale actions verified",
   );
+
+  await runPermissionAcceptance(state);
 
   if (!LIVE_ENV_AVAILABLE) {
     console.log(

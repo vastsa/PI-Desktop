@@ -8618,8 +8618,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   approved execution emitted the exact durable marker, and a private
   env-gated WeakMap check proved the same `DesktopAgentRuntime` object before
   and after approval. Main/Host/sidecar PIDs remained stable; credentials never
-  entered CDP or output. The default no-key run remains 5/5 with the live case
-  explicitly skipped.
+  entered CDP or output. The no-key run also covers
+  `E2E-106-session-permissions`: eight native main-button/menu/rejection cases
+  verify explicit Ask/Accept edits/Auto, inherited global modes, ignored legacy
+  device history, durable Plan-to-Agent permission and renderer reload. Run
+  `node scripts/e2e-plan-ui.mjs --permissions-only` for this focused gate.
+  Each seeded Session owns a distinct probe tool-call identity. No provider is
+  configured for these cases; automatic execution reports the expected missing
+  provider while approval persistence is verified through the real Host.
+  The default no-key run has six required cases; the live case is explicitly
+  skipped.
 
 #### E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Dock, Plan approval, and retry surfaces occlude transcript text
 
