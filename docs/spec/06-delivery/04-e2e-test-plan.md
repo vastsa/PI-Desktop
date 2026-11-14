@@ -20680,6 +20680,8 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
 
 - Entry: build shared/agent-runtime/host-runtime and Host, then run
   `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`.
+- The Windows Host CI job builds agent-runtime and its workspace dependencies
+  and runs this script against its debug Host.
 - Environment: isolated Host data and workspace, production runtime and pi tool
   loop, deterministic localhost HTTP provider. No external model account.
 - Sequence: start a background test, list it, wait for failure and Unicode
