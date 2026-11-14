@@ -46,6 +46,7 @@ let manifest = { id: "", name: "", version: "", main: "", schemaVersion: 1 };
 let pluginModule = null;
 
 const pending = new Map();
+const audioInputHandlers = new Set();
 const invocations = new Map();
 const invocationContext = new AsyncLocalStorage();
 let nextCallId = 1;
@@ -70,16 +71,6 @@ function call(api, args = []) {
 
 function toolAbortedError(reason) {
   return Object.assign(new Error(reason), { code: "PLUGIN_TOOL_ABORTED" });
-}
-
-/**
- * The same refusal the broker returns for the audio surface, for the two
- * synchronous registration helpers that cannot reject.
- */
-function audioUnavailable(api) {
-  return Object.assign(new Error(`host api not available: ${api}`), {
-    code: "UNSUPPORTED",
-  });
 }
 
 function rejectInvocationCalls(invocationId, error) {
@@ -439,25 +430,18 @@ function buildApi() {
         close: (input) => call("net.websocket.close", [input ?? {}]),
       },
     },
-    /**
-     * Background audio (`audio.capture.background`, `audio.playback.background`).
-     * The host has no device backend yet, so the async calls travel to the
-     * broker and come back as a coded `UNSUPPORTED` refusal — a plugin can
-     * branch on `error.code` instead of catching a TypeError. The two
-     * registration helpers are synchronous by contract and cannot reject, so
-     * they throw the same refusal immediately rather than registering a handler
-     * that could never fire.
-     */
+    // Capture is host-owned and permission-gated. Registration alone opens no device.
     audio: {
       getInputDevices: () => call("audio.getInputDevices"),
       openInput: (options) => call("audio.openInput", [options ?? {}]),
       closeInput: (streamId) => call("audio.closeInput", [streamId]),
       getCaptureState: () => call("audio.getCaptureState"),
-      onInputFrame: () => {
-        throw audioUnavailable("audio.onInputFrame");
+      onInputFrame: (handler) => {
+        if (typeof handler !== "function") throw new TypeError("audio frame handler must be a function");
+        audioInputHandlers.add(handler);
       },
-      offInputFrame: () => {
-        throw audioUnavailable("audio.offInputFrame");
+      offInputFrame: (handler) => {
+        audioInputHandlers.delete(handler);
       },
       openOutput: (options) => call("audio.openOutput", [options ?? {}]),
       writeOutput: (input) => call("audio.writeOutput", [input ?? {}]),
@@ -490,6 +474,17 @@ function buildApi() {
 /** Dispatch one parent push frame; a throwing handler must not kill the plugin. */
 function handleHostEvent(message) {
   const event = String(message.event ?? "");
+  if (event === "audio.inputFrame") {
+    const frame = message.frame;
+    if (!frame || !Array.isArray(frame.data) || frame.data.length > 8192) return;
+    const decoded = { ...frame, data: Uint8Array.from(frame.data) };
+    // A handler may return a promise; withhold the ACK until it settles so a
+    // slow consumer drops samples at the broker instead of accumulating IPC.
+    void Promise.allSettled([...audioInputHandlers].map((handler) => Promise.resolve().then(() => handler(decoded))))
+      .then(() => call("audio.ackInputFrame", [frame.streamId, frame.sequence]))
+      .catch(() => {});
+    return;
+  }
   if (event === "bus.message") {
     const handler = busHandlers.get(String(message.subscriptionId ?? ""));
     if (handler) {
@@ -705,6 +700,7 @@ async function handleParentCall(method, payload, invocationId, callId) {
       services.clear();
       busHandlers.clear();
       eventListeners.clear();
+      audioInputHandlers.clear();
       return { ok: true };
     }
     default: {

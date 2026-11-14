@@ -20799,3 +20799,14 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+### E2E-PLUGIN-microphone-capture
+
+`node --test apps/desktop/test/plugin-audio-unsupported.test.mjs
+apps/desktop/test/plugin-audio-capture.test.mjs` drives the real broker and a
+forked plugin process with a deterministic microphone backend. Subscribe,
+open, receive PCM16, block a consumer, observe dropped frames, resume and unload.
+Verify permission rejection before backend access, OS refusal, stream ownership,
+format validation, cancellation during startup and the host deadline. No ambient
+audio is recorded or sent to a provider. A packaged hardware check must separately
+confirm macOS consent and actual capture, including Stop/Cancel and quit.

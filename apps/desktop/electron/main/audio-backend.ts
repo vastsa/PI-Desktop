@@ -70,7 +70,7 @@ class PvRecorderCapture implements AudioCapture {
   private stopping = false;
   private readError: Error | undefined;
 
-  constructor(private readonly deviceIndex: number) {}
+  constructor(private readonly deviceIndex: number, private readonly retainFrames = true) {}
 
   get isActive(): boolean {
     return this.recorder !== null && !this.stopping;
@@ -157,7 +157,7 @@ class PvRecorderCapture implements AudioCapture {
       while (!this.stopping && recorder.isRecording) {
         const frame: Int16Array = await recorder.read();
         if (this.stopping) continue;
-        this.frames.push(frame);
+        if (this.retainFrames) this.frames.push(frame);
         try {
           this.frameCallback?.(frame);
         } catch {
@@ -178,6 +178,8 @@ class PvRecorderCapture implements AudioCapture {
 // ---------------------------------------------------------------------------
 
 export class PvRecorderBackend implements AudioCaptureFactory {
+  constructor(private readonly retainFrames = true) {}
+
   async getDevices(): Promise<AudioInputDevice[]> {
     const { PvRecorder } = await loadPvRecorder();
     const names: string[] = PvRecorder.getAvailableDevices();
@@ -191,7 +193,7 @@ export class PvRecorderBackend implements AudioCaptureFactory {
 
   create(deviceId: string | null): AudioCapture {
     const index = deviceId !== null ? parseInt(deviceId, 10) : -1;
-    return new PvRecorderCapture(isNaN(index) ? -1 : index);
+    return new PvRecorderCapture(isNaN(index) ? -1 : index, this.retainFrames);
   }
 
   async checkPermission(): Promise<"granted" | "denied" | "undetermined"> {

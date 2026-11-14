@@ -1,5 +1,11 @@
 # Unreleased changes
 
+- Implement host-owned microphone capture for plugins through `pi.audio`.
+  Composer extensions can record inline through their plugin process, with the
+  existing microphone permission grant and OS consent. Input is bounded mono
+  PCM16 at 16000 Hz and stops on unload, crash, quit or a 60-second deadline.
+  Playback is still unsupported.
+
 - Fixed MCP servers staying unavailable in project sessions after Test connection
   reported success. Testing now uses the selected project's working directory
   and clears that server's idle failed workspace connections without interrupting

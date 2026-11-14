@@ -36,6 +36,7 @@ import { createFsConsentService } from "../plugin-fs-consent";
 import { pluginWorkspaceInfo, projectFolderPaths } from "../workspace-roots";
 import { createDesktopConsentService } from "../plugin-desktop-consent";
 import { PluginRuntime } from "../plugin-runtime";
+import { PvRecorderBackend } from "../audio-backend";
 import { createSpeechService } from "./speech-service";
 import { PluginShortcutRegistry } from "../plugin-shortcut-registry";
 import { PluginWebSocketRegistry } from "../plugin-websocket";
@@ -240,6 +241,7 @@ export function createPluginServices({
     onEvent: (pluginId, event) => plugins.deliverSocketEvent(pluginId, event),
   });
   const plugins: PluginRuntime = new PluginRuntime({
+    audioCaptureFactory: new PvRecorderBackend(false),
     pluginShortcuts,
     pluginSockets,
     providerOAuthPrompt: (pluginId, loginId, input) =>

@@ -1195,8 +1195,11 @@ export type PluginAudioInputFrame = {
 export type PluginAudioOpenInputOptions = {
   /** From `pi.audio.getInputDevices`; omitted means the system default. */
   deviceId?: string;
+  /** Currently 16000 only; other rates reject with UNSUPPORTED. */
   sampleRate?: number;
+  /** Currently mono (1) only. */
   channels?: number;
+  /** Processing is not available; requesting true rejects with UNSUPPORTED. */
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
@@ -1413,9 +1416,9 @@ export type PluginHostApi = {
     getInputDevices: () => Promise<PluginAudioInputDevice[]>;
     openInput: (options?: PluginAudioOpenInputOptions) => Promise<PluginAudioInputSession>;
     closeInput: (streamId: string) => Promise<void>;
-    /** Which plugin currently holds an input, if any. */
+    /** This plugin's capture only; never exposes another plugin's stream. */
     getCaptureState: () => Promise<PluginAudioCaptureState>;
-    /** Frames arrive at capture pace; a handler that falls behind drops frames. */
+    /** Frames arrive at capture pace; slow handlers drop frames. Registration alone opens no device. */
     onInputFrame: (handler: (frame: PluginAudioInputFrame) => void) => void;
     offInputFrame: (handler: (frame: PluginAudioInputFrame) => void) => void;
     openOutput: (options: PluginAudioOpenOutputOptions) => Promise<PluginAudioOutputSession>;
