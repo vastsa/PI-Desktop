@@ -2474,6 +2474,7 @@
 /* Nodes are raised tiles on the group's tile; connectors are tinted 2px bars
    rather than hairlines, and the dotted canvas is gone (D297). */
 .subagent-topology {
+  --subagent-node-gap: 10px;
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(138px, 0.58fr) 34px minmax(248px, 1.42fr);
@@ -2541,19 +2542,8 @@
   position: relative;
   display: grid;
   min-width: 0;
-  gap: 10px;
+  gap: var(--subagent-node-gap);
   padding-left: 14px;
-}
-
-.subagent-topology-agents::before {
-  position: absolute;
-  top: 36px;
-  bottom: 36px;
-  left: 0;
-  width: 2px;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile-deep);
-  content: "";
 }
 
 .subagent-topology-node {
@@ -2567,12 +2557,35 @@
 
 .subagent-topology-node::before {
   position: absolute;
-  top: 35px;
+  top: calc(50% - 1px);
   right: 100%;
-  width: 15px;
+  width: 14px;
   height: 2px;
   background: var(--ds-tile-deep);
   content: "";
+}
+
+.subagent-topology-agents > .subagent-topology-node {
+  margin: 0;
+}
+
+/* Each card contributes a stem segment; only the outer ends stop at centers. */
+.subagent-topology-node::after {
+  position: absolute;
+  top: calc(var(--subagent-node-gap) / -2);
+  bottom: calc(var(--subagent-node-gap) / -2);
+  left: -14px;
+  width: 2px;
+  background: var(--ds-tile-deep);
+  content: "";
+}
+
+.subagent-topology-node:first-child::after {
+  top: 50%;
+}
+
+.subagent-topology-node:last-child::after {
+  bottom: 50%;
 }
 
 .subagent-stop-button {
@@ -2824,17 +2837,15 @@
   .subagent-topology-connector {
     width: 2px;
     height: 18px;
-    margin-left: 28px;
+    margin-left: 14px;
   }
 
   .subagent-topology-agents {
     padding-left: 28px;
   }
 
-  .subagent-topology-agents::before {
+  .subagent-topology-node:first-child::after {
     top: 0;
-    bottom: 36px;
-    left: 14px;
   }
 
   .subagent-topology-node::before {
