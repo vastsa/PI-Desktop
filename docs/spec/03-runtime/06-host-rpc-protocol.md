@@ -1215,7 +1215,8 @@ explicit permission mode and atomically commits the `plan_approvals` row to
 `status = approved`, assigns `execution_id`, sets `execution_state = queued`,
 sets `sessions.mode = agent`, and stores the selected
 `sessions.permission_mode`; that selection is not written into app settings
-as the next approval default. Ask remains the product default. The same Agent then receives a new provider
+as the next approval default. The renderer defaults approval to the owning
+Session's effective permission, with Ask as the final fallback. The same Agent then receives a new provider
 request with Agent tools.
 
 `reject` records `rejected` and leaves the session in its contract mode (Plan or
