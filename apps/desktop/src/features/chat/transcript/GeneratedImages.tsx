@@ -6,6 +6,7 @@ import { toolResultPayload } from "../../../lib/tool-presentation";
 import { useAppStore } from "../../../stores/app-store";
 import { Button, TooltipButton } from "../../../components/ui";
 import { IconDownload } from "../../../components/icons";
+import { CopyGeneratedImageButton, useGeneratedImageContextMenu } from "./CopyGeneratedImageButton";
 import { GeneratedImageViewer } from "./GeneratedImageViewer";
 import { GeneratedImageThumbnail, type GeneratedImageRef } from "./GeneratedImageThumbnail";
 import { generatedImageDownloadName } from "./generated-image-download";
@@ -24,12 +25,14 @@ function ImageResult({
   const { t } = useTranslation();
   const dataUrl = useReferencedImageDataUrl(path, mimeType);
   const downloadName = generatedImageDownloadName(dataUrl, index);
+  const imageMenu = useGeneratedImageContextMenu(dataUrl, index);
   return (
     <figure className="generated-image-card">
       <TooltipButton
         type="button"
         className="generated-image-preview"
         onClick={(event) => onOpen(event.currentTarget)}
+        onContextMenu={imageMenu.onContextMenu}
         tooltip={t("settings.generatedImage", { index: index + 1 })}
       >
         {dataUrl ? (
@@ -39,12 +42,14 @@ function ImageResult({
         )}
       </TooltipButton>
       <figcaption className="generated-image-actions">
+        {downloadName && dataUrl ? <CopyGeneratedImageButton dataUrl={dataUrl} /> : null}
         {downloadName && dataUrl ? (
           <a href={dataUrl} download={downloadName} aria-label={t("settings.downloadGeneratedImage")} title={t("settings.downloadGeneratedImage")}>
             <IconDownload size={18} />
           </a>
         ) : null}
       </figcaption>
+      {imageMenu.menu}
     </figure>
   );
 }
