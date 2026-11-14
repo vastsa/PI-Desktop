@@ -162,6 +162,29 @@ fn turn_bound_result_and_callback_are_durable_and_exactly_once() {
         Some(message.id.as_str())
     );
     assert!(!receipt.notify_on_completion);
+    // The receipt is a readable report a model can act on, not an encoded envelope.
+    assert!(
+        receipt.content.starts_with("Sub-session report\n"),
+        "{}",
+        receipt.content
+    );
+    assert!(
+        receipt.content.contains("Status: completed"),
+        "{}",
+        receipt.content
+    );
+    assert!(
+        receipt
+            .content
+            .contains("Report:\nAuthoritative final result"),
+        "{}",
+        receipt.content
+    );
+    assert!(
+        !receipt.content.contains("\"result\""),
+        "{}",
+        receipt.content
+    );
     let result = handle(
         &db,
         "session.collaboration.result",
@@ -527,8 +550,12 @@ fn a_restart_reports_an_interrupted_delivery_to_its_sender_once() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(content.contains("\"status\":\"interrupted\""), "{content}");
-    assert!(content.contains("\"result\":null"), "{content}");
+    assert!(content.contains("Status: interrupted"), "{content}");
+    assert!(
+        content.contains("Error: Execution interrupted by application restart"),
+        "{content}"
+    );
+    assert!(!content.contains("\"status\""), "{content}");
     recover(&db).unwrap();
     assert_eq!(receipt(&db), 1);
     assert_eq!(turn_count(&db, &child), 1);
