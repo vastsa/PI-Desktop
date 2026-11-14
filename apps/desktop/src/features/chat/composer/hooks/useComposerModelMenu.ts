@@ -1,4 +1,3 @@
-import { sameRecentModel } from "../../../../lib/recent-models";
 import type {
   Mode,
   ProviderPublic,
@@ -8,7 +7,7 @@ import {
   imageGenerationBindings,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
-  isImageGenerationModel,
+  isImageOnlyChatModel,
 } from "@pi-desktop/shared";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -21,6 +20,7 @@ import {
   providerDisplayName,
   providerSearchText,
 } from "../../../../lib/provider-display";
+import { sameRecentModel } from "../../../../lib/recent-models";
 import { providerThinkingLevels } from "../../../../lib/session-thinking";
 import { useAppStore } from "../../../../stores/app-store";
 import {
@@ -289,14 +289,10 @@ export function useComposerModelMenu({
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
-    if (isImageGenerationModel(
-      imageGenerationBindings(
-        useAppStore.getState().settings?.imageGenerationModels,
-        useAppStore.getState().settings?.imageGeneration,
-      ),
-      candidate.id,
-      nextModelId,
-    )) return;
+    // A pure image-generation endpoint cannot be selected for chat; a
+    // dual-capability model marked for image generation stays selectable
+    // (#2253).
+    if (isImageOnlyChatModel(imageGenerationCandidates, candidate.id, nextModelId)) return;
     try {
       const nextModelProvider = thinkingProviderForModel(
         candidate,

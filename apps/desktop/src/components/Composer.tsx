@@ -13,10 +13,10 @@ import type {
   PermissionMode,
 } from "@pi-desktop/shared";
 import {
+  imageGenerationBindings,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
-  imageGenerationBindings,
-  isImageGenerationModel,
+  isImageOnlyChatModel,
   normalizeLargePasteThreshold,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
@@ -411,7 +411,7 @@ export function Composer({
     : !!provider &&
       provider.enabled &&
       !!modelId &&
-      !isImageGenerationModel(imageGenerationCandidates, provider.id, modelId) &&
+      !isImageOnlyChatModel(imageGenerationCandidates, provider.id, modelId) &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
   const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);

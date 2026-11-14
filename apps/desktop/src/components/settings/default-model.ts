@@ -7,7 +7,7 @@
  * is not configured, so these helpers keep the two notions apart: what a
  * provider itself offers, and what is safe to display for it.
  */
-import { isImageGenerationModel, modelWireIdsEqual as sameComposerModelId, type ImageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
+import { isImageOnlyChatModel, type ImageGenerationBindings, modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
 
 export type DefaultModelOption = {
   provider: ProviderPublic;
@@ -25,7 +25,9 @@ export function defaultModelOptions(
       .filter(Boolean);
     const ids = modelIds.length > 0 ? modelIds : [defaultModelIdOf(provider)?.trim() ?? ""];
     return [...new Set(ids)].filter((modelId) => !!modelId &&
-      !isImageGenerationModel(imageGeneration, provider.id, modelId),
+      // Only a pure image-generation endpoint is excluded; a dual-capability
+      // model the user marked for image generation stays selectable (#2253).
+      !isImageOnlyChatModel(imageGeneration, provider.id, modelId),
     ).map((modelId) => ({ provider, modelId }));
   });
 }

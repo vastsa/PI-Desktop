@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  isImageOnlyChatModel,
   vendorAccountImageCandidates,
   type ImageGenerationBinding,
   type ModelBinding,
@@ -74,12 +75,17 @@ function imageCandidates(
   return result;
 }
 
-function chatModelOptions(providers: readonly ProviderPublic[], imageModels: readonly ImageGenerationBinding[]) {
+function chatModelOptions(
+  providers: readonly ProviderPublic[],
+  imageModels: readonly ImageGenerationBinding[],
+) {
   return providers.flatMap((provider) => {
     const ids = provider.models?.length
       ? provider.models.map((model) => model.id)
       : [provider.defaultModelId ?? ""];
-    return ids.filter((id) => !!id.trim() && !isImageGenerationPickerCandidate(imageModels, provider.id, id))
+    // Only a pure image-generation endpoint is excluded from chat; a
+    // dual-capability model stays selectable (#2253).
+    return ids.filter((id) => !!id.trim() && !isImageOnlyChatModel(imageModels, provider.id, id))
       .map((modelId) => ({ provider, modelId }));
   });
 }
@@ -168,18 +174,12 @@ export function ModelConfigPage() {
     models: ModelBinding[],
     imageModelIds?: string[],
   ) => {
-    const selectedImageIds = imageModelIds ?? imageGenerationCandidates
-      .filter((entry) => entry.providerId === saved.id)
-      .map((entry) => entry.modelId);
+    // An image-generation designation does not exclude a dual-capability
+    // model from chat, so an image-marked head binding is a legitimate chat
+    // default; only a pure image-generation endpoint cannot hold one (#2253).
     const firstModelId = models.find((model) =>
-      !selectedImageIds.some((id) => sameWireId(id, model.id)),
+      !isImageOnlyChatModel(imageGenerationCandidates, saved.id, model.id),
     )?.id;
-    const replacementChatModelId =
-      settings.defaultProviderId === saved.id && firstModelId &&
-      !models.some((model) => sameWireId(model.id, settings.defaultModelId ?? "") &&
-        !selectedImageIds.some((id) => sameWireId(id, model.id)))
-    ? firstModelId
-    : undefined;
     try {
       if (pluginCatalogSetup?.providerId === saved.id) {
         const defaultsProviders = [...providers.filter((provider) => provider.id !== saved.id), saved];
@@ -215,7 +215,6 @@ export function ModelConfigPage() {
         const nextSettings = {
           ...current,
           ...plan,
-          ...(replacementChatModelId ? { defaultModelId: replacementChatModelId } : {}),
         };
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
@@ -242,9 +241,6 @@ export function ModelConfigPage() {
         }
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else {
-        if (replacementChatModelId) {
-          await api.setSettings({ ...settings, defaultModelId: replacementChatModelId });
-        }
         showToast(t("settings.providerUpdated"), { variant: "success" });
       }
       setSetupFor(null);

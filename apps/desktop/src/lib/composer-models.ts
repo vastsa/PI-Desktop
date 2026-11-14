@@ -1,7 +1,7 @@
 import {
   bindingSupportsImages,
   effectiveContextWindow,
-  isImageGenerationModel,
+  isImageOnlyChatModel,
   type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
@@ -38,11 +38,17 @@ export function composerModelsForProvider(
   discovered: readonly ModelInfo[] | undefined,
   imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
-  return configuredModelIds(provider).filter((modelId) =>
-    !isImageGenerationModel(imageGeneration, provider.id, modelId)
+  return configuredModelIds(provider).filter((modelId) => {
+    const metadata = (discovered ?? []).find((model) =>
+      sameComposerModelId(model.modelId, modelId),
+    );
+    // Only a pure image-generation endpoint is excluded: a model the user
+    // marked for image generation that also supports conversation stays in
+    // the Composer list (#2253).
+    return !isImageOnlyChatModel(imageGeneration, provider.id, modelId, metadata)
       && !(discovered ?? []).some((model) =>
-        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted"),
-  ).map((modelId) => {
+        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted");
+  }).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );

@@ -255,7 +255,7 @@ test("model ids are matched case-insensitively across picking and hand entry", (
 
 test("provider edits retain legacy defaults for non-chat consumers", () => {
   assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
-  assert.match(pageSource, /settings\.defaultProviderId === saved\.id && firstModelId/);
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>/);
   assert.doesNotMatch(pageSource, /setDefaultModel|displayedChatModelId/);
 });
 
@@ -399,8 +399,7 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.equal(sameWireId("proxy/model", "model"), false);
   // Image candidates are excluded by the same complete-id membership rule the
   // picker row and the page's own selection check share.
-  assert.ok(pageSource.includes("isImageGenerationPickerCandidate(imageModels, provider.id, id)"));
-  assert.match(pageSource, /!models\.some\(\(model\) => sameWireId\(model\.id, settings\.defaultModelId/);
+  assert.ok(pageSource.includes("isImageGenerationPickerCandidate(candidates, binding.providerId, binding.modelId)"));
   assert.doesNotMatch(pageSource, /modelIdsMatch|isImageGenerationModel/);
   assert.doesNotMatch(setupSource, /modelIdsMatch/);
   assert.doesNotMatch(pickerSource, /modelIdsMatch/);
@@ -414,8 +413,10 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.match(setupSource, /entry\.toLowerCase\(\) !== id\.toLowerCase\(\)/);
 });
 
-test("new chat default skips an image-only first model", () => {
-  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!selectedImageIds\.some\(\(id\) => sameWireId\(id, model\.id\)\)/);
+test("new chat default skips only a pure image-generation endpoint", () => {
+  // A dual-capability image-marked model is a legitimate chat default (#2253);
+  // only a model no chat route can serve is skipped.
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!isImageOnlyChatModel\(imageGenerationCandidates, saved\.id, model\.id\)/);
   assert.match(pageSource, /if \(!keepsCurrentDefault && firstModelId\)/);
 });
 

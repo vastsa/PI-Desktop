@@ -1035,7 +1035,7 @@ export const en = {
     imageModelSaveFailed: "Could not save the image model.",
     clearImageModel: "Clear",
     setImageModel: "Set as image model",
-    imageModelChatExclusionHint: "Marked models leave chat and default-model menus after saving. This is image generation, not image input. Only mark models your endpoint can generate images with.",
+    imageModelChatExclusionHint: "Marked models that also support conversation stay usable for chat and subagents; a pure image-generation endpoint leaves chat and default-model menus after saving. This is image generation, not image input. Only mark models your endpoint can generate images with.",
     imageModelSelected: "Selected image model",
     generatedImage: "Generated image {{index}}",
     downloadGeneratedImage: "Download",

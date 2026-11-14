@@ -9,6 +9,7 @@ import {
   SUBAGENT_PRESETS,
   SUBAGENT_THINKING_LEVELS,
   findSubagentPreset,
+  imageGenerationBindings,
   isSubagentAssignableTool,
   isSubagentMutatingTool,
   resolveScope,
@@ -590,7 +591,13 @@ export function SubagentEditorSheet({
   const pristine = !editing && !draft.name.trim() && !draft.description.trim();
   const bytes = new TextEncoder().encode(draft.body).length;
   const slug = draft.id || subagentSlug(draft.name);
-  const modelChoices = useMemo(() => subagentModelChoices(providers), [providers]);
+  const modelChoices = useMemo(
+    () => subagentModelChoices(providers, imageGenerationBindings(
+      useAppStore.getState().settings?.imageGenerationModels,
+      useAppStore.getState().settings?.imageGeneration,
+    )),
+    [providers],
+  );
   const modelGroups = useMemo(
     () => groupSubagentModelChoices(modelChoices),
     [modelChoices],

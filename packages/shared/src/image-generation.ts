@@ -45,6 +45,48 @@ export function isImageGenerationModel(
     entry.providerId === providerId && sameImageModelId(entry.modelId, modelId),
   );
 }
+
+/**
+ * Model id series a pure image-generation endpoint serves. These endpoints
+ * have no conversation route at all, so chat menus and session launch must
+ * keep them out even before any discovery metadata is available (ADR
+ * `image-generation-capability`).
+ */
+const IMAGE_ONLY_MODEL_ID =
+  /(^|\/)(gpt-image(?:-\d[\w.-]*)?|dall-e(?:-\d[\w.-]*)?|imagen(?:-\d[\w.-]*)?)$/i;
+
+/**
+ * Whether the model can serve a conversation. A discovered or catalog row that
+ * publishes its output modalities and names no text output cannot chat. An id
+ * a pure image endpoint serves has no conversation route either. Metadata that
+ * is absent is unknown, not an inference failure: an unknown custom model
+ * marked for image generation stays chat-eligible (#2253) — the image binding
+ * is host-owned and independent of the conversation route.
+ */
+export function modelSupportsConversation(
+  modelId: string | undefined,
+  model?: { modalities?: { output?: readonly string[] } | null } | null,
+): boolean {
+  const output = model?.modalities?.output;
+  if (output && output.length > 0 && !output.includes("text")) return false;
+  return !IMAGE_ONLY_MODEL_ID.test((modelId ?? "").trim());
+}
+
+/**
+ * Whether a model marked for image generation must stay out of chat. Only a
+ * pure image-generation endpoint is excluded; a dual-capability model — one
+ * the user marked for image generation that also supports conversation —
+ * keeps its chat eligibility everywhere (#2253).
+ */
+export function isImageOnlyChatModel(
+  binding: ImageGenerationBindings | null | undefined,
+  providerId: string | undefined,
+  modelId: string | undefined,
+  model?: { modalities?: { output?: readonly string[] } | null } | null,
+): boolean {
+  return isImageGenerationModel(binding, providerId, modelId) &&
+    !modelSupportsConversation(modelId, model);
+}
 export const MAX_GENERATED_IMAGES = 10;
 export const IMAGE_GENERATION_TIMEOUT_MS = 180_000;
 export const IMAGE_BATCH_TIMEOUT_MS = 950_000;

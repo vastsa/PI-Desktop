@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
-import type { ProviderPublic } from "@pi-desktop/shared";
+import { imageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
+import { useAppStore } from "../../stores/app-store";
 import { Button, Field } from "../ui";
 import { SubagentModelPicker } from "./SubagentModelPicker";
 import {
@@ -21,7 +22,10 @@ export function SubagentFallbackModels({ primary, values, choices, providers, on
   const selected = new Set([primary, ...values].map((pin) => subagentModelSelectValue(pin, choices)));
   const available = choices.filter((choice) => !selected.has(choice.value));
   const rows = values.map((pin) => {
-    const choice = subagentModelDisplay(pin, providers);
+    const choice = subagentModelDisplay(pin, providers, imageGenerationBindings(
+      useAppStore.getState().settings?.imageGenerationModels,
+      useAppStore.getState().settings?.imageGeneration,
+    ));
     return { choice, text: choice ? `${choice.providerName}/${choice.modelId}` : pin };
   });
   const move = (index: number, delta: number) => {
