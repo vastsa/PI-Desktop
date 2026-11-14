@@ -283,7 +283,7 @@ export function createPlanUiProbe(deps: PlanUiProbeDeps) {
       );
       const turnId = turnResponse?.turnId;
       if (!turnId) throw new Error("session.beginTurn returned no turn");
-      const toolCallId = `plan-ui-probe-${revision}`;
+      const toolCallId = `plan-ui-probe-${sessionId}-${revision}`;
       const response = await activeHost.call<{
         status?: string;
         proposal?: Record<string, any> | null;

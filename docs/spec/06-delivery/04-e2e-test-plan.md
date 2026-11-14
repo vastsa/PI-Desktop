@@ -8577,7 +8577,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 #### E2E-106: SubmitPlan rejects into editable planning and resubmits a new artifact
 
-- **Preconditions**: A project-bound session is idle in Plan with a provider;
+- **Preconditions**: A project-bound session starts in Agent with Auto permission,
+  then enters Plan with a provider;
   `.pi/plan/` is absent or empty and the workspace permits host artifact
   creation.
 - **Steps**: 1) Let the Agent call `SubmitPlan` with fixed title, Markdown, and
@@ -8586,12 +8587,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   the opener uses the bundled file view when it is launchable and the host
   file tab otherwise (D452), and that the question/description,
   validity/deadline, and status are absent with only Approve and Reject
-  offered. 4) Open the approval mode menu, choose Auto,
-  and verify the next approval defaults to Auto. 5) Reject the
+  offered. 4) Verify the main approval button defaults to Auto even if an older
+  device-wide preference was Ask. 5) Reject the
   proposal. 6) Confirm durable mode is Plan, live state is editable `planning`,
   the approval gate is cleared, and a later prompt is accepted. 7) Let the
   Agent revise and call `SubmitPlan` once in that new turn with a complete
-  snapshot. 8) Approve the second proposal with the remembered Auto mode.
+  snapshot. 8) Approve the second proposal using the main Auto button.
+  9) Repeat with Ask and Accept edits Sessions, and an inherit Session whose
+  global default is Auto; verify each card follows its own Session even when
+  another Session is active. 10) In an Auto Session, explicitly approve with
+  Ask from the menu and verify the return to Agent uses Ask.
 - **Expected**: Host preserves the exact submitted Markdown bytes in a new
   unique artifact, records its relative path/hash/size with structured
   title/question, and never lets the renderer or sidecar write or replace it.
@@ -8600,13 +8605,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   the bundled file view, falling back to the host file tab when that view is not
   launchable (D452);
   it does not require inline question/Markdown/hash/size or a validity/deadline
-  indicator. The selected approval mode is remembered locally for the next
-  approval.
+  indicator. The approval default follows the owning Session's effective
+  permission, ignoring legacy device-wide approval history. Main-button
+  approval preserves Auto across Plan → Agent; an explicit menu choice changes
+  the execution permission. Reject sends no mode and preserves it.
   Rejection is terminal for the first row, leaves durable mode Plan, and returns
   live state to editable planning. The later prompt/resubmission creates a
   second complete Markdown snapshot and a different `.pi/plan/*.md` artifact;
   the first artifact bytes remain unchanged. Approving the second proposal with
-  the remembered Auto mode still changes the same Agent to Agent and queues execution.
+  the Session's Auto mode still changes the same Agent to Agent and queues execution.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/02-agent-runtime.md`, `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, `04-ux/03-permission-ux.md`,
@@ -8622,8 +8629,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   approved execution emitted the exact durable marker, and a private
   env-gated WeakMap check proved the same `DesktopAgentRuntime` object before
   and after approval. Main/Host/sidecar PIDs remained stable; credentials never
-  entered CDP or output. The default no-key run remains 5/5 with the live case
-  explicitly skipped.
+  entered CDP or output. The no-key run also covers
+  `E2E-106-session-permissions`: eight native main-button/menu/rejection cases
+  verify explicit Ask/Accept edits/Auto, inherited global modes, ignored legacy
+  device history, durable Plan-to-Agent permission and renderer reload. Run
+  `node scripts/e2e-plan-ui.mjs --permissions-only` for this focused gate.
+  Each seeded Session owns a distinct probe tool-call identity. No provider is
+  configured for these cases; automatic execution reports the expected missing
+  provider while approval persistence is verified through the real Host.
+  The default no-key run has six required cases; the live case is explicitly
+  skipped.
 
 #### E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Dock, Plan approval, and retry surfaces occlude transcript text
 
