@@ -50,6 +50,8 @@ const electron = `data:text/javascript,${encodeURIComponent(`
         isDestroyed: () => false,
         close: () => {},
         navigationHistory: { canGoBack: () => false, canGoForward: () => false },
+        audioMuted: false,
+        setAudioMuted(muted) { this.audioMuted = muted; },
         setWindowOpenHandler: () => {},
         session: { setPermissionRequestHandler: () => {} },
       });
@@ -311,4 +313,54 @@ test("in-page completion cannot republish an invalidated session", async () => {
   wc.emit("did-navigate-in-page", {}, wc.url, true, 7, 11);
   wc.emit("did-stop-loading");
   assert.deepEqual(published, []);
+});
+
+async function loadedPane() {
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+  const request = pane.navigateAndWait("https://fixture.invalid/media");
+  const wc = WebContentsView.instances.at(-1).webContents;
+  wc.url = "https://fixture.invalid/media";
+  wc.pendingLoads.shift().resolve();
+  await request;
+  return { pane, wc, published };
+}
+
+test("the toolbar mute action mutes only that guest and publishes the choice", async () => {
+  const { pane, wc, published } = await loadedPane();
+  assert.equal(pane.getState().audioMuted, false);
+  pane.action("mute");
+  assert.equal(wc.audioMuted, true);
+  assert.equal(published.at(-1).audioMuted, true);
+  assert.equal(published.at(-1).url, "https://fixture.invalid/media");
+  const count = published.length;
+  pane.action("mute");
+  assert.equal(published.length, count, "repeating the same choice is a no-op");
+  pane.action("unmute");
+  assert.equal(wc.audioMuted, false);
+  assert.equal(published.at(-1).audioMuted, false);
+});
+
+test("page audibility is published so the toolbar can show which tab is playing", async () => {
+  const { pane, wc, published } = await loadedPane();
+  wc.emit("audio-state-changed", { audible: true });
+  assert.equal(published.at(-1).audible, true);
+  pane.action("mute");
+  assert.equal(published.at(-1).audible, true, "a muted tab still reports that it is playing");
+  wc.emit("audio-state-changed", { audible: false });
+  assert.equal(published.at(-1).audible, false);
+});
+
+test("a muted tab stays muted when its guest is recreated", async () => {
+  const { pane, wc } = await loadedPane();
+  pane.action("mute");
+  wc.isDestroyed = () => true;
+  const next = pane.navigateAndWait("https://fixture.invalid/again");
+  const replacement = WebContentsView.instances.at(-1).webContents;
+  assert.notEqual(replacement, wc);
+  assert.equal(replacement.audioMuted, true);
+  assert.equal(pane.getState().audioMuted, true);
+  replacement.url = "https://fixture.invalid/again";
+  replacement.pendingLoads.shift().resolve();
+  await next;
 });

@@ -1,5 +1,5 @@
 import type { BrowserWindow, WebContents } from "electron";
-import type { BrowserState } from "@pi-desktop/shared";
+import type { BrowserAction, BrowserState } from "@pi-desktop/shared";
 import type { BrowserPane } from "./browser-view";
 import { BrowserCdp } from "./browser-cdp";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -480,7 +480,7 @@ export class BrowserHost {
     return page.state ? { ...page.state, ...this.contextFor(page) } : null;
   }
 
-  action(action: "back" | "forward" | "reload" | "stop", sessionId?: string, tabId?: string): void {
+  action(action: BrowserAction, sessionId?: string, tabId?: string): void {
     const page = this.operationPage(sessionId, tabId);
     if (page.state) page.pane.action(action);
   }

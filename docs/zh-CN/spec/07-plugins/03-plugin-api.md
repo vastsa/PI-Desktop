@@ -897,7 +897,7 @@ pi.shell.openExternal(url: string): Promise<void>
 ```ts
 pi.browser.reveal(): Promise<void>
 pi.browser.navigate(input: { url?: string; path?: string }): Promise<BrowserState | null>
-pi.browser.action(input: { action: "back" | "forward" | "reload" | "stop" }): Promise<void>
+pi.browser.action(input: { action: "back" | "forward" | "reload" | "stop" | "mute" | "unmute" }): Promise<void>
 pi.browser.setBounds(hole: { x: number; y: number; width: number; height: number }): Promise<unknown>
 pi.browser.setVisible(visible: boolean | { visible: boolean }): Promise<void>
 pi.browser.getState(): Promise<BrowserState | null>

@@ -1285,6 +1285,14 @@ entirely inside the plugin's isolated page:
   schemes are rejected before loading. Relative paths remain rooted in the
   session workspace. BrowserPreview remains workspace-scoped.
 
+- The Browser toolbar has a per-tab mute toggle next to Open externally. It is
+  enabled once the tab has a page, and its label switches between Mute tab and
+  Unmute tab with `aria-pressed` reflecting the state. The icon is emphasized
+  while the page is playing audio, including while muted. Mute belongs to that
+  tab only: switching tabs shows the destination tab's own state, a recreated
+  guest keeps the choice, and closing the tab discards it. It is not persisted
+  and is not exposed through the agent Browser tool.
+
 - Browser address input accepts HTTP(S) URLs and scheme-less web hosts. A
   `localhost` or dotted hostname followed by a numeric port (for example,
   `localhost:3000/index.html` or `example.com:8080`) is treated as an HTTP

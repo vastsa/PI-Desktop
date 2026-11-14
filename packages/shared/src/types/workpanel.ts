@@ -113,7 +113,14 @@ export type WorkspaceDiff = {
   truncated?: boolean;
 };
 
-export type BrowserAction = "back" | "forward" | "reload" | "stop";
+/** Toolbar actions; mute/unmute are user-only and not part of the agent Browser tool. */
+export const BROWSER_ACTIONS = ["back", "forward", "reload", "stop", "mute", "unmute"] as const;
+
+export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
+
+export function isBrowserAction(value: unknown): value is BrowserAction {
+  return typeof value === "string" && (BROWSER_ACTIONS as readonly string[]).includes(value);
+}
 
 export type BrowserState = {
   /** Main-owned origin for retained browser resource tabs. */
@@ -126,4 +133,8 @@ export type BrowserState = {
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
+  /** The user muted this tab from the browser toolbar. Absent means unmuted. */
+  audioMuted?: boolean;
+  /** The page is currently producing audio (reported even while muted). */
+  audible?: boolean;
 };
