@@ -197,6 +197,15 @@ D684.
   their stored value, so re-enabling the master restores the previous choice
   instead of resetting it. The affordances themselves are described in
   [01-ui-ia.md §3.2](01-ui-ia.md#32-sidebar-project-groups).
+- **Show scheduled tasks** in the Sidebar card persists
+  `AppSettings.sidebarScheduledTasks`, with absent and false meaning off.
+  Enabling it exposes task subfolders only in projects with bound tasks; it
+  does not enable or execute tasks. Empty projects never gain a task folder.
+  Disabling removes all task folders and stops reads without changing tasks,
+  results, or the independently remembered folder folds. Only task names under
+  retained projects participate in sidebar search while enabled. With display
+  disabled, all task entries are excluded; unbound and closed-project tasks
+  are always excluded. These rules survive settings reload.
 - **Radial context menu** card: one switch (**Enable on the transcript
   background**) and four direction pickers (**Up**, **Right**, **Down**,
   **Left**). The switch is off when `AppSettings.radialMenu.enabled` is absent

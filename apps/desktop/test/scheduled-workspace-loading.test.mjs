@@ -18,7 +18,7 @@ const deferred = () => {
 };
 
 // Exercise the production hook with controlled API promises and poll ticks.
-function harness(api) {
+function harness(api, requestedTaskId) {
   const slots = [], effects = [], timers = new Set();
   let cursor = 0, dirty = true, output;
   const equal = (a, b) => a?.length === b?.length && a?.every((value, index) => value === b[index]);
@@ -60,7 +60,7 @@ function harness(api) {
     get output() { return output; },
     async settle() {
       for (let round = 0; round < 30; round++) {
-        if (dirty) { dirty = false; cursor = 0; output = exports.useScheduledWorkspace(() => {}); }
+        if (dirty) { dirty = false; cursor = 0; output = exports.useScheduledWorkspace(() => {}, requestedTaskId); }
         while (effects.length) effects.shift()();
         await Promise.resolve();
       }
@@ -128,6 +128,23 @@ test("return restores the selected task, run and bounded history", async t => {
   assert.deepEqual(next.output.runs, [record]);
 });
 
+test("explicit sidebar task overrides cached selection and conversation return without reusing their run", async t => {
+  cache.snapshot.tasks = [task("a"), task("b")];
+  cache.snapshot.selection = { taskId: "a", runId: "cached-a" };
+  cache.snapshot.history = { taskId: "a", runs: [run("cached-a", "a")] };
+  returns.rememberScheduledReturn({ taskId: "a", taskTitle: "a", runId: "returned-a", sessionId: "synthetic" });
+  const h = harness(api({ listScheduled: () => new Promise(() => {}), listScheduledRuns: () => new Promise(() => {}) }), "b");
+  t.after(() => h.close()); await h.settle();
+  assert.equal(h.output.loaded, true);
+  assert.equal(h.output.selectedTaskId, "b");
+  assert.equal(h.output.selectedRunId, null);
+  assert.equal(h.output.runsLoaded, false);
+  assert.deepEqual(h.output.runs, []);
+  h.output.selectRun("selected-b"); await h.settle();
+  h.output.selectTask("b"); await h.settle();
+  assert.equal(h.output.selectedRunId, null, "revisiting the same task clears its run selection");
+});
+
 test("failed summaries and task histories stay distinguishable from successful empty results", async t => {
   const h = harness(api({ listScheduledRuns: async () => { throw new Error("Synthetic read failure"); } }));
   t.after(() => h.close()); await h.settle();
@@ -137,6 +154,19 @@ test("failed summaries and task histories stay distinguishable from successful e
   assert.match(h.output.runsError, /Synthetic read failure/);
   assert.equal(h.output.runsLoaded, false);
 });
+
+for (const stillExists of [true, false]) {
+  test(`sidebar task absent from stale cached definitions waits for refresh (exists=${stillExists})`, async t => {
+    cache.snapshot.tasks = [task("a")];
+    const refresh = deferred();
+    const h = harness(api({ listScheduled: () => refresh.promise }), "b");
+    t.after(() => h.close()); await h.settle();
+    assert.equal(h.output.selectedTaskId, "b", "cached definitions must not discard explicit navigation");
+    refresh.resolve({ tasks: stillExists ? [task("a"), task("b")] : [task("a")] });
+    await h.settle();
+    assert.equal(h.output.selectedTaskId, stillExists ? "b" : "a", "fresh definitions decide deletion fallback");
+  });
+}
 
 test("late histories cannot replace the selected task and failures retain known history", async t => {
   const old = deferred(), newest = run("b-result", "b"); let fail = false;

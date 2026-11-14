@@ -52,12 +52,13 @@ export type ScheduledWorkspace = {
  */
 export function useScheduledWorkspace(
   onError: (message: string) => void,
+  requestedTaskId?: string,
 ): ScheduledWorkspace {
   // Coming back from a run's conversation restores the same task and run.
-  const restored = peekScheduledReturn();
+  const restored = requestedTaskId ? null : peekScheduledReturn();
   const snapshot = cache.snapshot;
   const cachedTaskId = snapshot.selection?.taskId;
-  const initialTaskId = restored?.taskId ?? (snapshot.tasks?.some((task) => task.id === cachedTaskId) ? cachedTaskId : snapshot.tasks?.[0]?.id) ?? null;
+  const initialTaskId = requestedTaskId ?? restored?.taskId ?? (snapshot.tasks?.some((task) => task.id === cachedTaskId) ? cachedTaskId : snapshot.tasks?.[0]?.id) ?? null;
   const [tasks, setTasks] = useState<ScheduledTask[]>(snapshot.tasks ?? []);
   const [latestPerTaskRuns, setLatestPerTaskRuns] = useState<ScheduledTaskRun[]>(snapshot.latestPerTaskRuns ?? []);
   const [taskRuns, setTaskRuns] = useState<ScheduledTaskRun[]>(snapshot.history?.runs ?? []);
@@ -70,7 +71,7 @@ export function useScheduledWorkspace(
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(restored?.runId ?? (snapshot.selection?.taskId === initialTaskId ? snapshot.selection.runId : null));
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(requestedTaskId ? null : restored?.runId ?? (snapshot.selection?.taskId === initialTaskId ? snapshot.selection.runId : null));
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(snapshot.tasks !== undefined);
   const [error, setError] = useState("");
@@ -81,6 +82,7 @@ export function useScheduledWorkspace(
   const projectRevision = useRef(0);
   const pendingProjectGeneration = useRef<number | null>(null);
   const selectedTaskIdRef = useRef<string | null>(null);
+  const pendingTaskId = useRef<string | null>(requestedTaskId ?? null);
   const busyRef = useRef(false);
   const onErrorRef = useRef(onError);
 
@@ -99,6 +101,7 @@ export function useScheduledWorkspace(
       api.listScheduled().then((result) => {
         if (!current()) return;
         cache.snapshot.tasks = result.tasks;
+        pendingTaskId.current = null;
         setTasks(result.tasks);
         setError("");
         setLoaded(true);
@@ -183,6 +186,8 @@ export function useScheduledWorkspace(
   // still exists. A deleted task never leaves the pane pointing at nothing, and
   // a selection restored from a conversation outlives the first, empty read.
   useEffect(() => {
+    // A sidebar may know a new task before this workspace's cached list does.
+    if (pendingTaskId.current) return;
     setSelectedTaskId((current) => resolveSelectedTaskId(tasks, current, loaded));
   }, [tasks, loaded]);
 
@@ -270,8 +275,10 @@ export function useScheduledWorkspace(
   );
 
   const selectTask = useCallback((taskId: string) => {
+    pendingTaskId.current = taskId;
     cache.snapshot.selection = { taskId, runId: null };
     setSelectedTaskId(taskId);
+    setSelectedRunId(null);
   }, []);
   const selectRun = useCallback((runId: string) => {
     const taskId = selectedTaskIdRef.current;

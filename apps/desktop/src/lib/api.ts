@@ -446,6 +446,7 @@ function isTranscriptDisplayModeValue(value: unknown): value is TranscriptDispla
 export function normalizeSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
+    sidebarScheduledTasks: settings.sidebarScheduledTasks === true,
     sidebarRunningIndicators: settings.sidebarRunningIndicators !== false,
     sidebarRunningBadge: settings.sidebarRunningBadge !== false,
     sidebarRunningRail: settings.sidebarRunningRail === true,
@@ -541,6 +542,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     sidebarRunningBadge?: unknown;
     sidebarRunningRail?: unknown;
     sidebarSessionTime?: unknown;
+    sidebarScheduledTasks?: unknown;
     updatePreference?: unknown;
     lastNotifiedUpdateVersion?: unknown;
     networkProxy?: unknown;
@@ -641,6 +643,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     "sidebarRunningBadge",
     "sidebarRunningRail",
     "sidebarSessionTime",
+    "sidebarScheduledTasks",
     "macosWindowTranslucency",
     "keepCommandsExpanded",
   ] as const) {

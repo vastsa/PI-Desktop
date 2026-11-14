@@ -46,6 +46,7 @@ let mirrorSidebar: ((value: SidebarPreferences) => Promise<void>) | undefined;
 let sidebarRevision = 0;
 let latestSidebar: SidebarPreferences | undefined;
 export const SIDEBAR_WIDTH_KEY = "pi.desktop.sidebarWidth";
+const SCHEDULED_COLLAPSED_KEY = "pi.desktop.sidebarScheduledTasksCollapsed";
 export const SIDEBAR_WIDTH_MIN = 240;
 export const SIDEBAR_WIDTH_DEFAULT = 275;
 export const SIDEBAR_WIDTH_MAX = 520;
@@ -89,6 +90,16 @@ function write(key: string, value: unknown): void {
 }
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function loadScheduledSidebarCollapsed(projectPath: string): boolean {
+  const path = normalizeProjectPath(projectPath);
+  return !!path && read(`${SCHEDULED_COLLAPSED_KEY}:${path}`) === true;
+}
+
+export function saveScheduledSidebarCollapsed(projectPath: string, collapsed: boolean): void {
+  const path = normalizeProjectPath(projectPath);
+  if (path) write(`${SCHEDULED_COLLAPSED_KEY}:${path}`, collapsed);
 }
 function bool(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
