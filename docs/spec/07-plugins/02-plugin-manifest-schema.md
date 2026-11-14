@@ -632,7 +632,19 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
 
 1. `schemaVersion` is required and must be a number. The current format is `1`;
    the value itself is not checked
-2. `id` / `name` / `version` / `main` are required
+2. `id` / `name` / `version` / `main` are required. The id names the
+   plugin's install and data directories and its browser session partition,
+   so the installer and loader refuse ids that could resolve to another
+   plugin's directory and share its files, storage, and network policy:
+   characters outside `[A-Za-z0-9._-]` (each of those locations maps them to
+   `_`), `.` / `..`, a trailing `.` or a leading Windows device name (`con`,
+   `nul.x`, ...), and an id whose storage name matches that of a different
+   installed or development plugin. The storage name folds the id the way
+   the platforms do (other characters to `_`, trailing dots dropped, letter
+   case ignored), so it also covers plugins an older version stored under a
+   sanitized name, such as `e2e.foo!bar` under `e2e.foo_bar`. Existing
+   plugins keep their ids and directories.
+   `pi-plugin check` still asks for the stricter shape in §1
 3. Opening `ui.panel` requires the explicit declared and granted `ui.panel`
    permission; a panel path does not implicitly grant it
 4. If `agentTools` are present, `agent.tool.register` must be declared.
@@ -671,7 +683,13 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
    `skills` is the exception — it predates the permission gate, so a manifest
    without `agent.prompt.inject` still validates and the runtime simply skips
    the skills
-13. Settings keys are unique. `shortcut` settings require `command`, may only
+13. JSON settings accept JSON-serializable values, including strings and null.
+    The generated editor initializes JSON fields as serialized JSON text on
+    open, settings refresh and reset. Saving parses that text once, preserving
+    the supplied value's type across reopen; a string such as `"42"` remains a
+    string. Missing JSON values/defaults use `{}`. Invalid edits retain the
+    draft and prevent submission. Non-JSON setting types retain their controls.
+    Settings keys are unique. `shortcut` settings require `command`, may only
     use the `plugin` scope, and are validated as modifier-plus-key or F-key
     bindings. Secrets are rejected until secure plugin-secret storage exists.
 14. `fs.<mode>` requires the matching `fs.<mode>` permission — a scope nobody can

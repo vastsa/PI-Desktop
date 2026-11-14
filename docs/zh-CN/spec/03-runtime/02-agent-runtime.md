@@ -1329,11 +1329,11 @@ that the model intended an action.
 
 Agent 模式下，即使没有配置子代理，也提供 TaskWait、TaskList 和 TaskStop。Task 仍要求子代理目录。Plan/Goal 保留声明以兼容对话历史，执行时拒绝这些工具。
 
-后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令文字限制为 1 KiB。
+后台 Bash 和 Task 的启动结果新增 `job: {kind, id}`，kind 为 bash 或 delegation，同时保留原 ID 字段。TaskList 保留 delegations 和 resumable，增加 backgroundJobs 的 supported 和 tasks；委派摘要也包含 job。Bash 列表不带日志，命令摘要按 UTF-8 字符边界保留最多 1 KiB 的前缀。`commandTruncated` 单独标记命令裁剪，旧 Host 可省略该字段。
 
 TaskWait/TaskStop 接受单个显式 job，与 delegationIds、mode、minCompleted 混用会报错。无 job 时保留原委派默认集合。旧 backgroundTaskId 可写成 `{kind: "bash", id: backgroundTaskId}`。
 
-Bash 等待返回状态、可空退出码、停止请求标记及分别最多 8 KiB 的 stdout/stderr 尾部，按 UTF-8 边界截断。truncated 同时表示 Host 历史丢失或本次截断。查询可重复且不消耗桌面日志。等待默认 600 秒，接受 1–900 秒；details.status 为 completed、timeout 或 interrupted，与作业状态独立。新输入或父回合取消只结束等待。停止返回 completed 或 stopPending，stopRequested 本身不代表进程已退出。
+Bash 等待返回状态、可空退出码、停止请求标记及分别最多 8 KiB 的 stdout/stderr 尾部，按 UTF-8 边界截断。truncated 同时表示 Host 历史丢失或本次截断。查询可重复且不消耗桌面日志。等待默认 600 秒，接受 1–900 秒；details.status 为 completed、timeout 或 interrupted，与作业状态独立。新输入或父回合取消只结束等待。停止返回 completed 或 stopPending，stopRequested 本身不代表进程已退出。TaskStop 在派发前取消时，作业继续运行；派发后取消只结束调用者的等待，Host 继续处理停止请求。
 
 Bash 由 Host 管理，完成后不自动投递结果或延长父回合。原委派报告交付和恢复规则继续生效。能力按连接探测；旧 Host 和远程工作区明确返回后台 Bash 控制不可用，委派操作仍可用。其他传输或 Host 错误会正常呈现。
 

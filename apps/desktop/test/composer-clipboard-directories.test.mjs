@@ -203,7 +203,9 @@ test("directory metadata never copies a tree and mixed files use the existing im
   assert.equal(captured.length, 1);
   assert.equal(result.items[1].path, undefined, "regular source paths stay in main");
   assert.equal(await readFile(join(folder, "keep.txt"), "utf8"), "original");
-  assert.equal(await readComposerClipboardDirectories(clipboard({}), () => assert.fail("regular-only paste keeps its current flow"), () => [file]), null);
+  const regular = await readComposerClipboardDirectories(clipboard({}), () => "file-selection", () => [file]);
+  assert.equal(regular.token, "file-selection");
+  assert.deepEqual(regular.items, [{ kind: "file", name: "notes.txt" }]);
 });
 
 test("both send serializers include one directory instruction and escaped path markers", () => {

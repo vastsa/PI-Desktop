@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import type { AgentActivity, UiMessage } from "@pi-desktop/shared";
 import type { AssistantTurnPart } from "../../../lib/assistant-turns";
 import type { SubagentOutcome, SubagentTiming } from "../../../lib/subagent-topology";
@@ -18,6 +19,7 @@ const SmoothMessageBubble = memo(function SmoothMessageBubble({ message, streami
   message: UiMessage;
   streaming: boolean;
 }) {
+  const { t } = useTranslation();
   const smoothStreaming = useAppStore((s) => s.settings?.smoothStreaming !== false);
   // Opt-in feature: an absent setting keeps cards out of the transcript.
   const inlineVisualizations = useAppStore((s) => s.settings?.inlineVisualizations === true);
@@ -39,6 +41,9 @@ const SmoothMessageBubble = memo(function SmoothMessageBubble({ message, streami
     >
       {genUi.content ? <TranscriptProse source={genUi.content} streaming={streaming} /> : null}
       <GenUiCards references={genUi.references} sessionId={sessionId} remote={remote} />
+      {message.outputTruncated ? (
+        <p className="message-output-notice" role="status">{t("chat.outputTruncated")}</p>
+      ) : null}
       {message.error ? <AssistantErrorMessage message={message} /> : null}
     </div>
   );

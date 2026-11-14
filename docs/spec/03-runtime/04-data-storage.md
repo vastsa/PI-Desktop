@@ -434,7 +434,9 @@ Rules:
   message. When the bound model requires DeepSeek-style reasoning replay,
   `details.retainedReasoning` may hold a bounded list of prior thinking turns
   (text + thinking only) so post-compaction Completions requests can echo
-  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). If the active message crossed the retention limit it is stored in
+  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). Only
+  completed turns are harvested: an `error`, `aborted`, or `deferred` assistant
+  is left out, as it is from the rebuilt context. If the active message crossed the retention limit it is stored in
   marked, truncated form; the original message lines stay complete and
   authoritative for UI/diagnostics. An automatic compaction failure may store
   `details.fallback = "retained_tail"` and a short recovery summary instead of
@@ -1981,6 +1983,12 @@ and host error, so one unclassifiable head cannot starve every session's writes
 (D656). A restarted host is a new generation and retries the head at once.
 Quarantined appends are never replayed automatically, and `session.delete`
 drops that session's quarantined appends too.
+Every outbox and dead-letter snapshot, including an empty array, is written
+to its sibling temporary file before replacing the committed file by rename.
+Interrupted writes leave the previous committed snapshot readable; a failed
+replacement rejects the persistence operation instead of reporting success.
+This prevents process termination during clearing from truncating recovery
+files. Existing corrupt files still fail closed without rewriting their bytes.
 When the 1024-entry cap remains
 full after a flush attempt, enqueue logs the rejected key/session and rejects;
 it does not report that entry as queued. Generic foreign-key errors are not

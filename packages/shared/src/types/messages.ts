@@ -70,6 +70,7 @@ export type SessionUsageCost = {
 export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
+  localReference?: string;
   kind: "image" | "file" | "session";
   name: string;
   /** Workspace-relative path, session-scratch absolute path, or a session id. */
@@ -133,6 +134,8 @@ export type UiMessage = {
   thinking?: string;
   createdAt: string;
   status?: "streaming" | "complete" | "error" | "aborted";
+  /** The provider cut off this text response at its output-token limit. */
+  outputTruncated?: boolean;
   /** Provider/model that produced this assistant turn, when known. */
   modelId?: string;
   providerId?: string;

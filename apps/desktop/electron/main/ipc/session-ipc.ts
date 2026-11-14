@@ -10,6 +10,7 @@ import {
   draftMatchesExisting,
   providerCreateInputFromDraft,
   isModelConfigImportSource,
+  isModeId,
   type ModelConfigImportDraft,
   type Mode,
   type SessionThinkingLevel,
@@ -238,14 +239,20 @@ export function registerSessionIpc({
   });
   handle(IPC.invoke.sessionCreate, async (input = {}) => {
     if (!host) throw new Error("host unavailable");
-    const capabilityPromise = sessionCapabilityContext();
-    const res = await host.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
+    if (!input || typeof input !== "object" || Array.isArray(input) ||
+      (input.mode !== undefined && (typeof input.mode !== "string" || !isModeId(input.mode)))) {
+      throw Object.assign(new Error("Invalid session creation mode"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    }
+    const currentHost = host;
+    const mode = input.mode ?? "agent";
+    const modeSnapshot = await modeCatalog.snapshotFor(mode);
+    const { providers, defaults } = await sessionCapabilityContext();
+    const res = await currentHost.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
       "session.create",
-      input,
+      { ...input, mode, modeSnapshot },
     );
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
-    const { providers, defaults } = await capabilityPromise;
     return { ...res, session: enrichSession(res.session, providers, defaults) };
   });
   handle(

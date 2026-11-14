@@ -1756,6 +1756,23 @@ export function validateManifest(raw: unknown): {
   if (typeof m.id !== "string" || !m.id) {
     return { ok: false, error: "manifest.id is required" };
   }
+  // The id names the plugin's install and data directories and its browser
+  // session partition, which map any other character to `_`; only these
+  // characters keep two plugins apart (the host enforces the same rule).
+  if (!/^[A-Za-z0-9._-]+$/.test(m.id) || m.id === "." || m.id === "..") {
+    return {
+      ok: false,
+      error: "manifest.id may only contain letters, digits, '.', '-' and '_'",
+    };
+  }
+  // Windows drops a trailing `.` and maps device names to devices, so such
+  // ids cannot name a directory of their own.
+  if (m.id.endsWith(".")) {
+    return { ok: false, error: "manifest.id must not end with '.'" };
+  }
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(m.id)) {
+    return { ok: false, error: "manifest.id must not start with a Windows device name" };
+  }
   if (typeof m.name !== "string" || !m.name) {
     return { ok: false, error: "manifest.name is required" };
   }

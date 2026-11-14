@@ -77,6 +77,7 @@ export function createQueueSlice({
 > {
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
   const pendingSubmissions = new Set<string>();
+  const queueRefreshes = new Map<string, object>();
 
   function toQueuedPrompt(entry: QueuedTurnSummary): QueuedPrompt {
     return {
@@ -308,15 +309,21 @@ export function createQueueSlice({
     },
 
     refreshQueuedPrompts: async (sessionId) => {
+      const request = {};
+      queueRefreshes.set(sessionId, request);
       try {
         const { entries } = await api.listQueuedPrompts(sessionId);
+        if (queueRefreshes.get(sessionId) !== request) return;
         applyQueueEntries(sessionId, entries);
       } catch {
         // The next queue event resynchronizes the mirror.
+      } finally {
+        if (queueRefreshes.get(sessionId) === request) queueRefreshes.delete(sessionId);
       }
     },
 
     applyQueueChanged: (event: AgentQueueChangedEvent) => {
+      queueRefreshes.delete(event.sessionId);
       applyQueueEntries(event.sessionId, event.entries);
     },
 

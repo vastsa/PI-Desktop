@@ -148,10 +148,10 @@ describe("providerUsesSessionAffinity", () => {
 });
 
 describe("sessionAffinityCompat", () => {
-  it("returns the adapter's own non-OpenRouter shape for the user's endpoint", () => {
+  it("uses proxy-safe Completions headers and preserves the Anthropic format", () => {
     expect(sessionAffinityCompat(ownGateway, "openai-completions", GATEWAY)).toEqual({
       sendSessionAffinityHeaders: true,
-      sessionAffinityFormat: "openai",
+      sessionAffinityFormat: "openai-nosession",
     });
     expect(
       sessionAffinityCompat(ownAnthropicRelay, "anthropic-messages", ANTHROPIC_RELAY),
@@ -421,9 +421,9 @@ describe("withSessionAffinityOptions", () => {
 
 /**
  * Oracle: derived, from the adapter this module feeds
- * (pi-ai dist/api/openai-completions.js createClient / buildParams): it writes
- * `session_id`, `x-client-request-id` and `x-session-affinity` beside the body
- * key, and only the non-OpenRouter format does so.
+ * (pi-ai dist/api/openai-completions.js createClient / buildParams): the
+ * `openai-nosession` format keeps `x-client-request-id` and `x-session-affinity`
+ * beside the body key without the underscore header rejected by strict gateways.
  */
 describe("the pi-ai Completions adapter's session identity", () => {
   it("sends the headers and body key §6.3 names, and no key on a published host", async () => {
@@ -462,7 +462,7 @@ describe("the pi-ai Completions adapter's session identity", () => {
 
     await streamOnce(GATEWAY, ownGateway);
     expect(sent).toHaveLength(1);
-    expect(sent[0].headers.get("session_id")).toBe("session-42");
+    expect(sent[0].headers.get("session_id")).toBeNull();
     expect(sent[0].headers.get("x-client-request-id")).toBe("session-42");
     expect(sent[0].headers.get("x-session-affinity")).toBe("session-42");
     expect(sent[0].body.prompt_cache_key).toBe("session-42");

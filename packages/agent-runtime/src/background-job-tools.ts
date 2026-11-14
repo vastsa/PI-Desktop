@@ -13,7 +13,7 @@ import type { RuntimeHost } from "./host-client.js";
 const jobSchema = Type.Object({
   kind: Type.Union([Type.Literal("bash"), Type.Literal("delegation")]),
   id: Type.String({ minLength: 1 }),
-}, { additionalProperties: false, description: "An explicit job returned by Bash, Task or TaskList. For delegation jobs, omit delegationIds or pass an empty array or only this job's id; mode and minCompleted are ignored. For Bash jobs, omit delegationIds, mode and minCompleted." });
+}, { additionalProperties: false, description: "An explicit job returned by Bash, Task or TaskList. For delegation jobs, omit delegationIds or pass an empty array or only this job's id; mode and minCompleted are ignored. For Bash jobs, omit delegationIds or pass an empty array; mode may be omitted, all or any, and minCompleted may be omitted or 1." });
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -31,8 +31,12 @@ function target(params: unknown): JobReference | undefined {
         params.delegationIds.some(id => id !== job.id))) {
       throw new Error("A delegation job targets one subagent: omit delegationIds or pass only job.id. To select multiple subagents, omit job and use delegationIds.");
     }
-  } else if (["delegationIds", "mode", "minCompleted"].some(key => params[key] !== undefined)) {
-    throw new Error("A Bash job cannot be combined with delegationIds, mode or minCompleted. Pass only job and optional timeoutSeconds; for subagents, omit job and use delegationIds.");
+  } else if (
+    (params.delegationIds !== undefined && (!Array.isArray(params.delegationIds) || params.delegationIds.length !== 0)) ||
+    (params.mode !== undefined && params.mode !== "all" && params.mode !== "any") ||
+    (params.minCompleted !== undefined && params.minCompleted !== 1)
+  ) {
+    throw new Error("A Bash job accepts only an omitted or empty delegationIds, an omitted/all/any mode and an omitted/1 minCompleted. To select subagents, omit job and use delegationIds.");
   }
   return { kind: job.kind, id: job.id };
 }
@@ -166,9 +170,9 @@ export function buildJobTools(
       if (job.kind === "delegation") {
         return delegates.stop.execute(id, { delegationIds: [job.id] }, signal, update);
       }
-      await requireSupported();
+      await abortable(requireSupported(), signal);
       if (signal?.aborted) throw Object.assign(new Error("Job stop aborted before dispatch"), { errorCode: "TOOL_ABORTED" });
-      const snapshot = await call<BackgroundJobSnapshot>("backgroundJobs.stop", { id: job.id, timeoutMs: 1000 });
+      const snapshot = await abortable(call<BackgroundJobSnapshot>("backgroundJobs.stop", { id: job.id, timeoutMs: 1000 }), signal);
       return observation(snapshot, snapshot.state === "running" ? "stopPending" : "completed");
     },
   };

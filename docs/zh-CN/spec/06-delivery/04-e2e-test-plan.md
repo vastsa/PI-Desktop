@@ -1,5 +1,26 @@
 # 04. E2E 测试 Plan
 
+### E2E-FILE-INDEX-git-deadline
+
+对真实测试文件调用 `getWorkspaceFileIndex` 和 `searchWorkspaceFiles`，
+保持 Git 的 close 事件未到达，推进截止时间后两者均返回有界目录列表。
+覆盖：`fs-index-git-deadline.test.mjs`。原有索引测试覆盖 Git 忽略规则、
+Unicode 字节分块及深层搜索。
+
+### E2E-QUEUE-late-read-after-event
+
+呈现两个排队提示，保持生产刷新，发送 queueChanged 事件移除第一个提示，再返回旧读取；只显示第二个提示，后续权威刷新继续生效。`queue-refresh-event-order.test.mjs` 覆盖事件与读取顺序、逆序响应及会话独立性；`e2e-queue-refresh-event-order.mjs` 在真实 Electron 中呈现生产 ComposerStatus/useAppStore。不向提供商发送提示。
+
+### E2E-TRANSCRIPT-window-cache-edit-race
+
+保持生产有界会话读取，发布带新历史窗口的空闲编辑缓存，再返回旧窗口；从缓存恢复并呈现编辑后的正文。同时覆盖未变化时正常填充及运行中实时尾部合并。`session-window-cache-race.test.mjs` 验证 runtime API；`e2e-session-window-cache-race.mjs` 在真实 Electron 中使用生产 MessageRow 呈现恢复快照。仅控制 API，不执行提供商。
+
+### E2E-MODEL-idle-write-order
+
+保持空闲配置的首个响应，选择第二个模型再顺序释放响应，验证只有一个写入
+进行中且最终保留最新模型。`session-model-write-order.test.mjs` 使用真实 slice
+与协调器，仅控制 Host API 边界。运行中配置继续排队。
+
 ### E2E-EXTENSION-thinking-request-state
 
 通过生产扩展桥接设置 high，发送提示并捕获提供商流参数。真实 Agent 循环
@@ -1483,6 +1504,16 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：单位覆盖（`settings-project-archive.test.mjs`、`sidebar-navigation.test.mjs`）；渲染场景草稿
 
 #### E2E-091：外观卡通过可搜索主题和语言选择器选择
+
+macOS OS-event acceptance: `PI_E2E_SYSTEM_APPEARANCE=1 node scripts/e2e-browser-system-appearance.mjs`.
+The opt-in probe temporarily changes OS appearance and restores it in a finalizer.
+It mounts the bundled Browser with production lifecycle functions in sandboxed
+Electron, checks light/dark/light paint, fixed app/plugin palettes, view recreation,
+process restart and listener removal. Host/plugin-registry edges are synthetic;
+this does not claim an installed full-app settings journey.
+With Browser open, select System and switch OS light → dark → light. The shell
+and Browser toolbar update together. Explicit Light, Dark and registered plugin
+palettes remain fixed across OS changes; repeat after shutdown/restart.
 
 - **先决条件**：应用程序在 macOS 上运行；测试工具可以切换英语、简体中文、繁体中文、土耳其语、德语、西班牙语、法语、韩语和巴西葡萄牙语系统区域设置。
 - **步骤**：
@@ -10443,10 +10474,16 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 
 ### E2E-TOOLS-session-background-jobs
 
+- 拆分修复回归：TaskStop 在能力探测时取消不派发停止请求，派发后取消不重复停止，迟到的 RPC 错误仍被观察。
+
+- 拆分修复回归：命令摘要保留 UTF-8 前缀并独立标记截断；兼容没有标记的旧快照，错误输出仍保留末尾。
+
+
 - 构建 shared、agent-runtime、host-runtime 与 Host 后，运行 `PI_DESKTOP_HOST_BIN=<candidate-host> node scripts/e2e-session-background-jobs.mjs`。
 - 使用隔离 Host 数据、工作目录、生产 runtime/pi 循环与本地 HTTP 模型夹具。
 - 后台启动测试，列举并等待失败结果；启动常驻命令，等待超时、无参停止，再显式停止并等待。
 - 验证退出码、两路末尾输出、UTF-8 上限、跨会话列表/读/停隔离、超时和无参停止保留 Bash、显式停止终态、重复查询及桌面输出一致；拒绝 Plan 模式。
+- macOS 上，停止信号成功且子进程退出后，清理被拒绝但随后确认进程组消失，应得到 stopped；持续拒绝或进程组仍存在时，应保留清理失败。
 - runtime 测试补充新输入和父回合取消、延迟 RPC 错误、旧 Host/远程能力缺失、混合选择器拒绝、原委派控制及无子代理配置的工具注册。
 - Host 测试覆盖先完成后等待、重复读取、Unicode 截断、归属查找、幂等停止与停止请求待确认。Windows 子孙进程清理测试仍须执行，原生失败单独报告。
 - 在子进程已退出、监管任务尚未排空管道时请求停止，检查原退出结果、最终输出和重复读取的耗时。延迟能力探测或第一次 Host 观察，检查等待总时限。Electron 会话记录用例渲染尚待确认的 Bash 停止请求和混合作业列表。
@@ -10473,6 +10510,10 @@ MCP All 在创建、导入、安装时使用所选项目，无项目才回退全
 #### E2E-ISSUE-2164
 
 压缩估算作为占用时使用检查点模型容量，旧检查点使用当前会话完整绑定；历史请求用量不变，未知容量标记估算。验证 20,619 / 1,000,000 为 2%、未知路由、旧记录及新请求恢复。
+
+#### E2E-ISSUE-2086-fork-selection
+
+父会话重新读取时创建侧边栏分支，完成后子会话立即激活且旧选择清除；若被新导航替代，只列出分支并保留新选择。覆盖原运行中父会话与失败路径。
 
 
 ## User-defined mode workflow acceptance
@@ -10549,6 +10590,29 @@ Desktop 工作区后，列出、读取和解析 native 文件，再拒绝不存�
 断言 native 会话及 scratch 请求不会进入 Desktop 存储。
 `native-workspace-files.test.mjs` 另验证 sidecar 更换后拒绝旧响应。
 不执行模型或访问用户 native 会话。
+
+#### E2E-custom-mode-prompt-admission
+
+Select a simple custom mode with a distinctive prompt and contract policy, send a
+message, and refresh planning state. The runtime receives the selected definition
+and the session retains its mode. Remove the definition before another send: reject
+without persisting a user message or invoking the sidecar; the admission turn is
+closed. For a staged run, edit the catalog into a simple mode and then remove it;
+subsequent dispatch retains the run snapshot in both cases. Controlled coverage:
+`apps/desktop/test/custom-mode-dispatch.test.mjs`. Native Electron/provider
+acceptance is separate from these stubbed Host/sidecar boundary checks.
+Also create directly in Goal or a staged custom mode without switching modes:
+the first send starts a run. `mode-session-create.test.mjs` checks the production
+creation registrar validates input and sends its snapshot in one creation RPC.
+Host RPC tests cover snapshot/policy persistence, invalid snapshots and rollback
+after an injected session-insert failure. Approve a legacy Goal proposal: live
+events and pending-proposal restoration show Agent. Inactive polling with no
+approval preserves staged Goal/custom modes, including after older Goal history.
+Coverage: `mode-planning-approval.test.mjs`, `session_mode_create_tests.rs`.
+`scripts/e2e-mode-definitions.mjs` also exercises production prompt IPC and the
+coordinator against an isolated real Host, including edit/removal, durable claim
+settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this
+does not qualify native Electron interaction or live-provider execution.
 
 #### E2E-ISSUE-1926-scratch-prefix
 

@@ -1,5 +1,17 @@
 # 08. Component Spec
 
+Workspace file index Git queries settle at their deadline or output limit,
+even when inherited child pipes do not close. Composer file search and the
+Files index then use the existing bounded filesystem fallback (Refs #1731).
+
+The Composer queue mirror accepts only the current read for each session. A newer queueChanged event invalidates earlier reads so an already delivered prompt cannot reappear. Reads in other sessions remain independent, and future refreshes still reconcile authoritative entries (Refs #1699).
+
+A bounded session detail read must not overwrite an idle transcript cache changed while that read was pending. Keep its newer messages and history window together. Running sessions still merge unflushed live rows, and the requesting caller receives its own read response (Refs #2086).
+
+Idle session model writes participate in the same per-session configuration
+queue as running-turn changes. Rapid choices serialize; the newest queued
+choice is applied after the in-flight write, rather than racing older replies.
+
 A full transcript read may fill its session cache only when that cache has not
 changed during the request. New streaming or edit snapshots retain ownership;
 the caller still receives the requested history for its own action validation.
@@ -2295,6 +2307,9 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   the reader navigates away. The tool block's Copy action still copies the full
   result.
 - **Plugins**: `remark-gfm` (tables, task lists, strikethrough, autolinks),
+  `remark-cjk-friendly/parseOnly` (CJK emphasis adjacent to quotes, brackets
+  and punctuation, including `这是**“重点”**。`, without rewriting source or
+  changing literal code/escaped markers; shared by splitting and rendering),
   `remark-math` + `rehype-katex` (inline `$…$` or `\(…\)`, display `$$…$$`
   or `\[…\]`). Raw HTML is
   parsed by `rehype-raw` and immediately constrained by the extended
@@ -2974,6 +2989,12 @@ fields. It is never a JSON dump.
 - Buttons: primary (Allow once), secondary (Allow session), danger (Deny)
 - No countdown is shown; the card remains pending until an explicit decision or
   cancellation.
+- A decision that fails to reach the Host keeps the card pending with its
+  buttons re-enabled and shows the error, so the same request can be retried.
+  If the Host reports the request no longer exists (`NOT_FOUND`), the card is
+  removed without an error. AskTool cards follow the same rule, keeping their
+  answer draft on a retriable failure; `ASKTOOL_NOT_FOUND` and `NOT_FOUND` mean
+  the request is gone.
 - The first action locks all buttons. Resolution errors use an error toast;
   successful or failed completion returns focus to the current composer.
 - The originating session's composer cannot send during pending permission,
@@ -3322,6 +3343,10 @@ reasoning-level control.
   returns to the textarea and file references return as leaf-name chips; their
   canonical paths never become textarea text. After a reply begins, Abort keeps
   the partial transcript and restores no draft.
+  If the stop request itself fails, the turn stays running: its rows, Stop
+  control and submitted draft are unchanged, an error toast is shown, and Stop
+  can be retried. Permission cards whose denial the Host already settled are
+  removed; the rest stay pending.
 - Stop never clears queued prompts. Removing a row is explicit; the queue itself
   is Host-owned and durable (D386 / ADR 0213, ADR 0265), so a restart restores it
   in delivery order, held until the desktop attaches as the owner.
@@ -3407,6 +3432,11 @@ reasoning-level control.
   entered. The first visible rows use cached metadata or configured bindings;
   live discovery updates them in the background without replacing a configured
   alias with the wire ID or a second visible name.
+  A successful live discovery is not repeated until providers are reloaded. A
+  failed one (thrown, or a fallback that reports a discovery error) keeps the
+  rows already shown and is retried on a later open after a per-provider
+  backoff (10 s, doubling to at most 5 min); callers waiting on the failed
+  attempt do not each start another probe.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
   `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
   the menu lists more than one level, a drag slider with one labeled stop per
@@ -4795,6 +4825,10 @@ Closing the connected Browser tab clears its connection. Subsequent session-only
 ### Issue #2164 correction
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
+
+### Fork activation selection ownership (#2086)
+
+Activating a completed session fork clears the previous selectingSessionId together with its visible pane switch. A superseded fork only lists its durable child and does not clear a newer pending selection. This prevents stale switching UI from hiding the activated branch.
 
 ### File Manager mutation validation (#2184)
 

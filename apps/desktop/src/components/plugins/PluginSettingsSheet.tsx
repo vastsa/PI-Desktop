@@ -37,6 +37,9 @@ type Props = {
 };
 
 function initialValue(setting: PluginSettingDefinition): unknown {
+  if (setting.type === "json") {
+    return serializeJson(setting.value !== undefined ? setting.value : setting.default);
+  }
   if (setting.value !== undefined) return setting.value;
   if (setting.default !== undefined) return setting.default;
   switch (setting.type) {
@@ -44,8 +47,6 @@ function initialValue(setting: PluginSettingDefinition): unknown {
       return false;
     case "number":
       return 0;
-    case "json":
-      return {};
     case "select":
       return setting.enum?.[0]?.value ?? "";
     default:
@@ -61,10 +62,17 @@ function shortcutLabel(value: unknown, platform: ShortcutPlatform): string {
 
 function serializeJson(value: unknown): string {
   try {
-    return JSON.stringify(value ?? {}, null, 2);
+    return JSON.stringify(value === undefined ? {} : value, null, 2);
   } catch {
     return "{}";
   }
+}
+
+/** JSON drafts start as serialized editor text, including stored strings. */
+export function parseJsonSettingDraft(draft: unknown): unknown {
+  if (typeof draft !== "string") return draft ?? {};
+  const text = draft.trim();
+  return JSON.parse(text === "" ? "{}" : text);
 }
 
 export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Props) {
@@ -124,7 +132,7 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
     for (const setting of settings) {
       if (setting.type !== "json") continue;
       try {
-        payload[setting.key] = JSON.parse(String(payload[setting.key] ?? "{}"));
+        payload[setting.key] = parseJsonSettingDraft(payload[setting.key]);
       } catch {
         setError(t("plugins.settingsInvalidJson", { name: setting.title }));
         return;

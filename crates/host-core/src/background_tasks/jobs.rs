@@ -3,6 +3,7 @@ use super::*;
 use std::time::Duration;
 
 const MODEL_STREAM_BYTES: usize = 8 * 1024;
+const MODEL_COMMAND_BYTES: usize = 1024;
 
 pub(crate) fn find(
     registry: &BackgroundTaskRegistry,
@@ -27,10 +28,15 @@ fn tail(text: String, limit: usize) -> (String, bool) {
 pub(crate) async fn snapshot(task: &BackgroundTask, output: bool) -> serde_json::Value {
     let shared = task.shared.lock().await;
     // List results must also have a budget; commands may contain large scripts.
-    let (command, _) = tail(task.command.clone(), 1024);
+    let mut end = task.command.len().min(MODEL_COMMAND_BYTES);
+    while !task.command.is_char_boundary(end) {
+        end -= 1;
+    }
+    let command = &task.command[..end];
     let mut result = serde_json::json!({
         "job": { "kind": "bash", "id": task.id },
         "command": command,
+        "commandTruncated": command.len() < task.command.len(),
         "state": shared.state,
         "exitCode": shared.exit_code,
         "elapsedMs": task.elapsed_ms(),
@@ -100,6 +106,36 @@ mod tests {
     fn tail_preserves_unicode_and_exact_budget() {
         assert_eq!(tail("ab中文".into(), 4), ("文".into(), true));
         assert_eq!(tail("中文".into(), 6), ("中文".into(), false));
+    }
+
+    #[tokio::test]
+    async fn command_preview_uses_a_utf8_prefix_independently_of_output_truncation() {
+        let (mut task, _receiver) = task();
+        for (command, expected, cut) in [
+            ("fixture".into(), "fixture".into(), false),
+            ("x".repeat(1024), "x".repeat(1024), false),
+            ("x".repeat(1025), "x".repeat(1024), true),
+            (format!("{}中", "x".repeat(1023)), "x".repeat(1023), true),
+        ] {
+            task.command = command;
+            for output in [false, true] {
+                let observed = snapshot(&task, output).await;
+                assert_eq!(observed["command"], expected);
+                assert_eq!(observed["commandTruncated"], cut);
+                if output {
+                    assert_eq!(observed["truncated"], false);
+                }
+            }
+        }
+        task.command = "fixture".into();
+        task.shared
+            .lock()
+            .await
+            .push_stderr(&("x".repeat(8192) + "last error"));
+        let observed = snapshot(&task, true).await;
+        assert_eq!(observed["commandTruncated"], false);
+        assert_eq!(observed["truncated"], true);
+        assert!(observed["stderr"].as_str().unwrap().ends_with("last error"));
     }
 
     #[tokio::test]

@@ -466,6 +466,7 @@ export const ko = {
     diagramTooLarge: "이 다이어그램은 안전하게 렌더링하기에 너무 큽니다. 대신 소스를 표시합니다.",
     responseError: "이 답변을 완료할 수 없습니다",
     responseFailed: "어시스턴트가 이 답변을 완료하지 못했습니다.",
+    outputTruncated: "모델이 출력 토큰 한도에 도달하여 답변이 잘렸습니다. 내용이 완전하지 않을 수 있습니다.",
     showErrorDetails: "세부 정보 표시",
     hideErrorDetails: "세부 정보 숨기기",
     dismissError: "오류 메시지 닫기",

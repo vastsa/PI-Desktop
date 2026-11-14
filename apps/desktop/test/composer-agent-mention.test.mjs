@@ -24,7 +24,12 @@ function promptFixture({ mode = "agent", projectPath = null, skills = [], templa
     assert.fail(`unexpected RPC ${method}`);
   } };
   registerAgentIpc({
-    modeRuns: builtinModeRuns,
+    modeRuns: mode === "goal" ? {
+      ...builtinModeRuns,
+      // This fixture isolates mention expansion; staged admission has its own suite.
+      definitionForPrompt: async () => undefined,
+      prepareTurn: async () => undefined,
+    } : builtinModeRuns,
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => host,
     getSidecar: () => ({ setProjectInstructionRoot() {}, async call(method, params) {

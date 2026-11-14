@@ -702,6 +702,24 @@ globalThis.transcriptRenderProbe = async () => {
       }
     }
 
+    // The saved snapshot must show the same warning after session restoration.
+    flushSync(() => useAppStore.setState({ settings: {
+      ...useAppStore.getState().settings!, smoothStreaming: false, inlineVisualizations: false,
+    } }));
+    const truncatedAnswer = message("truncated-answer", "assistant", "An incomplete answer", {
+      status: "complete", outputTruncated: true,
+    });
+    for (const snapshot of [truncatedAnswer, JSON.parse(JSON.stringify(truncatedAnswer))]) {
+      render([message("truncated-user", "user", "Write a long answer"), snapshot]);
+      assert(container.textContent?.includes("An incomplete answer"), "truncation hid the answer");
+      assert(container.querySelector('[role="status"]')?.textContent === i18n.t("chat.outputTruncated"),
+        "output-token warning missing from live or restored answer");
+      assert(container.querySelector('.message-output-notice')?.getBoundingClientRect().height,
+        "output-token warning is not visible");
+    }
+    render([message("normal-user", "user", "Reply"), message("normal-answer", "assistant", "Complete answer")]);
+    assert(!container.querySelector('.message-output-notice'), "normal answer has a truncation warning");
+
     const statusLifecycle = await transcriptStatusProbe();
     const markdownLinks = await markdownLinkInteractionProbe(i18n);
     const contextMenuSubmenu = await contextMenuSubmenuInteractionProbe();
@@ -718,6 +736,7 @@ globalThis.transcriptRenderProbe = async () => {
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
+      outputTruncationVisible: true,
       turnProcess,
       autoCollapse,
       messageEditing: await transcriptEditProbe(),
