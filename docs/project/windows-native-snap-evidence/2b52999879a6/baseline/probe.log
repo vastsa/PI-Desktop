@@ -1,0 +1,4 @@
+2026-11-13T16:46:50.1154269Z starting native snap acceptance
+2026-11-13T16:46:55.5167230Z checking Win+Left
+2026-11-13T16:47:04.0253385Z failed: Win+Left did not snap to the work-area half
+2026-11-13T16:47:04.1961728Z completed: False checks=13

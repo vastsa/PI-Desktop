@@ -1,5 +1,16 @@
 # 04. E2E Test Plan
 
+### E2E-USAGE-explicit-zero-cache
+
+- Complete a controlled Pi request with nonzero input/output and explicit zero
+  cache reads/writes. Observe the request, consume the stream result, and replay
+  its usage: both cache fields remain zero, not absent.
+- Include zero reads with nonzero writes and nonzero reads with zero writes.
+  Replaying the same operation does not double-count any token bucket. Cache
+  counters that are absent, non-finite or negative remain unavailable.
+- Focused runtime coverage: `src/request-usage.test.ts`. Native/live-provider
+  execution is separate from these controlled request-accounting regressions.
+
 ### E2E-CHAT-output-token-truncation (#2277)
 
 Use the real Desktop runtime and Pi loop with a controlled provider stream
@@ -14128,6 +14139,38 @@ This test plan spec is accepted when:
   two-display desktop journey and the relaunch/hotplug legs are pending
 
 #### E2E-167: Window edge resize stays smooth and persists the settled bounds
+
+Native Windows snapping regression (issue #2330): on an interactive Windows
+desktop with a work-area half at least the nominal minimum width, run
+`pnpm test:e2e:window-snap` against the candidate Windows Host and pinned Electron.
+The isolated fixture uses production Main snapping/corner/fullscreen services,
+real Host RPC, HWND-owner rejection checks, physical Win+Left/Right and titlebar
+drag input, edge pixels, native resize/minimums, maximize/minimize/restore and
+fullscreen/restore. Left/right snapping must equal the work-area halves; normal
+and snapped client edges have no native insets or painted rim. Maximized client
+and DWM-visible bounds must equal the work area. `--baseline` must fail the
+keyboard assertion. `--legacy-surface` covers the older transparent surface on
+the available OS only. `--prepare <directory>` stages portable fixture sources;
+record actual OS/DPI, source revision, Host, Electron version, result and artifacts
+from the Windows run separately. Native Windows 10 and mixed-monitor DPI checks
+remain separate qualification, and hover Snap Layouts is outside this regression.
+
+For independent review, run `--matrix --artifacts <new-directory>` or the
+`Windows native snap acceptance` workflow. Only the exact unchanged-bounds
+Win+Left baseline failure plus a fully passing candidate qualifies. Locked
+desktops, session 0, input failures and startup errors must fail the job.
+Before each native drag sweep, cross the drag threshold near the press point
+and confirm the target HWND owns Windows' move/size loop. A registered mouse
+button or correct cursor coordinate alone must not qualify a drag.
+Run keyboard maximize/restore before physical resizing to isolate it from
+the Shell's user-resize restore history; retain its exact normal bounds check.
+Retain SHA/tree/source hashes, binary hashes, OS/session/display metadata,
+baseline/candidate JSON, timestamped logs, stdout/stderr and normal/snapped/
+maximized/restored client PNGs. Upload artifacts even on failure; exclude
+profiles and redact runtime/user paths. See
+[native replay procedure](../../project/windows-native-snap-replay.md).
+Repeat pixel checks after transferring focus away and back, including a
+PowerShell-launched fixture; activation must not restore the native outline.
 
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
   macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must

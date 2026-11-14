@@ -39,6 +39,7 @@ import {
 import { readWindowState, writeWindowState } from "../window-preferences";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 import { isWindowFullScreen } from "../window-fullscreen";
+import { installWindowsNativeSnap } from "../window-native-snap";
 import { DEFAULT_WINDOW_CORNER_RADIUS, installWindowShape } from "../window-shape";
 import {
   installWindows11CornerController,
@@ -277,6 +278,7 @@ export async function createWindow({
   });
   const window = windowState.mainWindow;
   if (process.platform === "win32") {
+    await installWindowsNativeSnap(window, () => windowState.host, logger);
     if (windows11NativeCorners) {
       await installWindows11CornerController(
         window,
