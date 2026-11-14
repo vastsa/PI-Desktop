@@ -26,10 +26,11 @@ const require = createRequire(
 );
 const { build } = require("esbuild");
 const { electronBinary } = resolveElectronBinary(root);
+const bulkThinking = process.argv.includes("--bulk-thinking");
 const temp = await mkdtemp(join(tmpdir(), "pi-transcript-disclosure-"));
 try {
   await build({
-    entryPoints: [join(root, "scripts/e2e/transcript-disclosure-anchor.tsx")],
+    entryPoints: [join(root, bulkThinking ? "scripts/e2e/transcript-bulk-thinking.tsx" : "scripts/e2e/transcript-disclosure-anchor.tsx")],
     outfile: join(temp, "renderer.js"),
     bundle: true,
     platform: "browser",

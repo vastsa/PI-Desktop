@@ -1,3 +1,4 @@
+import { createDisclosureState, type DisclosureState } from "./transcript-disclosure-choices";
 import { transcriptHasLayout } from "./transcript-scroll";
 
 export type TranscriptReadingPosition = {
@@ -7,10 +8,9 @@ export type TranscriptReadingPosition = {
   scrollTop: number;
   windowSize: number;
 };
-export type TranscriptDisclosureChoice = { open: boolean; revealRequest?: number };
-type ReadingState = {
+export type { TranscriptDisclosureChoice } from "./transcript-disclosure-choices";
+type ReadingState = DisclosureState & {
   position?: TranscriptReadingPosition;
-  disclosures: Map<string, TranscriptDisclosureChoice>;
 };
 
 // Renderer-lifetime bookmarks, independent of the bounded DOM and message caches.
@@ -19,7 +19,7 @@ const readingStates = new Map<string, ReadingState>();
 export function sessionReadingState(sessionId: string): ReadingState {
   let state = readingStates.get(sessionId);
   if (!state) {
-    state = { disclosures: new Map() };
+    state = createDisclosureState();
     readingStates.set(sessionId, state);
   }
   return state;

@@ -344,6 +344,11 @@ export const ko = {
     sessionMissing: "해당 세션이 더 이상 존재하지 않습니다",
   },
   chat: {
+    thinkingActions: "사고 내용 제어",
+    expandAllThinking: "모든 사고 내용 펼치기",
+    collapseAllThinking: "모든 사고 내용 접기",
+    thinkingActionFailed: "사고 내용을 업데이트하지 못했습니다: {{error}}",
+
     promptRetractionFailed: "초안을 안전하게 복원하지 못했습니다. 대화 내용은 보존되었습니다.",
     tableActions: "표 작업",
     markdownPlainTextFallback: "긴 응답은 화면의 반응성을 유지하기 위해 일반 텍스트로 표시됩니다.",

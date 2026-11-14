@@ -335,6 +335,11 @@ export const fr = {
     sessionMissing: "Cette session n'existe plus",
   },
   "chat": {
+    thinkingActions: "Commandes du raisonnement",
+    expandAllThinking: "Développer tout le raisonnement",
+    collapseAllThinking: "Réduire tout le raisonnement",
+    thinkingActionFailed: "Impossible de modifier le raisonnement : {{error}}",
+
     promptRetractionFailed: "Impossible de restaurer le brouillon en toute sécurité. La conversation a été conservée.",
     "tableActions": "Actions du tableau",
     "markdownPlainTextFallback": "La réponse volumineuse est affichée en texte brut pour préserver la réactivité.",

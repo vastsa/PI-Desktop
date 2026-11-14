@@ -335,6 +335,11 @@ export const de = {
     sessionMissing: "Diese Sitzung existiert nicht mehr",
   },
   "chat": {
+    thinkingActions: "Denkprozess-Steuerung",
+    expandAllThinking: "Alle Denkprozesse aufklappen",
+    collapseAllThinking: "Alle Denkprozesse zuklappen",
+    thinkingActionFailed: "Denkprozesse konnten nicht aktualisiert werden: {{error}}",
+
     promptRetractionFailed: "Der Entwurf konnte nicht sicher wiederhergestellt werden. Der Gesprächsverlauf bleibt erhalten.",
     "tableActions": "Tabellenaktionen",
     "markdownPlainTextFallback": "Große Antworten werden zur besseren Reaktionsfähigkeit als Klartext angezeigt.",

@@ -335,6 +335,11 @@ export const es = {
     sessionMissing: "Esa sesión ya no existe",
   },
   "chat": {
+    thinkingActions: "Controles del razonamiento",
+    expandAllThinking: "Expandir todo el razonamiento",
+    collapseAllThinking: "Contraer todo el razonamiento",
+    thinkingActionFailed: "No se pudo actualizar el razonamiento: {{error}}",
+
     promptRetractionFailed: "No se pudo restaurar el borrador de forma segura. Se ha conservado la conversación.",
     "tableActions": "Acciones de tabla",
     "markdownPlainTextFallback": "La respuesta extensa se muestra como texto sin formato para mantener la fluidez.",

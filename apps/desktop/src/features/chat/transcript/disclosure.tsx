@@ -12,38 +12,9 @@ import {
   type ReactNode,
 } from "react";
 import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
-import { sessionReadingState, type TranscriptDisclosureChoice } from "../../../lib/transcript-reading-position";
+import { sessionReadingState } from "../../../lib/transcript-reading-position";
 import { ScopeContext, type DisclosureScopeValue } from "./disclosure-scope";
-
-type Choice = TranscriptDisclosureChoice;
-
-/** Only explicit choices are retained; untouched nodes derive their defaults. */
-class DisclosureChoices {
-  private choices: Map<string, Choice>;
-  private listeners = new Map<string, Set<() => void>>();
-
-  constructor(choices = new Map<string, Choice>()) {
-    this.choices = choices;
-  }
-
-  get = (key: string) => this.choices.get(key);
-  set(key: string, choice: Choice) {
-    const previous = this.choices.get(key);
-    if (previous?.open === choice.open && previous.revealRequest === choice.revealRequest) return;
-    this.choices.set(key, choice);
-    this.listeners.get(key)?.forEach((listener) => listener());
-  }
-
-  subscribe(key: string, listener: () => void) {
-    const listeners = this.listeners.get(key) ?? new Set<() => void>();
-    listeners.add(listener);
-    this.listeners.set(key, listeners);
-    return () => {
-      listeners.delete(listener);
-      if (listeners.size === 0) this.listeners.delete(key);
-    };
-  }
-}
+import { DisclosureChoices } from "../../../lib/transcript-disclosure-choices";
 
 const ChoicesContext = createContext<DisclosureChoices | null>(null);
 
@@ -57,10 +28,14 @@ export type { DisclosureScopeValue } from "./disclosure-scope";
 
 /** Explicit choices survive pane eviction, but never persist to the host. */
 export function TranscriptDisclosureProvider({ children, sessionId }: { children: ReactNode; sessionId?: string }) {
-  const [choices] = useState(() => new DisclosureChoices(
-    sessionId ? sessionReadingState(sessionId).disclosures : undefined,
-  ));
+  const choices = useMemo(() => new DisclosureChoices(
+    sessionId ? sessionReadingState(sessionId) : undefined,
+  ), [sessionId]);
   return <ChoicesContext.Provider value={choices}>{children}</ChoicesContext.Provider>;
+}
+
+export function useThinkingDisclosureActions() {
+  return useContext(ChoicesContext);
 }
 
 export function disclosureKey(kind: string, ...ids: string[]) {
@@ -106,6 +81,7 @@ export function useAutomaticDisclosure(
   automaticOpen: boolean,
   revealRequest?: number,
   identity?: string,
+  thinkingIds?: readonly string[],
 ) {
   const sharedChoices = useContext(ChoicesContext);
   const [localChoices] = useState(() => new DisclosureChoices());
@@ -113,7 +89,7 @@ export function useAutomaticDisclosure(
   const fallbackId = useId();
   const key = identity ?? fallbackId;
   const subscribe = useCallback((listener: () => void) => choices.subscribe(key, listener), [choices, key]);
-  const snapshot = useCallback(() => choices.get(key), [choices, key]);
+  const snapshot = useCallback(() => choices.get(key, thinkingIds), [choices, key, thinkingIds]);
   const choice = useSyncExternalStore(subscribe, snapshot, snapshot);
   const scope = useContext(ScopeContext);
 
