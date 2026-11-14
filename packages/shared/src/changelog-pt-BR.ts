@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.23.0",
+    highlights: [
+      "Ative o OpenAI Fast por modelo e use /fast na conversa para solicitar prioridade; isso pode consumir os limites da assinatura mais rápido ou aumentar o custo por token.",
+      "Visualizações inline carregam mais rápido com auxiliares de gráfico reutilizáveis; scripts com falha agora mostram erros úteis em vez de cartões vazios.",
+      "Teste servidores MCP na pasta do projeto selecionado; após um teste bem-sucedido, sessões do projeto podem recuperar conexões inativas com falha.",
+      "Após recriar o runtime do agente, o histórico preserva o raciocínio do provedor e as assinaturas de chamadas de função do Gemini para a próxima solicitação.",
+      "O indicador de contexto mostra a estimativa compactada assim que a compactação manual ou automática termina.",
+      "Com um IME chinês, comandos com barra aguardam o fim da composição e preservam o rascunho, evitando inserir uma barra duplicada.",
+      "Prompts regenerados permanecem na posição correta após a resposta mais recente quando o arquivamento termina fora do histórico carregado.",
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-11-08",
+    highlights: [
+      "Use o mecanismo de agentes Pi 1.5 e consulte os custos por turno e sessão nas telas de uso.",
+      "Mantenha conversas longas estáveis com compactação de contexto, processamento de imagens e execução de ferramentas mais seguros.",
+      "Recupere o layout dos projetos e os editores de tarefas agendadas e salve as configurações MCP no projeto selecionado.",
+      "Deixe o agente controlar aplicativos da área de trabalho pelo uso do computador, com permissões explícitas e cursor visível.",
+      "Abra aplicativos instalados e comandos de plugins em um único iniciador agrupado e fixe os aplicativos mais usados.",
+      "Mantenha conversas longas mais claras recolhendo atividades concluídas e voltando com fluidez às mensagens recentes enquanto o histórico anterior carrega.",
+      "Cole pastas no campo de composição como referências de diretório e abra links de diretório diretamente no gerenciador de arquivos.",
+      "Escolha modelos em um seletor redesenhado de dois painéis com acesso direto às configurações do provedor.",
+      "Direcione um prompt a um subagente específico usando uma menção @agent.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

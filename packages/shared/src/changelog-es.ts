@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.23.0",
+    highlights: [
+      "Activa OpenAI Fast para cada modelo y usa /fast en una conversación para solicitar prioridad; puede consumir antes los límites de tu suscripción o aumentar el coste por token.",
+      "Las visualizaciones integradas cargan más rápido con asistentes de gráficos reutilizables; los scripts fallidos ahora muestran errores útiles en lugar de tarjetas en blanco.",
+      "Prueba los servidores MCP desde la carpeta del proyecto seleccionado; tras una prueba correcta, las sesiones del proyecto pueden recuperar conexiones fallidas que estén inactivas.",
+      "Al reconstruir el entorno del agente, el historial conserva el razonamiento del proveedor y las firmas de llamadas a funciones de Gemini para la siguiente solicitud.",
+      "El indicador de contexto muestra la estimación compactada en cuanto termina una compactación manual o automática.",
+      "Con un IME chino, los comandos con barra esperan a que termine la composición y conservan el borrador para evitar insertar una barra duplicada.",
+      "Los prompts regenerados mantienen su posición después de la respuesta más reciente cuando su archivo se completa fuera del historial cargado.",
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-11-08",
+    highlights: [
+      "Usa el motor de agentes Pi 1.5 y consulta los costes por turno y sesión en las vistas de uso.",
+      "Mantén estables las conversaciones largas con una compresión del contexto, gestión de imágenes y ejecución de herramientas más seguras.",
+      "Recupera la distribución de proyectos y los editores de tareas programadas, y guarda las configuraciones MCP en el proyecto seleccionado.",
+      "Deja que el agente controle aplicaciones de escritorio mediante el uso del ordenador, con permisos explícitos y un cursor visible.",
+      "Abre aplicaciones instaladas y comandos de plugins desde un único lanzador agrupado y fija las aplicaciones frecuentes.",
+      "Mantén las conversaciones largas más claras plegando la actividad completada y volviendo con fluidez a los mensajes recientes mientras carga el historial anterior.",
+      "Pega carpetas en el cuadro de composición como referencias y abre enlaces a directorios directamente en el gestor de archivos.",
+      "Elige modelos en un selector rediseñado de dos paneles con acceso directo a los ajustes del proveedor.",
+      "Dirige una solicitud a un subagente concreto con una mención @agent.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

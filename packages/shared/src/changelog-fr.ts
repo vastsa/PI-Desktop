@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.23.0",
+    highlights: [
+      "Activez OpenAI Fast par modèle et utilisez /fast dans une conversation pour demander un service prioritaire ; les limites d’abonnement peuvent baisser plus vite ou le coût par token augmenter.",
+      "Les visualisations intégrées se chargent plus vite grâce à des outils de graphique réutilisables ; les scripts en échec affichent désormais des erreurs utiles au lieu de cartes vides.",
+      "Testez les serveurs MCP depuis le dossier du projet sélectionné ; après un test réussi, les sessions du projet peuvent récupérer les connexions inactives en échec.",
+      "Après la reconstruction du runtime de l’agent, l’historique conserve le raisonnement du fournisseur et les signatures d’appels de fonction Gemini pour la requête suivante.",
+      "L’indicateur de contexte affiche l’estimation compactée dès la fin d’une compression manuelle ou automatique.",
+      "Avec une IME chinoise, les commandes slash attendent la validation de la composition et préservent le brouillon au lieu de dupliquer la barre oblique.",
+      "Les prompts régénérés gardent leur place après la réponse la plus récente lorsque leur archivage se termine hors de l’historique chargé.",
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-11-08",
+    highlights: [
+      "Utilisez le moteur Pi 1.5 et consultez les coûts par tour et par session dans les vues d’utilisation.",
+      "Stabilisez les longues conversations grâce à une compression du contexte, un traitement des images et une exécution des outils plus sûrs.",
+      "Restaurez la disposition des projets et les éditeurs de tâches planifiées, et enregistrez les configurations MCP dans le projet sélectionné.",
+      "Laissez l’agent contrôler les applications de bureau via l’utilisation de l’ordinateur, avec autorisations explicites et curseur visible.",
+      "Lancez les applications installées et les commandes de plugins depuis un lanceur groupé, et épinglez les applications fréquentes.",
+      "Gardez les longues conversations lisibles en repliant les activités terminées et en revenant plus fluidement aux messages récents pendant le chargement de l’historique.",
+      "Collez des dossiers dans le champ de rédaction comme références et ouvrez les liens de répertoire directement dans le gestionnaire de fichiers.",
+      "Choisissez vos modèles dans un sélecteur repensé à deux volets, avec un accès direct aux réglages du fournisseur.",
+      "Orientez une demande vers un sous-agent nommé avec une mention @agent.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

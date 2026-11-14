@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.23.0",
+    highlights: [
+      "Aktiviere OpenAI Fast pro Modell und nutze /fast im Gespräch für bevorzugte Verarbeitung; dadurch können Abo-Limits schneller sinken oder die Kosten pro Token steigen.",
+      "Inline-Visualisierungen laden mit wiederverwendbaren Diagrammhelfern schneller; fehlgeschlagene Skripte zeigen jetzt hilfreiche Fehler statt leerer Karten.",
+      "Teste MCP-Server im Ordner des ausgewählten Projekts; nach einem erfolgreichen Test können Projektsitzungen inaktive fehlgeschlagene Verbindungen wiederherstellen.",
+      "Nach einem Neustart der Agent-Laufzeit bleiben Reasoning-Inhalte des Anbieters und Gemini-Funktionsaufruf-Signaturen im Gesprächsverlauf für die nächste Anfrage erhalten.",
+      "Der Kontextindikator zeigt die komprimierte Schätzung sofort nach manueller oder automatischer Komprimierung an.",
+      "Bei chinesischer IME-Eingabe warten Slash-Befehle auf den Abschluss der Eingabe und bewahren den Entwurf, statt einen Schrägstrich zu duplizieren.",
+      "Neu generierte Prompts bleiben nach der letzten Antwort an der richtigen Stelle, wenn ihr Archiv außerhalb des geladenen Verlaufs fertig wird.",
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-11-08",
+    highlights: [
+      "Nutzen Sie die Pi-1.5-Agent-Engine und prüfen Sie Runden- und Sitzungskosten in den Nutzungsansichten.",
+      "Stabilere lange Gespräche durch sicherere Kontextkomprimierung, Bildverarbeitung und Werkzeugausführung.",
+      "Projektlayout und Editoren geplanter Aufgaben zuverlässig wiederherstellen und MCP-Konfigurationen im ausgewählten Projekt speichern.",
+      "Lassen Sie den Agenten Desktop-Apps über die Computersteuerung mit ausdrücklicher Freigabe und sichtbarem Cursor bedienen.",
+      "Starten Sie installierte Apps und Plugin-Befehle in einem gruppierten Launcher und heften Sie häufig genutzte Apps an.",
+      "Abgeschlossene Aktivitäten einklappen und beim Laden älterer Nachrichten flüssiger zu den neuesten zurückkehren.",
+      "Fügen Sie Ordner als Verzeichnisverweise in den Composer ein und öffnen Sie Verzeichnislinks direkt im Dateimanager.",
+      "Wählen Sie Modelle in einer überarbeiteten zweigeteilten Auswahl mit direktem Zugriff auf die Anbietereinstellungen.",
+      "Leiten Sie eine Anfrage mit einer @agent-Erwähnung an einen benannten Unteragenten weiter.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
