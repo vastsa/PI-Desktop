@@ -1,5 +1,16 @@
 # 04. E2E Test Plan
 
+### E2E-USAGE-explicit-zero-cache
+
+- Complete a controlled Pi request with nonzero input/output and explicit zero
+  cache reads/writes. Observe the request, consume the stream result, and replay
+  its usage: both cache fields remain zero, not absent.
+- Include zero reads with nonzero writes and nonzero reads with zero writes.
+  Replaying the same operation does not double-count any token bucket. Cache
+  counters that are absent, non-finite or negative remain unavailable.
+- Focused runtime coverage: `src/request-usage.test.ts`. Native/live-provider
+  execution is separate from these controlled request-accounting regressions.
+
 ### E2E-CHAT-output-token-truncation (#2277)
 
 Use the real Desktop runtime and Pi loop with a controlled provider stream
