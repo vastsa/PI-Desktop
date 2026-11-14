@@ -2689,6 +2689,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     legacyFsDowngraded:
       "Bu eklenti kapsamlar yokken tanımlanmış dosya izinleri bildiriyor, bu yüzden erişimi azaltıldı. Tam işlev için güncelleyin.",
     permissions: {
+      "ui.shell": "Kenar çubuğunu ve çalışma panelini kontrol et",
       "ui.panel": "Eklenti paneli göster",
       "ui.microphone": "Mikrofonu kullan",
       "clipboard.read": "Panoyu ve geçmişini oku",
@@ -2737,6 +2738,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "session.delete.all": "Sizin oluşturduklarınız dahil her sohbeti sil",
     },
     permissionHelp: {
+      "ui.shell": "Kenar çubuğunu ve çalışma panelini yeniden boyutlandırabilir veya gösterebilir ve mevcut bir sekmeyi etkinleştirebilir.",
       "ui.panel": "Eklentinin uygulama içinde kendi panelini göstermesini sağlar.",
       "ui.microphone": "Yalıtılmış panelin mikrofon sesi istemesine izin verir; kamera erişimi vermez.",
       "clipboard.read":

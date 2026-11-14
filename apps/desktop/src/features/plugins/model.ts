@@ -72,6 +72,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "clipboard.read": "medium",
   "clipboard.write": "medium",
   "shell.openExternal": "medium",
+  "ui.shell": "medium",
   "mcp.server.local": "high",
   "mcp.server.remote": "high",
   "background.service": "medium",

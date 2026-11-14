@@ -353,6 +353,15 @@ permission state (`granted`, `denied`, `unknown`, or `unsupported`) after
 performing a short native probe. These notifications are not durable task
 inbox records and do not activate a session when clicked.
 
+### Shell layout
+
+`pi.shell.getLayout()` and `pi.workPanel.listTabs()` read the visible shell and
+current session's tab metadata without a grant. `shell.setSidebar`,
+`shell.setWorkPanel` and `workPanel.activateTab` require `ui.shell`. The renderer
+owns the layout; these APIs do not create tabs, access their contents, or target
+background sessions. `shell:layout` supplies an initial snapshot and committed
+changes. See [the API contract](03-plugin-api.md#shell-layout).
+
 ### Explicitly not provided directly
 - Arbitrary host-internal Electron objects
 - Arbitrary absolute-path access through the brokered `pi.fs` APIs
@@ -370,6 +379,7 @@ therefore applies only to brokered APIs until runtime sandboxing is delivered.
 |---|---|---|
 | `ui.panel` | low | Show panel |
 | `ui.view` | low | Contribute work panel views |
+| `ui.shell` | medium | Resize/show the sidebar and work panel; activate existing tabs |
 | `ui.theme` | low | Contribute a theme CSS file |
 | `clipboard.read` | medium | Read the current clipboard and host-retained clipboard history |
 | `clipboard.write` | medium | Write clipboard |

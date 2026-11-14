@@ -2672,6 +2672,7 @@ sklm: {
     fsAsksEachTime: "每次都会询问",
     legacyFsDowngraded: "此插件声明的是旧版文件权限，实际范围已被收窄。更新插件可恢复完整功能。",
     permissions: {
+      "ui.shell": "控制侧边栏和工作面板",
       "ui.panel": "显示插件面板",
       "ui.microphone": "使用麦克风",
       "clipboard.read": "读取剪贴板及其历史",
@@ -2720,6 +2721,7 @@ sklm: {
       "session.delete.all": "删除任意会话，包括你自己的对话",
     },
     permissionHelp: {
+      "ui.shell": "可调整侧边栏和工作面板的宽度及显示状态，并切换到已有标签页。",
       "ui.panel": "允许插件在应用内显示独立面板。",
       "ui.microphone": "允许隔离面板请求麦克风音频，不授予摄像头权限。",
       "clipboard.read": "可能读取当前剪贴板内容以及应用运行期间保留的剪贴板历史。",

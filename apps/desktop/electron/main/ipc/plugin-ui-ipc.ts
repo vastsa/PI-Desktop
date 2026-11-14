@@ -1,3 +1,4 @@
+import type { PluginShellLayoutRelay } from "../services/plugin-shell-layout";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { IPC, type PluginScenicThemesDestinationMeta, type PluginViewMeta } from "@pi-desktop/shared";
@@ -39,6 +40,7 @@ export type PluginUiIpcDependencies = {
    * draft could take the line.
    */
   settleComposerSuggestion: (answer: ComposerSuggestionAnswer) => boolean;
+  shellLayout: PluginShellLayoutRelay;
 };
 
 /** Register plugin panels, work-panel views, themes and services. */
@@ -54,6 +56,7 @@ export function registerPluginUiIpc({
   getPluginPanelTheme,
   setActivePluginSession,
   settleComposerSuggestion,
+  shellLayout,
 }: PluginUiIpcDependencies): void {
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, fn);
@@ -63,6 +66,19 @@ export function registerPluginUiIpc({
    * after a newer one cannot restore a session the user already left.
    */
   const sessionPushGate = createSessionPushGate();
+  for (const [channel, accept] of [
+    [IPC.invoke.pluginShellLayoutPublish, (payload: unknown) => shellLayout.publish(payload)],
+    [IPC.invoke.pluginShellLayoutResult, (payload: unknown) => shellLayout.settle(payload)],
+  ] as const) {
+    registrar.handleWithEvent(channel, async (event, payload: unknown) => {
+      registrar.assertMainWindowSender(event);
+      if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
+        throw Object.assign(new Error("shell layout requires the main renderer frame"), { errorCode: "PERMISSION_DENIED" });
+      }
+      return { ok: true, accepted: accept(payload) };
+    });
+  }
+
   /**
    * The session on screen, as the shell sees it.
    *

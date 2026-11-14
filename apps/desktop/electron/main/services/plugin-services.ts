@@ -1,3 +1,4 @@
+import { createPluginShellLayoutRelay } from "./plugin-shell-layout";
 import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
 import { join } from "node:path";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
@@ -663,6 +664,21 @@ export function createPluginServices({
    * whether the composer can take it. The composer owns its own state, so this
    * only ever relays — nothing here writes the draft.
    */
+  const shellLayout = createPluginShellLayoutRelay({
+    authorize: (pluginId, snapshot) => pluginActiveInProject(pluginId, snapshot.projectPath),
+    sendToRenderer: (channel, message) => {
+      const window = getMainWindow();
+      if (!window || window.isDestroyed() || window.webContents.isDestroyed()) throw new Error("shell renderer is unavailable");
+      sendToRenderer(channel, message);
+    },
+    announce: (snapshot) => {
+      const filter = (pluginId: string) => pluginActiveInProject(pluginId, snapshot.projectPath);
+      plugins.broadcastEvent("shell:layout", [snapshot.layout], filter);
+      pluginPanels.broadcast("shell:layout", snapshot.layout, filter);
+      pluginViews.broadcast("shell:layout", snapshot.layout, filter);
+    },
+    log: (message, error) => logger.app("plugin", "warn", message, { data: String(error) }),
+  });
   const composerSuggestion = createComposerSuggestionRelay({
     sendToRenderer,
     getActiveSession: () => pluginSession.snapshot(),
@@ -752,6 +768,8 @@ export function createPluginServices({
       sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
     /** `pi.session.getActive`: the selected session as the shell shows it. */
     getActiveSession: () => pluginSession.snapshot(),
+    shellLayout: (pluginId, command, signal) => shellLayout.request(pluginId, command, signal),
+    clearShellLayout: (pluginId) => shellLayout.clearPlugin(pluginId),
     /**
      * The same project-scope check the view IPCs apply, so following a session
      * and revealing a view stay inside the project the plugin was activated in.
@@ -819,6 +837,7 @@ export function createPluginServices({
     browserHost,
     pluginSession,
     composerSuggestion,
+    shellLayout,
     speech,
   };
 }

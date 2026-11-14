@@ -1,3 +1,5 @@
+import { workPanelTabLabel as tabLabel, workPanelSubagentLabels } from "../../lib/work-panel-tab-label";
+import { useWorkPanelGeometry, type PluginPanelGeometry } from "../../lib/work-panel-geometry";
 import { isRemoteSession } from "../../lib/remote-session-safety";
 import { RemoteWorkspace } from "../remote/RemoteWorkspace";
 import {
@@ -22,7 +24,6 @@ import {
   isKnownWorkPanelTab,
   parsePluginViewRef,
   pluginWorkPanelTab,
-  subagentTabDisplayLabels,
   toolWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import type { PluginViewMeta } from "@pi-desktop/shared";
@@ -109,25 +110,6 @@ type WorkPanelTool = {
   shortcut?: string;
 };
 
-function tabLabel(
-  tab: WorkPanelTab,
-  t: (key: string) => string,
-  pluginViews: PluginViewMeta[],
-) {
-  if (tab.kind === "plugin") {
-    if (tab.resource === "pi.browser/browser" && tab.label) return tab.label;
-    const view = pluginViews.find((candidate) => candidate.ref === tab.resource);
-    // A view whose plugin was disabled mid-session no longer resolves; fall
-    // back to its id rather than leaving the tab blank until it closes.
-    return view?.title ?? tab.resource ?? t("panel.tabs.plugin");
-  }
-  if (tab.kind === "new") return t("panel.new.title");
-  if (tab.kind === "subagent") return tab.label ?? t("panel.tabs.subagent");
-  if (tab.kind !== "file") return t(`panel.tabs.${tab.kind}`);
-  const path = tab.resource ?? "";
-  return path.split("/").filter(Boolean).pop() || t("panel.tabs.file");
-}
-
 function workPanelTools(
   t: (key: string) => string,
   pluginViews: PluginViewMeta[],
@@ -168,9 +150,10 @@ export function WorkPanel(props: Parameters<typeof LocalWorkPanel>[0]) {
   const session = useAppStore((state) => state.sessions.find((item) => item.id === state.activeSessionId));
   const sessionId = useAppStore((state) => state.activeSessionId);
   const width = useAppStore((state) => state.workPanelWidth);
+  const remoteWidth = Math.min(width, Math.max(280, (props.containerWidth || 900) - 320));
   if (session && isRemoteSession(session)) {
-    return <RemoteWorkspace key={session.id} session={session} width={Math.min(width, Math.max(280, (props.containerWidth || 900) - 320))}
-      exiting={props.exiting} onExitAnimationEnd={props.onExitAnimationEnd} />;
+    return <RemoteWorkspace key={session.id} session={session} width={remoteWidth}
+      exiting={props.exiting} onExitAnimationEnd={props.onExitAnimationEnd} onLayoutChange={props.onLayoutChange} />;
   }
   if (sessionId?.startsWith("remote:")) return null;
   return <LocalWorkPanel {...props} />;
@@ -187,7 +170,10 @@ function LocalWorkPanel({
   onAutoCollapseSidebar,
   maximized = false,
   onToggleMaximize,
+  onLayoutChange,
 }: {
+  /** Reports rendered geometry, including preview widths, to the shell owner. */
+  onLayoutChange?: (geometry: PluginPanelGeometry | null) => void;
   /**
    * Hides every native surface in the panel. Both the preview browser and a
    * plugin view are `WebContentsView`s composited above renderer content, so a
@@ -240,18 +226,7 @@ function LocalWorkPanel({
     tabs.map(({ id, kind, resource, location }) => [id, kind, resource, location]),
   );
 
-  // Subagent tabs may share an agent name; repeats gain a 1-based `#n`
-  // suffix in strip order so the row stays unambiguous. The base label
-  // already falls back to panel.tabs.subagent when no name was captured.
-  const subagentTabsInOrder = tabs.filter((tab) => tab.kind === "subagent");
-  const subagentDisplayLabels = subagentTabDisplayLabels(
-    subagentTabsInOrder.map((tab) => tabLabel(tab, t, pluginViews)),
-  );
-  const subagentLabelById = new Map(
-    subagentTabsInOrder.map(
-      (tab, index) => [tab.id, subagentDisplayLabels[index]] as const,
-    ),
-  );
+  const subagentLabelById = workPanelSubagentLabels(tabs, t, pluginViews);
 
   const [panelDragWidth, setPanelDragWidth] = useState<number | null>(null);
   const panelResizeState = useRef<WorkPanelResizeState | null>(null);
@@ -301,6 +276,8 @@ function LocalWorkPanel({
   const renderPanelWidth = layout.panelWidth;
   const panelMinimum = workPanelGestureMinimum(renderPanelWidth);
   const isResizing = panelDragWidth !== null;
+
+  const panelElement = useWorkPanelGeometry(renderPanelWidth, isResizing, onLayoutChange);
 
   useLayoutEffect(() => {
     if (!exiting && layout.shouldCollapseSidebar) onAutoCollapseSidebar?.();
@@ -899,6 +876,7 @@ function LocalWorkPanel({
 
   return (
     <aside
+      ref={panelElement}
       className={cx(
         "work-panel",
         maximized && "is-maximized",

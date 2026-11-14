@@ -20799,3 +20799,21 @@ does not qualify native Electron interaction or live-provider execution.
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
+
+#### E2E-ISSUE-1997-plugin-shell-layout
+
+Run `node scripts/e2e-plugin-shell-layout.mjs` with an isolated Electron profile
+and a real fixture plugin, without personal data or a provider. Read layout and
+subscribe through process and panel/view bridges; verify the initial event,
+collapse/restore and clamp widths, show a blank work panel, list/activate existing
+and unknown tabs without expanding it, and hide/reopen with tabs preserved.
+Assert the correlated result and rendered geometry, one committed drag event,
+no duplicate setter events, active-session isolation and cleanup after
+unsubscribe/unload. Without `ui.shell`, reads/subscriptions still work and all
+three mutations are denied. Renderer loss must reject pending calls explicitly.
+
+Shell layout cross-process regression runner: `node scripts/e2e-plugin-shell-layout.mjs`.
+Use an isolated profile and seeded development plugin; no live model is needed.
+Check both async panel invoke and legacy send cancellation during a document
+reload while a user drag keeps the command queued. Unit regressions additionally
+bind scope to the displayed session project during Main/renderer project races.

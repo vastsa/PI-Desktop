@@ -49,6 +49,8 @@ const pending = new Map();
 const invocations = new Map();
 const invocationContext = new AsyncLocalStorage();
 let nextCallId = 1;
+let shellLayoutSequence = 0;
+const shellReplayTokens = new Map();
 
 /** Proxy a host API call to the broker and await its verdict. */
 function call(api, args = []) {
@@ -408,7 +410,14 @@ function buildApi() {
       writeText: (text) => call("clipboard.writeText", [text]),
       getHistory: () => call("clipboard.getHistory").then(normalizeClipboardHistory),
     },
+    workPanel: {
+      listTabs: () => call("workPanel.listTabs"),
+      activateTab: (tabId) => call("workPanel.activateTab", [tabId]),
+    },
     shell: {
+      getLayout: () => call("shell.getLayout"),
+      setSidebar: (input) => call("shell.setSidebar", [input]),
+      setWorkPanel: (input) => call("shell.setWorkPanel", [input]),
       openExternal: (url) => call("shell.openExternal", [url]),
     },
     browser: {
@@ -477,11 +486,21 @@ function buildApi() {
       on: (event, handler) => {
         if (typeof handler !== "function") return;
         const listeners = eventListeners.get(event) ?? new Set();
+        if (listeners.has(handler)) return;
         listeners.add(handler);
         eventListeners.set(event, listeners);
+        if (event === "shell:layout") {
+          const sequence = shellLayoutSequence;
+          const token = {};
+          shellReplayTokens.set(handler, token);
+          void call("shell.getLayout").then((layout) => {
+            if (eventListeners.get(event)?.has(handler) && shellReplayTokens.get(handler) === token && shellLayoutSequence === sequence) handler(layout);
+          }).catch((error) => log("warn", `shell:layout initial replay failed: ${error?.code ?? "UNKNOWN"}: ${error?.message ?? error}`));
+        }
       },
       off: (event, handler) => {
         eventListeners.get(event)?.delete(handler);
+        if (event === "shell:layout") shellReplayTokens.delete(handler);
       },
     },
   };
@@ -490,6 +509,7 @@ function buildApi() {
 /** Dispatch one parent push frame; a throwing handler must not kill the plugin. */
 function handleHostEvent(message) {
   const event = String(message.event ?? "");
+  if (event === "shell:layout") shellLayoutSequence += 1;
   if (event === "bus.message") {
     const handler = busHandlers.get(String(message.subscriptionId ?? ""));
     if (handler) {
@@ -688,6 +708,9 @@ async function handleParentCall(method, payload, invocationId, callId) {
       return answer;
     }
     case "lifecycle.unload": {
+      eventListeners.delete("shell:layout");
+      shellReplayTokens.clear();
+      shellLayoutSequence += 1;
       for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");
       for (const [id, controller] of parentCallControllers) {
         controller.abort(toolAbortedError("Plugin unloaded"));

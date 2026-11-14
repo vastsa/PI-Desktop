@@ -73,6 +73,8 @@ export function AppShell() {
     sidebarWidthMax,
     handleSidebarWidthChange,
     handleSidebarWidthCommit,
+    onWorkPanelLayoutChange,
+    onSidebarResizingChange,
     handleSidebarResizeCollapse,
     toggleSidebar,
     reopenSidebar,
@@ -160,6 +162,7 @@ export function AppShell() {
                 onWidthChange={handleSidebarWidthChange}
                 onWidthCommit={handleSidebarWidthCommit}
                 onResizeCollapse={handleSidebarResizeCollapse}
+                onResizingChange={onSidebarResizingChange}
               />
             ) : null}
 
@@ -326,6 +329,7 @@ export function AppShell() {
                   onAutoCollapseSidebar={autoCollapseSidebar}
                   maximized={workPanelMaximized}
                   onToggleMaximize={toggleWorkPanelMaximize}
+                  onLayoutChange={onWorkPanelLayoutChange}
                 />
               </Suspense>
             )}
