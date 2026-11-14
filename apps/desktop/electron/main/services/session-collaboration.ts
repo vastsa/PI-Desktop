@@ -134,7 +134,7 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
         if (!deps.isPluginLoaded(current.pluginId)) fail("ABORTED", "The sending plugin is no longer enabled");
         // beginTurn rechecks the persisted authorization ceiling at execution,
         // including when a queued turn resumes after settings have changed.
-        await bridge.agentHost.startTurn(DESKTOP_PRINCIPAL, {
+        const started = await bridge.agentHost.startTurn(DESKTOP_PRINCIPAL, {
           sessionId: current.targetSessionId,
           input: { text: current.content, sessionMessageId: current.id },
           admission: "queue",
@@ -142,6 +142,22 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
           context: { requestId: `session-message:${current.id}` },
         });
         checkCurrent(host);
+        // A worker's report is not user input that was queued a minute ago. When
+        // the target is busy, the receipt must run at the very next turn boundary
+        // (promoted, ADR 0265) instead of behind everything the user already
+        // queued. A turn that already started, or a queue move that lost a race,
+        // is not an error.
+        if (current.kind === "completion" && started.turn.status === "queued") {
+          await bridge.queue.prioritize(started.turn.id).catch((error: unknown) => {
+            if (errorCode(error) !== "CONFLICT") {
+              deps.log("Session completion delivery could not be prioritized", {
+                messageId: current.id,
+                turnId: started.turn.id,
+                error: String(error),
+              });
+            }
+          });
+        }
         const accepted = (await host.call<{ message: SessionCollaborationMessage }>(
           "session.collaboration.message", { messageId: current.id },
         )).message;
