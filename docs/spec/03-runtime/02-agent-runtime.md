@@ -668,6 +668,12 @@ gateway's total that omits cached input from delaying compaction, while keeping
 the total-based guard when bucket details are incomplete. Billing totals remain
 unchanged.
 
+Pi usage conversion retains explicitly supplied finite, nonnegative cache-read
+and cache-write counts, including zero, through physical-request observation,
+history replay and operation deduplication. Missing or invalid cache counts
+remain absent, so consumers can distinguish a known zero from unavailable
+usage. Previously stored missing fields are not backfilled as zero.
+
 The calibration still measures the two errors separately — per-character bias
 as a scale-free ratio over the guessed tail, and an unanchored residual as a
 ratio only for observations taken at a comparable scale (0.5×–2× of the

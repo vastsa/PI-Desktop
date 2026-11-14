@@ -85,8 +85,8 @@ export function usageFromPi(
   return {
     inputTokens,
     outputTokens,
-    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
-    ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
+    ...(Number.isFinite(usage.cacheRead) && usage.cacheRead >= 0 ? { cacheReadTokens } : {}),
+    ...(Number.isFinite(usage.cacheWrite) && usage.cacheWrite >= 0 ? { cacheWriteTokens } : {}),
     ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
     totalTokens,
     usageOrigin: "pi",
