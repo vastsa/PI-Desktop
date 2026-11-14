@@ -881,6 +881,7 @@ export const zhCN = {
         budgetExhausted: "预算已用完",
       },
       rounds: "轮次 {{completed}}/{{max}}",
+      elapsed: "耗时 {{duration}}",
       lastError: "最近错误：{{message}}",
       pause: "暂停",
       resume: "继续",

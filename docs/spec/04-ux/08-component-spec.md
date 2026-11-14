@@ -2690,6 +2690,12 @@ summary can wrap rather than forcing the user to resize the divider. Complete
 descriptions remain available through the node's accessible name/hover title;
 the node and its live process never create horizontal overflow.
 
+Topology connectors use actual card centers rather than fixed pixel offsets.
+Per-card vertical stem segments join across the list gap and terminate at the
+first/last branch. The narrow-layout incoming connector shares the stem's axis,
+including a single-worker topology. Variable card heights do not leave dangling
+stem tails or detached branches.
+
 An accepted steering message creates a new visual reply without ending the
 parent runtime turn. Earlier delegation cards in that running turn keep their
 live status and Stop controls across steering replies and compaction dividers.
@@ -3128,6 +3134,29 @@ reasoning-level control.
   The permission menu stays 120px wide; its Chinese Composer short label for
   Accept edits is `允许编辑` / `允許編輯` so the option remains single-line
   beside its selection indicator.
+- Accepted Goal input returns the mode chip to Agent, not the executing run.
+  The run status bar remains visible and its controls target the Host run.
+  A newer picker selection is not overwritten by a delayed send response;
+  queued model/thinking/permission changes are retained.
+- The mode-run status bar shows elapsed immediately after completed/max rounds.
+  Show every nonzero day/hour/minute/second unit, or zero seconds; do not wrap
+  days into a clock or pad unused units. Visible units are always `d`, `h`, `m`
+  and `s`, with exactly one ASCII space between each number and its unit
+  (for example, `1 d 2 h 3 m 4 s` or `0 s`), and a localized accessible elapsed
+  label. Pause/wait/stop freeze the display; legacy rows start at zero.
+  Metadata and actions may wrap as groups, never overlap or overflow.
+- Resume, Pause, Edit and Remove use icon-only `TooltipButton` controls with
+  Play, Pause, Pencil and Trash2 icons and localized tooltips/accessibility
+  names. Existing availability, busy states and handlers remain unchanged;
+  Stop, confirmations, approval and edit-form controls retain text labels.
+- A model-reported `waiting/blocked` run uses the existing blocked badge and
+  last-error text. It offers the same Resume icon instead of Pause; only that
+  explicit user control resumes it. Success, infrastructure error and blocker
+  reporting do not alter the elapsed format, layout or other state controls.
+- Consecutive root `turnId` values create independent assistant conversation
+  groups, including live streaming, background caches and restored history.
+  Delegates stay under their Task; legacy messages without a turn id retain
+  their existing grouping and autonomous turns add no synthetic user rows.
 - The right toolbar owns the remaining-capacity context inspector (when the
   newest assistant turn has usage) immediately left of one combined model ×
   reasoning-level chip. Explicitly installed plugins may add user-invoked

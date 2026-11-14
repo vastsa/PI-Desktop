@@ -2,6 +2,7 @@ import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { modeContinuationOrigin, type ModeRunCoordinator, type PreparedModeTurn } from "../runtime/mode-runs";
+import { goalPromptMode, goalStartRequested } from "../runtime/goal-start";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
 import { resolveSessionReferences } from "../session-references";
@@ -52,7 +53,7 @@ export type AgentIpcDependencies = {
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
   /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
-  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn">;
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn" | "replaceGoal" | "resetGoalInput">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -189,13 +190,24 @@ export function registerAgentIpc({
     });
   });
 
+  async function queueGoal(request: AgentQueuePushRequest) {
+    if (!agentHostBridge) throw new Error("agent host unavailable");
+    await modeRuns.definitionForPrompt("goal");
+    return agentHostBridge.queue.push(request, async () => {
+      await modeRuns.replaceGoal(request.sessionId);
+      await modeRuns.resetGoalInput(request.sessionId);
+    });
+  }
+
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
     // Set only on an in-process request built by the Agent Host bridge for a
     // Host-started mode run turn; a renderer or plugin request never has it.
     const modeOrigin = modeContinuationOrigin(req);
+    const startGoal = goalStartRequested(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
     if (req.sessionId.startsWith("native-pi:")) {
+      if (startGoal) rejectNativeAgentOperation(req.sessionId);
       // Desktop-managed MCP servers are not installed in native Pi sessions.
       if (/^\/mcp:\S/.test(req.content)) expandMcpInvocation(req.content, []);
       if (voiceOrigin) {
@@ -216,6 +228,10 @@ export function registerAgentIpc({
       });
     }
     if (!host) throw new Error("host unavailable");
+    if (startGoal && activeTurns.has(req.sessionId)) {
+      const entry = await queueGoal({ ...req, userMessageId: req.messageId });
+      return { accepted: true, turnId: entry.id };
+    }
     const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
     try {
     const sessionMessage = await resolveSessionMessageInput(host, req);
@@ -360,6 +376,7 @@ export function registerAgentIpc({
 
     // A staged mode claims its run for this durable turn before anything runs;
     // the sidecar then executes the run's own definition snapshot.
+    const promptMode = goalPromptMode(launch.sidecarParams.mode ?? "agent", req.startGoal);
     let preparedMode: PreparedModeTurn | undefined;
     let modeDefinition: PreparedModeTurn["definition"] | undefined;
     try {
@@ -369,8 +386,9 @@ export function registerAgentIpc({
         sessionMode: typeof session.mode === "string" ? session.mode : "agent",
         content: req.content,
         origin: modeOrigin ?? "user",
+        startGoal: req.startGoal,
       });
-      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(launch.sidecarParams.mode ?? "agent");
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(promptMode);
     } catch (error) {
       await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
         turnId: durableTurnId,
@@ -511,6 +529,7 @@ export function registerAgentIpc({
       ),
 
       role: "user" as const,
+      turnId: durableTurnId,
       content: promptContent,
       ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
       createdAt: new Date().toISOString(),
@@ -585,6 +604,7 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
+          mode: promptMode,
           ...(modeDefinition ? { modeDefinition } : {}),
           ...(preparedMode?.modeTurn
             ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
@@ -633,6 +653,11 @@ export function registerAgentIpc({
         turnId: durableTurnId,
       });
       throw e;
+    }
+    if (result.accepted && !modeOrigin && preparedMode?.definition.id === "goal") {
+      await modeRuns.resetGoalInput(req.sessionId).catch((error: unknown) => {
+        logger.app("session", "warn", "accepted Goal input mode reset failed", { sessionId: req.sessionId, data: String(error) });
+      });
     }
     logger.app("session", "info", "prompt accepted", {
       sessionId: req.sessionId,
@@ -786,7 +811,7 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentQueuePush, async (req: AgentQueuePushRequest) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!agentHostBridge) throw new Error("agent host unavailable");
-    return agentHostBridge.queue.push(req);
+    return goalStartRequested(req) ? queueGoal(req) : agentHostBridge.queue.push(req);
   });
   handle(IPC.invoke.agentQueueList, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);

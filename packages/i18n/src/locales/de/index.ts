@@ -876,6 +876,7 @@ export const de = {
         "budgetExhausted": "Budget aufgebraucht",
       },
       "rounds": "Runden {{completed}}/{{max}}",
+      "elapsed": "Dauer {{duration}}",
       "lastError": "Letzter Fehler: {{message}}",
       "pause": "Pausieren",
       "resume": "Fortsetzen",

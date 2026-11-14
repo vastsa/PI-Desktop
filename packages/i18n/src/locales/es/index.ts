@@ -876,6 +876,7 @@ export const es = {
         "budgetExhausted": "Presupuesto agotado",
       },
       "rounds": "Rondas {{completed}}/{{max}}",
+      "elapsed": "Tiempo {{duration}}",
       "lastError": "Último error: {{message}}",
       "pause": "Pausar",
       "resume": "Reanudar",

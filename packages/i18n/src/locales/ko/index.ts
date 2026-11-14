@@ -885,6 +885,7 @@ export const ko = {
         budgetExhausted: "예산 소진",
       },
       rounds: "라운드 {{completed}}/{{max}}",
+      elapsed: "소요 시간 {{duration}}",
       lastError: "마지막 오류: {{message}}",
       pause: "일시 중지",
       resume: "재개",

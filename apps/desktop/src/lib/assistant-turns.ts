@@ -308,7 +308,13 @@ export function buildTranscriptEntries(
     }
   };
 
+  let previousRootTurnId: string | undefined;
   for (const message of visible) {
+    const rootTurnId = typeof message.turnId === "string" ? message.turnId.trim() : undefined;
+    if (rootTurnId) {
+      if (previousRootTurnId && rootTurnId !== previousRootTurnId) turn = undefined;
+      previousRootTurnId = rootTurnId;
+    }
     appendMessage(message);
     const marks = anchored.get(message.id);
     if (!marks) continue;

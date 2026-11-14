@@ -827,6 +827,9 @@ export function createSessionSlice({
       }
       if (!sessionAllows(get().sessions.find((session) => session.id === sessionId), "canConfigureModel")) return;
       if (get().pendingPlans[sessionId]?.status === "pending") return;
+      if (config.mode !== get().sessions.find((session) => session.id === sessionId)?.mode) {
+        runtime.sessionModeSelections.set(sessionId, (runtime.sessionModeSelections.get(sessionId) ?? 0) + 1);
+      }
       if (
         get().runningSessions[sessionId] ||
         runtime.sessionConfigurationFlushes.has(sessionId)

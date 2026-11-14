@@ -272,6 +272,17 @@ function finishTurn(
       }, 5 * 60 * 1000).unref();
     }
 
+    if (!isQuitting() && typeof onTurnEnded === "function") {
+      try {
+        await onTurnEnded(id, turnId, {
+          reason,
+          ...(turnUsage ? { usage: turnUsage } : {}),
+          ...(errorCode ? { errorCode } : {}),
+        });
+      } catch (error) {
+        logger.app("session", "warn", "mode run settlement failed", { sessionId: id, data: String(error) });
+      }
+    }
     // The turn can no longer start a plugin tool, and its finalization record
     // still holds the queue, so the announcement observes a settled turn. Every
     // delivery failure is isolated inside the announcement itself.
@@ -309,18 +320,6 @@ function finishTurn(
         hostTurnError(reason, errorCode),
       );
       runtimeState.agentHostBridge?.agentHost.kick(id);
-    }
-    if (!isQuitting() && typeof onTurnEnded === "function") {
-      void onTurnEnded(id, turnId, {
-        reason,
-        ...(turnUsage ? { usage: turnUsage } : {}),
-        ...(errorCode ? { errorCode } : {}),
-      }).catch((error: unknown) => {
-        logger.app("session", "warn", "mode run settlement failed", {
-          sessionId: id,
-          data: String(error),
-        });
-      });
     }
     // Settlement of the durable turn is the trigger for the collaborators that
     // follow it; a turn with no durable end has nothing to settle.
