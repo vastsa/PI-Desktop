@@ -67,12 +67,15 @@ export function TodoPanel({
   todos,
   listId,
   interactive,
+  animate,
   labelledBy,
 }: {
   todos: readonly SessionTodo[];
   listId: string;
   /** False while the container is collapsed: the list is mounted but inert. */
   interactive: boolean;
+  /** False while the session is idle: a leftover in_progress step stays still. */
+  animate: boolean;
   labelledBy?: string;
 }) {
   return (
@@ -87,7 +90,7 @@ export function TodoPanel({
           a keyboard user can reach that scrollport only while it is on screen. */}
       <div className="todo-dock-list" role="list" tabIndex={interactive ? 0 : -1}>
         {todos.map((todo, index) => (
-          <TodoRow key={`${index}:${todo.content}`} todo={todo} shimmer={interactive} />
+          <TodoRow key={`${index}:${todo.content}`} todo={todo} shimmer={interactive && animate} />
         ))}
       </div>
     </div>

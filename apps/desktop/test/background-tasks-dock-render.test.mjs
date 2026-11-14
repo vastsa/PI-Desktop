@@ -68,6 +68,7 @@ async function withDockRender(run) {
         : undefined;
       Object.assign(useAppStore.getInitialState(), {
         sessionTodos: snapshot ? { [sessionId]: snapshot } : {},
+        runningSessions: fixture.sessionRunning ? { [sessionId]: true } : {},
       });
       Object.assign(useModesStore.getInitialState(), {
         runs: fixture.run ? { [sessionId]: { sessionId, ...fixture.run } } : {},
@@ -193,3 +194,28 @@ for (const activeTab of ["todo", "tasks"]) {
     });
   });
 }
+
+test("the working step sweeps only while its session runs, so an idle window stops repainting", async () => {
+  await withDockRender(({ render }) => {
+    // A run that ends early (abort, error, a model that never closes its step)
+    // leaves an in_progress todo behind. The shimmer is an infinite animation,
+    // so tying it to the todo status alone would keep an idle window
+    // submitting frames forever (#1064).
+    const todos = [
+      { content: "done step", status: "completed", priority: "low" },
+      { content: "working step", status: "in_progress", priority: "high" },
+    ];
+    const shimmers = (html) => (html.match(/todo-dock-shimmer/g) ?? []).length;
+    for (const collapsed of [true, false]) {
+      const base = { tasks: [], sessionTasks: [], todos, collapsed, activeTab: "todo" };
+      const idle = render({ ...base, sessionRunning: false });
+      assert.match(idle, /working step/, "the step stays visible while idle");
+      assert.equal(shimmers(idle), 0, `no sweep on an idle session (collapsed=${collapsed})`);
+      assert.equal(
+        shimmers(render({ ...base, sessionRunning: true })),
+        1,
+        `one sweep while the session runs (collapsed=${collapsed})`,
+      );
+    }
+  });
+});
