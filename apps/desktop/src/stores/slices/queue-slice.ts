@@ -51,6 +51,7 @@ export type QueueSliceDependencies = StoreAccess & {
   messageErrorFromUnknown: (error: unknown) => AppError;
   assistantErrorMessage: (error: AppError) => UiMessage;
   materializeDraftSession: (intent?: number) => Promise<string | null>;
+  flushPendingSessionConfiguration: (sessionId: string) => Promise<void>;
 };
 
 export function createQueueSlice({
@@ -63,6 +64,7 @@ export function createQueueSlice({
   messageErrorFromUnknown,
   assistantErrorMessage,
   materializeDraftSession,
+  flushPendingSessionConfiguration,
 }: QueueSliceDependencies): Pick<
   AppState,
   | "enqueuePrompt"
@@ -78,6 +80,18 @@ export function createQueueSlice({
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
   const pendingSubmissions = new Set<string>();
   const queueRefreshes = new Map<string, object>();
+
+  function resetAcceptedGoalInput(sessionId: string, selection: number): void {
+    if ((runtime.sessionModeSelections.get(sessionId) ?? 0) !== selection) return;
+    const current = get().sessions.find((session) => session.id === sessionId);
+    if (!current || current.mode !== "goal") return;
+    const pending = runtime.pendingSessionConfigurations.get(sessionId);
+    runtime.pendingSessionConfigurations.set(sessionId, runtime.mergeSessionConfiguration(pending, { ...current, mode: "agent" }));
+    set((state) => ({ sessions: state.sessions.map((session) => session.id === sessionId ? { ...session, mode: "agent" } : session) }));
+    void flushPendingSessionConfiguration(sessionId).catch((error: unknown) => {
+      get().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    });
+  }
 
   function toQueuedPrompt(entry: QueuedTurnSummary): QueuedPrompt {
     return {
@@ -146,6 +160,8 @@ export function createQueueSlice({
       const sessionId = requestedSessionId ?? get().activeSessionId;
       if (!sessionId) return false;
       if (isRemoteSession(get().sessions.find((session) => session.id === sessionId)) || sessionId.startsWith("remote:")) return false;
+      const startGoal = get().sessions.find((session) => session.id === sessionId)?.mode === "goal";
+      const selection = runtime.sessionModeSelections.get(sessionId) ?? 0;
       const queuedDraft: ComposerDraftSnapshot = draft
         ? {
             text: draft.text,
@@ -169,6 +185,7 @@ export function createQueueSlice({
         .queuePrompt({
           sessionId,
           content,
+          startGoal,
           ...(attachments.length ? { attachments } : {}),
         })
         .then((entry) => {
@@ -181,6 +198,7 @@ export function createQueueSlice({
             ),
           }));
           void get().refreshQueuedPrompts(sessionId);
+          if (startGoal) resetAcceptedGoalInput(sessionId, selection);
           return true;
         })
         .catch((error) => {
@@ -404,6 +422,8 @@ export function createQueueSlice({
           return accepted;
         }
         const startedIn = sessionId;
+        const startGoal = get().sessions.find((session) => session.id === sessionId)?.mode === "goal";
+        const selection = runtime.sessionModeSelections.get(sessionId) ?? 0;
         const messageCountBeforeSend =
           startedIn === get().activeSessionId
             ? get().messages.length
@@ -477,6 +497,7 @@ export function createQueueSlice({
           await api.prompt({
             sessionId,
             content,
+            startGoal,
             messageId: optimisticMessage.id,
             viewingSessionId: isRemoteSession(current) ? null : viewingSessionIdForPrompt(get(), sessionId),
             attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
@@ -488,6 +509,7 @@ export function createQueueSlice({
           if (current?.source !== "pi-native" && current?.source !== "remote") {
             get().rememberModel(current ?? {});
           }
+          if (startGoal) resetAcceptedGoalInput(startedIn, selection);
           onAccepted?.(startedIn);
           return true;
         } catch (error) {

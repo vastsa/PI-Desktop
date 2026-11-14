@@ -13,7 +13,8 @@ pub const MAX_EVIDENCE_BYTES: usize = 8 * 1024;
 const COLUMNS: &str = "id, session_id, mode_id, snapshot_hash, input, stage_id, state, \
     wait_reason, last_error, revision, active_turn_id, active_origin, stage_entered, \
     advanced_in_turn, pending_gate, retry_counts, rounds_completed, tokens_used, max_turns, \
-    max_tokens, artifact_paths, settled_turns, created_at, updated_at, finished_at";
+    max_tokens, artifact_paths, settled_turns, created_at, updated_at, finished_at, \
+    elapsed_ms, active_since_ms, completion_report_json";
 
 const OPEN_STATES: &str = "('running', 'waiting', 'paused', 'budget_exhausted')";
 
@@ -47,6 +48,7 @@ fn parsed<T>(index: usize, raw: String, parse: impl Fn(&str) -> Option<T>) -> ru
 fn from_row(row: &Row<'_>) -> rusqlite::Result<ModeRun> {
     let wait_reason: Option<String> = row.get(7)?;
     let active_origin: Option<String> = row.get(11)?;
+    let completion_report: Option<String> = row.get(27)?;
     Ok(ModeRun {
         id: row.get(0)?,
         session_id: row.get(1)?,
@@ -77,6 +79,11 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<ModeRun> {
         created_at: row.get(22)?,
         updated_at: row.get(23)?,
         finished_at: row.get(24)?,
+        elapsed_ms: row.get(25)?,
+        active_since_ms: row.get(26)?,
+        completion_report: completion_report
+            .map(|raw| serde_json::from_str(&raw).map_err(|error| conversion(27, error)))
+            .transpose()?,
     })
 }
 
@@ -104,7 +111,8 @@ pub fn insert(conn: &Connection, run: &ModeRun) -> Result<()> {
     let inserted = conn
         .prepare_cached(&format!(
             "INSERT INTO mode_runs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-             ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)"
+             ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25,
+             ?26, ?27, ?28)"
         ))?
         .execute(params![
             run.id,
@@ -132,6 +140,12 @@ pub fn insert(conn: &Connection, run: &ModeRun) -> Result<()> {
             run.created_at,
             run.updated_at,
             run.finished_at,
+            run.elapsed_ms,
+            run.active_since_ms,
+            run.completion_report
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
         ]);
     match inserted {
         Ok(_) => Ok(()),
@@ -148,12 +162,42 @@ pub fn insert(conn: &Connection, run: &ModeRun) -> Result<()> {
 /// Persist `run` if nobody changed it since it was read, then bump its
 /// revision. A lost race surfaces as `MODE_REVISION_CONFLICT`.
 pub fn save(conn: &Connection, run: &mut ModeRun) -> Result<()> {
+    save_at(conn, run, now_ms())
+}
+
+/// Checkpoint the persisted clock, not caller-supplied timing fields. Keeping
+/// the clock under the same revision CAS prevents stale or duplicate writers
+/// from charging an interval twice. No periodic writes are needed.
+pub(super) fn save_at(conn: &Connection, run: &mut ModeRun, now: i64) -> Result<()> {
     let previous = run.revision;
     let next = previous
         .checked_add(1)
         .filter(|next| *next <= MAX_SAFE_INTEGER)
         .ok_or_else(|| mode_error("MODE_REVISION_CONFLICT"))?;
-    let now = now_ms();
+    let (state, elapsed_ms, active_since_ms) = conn
+        .prepare_cached(
+            "SELECT state, elapsed_ms, active_since_ms FROM mode_runs
+             WHERE id = ?1 AND revision = ?2",
+        )?
+        .query_row(params![run.id, previous], |row| {
+            Ok((
+                parsed(0, row.get(0)?, RunState::parse)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        })
+        .optional()?
+        .ok_or_else(|| mode_error("MODE_REVISION_CONFLICT"))?;
+    let now = now.clamp(0, MAX_SAFE_INTEGER);
+    let running_since = active_since_ms.filter(|_| state == RunState::Running);
+    let elapsed_ms = elapsed_ms
+        .clamp(0, MAX_SAFE_INTEGER)
+        .saturating_add(running_since.map_or(0, |since| now.saturating_sub(since).max(0)))
+        .min(MAX_SAFE_INTEGER);
+    // Retain a future checkpoint if the wall clock moved backwards, rather
+    // than charging that already-covered interval again when it catches up.
+    let active_since_ms = (run.state == RunState::Running)
+        .then_some(running_since.map_or(now, |since| since.max(now)));
     let changed = conn
         .prepare_cached(
             "UPDATE mode_runs SET stage_id = ?3, state = ?4, wait_reason = ?5, last_error = ?6,
@@ -161,7 +205,8 @@ pub fn save(conn: &Connection, run: &mut ModeRun) -> Result<()> {
                  advanced_in_turn = ?11, pending_gate = ?12, retry_counts = ?13,
                  rounds_completed = ?14, tokens_used = ?15, settled_turns = ?16,
                  updated_at = ?17, finished_at = ?18, input = ?19, max_turns = ?20,
-                 max_tokens = ?21
+                 max_tokens = ?21, elapsed_ms = ?22, active_since_ms = ?23,
+                 completion_report_json = ?24
              WHERE id = ?1 AND revision = ?2",
         )?
         .execute(params![
@@ -186,12 +231,20 @@ pub fn save(conn: &Connection, run: &mut ModeRun) -> Result<()> {
             run.input,
             run.max_turns,
             run.max_tokens,
+            elapsed_ms,
+            active_since_ms,
+            run.completion_report
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
         ])?;
     if changed != 1 {
         return Err(mode_error("MODE_REVISION_CONFLICT"));
     }
     run.revision = next;
     run.updated_at = now;
+    run.elapsed_ms = elapsed_ms;
+    run.active_since_ms = active_since_ms;
     Ok(())
 }
 
@@ -263,21 +316,30 @@ pub fn host_turn_active(conn: &Connection, session_id: &str) -> Result<bool> {
         .query_row(params![session_id], |row| row.get(0))?)
 }
 
-/// Startup recovery: a claim cannot survive the process that dispatched its
-/// turn. The run pauses and nothing is replayed.
+/// Startup recovery: neither claims nor an uncheckpointed running interval
+/// survive their process. Keep only durable elapsed time, discard the active
+/// anchor and pause even between turns, excluding all offline time. A blocked
+/// run keeps its durable user-only waiting state when its claim is released.
 pub fn release_stale_claims(conn: &Connection) -> Result<Vec<String>> {
-    let now = now_ms();
+    release_stale_claims_at(conn, now_ms())
+}
+
+pub(super) fn release_stale_claims_at(conn: &Connection, now: i64) -> Result<Vec<String>> {
     let ids = conn
         .prepare(&format!(
-            "SELECT id FROM mode_runs WHERE active_turn_id IS NOT NULL AND state IN {OPEN_STATES}"
+            "SELECT id FROM mode_runs WHERE state IN {OPEN_STATES}
+               AND (active_turn_id IS NOT NULL OR state = 'running' OR active_since_ms IS NOT NULL)"
         ))?
         .query_map([], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for id in &ids {
         conn.execute(
             "UPDATE mode_runs SET active_turn_id = NULL, active_origin = NULL,
-                 pending_gate = NULL, state = 'paused', wait_reason = NULL,
-                 advanced_in_turn = 0, revision = revision + 1, updated_at = ?2
+                 pending_gate = NULL,
+                 state = CASE WHEN wait_reason = 'blocked' THEN 'waiting' ELSE 'paused' END,
+                 wait_reason = CASE WHEN wait_reason = 'blocked' THEN 'blocked' ELSE NULL END,
+                 advanced_in_turn = 0, active_since_ms = NULL,
+                 revision = revision + 1, updated_at = ?2
              WHERE id = ?1",
             params![id, now],
         )

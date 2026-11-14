@@ -1,3 +1,4 @@
+import { Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -7,13 +8,14 @@ import {
   type ModeRun,
   type ModeUpdateRequest,
 } from "@pi-desktop/shared";
-import { Badge, Button } from "../../components/ui";
+import { Badge, Button, TooltipButton } from "../../components/ui";
 import { useAppStore } from "../../stores/app-store";
 import { modesApi, type ModeRunControlResult } from "./modes-api";
 import { useModesStore } from "./modes-store";
 import { applyRunUpdate, refreshModeRun } from "./modes-sync";
 import { modeDisplayLabel } from "./mode-picker-model";
 import { ModeRunEditForm } from "./ModeRunEditForm";
+import { ModeRunElapsed } from "./ModeRunElapsed";
 import {
   MODE_RUN_STATE_LABEL_KEYS,
   modeControlRequest,
@@ -111,8 +113,11 @@ export function ModeRunStatusPanel({ run }: { run: ModeRun }) {
         <Badge tone={STATE_TONES[stateKey]} className="mode-run-state">
           {t(MODE_RUN_STATE_LABEL_KEYS[stateKey])}
         </Badge>
-        <span className="mode-run-rounds">
-          {t("modes.run.rounds", { completed: rounds.completed, max: rounds.max })}
+        <span className="mode-run-metrics">
+          <span className="mode-run-rounds">
+            {t("modes.run.rounds", { completed: rounds.completed, max: rounds.max })}
+          </span>
+          <ModeRunElapsed run={run} />
         </span>
         {run.lastError ? (
           <span className="mode-run-error" title={run.lastError}>
@@ -146,24 +151,24 @@ export function ModeRunStatusPanel({ run }: { run: ModeRun }) {
               </Button>
             ) : null}
             {controls.pause ? (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void control("pause")}>
-                {t("modes.run.pause")}
-              </Button>
+              <TooltipButton className="icon-btn icon-btn-square" tooltip={t("modes.run.pause")} disabled={busy} onClick={() => void control("pause")}>
+                <Pause size={14} aria-hidden="true" />
+              </TooltipButton>
             ) : null}
             {controls.resume ? (
-              <Button size="sm" disabled={busy} onClick={() => void control("resume")}>
-                {t("modes.run.resume")}
-              </Button>
+              <TooltipButton className="icon-btn icon-btn-square" tooltip={t("modes.run.resume")} disabled={busy} onClick={() => void control("resume")}>
+                <Play size={14} aria-hidden="true" />
+              </TooltipButton>
             ) : null}
             {controls.edit && !editing ? (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(true)}>
-                {t("modes.run.edit")}
-              </Button>
+              <TooltipButton className="icon-btn icon-btn-square" tooltip={t("modes.run.edit")} disabled={busy} onClick={() => setEditing(true)}>
+                <Pencil size={14} aria-hidden="true" />
+              </TooltipButton>
             ) : null}
             {controls.remove ? (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm("remove")}>
-                {t("modes.run.remove")}
-              </Button>
+              <TooltipButton className="icon-btn icon-btn-square" tooltip={t("modes.run.remove")} disabled={busy} onClick={() => setConfirm("remove")}>
+                <Trash2 size={14} aria-hidden="true" />
+              </TooltipButton>
             ) : null}
             {controls.stop ? (
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm("stop")}>

@@ -12,6 +12,7 @@
 
 mod artifacts;
 mod budget;
+mod completion_report;
 mod engine;
 mod gates;
 mod model;
@@ -22,8 +23,9 @@ mod snapshot;
 
 pub use budget::validate_goal_budget_setting;
 pub use engine::{
-    claim_turn, configure_session_mode, control, open_run, prepare_session_mode, recover, resolve,
-    settle_turn, start, store_session_snapshot, update, verify_gate_command, PreparedMode,
+    claim_turn, configure_session_mode, control, open_run, prepare_session_mode, recover,
+    reset_goal_input, resolve, settle_turn, start, start_goal, store_session_snapshot, update,
+    verify_gate_command, PreparedMode,
 };
 pub use gates::{complete_stage, gate_result, GateExecution, GateExecutions};
 pub use model::{CompleteStageParams, GateResultParams, ModeRun, SessionParams, StartParams};
@@ -60,3 +62,9 @@ mod edit_tests;
 
 #[cfg(test)]
 mod return_mode_tests;
+
+#[cfg(test)]
+mod elapsed_tests;
+
+#[cfg(test)]
+mod completion_report_tests;

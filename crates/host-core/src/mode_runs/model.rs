@@ -61,6 +61,7 @@ pub enum WaitReason {
     Retries,
     TurnEnd,
     Error,
+    Blocked,
 }
 
 impl WaitReason {
@@ -70,6 +71,7 @@ impl WaitReason {
             Self::Retries => "retries",
             Self::TurnEnd => "turn_end",
             Self::Error => "error",
+            Self::Blocked => "blocked",
         }
     }
 
@@ -79,13 +81,14 @@ impl WaitReason {
             "retries" => Self::Retries,
             "turn_end" => Self::TurnEnd,
             "error" => Self::Error,
+            "blocked" => Self::Blocked,
             _ => return None,
         })
     }
 }
 
-/// Who started the turn holding the claim. Host-started turns are capped at
-/// `accept-edits`.
+/// Who started the turn holding the claim. Custom Host-started modes are capped
+/// at `accept-edits`; builtin Goal keeps the selected session permission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Origin {
@@ -137,6 +140,12 @@ pub struct ModeRun {
     pub max_tokens: Option<i64>,
     pub artifact_paths: BTreeMap<String, String>,
     pub settled_turns: Vec<String>,
+    /// Model evidence only; never an independent Host gate verdict.
+    pub completion_report: Option<super::completion_report::CompletionReport>,
+    /// Checkpointed running time, bounded to a JavaScript-safe integer.
+    pub elapsed_ms: i64,
+    /// Epoch ms at the latest running checkpoint; absent while frozen.
+    pub active_since_ms: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
     pub finished_at: Option<i64>,
@@ -168,9 +177,16 @@ impl ModeRun {
         }
         out.insert("roundsCompleted".into(), json!(self.rounds_completed));
         out.insert("tokensUsed".into(), json!(self.tokens_used));
+        out.insert("elapsedMs".into(), json!(self.elapsed_ms));
+        if let Some(since) = self.active_since_ms {
+            out.insert("activeSinceMs".into(), json!(since));
+        }
         out.insert("maxTurns".into(), json!(self.max_turns));
         out.insert("maxTokens".into(), json!(self.max_tokens));
         out.insert("artifactPaths".into(), json!(self.artifact_paths));
+        if let Some(report) = &self.completion_report {
+            out.insert("completionReport".into(), json!(report));
+        }
         out.insert("createdAt".into(), json!(ms_to_ts(self.created_at)));
         out.insert("updatedAt".into(), json!(ms_to_ts(self.updated_at)));
         if let Some(finished) = self.finished_at {
@@ -260,6 +276,12 @@ pub struct CompleteStageParams {
     /// user edited the objective during the turn (`MODE_INPUT_CHANGED`).
     #[serde(default)]
     pub input: Option<String>,
+    /// Kept raw until independent Host validation, including explicit null.
+    #[serde(
+        default,
+        deserialize_with = "super::completion_report::deserialize_report"
+    )]
+    pub report: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -44,6 +44,7 @@ export type TurnStartRequest = {
   [TRUSTED_MODE_ORIGIN]?: TrustedModeOrigin;
   sessionId: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288); the runtime mints one otherwise. */
   userMessageId?: string;
@@ -90,6 +91,7 @@ export type QueuedTurnRecord = {
   sessionId: string;
   principalSubject: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288). */
   userMessageId?: string;

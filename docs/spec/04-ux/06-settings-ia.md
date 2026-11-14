@@ -432,7 +432,8 @@ Card order is **Session defaults → Execution → Computer use**.
   Settings picker opens the same way. The closed trigger sizes to the current
   label, capped by the settings control column.
 - The **Goal budget** row sits under the default mode in Session defaults: two
-  numeric fields (turns, tokens) persisted as optional
+  horizontally aligned numeric fields (turns, tokens), each with a non-wrapping
+  label and flexible input width, persisted as optional
   `AppSettings.goalBudget { maxTurns, maxTokens }`. A field saves on blur or
   Enter; empty is unlimited and an out-of-range value (turns 1–10000, tokens
   at least 1000) reverts to the saved one. Absent keeps the builtin Goal

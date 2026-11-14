@@ -168,10 +168,14 @@ jobs:
       - name: Build host-core
         run: cargo build -p host-core --locked
 
-      - name: Run staged mode Host/process E2E
+      - name: Run staged mode and Goal Host/process E2E
         env:
           PI_SCRATCH_DIR: ${{ runner.temp }}
-        run: node scripts/e2e-mode-definitions.mjs
+        run: |
+          pnpm --filter @pi-desktop/agent-runtime bundle
+          node scripts/e2e-mode-definitions.mjs
+          node scripts/e2e-goal-run-repairs.mjs
+          node scripts/e2e-goal-completion.mjs
 
       - name: Run plugin project enumeration Host/process E2E
         run: pnpm test:e2e:plugin-projects

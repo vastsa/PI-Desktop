@@ -9,6 +9,7 @@ use std::time::Instant;
 use anyhow::Result;
 
 use super::artifacts;
+use super::completion_report::{CompletionReport, CompletionStatus};
 use super::engine::{apply_finish, pass_transition, Transition};
 use super::model::{
     tail, CompleteStageParams, GateResultParams, ModeRun, RunState, StageOutcome, StageStatus,
@@ -241,7 +242,16 @@ fn claimed_run(
     if run.state != RunState::Running || !run.claimed_by(turn_id) {
         return Err(mode_error("MODE_CLAIM_MISMATCH"));
     }
+    if repository::session_mode_row(db.conn(), session_id)?.is_none() {
+        return Err(mode_error("MODE_SESSION_NOT_FOUND"));
+    }
     let definition = snapshot::require(db.conn(), &run.snapshot_hash)?.definition;
+    if definition.id != run.mode_id || definition.stage(&run.stage_id).is_none() {
+        return Err(mode_error_detail(
+            "MODE_SNAPSHOT_INVALID",
+            "run stage is missing or mismatched",
+        ));
+    }
     Ok((run, definition))
 }
 
@@ -258,14 +268,17 @@ pub fn complete_stage(
             "summary is too long",
         ));
     }
+    let report = params.report.map(CompletionReport::parse).transpose()?;
     let (mut run, definition) =
         claimed_run(db, &params.session_id, &params.run_id, &params.turn_id)?;
     // The user edited the objective while this turn ran: its evidence is for
-    // the old objective. The next claim carries the new one.
-    if params
-        .input
-        .as_ref()
-        .is_some_and(|input| *input != run.input)
+    // the old objective. The next claim carries the new one. Reports must
+    // include that frozen input; legacy calls without reports remain valid.
+    if (report.is_some() && params.input.is_none())
+        || params
+            .input
+            .as_ref()
+            .is_some_and(|input| *input != run.input)
     {
         return Err(mode_error("MODE_INPUT_CHANGED"));
     }
@@ -273,6 +286,24 @@ pub fn complete_stage(
         artifacts::write_declared(workspace, &run.artifact_paths, artifacts)?;
     }
     run.pending_gate = None;
+    let blocked_reason = report
+        .as_ref()
+        .filter(|report| report.status == CompletionStatus::Blocked)
+        .and_then(|report| report.blocker_reason.clone());
+    if let Some(report) = report {
+        run.completion_report = Some(report);
+    }
+    if let Some(message) = blocked_reason {
+        run.set_waiting(WaitReason::Blocked);
+        run.last_error = Some(message.clone());
+        run.advanced_in_turn = false;
+        let stage_id = run.stage_id.clone();
+        persist(db, &mut run, &definition, &stage_id, &[])?;
+        return Ok(StageOutcome {
+            status: StageStatus::Blocked { message },
+            run,
+        });
+    }
     let stage_id = run.stage_id.clone();
     let evaluation = evaluate_from(workspace, &mut run, &definition, 0, Vec::new())?;
     persist(db, &mut run, &definition, &stage_id, &evaluation.records)?;

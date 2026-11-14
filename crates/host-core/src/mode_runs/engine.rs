@@ -98,6 +98,30 @@ pub fn open_run(db: &Database, session_id: &str) -> Result<Option<ModeRun>> {
 /// `modes.start`: open a run of the session's staged mode for the user turn
 /// that started it. `workspace` receives template artifacts.
 pub fn start(db: &Database, workspace: &Path, params: StartParams) -> Result<ClaimResult> {
+    start_with_snapshot(db, workspace, params, None)
+}
+
+/// An explicit queued Goal starts independently from the input preference.
+pub fn start_goal(
+    db: &Database,
+    workspace: &Path,
+    params: StartParams,
+    value: &Value,
+) -> Result<ClaimResult> {
+    start_with_snapshot(
+        db,
+        workspace,
+        params,
+        Some(snapshot::validate(value, GOAL_MODE_ID)?),
+    )
+}
+
+fn start_with_snapshot(
+    db: &Database,
+    workspace: &Path,
+    params: StartParams,
+    explicit: Option<Snapshot>,
+) -> Result<ClaimResult> {
     require_text(&params.turn_id, "turnId")?;
     if params.input.len() > MAX_TEXT_BYTES {
         return Err(invalid_argument("input is too long"));
@@ -105,12 +129,18 @@ pub fn start(db: &Database, workspace: &Path, params: StartParams) -> Result<Cla
     let conn = db.conn();
     let (mode, hash) = repository::session_mode_row(conn, &params.session_id)?
         .ok_or_else(|| mode_error("MODE_SESSION_NOT_FOUND"))?;
-    let snapshot = match hash {
-        Some(hash) => snapshot::load(conn, &hash)?,
-        None => None,
+    let snapshot = match explicit {
+        Some(snapshot) => snapshot,
+        None => match hash {
+            Some(hash) => snapshot::load(conn, &hash)?,
+            None => None,
+        }
+        .filter(|snapshot| snapshot.definition.id == mode && snapshot.definition.is_staged())
+        .ok_or_else(|| mode_error("MODE_NOT_STAGED"))?,
+    };
+    if !snapshot.definition.is_staged() {
+        return Err(mode_error("MODE_NOT_STAGED"));
     }
-    .filter(|snapshot| snapshot.definition.id == mode && snapshot.definition.is_staged())
-    .ok_or_else(|| mode_error("MODE_NOT_STAGED"))?;
     if repository::open_run(conn, &params.session_id)?.is_some() {
         return Err(mode_error("MODE_RUN_ACTIVE"));
     }
@@ -145,7 +175,7 @@ pub fn start(db: &Database, workspace: &Path, params: StartParams) -> Result<Cla
     let run = ModeRun {
         id,
         session_id: params.session_id,
-        mode_id: mode,
+        mode_id: definition.id.clone(),
         snapshot_hash: snapshot.hash.clone(),
         input: params.input,
         stage_id: first.id.clone(),
@@ -162,15 +192,21 @@ pub fn start(db: &Database, workspace: &Path, params: StartParams) -> Result<Cla
         retry_counts: BTreeMap::new(),
         rounds_completed: 0,
         tokens_used: 0,
+        elapsed_ms: 0,
+        active_since_ms: Some(now),
         max_turns: budget.max_turns,
         max_tokens: budget.max_tokens,
         artifact_paths,
         settled_turns: Vec::new(),
+        completion_report: None,
         created_at: now,
         updated_at: now,
         finished_at: None,
     };
-    repository::insert(conn, &run)?;
+    let tx = conn.unchecked_transaction()?;
+    snapshot::store(&tx, &snapshot)?;
+    repository::insert(&tx, &run)?;
+    tx.commit()?;
     if let Err(error) = artifacts::seed_templates(workspace, definition, &run.artifact_paths) {
         // The run is valid without its templates; the agent writes the file.
         tracing::warn!(run_id = %run.id, %error, "mode run template seeding failed");
@@ -212,6 +248,7 @@ pub fn claim_turn(db: &Database, params: ClaimParams) -> Result<ClaimResult> {
     if !run.state.is_open()
         || run.active_turn_id.is_some()
         || run.revision != params.expected_revision
+        || run.wait_reason == Some(WaitReason::Blocked)
     {
         return Ok(not_claimed(run));
     }
@@ -313,6 +350,8 @@ pub fn settle_turn(db: &Database, params: SettleParams) -> Result<ContinueResult
     if held && run.state.is_open() {
         run.clear_claim();
         match params.outcome {
+            // A model blocker is durable even if closing its turn aborts or errors.
+            _ if run.wait_reason == Some(WaitReason::Blocked) => {}
             TurnOutcome::Aborted => run.set_state(RunState::Paused),
             TurnOutcome::Error => {
                 run.set_waiting(WaitReason::Error);
@@ -385,8 +424,9 @@ pub fn control(db: &Database, params: ControlParams) -> Result<ContinueResult> {
             }
             _ => return Ok(unchanged(run)),
         },
-        ControlAction::Resume => match run.state {
-            RunState::Paused | RunState::BudgetExhausted => {
+        ControlAction::Resume => match (run.state, run.wait_reason) {
+            (RunState::Paused | RunState::BudgetExhausted, _)
+            | (RunState::Waiting, Some(WaitReason::Blocked)) => {
                 run.set_state(RunState::Running);
                 continue_run = run.active_turn_id.is_none();
             }
@@ -495,8 +535,8 @@ pub fn resolve(db: &Database, params: ResolveParams) -> Result<ContinueResult> {
     })
 }
 
-/// Startup recovery: claims die with the process that held them. Their runs
-/// pause; nothing is replayed.
+/// Startup recovery: claims die with the process that held them. Runs pause
+/// unless already blocked waiting for the user; nothing is replayed.
 pub fn recover(db: &Database) -> Result<usize> {
     Ok(repository::release_stale_claims(db.conn())?.len())
 }
@@ -564,7 +604,7 @@ pub fn prepare_session_mode(
     };
     let mut pause = None;
     if let Some(run) = repository::open_run(db.conn(), session_id)? {
-        if run.mode_id != mode {
+        if run.mode_id != mode && !(run.mode_id == GOAL_MODE_ID && mode == "agent") {
             if snapshot
                 .as_ref()
                 .is_some_and(|snapshot| snapshot.definition.is_staged())
@@ -596,4 +636,9 @@ pub fn configure_session_mode(db: &Database, prepared: PreparedMode) -> Result<O
     run.set_state(RunState::Paused);
     repository::save(db.conn(), &mut run)?;
     Ok(Some(run))
+}
+
+/// Compare-and-reset only the builtin Goal input preference, never model or permission.
+pub fn reset_goal_input(db: &Database, session_id: &str) -> Result<()> {
+    repository::return_session_mode(db.conn(), session_id, GOAL_MODE_ID, "agent")
 }

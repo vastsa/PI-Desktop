@@ -111,6 +111,8 @@ export type ToolTokenUsage = {
 
 export type UiMessage = {
   id: string;
+  /** Durable root conversation identity for display grouping, never authorization. */
+  turnId?: string;
   role: UiMessageRole;
   content: string;
   /** Internal model instructions/tool declarations; never a visible chat row. */

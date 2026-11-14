@@ -22,6 +22,7 @@ import type {
   ModeUpdateRequest,
 } from "@pi-desktop/shared";
 import type { ModeCatalogService } from "./mode-catalog";
+import { goalPromptMode } from "./goal-start";
 
 type HostCaller = { call<T = unknown>(method: string, params?: unknown): Promise<T> };
 
@@ -135,17 +136,26 @@ export function createModeRunCoordinator(deps: {
       sessionMode: string;
       content: string;
       origin: ModeTurnOrigin;
+      startGoal?: boolean;
     }): Promise<PreparedModeTurn | undefined> {
-      if (isPlainMode(input.sessionMode)) {
-        if (input.origin !== "user") throw Object.assign(new Error("mode run is not staged"), { errorCode: "MODE_NOT_STAGED" });
-        return undefined;
-      }
+      const sessionMode = goalPromptMode(input.sessionMode, input.startGoal);
+      const newGoal = input.origin === "user" && (input.startGoal === true || (input.startGoal === undefined && sessionMode === "goal"));
+      if (isPlainMode(sessionMode) && input.origin === "user" && !newGoal) return undefined;
       const hostCaller = host();
       const { run } = await hostCaller.call<ModeRunResult>("modes.get", { sessionId: input.sessionId });
       let selected: ModeDefinition | undefined;
       let claim: ModeClaimResult;
-      if (!run) {
-        selected = await this.definitionForPrompt(input.sessionMode);
+      if (newGoal) {
+        if (run && run.modeId !== "goal") throw Object.assign(new Error("another staged mode run is active"), { errorCode: "MODE_RUN_ACTIVE" });
+        selected = await this.definitionForPrompt("goal");
+        if (!selected) throw Object.assign(new Error("Goal is unavailable"), { errorCode: "MODE_NOT_FOUND" });
+        if (run) await this.replaceGoal(input.sessionId);
+        claim = await hostCaller.call<ModeClaimResult>("modes.startGoal", {
+          sessionId: input.sessionId, input: input.content, turnId: input.turnId, modeSnapshot: selected,
+        });
+      } else if (!run) {
+        if (isPlainMode(sessionMode)) throw Object.assign(new Error("no open mode run"), { errorCode: "MODE_RUN_NOT_FOUND" });
+        selected = await this.definitionForPrompt(sessionMode);
         if (!selected || selected.stages.length === 0) {
           if (input.origin !== "user") throw Object.assign(new Error("mode run is not staged"), { errorCode: "MODE_NOT_STAGED" });
           return selected ? { definition: selected } : undefined;
@@ -156,7 +166,7 @@ export function createModeRunCoordinator(deps: {
           input: input.content,
           turnId: input.turnId,
         });
-      } else if (run.modeId !== input.sessionMode) {
+      } else if (run.modeId !== sessionMode && !(run.modeId === "goal" && sessionMode === "agent" && input.origin !== "user")) {
         if (input.origin !== "user") throw Object.assign(new Error("mode run belongs to another mode"), { errorCode: "MODE_RUN_ACTIVE" });
         return undefined;
       } else {
@@ -193,6 +203,27 @@ export function createModeRunCoordinator(deps: {
       };
     },
 
+    /** Accepted input preference is independent from the Goal run's claim. */
+    async resetGoalInput(sessionId: string): Promise<void> {
+      await host().call("modes.resetGoalInput", { sessionId });
+    },
+
+    /** Called only after a new Goal is durable, or at its serialized dispatch. */
+    async replaceGoal(sessionId: string): Promise<void> {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { run } = await this.get(sessionId);
+        if (!run || run.modeId !== "goal") return;
+        try {
+          await this.control({ sessionId, runId: run.id, expectedRevision: run.revision, action: "stop" });
+          return;
+        } catch (error) {
+          const code = (error as { errorCode?: string; data?: { errorCode?: string } }).errorCode ??
+            (error as { data?: { errorCode?: string } }).data?.errorCode;
+          if (code !== "MODE_REVISION_CONFLICT" || attempt === 2) throw error;
+        }
+      }
+    },
+
     /** Release a claim whose turn never reached the sidecar. */
     async abandonTurn(sessionId: string, turnId: string): Promise<void> {
       await this.settleTurn(sessionId, turnId, { reason: "aborted" });
@@ -200,7 +231,11 @@ export function createModeRunCoordinator(deps: {
 
     async settleTurn(sessionId: string, turnId: string, end: ModeTurnEnd): Promise<void> {
       const entry = turnRuns.get(turnId);
-      if (!entry || entry.sessionId !== sessionId) return;
+      if (!entry || entry.sessionId !== sessionId) {
+        const { run } = await this.get(sessionId);
+        if (run?.modeId === "goal" && run.state === "running" && !run.activeTurnId) scheduleContinuation(sessionId, "host");
+        return;
+      }
       turnRuns.delete(turnId);
       const result = await host().call<ModeSettleResult>("modes.settleTurn", {
         sessionId,

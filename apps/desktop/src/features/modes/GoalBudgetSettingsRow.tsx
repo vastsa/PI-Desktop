@@ -58,7 +58,7 @@ export function GoalBudgetSettingsRow({
           const label = t(field === "maxTurns" ? "settings.goalBudgetTurns" : "settings.goalBudgetTokens");
           return (
             <label key={field} className="settings-goal-budget-field">
-              <span>{label}</span>
+              <span className="settings-goal-budget-label">{label}</span>
               <Input
                 className="settings-goal-budget-input"
                 inputMode="numeric"
