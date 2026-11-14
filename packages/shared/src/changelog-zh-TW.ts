@@ -5,6 +5,7 @@ export const zhTWEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "在 README 預覽和聊天中，將 Mermaid 圖表複製為 SVG 文字或匯出為獨立的 SVG 檔案。",
       "在上下文檢查器與回合用量膠囊中查看每輪與整個對話的費用，訂閱用量與按量計費分開顯示。",
       "把影片放進 startup 資料夾即可當成啟動動畫；播放結束後主介面漸顯。",
       "外掛可列出已儲存的專案及其資料夾，無須切換目前工作階段。",

@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copie diagramas Mermaid como texto SVG ou exporte arquivos SVG independentes, inclusive nas prévias de README.",
       "Veja quanto custa cada turno e a conversa inteira no inspetor de contexto e na cápsula de uso do turno, com o uso da assinatura separado do gasto por uso.",
       "Use seu próprio vídeo como animação de inicialização: coloque um na pasta \"startup\" e a interface aparece com um fade ao terminar.",
       "Plugins podem listar projetos salvos e suas pastas sem trocar a sessão ativa.",

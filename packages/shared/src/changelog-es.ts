@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copia diagramas Mermaid como texto SVG o expórtalos como archivos SVG independientes, también desde las vistas previas de README.",
       "Consulta cuánto cuesta cada turno y la conversación completa en el inspector de contexto y la cápsula de uso del turno, con el uso de suscripción separado del gasto por uso.",
       "Usa tu propio vídeo como animación de inicio: coloca uno en la carpeta «startup» y la interfaz aparece con un fundido al terminar.",
       "Los plugins pueden listar los proyectos guardados y sus carpetas sin cambiar la sesión activa.",

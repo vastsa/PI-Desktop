@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Gerenderte Mermaid-Diagramme als SVG-Text kopieren oder als eigenständige SVG-Dateien exportieren, auch in README-Vorschauen.",
       "Sieh im Kontextinspektor und in der Rundennutzungs-Kapsel, was jede Runde und die ganze Unterhaltung kostet; Abo-Nutzung wird getrennt von nutzungsbasierten Kosten gezeigt.",
       "Eigenes Video als Startanimation verwenden: einfach eines in den Ordner „startup“ legen; danach wird die Oberfläche eingeblendet.",
       "Plugins können gespeicherte Projekte und ihre Ordner auflisten, ohne die aktive Sitzung zu wechseln.",

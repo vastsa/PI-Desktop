@@ -5,6 +5,7 @@ export const zhCNEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "在 README 预览和聊天中，将 Mermaid 图表复制为 SVG 文本或导出为独立的 SVG 文件。",
       "在上下文检查器和回合用量胶囊中查看每轮与整个会话的费用，订阅用量与按量计费分开显示。",
       "把视频放进 startup 文件夹即可当作启动动画；播放结束后主界面渐显。",
       "插件可列出已保存的项目及其文件夹，无需切换当前会话。",

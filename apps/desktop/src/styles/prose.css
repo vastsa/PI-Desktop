@@ -637,6 +637,10 @@
   opacity: 0.72;
 }
 
+.mermaid-svg[hidden] {
+  display: none;
+}
+
 .mermaid-svg > svg {
   display: block;
   width: 100%;
