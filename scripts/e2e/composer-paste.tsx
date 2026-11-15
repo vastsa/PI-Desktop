@@ -1278,6 +1278,7 @@ globalThis.composerHistoryProbe = async (phase) => {
       } as unknown as AppState;
       const queueRuntime = {
         beginNavigationIntent: () => 1,
+        sessionModeSelections: new Map(),
         submittedComposerDrafts: new Map(),
         sessionTranscriptCache: new Map(),
         insertOptimisticUserMessage: () => {},
@@ -1300,6 +1301,7 @@ globalThis.composerHistoryProbe = async (phase) => {
         messageErrorFromUnknown: () => { throw new Error("unexpected prompt failure"); },
         assistantErrorMessage: () => { throw new Error("unexpected prompt failure"); },
         materializeDraftSession: async () => "history-created-session",
+        flushPendingSessionConfiguration: async () => {},
       });
       historySendPrompt = queueSlice.sendPrompt;
       api.prompt = async (input) => {
@@ -1311,7 +1313,10 @@ globalThis.composerHistoryProbe = async (phase) => {
       };
       try {
         await press("Enter");
-        await started;
+        await Promise.race([
+          started,
+          latestSubmission.then(() => { throw new Error("Home submission settled before reaching the prompt boundary"); }),
+        ]);
         const homeSubmission = latestSubmission;
         render("paste-b");
         releaseSend();
