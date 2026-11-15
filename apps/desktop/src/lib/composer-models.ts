@@ -17,6 +17,35 @@ export function sameComposerModelId(left: string, right: string): boolean {
   return modelWireIdsEqual(left, right);
 }
 
+/**
+ * Catalog/discovery metadata for a configured model id — the same modalities
+ * source session launch reads from its catalog row. Callers of
+ * `isImageOnlyChatModel` must resolve and pass this so every chat-eligibility
+ * answer (picker, defaults, subagents, canSend, launch) sees one truth (#2253).
+ */
+export function composerModelMetadata(
+  discovered: readonly ModelInfo[] | undefined,
+  modelId: string | undefined,
+): ModelInfo | undefined {
+  if (!modelId) return undefined;
+  return (discovered ?? []).find((model) => sameComposerModelId(model.modelId, modelId));
+}
+
+/**
+ * One chat-eligibility answer everywhere: a model bound for image generation
+ * stays chat-eligible unless its discovered metadata names no text output or
+ * its id is a pure image-generation endpoint (#2253).
+ */
+export function composerModelChatEligible(
+  imageGeneration: ImageGenerationBindings | null | undefined,
+  providerId: string | undefined,
+  modelId: string | undefined,
+  discovered?: readonly ModelInfo[],
+): boolean {
+  const metadata = composerModelMetadata(discovered, modelId);
+  return !isImageOnlyChatModel(imageGeneration, providerId, modelId, metadata);
+}
+
 function configuredModelIds(provider: ConfiguredProvider): string[] {
   const ids = (provider.models ?? [])
     .map((binding) => binding.id.trim())

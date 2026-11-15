@@ -25,7 +25,7 @@ export function SubagentFallbackModels({ primary, values, choices, providers, on
     const choice = subagentModelDisplay(pin, providers, imageGenerationBindings(
       useAppStore.getState().settings?.imageGenerationModels,
       useAppStore.getState().settings?.imageGeneration,
-    ));
+    ), useAppStore.getState().providerModels);
     return { choice, text: choice ? `${choice.providerName}/${choice.modelId}` : pin };
   });
   const move = (index: number, delta: number) => {

@@ -411,7 +411,14 @@ export function Composer({
     : !!provider &&
       provider.enabled &&
       !!modelId &&
-      !isImageOnlyChatModel(imageGenerationCandidates, provider.id, modelId) &&
+      // Same eligibility session launch enforces: the discovered/catalog row's
+      // output modalities decide, so canSend and launch cannot disagree (#2253).
+      !isImageOnlyChatModel(
+        imageGenerationCandidates,
+        provider.id,
+        modelId,
+        selectedModelInfo,
+      ) &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
   const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);

@@ -367,8 +367,8 @@ test("adding a service only claims the app default while none resolves", () => {
   // default provider to be runnable (enabled, credentialed, a chat model
   // configured), so a keyless default row cannot block the new provider.
   // Provider readiness and default selection use the same exact chat choices.
-  assert.match(pageSource, /chatModelOptions\(\[currentProvider\], imageGenerationCandidates\)/);
-  assert.match(pageSource, /providerServesChatModels\(provider, imageGenerationCandidates\)/);
+  assert.match(pageSource, /chatModelOptions\(\[currentProvider\], imageGenerationCandidates, providerModels\)/);
+  assert.match(pageSource, /providerServesChatModels\(provider, imageGenerationCandidates, providerModels\)/);
 });
 
 test("a saved image selection never takes the app's image default", () => {
@@ -416,7 +416,7 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
 test("new chat default skips only a pure image-generation endpoint", () => {
   // A dual-capability image-marked model is a legitimate chat default (#2253);
   // only a model no chat route can serve is skipped.
-  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!isImageOnlyChatModel\(imageGenerationCandidates, saved\.id, model\.id\)/);
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!isImageOnlyChatModel\(\s*imageGenerationCandidates,\s*saved\.id,\s*model\.id,/);
   assert.match(pageSource, /if \(!keepsCurrentDefault && firstModelId\)/);
 });
 

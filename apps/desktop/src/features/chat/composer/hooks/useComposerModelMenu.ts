@@ -291,8 +291,15 @@ export function useComposerModelMenu({
     await thinkingQueueRef.current?.idle();
     // A pure image-generation endpoint cannot be selected for chat; a
     // dual-capability model marked for image generation stays selectable
-    // (#2253).
-    if (isImageOnlyChatModel(imageGenerationCandidates, candidate.id, nextModelId)) return;
+    // (#2253). The discovered row's modalities are the same answer session
+    // launch reads, so the menu cannot offer what launch would reject.
+    if (isImageOnlyChatModel(
+      imageGenerationCandidates,
+      candidate.id,
+      nextModelId,
+      providerModels[candidate.id]?.find((entry) =>
+        sameComposerModelId(entry.modelId, nextModelId)),
+    )) return;
     try {
       const nextModelProvider = thinkingProviderForModel(
         candidate,

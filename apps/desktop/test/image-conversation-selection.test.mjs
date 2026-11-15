@@ -22,7 +22,7 @@ const bindings = [pureImage, dualCapability];
  * boundary is mocked at `runtimeState.host`, so no real model call happens.
  * The launch must succeed end to end — no `.catch()` swallowing errors.
  */
-async function makeLaunchRuntime({ bindingForModel = () => undefined } = {}) {
+async function makeLaunchRuntime({ bindingForModel = () => undefined, modelConfigFor, launchProviders } = {}) {
   const calls = [];
   const shell = { id: "cmd", label: "Command Prompt", dialect: "cmd", available: true, isDefault: true };
   const runtimeProvider = {
@@ -39,7 +39,7 @@ async function makeLaunchRuntime({ bindingForModel = () => undefined } = {}) {
         case "commandShells.list":
           return { configuredId: null, effective: shell, fallback: false, choices: [shell] };
         case "providers.list":
-          return { providers: [runtimeProvider] };
+          return { providers: launchProviders ?? [runtimeProvider] };
         case "providers.getSecret":
           return {};
         case "skills.disabledBuiltins":
@@ -71,7 +71,12 @@ async function makeLaunchRuntime({ bindingForModel = () => undefined } = {}) {
     },
     sessionProjects: new Map(),
     dataDir: "/tmp/pi-desktop-launch-test",
-    modelsDevCatalog: { configureAccount: () => {}, ensureLoaded: async () => {}, findModel: () => undefined },
+    modelsDevCatalog: {
+      configureAccount: () => {},
+      ensureLoaded: async () => {},
+      findModel: () => undefined,
+      ...(modelConfigFor ? { modelConfigFor } : {}),
+    },
     vendorOAuth: { bindingFor: async () => undefined },
     getWorkspacePath: () => null,
     pluginActiveInProject: () => false,
@@ -231,4 +236,114 @@ test("the chat default model is unchanged once an image binding is saved", async
   assert.equal(launch.modelId, "chat");
   assert.equal(launch.sidecarParams.provider.modelId, "chat");
   assert.deepEqual(bindingCalls, [["images", "chat"]]);
+});
+
+// #2253 follow-up: the metadata argument must reach every call site, so a
+// non-reserved image-only endpoint (a name the id regex cannot catch) is
+// excluded by its discovered modalities on the same terms session launch
+// reads them, an unknown custom model stays chat-eligible, and a
+// dual-capability model stays selectable.
+const visionImage = { providerId: "images", modelId: "vision-image" };
+const visionDiscovered = [
+  {
+    modelId: "vision-image", displayName: "vision-image", providerId: "images",
+    modalities: { input: ["text"], output: ["image"] }, capabilities: [], source: "discovered",
+  },
+];
+const visionProviders = [{ id: "images", models: [{ id: "vision-image" }, { id: "chat" }] }];
+
+test("a non-reserved image-only bound model is excluded from the default picker by its metadata", () => {
+  // With the discovered row the default picker excludes it, exactly as the
+  // Composer list and session launch do.
+  assert.deepEqual(
+    defaultModelOptions(visionProviders, [visionImage], { images: visionDiscovered }).map(x => x.modelId),
+    ["chat"],
+  );
+  // Without discovery metadata the binding alone is not a guess to exclude on.
+  assert.deepEqual(
+    defaultModelOptions(visionProviders, [visionImage]).map(x => x.modelId),
+    ["vision-image", "chat"],
+  );
+});
+
+test("a non-reserved image-only bound model cannot launch a conversation", async () => {
+  register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+  const { runtime } = await makeLaunchRuntime({
+    // The catalog row publishes image-only output modalities; the id itself
+    // matches no reserved image-endpoint name.
+    modelConfigFor: (input) => input.modelId === "vision-image"
+      ? { modalities: { input: ["text"], output: ["image"] } }
+      : {},
+  });
+  await assert.rejects(
+    runtime.resolveAgentRuntimeLaunch(
+      "session-vision-image",
+      { providerId: "images", modelId: "vision-image" },
+      { defaultProviderId: "images", defaultModelId: "chat", imageGenerationModels: [visionImage] },
+    ),
+    (error) => error.errorCode === "MODEL_NOT_CONFIGURED",
+  );
+});
+
+test("an unknown custom image-marked model launches and stays selectable", async () => {
+  register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+  const { runtime } = await makeLaunchRuntime({
+    // No catalog row at all: the endpoint is a user-configured custom model
+    // resolving to a generic, unrestricted config.
+    launchProviders: [{
+      id: "custom", authKind: "none", enabled: true,
+      defaultModelId: "custom-vision", models: [{ id: "custom-vision" }],
+    }],
+    bindingForModel: (provider, modelId) => modelId === "custom-vision"
+      ? { thinkingLevels: [], supportsImages: true, supportsDocuments: null }
+      : undefined,
+  });
+  const customProvider = { id: "custom", models: [{ id: "custom-vision" }] };
+  const customBinding = { providerId: "custom", modelId: "custom-vision" };
+  // Unknown metadata is not an inference failure: the picker keeps it.
+  assert.deepEqual(
+    defaultModelOptions([customProvider], [customBinding]).map(x => x.modelId),
+    ["custom-vision"],
+  );
+  assert.deepEqual(
+    composerModelsForProvider(customProvider, undefined, [customBinding]).map(x => x.modelId),
+    ["custom-vision"],
+  );
+  // And launch admits the pairing instead of rejecting on a guess.
+  const launch = await runtime.resolveAgentRuntimeLaunch(
+    "session-custom-vision",
+    { providerId: "custom", modelId: "custom-vision" },
+    { defaultProviderId: "custom", defaultModelId: "custom-vision", imageGenerationModels: [customBinding] },
+  );
+  assert.equal(launch.modelId, "custom-vision");
+});
+
+test("a dual-capability image-marked model is selectable and launches with discovered metadata", async () => {
+  register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+  const dualDiscovered = [
+    {
+      modelId: "gpt6.1-terra", displayName: "gpt6.1-terra", providerId: "images",
+      modalities: { input: ["text", "image"], output: ["text", "image"] }, capabilities: [], source: "discovered",
+    },
+  ];
+  // Text in the output modalities keeps the model selectable everywhere.
+  assert.deepEqual(
+    defaultModelOptions(providers, [dualCapability], { images: dualDiscovered }).map(x => x.modelId),
+    ["gpt-image-2.5", "gpt6.1-terra", "chat", "gpt-image-2.5"],
+  );
+  assert.deepEqual(
+    composerModelsForProvider(providers[0], dualDiscovered, [dualCapability]).map(x => x.modelId),
+    ["gpt-image-2.5", "gpt6.1-terra", "chat"],
+  );
+  const { runtime } = await makeLaunchRuntime({
+    bindingForModel: (provider, modelId) => modelId === dualCapability.modelId
+      ? { thinkingLevels: [], supportsImages: true, supportsDocuments: null }
+      : undefined,
+  });
+  const launch = await runtime.resolveAgentRuntimeLaunch(
+    "session-dual-discovered",
+    { providerId: "images", modelId: dualCapability.modelId },
+    { defaultProviderId: "images", defaultModelId: "chat", imageGenerationModels: [dualCapability] },
+  );
+  assert.equal(launch.modelId, dualCapability.modelId);
 });

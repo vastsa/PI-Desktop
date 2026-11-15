@@ -59,6 +59,7 @@ async function claimLoginDefault(providerId: string): Promise<void> {
     providerId,
     current,
     imageGenerationBindings(current.imageGenerationModels, current.imageGeneration),
+    useAppStore.getState().providerModels,
   );
   if (!claim) return;
   await api.setSettings({

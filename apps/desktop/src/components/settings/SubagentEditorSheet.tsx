@@ -595,7 +595,7 @@ export function SubagentEditorSheet({
     () => subagentModelChoices(providers, imageGenerationBindings(
       useAppStore.getState().settings?.imageGenerationModels,
       useAppStore.getState().settings?.imageGeneration,
-    )),
+    ), useAppStore.getState().providerModels),
     [providers],
   );
   const modelGroups = useMemo(

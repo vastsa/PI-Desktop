@@ -161,9 +161,9 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
 
 test("native model readiness never depends on a Desktop provider but read-only fails closed", () => {
   const expression = composer.match(/const modelReady = ([\s\S]*?);/)[1];
-  const evaluateReady = new Function("isImageOnlyChatModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", "remoteSession", "promptAllowed", `return ${expression}`);
-  const ready = (nativeSession, activeSessionSummary, provider, modelId, settings, remoteSession = false, promptAllowed = false) =>
-    evaluateReady(isImageOnlyChatModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId, remoteSession, promptAllowed);
+  const evaluateReady = new Function("isImageOnlyChatModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", "remoteSession", "promptAllowed", "selectedModelInfo", `return ${expression}`);
+  const ready = (nativeSession, activeSessionSummary, provider, modelId, settings, remoteSession = false, promptAllowed = false, selectedModelInfo = undefined) =>
+    evaluateReady(isImageOnlyChatModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId, remoteSession, promptAllowed, selectedModelInfo);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, undefined, undefined), true);
   assert.equal(ready(true, { capabilities: { canPrompt: false } }, { enabled: true, hasSecret: true }, "model"), false);
   assert.equal(ready(true, {}, undefined, undefined), false);
@@ -182,6 +182,15 @@ test("native model readiness never depends on a Desktop provider but read-only f
   assert.equal(ready(false, {}, imageProvider, "other-model", settings), true);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, imageProvider, "model", settings), true);
   assert.equal(ready(true, { capabilities: { canPrompt: false } }, imageProvider, "model", settings), false);
+
+  // The metadata argument reaches canSend: a non-reserved id whose discovered
+  // row publishes image-only output is unready, exactly as session launch
+  // would reject it; a dual-capability row stays ready.
+  const visionSettings = { imageGeneration: { providerId: "chat", modelId: "vision-image" } };
+  assert.equal(ready(false, {}, { ...imageProvider, id: "chat" }, "vision-image", visionSettings, false, false,
+    { modelId: "vision-image", modalities: { input: ["text"], output: ["image"] } }), false);
+  assert.equal(ready(false, {}, { ...imageProvider, id: "chat" }, "vision-image", visionSettings, false, false,
+    { modelId: "vision-image", modalities: { output: ["text", "image"] } }), true);
 
   // A remote session reads its own prompt capability and never a local provider.
   assert.equal(ready(false, {}, { enabled: true, hasSecret: true }, "model", undefined, true, true), true);
