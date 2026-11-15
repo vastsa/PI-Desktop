@@ -255,11 +255,17 @@ try {
   await evaluate(`document.querySelector('.composer-model-thinking-chip').click()`);
   await waitFor(() => evaluate(`!!document.querySelector('.composer-model-search input')`),5000,"composer model root");
   await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-option').length>0`),5000,"composer model options");
-  assert.equal(await evaluate(`document.querySelectorAll('.composer-model-option').length`),2,"the image-marked fixture also supports conversation, so both providers stay chat candidates (#2253)");
+  // The menu is a source rail plus one pane: only the active section's rows
+  // are mounted, so per-source assertions must drive the rail (#2253).
+  await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-rail-item').length===2`),5000,"composer model source rail");
+  assert.ok(await evaluate(`(() => {const labels=[...document.querySelectorAll('.composer-model-rail-label')].map(e=>e.textContent);return labels[0]==='本地测试服务' && labels[1]==='Image-only fixture';})()`),"the rail lists both chat-capable sources");
+  const paneState = (provider) => `(() => {const group=[...document.querySelectorAll('.composer-model-group')].find(e=>e.getAttribute('aria-label')===${JSON.stringify(provider)});if(!group)return null;const options=[...group.querySelectorAll('.composer-model-option')];return {options:options.length,titles:options.map(e=>e.title),checked:options.filter(e=>e.getAttribute('aria-checked')==='true').length};})()`;
+  assert.deepEqual(await evaluate(paneState("本地测试服务")),{options:1,titles:["fixture"],checked:1},"the chat default's fixture model is the active candidate");
   assert.ok(await evaluate(`![...document.querySelectorAll('.composer-model-option')].some(e=>e.title==='gpt-image-1')`),"a pure image-generation endpoint is never a chat candidate");
-  assert.ok(await evaluate(`[...document.querySelectorAll('.composer-model-group')].some(e=>e.getAttribute('aria-label')==='Image-only fixture')`));
-  // Locate the image-marked model by search over the provider-partitioned
-  // sources, select it, and send through it below (#2253).
+  await evaluate(`[...document.querySelectorAll('.composer-model-rail-item')].find(e=>e.querySelector('.composer-model-rail-label')?.textContent==='Image-only fixture').click()`);
+  await waitFor(() => evaluate(`document.querySelector('.composer-model-pane')?.querySelector('.composer-model-group')?.getAttribute('aria-label')==='Image-only fixture'`),5000,"image provider section shown by rail");
+  assert.deepEqual(await evaluate(paneState("Image-only fixture")),{options:1,titles:["fixture"],checked:0},"the image-marked fixture is offered but not yet active");
+  // Search spans sources and labels each result group; select through it.
   await evaluate(`document.querySelector('.composer-model-search input').focus()`);
   await send("Input.insertText",{text:"Image-only"});
   await waitFor(() => evaluate(`[...document.querySelectorAll('.composer-model-group-label')].some(e=>e.textContent==='Image-only fixture')`),5000,"image provider section found by search");
