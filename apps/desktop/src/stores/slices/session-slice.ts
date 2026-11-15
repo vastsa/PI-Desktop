@@ -497,6 +497,11 @@ export function createSessionSlice({
           runtime.cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
           commitSelection([], true, EMPTY_SESSION_WINDOW);
         }
+        // Baseline for the stale-read guard below. It is taken after this
+        // selection's own provisional commits (which can move the cache entry
+        // themselves) but before workspace alignment, so an idle edit landing
+        // during alignment or the read is still detected.
+        const transcriptBeforeAlignment = runtime.sessionTranscriptCache.get(id);
         if (summary) {
           if (
             !(await runtime.queueWorkspaceAlignment(() =>
@@ -567,6 +572,22 @@ export function createSessionSlice({
             }
           : { messageStart: 0, hasMoreBefore: false };
         const currentState = get();
+        // An idle-session edit (message delete, revision switch) that landed
+        // while this selection aligned the workspace or awaited the bounded
+        // read replaces the transcript cache entry; committing the stale
+        // window now would revert that edit on screen. loadSessionDetail
+        // already refuses to cache such a read, but its baseline predates this
+        // selection's own provisional commits, so the caller keeps its own.
+        // An entry that vanished (cache eviction) is not an edit.
+        const transcriptNow = runtime.sessionTranscriptCache.get(id);
+        const supersedingTranscript =
+          transcriptNow !== undefined &&
+          transcriptNow !== transcriptBeforeAlignment &&
+          !runtime.liveSessionTranscripts.has(id) &&
+          currentState.runningSessions[id] !== true
+            ? transcriptNow
+            : undefined;
+        const transcriptMovedWhileReading = supersedingTranscript !== undefined;
         const liveMessages =
           (runningAtSelection ||
             currentState.runningSessions[id] === true ||
@@ -581,6 +602,7 @@ export function createSessionSlice({
             ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
             : detail.session.messages ?? []
           : liveMessages ?? [];
+        const committedMessages = supersedingTranscript ?? selectedMessages;
         if (detail.session) {
           if (isRemoteSession(detail.session)) {
           const { messages: _messages, ...summary } = detail.session;
@@ -588,9 +610,15 @@ export function createSessionSlice({
             safeSessionSummary(summary), ...state.sessions.filter((session) => session.id !== id),
           ], state.sessionMeta) }));
           }
-          runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
+          if (!transcriptMovedWhileReading) {
+            runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
+          }
         }
-        commitSelection(selectedMessages, false, historyWindow);
+        commitSelection(
+          committedMessages,
+          false,
+          transcriptMovedWhileReading ? undefined : historyWindow,
+        );
         if (
           currentState.runningSessions[id] !== true &&
           durableCoversLiveSessionMessages(detail.session?.messages ?? [], liveMessages)
@@ -611,7 +639,7 @@ export function createSessionSlice({
         ) {
           const pin = pinnedSessionModelBinding({
             session: selected,
-            messages: selectedMessages,
+            messages: committedMessages,
             settings: get().settings,
             providers: get().providers,
             recentModels: get().recentModels,
