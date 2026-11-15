@@ -426,21 +426,36 @@ export function registerSessionIpc({
       });
     }
     if (!host) throw new Error("host unavailable");
-    const res = await host.call("session.delete", { id });
-    await persistenceOutbox.dropSession(id);
-    forgetTranscriptRewriteHistory(id);
-    // Drop the session's pi-agent so a later session with the same id (or a
-    // stale runtime) can't answer with this session's context.
-    if (sidecar) {
-      sidecar.clearProjectInstructionRoot(id);
-      sidecar.clearVendorAuthBindings(id);
-      await sidecar
-        .call("agent.disposeSession", { sessionId: id })
-        .catch(() => undefined);
+    // Same contract as session.moveProject: hold the session operation while
+    // deleting so a queued prompt cannot begin a turn between the check and
+    // the host call. The running check happens only after acquiring — a
+    // prompt holding the operation registers its turn and releases it, and
+    // the delete must still refuse that turn (issue #2291).
+    const releaseSessionOperation = await acquireSessionOperation(id);
+    try {
+      if (activeTurns.has(id)) {
+        throw Object.assign(new Error("Cannot delete a running session"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      const res = await host.call("session.delete", { id });
+      await persistenceOutbox.dropSession(id);
+      forgetTranscriptRewriteHistory(id);
+      // Drop the session's pi-agent so a later session with the same id (or a
+      // stale runtime) can't answer with this session's context.
+      if (sidecar) {
+        sidecar.clearProjectInstructionRoot(id);
+        sidecar.clearVendorAuthBindings(id);
+        await sidecar
+          .call("agent.disposeSession", { sessionId: id })
+          .catch(() => undefined);
+      }
+      sessionProjects.delete(id);
+      logger.app("session", "info", "session deleted", { sessionId: id });
+      return res;
+    } finally {
+      releaseSessionOperation();
     }
-    sessionProjects.delete(id);
-    logger.app("session", "info", "session deleted", { sessionId: id });
-    return res;
   });
   handle(IPC.invoke.sessionRename, async (id: string, title: string) => {
     if (id.startsWith("native-pi:")) {
