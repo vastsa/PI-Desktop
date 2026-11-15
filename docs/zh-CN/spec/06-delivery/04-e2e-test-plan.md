@@ -9,6 +9,14 @@
 默认值，“显示思考”仍有效；历史读取失败时明确提示且不部分应用。原有 disclosure-anchor
 测试继续验证滚动行为。
 
+### E2E-106-session-permissions
+
+Run `node scripts/e2e-plan-ui.mjs --permissions-only` against the candidate
+Desktop and Host with isolated data and no provider. Eight native approval,
+menu, rejection and reload cases verify explicit Ask/Accept edits/Auto,
+inherited global permissions and ignored legacy device history. Each seeded
+Session owns a distinct probe tool-call identity. Approval persists through
+the real preload/Main/Host path; missing-provider execution is expected.
 
 ### E2E-FILE-INDEX-git-deadline
 

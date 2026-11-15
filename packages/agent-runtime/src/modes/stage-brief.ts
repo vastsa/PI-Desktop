@@ -133,7 +133,7 @@ function originLine(turn: ModeTurnContext): string {
 
 function flowLine(stage: ModeStage): string {
   if (stage.loop) {
-    return "This stage repeats: after each turn the host starts another turn of it until its exit checks pass or the run's budget runs out.";
+    return "This stage repeats: after each normal turn the host starts another turn until its exit checks pass, a blocked report or execution error stops continuation, or the run's budget runs out.";
   }
   if (stage.exit.length === 0) {
     return `This stage has no exit checks: it completes when this turn ends, or as soon as you call ${COMPLETE_STAGE_TOOL_NAME}.`;
@@ -180,6 +180,8 @@ export function stageBrief(definition: ModeDefinition, stage: ModeStage, turn: M
   lines.push(
     "",
     `Call ${COMPLETE_STAGE_TOOL_NAME} with a short summary of what the stage produced and the complete Markdown of every artifact you write (\`artifacts: { <id>: <markdown> }\`) once the stage's work is done. If a check fails, fix the cause and call it again. When it reports that the stage advanced, finished, is blocked, or awaits approval, the turn ends.`,
+    `A blocker report is not successful completion or an ordinary progress update. Even when the saved stage instructions permit completion only after verification, use ${COMPLETE_STAGE_TOOL_NAME} with report.status: blocked if no authorized work can currently proceed. Include outcomes for the original acceptance criteria (met, unmet, or unverified, each with evidence), remainingWork, and a concrete blockerReason. This records a non-success and stops autonomous continuation until the user intervenes. Do not report blocked just because one detail is unfinished when other authorized work can proceed.`,
+    "For a completed report, every criterion must be met with fresh evidence, remainingWork must be empty, and blockerReason must be absent. Reports cannot change the objective, budget, permissions, or user controls; successful completion still requires the configured exit checks.",
   );
   return lines.join("\n");
 }

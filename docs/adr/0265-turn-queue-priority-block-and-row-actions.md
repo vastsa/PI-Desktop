@@ -82,6 +82,12 @@ queue at all even though the Host already orders it by a durable `position`.
    reason, canceling its approvals and inputs) and lets the queue run, and the
    module's drain request is remembered while a pass is running instead of being
    dropped.
+Session collaboration completion receipts are promoted automatically. A worker's
+report is not input the user queued a minute ago: when the receiving session is
+busy, the receipt runs at the very next turn boundary instead of behind the
+plain queue. The move is the same promotion a row action performs, so it inherits
+the steering rules above — a Desktop-owned turn never has another session's text
+injected into it, and the report becomes that session's next turn.
 
 ## Consequences and validation
 

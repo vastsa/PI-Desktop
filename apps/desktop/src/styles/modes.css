@@ -27,6 +27,7 @@
 .mode-run-summary {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
@@ -49,9 +50,24 @@
   white-space: nowrap;
 }
 
-.mode-run-rounds {
+.mode-run-metrics {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.mode-run-rounds,
+.mode-run-elapsed {
+  min-width: 0;
+  max-width: 100%;
   color: var(--ds-text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.mode-run-elapsed {
+  overflow-wrap: anywhere;
 }
 
 .mode-run-error {
@@ -64,7 +80,9 @@
 
 .mode-run-actions {
   display: flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
@@ -295,20 +313,45 @@
 }
 
 /* Settings → Agent behavior: Goal default budget. */
+.settings-row:has(> .settings-row-control > .settings-goal-budget) {
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.settings-row:has(> .settings-row-control > .settings-goal-budget) > .settings-row-copy {
+  flex-basis: max-content;
+}
+
+.settings-row-control:has(> .settings-goal-budget) {
+  max-width: 100%;
+}
+
 .settings-goal-budget {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
 }
 
 .settings-goal-budget-field {
   display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   gap: 6px;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
 }
 
-.settings-goal-budget-input {
+.settings-goal-budget-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.settings-goal-budget .settings-goal-budget-input.field-input {
   width: 96px;
+  min-width: 0;
+  flex: 0 1 96px;
 }

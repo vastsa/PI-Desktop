@@ -36,6 +36,7 @@ import {
 } from "./context-budget.js";
 import {
   estimateOutputCapInputTokens,
+  truncateTextWithinOutputCap,
   type OutputCapContext,
   type OutputCapReplayTarget,
 } from "./output-cap.js";
@@ -461,26 +462,19 @@ function truncateDelegateUserMessage(
   tokenBudget: number,
 ): UserMessage {
   const text = delegateUserMessageText(message);
-  const maxChars = Math.max(
+  const ceiling = Math.max(
     1,
-    Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    Math.floor(Math.max(1, tokenBudget) * ESTIMATED_TEXT_CHARS_PER_TOKEN),
   );
-  if (text.length <= maxChars) return message;
-  if (maxChars <= DELEGATE_RETENTION_TRUNCATION_MARKER.length) {
-    return {
-      ...message,
-      content: DELEGATE_RETENTION_TRUNCATION_MARKER.trim().slice(0, maxChars),
-    };
-  }
-  const retainedChars = maxChars - DELEGATE_RETENTION_TRUNCATION_MARKER.length;
-  const headChars = Math.ceil(retainedChars * 0.75);
-  const tailChars = retainedChars - headChars;
-  return {
-    ...message,
-    content: `${text.slice(0, headChars)}${DELEGATE_RETENTION_TRUNCATION_MARKER}${
-      tailChars > 0 ? text.slice(-tailChars) : ""
-    }`,
-  };
+  const content = truncateTextWithinOutputCap(
+    text,
+    tokenBudget,
+    DELEGATE_RETENTION_TRUNCATION_MARKER,
+    ceiling,
+  );
+  // A block-shaped brief that already fits stays a block-shaped message.
+  if (content === text) return message;
+  return { ...message, content };
 }
 
 /** Flatten a user message the way the session's checkpoint truncation does. */

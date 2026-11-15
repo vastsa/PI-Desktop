@@ -632,7 +632,19 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
 
 1. `schemaVersion` is required and must be a number. The current format is `1`;
    the value itself is not checked
-2. `id` / `name` / `version` / `main` are required
+2. `id` / `name` / `version` / `main` are required. The id names the
+   plugin's install and data directories and its browser session partition,
+   so the installer and loader refuse ids that could resolve to another
+   plugin's directory and share its files, storage, and network policy:
+   characters outside `[A-Za-z0-9._-]` (each of those locations maps them to
+   `_`), `.` / `..`, a trailing `.` or a leading Windows device name (`con`,
+   `nul.x`, ...), and an id whose storage name matches that of a different
+   installed or development plugin. The storage name folds the id the way
+   the platforms do (other characters to `_`, trailing dots dropped, letter
+   case ignored), so it also covers plugins an older version stored under a
+   sanitized name, such as `e2e.foo!bar` under `e2e.foo_bar`. Existing
+   plugins keep their ids and directories.
+   `pi-plugin check` still asks for the stricter shape in §1
 3. Opening `ui.panel` requires the explicit declared and granted `ui.panel`
    permission; a panel path does not implicitly grant it
 4. If `agentTools` are present, `agent.tool.register` must be declared.

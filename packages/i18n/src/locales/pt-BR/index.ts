@@ -880,6 +880,7 @@ export const ptBR = {
         budgetExhausted: "Orçamento esgotado",
       },
       rounds: "Rodadas {{completed}}/{{max}}",
+      elapsed: "Tempo {{duration}}",
       lastError: "Último erro: {{message}}",
       pause: "Pausar",
       resume: "Retomar",

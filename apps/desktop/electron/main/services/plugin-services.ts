@@ -548,15 +548,11 @@ export function createPluginServices({
     log: (level, message, data) => logger.app("plugin", level, message, { data }),
     onAuthorized: async (serverId, record): Promise<McpServerStatus> => {
       const existed = userMcp.listRecords().some((item) => item.id === serverId);
-      if (record && !existed) {
-        userMcp.setRecords([...userMcp.listRecords(), record]);
-      }
       userMcp.invalidate(serverId);
-      const status: McpServerStatus = await userMcp.test(serverId);
-      if (!existed) {
-        userMcp.invalidate(serverId);
-        userMcp.setRecords(userMcp.listRecords().filter((item) => item.id !== serverId));
-      }
+      // A server no workspace lists yet is tested as saved, without being
+      // adopted into a list, and its probe connection is dropped afterwards.
+      const status: McpServerStatus = await userMcp.test(serverId, null, existed ? undefined : record);
+      if (!existed) userMcp.invalidate(serverId);
       sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: serverId });
       return status;
     },

@@ -893,6 +893,7 @@ export const en = {
         budgetExhausted: "Budget exhausted",
       },
       rounds: "Rounds {{completed}}/{{max}}",
+      elapsed: "Elapsed {{duration}}",
       lastError: "Last error: {{message}}",
       pause: "Pause",
       resume: "Resume",

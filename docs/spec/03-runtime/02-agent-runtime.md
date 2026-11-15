@@ -230,7 +230,9 @@ multiply the budget. The captured response status is applied before classifying
 the provider message in both phases, so a generic 429 body still enters the
 429 budget while known non-retryable classifications remain terminal. Explicit
 billing/account exhaustion (including `insufficient_quota`, spend-limit
-codes, and Zhipu/Z.ai usage-limit code `1308`) is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
+codes, Zhipu/Z.ai usage-limit code `1308`, Anthropic "credit balance is too
+low", and DashScope `Arrearage` / "access denied … account is in good
+standing") is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
 builtin subagents use the same controller and policy.
 
 429 retries are silent at the transcript lifecycle: no intermediate assistant
@@ -645,7 +647,10 @@ rejects. None of these values are configurable.
 number, corrected against observed request usage. The runtime estimator anchors
 on the last assistant usage and delegates provider-message estimation to
 pi-ai, whose 1.1.0 text estimate is 3.5 characters per token; text truncation
-converts token budgets with the same ratio. Desktop-only rows keep the existing
+starts from that ratio, then shrinks the cut until the output-cap estimate
+(chars/4 plus the CJK correction) fits the same token budget. Retained tails,
+checkpoint user messages, and a delegate's retained task brief share that
+bound. Desktop-only rows keep the existing
 character heuristic. With no usage
 anchor, the budget also computes the output-cap estimator
 over non-system conversation messages plus the current system prompt and active
@@ -662,6 +667,12 @@ shows the bucket sum; reasoning is already included in output. This prevents a
 gateway's total that omits cached input from delaying compaction, while keeping
 the total-based guard when bucket details are incomplete. Billing totals remain
 unchanged.
+
+Pi usage conversion retains explicitly supplied finite, nonnegative cache-read
+and cache-write counts, including zero, through physical-request observation,
+history replay and operation deduplication. Missing or invalid cache counts
+remain absent, so consumers can distinguish a known zero from unavailable
+usage. Previously stored missing fields are not backfilled as zero.
 
 The calibration still measures the two errors separately — per-character bias
 as a scale-free ratio over the guessed tail, and an unanchored residual as a
