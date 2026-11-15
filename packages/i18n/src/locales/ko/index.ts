@@ -280,6 +280,7 @@ export const ko = {
     sortCreated: "생성일",
     sessionMoved: "{{name}}(으)로 이동함",
     moveRunningSessionBlocked: "이동하기 전에 실행 중인 세션을 중지하세요.",
+    deleteRunningSessionBlocked: "실행 중인 세션을 먼저 중지한 후 삭제하세요.",
     moveSessionUnavailable: "이 세션은 해당 프로젝트로 이동할 수 없습니다.",
     dropFolderToAddProject: "폴더를 놓으면 프로젝트로 추가됩니다.",
     dismissFolderDrop: "닫기",

@@ -273,6 +273,7 @@ export const zhCN = {
     sortCreated: "创建时间",
     sessionMoved: "已移动到 {{name}}",
     moveRunningSessionBlocked: "请先停止运行中的会话，再移动它。",
+deleteRunningSessionBlocked: "请先停止运行中的会话，再删除它。",
     moveSessionUnavailable: "该会话无法移动到目标项目。",
     dropFolderToAddProject: "拖入文件夹即可添加为项目。",
     dismissFolderDrop: "关闭",

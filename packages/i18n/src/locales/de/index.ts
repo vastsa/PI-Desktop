@@ -271,6 +271,7 @@ export const de = {
     "sortCreated": "Erstellungsdatum",
     "sessionMoved": "Verschoben nach {{name}}",
     "moveRunningSessionBlocked": "Beende zuerst die laufende Sitzung.",
+    "deleteRunningSessionBlocked": "Beenden Sie die laufende Sitzung, bevor Sie sie löschen.",
     "moveSessionUnavailable": "Diese Sitzung kann nicht in dieses Projekt verschoben werden.",
     "dropFolderToAddProject": "Ordner ablegen, um ihn als Projekt hinzuzufügen.",
     "dismissFolderDrop": "Schließen",

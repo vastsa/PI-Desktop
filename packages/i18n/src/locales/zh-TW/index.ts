@@ -273,6 +273,7 @@ export const zhTW = {
     sortCreated: "建立時間",
     sessionMoved: "已移動到 {{name}}",
     moveRunningSessionBlocked: "請先停止執行中的工作階段，再移動它。",
+deleteRunningSessionBlocked: "請先停止執行中的會話，再刪除它。",
     moveSessionUnavailable: "此工作階段無法移動到目標專案。",
     dropFolderToAddProject: "拖入資料夾即可新增為專案。",
     dismissFolderDrop: "關閉",

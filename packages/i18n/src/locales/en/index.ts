@@ -278,6 +278,7 @@ export const en = {
     sortCreated: "Created date",
     sessionMoved: "Moved to {{name}}",
     moveRunningSessionBlocked: "Stop the running session before moving it.",
+deleteRunningSessionBlocked: "Stop the running session before deleting it.",
     moveSessionUnavailable: "This session cannot move to that project.",
     dropFolderToAddProject: "Drop a folder to add it as a project.",
     dismissFolderDrop: "Dismiss",
