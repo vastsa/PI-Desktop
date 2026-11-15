@@ -1,4 +1,4 @@
-# 04. 数据存储（架构 v27）
+# 04. 数据存储（架构 v32）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
@@ -1506,3 +1506,13 @@ those runs without replaying work. Deleting a session cascades its run records.
 
 Host-started turns evaluate Auto as Accept edits. A run's original snapshot
 remains authoritative even when its source file changes.
+
+### Custom session mode identifiers (schema 32)
+
+v31→v32 迁移先备份，再在事务内移除旧库残留的 `sessions.mode` 内置模式枚举
+CHECK，使升级数据库与新建数据库一样接受经过 Host 校验的自定义模式 ID。
+保留实际表的其他字段与约束、会话数据、索引、触发器、视图和引用会话的子记录。
+提交前检查外键；成功或回滚后都恢复连接设置。已无该约束的表不重建，重新打开
+schema 32 不重复迁移；更早的模式 schema 先沿原迁移链升级。Host 的模式 ID、
+快照与权限校验不变。旧程序拒绝 schema 32；回退使用保留的
+`pi.sqlite.v31.bak`，不删除用户数据。

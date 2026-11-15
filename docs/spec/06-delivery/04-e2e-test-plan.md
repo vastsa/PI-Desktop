@@ -20886,6 +20886,16 @@ coordinator against an isolated real Host, including edit/removal, durable claim
 settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this
 does not qualify native Electron interaction or live-provider execution.
 
+Upgrade schema 28/29/30/31 fixtures that retain the builtin-only `sessions.mode`
+CHECK, then select a custom mode in an existing session and create a session in a
+custom mode. Both paths persist the definition and retain its tool policy; builtin
+switches and snapshot-mismatch rejection still work, and reopen retains the custom
+selection. Preserve populated rows, child records, indexes, triggers and views;
+failed replacement or foreign-key validation rolls back with a pre-upgrade backup.
+Coverage: `rpc/session_mode_migration_tests.rs` and
+`db/session_mode_migration_tests.rs`. This is isolated real SQLite/Host RPC coverage,
+not a claim of installed-client or live-provider acceptance.
+
 #### E2E-ISSUE-1926-scratch-prefix
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.

@@ -73,8 +73,8 @@ fn completion_report_migration_populated_30_preserves_all_data_and_pre_migration
     let turns = rows(&before, "SELECT * FROM turns");
     drop(before);
     let db = Database::open(&path).unwrap();
-    assert_eq!(version(db.conn()), 31);
-    assert_eq!(SCHEMA_VERSION, 31);
+    assert_eq!(version(db.conn()), SCHEMA_VERSION);
+    assert_eq!(SCHEMA_VERSION, 32);
     assert!(has_report(db.conn()));
     assert_eq!(rows(db.conn(), LEGACY_RUN), old_run);
     assert_eq!(rows(db.conn(), "SELECT * FROM mode_gate_results"), gates);
@@ -122,7 +122,7 @@ fn completion_report_migration_is_idempotent_with_a_preexisting_column() {
     populated_v30(&path, true);
     for _ in 0..2 {
         let db = Database::open(&path).unwrap();
-        assert_eq!(version(db.conn()), 31);
+        assert_eq!(version(db.conn()), SCHEMA_VERSION);
         assert_eq!(
             rows(db.conn(), "SELECT completion_report_json FROM mode_runs"),
             vec![vec![rusqlite::types::Value::Text(
@@ -147,7 +147,7 @@ fn schema(conn: &Connection) -> Vec<Vec<rusqlite::types::Value>> {
 fn completion_report_migration_fresh_and_older_chain_have_identical_schema_31() {
     let dir = tempfile::tempdir().unwrap();
     let fresh = Database::open(&dir.path().join("fresh.sqlite")).unwrap();
-    assert_eq!(version(fresh.conn()), 31);
+    assert_eq!(version(fresh.conn()), SCHEMA_VERSION);
     assert!(has_report(fresh.conn()));
     let path = dir.path().join("older.sqlite");
     populated_v30(&path, false);
@@ -161,7 +161,7 @@ fn completion_report_migration_fresh_and_older_chain_have_identical_schema_31() 
     .unwrap();
     drop(conn);
     let upgraded = Database::open(&path).unwrap();
-    assert_eq!(version(upgraded.conn()), 31);
+    assert_eq!(version(upgraded.conn()), SCHEMA_VERSION);
     assert_eq!(schema(upgraded.conn()), schema(fresh.conn()));
     for v in [29, 30] {
         let backup = Connection::open(migration_backup_path(&path, v)).unwrap();
