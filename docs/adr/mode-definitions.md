@@ -119,11 +119,26 @@ and `{{artifacts.<id>.path}}`. Substitution is text-only.
   author writes only the intent.
 - **Templates.** When a stage is first entered, the Host writes the template
   of each missing artifact, with variables substituted.
-- **Finishing a stage.** The model calls `CompleteStage { summary, artifacts? }`.
+- **Finishing a stage.** The model calls `CompleteStage { summary, artifacts?, report? }`.
   `artifacts` maps an artifact id to Markdown, and the Host writes that content
   to the artifact path. A contract stage can produce its artifact without
   Write permission this way. The Host then evaluates the gates in order.
   A stage without gates and without `loop` also finishes when its turn ends.
+- **Blocked reports.** Optional structured reports preserve per-criterion
+  `met` / `unmet` / `unverified` evidence, remaining work and a blocker reason.
+  A valid `blocked` report moves a live claimed run to `waiting/blocked`,
+  without success gates or a successful finish. It stops autonomous continuation
+  and survives restart. An unfinished detail alone is not a blocker when other
+  authorized work remains. A `completed` report requires all submitted outcomes
+  met and no remaining work, but never bypasses the configured exit gates.
+  Reports are model assertions, not independent verification of their truth.
+- **Completion-channel failure.** The sidecar proxy admits only
+  `modes.completeStage` and `modes.gateResult`, not user control methods.
+  Host ownership, live claim and frozen-input checks still apply. A broken
+  completion RPC or invalid Host outcome fails the current execution turn,
+  so settlement waits with an error rather than automatically continuing.
+  Transport failures have no blind autonomous retry; a user may retry after
+  recovery. Argument and artifact-content errors remain correctable.
 - **Gate failure.** The failure goes back to the model as the `CompleteStage`
   tool result, for example the missing heading or the command exit code with
   the output tail. The model continues in the same turn. `onFail.retries`
@@ -133,8 +148,9 @@ and `{{artifacts.<id>.path}}`. Substitution is text-only.
 - **Transition.** When all gates pass, the run moves to `next` and the Host
   starts that stage's first turn. When the final stage passes its gates, the
   run ends and the session switches to `returnTo`.
-- **Turns.** A loop stage continues until `CompleteStage` passes or the budget
-  is exhausted. A non-loop stage whose turn ends without finishing waits for
+- **Turns.** A loop stage continues until `CompleteStage` passes, a blocked
+  report or execution error stops continuation, or the budget is exhausted.
+  A non-loop stage whose turn ends without finishing waits for
   the user. A user message during a run is input to the current stage and
   starts no new run. Queued user messages run before any Host-started turn.
 - **Budget.** `maxTurns` and `maxTokens` limit only the turns the Host starts
@@ -196,10 +212,11 @@ Completion handling is the final stage's `exit` gates. Compaction handling is
   through `CompleteStage` are limited to the declared paths.
 - `Computer` and scheduled-task tools are available only in the builtin
   `agent` mode.
-- Turns that the user starts, or that follow a user approval in `ask: user`,
-  keep the session permission mode. Turns that the Host starts by itself
-  (loop continuation, `onFail.goto`) run at most `accept-edits`, even when the
-  session uses `auto`.
+- Builtin Goal keeps the session's selected permission on every claimed turn,
+  including Host continuation. This removes the second-turn Auto-to-Accept-edits
+  downgrade; Ask and narrower per-turn ceilings still apply. Other unattended
+  staged modes retain the `accept-edits` ceiling for `auto`. User and approval
+  turns keep the session permission.
 - No action grants a permission, a session grant or an external path.
 
 ### 7. Ownership
@@ -236,6 +253,9 @@ One migration after the current schema:
 - `mode_runs`: generalized from #2141 `session_goals`. Each row stores the mode,
   snapshot hash, input, current stage, state, budget, usage, revision, active
   claim, retries and rounds completed.
+  Schema 30 adds an active elapsed clock (`elapsed_ms`, `active_since_ms`):
+  only Running time accumulates; all other states freeze it. Recovery retains
+  checkpoints but discards uncheckpointed/offline time. Legacy rows start at zero.
 - `mode_gate_results`: run, stage, gate index, action, result, evidence and
   timestamp.
 - Existing `plan_approvals` rows stay valid. The builtin `plan` reads them in
@@ -262,6 +282,20 @@ One migration after the current schema:
   the Host rejects new Goal proposals with `PLAN_GOAL_ACTIVATION_DISABLED`.
   Old Goal approval rows stay readable, expire normally and never become
   autonomous authorization.
+  Accepted Goal input returns the Composer preference to Agent without changing
+  the run or its immutable snapshot/claim. Switching to Agent does not pause a
+  builtin Goal; an explicit Plan selection still pauses it and keeps its hard
+  deny. Goal continuations claim the run even while the input preference is Agent.
+  A new explicit Goal is accepted into the existing durable queue before the
+  old Goal is stopped. Old turn settlement precedes queue release, and the new
+  turn starts a fresh run; ordinary input is not promoted into a new Goal by a
+  later picker change. Queue restoration remains held until controller attachment.
+
+The Goal input preference and execution identity are deliberately separate.
+Relabeling the executing turn as Agent would lose the snapshot's authority;
+keeping the picker on Goal would make ordinary follow-ups ambiguous. An additive
+`startGoal` intent preserves user choice across admission and queue restoration
+without granting continuation provenance or changing custom-mode semantics.
 - IPC / RACP `mode` stays a string. Old clients that send `plan`, `goal` or
   `agent` keep working. Builtin labels are localized; user labels are shown as
   written.

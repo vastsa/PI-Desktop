@@ -765,6 +765,73 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // Anthropic bills an empty wallet as HTTP 400 with this sentence. DashScope
+  // uses code Arrearage, sometimes with only the "good standing" sentence
+  // left. pi-ai often drops the status, and a gateway may relabel the same
+  // text 429. Backing off cannot add credits.
+  it.each([
+    "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+    '{"code":"Arrearage","message":"Access denied, please make sure your account is in good standing.","type":"Arrearage"}',
+    "Arrearage",
+    "Access denied, please make sure your account is in good standing.",
+  ])(
+    "treats Anthropic credit-balance and DashScope Arrearage wording as terminal: %s",
+    (message) => {
+      expect(classifyAgentError(message)).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+      expect(classifyAgentError(new Error(message))).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+      expect(classifyAgentError(Object.assign(new Error(message), { status: 429 }))).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+      expect(classifyAgentError(Object.assign(new Error(message), { status: 400 }))).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+      });
+    },
+  );
+
+  it("treats a structured Arrearage code as terminal even when the message omits the word", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("Access denied"),
+      { code: "Arrearage" },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("does not treat nearby balance or access wording as account exhaustion", () => {
+    for (const message of [
+      "insufficient credentials",
+      "balance",
+      "credits",
+      "Access denied",
+      "Your account is in good standing.",
+    ]) {
+      expect(classifyAgentError(new Error(message))).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+    }
+    expect(classifyAgentError(Object.assign(new Error("Access denied"), { status: 429 }))).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("Your account is in good standing."),
+      { status: 429 },
+    ))).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+  });
+
   it("treats a structured HTTP 402 as a terminal provider error", () => {
     expect(classifyAgentError(Object.assign(
       new Error("Payment Required"),

@@ -2690,6 +2690,12 @@ summary can wrap rather than forcing the user to resize the divider. Complete
 descriptions remain available through the node's accessible name/hover title;
 the node and its live process never create horizontal overflow.
 
+Topology connectors use actual card centers rather than fixed pixel offsets.
+Per-card vertical stem segments join across the list gap and terminate at the
+first/last branch. The narrow-layout incoming connector shares the stem's axis,
+including a single-worker topology. Variable card heights do not leave dangling
+stem tails or detached branches.
+
 An accepted steering message creates a new visual reply without ending the
 parent runtime turn. Earlier delegation cards in that running turn keep their
 live status and Stop controls across steering replies and compaction dividers.
@@ -3044,8 +3050,11 @@ is rejected and resubmitted.
 | Rejected | no actions | run stops and session remains in its contract mode |
 | Expired / Interrupted | no actions | failed closed; a new contract must be submitted unless approval already committed, in which case session remains Agent |
 
-Approve opens the explicit Ask / Accept edits / Auto choice with the last selected
-mode remembered on this device. Reject carries no permission mode. The renderer keeps the latest proposal/execution snapshot per
+Approve opens the explicit Ask / Accept edits / Auto choice defaulting to the
+effective mode of the proposal's owning Session (`inherit` resolves through the
+global default, then Ask). Previous device-wide approval choices are ignored;
+explicit menu choices still set execution permission. Reject carries no
+permission mode. The renderer keeps the latest proposal/execution snapshot per
 session only for the current renderer lifetime from live Host events, while only
 a pending snapshot has actions or gates the Composer. Renderer reload calls
 `plans.pending` and restores a still-pending row with its original deadline while
@@ -3125,6 +3134,29 @@ reasoning-level control.
   The permission menu stays 120px wide; its Chinese Composer short label for
   Accept edits is `允许编辑` / `允許編輯` so the option remains single-line
   beside its selection indicator.
+- Accepted Goal input returns the mode chip to Agent, not the executing run.
+  The run status bar remains visible and its controls target the Host run.
+  A newer picker selection is not overwritten by a delayed send response;
+  queued model/thinking/permission changes are retained.
+- The mode-run status bar shows elapsed immediately after completed/max rounds.
+  Show every nonzero day/hour/minute/second unit, or zero seconds; do not wrap
+  days into a clock or pad unused units. Visible units are always `d`, `h`, `m`
+  and `s`, with exactly one ASCII space between each number and its unit
+  (for example, `1 d 2 h 3 m 4 s` or `0 s`), and a localized accessible elapsed
+  label. Pause/wait/stop freeze the display; legacy rows start at zero.
+  Metadata and actions may wrap as groups, never overlap or overflow.
+- Resume, Pause, Edit and Remove use icon-only `TooltipButton` controls with
+  Play, Pause, Pencil and Trash2 icons and localized tooltips/accessibility
+  names. Existing availability, busy states and handlers remain unchanged;
+  Stop, confirmations, approval and edit-form controls retain text labels.
+- A model-reported `waiting/blocked` run uses the existing blocked badge and
+  last-error text. It offers the same Resume icon instead of Pause; only that
+  explicit user control resumes it. Success, infrastructure error and blocker
+  reporting do not alter the elapsed format, layout or other state controls.
+- Consecutive root `turnId` values create independent assistant conversation
+  groups, including live streaming, background caches and restored history.
+  Delegates stay under their Task; legacy messages without a turn id retain
+  their existing grouping and autonomous turns add no synthetic user rows.
 - The right toolbar owns the remaining-capacity context inspector (when the
   newest assistant turn has usage) immediately left of one combined model ×
   reasoning-level chip. Explicitly installed plugins may add user-invoked
@@ -3489,7 +3521,7 @@ reasoning-level control.
   The control does not imply that Write/Edit/plugin tools are available.
 - Goal shares the Plan approval surface (D198). The bar reads its copy from the
   proposal's `kind`, so a goal contract shows the matching approval label and
-  artifact opener while the layout and remembered permission split-button stay
+  artifact opener while the layout and Session-default permission split-button stay
   identical. The bar sits in the transparent composer dock, so it paints
   `--ds-bg-composer` with `--ds-shadow-composer` like queued prompt rows rather
   than the in-flow `--ds-tile` wash.

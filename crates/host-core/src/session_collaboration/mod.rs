@@ -116,8 +116,10 @@ fn spawn(db: &Database, input: &Value) -> Result<Value> {
         }
         return Ok(json!({"message":existing,"sessionId":existing.target_session_id}));
     }
-    // Worker limits are read inside the transaction so the counts cannot go
-    // stale between the check and the session/link inserts below.
+    // Any further worker creation is refused below, so recursion cannot grow.
+    // How many workers may run at once is the orchestrating plugin's call: the
+    // host records who created a session and lets the plugin enforce its own
+    // configured ceiling instead of a fixed one baked in here. ADR 0237.
     let tx = db.conn().unchecked_transaction()?;
     let is_worker: bool = db.conn().query_row(
         "SELECT EXISTS(SELECT 1 FROM session_collaboration_links WHERE session_id=?1)",
@@ -126,14 +128,6 @@ fn spawn(db: &Database, input: &Value) -> Result<Value> {
     )?;
     if is_worker {
         return Err(anyhow!("PERMISSION_DENIED: workers may message existing sessions but cannot create further workers"));
-    }
-    let (parent_active,plugin_active): (i64,i64) = db.conn().query_row(
-        "SELECT COALESCE(SUM(l.created_by_session_id=?1),0),COUNT(*) FROM session_collaboration_links l
-        WHERE l.plugin_id=?2 AND (EXISTS(SELECT 1 FROM turns t WHERE t.session_id=l.session_id AND t.status='running')
-        OR EXISTS(SELECT 1 FROM session_collaboration_messages m WHERE m.target_session_id=l.session_id AND m.status IN ('queued','running')))",
-        params![source,plugin],|row|Ok((row.get(0)?,row.get(1)?)))?;
-    if parent_active >= 4 || plugin_active >= 16 {
-        return Err(anyhow!("LIMIT_EXCEEDED: active worker limit reached"));
     }
     let parent = sessions::get_session_with_options(
         db,

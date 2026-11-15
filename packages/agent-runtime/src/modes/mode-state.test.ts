@@ -118,3 +118,15 @@ describe("mode turn notices", () => {
     }
   });
 });
+
+it("adds blocked reporting to an existing immutable Goal snapshot without changing its objective or gates", async () => {
+  const snapshot = goal();
+  snapshot.prompt = "Legacy Goal instructions: complete only after verification.";
+  const before = JSON.stringify(snapshot);
+  const state = new RuntimeModeState("goal", snapshot);
+  await state.beginTurn(TURN, missing);
+  expect(state.instructions()).toContain("report.status: blocked");
+  expect(state.instructions()).toContain("not successful completion");
+  expect(state.instructions()).toContain(TURN.input);
+  expect(JSON.stringify(snapshot)).toBe(before);
+});

@@ -1,0 +1,7 @@
+2026-11-13T16:46:49.3715080Z checking source and desktop metadata
+2026-11-13T16:46:49.3913679Z hashing native binaries
+2026-11-13T16:46:49.7666385Z compiling native probe
+2026-11-13T16:46:49.9187540Z starting baseline
+2026-11-13T16:47:04.2554795Z baseline passed=True checks=13
+2026-11-13T16:47:04.2574959Z starting candidate
+2026-11-13T16:48:35.0906554Z candidate passed=True checks=144

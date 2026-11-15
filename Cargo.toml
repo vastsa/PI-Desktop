@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "LGPL-3.0-or-later"
-version = "0.21.0"
+version = "0.23.0-beta.1"
 
 # Release builds ship inside the installer; nothing reads host-core's symbol
 # table at runtime (panic messages keep their file:line locations), so strip it.

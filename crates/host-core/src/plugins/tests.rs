@@ -2584,3 +2584,125 @@ fn plugin_ui_meta_parses_the_floating_widget_placement() {
     assert!(panel.always_on_top.is_none());
     assert!(panel.resizable.is_none());
 }
+
+fn write_id_plugin(root: &Path, id: &str, marker: &str) {
+    fs::create_dir_all(root).unwrap();
+    fs::write(
+        root.join("manifest.json"),
+        json!({ "schemaVersion": 1, "id": id, "name": marker, "version": "1.0.0", "main": "main.js" })
+            .to_string(),
+    )
+    .unwrap();
+    fs::write(root.join("main.js"), format!("// {marker}\n")).unwrap();
+}
+
+fn local_install(source: &str) -> InstallOptions {
+    InstallOptions {
+        source: source.into(),
+        enable: true,
+        marketplace: None,
+        expected_shasum: None,
+        auto_update: false,
+        granted_permissions: None,
+    }
+}
+
+#[test]
+fn an_id_differing_only_in_case_cannot_take_over_an_installed_plugin() {
+    let dir = tempdir().unwrap();
+    let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    let first = dir.path().join("src-first");
+    write_id_plugin(&first, "e2e.foo", "first");
+    mgr.install_from_path(first.to_str().unwrap(), local_install("installed"))
+        .unwrap();
+    let installed_main = mgr.installed_dir("e2e.foo").join("main.js");
+    fs::write(mgr.data_dir_for("e2e.foo").join("owner.txt"), "first data").unwrap();
+
+    let second = dir.path().join("src-second");
+    write_id_plugin(&second, "e2e.Foo", "second");
+    let install = mgr
+        .install_from_path(second.to_str().unwrap(), local_install("installed"))
+        .unwrap_err();
+    let dev = mgr.load_dev(second.to_str().unwrap()).unwrap_err();
+    for error in [install, dev] {
+        assert_eq!(
+            error.to_string(),
+            "PLUGIN_INVALID: id e2e.Foo differs from installed plugin e2e.foo only in letter case"
+        );
+    }
+
+    assert_eq!(fs::read_to_string(installed_main).unwrap(), "// first\n");
+    assert_eq!(
+        fs::read_to_string(mgr.data_dir_for("e2e.foo").join("owner.txt")).unwrap(),
+        "first data"
+    );
+    let ids: Vec<_> = mgr
+        .list()
+        .into_iter()
+        .map(|plugin| plugin.id)
+        .filter(|id| id.starts_with("e2e."))
+        .collect();
+    assert_eq!(ids, ["e2e.foo"]);
+
+    // Reinstalling the same id is still an ordinary upgrade.
+    mgr.install_from_path(first.to_str().unwrap(), local_install("installed"))
+        .unwrap();
+}
+
+#[test]
+fn a_valid_id_cannot_take_over_a_legacy_plugin_stored_under_its_sanitized_name() {
+    let dir = tempdir().unwrap();
+    let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    let first = dir.path().join("src-first");
+    write_id_plugin(&first, "e2e.foo_bar", "first");
+    mgr.install_from_path(first.to_str().unwrap(), local_install("installed"))
+        .unwrap();
+    let installed_main = mgr.installed_dir("e2e.foo_bar").join("main.js");
+    let owner_file = mgr.data_dir_for("e2e.foo_bar").join("owner.txt");
+    fs::write(&owner_file, "legacy data").unwrap();
+
+    // Rewrite the state into what an older build persisted for the id
+    // `e2e.foo!bar`: the row and installed manifest keep the raw id, the
+    // directories carry its sanitized name.
+    let registry_path = dir.path().join("plugins/registry.json");
+    let registry = fs::read_to_string(&registry_path)
+        .unwrap()
+        .replace("\"e2e.foo_bar\"", "\"e2e.foo!bar\"");
+    fs::write(&registry_path, &registry).unwrap();
+    let manifest_path = mgr.installed_dir("e2e.foo_bar").join("manifest.json");
+    let manifest = fs::read_to_string(&manifest_path)
+        .unwrap()
+        .replace("\"e2e.foo_bar\"", "\"e2e.foo!bar\"");
+    fs::write(&manifest_path, manifest).unwrap();
+
+    // Restart on the new build.
+    let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    let ids = |mgr: &PluginManager| -> Vec<String> {
+        mgr.list()
+            .into_iter()
+            .map(|plugin| plugin.id)
+            .filter(|id| id.starts_with("e2e."))
+            .collect()
+    };
+    assert_eq!(ids(&mgr), ["e2e.foo!bar"]);
+
+    for alias in ["e2e.foo_bar", "e2e.Foo_Bar"] {
+        let second = dir.path().join(format!("src-{alias}"));
+        write_id_plugin(&second, alias, "second");
+        let install = mgr
+            .install_from_path(second.to_str().unwrap(), local_install("installed"))
+            .unwrap_err();
+        let dev = mgr.load_dev(second.to_str().unwrap()).unwrap_err();
+        for error in [install, dev] {
+            assert_eq!(
+                error.to_string(),
+                format!("PLUGIN_INVALID: id {alias} would share storage with installed plugin e2e.foo!bar")
+            );
+        }
+    }
+
+    assert_eq!(fs::read_to_string(installed_main).unwrap(), "// first\n");
+    assert_eq!(fs::read_to_string(owner_file).unwrap(), "legacy data");
+    assert_eq!(fs::read_to_string(&registry_path).unwrap(), registry);
+    assert_eq!(ids(&mgr), ["e2e.foo!bar"]);
+}

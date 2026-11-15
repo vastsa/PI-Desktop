@@ -885,6 +885,7 @@ export const tr = {
         budgetExhausted: "Bütçe tükendi",
       },
       rounds: "Turlar {{completed}}/{{max}}",
+      elapsed: "Geçen süre {{duration}}",
       lastError: "Son hata: {{message}}",
       pause: "Duraklat",
       resume: "Sürdür",

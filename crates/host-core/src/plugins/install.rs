@@ -40,6 +40,7 @@ impl PluginManager {
             };
 
             let manifest = Self::read_manifest(&extracted_root)?;
+            self.ensure_storage_identity_free(&manifest.id)?;
             let existing = self.get(&manifest.id);
             let upgraded = existing
                 .as_ref()
