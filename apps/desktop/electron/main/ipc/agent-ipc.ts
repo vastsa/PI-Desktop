@@ -692,11 +692,20 @@ export function registerAgentIpc({
     // queues behind it instead of starting a turn the compaction would run
     // against mid-stream (issue #2289).
     const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
+    let ownsCompaction = false;
     let detail: { session?: any };
     let launch: any;
     try {
       if (activeTurns.has(req.sessionId)) {
         throw Object.assign(new Error("Session already has an active turn"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      // A second compact behind a still-pending first one must not reach the
+      // sidecar: its failure path would clear the mark the first compaction
+      // still holds and un-guard admission (issue #2289 re-review).
+      if (compactingSessions.has(req.sessionId)) {
+        throw Object.assign(new Error("Session is already compacting"), {
           errorCode: ErrorCodes.AGENT_BUSY,
         });
       }
@@ -719,6 +728,7 @@ export function registerAgentIpc({
       // released operation is what keeps Stop live — agentAbort acquires the
       // same operation and must not wait for the summarization to finish.
       compactingSessions.add(req.sessionId);
+      ownsCompaction = true;
     } finally {
       releaseSessionOperation();
     }
@@ -749,7 +759,11 @@ export function registerAgentIpc({
       });
       return result;
     } finally {
-      compactingSessions.delete(req.sessionId);
+      // Only the call that won compaction ownership may clear the mark: a
+      // rejected duplicate must never un-guard the first compaction.
+      if (ownsCompaction) {
+        compactingSessions.delete(req.sessionId);
+      }
     }
   });
 

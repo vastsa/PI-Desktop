@@ -216,3 +216,57 @@ test("an idle compaction still refuses a session with an active turn", async () 
     (error) => error.errorCode === ErrorCodes.AGENT_BUSY,
   );
 });
+
+test("a duplicate compact is refused at admission and never clears the first guard", async () => {
+  let releaseCompact;
+  let compactCalls = 0;
+  const h = buildHarness({
+    hostCall: async (method) => {
+      if (method === "session.get") return { session: { id: "s1", compactionRecordId: "c0" } };
+      return {};
+    },
+    sidecarCall: async (method) => {
+      if (method === "agent.compact") {
+        compactCalls += 1;
+        await new Promise((resolve) => { releaseCompact = resolve; });
+        return { ok: true };
+      }
+      if (method === "agent.abort") return { ok: true };
+      throw new Error(`unexpected sidecar call: ${method}`);
+    },
+  });
+
+  const first = compact(h, { sessionId: "s1" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof releaseCompact, "function", "the first compaction is pending");
+
+  // The duplicate must be refused inside the locked admission — it must not
+  // reach the sidecar, and its failure path must not clear the first
+  // compaction's mark (issue #2289 re-review).
+  await assert.rejects(
+    compact(h, { sessionId: "s1" }),
+    (error) => error.errorCode === ErrorCodes.AGENT_BUSY &&
+      /already compacting/.test(error.message),
+  );
+  assert.equal(compactCalls, 1, "the sidecar saw only the first compaction");
+
+  // The first compaction still guards admission for prompts.
+  const guarded = await prompt(h, { sessionId: "s1", content: "hello" }).catch(
+    (error) => error,
+  );
+  assert.equal(guarded.errorCode, ErrorCodes.AGENT_BUSY);
+  assert.match(guarded.message, /compacting/);
+
+  // Stop still cancels the pending compaction while the mark holds.
+  const stopped = await abort(h, { sessionId: "s1" });
+  assert.deepEqual(stopped, { ok: true });
+
+  releaseCompact();
+  await first;
+
+  // Ownership released only by the owning call: prompts pass admission again.
+  const admitted = await prompt(h, { sessionId: "s1", content: "hello" }).catch(
+    (error) => error,
+  );
+  assert.match(admitted.message, /sentinel/);
+});
