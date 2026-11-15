@@ -1,4 +1,5 @@
-import type { AssistantImages, ProviderImages } from "@earendil-works/pi-ai";
+import { getIdentityHeaders, type AssistantImages, type ProviderImages } from "@earendil-works/pi-ai";
+import { DESKTOP_AGENT_IDENTITY } from "../agent-identity.js";
 import {
   boundedBytes, downloadGeneratedImage, generatedImageType, imageError, MAX_IMAGE_BYTES,
   type ImageDownloadOptions,
@@ -54,7 +55,13 @@ export function openAIImagesAdapter(
       try {
         const signal = options?.signal ?? new AbortController().signal;
         signal.throwIfAborted();
-        const headers = new Headers(model.headers);
+        // The client identity Pi's own APIs send, below model and request
+        // headers so a configured header still wins. Without it the request
+        // carries the runtime's default agent — Chromium's browser string
+        // under Electron `net.fetch` — which the Codex routes' bot filter
+        // rejects while the same account's chat goes through (#2238).
+        const headers = new Headers(getIdentityHeaders(model, options?.identity ?? DESKTOP_AGENT_IDENTITY));
+        for (const [name, value] of Object.entries(model.headers ?? {})) headers.set(name, value);
         if (options?.apiKey) headers.set("Authorization", `Bearer ${options.apiKey}`);
         for (const [name, value] of Object.entries(options?.headers ?? {})) {
           if (value === null) headers.delete(name);

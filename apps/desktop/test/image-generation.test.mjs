@@ -161,6 +161,7 @@ test("a signed-in Codex account generates and edits through its own image routes
       body,
       authorization: request.headers.authorization,
       originator: request.headers.originator,
+      userAgent: request.headers["user-agent"],
       contentType: request.headers["content-type"],
     });
     response.setHeader("Content-Type", "application/json");
@@ -208,6 +209,8 @@ test("a signed-in Codex account generates and edits through its own image routes
   assert.equal(requests[0].url, "/backend-api/codex/images/generations");
   assert.equal(requests[0].authorization, "Bearer chatgpt-account-token");
   assert.equal(requests[0].originator, "pi");
+  // The client identity its chat sends, not the runtime's default agent (#2238).
+  assert.match(requests[0].userAgent, /^pi\/\S+ \(/);
   assert.deepEqual(JSON.parse(requests[0].body), { model: "gpt-image-2.5", prompt: "cover", size: "auto" });
 
   const edited = await call({

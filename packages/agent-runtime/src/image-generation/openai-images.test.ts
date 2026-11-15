@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { formatUserAgent } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import { DESKTOP_AGENT_IDENTITY } from "../agent-identity.js";
 import { decodeImageBase64 } from "./openai-images.js";
 import { generateTestImage } from "./test-fixture.js";
 
@@ -41,6 +43,40 @@ describe("decodeImageBase64", () => {
   ])("rejects malformed base64 %s", (data) => {
     expect(() => decodeImageBase64(data)).toThrow(expect.objectContaining({ errorCode: "IMAGE_INVALID_RESPONSE" }));
   });
+});
+
+/** A one-image endpoint that records each request's `User-Agent`. */
+async function userAgentServer(): Promise<{ baseUrl: string; userAgents: (string | undefined)[] }> {
+  const userAgents: (string | undefined)[] = [];
+  const server = createServer(async (req, res) => {
+    for await (const _chunk of req) { /* drain the request body */ }
+    userAgents.push(req.headers["user-agent"]);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
+  });
+  servers.push(server);
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, userAgents };
+}
+
+it("identifies image requests with the client User-Agent chat requests send (#2238)", async () => {
+  const { baseUrl, userAgents } = await userAgentServer();
+
+  await generateTestImage({ baseUrl, modelId: "gpt-image-1.5" }, "A cup", new AbortController().signal);
+
+  // Not the runtime's own default (`node`, or Chromium's browser string under
+  // Electron `net.fetch`), which a bot filter in front of the vendor rejects.
+  expect(userAgents).toEqual([formatUserAgent(DESKTOP_AGENT_IDENTITY)]);
+  expect(userAgents[0]).toMatch(/^pi\//);
+});
+
+it("lets a configured User-Agent header replace the client one (#2238)", async () => {
+  const { baseUrl, userAgents } = await userAgentServer();
+
+  await generateTestImage({ baseUrl, modelId: "gpt-image-1.5", headers: { "user-agent": "custom/1.0" } },
+    "A cup", new AbortController().signal);
+
+  expect(userAgents).toEqual(["custom/1.0"]);
 });
 
 it("saves a large b64_json image returned by an OpenAI Images endpoint (#2128)", async () => {

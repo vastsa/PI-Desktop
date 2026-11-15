@@ -146,6 +146,10 @@ operation; no automatic retry may duplicate a billable image request. Batch
 workers preserve output order, propagate cancellation/timeouts, and bound download
 sizes and URL safety. Returned text, response ID and operation usage survive the
 artifact projection. Multiple images from one response count as one operation.
+The compatible adapter identifies its requests with the same client
+`User-Agent` Pi's own APIs send for chat, below model and configured headers so
+a configured header still replaces it; it never sends the Electron network
+stack's browser string.
 
 A signed-in ChatGPT (Codex) account is the one OAuth candidate: its
 `gpt-image-2.5` and `gpt-image-2` models are offered next to the models a
