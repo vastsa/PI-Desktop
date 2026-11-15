@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v28)
+# 04. Data Storage (Schema v32)
 
 ### Project path aliases (#2148)
 
@@ -2178,3 +2178,16 @@ The report is saved under the existing run revision CAS with its gate/state
 transition. A blocked report stores `waiting/blocked`, not `finished`; settlement
 releases the claim without autonomous continuation. Startup retains that wait
 and report rather than replaying work. A completed report never bypasses gates.
+
+### Custom session mode identifiers (schema 32)
+
+The backed-up transactional v31-to-v32 migration removes a retained builtin-only
+`sessions.mode` CHECK so upgraded databases accept the same validated custom mode
+ids as fresh databases. It preserves the actual table's other columns and checks,
+all session data, indexes, triggers, views, and referencing child records. Foreign
+keys are checked before commit; connection settings are restored on success or
+rollback. An already-unconstrained table is not rebuilt, and reopening schema 32
+does not repeat the migration. Earlier supported mode schemas upgrade through
+their existing migrations first. Host mode-id, snapshot, and permission validation
+is unchanged. Older binaries reject schema 32; rollback uses the retained
+`pi.sqlite.v31.bak` rather than deleting user data.
