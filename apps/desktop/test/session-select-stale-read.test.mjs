@@ -134,3 +134,51 @@ test("a cold first read without edits still hydrates the detail window", async t
   assert.deepEqual(stateRef().sessionHistory.session,
     { messageStart: 5, hasMoreBefore: true, contentLimited: true });
 });
+
+test("an idle edit that lands during workspace alignment survives the detail commit", async t => {
+  // The read starts before selectSession aligns the workspace; an edit made
+  // while the project activates is just as stale-making as one made while
+  // the read itself is in flight.
+  const stored = { id: "answer", role: "assistant", content: "before edit" };
+  const edited = [{ ...stored, content: "after edit" }];
+  const { stateRef, runtime, slice } = buildStore();
+  stateRef().sessions = [{ id: "session", mode: "agent", projectPath: "/project" }];
+  runtime.cacheSessionTranscript("session", [stored], { messageStart: 0, hasMoreBefore: false });
+  stateRef().messages = runtime.sessionTranscriptCache.get("session");
+  t.mock.method(api, "getSession", async () => ({
+    session: { id: "session", messages: [stored], messageStart: 0, hasMoreBefore: false },
+  }));
+  stateRef().activateProject = async () => {
+    runtime.cacheSessionTranscript("session", edited, { messageStart: 0, hasMoreBefore: false });
+    stateRef().messages = edited;
+    stateRef().activeProjectPath = "/project";
+    return { path: "/project" };
+  };
+  await slice.selectSession("session");
+  assert.equal(runtime.sessionTranscriptCache.get("session"), edited, "the edit cache survives");
+  assert.equal(stateRef().messages, edited, "the visible transcript keeps the edit");
+});
+
+test("selecting a retained background pane still hydrates the fresh detail", async t => {
+  // selectSession commits the retained pane itself before the read settles;
+  // that self-write must not be mistaken for a superseding edit.
+  const retained = [{ id: "answer", role: "assistant", content: "retained" }];
+  const fresh = [{ id: "answer", role: "assistant", content: "fresh" }];
+  const { stateRef, runtime, slice } = buildStore();
+  stateRef().activeSessionId = "other";
+  stateRef().sessions = [{ id: "session", mode: "agent" }, { id: "other", mode: "agent" }];
+  stateRef().retainedTranscripts = { session: retained };
+  Object.assign(stateRef(), {
+    workPanelOpen: false,
+    workPanelTabs: [],
+    activeWorkPanelTabId: null,
+    workPanelContexts: {},
+  });
+  t.mock.method(api, "getSession", async () => ({
+    session: { id: "session", messages: fresh, messageStart: 0, hasMoreBefore: false },
+  }));
+  await slice.selectSession("session");
+  assert.equal(stateRef().activeSessionId, "session");
+  assert.deepEqual(stateRef().messages, fresh);
+  assert.deepEqual(runtime.sessionTranscriptCache.get("session"), fresh);
+});

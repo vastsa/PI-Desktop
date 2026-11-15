@@ -497,6 +497,11 @@ export function createSessionSlice({
           runtime.cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
           commitSelection([], true, EMPTY_SESSION_WINDOW);
         }
+        // Baseline for the stale-read guard below. It is taken after this
+        // selection's own provisional commits (which can move the cache entry
+        // themselves) but before workspace alignment, so an idle edit landing
+        // during alignment or the read is still detected.
+        const transcriptBeforeAlignment = runtime.sessionTranscriptCache.get(id);
         if (summary) {
           if (
             !(await runtime.queueWorkspaceAlignment(() =>
@@ -531,7 +536,6 @@ export function createSessionSlice({
           );
         }
 
-        const cacheBeforeDetailRead = runtime.sessionTranscriptCache.get(id);
         detail ??= await detailPromise;
         if (!runtime.navigationIntentIsCurrent(intent)) return;
         if (detail.session && sessionReadLooksEmpty(detail.session)) {
@@ -569,18 +573,21 @@ export function createSessionSlice({
           : { messageStart: 0, hasMoreBefore: false };
         const currentState = get();
         // An idle-session edit (message delete, revision switch) that landed
-        // while the bounded read above was in flight replaces the transcript
-        // cache entry; committing the stale window now would revert that edit
-        // on screen. #2233 taught loadSessionDetail itself to refuse caching
-        // such a read — the caller-level cache write and commit need the same
-        // guard. The comparison needs no "captured an entry" precondition: a
-        // cold read captures undefined, and an edit that lands in the window
-        // moves the cache from undefined to an entry — exactly the movement
-        // the runtime guard's plain `!== previous` catches there.
-        const transcriptMovedWhileReading =
-          runtime.sessionTranscriptCache.get(id) !== cacheBeforeDetailRead &&
+        // while this selection aligned the workspace or awaited the bounded
+        // read replaces the transcript cache entry; committing the stale
+        // window now would revert that edit on screen. loadSessionDetail
+        // already refuses to cache such a read, but its baseline predates this
+        // selection's own provisional commits, so the caller keeps its own.
+        // An entry that vanished (cache eviction) is not an edit.
+        const transcriptNow = runtime.sessionTranscriptCache.get(id);
+        const supersedingTranscript =
+          transcriptNow !== undefined &&
+          transcriptNow !== transcriptBeforeAlignment &&
           !runtime.liveSessionTranscripts.has(id) &&
-          currentState.runningSessions[id] !== true;
+          currentState.runningSessions[id] !== true
+            ? transcriptNow
+            : undefined;
+        const transcriptMovedWhileReading = supersedingTranscript !== undefined;
         const liveMessages =
           (runningAtSelection ||
             currentState.runningSessions[id] === true ||
@@ -595,11 +602,7 @@ export function createSessionSlice({
             ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
             : detail.session.messages ?? []
           : liveMessages ?? [];
-        const committedMessages = transcriptMovedWhileReading
-          ? runtime.sessionTranscriptCache.get(id)
-            ?? currentState.retainedTranscripts[id]
-            ?? selectedMessages
-          : selectedMessages;
+        const committedMessages = supersedingTranscript ?? selectedMessages;
         if (detail.session) {
           if (isRemoteSession(detail.session)) {
           const { messages: _messages, ...summary } = detail.session;
