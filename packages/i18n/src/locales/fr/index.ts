@@ -271,6 +271,7 @@ export const fr = {
     "sortCreated": "Date de création",
     "sessionMoved": "Déplacé vers {{name}}",
     "moveRunningSessionBlocked": "Arrêtez la session en cours avant de la déplacer.",
+    "deleteRunningSessionBlocked": "Arrêtez la session en cours avant de la supprimer.",
     "moveSessionUnavailable": "Cette session ne peut pas être déplacée vers ce projet.",
     "dropFolderToAddProject": "Déposez un dossier pour l'ajouter comme projet.",
     "dismissFolderDrop": "Fermer",

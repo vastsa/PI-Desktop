@@ -280,6 +280,7 @@ export const tr = {
     sortCreated: "Oluşturma tarihi",
     sessionMoved: "{{name}} konumuna taşındı",
     moveRunningSessionBlocked: "Taşımadan önce çalışan oturumu durdurun.",
+    deleteRunningSessionBlocked: "Silmeden önce çalışan oturumu durdurun.",
     moveSessionUnavailable: "Bu oturum o projeye taşınamaz.",
     dropFolderToAddProject: "Proje olarak eklemek için bir klasör bırakın.",
     dismissFolderDrop: "Kapat",

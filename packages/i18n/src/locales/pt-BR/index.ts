@@ -270,6 +270,7 @@ export const ptBR = {
     sortCreated: "Data de criação",
     sessionMoved: "Movido para {{name}}",
     moveRunningSessionBlocked: "Interrompa a sessão em execução antes de movê-la.",
+    deleteRunningSessionBlocked: "Encerre a sessão em execução antes de excluí-la.",
     moveSessionUnavailable: "Esta sessão não pode ser movida para esse projeto.",
     dropFolderToAddProject: "Solte uma pasta para adicioná-la como projeto.",
     dismissFolderDrop: "Dispensar",
