@@ -335,6 +335,7 @@ export const fr = {
     sessionMissing: "Cette session n'existe plus",
   },
   "chat": {
+    fileLineReferenceLimit: "Vous pouvez ajouter jusqu’à {{count}} références à des lignes de fichier par message.",
     promptRetractionFailed: "Impossible de restaurer le brouillon en toute sécurité. La conversation a été conservée.",
     "tableActions": "Actions du tableau",
     "markdownPlainTextFallback": "La réponse volumineuse est affichée en texte brut pour préserver la réactivité.",

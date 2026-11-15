@@ -335,6 +335,7 @@ export const es = {
     sessionMissing: "Esa sesión ya no existe",
   },
   "chat": {
+    fileLineReferenceLimit: "Puedes añadir hasta {{count}} referencias a líneas de archivo por mensaje.",
     promptRetractionFailed: "No se pudo restaurar el borrador de forma segura. Se ha conservado la conversación.",
     "tableActions": "Acciones de tabla",
     "markdownPlainTextFallback": "La respuesta extensa se muestra como texto sin formato para mantener la fluidez.",
