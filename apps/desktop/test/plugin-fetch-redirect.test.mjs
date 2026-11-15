@@ -126,9 +126,8 @@ test("the timeout aborts a pending response", async (t) => {
 
 test("capability query exposes supported policies without making a request", async (t) => {
   const { runtime } = await fixture(t);
-  assert.deepEqual(await runtime.invokePanelBridge("test.redirect", "net.getCapabilities"), {
-    fetchRedirectModes: ["follow", "error", "manual"],
-  });
+  const capabilities = await runtime.invokePanelBridge("test.redirect", "net.getCapabilities");
+  assert.deepEqual(capabilities.fetchRedirectModes, ["follow", "error", "manual"]);
 });
 
 for (const backend of ["default", "injected"]) {

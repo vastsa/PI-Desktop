@@ -12,7 +12,7 @@ import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
+import { pluginNetCapabilities, pluginNetFetch, parseFetchRedirect, type PluginFetchTransport, type PluginNetFetchRequest } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
 import { assertLocalPluginRoot, pluginFsReadOptions, readRemotePluginFiles, type PluginRemoteFilesRead } from "./plugin-remote-files";
 import { getModuleDirectory } from "./module-path";
@@ -2584,7 +2584,9 @@ export class PluginRuntime {
           url: String(payload?.url ?? ""),
           method: payload?.method ? String(payload.method) : undefined,
           headers: (payload?.headers as Record<string, string> | undefined) ?? undefined,
-          body: payload?.body ? String(payload.body) : undefined,
+          body: payload?.bodyBase64 === undefined
+            ? (payload?.body ? String(payload.body) : undefined) : payload?.body,
+          bodyBase64: payload?.bodyBase64,
           timeoutMs: typeof payload?.timeoutMs === "number" ? payload.timeoutMs : undefined,
           redirect: payload?.redirect,
         });
@@ -6476,15 +6478,8 @@ export class PluginRuntime {
         closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
-        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"] }),
-        fetch: async (input: {
-          url: string;
-          method?: string;
-          headers?: Record<string, string>;
-          body?: string;
-          timeoutMs?: number;
-          redirect?: unknown;
-        }) => {
+        getCapabilities: async () => pluginNetCapabilities(),
+        fetch: async (input: PluginNetFetchRequest) => {
           this.assertPermission(loaded, "net.fetch");
           const redirect = parseFetchRedirect(input.redirect);
           try {

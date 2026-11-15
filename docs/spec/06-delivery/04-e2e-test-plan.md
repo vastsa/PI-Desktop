@@ -4523,6 +4523,34 @@ window; opening a normal panel afterward must still work.
 - **Status**: Automated protocol E2E via `pnpm test:e2e:plugin-fetch-redirect`.
   The sample panel's native-window gesture remains manual; no desktop is attached.
 
+#### E2E-PLUGIN-fetch-binary-body
+
+- **Preconditions**: Current-main task candidate, built workspace packages, real
+  plugin child processes, isolated application/workspace directories and loopback
+  HTTP fixtures. The desktop profile and real provider credentials are separate.
+- **Steps**: 1) Query network capabilities through both worker RPC and panel
+  dispatch. 2) Upload arbitrary bytes, an empty body and existing Unicode text
+  through default and injected transports; upload exactly 16 MiB through worker
+  IPC and loopback HTTP. 3) Try malformed Base64, mixed body fields and over-limit
+  bodies. 4) Register a fixture upload tool and
+  invoke it with a trusted background-session context while another project is
+  visible. Read two staged PNGs through scoped `fs.readPreview`, construct ordered
+  multipart `image[]` parts and submit to `/images/edits`. 5) Repeat with missing
+  grants, a denied domain, an out-of-scope path and a stale workspace pin.
+  6) Exercise redirect refusal/follow and timeout for binary requests.
+- **Expected**: Capabilities advertise binary bodies and a 16777216-byte decoded
+  limit. HTTP receives exact bytes, including original ordered PNGs from the
+  invoking session. Invalid input and permission/scope/workspace failures make no
+  endpoint request. Redirect, timeout, abort and payload-free audit rules hold;
+  existing text requests remain compatible. Provider editing quality and account
+  entitlement require separate authorized validation.
+- **Specs linked**: `07-plugins/03-plugin-api.md`, `07-plugins/04-plugin-security.md`,
+  ADR `plugin-fetch-binary-body`
+- **Acceptance**: G + Security
+- **Milestone**: Post-MVP plugin API
+- **Status**: Automated protocol E2E via `pnpm test:e2e:plugin-reference-upload`;
+  no running desktop instance is attached.
+
 #### E2E-024E: High-risk plugin APIs require grants
 
 - **Preconditions**: Notes plugin installed with explicit grants.
@@ -11404,6 +11432,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-038, E2E-SETTINGS-inline-capability-imports, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PROVIDER-custom-endpoint-no-api-key, E2E-PLUGIN-session-orchestrator-real-workers, E2E-PLUGIN-provider-catalog-add-service, E2E-SESSION-outbox-unclassifiable-failure-does-not-stall-the-queue |
 | F — Persistence (project ordering) | E2E-251 |
 | G / Security — Fetch redirect policy | E2E-PLUGIN-fetch-redirect-policy |
+| G / Security — Binary reference upload | E2E-PLUGIN-fetch-binary-body |
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-provider-catalog-add-service, E2E-PLUGIN-reviews-public-reads |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-SETTINGS-inline-capability-imports, E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PROVIDER-custom-endpoint-no-api-key, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-provider-catalog-add-service, E2E-PLUGIN-reviews-public-reads |

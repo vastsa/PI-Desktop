@@ -21,6 +21,7 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
+| plugin-fetch-binary-body | [Binary request bodies in host-mediated plugin fetch](plugin-fetch-binary-body.md) | Implemented candidate |
 | mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
 | sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |
 | steering-local-tool-interruption | [Steering waits for confirmed tool settlement](steering-local-tool-interruption.md) | Accepted |

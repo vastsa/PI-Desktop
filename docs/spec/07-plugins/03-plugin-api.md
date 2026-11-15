@@ -1218,11 +1218,20 @@ pi.net.fetch(input: {
  method?: string
  headers?: Record<string, string>
  body?: string
+ bodyBase64?: string // canonical Base64; mutually exclusive with body
  timeoutMs?: number
  redirect?: "follow" | "error" | "manual"
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+`body` remains a UTF-8 text body. `bodyBase64` supplies arbitrary request bytes,
+including multipart image uploads, through the same host-mediated transport.
+It must use canonical standard Base64 with normal padding and no whitespace;
+an empty string is valid. Supplying both fields, invalid encoding or more than
+16 MiB of decoded bytes fails with `INVALID_ARGUMENT` before network I/O.
+The limit includes the complete multipart body, including fields and boundaries.
+The plugin owns multipart construction and the corresponding Content-Type.
+Both worker RPC and panel dispatch preserve bytes; errors and audits omit them.
 
 `redirect` is optional: omitted or `follow` preserves the existing policy (up to
 five followed 3xx responses with Location, relative to the current URL, each
@@ -1241,14 +1250,25 @@ transport. Every followed hop still passes the existing permission/egress
 checks; these modes grant no additional network access. Policy refusals are
 audited without response bodies or headers.
 
-Before using the option on a potentially older host, query
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>` and require
-the desired mode. This read-only query needs no network permission and performs
-no network I/O. A missing method, rejected query, or absent mode means
-unsupported: do not send the request. Older hosts may silently ignore unknown
-fetch options, so passing `redirect` alone is **not** capability detection.
-Current source implements this query; older hosts may not advertise it.
-No same-origin-only mode is introduced by this change.
+Before using these options on a potentially older host, feature-detect and query:
+
+```ts
+pi.net.getCapabilities(): Promise<{
+ fetchRedirectModes: ("follow" | "error" | "manual")[]
+ binaryRequestBody?: true
+ maxBinaryBodyBytes?: number
+}>
+```
+
+Require the desired redirect mode. For binary uploads, also require
+`binaryRequestBody === true` and a positive integer `maxBinaryBodyBytes` large
+enough for the complete decoded body. Current hosts advertise `16777216` bytes.
+This read-only query needs no network permission and performs no network I/O.
+A missing method, rejected query or absent feature means unsupported: do not
+send the request or silently drop its images. Older hosts can ignore unknown
+options, so a request field or a version string alone is not capability evidence.
+The optional binary fields preserve existing redirect-only capability responses.
+No same-origin-only mode, binary response API or streaming upload is introduced.
 
 `fetch` answers with the upstream response unchanged — `status`, `headers`, and
 `bodyText` — so a `429` is data your plugin can read, `Retry-After` included,
