@@ -230,6 +230,33 @@ export function ModelConfigPage() {
           ...current,
           ...plan,
         };
+        // The image bindings this save writes are `plan.imageGenerationModels`,
+        // so the new marking is judged from post-save state — never from the
+        // pre-save `imageGenerationCandidates` memo, which cannot see what this
+        // save just marked (#2304 review). A dual-capability model keeps its
+        // chat default; only a default this save left unable to chat is
+        // migrated, and only to a chat model the saved provider still serves.
+        // With no replacement the stored default is left exactly as saved —
+        // the image picker and the chat menus stay the user's own choices.
+        const savedChatOptions = chatModelOptions(
+          [saved],
+          plan.imageGenerationModels,
+          providerModels,
+        );
+        const migratableDefault =
+          current.defaultProviderId === saved.id && !!current.defaultModelId?.trim() &&
+          !savedChatOptions.some(({ modelId }) =>
+            sameWireId(modelId, current.defaultModelId ?? ""),
+          );
+        if (migratableDefault) {
+          const replacement = savedChatOptions.find(
+            ({ modelId }) => !sameWireId(modelId, current.defaultModelId ?? ""),
+          );
+          if (replacement) {
+            nextSettings.defaultProviderId = saved.id;
+            nextSettings.defaultModelId = replacement.modelId;
+          }
+        }
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
         showToast(t(editingProvider ? "settings.providerUpdated" : "settings.providerSaved"), {
