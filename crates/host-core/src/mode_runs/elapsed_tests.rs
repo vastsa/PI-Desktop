@@ -307,7 +307,7 @@ fn elapsed_schema_29_upgrade_preserves_populated_runs_queue_and_backup() {
         .conn()
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 31);
+    assert_eq!(version, 32);
     assert_eq!(version, SCHEMA_VERSION);
     for state in LEGACY_STATES {
         let run = repository::owned(db.conn(), state, state).unwrap();

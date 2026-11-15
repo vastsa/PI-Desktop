@@ -21,6 +21,9 @@ mod worktree_rpc;
 mod session_mode_create_tests;
 
 #[cfg(test)]
+mod session_mode_migration_tests;
+
+#[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
 mod review_rpc_tests;

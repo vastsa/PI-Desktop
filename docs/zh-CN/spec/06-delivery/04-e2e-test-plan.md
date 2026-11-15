@@ -10623,6 +10623,13 @@ coordinator against an isolated real Host, including edit/removal, durable claim
 settlement and unavailable-mode cleanup. The sidecar boundary is synthetic; this
 does not qualify native Electron interaction or live-provider execution.
 
+升级仍带有 `sessions.mode` 内置模式枚举 CHECK 的 schema 28/29/30/31 测试库，
+在已有会话切换自定义模式，并直接用自定义模式创建会话。两条路径均保存定义并
+保留工具策略；内置模式切换和快照不匹配拒绝仍正常，重开后保留模式选择。
+保留原数据、子记录、索引、触发器和视图；替换或外键检查失败时回滚并保留升级前
+备份。覆盖：`rpc/session_mode_migration_tests.rs`、`db/session_mode_migration_tests.rs`。
+这是隔离的真实 SQLite/Host RPC 验证，不代表安装版界面或真实供应商验收。
+
 #### E2E-ISSUE-1926-scratch-prefix
 
 创建配置相同但 scratch 不同的真实 runtime，基础提示段相同且尾部各保留自身路径；验证 shell 语法和自定义提示兼容，不调用真实供应商。
