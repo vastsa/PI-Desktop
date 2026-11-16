@@ -1,5 +1,9 @@
 # E2E Scenarios: Plugins and Extensions
 
+## E2E-plugin-view-refresh-order
+
+Hold the first project's plugin view request, switch projects and complete the second request, then resolve or reject the first. Verify the production WorkPanel launcher retains only the current project's views. Also switch projects without another request and reject stale writes. Coverage: `plugin-view-refresh-order.test.mjs`, view contracts and `scripts/e2e-plugin-view-refresh-order.mjs` with production WorkPanel/useAppStore in Electron. Host view results are controlled.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Plugins, MCP, trusted extensions, subagents, hooks, skills, and generated UI.
 > Scenario template, gates, and traceability live in the plan.
 
