@@ -1,5 +1,9 @@
 # E2E Scenarios: Providers and Models
 
+## E2E-provider-refresh-remote-identity
+
+Render the normal Composer toolbar for an active remote session that denies Stop/local tools, then refresh providers while session inventory omits the Host. Verify the remote identity and capability restrictions remain, and the Stop control remains disabled. Return an authoritative summary and verify its updated capabilities replace the retained value. Coverage: `provider-refresh-remote-identity.test.mjs`, remote project regressions and `scripts/e2e-provider-refresh-remote-identity.mjs` with production ComposerToolbar/useAppStore in Electron.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Provider setup, credentials, OAuth, model catalogs, wire protocols, usage, and hosted search.
 > Scenario template, gates, and traceability live in the plan.
 

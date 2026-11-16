@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+Refreshing provider settings preserves the active remote session's safe identity and capabilities when its Host is temporarily absent from the session inventory. Returned authoritative summaries still replace it. Remote filesystem paths never become a local workspace target, and missing inventory cannot turn denied remote controls into local defaults. (Refs #2370)
+
 Workspace file index Git queries settle at their deadline or output limit,
 even when inherited child pipes do not close. Composer file search and the
 Files index then use the existing bounded filesystem fallback (Refs #1731).
