@@ -349,6 +349,9 @@ export function Composer({
     settings,
     providers,
     recentModels,
+    // Discovery metadata decides image-only exclusion, matching the model
+    // menu and canSend below (#2253).
+    discovered: providers.flatMap((candidate) => providerModels[candidate.id] ?? []),
   });
   const provider = providers.find(candidate => candidate.id === selectedModel.providerId);
   const modelId = selectedModel.modelId;
