@@ -104,6 +104,21 @@ describe("host ports", () => {
     expect(summary?.projectId).toBeUndefined();
   });
 
+  it("trusts a reported project id instead of asking for the project table", async () => {
+    const calls: string[] = [];
+    const port = createHostSessionPort(() => ({
+      async call<T>(method: string) {
+        calls.push(method);
+        if (method === "session.get") {
+          return { session: { id: "s1", projectId: "7", projectPath: "/home/user/work/pi" } } as T;
+        }
+        throw new Error(`unexpected ${method}`);
+      },
+    }));
+    expect(await port.get("s1")).toMatchObject({ id: "s1", projectId: "7" });
+    expect(calls).toEqual(["session.get"]);
+  });
+
   it("round-trips queue records through the host-core RPC shape", async () => {
     const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
     const store = createHostQueueStore(() => ({

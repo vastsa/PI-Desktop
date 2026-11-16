@@ -90,12 +90,16 @@ export type HostProjectRow = { id: number; path: string };
  * for `session/attach`, prompts, and configuration, so the lookup has to happen
  * there too. Without it the id disappears the moment a client attaches, and the
  * renderer can no longer place the session under its project group.
+ *
+ * A record that already carries the RPC field is authoritative and costs no
+ * lookup, so a host that reports ids pays nothing and a host that stores only
+ * paths still resolves them.
  */
 export async function withProjectIds(
   host: HostRpc,
   records: HostSessionRecord[],
 ): Promise<SessionSummary[]> {
-  const needsLookup = records.some((record) => record.projectPath);
+  const needsLookup = records.some((record) => !record.projectId && record.projectPath);
   const byPath = new Map<string, string>();
   if (needsLookup) {
     const { projects } = await host.call<{ projects?: HostProjectRow[] }>("projects.list", {});
