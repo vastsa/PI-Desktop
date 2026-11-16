@@ -9,7 +9,9 @@
   min-height: 28px;
   border-radius: var(--radius-sm);
   color: var(--ds-text-secondary);
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .thread-item {
@@ -37,9 +39,21 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  font-size: var(--text-md); /* session titles stay compact within the sidebar */
+  font-size: var(
+    --text-md
+  ); /* session titles stay compact within the sidebar */
   line-height: var(--leading-row);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Source tags (Pi, Remote) are badges: they never shrink or wrap into stacked
+   words in a narrow sidebar — the title next to them truncates instead. */
+.thread-item-source {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-row);
   white-space: nowrap;
 }
 
@@ -85,7 +99,9 @@
 
 /* Window blur releases hover, not selection or drag feedback. */
 .sidebar[data-window-blur="true"] .thread-item:hover:not(.active),
-.sidebar[data-window-blur="true"] .project-group:not(.is-drop-target) > .sidebar-session-group-header:hover {
+.sidebar[data-window-blur="true"]
+  .project-group:not(.is-drop-target)
+  > .sidebar-session-group-header:hover {
   background: transparent;
   color: var(--ds-text-secondary);
 }
@@ -177,7 +193,9 @@
   padding: 5px 6px;
   background: transparent;
   color: inherit;
-  font-size: var(--text-md); /* project/group labels one step quieter than sessions */
+  font-size: var(
+    --text-md
+  ); /* project/group labels one step quieter than sessions */
   font-weight: var(--font-weight-medium);
   line-height: var(--leading-compact);
   text-align: left;
@@ -241,7 +259,8 @@
   grid-template-rows: 1fr;
   margin-left: 13px;
   padding-left: 9px;
-  transition: grid-template-rows var(--motion-duration-normal) var(--motion-ease-out);
+  transition: grid-template-rows var(--motion-duration-normal)
+    var(--motion-ease-out);
 }
 
 .sidebar-session-group-body.project.collapsed {
@@ -281,7 +300,9 @@
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   text-align: left;
-  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .sidebar-load-more:hover {
@@ -354,8 +375,6 @@
 .thread-item.selected.active {
   background: var(--ds-bg-active);
 }
-
-
 
 /* ============================================================
    Project-level running affordances: count badge + activity rail.
