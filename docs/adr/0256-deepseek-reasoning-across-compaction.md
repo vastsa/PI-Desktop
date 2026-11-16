@@ -11,47 +11,23 @@
 ## Context
 
 DeepSeek thinking mode requires every replayed Completions assistant message to
-carry a reasoning field (`reasoning_content`, or `reasoning_text` /
-`reasoning` on some relays). Official `deepseek.com` endpoints accept `""` for
-turns that produced no thinking (D389 / #223). OpenCode and third-party relays
-for DeepSeek V4.1 Flash reject empty echoes with HTTP 400 ("reasoning_text must
-be passed back").
-
-Codex-shaped compaction (ADR 0064 / ADR 0136) drops assistant turns from the
-retained tail so tool-call pairs cannot strand and completed user prompts do
-not look like new tasks. That also drops thinking. Reloading a session rebuilds
-assistant content from `UiMessage.thinking` without a Completions
-`thinkingSignature`, so convertMessages silently omits the reasoning field and
-the #223 empty backfill fills `""` — which strict relays reject.
+carry a reasoning field (`reasoning_content`, or `reasoning_text` / `reasoning`
+on some relays). Official `deepseek.com` endpoints accept `""` for turns that
+produced no thinking (D389 / #223).
 
 ## Decision
 
 1. History rebuild stamps `thinkingSignature: "reasoning_content"` only for
-   DeepSeek-compatible OpenAI Completions rows. Other APIs keep unsigned
-   thinking so pi-ai preserves their existing plain-text fallback; their
-   provider-native signatures are not interchangeable with Completions fields.
+   DeepSeek-compatible OpenAI Completions rows.
 2. Checkpoints for models with `requiresReasoningContentOnAssistantMessages`
-   store the last few thinking turns in opaque `details.retainedReasoning`
-   (text + thinking only, no tool calls). Session context injects those turns
-   between the compaction summary and the user tail only for the live
-   DeepSeek-compatible Completions binding; other providers do not receive
-   synthetic DeepSeek reasoning.
+   store the last few thinking turns in opaque `details.retainedReasoning` (text
+   + thinking only, no tool calls).
 3. The pi-ai patch backfills the reasoning field already present on the history
-   (`reasoning_content` | `reasoning_text` | `reasoning`). Official DeepSeek
-   URLs keep empty-string fill. Non-official DeepSeek-family Completions rows
-   set `requiresNonEmptyReasoningReplay` and receive the documented placeholder
-   `[reasoning not retained for this turn]` instead of `""`.
+   (`reasoning_content` | `reasoning_text` | `reasoning`).
 4. ADR 0136 retained-tail rules are unchanged: user-only tails, no tool-call
    replay.
 5. Amendment (D677, #1945): the field is taken from the newest assistant row
-   that has real reasoning, not from fixed list order. Every assistant row is
-   normalized to that one field: real reasoning under another field name is
-   moved there, and the placeholder fills only rows with no reasoning at all.
-   A rebuilt row is stamped `reasoning_content` while a live relay row keeps
-   `reasoning_text`; the old pass picked `reasoning_content` and filled the
-   placeholder over the live row's real reasoning, in the field the model
-   reads, and the model echoed it. A leading echo of the placeholder in stored
-   thinking is neither displayed nor replayed.
+   that has real reasoning, not from fixed list order.
 
 ## Consequences
 
@@ -61,7 +37,6 @@ the #223 empty backfill fills `""` — which strict relays reject.
 - Checkpoint `details` grow by a bounded reasoning excerpt; the visible
   transcript and host schema do not change.
 - Unit tests cover convertMessages + compaction retained-reasoning wire shape.
-  Live OpenCode / aggregator verification remains deferred (see E2E-005E).
 
 ## Alternatives
 

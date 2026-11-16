@@ -6,23 +6,18 @@
 
 ## Context
 
-Temporary sessions intentionally keep `projectPath` empty so they do not
-inherit or mutate the currently visible project. That left their native tools
-without a root, however, even though each session already owns a deterministic
-`<data_dir>/scratch/<sessionId>` directory. The empty home also used the same
-hero copy for a temporary chat and for having no active session.
+Temporary sessions intentionally keep `projectPath` empty so they do not inherit
+or mutate the currently visible project. That left their native tools without a
+root, however, even though each session already owns a deterministic
+`<data_dir>/scratch/<sessionId>` directory.
 
 ## Decision
 
 1. Host-core resolves a persisted path-less session's tool workspace to its own
    `<data_dir>/scratch/<sessionId>` directory and creates that directory when
-   the binding is first resolved. The session schema remains unchanged and
-   `projectPath` stays absent.
+   the binding is first resolved.
 2. Read, Glob, Grep, Write, Edit, and Bash use that scratch directory as the
-   temporary session's workspace root. The root is never taken from the
-   mutable global workspace, and the existing containment and permission
-   checks still apply. A missing-session compatibility call may retain the
-   legacy global-workspace fallback.
+   temporary session's workspace root.
 3. Plan and Goal workspace validation continues to require a persisted project
    binding, so a scratch workspace does not broaden contract-mode execution.
 4. The renderer derives the empty-home hero state from the selected session:
@@ -44,7 +39,7 @@ hero copy for a temporary chat and for having no active session.
 
 - **Inherit the visible project:** rejected because it violates the temporary
   session isolation invariant and can mutate unrelated project files.
-- **Add a new persisted session type:** rejected because the existing
-  path-less session model already provides the correct lifecycle and grouping.
-- **Leave tools unavailable:** rejected because it makes temporary chats
-  unable to perform otherwise isolated inspection and scratch work.
+- **Add a new persisted session type:** rejected because the existing path-less
+  session model already provides the correct lifecycle and grouping.
+- **Leave tools unavailable:** rejected because it makes temporary chats unable
+  to perform otherwise isolated inspection and scratch work.

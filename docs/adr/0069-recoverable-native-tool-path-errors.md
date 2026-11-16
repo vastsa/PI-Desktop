@@ -13,43 +13,26 @@
 
 ## Context
 
-Recent durable sessions showed a repeated path-shape mismatch between the
-model and the native tools. `Read` was called with a directory after a guessed
-file name did not exist, and `Grep.path` was repeatedly given one explicit file
-even though the host accepted only directories. These were recoverable
-inspection mistakes, but they were reported as generic execution failures.
-
-The transcript compounded the problem. A failed tool row correctly retained
-its own error, while the containing activity group also derived a terminal
-failure from any child error. A later successful search and final answer could
-therefore leave a completed turn labeled `Failed after ...`.
+Recent durable sessions showed a repeated path-shape mismatch between the model
+and the native tools. `Read` was called with a directory after a guessed file
+name did not exist, and `Grep.path` was repeatedly given one explicit file even
+though the host accepted only directories.
 
 ## Decision
 
-1. Preserve D185's Agent core and deferred-tool boundary. `Glob` and `Grep`
-   remain on demand; each new Agent prompt must activate `Glob` through
-   `ToolSearch` when a directory must be listed or a file name is uncertain.
+1. Preserve D185's Agent core and deferred-tool boundary.
 2. Enforce and advertise one portable path contract:
    - `Read.path` accepts an existing regular text file, never a directory.
    - `Glob.path` accepts a directory.
-   - `Grep.path` accepts either one file or a directory tree. An explicit file
-     is searched directly, and `include` still filters its basename.
+   - `Grep.path` accepts either one file or a directory tree.
 3. A directory passed to `Read` returns public `INVALID_ARGUMENT`, not
-   `TOOL_FAILED`. Its result includes `suggestedTool: "Glob"` and bounded
-   `suggestedArgs` with the original path and `pattern: "**/*"` so the model can
-   correct the call without guessing.
-4. Host definitions, runtime TypeBox schemas, main-Agent guidance, and
-   subagent guidance carry the same path semantics. Subagents do not receive
-   `ToolSearch`, so their guidance refers only to tools actually available to
-   the definition.
-5. A tool error remains visible and auto-expanded on its own ToolCallRow. The
-   activity group represents processing duration and step containment only; it
-   never infers terminal turn failure from child rows. Terminal agent errors,
-   the TurnOutcomeCard, sidebar state, and notifications remain the single
-   turn-outcome surfaces.
+   `TOOL_FAILED`.
+4. Host definitions, runtime TypeBox schemas, main-Agent guidance, and subagent
+   guidance carry the same path semantics.
+5. A tool error remains visible and auto-expanded on its own ToolCallRow.
 
-No host protocol or storage-schema version changes. The existing tool result
-is already a structured JSON value, and the Grep input shape remains a string.
+No host protocol or storage-schema version changes. The existing tool result is
+already a structured JSON value, and the Grep input shape remains a string.
 
 ## Consequences
 
@@ -58,8 +41,8 @@ is already a structured JSON value, and the Grep input shape remains a string.
   rather than an ambiguous execution failure.
 - Recovered turns no longer look terminally failed, while the original failed
   call remains auditable in the expanded transcript.
-- Deferred search keeps the measured first-request context reduction from
-  D185; the prompt must make the per-user-prompt activation boundary explicit.
+- Deferred search keeps the measured first-request context reduction from D185;
+  the prompt must make the per-user-prompt activation boundary explicit.
 
 ## Alternatives considered
 
@@ -80,14 +63,11 @@ and common across coding-agent tool conventions.
 
 ### Mark the activity group failed after the turn settles
 
-Rejected. Settlement does not mean every intermediate tool call succeeded;
-the dedicated terminal outcome surfaces already own turn failure.
+Rejected. Settlement does not mean every intermediate tool call succeeded; the
+dedicated terminal outcome surfaces already own turn failure.
 
 ## Amendment — 2026-09-27: Agent search tools start active
 
-`Glob` and `Grep` now ship in the first Agent request alongside `Read`,
-`Bash`, `Edit`, and `Write`, as recorded in the amendment to ADR 0048. This
-supersedes Decision 1's deferral instruction and the deferred-search
-consequences above. ADR 0069's path shapes, structured Read recovery, and
-transcript outcome ownership remain unchanged; other optional capabilities
-remain available through `ToolSearch`.
+`Glob` and `Grep` now ship in the first Agent request alongside `Read`, `Bash`,
+`Edit`, and `Write`, as recorded in the amendment to ADR 0048. This supersedes
+Decision 1's deferral instruction and the deferred-search consequences above.

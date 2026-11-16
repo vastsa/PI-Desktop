@@ -13,54 +13,31 @@
 The work-panel browser was a host-built launcher row (`HEADER_TOOLS`) plus a
 Main-owned `WebContentsView` guest. Files already proved that a first-party
 surface can ship as a bundled plugin on the public `contributes.views` channel.
-Users also need the whole browser — chrome, preview, and agent CDP — to be
-optional the same way: enable/disable on the Plugins page, never uninstallable.
-
-The plugin page cannot *be* the browser. Plugin views are sandboxed, have
-`webviewTag: false`, and are confined by `net.domains`. Arbitrary http(s) and
-workspace files, plus Chrome DevTools Protocol, have to stay on a host-owned
-guest.
 
 ## Decision
 
 1. **`pi.browser` is a bundled plugin** in `apps/desktop/resources/plugins/`,
-   enabled by default, disableable, not uninstallable. It contributes view
-   `browser` (icon token `browser`, order 10) and registers the agent tool
-   `Browser`.
+   enabled by default, disableable, not uninstallable.
 2. **The guest `WebContentsView` (`persist:work-browser`) and debugger stay
-   host-owned.** Plugin chrome is a normal plugin view. The guest is stacked on
-   a content-relative hole the chrome reports through `pi.browser.setBounds`.
-3. **`browser.cdp` is a public permission** (high). `pi.browser.*` is a public
-   host API. Any plugin that declares the permission may call it. Bounds are
-   clamped to the calling plugin view so a guest cannot cover chat/composer.
+   host-owned.** Plugin chrome is a normal plugin view.
+3. **`browser.cdp` is a public permission** (high).
 4. **Raw CDP is allowlisted and deny-by-default.** Cookie, storage, target, and
-   network-interception methods are refused. No DevTools websocket is exposed.
+   network-interception methods are refused.
 5. **Host `BrowserPreview` remains a thin facade** (Plan/subagent name
-   stability). It errors if `pi.browser` is disabled; otherwise it loads the
-   workspace file into a session-owned guest and requests its side-panel tab.
-   [Background browser pages](browser-background-lifecycle.md) supersedes the
-   visible-before-operation requirement: the bundled tool uses a trusted
-   session connection without calling `reveal()` before every operation.
-   Explicit `reveal()` remains a presentation API. Background work never
-   takes focus; existing Plan/Goal action restrictions remain intact.
-6. The original singleton guest decision is superseded by
-   [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md).
-   BrowserHost now retains one page per session/tab while plugin chrome remains
-   a shared, host-controlled surface.
+   stability).
+6. The original singleton guest decision is superseded by [Retain a host-owned
+   browser page per resource tab](retained-browser-pages-per-tab.md).
 
 This supersedes ADR 0105 clause 4 (Browser remains a host-built launcher) and
-the host-launcher clause of ADR 0019. Guest ownership and navigation policy
-are unchanged. ADR 0108's "Browser as the host-built tool" clause is likewise
-superseded: the panel's launchable surfaces are plugin views.
+the host-launcher clause of ADR 0019. Guest ownership and navigation policy are
+unchanged.
 
 ## Consequences
 
-- Disabling `pi.browser` removes the launcher row, agent CDP, and guest. URL
-  chips fall back to `openExternal`. `BrowserPreview` fails closed.
+- Disabling `pi.browser` removes the launcher row, agent CDP, and guest.
 - Tools with `browser.cdp` address their invoking session's connected page;
   unscoped plugin UI calls still require the current visible Browser view.
-  Bounds remain clamped to the active browser chrome.
-- Plan still sees `BrowserPreview`. The Browser plugin tool is also visible in Plan/Goal for the four `planSafeActions` (`navigate`, `snapshot`, `screenshot`, `console`); click/fill/evaluate/cdp stay Agent-only (ADR 0211).
+- Plan still sees `BrowserPreview`.
 
 ## Alternatives considered
 

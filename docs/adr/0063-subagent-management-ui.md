@@ -9,9 +9,7 @@
 
 ADR 0062 shipped subagents without a renderer surface. A user could create a
 personal delegate only by placing a Markdown document in an implementation-
-specific location, and the shipped catalog was not visible in Settings. The
-management surface must not write tracked project files or silently introduce a
-project-level source that differs from the runtime contract.
+specific location, and the shipped catalog was not visible in Settings.
 
 ## Decision
 
@@ -24,24 +22,18 @@ User-owned definitions are Markdown files in:
 ```
 
 There is no project-level subagent directory. The application does not scan or
-write `.pi/agents` for capability management. `id == name` remains the model's
-`Task` handle, duplicate names are rejected, and the runtime's global user
-catalog is combined with the builtins without a project capability layer.
+write `.pi/agents` for capability management.
 
 ### 2. Activation is app-local
 
 The document owns prompt metadata (`name`, `description`, `tools`, `model`,
 `thinkingLevel`, and `maxTurns`) but never owns `enabled`. The enabled state is
-stored in `<data>/agent-capabilities/subagents.json`. Scanning the global
-folder removes state for deleted documents, so a missing file never leaves a
-visible pending row or an orphaned override.
+stored in `<data>/agent-capabilities/subagents.json`.
 
 ### 3. The Settings page is global-only
 
 Settings > Agent > Subagents is one fixed-height global list. It has no project
-picker, project column, or add/import action in this surface. Each row shows the
-frontmatter summary and a local enable switch; toggling it writes only the
-app-local state file and takes effect on the next runtime catalog load.
+picker, project column, or add/import action in this surface.
 
 Skills and MCP have separate Settings destinations and are not tabs inside
 Extensions. Extensions itself contains only Installed and Marketplace.
@@ -50,8 +42,7 @@ Extensions. Extensions itself contains only Installed and Marketplace.
 
 Electron supplies the global user documents to `loadSubagentDefinitions` on the
 next prompt. The renderer does not reimplement catalog precedence or invent a
-project source. Builtins and malformed documents are handled by the runtime
-loader; the management list is the scanned global user-document list.
+project source.
 
 ## Consequences
 

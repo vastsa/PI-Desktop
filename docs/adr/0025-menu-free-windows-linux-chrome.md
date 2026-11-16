@@ -10,27 +10,21 @@
 ADR 0021 introduced a native macOS system menu and a renderer-owned
 File/Edit/View/Window/Help menubar inside Windows/Linux windows. The in-window
 menubar consumes the left side of the 46px titlebar and applies a macOS menu
-model to frameless Windows/Linux chrome. Product direction now keeps that menu
-surface specific to the macOS system menu.
-
-Windows/Linux still require window controls and access to common application,
-editing, zoom, and fullscreen commands after the visible menubar is removed.
+model to frameless Windows/Linux chrome.
 
 ## Decision
 
 1. macOS keeps the conventional native Electron application menu and
    hidden-inset traffic lights defined by ADR 0021.
-2. Windows/Linux keep the frameless 46px titlebar and renderer-drawn
-   minimize, maximize/restore, and close controls, but render no application
-   menubar inside the window.
-3. Windows/Linux titlebar navigation reclaims the space previously reserved
-   for File/Edit/View/Window/Help.
+2. Windows/Linux keep the frameless 46px titlebar and renderer-drawn minimize,
+   maximize/restore, and close controls, but render no application menubar
+   inside the window.
+3. Windows/Linux titlebar navigation reclaims the space previously reserved for
+   File/Edit/View/Window/Help.
 4. Common Windows/Linux application, close-window, zoom, and fullscreen
-   shortcuts are handled without a visible menu. Standard editing shortcuts
-   remain native web-content behavior.
+   shortcuts are handled without a visible menu.
 5. Existing allowlisted menu-command and native-action IPC stays in place for
-   the macOS system menu, renderer readiness, and shortcut dispatch. No new
-   privileged surface is introduced.
+   the macOS system menu, renderer readiness, and shortcut dispatch.
 
 ## Consequences
 
@@ -46,14 +40,14 @@ editing, zoom, and fullscreen commands after the visible menubar is removed.
 
 ### Keep the renderer menubar but hide it by default
 
-Rejected because an Alt/F10-revealed menu still reserves a platform concept
-that product direction does not want inside the window.
+Rejected because an Alt/F10-revealed menu still reserves a platform concept that
+product direction does not want inside the window.
 
 ### Remove all menu-related IPC
 
 Rejected for this change because the macOS system menu still dispatches
-allowlisted renderer commands, and Windows/Linux shortcuts can reuse the
-bounded native-action surface without broadening Main-process authority.
+allowlisted renderer commands, and Windows/Linux shortcuts can reuse the bounded
+native-action surface without broadening Main-process authority.
 
 ## References
 

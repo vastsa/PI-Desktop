@@ -8,25 +8,20 @@
 
 ## Context
 
-D371 made the unsigned macOS helper visible in every distribution, including
-the DMG. The DMG's primary action is the normal app-to-Applications install,
-while the fallback is needed only when a trusted unsigned app does not open.
-The DMG should keep that fallback discoverable without presenting an executable
-command item beside the normal installation action.
+D371 made the unsigned macOS helper visible in every distribution, including the
+DMG. The DMG's primary action is the normal app-to-Applications install, while
+the fallback is needed only when a trusted unsigned app does not open.
 
 ## Decision
 
 1. The macOS DMG contains the app, the Applications link, and the opening-help
-   note only. The note is displayed in Finder as `If app won't open, read this.txt` and the
-   executable `PI-Desktop-macOS-open.command` is not included or exposed in the
-   DMG contents.
+   note only.
 2. The macOS ZIP package retains both `PI-Desktop-macOS-opening-help.txt` and
-   the executable `PI-Desktop-macOS-open.command` at its root. The helper keeps
-   D371's fixed-path, bundle-id, quarantine-only, and no-`sudo` boundaries.
-3. The shared opening note leads with the narrow Terminal fallback
-   `xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app`, limits it
-   to trusted unsigned builds, and states that signed and notarized builds do
-   not need the fallback.
+   the executable `PI-Desktop-macOS-open.command` at its root.
+3. The shared opening note leads with the narrow Terminal fallback `xattr -r -d
+   com.apple.quarantine /Applications/PI-Desktop.app`, limits it to trusted
+   unsigned builds, and states that signed and notarized builds do not need the
+   fallback.
 
 ## Consequences
 
@@ -37,20 +32,13 @@ command item beside the normal installation action.
 - DMG users with an unsigned launch failure must use the documented Terminal
   fallback; this does not widen the quarantine-clearing scope.
 
-## Verification
-
-`apps/desktop/test/packaging-footprint.test.mjs` asserts the DMG contents,
-Chinese Finder label, absence of the command helper from that list, and the
-retained ZIP helper assets. E2E-196b covers native DMG and ZIP archive
-inspection on macOS.
-
 ## Amendment (D457 / ADR 0296)
 
 Official signed DMGs no longer include the opening-help note. The two-icon
-install row is the whole DMG. The ZIP still ships the note and helper.
+install row is the whole DMG.
 
 ## Amendment (D634 / ADR 0309)
 
-Neither macOS DMG nor ZIP now ships the opening note or executable helper.
-The ZIP-helper provisions above are historical; see ADR 0309 for the current
+Neither macOS DMG nor ZIP now ships the opening note or executable helper. The
+ZIP-helper provisions above are historical; see ADR 0309 for the current
 distribution rule.

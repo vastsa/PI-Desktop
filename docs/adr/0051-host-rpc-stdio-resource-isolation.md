@@ -6,36 +6,18 @@
 ## Context
 
 The host already bounds RPC tasks, tool classes, shell processes, and queued
-work. A parallel Bash burst could nevertheless end the host with
-`Resource temporarily unavailable (os error 35)`. Electron correctly mapped
-that child exit to `HOST_UNAVAILABLE`, but the mapping hid the process-level
-failure from the session.
-
-The remaining control-path risk was host-core's use of
-`tokio::io::stdin()` and `tokio::io::stdout()`. Tokio implements these adapters
-through its blocking pool. When the OS refuses another worker thread, the
-non-mandatory blocking spawn path panics instead of returning an ordinary I/O
-error. The host then exits while tool requests are in flight. The Unix login
-shell PATH probe had a second version of the same problem because an ordinary
-`std::thread::spawn` can panic when the OS cannot create a thread.
+work. A parallel Bash burst could nevertheless end the host with `Resource
+temporarily unavailable (os error 35)`.
 
 ## Decision
 
 1. Host-core's NDJSON stdin reader runs on one named thread created with
-   `std::thread::Builder`. Its stdout writer runs on a second named thread.
-   The async RPC dispatcher communicates with those threads through channels;
-   request and tool tasks never call Tokio stdio adapters.
+   `std::thread::Builder`.
 2. The control threads retry `EINTR` and transient `EAGAIN`/`EWOULDBLOCK`
-   (`errno` 11 or 35) with a short bounded delay. The reader preserves partial
-   input until a complete line arrives, and the writer tracks partial writes so
-   a retry cannot duplicate bytes.
-3. Failure to create a control thread is returned as a host startup error. A
-   closed or unrecoverable pipe ends the normal host lifecycle and remains
-   visible to Electron's generation-aware supervision; it is never converted
-   into an unhandled Rust thread-spawn panic.
+   (`errno` 11 or 35) with a short bounded delay.
+3. Failure to create a control thread is returned as a host startup error.
 4. The login-shell PATH probe also uses `thread::Builder`; if that optional
-   helper cannot start, Bash falls back to the inherited host PATH. Existing
-   RPC and tool admission limits are unchanged.
+   helper cannot start, Bash falls back to the inherited host PATH.
 
 ## Consequences
 
@@ -45,8 +27,8 @@ shell PATH probe had a second version of the same problem because an ordinary
   pool worker per stdio operation.
 - NDJSON framing, response ordering, request concurrency, and overload codes
   remain unchanged.
-- A genuinely unavailable stdin/stdout pipe still ends the host and is
-  handled by the existing Electron restart/fatal-degradation policy.
+- A genuinely unavailable stdin/stdout pipe still ends the host and is handled
+  by the existing Electron restart/fatal-degradation policy.
 
 ## Alternatives
 
@@ -62,8 +44,8 @@ not make partial NDJSON writes or shutdown ordering explicit.
 
 ### Remove concurrency limits instead
 
-Rejected. Admission limits remain necessary for tools and subprocesses; they
-do not solve the independent control-pipe dependency on dynamic blocking-pool
+Rejected. Admission limits remain necessary for tools and subprocesses; they do
+not solve the independent control-pipe dependency on dynamic blocking-pool
 workers.
 
 ## References

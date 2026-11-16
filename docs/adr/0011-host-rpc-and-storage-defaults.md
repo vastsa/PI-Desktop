@@ -6,13 +6,13 @@
 
 ## Context
 
-After baseline 0.3.0, implementation still depended on several high-impact defaults:
+After baseline 0.3.0, implementation still depended on several high-impact
+defaults:
 
 - Electron ↔ Rust transport
 - SQLite ownership
 - default interaction mode
 - former restricted-profile tool split (superseded by ADR 0053)
-- local permission approval behavior
 
 ## Decision
 

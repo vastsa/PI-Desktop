@@ -20,35 +20,29 @@ missing or broken:
 2. `fs.openDefault` existed (ADR 0109) but left the Files UI when reveal
    replaced the header action (ADR 0111).
 3. Panel events such as `appearance:changed` were broadcast only to detached
-   `ui.panel` windows. Docked work-panel views never received them.
-4. `workspace:changed` was specified as planned. The Files view polled
-   `workspace.get` every two seconds instead.
+   `ui.panel` windows.
+4. `workspace:changed` was specified as planned.
 
 ## Decision
 
 1. Add `pi.fs.readPreview(pathFromRoot)` and the panel channel `fs.readPreview`,
    gated by the existing `fs.read` permission and the complete declared-scope
-   checks. The host classifies one existing regular file as `text`, `image`,
-   `binary`, or `tooLarge`, using the same size caps as the host Files tab
-   (512 KiB text, 5 MiB image). Images return a data URL; binary and oversized
-   files return no payload bytes. Directories are rejected.
+   checks.
 2. Broadcast every plugin panel event to both detached panel windows and live
    docked views over the same `pi-plugin-panel-event:<event>` preload channel.
 3. Deliver `workspace:changed` to panels and plugin processes whenever the
-   cached workspace path changes. The payload matches `workspace.get()`:
-   `{ path, name } | null`.
+   cached workspace path changes.
 4. Restore **Open with default app** in the bundled Files viewer, add search
    through `fs.glob`, copy the root-relative path from a user gesture, and
-   preview images through `fs.readPreview`. No private bundled-plugin channel
-   is introduced.
+   preview images through `fs.readPreview`.
 
 ## Consequences
 
-- Third-party plugins can preview images and oversized files without inventing
-  a second read API.
+- Third-party plugins can preview images and oversized files without inventing a
+  second read API.
 - A docked view follows theme, locale, and project switches live.
-- The Files plugin remains a public-API consumer; transcript `file:<path>`
-  tabs stay host-owned.
+- The Files plugin remains a public-API consumer; transcript `file:<path>` tabs
+  stay host-owned.
 
 ## Alternatives considered
 

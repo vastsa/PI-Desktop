@@ -18,31 +18,21 @@ ADR 0068 made `Cmd/Ctrl + J` an open-only action and rejected a toggle on the
 grounds that the panel header already owns collapse and that a toggle risks
 hiding the panel while the user is trying to reveal it. In use the asymmetry
 reads as a broken shortcut instead of a safeguard: the same chord that reveals
-the panel does nothing on the second press, so a keyboard-first user has to
-move to the header control to put the panel away. Every other shell surface
-bound to a chord (`Cmd/Ctrl + B` for the sidebar) toggles.
-
-The accidental-hide risk 0068 guarded against is small because the shortcut is
-symmetric and immediately reversible: the retained context, tabs, active
-resource, and committed width all survive a collapse, so an unintended press is
-undone by pressing again.
+the panel does nothing on the second press, so a keyboard-first user has to move
+to the header control to put the panel away.
 
 ## Decision
 
-1. `openWorkPanel` becomes a toggle. When the visible panel is open, the
-   shortcut collapses it through the same path as the header collapse control;
-   when it is closed, the shortcut reveals the active session's retained
-   context at its committed width without creating a resource tab.
+1. `openWorkPanel` becomes a toggle.
 2. Collapsing via the shortcut retains the session's context exactly as the
    header control does — tabs, active resource, Browser resource, and committed
    width are preserved, so a second press restores the previous surface.
 3. The shortcut id stays `openWorkPanel` so existing user keybinding overrides
    keep working; only the Settings → Shortcuts label changes to describe
    toggling.
-4. The no-active-session and Settings no-op contexts from 0068 are unchanged,
-   as are artifact-driven resource creation, session ownership, and
-   background-event isolation. No host protocol, IPC channel, or native
-   application-menu command is added.
+4. The no-active-session and Settings no-op contexts from 0068 are unchanged, as
+   are artifact-driven resource creation, session ownership, and
+   background-event isolation.
 
 ## Consequences
 

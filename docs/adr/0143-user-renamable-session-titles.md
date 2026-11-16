@@ -8,29 +8,17 @@
 Tasks are durable sessions, but their labels are currently controlled by the
 default title and first-prompt auto-title flow. Once a task has accumulated
 history, users need a stable label that is easier to recognize in the sidebar,
-Project archive, topbar, and search results. Issue #27 requests renaming a
-project task without changing the task itself.
+Project archive, topbar, and search results.
 
 ## Decision
 
 Treat a task name as session metadata and expose one shared rename dialog. The
 dialog is available from the Sidebar session overflow/right-click menu and from
-the Project archive task row. It trims input, accepts 1–80 Unicode code points,
-and keeps the Save action unavailable for an empty value. The host validates the
-same rules so direct IPC callers cannot persist invalid titles.
+the Project archive task row.
 
 Renaming updates `sessions.title` and marks its host-owned `title_source` as
 `manual`. It does not modify the transcript, message count, project binding,
-empty-session predicate, or `updated_at` activity timestamp. Plugin-generated
-titles use a compare-and-set against the automatic title, so a manual rename
-wins a race without renderer-local title state. The core's own first-prompt
-fallback keeps that source `default` and stays replaceable, which is why only a
-`manual` title opts out of automatic replacement.
-
-Historical notification title snapshots remain unchanged. Newly rendered
-surfaces read the current session summary, so the renamed title is shown in the
-Sidebar, topbar, Project archive, and search results after the local store
-update and across restart.
+empty-session predicate, or `updated_at` activity timestamp.
 
 ## Consequences
 

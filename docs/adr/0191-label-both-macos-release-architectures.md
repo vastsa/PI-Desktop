@@ -21,11 +21,8 @@ electron-builder.
    `PI-Desktop-<version>-arm64-mac.zip`.
 3. The Intel x64 lane publishes `PI-Desktop-<version>-x64.dmg` and
    `PI-Desktop-<version>-x64-mac.zip`.
-4. The convention applies to unsigned and signed macOS workflow paths. The
-   generated per-architecture updater feeds retain these final asset URLs and
-   checksums before the publish job merges them.
-5. This changes release asset naming only. Signing policy and in-app macOS
-   delivery are recorded in D450 / ADR 0289.
+4. The convention applies to unsigned and signed macOS workflow paths.
+5. This changes release asset naming only.
 
 ## Consequences
 
@@ -39,12 +36,12 @@ electron-builder.
 
 - Keep the arm64 name generic: rejected because it leaves one of the two
   architectures ambiguous.
-- Use `Intel` for x64 and `Apple-Silicon` for arm64: rejected because the release
-  matrix and Electron target use standard architecture identifiers, which are
-  shorter and easier to match to the actual package contents.
+- Use `Intel` for x64 and `Apple-Silicon` for arm64: rejected because the
+  release matrix and Electron target use standard architecture identifiers,
+  which are shorter and easier to match to the actual package contents.
 
 ## Amendment (D450 / ADR 0289)
 
-Architecture-labelled ZIP names remain the in-app updater payloads. Official
-tag artifacts are signed and notarized; the `-arm64` / `-x64` convention is
+Architecture-labelled ZIP names remain the in-app updater payloads. Official tag
+artifacts are signed and notarized; the `-arm64` / `-x64` convention is
 unchanged.

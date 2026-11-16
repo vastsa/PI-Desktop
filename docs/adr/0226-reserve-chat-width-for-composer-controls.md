@@ -8,10 +8,9 @@
 
 ## Context
 
-The sidebar and in-flow work panel can both take flex space from MainChat.
-When the remaining chat column becomes too narrow, the floating composer
-toolbar squeezes its localized chips or wraps its control groups. A visual
-overlap with a side dock is not an acceptable fallback for an input surface.
+The sidebar and in-flow work panel can both take flex space from MainChat. When
+the remaining chat column becomes too narrow, the floating composer toolbar
+squeezes its localized chips or wraps its control groups.
 
 ## Decision
 
@@ -23,10 +22,6 @@ The composer toolbar stays single-row with `flex-wrap: nowrap`, and its left and
 right control groups are non-shrinking flex items. Mode and permission labels
 remain single-line and use chip-local ellipsis when their localized text is
 longer than the available label slot.
-
-The work panel remains an in-flow renderer-owned column and does not request a
-positive native window reservation; this decision only changes the minimum
-space MainChat retains inside the renderer shell.
 
 ## Consequences
 

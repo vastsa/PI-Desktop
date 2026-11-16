@@ -23,18 +23,7 @@ invalid and then silently resolved back to the default.
 Invalid strings continue to fall back to the default so corrupt or hand-edited
 settings do not silently disable product actions. The settings UI exposes
 Disable separately from Restore default, displays a localized Unbound state, and
-keeps an unbound action out of conflict checks. The application shortcut map is
-shared by renderer dispatch, macOS menu accelerators, and the plugin launcher.
-
-When `openPluginLauncher` is unbound, Electron unregisters any previous global
-accelerator; Windows also disables the host-core `Alt+Space` hook and focused
-window fallback. Configurable macOS native-role items use a role-less clickable
-item while unbound, because Electron restores a role's default accelerator when
-its accelerator is omitted.
-
-The setting remains in the existing JSON settings object. No new IPC method,
-protocol version, storage migration, or plugin-local shortcut behavior is added.
-The value is portable and not an Electron accelerator string.
+keeps an unbound action out of conflict checks.
 
 ## Consequences
 

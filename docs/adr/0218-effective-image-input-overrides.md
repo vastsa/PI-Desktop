@@ -10,25 +10,19 @@
 Advanced model settings allow a provider binding to override whether an endpoint
 accepts image input. The override is intentionally three-state: `null` means
 follow the published model record, while `true` and `false` explicitly enable or
-disable image input. Composer model rows still derived their vision badge only
-from the published catalog, so a configured text-only model could transport an
-image while appearing text-only, or a configured vision model could advertise a
-capability that the endpoint had been disabled from using.
+disable image input.
 
 ## Decision
 
 1. Resolve the effective image-input capability for the exact provider/model
-   binding. An explicit `supportsImages` value wins; `null` or an absent value
-   follows the published model capability.
+   binding.
 2. Use that same effective result for the Composer model-row badge, attachment
-   status, and main-process image transport. Do not mutate the shared published
-   `ModelInfo` record.
+   status, and main-process image transport.
 3. Keep unknown or custom model ids conservative when no explicit binding
-   override exists. Discovery or cache metadata alone cannot promote them to
-   image transport.
-4. Preserve the existing attachment boundary: eligible images within the
-   decimal 10 MB app limit use transient image blocks; disabled, unknown, or
-   oversized images use the safe `@path` fallback.
+   override exists.
+4. Preserve the existing attachment boundary: eligible images within the decimal
+   10 MB app limit use transient image blocks; disabled, unknown, or oversized
+   images use the safe `@path` fallback.
 
 ## Consequences
 

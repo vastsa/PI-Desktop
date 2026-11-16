@@ -11,13 +11,7 @@
 D054 introduced a visible cue beside an empty draft, and D094 standardized that
 cue as the canonical PI-Desktop logo in the thread-docked composer. The home
 composer later removed the cue, leaving the two prompt rows visually
-inconsistent. In a dense transcript, the remaining decorative logo also
-consumes horizontal input space without adding navigation, status, or runtime
-meaning.
-
-Because D094 is part of the frozen product baseline, removing its docked
-composer requirement needs an explicit superseding decision even though the
-implementation is limited to renderer presentation.
+inconsistent.
 
 ## Decision
 
@@ -25,13 +19,10 @@ implementation is limited to renderer presentation.
 2. Draft text and placeholder ink begin at the input row's standard content
    gutter; no layout space is reserved for a removed mark.
 3. The renderer `BrandLogo` component continues to use the canonical asset for
-   the home hero, expanded/collapsed sidebar, and startup splash. Native Dock,
-   application-menu, and About identity continue to use their platform-specific
-   forms of the same canonical asset.
+   the home hero, expanded/collapsed sidebar, and startup splash.
 4. Session-creation controls retain their dedicated message-plus icon.
-5. This decision supersedes only D054's leading brand-cue requirement and
-   D094's docked-composer logo placement. All product naming and remaining
-   brand-asset requirements stay unchanged.
+5. This decision supersedes only D054's leading brand-cue requirement and D094's
+   docked-composer logo placement.
 
 ## Consequences
 

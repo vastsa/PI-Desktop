@@ -16,20 +16,14 @@ That made a quick capacity check compete with the conversation.
 
 1. Keep the existing click/keyboard trigger, remaining-capacity state,
    viewport-aware body portal, outside-click dismissal, and Escape behavior.
-2. Keep the panel's core summary: remaining tokens and percentage,
-   used/window counts, turn total, completed-turn generation speed, exact
-   provider usage values, aggregate tool types/calls/tokens, and the newest
-   compaction summary when present. D355 scopes occupancy, turn total, and
-   provider values to the last model request; speed and tools stay the
-   visual turn.
-3. Render the turn and speed values as unboxed inline stats. Render provider and
-   tool usage as two compact summary rows without section cards or source
-   badges. The `~` marker on the aggregate tool total remains the estimate
-   signal.
+2. Keep the panel's core summary: remaining tokens and percentage, used/window
+   counts, turn total, completed-turn generation speed, exact provider usage
+   values, aggregate tool types/calls/tokens, and the newest compaction summary
+   when present.
+3. Render the turn and speed values as unboxed inline stats.
 4. Remove per-tool rows, share bars, the provider/tool source badges, the
-   explanatory estimate paragraph, and the used-capacity meter from the
-   default panel. The underlying usage aggregation and persistence remain
-   unchanged, so this is renderer-only presentation work.
+   explanatory estimate paragraph, and the used-capacity meter from the default
+   panel.
 5. Keep the trigger and panel accessible: localized labels, dialog semantics,
    keyboard activation, focus return on Escape/outside dismissal, and collision-
    aware placement remain unchanged.

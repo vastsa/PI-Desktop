@@ -20,15 +20,6 @@ burying two conceptually distinct concerns:
    that benefits from its own destination, especially now that the global search
    dialog and command palette route users to shortcut configuration.
 
-The Model configuration destination already owns *which* provider/model the AI
-uses; the global AI-behavior controls currently share a page with theme and
-language, which is the wrong neighborhood. Developer mode is a system/advanced
-concern that fits better beside versions, logs, and updates than beside
-appearance.
-
-Changing the frozen five-destination directory (D133) requires an explicit
-baseline decision rather than a silent rewrite.
-
 ## Decision
 
 Keep the full-page Settings shell, Back to app action, search control, rail
@@ -36,8 +27,7 @@ metrics, content cards, and theme behavior unchanged. Replace the five-
 destination rail with seven destinations in this exact order:
 
 1. **Basics** (`general`, Lucide `SlidersHorizontal`) — Appearance and Defaults
-2. **全局 AI / AI** (`ai`, Lucide `Sparkles`) — Permissions and Context
-   management
+2. **全局 AI / AI** (`ai`, Lucide `Sparkles`) — Permissions and Context management
 3. **Shortcuts** (`shortcuts`, Lucide `Keyboard`) — Keyboard shortcuts
 4. **Model configuration** (`agent`, Lucide `Bot`) — provider studio and default
    model
@@ -55,12 +45,6 @@ Content moves only; no setting is added, removed, or renamed:
 - Basics keeps only Appearance and Defaults.
 - Model configuration, Import, Project archive, and their contents are
   unchanged.
-
-Destination IDs `ai` and `shortcuts` are added to the `settingsTab` state union
-and the shared settings-search index (`SETTINGS_NAV`), so global Settings search
-surfaces the new destinations and deep-links to them. Provider setup deep links
-and model-menu actions continue to target Model configuration. Settings search
-indexes the relocated rows under their new owning destination.
 
 ## Consequences
 
@@ -89,8 +73,7 @@ Rejected because the single page is long to scan and groups unrelated concerns
 
 Rejected because Model configuration owns *which* provider/model to use (a
 connection/identity concern), while permission mode and context compaction are
-*runtime behavior* concerns. Merging them overloads the provider studio page and
-hides global AI behavior behind provider setup.
+*runtime behavior* concerns.
 
 ### Move Developer to a dedicated Advanced destination
 

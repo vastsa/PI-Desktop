@@ -5,7 +5,8 @@
 
 ## Context
 
-We need an extensible multi-model agent loop, rather than implementing tool calling, streaming events, and provider adapters from scratch.
+We need an extensible multi-model agent loop, rather than implementing tool
+calling, streaming events, and provider adapters from scratch.
 
 ## Decision
 
@@ -24,7 +25,8 @@ Optionally adopt later:
 1. Unified LLM provider interface
 2. Clear agent event model, well suited to a desktop UI
 3. Provides extensibility across the tool calling / session / skills ecosystem
-4. Projects such as LiveAgent have already validated it as a viable kernel for desktop products
+4. Projects such as LiveAgent have already validated it as a viable kernel for
+   desktop products
 
 ## Consequences
 
@@ -34,9 +36,11 @@ Optionally adopt later:
 
 ### Negative
 - Requires adapting to pi's events and version constraints (Node >= 22.19)
-- Some desktop product requirements must be filled in at the upper layer ourselves (permission UX, session product model)
+- Some desktop product requirements must be filled in at the upper layer
+  ourselves (permission UX, session product model)
 
 ## Alternatives
 
 - Build our own agent loop: high cost, no
-- Use another coding agent directly as the kernel: inconsistent with the "based on pi" goal
+- Use another coding agent directly as the kernel: inconsistent with the "based
+  on pi" goal

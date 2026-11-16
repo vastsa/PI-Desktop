@@ -11,16 +11,12 @@ directory. That fixed cap leaves increasingly large unused space on wider
 windows even though the full-page settings shell and right pane already resize
 with the native window.
 
-The setting cards need to use the actual desktop window size while preserving
-the fixed navigation rail, readable pane gutters, and the existing compact
-shell.
-
 ## Decision
 
 The settings content inner container fills 100% of the width available in the
 right pane after the 275px rail and pane gutters. CSS flex layout owns resizing;
-the renderer does not add window listeners, viewport calculations, or
-JavaScript layout state.
+the renderer does not add window listeners, viewport calculations, or JavaScript
+layout state.
 
 This supersedes only D070's 720px content-band cap and the portion of D090 that
 retained that cap. All other D070 and D090 navigation, chrome, spacing, card,
@@ -45,14 +41,14 @@ on larger displays.
 
 ### Calculate width in React
 
-Rejected because the existing flex layout already exposes the correct
-available pane width, while JavaScript window listeners add unnecessary state
-and synchronization work.
+Rejected because the existing flex layout already exposes the correct available
+pane width, while JavaScript window listeners add unnecessary state and
+synchronization work.
 
 ### Use a viewport-width formula
 
-Rejected because manually subtracting the rail and gutters duplicates CSS
-layout knowledge and can drift into overflow.
+Rejected because manually subtracting the rail and gutters duplicates CSS layout
+knowledge and can drift into overflow.
 
 ## References
 

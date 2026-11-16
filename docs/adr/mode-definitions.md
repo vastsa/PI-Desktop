@@ -13,38 +13,20 @@
 
 ## Context
 
-Plan, Goal and Agent are closed, hard-coded modes. Their behavior is spread
-over the mode prompt table, runtime tool gating, Rust `is_contract_mode` /
-`plan_mode_allows`, Plan approval and (in #2141) a Goal-specific loop. About
-40 non-test files branch on the literal mode names. Users cannot create a mode,
-split work into stages, require an artifact, or act when the context is
-compacted or the work completes.
-
-Subagents already use a Markdown definition with frontmatter, a shared parser
-with safe defaults, and global-only discovery (D202). Modes use the same shape.
+Plan, Goal and Agent are closed, hard-coded modes. Their behavior is spread over
+the mode prompt table, runtime tool gating, Rust `is_contract_mode` /
+`plan_mode_allows`, Plan approval and (in #2141) a Goal-specific loop.
 
 ## Decision
 
 ### 1. A mode is one Markdown file
 
 `~/.pi/modes/<name>/mode.md` holds YAML frontmatter and a Markdown body. The
-body is the shared system prompt. Optional artifact templates live next to it
-in `templates/`.
+body is the shared system prompt.
 
 Builtins `agent`, `plan` and `goal` use the same format and ship with the app.
 The builtin ids are reserved: a user document that uses one is reported in
-settings and is not loaded. To change a builtin, duplicate it under a new id.
-Discovery is global only, so a cloned repository cannot provide a mode.
-Settings read the directory again each time they load the catalog, so a
-document written by another editor shows up without a restart. A document
-whose `name` differs from its directory keeps that file: settings read, save
-and delete it in place, and a new mode never writes into a directory that
-already holds another mode.
-
-A definition has one of two levels of complexity.
-
-**Simple mode**: a prompt and a permission level, without stages and without a
-run.
+settings and is not loaded.
 
 ```markdown
 ---
@@ -55,9 +37,6 @@ permission: contract
 ---
 Review the current changes for defects. Do not modify files.
 ```
-
-**Staged mode**: stages, artifacts and gates. Sending the first message in this
-mode starts a run.
 
 ```markdown
 ---
@@ -113,73 +92,34 @@ and `{{artifacts.<id>.path}}`. Substitution is text-only.
 
 ### 3. Run semantics
 
-- **Stage brief.** On every turn the Host adds a generated section to the
-  stage system prompt. It contains the current stage, the declared artifacts
-  with their paths and required headings, the gates, and how to finish. A mode
-  author writes only the intent.
-- **Templates.** When a stage is first entered, the Host writes the template
-  of each missing artifact, with variables substituted.
-- **Finishing a stage.** The model calls `CompleteStage { summary, artifacts?, report? }`.
-  `artifacts` maps an artifact id to Markdown, and the Host writes that content
-  to the artifact path. A contract stage can produce its artifact without
-  Write permission this way. The Host then evaluates the gates in order.
-  A stage without gates and without `loop` also finishes when its turn ends.
-- **Blocked reports.** Optional structured reports preserve per-criterion
-  `met` / `unmet` / `unverified` evidence, remaining work and a blocker reason.
-  A valid `blocked` report moves a live claimed run to `waiting/blocked`,
-  without success gates or a successful finish. It stops autonomous continuation
-  and survives restart. An unfinished detail alone is not a blocker when other
-  authorized work remains. A `completed` report requires all submitted outcomes
-  met and no remaining work, but never bypasses the configured exit gates.
-  Reports are model assertions, not independent verification of their truth.
+- **Stage brief.** On every turn the Host adds a generated section to the stage
+  system prompt.
+- **Templates.** When a stage is first entered, the Host writes the template of
+  each missing artifact, with variables substituted.
+- **Finishing a stage.** The model calls `CompleteStage { summary, artifacts?,
+  report? }`.
+- **Blocked reports.** Optional structured reports preserve per-criterion `met`
+  / `unmet` / `unverified` evidence, remaining work and a blocker reason.
 - **Completion-channel failure.** The sidecar proxy admits only
   `modes.completeStage` and `modes.gateResult`, not user control methods.
-  Host ownership, live claim and frozen-input checks still apply. A broken
-  completion RPC or invalid Host outcome fails the current execution turn,
-  so settlement waits with an error rather than automatically continuing.
-  Transport failures have no blind autonomous retry; a user may retry after
-  recovery. Argument and artifact-content errors remain correctable.
 - **Gate failure.** The failure goes back to the model as the `CompleteStage`
-  tool result, for example the missing heading or the command exit code with
-  the output tail. The model continues in the same turn. `onFail.retries`
-  caps the failed attempts in the stage (default 2). When that limit is
-  reached, the run waits for the user. `onFail.goto: <stage>` ends the turn
-  and moves the run to that stage instead.
+  tool result, for example the missing heading or the command exit code with the
+  output tail.
 - **Transition.** When all gates pass, the run moves to `next` and the Host
-  starts that stage's first turn. When the final stage passes its gates, the
-  run ends and the session switches to `returnTo`.
+  starts that stage's first turn.
 - **Turns.** A loop stage continues until `CompleteStage` passes, a blocked
   report or execution error stops continuation, or the budget is exhausted.
-  A non-loop stage whose turn ends without finishing waits for
-  the user. A user message during a run is input to the current stage and
-  starts no new run. Queued user messages run before any Host-started turn.
-- **Budget.** `maxTurns` and `maxTokens` limit only the turns the Host starts
-  by itself. A user message can always continue an open run.
+- **Budget.** `maxTurns` and `maxTokens` limit only the turns the Host starts by
+  itself.
 - **Run states.** The states are `running`, `waiting` (for an approval, after
   retries are exhausted, or after a non-loop stage stops), `paused`,
-  `budget_exhausted`, `finished` and `stopped`. The status bar shows the mode,
-  the stage, turns or budget, and the controls Pause, Resume, Edit, Remove and
-  Stop. Pause is persisted immediately and blocks Host-started turns. A turn
-  already running closes out: Electron main tells its runtime
-  (`agent.modeTurnNotice` `closeout`), which adds a system notice asking for a
-  short handoff and ends the turn after at most 3 more model requests; the
-  notice is never a user message and the next turn starts without it. Stop
-  ends the run, revokes the claim and interrupts the active turn. Remove ends
-  the run the same way but does not interrupt: the runtime drops the run
-  context (`release`) and the turn finishes as an ordinary turn of the
-  `returnTo` mode, with no Host-started turn after it. The composer Stop
-  button interrupts the turn and pauses the run. After a restart, a run whose
-  turn was in flight is paused, never replayed.
-- **Editing a run.** `modes.update` changes an open run's input (the
-  objective) and its `{ maxTurns, maxTokens }` budget. Both apply from the
-  next claim. The turn holding the claim keeps the input it started with;
-  its `CompleteStage` carries that input and the Host answers
-  `MODE_INPUT_CHANGED` when it is no longer current, which ends the turn.
-  A raised budget does not resume a `budget_exhausted` run; Resume does.
+  `budget_exhausted`, `finished` and `stopped`.
+- **Editing a run.** `modes.update` changes an open run's input (the objective)
+  and its `{ maxTurns, maxTokens }` budget.
 - **Remote workspaces.** Staged runs are not available in remote workspaces in
-  this version. Simple modes are.
+  this version.
 - **Mode switch.** Selecting another staged mode while a run is active asks the
-  user to stop the run first. Selecting a simple mode leaves the run paused.
+  user to stop the run first.
 
 ### 4. Actions
 
@@ -200,23 +140,17 @@ Completion handling is the final stage's `exit` gates. Compaction handling is
 - The parser rejects the whole definition when it finds an unknown key, event,
   action or stage reference, a `goto` cycle without a `loop` or `ask` stage, an
   `ask` that is not the last gate, or an artifact path outside the workspace.
-  Settings shows the diagnostic and the picker shows the mode as unavailable. A
-  rejected definition never falls back to a weaker check.
 - Limits: 16 stages, 8 gates per stage, 10 retries, 64 KB per file, 8 KB of
   command output returned to the model, and a `run` timeout of at most 60 min.
 
 ### 6. Permission narrows, never widens
 
 - `contract` keeps today's Plan hard deny: the allowlist plus plan-safe plugin
-  actions (ADR 0211). `agent` uses the Agent policy. Host writes of artifacts
-  through `CompleteStage` are limited to the declared paths.
-- `Computer` and scheduled-task tools are available only in the builtin
-  `agent` mode.
+  actions (ADR 0211).
+- `Computer` and scheduled-task tools are available only in the builtin `agent`
+  mode.
 - Builtin Goal keeps the session's selected permission on every claimed turn,
-  including Host continuation. This removes the second-turn Auto-to-Accept-edits
-  downgrade; Ask and narrower per-turn ceilings still apply. Other unattended
-  staged modes retain the `accept-edits` ceiling for `auto`. User and approval
-  turns keep the session permission.
+  including Host continuation.
 - No action grants a permission, a session grant or an external path.
 
 ### 7. Ownership
@@ -235,70 +169,31 @@ Only the Host records a gate as passed and moves the run to another stage.
 Desktop attaches the catalog definition to the additive `session.create`
 `modeSnapshot` input. The Host validates and stores it in the same transaction
 as the session, rather than configuring an already-visible session in a second
-RPC. This avoids an incomplete session if configuration or the process fails;
-legacy callers may still omit the snapshot and retain fail-closed policy.
+RPC.
 
 One migration after the current schema:
 
-- `sessions.mode` keeps its column. Its values become mode ids, and the
-  existing values `agent`, `plan` and `goal` map to the builtins. A session
-  whose mode no longer exists falls back to `agent`; an active run keeps its
-  snapshot.
-  When a run closes, the Host returns the session to `returnTo` without a
-  snapshot; Electron main then settles it through `modes.settleReturn`,
-  attaching the return mode's current definition, or moving the session to
-  `agent` when that mode was deleted during the run.
+- `sessions.mode` keeps its column.
 - `mode_snapshots (hash, json)`: an immutable definition per run, so editing a
   mode never changes a running run.
-- `mode_runs`: generalized from #2141 `session_goals`. Each row stores the mode,
-  snapshot hash, input, current stage, state, budget, usage, revision, active
-  claim, retries and rounds completed.
-  Schema 30 adds an active elapsed clock (`elapsed_ms`, `active_since_ms`):
-  only Running time accumulates; all other states freeze it. Recovery retains
-  checkpoints but discards uncheckpointed/offline time. Legacy rows start at zero.
+- `mode_runs`: generalized from #2141 `session_goals`.
 - `mode_gate_results`: run, stage, gate index, action, result, evidence and
   timestamp.
-- Existing `plan_approvals` rows stay valid. The builtin `plan` reads them in
-  the existing Plan proposal pipeline.
+- Existing `plan_approvals` rows stay valid.
 
 ### 9. Builtins and compatibility
 
 - `agent`: a simple mode.
 - `plan`: a simple `contract` mode that keeps the ADR 0053 proposal pipeline
-  unchanged (EnterPlanMode, SubmitPlan, approval, queued execution). Its
-  behavior, tool names and stored approvals stay exactly as before, and the
-  existing contract tests are the proof. Expressing Plan as a staged mode is
-  left for a later change, because it would rewrite a released approval flow.
-- `goal`: stage `work` (`agent`, `loop`, artifact `goal` from a template
-  seeded with `{{run.input}}`, `inject` on compaction, gate
-  `require: artifact:goal` with headings Objective, Acceptance criteria and
-  Evidence). Completion stays a model self-report, as in #2141. A new Goal run
-  takes its budget from the `goalBudget` app setting (Settings → Agent
-  behavior) when it is set and valid, otherwise from the definition (20 turns,
-  unlimited tokens); a running run keeps its own. While a Goal run is open the
-  composer's Todo / background-task dock is hidden; its data stays and the dock
-  returns when the run ends. The legacy
-  Goal negotiation (`EnterGoalMode`, `SubmitGoal`) is no longer offered, and
-  the Host rejects new Goal proposals with `PLAN_GOAL_ACTIVATION_DISABLED`.
-  Old Goal approval rows stay readable, expire normally and never become
-  autonomous authorization.
-  Accepted Goal input returns the Composer preference to Agent without changing
-  the run or its immutable snapshot/claim. Switching to Agent does not pause a
-  builtin Goal; an explicit Plan selection still pauses it and keeps its hard
-  deny. Goal continuations claim the run even while the input preference is Agent.
-  A new explicit Goal is accepted into the existing durable queue before the
-  old Goal is stopped. Old turn settlement precedes queue release, and the new
-  turn starts a fresh run; ordinary input is not promoted into a new Goal by a
-  later picker change. Queue restoration remains held until controller attachment.
+  unchanged (EnterPlanMode, SubmitPlan, approval, queued execution).
+- `goal`: stage `work` (`agent`, `loop`, artifact `goal` from a template seeded
+  with `{{run.input}}`, `inject` on compaction, gate `require: artifact:goal`
+  with headings Objective, Acceptance criteria and Evidence).
 
 The Goal input preference and execution identity are deliberately separate.
 Relabeling the executing turn as Agent would lose the snapshot's authority;
-keeping the picker on Goal would make ordinary follow-ups ambiguous. An additive
-`startGoal` intent preserves user choice across admission and queue restoration
-without granting continuation provenance or changing custom-mode semantics.
-- IPC / RACP `mode` stays a string. Old clients that send `plan`, `goal` or
-  `agent` keep working. Builtin labels are localized; user labels are shown as
-  written.
+keeping the picker on Goal would make ordinary follow-ups ambiguous.
+- IPC / RACP `mode` stays a string.
 
 ## Consequences
 
@@ -311,21 +206,12 @@ without granting continuation provenance or changing custom-mode semantics.
 - A misconfigured definition can only make a mode stricter or fail to load.
 - `run` gates execute commands only when a stage finishes, behind the existing
   Bash approval, and the transcript shows them.
-- Delivery is one PR with reviewable commits: the registry refactor, the stage
-  and gate engine, the ported run engine, then the settings source editor.
-  Ported commits keep their original author, and the rest of the ported code
-  carries `Co-authored-by: new-Beginner`. PR #1999, #2140 and #2141 will be
-  closed with a pointer to this ADR.
 
 ## Alternatives
 
-1. Merge #2141 as a third hard-coded mode. Rejected because every new workflow
-   would repeat the cross-layer branching.
-2. A flat list of checkpoints without stages. Rejected because it cannot
-   express phases, backtracking or per-phase permission.
-3. Evaluating gates after every turn. Rejected because commands would run on
-   every turn and stage completion would have no clear signal.
-4. Project-level definitions. Rejected because of the repository-supplied
-   workflow risk (same reason as D202).
+1. Merge #2141 as a third hard-coded mode.
+2. A flat list of checkpoints without stages.
+3. Evaluating gates after every turn.
+4. Project-level definitions.
 
 :::

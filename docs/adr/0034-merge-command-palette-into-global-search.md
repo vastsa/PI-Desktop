@@ -17,12 +17,6 @@ The app shipped two overlapping "find anything" surfaces:
   commands, opened from a dedicated top-bar button and a separate overlay.
 - A **global search** (Cmd/Ctrl+K) that lists sessions, pages, and settings.
 
-Both are searchable overlays with the same interaction model (type, arrow,
-Enter, Esc). Keeping them separate meant two surfaces to maintain, a second
-button in the top bar, and a split mental model for users: "commands live here,
-everything else lives there." The top-bar command-palette button also competed
-for space with the search button.
-
 ## Decision
 
 1. Remove the standalone command palette overlay (`CommandPalette.tsx`) and its
@@ -32,11 +26,9 @@ for space with the search button.
    the same `role="listbox"` / `role="option"` semantics and flat option-index
    navigation as the other result groups.
 3. The `openCommandPalette` shortcut (Cmd/Ctrl+Shift+P, per D014) now opens the
-   global search dialog, which contains the Commands section. `Cmd/Ctrl+K`
-   continues to open the same dialog. Both chords reach commands.
+   global search dialog, which contains the Commands section.
 4. Remove the redundant "Command Palette" entry from the application View menu
-   (the View menu already has "Search"). The shortcut id is retained so the
-   keyboard-shortcuts settings page and plugin command discovery keep working.
+   (the View menu already has "Search").
 5. The command data path is unchanged: `api.searchCommands` and
    `runPaletteCommand` (built-in + plugin bridge) are reused by the search
    dialog.
@@ -47,23 +39,22 @@ for space with the search button.
 - The top bar loses a button; search is the single entry point for discovery.
 - `Cmd/Ctrl+Shift+P` still works and now lands on the unified search with the
   command list available; muscle memory is preserved.
-- `CommandPalette.tsx`, its CSS surface, and the `paletteOpen` state are removed.
-- Plugin command discovery (E2E-023) and disable-removes-contributions
-  (E2E-025) are re-expressed against the global search.
+- `CommandPalette.tsx`, its CSS surface, and the `paletteOpen` state are
+  removed.
+- Plugin command discovery (E2E-023) and disable-removes-contributions (E2E-025)
+  are re-expressed against the global search.
 
 ## Alternatives
 
 ### Keep two separate surfaces
 
-Rejected: duplicates interaction logic and UI, adds a second top-bar button,
-and forces users to decide which surface holds what. The merge simplifies both
-code and UX.
+Rejected: duplicates interaction logic and UI, adds a second top-bar button, and
+forces users to decide which surface holds what.
 
 ### Hide commands behind a query in global search
 
-Rejected: the command palette was reachable with an empty query (Cmd/Ctrl+Shift+P
-showed all commands). The Commands section therefore renders even with an empty
-query so the shortcut keeps its behavior.
+Rejected: the command palette was reachable with an empty query
+(Cmd/Ctrl+Shift+P showed all commands).
 
 ## References
 

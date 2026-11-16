@@ -7,18 +7,13 @@
 ## Context
 
 Live Work binds a call to a local session and workspace in Electron Main. That
-scope can become stale while a request is being classified. Rechecking it in
-Main before calling AgentHost still leaves an asynchronous gap before the Host
-persists a user message or admits a turn.
+scope can become stale while a request is being classified.
 
 ## Decision
 
 Add an optional `expectedWorkspaceIdentity` to the local AgentHost turn-start
 request. When supplied by trusted Main code, AgentHost compares it with the
-fresh workspace identity returned by its session port before admission. A
-mismatch is rejected as `WORKSPACE_CHANGED` before the turn or queue entry is
-created. The value is not part of provider input, Renderer DTOs, RACP, or
-persistence.
+fresh workspace identity returned by its session port before admission.
 
 Existing non-Live callers omit the field and keep their current behavior. The
 identity uses the existing Host session summary canonicalization; this change

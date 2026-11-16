@@ -10,11 +10,6 @@ the current project, a Local environment label, and best-effort Git branch
 metadata. Later visual refinements also assigned dedicated height, spacing,
 surface, and elevation rules to that rail.
 
-The project entry duplicated navigation already available through the home
-hero, sidebar, and Projects destination. Local and branch were passive labels,
-and the renderer displayed `main` when branch detection produced no value.
-This made the rail consume space without providing reliable or unique control.
-
 ## Decision
 
 The home and thread-docked composer variants never render project, Local, or
@@ -23,11 +18,8 @@ or elevation for the removed rail.
 
 This decision changes presentation only. Project selection, active-workspace
 persistence, session project binding, Git branch detection, Projects metadata,
-and workspace-scoped tools remain unchanged and available through their
-existing non-composer surfaces.
-
-This supersedes the workspace-chip and context-rail portions of D052, D055,
-D056, D066, D067, and D087. It is recorded as D095 in baseline 0.4.4.
+and workspace-scoped tools remain unchanged and available through their existing
+non-composer surfaces.
 
 ## Consequences
 
@@ -53,8 +45,8 @@ already available in the surrounding shell.
 
 ### Hide the rail only in one composer variant
 
-Rejected because inconsistent home and thread layouts would retain extra
-chrome and make the prompt surface shift when a transcript starts.
+Rejected because inconsistent home and thread layouts would retain extra chrome
+and make the prompt surface shift when a transcript starts.
 
 ## References
 

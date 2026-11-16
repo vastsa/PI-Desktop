@@ -14,29 +14,16 @@ The Settings → Basics → Language control offers an **Auto** option that shou
 follow the user's OS display language. The original implementation resolved
 "auto" from the renderer's `navigator.language`.
 
-In Electron, the renderer's `navigator.language` is the embedded browser
-locale and defaults to `en-US` regardless of the actual OS language. On a
-Chinese system the renderer still reports `en-US`, so "Auto" resolved to
-English even though the OS was Simplified Chinese. The same default also seeded
-the initial i18n language on first paint.
-
-The reliable source is the main process: `app.getLocale()` reads the OS display
-language (macOS `AppleLanguages`, Windows user UI language, Linux `LANG`). The
-main process already owns OS-level facts; the renderer only needed a way to read
-them synchronously before first paint.
-
 ## Decision
 
 1. Expose the authoritative OS locale from the preload bridge as a synchronous
-   field `window.piDesktop.locale`. The main process resolves `app.getLocale()`
-   while creating the window and passes it through `webPreferences.additionalArguments`;
-   sandboxed preload code reads that argument rather than importing Electron's
-   main-only `app` module (alongside the existing `platform` field).
+   field `window.piDesktop.locale`.
 2. Add optional `locale?: string` to the `window.piDesktop` type in `api.ts`;
    non-Electron contexts do not receive a window creation argument.
 3. Resolve "auto" language through a new `resolveOsLocale()` helper in
-   `lib/app-language.ts` that prefers `window.piDesktop.locale` and falls back to
-   `navigator.language` / `userLanguage` for non-Electron contexts (e.g. tests).
+   `lib/app-language.ts` that prefers `window.piDesktop.locale` and falls back
+   to `navigator.language` / `userLanguage` for non-Electron contexts (e.g.
+   tests).
 4. Seed the initial i18n `lng` in `main.tsx` from `resolveOsLocale()` instead of
    `navigator.language`.
 
@@ -64,7 +51,6 @@ language from the renderer in Electron.
 
 Rejected: an async round-trip would delay first paint of the correct language
 and complicate the synchronous pre-paint setup that already uses `platform`.
-Surfacing the value synchronously from the bridge is simpler and sufficient.
 
 ## References
 
@@ -73,7 +59,8 @@ Surfacing the value synchronously from the bridge is simpler and sufficient.
 - `apps/desktop/electron/preload/index.ts` (reads the locale argument without
   importing `app`)
 - `apps/desktop/src/lib/api.ts` (`window.piDesktop.locale` type)
-- `apps/desktop/src/lib/app-language.ts` (`resolveOsLocale`, `resolveAppLanguage`)
+- `apps/desktop/src/lib/app-language.ts` (`resolveOsLocale`,
+  `resolveAppLanguage`)
 - `apps/desktop/src/main.tsx` (initial `lng` from `resolveOsLocale`)
 - `apps/desktop/src/pages/SettingsPage.tsx` (Auto card shows detected language)
 - `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-091 added)

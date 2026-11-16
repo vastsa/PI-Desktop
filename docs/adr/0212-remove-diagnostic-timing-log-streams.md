@@ -16,13 +16,11 @@ create noise in local log directories during normal use.
 1. Stop emitting sidecar `[timing]` lines, host `tool timing` lines, boot-phase
    timing records, updater timing records, and renderer bootstrap timing output.
 2. Remove the dedicated `timing` log category and the `PI_DESKTOP_TIMING`
-   suppression environment variable. The updater's functional timeout remains.
+   suppression environment variable.
 3. Keep key lifecycle, state-change, permission, tool, plugin, provider,
-   persistence, updater, and error records. Keep structured audit fields and
-   UI/protocol duration metadata that are consumed by product features or
-   security forensics.
+   persistence, updater, and error records.
 4. Do not delete or migrate timing files already present in a user's local data
-   directory. They are historical records.
+   directory.
 
 ## Consequences
 

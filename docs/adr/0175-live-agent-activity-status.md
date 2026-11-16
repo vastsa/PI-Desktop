@@ -5,13 +5,10 @@
 
 ## Context
 
-The transcript already shows a compact `Working…` row before the first model
-or tool event and inline rows for concrete thinking and tool activity. A
-provider request can still spend a long interval before its first event, and a
-bounded retry backoff or parent-side delegated-task wait can contain no
-transcript row. During those intervals the only visible signal was the Stop
-button and a generic local timer. Users could not tell whether the turn was
-waiting normally, retrying, or waiting on delegated work (Issue #56).
+The transcript already shows a compact `Working…` row before the first model or
+tool event and inline rows for concrete thinking and tool activity. A provider
+request can still spend a long interval before its first event, and a bounded
+retry backoff or parent-side delegated-task wait can contain no transcript row.
 
 ## Decision
 
@@ -19,20 +16,16 @@ Extend the existing normalized `status` event with an optional runtime-owned
 `AgentActivity` value:
 
 1. `starting` covers the initial prompt handoff.
-2. `waiting-model` starts when a provider request is issued and lasts until
-   the first assistant event.
+2. `waiting-model` starts when a provider request is issued and lasts until the
+   first assistant event.
 3. `retrying` covers an abortable provider backoff and carries the attempt
    number and calculated delay when available.
 4. `waiting-subagents` covers parent-side convergence on delegated work and
    carries the number of running targets.
 
 The sidecar emits these phases from the same boundaries that own provider
-requests, retry delays, and delegation waits. It clears the phase when
-assistant output starts or the turn reaches a terminal event. The renderer
-stores the latest status per session and renders a compact, localized inline
-row with a monotonic phase timer. The row is not a second progress card, does
-not claim a completion percentage, and does not change Stop or abort
-semantics.
+requests, retry delays, and delegation waits. It clears the phase when assistant
+output starts or the turn reaches a terminal event.
 
 ## Consequences
 
@@ -56,14 +49,13 @@ delegation wait, which was the ambiguity reported in Issue #56.
 ### Add a permanent multi-step progress card
 
 Rejected because agent turns do not have a reliable total-step or percentage
-model, and the existing active-turn contract keeps the lower transcript
-surface inline and compact.
+model, and the existing active-turn contract keeps the lower transcript surface
+inline and compact.
 
 ### Emit raw provider or child-agent events
 
 Rejected because it would expose unstable implementation details and create a
-larger protocol surface than the user needs. The runtime-owned phases provide
-the smallest useful explanation.
+larger protocol surface than the user needs.
 
 ## References
 

@@ -23,25 +23,10 @@ name:    OpenCode Go
 baseUrl: https://opencode.ai/zen/go/v1
 ```
 
-The renderer keeps the name and endpoint visible but read-only, accepts the
-API key as the only editable connection field, and continues to use the normal
+The renderer keeps the name and endpoint visible but read-only, accepts the API
+key as the only editable connection field, and continues to use the normal
 discovered-model selector. Save-time normalization also enforces the fixed
 values so stale or manually constructed form state cannot override them.
-
-The runtime maps `opencode_go` to pi-ai's OpenAI Chat Completions adapter unless a model-level catalog entry pins another wire API (see #105). Model
-discovery calls `/models` with a Bearer key. Secrets remain owned by the
-existing Rust host secret store; no OpenCode-specific secret or database table
-is introduced.
-
-OpenCode Go requires a stable `x-opencode-session` header on LLM requests so
-the gateway can pin a conversation to one backend. pi-ai does not emit that
-header. Agent-runtime injects it (plus `x-opencode-client: pi-desktop` and a
-PI-Desktop `User-Agent`) on session, subagent, prompt-enhancement, and plugin
-one-shot streams, using the durable conversation id. Detection matches
-`apiStyle: opencode_go`, vendor/provider ids `opencode` / `opencode-go`, or
-an `opencode.ai` base URL so a UUID provider row and a custom Completions
-row pointed at Go both work. This stays in the agent layer, matching the
-official Pi coding-agent attribution helper.
 
 ## Consequences
 

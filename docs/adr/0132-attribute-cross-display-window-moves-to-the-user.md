@@ -11,59 +11,31 @@
 
 ADR 0122 keeps a target-state, display-aware native reservation for the docked
 work panel. Main plans the reservation from remembered *base bounds* — the
-window rect without the reservation — and reconciles later native deltas
-against the last rect it actually applied.
-
-That reconciliation collapsed two very different situations into one
-`displayChanged` boolean. When the window ended up on another display, the
-remembered base bounds were reused verbatim, then clamped into the new
-display's work area. That is correct when the OS re-fitted bounds we asked for:
-the user's intent survives on a constrained display and is restored on a roomy
-one. It is wrong when the user dragged the window there, because the previous
-display's coordinates are no longer the intent.
-
-Worse, the reconcile was wired to every native `move` event, so it ran while
-the drag was still in progress. Reported in issue #18 and reproducible on every
-release from 0.10.0 onward: dragging the window to a second display made it jump
-on pointer release, because the deferred `setBounds` planned from the origin
-display's base bounds and landed at the target display's clamped edge. The
-window's y coordinate came from the old display too. The same misattribution
-then leaked into `window-state.json`, so relaunch reopened the window on the
-display the user had left.
+window rect without the reservation — and reconciles later native deltas against
+the last rect it actually applied.
 
 ## Decision
 
 1. Replace the `displayChanged` boolean with an explicit `DisplayTransition` of
    `none`, `os-adjusted`, or `user-moved`.
-2. `os-adjusted` keeps ADR 0122's behavior unchanged: the remembered base
-   bounds survive an OS re-fit or a display topology change.
+2. `os-adjusted` keeps ADR 0122's behavior unchanged: the remembered base bounds
+   survive an OS re-fit or a display topology change.
 3. `user-moved` derives new base bounds from the window's current position, so
-   the drop position becomes the intent. Only the origin is normalized into the
-   target display's work area; the size is preserved even when the target work
-   area is smaller, because base bounds are the restorable intent under ADR 0122
-   and a shrink here would be persisted permanently.
+   the drop position becomes the intent.
 4. Classify the transition by whether an unaccounted native `move` stream
-   precedes it. A drag is the only cross-display transition that follows one.
-   The marker is a flag, not a deadline, so attribution never depends on how
-   long the main process took to reach the classification, and it survives the
-   deferred geometry of a maximized or fullscreen window.
-5. Never re-plan bounds mid-drag. The `move` handler only marks the user-move
-   window and defers display reconciliation until the move stream goes quiet.
+   precedes it.
+5. Never re-plan bounds mid-drag.
 6. Persist base bounds for both `none` and `user-moved`, and advance the
    remembered display key on `user-moved`, so relaunch restores the display the
-   user actually left the window on. `os-adjusted` still refuses to persist.
-   The persistence path normalizes a dragged-in base the same way, because a
-   maximized or fullscreen window defers reservation geometry and leaves this as
-   the only consumer of the drag.
-7. Retire an unconsumed marker on a deadline. The deadline bounds how long a
-   marker can linger when no consumer runs; it never decides attribution.
+   user actually left the window on.
+7. Retire an unconsumed marker on a deadline.
 8. A forced bounds recovery (the Stage Manager path) clears the pending
    user-move attribution, because it is not user intent.
 
 ## Consequences
 
-- Dragging the window between displays keeps the position where it was
-  dropped, with no jump on pointer release.
+- Dragging the window between displays keeps the position where it was dropped,
+  with no jump on pointer release.
 - Relaunch reopens the window on the display it was last used on.
 - ADR 0122's constrained-display reservation behavior is preserved verbatim for
   OS-owned adjustments, including the restore path back to a roomy display.
@@ -71,10 +43,7 @@ display the user had left.
   display added, removed, or rescaled right after a drag is still classified as
   OS-owned.
 - A window dropped onto a display whose work area cannot hold it keeps its size
-  and is pinned to the work area's top-left. `planWorkPanelReservation` still
-  caps the width it adds, so the reservation shrinks instead of the window.
-- No IPC, storage, or host protocol change. `window/setWorkPanelReservation`
-  keeps its request/response shape.
+  and is pinned to the work area's top-left.
 
 ## Alternatives
 
@@ -91,15 +60,15 @@ area.
 
 ### Detect drags from pointer state instead of the move stream
 
-Rejected for now. Electron exposes no drag-begin/drag-end pair for native
-window moves, and polling the pointer during a drag costs more than the
-pending-move marker it would replace.
+Rejected for now. Electron exposes no drag-begin/drag-end pair for native window
+moves, and polling the pointer during a drag costs more than the pending-move
+marker it would replace.
 
 ### Attribute the drag with a time deadline
 
-Rejected. A deadline makes correctness depend on main-process scheduling: a
-busy main process, or a maximized window that defers its geometry past the
-deadline, would silently fall back to the buggy OS-adjusted path.
+Rejected. A deadline makes correctness depend on main-process scheduling: a busy
+main process, or a maximized window that defers its geometry past the deadline,
+would silently fall back to the buggy OS-adjusted path.
 
 ## References
 

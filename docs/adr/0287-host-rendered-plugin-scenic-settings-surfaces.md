@@ -9,22 +9,17 @@
 An Electron `WebContentsView` and a sandboxed iframe each create an independent
 compositing surface. Although an extension document can make its own background
 transparent, its page canvas remains an opaque rectangle between the root scenic
-backdrop and the Settings content. Native child surfaces can also intercept the
-renderer-drawn Windows/Linux controls.
+backdrop and the Settings content.
 
 ## Decision
 
 The generic plugin Settings document surface is retired for appearance
 extensions. `contributes.scenicThemes` supplies declarative localized card
-metadata only. Electron main validates the permissions, same-plugin theme
-ownership, declared preview image, and the exact `--nexus-backdrop-blur`
-`length` variable. The host React Settings tree renders all controls inside its
-existing transparent scenic canvas.
+metadata only.
 
 Card selection is immediate. The bounded 0–20 integer blur control is a local
 draft until the user presses Apply; the host then uses the existing typed theme
-variable persistence boundary. There is no iframe, page protocol, bridge, or
-second document canvas.
+variable persistence boundary.
 
 ## Consequences
 

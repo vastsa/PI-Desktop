@@ -8,24 +8,19 @@
 ## Context
 
 Windows reserves `Alt+Space` for the active window system menu. Electron's
-`globalShortcut` may therefore reject the plugin launcher's default binding,
-and a renderer `before-input-event` fallback only works while PI-Desktop is
-focused.
+`globalShortcut` may therefore reject the plugin launcher's default binding, and
+a renderer `before-input-event` fallback only works while PI-Desktop is focused.
 
 ## Decision
 
 Host-core installs a narrow Windows `WH_KEYBOARD_LL` hook for the default
 `Alt+Space` binding. It consumes the matching keydown, emits the existing
 JSON-RPC notification transport with `keyboard.shortcut`, and lets Electron
-toggle the plugin launcher. Electron sends the additive
-`keyboard.setGlobalShortcut` host method whenever the effective binding
-changes; the hook is enabled only when the effective Windows binding is
-`Alt+Space`. Other platforms and custom bindings retain Electron's normal
-global shortcut path.
+toggle the plugin launcher.
 
-The hook does not inspect or persist text, and it does not expose a new
-renderer or plugin capability. If hook installation fails, the focused-window
-fallback remains available and the failure is logged.
+The hook does not inspect or persist text, and it does not expose a new renderer
+or plugin capability. If hook installation fails, the focused-window fallback
+remains available and the failure is logged.
 
 ## Consequences
 

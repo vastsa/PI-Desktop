@@ -14,47 +14,29 @@ to had actually finished. Plugins fell back to idle timers, which are wrong in
 both directions: they fire during a long tool call, and they fire again for a
 turn that ended moments earlier.
 
-The host already owns this fact. One turn teardown path resolves the durable
-`session.endTurn` row with `completed`, `aborted`, or `error` for the turn
-created by `session.beginTurn`. What was missing was a published identity and a
-published boundary: the plugin tool context declared `turnId`, but the host
-never populated it, so a plugin could not correlate a late tool result with the
-turn that requested it.
-
 ## Decision
 
-1. **`session:turnEnded` is a host event.** Payload is
-   `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`,
-   delivered to plugin processes exactly like `workspace:changed` and
-   `session:modelChanged`, and (like `workspace:changed`) to plugin panel pages
-   and docked views.
+1. **`session:turnEnded` is a host event.** Payload is `{ sessionId: string;
+   turnId: string; reason: "completed" | "aborted" | "error" }`, delivered to
+   plugin processes exactly like `workspace:changed` and `session:modelChanged`,
+   and (like `workspace:changed`) to plugin panel pages and docked views.
 
 2. **Once per turn actually started.** The event is emitted at the end of turn
    teardown, after the durable `session.endTurn` attempt, and only for a turn
    created by `session.beginTurn`: a user submission, an approved plan
-   execution, or a scheduled run. A queued item that never started produces no
-   event. The announcement is claimed once per `(sessionId, turnId)`, so a
-   second terminal event for the same turn joins the first claim rather than
-   announcing again.
+   execution, or a scheduled run.
 
 3. **Turn identity is authoritative.** The finalizer is called with an explicit
    `turnId` and never infers one from whichever turn happens to be active, so a
    late terminal event from an earlier turn cannot settle a newer one, and a
-   terminal event carrying no identity settles nothing at all. Plugin tool
-   contexts are populated with the same `turnId`, forwarded unchanged from the
-   host.
+   terminal event carrying no identity settles nothing at all.
 
-4. **No new permission.** The event travels on the existing plugin event
-   channel to every loaded plugin, and subscribing to an unknown event name does
-   not error.
+4. **No new permission.** The event travels on the existing plugin event channel
+   to every loaded plugin, and subscribing to an unknown event name does not
+   error.
 
 Explicit non-promises: there is no ack and no replay. The host broadcasts once
 per started turn; a plugin that is alive and subscribed receives it once.
-Delivery that races a plugin crash, reload, or host quit is not guaranteed, and
-receiving the event does not mean that every in-flight tool of that turn has
-exited — late results can still arrive, so cleanup must be serialised or scoped
-by `turnId`. A helper that only releases its own resources must not fabricate a
-host turn end, and a graceful stop keeps the existing `completed` boundary.
 
 ## Consequences
 
@@ -64,15 +46,11 @@ host turn end, and a graceful stop keeps the existing `completed` boundary.
   still treat late tool results as valid.
 - The announcement is one call made from one finalizer that validates turn
   identity, requires no `await` before it claims the turn, and runs after the
-  local teardown. Each of the three delivery surfaces isolates its own
-  senders, so one unreachable recipient cannot suppress the others, and a
-  failed or timed-out durable write does not suppress the announcement.
-- Turn-scoped cleanup that ignores `turnId` can settle the wrong turn;
-  the tool context's `turnId` now makes correct scoping possible.
+  local teardown.
+- Turn-scoped cleanup that ignores `turnId` can settle the wrong turn; the tool
+  context's `turnId` now makes correct scoping possible.
 - No published release emits this event yet: the first release that contains it
-  has not shipped, and 0.14.8 does not include it. A plugin that depends on it
-  must require the release that actually ships it, and must not assume 0.14.7 or
-  0.14.8.
+  has not shipped, and 0.14.8 does not include it.
 
 ## Alternatives rejected
 

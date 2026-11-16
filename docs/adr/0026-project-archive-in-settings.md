@@ -12,31 +12,16 @@ retained project groups. Active work happens through the retained groups, while
 the Projects destination primarily acts as a durable directory for discovering,
 archiving, restoring, reopening, and closing historical project records.
 
-Keeping both surfaces in primary navigation duplicates the project concept and
-gives archival management the same prominence as task creation and Plugins. The
-frozen four-destination Settings directory from ADR 0013 has no place for this
-project-management surface, so moving it changes the settings information
-architecture and requires a baseline revision.
-
 ## Decision
 
 1. Remove the standalone Projects destination from the home sidebar, app page
    state, and global page-search results.
 2. Add **Project archive** (`项目归档`) to Settings after Import and before Info.
-   Settings now has five destinations: Basics, Model configuration, Import,
-   Project archive, and Info.
-3. Reuse the durable Projects index in the archive. It keeps search, add,
-   activate, project-session expansion, pin, archive/restore, and close actions.
-4. The Settings archive always includes archived project records. Archived
-   project rows retain their muted presentation and can be restored from their
-   existing action menu. Expanded project details do not apply the sidebar's
-   archived-session visibility filter.
+3. Reuse the durable Projects index in the archive.
+4. The Settings archive always includes archived project records.
 5. Activating a project or project session leaves Settings and returns to chat.
-   Archiving or closing a project keeps the Project archive destination visible,
-   including when a fallback workspace must be selected.
 6. The home sidebar keeps retained project groups and the persistent new-project
-   action. Project storage, renderer presentation metadata, and the one-visible-
-   workspace activation model remain unchanged.
+   action.
 7. Settings and global settings search index Project archive and its archive,
    restore, project-title, and project-search terms.
 
@@ -61,8 +46,7 @@ reduce the home sidebar's primary menu.
 ### Show only archived rows
 
 Rejected because closed but unarchived durable projects would lose their only
-index-based recovery path. The archive is a complete historical directory, with
-archived rows always included rather than an archived-only filter.
+index-based recovery path.
 
 ### Put project management inside Basics
 

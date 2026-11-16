@@ -1,6 +1,7 @@
 # ADR 0079: Use VitePress for the bilingual documentation site
 
-- **Status:** Accepted
+- **Status:** Accepted; the Chinese companion scope is amended by
+  [ADR chinese-docs-entry-points-only](chinese-docs-entry-points-only.md)
 - **Date:** 2026-08-13
 
 ## Context
@@ -14,20 +15,12 @@ experience, or clear language entry point.
 
 Make `docs/` a standalone VitePress project in the pnpm workspace. Keep the
 existing Markdown files in place as the source of truth and add a custom,
-responsive theme with local search, English and Simplified Chinese locale
-entry points, and curated navigation.
+responsive theme with local search, English and Simplified Chinese locale entry
+points, and curated navigation.
 
 The English site is complete and remains canonical. The Chinese site provides a
 translated orientation, topic map, and a complete path-for-path companion for
-every specification. Translated pages preserve code and protocol identifiers,
-carry a visible link to the matching English source, and use the same generated
-sidebar structure so coverage gaps are detectable.
-
-The shared theme uses one centered layout system across landing, guide,
-specification, ADR, project, and plugin pages. Reading width is bounded
-independently from the sidebar and outline rails; tables and code blocks scroll
-inside that width. The homepage keeps its text before the system visual on
-mobile and supports light and dark appearance without horizontal overflow.
+every specification.
 
 ## Consequences
 
@@ -38,13 +31,11 @@ mobile and supports light and dark appearance without horizontal overflow.
   code-facing documentation.
 - A behavior-changing English specification edit must update its Chinese
   companion in the same logical change.
-- VitePress becomes a development dependency and the docs package joins the
-  existing pnpm workspace.
 
 ## Alternatives considered
 
-- Keep plain Markdown only: preserves the smallest toolchain, but does not
-  solve navigation, search, responsive presentation, or bilingual entry points.
+- Keep plain Markdown only: preserves the smallest toolchain, but does not solve
+  navigation, search, responsive presentation, or bilingual entry points.
 - Translate only orientation and topic landing pages: lowers maintenance cost,
   but makes Chinese navigation switch back to English precisely when a reader
   reaches the technical detail and leaves locale coverage impossible to verify.

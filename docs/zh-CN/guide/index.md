@@ -14,12 +14,12 @@ PI-Desktop 是一个本地优先的 AI 编程代理桌面客户端。它让工�
 | 应用界面长什么样 | [界面截图](/zh-CN/guide/screenshots) |
 | 如何运行周期任务 | [定时任务](/zh-CN/guide/automations) |
 | 如何添加 MCP 目录并填写密钥 | [MCP 市场](/zh-CN/guide/mcp-market) |
-| 当前交付了什么 | [产品范围](/zh-CN/spec/01-product/01-product-scope) |
-| 系统如何协作 | [系统架构](/zh-CN/spec/02-architecture/01-architecture) |
-| 协议和存储边界 | [运行时规格](/zh-CN/spec/03-runtime/01-ipc-protocol) |
+| 当前交付了什么 | [产品范围](/spec/01-product/01-product-scope) |
+| 系统如何协作 | [系统架构](/spec/02-architecture/01-architecture) |
+| 协议和存储边界 | [运行时规格](/spec/03-runtime/01-ipc-protocol) |
 | 如何开发插件 | [插件开发](/zh-CN/plugin-development) |
 | 为什么做出某个决策 | [ADR 索引](/zh-CN/adr/) |
-| 如何验证行为变化 | [E2E 测试计划](/zh-CN/spec/06-delivery/04-e2e-test-plan) |
+| 如何验证行为变化 | [E2E 测试计划](/spec/06-delivery/04-e2e-test-plan) |
 
 这张表与英文快速开始页保持相同顺序；如果你需要完整英文技术正文，
 可以直接打开 [English guide](/guide/)。

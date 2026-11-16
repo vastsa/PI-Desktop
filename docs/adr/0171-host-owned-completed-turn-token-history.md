@@ -12,12 +12,7 @@
 
 The `turns` table already stores `input_tokens`, `output_tokens`, and
 `usage_json`, and `session.endTurn` already accepted `usage`. Electron never
-sent it. Per-message chips (D103) read provider usage from assistant
-`meta_json`. Mixing subagent spend into those chips would inflate the context
-inspector and the composed-turn total.
-
-A durable completed-turn total is still required so a later dashboard can show
-what the user actually spent, including subagents, without a new schema version.
+sent it.
 
 ## Decision
 
@@ -25,16 +20,13 @@ what the user actually spent, including subagents, without a new schema version.
    merge into an assistant row.
 2. **Turn rollup is `session.endTurn.usage`.** Electron sums every parent
    assistant `message_end` usage for the durable turn and adds
-   `turn_end.subagentUsage` deltas. Only that sum is stored on `turns`.
+   `turn_end.subagentUsage` deltas.
 3. **`stats.getTokenUsageHistory` is an additive host RPC.** It reads completed
    turns in a bounded local-calendar window, buckets by `day` / ISO `week` /
    `month`, fills empty buckets, and does not bump `PROTOCOL_VERSION` or
-   `SCHEMA_VERSION`. `idx_turns_ended_at` is created with
-   `CREATE INDEX IF NOT EXISTS` at boot.
-4. **The user-facing dashboard is not Settings.** ADR 0173 moves that surface
-   to marketplace plugin `pi.token-insights`. This RPC still exists so local
-   completed-turn history, including subagent spend, has a host owner.
-   Historical rows from before Electron sent `usage` may be zero.
+   `SCHEMA_VERSION`.
+4. **The user-facing dashboard is not Settings.** ADR 0173 moves that surface to
+   marketplace plugin `pi.token-insights`.
 
 ## Consequences
 
@@ -47,4 +39,4 @@ what the user actually spent, including subagents, without a new schema version.
 
 - Rewrite parent `message.usage` with subagent spend: rejected (D103).
 - Scan JSONL transcripts in the host Settings page: rejected (unbounded, wrong
-  owner). The marketplace plugin may scan local tool metadata, including JSONL.
+  owner).

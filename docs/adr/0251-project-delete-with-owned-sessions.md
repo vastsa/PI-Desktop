@@ -13,73 +13,34 @@ contract states that "Project close removes retained tab only; durable
 project/sessions remain", and `US-UI-47` states that renderer metadata never
 hides or deletes a durable Project-archive row.
 
-That left no user-facing way to remove a durable project record. A user who
-archived a project that should no longer exist could only edit host-core's
-SQLite file directly and clear renderer storage afterwards, because the Projects
-index is a union of four sources: project-group projections of the durable
-`projects` rows, `pi.desktop.recentProjects`, projects re-derived from live
-sessions, and the active workspace. Deleting only the database row leaves the
-other three sources in place, so the row reappears.
-
-Two integrity facts constrain the fix:
-
-- `PRAGMA foreign_keys = ON` is enforced. `sessions.project_id` and
-  `scheduled_tasks.project_id` are `ON DELETE SET NULL`, so deleting a project
-  row alone orphans its sessions rather than removing them.
+- `PRAGMA foreign_keys = ON` is enforced.
 - A stored (non-legacy) project group owns an ordered root list and a primary
-  root. Removing the primary root underneath the group would leave the group
-  without a valid primary.
+  root.
 
 ## Decision
 
-1. Host-core gains the additive RPC `projects.remove({ path })`, returning
-   `{ removed, sessionsRemoved }`. It is the only supported way to remove a
-   durable project record.
+1. Host-core gains the additive RPC `projects.remove({ path })`, returning `{
+   removed, sessionsRemoved }`.
 2. The RPC deletes the project row together with every session whose
    `project_id` points at it, reusing the existing `sessions::delete_session`
    path so transcript, scratch, and review files are removed exactly as they are
    for a single conversation delete, and it clears the project's durable memory.
-   It is idempotent for an unknown path, and it is refused while any attached
-   session has a running turn (see 7).
-3. The RPC never touches the project's folder on disk. PI-Desktop deletes
-   application records, never user files, and a project whose folder was moved
-   or deleted is still removable.
+3. The RPC never touches the project's folder on disk.
 4. A path that is a root of a stored multi-folder project group is refused with
-   a structured error. The user removes the folder from the group first, which
-   keeps the group's primary root valid; legacy single-root projections are not
-   affected and delete normally. Edit project can detach an additional root
-   even when it has chats; those chats remain available as a standalone project
-   until the user explicitly deletes it.
+   a structured error.
 5. Deleting is a renderer action behind a second confirmation that names the
-   project and the number of sessions it owns. On success the renderer drops the
-   matching renderer-local record in the same operation: the archived/pinned
-   metadata, the recent-project entry, the retained tab, and, when the deleted
-   project was active, the workspace falls back to another open project or to
-   Temporary. A path the host has no durable row for is not a failure: the
-   renderer-local record is removed anyway, because a stale recent-project entry
-   is the only thing that can keep such a row visible.
-6. The action stays renderer-only. It is deliberately absent from
-   `CONTROL_OPERATION_SPECS`, so local MCP control cannot delete projects.
+   project and the number of sessions it owns.
+6. The action stays renderer-only.
 7. The bulk delete is refused while any attached session has a running turn
-   (1008 / `CONFLICT`). A live turn still owns its tools and working directory
-   and is still appending to the transcript the delete would remove, so the
-   operation is deliberately stricter than single-conversation delete, which
-   keeps its current semantics. The renderer blocks the same action up front, so
-   users normally meet a message instead of an error, and a refusal that
-   reaches the dialog is shown with the same localized copy. The check and the
-   deletes run in one host RPC under the host's single state lock, so no turn
-   can start between them.
+   (1008 / `CONFLICT`).
 
 ## Consequences
 
 - A durable project row can finally be removed from the UI, and the row no
-  longer reappears after a reload, because the durable row and the renderer-local
-  records are removed by one action.
-- Sessions and transcripts of a deleted project are gone permanently. A project
-  delete is therefore not recoverable from the application; the folder on disk
-  and any file-level history outside PI-Desktop are unaffected.
-- Group structure is never silently rewritten. Users with multi-folder projects
-  see an explicit refusal instead of a corrupted group.
+  longer reappears after a reload, because the durable row and the
+  renderer-local records are removed by one action.
+- Sessions and transcripts of a deleted project are gone permanently.
+- Group structure is never silently rewritten.
 - Composer/sidebar code that lists projects must treat the four index sources
   consistently; a future index source has to be cleaned by the same action, or
   the row will reappear.
@@ -99,12 +60,5 @@ Two integrity facts constrain the fix:
 - **Delete the project's folder on disk too.** Rejected: an application action
   must not remove user files.
 - **Detach the root from a multi-folder group inside the same call.** Rejected:
-  root membership changes remain an explicit Edit project action, separate
-  from the destructive project-delete confirmation. When a detached root has
-  chats, the edit preserves them as a standalone project so the user can review
-  or delete them separately.
-- **Abort the running turns inside the same call.** Rejected: host-core can
-  settle a turn's own bookkeeping but cannot stop the agent runtime that is
-  still streaming into that session, so an aborted-then-deleted session can
-  still be re-created as a stub by the next append (D318). Refusing the delete
-  keeps the timing decision with the user and leaves no window for that.
+  root membership changes remain an explicit Edit project action, separate from
+  the destructive project-delete confirmation.

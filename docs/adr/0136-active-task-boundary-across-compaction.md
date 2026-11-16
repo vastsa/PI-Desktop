@@ -14,20 +14,16 @@ another bare user message and the model could resume an old task (issue #22).
 
 ## Decision
 
-1. Checkpoints carry opaque `details.retainedTailMode`, either
-   `active_turn` or `completed_turn`.
+1. Checkpoints carry opaque `details.retainedTailMode`, either `active_turn` or
+   `completed_turn`.
 2. An active-turn checkpoint is used when the provider must continue after a
-   tool result, `toolUse`, or overflow recovery. It retains only the latest
-   user message, subject to the existing 20,000-token cap and truncation.
-3. A completed-turn checkpoint is used at a terminal turn boundary, before a
-   new prompt, and for manual compaction. Its retained tail is empty; the
-   summary is authoritative for completed work and the next user prompt is the
-   sole new task.
+   tool result, `toolUse`, or overflow recovery.
+3. A completed-turn checkpoint is used at a terminal turn boundary, before a new
+   prompt, and for manual compaction.
 4. The `fresh_window` family remains the ADR 0064 no-summary exception and
    always carries an empty tail.
 5. Legacy checkpoints without this field are normalized to their latest user
-   message only. The visible transcript, durable checkpoint chain, host
-   ownership, and protocol shape do not change.
+   message only.
 
 ## Consequences
 
@@ -35,8 +31,8 @@ another bare user message and the model could resume an old task (issue #22).
   compaction or restart.
 - Active tool loops retain the one prompt needed to continue the current task,
   while assistant/tool messages remain represented by the summary.
-- Existing checkpoints remain readable without a migration, with a
-  conservative latest-user fallback.
+- Existing checkpoints remain readable without a migration, with a conservative
+  latest-user fallback.
 
 ## Alternatives
 

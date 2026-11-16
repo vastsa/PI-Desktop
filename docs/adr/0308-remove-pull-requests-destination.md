@@ -9,13 +9,8 @@
 PI-Desktop had a Pull requests destination that ran `gh pr list` in the active
 workspace and exposed the same listing through the optional local MCP control
 catalog as `pulls/list`. The UI depended on the GitHub CLI and authentication
-available to the Electron process; listing failures could leave the page with
-no usable PR data. The page's review action only started an Agent prompt and
-did not provide a dedicated GitHub review or write workflow.
-
-The destination and its listing method form one narrow feature. Removing only
-the page would leave an undocumented, otherwise unused GitHub capability in
-the local MCP surface.
+available to the Electron process; listing failures could leave the page with no
+usable PR data.
 
 ## Decision
 
@@ -28,9 +23,8 @@ view icons unchanged.
 ## Consequences
 
 - Users can no longer open a PR destination or call `pulls/list` through
-  PI-Desktop's MCP control catalog. Existing local clients must stop relying on
-  that operation.
-- The change requires no data migration: PR summaries were fetched on demand
-  and were not persisted.
+  PI-Desktop's MCP control catalog.
+- The change requires no data migration: PR summaries were fetched on demand and
+  were not persisted.
 - This decision does not remove user-directed GitHub work through other
   configured Agent tools, a terminal, or a browser.

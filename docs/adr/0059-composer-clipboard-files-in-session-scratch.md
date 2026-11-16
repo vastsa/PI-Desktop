@@ -9,26 +9,19 @@
 
 The composer is a controlled textarea. Chromium exposes pasted operating-system
 files and screenshots as `File` objects, while the native picker exposes files
-that may live outside the active workspace. The text-only prompt contract has
-no binary `ImageContent` channel and an attached file must remain available to
-the agent after the prompt is sent. Writing the bytes into the project would
-dirty git state and would not follow the session-bound workspace/scratch
-ownership rules.
+that may live outside the active workspace.
 
 ## Decision
 
-The [directory-reference amendment](composer-pasted-directory-references.md) keeps
-native directories as path references. This regular-file byte contract continues
-to apply to files and images only.
+The [directory-reference amendment](composer-pasted-directory-references.md)
+keeps native directories as path references. This regular-file byte contract
+continues to apply to files and images only.
 
 1. The renderer intercepts paste only when the clipboard contains one or more
-   `File` objects. Text-only paste remains native textarea behavior.
+   `File` objects.
 2. The renderer transfers bounded file bytes plus the browser-provided name and
    MIME type to Electron main through `composer/pasteFiles`, together with the
-   durable session id. A home composer creates or reuses a session before the
-   transfer. Native picker selections use the additive `composer/importFiles`
-   channel with the same session id; main resolves and copies those source
-   paths before returning references to the renderer.
+   durable session id.
 3. Electron main validates that the session exists, limits the request to 20
    files, 64 MiB per file, and 128 MiB total, strips directory components and
    unsafe name characters, and writes unique files with exclusive-create
@@ -39,38 +32,27 @@ to apply to files and images only.
    ```
 
 4. Main returns each UUID-backed absolute path plus its sanitized original leaf
-   name. Under ADR 0070 the renderer keeps the path in transient reference
-   state, shows the leaf name as a compact chip, and serializes the path into
-   the prompt as an `@` reference using the existing whitespace quoting rule.
-   The prompt and transcript carry paths, never clipboard bytes.
+   name.
 5. Pasted files follow the existing scratch lifecycle: deleting the session or
-   the orphan/stale startup sweep removes them. They are not workspace
-   artifacts and never change project git status.
+   the orphan/stale startup sweep removes them.
 
 ## Security and boundary notes
 
 - The renderer cannot select the destination directory; the session id is
   checked in main and the output root is constructed from the host data dir.
-  Picker source paths are resolved through `realpath` and must be regular files;
-  they never become prompt references or destination paths.
-- Renderer names are reduced to a basename and sanitized. A UUID prefix and
-  exclusive creation prevent collisions and overwrite-by-name.
-- The bridge is Electron-only. It adds no host RPC method and does not expose
-  arbitrary filesystem write access to the renderer.
+- Renderer names are reduced to a basename and sanitized.
+- The bridge is Electron-only.
 
 ## Alternatives considered
 
 - **Insert the browser file name only:** loses the bytes and gives the agent no
-  usable path. Rejected.
+  usable path.
 - **Write into the workspace:** makes a normal paste dirty the project and
-  breaks session scratch isolation. Rejected.
+  breaks session scratch isolation.
 - **Send binary inline with the prompt:** changes the text-only prompt contract,
   inflates context, and requires provider-specific attachment handling.
-  Rejected.
 - **Use an Electron file picker for paste:** does not support screenshots and
-  adds an extra interaction for the common clipboard workflow. Rejected as the
-  paste path; the separate picker upload action now reuses this scratch
-  contract for explicitly selected files.
+  adds an extra interaction for the common clipboard workflow.
 
 ## Consequences
 
@@ -79,20 +61,18 @@ to apply to files and images only.
 - The visible draft gains compact leaf-name references; the dispatched prompt
   gains the same normal `@absolute/path` references, so existing Read/Glob/Grep
   behavior handles the materialized files.
-- Large or malformed clipboard payloads fail visibly in the composer and do
-  not partially write because bytes are validated before the first write.
+- Large or malformed clipboard payloads fail visibly in the composer and do not
+  partially write because bytes are validated before the first write.
 
 ## Amendment (2026-09-14): clipboard text representation for mixed Word pastes
 
-Issue #138: Microsoft Word can place non-whitespace `text/plain` together with an
-`image/*` copy of the same selection on the clipboard, so the `File`-only rule of
-decision 1 discarded editable text and materialized the image instead. This
-amendment replaces that selection rule; the remaining decisions are unchanged.
+Issue #138: Microsoft Word can place non-whitespace `text/plain` together with
+an `image/*` copy of the same selection on the clipboard, so the `File`-only
+rule of decision 1 discarded editable text and materialized the image instead.
+This amendment replaces that selection rule; the remaining decisions are
+unchanged.
 
 - The renderer selects the clipboard representation before the attachment flow.
-  It prefers the editable text when the text is not whitespace-only and every
-  accompanying clipboard file is `image/*` and resolves to no native filesystem
-  path.
 - Any native file path, any non-image file, absent or whitespace-only text, and
   image-only pastes keep the file and image attachment flow of decision 1.
 - Selected text follows ADR 0131's existing `largePasteThreshold`: text at or
@@ -100,5 +80,4 @@ amendment replaces that selection rule; the remaining decisions are unchanged.
   scratch `text/plain` reference.
 - Short multiline text is escaped and inserted as text plus generated line
   breaks, so paragraphs, blank and trailing lines, the replaced selection, the
-  surrounding text, the caret, and native undo all survive. Clipboard HTML is
-  still never read, and CRLF/CR line endings become editor LF line breaks.
+  surrounding text, the caret, and native undo all survive.

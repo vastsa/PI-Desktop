@@ -10,42 +10,22 @@
 
 Clipboard images were materialized successfully, but the composer reduced every
 file to `@<path>` text. A model that supports image input therefore received a
-filesystem reference instead of an image block. The capability signal must be
-owned by the same model catalog that pi-ai uses to serialize provider requests;
-renderer discovery and user-entered model ids are not sufficient evidence.
+filesystem reference instead of an image block.
 
 ## Decision
 
-1. Keep the composer draft compact and textual. Each file reference retains its
-   kind, name, MIME type, and source path as structured metadata; the visible
-   textarea never contains pasted binary data.
-2. Resolve vision capability from the exact pi-ai model record. Only
-   `model.input.includes("image")` enables image transport. Unknown and custom
-   model ids stay on the conservative non-vision path, even when discovery
-   metadata claims `vision`.
-3. Electron main remains the attachment boundary. It validates every source
-   path against the session scratch root, the session-bound project root, or
-   the content-addressed attachment root. Images are stored as
-   `attachments/<sha256>` and the durable `UiMessage` stores only the reference
-   and metadata.
+1. Keep the composer draft compact and textual.
+2. Resolve vision capability from the exact pi-ai model record.
+3. Electron main remains the attachment boundary.
 4. For a vision-capable model, an image within the 10 MB inline limit crosses
    the sidecar only as transient base64 data and becomes a pi-ai image content
-   block. The base64 value is never persisted in SQLite, JSONL, or renderer
-   transcript state.
+   block.
 5. For a non-vision model, an unknown model, or an image above the per-image
-   inline limit, the prompt receives a safe `@path` fallback. Replayed
-   content-store images are copied into the session scratch `replayed/`
-   directory before that fallback is exposed to the model.
+   inline limit, the prompt receives a safe `@path` fallback.
 6. Restored vision history has a 30 MB aggregate raw-image-byte budget in
-   addition to the 10 MB per-image limit. The sidecar considers newest
-   attachments first, preserving all images when the history fits; older images
-   beyond the budget use the safe path fallback. The current prompt row is
-   excluded before history hydration so its transient payload does not consume
-   the history budget.
+   addition to the 10 MB per-image limit.
 7. The Composer shows a compact accessible status row when an image is attached:
-   it states whether the selected model can receive visual input. The model
-   picker and session/provider summaries expose the same authoritative vision
-   capability.
+   it states whether the selected model can receive visual input.
 
 ## Consequences
 
@@ -59,10 +39,6 @@ renderer discovery and user-entered model ids are not sufficient evidence.
   deterministic memory ceiling and a safe path fallback for older images.
 - Attachment garbage collection remains a later storage task; references are
   content-addressed so it can be added without changing the message contract.
-- Full visual previews, drag-and-drop, image transforms, and provider-specific
-  image limits remain out of scope. The 10 MB inline threshold is an app-side
-  safety bound; providers may impose stricter limits and return their normal
-  provider error.
 
 ## Rejected alternatives
 

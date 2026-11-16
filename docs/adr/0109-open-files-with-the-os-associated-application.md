@@ -12,26 +12,21 @@
 The bundled `pi.files` view can inspect text in its isolated viewer, but image,
 document, archive, and other files are better handled by the operating system's
 associated application. The existing `shell.openExternal` API intentionally
-accepts only web and mail URLs, so converting a workspace path into a `file:` URL
-would either weaken that boundary or give the plugin an unscoped file opener.
+accepts only web and mail URLs, so converting a workspace path into a `file:`
+URL would either weaken that boundary or give the plugin an unscoped file
+opener.
 
 ## Decision
 
 1. Add `pi.fs.openDefault(pathFromRoot)` and the matching panel bridge channel
    `fs.openDefault`.
-2. The API is covered by the existing `fs.read` permission. The host resolves
-   the root-relative path through the complete read gate: workspace/user-selected
-   root, real-path containment, protected paths, deny-list, and declared scope
-   or user consent. It accepts existing regular files only.
+2. The API is covered by the existing `fs.read` permission.
 3. Electron Main calls `shell.openPath` after the gate, causing the operating
-   system to choose the file association. The plugin never receives an absolute
-   path and cannot choose an executable or command line.
+   system to choose the file association.
 4. The bundled Files view exposes the action only from its selected-file viewer,
-   including for binary and image files. Success and failure are audited by the
-   plugin id and root-relative path.
+   including for binary and image files.
 5. This is an additive plugin API change; the desktop IPC and host protocol
-   versions do not change. The existing `shell.openExternal` URL restrictions
-   remain unchanged.
+   versions do not change.
 
 ## Consequences
 
@@ -48,16 +43,12 @@ would either weaken that boundary or give the plugin an unscoped file opener.
 ### Reuse `shell.openExternal` with a `file:` URL
 
 Rejected: that API is for external links and would blur URL egress with local
-file access. It also makes the file scope difficult to enforce consistently.
+file access.
 
 ### Add a private bundled-plugin IPC channel
 
-Rejected: Files is intentionally a public plugin API consumer. A private bridge
-would recreate the trust-boundary exception that ADR 0105 removed.
+Rejected: Files is intentionally a public plugin API consumer.
 
 ### Add a new permission separate from `fs.read`
 
-Rejected for this action: the host does not expose an arbitrary opener. The path
-must already be a readable file in the plugin's declared scope, and the UI action
-does not let the plugin select an executable or URL. The operation remains
-audited so later policy changes have an explicit boundary to revise.
+Rejected for this action: the host does not expose an arbitrary opener.

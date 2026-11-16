@@ -13,95 +13,56 @@
 ## Context
 
 At the time this decision was recorded, Settings → Import scanned Claude Code,
-Codex, OpenCode, and Pi session stores. The same tools keep provider URLs,
-model ids, and often API keys in well-known files. Users who switch to
-PI-Desktop otherwise retype those endpoints on Settings → Models.
-
-D007 forbids auto-import of `~/.pi` so PI-Desktop owns `~/.pi-desktop`. That
-must stay true for model configuration: a scan is an explicit action, and
-nothing is written until Import selected.
-
-Secrets cannot cross the renderer. Session import already keeps `filePath`
-in the main-process scan cache; model import must keep keys the same way.
-
-OAuth/subscription grants from those tools (Codex ChatGPT login, Claude
-subscription, OpenCode `type: oauth`) are not PI-Desktop vendor-account
-credentials. Copying refresh tokens would be the wrong security boundary.
+Codex, OpenCode, and Pi session stores. The same tools keep provider URLs, model
+ids, and often API keys in well-known files.
 
 ## Decision
 
-1. The original placement was a Model configuration card under
-   **Settings → Import**, with its own Scan / selection / Import selected.
-   ADR 0319 / D645 supersedes that placement and retires the Settings
-   session-import UI. The model scan/import semantics below remain in force;
-   plugin session-import contracts remain unchanged.
+1. The original placement was a Model configuration card under **Settings →
+   Import**, with its own Scan / selection / Import selected.
 
 2. **Sources** (same family as session import):
-   - Claude Code: `~/.claude/settings.json` plus `settings.local.json`
-     overlay (`env.ANTHROPIC_*`, `model`)
+   - Claude Code: `~/.claude/settings.json` plus `settings.local.json` overlay
+     (`env.ANTHROPIC_*`, `model`)
    - Codex: `~/.codex/config.toml` `[model_providers.<id>]`
    - OpenCode: `~/.config/opencode/opencode.json` `provider` map plus
      `~/.local/share/opencode/auth.json` API keys
    - Pi: `~/.pi/agent/models.json` (fallback `~/.pi/models.json`).
-     Providers connected through Pi's `~/.pi/agent/auth.json` API keys (fallback
-     `~/.pi/auth.json`) are paired with Pi's cached
-     `~/.pi/agent/models-store.json` (fallback `~/.pi/models-store.json`) so an
-     auth-only provider still gets its endpoint, model list, and limits. When
-     both files describe one provider, `models.json` stays authoritative.
    - CC Switch: `~/.cc-switch/cc-switch.db` `providers` table (legacy
-     `config.json`). Each row's `settings_config` is converted by app type.
-     Empty official seeds and OAuth-only rows are omitted. A live Claude /
-     Codex / OpenCode / Pi file that matches a CC Switch endpoint and
-     credential is not listed twice; a different credential remains visible.
+     `config.json`).
 
 3. **IPC** (Electron only, no host protocol bump):
-   `pi-desktop/modelConfig/importScan` returns public drafts
-   (`source`, `externalId`, `name`, `baseUrl`, `apiStyle`, `modelIds`,
-   `hasSecret`). `importRun` looks the selection up in the latest scan
-   cache and calls host `providers.create`.
+   `pi-desktop/modelConfig/importScan` returns public drafts (`source`,
+   `externalId`, `name`, `baseUrl`, `apiStyle`, `modelIds`, `hasSecret`).
 
 4. **Secrets.** A stored API key, `env:` / `env_key` resolution, or
    `Authorization: Bearer` header is copied into the host secret store.
-   Placeholder values (`YOUR_API_KEY`, `${VAR}`) are treated as missing.
-   A pi `apiKey` or auth header written as a `!<shell command>` is never
-   executed or stored; that provider is imported without a secret. Pi
-   `auth.json` entries of type `oauth` are skipped entirely; plain
-   `type: "api_key"` entries are copied. An unresolved `env:` / `$VAR`
-   reference in `models.json` is filled from the matching `auth.json` key
-   before import.
 
 5. **Idempotence.** A candidate whose normalized base URL, API style, and
-   credential match an existing provider is skipped. Different credentials
-   remain independent provider rows; the credential comparison stays in
-   Electron main and never reaches the renderer. Named presets may set
-   `vendorKey`; a custom URL stays `custom`. ADR 0188 amends this rule.
+   credential match an existing provider is skipped.
 
-6. **Default model.** If `settings.defaultProviderId` is empty after the
-   first successful create in that run, that provider and its first model
-   become the global default. An existing default is never overwritten.
+6. **Default model.** If `settings.defaultProviderId` is empty after the first
+   successful create in that run, that provider and its first model become the
+   global default.
 
 ## Consequences
 
-- Switching from another local agent can bring both transcripts and the
-  models those transcripts used, without pasting keys into Settings.
+- Switching from another local agent can bring both transcripts and the models
+  those transcripts used, without pasting keys into Settings.
 - PI-Desktop still does not silently ingest `~/.pi`.
-- Users with only a ChatGPT/Claude subscription still sign in through
-  Vendor accounts; import cannot impersonate that grant.
+- Users with only a ChatGPT/Claude subscription still sign in through Vendor
+  accounts; import cannot impersonate that grant.
 
 ## Alternatives
 
 - Auto-import on first launch: rejected by D007.
-- Merge keys into an existing same-URL provider: would overwrite a working
-  row. Skip is safer; the user can edit the Models page.
-- Renderer-side `providers.create` with the key in the IPC payload: the
-  scan cache already exists for sessions; keep secrets off the renderer.
+- Merge keys into an existing same-URL provider: would overwrite a working row.
+- Renderer-side `providers.create` with the key in the IPC payload: the scan
+  cache already exists for sessions; keep secrets off the renderer.
 
 ## Amendment — 2026-10-18: discover Pi auth-only providers
 
-Settings → Models only scanned `models.json`, so providers connected through
-`pi /login` (for example DeepSeek or a Z.AI coding plan) never appeared in the
-Pi group. The explicit scan now reads `auth.json` API keys and pairs them with
-the catalog Pi already cached in `models-store.json`. OAuth/subscription grants
-still stay in Pi, `!command` values are never executed or stored, and a
-`models.json` provider remains authoritative when both files describe it.
-
+Settings → Models only scanned `models.json`, so providers connected through `pi
+/login` (for example DeepSeek or a Z.AI coding plan) never appeared in the Pi
+group. The explicit scan now reads `auth.json` API keys and pairs them with the
+catalog Pi already cached in `models-store.json`.
