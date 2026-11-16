@@ -27,36 +27,72 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const parentPort = process.parentPort;
 
-/** Electron utilityProcess and node:child_process disagree on the transport. */
-function send(message) {
-  if (parentPort) parentPort.postMessage(message);
-  else process.send?.(message);
-}
-
 // Once the parent channel is gone, diagnostics must never re-enter it: every
 // further send attempt would only produce a new failure to report. One stderr
-// note is the last thing a broken channel gets.
+// note is the last thing a broken channel gets. The terminal path is
+// idempotent: whichever failure surface gets here first (a synchronous throw
+// in `send`, an async delivery error callback, or a process-level transport
+// error) runs the single `process.exit` — later arrivals see the flag and stop.
 let transportBroken = false;
+let exitStarted = false;
+
+function markBrokenAndExit(error) {
+  if (transportBroken) return;
+  transportBroken = true;
+  const reason = error?.code || error?.message || String(error ?? "unknown");
+  try {
+    process.stderr.write(`plugin host: parent IPC channel is broken (${reason})\n`);
+  } catch {
+    // Even stderr can be gone (closed pipe); nothing left to report to.
+  }
+  if (exitStarted) return;
+  exitStarted = true;
+  // The channel to the owner is gone: nothing this process does is useful
+  // anymore, and lingering here would leak the plugin host. A settled
+  // process.exit cannot recurse through further diagnostics.
+  process.exit(0);
+}
+
+// Async delivery failures on the node IPC channel do not throw inside `send`:
+// with the parent connector gone, `process.send` fails asynchronously and the
+// channel reports it as a process-level `error` event (typically EPIPE).
+// Handling it here keeps it out of `uncaughtException`, where the diagnostics
+// send would otherwise recurse forever. It is the same terminal break.
+process.on("error", (error) => {
+  markBrokenAndExit(error);
+});
+if (parentPort) {
+  // Electron's pinned parent-port never surfaces `disconnect`: the gone
+  // connector shows up as `close`, and undeliverable frames as `messageerror`.
+  // Treat both as the same terminal break.
+  parentPort.on("close", () => markBrokenAndExit(new Error("parent-port closed")));
+  parentPort.on("messageerror", (error) => markBrokenAndExit(error));
+}
+
+/**
+ * Send over the parent transport. On the node IPC channel delivery is
+ * asynchronous: failures are reported through `onDeliveryError` (or the
+ * process-level `error` handler above), never synchronously, so callers must
+ * not assume `send` returning means the parent received the frame.
+ */
+function send(message, onDeliveryError) {
+  if (parentPort) parentPort.postMessage(message);
+  else process.send?.(message, (error) => onDeliveryError?.(error));
+}
 
 /** Best-effort send. Never throws, so callers that report failures through
  * this channel cannot recurse into reporting the failure of the report. */
 function trySend(message) {
   if (transportBroken) return false;
   try {
-    send(message);
+    send(message, (error) => {
+      if (error) markBrokenAndExit(error);
+    });
     return true;
-  } catch {
-    transportBroken = true;
-    try {
-      process.stderr.write("plugin host: parent IPC channel is broken\n");
-    } catch {
-      // Even stderr can be gone (closed pipe); nothing left to report to.
-    }
-    // The channel to the owner is gone: nothing this process does is useful
-    // anymore, and lingering here would leak the plugin host. A settled
-    // process.exit cannot recurse through further diagnostics.
-    process.exit(0);
+  } catch (error) {
+    markBrokenAndExit(error);
   }
+  return false;
 }
 
 function log(level, message) {
@@ -94,7 +130,20 @@ function call(api, args = []) {
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject, invocationId: invocation?.id });
     try {
-      send({ t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) });
+      send(
+        { t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) },
+        // An async delivery failure means the channel to the broker is gone:
+        // fail the pending call and take the same terminal break as every
+        // other transport error.
+        (error) => {
+          const entry = pending.get(id);
+          if (entry) {
+            pending.delete(id);
+            entry.reject(error);
+          }
+          if (error) markBrokenAndExit(error);
+        },
+      );
     } catch (error) {
       pending.delete(id);
       reject(error);
