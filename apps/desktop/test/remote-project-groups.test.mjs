@@ -6,6 +6,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { catalogs } from "@pi-desktop/i18n";
 import { createServer } from "vite";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 /*
@@ -22,6 +23,17 @@ import { fileURLToPath } from "node:url";
  */
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
+
+// The section heading and its styling live outside the component, so they are
+// checked against the sidebar source itself.
+const sidebarSource = await readFile(
+  new URL("../src/components/Sidebar.tsx", import.meta.url),
+  "utf8",
+);
+const sidebarStyles = await readFile(
+  new URL("../src/styles/sessions.css", import.meta.url),
+  "utf8",
+);
 
 const project = {
   key: JSON.stringify(["ssh-fixture", "p7"]),
@@ -99,6 +111,12 @@ test("a host project group exposes the same disclosure as a local project group"
     assert.match(html, /data-action="toggle-project-collapse"/);
     assert.match(html, /aria-expanded="true"/);
     assert.match(html, /aria-controls="remote-project-[^"]+-sessions"/);
+    // The toggle is the sidebar's own title button. The generic `.btn` primitive
+    // re-centers its content and widens its padding, which pulls the chevron and
+    // folder off the rail every local group shares.
+    assert.match(html, /class="sidebar-session-group-title project-toggle"/);
+    assert.doesNotMatch(html, /class="[^"]*\bbtn\b[^"]*sidebar-session-group-title/);
+    assert.match(html, /class="sidebar-session-group-add"/);
     // The header answers for the whole group: name plus the host that owns it.
     assert.match(html, /713Air · mac-mini/);
     // Rows live in the animatable body, not as loose siblings of the header.
@@ -133,6 +151,48 @@ test("the new-task action stays on the header and never becomes the fold toggle"
     // first conversation in a project they just closed.
     assert.match(collapsed, /aria-label="New task: 713Air · mac-mini"/);
   });
+});
+
+test("host groups sit under their own section heading beside Projects", () => {
+  const heading = sidebarSource.match(
+    /<div className="sidebar-list-subheader" data-sidebar-section="remote">[\s\S]*?<\/div>/,
+  )?.[0];
+  assert.ok(heading, "the sidebar emits a remote section heading");
+  assert.match(heading, /t\("nav\.remoteProjects"/);
+  // The heading owns the groups: it is emitted before them inside the same
+  // list, so host groups read as a sibling section instead of trailing the
+  // local project groups unlabelled.
+  const headingAt = sidebarSource.indexOf('data-sidebar-section="remote"');
+  const groupsAt = sidebarSource.indexOf("<RemoteProjectGroups");
+  assert.ok(groupsAt > headingAt, "the heading precedes the host groups");
+  // The heading is only emitted when a host actually has groups.
+  assert.match(
+    sidebarSource,
+    /\{remoteProjectGroups\.length > 0 \? \([\s\S]*?data-sidebar-section="remote"[\s\S]*?<RemoteProjectGroups/,
+  );
+
+  const rule = sidebarStyles.match(/\.sidebar-list-subheader \{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(rule, "the heading has its own box, not the toolbar's");
+  assert.match(rule, /display: flex;/);
+  // Matches the Projects toolbar's side inset once the list's own padding is
+  // added, so the two headings share one left rail.
+  assert.match(rule, /padding: 8px 2px 0;/);
+
+  // The heading already names the host class, so rows under it do not repeat a
+  // "Remote" chip on every conversation.
+  assert.match(sidebarSource, /insideRemoteSection: true/);
+  assert.match(
+    sidebarSource,
+    /isRemoteSession\(session\) && !options\?\.insideRemoteSection/,
+  );
+});
+
+test("every locale names the remote section", () => {
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    const label = catalog.nav?.remoteProjects;
+    assert.equal(typeof label, "string", `${locale} is missing nav.remoteProjects`);
+    assert.ok(label.trim().length > 0, `${locale} has an empty nav.remoteProjects`);
+  }
 });
 
 test("the fold uses shared project state, so the catalog key never becomes a project path", async () => {

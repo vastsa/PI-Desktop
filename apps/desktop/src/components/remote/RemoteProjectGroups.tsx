@@ -9,8 +9,8 @@ import {
 } from "../../lib/sidebar-project-runs";
 import { useAppStore } from "../../stores/app-store";
 import { ProjectRunBadge, ProjectRunCount, ProjectRunRail } from "../ProjectRunIndicator";
-import { IconChevronDown, IconFolder, IconNewProject } from "../icons";
-import { Button, TooltipButton } from "../ui";
+import { IconChevronDown, IconFolder, IconNewSession } from "../icons";
+import { TooltipButton } from "../ui";
 
 /** A stable DOM id from the catalog key, which is a JSON tuple rather than a path. */
 function groupDomId(key: string): string {
@@ -59,8 +59,9 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
     >
       {showRunRail ? <ProjectRunRail summary={runSummary} /> : null}
       <div className="sidebar-session-group-header">
-        <Button variant="ghost" id={domId} className="sidebar-session-group-title project-toggle"
-          title={`${project.hostLabel} · ${project.label}`}
+        <TooltipButton type="button" id={domId} className="sidebar-session-group-title project-toggle"
+          tooltip={`${project.hostLabel} · ${project.label}`}
+          ariaLabel={`${project.label} · ${project.hostLabel}`}
           aria-expanded={!collapsed}
           aria-controls={`${domId}-sessions`}
           data-action="toggle-project-collapse"
@@ -69,9 +70,13 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
           <IconFolder size={13} aria-hidden /><span>{project.label} · {project.hostLabel}</span>
           {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
           {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
-        </Button>
-        <TooltipButton tooltip={t("nav.newTask")} ariaLabel={`${t("nav.newTask")}: ${project.label} · ${project.hostLabel}`}
-          disabled={busy !== null} onClick={() => void open(project)}><IconNewProject size={14} /></TooltipButton>
+        </TooltipButton>
+        {/* The add action is the sidebar's own control, not a generic button:
+            the generic `.btn` padding and centering would pull the header off the
+            local group rail this row is meant to match. */}
+        <TooltipButton type="button" className="sidebar-session-group-add"
+          tooltip={t("nav.newTask")} ariaLabel={`${t("nav.newTask")}: ${project.label} · ${project.hostLabel}`}
+          disabled={busy !== null} onClick={() => void open(project)}><IconNewSession size={13} /></TooltipButton>
       </div>
       <div id={`${domId}-sessions`}
         className={`sidebar-session-group-body project ${collapsed ? "collapsed" : ""}`}
