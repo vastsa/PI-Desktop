@@ -38,6 +38,8 @@ const GOAL_SOURCE = "---\nname: goal\nlabel: Goal\nbudget: { maxTurns: 20 }\n---
 const calls = [];
 const listeners = new Map();
 const userDocs = new Map();
+const GOAL_OVERRIDE_PATH = "/home/user/.pi/modes/goal/mode.md";
+let goalOverride;
 let run = {
   id: "run-1", sessionId: "session-1", modeId: "review", snapshotHash: "h", input: "go",
   stageId: "design", state: "waiting", waitReason: "approval", revision: 3,
@@ -55,7 +57,10 @@ function catalog() {
     modes: [
       entry("agent", { source: "builtin", label: "Agent" }),
       entry("plan", { source: "builtin", label: "Plan" }),
-      entry("goal", { source: "builtin", label: "Goal", staged: true }),
+      entry("goal", {
+        source: "builtin", label: "Goal", staged: true,
+        ...(goalOverride === undefined ? {} : { customized: true, filePath: GOAL_OVERRIDE_PATH }),
+      }),
       entry("review", { label: "Code review", description: "Review the current diff", staged: true }),
       entry("broken", { label: "Broken mode", available: false }),
       entry("plan", { label: "Shadow plan", available: false, reserved: true }),
@@ -87,17 +92,23 @@ window.piDesktop = {
       case IPC.invoke.modesCatalog:
         return ok(catalog());
       case IPC.invoke.modesRead:
-        if (input === "goal") return ok({ id: "goal", source: GOAL_SOURCE, builtin: true });
+        if (input === "goal") {
+          return ok(goalOverride === undefined
+            ? { id: "goal", source: GOAL_SOURCE, builtin: true }
+            : { id: "goal", source: goalOverride, filePath: GOAL_OVERRIDE_PATH, builtin: true });
+        }
         return ok({ id: input, source: userDocs.get(input), filePath: "/home/user/.pi/modes/" + input + "/mode.md", builtin: false });
       case IPC.invoke.modesValidate:
         return ok(/^bogus:/m.test(input.source)
           ? { ok: false, errors: ["bogus: unknown key"], warnings: [] }
           : { ok: true, errors: [], warnings: [] });
       case IPC.invoke.modesWrite:
-        userDocs.set(input.id, input.source);
+        if (input.id === "goal") goalOverride = input.source;
+        else userDocs.set(input.id, input.source);
         return ok(catalog());
       case IPC.invoke.modesDelete:
-        userDocs.delete(input);
+        if (input === "goal") goalOverride = undefined;
+        else userDocs.delete(input);
         return ok(catalog());
       case IPC.invoke.modesRunGet:
         return ok({ run });
@@ -165,8 +176,11 @@ async function waitFor(predicate, message) {
   throw new Error(message + " — body: " + document.body.innerText.slice(0, 600));
 }
 const text = () => document.body.innerText;
+// Icon-only run controls carry their name in aria-label.
 function button(label) {
-  return [...document.querySelectorAll("button")].find((candidate) => candidate.textContent.trim() === label);
+  return [...document.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent.trim() === label || candidate.getAttribute("aria-label") === label,
+  );
 }
 function typeInto(element, value) {
   const proto = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -251,7 +265,8 @@ window.modesProbe = async () => {
   result.resolveRequests = sent(IPC.invoke.modesRunResolve);
   result.controlRequests = sent(IPC.invoke.modesRunControl);
 
-  // 3) Settings → Modes: builtin read-only, duplicate, validate, save, delete.
+  // 3) Settings → Modes: edit and restore a builtin, then duplicate,
+  //    validate, save and delete a user mode.
   flushSync(() => window.__view("settings"));
   await waitFor(() => document.querySelector('[data-testid="modes-directory"]'), "settings list missing");
   result.directory = document.querySelector('[data-testid="modes-directory"]').textContent;
@@ -259,7 +274,19 @@ window.modesProbe = async () => {
   flushSync(() => document.querySelector('.modes-settings-row[data-mode-id="goal"]').click());
   const source = () => document.querySelector(".modes-settings-source");
   await waitFor(() => source()?.value === GOAL_SOURCE, "builtin source not opened");
-  result.builtinReadOnly = source().readOnly && !button("Save") && !button("Delete");
+  result.builtinEditable = !source().readOnly && !!button("Save") && !button("Restore default") && !button("Delete")
+    && text().includes("~/.pi/modes/goal/mode.md");
+  typeInto(source(), GOAL_SOURCE.replace("maxTurns: 20", "maxTurns: 50"));
+  await waitFor(() => text().includes("No problems found") && !button("Save").disabled, "builtin edit not confirmed");
+  flushSync(() => button("Save").click());
+  await waitFor(() => button("Restore default"), "restore default not offered after saving a builtin");
+  result.customizedBadge = document.querySelector('.modes-settings-row[data-mode-id="goal"]').textContent.includes("Customized");
+  result.overrideWrites = sent(IPC.invoke.modesWrite);
+  flushSync(() => button("Restore default").click());
+  await waitFor(() => button("Click again to restore"), "restore did not arm");
+  flushSync(() => button("Click again to restore").click());
+  await waitFor(() => source()?.value === GOAL_SOURCE && !button("Restore default"), "shipped source not restored");
+  result.overrideDeletes = sent(IPC.invoke.modesDelete);
   flushSync(() => button("Duplicate").click());
   const idInput = await waitFor(() => document.querySelector(".modes-settings-new input"), "id prompt missing");
   typeInto(idInput, "plan");
@@ -282,7 +309,7 @@ window.modesProbe = async () => {
   flushSync(() => button("Click again to delete").click());
   await waitFor(() => !document.querySelector('.modes-settings-row[data-mode-id="my-goal"]'), "deleted mode still listed");
   result.deletes = sent(IPC.invoke.modesDelete);
-  result.validations = sent(IPC.invoke.modesValidate).every((input) => input.id === "my-goal");
+  result.validations = sent(IPC.invoke.modesValidate).every((input) => input.id === "my-goal" || input.id === "goal");
 
   stopSync();
   return result;
@@ -416,19 +443,25 @@ app.whenReady().then(async () => {
     // Settings → Modes.
     assert.equal(result.directory, "/home/user/.pi/modes");
     assert.deepEqual(result.rows, ["agent", "plan", "goal", "broken", "plan", "review"]);
-    assert.equal(result.builtinReadOnly, true);
+    assert.equal(result.builtinEditable, true);
+    assert.equal(result.customizedBadge, true);
+    assert.deepEqual(result.overrideWrites, [
+      { id: "goal", source: "---\nname: goal\nlabel: Goal\nbudget: { maxTurns: 50 }\n---\nWork until the objective is verified.\n" },
+    ]);
+    assert.deepEqual(result.overrideDeletes, ["goal"]);
     assert.equal(
       result.duplicateSource,
       "---\nname: my-goal\nlabel: Goal\nbudget: { maxTurns: 20 }\n---\nWork until the objective is verified.\n",
     );
     assert.equal(result.saveBlockedByErrors, true);
     assert.deepEqual(result.writes, [
+      ...result.overrideWrites,
       {
         id: "my-goal",
         source: "---\nname: my-goal\nlabel: My goal\nbudget: { maxTurns: 20 }\n---\nWork until the objective is verified.\n",
       },
     ]);
-    assert.deepEqual(result.deletes, ["my-goal"]);
+    assert.deepEqual(result.deletes, ["goal", "my-goal"]);
     assert.equal(result.validations, true);
   } finally {
     await rm(temp, { recursive: true, force: true });

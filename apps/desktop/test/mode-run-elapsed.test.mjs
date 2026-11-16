@@ -19,7 +19,6 @@ await build({
       import { createInstance } from "i18next";
       import { I18nextProvider } from "react-i18next";
       import { ModeRunStatusPanel } from "./src/features/modes/ModeRunStatusBar";
-      import { GoalBudgetSettingsRow } from "./src/features/modes/GoalBudgetSettingsRow";
       export { modeRunElapsedMs, formatModeRunElapsed } from "./src/features/modes/mode-run-elapsed";
       export { default as EN_TRANSLATION } from "../../packages/i18n/src/locales/en/index";
       export { default as ZH_TRANSLATION } from "../../packages/i18n/src/locales/zh-CN/index";
@@ -28,12 +27,6 @@ await build({
         await i18n.init({ lng: language, resources: { [language]: { translation } } });
         return renderToStaticMarkup(createElement(I18nextProvider, { i18n },
           createElement(ModeRunStatusPanel, { run })));
-      }
-      export async function renderBudget(translation) {
-        const i18n = createInstance();
-        await i18n.init({ lng: "zh-CN", resources: { "zh-CN": { translation } } });
-        return renderToStaticMarkup(createElement(I18nextProvider, { i18n },
-          createElement(GoalBudgetSettingsRow, { settings: {}, saveSettings: async () => {} })));
       }
     `,
     resolveDir: join(root, "apps/desktop"),
@@ -50,11 +43,11 @@ await build({
   logLevel: "silent",
 });
 const require = createRequire(import.meta.url);
-const { modeRunElapsedMs, formatModeRunElapsed, renderPanel, renderBudget, EN_TRANSLATION, ZH_TRANSLATION } = require(entry);
+const { modeRunElapsedMs, formatModeRunElapsed, renderPanel, EN_TRANSLATION, ZH_TRANSLATION } = require(entry);
 const EN_UNITS = { day: "d", hour: "h", minute: "m", second: "s" };
 const ZH_UNITS = { day: "天", hour: "小时", minute: "分", second: "秒" };
 const translation = (units) => ({
-  settings: { modeGoal: "Goal", goalBudgetTurns: "轮数", goalBudgetTokens: "令牌" },
+  settings: { modeGoal: "Goal" },
   modes: { run: {
     rounds: "Rounds {{completed}}/{{max}}",
     elapsed: EN_TRANSLATION.modes.run.elapsed,
@@ -165,25 +158,9 @@ test("a reported blocker renders the existing Resume icon without Pause or appro
   assert.ok(!buttons.some(([, attrs]) => attrs.includes(`aria-label="${EN_TRANSLATION.modes.run.pause}"`)));
 });
 
-test("Goal budget keeps two labeled shared inputs in the same control", async () => {
-  const html = await renderBudget(translation(ZH_UNITS));
-  assert.match(html, /class="settings-goal-budget"/);
-  assert.equal((html.match(/class="settings-goal-budget-field"/g) ?? []).length, 2);
-  assert.equal((html.match(/class="field-input settings-goal-budget-input"/g) ?? []).length, 2);
-  assert.match(html, /class="settings-goal-budget-label">轮数<\/span><input/);
-  assert.match(html, /class="settings-goal-budget-label">令牌<\/span><input/);
-});
-
-test("Goal layout rules beat generic input widths and constrain wrapping metadata", async () => {
+test("Goal layout rules constrain wrapping metadata", async () => {
   const css = await readFile(join(root, "apps/desktop/src/styles/modes.css"), "utf8");
   const rules = new Map([...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => [match[1].trim(), match[2]]));
-  const input = rules.get(".settings-goal-budget .settings-goal-budget-input.field-input");
-  assert.ok(input, "Goal input specificity must exceed .settings-row-control .field-input");
-  assert.match(input, /width:\s*96px/);
-  assert.match(input, /min-width:\s*0/);
-  assert.match(rules.get(".settings-goal-budget"), /flex-wrap:\s*nowrap/);
-  assert.match(rules.get(".settings-goal-budget-label"), /white-space:\s*nowrap/);
-  assert.match(rules.get(".settings-row-control:has(> .settings-goal-budget)"), /max-width:\s*100%/);
   assert.match(rules.get(".mode-run-actions"), /max-width:\s*100%/);
   assert.match(rules.get(".mode-run-elapsed"), /overflow-wrap:\s*anywhere/);
 });
