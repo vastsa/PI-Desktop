@@ -13,17 +13,25 @@
  *      the same Rust binary, pairs a device over the real RACP-WS socket using
  *      the production Main modules (`exchangePairingToken`,
  *      `createRemoteHostsBoot`), registers two projects, creates sessions,
- *      lists them through the production catalog, attaches
- *      (`readHistory` + `subscribeSession`), and verifies the renderer's
- *      project-grouping contract: one group per project, exclusive membership,
- *      sorted rows, distinct `remote::` collapse keys, and the fold surviving
- *      a real Main-side sidebar-preferences write/read round trip.
+ *      lists them through the production catalog, attaches through the
+ *      production Main history module (`createRemoteHistory` →
+ *      `session/attach` with includeSnapshot), reconciles the returned
+ *      SessionDetail into the renderer session list exactly like the
+ *      production selectSession remote branch, and verifies the project
+ *      grouping contract over that post-attach store state: one group per
+ *      project, exclusive membership, sorted rows, distinct `remote::`
+ *      collapse keys. Negative controls: removing the get-side project
+ *      decoration must break the grouping, and a forced failed check must
+ *      fail the process exit even when finish(0) is requested. The fold is
+ *      driven by the real store action (`setProjectCollapsed`) and the
+ *      rendered groups must consume the restored collapse state.
  *
  * Prereqs: `pnpm build:js`, `pnpm -C packages/agent-runtime bundle`, and a
  * host-core binary (`cargo build`); point PI_HOST_CORE_BINARY (or
  * PI_DESKTOP_HOST_BIN) at `target/debug/pi-desktop-host-core`.
  *
- * Exit code 0 = PASS, 1 = FAIL (reason on stderr).
+ * Exit code 0 = PASS, 1 = FAIL (reason on stderr); any failed check forces a
+ * non-zero exit regardless of the requested code.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -55,6 +63,30 @@ const {
 } = await import("../apps/desktop/src/lib/remote-project-catalog.ts");
 const { writeSidebarBackup, readSidebarBackup } =
   await import("../apps/desktop/electron/main/sidebar-preferences.ts");
+// Production attach path: session/attach with includeSnapshot — the exact
+// module behind IPC.invoke.sessionGet on the Main side.
+const { createRemoteHistory } =
+  await import("../apps/desktop/electron/main/remote/remote-history.ts");
+const { createRacpRemoteHostClient } =
+  await import("../apps/desktop/electron/main/remote/racp-remote-host-client.ts");
+const { parseRemoteSessionId } =
+  await import("../apps/desktop/electron/main/remote/backend-router.ts");
+const { wsClientTransport } = await import("@pi-desktop/racp");
+// Production renderer-store pieces: the reconcile a remote SessionDetail goes
+// through when selected, and the sidebar collapse store action.
+const { safeSessionSummary } =
+  await import("../apps/desktop/src/lib/remote-session-safety.ts");
+const {
+  decorateSessions,
+  preferencesFromState,
+  withoutRecordKey,
+  withProjectDisplayName,
+  promoteProjectPath,
+  removeProjectPath,
+  upsertWorkspace,
+} = await import("../apps/desktop/src/stores/helpers/store-helpers.ts");
+const { createProjectSlice } =
+  await import("../apps/desktop/src/stores/slices/project-slice.ts");
 
 const results = [];
 const record = (id, ok, detail = "") => {
@@ -62,12 +94,46 @@ const record = (id, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"} ${id}${detail ? ` — ${detail}` : ""}`);
 };
 function finish(code) {
+  // The requested exit code alone never decides the outcome: a single failed
+  // check turns the process status into failure, whatever the caller asked for.
   const failed = results.filter((row) => !row.ok);
+  const ok = code === 0 && failed.length === 0;
   console.log(
-    `\n${code === 0 ? "ACCEPTANCE PASS" : "ACCEPTANCE FAIL"}: ${results.length - failed.length}/${results.length} checks`,
+    `\n${ok ? "ACCEPTANCE PASS" : "ACCEPTANCE FAIL"}: ${results.length - failed.length}/${results.length} checks`,
   );
-  process.exit(code);
+  process.exit(ok ? 0 : 1);
 }
+
+// Negative self-check mode: a forced `record(..., false)` must make the
+// process fail even though the caller requests exit 0. The main run below
+// spawns itself with this flag and requires a non-zero exit.
+if (process.argv.includes("--self-check-finish")) {
+  record("forced-regression", false);
+  finish(0);
+}
+
+const selfCheck = spawn(
+  process.execPath,
+  [fileURLToPath(import.meta.url), "--self-check-finish"],
+  { stdio: ["ignore", "pipe", "pipe"] },
+);
+let selfCheckOutput = "";
+selfCheck.stdout.on("data", (chunk) => {
+  selfCheckOutput += String(chunk);
+});
+selfCheck.stderr.on("data", (chunk) => {
+  selfCheckOutput += String(chunk);
+});
+const selfCheckExit = await new Promise((resolveExit) =>
+  selfCheck.once("exit", resolveExit),
+);
+record(
+  "negative-forced-record-failure-fails-process",
+  selfCheckExit !== 0 &&
+    selfCheckOutput.includes("FAIL forced-regression") &&
+    selfCheckOutput.includes("ACCEPTANCE FAIL"),
+  `self-check exit=${selfCheckExit}`,
+);
 
 const hostBin = resolve(
   process.env.PI_HOST_CORE_BINARY ?? process.env.PI_DESKTOP_HOST_BIN ?? "",
@@ -388,28 +454,77 @@ try {
     "",
   );
 
-  // Attach: transcript read + live subscription over the real transport.
-  const history = await boot.readHistory(createdOneA.id, 24);
+  // Attach through the production Main path: a second real RACP client over
+  // the paired socket, driven through `createRemoteHistory` — the exact module
+  // IPC.invoke.sessionGet uses. With no `messageBefore`, it requests
+  // `session/attach` with includeSnapshot and returns the snapshot-derived
+  // SessionDetail (`racpSessionToSummary` applies the get-side project
+  // decoration: remoteProjectId = snapshot.session.projectId).
+  const attachClient = createRacpRemoteHostClient({
+    transport: wsClientTransport({ url, token: deviceToken }),
+    clientInfo,
+    log: () => {},
+  });
+  cleanups.push(() => attachClient?.close().catch(() => {}));
+  await attachClient.connect();
+  const attachHostSessionId = parseRemoteSessionId(
+    createdOneA.id,
+  )?.hostSessionId;
   record(
-    "attach-read-history-returns-array",
-    Array.isArray(history),
-    `${history.length} items`,
+    "attach-uses-production-remote-session-id",
+    createdOneA.id.startsWith("remote:journey:") &&
+      Boolean(attachHostSessionId),
+    createdOneA.id,
   );
-  const events = [];
-  const unsubscribe = boot.subscribeSession(createdOneA.id, (envelope) =>
-    events.push(envelope),
-  );
-  record(
-    "attach-subscribes-to-session-events",
-    unsubscribe === null || typeof unsubscribe === "function",
-    `${events.length} envelopes so far`,
-  );
-  if (typeof unsubscribe === "function") unsubscribe();
 
-  // Renderer grouping contract over the real summaries.
+  const attachSnapshots = [];
+  const remoteHistory = createRemoteHistory({
+    client: attachClient.client,
+    hostLabel: "Journey Host",
+    onSnapshot: (snapshot) => attachSnapshots.push(snapshot),
+  });
+  const attachDetail = await remoteHistory.read(
+    createdOneA.id,
+    attachHostSessionId,
+    { messageLimit: 24 },
+  );
+  record(
+    "attach-production-session-attach-snapshot",
+    attachSnapshots.length === 1 &&
+      attachSnapshots[0]?.session?.id === attachHostSessionId &&
+      attachDetail?.id === createdOneA.id &&
+      Array.isArray(attachDetail?.messages),
+    `snapshot.session=${attachSnapshots[0]?.session?.id}, messages=${attachDetail?.messages?.length}`,
+  );
+
+  // Renderer store reconcile: exactly what the production selectSession remote
+  // branch does with a freshly loaded remote SessionDetail — the summary part
+  // of the detail replaces the cached entry in `sessions`
+  // (session-slice.ts: safeSessionSummary(summary) + filter by id).
+  const reconcileIntoStore = (sessions, summary) =>
+    decorateSessions(
+      [
+        safeSessionSummary(summary),
+        ...sessions.filter((session) => session.id !== summary.id),
+      ],
+      {},
+    );
+  const storeAfterAttach = reconcileIntoStore(sessions, attachDetail);
+  const reconciled = storeAfterAttach.find((row) => row.id === createdOneA.id);
+  record(
+    "attach-detail-reconciled-keeps-project-identity",
+    storeAfterAttach.length === 3 &&
+      reconciled?.remoteProjectId === registered1.id &&
+      reconciled?.remoteHostKey === "journey",
+    `remoteProjectId=${reconciled?.remoteProjectId}`,
+  );
+
+  // Renderer grouping contract over the post-attach store state (not the
+  // pre-attach inventory): the attached summary's project identity decides
+  // which group the session lands in.
   const compare = (left, right) =>
     (left.title ?? "").localeCompare(right.title ?? "");
-  const groups = groupRemoteProjectSessions(sessions, compare);
+  const groups = groupRemoteProjectSessions(storeAfterAttach, compare);
   record(
     "groups-one-per-project",
     groups.length === 2,
@@ -455,27 +570,106 @@ try {
     JSON.stringify(collapseKeys),
   );
 
-  // Fold persistence through the real Main sidebar-preferences store.
-  const foldState = Object.fromEntries(collapseKeys.map((key) => [key, true]));
-  writeSidebarBackup(desktopDataDir, {
-    sessionMeta: {},
-    projectMeta: Object.fromEntries(
-      collapseKeys.map((key) => [key, { collapsed: true }]),
-    ),
-    projectSort: "recent",
-    sessionView: { sort: "recent", archived: false },
-    openProjectPaths: [],
+  // Negative control: without the get-side project decoration the attach
+  // summary carries no remoteProjectId, so the reconcile must drop the
+  // session out of its project group — the grouping contract must fail.
+  const undecorated = safeSessionSummary({
+    ...attachDetail,
+    remoteProjectId: undefined,
   });
-  const restored = readSidebarBackup(desktopDataDir);
-  const restoredKeys = Object.entries(restored.projectMeta ?? {})
-    .filter(([, meta]) => meta?.collapsed === true)
-    .map(([key]) => key);
+  const storeWithoutDecoration = reconcileIntoStore(sessions, undecorated);
+  const brokenGroups = groupRemoteProjectSessions(
+    storeWithoutDecoration,
+    compare,
+  );
+  const brokenExclusive =
+    brokenGroups.length === 2 &&
+    brokenGroups.some(
+      (group) =>
+        JSON.stringify(group.sessions.map((row) => row.id).sort()) ===
+        JSON.stringify(idsOne),
+    ) &&
+    brokenGroups.some(
+      (group) =>
+        JSON.stringify(group.sessions.map((row) => row.id).sort()) ===
+        JSON.stringify(idsTwo),
+    );
+  record(
+    "negative-get-side-decoration-removed-breaks-grouping",
+    !brokenExclusive,
+    `without decoration: exclusive=${brokenExclusive}, groups=${brokenGroups.length}`,
+  );
+
+  // Fold persistence driven by the real renderer store action
+  // (project-slice.setProjectCollapsed), whose persist hook runs the real
+  // Main sidebar-preferences serialization; the restart consumes the restored
+  // `projectMeta` the way createInitialState rebuilds `projectCollapsed`.
+  const foldStore = (() => {
+    let state = {
+      sessionMeta: {},
+      projectMeta: {},
+      projectCollapsed: {},
+      projectSort: "recent",
+      sessionView: { sort: "recent", archived: false },
+      openProjectPaths: [],
+    };
+    const get = () => state;
+    const set = (update) => {
+      state = {
+        ...state,
+        ...(typeof update === "function" ? update(state) : update),
+      };
+    };
+    const slice = createProjectSlice({
+      get,
+      set,
+      runtime: {},
+      withoutRecordKey,
+      withProjectDisplayName,
+      promoteProjectPath,
+      removeProjectPath,
+      upsertWorkspace,
+      persistCurrentSidebar: (getNow) =>
+        writeSidebarBackup(desktopDataDir, preferencesFromState(getNow())),
+    });
+    return { slice, get };
+  })();
+  for (const key of collapseKeys)
+    foldStore.slice.setProjectCollapsed(key, true);
+  record(
+    "collapse-store-action-marks-folded-in-state",
+    collapseKeys.every((key) => foldStore.get().projectCollapsed[key] === true),
+    JSON.stringify(Object.keys(foldStore.get().projectCollapsed)),
+  );
+
+  // Restart: the store rebuilds from the persisted preferences, and the
+  // rendered groups consume that restored state.
+  const restoredPrefs = readSidebarBackup(desktopDataDir);
+  const restoredProjectMeta = restoredPrefs.projectMeta ?? {};
+  const restoredCollapsed = Object.fromEntries(
+    Object.entries(restoredProjectMeta)
+      .filter(([, meta]) => meta?.collapsed === true)
+      .map(([key]) => [key, true]),
+  );
   record(
     "collapse-state-persists-across-restart",
-    collapseKeys.every((key) => restoredKeys.includes(key)),
-    JSON.stringify(restoredKeys),
+    collapseKeys.every((key) => restoredCollapsed[key] === true),
+    JSON.stringify(Object.keys(restoredCollapsed)),
   );
-  const leakedLocal = restoredKeys.filter((key) => !key.startsWith("remote::"));
+  const renderedGroups = groups.map((group) => ({
+    collapseKey: remoteProjectCollapseKey(group.project.key),
+    collapsed:
+      restoredCollapsed[remoteProjectCollapseKey(group.project.key)] === true,
+  }));
+  record(
+    "rendered-groups-consume-restored-collapse-state",
+    renderedGroups.length === 2 &&
+      renderedGroups.every((group) => group.collapsed),
+    JSON.stringify(renderedGroups),
+  );
+  const leakedLocal = Object.keys(restoredProjectMeta).filter(
+    (key) => !key.startsWith("remote::"),
+  );
   record(
     "collapse-namespace-has-no-local-path-leak",
     leakedLocal.length === 0,
@@ -494,7 +688,7 @@ try {
           connected: group.project.connected,
           sessions: group.sessions.map((row) => row.title),
         })),
-        persistedCollapsedKeys: restoredKeys,
+        persistedCollapsedKeys: Object.keys(restoredCollapsed),
       },
       null,
       2,
