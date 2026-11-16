@@ -5,6 +5,7 @@ import {
   createHostSessionPort,
   fromHostQueueEntry,
   toSessionSummary,
+  withSessionProjectIds,
 } from "./host-ports.js";
 
 describe("host ports", () => {
@@ -124,6 +125,56 @@ describe("host ports", () => {
     }));
     await plainPort.get("s3");
     expect(calls).toEqual(["session.get"]);
+  });
+
+  it("keeps an authoritative projectId in a mixed batch and only falls back byPath for records without one", async () => {
+    const host = {
+      async call<T>(method: string) {
+        if (method === "projects.list") {
+          return {
+            projects: [{ id: 7, path: "/p", name: "p" }],
+          } as T;
+        }
+        throw new Error(`unexpected ${method}`);
+      },
+    };
+    const summaries = await withSessionProjectIds(host, [
+      { id: "explicit", projectId: "authoritative-id", projectPath: "/p" },
+      { id: "missing", projectPath: "/p" },
+    ]);
+    // The explicit record keeps its own id — byPath must not overwrite it.
+    expect(summaries[0]).toMatchObject({ id: "explicit", projectId: "authoritative-id" });
+    // The record without an id is decorated from the projects table.
+    expect(summaries[1]).toMatchObject({ id: "missing", projectId: "7" });
+  });
+
+  it("decorates port.get with the same project id the session list decoration yields", async () => {
+    // Maintainer acceptance: the shared decoration (createHostSessionPort.get
+    // vs. session/list via withSessionProjectIds) must produce identical
+    // project ids for the same record, or attach snapshots ungroup rows.
+    const host = {
+      async call<T>(method: string, params?: Record<string, unknown>) {
+        if (method === "projects.list") {
+          return {
+            projects: [{ id: 7, path: "/remote/app", name: "app" }],
+          } as T;
+        }
+        if (method === "session.get") {
+          expect(params).toMatchObject({ id: "s1" });
+          return {
+            session: { id: "s1", projectPath: "/remote/app", messages: [] },
+          } as T;
+        }
+        throw new Error(`unexpected ${method}`);
+      },
+    };
+    const record = { id: "s1", projectPath: "/remote/app" };
+    const [listed] = await withSessionProjectIds(host, [record]);
+    const port = createHostSessionPort(() => host);
+    const attached = await port.get("s1");
+    expect(attached).not.toBeNull();
+    expect(attached!.projectId).toBe(listed!.projectId);
+    expect(attached!.projectId).toBe("7");
   });
 
   it("round-trips queue records through the host-core RPC shape", async () => {

@@ -138,6 +138,11 @@ export async function withSessionProjectIds(
   }
   return records.map((record) => {
     const summary = toSessionSummary(record);
+    // An authoritative projectId on the record itself wins; the byPath
+    // fallback only fills in records whose id is missing (otherwise a
+    // mixed batch would overwrite explicit ids that happen to share a
+    // path with a projects.list row).
+    if (record.projectId) return summary;
     const projectId = record.projectPath
       ? byPath.get(record.projectPath)
       : undefined;
