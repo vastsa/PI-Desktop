@@ -20,8 +20,6 @@ packages/*/dist-bundle/
 apps/*/dist-bundle/
 
 # Local design-source exports
-docs/image/pi_logo.png
-docs/image/pi_logo.webp
 *.tgz
 
 # Env / secrets

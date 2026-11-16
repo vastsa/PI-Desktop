@@ -549,3 +549,24 @@ test("an echoed reasoning replay placeholder is not shown as thinking (#1945)", 
   assert.ok(turn);
   assert.equal(JSON.stringify(turn).includes('"kind":"thinking"'), false);
 });
+
+test("autonomous conversations remain separate without synthetic user rows", () => {
+  const { entries, visible } = buildTranscriptEntries([
+    message("first", "assistant", "First round", { turnId: "root-1" }),
+    message("tool", "tool", "read result", { turnId: "root-1", toolName: "Read" }),
+    message("answer", "assistant", "First result", { turnId: "root-1" }),
+    message("second", "assistant", "Second round", { turnId: "root-2" }),
+  ]);
+  assert.equal(entries.filter((entry) => entry.kind === "assistant-turn").length, 2);
+  assert.equal(visible.filter((row) => row.role === "user").length, 0);
+});
+
+test("legacy messages and delegates do not create extra root conversation boundaries", () => {
+  const { entries } = buildTranscriptEntries([
+    message("first", "assistant", "First round", { turnId: "root-1" }),
+    message("legacy", "assistant", "Same round", { turnId: " " }),
+    message("delegate", "assistant", "Delegate result", { turnId: "delegate-1", parentToolCallId: "task-1" }),
+    message("second", "assistant", "Second round", { turnId: "root-2" }),
+  ]);
+  assert.equal(entries.filter((entry) => entry.kind === "assistant-turn").length, 2);
+});

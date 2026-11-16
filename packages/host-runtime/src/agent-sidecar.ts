@@ -70,6 +70,9 @@ const HOST_PROXY_ALLOWED = new Set([
   "plans.submit",
   "plans.pending",
   "plans.abort",
+  // Host validates the live session/run/turn claim; user controls stay private.
+  "modes.completeStage",
+  "modes.gateResult",
   "project.instructions.resolve",
   "provider.resolveAuth",
   "provider.resolveSubagentModel",

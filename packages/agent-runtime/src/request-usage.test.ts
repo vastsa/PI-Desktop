@@ -11,6 +11,37 @@ function response(): AssistantMessage {
 }
 
 describe("physical request accounting", () => {
+  it.each([[0, 0], [0, 4], [9, 0]])("retains cache read/write %j/%j through accounting and replay", async (cacheRead, cacheWrite) => {
+    const reports: MessageUsage[] = [];
+    const stream = accountModelStream({ id: "physical", provider: "openai" }, () => {
+      const inner = createAssistantMessageEventStream();
+      const message = response();
+      Object.assign(message.usage, { cacheRead, cacheWrite, totalTokens: 15 + cacheRead + cacheWrite });
+      inner.push({ type: "done", reason: "stop", message });
+      inner.end();
+      return inner;
+    }, { onUsage: (usage) => reports.push(usage) });
+    for await (const _event of stream) { /* Consume the actual Pi stream. */ }
+    const replayed = usageFromPi((await stream.result()).usage);
+    expect(reports).toHaveLength(1);
+    for (const usage of [reports[0], replayed, addUsage(reports[0], replayed)]) {
+      expect(usage).toMatchObject({ cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite,
+        totalTokens: 15 + cacheRead + cacheWrite });
+    }
+  });
+
+  it.each([undefined, NaN, -1])("keeps invalid or absent cache usage unknown: %s", (value) => {
+    const message = response();
+    for (const key of ["cacheRead", "cacheWrite"] as const) {
+      if (value === undefined) Reflect.deleteProperty(message.usage, key);
+      else message.usage[key] = value;
+    }
+    const usage = usageFromPi(message.usage);
+    expect(usage).toBeDefined();
+    expect(usage?.cacheReadTokens).toBeUndefined();
+    expect(usage?.cacheWriteTokens).toBeUndefined();
+  });
+
   it("reports once across iteration and result and preserves unknown price through replay", async () => {
     const reports: MessageUsage[] = [];
     const stream = accountModelStream({ id: "physical", provider: "openai" }, () => {

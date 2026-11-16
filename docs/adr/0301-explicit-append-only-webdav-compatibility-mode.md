@@ -4,71 +4,25 @@
 - Date: 2026-09-22
 - Amends: ADR 0300
 
-This document records the removed WebDAV compatibility design. It is not a
-current contract: S3 requires reliable conditional writes, and there is no
-append-only fallback. Existing WebDAV data is preserved without migration.
-
 ## Context
 
-Some WebDAV servers accept `If-None-Match` and `If-Match` headers but ignore
-their preconditions. Treating a successful unconditional `PUT` as a compare-
-and-swap would allow two devices to overwrite a shared head without detecting
-the race. CloudDrive-style WebDAV endpoints are useful for local-network sync,
-but a server's WebDAV support does not by itself prove conditional-write
-semantics.
+Some WebDAV servers accept `If-None-Match` and `If-Match` but ignore the
+preconditions, so treating an unconditional `PUT` as a compare-and-swap would let
+two devices overwrite a shared head without detecting the race. A server's WebDAV
+support does not by itself prove conditional-write semantics.
 
 ## Decision
 
-Keep strict conditional-write mode as the default. Add an explicitly selected
-append-only compatibility mode for servers that fail the conditional-write
-probe but prove that they can list a WebDAV collection with `PROPFIND`.
+Strict conditional writes stayed the default, and an explicitly selected
+append-only compatibility mode existed for servers that failed the
+conditional-write probe but could list a collection with `PROPFIND`. Each device
+received a random stable identifier and published only its own encrypted pointer
+under `vault/<vault-id>/heads/<device-id>`; a sync listed every device pointer,
+walked their bounded parent graph, dropped ancestor pointers, and merged the
+remaining tips against the last acknowledged base. Revisions and resources used
+unique immutable identifiers, the mode retained remote history without cleanup, and
+all devices sharing a vault had to select the same mode.
 
-Compatibility mode uses the same encrypted header, immutable revision manifests,
-and authenticated resources as strict mode, but changes publication as follows:
-
-1. Each device receives a random stable device identifier.
-2. Each device publishes only its own encrypted pointer at
-   `vault/<vault-id>/heads/<device-id>`; the pointer is verified by a readback.
-3. A sync lists all device pointers, includes a legacy strict head when present,
-   walks their bounded parent graph, removes ancestor pointers, and merges all
-   remaining tips against the last acknowledged base.
-4. New revisions and resources use unique immutable identifiers. Existing
-   resources are read and authenticated before reuse; compatibility mode does
-   not overwrite an existing immutable object.
-5. Compatibility mode retains immutable remote history and does not run remote
-   cleanup, because a server without conditional writes cannot provide a safe
-   cross-device acknowledgement protocol.
-
-The settings page labels the mode as compatibility mode, explains that it does
-not provide atomic compare-and-swap, and requires confirmation before saving.
-All devices sharing a vault must select the same mode. The mode is not a silent
-downgrade, and a server that cannot prove directory listing remains unsupported
-for bidirectional synchronization.
-
-## Consequences
-
-- Concurrent writers publish separate tips instead of silently overwriting one
-  shared head; compatible disjoint edits can still converge through the normal
-  merge engine.
-- A device with a duplicated device identifier or a server that changes a
-  device pointer during readback is reported as a conflict rather than treated
-  as converged.
-- Compatibility mode is not equivalent to strict CAS. A server can still lose
-  an in-flight unconditional write, deny or roll back availability, race vault
-  header initialization, or return an incomplete directory listing. The UI
-  discloses these limits and history is retained to make recovery possible.
-- New-device executable imports remain staged behind the existing digest-bound
-  approval boundary; selecting compatibility mode does not grant activation.
-- Password rewrap updates the encrypted header unconditionally in this mode and
-  verifies the resulting header. Rotation of a copied vault key still requires
-  vault re-encryption and server-credential rotation.
-
-## Alternatives rejected
-
-1. Silently accepting ignored preconditions: unsafe last-writer-wins behavior
-   and data loss under concurrent sync.
-2. Keeping one shared mutable head with an unconditional `PUT`: the exact race
-   this mode is intended to avoid.
-3. Treating every WebDAV `GET` failure as an empty collection: hides outages and
-   can cause accidental reinitialization. Only the endpoint-specific observed
-   missing-object status remains compatible.
+This design is retired. S3-only configuration backup and sync requires reliable
+conditional writes and keeps no append-only fallback; existing WebDAV data is
+preserved without migration.

@@ -1341,6 +1341,13 @@ export function Sidebar({
 
   const deleteSession = async (session: SessionSummary) => {
     closeMenus();
+    // Same pre-check as the project-move entry: deleting a running session
+    // cascades its live rows away, so the row menu stops here with a
+    // translated notice and the main-side guard remains the race backstop.
+    if (runningSessions[session.id]) {
+      showToast(t("nav.deleteRunningSessionBlocked"), { variant: "warning" });
+      return;
+    }
     const wasActive = activeSessionId === session.id;
     const sameScope = session.projectPath
       ? projectEntries.find(
@@ -1394,6 +1401,10 @@ export function Sidebar({
       (s) => ids.includes(s.id) && s.source !== "pi-native",
     );
     for (const session of toDelete) {
+      if (runningSessions[session.id]) {
+        showToast(t("nav.deleteRunningSessionBlocked"), { variant: "warning" });
+        continue;
+      }
       try {
         await deleteSessionAction(session.id);
       } catch (error) {

@@ -5,38 +5,21 @@
 
 ## Context
 
-We need an extensible multi-model agent loop, rather than implementing tool calling, streaming events, and provider adapters from scratch.
+The product needs an extensible multi-model agent loop, not an in-house
+implementation of tool calling, streaming events, and provider adapters.
 
 ## Decision
 
-Use the following packages as the kernel:
-
-- `@earendil-works/pi-ai`
-- `@earendil-works/pi-agent-core`
-
-Optionally adopt later:
-
-- `@earendil-works/pi-coding-agent`
-- `@earendil-works/pi-storage-sqlite-node`
-
-## Rationale
-
-1. Unified LLM provider interface
-2. Clear agent event model, well suited to a desktop UI
-3. Provides extensibility across the tool calling / session / skills ecosystem
-4. Projects such as LiveAgent have already validated it as a viable kernel for desktop products
+Use `@earendil-works/pi-ai` and `@earendil-works/pi-agent-core` as the kernel,
+with `@earendil-works/pi-coding-agent` and
+`@earendil-works/pi-storage-sqlite-node` optional later.
 
 ## Consequences
 
-### Positive
-- Avoids building an in-house agent framework
-- Can keep pace with upstream capability evolution
-
-### Negative
-- Requires adapting to pi's events and version constraints (Node >= 22.19)
-- Some desktop product requirements must be filled in at the upper layer ourselves (permission UX, session product model)
+- Capability gains arrive with pi, and the desktop layer adapts to its event
+  model and Node version floor.
 
 ## Alternatives
 
-- Build our own agent loop: high cost, no
-- Use another coding agent directly as the kernel: inconsistent with the "based on pi" goal
+- Own agent loop or another coding agent as kernel: rejected; both contradict
+  building on pi.

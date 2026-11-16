@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/image/readme/logo.png" alt="PI-Desktop" width="108" />
+<img src="docs/public/readme/logo.png" alt="PI-Desktop" width="108" />
 
 # PI-Desktop
 
@@ -29,7 +29,7 @@ Local-first · Model-agnostic · Plugin-powered · macOS / Windows / Linux
 
 <br />
 
-<img src="docs/image/readme/home.webp" alt="PI-Desktop" width="94%" />
+<img src="docs/public/readme/home.webp" alt="PI-Desktop" width="94%" />
 
 <br />
 
@@ -37,7 +37,7 @@ Local-first · Model-agnostic · Plugin-powered · macOS / Windows / Linux
 
 </div>
 
-> **Current release line: 0.21.x (Early Preview).**
+> **Current release line: 0.23.x.**
 
 ---
 
@@ -325,7 +325,7 @@ Workers are full PI-Desktop sessions:
 
 <td width="50%">
 
-<img src="docs/image/readme/session-orchestrator-overview.png" alt="Session Orchestrator" />
+<img src="docs/public/readme/session-orchestrator-overview.webp" alt="Session Orchestrator" />
 
 <p align="center"><sub>Coordinate multiple Worker Sessions from one parent Session</sub></p>
 
@@ -333,7 +333,7 @@ Workers are full PI-Desktop sessions:
 
 <td width="50%">
 
-<img src="docs/image/readme/session-orchestrator-worker.png" alt="Worker Session" />
+<img src="docs/public/readme/session-orchestrator-worker.webp" alt="Worker Session" />
 
 <p align="center"><sub>Each Worker remains a full, inspectable Session</sub></p>
 
@@ -386,7 +386,7 @@ You can:
 
 <td width="50%">
 
-<img src="docs/image/readme/chat_en.png" alt="PI-Desktop Session" />
+<img src="docs/public/readme/chat_en.webp" alt="PI-Desktop Session" />
 
 <p align="center"><sub>Persistent Sessions instead of disposable chats</sub></p>
 
@@ -394,7 +394,7 @@ You can:
 
 <td width="50%">
 
-<img src="docs/image/readme/model_en.png" alt="PI-Desktop Model" />
+<img src="docs/public/readme/model_en.webp" alt="PI-Desktop Model" />
 
 <p align="center"><sub>Switch models and reasoning levels inside the Session</sub></p>
 
@@ -406,7 +406,7 @@ You can:
 
 <td width="50%">
 
-<img src="docs/image/readme/plugins_en.png" alt="PI-Desktop Plugins" />
+<img src="docs/public/readme/plugins_en.webp" alt="PI-Desktop Plugins" />
 
 <p align="center"><sub>A plugin marketplace that extends both the agent and the desktop</sub></p>
 
@@ -414,7 +414,7 @@ You can:
 
 <td width="50%">
 
-<img src="docs/image/readme/addmodel_en.png" alt="PI-Desktop Providers" />
+<img src="docs/public/readme/addmodel_en.webp" alt="PI-Desktop Providers" />
 
 <p align="center"><sub>Connect your own provider, gateway, or local model</sub></p>
 
@@ -744,7 +744,7 @@ See [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-<img src="docs/image/readme/logo.png" alt="PI-Desktop" width="72" />
+<img src="docs/public/readme/logo.png" alt="PI-Desktop" width="72" />
 
 ## PI-Desktop
 

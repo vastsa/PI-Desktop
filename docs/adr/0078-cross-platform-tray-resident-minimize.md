@@ -2,48 +2,38 @@
 
 - Status: Accepted for implementation (amended by ADR 0117, ADR 0123, and ADR tray-session-shortcuts)
 - Date: 2026-08-12
-- Deciders: PI-Desktop core
-- Related: D216, D252, D256, E2E-124, ADR 0117, ADR 0123
+- Related: D216, D252, D256, ADR 0117, ADR 0123
 
 ## Context
 
-PI-Desktop already has custom window controls on Windows/Linux and native
-traffic-light controls on macOS. Their minimize actions currently use native
-window minimization, which makes the app disappear into different OS window
-surfaces and does not provide a consistent way to keep background work
-resident. The Electron Main process already owns window lifecycle and shutdown,
-so a tray integration belongs there rather than in the renderer bridge.
+Minimize used native window minimization on every platform, so the app disappeared
+into different window surfaces with no consistent way to stay resident for
+background work. Electron Main already owns window lifecycle and shutdown.
 
 ## Decision
 
-1. Electron Main creates one tray icon on every supported desktop platform.
-   Packaged builds carry the existing product PNG as an extra resource for
-   Windows/Linux. macOS carries a separate transparent monochrome template
-   asset derived from the PI mark; the light application tile is not part of
-   the menu bar silhouette.
-2. Main intercepts the `minimize` event for the main window and hides it to the
-   tray only for macOS traffic-light minimization. On Windows/Linux, native
-   minimize transitions — including the renderer and native-menu actions —
-   complete as ordinary OS minimization so the taskbar entry remains available.
-   Hiding does not close the window or dispose either backend.
-3. Tray click and double-click, the Show menu item, and macOS app activation
-   restore and focus the existing window. If the window was closed, they create
-   a new one through the existing window factory.
-4. The tray menu contains localized Show PI-Desktop and Quit PI-Desktop items.
-   Quit calls `app.quit()` and therefore follows the existing `before-quit`
-   shutdown sequence. Closing the main window remains an explicit quit action.
+Electron Main creates one tray icon per supported platform, using the product PNG on
+Windows/Linux and a transparent monochrome template asset on macOS. Only macOS
+traffic-light minimize hides the window to the tray; Windows/Linux minimize stays
+ordinary OS minimization so the taskbar entry remains, and hiding never closes the
+window or disposes a backend. Tray click and double-click, the Show item, and macOS
+app activation restore and focus the existing window or create one through the
+existing factory, and Quit goes through `app.quit()` and `before-quit`.
+
+[ADR tray-session-shortcuts](tray-session-shortcuts.md) extends the restore and
+menu clauses with bounded session groups and opens the macOS menu on single-click.
 
 ## Consequences
 
-- macOS keeps its tray-resident minimize behavior, while Windows/Linux use the
-  normal taskbar minimize/restore affordance for explicit minimize actions.
-  Close-to-tray remains available through the user-configurable close behavior.
-- The renderer needs no new privileged IPC surface.
-- A tray icon is a required packaged resource; a missing icon is logged and
-  the app remains usable rather than crashing during boot.
-- Window bounds persistence remains unchanged because a hidden window retains
-  its normal bounds and is not treated as a new window state.
+- macOS keeps tray-resident minimize while Windows/Linux keep taskbar
+  minimize/restore; close-to-tray remains a configurable close behavior.
+- No new privileged IPC surface is added, and a missing tray asset is logged rather
+  than fatal.
+- Window bounds persistence is unaffected because a hidden window keeps its bounds.
 
-## Session-menu amendment
+## Alternatives
 
-[ADR tray-session-shortcuts](tray-session-shortcuts.md) extends clauses 3–4 with bounded session groups and makes macOS single-click open the menu without restoring the main window. Open, double-click, and Quit retain their lifecycle behavior.
+- Leave minimize entirely native — rejected: background work then has no resident
+  surface and macOS loses its traffic-light behavior.
+- Hide to tray on every platform — rejected: Windows/Linux users lose the taskbar
+  affordance.

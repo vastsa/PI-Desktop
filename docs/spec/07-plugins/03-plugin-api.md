@@ -1011,10 +1011,22 @@ invocation. The broker injects `pluginId`, source `sessionId`, source `turnId`,
 and an invocation identity; plugin arguments cannot supply or override those
 values. A user-facing plugin panel may use `cancel` with its own plugin
 identity, but cannot use that path to send or spawn work. The host enforces
-the source permission ceiling, Agent-mode target, inbox and worker limits,
-idempotency, and bounded autonomous hops. A requested completion callback is
-a host-owned `completion` message linked to the source delivery and is created
-at most once after the actual target turn settles.
+the source permission ceiling, Agent-mode target, inbox bound, idempotency, and
+bounded autonomous hops, and refuses a worker that tries to create a further
+worker. How many workers run at once is the calling plugin's own policy: the
+host records creator provenance and does not impose a fixed concurrency ceiling.
+A requested completion callback is a host-owned `completion` message linked to
+the source delivery and is created at most once after the actual target turn
+settles, including a delivery fenced as `interrupted` by an application restart.
+A completion receipt is promoted in the target session's turn queue, so a busy
+target runs it at the next turn boundary ahead of input the user queued earlier
+(ADR 0265); it is never injected into another session's running turn. Its content
+is a readable report — a `Sub-session report` line, then `Session:`, `Status:`,
+`Delivery:`, a `Report:` section with the worker's final text, and `Error:` when
+the run failed — not an encoded envelope. A `send` may ask for the same treatment
+with `delivery: "immediate"`; the default `queue` appends behind whatever the
+target already queued.
+
 The callback is session data, not a new user authorization, and completion
 messages do not trigger another callback.
 

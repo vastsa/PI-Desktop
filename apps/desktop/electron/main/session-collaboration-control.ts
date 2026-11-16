@@ -17,7 +17,7 @@ export const SESSION_COLLABORATION_OPERATIONS: McpControlOperation[] = [
   {
     id: "session/collaboration/send", channel: "internal:session-collaboration", risk: "write",
     description: "Send a task or message to an existing Session ID, preserving context and permissions.",
-    argumentShape: ["{sessionId,content,kind?,notifyOnCompletion?,idempotencyKey?}"],
+    argumentShape: ["{sessionId,content,kind?,notifyOnCompletion?,delivery?,idempotencyKey?}"],
     pluginOnly: true,
   },
   {

@@ -33,7 +33,7 @@ export function modeRunStateKey(run: Pick<ModeRun, "state" | "waitReason">): Mod
       return "budgetExhausted";
     case "waiting":
       if (run.waitReason === "approval") return "waitingApproval";
-      if (run.waitReason === "retries") return "blocked";
+      if (run.waitReason === "retries" || run.waitReason === "blocked") return "blocked";
       if (run.waitReason === "error") return "error";
       return "waitingInput";
     default:
@@ -67,9 +67,10 @@ export type ModeRunControls = {
 export function modeRunControls(run: Pick<ModeRun, "state" | "waitReason">): ModeRunControls {
   const open = run.state === "running" || run.state === "waiting" || run.state === "paused" || run.state === "budget_exhausted";
   const awaitingApproval = run.state === "waiting" && run.waitReason === "approval";
+  const reportedBlocker = run.state === "waiting" && run.waitReason === "blocked";
   return {
-    pause: run.state === "running" || run.state === "waiting",
-    resume: run.state === "paused" || run.state === "budget_exhausted",
+    pause: run.state === "running" || (run.state === "waiting" && !reportedBlocker),
+    resume: run.state === "paused" || run.state === "budget_exhausted" || reportedBlocker,
     stop: open,
     remove: open,
     edit: open,

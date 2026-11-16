@@ -62,6 +62,8 @@ function fixture({ open = null, claim, settle = { run: null, continue: false }, 
       if (method === "modes.start" || method === "modes.claimTurn") {
         return claim ?? { claimed: true, run: run({ activeTurnId: params.turnId }), enteredStage: method === "modes.start", definition: staged };
       }
+      if (method === "modes.startGoal") return { claimed: true, run: run({ modeId: "goal", activeTurnId: params.turnId }), enteredStage: true, definition: params.modeSnapshot };
+      if (method === "modes.resetGoalInput") return { ok: true };
       if (method === "modes.settleTurn") return settle;
       if (method === "modes.control" || method === "modes.resolve" || method === "modes.update") return settle;
       if (method === "modes.settleReturn") {
@@ -75,6 +77,7 @@ function fixture({ open = null, claim, settle = { run: null, continue: false }, 
     async definition(id) {
       if (catalogModes && !catalogModes.includes(id)) return undefined;
       if (id === "feature") return { ...staged, returnTo: featureReturnTo };
+      if (id === "goal") return { ...staged, id: "goal", source: "builtin" };
       if (id === "review") return { ...staged, id: "review", stages: [] };
       return undefined;
     },
@@ -212,7 +215,7 @@ test("settling a claimed turn reports tokens and starts the Host continuation", 
 test("an unclaimed turn settles nothing", async () => {
   const { coordinator, calls } = fixture({ settle: { run: null, continue: true } });
   await coordinator.settleTurn("s1", "unknown", { reason: "completed" });
-  assert.equal(calls.length, 0);
+  assert.equal(calls.some(call => call.method === "modes.settleTurn"), false);
 });
 
 test("stop aborts the claimed turn; approval continues with the approval origin", async () => {
@@ -420,5 +423,37 @@ test("the catalog channel rescans the directory and announces the change (#2203)
     assert.equal(changes.at(-1), rescanned);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a Host Goal continuation claims its snapshot after the input mode returns to Agent", async () => {
+  const goal = run({ modeId: "goal" });
+  const f = fixture({ open: goal, claim: { claimed: true, run: goal, enteredStage: false, definition: { ...staged, id: "goal" } } });
+  const prepared = await f.coordinator.prepareTurn({ sessionId: "s1", turnId: "t2", sessionMode: "agent", content: "continue", origin: "host" });
+  assert.equal(prepared.definition.id, "goal");
+  assert.equal(prepared.modeTurn.runId, "run1");
+  assert.equal(f.calls.at(-1).method, "modes.claimTurn");
+});
+
+test("an explicit second Goal starts a new run instead of claiming the previous one", async () => {
+  const f = fixture({ open: run({ modeId: "goal" }) });
+  await f.coordinator.prepareTurn({ sessionId: "s1", turnId: "new", sessionMode: "agent", content: "second goal", origin: "user", startGoal: true });
+  assert.ok(f.calls.some(call => call.method === "modes.control" && call.params.action === "stop"));
+  assert.ok(f.calls.some(call => call.method === "modes.startGoal" && call.params.input === "second goal"));
+  assert.equal(f.calls.some(call => call.method === "modes.claimTurn"), false);
+});
+
+test("ordinary queued input cannot acquire Goal identity from a later input selection", async () => {
+  const f = fixture({ open: run({ modeId: "goal" }) });
+  assert.equal(await f.coordinator.prepareTurn({ sessionId: "s1", turnId: "plain", sessionMode: "goal", content: "ordinary", origin: "user", startGoal: false }), undefined);
+  assert.equal(f.calls.length, 0);
+});
+
+test("Goal startup validates user intent without granting runtime origin", async () => {
+  const { goalStartRequested } = await import("../electron/main/runtime/goal-start.ts");
+  assert.equal(goalStartRequested({ content: "normal" }), false);
+  assert.equal(goalStartRequested({ content: "objective", startGoal: true }), true);
+  for (const input of [{ content: "x", startGoal: "true" }, { content: " ", startGoal: true }, { content: "中".repeat(40_000), startGoal: true }, { content: "x", startGoal: true, sessionMessageId: "delegated" }]) {
+    assert.throws(() => goalStartRequested(input), { errorCode: "INVALID_ARGUMENT" });
   }
 });

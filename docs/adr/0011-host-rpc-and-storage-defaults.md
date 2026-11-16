@@ -3,48 +3,24 @@
 - Status: Accepted; mode-profile clause superseded in part by ADR 0053;
   permission-timeout clause amended by ADR 0310
 - Date: 2026-07-25
+- Related: `docs/spec/03-runtime/06-host-rpc-protocol.md`
 
 ## Context
 
-After baseline 0.3.0, implementation still depended on several high-impact defaults:
-
-- Electron ↔ Rust transport
-- SQLite ownership
-- default interaction mode
-- former restricted-profile tool split (superseded by ADR 0053)
-- local permission approval behavior
+Several high-impact defaults — the Electron↔Rust transport, SQLite ownership, the
+default interaction mode, and how permission approvals end — were still open after
+baseline 0.3.0, and each one fixes process and data ownership.
 
 ## Decision
 
-Freeze the following defaults for implementation:
-
-1. Transport = **Rust sidecar + stdio JSON-RPC (NDJSON)**
-2. SQLite ownership = **Rust host-core only**
-3. Default mode = **Agent**
-4. The former restricted profile was read-only; this mode-profile clause is
-   superseded by ADR 0053, which supersedes the historical operating-state
-   decision in ADR 0052 and replaces it with the current Plan workflow
-5. Local permission approvals have **no automatic deadline**; they remain
-   pending until an explicit decision, cancellation, or host/process shutdown
-6. Session grants = **by toolName**
-7. First release platform = **macOS arm64 only**
-8. TS schema = **typebox**
-9. i18n = **i18next**
+Freeze: Rust sidecar over stdio JSON-RPC (NDJSON); SQLite owned by host-core alone;
+Agent as the default mode; permission approvals without an automatic deadline;
+session grants keyed by toolName; macOS arm64 first; typebox schemas; i18next. The
+former restricted (read-only) profile clause is superseded by ADR 0053, which replaces
+the operating-state decision of ADR 0052 with the current Plan workflow.
 
 ## Consequences
 
-### Positive
-- M1/M2 can proceed without re-litigating core choices
-- Clear process and data ownership
-- Explicit host-owned operating-state and permission policy
-
-### Negative
-- JSON-RPC text protocol may later need binary upgrade
-- Exclusive Rust DB ownership requires mature host RPC coverage early
-
-## Related docs
-
-- `docs/spec/08-meta/decisions-log.md`
-- `docs/spec/03-runtime/06-host-rpc-protocol.md`
-- `docs/spec/03-runtime/07-process-model.md`
-- `docs/spec/04-ux/03-permission-ux.md`
+- Process and data ownership stays unambiguous.
+- Exclusive Rust database ownership requires host RPC coverage early.
+- The text JSON-RPC protocol may later need a binary upgrade.

@@ -2,73 +2,50 @@
 
 - Status: Accepted
 - Date: 2026-08-28
-- Deciders: PI-Desktop core
 - Related: Issue #20, D262, ADR 0059, ADR 0070, ADR 0124
 
 ## Context
 
-Native textarea paste is useful for short prompts, but very large pasted
-blocks make the composer difficult to edit and inflate the visible prompt. The
-application already has a bounded Electron-to-main paste bridge and a
-session-owned scratch directory for clipboard files. The solution must preserve
-the exact pasted bytes, work when the caret is in the middle of a draft, avoid
-mutating the project, and keep the model-facing prompt addressable by the
-existing `@path` file semantics.
+Large pasted text blocks make the composer hard to edit and inflate the visible
+prompt, while the application already has a bounded Electron-to-main paste bridge
+and a session-owned scratch directory. A solution must preserve the exact bytes,
+work at a mid-draft caret, leave the project untouched, and stay addressable by
+the existing `@path` file semantics.
 
 ## Decision
 
-1. Add the persisted `largePasteThreshold` app setting. It defaults to 600
-   characters and accepts integer values from 1 through 1,000,000. Text-only
-   pastes at or below the threshold retain native textarea behavior.
-2. A text-only paste above the threshold is intercepted by the Composer and
-   sent through the existing `composer/pasteFiles` bridge as one UTF-8
-   `text/plain` file. Electron main validates the durable session and stores
-   it under `<data_dir>/scratch/<sessionId>/pasted/` using the existing bounded,
-   sanitized, unique-file policy.
-3. The Composer inserts `@<temporary-name> ` at the original selection and
-   stores a renderer-only token-to-canonical-path mapping with the draft. The
-   token remains visible inline, so the prefix and suffix of an existing draft
-   remain editable. It is resolved in place exactly once immediately before
-   dispatch; it is not appended as a second reference and is not included as a
-   duplicate structured attachment.
-4. The mapping remains session-scoped, survives project/workspace switches for
-   its owning session, participates in draft caching and unanswered smart-Stop
-   restoration, and is removed when the token is removed from the text. Session
-   scratch lifecycle and cleanup remain the existing host-owned behavior.
-5. Clipboard files and images keep their existing compact chip and structured
-   attachment flow. This decision changes only text-only pastes above the
-   configured threshold.
+A persisted `largePasteThreshold` app setting (default 600 characters) leaves
+shorter text-only pastes on native textarea behavior. A longer one is intercepted
+by the Composer, sent through the existing `composer/pasteFiles` bridge as one
+UTF-8 `text/plain` file under the session's scratch `pasted/` directory, and
+replaced at the original selection by an inline `@<temporary-name> ` token backed
+by a renderer-only token-to-canonical-path mapping held with the draft.
+
+The mapping is session-scoped, survives project switches and unanswered smart-Stop
+restoration for its owning session, is resolved in place exactly once before
+dispatch rather than appended as a second reference, and is dropped with the
+token. Clipboard files and images keep their existing compact chip and structured
+attachment flow.
 
 ## Consequences
 
-- Large pasted blocks no longer occupy the editable prompt body; the user sees
-  a compact, addressable reference at the exact paste position.
-- The agent can read the exact saved bytes through the canonical scratch path,
-  while the project tree, artifact store, and host protocol schema remain
-  unchanged.
-- The setting is backward-compatible because older app settings gain the
-  default through host normalization rather than a database migration.
-- The renderer must retain a small amount of draft metadata to distinguish a
-  generated inline token from user-authored `@` text and to avoid duplicate
-  serialization.
+- Large blocks leave the editable prompt body and appear as a compact reference at
+  the paste position, while the agent reads the exact bytes from the canonical
+  scratch path.
+- The project tree, artifact store, and host protocol schema are unchanged, and
+  older app settings gain the default through host normalization.
+- The renderer must retain draft metadata to tell a generated token from
+  user-authored `@` text and to avoid duplicate serialization.
 
 ## Alternatives considered
 
-- **Keep all text inline:** rejected because large blocks remain difficult to
-  edit and unnecessarily enlarge prompt content.
-- **Write directly into the workspace:** rejected because a paste is transient
-  input and must not dirty the user's project.
-- **Use a chip only:** rejected because the requested affordance is an inline
-  reference at the paste location, and the surrounding draft must remain
-  readable.
-- **Send the token as a basename or append a second path:** rejected because
-  scratch files require their canonical path and either option can be
-  ambiguous or duplicate the same input.
+- Keep all text inline: large blocks stay hard to edit and enlarge prompt content.
+- Write directly into the workspace: a paste is transient input and must not dirty
+  the user's project.
 
-## Amendment (2026-09-14): text representation selected beside generated image copies
+## Amendment (2026-09-14)
 
-ADR 0059's #138 amendment can select a text representation for a paste that also
-carries `image/*` copies, which is what Word supplies for a copied selection.
-That selected text uses this decision's `largePasteThreshold`, so short text
-stays editable inline and larger text spills into session scratch as before. The
-clipboard-file and image flows of decision 5 are unchanged.
+ADR 0059's #138 amendment can select a text representation beside generated
+`image/*` copies, as Word supplies for a copied selection; that text uses this
+decision's `largePasteThreshold`, so short text stays inline and larger text
+spills into session scratch.
