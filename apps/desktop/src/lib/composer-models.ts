@@ -1,7 +1,7 @@
 import {
   bindingSupportsImages,
   effectiveContextWindow,
-  isImageGenerationModel,
+  isImageOnlyChatModel,
   type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
@@ -15,6 +15,35 @@ type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId
 /** UI identity is the complete wire id, not a catalog alias or a route suffix. */
 export function sameComposerModelId(left: string, right: string): boolean {
   return modelWireIdsEqual(left, right);
+}
+
+/**
+ * Catalog/discovery metadata for a configured model id — the same modalities
+ * source session launch reads from its catalog row. Callers of
+ * `isImageOnlyChatModel` must resolve and pass this so every chat-eligibility
+ * answer (picker, defaults, subagents, canSend, launch) sees one truth (#2253).
+ */
+export function composerModelMetadata(
+  discovered: readonly ModelInfo[] | undefined,
+  modelId: string | undefined,
+): ModelInfo | undefined {
+  if (!modelId) return undefined;
+  return (discovered ?? []).find((model) => sameComposerModelId(model.modelId, modelId));
+}
+
+/**
+ * One chat-eligibility answer everywhere: a model bound for image generation
+ * stays chat-eligible unless its discovered metadata names no text output or
+ * its id is a pure image-generation endpoint (#2253).
+ */
+export function composerModelChatEligible(
+  imageGeneration: ImageGenerationBindings | null | undefined,
+  providerId: string | undefined,
+  modelId: string | undefined,
+  discovered?: readonly ModelInfo[],
+): boolean {
+  const metadata = composerModelMetadata(discovered, modelId);
+  return !isImageOnlyChatModel(imageGeneration, providerId, modelId, metadata);
 }
 
 function configuredModelIds(provider: ConfiguredProvider): string[] {
@@ -38,11 +67,17 @@ export function composerModelsForProvider(
   discovered: readonly ModelInfo[] | undefined,
   imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
-  return configuredModelIds(provider).filter((modelId) =>
-    !isImageGenerationModel(imageGeneration, provider.id, modelId)
+  return configuredModelIds(provider).filter((modelId) => {
+    const metadata = (discovered ?? []).find((model) =>
+      sameComposerModelId(model.modelId, modelId),
+    );
+    // Only a pure image-generation endpoint is excluded: a model the user
+    // marked for image generation that also supports conversation stays in
+    // the Composer list (#2253).
+    return !isImageOnlyChatModel(imageGeneration, provider.id, modelId, metadata)
       && !(discovered ?? []).some((model) =>
-        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted"),
-  ).map((modelId) => {
+        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted");
+  }).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );

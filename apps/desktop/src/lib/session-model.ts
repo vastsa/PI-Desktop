@@ -1,4 +1,10 @@
 /** Resolve the provider/model a session should keep after first selection. */
+import {
+  isImageOnlyChatModel,
+  type ImageGenerationBinding,
+  type ModelInfo,
+} from "@pi-desktop/shared";
+import { composerModelMetadata } from "./composer-models.ts";
 import type { RecentModel } from "./recent-models";
 
 export type SessionModelRef = {
@@ -27,18 +33,29 @@ export function availableRecentModels(
   recentModels: readonly RecentModel[],
   providers: readonly SessionModelProvider[],
   settings?: SessionModelSettings | null,
+  discovered?: readonly ModelInfo[],
 ): RecentModel[] {
-  const images = [
+  const bindings = [
     ...(settings?.imageGenerationModels ?? []),
     ...(settings?.imageGeneration ? [settings.imageGeneration] : []),
-  ];
+  ].filter((binding): binding is ImageGenerationBinding =>
+    !!binding.providerId && !!binding.modelId);
   return recentModels.filter(entry => {
     const provider = providers.find(item => item.id === entry.providerId);
     const ids = provider?.models?.length ? provider.models.map(model => model.id) : [provider?.defaultModelId];
+    // Same chat-eligibility answer the picker, canSend and launch use: only a
+    // pure image-generation endpoint (or a discovered row publishing no text
+    // output) is excluded, so a dual-capability default model can be inherited
+    // by a new chat (#2253).
     return provider && provider.enabled !== false &&
       (provider.authKind === undefined || provider.authKind === "none" || provider.hasSecret) &&
       ids.some(id => id?.toLowerCase() === entry.modelId.toLowerCase()) &&
-      !images.some(image => image.providerId === entry.providerId && image.modelId?.toLowerCase() === entry.modelId.toLowerCase());
+      !isImageOnlyChatModel(
+        bindings,
+        provider.id,
+        entry.modelId,
+        composerModelMetadata(discovered, entry.modelId),
+      );
   });
 }
 
@@ -51,11 +68,13 @@ export function inheritedSessionModelBinding({
   settings,
   providers,
   recentModels = [],
+  discovered,
 }: {
   draft?: SessionModelRef | null;
   settings?: SessionModelSettings | null;
   providers: readonly SessionModelProvider[];
   recentModels?: readonly RecentModel[];
+  discovered?: readonly ModelInfo[];
 }): SessionModelRef {
   if (draft?.providerId && draft.modelId) {
     return { providerId: draft.providerId, modelId: draft.modelId };
@@ -69,7 +88,7 @@ export function inheritedSessionModelBinding({
     ? [{ providerId: settings.defaultProviderId, modelId: settings.defaultModelId }]
     : [];
   const inherited = [...recentModels, ...legacy, ...fallbackCandidates].find(entry =>
-    availableRecentModels([entry], providers, settings).length > 0,
+    availableRecentModels([entry], providers, settings, discovered).length > 0,
   );
   const providerId = draft?.providerId ?? inherited?.providerId;
   const provider = providers.find((item) => item.id === providerId);
@@ -118,12 +137,14 @@ export function pinnedSessionModelBinding({
   settings,
   providers,
   recentModels,
+  discovered,
 }: {
   session: SessionModelRef;
   messages?: readonly SessionModelRef[];
   settings?: SessionModelSettings | null;
   providers: readonly SessionModelProvider[];
   recentModels?: readonly RecentModel[];
+  discovered?: readonly ModelInfo[];
 }): SessionModelRef {
   const used = lastUsedSessionModel(messages ?? []);
   return inheritedSessionModelBinding({
@@ -134,5 +155,6 @@ export function pinnedSessionModelBinding({
     settings,
     providers,
     recentModels,
+    discovered,
   });
 }

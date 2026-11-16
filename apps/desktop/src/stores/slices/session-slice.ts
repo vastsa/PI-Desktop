@@ -643,6 +643,8 @@ export function createSessionSlice({
             settings: get().settings,
             providers: get().providers,
             recentModels: get().recentModels,
+            discovered: get().providers.flatMap((candidate) =>
+              get().providerModels[candidate.id] ?? []),
           });
           if (pin.providerId && pin.modelId) {
             set((state) => ({
