@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createHostQueueStore, createHostSessionPort, fromHostQueueEntry, toSessionSummary } from "./host-ports.js";
+import {
+  createHostQueueStore,
+  createHostSessionPort,
+  fromHostQueueEntry,
+  toSessionSummary,
+  withProjectIds,
+} from "./host-ports.js";
 
 describe("host ports", () => {
   it("maps a host session record to the Agent Host summary without leaking the absolute path", () => {
@@ -117,6 +123,42 @@ describe("host ports", () => {
     }));
     expect(await port.get("s1")).toMatchObject({ id: "s1", projectId: "7" });
     expect(calls).toEqual(["session.get"]);
+  });
+
+  it("keeps each record's own project id when the same batch also needs a lookup", async () => {
+    // `session/list` decorates a mixed page: some rows already carry the RPC
+    // field, some still store only the path. The path map exists for the second
+    // kind only, so it must never win over an id the record itself reported —
+    // otherwise the list and a single `get` of the same row disagree.
+    const host = {
+      async call<T>(method: string) {
+        if (method === "projects.list") return { projects: [{ id: 7, path: "/work/project" }] } as T;
+        throw new Error(`unexpected ${method}`);
+      },
+    };
+    const summaries = await withProjectIds(host, [
+      { id: "existing", projectId: "authoritative-id", projectPath: "/work/project" },
+      { id: "legacy", projectPath: "/work/project" },
+    ]);
+    expect(summaries).toMatchObject([
+      { id: "existing", projectId: "authoritative-id" },
+      { id: "legacy", projectId: "7" },
+    ]);
+  });
+
+  it("reports the same project id from a single get and a mixed batch", async () => {
+    const record = { id: "existing", projectId: "authoritative-id", projectPath: "/work/project" };
+    const host = {
+      async call<T>(method: string) {
+        if (method === "session.get") return { session: record } as T;
+        if (method === "projects.list") return { projects: [{ id: 7, path: "/work/project" }] } as T;
+        throw new Error(`unexpected ${method}`);
+      },
+    };
+    const alone = await createHostSessionPort(() => host).get("existing");
+    const [batched] = await withProjectIds(host, [record, { id: "legacy", projectPath: "/work/project" }]);
+    expect(alone?.projectId).toBe("authoritative-id");
+    expect(batched?.projectId).toBe(alone?.projectId);
   });
 
   it("round-trips queue records through the host-core RPC shape", async () => {

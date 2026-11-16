@@ -107,7 +107,12 @@ export async function withProjectIds(
   }
   return records.map((record) => {
     const summary = toSessionSummary(record);
-    const projectId = record.projectPath ? byPath.get(record.projectPath) : undefined;
+    // The lookup map is a fallback, never an override: one legacy row in the
+    // same page must not rewrite an id another row reported itself, or list and
+    // get would disagree for the record that carried the authoritative value.
+    // Presence is decided the same way `needsLookup` decides it, so a batch and
+    // a single `get` can never disagree about what "already known" means.
+    const projectId = record.projectId || (record.projectPath ? byPath.get(record.projectPath) : undefined);
     return projectId ? { ...summary, projectId } : summary;
   });
 }
