@@ -118,15 +118,23 @@ export async function withSessionProjectIds(
   host: HostRpc,
   records: HostSessionRecord[],
 ): Promise<SessionSummary[]> {
-  const needsLookup = records.some((record) => record.projectPath);
+  const needsLookup = records.some(
+    (record) => record.projectPath && !record.projectId,
+  );
   const byPath = new Map<string, string>();
   if (needsLookup) {
-    const { projects } = await host.call<{ projects?: ProjectRow[] }>(
-      "projects.list",
-      {},
-    );
-    for (const project of projects ?? [])
-      byPath.set(project.path, String(project.id));
+    // Best effort: decoration must never break the session read itself.
+    // Hosts that predate the projects table (or harnesses / reduced-RPC
+    // connections) reject `projects.list`; an undecorated summary only loses
+    // its group affiliation, while a thrown error wedges prompt admission.
+    try {
+      const { projects } = await host.call<{ projects?: ProjectRow[] }>(
+        "projects.list",
+        {},
+      );
+      for (const project of projects ?? [])
+        byPath.set(project.path, String(project.id));
+    } catch {}
   }
   return records.map((record) => {
     const summary = toSessionSummary(record);

@@ -9,9 +9,7 @@
   min-height: 28px;
   border-radius: var(--radius-sm);
   color: var(--ds-text-secondary);
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .thread-item {
@@ -97,9 +95,7 @@
 
 /* Window blur releases hover, not selection or drag feedback. */
 .sidebar[data-window-blur="true"] .thread-item:hover:not(.active),
-.sidebar[data-window-blur="true"]
-  .project-group:not(.is-drop-target)
-  > .sidebar-session-group-header:hover {
+.sidebar[data-window-blur="true"] .project-group:not(.is-drop-target) > .sidebar-session-group-header:hover {
   background: transparent;
   color: var(--ds-text-secondary);
 }
@@ -255,8 +251,7 @@
   grid-template-rows: 1fr;
   margin-left: 13px;
   padding-left: 9px;
-  transition: grid-template-rows var(--motion-duration-normal)
-    var(--motion-ease-out);
+  transition: grid-template-rows var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 .sidebar-session-group-body.project.collapsed {
@@ -296,9 +291,7 @@
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   text-align: left;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .sidebar-load-more:hover {
@@ -371,6 +364,8 @@
 .thread-item.selected.active {
   background: var(--ds-bg-active);
 }
+
+
 
 /* ============================================================
    Project-level running affordances: count badge + activity rail.

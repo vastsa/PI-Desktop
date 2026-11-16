@@ -59,11 +59,7 @@ export function RemoteProjectGroups({
   return (
     <>
       {groups.map(({ project, sessions }) => {
-        const runSummary = summarizeProjectRuns(
-          sessions,
-          runningSessions,
-          pendingPermissions,
-        );
+        const runSummary = summarizeProjectRuns(sessions, runningSessions, pendingPermissions);
         const runIsLive = projectRunSummaryIsLive(runSummary);
         const showRunBadge = runAffordances.badge && runIsLive;
         const showRunRail = runAffordances.rail && runIsLive;
