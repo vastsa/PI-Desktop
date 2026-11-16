@@ -544,6 +544,10 @@ browser milestones are scheduled.
   workspace-requiring plugin tool. Non-loopback peers and reused pairing tokens
   are rejected. Tampered bundles are refused before start; SSH login failures
   are surfaced safely; version mismatch offers a matching-release recovery.
+  Opening a listed remote session keeps it inside its host project group,
+  because the attach snapshot reports the same `projectId` as the session list;
+  that group's disclosure collapses and restores its rows exactly like a local
+  project group.
   The local session is untouched throughout.
 - **Specs linked**: `02-architecture/05-remote-agent-control.md` §§5.2 and
   6.3, `03-runtime/19-remote-agent-control-protocol.md` §§6.2, 9.4, and

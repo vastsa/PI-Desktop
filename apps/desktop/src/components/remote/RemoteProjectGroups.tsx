@@ -9,8 +9,13 @@ import {
 } from "../../lib/sidebar-project-runs";
 import { useAppStore } from "../../stores/app-store";
 import { ProjectRunBadge, ProjectRunCount, ProjectRunRail } from "../ProjectRunIndicator";
-import { IconFolder, IconNewProject } from "../icons";
+import { IconChevronDown, IconFolder, IconNewProject } from "../icons";
 import { Button, TooltipButton } from "../ui";
+
+/** A stable DOM id from the catalog key, which is a JSON tuple rather than a path. */
+function groupDomId(key: string): string {
+  return `remote-project-${key.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
+}
 
 /** The same project/chat hierarchy, keyed by Host identity rather than local paths. */
 export function RemoteProjectGroups({ groups, renderSessions }: {
@@ -24,6 +29,12 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
   const runAffordances = resolveSidebarRunningAffordances(settings);
   const runningSessions = useAppStore((state) => state.runningSessions);
   const pendingPermissions = useAppStore((state) => state.pendingPermissions);
+  // Collapse is the shared project-group state, so a host project folds
+  // exactly like a local one and survives a restart with the rest of the
+  // sidebar. The catalog key never reaches `openProjectPaths`, so it cannot
+  // resurrect a group after the project disappears.
+  const collapsedGroups = useAppStore((state) => state.projectCollapsed);
+  const setProjectCollapsed = useAppStore((state) => state.setProjectCollapsed);
   const open = async (project: RemoteProjectEntry) => {
     if (busy) return;
     setBusy(project.key);
@@ -39,14 +50,22 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
     // Same exclusivity rule as the local sidebar: one set of numbers, owned by
     // the badge while it is on and by the rail when it is off.
     const showRunCount = runAffordances.railCount && runIsLive;
+    const collapsed = collapsedGroups[project.key] ?? false;
+    const domId = groupDomId(project.key);
     return <section
-      className={`sidebar-session-group project-group ${runIsLive ? "has-running-sessions" : ""} ${showRunRail ? "has-run-rail" : ""}`}
+      className={`sidebar-session-group project-group ${runIsLive ? "has-running-sessions" : ""} ${showRunRail ? "has-run-rail" : ""} ${collapsed ? "is-collapsed" : ""}`}
       key={project.key}
+      aria-labelledby={domId}
     >
       {showRunRail ? <ProjectRunRail summary={runSummary} /> : null}
       <div className="sidebar-session-group-header">
-        <Button variant="ghost" className="sidebar-session-group-title" disabled={busy !== null}
-          title={`${project.hostLabel} · ${project.label}`} onClick={() => void open(project)}>
+        <Button variant="ghost" id={domId} className="sidebar-session-group-title project-toggle"
+          title={`${project.hostLabel} · ${project.label}`}
+          aria-expanded={!collapsed}
+          aria-controls={`${domId}-sessions`}
+          data-action="toggle-project-collapse"
+          onClick={() => setProjectCollapsed(project.key, !collapsed)}>
+          <IconChevronDown size={13} className={`sidebar-disclosure-icon ${collapsed ? "collapsed" : ""}`} />
           <IconFolder size={13} aria-hidden /><span>{project.label} · {project.hostLabel}</span>
           {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
           {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
@@ -54,7 +73,13 @@ export function RemoteProjectGroups({ groups, renderSessions }: {
         <TooltipButton tooltip={t("nav.newTask")} ariaLabel={`${t("nav.newTask")}: ${project.label} · ${project.hostLabel}`}
           disabled={busy !== null} onClick={() => void open(project)}><IconNewProject size={14} /></TooltipButton>
       </div>
-      {renderSessions(sessions)}
+      <div id={`${domId}-sessions`}
+        className={`sidebar-session-group-body project ${collapsed ? "collapsed" : ""}`}
+        role="region" aria-hidden={collapsed} inert={collapsed ? true : undefined}>
+        <div className="sidebar-session-group-clip">
+          <div className="sidebar-session-group-list">{renderSessions(sessions)}</div>
+        </div>
+      </div>
     </section>;
   })}</>;
 }

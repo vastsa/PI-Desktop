@@ -334,6 +334,20 @@
   flex: 1;
 }
 
+/* Source tags ("Pi", a remote host) sit between the row's leading affordances
+   and the title. They are a fixed, unshrinking label: as a bare flex item they
+   inherit `flex-shrink: 1` and no `nowrap`, so a narrow sidebar folds the two
+   glyphs into a vertical stack instead of a badge. */
+.thread-item-source {
+  flex: 0 0 auto;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-row);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .thread-item-project {
   min-width: 0;
   max-width: 40%;
