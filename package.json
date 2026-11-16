@@ -120,7 +120,8 @@
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
     "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs",
     "test:e2e:overlay-selection": "node scripts/test-overlay-selection.mjs",
-    "test:e2e:live-voice-interaction": "node scripts/test-live-voice-interaction.mjs"
+    "test:e2e:live-voice-interaction": "node scripts/test-live-voice-interaction.mjs",
+    "test:e2e:mode-migration": "node scripts/e2e-legacy-goal-migration.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

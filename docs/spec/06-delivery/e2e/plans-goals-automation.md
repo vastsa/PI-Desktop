@@ -733,6 +733,28 @@ Coverage: `rpc/session_mode_migration_tests.rs` and
 `db/session_mode_migration_tests.rs`. This is isolated real SQLite/Host RPC coverage,
 not a claim of installed-client or live-provider acceptance.
 
+## E2E-custom-mode-legacy-goal-upgrade: Retire the old turn snapshot writer
+
+- **Preconditions**: Isolated schema-31 and schema-32 fixtures retain the
+  independent Goal `turn_execution_snapshot` trigger and populated execution
+  history. Include schema 32 both with and without the old sessions-mode CHECK.
+- **Command**: Set `PI_SCRATCH_DIR` and `PI_DESKTOP_HOST_BIN`, then run
+  `node scripts/e2e-legacy-goal-migration.mjs` after JS and Host builds. The
+  Host binary may also be selected from the extracted installed-layout payload.
+- **Steps**: Upgrade, select staged `goal-3` in a saved session, begin and end
+  a turn, create another custom-mode session, inspect the backup, and restart.
+- **Expected**: Schema reaches 33; custom turns complete without the legacy
+  CHECK error; old ledger rows remain unchanged; only the obsolete trigger is
+  retired; foreign keys remain valid; the verified schema-32 backup retains the
+  original trigger and records and is not replaced on restart. RPC regression
+  tests also cover backup refusal, transactional rollback, unchanged sessions
+  schema when no rebuild is needed, and unrelated trigger behavior.
+- **Specs linked**: [Data storage](../../03-runtime/04-data-storage.md).
+- **Acceptance criterion**: C, G, H.
+- **Milestone**: Post-MVP compatibility repair.
+- **Status**: Automated at the isolated real-Host/RPC boundary; no live provider
+  or running user Desktop is used.
+
 ## E2E-GOAL-completion-channel: Completion and blockers stop autonomous rounds
 
 - **Environment**: Isolated Host data and `PI_DESKTOP_AGENTS_DIR`, production
