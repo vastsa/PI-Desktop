@@ -489,6 +489,10 @@ export function createTranscriptSlice({
       if (target?.source === "pi-native" || isRemoteSession(target)) {
         await api.abort(sessionId);
         runtime.submittedComposerDrafts.delete(sessionId);
+        set((current) => ({
+          runningSessions: { ...current.runningSessions, [sessionId]: false },
+          ...(current.activeSessionId === sessionId ? { isRunning: false } : {}),
+        }));
         // Bypass in-flight pre-abort detail reads; request settled source state.
         const detail = await api.getSession(sessionId);
         const messages = detail.session?.messages;

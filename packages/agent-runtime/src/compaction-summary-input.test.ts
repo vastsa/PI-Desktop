@@ -13,7 +13,9 @@ import {
   COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS,
   COMPACTION_SUMMARY_RETRY_BASE_MS,
   COMPACTION_SUMMARY_RETRY_POLICY,
+  COMPACTION_SUMMARY_CHUNK_MARGIN,
   compactionSummaryReserveTokens,
+  estimatePromptTextTokens,
   estimateSummaryPromptTokens,
   planSummaryChunks,
   reduceSummaryInput,
@@ -119,6 +121,34 @@ describe("estimateSummaryPromptTokens", () => {
     // The turn prefix only counts when pi will actually summarize it.
     const unsplit = input(history, { isSplitTurn: false, turnPrefixMessages: prefix });
     expect(estimateSummaryPromptTokens(unsplit)).toBe(estimateSummaryPromptTokens(input(history)));
+  });
+
+  // Issue #2364: Han tokenizes at ~1 token per character while the chars/3.5
+  // baseline bills it 1/3.5, so a CJK prompt that "fits" is sent whole and
+  // rejected as a context overflow. The estimate must carry the correction.
+  it("does not treat 1600 CJK characters as a few hundred tokens", () => {
+    const cjk = input([user("中".repeat(1_600))]);
+    const ascii = input([user("a".repeat(1_600))]);
+    const cjkTokens = estimateSummaryPromptTokens(cjk);
+    const asciiTokens = estimateSummaryPromptTokens(ascii);
+
+    expect(cjkTokens).toBeGreaterThanOrEqual(1_500);
+    expect(cjkTokens).toBeLessThanOrEqual(1_700);
+    expect(asciiTokens).toBeGreaterThan(400);
+    expect(asciiTokens).toBeLessThan(500);
+  });
+
+  it("sizes a CJK history over the summary input limit the guard rejects", () => {
+    // A limit of 800 must not wave the 1600-character CJK prompt through.
+    const cjk = input([user("中".repeat(1_600))]);
+    expect(estimateSummaryPromptTokens(cjk)).toBeGreaterThan(800);
+  });
+
+  it("carries the CJK correction for a CJK previous summary", () => {
+    const base = input([user("ask")], { previousSummary: "摘".repeat(3_500) });
+    const tokens = estimateSummaryPromptTokens(base);
+    expect(tokens).toBeGreaterThan(3_500);
+    expect(tokens).toBeLessThan(4_000);
   });
 });
 
@@ -257,6 +287,35 @@ describe("planSummaryChunks", () => {
 
   it("plans nothing for an empty range", () => {
     expect(planSummaryChunks(input([]), options)).toBeUndefined();
+  });
+
+  // Issue #2364: a CJK range that the chars/3.5 estimate believes fits one
+  // chunk is split so every chunk meets the CJK-aware guard's budget, and a
+  // single over-budget CJK message is truncated further, not left oversized.
+  it("splits a CJK range the chars-per-token estimate would send whole", () => {
+    // budget = floor(800*0.9) = 720 tokens; a 400-CJK-char message costs ~415,
+    // so two per chunk would exceed it — while chars/3.5 sees only ~115.
+    const messages = Array.from({ length: 4 }, () => user("中".repeat(400)));
+    const chunks = planSummaryChunks(input(messages), {
+      summaryInputLimit: 800,
+      reserveTokens: 0,
+    });
+    expect(chunks).toBeDefined();
+    expect(chunks!.length).toBeGreaterThan(1);
+    expect(chunks!.flat()).toEqual(messages);
+  });
+
+  it("truncates an oversized CJK message inside the chunk's token budget", () => {
+    const chunks = planSummaryChunks(input([user("中".repeat(5_000))]), {
+      summaryInputLimit: 800,
+      reserveTokens: 0,
+    });
+    expect(chunks).toHaveLength(1);
+    const text = (chunks![0]![0] as { content: Array<{ text: string }> }).content[0]!.text;
+    expect(text).toContain(SUMMARY_CHUNK_TRUNCATION_MARKER.trim());
+    expect(estimatePromptTextTokens(text)).toBeLessThanOrEqual(
+      Math.floor(800 * COMPACTION_SUMMARY_CHUNK_MARGIN),
+    );
   });
 
   it("refuses a range that would need more requests than the bound allows", () => {

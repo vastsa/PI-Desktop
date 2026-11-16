@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+A confirmed Native Pi or remote Stop updates its running flag before requesting source details. If that follow-up read fails, the session remains stopped and keeps its known transcript; the refresh error stays visible. A rejected Stop still retains running state. (Refs #1990)
+
 Workspace file index Git queries settle at their deadline or output limit,
 even when inherited child pipes do not close. Composer file search and the
 Files index then use the existing bounded filesystem fallback (Refs #1731).

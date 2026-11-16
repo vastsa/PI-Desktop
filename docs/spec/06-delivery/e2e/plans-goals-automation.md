@@ -663,10 +663,10 @@ compaction injection.
   before queue release, and a distinct new run starts with the second input.
   Stop it, and verify no further continuation. Restored transcript assistant
   rows retain distinct turn ids and contain only the two actual user inputs.
-- `scripts/e2e-goal-layout.mjs` renders production status/budget controls with
+- `scripts/e2e-goal-layout.mjs` renders the production run status bar with
   the built stylesheet in isolated Electron. Check English/Chinese layouts at
   320, 480, 720 and 1120 pixels, long objectives/day durations, metadata order,
-  nonoverlap and horizontal budget inputs. Duration uses `d`, `h`, `m`, `s`
+  and nonoverlap. Duration uses `d`, `h`, `m`, `s`
   with exactly one ASCII space after each number, including `0 s`, in both
   languages. Resume/Pause/Edit/Remove are icon-only with localized accessible
   names; native clicks still resume/pause, open/cancel editing and arm/cancel
@@ -690,7 +690,7 @@ the key; only the machine key and that one secret file are copied). It calls a
 paid model API and needs the account owner's authorization. Real pieces: an
 isolated Host, the production runtime loop and Electron main's run coordinator.
 
-1. With `goalBudget { maxTurns: 6 }` set, a Goal run starts with 6 turns, does
+1. A Goal run starts with the builtin definition budget (20 turns), does
    the work, calls `CompleteStage` with the three-heading artifact, finishes,
    and the session returns to Agent.
 2. During the first turn, Edit the objective and budget, then Pause: the turn
@@ -732,6 +732,28 @@ failed replacement or foreign-key validation rolls back with a pre-upgrade backu
 Coverage: `rpc/session_mode_migration_tests.rs` and
 `db/session_mode_migration_tests.rs`. This is isolated real SQLite/Host RPC coverage,
 not a claim of installed-client or live-provider acceptance.
+
+## E2E-custom-mode-legacy-goal-upgrade: Retire the old turn snapshot writer
+
+- **Preconditions**: Isolated schema-31 and schema-32 fixtures retain the
+  independent Goal `turn_execution_snapshot` trigger and populated execution
+  history. Include schema 32 both with and without the old sessions-mode CHECK.
+- **Command**: Set `PI_SCRATCH_DIR` and `PI_DESKTOP_HOST_BIN`, then run
+  `node scripts/e2e-legacy-goal-migration.mjs` after JS and Host builds. The
+  Host binary may also be selected from the extracted installed-layout payload.
+- **Steps**: Upgrade, select staged `goal-3` in a saved session, begin and end
+  a turn, create another custom-mode session, inspect the backup, and restart.
+- **Expected**: Schema reaches 33; custom turns complete without the legacy
+  CHECK error; old ledger rows remain unchanged; only the obsolete trigger is
+  retired; foreign keys remain valid; the verified schema-32 backup retains the
+  original trigger and records and is not replaced on restart. RPC regression
+  tests also cover backup refusal, transactional rollback, unchanged sessions
+  schema when no rebuild is needed, and unrelated trigger behavior.
+- **Specs linked**: [Data storage](../../03-runtime/04-data-storage.md).
+- **Acceptance criterion**: C, G, H.
+- **Milestone**: Post-MVP compatibility repair.
+- **Status**: Automated at the isolated real-Host/RPC boundary; no live provider
+  or running user Desktop is used.
 
 ## E2E-GOAL-completion-channel: Completion and blockers stop autonomous rounds
 
