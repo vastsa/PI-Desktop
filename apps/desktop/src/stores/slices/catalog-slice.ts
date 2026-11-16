@@ -43,6 +43,7 @@ export function createCatalogSlice({
   | "openNotification"
   | "acknowledgeSessionOutcome"
 > {
+  let pluginViewRefresh: object | undefined;
   return {
     rememberModel: (model) => {
       const recentModels = rememberModelInList(get().recentModels, model);
@@ -193,10 +194,19 @@ export function createCatalogSlice({
     },
 
     refreshPluginViews: async () => {
+      const request = {};
+      pluginViewRefresh = request;
+      const projectPath = get().activeProjectPath;
       try {
-        set({ pluginViews: await api.listPluginViews() });
+        const pluginViews = await api.listPluginViews();
+        if (pluginViewRefresh !== request || get().activeProjectPath !== projectPath) return;
+        set({ pluginViews });
       } catch {
-        set({ pluginViews: [] });
+        if (pluginViewRefresh === request && get().activeProjectPath === projectPath) {
+          set({ pluginViews: [] });
+        }
+      } finally {
+        if (pluginViewRefresh === request) pluginViewRefresh = undefined;
       }
     },
 
