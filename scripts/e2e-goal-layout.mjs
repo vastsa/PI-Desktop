@@ -91,19 +91,6 @@ app.whenReady().then(async () => {
     window.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...point });
     if (action) await call("after", key);
   }
-  async function typeBudget(index, value) {
-    await click("budget:" + index, false);
-    await call("inputReady", index);
-    const modifiers = process.platform === "darwin" ? ["meta"] : ["control"];
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "A", modifiers });
-    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "A", modifiers });
-    await call("inputSelected", index);
-    await window.webContents.insertText(String(value));
-    await call("inputEdited", index, value);
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
-    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-    await call("inputSaved", index, value);
-  }
   for (const language of ["en", "zh-CN"]) for (const width of [320, 480, 720, 1120]) {
     const entry = { language, width };
     try {
@@ -118,8 +105,6 @@ app.whenReady().then(async () => {
         await click(key);
         if (key === "edit") fs.writeFileSync(path.join(__dirname, language + "-" + width + "-objective.png"), (await window.webContents.capturePage()).toPNG());
       }
-      await typeBudget(0, 37);
-      await typeBudget(1, 123456);
       await call("clockStart");
       await click("pause");
       await call("frozen");

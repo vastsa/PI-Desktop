@@ -12,7 +12,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::artifacts;
-use super::budget::{self, RunBudget, GOAL_MODE_ID};
+use super::budget::RunBudget;
 use super::model::{
     ClaimParams, ClaimResult, ContinueResult, ControlAction, ControlParams, ModeRun, Origin,
     ResolveAction, ResolveParams, RunState, SettleParams, StartParams, TurnOutcome, UpdateParams,
@@ -22,6 +22,9 @@ use super::repository::{self, GateRecord};
 use super::snapshot::{self, ModeDefinition, Snapshot};
 use super::{mode_error, mode_error_detail};
 use crate::db::{now_ms, Database};
+
+/// The builtin Goal mode id.
+const GOAL_MODE_ID: &str = "goal";
 
 /// Where a passed stage leads.
 pub(super) enum Transition {
@@ -145,17 +148,12 @@ fn start_with_snapshot(
         return Err(mode_error("MODE_RUN_ACTIVE"));
     }
     let definition = &snapshot.definition;
-    // The Goal default from settings replaces the builtin's budget for new
-    // runs; a running run keeps the budget it started with.
-    let budget = if definition.id == GOAL_MODE_ID {
-        budget::goal_budget_from_settings(db.get_setting("app")?.as_ref())
-    } else {
-        None
-    }
-    .unwrap_or(RunBudget {
+    // A new run starts with its definition's budget; `modes.update` changes
+    // an open run's.
+    let budget = RunBudget {
         max_turns: definition.budget.max_turns,
         max_tokens: definition.budget.max_tokens,
-    });
+    };
     let first = definition
         .stages
         .first()
