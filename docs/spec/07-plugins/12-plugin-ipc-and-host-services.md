@@ -144,6 +144,21 @@ Panel bridge fixed channels also include `app.setTheme`, `themes.upsert`,
 `projects.list` is read-only project metadata and needs no permission; it grants
 no file or session access.
 
+The docked File Manager (`pi.file-manager/manager`) receives
+`pluginBridge.capabilities.composerFileLines` when its loaded instance holds
+both `ui.view` and `fs.read` and is not development-loaded or disposing.
+This flag describes bridge support. Opening a view requires no Host registry
+query. Each invocation checks the enabled registry entry and loaded version
+with a five-second RPC timeout. An unavailable Host returns `HOST_UNAVAILABLE`;
+a later invocation can retry after reconnection in the same view.
+An eligible view can invoke
+`composer.addFileLines` with `{ workspace, path, start, end }`, where paths are
+absolute and lines are one-based and inclusive. The host requires the visible
+view of an enabled, registered File Manager with `ui.view` and `fs.read`, a
+matching workspace, and a path contained by a local folder of the selected
+session's project. The action inserts a draft reference. Sending the draft
+uses normal tool permissions.
+
 ## 4.1 Events (host → plugin process)
 
 The broker also pushes one-way frames down to a plugin's `utilityProcess`:

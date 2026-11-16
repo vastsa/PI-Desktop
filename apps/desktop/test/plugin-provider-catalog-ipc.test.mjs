@@ -6,6 +6,7 @@ import { IPC } from "../../../packages/shared/src/protocol.ts";
 import { pluginProviderCatalogEntries } from "../electron/main/plugin-provider-catalog.ts";
 import { createSessionPushGate } from "../electron/main/plugin-session-push-gate.ts";
 import { normalizeLauncherLaunch } from "../electron/main/ipc/plugin-launcher-ipc.ts";
+import * as fileLineReference from "../electron/main/file-line-reference.ts";
 
 /** Load the real main-process registration function with unrelated hosts stubbed. */
 function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}) {
@@ -29,6 +30,7 @@ function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}
     "../plugin-runtime": { resolveInsidePlugin: () => "/plugin/index.html" },
     "../plugin-view-host": { pluginViewKey: (...parts) => parts.join("/") },
     "../plugin-panel-host": {},
+    "../file-line-reference": fileLineReference,
     "../plugin-provider-catalog": { pluginProviderCatalogEntries },
     "../plugin-session-push-gate": { createSessionPushGate: gateFactory },
     /**
@@ -47,6 +49,43 @@ function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}
   );
   return module.exports.registerPluginUiIpc;
 }
+
+test("File Manager view capabilities survive Host unavailability without a registry query on open", async () => {
+  const handlers = new Map();
+  const views = [];
+  const loaded = {
+    development: false,
+    disposing: false,
+    permissions: new Set(["ui.view", "fs.read"]),
+    path: "/plugins/file-manager",
+    manifest: { version: "0.9.0", contributes: { views: [{ id: "manager", entry: "index.html" }] } },
+  };
+  let hostQueries = 0;
+  const host = { call: async () => { hostQueries++; throw new Error("Host restarting"); } };
+  loadPluginUiIpc()({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    plugins: { getLoaded: () => loaded },
+    getHost: () => host,
+    pluginViews: { open: (view) => views.push(view) },
+    pluginActiveInProject: () => true,
+    currentWorkspacePath: () => "/project",
+    getUpdaterLocale: () => "en",
+    getPluginPanelTheme: () => "dark",
+  });
+  const open = async (pluginId = "pi.file-manager") => {
+    await handlers.get(IPC.invoke.pluginViewOpen)({ pluginId, viewId: "manager" });
+    return views.at(-1).composerFileLines;
+  };
+  assert.equal(await open(), true);
+  assert.equal(await open("other.plugin"), false);
+  loaded.development = true;
+  assert.equal(await open(), false);
+  loaded.development = false;
+  assert.equal(await open(), true);
+  loaded.permissions.delete("fs.read");
+  assert.equal(await open(), false);
+  assert.equal(hostQueries, 0);
+});
 
 test("the plugin Add Service IPC returns declared categories through the Host handler", async () => {
   const handlers = new Map();
