@@ -341,6 +341,8 @@ export type PluginHostServices = {
    * visible workspace -- for a panel call or an unknown session.
    */
   getWorkspacePathForSession?: (sessionId: string) => string | null;
+  /** Authoritative durable session metadata for desktop-control scope checks. */
+  resolveSessionProjectPath?: (sessionId: string) => Promise<string | null>;
   /**
    * Whether a plugin's activation scope covers `projectPath` — the same
    * project-aware check the UI surfaces apply (#2377). Optional so a headless
@@ -5038,24 +5040,24 @@ export class PluginRuntime {
   /**
    * #2377: refuse a targeted desktop.control session read whose target session
    * belongs to a project the caller's activation scope excludes. Resolved from
-   * the live session-project map when available; an unresolvable project is
-   * allowed through, matching the workspace-relative fallback the event
-   * fan-out uses. A no-op without a scope service (headless hosts, global
-   * plugins always pass through `pluginActiveInProject` anyway).
+   * durable metadata rather than the live runtime map. Unknown metadata is
+   * checked as null so project-scoped callers fail closed. Hosts without a
+   * scope service retain their existing global behavior.
    */
-  private assertDesktopSessionScope(
+  private async assertDesktopSessionScope(
     pluginId: string,
     operation: string,
     args: readonly unknown[],
-  ): void {
+  ): Promise<void> {
     if (operation === SESSION_LIST_DESKTOP_OPERATION) return;
     if (!SESSION_READ_DESKTOP_OPERATIONS.has(operation)) return;
     const activeInProject = this.services.pluginActiveInProject;
     if (!activeInProject) return;
     const sessionId = desktopSessionTargetId(args);
     if (!sessionId) return;
-    const projectPath = this.services.getWorkspacePathForSession?.(sessionId);
-    if (projectPath === undefined) return;
+    const projectPath = this.services.resolveSessionProjectPath
+      ? await this.services.resolveSessionProjectPath(sessionId)
+      : this.services.getWorkspacePathForSession?.(sessionId) ?? null;
     if (activeInProject(pluginId, projectPath)) return;
     this.services.audit?.({
       pluginId,
@@ -5944,7 +5946,7 @@ export class PluginRuntime {
           const operationInfo = this.services.desktopControl.operations.find(
             (candidate) => candidate.id === operation,
           );
-          this.assertDesktopSessionScope(pluginId, operation, args);
+          await this.assertDesktopSessionScope(pluginId, operation, args);
           // The controller's `confirm` flag is an acknowledgement by the
           // caller, not a decision by the user. A plugin can set it at will,
           // so a dangerous operation additionally needs the host's native
