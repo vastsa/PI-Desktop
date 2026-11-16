@@ -134,14 +134,16 @@ function call(api, args = []) {
         { t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) },
         // An async delivery failure means the channel to the broker is gone:
         // fail the pending call and take the same terminal break as every
-        // other transport error.
+        // other transport error. A null argument is a successful flush, not
+        // a failure: the child channel reports delivery as callback(null).
         (error) => {
+          if (!error) return;
           const entry = pending.get(id);
           if (entry) {
             pending.delete(id);
             entry.reject(error);
           }
-          if (error) markBrokenAndExit(error);
+          markBrokenAndExit(error);
         },
       );
     } catch (error) {
