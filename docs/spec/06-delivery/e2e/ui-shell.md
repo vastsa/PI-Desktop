@@ -2655,6 +2655,37 @@
 
 ## E2E-167: Window edge resize stays smooth and persists the settled bounds
 
+Native gesture regression: run `node scripts/e2e-window-native-behavior.mjs`
+with the pinned Electron in an interactive desktop. The isolated fixture uses
+production minimum-size and maximize-guard logic. On macOS test both opaque
+and translucent windows: a 1440 DIP display's half-width minimum must allow a
+window below 800 DIP, maximize must preserve native zoom/green controls,
+and restore must re-enable edge resizing. `node scripts/e2e-window-controls.mjs`
+then covers the built shell: maximized caption regions must compute to no-drag,
+and a double-click must restore through the real preload/IPC and unlock the
+normal caption. `maximized-window-chrome.test.mjs` covers late-query/event races,
+repeated clicks, no-drag controls and unmount cleanup.
+Windows covers maximize/restore with the same production guard; Linux keeps
+its compositor-owned geometry. Unit tests cover cancellable edge events and
+listener cleanup (`window-native-behavior.test.mjs`).
+
+For transparent Windows 10 windows, send native caption double-click and
+Win+Up/top-edge maximize; `SC_MAXIMIZE` must reach the public maximize path
+exactly once. Restore/minimize/fullscreen and closing before deferred dispatch
+must not trigger a maximize. Opaque Windows 11 windows keep their existing path.
+These native Windows commands are unit-covered, not qualified by the macOS run.
+
+Physical acceptance remains required on each target OS: double-click empty
+regions across the 46 DIP titlebar (not action buttons), restore, drag to both
+screen edges on a small/scaled display, maximize, attempt each edge/corner
+resize and titlebar movement, then restore and repeat ordinary resizing.
+On macOS enable system edge tiling (15+) and double-click zoom; repeat with
+translucency on/off. Preserve fullscreen entry/exit and green-button access.
+On Linux record desktop environment and X11/Wayland; do not claim one
+compositor's behavior qualifies the others. A missing native runner or input
+permission is NOT RUN, not passing native gesture acceptance.
+
+
 Native Windows snapping regression (issue #2330): on an interactive Windows
 desktop with a work-area half at least the nominal minimum width, run
 `pnpm test:e2e:window-snap` against the candidate Windows Host and pinned Electron.
