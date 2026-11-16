@@ -10,15 +10,26 @@
  * neutral ("auto") so the renderer's first-strong fallback still applies.
  */
 
-const RTL_STRONG =
-  /[\u0590-\u05FF\u0600-\u065F\u066A-\u066F\u06FA-\u06FF\u0700-\u074F\u0750-\u077F\u07C0-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g;
-const LTR_STRONG = /[A-Za-z\u00C0-\u02AF\u0370-\u03FF\u0400-\u052F]/g;
+// Unicode 17.0 UnicodeData.txt fields General_Category and Bidi_Class:
+// https://www.unicode.org/Public/17.0.0/ucd/UnicodeData.txt
+// All Letter characters in the RTL blocks below have Bidi_Class R/AL.
+// The 26 neutral modifier letters are Letter but not strong L, R or AL.
+// Keep the Letter guard: digits, punctuation and marks inside RTL blocks must
+// not vote. Unknown letters follow the JS engine's Unicode property version.
+const LETTER = /\p{Letter}/u;
+const NEUTRAL_LETTER = /[\u02b9\u02ba\u02c6-\u02cf\u02ec\u0374\u2e2f\ua67f\ua717-\ua71f\ua788]/u;
+const RTL_LETTER = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc\u{10800}-\u{10fff}\u{1e800}-\u{1edff}\u{1ee00}-\u{1eeff}]/u;
 
 export type TextDirection = "ltr" | "rtl" | "auto";
 
 export function countStrongCharacters(text: string): { ltr: number; rtl: number } {
-  const rtl = (text.match(RTL_STRONG) ?? []).length;
-  const ltr = (text.match(LTR_STRONG) ?? []).length;
+  let ltr = 0;
+  let rtl = 0;
+  for (const character of text) {
+    if (!LETTER.test(character) || NEUTRAL_LETTER.test(character)) continue;
+    if (RTL_LETTER.test(character)) rtl++;
+    else ltr++;
+  }
   return { ltr, rtl };
 }
 
