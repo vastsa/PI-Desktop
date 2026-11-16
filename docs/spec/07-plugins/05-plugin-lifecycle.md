@@ -122,6 +122,19 @@ The sequence is bounded — `onUnload` gets 1.5s per plugin and teardown 3s in
 total, after which the children are killed outright. A plugin's cleanup must
 never be the reason the app appears to hang on quit.
 
+### Parent loss and diagnostic failures
+
+A plugin host exits with code 0 when its Node IPC parent disconnects, even
+when plugin timers or watchers remain active. Electron utility hosts use
+`parentPort`, which has no disconnect event; they probe the original parent
+PID every second and exit with code 0 on `ESRCH`. Permission errors do not
+prove parent death. Abrupt parent loss does not wait for plugin cleanup hooks.
+
+Diagnostics still reach a connected parent. A synchronous log transport
+failure or an asynchronous Node IPC send error exits the child with code 1
+without reporting that transport error through the same failed channel.
+Both uncaught exceptions and unhandled rejections follow this rule.
+
 ## 4. Enable / disable semantics
 
 ### enable

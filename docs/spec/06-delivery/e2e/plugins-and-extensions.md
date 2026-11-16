@@ -595,13 +595,13 @@ window; opening a normal panel afterward must still work.
 
 ## E2E-026: Plugin error does not crash app
 
-- **Preconditions**: Plugin loaded.
-- **Steps**: 1) Trigger a scenario where plugin throws an error. 2) Observe app behavior.
-- **Expected**: App remains running; error is captured and reported; no crash.
-- **Specs linked**: `07-plugins/04-plugin-security.md`
+- **Preconditions**: Synthetic plugin loaded with an active timer; isolated application data.
+- **Steps**: 1) Trigger an uncaught plugin exception with working IPC. 2) Inject synchronous diagnostic transport failure and asynchronous Node IPC send failure, for both exceptions and rejections. 3) Disconnect the Node parent. 4) Kill an isolated Electron main process with a resident plugin and observe its utility host. 5) Quit a development instance before deleting its worktree, then run the orphan-process check in the development workflow.
+- **Expected**: Working IPC reports the exception and the plugin host remains callable; the app stays running. Failed diagnostic transport exits the child with code 1 without recursive logging. Node disconnect exits with code 0 despite the timer. An Electron utility host exits after its next one-second parent-liveness probe; no plugin host remains after teardown.
+- **Specs linked**: `07-plugins/04-plugin-security.md`, `07-plugins/05-plugin-lifecycle.md` §3.1
 - **Acceptance**: G (plugin error → no crash)
 - **Milestone**: M4
-- **Status**: Draft
+- **Status**: Process integration covered by `plugin-host-lifecycle.test.mjs` and `plugin-isolation.test.mjs`; parentPort transport and missing-parent probes use boundary fixtures. Native Electron parent-kill and development-worktree journeys remain Draft.
 
 ## E2E-024X: Page copy stays concise in both locales
 

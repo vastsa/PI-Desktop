@@ -25,10 +25,27 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const parentPort = process.parentPort;
 
+// Plugin timers and watchers must not outlive the parent IPC connection.
+process.on("disconnect", () => process.exit(0));
+
+// Electron parentPort has no disconnect event, so watch its owner separately.
+if (parentPort) {
+  const parentPid = process.ppid;
+  setInterval(() => {
+    try {
+      process.kill(parentPid, 0);
+    } catch (error) {
+      if (error?.code === "ESRCH") process.exit(0);
+    }
+  }, 1000).unref();
+}
+
 /** Electron utilityProcess and node:child_process disagree on the transport. */
 function send(message) {
   if (parentPort) parentPort.postMessage(message);
-  else process.send?.(message);
+  else process.send?.(message, (error) => {
+    if (error) process.exit(1);
+  });
 }
 
 function onHostMessage(handler) {
@@ -37,7 +54,12 @@ function onHostMessage(handler) {
 }
 
 function log(level, message) {
-  send({ t: "log", level, message: String(message) });
+  try {
+    send({ t: "log", level, message: String(message) });
+  } catch {
+    // Logging a broken transport through itself would recurse.
+    process.exit(1);
+  }
 }
 
 let pluginId = "";
