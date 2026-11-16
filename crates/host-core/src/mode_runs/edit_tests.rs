@@ -164,8 +164,10 @@ fn per_run_budget_change_limits_and_unblocks_host_turns() {
 }
 
 #[test]
-fn goal_runs_take_the_settings_budget_and_other_modes_do_not() {
+fn goal_runs_take_the_definition_budget_and_ignore_a_legacy_setting() {
     let fx = fixture();
+    // A `goalBudget` left in the app settings by an older release has no
+    // effect: the budget comes from the mode definition only.
     fx.db
         .set_setting(
             "app",
@@ -174,29 +176,6 @@ fn goal_runs_take_the_settings_budget_and_other_modes_do_not() {
         .unwrap();
     let sid = goal_session(&fx);
     let run = start_run(&fx, &sid, "t1").run;
-    assert_eq!((run.max_turns, run.max_tokens), (Some(3), Some(50_000)));
-
-    let other = session(&fx, "agent");
-    let def = super::tests::definition(
-        "grind",
-        "agent",
-        json!([{ "id": "work", "permission": "agent", "loop": true, "exit": [] }]),
-    );
-    configure(&fx.db, &other, "grind", Some(&def)).unwrap();
-    let run = start_run(&fx, &other, "t2").run;
-    assert_eq!(
-        (run.max_turns, run.max_tokens),
-        (Some(20), None),
-        "a user mode keeps its own budget"
-    );
-
-    // An invalid stored value falls back to the definition budget.
-    fx.db
-        .set_setting("app", &json!({ "goalBudget": { "maxTurns": -1 } }))
-        .unwrap();
-    let third = session(&fx, "agent");
-    configure(&fx.db, &third, "goal", Some(&goal_snapshot())).unwrap();
-    let run = start_run(&fx, &third, "t3").run;
     assert_eq!((run.max_turns, run.max_tokens), (Some(20), None));
 }
 

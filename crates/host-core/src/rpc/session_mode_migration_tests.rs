@@ -186,3 +186,276 @@ async fn custom_mode_selection_upgrades_older_mode_schemas() {
         assert_eq!(migrated, crate::db::SCHEMA_VERSION);
     }
 }
+
+const LEGACY_GOAL_EXECUTION_SCHEMA: &str = r#"
+CREATE TABLE session_goals(id TEXT PRIMARY KEY, payload BLOB NOT NULL);
+CREATE TABLE goal_turns (
+  turn_id TEXT PRIMARY KEY,
+  goal_id TEXT NOT NULL REFERENCES session_goals(id) ON DELETE CASCADE,
+  settled INTEGER NOT NULL DEFAULT 0 CHECK(settled IN (0,1)),
+  interrupted INTEGER NOT NULL DEFAULT 0 CHECK(interrupted IN (0,1)),
+  tokens INTEGER CHECK(tokens >= 0)
+);
+CREATE TABLE turn_execution (
+  turn_id TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL CHECK(mode IN ('agent','plan','goal')),
+  goal_claim_id TEXT UNIQUE REFERENCES goal_turns(turn_id),
+  provenance TEXT CHECK(provenance IN ('user-goal','goal-continuation')),
+  CHECK((goal_claim_id IS NULL AND provenance IS NULL) OR
+        (goal_claim_id IS NOT NULL AND provenance IS NOT NULL AND mode='goal'))
+);
+CREATE INDEX legacy_execution_mode ON turn_execution(mode);
+CREATE TRIGGER turn_execution_snapshot AFTER INSERT ON turns
+BEGIN
+  INSERT INTO turn_execution(turn_id,mode)
+  SELECT NEW.id,mode FROM sessions WHERE id=NEW.session_id;
+END;
+CREATE TABLE retained_turn_audit(turn_id TEXT NOT NULL);
+CREATE TRIGGER retained_turn_audit AFTER INSERT ON turns
+BEGIN
+  INSERT INTO retained_turn_audit VALUES(NEW.id);
+END;
+INSERT INTO sessions(id,title,mode,created_at,updated_at)
+VALUES('existing','Saved task','agent',1,1);
+INSERT INTO session_goals VALUES('saved-goal',X'00FE');
+INSERT INTO goal_turns VALUES('saved-claim','saved-goal',1,0,17);
+INSERT INTO turns(id,session_id,status,started_at,ended_at)
+VALUES('saved-turn','existing','completed',1,2);
+UPDATE turn_execution SET mode='goal',goal_claim_id='saved-claim',
+  provenance='goal-continuation' WHERE turn_id='saved-turn';
+"#;
+
+fn legacy_goal_database(path: &Path, version: i64, check: &str) {
+    legacy_database(path, version, check);
+    Connection::open(path)
+        .unwrap()
+        .execute_batch(LEGACY_GOAL_EXECUTION_SCHEMA)
+        .unwrap();
+}
+
+fn legacy_goal_snapshot(conn: &Connection) -> (String, String, String, Vec<u8>, i64) {
+    conn.query_row(
+        "SELECT e.mode,e.goal_claim_id,e.provenance,g.payload,c.tokens
+         FROM turn_execution e JOIN goal_turns c ON c.turn_id=e.goal_claim_id
+         JOIN session_goals g ON g.id=c.goal_id WHERE e.turn_id='saved-turn'",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
+    )
+    .unwrap()
+}
+
+fn has_legacy_goal_trigger(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master
+         WHERE type='trigger' AND name='turn_execution_snapshot')",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn legacy_goal_schema_allows_custom_mode_turns_without_losing_history() {
+    for (version, check) in [(31, LEGACY_MODE_CHECK), (32, ""), (32, LEGACY_MODE_CHECK)] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        legacy_goal_database(&path, version, check);
+        let before = legacy_goal_snapshot(&Connection::open(&path).unwrap());
+        let mut app = AppState::open(dir.path()).unwrap();
+        app.handshook = true;
+        let state = Arc::new(Mutex::new(app));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let selected = handle_request(
+            state.clone(),
+            "session.configure",
+            json!({"id":"existing","mode":"goal-3","modeSnapshot":definition("goal-3")}),
+            tx.clone(),
+        )
+        .await
+        .expect("legacy schema 32 must allow custom mode selection too");
+        assert_eq!(selected["session"]["mode"], "goal-3");
+        let turn = handle_request(
+            state.clone(),
+            "session.beginTurn",
+            json!({"sessionId":"existing"}),
+            tx.clone(),
+        )
+        .await
+        .expect("retired Goal triggers must not reject a custom-mode turn");
+        let ended = handle_request(
+            state.clone(),
+            "session.endTurn",
+            json!({"turnId":turn["turnId"],"status":"completed","createNotification":false}),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(ended["ok"], true);
+        {
+            let app = state.lock().await;
+            assert_eq!(legacy_goal_snapshot(app.db.conn()), before);
+            assert!(!has_legacy_goal_trigger(app.db.conn()));
+            let audit: i64 = app
+                .db
+                .conn()
+                .query_row("SELECT count(*) FROM retained_turn_audit", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(audit, 2, "unrelated triggers must still run");
+            let rows: i64 = app
+                .db
+                .conn()
+                .query_row("SELECT count(*) FROM turn_execution", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(
+                rows, 1,
+                "the legacy ledger is retained but no longer populated"
+            );
+        }
+        drop(state);
+        let backup_path = dir.path().join("pi.sqlite.v32.bak");
+        let backup = Connection::open(&backup_path).unwrap();
+        assert!(has_legacy_goal_trigger(&backup));
+        assert_eq!(legacy_goal_snapshot(&backup), before);
+        assert_eq!(
+            backup
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            32
+        );
+        drop(backup);
+        let backup_bytes = std::fs::read(&backup_path).unwrap();
+        let reopened = Database::open(&path).unwrap();
+        assert_eq!(
+            reopened
+                .conn()
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            33
+        );
+        assert_eq!(legacy_goal_snapshot(reopened.conn()), before);
+        assert!(!has_legacy_goal_trigger(reopened.conn()));
+        assert_eq!(std::fs::read(&backup_path).unwrap(), backup_bytes);
+        assert!(!reopened
+            .conn()
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .exists([])
+            .unwrap());
+    }
+}
+
+#[test]
+fn legacy_goal_migration_rolls_back_trigger_retirement_on_rebuild_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    legacy_goal_database(&path, 32, LEGACY_MODE_CHECK);
+    let conn = Connection::open(&path).unwrap();
+    let before = legacy_goal_snapshot(&conn);
+    conn.execute_batch("CREATE TABLE sessions_v32(unrelated TEXT);")
+        .unwrap();
+    drop(conn);
+    assert!(Database::open(&path).is_err());
+    let conn = Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        32
+    );
+    assert!(has_legacy_goal_trigger(&conn));
+    assert_eq!(legacy_goal_snapshot(&conn), before);
+    assert!(conn
+        .execute("UPDATE sessions SET mode='goal-3'", [])
+        .is_err());
+    assert!(dir.path().join("pi.sqlite.v32.bak").is_file());
+}
+
+#[test]
+fn legacy_goal_migration_refuses_changes_without_a_valid_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    legacy_goal_database(&path, 32, "");
+    std::fs::create_dir(dir.path().join("pi.sqlite.v32.bak")).unwrap();
+    assert!(Database::open(&path).is_err());
+    let conn = Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        32
+    );
+    assert!(has_legacy_goal_trigger(&conn));
+    assert_eq!(legacy_goal_snapshot(&conn).3, vec![0, 254]);
+}
+
+#[test]
+fn legacy_goal_migration_preserves_an_already_unconstrained_schema() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let db = Database::open(&path).unwrap();
+    let before: String = db
+        .conn()
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE name='sessions'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    db.conn()
+        .pragma_update(None, "user_version", 32i64)
+        .unwrap();
+    drop(db);
+    let db = Database::open(&path).unwrap();
+    let after: String = db
+        .conn()
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE name='sessions'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        db.conn()
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        33
+    );
+}
+
+#[test]
+fn legacy_goal_migration_rolls_back_on_foreign_key_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    legacy_goal_database(&path, 32, "");
+    let conn = Connection::open(&path).unwrap();
+    let before = legacy_goal_snapshot(&conn);
+    conn.pragma_update(None, "foreign_keys", false).unwrap();
+    conn.execute(
+        "INSERT INTO goal_turns(turn_id,goal_id) VALUES('orphan','missing')",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+    let error = Database::open(&path)
+        .err()
+        .expect("broken references must prevent migration commit");
+    assert!(error.to_string().contains("foreign key check failed"));
+    let conn = Connection::open(&path).unwrap();
+    assert!(has_legacy_goal_trigger(&conn));
+    assert_eq!(legacy_goal_snapshot(&conn), before);
+    assert_eq!(
+        conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        32
+    );
+    assert!(dir.path().join("pi.sqlite.v32.bak").is_file());
+}

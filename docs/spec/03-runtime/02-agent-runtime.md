@@ -708,7 +708,9 @@ request. The automatic summary request retries transient provider failures
 under a bounded pi-ai retry policy (3 retries, 2s/4s/8s backoff, cancelled by
 Stop); deterministic failures such as quota or auth return at once. The
 preflight guard sizes the prompt pi actually serializes — tool results already
-capped — rather than the raw messages, and when that prompt still exceeds the
+capped — rather than the raw messages, with the CJK correction the output-cap
+estimator carries (Han, kana, and Hangul run ~1 token per character, not the
+1/3.5 the chars-per-token baseline bills), and when that prompt still exceeds the
 window it tries exactly one reduced input (tool results cut to a short prefix,
 thinking dropped, no message removed). If even that input does not fit, the range
 is split into contiguous chunks that each do: at most 16 requests, each carrying

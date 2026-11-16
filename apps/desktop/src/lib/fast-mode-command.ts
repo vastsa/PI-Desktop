@@ -43,6 +43,7 @@ export async function toggleSessionFastMode(): Promise<void> {
     settings: store.settings,
     providers: store.providers,
     recentModels: store.recentModels,
+    discovered: store.providers.flatMap((candidate) => store.providerModels[candidate.id] ?? []),
   });
   const provider = store.providers.find((candidate) => candidate.id === selected.providerId);
   const billing = fastModeBillingOn(provider?.apiStyle);

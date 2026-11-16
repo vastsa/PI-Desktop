@@ -46,7 +46,14 @@ const { provider: imageProvider } = await host.call("providers.create", {
   protocol: "openai_compatible", baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
   authKind: "none", defaultModelId: "fixture", apiStyle: "chat_completions",
 });
-await host.call("settings.set", { imageGeneration: { providerId: imageProvider.id, modelId: "fixture" } });
+await host.call("settings.set", {
+  imageGenerationModels: [
+    { providerId: imageProvider.id, modelId: "fixture" },
+    { providerId: provider.id, modelId: "fixture" },
+    { providerId: imageProvider.id, modelId: "gpt-image-1" },
+  ],
+  imageGeneration: { providerId: imageProvider.id, modelId: "fixture" },
+});
 await host.stop();
 
 const { appDir, electronBinary } = resolveElectronBinary();
@@ -222,26 +229,49 @@ try {
   );
   await waitFor(() => evaluate(`!!document.querySelector('[data-nav="settings"]') && !document.querySelector('.startup-splash')`),30000,"desktop ready");
   await evaluate(`document.querySelector('[data-nav="settings"]').click()`);
-  await waitFor(() => evaluate(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='AI')`),10000,"AI settings");
-  await click("AI");
-  await click("模型");
+  await waitFor(() => evaluate(`!!document.querySelector('.settings-nav')`),10000,"settings nav");
+  // The settings rail groups destinations ("模型" lives in the 智能体 group);
+  // the search box filters the same nav, so locating by query exercises the
+  // shipped path instead of a hardcoded button label.
+  await evaluate(`(() => {const input=document.querySelector('.settings-search');input.focus();return !!input;})()`);
+  await send("Input.insertText",{text:"模型"});
+  await waitFor(() => evaluate(`[...document.querySelectorAll('.settings-nav-item .settings-nav-label')].some(e=>e.textContent.trim()==='模型')`),10000,"models destination found");
+  await evaluate(`[...document.querySelectorAll('.settings-nav-item')].find(e=>e.querySelector('.settings-nav-label')?.textContent.trim()==='模型').click()`);
   await waitFor(() => evaluate(`!!document.querySelector('.model-default-row')`),10000,"model defaults");
-  const gap = await evaluate(`(() => {const rows=[...document.querySelectorAll('.settings-row')];const image=rows.find(e=>e.innerText.includes('生图模型'));return image.getBoundingClientRect().top-document.querySelector('.model-default-row').getBoundingClientRect().bottom})()`);
   await screenshot("settings.png");
-  assert.ok(gap>=11 && gap<=13, `defaults gap ${gap}px`);
-  await evaluate(`document.querySelector('.model-default-trigger').click()`);
-  await waitFor(() => evaluate(`!!document.querySelector('.model-default-option')`),5000,"default option ready");
-  await evaluate(`document.querySelector('.model-default-option').click()`);
-  await waitFor(() => evaluate(`document.body.innerText.includes('默认 AI 服务已更新')`),5000,"settings save success feedback");
+  // The image row shows the migrated default binding (provider · model).
+  await waitFor(() => evaluate(`(() => {const row=document.querySelector('.model-default-row');const provider=row?.querySelector('.model-default-provider')?.textContent;const model=row?.querySelector('.model-default-model')?.textContent;return provider==='Image-only fixture' && model==='fixture';})()`),5000,"migrated image default binding shown");
+  await evaluate(`document.querySelector('.model-image-selector .settings-menu-select-trigger').click()`);
+  await waitFor(() => evaluate(`!!document.querySelector('.settings-menu-select-menu .settings-menu-select-option')`),5000,"image default option ready");
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-menu-select-option').length`),3,"both image-marked dual-capability bindings and the pure-image endpoint are offered");
+  // Select the chat-default provider's fixture model: a dual-capability model
+  // is a legitimate image default (#2253), and the toast confirms the save.
+  await evaluate(`[...document.querySelectorAll('.settings-menu-select-option')].find(e=>e.textContent.includes('本地测试服务')).click()`);
+  await waitFor(() => evaluate(`document.body.innerText.includes('已设为生图模型')`),5000,"settings save success feedback");
   await waitFor(async () => (await invoke("settingsGet")).infiniteProviderRetry === false,5000,"normalized settings save round trip");
   assert.ok(await evaluate(`!document.body.innerText.includes('infiniteProviderRetry is invalid')`));
-  await click("返回应用");
+  await evaluate(`document.querySelector('[data-nav="back-to-app"]').click()`);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-thinking-chip')`),10000,"composer model chip");
   await evaluate(`document.querySelector('.composer-model-thinking-chip').click()`);
-  await waitFor(() => evaluate(`!!document.querySelector('.composer-menu-entry')`),5000,"composer model root");
-  await evaluate(`document.querySelector('.composer-menu-entry').click()`);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-search input')`),5000,"composer model root");
   await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-option').length>0`),5000,"composer model options");
-  assert.equal(await evaluate(`document.querySelectorAll('.composer-model-option').length`),1,"image-only provider must not be a chat candidate");
-  assert.ok(await evaluate(`![...document.querySelectorAll('.composer-model-group-label')].some(e=>e.textContent.includes('Image-only fixture'))`));
+  // The menu is a source rail plus one pane: only the active section's rows
+  // are mounted, so per-source assertions must drive the rail (#2253).
+  await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-rail-item').length===2`),5000,"composer model source rail");
+  assert.ok(await evaluate(`(() => {const labels=[...document.querySelectorAll('.composer-model-rail-label')].map(e=>e.textContent);return labels[0]==='本地测试服务' && labels[1]==='Image-only fixture';})()`),"the rail lists both chat-capable sources");
+  const paneState = (provider) => `(() => {const group=[...document.querySelectorAll('.composer-model-group')].find(e=>e.getAttribute('aria-label')===${JSON.stringify(provider)});if(!group)return null;const options=[...group.querySelectorAll('.composer-model-option')];return {options:options.length,titles:options.map(e=>e.title),checked:options.filter(e=>e.getAttribute('aria-checked')==='true').length};})()`;
+  assert.deepEqual(await evaluate(paneState("本地测试服务")),{options:1,titles:["fixture"],checked:1},"the chat default's fixture model is the active candidate");
+  assert.ok(await evaluate(`![...document.querySelectorAll('.composer-model-option')].some(e=>e.title==='gpt-image-1')`),"a pure image-generation endpoint is never a chat candidate");
+  await evaluate(`[...document.querySelectorAll('.composer-model-rail-item')].find(e=>e.querySelector('.composer-model-rail-label')?.textContent==='Image-only fixture').click()`);
+  await waitFor(() => evaluate(`document.querySelector('.composer-model-pane')?.querySelector('.composer-model-group')?.getAttribute('aria-label')==='Image-only fixture'`),5000,"image provider section shown by rail");
+  assert.deepEqual(await evaluate(paneState("Image-only fixture")),{options:1,titles:["fixture"],checked:0},"the image-marked fixture is offered but not yet active");
+  // Search spans sources and labels each result group; select through it.
+  await evaluate(`document.querySelector('.composer-model-search input').focus()`);
+  await send("Input.insertText",{text:"Image-only"});
+  await waitFor(() => evaluate(`[...document.querySelectorAll('.composer-model-group-label')].some(e=>e.textContent==='Image-only fixture')`),5000,"image provider section found by search");
+  assert.equal(await evaluate(`document.querySelectorAll('.composer-model-option').length`),1,"search narrows to the image-marked provider's model");
+  await evaluate(`[...document.querySelectorAll('.composer-model-group')].find(e=>e.querySelector('.composer-model-group-label')?.textContent==='Image-only fixture').querySelector('.composer-model-option').click()`);
+  await waitFor(() => evaluate(`[...document.querySelectorAll('.composer-model-option')].some(e=>e.getAttribute('aria-checked')==='true')`),5000,"image-marked model selected");
   await key("Escape",27);
   await key("Escape",27);
   const prompt = async (content) => {
@@ -356,7 +386,7 @@ try {
   await waitFor(() => evaluate(`!!document.querySelector('.model-default-row')`),10000,"setup action opens model settings");
   assert.equal(model.imageRequests.length,3,"unconfigured generation makes no image request");
   assert.deepEqual(model.failures,[]);
-  console.log(JSON.stringify({ok:true,gap,scenarios:["image-excluded-from-composer","settings-spacing","composer-batch-generation","result-download","composer-edit-generated-image","collapsed-previews","unconfigured-setup-navigation"],imageRequests:model.imageRequests,evidence}));
+  console.log(JSON.stringify({ok:true,scenarios:["image-excluded-from-composer","settings-image-default-menu","image-marked-model-chat-send","composer-batch-generation","result-download","composer-edit-generated-image","collapsed-previews","unconfigured-setup-navigation"],imageRequests:model.imageRequests,evidence}));
 } catch (error) {
   console.error("MODEL_FIXTURE_ERRORS",JSON.stringify(model.failures));
   console.error(output.slice(-4000));

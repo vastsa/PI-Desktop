@@ -1,5 +1,9 @@
 # E2E Scenarios: Conversation and Sessions
 
+## E2E-native-stop-refresh-failure
+
+Click the production Composer Stop button for a Native Pi source. Let abort succeed and reject the follow-up session detail read. Verify the toolbar returns to Send, the session running flag clears, the prior transcript remains, and the read error is shown. The regression also covers remote and rejected Stop. Coverage: `native-stop-refresh-failure.test.mjs` and `scripts/e2e-native-stop-refresh-failure.mjs` with real Electron, production store/toolbar and controlled API results.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Sessions, transcripts, the composer, streaming, queueing, context, and review.
 > Scenario template, gates, and traceability live in the plan.
 

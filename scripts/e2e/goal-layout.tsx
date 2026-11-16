@@ -1,13 +1,10 @@
-import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { catalogs } from "@pi-desktop/i18n";
-import { IPC, type AppSettings, type ModeControlRequest, type ModeRun } from "@pi-desktop/shared";
+import { IPC, type ModeControlRequest, type ModeRun } from "@pi-desktop/shared";
 import { ModeRunStatusBar } from "../../apps/desktop/src/features/modes/ModeRunStatusBar";
-import { GoalBudgetSettingsRow } from "../../apps/desktop/src/features/modes/GoalBudgetSettingsRow";
-import { SettingsCard } from "../../apps/desktop/src/features/settings/primitives";
 import { startModesSync } from "../../apps/desktop/src/features/modes/modes-sync";
 import { goalLayoutServices } from "./fixtures/goal-layout-store";
 
@@ -73,7 +70,6 @@ let run: ModeRun = {
 };
 const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
 const requests: ModeControlRequest[] = [];
-const saves: Partial<AppSettings>[] = [];
 function emit() {
   for (const listener of listeners.get(IPC.event.modesChanged) ?? []) listener({ sessionId: run.sessionId, run });
 }
@@ -118,17 +114,8 @@ document.body.append(host);
 const root = createRoot(host);
 let disposeSync: (() => void) | undefined;
 function Fixture() {
-  const [settings, setSettings] = useState<AppSettings>({
-    defaultMode: "goal", theme: "dark", enterToSend: true, onboardingDismissed: true,
-    goalBudget: { maxTurns: 20, maxTokens: null },
-  });
   return <main data-testid="goal-layout" style={{ width: "100%", height: "100%", padding: 8, overflow: "auto" }}>
     <ModeRunStatusBar sessionId={run.sessionId} />
-    <div className="settings-content-inner" style={{ marginTop: 24 }}>
-      <SettingsCard><GoalBudgetSettingsRow settings={settings} saveSettings={async (patch) => {
-        saves.push(patch); setSettings((current) => ({ ...current, ...patch }));
-      }} /></SettingsCard>
-    </div>
   </main>;
 }
 function label(key: string) { return i18n.t(`modes.run.${key}`); }
@@ -186,27 +173,6 @@ function geometry(phase: string) {
   }
   measurements.push({ phase, rounds: r, elapsed: e, actions: actions.map((item) => ({ name: item.getAttribute("aria-label") ?? item.textContent, ...box(item) })) });
 }
-function budgetGeometry() {
-  const fields = [...document.querySelectorAll<HTMLElement>(".settings-goal-budget-field")];
-  check(fields.length === 2, "Goal budget must expose two fields");
-  const rects = fields.map(box);
-  check(Math.abs(rects[0].top - rects[1].top) <= 1 && rects[1].left >= rects[0].right - 0.5, "Goal budget fields are not horizontal");
-  bounded(element(".settings-goal-budget"), "Goal budget");
-  bounded(element(".settings-row"), "Goal settings row");
-  for (const field of fields) {
-    const caption = field.querySelector<HTMLElement>(".settings-goal-budget-label");
-    const input = field.querySelector<HTMLInputElement>("input");
-    if (!caption || !input) throw new Error("Budget shared label/input missing");
-    const c = box(caption), i = box(input);
-    const range = document.createRange(); range.selectNodeContents(caption);
-    const lineTops = [...range.getClientRects()].map((rect) => Math.round(rect.top));
-    check(new Set(lineTops).size === 1 && caption.scrollWidth <= caption.clientWidth + 1, `Budget label wraps glyphs: ${caption.textContent}`);
-    check(i.left >= c.right - 0.5 && Math.abs((i.top + i.bottom) / 2 - (c.top + c.bottom) / 2) <= 1, "Budget label/input is not horizontal");
-    check(i.width >= 60 && input.classList.contains("field-input") && input.inputMode === "numeric", "Budget input is not usable/shared numeric control");
-    bounded(field, "Budget field"); target(input);
-    measurements.push({ phase: "budget", label: caption.textContent, caption: c, input: i, labelLines: lineTops });
-  }
-}
 function elapsedText() { return element(".mode-run-elapsed").textContent; }
 function seconds(value: number) { return `${value} s`; }
 
@@ -221,16 +187,13 @@ const probe = {
     flushSync(() => root.render(<I18nextProvider i18n={i18n}><Fixture /></I18nextProvider>));
     await until(() => Boolean(document.querySelector(".mode-run-elapsed")), "Mode run did not load through IPC");
     await document.fonts.ready; await settle();
-    geometry("paused"); budgetGeometry();
+    geometry("paused");
     check(intervals.size === 0, "Paused run owns a ticking interval");
     return { viewport: [innerWidth, innerHeight], objectiveLength: objective.length };
   },
   async target(key: string) {
     await settle();
-    const node = key.startsWith("budget:")
-      ? element<HTMLInputElement>(`.settings-goal-budget-field:nth-child(${Number(key.split(":")[1]) + 1}) input`)
-      : button(key);
-    return target(node);
+    return target(button(key));
   },
   async after(key: string) {
     if (key === "resume" || key === "pause") {
@@ -252,28 +215,6 @@ const probe = {
     } else if (key === "cancel") {
       check(!document.querySelector(".mode-run-confirm"), "Confirmation cancel failed");
     }
-  },
-  async inputReady(index: number) {
-    const input = element<HTMLInputElement>(`.settings-goal-budget-field:nth-child(${index + 1}) input`);
-    await until(() => document.activeElement === input, `Budget ${index}: native click did not focus the input`);
-  },
-  async inputSelected(index: number) {
-    const input = element<HTMLInputElement>(`.settings-goal-budget-field:nth-child(${index + 1}) input`);
-    await until(() => input.selectionStart === 0 && input.selectionEnd === input.value.length, `Budget ${index}: select-all did not settle`);
-  },
-  async inputEdited(index: number, value: number) {
-    const input = element<HTMLInputElement>(`.settings-goal-budget-field:nth-child(${index + 1}) input`);
-    await until(() => input.value === String(value), `Budget ${index}: native text insertion did not settle`);
-    await settle();
-    check(input.value === String(value), `Budget ${index}: controlled render lost inserted text`);
-  },
-  async inputSaved(index: number, value: number) {
-    await until(() => (index === 0 ? saves.at(-1)?.goalBudget?.maxTurns : saves.at(-1)?.goalBudget?.maxTokens) === value, "Budget native input/Enter did not save");
-    await settle();
-    const input = element<HTMLInputElement>(`.settings-goal-budget-field:nth-child(${index + 1}) input`);
-    check(input.value === String(value) && document.activeElement === input, "Budget value/focus lost after save");
-    check(input.labels?.length === 1 && Boolean(input.labels[0].textContent?.trim()), "Budget input has no accessible label");
-    budgetGeometry();
   },
   async clockStart() {
     push({ state: "running", elapsedMs: 5000, activeSinceMs: now }); await settle();
@@ -303,7 +244,7 @@ const probe = {
     check([...listeners.values()].every((set) => set.size === 0), "Mode sync listeners survived disposal");
     check(goalLayoutServices.toasts.length === 0, `Unexpected errors: ${goalLayoutServices.toasts.join("; ")}`);
     Date.now = realNow; window.setInterval = realSetInterval; window.clearInterval = realClearInterval;
-    return { checks, failures, measurements, requests, saves, timerCallbacks: callbacks };
+    return { checks, failures, measurements, requests, timerCallbacks: callbacks };
   },
 };
 Object.assign(globalThis, { goalLayout: probe });
