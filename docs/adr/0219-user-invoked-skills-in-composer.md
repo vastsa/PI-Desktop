@@ -2,42 +2,38 @@
 
 - Status: Accepted
 - Date: 2026-09-11
-- Deciders: PI-Desktop runtime and desktop UI maintainers
-- Amends: D123, D174, ADR 0024, ADR 0039
+- Related: D123, D174, ADR 0024, ADR 0039
 
 ## Context
 
-D174 established the Skill catalog and local `Skill` tool as a model-invoked
-capability, and explicitly rejected user-facing slash commands. That keeps skill
-bodies out of the system prompt and preserves the existing permission,
-activation, and runtime-reload boundaries, but it also makes active skills
-undiscoverable when a user knows that a specific workflow should be applied.
+D174 made the Skill catalog and the local `Skill` tool model-invoked and rejected
+user-facing slash commands, which keeps bodies out of the system prompt and preserves
+permission and activation boundaries, but leaves an active skill undiscoverable to a
+user who knows a workflow should apply.
 
 ## Decision
 
-1. Active built-in, plugin, and user Skills contribute entries to the composer
-   slash menu.
-2. Selecting a Skill inserts `/skill:<skill-id> `.
-3. Main persists a model-facing instruction asking the model to call the local
-   `Skill` tool with each validated id, followed by the remaining user text.
-4. No host protocol version or SQL migration is required.
+Active built-in, plugin, and user Skills contribute entries to the composer slash menu
+in a trailing `Skills` group, named with the explicit `skill:<id>` prefix while
+`skillId` keeps the original id. Selecting one inserts `/skill:<skill-id> `, and
+sending uses the ordinary prompt path: Electron main resolves the command against the
+session project, revalidates active scope and permissions at send time, and keeps the
+typed slash form for the transcript chip. Main then persists a model-facing
+instruction to call the local `Skill` tool with each validated id before the remaining
+user text, so the body loads on demand and never reaches the renderer or the prompt.
+No host protocol version or SQL migration is needed: optional `command` and
+`skillMentions` transcript metadata keep the typed text across reloads, the additive
+command contract permits `kind: "skill"` and `skillId`, and catalog, body-size, and
+runtime-reuse boundaries stay those of D174 and ADR 0039.
 
 ## Consequences
 
-- Users can explicitly discover and invoke an active Skill while the model can
-  still choose Skills implicitly from the same catalog.
-- A Skill disabled or removed between autocomplete and send falls back to the
-  existing literal slash-prompt behavior rather than bypassing activation.
-- The final autocomplete group may grow with the active Skill catalog, but its
-  stable placement keeps existing command ordering predictable.
+- Users can invoke an active Skill explicitly while the model still chooses Skills
+  implicitly from the same catalog.
+- A Skill disabled between autocomplete and send falls back to the literal slash
+  prompt instead of bypassing activation.
 
-## Alternatives considered
+## Alternatives
 
-- **Inject the Skill body directly into the prompt:** rejected because it
-  bypasses the local `Skill` tool's scope checks, on-demand loading, and runtime
-  reload semantics.
-- **Auto-trigger a Skill from the renderer:** rejected because invocation and
-  active-scope validation belong in Electron main, not in a renderer hint.
-- **Add a new host protocol or durable message schema:** rejected because the
-  existing Electron command channel and optional transcript command metadata are
-  sufficient.
+- Inject the Skill body into the prompt: bypasses scope checks and reload semantics.
+- Auto-trigger from the renderer: scope validation belongs in Electron main.

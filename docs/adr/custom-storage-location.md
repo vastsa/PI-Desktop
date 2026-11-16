@@ -6,34 +6,38 @@
 
 ## Context
 
-Application data and Chromium's browser/plugin state accumulate on the default
-system volume. Changing only the host root strands browser state and absolute
-internal attachment/plugin references.
+Application data and Chromium browser and plugin state accumulate on the default
+system volume, and moving only the host root strands browser state and absolute
+attachment and plugin references, while copying a live database or profile risks
+inconsistent snapshots and late writes.
 
 ## Decision
 
-Use explicit settings confirmation followed by existing ordered shutdown.
-Journal pending work in the original Electron userData directory, which remains
-the stable installation identity and single-instance lock.
-
-An empty selected destination owns `data/` and `browser/`. The production Node
-filesystem service copies all profile files, preserves links/permissions,
-verifies SHA-256 bytes and records ownership for retry.
-
-## Alternatives
-
-- Live relocation: rejected because SQLite, plugin processes, browser
-  partitions, outbox and logs do not share an atomic live-switch boundary.
-- Cache-only relocation: does not satisfy the requested complete storage
-  migration.
-- Move userData and its lock: changes installation identity and admits competing
-  launches while migrating.
-- Rewrite every matching byte/string: would corrupt credentials, user commands,
-  code, prose, Chromium databases and unknown plugin-owned formats.
+Use explicit settings confirmation followed by the existing ordered shutdown,
+journal pending work in the original Electron `userData` directory, which stays
+the installation identity and single-instance lock, and show cold migration
+progress in a sandboxed nonpersistent window before any writer boots. An empty
+selected destination owns `data/` and `browser/`: the filesystem service copies
+every profile file, preserves links and permissions, verifies bytes, and records
+ownership for retry, then Rust alone rewrites known host-owned structured paths
+and the copied SQLite index offline without schema upgrades or startup recovery.
+The durable pointer is published atomically afterwards, normal startup sets
+Chromium `sessionData` before ready, and the selected root reaches every
+existing service. Source profiles stay as visible backups behind a separate
+confirmed cleanup action.
 
 ## Consequences
 
-The default profile and Rust ownership remain compatible.
+- Migration needs room for one verified copy plus metadata, and source data is
+  untouched when copying fails.
+- A missing custom volume blocks startup with a recovery message rather than
+  creating a misleading empty profile.
+- Unknown plugin-private absolute references keep their bytes, and no schema,
+  protocol, or plugin SDK change is required.
 
-Unknown plugin-private absolute references and historical narrative paths retain
-their bytes; extension authors own their portability.
+## Alternatives
+
+- Live relocation: rejected, SQLite, plugin processes, browser partitions, and
+  logs share no atomic live-switch boundary.
+- Move `userData` and its lock: rejected, it changes installation identity and
+  admits competing launches during migration.

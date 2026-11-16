@@ -2,48 +2,47 @@
 
 - Status: Accepted
 - Date: 2026-09-29
-- Deciders: PI-Desktop maintainers
-- Related: D635, D637, E2E-167, ADR 0025, ADR 0248
+- Related: D635, D637, ADR 0025, ADR 0248
 
 ## Context
 
 Electron 43 paints a visible region on the left, bottom, and right of a
-frameless, resizable Windows window with the default thick frame. The renderer
-cannot paint into that native area.
+frameless resizable Windows window with the default thick frame, and the renderer
+cannot paint into it. Disabling `WS_THICKFRAME` removes the rim and the window
+animations, and although the public option description warns about losing edge
+dragging, the pinned Electron 43.6 frameless hit test still resizes on native
+edges and corners.
 
 ## Decision
 
-Disable the Windows thick frame on the main window only. Retain Electron's
-native frameless edge/corner hit testing and the current minimum-size contract;
-the renderer adds no resize handles or geometry IPC.
+Disable the Windows thick frame on the main window only, keeping Electron's
+native frameless edge and corner hit testing plus the existing minimum-size
+contract, with no renderer resize handles or geometry IPC; macOS and Linux keep
+native edge resizing and the work-panel width stays a separate renderer-owned
+interaction. Because `thickFrame: false` changes fullscreen display bounds
+without setting the value `isFullScreen()` returns, main tracks that fallback so
+fullscreen toggles, renderer events, and persisted normal bounds stay correct.
 
-macOS and Linux keep native edge resizing. Work-panel width remains a separate
-renderer-owned interaction; the window resize changes only application bounds.
-
-### Proposed rendering amendment
-
-ADR 0325 proposes the DWM path for Windows 11 and later while keeping the
-existing shape path for older Windows builds. It keeps this ADR's native resize
-and minimum-size contracts.
-
-## Alternatives
-
-- Keep the thick frame: leaves the visible rim.
-- Make the window transparent: changes the opaque background and theme contract
-  without removing the need to qualify native resizing.
-- Use only renderer CSS rounding: leaves the opaque native background visible in
-  the corners and cannot change the window's native hit region.
-- Pin an older Electron: trades away newer security and runtime fixes for a
-  historical rendering behavior.
+On Windows builds before 22000 the existing 12 DIP `--radius-md` `contentView`
+clip and native `setShape()` hit region stay, and a plugin with
+`ui.window.appearance` may declare an integer `cornerRadius` from 0 to 24 DIP
+that the selected theme supplies through the window-appearance IPC, with main
+validating the value and the caller. On build 22000 and later ADR 0325 replaces
+both with the system DWM corner preference, which keeps zero square, treats any
+positive radius as system-rounded, and requires an opaque top-level window.
 
 ## Consequences
 
-- The Windows main window has no painted left, bottom, or right native rim.
-- Native edge resizing and minimum size remain owned by Electron on every
-  platform; there is no parallel renderer/Main resize path.
-- Windows native shadow, minimize/maximize animation, and snap behavior may
-  differ with `WS_THICKFRAME` removed.
-- The native shadow cannot be made theme-configurable through Electron while
-  this thick-frame-free window retains its current bounds.
-- Windows builds before 22000 retain the non-antialiased pixel-row `setShape()`
-  curve and its native hit region.
+- The Windows main window has no painted left, bottom, or right native rim, and
+  edge resizing and minimum size stay owned by Electron on every platform.
+- Native shadow, minimize/maximize animation, and snap may differ with
+  `WS_THICKFRAME` removed, so they need native qualification before landing and
+  no shadow setting is added.
+- The Plugin SDK gains one optional permission-gated appearance property; old
+  manifests stay valid and no host RPC, schema, or persisted format changes.
+
+## Alternatives
+
+- Keep the thick frame: it leaves the visible rim.
+- Make the window transparent: it changes the opaque background and theme
+  contract without removing the need to qualify resizing.

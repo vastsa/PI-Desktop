@@ -7,53 +7,42 @@
 ## Context
 
 Rolling back one historical tool card loaded the complete session and called
-`replace_messages` to persist `details.review.state`. This rewrote the entire
-transcript and rebuilt every SQLite message index row under the Host state lock.
+`replace_messages` to persist `details.review.state`, rewriting the whole transcript
+and rebuilding every SQLite message index row under the host state lock, although only
+one small metadata value changed. Appending a replacement message instead would move
+its physical position and break bounded history navigation.
 
 ## Decision
 
-Append a distinct `tool_review_state` line keyed by message and snapshot IDs.
-Keep the original message line and all message-window coordinates unchanged.
+Append a distinct `tool_review_state` line keyed by message and snapshot ids, leaving
+the original message line and every message-window coordinate unchanged. Full reads,
+bounded reads, and tool-parent lookups replay the latest matching state, and those
+offsets are indexed separately in layout-cache format 3. Cache reuse requires a
+matching file identity and modification stamp, and only a host-owned append from the
+proven generation advances an in-memory prefix without a rescan.
 
-Cache reuse requires a matching file identity and modification/change-time
-stamp. Only a Host-owned append from the proven generation advances an in-memory
-prefix's generation without rescanning.
+The owning tool snapshot is validated before appending, duplicate acknowledgements are
+avoided, and the existing flush/fsync path provides durability before only the session
+timestamp is updated. File order is the order of record, indexed reads sort offsets by
+byte position, and the last appended state wins for the same message and snapshot.
 
 ### Rewrite and archive folding
 
-`truncate_from` first calls `get_session`. Its uncapped read reaches
-`read_transcript_with_compactions` / `read_transcript_window`, where
-`apply_tool_review_states` overlays the appended records before any cut is
-chosen.
-
-`fork_session_through` reads the effective records through `read_transcript`;
-`activate_message_revision_with_prefix` combines the effective live prefix and
-stored branch before `records_and_texts` serializes them. Coverage includes
-`truncate_from_folds_review_state_into_the_retained_prefix` and
-`tool_review_state_survives_fork_revision_activation_and_deletion`.
-
-### Ordering
-
-File order is the order of record. Review-state records have no timestamp;
-`append_line` writes each complete line and syncs it before returning, while the
-calling RPC holds the Host state lock.
-
-`equal_length_state_appends_replay_in_file_order_across_cached_reads` uses JSON
-whitespace to make valid `active` and `rolledBack` records exactly equal in
-serialized length. Each append must still grow the file, add a distinct state
-offset, and preserve last-write-wins state through warm and cold reads.
+Existing rewrite, fork, revision, and archive operations consume the effective message
+projection, so state is folded into their payloads: the surviving tool's effective
+state reaches its canonical message, discarded messages keep theirs in the archived
+branch, and fork and revision activation serialize the combined prefix.
 
 ## Consequences
 
-A review update writes only its IDs and state instead of retained history.
-
-The line type is additive to transcript format 2 and requires no database or RPC
-migration.
+- A review update writes only its ids and state instead of retained history.
+- The first mutation after a restart still runs the storage-integrity verification,
+  and ordinary reads also read the small state log.
+- The line type is additive to transcript format 2 with no database or RPC migration,
+  so older readers skip it and may show stale card state.
 
 ## Alternatives
 
-- Calling `update_message` still copies all historical bytes for a non-tail
-  message and therefore leaves the reported review trigger.
-- Appending the whole tool message creates a new physical message position.
-- A separate metadata file adds another authoritative storage and recovery
-  lifecycle; the existing transcript append path already provides durability.
+- Call `update_message` — rejected: it still copies all historical bytes for a
+  non-tail message.
+- Append the whole tool message — rejected: it creates a new physical position.

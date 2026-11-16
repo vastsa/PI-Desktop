@@ -1,8 +1,8 @@
 # ADR 0263: Expose a Project's Folder Roots and Complete References Across Them
 
-- **Status**: Accepted
-- **Date**: 2026-09-14 (amends [ADR 0262](0262-chat-file-refs-open-in-the-file-view.md))
-- **Related**: [ADR 0016](0016-sidebar-organization-and-multi-project-tabs.md) ·
+- Status: Accepted
+- Date: 2026-09-14 (amends [ADR 0262](0262-chat-file-refs-open-in-the-file-view.md))
+- Related: [ADR 0016](0016-sidebar-organization-and-multi-project-tabs.md) ·
   [ADR 0233](0233-renderer-owned-multi-folder-project-creation.md) ·
   [ADR 0241](0241-vendored-updatable-file-view-plugin.md) ·
   [ADR 0249](0249-chatgpt-style-logical-project-groups.md) ·
@@ -10,72 +10,52 @@
 
 ## Context
 
-ADR 0249 made a project a host-owned logical group: a display name, an ordered
-list of local folder roots, and a primary root. Two of its clauses matter here.
+ADR 0249 made a project a host-owned logical group with an ordered list of local
+folder roots and a primary root that stays the visible workspace. None of that
+reached a plugin: `pi.workspace.get()` returned only `{ path, name }` for the visible
+workspace, so a contributed view could not learn that its project had other folders.
+After ADR 0262 a chat file reference opened as a project-root-relative path, which is
+ambiguous in a group, so a reference resolving into a sibling folder could only open
+as an external file with the jail bypassed.
 
 ## Decision
 
-1. **`pi.workspace.get()` gains `projectId` and `roots`.** `path` and `name`
-   keep their meaning — the primary root and its leaf name — so every existing
-   plugin, including the file view shipped today, behaves exactly as before.
-2. **Main answers from a snapshot of the group records.** host-core owns them;
-   main keeps a copy so the synchronous `workspace:changed` broadcast and the
-   asynchronous pull cannot disagree.
+1. **`pi.workspace.get()` gains `projectId` and `roots`.** `path` and `name` keep their
+   meaning, `roots` is `{ path, name, primary }[]` in group order with the primary
+   first, and `workspace:changed` carries the same object. This is project metadata the
+   sidebar already shows, so it needs no new permission and no new method.
+2. **Main answers from a snapshot of the group records.** The authoritative
+   `project.groups.list` call fills it and every group mutation refreshes it, so the
+   synchronous broadcast and asynchronous pull cannot disagree.
 3. **Completion searches the whole project.** `fs.resolveRef` walks the group's
-   folders — primary first, then the group's own order — before the session
-   scratch store, exactly as it walked the single workspace before.
-4. **The address shape follows the folder.** A match in the primary root travels
-   as a project-relative path, byte-identical to ADR 0262.
-5. **The host file tab reaches the group too.** Its extra containment roots gain
-   the project's other folders, which ADR 0249 §5 already sanctions, so a
-   reference that resolves into a sibling folder still opens when the file view
-   is absent or disabled instead of failing containment.
-6. **The file view's own jail base becomes the selected folder.** Its reads,
-   writes, listing and search stay confined to one registered root at a time —
-   never the whole group — with the same symlink and junction refusals and the
-   same credential deny list.
-7. **The switch is plugin-local.** Choosing another folder changes what that
-   view browses.
+   folders, primary first and then group order, before the session scratch store, and
+   the first root that answers wins outright.
+4. **The address shape follows the folder.** A primary-root match travels as a
+   project-relative path, while a sibling-folder match travels as an absolute path, the
+   shape scratch and attachment files already use, so the payload stays one opaque
+   string.
+5. **The host file tab reaches the group too**, gaining the project's other folders as
+   containment roots under ADR 0249 §5.
+6. **The file view's jail base becomes the selected folder.** Reads, writes, listing,
+   and search stay confined to one registered root at a time, never the whole group,
+   with the same symlink refusals and credential deny list.
+7. **The switch is plugin-local.** Choosing another folder changes only what that view
+   browses, not the visible workspace, the agent's tool roots, a session's primary path,
+   project instructions, or project memory.
 
 ## Consequences
 
-- A short reference now resolves anywhere in the project, and the view that
-  opens it can show the file in its own folder rather than as an external file.
-- A multi-folder project can be browsed folder by folder in the work panel,
-  remembered per project, without the user changing what the agent works on.
-- The container model, the permission model and the session model do not change:
-  no new permission, no new IPC capability for plugins, one containment base at
-  a time.
-- A plugin that ignores `roots` keeps working; a host that cannot resolve a
-  group sends the original payload and the view falls back to single-root
-  behaviour, so the feature degrades rather than breaking.
-- `fs.resolveRef` now has a wider notion of "the project".
+- A short reference resolves anywhere in the project and opens in its own folder
+  instead of as an external file.
+- A multi-folder project can be browsed folder by folder in the work panel, remembered
+  per project, without changing what the agent works on.
+- The container, permission, and session models are unchanged, and a plugin that
+  ignores `roots` keeps working because a host that cannot resolve a group sends the
+  original payload.
 
-## Alternatives considered
+## Alternatives
 
-### Let the renderer push the group into the view payload
-
-Rejected: a view also loads from the launcher with no chat reference at all, and
-`location` is a one-shot subject, not metadata a long-lived view can rely on.
-
-### Add a `pi.project.roots()` method instead of extending `workspace.get()`
-
-Rejected: `workspace.get` is already where a plugin learns which root it is
-working in.
-
-### Run completion against every group folder with equal weight
-
-Rejected: the primary root is the folder the agent's tools default to, so it
-should answer first; the group's order then ranks the rest.
-
-### Make the folder switch activate that folder as the workspace
-
-Rejected: it would move the agent's tool roots, a session's primary path and the
-project's instructions, which is exactly the multi-root execution ADR 0233 and
-ADR 0249 refused.
-
-### Widen the bundled view's declared `fs` root to the whole group
-
-Rejected: the manifest's root model is one directory, and widening it would give
-the view standing access to every folder of every project rather than to the one
-the user is looking at.
+- Let the renderer push the group into the view payload — rejected: a view also loads
+  with no chat reference, and `location` is a one-shot subject.
+- Make the folder switch activate that folder as the workspace — rejected: it would
+  move the agent's tool roots and the session's primary path.

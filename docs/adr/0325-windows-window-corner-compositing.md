@@ -2,40 +2,45 @@
 
 - Status: Proposed; implementation candidate awaits Windows native qualification
 - Date: 2026-10-10
-- Deciders: PI-Desktop maintainers
 - Related: D635, D637, E2E-167, ADR 0248, ADR 0317
 
 ## Context
 
-The Windows main window currently uses a transparent outer window,
+The Windows main window relies on a transparent outer window,
 `contentView.setBorderRadius()` for the visible clip, and `setShape()` for the
-native hit region. This keeps child views inside one clip, but depends on
-Electron transparency and a window region.
+native hit region, but Windows 11's DWM corner API may ignore its rounding hint
+for windows that use per-pixel alpha or a window region, so that path cannot
+guarantee the system-rendered curve.
 
 ## Decision
 
-For the Windows main window only:
-
-1. On Windows build 22000 and later, create an opaque, frameless window and
-   request the native DWM corner preference through the existing Electron Main
-   to Host Core process boundary.
-2. Host Core accepts only the HWND whose owning PID matches the Electron PID
-   injected by Electron Main when it starts Host Core.
-3. Map radius `0` and maximized/fullscreen states to `DWMWCP_DONOTROUND`.
-4. Keep the existing transparent content clip and native shape path on Windows
-   builds before 22000.
-5. On the Windows 11 path, keep the top-level surface opaque.
-6. Keep the existing `window/setBackgroundColor` request and response,
-   validation, theme fallback, geometry persistence, and native frameless edge
-   resize behavior.
+For the Windows main window only, builds from 22000 onward create an opaque,
+frameless window and request `DWMWA_WINDOW_CORNER_PREFERENCE` through the
+existing Electron Main to Host Core boundary, without `setShape()` or
+`contentView.setBorderRadius()`. Host Core accepts only the HWND whose owning
+PID matches the Electron PID injected at startup, so no plugin, renderer, or
+standalone-window API is added. Radius `0` and maximized or fullscreen states map
+to `DWMWCP_DONOTROUND` and every positive authorized radius maps to
+`DWMWCP_ROUND`, with Windows 11 choosing the visible radius while the public
+range and default stay unchanged. A contributed `#rrggbbaa` background is
+flattened over the resolved theme background so alpha never creates per-pixel
+window transparency, and the existing `window/setBackgroundColor` contract,
+theme fallback, geometry persistence, and native frameless edge resize are kept.
+Windows builds before 22000, macOS, Linux, plugin standalone windows, and
+floating components are unchanged.
 
 ## Consequences
 
-- Windows 11 uses the system's antialiased corner rendering and native corner
-  hit behavior.
-- Positive theme radii keep their range and meaning as “rounded,” but Windows 11
-  chooses the radius.
-- DWM may decline to round a window based on its style or environment, and
-  Windows may keep snapped or virtualized windows square.
-- The Windows 11 background stays opaque; alpha colors are composited against
-  the built-in palette.
+- Windows 11 uses the system's antialiased corners and native corner hit
+  behavior instead of transparent pixels or an integer region.
+- Positive radii keep their meaning as "rounded" while Windows picks the value,
+  and older Windows builds keep their exact DIP clip.
+- DWM may decline to round based on window style or environment, so native
+  qualification must confirm the result before any release claim.
+
+## Qualification gate
+
+The decision stays proposed until a Windows desktop running Electron 43.6.0
+proves the rounded opaque window, theme and alpha flattening, child-view
+containment, state transitions, native resize and bounds persistence, and the
+unchanged pre-22000 path.

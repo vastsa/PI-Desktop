@@ -5,32 +5,33 @@
 
 ## Context
 
-Plugin code is untrusted; we must prevent it from dragging down or intruding
-into the host.
+Plugin code is untrusted. Running it inside the host process would let a plugin
+crash or intrude on the host and hand it direct access to host objects and
+environment.
 
 ## Decision
 
-Target architecture: the plugin main runs in a **separate process**
-(UtilityProcess/Child Process) and accesses the Host API via RPC.
+Each plugin main runs in a separate process (UtilityProcess / child process) and
+reaches the Host API only over RPC: every `pi.*` call passes the host API
+allowlist and the permission gateway before it reaches a host service. Plugins
+receive a minimal environment, contribution points register by descriptor with
+the callable half staying in the plugin process, and a dying plugin is
+contained — pending calls reject with `PLUGIN_CRASHED`, contributions are
+deregistered, and the renderer learns about it through `pluginChanged`.
 
-If MVP progress is constrained, a lighter isolation may be adopted temporarily,
-but it must not break:
-
-- The permission gateway
-- The API allowlist
-- Unified registration of contribution points
-- Crash non-fatality
-
-## Rationale
-
-1. Crash isolation
-2. Clearer permission proxying
-3. Resource limits can be added later
+Capability sandboxing (D009), resource limits, and load-time review of declared
+manifest permissions remain future work.
 
 ## Consequences
 
-### Positive
-- Better security and stability
+- Plugins gain crash isolation and a narrower reachable surface, at higher
+  implementation and debugging cost.
+- A plugin must go through the RPC API; it holds no host object and no host
+  process environment.
+- Raw Node access inside the plugin process stays outside permission gating
+  until D009 lands.
 
-### Negative
-- Higher implementation and debugging cost
+## Alternatives
+
+- Run plugin code in the host process: rejected because one plugin failure
+  would take the host down with it.

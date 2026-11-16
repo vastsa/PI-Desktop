@@ -6,57 +6,55 @@
 
 ## Context
 
-ADR 0243, ADR 0245, ADR 0247 and ADR 0272 built one public-network boundary and
-applied it to every request the app makes on its own behalf: a market source, a
-redirect hop, a git remote, a resolved address. That boundary is load-bearing.
+ADR 0243, 0245, 0247, and 0272 built one public-network boundary for every
+request the app makes on its own behalf, which is load-bearing and must stay. The
+same boundary also refused addresses the user typed into a settings field — a
+self-hosted GitLab, a LAN ComfyUI, an MCP OAuth server on a private address —
+which removed the request without removing the work and left three surfaces
+(ADR 0142, ADR 0300, ADR 0257) already making the distinction, so one boundary
+carried two meanings.
 
 ## Decision
 
-1. A **user-supplied endpoint** may reach loopback, RFC1918, CGNAT, link-local,
-   ULA, site-local and `.local` addresses, as well as any public address.
-2. One host-owned switch, **Relaxed network mode**
-   (`settings.networkPolicy.mode`, `relaxed` | `strict`), **defaults to
-   `relaxed`**.
-3. **Third-party content keeps the strict policy.** A registry record, a market
-   catalog body, a document URL inside a catalog, and every HTTP redirect target
-   are still judged by the public-only rule, with the resolved address pinned to
-   the connection.
-4. An OAuth authorization server reached over plaintext is trusted only when it
-   sits on the same host as the MCP server the user typed.
-5. `unspecified`, `multicast`, `reserved`, `documentation`, `invalid` and cloud
-   metadata stay refused on **every** input, including a user-supplied one.
-6. The default proxy bypass list gains the private ranges, so a configured proxy
-   does not swallow the user's own LAN services.
-7. The syntactic judgement stays in `packages/shared`, and the authoritative one
-   stays at the connection: a DNS answer outside the policy is refused before
-   the socket, and an acceptable address is pinned to it (ADR 0245, ADR 0272).
+1. A user-supplied endpoint may reach loopback, RFC1918, CGNAT, link-local, ULA,
+   site-local, and `.local` addresses as well as public ones; it is an address
+   the person typed, such as a model base URL, an MCP server, a market source, a
+   git remote, or a generated-image URL.
+2. One host-owned switch, relaxed network mode (`settings.networkPolicy.mode`,
+   `relaxed` | `strict`), defaults to `relaxed`, which allows those resolutions,
+   plain `http`, and a transparent proxy's fake-IP answers; per-surface
+   acknowledgements fold into it and a stored
+   `allowInsecureUserEndpoints: false` migrates to `strict`, with the first
+   plaintext hop to a user endpoint announced once.
+3. Third-party content keeps the strict policy: a registry record, a catalog
+   body, a document URL inside a catalog, and every redirect target are still
+   public-only with the resolved address pinned to the connection, so the shared
+   client records whether each hop's origin is `user` or `third-party`.
+4. An OAuth authorization server over plaintext is trusted only on the same host
+   as the MCP server the user typed, since every other endpoint in that flow
+   arrives inside server metadata; loopback stays allowed (RFC 8252).
+5. `unspecified`, `multicast`, `reserved`, `documentation`, `invalid`, and cloud
+   metadata stay refused on every input, including a user-supplied one.
+6. The default proxy bypass list gains the private ranges, and the syntactic
+   judgement stays in `packages/shared` while the authoritative one stays at the
+   connection (ADR 0245, ADR 0272).
 
 ## Consequences
 
-- A model endpoint, an MCP server, a market source, a git remote and a
-  generated-image URL can all point at the user's own machine or LAN from inside
-  the app, instead of only from a shell next to it.
-- The main process gains an SSRF-shaped capability whose targets the user typed
-  on purpose.
-- A plaintext hop to a LAN service is on by default and announced once: whatever
-  credentials that endpoint accepts travel unencrypted across the local network,
-  so the user is told the first time it happens and can turn the mode off.
-- ADR 0247's consequence — "clone a private-host repository with an
-  application-external git remote" — no longer applies.
+- A model endpoint, MCP server, market source, git remote, and generated-image
+  URL can point at the user's own machine or LAN from inside the app.
+- The main process gains an SSRF-shaped capability aimed at addresses the user
+  typed, while paths the user did not type stay public-only and refusals still
+  name the address class (issue #419).
+- ADR 0247's external-git-remote consequence no longer applies; the
+  user-supplied items in ADR 0243, 0245, and 0247 are amended here, and their
+  third-party rules stand.
 
 ## Rejected alternatives
 
-- **Keep refusing LAN addresses for user-supplied endpoints, and document the
-  workaround.** Rejected: the workaround is the same request from a different
-  process, so the refusal buys no security and costs the feature.
-- **Trust every address everywhere, including third-party content.** Rejected:
-  that is the SSRF path the guard exists for — a catalog body, a registry record
-  or a redirect is content the app received from someone else, and DNS rebinding
-  makes a pre-flight check alone insufficient (ADR 0245).
-- **Permit cloud metadata as well, since the user typed it.** Rejected: the
-  metadata service returns instance credentials to anything that asks, it is
-  never a service a user runs, and an address that appears in a settings field
-  is far more likely to be an injected payload than a deliberate choice.
-- **Per-source acknowledgement stored with the source list.** Rejected: the
-  source list lives in renderer storage, where a flag is exactly as trustworthy
-  as the URL next to it, so it would add UI without adding a boundary.
+- Keep refusing LAN addresses and document the workaround: the workaround is the
+  same request from another process, so the refusal buys no security.
+- Trust every address everywhere: that is the SSRF path the guard exists for,
+  and a pre-flight check alone cannot stop DNS rebinding (ADR 0245).
+- Permit cloud metadata as well: the metadata service returns instance
+  credentials and is never a service a user runs.

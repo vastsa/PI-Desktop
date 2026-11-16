@@ -6,39 +6,42 @@
 
 ## Context
 
-Scheduled tasks already own their prompt, cadence and project binding, but they
-did not own the rest of their execution configuration. Automatic runs always
-used Ask permission mode and resolved the app's current default provider/model
-when each run started.
+Scheduled tasks owned their prompt, cadence, and project binding but not the rest
+of their execution configuration: automatic runs always used Ask permission mode
+and resolved the app's current default provider/model at start, so editing a
+global default could silently change an unrelated task and the Scheduled form
+could not move a task to another saved project.
 
 ## Decision
 
-Store optional `permissionMode`, `providerId` and `modelId` fields alongside the
-existing `workspacePath` in each task's Host-owned `config_json`. Provider and
-model are an all-or-nothing pair.
+Each task's host-owned `config_json` gains optional `permissionMode`,
+`providerId`, `modelId`, and `thinkingLevel` beside the existing
+`workspacePath`, with provider and model as an all-or-nothing pair. The Scheduled
+form reuses the conversation composer's model filtering, aliases, permission
+labels, and model/reasoning picker while writing a separate copy to the selected
+task, and both Run now and automatic runs create their session from the
+task-owned values. Only the trusted desktop management surface may retarget a
+task; conversation tools stay scoped to their calling session's project and gain
+no project, model, or permission parameters.
 
-New tasks default to the current project, Ask permission mode and the current
-default provider/model when those values exist. Users may explicitly choose
-another saved project, permission mode or configured model.
-
-- a task without `providerId`/`modelId` continues to resolve the app defaults at
-  run time;
-- a legacy automatic task without `permissionMode` continues to use Ask;
-- a legacy manual task without `permissionMode` keeps its previous inherited
-  permission behavior;
-- existing workspace-capture and project-removal rules remain unchanged;
-- an unavailable saved model remains visible and preserved instead of silently
-  changing to another model.
+Compatibility stays additive: a task without `providerId`/`modelId` keeps
+resolving app defaults, a legacy automatic task without `permissionMode` keeps
+Ask, a legacy manual task keeps its inherited permission behavior, an
+unavailable saved model stays visible and preserved, and a missing
+`thinkingLevel` retains `off` without a migration.
 
 ## Consequences
 
-No table migration is required because `config_json` is the existing extension
-boundary.
-
-The public scheduled-task projection and desktop IPC gain optional fields, so
-Host, shared types, renderer and contract tests must change together.
+- No table migration is needed because `config_json` is the existing extension
+  boundary, and older versions ignore the additive fields.
+- Selecting Auto is an explicit per-task choice that can run restricted actions
+  without approval; Ask remains the default for new and legacy tasks.
+- The scheduled-task projection and desktop IPC gain optional fields, so host,
+  shared types, renderer, and contract tests change together.
 
 ## Alternatives
 
-Keeping global defaults as the only source was rejected because changing one
-setting can retarget every automation.
+- Keep global defaults as the only source: one setting change can retarget every
+  automation.
+- Add physical columns: the validated JSON boundary already owns optional task
+  configuration.

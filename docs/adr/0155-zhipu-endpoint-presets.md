@@ -2,20 +2,20 @@
 
 - Status: Accepted
 - Date: 2026-09-05
-- Deciders: PI-Desktop core
-- Updates ADR 0012, ADR 0020, and ADR 0116
+- Updates: ADR 0012, ADR 0020, ADR 0116; issue #35
 
 ## Context
 
-Zhipu AI (智谱) exposes two product modes and two regions:
-
-- Standard API vs GLM Coding Plan
-- China (`open.bigmodel.cn`) vs international (`api.z.ai`)
+Zhipu AI offers a Standard API and a GLM Coding Plan in a China and an international
+region, so four endpoints. pi-ai already carried transports for the Coding Plan URLs
+and models.dev published all four, but the add-provider dialog was a generic
+OpenAI-compatible form, so users had to know which URL to paste and a saved row ended
+up with `vendorKey: "custom"`.
 
 ## Decision
 
-Expose four named endpoint presets in the add-provider **Service** select. They
-stay on the existing OpenAI-compatible path:
+Expose four named endpoint presets in the add-provider **Service** select, all on
+the existing OpenAI-compatible path:
 
 ```text
 vendorKey              baseUrl
@@ -25,15 +25,18 @@ zai                    https://api.z.ai/api/paas/v4
 zai-coding-plan        https://api.z.ai/api/coding/paas/v4
 ```
 
-Selecting a preset fills the name, locks the Base URL, keeps `apiStyle:
-"chat_completions"`, and persists the models.dev `vendorKey`. The display name
-stays editable.
+Selecting a preset fills the name, locks the Base URL, keeps
+`apiStyle: "chat_completions"`, and persists the models.dev `vendorKey`; the display
+name stays editable. Because pi-ai's `zai` transport is the international Coding
+Plan while models.dev `zai` is the standard API, the row stores both key and exact
+URL so catalog matching cannot confuse them, and `zai-coding-cn` remains an alias of
+`zhipuai-coding-plan`. A matching URL or `vendorKey` makes the sidecar Completions
+record carry `thinkingFormat: "zai"` and `zaiToolStream: true`, with no new wire
+adapter, secret table, or host protocol.
 
 ## Consequences
 
-- China and international Zhipu users can pick API vs Coding Plan without
-  copying URLs from external docs.
-- Catalog enrichment follows the selected endpoint, not a generic custom row.
-- Generic OpenAI-compatible configuration remains the Custom endpoint option.
-- OpenCode Go stays an API-style preset; Zhipu does not add four more apiStyle
-  values.
+- Users pick API versus Coding Plan without copying URLs, and catalog enrichment
+  follows the selected endpoint.
+- Generic OpenAI-compatible configuration stays available as Custom, and Zhipu adds
+  no new `apiStyle` values.

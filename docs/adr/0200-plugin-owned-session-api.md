@@ -1,62 +1,55 @@
 # ADR 0200: Host-Owned Plugin Session Import and Ownership API
 
-- Status: Accepted
+- Status: Accepted (D367; amended 2026-10-20 by ADR 0340, which adds the
+  `session.*.all` grants and message-level writes while `.own` stays as below)
 - Date: 2026-09-09
-- Decision: D367
-- Amended: 2026-10-20 (ADR 0340 adds the `session.*.all` grants and the
-  message-level writes; the ownership boundary below still governs `.own`)
+- Related: D367, ADR 0201, ADR 0340
 
 ## Context
 
-Plugins need to migrate and inspect conversation history from external tools.
-The existing `session.getLlmContext` API is intentionally limited to the
-in-flight tool call, while the core `session.import` boundary accepts a host
-session summary and can bind a project.
+Plugins need to migrate and inspect conversation history from external tools, but
+`session.getLlmContext` is limited to the in-flight tool call and the core
+`session.import` boundary accepts a host session summary and can bind a project, so
+reusing either shape would let a plugin choose a core session identity or create
+project records outside its ownership boundary.
 
 ## Decision
 
-Add a separate P0/P1 `pi.session` domain for plugin-owned imported sessions:
+A separate P0/P1 `pi.session` domain owns plugin-imported sessions: `import`,
+`importBatch`, `list`, `get`, `listMessages`, `rename`, and `delete` are exposed
+through new plugin permissions and additive host RPC methods, and a manifest
+declares `contributes.sessionSources`, which the Electron permission gateway
+validates before host dispatch. Host-core generates session, message, and internal
+tool-call ids, keys idempotency by `(pluginId, source, externalId)` in
+`session_import_origins`, and limits a plugin to its own rows. ADR 0201 adds an
+explicit host-created project-id opt-in; imported sessions otherwise start with no
+active project/provider/model binding, and original values stay history JSON for
+inspection rather than live authorization. `trash` soft-deletes and hides a row
+while preserving transcript and origin, and `purge` cascades the row and removes
+transcript files, under bounded content, tool values, payload depth, message and
+batch sizes, strict timestamps, reserved-key scrubbing, and per-plugin rolling
+import/delete limits.
 
-- `import`, `importBatch`, `list`, `get`, `listMessages`, `rename`, and `delete`
-  are exposed through new plugin permissions and additive host RPC methods.
-- A manifest declares `contributes.sessionSources`.
-- Host-core generates session, message, and internal tool-call ids.
-- Imported sessions default to no active project/provider/model binding.
-- `trash` soft-deletes and hides a row while preserving its transcript and
-  origin; `purge` cascades the row and removes transcript files.
-- The host and Electron runtime enforce bounded content, tool values, payload
-  depth, message/batch sizes, strict timestamps, reserved-key scrubbing, and
-  per-plugin rolling import/delete limits.
-- P2/P3 operations (session creation, message mutation, binding, batch delete,
-  and tags) remain deferred and are not represented as permissions.
-
-Schema v14 adds `sessions.deleted_at` and the origin sidecar. The JSON-RPC
-protocol remains v11 because these methods are additive and only Electron main
-can provide the trusted plugin id.
+P2/P3 operations (session creation, message mutation, binding, batch delete, tags)
+remain deferred and are not represented as permissions; schema v14 adds
+`sessions.deleted_at` and the origin sidecar, while JSON-RPC stays at v11 because
+these methods are additive and only Electron main can provide the trusted plugin
+id. ADR 0340 later adds `session.read.all`, `session.update.all`, and
+`session.delete.all` over every live session plus the message-level writes
+(`appendMessage`, `replaceMessages`, `deleteMessage`, `truncateFrom`); `.all` is a
+separate install-time grant that wins only when a manifest declares both, and the
+`plugin_id` predicate now applies only to `.own`.
 
 ## Consequences
 
-The plugin API can safely support external-history migration without exposing
-SQLite, transcripts, host ids, or another plugin's sessions.
+- The plugin API supports external-history migration without exposing SQLite,
+  transcripts, host ids, or another plugin's sessions.
+- The storage layer gains one migration and a soft-delete state that core session
+  lists must exclude, and future P2/P3 work must extend this ownership model rather
+  than reuse the core import.
 
-## Amendment (ADR 0340)
+## Alternatives
 
-The ownership premise above — "a plugin can only query or mutate its own rows" —
-is no longer the only boundary the host can express. ADR 0340 adds
-`session.read.all`, `session.update.all`, and `session.delete.all`, which carry
-the same verbs over every live session, and it adds message-level writes
-(`appendMessage`, `replaceMessages`, `deleteMessage`, `truncateFrom`) that this
-ADR deferred as P2/P3.
-
-What changes for this ADR:
-
-- Everything here still describes `.own` exactly as written.
-- "Host-core generates message ids" no longer holds for a plugin-supplied
-  `message.id` used as a retry key; the host still generates the id when the
-  caller omits one.
-- The P2/P3 deferral in the Decision and Consequences no longer covers message
-  mutation.
-- Ownership is still enforced in the queries, but no longer always: the P0/P1
-  SQL keeps its `plugin_id` predicate only for `.own`, and the `list`, `trash`,
-  and `purge` statements now follow the scope Electron sends instead of
-  hard-coding it.
+- Reuse the core `session.import` boundary: lets a plugin choose a core identity and
+  create project records outside its boundary.
+- Widen `session.getLlmContext`: it is limited to the in-flight tool call.

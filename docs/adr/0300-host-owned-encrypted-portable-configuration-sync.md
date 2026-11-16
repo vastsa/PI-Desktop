@@ -3,56 +3,62 @@
 - Status: Partially superseded by [S3-only configuration backup and sync](s3-only-configuration-backup-sync.md)
 - Date: 2026-09-22
 
-The ownership and encryption rationale below remains historical context. The
-WebDAV transport, append-only fallback, and endpoint-specific missing-status
-decisions no longer describe current behavior. See the S3 decision and current
-configuration-sync spec for the implemented contract.
+The ownership and encryption rationale below remains historical context. The WebDAV
+transport, append-only fallback, and endpoint-specific missing-status decisions no
+longer describe current behavior; see the S3 decision and the configuration-sync
+spec for the implemented contract.
 
 ## Context
 
-PI-Desktop has portable preferences and user-owned capabilities spread across
-Rust-owned SQLite, capability files, the host secret store, project groups, and
-plugin metadata. Copying the database or the local secrets directory would
-export device state, break ownership boundaries, and could activate executable
-content on another machine.
+Portable preferences and user-owned capabilities are spread across Rust-owned
+SQLite, capability files, the host secret store, project groups, and plugin
+metadata. Copying the database or the secrets directory would export device state,
+break ownership boundaries, and could activate executable content on another
+machine, while a cloud backup must still converge concurrent edits without trusting
+remote timestamps or silently replacing local data.
 
 ## Decision
 
-Add a host-core configuration-sync subsystem. It uses explicit per-domain
-capture and apply adapters, encrypted immutable revision/resource objects, an
-encrypted CAS head, and the existing host secret store for the WebDAV password
-and local vault-key reference.
+Host-core gains a configuration-sync subsystem built from per-domain capture and
+apply adapters, encrypted immutable revision and resource objects, an encrypted CAS
+head, and the existing host secret store for the remote password and local vault-key
+reference. Argon2id derives a wrapping key from a separate backup password, and
+AES-256-GCM authenticates every stored object with purpose/vault-derived keys and
+domain-separated associated data. The renderer receives only typed status, preview,
+conflict, and activation summaries; Electron Main is a thin lifecycle and transport
+bridge.
 
-The renderer receives only typed status, preview, conflict, and activation
-summaries. Electron Main is a thin lifecycle/transport bridge.
+Portable secrets need explicit opt-in, and OAuth sessions, cookies, local encryption
+keys, readiness flags, plugin binaries, arbitrary files, and local paths are not
+portable. App-managed instructions cover only the fixed global
+`~/.pi/agent/AGENTS.md` and registered project-root `AGENTS.md` files. Imported
+executable or security-sensitive content stays staged until the receiving device
+approves the entity digest, and project and workspace bindings are local overlays
+needing explicit mapping. Project groups use the portable group identity plus
+ordered root position, so absolute folder paths never become cross-device identity.
+
+Strict WebDAV initialization and head publication require reliable conditional
+writes — `If-None-Match: *` to create, a strong-ETag `If-Match` to update, and a CAS
+failure restarts reconciliation — and ADR 0301 defines the separately confirmed
+append-only mode for servers that fail the probe, never a silent downgrade to
+last-writer-wins. HTTPS is the default; the settings UI may acknowledge LAN HTTP
+risk, which Host limits to localhost, `.local`, or private and link-local addresses.
 
 ## Consequences
 
-Positive:
+- The renderer and Agent Runtime never touch remote storage, keys, or raw exported
+  secrets, existing persistence owners stay authoritative, and immutable revisions
+  allow authenticated recovery and deterministic three-way merge.
+- Category opt-out stays subscription policy rather than a remote delete, and a fresh
+  device cannot activate synchronized executable content without local review.
+- A malicious server can still deny availability or roll back a device with no
+  trusted head history, and restore cannot revoke a copied vault key.
 
-- The renderer and Agent Runtime never gain direct access to WebDAV, encryption
-  keys, or raw exported secrets.
-- Existing local persistence owners remain authoritative; no parallel provider,
-  MCP, skill, or subagent database is introduced.
-- Immutable revisions allow authenticated recovery and deterministic three-way
-  merge, while category opt-out remains subscription policy rather than a remote
-  delete.
-- A fresh device cannot activate a synchronized command, endpoint, script, or
-  automation without local review.
+## Alternatives
 
-Costs and limits:
-
-- A malicious WebDAV server can still deny availability or roll back a fresh
-  device that has no trusted head history; this design protects confidentiality
-  and integrity, not availability.
-
-## Alternatives rejected
-
-1. Exporting SQLite or the application data directory: violates ownership, leaks
-   device-specific state, and cannot express approval or merge policy.
-2. Uploading a plaintext JSON backup: exposes all configuration and secrets to
-   the WebDAV server and every transport intermediary.
-3. Last-writer-wins based on wall-clock timestamps: loses edits under clock skew
-   and cannot safely resolve delete-versus-edit or executable changes.
-4. Scheduling synchronization in Electron Main or the renderer: creates a second
-   owner for sync lifecycle and weakens host durability guarantees.
+- Export SQLite or the data directory, or upload a plaintext JSON backup: leaks
+  device state and secrets and cannot express approval or merge policy.
+- Last-writer-wins on wall-clock timestamps: loses edits under clock skew and cannot
+  resolve delete-versus-edit or executable changes.
+- Schedule sync in Electron Main or the renderer: creates a second owner for the
+  lifecycle and weakens host durability.

@@ -3,39 +3,35 @@
 
 - Status: Superseded by ADR 0268
 - Date: 2026-09-11
-- Deciders: PI-Desktop runtime and desktop UI maintainers
 - Amends: D-LOCAL-message-quotes decision 3 (for assistant turns)
 - Preserves: D209, D301, D097, D128
-- Related: [04-ux/08-component-spec.md](../spec/04-ux/08-component-spec.md) ·
-  [04-ux/09-interaction-patterns.md](../spec/04-ux/09-interaction-patterns.md) ·
-  [03-runtime/11-provider-model-system.md](../spec/03-runtime/11-provider-model-system.md) ·
-  ADR message-quotes-and-side-chats · E2E-CHAT-annotation-attachments, E2E-CHAT-annotation-session-state · Amendment: 2026-09-12 (comment editor)
+- Related: ADR message-quotes-and-side-chats, E2E-CHAT-annotation-attachments,
+  E2E-CHAT-annotation-session-state · Amendment: 2026-09-12 (comment editor)
 
 ## Context
 
-ADR message-quotes-and-side-chats (D-LOCAL-message-quotes) made quoting a
-**draft edit**: the excerpt becomes `> `-prefixed Markdown text inside the
-composer, attributed with `chat.quoteSource`.
-
-```text
-# Response annotations:
-Each item contains text selected from an earlier Codex response and may include a user comment. …
-<response-annotations>
-[{"text":"…","annotation":"…","source":{…}}]
-</response-annotations>
-
-## My request:
-…the user's own prompt…
-```
+Quoting as a draft edit copied the model's words into the draft the user was
+writing, so "refer to this pass" became indistinguishable from "write this text
+myself" and several references collapsed into one unaddressable block.
 
 ## Decision
 
-1. Selecting text inside an **assistant turn** and activating the selection
-   overlay's **Add to chat** creates one annotation instead of editing the
-   draft. An annotation carries an id, the anchored turn (`messageId`), the
-   excerpt (Markdown, capped at 2000 characters with a trailing ellipsis), an
-   empty `annotation` comment field, and a creation time.
+Selecting text in an assistant turn attached a numbered annotation instead of
+editing the draft: annotations were renderer-owned session state in capture
+order, each with its own comment, sent as a `<response-annotations>` block
+ahead of the user's request while the visible draft stayed the user's own words.
+The answer body was never decorated by the app — only a model-written
+`:codex-annotation{index="N"}` citation rendered as a marker — and a later
+amendment replaced the silent attach with a comment editor and an annotation
+list disclosure in the composer. No host protocol, storage schema, IPC channel,
+or permission changed.
 
 ## Consequences
 
-Superseded (Superseded by ADR 0268). The full record is in git history.
+- The model received each annotated pass as a numbered data item while the
+  user's prompt stayed exactly what the user typed.
+- Annotations were lost on relaunch and after the send that carried them.
+- The draft quote from D-LOCAL-message-quotes survived for user messages and
+  side-chat handoff.
+
+Superseded by [ADR 0268](0268-remove-quotes-annotations-and-side-chats.md).

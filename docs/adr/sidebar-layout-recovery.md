@@ -2,24 +2,25 @@
 
 - Status: Accepted
 - Date: 2026-11-07
-- Amends: ADR 0016 and the renderer sidebar preference contract in data storage.
+- Related: ADR 0016
 
 ## Context
 
-Sidebar presentation state previously existed only in renderer localStorage. A
-fresh Chromium profile could therefore hide every retained Project except the
-Host-selected one while the Project archive and Sessions remained intact.
+Sidebar presentation state lived only in renderer localStorage, so a fresh Chromium
+profile could hide every retained project except the host-selected one.
 
 ## Decision
 
-Keep an atomic, private `sidebar-preferences.json` copy in the selected app data
-root. Only the trusted Main top frame can read or replace it through dedicated
-IPC.
-
-Restore before bootstrap persists its selected Project. An existing backup wins
-over the cache; without a backup, migrate a valid legacy cache, including an
-explicitly empty retained-tab list.
+Main keeps an atomic, private `sidebar-preferences.json` copy in the selected app data
+root that only the trusted Main top frame reads or replaces over dedicated IPC, while
+Rust keeps owning projects, sessions, and the active workspace. Restore runs before
+bootstrap persists its selected project: an existing backup wins over the cache, a valid
+legacy cache is migrated otherwise, and only when both are absent or invalid may the
+renderer recover projects from the host. An unreadable backup is never overwritten by an
+empty startup snapshot.
 
 ## Consequences
 
-Writes are bounded to 2 MiB, flushed and atomically renamed.
+- A wiped profile no longer loses the sidebar; only an absent and invalid pair falls back
+  to host recovery.
+- Writes stay atomic and bounded, with no schema or API change.

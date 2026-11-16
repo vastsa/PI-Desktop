@@ -6,63 +6,43 @@
 
 ## Context
 
-The renderer previously owned one global work-panel tab set. Selecting another
-conversation or workspace closed the panel and destroyed every tab, as required
-by D128.
+The renderer owned one global work-panel tab set, and D128 required that selecting
+another conversation or workspace close the panel and destroy every tab, which
+discarded useful tools on return. It also raced with permission-gated tools: an
+artifact finishing during a switch either flashed the panel open and closed or was
+dropped by the background-session guard, and BrowserPreview could resolve a
+relative path against the visible workspace instead of its own.
 
 ## Decision
 
-Each conversation owns a renderer-memory work-panel context containing its open
-state, ordered tabs, active tab, file request, and Browser resource.
+Each conversation owns a renderer-memory work-panel context: open state, ordered
+tabs, active tab, file request, and Browser resource.
 
-- Selecting a conversation saves the current projection and atomically restores
-  the destination context.
-- New and forked conversations begin with an empty context.
+- Switching conversations saves the current projection and atomically restores
+  the destination one; switching away never deletes either, and deleting a
+  conversation drops its context. Contexts stay transient, so only panel width
+  survives relaunch.
 - Review and BrowserPreview artifacts are recorded against their originating
-  `sessionId`, including while that conversation is in the background.
-- Background artifacts update retained state only.
-- BrowserPreview events carry `sessionId`.
-- Selecting a workspace without an active conversation hides the current panel
-  projection while retaining the prior conversation's state.
-- Work-panel contexts remain transient.
+  `sessionId`, including in the background, and background artifacts update
+  retained state only — never opening, activating, navigating, resizing, or
+  focusing the visible panel.
+- BrowserPreview events carry `sessionId`; Electron Main resolves local preview
+  paths from that durable session's `projectPath` and navigates only when the
+  originating conversation's Browser tab is visible.
 
-This adopts D142 and supersedes only D128's requirement to close and clear tabs
-on visible session/workspace changes. D128's artifact triggers, deduplication,
-and close/collapse rules remain unchanged; its no-launcher rule is amended by
-ADR 0068.
+This adopts D142 and supersedes only D128's requirement to close and clear tabs on
+visible session or workspace changes; D128's artifact triggers, deduplication, and
+close rules remain, with its no-launcher rule amended by ADR 0068.
 
 ## Consequences
 
-- Returning to a conversation restores its tools without reinterpreting paths
-  against another workspace.
-- Permission completion and asynchronous navigation no longer produce a
-  transient panel open/close cycle or lose the resulting artifact.
-- The renderer retains bounded per-session UI state until deletion or relaunch;
-  it does not add durable storage or schema migration.
-- The embedded browser remains one hardened Main-process WebContentsView.
-- The former interactive terminal process/cache is no longer part of the
-  work-panel runtime; Browser remains the Main-owned native resource.
+- Returning to a conversation restores its tools without reinterpreting paths.
+- Permission completion no longer flashes the panel or loses the artifact.
+- Bounded per-session UI state is retained without new storage or migration.
 
 ## Alternatives
 
-### Keep clearing tabs on every context change
-
-Rejected because it loses task continuity and cannot avoid both permission
-completion flashes and dropped background artifacts.
-
-### Persist panel contexts in host storage
-
-Rejected because tabs and Browser resources are transient presentation state.
-
-### Key every backend panel subsystem by conversation
-
-Rejected for this change.
-
-## References
-
-- `docs/spec/04-ux/01-ui-ia.md`
-- `docs/spec/04-ux/03-permission-ux.md`
-- `docs/spec/04-ux/08-component-spec.md`
-- `docs/spec/04-ux/09-interaction-patterns.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md`
-- `docs/spec/08-meta/decisions-log.md` (D142)
+- Keep clearing tabs on every context change — rejected: loses continuity and
+  cannot avoid both failure modes.
+- Persist contexts in host storage — rejected: transient presentation state would
+  need schema plus stale-resource cleanup for no workflow gain.

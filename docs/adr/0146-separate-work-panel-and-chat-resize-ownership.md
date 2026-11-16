@@ -7,12 +7,16 @@
 ## Context
 
 The visible work panel is an in-flow right column backed by a native width
-reservation.
+reservation. Giving its renderer divider and the native window's right edge the
+same dimension made it impossible to adjust the panel or the conversation alone.
 
 ## Decision
 
-When the work panel is open:
-
-## Consequences
-
-Superseded (Superseded by ADR 0151). The full record is in git history.
+With the panel open, the outer native right edge owned the panel target: Main
+kept the base conversation width fixed, previewed the bounded `244..720px` panel
+target to the renderer, and committed it once the native resize stream settled.
+The inner renderer divider owned the base conversation width through the bounded
+`window/setWorkPanelChatWidth({width})` target-state channel
+(`1040..10000px`), preserving the active panel reservation, serializing requests,
+and re-sending the press-time target on cancellation. Left and non-right edges
+kept their existing base-window behavior, and ADR 0151 superseded the split.

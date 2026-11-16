@@ -2,63 +2,56 @@
 
 - Status: Accepted
 - Date: 2026-10-25
-- Deciders: PI-Desktop maintainers
-- Related: ADR 0279 (resumable subagent delegations), ADR 0089 (delegation
-  tools), `docs/spec/03-runtime/02-agent-runtime.md`
+- Related: ADR 0279 (resumable subagent delegations), ADR 0089 (delegation tools)
 - Amends: ADR 0279 §9
 
 ## Context
 
-ADR 0279 §9 put the resumable-chain list into the parent's **system prompt**,
-and recomposed that prompt every time a delegation settled. The intent was that
-the parent sees what it can continue without calling a tool.
-
-- A model with `supportsMidConvoSystemMessages` keeps the appended system
-  message in place, so only the tail is new.
-- Every other model goes through `collapseSystemMessages`
-  (`@earendil-works/pi-ai`, `utils/transcript.js`), which replays all system
-  messages into **the first** one.
+ADR 0279 §9 put the resumable-chain list into the parent's system prompt and
+recomposed that prompt whenever a delegation settled, so the parent would see what
+it can continue without a tool call. Providers cache a conversation by the exact
+byte prefix of the request, and PI-Desktop appends changed system sections rather
+than rewriting the first one (`syncSystemSections`). Only a narrow DeepSeek route
+supports `supportsMidConvoSystemMessages`; every other model replays all system
+messages into the first block through `collapseSystemMessages`, so each settlement
+could invalidate the whole cached prefix rather than its tail.
 
 ## Decision
 
-1. **The system prompt never carries delegation state.** `composeSystemPrompt`
-   no longer composes a resumable block, and the runtime no longer recomposes
-   the prompt on settlement.
-2. **`TaskList` is the discovery path.** Its result now carries the resumable
-   chains — agent name, `delegationId`, objective, and up to
-   `MAX_RESUMABLE_LISTED_FILES` files read — as both text (the existing
-   `formatResumableList` rendering) and a structured `details.resumable` array.
-3. **Tool errors stay authoritative.** Unknown, mismatched, over-budget, and
-   history-less resume ids still return a tool error that names the reusable ids
-   inline (`DelegationChainRegistry.unknownResumeError` /
-   `noHistoryResumeError`), so a failed resume never depends on the parent
-   having called `TaskList` first.
-4. **The registry keeps its own gate.** `resumableList` still excludes running,
-   non-resumable, and over-budget chains, so a listing never advertises an id
-   the resume path would reject.
+1. The system prompt never carries delegation state. `composeSystemPrompt` no
+   longer composes a resumable block and the runtime no longer recomposes the
+   prompt on settlement; instructions change only for reasons the user controls,
+   such as mode, project instructions, memory, skills, or a custom prompt.
+2. `TaskList` is the discovery path. Its result carries the resumable chains —
+   agent name, `delegationId`, objective, and up to `MAX_RESUMABLE_LISTED_FILES`
+   files read — as text through `formatResumableList` and as a structured
+   `details.resumable` array, and its description names `Task(resume: ...)` as the
+   reason to call it.
+3. Tool errors stay authoritative. Unknown, mismatched, over-budget, and
+   history-less resume ids still return a tool error naming the reusable ids inline
+   (`DelegationChainRegistry.unknownResumeError` and `noHistoryResumeError`), so a
+   failed resume never depends on a prior `TaskList`.
+4. The registry keeps its own gate: `resumableList` still excludes running,
+   non-resumable, and over-budget chains, so a listing never advertises an id the
+   resume path would reject.
 
-The `resumablePromptStale` deferral, the `refreshResumablePrompt` hook, and the
-two `applyPendingResumablePrompt` calls in the silent-turn and progress-turn
-recovery paths are removed with their reason: there is no prompt-level resumable
-state left to defer.
+The `resumablePromptStale` deferral, `refreshResumablePrompt`, and the
+`applyPendingResumablePrompt` recovery calls are removed with their reason, since
+no prompt-level resumable state remains.
 
 ## Consequences
 
-- Delegation settlements are invisible to the request prefix.
-- The parent must call `TaskList` to learn ids proactively.
-- `TaskList` grows with the reusable chain count (bounded by
-  `MAX_RESUMABLE_CHAINS_PER_AGENT`), not with the conversation.
-- This ADR fixes one source of prefix churn, not all of them.
-- ADR 0279 §9 is superseded by decision 2 here; its other decisions stand.
+- Delegation settlements are invisible to the request prefix, so a long session
+  keeps one cache lineage until something the user changed does.
+- The parent pays for a `TaskList` call only when it needs ids, and a blind resume
+  still gets them back in its error; the listing grows with chain count
+  (`MAX_RESUMABLE_CHAINS_PER_AGENT`), not with the conversation.
+- This fixes one source of prefix churn only: `TOOL_ACTIVATION_SECTION` and the
+  context-budget reminder still append system messages mid-turn, and ADR 0279 §9
+  is superseded by decision 2 while its other decisions stand.
 
-## Alternatives Considered
+## Alternatives
 
-- **Refresh the list only at turn start.** Cheap and would cut the churn to one
-  rewrite per turn, but it still rewrites the collapsed first system block
-  whenever the settled set grew, so a turn after every delegation misses the
-  whole prefix.
-- **Move the list into the last user message.** Keeps the head stable and needs
-  no new tool surface, but it rewrites conversation history the transcript owns
-  and would make the persisted rows disagree with the request.
-- **Keep the list in the prompt and mark it cache-friendly.** Providers cache
-  bytes, not sections; no marker changes the invalidation.
+- Refresh the list at turn start: still rewrites the collapsed first block after
+  each delegation.
+- Move the list into the last user message: rewrites history the transcript owns.

@@ -14,45 +14,41 @@
 
 ## Context
 
-The work panel previously included an interactive shell backed by a PTY in
-Electron Main and a terminal renderer in the work-panel UI. That surface was
-separate from the agent's non-interactive `Bash` tool, but it added a native
-module, renderer dependencies, terminal-specific IPC, packaging rules, and a
-second shell lifecycle to the desktop application.
+The work panel carried an interactive shell backed by a PTY in Electron Main and a
+terminal renderer. It was separate from the agent's non-interactive `Bash` tool and
+added a native module, renderer dependencies, terminal-specific IPC, packaging rules,
+and a second shell lifecycle, while the product does not need to own an interactive
+shell to keep Agent Bash useful.
 
 ## Decision
 
-1. Remove the work-panel interactive terminal.
-2. Keep Agent Bash unchanged.
-3. Delete the terminal-only Electron Main manager, renderer component and
-   styles, IPC invoke/event channels, shared terminal payload types, and
-   terminal-specific tests.
-4. Do not replace the removed surface with a plugin PTY API.
-5. Do not increment the frozen desktop protocol version.
+1. Remove the work-panel interactive terminal. The panel keeps plugin-contributed
+   views including the bundled Files and Browser views (ADR 0170), artifact file
+   tabs, and the Review tab the user opens themselves (D451).
+2. Keep Agent Bash unchanged: a permission-aware, non-interactive tool whose
+   command, output, status, copy behavior, and `IconTerminal` presentation stay in
+   the transcript, and generic lifecycle values such as `"terminal"` in plan refresh
+   state remain valid.
+3. Delete the terminal-only Main manager, renderer components and styles, IPC
+   channels, shared payload types, and terminal tests, along with the PTY/xterm
+   dependencies and their build configuration.
+4. Do not replace it with a plugin PTY API — interactive shell access is delegated to
+   an external terminal — and do not increment the frozen desktop protocol version,
+   since the removed channels were desktop IPC additions.
 
 ## Consequences
 
-- The work panel has no interactive shell tab or terminal launcher, and its
-  empty state lists the Review row, Browser, and in-scope plugin views.
-- Desktop packaging no longer carries the PTY native module or terminal renderer
-  dependencies, reducing native build and release surface.
-- Interactive shell workflows require an external terminal.
-- Historical D099/D249 records remain useful as history, but their terminal
-  implementation and retention clauses are superseded by this decision.
+- The work panel has no shell tab or launcher, packaging drops the PTY native module
+  and terminal renderer dependencies, and interactive shell work moves to an external
+  terminal while Agent Bash remains the in-app bounded path.
+- Historical D099 and D249 records remain history, but their terminal clauses are
+  superseded here.
 
-## Alternatives considered
+## Alternatives
 
-### Keep the PTY in the host
-
-Rejected: it preserves a second shell lifecycle and native dependency for a
-surface the product no longer needs to own.
-
-### Move the PTY into a plugin
-
-Rejected: a plugin PTY permission would grant arbitrary execution as the user,
-and a bundled-only channel would create a private trust-boundary exception.
-
-### Turn Agent Bash into an interactive terminal
-
-Rejected: Bash is intentionally bounded, permission-aware, and transcript-
-owned.
+- Keep the PTY in the host: a second shell lifecycle and native dependency for a
+  surface the product no longer owns.
+- Move the PTY into a plugin: a plugin PTY permission would grant arbitrary execution
+  as the user.
+- Turn Agent Bash into an interactive terminal: that changes the agent protocol and
+  security model instead of removing a work-panel surface.

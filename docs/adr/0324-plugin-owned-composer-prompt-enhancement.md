@@ -6,47 +6,42 @@
 
 ## Context
 
-Prompt enhancement was implemented as host-owned UI, settings, IPC, and a
-provider completion path. It is useful but optional product behavior; keeping it
-in the host makes every user carry a specialized feature and couples Composer to
-its settings and runtime logic.
+Prompt enhancement shipped as host-owned UI, settings, IPC, and a provider
+completion path, so every user carried a specialized feature and the Composer
+stayed coupled to its settings and runtime logic. Users asked for it in a
+separate repository behind an explicit install, and the host still needs a
+narrow way to let a plugin transform a draft without receiving the transcript,
+attachments, or local paths.
 
 ## Decision
 
-- Remove the host-owned prompt-enhancement UI, Settings card, direct enhancement
-  IPC, MCP action, and dedicated completion implementation.
-- Add `contributes.composerTransforms`, `onComposerTransform`, and the explicit
-  `composer.transform` permission to the Plugin SDK.
-- Send only the draft text and optional current model key to the plugin.
-- Keep prompt enhancement in the separate `vastsa/pi-prompt-enhancement`
-  repository.
-- On the first load of `pi.prompt-enhancement`, copy valid legacy model,
-  thinking, and enabled custom-template values into unset plugin settings before
-  `onLoad`.
+Remove the host-owned enhancement UI, Settings card, direct IPC, MCP action, and
+completion path, and add `contributes.composerTransforms`, `onComposerTransform`,
+and the explicit `composer.transform` permission to the Plugin SDK, with actions
+shown only for loaded plugins holding a current grant and invoked only after a
+user action. Dispatch sends only the draft text and optional model key, strips
+inline file-reference markers before the call and restores them after a
+successful transform, enforces the input/output limit, plugin tool timeout,
+manifest and permission checks, and call auditing, and returns text with
+one-step undo plus stale-draft and stale-session protection. The feature lives
+in the separate `vastsa/pi-prompt-enhancement` repository, which the host
+neither bundles nor enables, and the first load of `pi.prompt-enhancement`
+copies valid legacy model, thinking, and enabled custom-template values into
+unset plugin settings behind a private one-time marker while keeping existing
+plugin values authoritative and the old host settings for rollback.
 
 ## Consequences
 
-- Users without the plugin no longer see or carry the enhancement action or
-  settings surface.
-- The Plugin SDK and manifest gain an additive contribution and permission; no
-  plugin manifest schema version or host-core database schema changes.
-- Plugins receiving `composer.transform` can see the draft only when their
-  action is explicitly invoked.
-- Legacy prompt-enhancement values remain stored and config-syncable until
-  migration.
-- A plugin release that uses the new contribution must declare a compatible
-  `engines.piDesktop` range; older hosts cannot display or invoke it.
+- Users without the plugin no longer see the action or its settings surface.
+- The SDK and manifest gain an additive contribution and permission, with no
+  manifest schema version or database schema change.
+- A plugin sees the draft only when its action is invoked, never session
+  identity, history, attachments, or paths, and a plugin release using the
+  contribution must declare a compatible `engines.piDesktop` range.
 
-## Alternatives considered
+## Alternatives
 
-- Keep the host implementation and publish a second plugin: rejected because
-  users would still receive the feature by default and the host and plugin could
-  drift into two enhancement paths.
-- Use a renderer slot callback: rejected because the transform needs an isolated
-  plugin-process handler and a bounded, audited host invocation; a renderer
-  module runs in the host document and is a different trust surface.
-- Send session history or attachment data for better context: rejected because
-  the feature rewrites the current draft and does not need those capabilities.
-- Delete the old settings immediately: rejected because users need them for
-  first-install migration and because keeping them supports downgrade and
-  configuration rollback.
+- Keep the host implementation and also publish a plugin: rejected, users would
+  still receive it by default and two enhancement paths could drift.
+- A renderer slot callback: rejected, the transform needs the isolated plugin
+  process and a bounded, audited host invocation.

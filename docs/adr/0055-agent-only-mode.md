@@ -1,35 +1,29 @@
 # ADR 0055: Agent-only mode; Chat becomes an internal read-only profile
 
-- Status: Superseded by ADR 0052 / ADR 0053
+- Status: Superseded by ADR 0052 / ADR 0053, which reintroduced the mode concept
+  as the Plan operating state
 - Date: 2026-08-05
-
-> Superseded. The mode concept this ADR removed returned as the Plan
-> operating state (ADR 0052, superseded in turn by ADR 0053), so the product
-> again exposes an `Agent | Plan` selector and `chat` migrates to `plan`, not
-> `agent`. Retained because the reasoning about a negative permission gate and
-> about failing closed on an unknown `mode` value still holds, and because it
-> records why the toggle was removed before it was reintroduced with a
-> different contract.
+- Related: D003, D004, D115, D119, D185, D188, D189, D191
 
 ## Context
 
-Since D003/D004 a session carried one of two tool profiles.
-
-1. A user who switched to Chat and later removed the toggle from their muscle
-   memory could leave a session permanently unable to write files.
-2. Every tool, prompt-composition, and permission change had to be reasoned
-   about twice, and the lazy tool-activation core sets (D185) forked on mode.
-3. The mode chip competed for space with the controls users do change — model,
-   thinking level, permission mode.
+Since D003/D004 a session carried an `agent` profile with the full coding surface
+or a `chat` profile with a read-only subset (`Read`, `Glob`, `Grep`) that
+host-core hard-denies past every permission mode (D115). `chat` was never a
+destination, yet the UI advertised it as a peer choice, and the profile could not
+simply be deleted because imported and older rows carry `mode` values the current
+UI does not produce.
 
 ## Decision
 
-1. **`agent` is the only mode the product exposes.** The top-bar segmented
-   toggle, the Settings default-mode row, both palette commands and their slash
-   aliases, the `.ct-mode*` styles, and the `settings.mode*` i18n keys are
-   removed. `newSession` always requests `agent`, and boot normalizes a stored
-   `defaultMode` that is not `agent`.
+`agent` became the only exposed mode and `chat` was renamed `read-only`
+(`Mode = "read-only" | "agent"`), with a negative gate — `PermissionManager`
+denies when `mode != "agent"` and the tool is outside `read_only_mode_allows` —
+so a legacy `mode` fails closed rather than gaining Write, Edit, or Bash.
+Error codes became `BASH_DISABLED_IN_READ_ONLY` and
+`WRITE_DISABLED_IN_READ_ONLY`, and `chat` rows migrated to `agent` at open.
 
-## Consequences
-
-Superseded (Superseded by ADR 0052 / ADR 0053). The full record is in git history.
+ADR 0052 / ADR 0053 supersede this record: the product again exposes an
+`Agent | Plan` selector, `chat` migrates to `plan` rather than `agent`, and the
+reasoning about a negative gate and about failing closed on an unknown `mode`
+value still holds.

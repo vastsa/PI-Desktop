@@ -2,44 +2,40 @@
 
 - Status: Accepted (amended)
 - Date: 2026-09-08
-- Baseline: `0.4.16`
-- Protocol: unchanged (renderer-owned `AppSettings` JSON field)
-- Storage schema: unchanged (optional `AppSettings.fontScale`)
-- Related: D343, ADR 0083, `04-ux/06-settings-ia.md`,
-  `04-ux/07-ui-design-system.md`
+- Related: D343, ADR 0083, `04-ux/06-settings-ia.md`
 
 ## Context
 
-The `--text-*` ramp is a frozen set of product sizes (`--text-base` is 14px,
-with denser chrome and larger headings). The application menu exposes Zoom In /
-Zoom Out / Reset Zoom, but those scale the entire window, including layout and
-controls.
+The `--text-*` ramp is a frozen set of product sizes, and Zoom In / Zoom Out scale
+the whole window including layout and controls, so a user who wants denser or
+larger type had no remembered preference that keeps body, chrome, and headings in
+proportion. An earlier draft remapped only the transcript and composer from a px
+value, which left other surfaces at product size.
 
 ## Decision
 
-1. **Settings → General → Appearance** gains a **Font size** row under Font.
-
-2. **Persistence** is optional `AppSettings.fontScale` (`1` = product ramp).
-
-3. **Application** is global.
-
-4. **Zoom stays independent.** Menu and shortcut Zoom In / Zoom Out / Reset Zoom
-   continue to scale the whole window.
+1. **Settings → General → Appearance** gains a **Font size** row under Font, with
+   four cup presets (Tall 85% / Grande 100% / Venti 115% / Trenta 125%) above a
+   percentage slider; valid values are 80%–150% in 2.5% steps, and absent means
+   100%.
+2. **Persistence** is the optional `AppSettings.fontScale`, rejected at the
+   renderer edge on invalid writes and clamped through `normalizeFontScale` on
+   read, with no protocol or schema version bump.
+3. **Application** is global: the renderer sets `--font-scale` on
+   `document.documentElement`, every `--text-*` token and `--leading-row` becomes
+   `calc(<product px> * var(--font-scale))`, and shared Lucide wrappers scale
+   glyphs the same way.
+4. **Zoom stays independent** and composes with the type scale.
 
 ## Consequences
 
-- One control scales every `--text-*` consumer; places that are already smaller
-  or larger than body stay relatively smaller or larger.
-- Users do not pick a px number that only matches `--text-base`.
-- Large scales also enlarge compact chrome, including Lucide glyphs.
+- One control scales every `--text-*` consumer while keeping relative steps.
+- Users choose a scale, never a px number that only matches `--text-base`.
+- Compact chrome grows too, so rows with a fixed px height may feel tighter; the
+  150% cap bounds that.
 
 ## Alternatives
 
-- **Reading-only remap of `.thread-wrap` / `.composer-dock`:** keeps chrome
-  compact, but users then have two type sizes in one window and still need a px
-  number for the body step.
-- **Zoom In/Out only:** already exists; it scales chrome together with text and
-  is not a type preference.
-- **Change `html { font-size }` and switch the ramp to rem:** larger refactor;
-  the product ramp is px tokens and the token guard forbids raw rem in component
-  CSS.
+- Remap only `.thread-wrap` and `.composer-dock` — rejected: two type sizes in one
+  window, and a px number is still required.
+- Use Zoom In/Out as the type preference — rejected: it scales layout with text.

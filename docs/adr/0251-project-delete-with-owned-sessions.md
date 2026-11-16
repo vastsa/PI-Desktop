@@ -2,63 +2,54 @@
 
 - Status: Accepted
 - Date: 2026-09-15
-- Deciders: PI-Desktop maintainers
+- Related: ADR 0016, ADR 0026
 
 ## Context
 
-The Projects index has listed durable project records since ADR 0026 moved it
-into Settings, and ADR 0016 made the sidebar a retained-tab surface. Archive,
-pin, close, and ordering are deliberately renderer-local metadata: the component
-contract states that "Project close removes retained tab only; durable
-project/sessions remain", and `US-UI-47` states that renderer metadata never
-hides or deletes a durable Project-archive row.
-
-- `PRAGMA foreign_keys = ON` is enforced.
-- A stored (non-legacy) project group owns an ordered root list and a primary
-  root.
+Archive, pin, close, and ordering are renderer-local metadata, and the Projects
+index unions durable `projects` rows with recent-project storage, projects derived
+from live sessions, and the active workspace, so there was no user-facing way to
+remove a durable project row. Deleting only the row would also orphan sessions
+through `ON DELETE SET NULL`, and removing a stored group's primary root would
+leave the group without a valid primary.
 
 ## Decision
 
-1. Host-core gains the additive RPC `projects.remove({ path })`, returning `{
-   removed, sessionsRemoved }`.
+1. Host-core gains the additive RPC `projects.remove({ path })`, returning
+   `{ removed, sessionsRemoved }`, as the only supported way to remove a durable
+   project record.
 2. The RPC deletes the project row together with every session whose
-   `project_id` points at it, reusing the existing `sessions::delete_session`
-   path so transcript, scratch, and review files are removed exactly as they are
-   for a single conversation delete, and it clears the project's durable memory.
-3. The RPC never touches the project's folder on disk.
-4. A path that is a root of a stored multi-folder project group is refused with
-   a structured error.
-5. Deleting is a renderer action behind a second confirmation that names the
-   project and the number of sessions it owns.
-6. The action stays renderer-only.
-7. The bulk delete is refused while any attached session has a running turn
-   (1008 / `CONFLICT`).
+   `project_id` points at it, reusing the existing single-session delete path so
+   transcript, scratch, and review files go with it, clears the project's durable
+   memory, is idempotent for an unknown path, and never touches the folder on disk.
+3. A path that is a root of a stored multi-folder project group is refused with a
+   structured error, because the user must remove the folder from the group first
+   to keep the group's primary root valid; legacy single-root projections delete
+   normally.
+4. The renderer deletes behind a second confirmation naming the project and its
+   session count, and in the same operation drops the archived and pinned
+   metadata, the recent-project entry, the retained tab, and the active workspace
+   selection, falling back to another open project or Temporary.
+5. The action stays renderer-only and is absent from `CONTROL_OPERATION_SPECS`, so
+   local MCP control cannot delete projects.
+6. A bulk delete is refused while any attached session has a running turn (1008 /
+   `CONFLICT`), because that turn still owns its tools and is still appending to
+   the transcript the delete would remove; the check and the deletes run in one
+   host RPC under the single state lock.
 
 ## Consequences
 
-- A durable project row can finally be removed from the UI, and the row no
-  longer reappears after a reload, because the durable row and the
-  renderer-local records are removed by one action.
-- Sessions and transcripts of a deleted project are gone permanently.
-- Group structure is never silently rewritten.
-- Composer/sidebar code that lists projects must treat the four index sources
-  consistently; a future index source has to be cleaned by the same action, or
-  the row will reappear.
-- A project with a running task must be stopped before it can be deleted, which
-  is one extra step in that case; the alternative was deleting under a live
-  writer, which can resurrect a session row for the transcript the user just
-  removed.
+- A durable project row can be removed from the UI without reappearing after
+  reload, but its sessions and transcripts are gone permanently and cannot be
+  recovered inside the application.
+- Group structure is never silently rewritten, so multi-folder users see an
+  explicit refusal instead of a corrupted group.
+- Listing code must keep all four index sources consistent, and a project with a
+  running task must be stopped before deletion.
 
 ## Alternatives
 
-- **Add a renderer-only "hide" flag.** Rejected: it keeps the durable row, the
-  sessions, and the disk usage, which is the complaint that motivated the
-  change, and it contradicts `US-UI-47`'s promise about renderer metadata.
-- **Delete the project row and let `ON DELETE SET NULL` orphan the sessions.**
-  Rejected: it produces unreachable conversations that still occupy the
-  transcript directory and still look like a project in the index.
-- **Delete the project's folder on disk too.** Rejected: an application action
-  must not remove user files.
-- **Detach the root from a multi-folder group inside the same call.** Rejected:
-  root membership changes remain an explicit Edit project action, separate from
-  the destructive project-delete confirmation.
+- Add a renderer-only hide flag: rejected because it keeps the durable row,
+  sessions, and disk usage, which is the reported complaint.
+- Abort running turns inside the same call: rejected because the runtime can still
+  append afterwards and re-create the session as a stub (D318).
