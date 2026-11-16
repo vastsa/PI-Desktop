@@ -111,7 +111,7 @@ CNB 镜像              cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/…
 
 ```text
             ┌──────────────────────────────┐
-            │ Vercel 上的 Next.js          │
+            │ Next.js（独立服务器）        │
             │ SEO 页面 · 发布者控制台      │
             └──────────────┬───────────────┘
                            │ HTTPS
