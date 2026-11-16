@@ -39,6 +39,7 @@ import {
   useTranscriptMenu,
 } from "./TranscriptMenu";
 import { getExtraMessageAttachments } from "./extra-attachments";
+import { directionAttr } from "../../../lib/text-direction";
 
 /**
  * The typed form of a Skill or `@agent` invocation (ADR 0346): each validated
@@ -146,6 +147,13 @@ export const MessageRow = memo(function MessageRow({
   const userContentParts = useMemo(
     () => splitInlineContent(directories.text, message.attachments ?? []).parts,
     [message.attachments, directories.text],
+  );
+  // #2388: a Persian/Arabic paragraph opening with an English word must keep
+  // its RTL base direction; direction follows the majority strong script, not
+  // the first strong character.
+  const userTextDirection = useMemo(
+    () => directionAttr(directories.text),
+    [directories.text],
   );
   const renderContentPart = (
     part: (typeof userContentParts)[number],
@@ -337,7 +345,10 @@ export const MessageRow = memo(function MessageRow({
                   </div>
                 ) : null}
                 {directories.text || message.command ? (
-                  <div className="message-user-text selectable">
+                  <div
+                    className="message-user-text selectable"
+                    dir={userTextDirection}
+                  >
                     {editableUserMessage && message.command ? (
                       <>
                         {message.skillMentions?.length || message.agentMentions?.length ? (
