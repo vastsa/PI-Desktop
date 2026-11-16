@@ -4,9 +4,10 @@ import {
 import type { RetryPolicy, Usage } from "@earendil-works/pi-ai";
 import { truncateMessageText } from "./agent-messages.js";
 import {
-  ESTIMATED_TEXT_CHARS_PER_TOKEN,
-  estimateTokens,
-} from "./pi-runtime-estimates.js";
+  charBudgetWithinOutputCap,
+  estimateOutputCapInputTokens,
+} from "./output-cap.js";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import { convertToLlm, serializeConversation } from "./pi-runtime-messages.js";
 import type { CompactionPreparation } from "./pi-runtime-types.js";
 import { DEFAULT_MAX_TOKENS } from "./provider-binding.js";
@@ -20,10 +21,12 @@ import { DEFAULT_MAX_TOKENS } from "./provider-binding.js";
  * so a session whose bulk was tool output looked several times larger than the
  * prompt it would actually send and was routed to retained-tail recovery
  * without ever asking the model (issue #543). These helpers size the prompt the
- * the way the adapter sends it and shrink the input one bounded step — when
+ * way the adapter sends it and shrink the input one bounded step — when
  * even that does not fit, they split the range into chunks that each do, so the
  * budget decides how many requests a summary takes rather than whether the
- * model is asked at all (issue #827).
+ * model is asked at all (issue #827). The size is chars/3.5 of that serialized
+ * text plus the output-cap CJK correction. chars/3.5 alone treats Han as about
+ * a third of a token, so a prompt that overflows the model was sent whole.
  */
 
 /**
@@ -62,10 +65,9 @@ export const COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS = 2_048;
  */
 export const COMPACTION_SUMMARY_MAX_CHUNKS = 16;
 /**
- * Share of a chunk's budget the planner fills. A chunk is sized from
- * `estimateTokens`, while the request carries pi's serialized form — per-message
- * role labels and separators the raw estimate does not count — so the margin
- * keeps every planned request inside the window it was planned for.
+ * Share of a chunk's budget the planner fills. Each message is sized on its
+ * own, while a chunk is one serialized text joined by blank lines, so the
+ * margin keeps that joined request inside the window it was planned for.
  */
 export const COMPACTION_SUMMARY_CHUNK_MARGIN = 0.9;
 /** Appended when a single message alone exceeds one chunk's budget. */
@@ -78,21 +80,68 @@ export type CompactionSummaryInput = Pick<
 >;
 
 /**
+ * chars/4 baseline inside {@link estimateOutputCapInputTokens}. Kept here so
+ * the CJK correction can be moved onto the chars/3.5 summary baseline without
+ * importing output-cap's private constants.
+ */
+const OUTPUT_CAP_CHARS_PER_TOKEN = 4;
+/** What output-cap adds per CJK character on top of chars/4 (1 - 0.25). */
+const OUTPUT_CAP_CJK_SHORTFALL = 0.75;
+
+/**
+ * Token estimate for text that is already the summary prompt pi will send.
+ *
+ * ASCII stays on `ceil(chars / 3.5)`, the ratio this guard has always used.
+ * Replacing that with the output-cap total would shrink every English prompt
+ * by 12.5% and reopen the reserve/guard gap. Han, kana, and Hangul are topped
+ * up with output-cap's CJK correction, scaled by the shortfall chars/3.5 has
+ * not already charged, so one CJK character lands near one token.
+ */
+function estimatePromptTextTokens(text: string): number {
+  if (text.length === 0) return 0;
+  const baseline = Math.ceil(text.length / ESTIMATED_TEXT_CHARS_PER_TOKEN);
+  const outputCapBaseline = Math.ceil(text.length / OUTPUT_CAP_CHARS_PER_TOKEN);
+  const outputCap = estimateOutputCapInputTokens({
+    messages: [{ role: "user", content: text }],
+  });
+  const cjkCorrection = outputCap - outputCapBaseline;
+  if (cjkCorrection <= 0) return baseline;
+  const remainingShortfall = 1 - 1 / ESTIMATED_TEXT_CHARS_PER_TOKEN;
+  return (
+    baseline +
+    Math.ceil((cjkCorrection * remainingShortfall) / OUTPUT_CAP_CJK_SHORTFALL)
+  );
+}
+
+/**
  * Tokens the summary request(s) will carry for this input, using pi's own
- * serialization and text-token estimate. A split turn issues two requests
- * (history, then turn prefix);
- * the larger one is the one that has to fit.
+ * serialization. A split turn issues two requests (history, then turn prefix);
+ * the larger estimate is the one that has to fit. Previous-summary text is
+ * counted on the history request, in the same units as the serialized messages.
  */
 export function estimateSummaryPromptTokens(input: CompactionSummaryInput): number {
-  const historyChars =
-    serializeConversation(convertToLlm(input.messagesToSummarize)).length +
-    (input.previousSummary?.length ?? 0);
-  const turnPrefixChars =
+  const history =
+    serializeConversation(convertToLlm(input.messagesToSummarize)) +
+    (input.previousSummary ?? "");
+  const turnPrefix =
     input.isSplitTurn && input.turnPrefixMessages.length > 0
-      ? serializeConversation(convertToLlm(input.turnPrefixMessages)).length
-      : 0;
-  return Math.ceil(
-    Math.max(historyChars, turnPrefixChars) / ESTIMATED_TEXT_CHARS_PER_TOKEN,
+      ? serializeConversation(convertToLlm(input.turnPrefixMessages))
+      : "";
+  return Math.max(
+    estimatePromptTextTokens(history),
+    estimatePromptTextTokens(turnPrefix),
+  );
+}
+
+/** Serialized size of one message, in the same units as the summary guard. */
+function summaryMessageTokens(message: AgentMessage): number {
+  return Math.max(
+    1,
+    estimateSummaryPromptTokens({
+      messagesToSummarize: [message],
+      turnPrefixMessages: [],
+      isSplitTurn: false,
+    }),
   );
 }
 
@@ -183,18 +232,19 @@ export function compactionSummaryInputLimit(input: {
 /**
  * Room one chunk keeps for the summary its prompt carries. The first chunk
  * carries `previousSummary`; every later chunk carries a summary no larger
- * than the model's output budget. The carried text is measured with the same
- * character estimate as {@link estimateSummaryPromptTokens}. Reserving it at
- * four characters per token under-counts the guard by 12.5%, and the chunk
- * margin applies only to what remains, so the first chunk can leave the window
- * it was planned for.
+ * than the model's output budget. The carried text is measured with
+ * {@link estimatePromptTextTokens}, the same estimate as
+ * {@link estimateSummaryPromptTokens}. Reserving it at four characters per
+ * token, or at chars/3.5 when the summary is CJK, under-counts the guard, and
+ * the chunk margin applies only to what remains, so the first chunk can leave
+ * the window it was planned for.
  */
 export function compactionSummaryReserveTokens(input: {
   previousSummary?: string;
   outputBudget: number;
 }): number {
   return Math.max(
-    Math.ceil((input.previousSummary?.length ?? 0) / ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    estimatePromptTextTokens(input.previousSummary ?? ""),
     input.outputBudget,
   );
 }
@@ -234,26 +284,45 @@ export function planSummaryChunks(
   let current: AgentMessage[] = [];
   let tokens = 0;
   for (const message of range) {
-    const cost = Math.max(1, Math.ceil(estimateTokens(message)));
+    const cost = summaryMessageTokens(message);
     if (current.length > 0 && tokens + cost > budget) {
       chunks.push(current);
       if (chunks.length >= COMPACTION_SUMMARY_MAX_CHUNKS) return undefined;
       current = [];
       tokens = 0;
     }
-    current.push(
-      cost > budget
-        ? truncateMessageText(
-            message,
-            Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
-            SUMMARY_CHUNK_TRUNCATION_MARKER,
-          )
-        : message,
-    );
+    current.push(cost > budget ? truncateSummaryMessage(message, budget) : message);
     tokens += Math.min(cost, budget);
   }
   if (current.length > 0) chunks.push(current);
   return chunks.length > 0 ? chunks : undefined;
+}
+
+/**
+ * Cut one message so the serialized summary prompt fits `tokenBudget`.
+ *
+ * The character ceiling is the historical ASCII cap (`budget * 3.5`). Latin
+ * text already estimates under it, so the length stays. CJK text estimates
+ * near one token per character, and {@link charBudgetWithinOutputCap} walks
+ * the cut down until the output-cap estimate of the serialized prompt fits.
+ * `budget * 3.5` characters of Han would still overflow that budget.
+ */
+function truncateSummaryMessage(
+  message: AgentMessage,
+  tokenBudget: number,
+): AgentMessage {
+  const ceiling = Math.max(
+    1,
+    Math.floor(Math.max(1, tokenBudget) * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+  );
+  const maxChars = charBudgetWithinOutputCap(tokenBudget, ceiling, (chars) =>
+    serializeConversation(
+      convertToLlm([
+        truncateMessageText(message, chars, SUMMARY_CHUNK_TRUNCATION_MARKER),
+      ]),
+    ),
+  );
+  return truncateMessageText(message, maxChars, SUMMARY_CHUNK_TRUNCATION_MARKER);
 }
 
 /**
