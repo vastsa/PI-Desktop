@@ -1,5 +1,13 @@
 # E2E Scenarios: Conversation and Sessions
 
+## E2E-stop-navigation-running-state
+
+Hold the history read after a successful local Stop, switch to another running session, then resolve the older session's history. Verify only the stopped session is settled, the new transcript remains and its toolbar still offers Stop. Also navigate synchronously during the hydration commit to exercise the final state writer. Coverage: `stop-navigation-running-state.test.mjs`, related smart-stop/terminal regressions, and `scripts/e2e-stop-navigation-running-state.mjs` using the production store and ComposerToolbar in Electron.
+
+## E2E-native-stop-refresh-failure
+
+Click the production Composer Stop button for a Native Pi source. Let abort succeed and reject the follow-up session detail read. Verify the toolbar returns to Send, the session running flag clears, the prior transcript remains, and the read error is shown. The regression also covers remote and rejected Stop. Coverage: `native-stop-refresh-failure.test.mjs` and `scripts/e2e-native-stop-refresh-failure.mjs` with real Electron, production store/toolbar and controlled API results.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Sessions, transcripts, the composer, streaming, queueing, context, and review.
 > Scenario template, gates, and traceability live in the plan.
 

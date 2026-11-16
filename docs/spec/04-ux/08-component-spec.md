@@ -1,5 +1,13 @@
 # 08. Component Spec
 
+Refreshing provider settings preserves the active remote session's safe identity and capabilities when its Host is temporarily absent from the session inventory. Returned authoritative summaries still replace it. Remote filesystem paths never become a local workspace target, and missing inventory cannot turn denied remote controls into local defaults. (Refs #2370)
+
+The renderer commits a project-filtered plugin view refresh only when it is the latest request and its project is still active. Older success or failure responses cannot replace or clear the current project's view catalog. This protects UI response ownership; it does not change service lifetime or desktop.control permissions. (Refs #2377)
+
+Composer Stop completion owns only the session that requested it. Switching to another running session while Stop hydrates history must retain that session's Stop button, transcript and running flag. The original session clears its flag and releases the matching submitted draft. (Refs #1990)
+
+A confirmed Native Pi or remote Stop updates its running flag before requesting source details. If that follow-up read fails, the session remains stopped and keeps its known transcript; the refresh error stays visible. A rejected Stop still retains running state. (Refs #1990)
+
 Workspace file index Git queries settle at their deadline or output limit,
 even when inherited child pipes do not close. Composer file search and the
 Files index then use the existing bounded filesystem fallback (Refs #1731).
