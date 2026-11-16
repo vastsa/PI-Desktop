@@ -5,58 +5,20 @@
 
 ## Context
 
-PI-Desktop needs a robust local backend for:
-
-- filesystem tools
-- process/command execution
-- plugin isolation boundary
-- secure storage adapters
-- long-running host services
-
-A pure Electron main TypeScript backend is workable, but weaker for systems work and isolation.
+PI-Desktop needs a local backend for filesystem tools, command execution, plugin
+isolation, secure storage, and long-running host services. A TypeScript backend
+inside Electron main is workable but weak for systems work and isolation.
 
 ## Decision
 
-Use **Rust as the backend host core**.
-
-### Responsibility split
-
-| Layer | Tech | Owns |
-|---|---|---|
-| UI | React + TypeScript | rendering, UX state |
-| Electron shell | TypeScript | windows, preload bridge, app lifecycle |
-| Host core | **Rust** | tools, permissions gateway, plugin host services, persistence adapters, privileged ops |
-| Agent engine | Node/TypeScript (pi) | model providers, agent loop, tool-calling orchestration |
-
-### Communication
-
-```text
-Renderer
- → Electron preload/main IPC
- → Rust host core (local RPC / FFI / sidecar protocol)
- ↔ Node pi agent runtime (sidecar)
-```
-
-Implementation choice for Electron↔Rust transport may be:
-
-1. Rust sidecar process over stdio/JSON-RPC or protobuf, or
-2. native Node/Electron addon bindings
-
-MVP target: **Rust sidecar + local RPC** for clearer isolation.
-
-## Non-goals
-
-- Rewrite pi itself in Rust
-- Replace pi agent loop in MVP
-- Move UI into Rust
+Use **Rust as the backend host core**. Rendering stays in React, windows and
+lifecycle stay in Electron main, providers and the agent loop stay with pi in Node,
+and Rust owns tools, the permission gateway, plugin host services, persistence
+adapters, and privileged operations. The renderer reaches Rust through IPC plus a
+local RPC or FFI; the MVP uses a Rust sidecar over local RPC for the clearest
+isolation. Rewriting pi or the UI in Rust is out of scope.
 
 ## Consequences
 
-### Positive
-- Strong systems backend
-- Better isolation and performance headroom
-- Cleaner security boundary for tools/plugins
-
-### Negative
-- More moving parts than pure TS main
-- Requires packaging Rust binary with Electron app
+- Tools and plugins get a real security boundary instead of Electron main.
+- A second binary must be built and shipped.

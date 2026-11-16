@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. See [ADR 0079](../../adr/0079-vitepress-documentation-site.md).
+Accepted. See [ADR 0079](../../adr/0079-vitepress-documentation-site.md) and
+[ADR chinese-docs-entry-points-only](../../adr/chinese-docs-entry-points-only.md).
 
 ## Decision
 
@@ -14,20 +15,14 @@ versioned navigation shell.
 The site exposes two locale entry points:
 
 - `/` — English-first complete documentation navigation.
-- `/zh-CN/` — Simplified Chinese orientation plus a path-for-path companion
-  page for every document under `docs/spec/`.
-
-For Vercel deployments whose Root Directory is `docs`, `docs/vercel.json`
-declares the VitePress build output as `.vitepress/dist` and enables Vercel's
-`cleanUrls` routing. This keeps extensionless links such as `/spec/README` and
-`/adr/README` working after a direct page refresh instead of becoming static
-hosting 404s.
+- `/zh-CN/` — Simplified Chinese home, guides, plugin guide, ADR map, and
+  specification index. Specification and ADR pages are English only.
 
 Existing `spec/`, `adr/`, `project/`, and guide Markdown files remain in place
-so repository links and review history stay stable. Chinese specification pages
-live under `docs/zh-CN/spec/` with the same relative paths as their English
-sources. Every translated page links to the canonical English page and keeps
-code, protocol fields, and identifiers unchanged.
+so repository links and review history stay stable. The Chinese specification
+index lives at `docs/zh-CN/spec/README.md` and links to English pages. A
+translated page links to the canonical English page and keeps code, protocol
+fields, and identifiers unchanged.
 
 ## Local commands
 
@@ -42,8 +37,9 @@ The production build is static and does not require a runtime service. The
 site may load Google Fonts during development or deployment, but the content
 and search index are generated locally by VitePress.
 
-`pnpm docs:check` verifies that every English specification has a matching
-Chinese Markdown file, and that the companion satisfies all of:
+`pnpm docs:check` verifies that the required Chinese pages exist
+(`zh-CN/spec/README.md` and `zh-CN/plugin-development.md`), and that every
+Chinese page under `docs/zh-CN/spec/` has an English source and satisfies all of:
 
 1. a top-level heading,
 2. Chinese characters somewhere in the body,
@@ -58,8 +54,8 @@ Conditions 5 and 6 make the gate structural rather than cosmetic: a Chinese page
 that drops a table row or a code block is reported even when its prose reads
 complete. The gate runs in `.github/workflows/docs-check.yml`, which covers the
 documentation paths intentionally ignored by the application CI workflow. Treat
-any failure as a list of mirrors to finish, and do not add a new English
-specification without its companion.
+any failure as a list of Chinese pages to fix. A new English specification does
+not need a Chinese companion.
 
 `pnpm docs:check` also runs `scripts/check-docs.mjs`, a second gate over every
 Markdown page under `docs/`:
@@ -75,9 +71,9 @@ Markdown page under `docs/`:
    to a retired id that `08-meta/decisions-log.md` names,
 6. every Chinese page, which must mirror an English page at the same relative
    path, with `index.md` and `README.md` read as the same page,
-7. `NAV.md`, which must list every page of its own tree, and the two `spec/`
-   trees, whose section directories must match and stay numbered like
-   `01-product`.
+7. `NAV.md`, which must list every page of its own tree, and the `spec/`
+   section directories, which stay numbered like `01-product`; any section
+   directory under `zh-CN/spec/` must exist in English.
 
 The same workflow then runs the VitePress production build, which validates the
 rendered routes and every internal link.
@@ -86,9 +82,9 @@ rendered routes and every internal link.
 
 1. English remains the canonical source language for specs, ADRs, code
    identifiers, and protocol terms.
-2. Every English specification has a Simplified Chinese companion at the same
-   relative path under `/zh-CN/spec/`; both locales expose the same sections and
-   reading order.
+2. The Chinese locale keeps entry points only (home, guides, plugin guide, ADR
+   map, specification index); its specification sidebar lists the English
+   pages.
 3. Chinese pages translate the complete prose, link back to the English source,
    and preserve code, protocol fields, and identifiers verbatim. When wording
    differs, the English contract remains authoritative.

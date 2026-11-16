@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v32)
+# 04. Data Storage (Schema v33)
 
 ### Project path aliases (#2148)
 
@@ -2191,3 +2191,24 @@ does not repeat the migration. Earlier supported mode schemas upgrade through
 their existing migrations first. Host mode-id, snapshot, and permission validation
 is unchanged. Older binaries reject schema 32; rollback uses the retained
 `pi.sqlite.v31.bak` rather than deleting user data.
+
+### Retired independent Goal storage (schema 33)
+
+Before the v32-to-v33 transaction, the Host verifies a `pi.sqlite.v32.bak`
+backup. The transaction retires only the obsolete
+`turn_execution_snapshot` trigger from the withdrawn independent Goal
+implementation. Its `turn_execution`, `goal_turns`, and `session_goals` tables,
+records, indexes, and other triggers remain intact; no new turns are written to
+that archived execution ledger. A custom mode can then start and finish a turn
+without being copied into its builtin-only mode CHECK.
+
+That historical candidate also used schema 32. The new migration therefore
+checks the actual sessions definition again and reuses the schema-32 repair
+when its builtin-only CHECK remains. Already-unconstrained sessions are not
+rebuilt. Foreign-key validation precedes commit, failures roll back both the
+trigger retirement and any table replacement, and connection PRAGMAs are
+restored on all exit paths. Earlier supported versions follow their existing
+upgrade chain first. Reopening schema 33 does not repeat the repair or replace
+the backup. Mode snapshots, permissions, and staged-run contracts are unchanged.
+Older Host binaries reject schema 33; retain the compatible backup rather than
+deleting application data or manually lowering the version marker.

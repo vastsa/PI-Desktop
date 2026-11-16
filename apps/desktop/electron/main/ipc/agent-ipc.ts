@@ -113,6 +113,11 @@ export function registerAgentIpc({
   loadComposerTemplatesCached,
   modeRuns,
 }: AgentIpcDependencies): void {
+  // Sessions with a manual compaction request in flight. The session
+  // operation is released before the sidecar call so Stop stays live; this
+  // mark is what keeps a queued prompt from starting against a compacting
+  // runtime (issue #2289).
+  const compactingSessions = new Set<string>();
   let host: HostProcess | null = null;
   let sidecar: AgentSidecar | null = null;
   let agentHostBridge: AgentHostBridge | null = null;
@@ -234,6 +239,15 @@ export function registerAgentIpc({
     }
     const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
     try {
+    // The mark is added while the compaction still holds the operation and
+    // cleared only when the sidecar call settles, so a prompt that acquires
+    // the operation after a compaction started always sees it here — checking
+    // before the acquire would race the compaction's own setup window.
+    if (compactingSessions.has(req.sessionId)) {
+      throw Object.assign(new Error("Session is compacting"), {
+        errorCode: ErrorCodes.AGENT_BUSY,
+      });
+    }
     const sessionMessage = await resolveSessionMessageInput(host, req);
     // Install the renderer's prompt-time snapshot before any asynchronous
     // setup. This closes the gap where a fast completion could beat the
@@ -673,51 +687,84 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentCompact, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!host || !sidecar) throw new Error("backend unavailable");
-    if (activeTurns.has(req.sessionId)) {
-      throw Object.assign(new Error("Session already has an active turn"), {
-        errorCode: ErrorCodes.AGENT_BUSY,
+    // Hold the session operation across admission (busy check, settings,
+    // session read, launch resolution) so a prompt submitted during setup
+    // queues behind it instead of starting a turn the compaction would run
+    // against mid-stream (issue #2289).
+    const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
+    let ownsCompaction = false;
+    let detail: { session?: any };
+    let launch: any;
+    try {
+      if (activeTurns.has(req.sessionId)) {
+        throw Object.assign(new Error("Session already has an active turn"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      // A second compact behind a still-pending first one must not reach the
+      // sidecar: its failure path would clear the mark the first compaction
+      // still holds and un-guard admission (issue #2289 re-review).
+      if (compactingSessions.has(req.sessionId)) {
+        throw Object.assign(new Error("Session is already compacting"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      const settings = await host.call<any>("settings.get");
+      detail = await host.call<{ session?: any }>("session.get", {
+        id: req.sessionId,
       });
+      if (!detail.session) {
+        throw Object.assign(new Error("Session not found"), {
+          errorCode: ErrorCodes.NOT_FOUND,
+        });
+      }
+      launch = await resolveAgentRuntimeLaunch(
+        req.sessionId,
+        detail.session,
+        settings,
+      );
+      sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
+      // Mark before releasing: the mark is what admission sees, while the
+      // released operation is what keeps Stop live — agentAbort acquires the
+      // same operation and must not wait for the summarization to finish.
+      compactingSessions.add(req.sessionId);
+      ownsCompaction = true;
+    } finally {
+      releaseSessionOperation();
     }
-    const settings = await host.call<any>("settings.get");
-    const detail = await host.call<{ session?: any }>("session.get", {
-      id: req.sessionId,
-    });
-    if (!detail.session) {
-      throw Object.assign(new Error("Session not found"), {
-        errorCode: ErrorCodes.NOT_FOUND,
-      });
-    }
-    const launch = await resolveAgentRuntimeLaunch(
-      req.sessionId,
-      detail.session,
-      settings,
-    );
-    sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
     // A lost reply is not the sidecar's verdict: the sidecar keeps summarizing
     // and persists the checkpoint through host-core, so the durable record
     // decides whether this manual compaction succeeded (issue #795).
     const startedWith = compactionRecordId(detail.session);
-    let result: unknown;
     try {
-      result = await sidecar.call("agent.compact", launch.sidecarParams);
-    } catch (error) {
-      if (!isRpcTimeoutError(error)) throw error;
-      const settled = await host.call<{ session?: unknown }>("session.get", {
-        id: req.sessionId,
-      });
-      const landed = compactionRecordId(settled.session);
-      if (landed === startedWith) throw error;
-      logger.app("session", "warn", "manual compaction outlived its transport deadline; the checkpoint landed", {
+      let result: unknown;
+      try {
+        result = await sidecar.call("agent.compact", launch.sidecarParams);
+      } catch (error) {
+        if (!isRpcTimeoutError(error)) throw error;
+        const settled = await host.call<{ session?: unknown }>("session.get", {
+          id: req.sessionId,
+        });
+        const landed = compactionRecordId(settled.session);
+        if (landed === startedWith) throw error;
+        logger.app("session", "warn", "manual compaction outlived its transport deadline; the checkpoint landed", {
+          sessionId: req.sessionId,
+          data: { compactionId: landed },
+        });
+        return { accepted: true };
+      }
+      logger.app("session", "info", "context compacted manually", {
         sessionId: req.sessionId,
-        data: { compactionId: landed },
+        data: { providerId: launch.providerId, modelId: launch.modelId },
       });
-      return { accepted: true };
+      return result;
+    } finally {
+      // Only the call that won compaction ownership may clear the mark: a
+      // rejected duplicate must never un-guard the first compaction.
+      if (ownsCompaction) {
+        compactingSessions.delete(req.sessionId);
+      }
     }
-    logger.app("session", "info", "context compacted manually", {
-      sessionId: req.sessionId,
-      data: { providerId: launch.providerId, modelId: launch.modelId },
-    });
-    return result;
   });
 
   handle(IPC.invoke.agentAbort, async (req: { sessionId: string; turnId?: string }) => {

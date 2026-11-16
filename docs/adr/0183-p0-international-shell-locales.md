@@ -2,39 +2,29 @@
 
 - Status: Accepted
 - Date: 2026-09-08
-- Decision owners: PI-Desktop desktop/i18n maintainers
 - Related: ADR 0160, ADR 0182, D346, E2E-091
 
 ## Context
 
-The locale registry could add languages without renderer-specific picker work,
-but the shipped shell stopped at English, Simplified Chinese, Traditional
-Chinese, and Turkish. Spanish, French, and German are high-value international
-locales for the desktop product and were missing from the UI catalog and
-in-app release notes.
+The locale registry accepts new languages without picker work, but the shipped
+shell stopped at English, Simplified Chinese, Traditional Chinese, and Turkish,
+leaving Spanish, French, and German out of the UI catalog and the release notes.
 
 ## Decision
 
-1. Ship complete shell catalogs for `de`, `es`, and `fr`, keeping English as
-   the source catalog and preserving key and interpolation parity.
-2. Register native names `Deutsch`, `Español`, and `Français`; the searchable
-   picker continues to derive its options from the shared locale registry.
-3. Resolve `de-*`, `es-*`, and `fr-*` OS locale tags to their shipped base
-   catalogs. Persisted `AppSettings.language` accepts the three new ids.
-4. Ship matching product changelog catalogs so release notes follow the active
-   locale. No host protocol, storage schema, or Electron IPC version changes.
+Ship complete shell catalogs for `de`, `es`, and `fr` with English as the source
+and full key and interpolation parity, registered as `Deutsch`, `Español`, and
+`Français` in the shared locale registry. `de-*`, `es-*`, and `fr-*` OS tags
+resolve to those base catalogs, `AppSettings.language` accepts the three ids, and
+matching changelog catalogs ship with them.
 
 ## Consequences
 
-- Users can select German, Spanish, or French without a renderer reload.
-- Locale parity tests cover shell strings, both interpolation styles, and
-  release-note version/highlight parity.
-- Regional variants intentionally share one base catalog; region-specific
-  spelling can be added later without changing the picker contract.
+- Users select the languages without a reload and see localized release notes.
+- Parity tests cover shell strings, both interpolation styles, and release-note
+  parity, and regional variants share one base catalog.
 
 ## Alternatives
 
-- Add only registry rows and fall back to English: rejected because it would
-  advertise languages without localizing the shell.
-- Add region-specific catalogs immediately: rejected because the P0 goal is
-  broad coverage with one maintainable catalog per language.
+- Add registry rows only: rejected; it advertises untranslated languages.
+- Add region-specific catalogs now: rejected; P0 wants one catalog per language.

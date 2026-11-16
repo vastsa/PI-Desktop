@@ -74,7 +74,7 @@ fn completion_report_migration_populated_30_preserves_all_data_and_pre_migration
     drop(before);
     let db = Database::open(&path).unwrap();
     assert_eq!(version(db.conn()), SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 32);
+    assert_eq!(SCHEMA_VERSION, 33);
     assert!(has_report(db.conn()));
     assert_eq!(rows(db.conn(), LEGACY_RUN), old_run);
     assert_eq!(rows(db.conn(), "SELECT * FROM mode_gate_results"), gates);

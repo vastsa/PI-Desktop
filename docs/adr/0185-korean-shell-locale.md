@@ -2,43 +2,32 @@
 
 - Status: Accepted
 - Date: 2026-09-09
-- Decision owners: PI-Desktop desktop/i18n maintainers
-- Related: ADR 0160, ADR 0182, ADR 0183, D349, E2E-091
+- Related: ADR 0160, ADR 0182, ADR 0183, D349
 
 ## Context
 
-The searchable locale registry already supports complete shell catalogs, but
-Korean users were still limited to English or another shipped locale. Korean
-is a distinct language and should not be represented by an English fallback or
-by a Chinese catalog with a Korean label.
+The searchable locale registry already supported complete shell catalogs, but
+Korean users were limited to English or another shipped locale. Korean is a
+distinct language and must not be served by a fallback catalog.
 
 ## Decision
 
-1. Ship a complete Korean shell catalog at `packages/i18n/src/locales/ko`,
-   with native name `한국어` and English name `Korean`.
-2. Resolve `ko` and regional `ko-*` OS locale tags to the Korean catalog. Add
-   `ko` to persisted `AppSettings.language` and to the Electron Chromium
-   locale allowlist.
-3. Ship a Korean product changelog catalog with the same stable version and
-   highlight-count set as English so release notes follow the active shell
-   locale.
-4. Preserve the existing English-first catalog contract: identical keys,
-   interpolation variables, searchable picker behavior, and English fallback
-   for plugin-contributed labels. No host protocol, storage schema, or IPC
-   version changes.
+Ship a complete Korean shell catalog in the shared i18n package, named `한국어` /
+`Korean`, and resolve `ko` and regional `ko-*` OS tags to it, including
+`AppSettings.language` and the Electron Chromium locale allowlist. A Korean
+product changelog catalog mirrors English versions and highlight counts. The
+existing English-first contract holds: identical keys, interpolation variables,
+searchable picker behavior, English fallback for plugin labels, and no host
+protocol, storage schema, or IPC version change.
 
 ## Consequences
 
-- Korean users can select Korean or use Auto detection without reloading the
-  renderer.
-- Catalog and changelog parity tests cover Korean alongside the existing
-  shipped locales.
-- Regional Korean variants intentionally share one base catalog; spelling
-  differences can be added later without changing the picker contract.
+- Korean is selectable and auto-detected without reloading the renderer.
+- Catalog and changelog parity tests cover Korean like other shipped locales.
+- Regional variants share one base catalog; spelling variants can be added later
+  without changing the picker contract.
 
 ## Alternatives
 
-- Register `ko` while falling back to English: rejected because the picker
-  would advertise an untranslated shell.
-- Add region-specific Korean catalogs immediately: rejected because the
-  current locale contract uses one maintainable catalog per language.
+- Register `ko` with an English fallback: rejected because the picker would
+  advertise an untranslated shell.

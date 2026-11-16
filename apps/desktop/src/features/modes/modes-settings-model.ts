@@ -31,10 +31,15 @@ export function modeEntryKey(entry: Pick<ModeCatalogEntry, "id" | "source">): st
 
 export function modeEntryDiagnostic(
   catalog: ModeCatalog | null | undefined,
-  entry: Pick<ModeCatalogEntry, "id" | "source">,
+  entry: Pick<ModeCatalogEntry, "id" | "source" | "customized" | "filePath">,
 ): { errors: string[]; warnings: string[] } {
-  if (!catalog || entry.source !== "user") return { errors: [], warnings: [] };
-  const diagnostic = catalog.diagnostics.find((item) => item.modeId === entry.id);
+  if (!catalog) return { errors: [], warnings: [] };
+  // A builtin reports only problems of its override file; a reserved
+  // document shares the builtin's id, so the file path tells them apart.
+  if (entry.source !== "user" && !entry.customized) return { errors: [], warnings: [] };
+  const diagnostic = catalog.diagnostics.find(
+    (item) => item.modeId === entry.id && (!entry.filePath || !item.filePath || item.filePath === entry.filePath),
+  );
   return { errors: diagnostic?.errors ?? [], warnings: diagnostic?.warnings ?? [] };
 }
 

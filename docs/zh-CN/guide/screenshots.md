@@ -5,7 +5,7 @@ description: PI-Desktop 的每个界面，全部取自运行中的应用。
 
 # 界面截图
 
-下面每一张都来自支撑 [E2E 测试计划](/zh-CN/spec/06-delivery/04-e2e-test-plan)
+下面每一张都来自支撑 [E2E 测试计划](/spec/06-delivery/04-e2e-test-plan)
 的截图装置：应用以 `PI_DESKTOP_CAPTURE=1` 在一个临时数据目录上启动，自行走过每个
 界面并写出 PNG，再由 `scripts/publish-screenshots.py` 转换成本页的图片。因此这些
 截图展示的是实际发布的界面，而不是设计稿——包括全新安装时看到的空态。

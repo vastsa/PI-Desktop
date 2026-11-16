@@ -8,50 +8,33 @@
 ## Context
 
 Plan/Goal removed editing and delegation tools from the provider request while
-retaining earlier tool-call history. A model that repeats one of those names
-can be rejected by a strict gateway before PI-Desktop receives the call. The
-application then cannot produce a tool result with that call's identity.
-Preserving a declaration and granting execution are separate responsibilities.
+retaining earlier tool-call history, so a model repeating one of those names can be
+rejected by a strict gateway before PI-Desktop receives the call, leaving the app
+unable to produce a tool result with that call's identity.
 
 ## Decision
 
-Keep Write and Edit declarations in the main session's Plan/Goal requests.
-When subagents are configured, retain the Task/TaskWait/TaskList/TaskStop
-schemas too. These tools remain core declarations and are explicitly labelled
-unavailable in the contract mode. Unknown tools, missing subagent definitions,
-on-demand tools and non-plan-safe plugin tools do not gain new declarations.
+Keep the Write and Edit declarations in the main session's Plan/Goal requests, and
+keep the `Task`/`TaskWait`/`TaskList`/`TaskStop` schemas when subagents are configured,
+labelled explicitly unavailable in the contract mode; unknown tools, missing subagent
+definitions, on-demand tools, and non-plan-safe plugin tools gain no declaration.
 
-Keep the current mode allowlist authoritative for execution. Block prohibited
-calls before extension call hooks or tool handlers run. Additionally wrap the
-registered handler with a fresh mode check, so an object retained before a
-mode switch cannot execute using stale authority. pi's existing error path
-returns the failure with the original call id and continues the model loop.
-Task denial must occur before creating or controlling any delegate. Host-core
-permission checks, including hard Plan/Goal Write/Edit denial, remain unchanged.
-
-The transcript is retained. No synthetic tool call, replacement call id,
-extra user correction prompt, provider-error classifier or retry path is added.
-Returning to Agent restores normal execution through existing permission gates.
-Subagent tool scopes and their isolated histories remain unchanged.
-
-## Alternatives
-
-- Delete or rewrite old tool history: changes useful context without proving
-  that history caused the model's next invalid call.
-- Add a user-message correction after a gateway failure: cannot produce a
-  normal paired tool result and introduces a separate recovery policy.
-- Declare every plugin/tool: expands context and capability disclosure beyond
-  the known mode-restricted tools needed by this failure path.
-- Permit editing in Plan/Goal: violates the existing execution boundary.
+The mode allowlist stays authoritative for execution: prohibited calls are blocked
+before extension hooks or handlers run, the registered handler is wrapped with a fresh
+mode check so an object retained across a mode switch cannot execute on stale
+authority, and pi's existing error path returns the failure with the original call id
+and continues the model loop. The transcript is retained, and no synthetic call,
+replacement id, correction prompt, or retry path is added.
 
 ## Consequences
 
-Declared tools no longer imply permission to execute them. Models see a small
-number of denied schemas, so the mode prompt and each denied description must
-remain explicit. The normal tool-error channel provides actionable feedback
-without a request-level 502 when the gateway accepts the declared call.
-A gateway rejecting a correctly declared tool or inventing an unknown tool
-remains a separate interoperability failure; this decision does not promise
-that every third-party model will obey the mode prompt.
+- A declared tool no longer implies permission to execute it, so the mode prompt and
+  each denied description must stay explicit.
+- The gateway accepts correctly declared calls, and the normal tool-error channel
+  gives the model actionable feedback instead of a request-level 502.
+- No database, IPC, plugin permission, or host ownership migration is required.
 
-No database, IPC, plugin permission or host ownership migration is required.
+## Alternatives
+
+- Delete or rewrite old tool history — rejected: it changes useful context without
+  proving that history caused the invalid call.

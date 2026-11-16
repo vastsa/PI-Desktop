@@ -2,45 +2,31 @@
 
 - Status: Accepted
 - Date: 2026-07-26
+- Related: [ADR 0013](0013-compact-settings-directory.md)
 
 ## Context
 
-The Agent/Configuration tab housed defaults and providers as stacked settings rows and a dense always-on form. That layout made readiness hard to scan, buried the default provider, and made multi-provider management feel like a raw CRUD form rather than a modern desktop control surface.
-
-The compact settings directory already keeps Providers inside Agent/Configuration without a standalone rail destination. The information architecture stays; only the presentation and interaction density of that section need to improve.
+Agent/Configuration showed defaults and providers as stacked rows and one dense
+form, which buried the default provider and felt like a raw CRUD form. Both stay
+in that section per ADR 0013, so only presentation and density change.
 
 ## Decision
 
-Settings → Agent/Configuration is presented as a **provider studio**:
-
-1. A compact Defaults card for the default provider/model pair
-2. A vendor-account section with one row per OAuth account, including edit,
-   test connection, and remove actions
-3. A modal OpenAI-compatible add/edit provider composer
-4. Card-based provider management with secret badges, thinking presets, test
-   connection, make default, and delete
-
-Secrets remain write-only after save. No new settings rail destinations are introduced.
+Agent/Configuration becomes a provider studio: a compact Defaults card for the
+default provider/model pair, a vendor-account section with one row per OAuth
+account offering edit, test connection, and remove, a modal OpenAI-compatible
+add/edit composer, and card-based provider management with secret badges,
+thinking presets, test connection, make default, and delete. Secrets remain
+write-only after save and no new rail destination appears.
 
 ## Consequences
 
-- Configuration is easier to scan with multiple providers and accounts
-- The page keeps one visual hierarchy without a separate summary hero
-- Empty and populated states both have clear next actions
-- Specs, e2e, and i18n describe the studio presentation
-- Future vendor presets can land as composer entry points without changing the rail IA
+- Several providers and accounts stay scannable without a summary hero.
+- Empty and populated states both offer a clear next action.
+- Vendor presets can later land as composer entries without touching the rail.
 
 ## Alternatives
 
-### Keep the dense stacked form
-Rejected because it optimizes for first entry only and degrades once several providers exist.
-
-### Split Providers back into a rail destination
-Rejected because the compact directory intentionally merged Providers into Agent/Configuration; this redesign improves the existing section instead of reopening navigation breadth.
-
-## References
-
-- `docs/spec/04-ux/06-settings-ia.md`
-- `docs/spec/04-ux/08-component-spec.md`
-- `docs/spec/08-meta/decisions-log.md` (D107)
-- `docs/adr/0013-compact-settings-directory.md`
+- Keep the dense stacked form: rejected; it only optimizes for first entry.
+- Split Providers into its own rail destination: rejected; ADR 0013 merged it
+  into Agent/Configuration on purpose.
