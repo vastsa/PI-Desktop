@@ -10,9 +10,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  isImageOnlyChatModel,
   vendorAccountImageCandidates,
   type ImageGenerationBinding,
   type ModelBinding,
+  type ModelInfo,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
@@ -74,13 +76,25 @@ function imageCandidates(
   return result;
 }
 
-function chatModelOptions(providers: readonly ProviderPublic[], imageModels: readonly ImageGenerationBinding[]) {
+function chatModelOptions(
+  providers: readonly ProviderPublic[],
+  imageModels: readonly ImageGenerationBinding[],
+  discovered?: Record<string, readonly ModelInfo[] | undefined>,
+) {
   return providers.flatMap((provider) => {
     const ids = provider.models?.length
       ? provider.models.map((model) => model.id)
       : [provider.defaultModelId ?? ""];
-    return ids.filter((id) => !!id.trim() && !isImageGenerationPickerCandidate(imageModels, provider.id, id))
-      .map((modelId) => ({ provider, modelId }));
+    // Only a pure image-generation endpoint is excluded from chat; a
+    // dual-capability model stays selectable (#2253). The discovered row's
+    // modalities are the same answer session launch reads, so the page and
+    // launch cannot disagree.
+    return ids.filter((id) => !!id.trim() && !isImageOnlyChatModel(
+      imageModels,
+      provider.id,
+      id,
+      discovered?.[provider.id]?.find((model) => sameWireId(model.modelId, id)),
+    )).map((modelId) => ({ provider, modelId }));
   });
 }
 
@@ -88,6 +102,7 @@ function chatModelOptions(providers: readonly ProviderPublic[], imageModels: rea
 export function ModelConfigPage() {
   const { t, i18n } = useTranslation();
   const providers = useAppStore((s) => s.providers);
+  const providerModels = useAppStore((s) => s.providerModels);
   const settings = useAppStore((s) => s.settings);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
   const showToast = useAppStore((s) => s.showToast);
@@ -149,7 +164,7 @@ export function ModelConfigPage() {
     [settings?.imageGenerationModels, settings?.imageGeneration, providers],
   );
   const providerReady = (provider: ProviderPublic) =>
-    providerServesChatModels(provider, imageGenerationCandidates);
+    providerServesChatModels(provider, imageGenerationCandidates, providerModels);
 
   if (!settings) return null;
 
@@ -168,18 +183,17 @@ export function ModelConfigPage() {
     models: ModelBinding[],
     imageModelIds?: string[],
   ) => {
-    const selectedImageIds = imageModelIds ?? imageGenerationCandidates
-      .filter((entry) => entry.providerId === saved.id)
-      .map((entry) => entry.modelId);
+    // An image-generation designation does not exclude a dual-capability
+    // model from chat, so an image-marked head binding is a legitimate chat
+    // default; only a pure image-generation endpoint cannot hold one (#2253).
     const firstModelId = models.find((model) =>
-      !selectedImageIds.some((id) => sameWireId(id, model.id)),
+      !isImageOnlyChatModel(
+        imageGenerationCandidates,
+        saved.id,
+        model.id,
+        providerModels[saved.id]?.find((entry) => sameWireId(entry.modelId, model.id)),
+      ),
     )?.id;
-    const replacementChatModelId =
-      settings.defaultProviderId === saved.id && firstModelId &&
-      !models.some((model) => sameWireId(model.id, settings.defaultModelId ?? "") &&
-        !selectedImageIds.some((id) => sameWireId(id, model.id)))
-    ? firstModelId
-    : undefined;
     try {
       if (pluginCatalogSetup?.providerId === saved.id) {
         const defaultsProviders = [...providers.filter((provider) => provider.id !== saved.id), saved];
@@ -188,7 +202,7 @@ export function ModelConfigPage() {
         );
         const keepsCurrentDefault = !!currentDefault &&
           providerServesChatModels(currentDefault, imageGenerationCandidates) &&
-          chatModelOptions([currentDefault], imageGenerationCandidates).some(
+          chatModelOptions([currentDefault], imageGenerationCandidates, providerModels).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
           );
         if (!keepsCurrentDefault && firstModelId) {
@@ -215,8 +229,34 @@ export function ModelConfigPage() {
         const nextSettings = {
           ...current,
           ...plan,
-          ...(replacementChatModelId ? { defaultModelId: replacementChatModelId } : {}),
         };
+        // The image bindings this save writes are `plan.imageGenerationModels`,
+        // so the new marking is judged from post-save state — never from the
+        // pre-save `imageGenerationCandidates` memo, which cannot see what this
+        // save just marked (#2304 review). A dual-capability model keeps its
+        // chat default; only a default this save left unable to chat is
+        // migrated, and only to a chat model the saved provider still serves.
+        // With no replacement the stored default is left exactly as saved —
+        // the image picker and the chat menus stay the user's own choices.
+        const savedChatOptions = chatModelOptions(
+          [saved],
+          plan.imageGenerationModels,
+          providerModels,
+        );
+        const migratableDefault =
+          current.defaultProviderId === saved.id && !!current.defaultModelId?.trim() &&
+          !savedChatOptions.some(({ modelId }) =>
+            sameWireId(modelId, current.defaultModelId ?? ""),
+          );
+        if (migratableDefault) {
+          const replacement = savedChatOptions.find(
+            ({ modelId }) => !sameWireId(modelId, current.defaultModelId ?? ""),
+          );
+          if (replacement) {
+            nextSettings.defaultProviderId = saved.id;
+            nextSettings.defaultModelId = replacement.modelId;
+          }
+        }
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
         showToast(t(editingProvider ? "settings.providerUpdated" : "settings.providerSaved"), {
@@ -230,7 +270,7 @@ export function ModelConfigPage() {
         // provider is still runnable — until they change it themselves.
         const currentProvider = providers.find((provider) => provider.id === settings.defaultProviderId);
         const keepsCurrentDefault = !!currentProvider && providerReady(currentProvider) &&
-          chatModelOptions([currentProvider], imageGenerationCandidates).some(
+          chatModelOptions([currentProvider], imageGenerationCandidates, providerModels).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
           );
         if (!keepsCurrentDefault && firstModelId) {
@@ -242,9 +282,6 @@ export function ModelConfigPage() {
         }
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else {
-        if (replacementChatModelId) {
-          await api.setSettings({ ...settings, defaultModelId: replacementChatModelId });
-        }
         showToast(t("settings.providerUpdated"), { variant: "success" });
       }
       setSetupFor(null);

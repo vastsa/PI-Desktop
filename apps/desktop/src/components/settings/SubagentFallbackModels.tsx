@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProviderPublic } from "@pi-desktop/shared";
+import { imageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
+import { useAppStore } from "../../stores/app-store";
 import { Button, Field } from "../ui";
 import { SubagentModelPicker } from "./SubagentModelPicker";
 import {
@@ -18,10 +20,22 @@ export function SubagentFallbackModels({ primary, values, choices, providers, on
   onChange: (values: string[]) => void;
 }) {
   const { t } = useTranslation();
+  // Read the settings slices and the discovered catalog through reactive
+  // subscriptions: getState() here kept stale metadata when the catalog
+  // slice swapped providerModels without re-rendering this component.
+  const settings = useAppStore((state) => state.settings);
+  const providerModels = useAppStore((state) => state.providerModels);
+  const images = useMemo(
+    () => imageGenerationBindings(
+      settings?.imageGenerationModels,
+      settings?.imageGeneration,
+    ),
+    [settings?.imageGenerationModels, settings?.imageGeneration],
+  );
   const selected = new Set([primary, ...values].map((pin) => subagentModelSelectValue(pin, choices)));
   const available = choices.filter((choice) => !selected.has(choice.value));
   const rows = values.map((pin) => {
-    const choice = subagentModelDisplay(pin, providers);
+    const choice = subagentModelDisplay(pin, providers, images, providerModels);
     return { choice, text: choice ? `${choice.providerName}/${choice.modelId}` : pin };
   });
   const move = (index: number, delta: number) => {
