@@ -221,12 +221,20 @@ test("the working step sweeps only while its session runs, so an idle window sto
 });
 
 
-test("pending completion displays its status and offers cancellation without dismissing the job", async () => {
+test("task actions distinguish stopping, dismissing, and cancelling continuation", async () => {
   await withDockRender(({ render }) => {
-    const pending = { ...task("pending", "exited", 0), continuation: "pending" };
-    const html = render({ tasks: [pending], sessionTasks: [pending] });
-    assert.match(html, /Waiting to resume/);
-    assert.match(html, /Cancel continuation/);
-    assert.doesNotMatch(html, />Remove</);
+    for (const state of ["running", "exited", "failed", "stopped"]) {
+      for (const continuation of [undefined, "pending", "cancelled"]) {
+        const row = { ...task("actions", state), continuation };
+        const html = render({ tasks: [row], sessionTasks: [row] });
+        const context = `${state}, continuation=${continuation}`;
+        assert.equal(/>Stop<\/button>/.test(html), state === "running", context);
+        assert.equal(/>Dismiss<\/button>/.test(html), state !== "running" && continuation !== "pending", context);
+        assert.equal(/>Cancel continuation<\/button>/.test(html), continuation === "pending", context);
+        if (state !== "running" && continuation === "pending") {
+          assert.match(html, /Waiting to resume/, context);
+        }
+      }
+    }
   });
 });
