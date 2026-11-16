@@ -4,7 +4,9 @@
  * Electron main owns the user's global `~/.pi/modes` directory: it reads the
  * documents, hands them to the agent-runtime loader for strict validation, and
  * keeps the parsed catalog for the renderer and for the snapshots it attaches
- * to `session.configure`. Workspaces never provide modes.
+ * to `session.configure`. Workspaces never provide modes. A builtin is
+ * edited by writing `<dir>/<builtin>/mode.md`; removing that file restores
+ * the shipped definition.
  */
 import { mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -25,6 +27,10 @@ import {
 } from "@pi-desktop/shared";
 
 export const MODE_DOCUMENT_NAME = "mode.md";
+
+function isBuiltinId(id: string): boolean {
+  return (BUILTIN_MODE_IDS as readonly string[]).includes(id);
+}
 const TEMPLATE_DIR = "templates";
 const MAX_USER_MODE_DIRECTORIES = 64;
 
@@ -149,6 +155,11 @@ export function createModeCatalogService(options: {
   ): Promise<{ modeDir: string; known: boolean; occupiedBy?: string }> {
     if (rescan) cache = null;
     const { catalog } = await current();
+    if (isBuiltinId(id)) {
+      // A builtin's override always lives in the folder named after it.
+      const builtin = catalog.modes.find((entry) => entry.id === id && entry.source === "builtin");
+      return { modeDir: join(dir, id), known: builtin?.customized === true };
+    }
     const entries = catalog.modes.filter((entry) => entry.id === id && entry.source === "user" && !entry.reserved && entry.filePath);
     const entry = entries.find((candidate) => candidate.available) ?? entries[0];
     if (entry?.filePath) return { modeDir: dirname(entry.filePath), known: true };
@@ -163,16 +174,10 @@ export function createModeCatalogService(options: {
     if (!isModeId(id)) {
       throw modeError("MODE_ID_INVALID", "Mode ids use lowercase letters, digits and dashes and start with a letter");
     }
-    if ((BUILTIN_MODE_IDS as readonly string[]).includes(id)) {
-      throw modeError("MODE_ID_RESERVED", `"${id}" is a builtin mode; save a copy under another id`);
-    }
   }
 
   async function validate(id: string, source: string): Promise<ModeDocumentValidation> {
     if (!isModeId(id)) return { ok: false, errors: ["name: invalid mode id"], warnings: [] };
-    if ((BUILTIN_MODE_IDS as readonly string[]).includes(id)) {
-      return { ok: false, errors: [`name: "${id}" is a builtin mode`], warnings: [] };
-    }
     if (Buffer.byteLength(source) > MODE_LIMITS.fileBytes) {
       return { ok: false, errors: [`file: larger than ${MODE_LIMITS.fileBytes} bytes`], warnings: [] };
     }
@@ -191,6 +196,7 @@ export function createModeCatalogService(options: {
     const diagnostic = result.diagnostics.find((entry) => entry.modeId === id);
     const errors = diagnostic?.errors ?? [];
     const warnings = diagnostic?.warnings ?? [];
+    // An override loads in place of the builtin, under the builtin's id.
     const loaded = result.definitions.some((definition) => definition.id === id && definition.source === "user");
     if (!loaded) return { ok: false, errors: errors.length ? errors : ["mode could not be loaded"], warnings };
     return { ok: errors.length === 0, errors, warnings };
@@ -215,14 +221,14 @@ export function createModeCatalogService(options: {
     },
     async read(id: string): Promise<ModeDocumentReadResult> {
       const builtin = builtinModeSource(id);
-      if (builtin !== undefined) return { id, source: builtin, builtin: true };
-      if (!isModeId(id)) throw modeError("MODE_ID_INVALID", "invalid mode id");
+      if (builtin === undefined && !isModeId(id)) throw modeError("MODE_ID_INVALID", "invalid mode id");
       const filePath = join((await locate(id, true)).modeDir, MODE_DOCUMENT_NAME);
       try {
-        return { id, source: await readFile(filePath, "utf8"), filePath, builtin: false };
+        return { id, source: await readFile(filePath, "utf8"), filePath, builtin: builtin !== undefined };
       } catch (error) {
-        if (isMissing(error)) throw modeError("MODE_NOT_FOUND", `Mode "${id}" does not exist`);
-        throw error;
+        if (!isMissing(error)) throw error;
+        if (builtin !== undefined) return { id, source: builtin, builtin: true };
+        throw modeError("MODE_NOT_FOUND", `Mode "${id}" does not exist`);
       }
     },
     validate,
@@ -241,6 +247,7 @@ export function createModeCatalogService(options: {
       options.logger?.app("settings", "info", "mode definition saved", { data: { id } });
       return refresh();
     },
+    /** For a builtin, deletes its override and restores the shipped definition. */
     async remove(id: string): Promise<ModeCatalog> {
       assertWritableId(id);
       const { modeDir, known } = await locate(id, true);

@@ -663,10 +663,10 @@ compaction injection.
   before queue release, and a distinct new run starts with the second input.
   Stop it, and verify no further continuation. Restored transcript assistant
   rows retain distinct turn ids and contain only the two actual user inputs.
-- `scripts/e2e-goal-layout.mjs` renders production status/budget controls with
+- `scripts/e2e-goal-layout.mjs` renders the production run status bar with
   the built stylesheet in isolated Electron. Check English/Chinese layouts at
   320, 480, 720 and 1120 pixels, long objectives/day durations, metadata order,
-  nonoverlap and horizontal budget inputs. Duration uses `d`, `h`, `m`, `s`
+  and nonoverlap. Duration uses `d`, `h`, `m`, `s`
   with exactly one ASCII space after each number, including `0 s`, in both
   languages. Resume/Pause/Edit/Remove are icon-only with localized accessible
   names; native clicks still resume/pause, open/cancel editing and arm/cancel
@@ -690,7 +690,7 @@ the key; only the machine key and that one secret file are copied). It calls a
 paid model API and needs the account owner's authorization. Real pieces: an
 isolated Host, the production runtime loop and Electron main's run coordinator.
 
-1. With `goalBudget { maxTurns: 6 }` set, a Goal run starts with 6 turns, does
+1. A Goal run starts with the builtin definition budget (20 turns), does
    the work, calls `CompleteStage` with the three-heading artifact, finishes,
    and the session returns to Agent.
 2. During the first turn, Edit the objective and budget, then Pause: the turn
