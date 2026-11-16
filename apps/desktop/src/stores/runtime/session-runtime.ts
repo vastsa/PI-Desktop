@@ -84,6 +84,7 @@ export type SessionRuntime = {
     },
   ) => ReturnType<typeof api.getSession>;
   loadFullSessionMessages: (id: string, cache?: boolean) => Promise<UiMessage[] | null>;
+  invalidateSessionReads: (id: string) => void;
   insertOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   retractOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   cacheBackgroundTranscriptEvent: (envelope: AgentEventEnvelope) => void;
@@ -137,6 +138,31 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   const sessionConfigurationFlushes = new Map<string, Promise<void>>();
   const sessionModeSelections = new Map<string, number>();
   const sessionDetailLoads = new Map<string, ReturnType<typeof api.getSession>>();
+  const sessionReads = new Map<string, Set<{ valid: boolean }>>();
+
+  function beginSessionRead(id: string) {
+    const read = { valid: true };
+    const reads = sessionReads.get(id) ?? new Set();
+    reads.add(read);
+    sessionReads.set(id, reads);
+    return read;
+  }
+
+  function finishSessionRead(id: string, read: { valid: boolean }) {
+    const reads = sessionReads.get(id);
+    reads?.delete(read);
+    if (reads?.size === 0) sessionReads.delete(id);
+  }
+
+  function invalidateSessionReads(id: string) {
+    for (const read of sessionReads.get(id) ?? []) read.valid = false;
+    sessionReads.delete(id);
+    sessionDetailLoads.delete(id);
+    if (pendingSessionSelection?.id === id) {
+      navigationIntents.begin();
+      pendingSessionSelection = null;
+    }
+  }
   const toolStartsByCallId = new Map<string, ToolStart>();
   const planSyncGenerations = new Map<string, number>();
 
@@ -168,8 +194,10 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   ) {
     const active = sessionDetailLoads.get(id);
     if (active && options?.messageBefore === undefined) return active;
+    const read = beginSessionRead(id);
     const previous = sessionTranscriptCache.get(id);
     const request = api.getSession(id, options).then((detail) => {
+      if (!read.valid) return { session: null };
       if (detail.session && options?.messageBefore === undefined) {
         const state = get();
         const liveMessages =
@@ -196,6 +224,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     });
     if (options?.messageBefore === undefined) sessionDetailLoads.set(id, request);
     const clear = () => {
+      finishSessionRead(id, read);
       if (
         options?.messageBefore === undefined &&
         sessionDetailLoads.get(id) === request
@@ -220,15 +249,20 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   }
 
   async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
-    const previous = sessionTranscriptCache.get(id);
-    const detail = await api.getSession(id);
-    if (!detail.session) return null;
-    const messages = detail.session.messages ?? [];
-    if (cache && sessionTranscriptCache.get(id) === previous) cacheSessionTranscript(id, messages, {
+    const read = beginSessionRead(id);
+    try {
+      const previous = sessionTranscriptCache.get(id);
+      const detail = await api.getSession(id);
+      if (!read.valid || !detail.session) return null;
+      const messages = detail.session.messages ?? [];
+      if (cache && sessionTranscriptCache.get(id) === previous) cacheSessionTranscript(id, messages, {
         messageStart: 0,
         hasMoreBefore: false,
       });
-    return messages;
+      return messages;
+    } finally {
+      finishSessionRead(id, read);
+    }
   }
 
   function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
@@ -438,6 +472,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     cacheSessionTranscript,
     loadSessionDetail,
     loadFullSessionMessages,
+    invalidateSessionReads,
     insertOptimisticUserMessage,
     retractOptimisticUserMessage,
     cacheBackgroundTranscriptEvent,

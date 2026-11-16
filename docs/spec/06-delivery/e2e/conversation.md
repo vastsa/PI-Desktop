@@ -1,5 +1,9 @@
 # E2E Scenarios: Conversation and Sessions
 
+## E2E-deleted-session-read-lifetime
+
+Begin full and bounded reads, delete the session through the production project slice, then return old history. Verify both reads report unavailable history and message/window caches remain released. Verify the deleted session leaves the rendered list and a pending selection cannot commit. Coverage: `deleted-session-read-lifetime.test.mjs`, existing read/edit/streaming/delete guards, and `scripts/e2e-deleted-session-read-lifetime.mjs`. Reads and deletion use controlled API edges; no actual user session is deleted.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Sessions, transcripts, the composer, streaming, queueing, context, and review.
 > Scenario template, gates, and traceability live in the plan.
 
