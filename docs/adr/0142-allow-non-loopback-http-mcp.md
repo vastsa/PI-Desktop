@@ -6,29 +6,30 @@
 
 ## Context
 
-Self-hosted MCP servers are often deployed on a private LAN and expose only a
-plain HTTP endpoint. The existing MCP client already speaks streamable HTTP, but
-validation rejects every non-loopback `http://` URL.
+Self-hosted MCP servers often sit on a private LAN behind plain HTTP, and the MCP
+client already speaks streamable HTTP, yet validation rejected every non-loopback
+`http://` URL, including servers the user had deliberately configured. Removing
+that restriction must not remove the plugin permission or the egress boundary,
+because an HTTP endpoint observes credentials, tool arguments, and results without
+confidentiality or integrity.
 
 ## Decision
 
 1. User-owned and plugin-declared MCP servers accept absolute `http://` and
-   `https://` URLs.
-2. The user MCP editor displays an explicit warning for non-loopback HTTP:
-   credentials and tool calls may be intercepted.
-3. A plugin-declared HTTP MCP server still requires `mcp.server.remote` and its
-   host must be covered by `manifest.net.domains`.
-4. The MCP HTTP client disables automatic redirect following, limits redirects
-   to five hops, permits only HTTP(S) redirect targets, and invokes the optional
-   endpoint policy for every hop.
-5. Marketplace catalog and package download policy is unchanged.
+   `https://` URLs; unsupported schemes and malformed URLs stay invalid.
+2. The user MCP editor warns that credentials and tool calls may be intercepted,
+   and saving a user-owned endpoint is that user's consent.
+3. A plugin-declared HTTP MCP server still requires `mcp.server.remote` and a host
+   covered by `manifest.net.domains`, with the same warning in review surfaces.
+4. The MCP HTTP client follows no redirect automatically, allows five hops, only
+   HTTP(S) targets, and applies the endpoint policy to every hop.
+5. Marketplace catalog and package download policy is unchanged; non-loopback HTTP
+   package downloads stay refused.
 
 ## Consequences
 
-- LAN-hosted self-developed MCP servers work without requiring TLS termination.
-- The network allowlist remains authoritative for plugin-owned egress, including
-  redirect targets.
-- Users and plugin reviewers can see when a connection is unencrypted, but the
-  host cannot make a plain HTTP server safe against network interception.
-- SDK, renderer, host-core, client tests, security documentation, and E2E
-  scenarios must describe the same HTTP policy.
+- LAN-hosted MCP servers work without TLS termination.
+- The network allowlist stays authoritative for plugin egress, redirect targets
+  included.
+- The host can disclose an unencrypted connection but cannot make it safe, so
+  trusted network placement remains an operational requirement.

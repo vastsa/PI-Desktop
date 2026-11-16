@@ -2,24 +2,24 @@
 
 - Status: Superseded by ADR 0043
 - Date: 2026-08-02
-- Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
-  [08-component-spec](../spec/04-ux/08-component-spec.md) ·
-  [09-interaction-patterns](../spec/04-ux/09-interaction-patterns.md) ·
-  [E2E-057](../spec/06-delivery/04-e2e-test-plan.md)
+- Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) · decision D451 · E2E-057
 - Supersedes: D140's global transcript Review changes entry
 
 ## Context
 
-The transcript previously rendered one session-owned Review changes command at
-the bottom of the chat.
+One session-owned Review changes command summarized the whole dirty working
+tree, detached from the Write/Edit row that caused the change.
 
 ## Decision
 
-1. A successful workspace Write/Edit row may render one compact
-   `InlineReviewCard` immediately after the row inside the same activity
-   disclosure. The card is scoped by the workspace path returned in that tool
-   result, so unrelated files and other sessions cannot appear beside it.
+Render one compact `InlineReviewCard` after a successful workspace Write/Edit
+row, scoped by the workspace path in that tool result and fed by the existing
+bounded Git diff, with no new renderer-owned diff or ownership map.
 
 ## Consequences
 
-Superseded (Superseded by ADR 0043). The full record is in git history.
+- Review stayed next to the operation that produced it, without a panel tab.
+- A card tracked the live working-tree diff for its path.
+
+Superseded by [ADR 0043](0043-message-owned-review-snapshots-and-rollback.md),
+which made review state message-owned.

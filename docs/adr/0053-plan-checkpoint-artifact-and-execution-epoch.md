@@ -2,153 +2,97 @@
 
 - Status: Accepted for implementation
 - Date: 2026-07-31
+- Related: ADR 0061, ADR 0064, D189
 - Supersedes: ADR 0052 and D188
-- Baseline: `0.4.14`
-- Protocol: v9
-- Storage schema: v10
 
 ## Context
 
 The previous Plan contract used an in-memory approval waiter around a structured
-proposal and allowed request-changes feedback. It did not give the user one
-exact, inspectable plan artifact or define how an approved execution could be
-interrupted without replay.
+proposal with request-changes feedback, so there was no single inspectable plan
+artifact and no defined way to interrupt an approved execution. Approval must
+survive a renderer reload, while a host restart must never replay work created by
+an older host process.
 
 ## Decision
 
 ### 1. One Agent and one Plan submission tool
 
-The product selector remains `Agent | Plan`, with Agent as the default and one
-pi Agent per session. Plan is the same Agent in planning state.
-
-The input is exactly:
-
-```ts
-type SubmitPlanInput = {
-  title: string;
-  markdown: string;
-  question: string;
-};
-```
+The selector stays `Agent | Plan` with Agent as the default and one pi Agent per
+session, where Plan is that same Agent in planning state exposing `Read`, `Glob`,
+`Grep`, `BrowserPreview`, `Bash`, `EnterPlanMode`, and `SubmitPlan` while Write,
+Edit, and plugin tools stay host-denied. The input is exactly `title`, `markdown`,
+and `question`, with no `ExitPlanMode`, structured step schema, `proposedCommands`,
+or `request_changes`, so a revision is a new `SubmitPlan` after rejection or
+expiry.
 
 ### 2. Immutable host-written plan artifacts
 
-For a project-bound session, host-core writes the submitted Markdown bytes
-unchanged to a new artifact under:
-
-```text
-<workspaceRoot>/.pi/plan/<unique-name>.md
-```
-
-The directory and filename are host-owned. Each submission gets a unique file;
-an accepted submission never replaces an earlier artifact.
+For a project-bound session host-core writes the submitted Markdown bytes
+unchanged to a new uniquely named artifact under `.pi/plan/` in the workspace and
+records the workspace-relative path, SHA-256, and byte size in the same approval
+record, leaving `title` and `question` as structured fields without wrapping,
+normalizing, or replacing the bytes. A path escape, symlink ambiguity, or write
+failure creates no approval or execution descriptor.
 
 ### 3. Approval and permission selection
 
-The approval card displays the structured title and question, an opener for the
-host-created artifact, the absolute expiry, and the current status. Opening the
-artifact reads the immutable Markdown file; the card does not need to inline the
-Markdown or display its hash or byte size.
+The card shows the structured title and question, an opener for the host-created
+artifact, the absolute expiry, and the current status, and offers only Approve and
+Reject, where Approve requires an explicit `ask`, `accept-edits`, or `auto`
+execution mode defaulting to `ask` and Reject grants nothing. The deadline is an
+absolute 30-minute deadline from host creation that survives a renderer reload,
+expires as `PLAN_APPROVAL_TIMEOUT`, never extends when the card reopens, and never
+approves through timeout, reload, scheduled task, or stale renderer.
 
-The approval deadline is an absolute 30-minute deadline from host creation.
-Renderer reload preserves the original deadline while the host remains alive.
-
-### Historical display amendment (issue #933)
-
-The live approval card remains unchanged. Completed submission rows additionally
-render read-only historical cards.
+Completed submissions additionally render read-only historical cards, joining
+returned submission call IDs to the existing approval table without rewriting the
+original tool result. This is an additive read projection with no schema
+migration and no execution grant.
 
 ### 4. Process-epoch fence and recovery
 
-The host process has an internal boot epoch, but it is not serialized in the
-database and is not a protocol field. The single `plan_approvals` row carries
-both approval status and execution fields:
-
-```text
-status: pending -> approved | rejected | expired | interrupted
-execution_state: queued -> running -> completed | interrupted
-```
-
-Approval atomically changes the session to Agent with the selected permission
-mode, records `execution_id`, and sets `execution_state = queued`; the same
-Agent then starts the execution turn. Only one Plan approval may be pending and
-only one execution may be queued or running for a session.
+The single `plan_approvals` row carries `status` (`pending` → `approved` |
+`rejected` | `expired` | `interrupted`) and `execution_state` (`queued` →
+`running` → `completed` | `interrupted`), and approval atomically switches the
+session to Agent with the selected permission mode, records `execution_id`, and
+queues the execution turn; only one approval may be pending and one execution
+queued or running per session. Before serving any RPC after startup, host-core
+marks all prior pending approvals and queued or running executions as
+`interrupted` and aborts their turns, so no approval, provider call, or tool
+execution is replayed.
 
 ### 5. Turn and configuration boundaries
 
-Each session has one active turn. A second prompt, second Plan submission,
-mode/provider/model/permission/shell configuration change, or second Plan run is
-rejected while that turn or Plan run is active.
+A session has one active turn, so a second prompt, second submission, second Plan
+run, or a mode, provider, model, permission, or shell change is rejected while
+that turn or run is active, and configuration is accepted only while idle.
 
 ### 6. Scheduled Plan policy
 
-Scheduled or unattended Plan execution is rejected before provider work,
-artifact creation, approval, or queue insertion with
-`PLAN_REQUIRES_INTERACTIVE_SESSION`. A scheduled task must be explicitly changed
-to Agent before it can run unattended.
+Unattended Plan execution is rejected before any provider work, artifact,
+approval, or queue insertion with `PLAN_REQUIRES_INTERACTIVE_SESSION`, so a
+scheduled task must be switched to Agent to run unattended.
 
 ### 7. Versioned contracts
 
-Protocol v9 carries `SubmitPlan`, the unique artifact path and metadata,
-approve/reject responses, absolute expiry, execution state, shell selection, and
-streamed command output. Storage schema v10 continues the single
-`plan_approvals` checkpoint table with structured title/question, artifact
-fields, execution ID/state, and the persisted default shell setting while
-preserving existing transcript and session data.
+Protocol v9 carries `SubmitPlan`, the artifact path and metadata, approve and
+reject responses, the absolute expiry, execution state, shell selection, and
+streamed command output, and storage schema v10 keeps the single `plan_approvals`
+table with title, question, artifact fields, execution state, and the persisted
+default shell through one transactional migration.
 
 ## Consequences
 
-### Positive
-
-- Every submitted proposal has its own host-owned file with verifiable bytes.
-- Renderer reload is recoverable without making a host restart replay work.
-- The Agent/Plan boundary and post-approval Agent state are explicit.
-- Shell choice, output, timeout, and cancellation can share the same host audit
-  and turn boundaries.
-
-### Tradeoffs
-
-- Rejecting a plan is terminal; revisions require another model turn and a new
-  artifact.
-- A host restart interrupts even an approved queued or running execution.
-- Plan artifacts accumulate under `.pi/plan/`; they are immutable and are not a
+- Every proposal has its own host-owned file with verifiable bytes, and reload is
+  recoverable without a restart replaying work.
+- Rejecting is terminal, so a revision costs another model turn and another
+  artifact; restart interrupts even an approved queued execution.
+- Plan artifacts accumulate immutably under `.pi/plan/` and are not a
   renderer-owned draft store.
 
-## Alternatives rejected
+## Alternatives
 
-### Request-changes approval
-
-Rejected for this checkpoint because it mixed plan editing with the approval
-boundary.
-
-### Replay a durable queue after host restart
-
-Rejected because a persisted execution request can outlive the process state,
-tool identity, shell identity, and user intent that created it.
-
-### Renderer-owned or sidecar-written plan files
-
-Rejected because the host must own the workspace write, path validation, hash,
-size, and approval identity.
-
-## Related docs
-
-- `docs/adr/0054-selectable-command-shell-catalog.md`
-- `docs/spec/00-baseline.md`
-- `docs/spec/03-runtime/01-ipc-protocol.md`
-- `docs/spec/03-runtime/02-agent-runtime.md`
-- `docs/spec/03-runtime/03-tools-and-permissions.md`
-- `docs/spec/03-runtime/04-data-storage.md`
-- `docs/spec/03-runtime/05-host-core-rust.md`
-- `docs/spec/03-runtime/06-host-rpc-protocol.md`
-- `docs/spec/03-runtime/07-process-model.md`
-- `docs/spec/03-runtime/08-error-codes.md`
-- `docs/spec/03-runtime/10-session-state-machine.md`
-- `docs/spec/04-ux/03-permission-ux.md`
-- `docs/spec/04-ux/06-settings-ia.md`
-- `docs/spec/04-ux/08-component-spec.md`
-- `docs/spec/04-ux/09-interaction-patterns.md`
-- `docs/spec/05-security/01-security.md`
-- `docs/spec/06-delivery/02-acceptance-criteria.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md`
-- `docs/spec/08-meta/decisions-log.md` (D189)
+- Request-changes approval: rejected because it mixed plan editing into the
+  approval boundary.
+- Replay a durable queue after restart: rejected because the persisted request can
+  outlive the process, tool, shell, and user intent behind it.

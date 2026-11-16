@@ -7,38 +7,37 @@
 
 ## Context
 
-The Skill Market validates each address returned by the local resolver, then
-uses Chromium `net.fetch`. On a direct route, a DNS response that contains a
-usable public IPv4 address plus a synthetic ULA IPv6 address is rejected, even
-though Main can safely connect to the public IPv4 address.
+The Skill Market validates every address the local resolver returns and then uses
+Chromium `net.fetch`. On a direct route a response carrying a usable public IPv4
+address plus a synthetic ULA IPv6 address is rejected even though Main could use the
+IPv4 one, and under a TUN fake-IP resolver `net.fetch` can select a rejected IPv6
+placeholder after the guard accepted an IPv4 result.
 
 ## Decision
 
-1. On a `direct` route only, if at least one DNS result is rejected and an
-   acceptable result exists, the Skill Market may select one acceptable result
-   and pin the direct request to that exact address.
-2. The pinned transport preserves the original hostname for TLS SNI and the HTTP
-   `Host` header, disables automatic redirects, and respects the existing
-   request abort signal.
-3. A ULA-only DNS result, or any other answer with no acceptable address,
-   remains refused.
+1. On a `direct` route only, when at least one result is rejected and an acceptable
+   one exists, the Skill Market may select one acceptable result and pin the request
+   to that address. Third-party content prefers a public address; the `benchmark`
+   range is eligible only under the existing fake-IP opt-in, and a user-supplied
+   first-hop endpoint keeps its own address policy.
+2. The pinned transport keeps the original hostname for TLS SNI and HTTP `Host`,
+   disables automatic redirects, respects the abort signal, and re-checks and repins
+   at every redirect.
+3. A ULA-only answer or any answer without an acceptable address stays refused, and
+   proxied or `unknown` routes keep ADR 0272's verdict.
 
 ## Consequences
 
-- Dual-stack and transparent-proxy answers no longer fail solely because an
-  unused ULA result accompanies a public address or an explicitly permitted
-  benchmark fake-IP.
-- Direct mixed-answer requests use Node's HTTP(S) transport with the selected
-  address pinned.
-- This does not permit internal destinations, alter the persisted network
-  policy, or change the URL/redirect rules.
+- Dual-stack and transparent-proxy answers no longer fail because an unused ULA
+  result accompanies a usable address, and Main never connects to the ignored one.
+- Direct mixed-answer requests use Node's HTTP(S) transport while proxied requests
+  stay on Chromium's `net.fetch`, and no persisted network policy, URL, or redirect
+  rule changes.
 
 ## Alternatives
 
-- Permit all ULA answers on a direct route: rejected because ULA can name a real
-  LAN or VPN service and would weaken the third-party network boundary.
-- Keep using `net.fetch` after accepting one address: rejected because Chromium
-  may resolve the hostname again and connect to the rejected address.
-- Require users to disable IPv6 or change proxy DNS: rejected as the sole fix
-  because Main can safely pin an already acceptable address without requiring
-  system network changes.
+- Permit all ULA answers on a direct route: ULA can name a real LAN or VPN service.
+- Keep `net.fetch` after accepting one address: Chromium may resolve again and
+  connect to the rejected address.
+- Require users to disable IPv6 or change proxy DNS: Main can pin an already
+  acceptable address.

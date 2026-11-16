@@ -2,127 +2,80 @@
 
 - Status: Accepted (Implemented 2026-08-15)
 - Date: 2026-08-15
+- Related: ADR 0008, D009
 
 ## Context
 
-ADR 0008 put plugin main code in its own `utilityProcess`, but noted that the
-process is a full Node environment: permissions gate the `pi.*` surface, not
-`require("node:fs")`. Capability sandboxing is still the open half (ADR 0008,
-D009).
-
-- `fs.read.workspace` → any file in the workspace, including `.env` and
-  `.git/config`
-- `fs.write.workspace` → any path in the workspace
-- `fs.delete.workspace` → `fs.remove` with `recursive: false`, which bounds one
-  call and not the blast radius: `fs.glob("**/*")` followed by a loop empties a
-  workspace as thoroughly as `rm -rf` does**
-
-- A **read** is dangerous when the bytes can leave.
+ADR 0008 put plugin main code in a `utilityProcess`, but permissions still gate
+only the `pi.*` surface, so the granularity of that gate is the whole design
+until capability sandboxing (ADR 0008, D009) lands. That granularity was three
+workspace-wide switches — `fs.read.workspace`, `fs.write.workspace`,
+`fs.delete.workspace` — reaching `.env`, `.git/config`, and, through `fs.glob`
+in a loop, the whole workspace. Lexical prefix containment let a workspace
+symlink point at `~/.ssh`, and a missing grants argument auto-granted the entire
+manifest. The permissions matrix had always promised confirm-on-first-use; this
+record delivers it, plus recoverable deletion, because the risks of read, write,
+and delete are not symmetric.
 
 ## Decision
 
 ### 1. `manifest.fs` declares scope; permission names stay flat strings
 
-`permissions` remains `readonly string[]` and gains `fs.read`, `fs.write`,
-`fs.delete` — "may this plugin touch files at all". A separate `fs` block says
-"which files":
-
-```json
-{
-  "permissions": ["fs.read", "fs.write", "fs.delete"],
-  "fs": {
-    "read": { "root": "workspace", "scope": ["**/*"] },
-    "write": { "root": "workspace", "scope": ["docs/**", "*.md"] },
-    "delete": { "own": true, "scope": ["dist/**"] }
-  }
-}
-```
-
-A separate field rather than objects inside `permissions` because permissions
-are handled as strings end to end — install review, chips, grant round-trips,
-catalog validation — and the marketplace catalog format is versioned separately.
+`permissions` stays `readonly string[]` and gains `fs.read`, `fs.write`, and
+`fs.delete` for "may this plugin touch files at all", while a sibling `fs` block
+carries per-mode `root`, `scope`, and `own`. Flat strings are kept because
+permissions travel as strings through install review, grants, and the separately
+versioned marketplace catalog; whole-tree patterns are refused for write and
+delete, and an absent scope means every access falls to the user.
 
 ### 2. Four gates, in a fixed order
 
-Every `pi.fs.*` call passes, in order:
-
-1. `assertPermission` — is `fs.<mode>` declared **and** granted (intersection,
-   so a revoked permission actually stops working)
-2. Containment — `realpath` on both the root and the target; for a path being
-   created, `realpath` of the nearest existing ancestor.
-3. Unconditional deny-list — credentials and history refused under every root,
-   scope, and grant: `.env*`, `.npmrc`, `.netrc`, `.git-credentials`, `id_rsa*`,
-   `*.pem`/`*.p12`/`*.pfx`/`*.keystore`, and anything inside `.git`, `.ssh`,
-   `.aws`, `.gnupg`, `.kube`, `.docker`, plus the host's own data directory
-   (provider keys, session store)
-4. Declared scope, else user consent
-
-`pi.fs.glob` answers to the same rules: results are filtered by the read scope,
-denied paths and reserved trees are omitted (a name is a read too), and
-`node_modules` / `.git` / `.venv` / `__pycache__` are not walked at all.
+Every `pi.fs.*` call checks the declared-and-granted permission, then realpath
+containment of root and target (a path that does not exist reports `NOT_FOUND`
+rather than an escape attempt), then an unconditional deny-list of credentials,
+history, and the host's own data directory, and finally declared scope or user
+consent. `pi.fs.glob` answers to the same rules, so a name is a read too.
 
 ### 3. Deletion has two tiers, and always goes to the trash
 
-- **`fs.delete` with `own: true`** — the host appends every successful
-  `fs.writeText` to a write ledger in the plugin's own data directory (path plus
-  mtime, host-owned, not reachable from the plugin API).
-- **`fs.delete` with `scope`** — deleting somebody else's file requires the
-  globs up front, and they are shown to the user where the permissions are
-  shown.
-
-Both tiers additionally:
-
-- go through `shell.trashItem`, never `rm`.
-- keep `recursive: false`; a non-empty directory is refused rather than emptied
-- answer to a rolling brake of 50 deletes per 60s per plugin.
+`own: true` deletes only paths the host recorded in a host-owned write ledger
+when the plugin wrote them, falling to consent once the file's mtime has moved;
+a declared `scope` covers everybody else's files and is shown with the
+permissions. Both tiers use `shell.trashItem` rather than `rm`, keep
+`recursive: false`, and answer to a rolling brake of 50 deletes per 60s per
+plugin.
 
 ### 4. Consent is a native dialog, and never more durable than the session
 
-Out-of-scope access calls `dialog.showMessageBox`: **Deny** / **Allow once** /
-**Allow this session**. A session grant covers the containing directory and dies
-with the process; nothing is persisted.
+Out-of-scope access asks Deny / Allow once / Allow this session; a session grant
+covers the containing directory and dies with the process, and a host with no
+consent service refuses.
 
 ### 5. `root: "userSelected"`
 
-`pi.fs.requestDirectory()` opens the native directory picker and returns a
-handle. Inside that directory the plugin needs no manifest scope — the user just
-pointed at it, which *is* the grant — while containment and the deny-list still
-apply.
-
-This is where the capability comes back. "Organize my whole photo folder", "bulk
-import/export" plugins become possible with **zero standing power**, modelled on
-the browser's File System Access API.
+`pi.fs.requestDirectory()` returns a memory-only handle that grants that
+directory without manifest scope while containment and the deny-list still
+apply, which restores bulk file workflows with zero standing power.
 
 ### 6. Migration is a breaking downgrade
 
-| Legacy permission | What it is worth now |
-|---|---|
-| `fs.read.workspace` | `fs.read`, `scope: ["**/*"]` — unchanged, because egress is closed |
-| `fs.write.workspace` | `fs.write` with an empty scope — every write asks the user |
-| `fs.delete.workspace` | `fs.delete` with `own: true` — only its own output goes without asking |
-
-Capability is reduced; no hole is left open. An explicit rule always beats the
-legacy default, so an author upgrades by adding `fs`, never by renaming
-anything.
+Legacy `fs.write.workspace` becomes `fs.write` with an empty scope and
+`fs.delete.workspace` becomes `fs.delete` with `own: true`, so capability is
+reduced and no hole opens; the Plugins page marks downgraded plugins.
 
 ## Consequences
 
-- A plugin that writes or deletes outside its declared scope now prompts, and a
-  prompt the user denies is audited as `PERMISSION_DENIED`.
-- Installed plugins that predate `manifest.fs` lose write and delete reach on
-  the next load.
-- Reads stay generous, which keeps the interesting plugins possible.
-- Deletion is recoverable through the OS trash on every platform Electron
-  supports it, and we store none of the user's data to achieve that — no
-  quarantine copy, no undo journal.
-- The rate brake is per plugin and rolling, so a legitimate large cleanup is
-  interrupted once rather than refused.
+- Writes and deletes outside declared scope prompt, and a denial is audited as
+  `PERMISSION_DENIED`; plugins predating `manifest.fs` lose write and delete
+  reach on the next load, visibly rather than silently.
+- Reads stay generous, which is a bet on the egress allowlist in
+  `manifest.net.domains`.
+- A malicious plugin can still call `node:fs` directly; this bounds the `pi.*`
+  surface and leaves the sandbox case to ADR 0008 D009.
 
-## Alternatives considered
+## Alternatives
 
-- **A host-owned quarantine directory with an undo UI** instead of the OS trash:
-  rejected.
-- **Objects inside `permissions`** (`{ "name": "fs.write", "scope": [...] }`):
-  rejected.
-- **Prompt on every file access, no manifest scope**: rejected.
-- **Keeping `recursive: false` as the only delete bound**: rejected.
+- Host-owned quarantine directory with an undo UI — rejected: it copies the
+  user's files to offer recovery the OS already provides.
+- Objects inside `permissions` — rejected: permissions are strings end to end
+  across review, grants, and catalog.

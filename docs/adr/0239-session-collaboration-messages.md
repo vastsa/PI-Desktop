@@ -8,48 +8,56 @@
 ## Context
 
 Session Orchestrator must address existing durable sessions in both directions,
-reuse their context, deliver completion callbacks, and expose reliable state.
-Polling assistant text cannot establish a turn's outcome.
+deliver completion callbacks, and expose reliable state, but polling assistant
+text cannot establish a turn's outcome, and plugin settings must not become an
+authority for session identity, authorization, or execution state.
 
 ## Decision
 
-Rust host-core owns a durable session communication ledger keyed by message ID,
-referencing the existing source and target Session IDs. Session IDs remain the
-only session identity.
+Rust host-core owns a durable session communication ledger keyed by message ID
+and referencing the source and target Session IDs, where Session IDs remain the
+only session identity and message IDs identify deliveries and idempotency
+rather than a second work identity. Each delivery binds to its actual durable
+turn before execution and derives results from that turn's persisted terminal
+state, while the official plugin only composes reviewed desktop operations for
+spawn, send, status, result, and cancellation. The host authenticates the
+sending Session ID from a correlated plugin tool invocation, so a plugin cannot
+forge a sender; existing targets keep their project, model, context, and
+permissions, new sessions inherit the initiating project and permission mode,
+and messaging can never raise a target above the initiating operation's
+authorized ceiling. Messages carry explicit task, message, or completion
+provenance, persist with the transcript, and render separately from human
+input; they are not new user authorization and take no part in user-message
+editing or regeneration, and a client-supplied `session_message` is stripped
+(D597). A completion callback produces at most one durable completion message
+referencing the original delivery and the real turn outcome, never requesting
+another callback. The plugin resolves models through the host's public catalog
+and returns candidates or a clear error rather than substituting an unrelated
+model, and the session-list hover card gains a bounded on-demand host
+projection of creation source, current task, recent exchanges, status, and
+turn-bound result.
 
-The official plugin composes reviewed desktop operations for spawn, send,
-status, result, and cancellation. The host authenticates the sending Session ID
-from a correlated plugin tool invocation; plugins cannot supply a forged sender.
+## Consequences
 
-## Compatibility and validation
-
-The storage migration is additive. Existing conversations, plugin settings, and
-the core Task family remain intact.
-
-Validation covers concurrent senders, durable identity, reuse, queue admission,
-source preservation across reload, exactly-once callback creation, failure and
-cancellation results, permission ceilings, model resolution, hover lifecycle,
-and the relevant host/Electron E2E journeys.
+- The storage migration is additive: existing conversations, plugin settings,
+  and the core Task family stay intact.
+- This is a plugin-mediated exception to ADR 0165's withdrawn cross-session
+  coordination; the old A2A broker, tools, and protocol are not restored, and
+  ADR 0237's parent-only messaging and polling-based result inference are
+  superseded.
+- The host bounds autonomous communication chains, retains delivery failures for
+  passive inspection, and preserves a cancelled session and its history.
 
 ## Amendment (2026-09-18, D446): a completion notice's own reply may stay silent
 
-Issue #504: the completion prompt states that a notice needs no acknowledgement,
-yet the runtime's silent-turn recovery (spec 02-agent-runtime §5e) retried the
-resulting silence and reported `EMPTY_MODEL_RESPONSE` after a task that had
-succeeded. This amendment bounds one exception; every other decision above is
-unchanged.
-
-- The first settled assistant reply to a completion notice may end with no
-  visible text and no tool call without silent-turn recovery or
-  `EMPTY_MODEL_RESPONSE`.
-- The exception covers exactly that reply.
-- Only provenance that Main resolved from the queued Host ledger record can
-  enable it: `kind: completion`, the current target session, and nonempty
-  message and reply-to IDs.
-- An accepted silent reply is still not worth resending.
-
-Validation: runtime unit coverage for the accepted shapes, the trust boundary,
-tool batches, provider retry, steering before and after the reply, and context
-exclusion; `pnpm test:e2e:session-completion` against the real host ledger,
-sidecar, and a local SSE provider. See
-E2E-SESSION-completion-notice-allows-silence.
+Issue #504 reported that a successful task ended in `EMPTY_MODEL_RESPONSE`
+because silent-turn recovery retried the silence the completion prompt asked
+for. The first settled assistant reply to a completion notice may now end with
+no visible text and no tool call without silent-turn recovery, emitted as a
+completed message, spent by that first settled response and revoked once an
+accepted steering message enters the model context; only provenance Main
+resolved from the queued Host ledger record (`kind: completion`, the current
+target session, nonempty message and reply-to IDs) can enable it, so no
+protocol field or caller authority is added. Main persists an accepted silent
+reply as an empty completed row that the runtime keeps out of its entries and
+pi's transcript state, so the next request carries no empty assistant message.

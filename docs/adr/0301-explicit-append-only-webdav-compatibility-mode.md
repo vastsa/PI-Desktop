@@ -4,21 +4,25 @@
 - Date: 2026-09-22
 - Amends: ADR 0300
 
-This document records the removed WebDAV compatibility design. It is not a
-current contract: S3 requires reliable conditional writes, and there is no
-append-only fallback. Existing WebDAV data is preserved without migration.
-
 ## Context
 
-Some WebDAV servers accept `If-None-Match` and `If-Match` headers but ignore
-their preconditions.
+Some WebDAV servers accept `If-None-Match` and `If-Match` but ignore the
+preconditions, so treating an unconditional `PUT` as a compare-and-swap would let
+two devices overwrite a shared head without detecting the race. A server's WebDAV
+support does not by itself prove conditional-write semantics.
 
 ## Decision
 
-Keep strict conditional-write mode as the default. Add an explicitly selected
-append-only compatibility mode for servers that fail the conditional-write probe
-but prove that they can list a WebDAV collection with `PROPFIND`.
+Strict conditional writes stayed the default, and an explicitly selected
+append-only compatibility mode existed for servers that failed the
+conditional-write probe but could list a collection with `PROPFIND`. Each device
+received a random stable identifier and published only its own encrypted pointer
+under `vault/<vault-id>/heads/<device-id>`; a sync listed every device pointer,
+walked their bounded parent graph, dropped ancestor pointers, and merged the
+remaining tips against the last acknowledged base. Revisions and resources used
+unique immutable identifiers, the mode retained remote history without cleanup, and
+all devices sharing a vault had to select the same mode.
 
-## Consequences
-
-Superseded (Superseded by [S3-only configuration backup and sync](s3-only-configuration-backup-sync.md)). The full record is in git history.
+This design is retired. S3-only configuration backup and sync requires reliable
+conditional writes and keeps no append-only fallback; existing WebDAV data is
+preserved without migration.

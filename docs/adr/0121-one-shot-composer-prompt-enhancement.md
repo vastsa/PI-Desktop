@@ -2,20 +2,22 @@
 
 - Status: Superseded by ADR 0324
 - Date: 2026-08-24
-- Updated: 2026-10-08 (feature moved to an optional standalone plugin)
 - Related: Issue #14, Issue #562
 
 ## Context
 
-The Composer needs a convenient way to improve a draft without sending a
-message, changing the conversation transcript, or exposing provider credentials
-to the renderer.
+The Composer needed to improve a draft without sending a message, changing the
+transcript, or exposing provider credentials to the renderer.
 
 ## Decision
 
-Prompt enhancement is an allowlisted renderer-to-Electron IPC operation. The
-renderer sends the draft and a provider/model/thinking snapshot.
+Enhancement was an allowlisted renderer-to-Main IPC operation that sent the draft
+with a provider/model/thinking snapshot, and Main resolved credentials and asked
+agent-runtime for one completion with no session history, tools, or transcript
+side effect, using an overridable user template and a built-in system prompt.
 
 ## Consequences
 
-Superseded (Superseded by ADR 0324). The full record is in git history.
+Superseded by ADR 0324, which moved the feature to an optional standalone plugin,
+so the typed IPC contract and its shared default templates no longer exist. Main
+stayed the only owner of API keys and vendor OAuth resolution.

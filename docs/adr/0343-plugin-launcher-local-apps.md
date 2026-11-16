@@ -2,75 +2,60 @@
 
 - Status: Accepted
 - Date: 2026-11-05
-- Deciders: PI-Desktop maintainers
 - Related: ADR 0072 (global plugin launcher), ADR 0080 (prewarm), ADR 0090
   (main-process shell state), ADR 0092 (plugin-owned panel surface),
-  ADR 0214 (trusted extensions), `docs/spec/07-plugins/18-plugin-launcher.md`,
-  `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-268), issue #2085
+  ADR 0214 (trusted extensions), issue #2085
 
 ## Context
 
-The plugin launcher (`Alt+Space` / `⌥+Space`) opens panel plugins. Users who
-press that shortcut are usually reaching for "the thing I want to open now", and
-in practice that is as often an installed application as it is a plugin panel.
-
-- It reads the machine's Start Menu / `.app` bundles / `.desktop` entries.
-- It starts a child process outside the app's own sandbox and permission
-  gateway.
-- A plugin declaring a launcher pattern would, if it could reach this, be able
-  to turn "the user typed `1+1`" into "start any program on this machine".
+A user pressing Alt+Space is reaching for whatever they want to open now, which is
+as often an installed application as a plugin panel. Enumerating and starting
+local applications has a much wider blast radius than opening a panel: it reads
+platform application entries and starts child processes outside the app's own
+sandbox and permission gateway, so neither a renderer-side launch API nor a
+plugin-visible one may exist.
 
 ## Decision
 
-1. The plugin launcher may enumerate installed applications and open them, and
-   only that window may do so.
-2. The capability is never exposed to plugins.
-3. The renderer never receives a launchable path.
-4. Discovery is bounded and non-invasive.
-5. The launcher's size and position live in main-process shell state (`<data
-   dir>/plugin-launcher-state.json`), not in host-core.
+1. Only the launcher window may enumerate and open applications, through one IPC
+   surface (`pi-desktop/pluginLauncher/catalog`,
+   `pi-desktop/pluginLauncher/openApp`) whose handler compares
+   `event.sender.id` with the launcher's own `webContents` and rejects anything
+   else with `PERMISSION_DENIED`; a missing launcher window means "not the
+   launcher".
+2. The capability is never exposed to plugins. No channel joins `pluginBridge` or
+   the panel bridges and no application-launch member joins the Plugin SDK, so a
+   plugin can receive the user's text through a launcher trigger but cannot learn
+   what applications exist or start one.
+3. The renderer never receives a launchable path. The catalog carries a display
+   name, executable name, source tag (`start-menu` / `app-bundle` /
+   `desktop-entry`), a small icon, and an opaque `app:<slug>` id, and `openApp`
+   resolves that id against the host's own scan and re-checks that the target
+   still exists instead of falling back.
+4. Discovery is bounded and non-invasive: Main reads only well-known locations,
+   never spawns a probe, caches the scan, caps the entry count and icon budget,
+   drops entries whose target is gone, and draws a letter tile for plugin panels
+   because `manifest.icon` is not consumed by the host.
+5. Launcher size and position live in main-process shell state under the app data
+   directory, following the `window-state.json` precedent from ADR 0090:
+   best-effort, debounced, defensively parsed, and re-centred when a remembered
+   position fits no current work area, with no host RPC, schema, or migration.
 
 ## Consequences
 
-- One shortcut opens "anything openable" — plugin panels and installed
-  applications — in one grid that renders every source as the same rounded
-  square.
-- The privilege boundary is a window, not a permission: revoking it means
-  removing the channel, not editing a plugin manifest.
-- Because the renderer only ever holds opaque ids, the catalog is display-safe:
-  it can be logged or inspected without leaking filesystem layout, and the same
-  id space works on all three platforms.
-- Application entries can be stale between scans.
-- A user who does not want applications in the launcher still gets the scan.
+- One shortcut opens both plugin panels and applications in one grid, at the cost
+  of no longer distinguishing them before opening.
+- The privilege boundary is a window rather than a permission, and the catalog is
+  display-safe because the renderer only ever holds opaque ids.
+- Application entries can go stale between scans, and the launcher becomes
+  platform-sensitive with its own parsers and tests; shell state gains a second
+  file that is deliberately excluded from configuration export.
 
-## Alternatives considered
+## Alternatives
 
-### Expose application launch to plugins
-
-Rejected. A plugin with a panel would gain the ability to start arbitrary
-programs on the user's machine, which no permission in
-`13-plugin-permissions-matrix.md` describes and which install-time review could
-not make safe.
-
-### Let the renderer supply the executable path
-
-Rejected. Even with a sender check, accepting a path makes the IPC a
-general-purpose process launcher: the check protects against other renderers,
-not against a compromised launcher page, and the launcher page renders
-plugin-supplied names and icons.
-
-### Store launcher geometry in host-core settings
-
-Rejected as the wrong owner.
-
-### Reuse the main window for the launcher instead of a second `BrowserWindow`
-
-Rejected: the panel must float above other applications, stay focusable while
-the main window is hidden, and hide on blur without touching the main window's
-lifecycle.
-
-### Fold applications into global search (`Cmd/Ctrl+K`)
-
-Rejected. Global search owns sessions, files, settings, and commands, and is a
-modal over the main window; local applications are a machine-local, potentially
-600-entry list that would dominate any mixed result set.
+- Expose application launch to plugins: rejected because no permission in the
+  matrix describes starting arbitrary programs, and install-time review could not
+  make it safe.
+- Let the renderer supply the executable path: rejected because a sender check
+  protects other renderers, not a compromised launcher page, and path acceptance
+  would make the IPC a general-purpose process launcher.

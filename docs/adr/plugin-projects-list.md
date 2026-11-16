@@ -8,24 +8,31 @@
 
 ## Context
 
-Plugins can observe the visible workspace but cannot enumerate durable projects.
-A project picker therefore depends on the selected session, and group identities
-cannot identify standalone database rows consistently.
+Plugins can observe the visible workspace but cannot enumerate durable projects, so
+a project picker depends on the selected session and group identities cannot
+identify standalone database rows, although the Host owns both the project index
+and the logical group metadata.
 
 ## Decision
 
 Add `pi.projects.list()` and the equivalent panel bridge channel. Electron main
-projects the existing Host `projects.list` response into metadata, enriching a
-row from the group whose primary path matches it.
+projects the Host `projects.list` response into metadata, enriching a row from the
+group whose primary path matches it, with one entry per database row and
+secondary rows keeping their own path and identity.
 
-Use the decimal string form of `projects.id`, without a prefix, as `projectId`.
-It matches the numeric identity returned by `pi.project.create` and stays stable
-for a row's lifetime.
-
-## Alternatives
-
-Extending `workspace.get` would conflate selection with enumeration.
+`projectId` is the decimal string form of `projects.id` without a prefix: it matches
+the identity `pi.project.create` returns and is stable for the row's lifetime, while
+`workspace.get().projectId` still means a logical group id. The API exposes only
+ids, names, and registered paths, so it needs no new permission and changes no
+workspace, binding, filesystem scope, or creation gate.
 
 ## Consequences
 
-Plugins can build project pickers while the current session has no project.
+Plugins can build project pickers with no selected project; the addition is backward
+compatible, needs no migration, and never authorizes reading those paths.
+
+## Alternatives
+
+- Extending `workspace.get`: conflates selection with enumeration.
+- Returning groups alone, or deriving identity from a path: the first omits distinct
+  rows and the second changes on rename.

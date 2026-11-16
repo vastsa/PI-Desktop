@@ -2,60 +2,57 @@
 
 - Status: Accepted
 - Date: 2026-11-03
-- Deciders: PI-Desktop maintainers
-- Related: ADR 0262 (chat file refs open in the file view), ADR 0172 (fs read
-  containment), ADR 0249 / ADR 0263 (project folder groups),
+- Related: ADR 0172, ADR 0249, ADR 0262, ADR 0263,
   `docs/spec/03-runtime/01-ipc-protocol.md` § fs, issue #1837
 - Amends: ADR 0262 §4
 
 ## Context
 
-The agent is instructed to reference files by their exact absolute path, and it
-routinely works on files outside the open project: a download, a chat client's
-folder, the system temporary directory, or any path in a session with no project
-at all. The main process answered `fs/resolveRef`, `fs/read`, `fs/reveal`, and
-`fs/open` by **root containment** — the project folders, the session scratch
-store, the whole scratch store, and the attachment store.
+The agent references files by exact absolute path and routinely works outside the
+open project: downloads, a chat client's folder, the temporary directory, or any
+path in a session with no project. Because `fs/resolveRef`, `fs/read`, `fs/reveal`,
+and `fs/open` answered by root containment, every correct absolute link outside
+the project, scratch, and attachment roots reported "outside the locations this
+app can access" (#1837). The restriction protected nothing: the agent already
+reads those files with its own tools, and opening a clicked file shows the user
+their own bytes, which reach neither the model nor the network.
 
 ## Decision
 
-1. For a **user-initiated open of an exact absolute path** outside every managed
-   root, the host replaces containment with one shape check: the path is
-   absolute (no `~`, no relative shorthand, no `attachments/<sha256>`) and its
-   real path is an existing regular file.
-2. The rule lives in one module, `packages/host-runtime/src/external-files.ts`
-   (`resolveExternalFile`, `resolveUserOpenablePath`, `readUserOpenableFile`),
-   and is applied by `fs/read`, `fs/reveal`, and `fs/open`.
+1. A user-initiated open of an exact absolute path outside every managed root
+   needs one shape check instead of containment: the path is absolute, with no
+   `~`, relative shorthand, or `attachments/<sha256>`, and its real path is an
+   existing regular file.
+2. The rule lives in `packages/host-runtime/src/external-files.ts`
+   (`resolveExternalFile`, `resolveUserOpenablePath`, `readUserOpenableFile`) and
+   is applied by `fs/read`, `fs/reveal`, and `fs/open`, while containment still
+   answers first and `fs/resolveRef` reports an outside match through
+   `resolveExternalChatRef` as `root: "external"`, `matchedBy:
+   "exact-absolute"`, or `match: null`.
 3. A shorthand never resolves outside the managed roots, and an outside absolute
    path never falls back to a same-name file inside a root.
-4. A Markdown link whose destination is an absolute path reaches the opener even
-   without a file extension (`/etc/hosts`, `.ssh/config`); the host, not a
-   renderer filename heuristic, decides.
-5. Unchanged: `fs/list` (project only), `fs/readImageDataUrl` (inline chat
-   images load without a click, so a model-written image reference must not
-   render an arbitrary local image), remote and headless-host file reads
-   (`apps/pi-host`), the `pi.file-manager` plugin's own deny list (plugin code
-   receives the bytes), and the renderer routing, which already sends a
-   non-project match to the host `file:` tab.
+4. A Markdown link with an absolute destination reaches the opener without a file
+   extension, because the host decides instead of a renderer filename heuristic;
+   bare prose tokens keep the extension heuristic.
+5. `fs/list`, `fs/readImageDataUrl`, remote and headless-host reads, the
+   `pi.file-manager` plugin's own deny list, and renderer routing are unchanged,
+   and an external `.html` file opens as source in the `file:` tab, never in the
+   side browser.
 
 ## Consequences
 
-- Clicking a correct absolute link to an ordinary file anywhere on the machine
-  opens it; sessions without a project and temporary directories work.
-- An exact absolute path to an existing outside file now verifies as a chip in
-  user messages too.
-- `fs/open` can hand any such file to its OS default application, including a
-  script or application bundle that the OS runs when "opened".
-- `FsChatRefRoot` gains `"external"`.
+- A correct absolute link to an ordinary file anywhere on the machine opens,
+  including in sessions without a project and inside temporary directories.
+- `fs/open` can hand such a file to its OS default application, the same
+  capability the agent's shell already has, and still only when the user chooses
+  that destination.
+- `FsChatRefRoot` gains `"external"` for consumers that switch on it, and
+  `reason: "outside-allowed-roots"` remains only for an outside reference that is
+  not an exact absolute path.
 
 ## Alternatives considered
 
-- **Credential deny list on the host.** Rejected: showing a user their own file
-  discloses nothing, the agent can already read it, and the list made correct
-  links to dotfiles fail.
-- **Ask the user to grant each outside folder.** Rejected: the user asked for
-  links that simply open, and `fs/resolveRef` also runs automatically for chip
-  verification, so a grant prompt would fire without a click.
-- **Keep containment and add the temp directory and downloads as roots.**
-  Rejected: it fixes only the reported folders and leaves every other location
-  (chat clients, mounted drives) broken.
+- Credential deny list on the host: rejected; showing a user their own file
+  discloses nothing and made correct links to dotfiles fail.
+- Ask the user to grant each outside folder: rejected; verification runs without
+  a click, so the prompt would fire anyway.

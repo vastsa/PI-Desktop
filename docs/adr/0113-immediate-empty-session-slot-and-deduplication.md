@@ -3,49 +3,46 @@
 - **Status:** Accepted
 - **Date:** 2026-08-21
 - **Supersedes:** ADR 0084 / D220
-- **Related:** D088 · D093 · D305 · E2E-011b · E2E-011d · E2E-011e · E2E-011g
+- **Related:** D088 · D093 · D305
 - **Amended by:** ADR 0154 (first-frame empty reveal; reuse without a blocking list refresh)
 
 ## Context
 
-ADR 0084 deferred session creation until the first prompt. That removed
-abandoned rows, but it also made the New Task action invisible in the sidebar
-and removed the scoped empty-session reuse behavior.
+ADR 0084 deferred session creation until the first prompt, which removed abandoned
+rows but made New Task invisible in the sidebar and dropped the scoped
+empty-session reuse behavior. The product now needs a real, immediately visible
+empty session with one empty slot per project or Temporary group. Titles cannot
+define emptiness, but the host already stores the message count in
+`sessions.last_seq`.
 
 ## Decision
 
-When New Task is invoked for a project or the path-less Temporary group:
+New Task sorts the group's non-archived sessions by `updatedAt` descending. If the
+latest is empty — `messageCount = 0` with no live renderer rows, running turn, or
+submitted draft — the renderer selects it and reveals its transcript on the first
+frame, treating a click on the active row as a no-op; otherwise it reveals the
+empty home, creates a session through `session.create`, and inserts the returned
+summary without blocking on `session.list` / `session.get` (ADR 0154). Requests
+for one group are serialized, so rapid clicks observe the first completed slot
+instead of racing `session.create` calls.
 
-1. Sort that group's non-archived sessions by `updatedAt` descending.
-2. If the most recent session is empty (`messageCount = 0` and the renderer has
-   no live rows, running turn, or submitted draft), select it and reveal its
-   empty transcript on the first frame.
-3. Otherwise reveal the empty home on the first frame, create a real empty
-   session through `session.create`, and insert the returned summary into the
-   sidebar.
-
-Renderer requests for the same group are serialized. This makes rapid repeated
-clicks observe the first completed empty slot instead of racing multiple
-`session.create` calls.
+`SessionSummary.messageCount` is added to the shared IPC/session contract as an
+additive field derived from `sessions.last_seq`, keeping protocol v9 and storage
+schema v11 compatible. The startup home remains an unpersisted renderer draft;
+only explicit New Task creates or reuses the durable slot.
 
 ## Consequences
 
-- New sessions are visible and selectable immediately, before the first user
-  message.
-- Repeated New Task clicks in one group are idempotent while different project
-  groups remain independent.
-- An older empty session can remain when a newer non-empty session is the
-  group's latest; the rule intentionally considers only that latest session.
-- Empty sessions persist until the user deletes or archives them.
+- New sessions are visible and selectable before the first message, and repeated
+  clicks in one group are idempotent while groups stay independent.
+- Empty sessions persist until deleted or archived, and an older empty session
+  can remain when the newest session in the group is non-empty.
 - Protocol v9 gains one additive summary field; storage schema v11 and host
-  ownership remain unchanged.
+  ownership are unchanged.
 
 ## Alternatives considered
 
-- Keep the unpersisted draft from ADR 0084: rejected because the action has no
-  immediate sidebar presence and cannot provide a durable ready slot.
-- Continue using a default title as the empty predicate: rejected because a
-  manual rename changes presentation, not transcript state.
-- Add a host-side special `session.createOrReuse` RPC: rejected because the
-  existing renderer navigation boundary can enforce the requested grouping rule
-  without expanding the host method catalog.
+- Keep the unpersisted draft from ADR 0084: the action has no immediate sidebar
+  presence and cannot provide a durable ready slot.
+- Use a default title as the empty predicate: a rename changes presentation, not
+  transcript state.

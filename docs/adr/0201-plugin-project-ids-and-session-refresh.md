@@ -2,29 +2,35 @@
 
 - Status: Accepted
 - Date: 2026-09-09
-- Decision: D368
+- Related: D368
 
 ## Context
 
-The P0/P1 plugin session API deliberately kept imported sessions unbound, but
-external-history importers need an explicit way to place a session under a
-durable project. The existing `workspace.set` method both creates a project and
-changes the active workspace, so exposing it to plugins would couple import to
-the user's current UI context.
+The plugin session API deliberately kept imported sessions unbound, but
+external-history importers need an explicit way to place a session under a durable
+project. `workspace.set` both creates a project and changes the active workspace, so
+exposing it to plugins would couple import to the user's current UI context, and
+plugin session writes had no renderer notification path, leaving the sidebar stale.
 
 ## Decision
 
-- Add the permission-gated `pi.project.create({ path })` API.
-- Allow `projectId` on plugin import items.
-- Make plugin session list/get projections report the explicit project binding
-  and id while retaining ownership filtering and all existing import limits.
-- Electron main emits one `pi-desktop/session/event/changed` event after each
-  successful plugin import, batch import, rename, or delete.
-
-The host RPC remains additive to protocol v11; the new `projects.create`
-operation is only reachable from the permission-checked plugin bridge.
+Add the permission-gated `pi.project.create({ path })` API, which creates or reuses
+a durable host project row without activating the workspace and returns the
+host-generated `projectId`, canonical path, and display name. Plugin import items may
+carry `projectId`, which must already exist and requires the `project.create`
+permission, while omitted ids keep the safe unbound behavior and historical
+`projectPath`, `modelId`, and `providerId` stay origin metadata. Plugin session list
+and get projections report the explicit binding while keeping ownership filtering.
+Electron main emits one `pi-desktop/session/event/changed` event after each
+successful plugin import, batch import, rename, or delete, which the renderer handles
+through `refreshSessions()`; skipped imports do not emit, and a refresh never reopens
+a closed project tab. The host RPC stays additive to protocol v11.
 
 ## Consequences
 
-Importers can explicitly opt into a project-backed session without silently
-activating a workspace or turning historical paths into tool roots.
+- Importers opt into project-backed sessions without activating a workspace or
+  turning historical paths into tool roots.
+- The host owns sidebar synchronization, so import plugins need no private event
+  bridge.
+- The project permission is high risk, because an explicit project id is also a
+  session tool-root authority, and users must approve it at install time.

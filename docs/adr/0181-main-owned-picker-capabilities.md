@@ -2,42 +2,36 @@
 
 - Status: Accepted
 - Date: 2026-09-08
-- Deciders: PI-Desktop core
-- Related: ADR 0059, ADR 0172, D197, D334, D344,
-  `03-runtime/01-ipc-protocol.md` §13c, E2E-102h
+- Related: ADR 0059, ADR 0172, D197, D334, D344
 
 ## Context
 
-Composer attachments can be selected through a native Electron file picker and
-then copied into the owning session's scratch directory. The renderer needs to
-request the copy after it materializes a home draft, but a renderer IPC payload
-must not be treated as proof that a user selected the paths it contains.
+Composer attachments are chosen in a native Electron file picker and copied into the
+session scratch directory after the renderer materializes a home draft. An earlier
+flow handed native absolute paths to the renderer and accepted them again through
+`composer/importFiles`, which turned the channel into an arbitrary regular-file copy
+primitive.
 
 ## Decision
 
-1. `composer/pickFiles` and `composer/pickPhotos` execute the native dialog in
-   Electron main.
-2. The picker token expires after 60 seconds and is consumed before the import
-   starts.
-3. `pickFiles` offers regular files only in the MVP.
-4. Main still realpaths and stats every recorded source, enforces the existing
-   per-file and total-size limits, and copies only into the session scratch
-   directory.
+`composer/pickFiles` and `composer/pickPhotos` run the native dialog in Electron main,
+which stores the selected paths against a random token bound to the invoking
+`WebContents`; the token expires after 60 seconds and is consumed before the import
+starts. `composer/importFiles` therefore takes the token and a durable `sessionId` and
+never renderer-supplied paths, and a token cannot be replayed or used by another
+`WebContents`. The picker offers regular files only, and main still realpaths and
+stats every source, applies the size limits, and copies only into the session scratch
+directory.
 
 ## Consequences
 
-- A compromised or stale renderer cannot turn the picker import channel into an
-  arbitrary absolute-path copy primitive.
-- Canceling a picker does not create a draft session or write scratch files.
-- The renderer retains only the returned session-owned scratch references after
-  import, while the source paths remain in Electron main.
-- Directory selection is no longer offered with a misleading unsupported label.
+- A compromised or stale renderer cannot turn the import channel into an arbitrary
+  absolute-path copy primitive.
+- Canceling the picker creates no draft session and writes no scratch files.
+- The renderer keeps only session-owned scratch references, and no misleading
+  directory option is offered.
 
-## Alternatives rejected
+## Alternatives
 
-- Returning native paths from the picker and validating them again in the import
-  IPC: rejected because validation does not prove user selection.
-- Importing directly before returning from the picker IPC: rejected because the
-  renderer must materialize a home draft only after a non-canceled selection.
-- Supporting folders by recursive copy in this change: rejected because it needs
-  explicit traversal, size, symlink, and UI semantics beyond the current MVP.
+- Return native paths and re-validate them at import — rejected: validation does not
+  prove user selection.

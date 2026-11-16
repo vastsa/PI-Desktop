@@ -6,29 +6,28 @@
 
 ## Context
 
-The desktop host enforces one running turn per session. Disabling the composer
-while that turn runs makes users wait or abort a useful reply before they can
-provide the next instruction.
+The host enforces one running turn per session, so disabling the composer
+during that turn forces users to stall or abort a useful reply before giving
+the next instruction. Storing a second prompt in host-core would add replay and
+lifecycle ownership that a transient queue does not need.
 
 ## Decision
 
-The renderer owns an in-memory FIFO queue keyed by session id. A queued item
-contains its visible prompt and composer draft snapshot, so file references
-remain independently removable and can be sent through the normal prompt
-channel.
-
-The Send and Stop controls coexist while a run is active. A normal Send adds a
-queue item.
+The renderer owns an in-memory FIFO queue keyed by session id, where each item
+holds its visible prompt and composer draft snapshot so file references stay
+independently removable; the queue is never persisted and is discarded on
+restart or session deletion. Send and Stop coexist while a run is active: Send
+appends a queue item, the renderer drains one item at a time after the owning
+session receives `agent_end` via `agent/prompt`, and Send-first moves its item
+to the head and calls the additive `agent/stop` IPC, which maps to
+pi-agent-core's `finishTurn` so the durable turn closes as `completed`.
+Immediate abort stays separate and leaves queued items untouched.
 
 ## Consequences
 
-- Users can continue typing and queue multiple next-turn instructions while a
-  long model/tool run is active.
-- Send now has precise next-boundary semantics without a second concurrent
-  durable turn or an `AGENT_BUSY` race.
-- Queue contents are intentionally lost on restart and are not visible to
-  another session; persistence can be considered separately if a future product
-  requirement needs it.
-- Graceful stop is only as precise as the pi-agent-core boundary: an active
-  provider stream is allowed to finish, while a pending permission can still
-  wait for its normal resolution.
+- Users queue next-turn instructions during a long run, and Send gets
+  next-boundary semantics without a second durable turn or an `AGENT_BUSY`
+  race.
+- Queue contents are lost on restart by design.
+- Graceful stop is only as precise as the pi-agent-core boundary, which lets an
+  active provider stream finish.

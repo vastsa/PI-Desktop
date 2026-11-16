@@ -4,84 +4,65 @@
 - Date: 2026-10-20
 - Decision: D680
 - Amends: ADR 0200, ADR 0323
-- Related: [spec 07-plugins/03 §plugin-owned and host-wide sessions](../spec/07-plugins/03-plugin-api.md) · [13-plugin-permissions-matrix](../spec/07-plugins/13-plugin-permissions-matrix.md)
+- Related: [07-plugins/03-plugin-api](../spec/07-plugins/03-plugin-api.md) ·
+  [13-plugin-permissions-matrix](../spec/07-plugins/13-plugin-permissions-matrix.md)
 
 ## Context
 
-`pi.session` was built for external conversation import (ADR 0200): every read
-and write is filtered by `session_import_origins.plugin_id`, so a plugin can
-only reach sessions it imported itself. That boundary was correct for the
-feature it shipped with, and it is now a capability gap.
+`pi.session` was built for external conversation import (ADR 0200), so every read
+and write is filtered by `session_import_origins.plugin_id` and a plugin can only
+reach sessions it imported itself. The composer-suggestion flow (ADR 0333) needs
+`pi.session.getLlmContext` and `pi.session.listMessages` refuses a session no
+plugin imported, which is why ADR 0323 had to invent the narrower
+`session.autoTitle` permission instead of describing "a plugin may read a user's
+session".
 
 ## Decision
 
-1. Add three permissions — `session.read.all`, `session.update.all`,
-   `session.delete.all` — that carry the same three verbs as the `.own` family
-   over **every live session**, including the conversations the user created in
-   this app.
-
-2. Keep `.own` exactly as it is.
-
-3. Split the enforcement so the ownership predicate stops being a second,
-   implicit permission.
-
+1. Add `session.read.all`, `session.update.all`, and `session.delete.all`, which
+   carry the same three verbs as the `.own` family over every live session,
+   including conversations the user created in this app.
+2. Keep `.own` exactly as it is, since `.all` is an addition and never a
+   widening; a manifest may declare both and `.all` wins.
+3. Split enforcement so the ownership predicate stops being an implicit second
+   permission: Electron main resolves the scope from the granted permissions and
+   sends the literal `scope` (`"own"` | `"all"`) to host-core, which enforces
+   exactly what it is handed, reads an absent parameter as `"own"`, rejects an
+   unknown value with `INVALID_PARAMS`, and still holds no permission data.
 4. Fix the queries that only worked because the boundary was narrow: `list`
-   becomes a `LEFT JOIN` on the origin sidecar so a session with no origin row
-   is reachable; `get` reports the real `originKind`, `modelId`, `providerId`,
-   and `bound.model` instead of the import projection; messages report `origin:
-   "external"` or `"desktop"`; and the `EXISTS` predicates inside the `purge`
-   and `trash` statements follow the scope instead of hard-coding ownership.
-
-5. Expose message-level writes for the first time, because "modify any content"
-   was not a capability `pi.session` had: `appendMessage` and `replaceMessages`
-   under `session.update.all`, `deleteMessage` and `truncateFrom` under
-   `session.delete.all`.
-
-6. Keep the brakes that are not about ownership: session delete stays at 20
-   calls/minute per plugin, the four message-level writes share a 60
-   calls/minute budget, and the existing import limits are untouched.
-
-7. Keep `session.autoTitle` as it is.
+   becomes a `LEFT JOIN` on the origin sidecar, `get` reports the real
+   `originKind`, `modelId`, `providerId`, and `bound.model`, messages report
+   `origin: "external"` or `"desktop"`, and the `EXISTS` predicates in `purge`
+   and `trash` follow the scope.
+5. Expose message-level writes for the first time — `appendMessage` and
+   `replaceMessages` under `session.update.all`, `deleteMessage` and
+   `truncateFrom` under `session.delete.all` — delegating to the existing
+   host-core transcript operations, with a rewrite refused by `TURN_RUNNING`
+   while a turn owns the session and `appendMessage` exempt.
+6. Keep the brakes that are not about ownership: session delete stays at 20 calls
+   per minute per plugin, the four message-level writes share a 60
+   calls-per-minute budget, and `session.autoTitle` stays the narrow title path
+   that implies no read grant.
 
 ## Consequences
 
-- A plugin can now read, rename, rewrite, and delete the user's own
-  conversations.
-- `rename` now claims the manual title source.
-- A session outside the caller's scope is `NOT_FOUND`, not `PERMISSION_DENIED`.
-- `PluginSessionListItem.externalId` and `PluginSessionGetResult.externalId`
-  widen to `string | null`, and `PluginSessionMessageResult.origin` widens to
-  `"external" | "desktop"`.
-- Audit records now name the scope that authorised a session call.
+- A plugin can read, rename, rewrite, and delete the user's own conversations, a
+  genuinely high-risk grant that the matrix, `HIGH_RISK_PERMISSIONS`, and the
+  runtime-risk map all classify as `high`.
+- `rename` claims the manual title source so a later `session.autoTitle` cannot
+  overwrite a chosen title, and a session outside the caller's scope is
+  `NOT_FOUND` rather than `PERMISSION_DENIED` so an `.own` plugin cannot probe for
+  sessions it may not see.
+- `externalId` widens to `string | null` and `origin` to `"external" | "desktop"`
+  for `.all` holders only; every session call now audits one line with `scope`,
+  and `sessionsChanged` carries an optional `sessionId` so the shell re-reads a
+  rewritten active transcript.
 
 ## Alternatives considered
 
-### Widen the existing `.own` permissions instead of adding `.all`
-
-Rejected. The install review is the consent surface, and a user who approved
-"only the sessions this plugin imported" did not approve "every conversation I
-ever had".
-
-### Route plugin reads through `session.read` (the `getLlmContext` projection)
-
-Rejected. That permission is scoped to an in-flight tool invocation and returns
-a compaction-aware projection of the prompt, not a session.
-
-### Give the plugin direct session RPC access
-
-Rejected. It hands the plugin a generic host channel and removes the pluginId
-provenance the audit relies on.
-
-### Loosen the ownership filter and let the permission name alone carry the risk
-
-Rejected. Removing the check without a scope would make every existing `.own`
-grant a full-grant, which is the first alternative again.
-
-### Keep message-level writes out of scope
-
-Rejected for this change.
-
-### Publish an `expectedRevision` precondition for message writes
-
-Rejected for now. No session-wide revision counter exists; `revision` in this
-codebase names a regenerate family, not a transcript version.
+- Widen `.own` instead of adding `.all`: a user who approved "only the sessions
+  this plugin imported" never approved every conversation.
+- Route plugin reads through `session.read` / `getLlmContext`: that grant is
+  scoped to an in-flight tool invocation and returns a prompt projection.
+- Give the plugin direct session RPC access: it removes the pluginId provenance
+  the audit relies on.

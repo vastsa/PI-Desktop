@@ -5,16 +5,22 @@
 
 ## Context
 
-A first prompt currently needs an immediate sidebar label, but a raw truncated
-prompt is noisy and can obscure the task's topic.
+A first prompt needs an immediate sidebar label, but a raw truncated prompt is
+noisy and can obscure the task topic. A summary had to use the session's own
+provider and model without moving model execution into the renderer.
 
 ## Decision (historical)
 
-Keep the normalized first-prompt fallback synchronous from the renderer's point
-of view. (D654 later restored that fallback as a host-owned write; only the
-one-shot completion below stays removed.) After the initial turn emits
-`agent_end`, the renderer calls the allowlisted `session/summarizeTitle` IPC.
+After `agent_end`, the renderer called the allowlisted
+`session/summarizeTitle` IPC; Electron validated the session and prompt,
+resolved the effective provider/model, and ran `summarizeSessionTitle` with
+thinking disabled, leaving the deterministic first-prompt fallback in place on an
+empty or failed completion and persisting a valid result through `session.rename`.
+Renderer-local metadata persisted `manualTitle`, so a manual or
+fallback-owned title was never overwritten.
 
-## Consequences
+## Superseded
 
-Superseded (Superseded by ADR 0323). The full record is in git history.
+ADR 0323 replaced this main-owned one-shot title summary. D654 later restored the
+first-prompt fallback as a host-owned write; only the one-shot completion stays
+removed.

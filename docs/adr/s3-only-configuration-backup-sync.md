@@ -6,35 +6,42 @@
 ## Context
 
 A configuration vault must preserve encryption, domain allowlists, device-local
-mappings, credential opt-in, approvals, and concurrent-edit safety. The existing
-WebDAV compatibility mode required per-device heads and listing/ancestry logic
-while still lacking atomic initialization and reliable shared publication.
+mappings, credential opt-in, approvals, and concurrent-edit safety. The WebDAV
+compatibility mode needed per-device heads and listing ancestry while still
+lacking atomic initialization and reliable shared publication, and the approved
+direction is direct private S3 storage without a custom cloud service, database
+upload, or WebDAV fallback. Users also need a local-snapshot backup mode that
+applies no remote changes.
 
 ## Decision
 
-Keep persistence, encryption, merge, scheduling and import ownership in Rust
-Host Core. Replace WebDAV with a bounded AWS Signature V4 S3 transport using
-maintained cryptographic primitives.
-
-Use separate authenticated `head` and `backup-head` objects. Sync performs
-three-way merge and applies remote changes; backup publishes only local
-snapshots.
-
-## Alternatives
-
-- Keep WebDAV alongside S3: rejected by the approved S3-only scope and because
-  it preserves a second publication and compatibility path.
-- Accept ignored conditional headers: rejected because concurrent publication
-  can silently lose configuration changes.
-- Store SQLite or the entire data directory: rejected because it includes device
-  state, credentials and unrelated data rather than portable entities.
-- Delete everything outside the 30-entry history index: rejected because
-  resource sharing, in-flight publication and offline devices are not proven
-  safe by one device's index.
+Rust Host Core keeps persistence, encryption, merge, scheduling, and import
+ownership and replaces WebDAV with a bounded AWS Signature V4 S3 transport on
+maintained cryptographic primitives, supporting path-style and virtual-hosted
+addressing and session tokens, with a mandatory successful conditional-write
+probe and no append-only or unconditional fallback. Separate authenticated
+`head` and `backup-head` objects drive three-way merge: sync applies remote
+changes, backup publishes only local snapshots, and each head indexes the latest
+revisions while immutable objects stay indefinitely. Only the new S3 data format
+is supported, with no legacy detection or migration and no deletion of unrelated
+old data, under a new `configSyncS3` key namespace with a fresh local state
+identity on connection or mode changes and credential reuse bound to the whole
+connection identity. Sync restore publishes a new shared revision with explicit
+propagation acknowledgment, backup restore applies locally, both save a local
+recovery point, and password changes rewrap the same vault key.
 
 ## Consequences
 
-The implementation has one cloud transport and publication model, no server
-component, and unchanged process ownership.
+- One cloud transport, one publication model, no server component, and unchanged
+  process ownership; existing WebDAV users must configure S3 explicitly and
+  their old backups stay untouched but cannot be restored through S3.
+- Storage can grow indefinitely, and a bucket lifecycle policy that expires
+  referenced objects can break synchronization or restore.
+- Providers must honor strong ETags and conditional writes, and encryption
+  protects contents but not bucket identity, timing, sizes, or traffic patterns.
 
-Storage can grow indefinitely.
+## Alternatives
+
+- Keep WebDAV alongside S3: rejected, it preserves a second publication path.
+- Accept ignored conditional headers: rejected, concurrent publication can
+  silently lose configuration changes.

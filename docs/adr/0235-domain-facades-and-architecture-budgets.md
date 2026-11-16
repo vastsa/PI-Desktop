@@ -2,45 +2,43 @@
 
 - Status: Accepted
 - Date: 2026-09-12
-- Deciders: PI-Desktop maintainers
 
 ## Context
 
-The desktop application had several large modules that combined wiring with
-multiple domain responsibilities. Splitting those modules reduces change
-coupling, but replacing established entry points would break imports, source
-contracts, plugin integrations, or protocol assumptions.
+Several large desktop modules combined wiring with multiple domain
+responsibilities. Splitting them reduces change coupling, but replacing
+established entry points would break imports, source contracts, plugin
+integrations, or protocol assumptions, and nothing stopped the same hotspots from
+growing again.
 
 ## Decision
 
-1. Keep stable facade modules at established public paths.
-2. Put implementation responsibility in domain modules: Electron IPC and runtime
-   modules, renderer `features/*` modules, host-core domain submodules, and
-   `packages/shared/src/types/*` files.
-3. Keep source-contract tests at the owning module boundary and retain public
-   re-export coverage for compatibility paths.
-4. Enforce source-size budgets with `node scripts/check-architecture.mjs`.
+1. Keep stable facades at the established paths: Electron main `index.ts`,
+   renderer page entries, shared `types.ts`, and the Rust `plugins`, `db`,
+   `providers`, and `plans` modules.
+2. Put implementation responsibility in domain modules — Electron IPC and runtime
+   modules, renderer `features/*`, host-core domain submodules, and
+   `packages/shared/src/types/*` — where a facade may wire or re-export but never
+   become a second implementation.
+3. Keep source-contract tests at the owning module boundary and shared E2E boot,
+   session, plan, plugin, host, fixture, wait, and assertion helpers as the common
+   test surface.
+4. Enforce source-size budgets with `node scripts/check-architecture.mjs`, which
+   protects the facade limits, rejects newly oversized TypeScript files, and
+   requires a documented reason for oversized Rust files.
 5. Run the focused Biome lint, architecture checker, Rust formatting, and
-   workspace Clippy checks in CI alongside the existing build, typecheck, and
-   test gates.
+   workspace Clippy checks in CI alongside build, typecheck, and test.
 
 ## Consequences
 
-- Existing import paths, IPC channels, plugin SDK contracts, host RPC data, and
-  persistence formats remain stable while implementation ownership is easier to
-  locate.
-- New domain work has a clear home and is measured against source-size limits.
-- A small set of legacy modules remains explicitly documented as technical debt
-  instead of being expanded silently.
-- The architecture checker adds a repository-level maintenance gate and its
-  metrics make future refactor progress reviewable.
+- Import paths, IPC channels, plugin SDK contracts, host RPC data, and persisted
+  formats stay stable while implementation ownership becomes easier to locate.
+- New domain work has a clear home and is measured against size limits, with the
+  remaining legacy modules documented as technical debt.
 
 ## Alternatives considered
 
-- **Replace the public modules with new paths:** rejected because it would make
-  compatibility the responsibility of every caller and plugin.
-- **Apply a broad formatter or stylistic lint migration:** rejected because it
-  would mix historical cleanup with the architecture change and obscure
-  behavioral review.
-- **Use an undocumented size exception:** rejected because a ratchet without an
-  explicit reason would allow new hotspots to accumulate.
+- Replace the public modules with new paths: rejected; it makes compatibility
+  every caller's and plugin's problem.
+- Use an undocumented size exception: rejected; a ratchet without a reason lets
+  new hotspots accumulate.

@@ -6,39 +6,36 @@
 
 ## Context
 
-PI-Desktop already has typed Electron-main IPC for projects, sessions, the pi
-Agent, workspace views, plugins, settings, and other desktop operations. That
-surface is available to the renderer only, so an external Agent cannot drive a
-running desktop without a second application-specific integration.
+PI-Desktop has typed Electron-main IPC for projects, sessions, the agent,
+workspace views, plugins, and settings, but only the renderer can reach it, so an
+external Agent cannot drive a running desktop without a second
+application-specific integration. The remote Gateway stays out of scope under
+baseline decision #20 and ADR 0004.
 
 ## Decision
 
-- Add an optional Streamable HTTP MCP server inside Electron Main.
-- Validate any supplied `Origin` against loopback hostnames to prevent DNS
-  rebinding from remote web content.
-- Persist a random 256-bit bearer token in the Electron user-data directory and
-  publish the current URL, token, PID, and active state in `mcp-control.json`.
-- Delegate every exposed call to the existing registered main-process IPC
-  handler.
-- Require `confirm: true` for dangerous generic operations and destructive named
-  tools, including `session/configure` (permission mode).
-- Bind only loopback addresses; `initialize` negotiates `2025-06-18` or the
-  compatible `2025-03-26` value and never echoes an unsupported version.
-- After successful **mutating** project/session/Agent calls, reuse the existing
-  `pi-desktop/session/event/changed` renderer event with additive project and
-  selection fields.
+Add an optional Streamable HTTP MCP server inside Electron Main that starts only
+with `PI_DESKTOP_MCP_CONTROL=1`, binds to `127.0.0.1` on `PI_DESKTOP_MCP_PORT`
+(37123 by default), validates a supplied `Origin` against loopback hostnames, and
+publishes its URL, bearer token, PID, and state in a mode-`0600`
+`mcp-control.json` under the user-data directory. Every exposed call delegates to
+the existing registered IPC handler, through named tools for the common
+project/session/Agent/workspace flow plus a generic `pi_desktop_invoke` over a
+risk-tagged catalog discovered by `pi_control_describe`. Dangerous generic
+operations and named destructive tools, including `session/configure`, require
+`confirm: true`, which is an agent acknowledgement rather than a user prompt.
+Secret channels, provider/OAuth/MCP secret writes, settings writes, and
+renderer-only picker channels are excluded, secret-shaped argument fields are
+stripped, and a new IPC handler is never exposed automatically. Mutating
+project, session, and Agent calls reuse `pi-desktop/session/event/changed` with
+additive project and selection fields, while reads do not refresh the desktop.
 
 ## Consequences
 
-An external local Agent can open a project, create or inspect sessions, send a
-prompt, observe status, and invoke reviewed desktop operations through a
-standard MCP client.
-
-The endpoint grants a local client the authority of the running desktop for the
-operations it invokes.
-
-## Amendment (D372)
-
-Narrow the first-version catalog to the project/session/Agent/workspace flow
-plus reviewed reads. `session/configure` is dangerous because it can set
-`permissionMode: "auto"`.
+- A local Agent can open a project, create or inspect sessions, send prompts,
+  observe status, and invoke reviewed operations through a standard MCP client.
+- Renderer and external Agent converge on the same IPC handlers and refresh
+  path, so no authorization or persistence logic is duplicated.
+- The endpoint grants the authority of the running desktop; loopback binding,
+  opt-in startup, bearer authentication, and confirmation gates limit accidental
+  exposure but not a process that can already read the token.

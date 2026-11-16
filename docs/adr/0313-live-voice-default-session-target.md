@@ -6,26 +6,27 @@
 
 ## Context
 
-Live Voice must be useful from the current Composer without requiring the user
-to opt into work requests or select a session before speaking. The target may be
-a Desktop, Native Pi, or Remote session, and users may switch targets by voice
-during a call.
+Live Voice must be useful from the current Composer without asking the user to opt
+into work requests or pick a session before speaking. The target may be a Desktop,
+Native Pi, or Remote session and can change by voice during a call, without
+expanding the voice provider's authority or bypassing the target backend's policies.
 
 ## Decision
 
-- When Composer has an active session, use it as the initial work target.
-- Treat a renderer-provided session ID only as a target hint.
-- Do not require a per-call work-access toggle.
-- A target switch applies only to subsequent requests.
-- Keep bounded history sharing as a separate, unchecked call consent.
+When Composer has an active session it becomes the initial work target; with none,
+the call starts unbound and voice can list and select one. A renderer-provided
+session id is only a hint: Electron Main resolves it against the fresh combined
+session catalog and fails closed when it is missing or ambiguous, and voice
+selection travels as call-scoped opaque references, so provider payloads never
+choose raw session ids, paths, modes, or permissions. There is no per-call
+work-access toggle, because candidates still pass through the selected backend's
+identity, admission, authorization, permission, and approval paths. A target switch
+applies only to later requests, and bounded history sharing stays a separate,
+unchecked consent that grants no execution authority.
 
 ## Consequences
 
-- Composer starts are direct and predictable while session selection remains
-  available by voice; an empty Composer target never causes implicit guessing.
-- Main and backend-specific fixtures must cover fresh resolution, ambiguous or
-  stale targets, all three sources, target switching, and fail-closed behavior.
-- Permission and approval behavior remains owned by Desktop, Native Pi, and
-  Remote backends; Live Voice does not expose arbitrary IPC or tools.
-- Context privacy remains independent from execution authorization and must be
-  tested separately.
+- Composer starts are predictable, and an empty target never makes Main guess.
+- Permission and approval behavior remains owned by the Desktop, Native Pi, and
+  Remote backends; Live Voice exposes no arbitrary IPC or tools.
+- Context privacy stays independent of execution authorization.

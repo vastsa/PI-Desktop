@@ -7,34 +7,44 @@
 
 ## Context
 
-The remote MVP ran an Agent on the SSH Host and required remote providers and
-Host-owned projects. This made project names and model selection differ from
-local work.
+The remote MVP ran the Agent on the SSH host and required remote providers and
+host-owned projects, so project names and model selection diverged from local
+work, while the user requires model requests and credentials to stay on Desktop
+with the remote machine executing tools only.
 
 ## Decision
 
 Keep the Agent runtime, provider resolution, credentials, model requests,
-transcripts, project names, project-group instructions, project memory and
-sessions on Desktop. Root repository instructions are read from the remote
-workspace and merged after local global defaults, without remote HOME defaults
-or nested traversal.
-
-After the normal local permission and execution-admission gates, host-core
-relays supported workspace tools through Electron Main to the paired Host. RACP
-transports the execution identity, workspace path and tool arguments only.
-
-## Alternatives
-
-- Automatically copy local providers to the remote Host: rejected because OAuth,
-  local providers and credentials would still depend on a remote model runtime.
-- Add a model gateway through reverse SSH: keeps credentials local but still
-  leaves session and Agent ownership remote, adding model transport exposure.
-- Mirror remote paths into local folders: rejected because tools would act on a
-  different filesystem and make containment and data consistency ambiguous.
+transcripts, project names, group instructions, memory, and sessions on Desktop,
+reading root repository instructions from the remote workspace and merging them
+after local global defaults. The Rust-owned logical project-group KV boundary
+gains a remote workspace binding, where an opaque project identity selects the
+group and the remote path is never interpreted as a local path. After the normal
+permission and execution-admission gates, host-core relays supported workspace
+tools through Electron Main to the paired Host, and RACP carries only the
+execution identity, workspace path, and tool arguments — never model
+configuration, credentials, or a model request. The Host validates its canonical
+browse boundary and executes, and failed, disconnected, cancelled, timed-out, or
+unsupported calls fail closed without falling back to local execution or
+replaying side effects. New projects use the ordinary name, switcher, sidebar,
+archive, and session controls, with remote directory selection in a separate
+accessible dialog and no Host project or provider synchronization.
 
 ## Consequences
 
-The project group's `remote` binding stores `{hostKey, path}` while its primary
-root and session `projectPath` use `remote-project:<groupId>`.
+- The group's `remote` binding stores `{hostKey, path}` while its primary root
+  and session `projectPath` use `remote-project:<groupId>`, and unknown opaque
+  identities are rejected before any workspace or session mutation.
+- The remote runner admits only Read, Glob, Grep, Write, Edit, and Bash, creates
+  no remote project or session records, and preserves workspace containment;
+  a lost mutation reply is `REMOTE_MUTATION_OUTCOME_UNKNOWN` and non-retriable.
+- Storage stays Rust-owned and backward compatible through additive KV
+  metadata, existing remote histories stay readable, and older Hosts report an
+  explicit unsupported operation; permission approval stays on Desktop.
 
-The pure remote runner admits only Read, Glob, Grep, Write, Edit and Bash.
+## Alternatives
+
+- Copy local providers to the remote Host: rejected, OAuth and local credentials
+  would still depend on a remote model runtime.
+- Mirror remote paths into local folders: rejected, tools would act on a
+  different filesystem and containment would become ambiguous.
