@@ -2,77 +2,40 @@
 
 - Status: Accepted
 - Date: 2026-07-26
+- Related: ADR 0011, D086
 
 ## Context
 
-The original desktop persistence model split durable state across a limited
-SQLite schema and Electron-owned JSON files. Session messages stored a lossy
-text projection, project identity was represented as a singleton workspace,
-scheduled tasks bypassed the Rust host, and several product surfaces had no
-durable model for turns, artifacts, task runs, model metadata, or indexed
-search.
-
-Those boundaries conflict with the frozen host-ownership rule in ADR 0011 and
-make protocol-visible behavior depend on which process last wrote a local
-file. Expanding the old tables in place would also leave ambiguous ownership
-and inconsistent migration behavior.
+Durable state was split between a limited SQLite schema and Electron-owned JSON
+files: session messages kept a lossy text projection, project identity was a
+singleton workspace, scheduled tasks bypassed the Rust host, and turns,
+artifacts, task runs, model metadata, and indexed search had no durable model.
+Those boundaries conflict with the host-ownership rule in ADR 0011 and make
+protocol behavior depend on which process wrote last.
 
 ## Decision
 
-Adopt schema v2 in the single host-owned `pi.sqlite` database.
-
-The Rust host is the exclusive writer for:
-
-- namespaced key/value configuration;
-- projects and project-scoped sessions;
-- canonical transcript blocks and turn lifecycle data;
-- model catalog metadata;
-- artifacts;
-- scheduled tasks and task-run history;
-- indexed, prunable audit events.
-
-Electron accesses this state only through the host RPC protocol. Scheduled
-task JSON is imported into the host database and is no longer authoritative.
-
-Migrations are ordered Rust functions keyed by `PRAGMA user_version`. The
-v1-to-v2 migration creates a one-shot backup before rebuilding incompatible
-tables, preserves recoverable user data, and completes transactionally.
-Session/project imports and legacy scheduled-task imports are idempotent.
+Adopt schema v2 in the single host-owned `pi.sqlite` database. The Rust host is
+the exclusive writer for namespaced configuration, projects and project-scoped
+sessions, canonical transcript blocks and turn lifecycle, model catalog metadata,
+artifacts, scheduled tasks with run history, and indexed prunable audit events.
+Electron reaches that state only through host RPC, and imported scheduled-task
+JSON stops being authoritative. Migrations are ordered Rust functions keyed by
+`PRAGMA user_version`; the v1-to-v2 step takes a one-shot backup, preserves
+recoverable data, and completes transactionally, with idempotent session, project,
+and legacy task imports.
 
 ## Consequences
 
 - Durable state has one ownership boundary and one migration mechanism.
-- Transcript blocks, turns, usage, artifacts, project grouping, task history,
-  and search can evolve without renderer-owned persistence.
-- A migration failure is surfaced instead of silently opening a partially
-  upgraded database.
-- The backup consumes additional disk space until the user removes it.
-- Protocol, storage, migration, and E2E specifications must move together with
-  future structural changes.
-- Schema v2 replaces the storage implementation described before D086 while
-  retaining ADR 0011's Rust-host ownership boundary.
+- Transcripts, turns, usage, artifacts, grouping, task history, and search can
+  evolve without renderer-owned persistence.
+- A migration failure is surfaced instead of opening a partially upgraded
+  database, at the cost of backup disk space until the user removes it.
 
 ## Alternatives
 
-### Extend the v1 tables without rebuilding
-
-Rejected because the v1 message shape is lossy and the split ownership model
-would remain.
-
-### Keep scheduled tasks in Electron JSON
-
-Rejected because it violates the host-owned persistence boundary and prevents
-atomic task/run lifecycle updates.
-
-### Let the renderer write SQLite directly
-
-Rejected because concurrent writers would couple UI lifecycle to data
-integrity and bypass host RPC validation.
-
-## References
-
-- `docs/adr/0011-host-rpc-and-storage-defaults.md`
-- `docs/spec/03-runtime/04-data-storage.md`
-- `docs/spec/03-runtime/06-host-rpc-protocol.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md`
-- `docs/spec/08-meta/decisions-log.md` (D086)
+- Extend the v1 tables in place: rejected because the v1 message shape stays lossy
+  and the split ownership remains.
+- Let the renderer write SQLite: rejected because concurrent writers couple UI
+  lifecycle to data integrity and bypass host RPC validation.

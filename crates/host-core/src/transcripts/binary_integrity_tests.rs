@@ -45,21 +45,45 @@ fn replace_message_line(path: &Path, fault: &str) {
 }
 
 #[test]
-fn malformed_and_structurally_invalid_encoded_rows_block_mutations() {
-    for fault in ["malformed", "typed"] {
-        for update in [false, true] {
-            let dir = tempfile::tempdir().unwrap();
-            let path = seed_transcript(dir.path());
-            replace_message_line(&path, fault);
-            let before = fs::read(&path).unwrap();
-            let result = if update {
-                update_message(dir.path(), "s", &image_record()).map(|_| ())
-            } else {
-                append_message(dir.path(), "s", "old", &image_record())
-            };
-            let error = result.expect_err(&format!("fault={fault}, update={update}"));
-            assert!(binary_storage::is_error(&error), "{error:#}");
-            assert_eq!(fs::read(&path).unwrap(), before);
+fn structurally_invalid_encoded_rows_block_mutations() {
+    // "typed": a complete, well-formed JSON line whose business payload fails
+    // validation. Real corruption; every mutation must keep rejecting it.
+    for update in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = seed_transcript(dir.path());
+        replace_message_line(&path, "typed");
+        let before = fs::read(&path).unwrap();
+        let result = if update {
+            update_message(dir.path(), "s", &image_record()).map(|_| ())
+        } else {
+            append_message(dir.path(), "s", "old", &image_record())
+        };
+        let error = result.expect_err(&format!("update={update}"));
+        assert!(binary_storage::is_error(&error), "{error:#}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+}
+
+/// The "malformed" fixture (`{"type":"message","binaryStorage":{"version":1`
+/// cut off mid-envelope, newline-terminated) is exactly a terminated torn
+/// prefix: the write side now tolerates it like every read path does (#2298).
+#[test]
+fn terminated_torn_encoded_rows_no_longer_block_mutations() {
+    for update in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = seed_transcript(dir.path());
+        replace_message_line(&path, "malformed");
+        let result = if update {
+            update_message(dir.path(), "s", &image_record()).map(|_| ())
+        } else {
+            append_message(dir.path(), "s", "old", &image_record())
+        };
+        result.expect("a terminated torn encoded prefix must not block mutations");
+        // The append variant must leave the new record readable; the torn row
+        // itself stays unreadable, and update_message only replaces records it
+        // can still find.
+        if !update {
+            assert_eq!(read_transcript(dir.path(), "s").unwrap().len(), 1);
         }
     }
 }

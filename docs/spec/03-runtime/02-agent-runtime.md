@@ -231,8 +231,9 @@ the provider message in both phases, so a generic 429 body still enters the
 429 budget while known non-retryable classifications remain terminal. Explicit
 billing/account exhaustion (including `insufficient_quota`, spend-limit
 codes, Zhipu/Z.ai usage-limit code `1308`, Anthropic "credit balance is too
-low", and DashScope `Arrearage` / "access denied … account is in good
-standing") is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
+low", DashScope `Arrearage` / "access denied … account is in good
+standing", and Volcengine Ark `AccountOverdueError` / `overdue balance`)
+is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
 builtin subagents use the same controller and policy.
 
 429 retries are silent at the transcript lifecycle: no intermediate assistant
@@ -667,6 +668,12 @@ shows the bucket sum; reasoning is already included in output. This prevents a
 gateway's total that omits cached input from delaying compaction, while keeping
 the total-based guard when bucket details are incomplete. Billing totals remain
 unchanged.
+
+Pi usage conversion retains explicitly supplied finite, nonnegative cache-read
+and cache-write counts, including zero, through physical-request observation,
+history replay and operation deduplication. Missing or invalid cache counts
+remain absent, so consumers can distinguish a known zero from unavailable
+usage. Previously stored missing fields are not backfilled as zero.
 
 The calibration still measures the two errors separately — per-character bias
 as a scale-free ratio over the guessed tail, and an unanchored residual as a

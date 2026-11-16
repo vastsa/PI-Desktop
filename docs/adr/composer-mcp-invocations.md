@@ -6,56 +6,36 @@
 
 ## Context
 
-Explicit MCP selection belongs in the composer alongside Skills and plugin
-commands. Tool discovery, argument selection, execution and approval remain
-owned by the runtime and Host.
+Explicit MCP selection belongs in the composer beside Skills and plugin commands,
+while tool discovery, argument selection, execution, and approval stay owned by
+the runtime and Host.
 
 ## Decision
 
-Catalog discovery refreshes enabled user MCP records and uses the runtime's
-existing bounded connection path, including before the first session after
-restart. The composer exposes ready servers with tools in the current project. Server entries use
-`/mcp:<URI-encoded-server-id>`; individual tool entries append
-`:<URI-encoded-tool-name>`. Entries carry `kind: "mcp"`, `mcpServerId`, and an
-optional `mcpToolName` containing the full host tool name. Existing command
-aliases retain precedence. Selecting an entry inserts text without connecting
-a server or executing a tool. Connection addresses, credentials and tool
-schemas stay out of the composer catalog.
+Catalog discovery refreshes enabled user MCP records through the runtime's
+existing bounded connection path, and the composer exposes ready servers with
+tools in the current project as `/mcp:<URI-encoded-server-id>` entries, appending
+`:<URI-encoded-tool-name>` for a single tool. Entries carry `kind: "mcp"`,
+`mcpServerId`, and an optional `mcpToolName`, existing command aliases keep
+precedence, selecting an entry inserts text without connecting or executing, and
+credentials and tool schemas stay out of the catalog.
 
-Main revalidates the selection against the session project's current catalog
-on prompt or steering submission. It preserves the typed text in `command`,
-adds a short model-facing selection instruction, and forwards `mcpServerIds`
-and optional `mcpToolNames` through internal RPC. The runtime matches the
-catalog's authoritative server IDs. Server selection activates all
-mode-allowed tools from that server; tool selection activates only the exact
-requested tools after validating ownership and mode availability. Neither
-selection removes tools already active in the session.
+Main revalidates the selection against the session project's catalog on prompt or
+steering submission, adds a short model-facing selection instruction, and
+forwards `mcpServerIds` and optional `mcpToolNames` through internal RPC. Server
+selection activates every mode-allowed tool of that server, tool selection
+activates only the requested tools after ownership and mode checks, and neither
+removes tools already active; an unavailable selection fails explicitly instead
+of becoming prompt text.
 
-Selection and ToolSearch share deferred activation, but selection does not
-use ToolSearch's result-count limit. Steering activates tools only when its
-queued user message is consumed and synchronizes declarations before the
-provider request. Existing session restoration and execution permissions
-remain in effect. Missing selection fields preserve on-demand discovery.
+## Consequences
 
-Unavailable selections fail explicitly rather than becoming ordinary prompt
-text or broadening to a whole-server selection. A cached menu entry cannot
-bypass submission validation. Native Pi sessions cannot use Desktop-managed
-MCP selections.
+- The optional catalog and internal RPC fields reuse the existing execution path
+  with no database, Plugin SDK, or Host protocol change.
+- Selection makes tools available without forcing execution, and Main rejects a
+  selection with no task text or attachment before opening a turn.
 
-## Consequences and alternatives
+## Alternatives
 
-The optional catalog and internal RPC fields reuse the existing execution
-path without database, Plugin SDK or Host protocol changes. Server IDs are
-validated at the sidecar boundary and do not become tool-schema fields.
-
-Selection makes tools available but does not force execution. Main rejects a
-server or tool command without task text or an attachment before opening a
-turn, so the model cannot infer an operation from the selection alone. With
-task text or attachment context, the model chooses arguments and calls. A
-renderer-driven tool call would duplicate runtime argument selection and
-permission handling.
-
-## Unreleased user-facing change
-
-Select a connected MCP server or one of its tools from the composer's `/`
-menu and send a task. Existing tool approvals still apply.
+- Have the renderer drive the tool call: rejected; it would duplicate runtime
+  argument selection and permission handling.

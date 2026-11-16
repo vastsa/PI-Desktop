@@ -5,61 +5,33 @@
 
 ## Context
 
-Plugin code is untrusted; we must prevent it from dragging down or intruding into the host.
+Plugin code is untrusted. Running it inside the host process would let a plugin
+crash or intrude on the host and hand it direct access to host objects and
+environment.
 
 ## Decision
 
-Target architecture: the plugin main runs in a **separate process** (UtilityProcess/Child Process) and accesses the Host API via RPC.
+Each plugin main runs in a separate process (UtilityProcess / child process) and
+reaches the Host API only over RPC: every `pi.*` call passes the host API
+allowlist and the permission gateway before it reaches a host service. Plugins
+receive a minimal environment, contribution points register by descriptor with
+the callable half staying in the plugin process, and a dying plugin is
+contained — pending calls reject with `PLUGIN_CRASHED`, contributions are
+deregistered, and the renderer learns about it through `pluginChanged`.
 
-If MVP progress is constrained, a lighter isolation may be adopted temporarily, but it must not break:
-
-- The permission gateway
-- The API allowlist
-- Unified registration of contribution points
-- Crash non-fatality
-
-The temporary solution and its migration plan must be noted in the implementation ADR.
-
-## Rationale
-
-1. Crash isolation
-2. Clearer permission proxying
-3. Resource limits can be added later
+Capability sandboxing (D009), resource limits, and load-time review of declared
+manifest permissions remain future work.
 
 ## Consequences
 
-### Positive
-- Better security and stability
+- Plugins gain crash isolation and a narrower reachable surface, at higher
+  implementation and debugging cost.
+- A plugin must go through the RPC API; it holds no host object and no host
+  process environment.
+- Raw Node access inside the plugin process stays outside permission gating
+  until D009 lands.
 
-### Negative
-- Higher implementation and debugging cost
+## Alternatives
 
-## Implementation (2026-07-29)
-
-The target architecture shipped; no transitional in-main runtime remains.
-
-- `apps/desktop/electron/main/plugin-host-process.mjs` is the per-plugin entry,
-  forked with `utilityProcess.fork` (one process per plugin, bundled to
-  `out/main/plugin-host-process.js`). It receives a minimal environment from
-  `pluginChildEnv` (`child-process-env.ts`): `PATH`, toolchain dirs, `HOME` /
-  `USER` / `USERPROFILE`, plus `PI_PLUGIN_ID` and `NODE_ENV`. The host's other
-  shell env and provider keys never reach plugin code (issue #717).
-- `apps/desktop/electron/main/plugin-runtime.ts` became the broker: it keeps the
-  registry of commands/tools, and every `pi.*` call arrives as RPC, passes
-  `HOST_API_ALLOWLIST`, then `assertPermission`, then the host service, then the
-  audit log. Plugin code holds no host object and no `require` of host modules.
-- Contribution points register by descriptor only; the callable half stays in the
-  plugin process and is invoked back over RPC with a timeout (command 30s, tool
-  110s, lifecycle hook 5s, load 15s).
-- A dying plugin process is contained: pending calls reject with
-  `PLUGIN_CRASHED`, contributions are deregistered, the panel closes, and the
-  renderer gets a toast plus `pluginChanged`.
-- `onUnload` now runs (in the child) before the process is killed.
-
-Known limits, deliberately out of this change:
-
-- The plugin process is a Node environment; permission gating covers the `pi.*`
-  surface, not raw `require("node:fs")` inside the plugin process. Capability
-  sandboxing (D009) remains future work.
-- Resource limits (CPU/memory) are not enforced yet.
-- Declared manifest permissions are still auto-granted at load time.
+- Run plugin code in the host process: rejected because one plugin failure
+  would take the host down with it.

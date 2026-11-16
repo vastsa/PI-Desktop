@@ -2,43 +2,32 @@
 
 - Status: Accepted
 - Date: 2026-09-13
-- Related issue: [#306](https://github.com/vastsa/PI-Desktop/issues/306)
+- Related: [#306](https://github.com/vastsa/PI-Desktop/issues/306) · E2E-SIDEBAR-global-pinned-conversations
 - Amends: [ADR 0016](0016-sidebar-organization-and-multi-project-tabs.md)
 
 ## Context
 
-Conversation sorting puts pinned rows first, but project rendering then places
-them in chronological buckets. An older pin can therefore appear below today's
-unpinned conversations. Pins also disappear when their project tab is collapsed
-or closed, which defeats their role as quick access to frequently used sessions.
+Conversation sorting puts pinned rows first, but project rendering then files them
+into chronological buckets, so an older pin can sit below today's unpinned
+conversations, and pins vanish when their project tab is collapsed or closed.
 
 ## Decision
 
-- Render one global Pinned section above standalone Sessions and Projects.
-  Derive it from existing session summaries and organization metadata, including
-  sessions whose project tab is not retained. Do not create another pin registry.
-- Apply archive visibility to both the session and its owning project. Closed
-  and collapsed projects do not hide otherwise visible pins.
-- Show project context on each pin and use the existing session sort within the
-  section without date buckets. Keep project pinning and project sorting intact.
-- Remove visible pins from ordinary rows before chronological grouping and the
-  per-project ten-row limit. Preserve full project membership for activity
-  ordering, archive/delete navigation, and workspace ownership.
-- Reuse ordinary row selection and actions. Unpinning returns a session to its
-  normal history location and visibility rules. Restore focus to its relocated
-  overflow control, with the Sessions sort control as a fallback when hidden.
-- Omit an empty section and bound its scroll area to `min(224px, 30vh)`.
+Render one global Pinned section above standalone Sessions and Projects, derived
+from existing session summaries and organization metadata rather than a second pin
+registry, including sessions whose project tab is not retained. Archive visibility
+applies to both the session and its owning project, while closed or collapsed
+projects do not hide otherwise visible pins. Each pin shows its project context and
+uses the existing session sort without date buckets, and pinned rows leave the
+ordinary rows before chronological grouping and the per-project row limit, though
+project membership stays intact for activity ordering and archive navigation. Rows
+reuse ordinary selection and actions, unpinning returns a session to its normal
+history location and restores focus to its relocated overflow control, and an empty
+section is omitted.
 
 ## Consequences
 
-Pins remain discoverable across dates and projects without duplicate rows.
-Existing persisted pins take effect automatically; no storage migration, IPC
-change, or host ownership change is required. Rendering project context costs
-some row width, so it is ellipsized and subordinate to the session title.
-
-## Validation
-
-Pure grouping tests cover old, temporary, closed-project, archived, deleted,
-unbound, and unpinned sessions. Sidebar rendering coverage checks actual section
-order, uniqueness, project folding, archive visibility, and the history limit.
-The interaction contract is E2E-SIDEBAR-global-pinned-conversations.
+- Pins stay discoverable across dates and projects without duplicate rows.
+- Existing persisted pins take effect with no storage migration, IPC change, or
+  host ownership change.
+- Project context costs row width, so it is ellipsized under the title.

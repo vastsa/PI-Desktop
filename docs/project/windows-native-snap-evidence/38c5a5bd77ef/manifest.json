@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "sourceRevision": "38c5a5bd77ef910849ce3c1bc5f5d8577dad1a71",
+  "recordKind": "preserved-author-run",
+  "provenance": "Recorded after the original run from preserved results and streams. Source revision follows the staging record; this is not an independently attested or replayed CI run.",
+  "hostSha256": "ee2561677531af10f13f47cf3a528dea6c870d56dccca5af2ec4a350b72b0d50",
+  "compiledProbeSourceSha256": "9b6d4d37c35990c7c0c7a894f7cdb72c33201fa6aa00e2ca5c689b77a14016be",
+  "files": {
+    "after-fullscreen.png": "720478217b8b8070be481dfa4dc5b0a5eaa72c6316d32fab34304dc2742447b1",
+    "baseline.json": "85f7fe820ba941fe615e23d06bd305b7b50d87ae8450ce3b8f0f83caa029d81d",
+    "candidate.json": "64ffd806019fcc1a4bbc36abe24b9bc0b8f3ef6ebcf8f30e55e6e1793f730d7d",
+    "left.png": "ba7bd348d928c658c3245f8bc4719cfa78e051683caa2b761707ae29121d25c8",
+    "normal.png": "720478217b8b8070be481dfa4dc5b0a5eaa72c6316d32fab34304dc2742447b1",
+    "stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout.txt": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6"
+  }
+}

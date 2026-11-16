@@ -1,0 +1,873 @@
+<!-- status: implemented -->
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>host-api · audio</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+
+  article.api{margin:0 0 56px;padding-top:8px;border-top:1px solid var(--line)}
+  article.api>h2{display:flex;align-items:center;gap:10px;margin:18px 0 4px;font-size:19px}
+  article.api>.meta{margin:0 0 18px;color:var(--faint);font-size:12.5px}
+  section>h3{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:15.5px}
+  section>h3 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">plugin-plan</a><span class="sep">/</span><a href="index.html">host-api</a><span class="sep">/</span><a href="audio.html" aria-current="page">audio</a>
+  <span class="spacer"></span>
+  <a href="#audio.closeInput">closeInput</a>
+  <a href="#audio.closeOutput">closeOutput</a>
+  <a href="#audio.getCaptureState">getCaptureState</a>
+  <a href="#audio.getInputDevices">getInputDevices</a>
+  <a href="#audio.offInputFrame">offInputFrame</a>
+  <a href="#audio.onInputFrame">onInputFrame</a>
+  <a href="#audio.openInput">openInput</a>
+  <a href="#audio.openOutput">openOutput</a>
+  <a href="#audio.stopOutput">stopOutput</a>
+  <a href="#audio.writeOutput">writeOutput</a>
+</nav>
+<header class="top">
+  <h1>host-api · audio</h1>
+  <p>命名空间 <code>audio</code> · 10 条。每条 API 一节：接口约定、数据怎么走、出错、不提供什么、相关条目、典型场景、已拍板。</p>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+<article class="api" id="audio.closeInput">
+<h2><code>audio.closeInput</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.closeInput(streamId: string): Promise&lt;void&gt;</pre>
+  <p class="lead">关闭本插件的一条输入采集流，立即停止采集（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">streamId</td><td>string</td><td>是</td><td><code>openInput</code> 返回的会话 id。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td>Promise&lt;void&gt;</td><td>无数据；resolve 即流已停止。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>pi.audio.closeInput("in-3f9a2c")</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回值</pre>
+  <div class="callout"><b>一句话边界。</b>关闭即停止采集并释放该流；宿主不保留任何磁盘录音。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.closeInput(streamId)</code>。</li>
+    <li><b>校验：</b><code>streamId</code> 必须是本插件现存的会话（不存在或已关闭则 <code>NOT_FOUND</code>），并核对权限（<code>PERMISSION_DENIED</code>）。</li>
+    <li><b>执行：</b>宿主立即停止采集并释放该流。</li>
+    <li><b>返回：</b>resolve，无数据；之后不再有该流的帧回调。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频采集权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+      <tr><td><code>streamId</code> 不存在或已关闭</td><td>调用失败（reject）</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不保留磁盘录音。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.openInput"><code>host-api/audio.openInput</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>停止录音</b></td><td>用户点停止后关闭采集流。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.closeOutput">
+<h2><code>audio.closeOutput</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.closeOutput(streamId: string): Promise&lt;void&gt;</pre>
+  <p class="lead">关闭播放会话并丢弃其中排队未播的音频（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">streamId</td><td>string</td><td>是</td><td><code>openOutput</code> 返回的播放会话 id。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td>Promise&lt;void&gt;</td><td>无数据。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>pi.audio.closeOutput("out-8c11d0")</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回值</pre>
+  <div class="callout"><b>一句话边界。</b>关闭立即生效，不等待也不保证队列播完。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.closeOutput(streamId)</code>。</li>
+    <li><b>校验：</b>宿主核对权限（<code>PERMISSION_DENIED</code>）与会话存在性（<code>NOT_FOUND</code>）。</li>
+    <li><b>执行：</b>关闭该会话并丢弃排队未播的音频。</li>
+    <li><b>返回：</b>resolve，会话释放；关闭不等待播放排空。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频播放权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+      <tr><td><code>streamId</code> 不存在或已关闭</td><td>调用失败（reject）</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不保证已播完。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.openOutput"><code>host-api/audio.openOutput</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>播完关闭</b></td><td>合成结束关掉队列。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.getCaptureState">
+<h2><code>audio.getCaptureState</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.getCaptureState(): Promise&lt;PluginAudioCaptureState&gt;</pre>
+  <p class="lead">查询本插件当前持有的输入采集状态与丢帧计数（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <p class="lead">返回 <code>PluginAudioCaptureState</code> 快照：</p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">active</td><td>boolean</td><td>当前是否持有输入采集。</td></tr>
+      <tr><td class="id">streamId</td><td>string</td><td>可选；活动流的 id。</td></tr>
+      <tr><td class="id">deviceId</td><td>string</td><td>可选；活动设备 id。</td></tr>
+      <tr><td class="id">label</td><td>string</td><td>可选；活动设备显示名。</td></tr>
+      <tr><td class="id">sampleRate</td><td>number</td><td>可选；活动流采样率。</td></tr>
+      <tr><td class="id">channels</td><td>number</td><td>可选；活动流声道数。</td></tr>
+      <tr><td class="id">startedAtMs</td><td>number</td><td>可选；采集开始的毫秒时刻。</td></tr>
+      <tr><td class="id">droppedFrames</td><td>number</td><td>宿主因插件未及时消费队列而丢弃的帧数。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "active": true, "streamId": "in-3f9a2c", "label": "默认 - 麦克风 (Realtek Audio)", "sampleRate": 16000, "channels": 1, "droppedFrames": 0 }</pre>
+  <div class="callout"><b>一句话边界。</b>返回的是状态快照与丢帧计数；不给波形或电平表。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.getCaptureState()</code>，无参数。</li>
+    <li><b>校验：</b>宿主核对插件身份与权限，未授权以 <code>PERMISSION_DENIED</code> 拒绝。</li>
+    <li><b>执行：</b>宿主读取本插件的采集持有状态与丢帧计数；未采集时 <code>active</code> 为 <code>false</code>，其余字段按可选项缺省。</li>
+    <li><b>返回：</b>resolve 状态快照；可轮询 <code>droppedFrames</code> 判断消费是否跟得上采集节奏。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>无参状态查询。</td></tr>
+      <tr><td>宿主 → 插件</td><td>采集状态快照（<code>active</code>、设备 / 格式明细、<code>droppedFrames</code>）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频采集权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不给波形或电平表。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.onInputFrame"><code>host-api/audio.onInputFrame</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>监控丢帧</b></td><td>面板显示 droppedFrames 判断是否跟得上。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.getInputDevices">
+<h2><code>audio.getInputDevices</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.getInputDevices(): Promise&lt;PluginAudioInputDevice[]&gt;</pre>
+  <p class="lead">列出本机可采集的输入设备，供插件让用户挑选（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <p class="lead">返回 <code>PluginAudioInputDevice[]</code>，数组元素结构：</p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">deviceId</td><td>string</td><td>宿主设备 id；<code>""</code> 表示系统默认输入。</td></tr>
+      <tr><td class="id">label</td><td>string</td><td>设备显示名。</td></tr>
+      <tr><td class="id">isDefault</td><td>boolean</td><td>是否为 <code>openInput</code> 省略 <code>deviceId</code> 时宿主默认选中的设备。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>[
+  { "deviceId": "", "label": "默认 - 麦克风 (Realtek Audio)", "isDefault": true },
+  { "deviceId": "dev-usb-01", "label": "USB 麦克风 (Blue Yeti)", "isDefault": false }
+]</pre>
+  <div class="callout"><b>一句话边界。</b>只返回设备元数据；不给设备句柄、系统设备路径或 Node 流，且当前分支尚无设备后端，一律 <code>UNSUPPORTED</code>、不产生帧。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件发起 <code>pi.audio.getInputDevices()</code>，无参数。</li>
+    <li><b>校验：</b>宿主核对插件身份与权限，未授权以 <code>PERMISSION_DENIED</code> 拒绝。</li>
+    <li><b>执行：</b>宿主枚举本机可采集的输入设备，只保留 id、名称、是否默认 三项元数据。</li>
+    <li><b>返回：</b>resolve <code>PluginAudioInputDevice[]</code>；当前分支尚无设备后端，实际一律以 <code>UNSUPPORTED</code> 失败、不产生任何帧。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>无参枚举请求。</td></tr>
+      <tr><td>宿主 → 插件</td><td>设备元数据数组（<code>deviceId</code> / <code>label</code> / <code>isDefault</code>）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>枚举系统输入设备。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频采集权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>有权限但宿主无设备后端（当前分支的实际行为）</td><td>调用失败（reject），不返回设备</td><td><code>UNSUPPORTED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不给设备句柄、系统设备路径或 Node 流。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：拿不到底层设备对象。已接受代价：当前一律 <code>UNSUPPORTED</code>，不产生任何帧。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.openInput"><code>host-api/audio.openInput</code></a></li>
+    <li><a href="audio.html#audio.getCaptureState"><code>host-api/audio.getCaptureState</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>选麦克风</b></td><td>录音插件列出设备供用户选择。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>设备由宿主持有；API 面已冻结。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.offInputFrame">
+<h2><code>audio.offInputFrame</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.offInputFrame(handler: (frame: PluginAudioInputFrame) =&gt; void): void</pre>
+  <p class="lead">注销已注册的 PCM16 采集帧处理函数，同步生效（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">handler</td><td>(frame: PluginAudioInputFrame) =&gt; void</td><td>是</td><td>必须是注册时传入 <code>onInputFrame</code> 的同一函数引用。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td>void</td><td>同步返回，无数据。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>pi.audio.offInputFrame(onFrame); // 与 on 时同一引用</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回值</pre>
+  <div class="callout"><b>一句话边界。</b>只解绑传入的这一个函数引用；没有按类型批量清空的用法。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.offInputFrame(handler)</code>，同步返回。</li>
+    <li><b>匹配：</b>宿主按函数引用精确匹配，只移除该 handler。</li>
+    <li><b>生效：</b>之后该 handler 不再收到帧；采集流本身不因此关闭（关闭用 <code>closeInput</code>）。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>宿主无音频后端</td><td>同步抛 <code>UNSUPPORTED</code></td><td><code>UNSUPPORTED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不按类型清空全部。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.onInputFrame"><code>host-api/audio.onInputFrame</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>面板关闭</b></td><td>解绑处理函数，避免继续收帧。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>必须传同一函数引用。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.onInputFrame">
+<h2><code>audio.onInputFrame</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.onInputFrame(handler: (frame: PluginAudioInputFrame) =&gt; void): void</pre>
+  <p class="lead">注册 PCM16 采集帧处理函数，同步生效、立即返回（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">handler</td><td>(frame: PluginAudioInputFrame) =&gt; void</td><td>是</td><td>每帧回调一次；按采集节奏推送，处理跟不上会丢帧。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td>void</td><td>同步注册，立即返回，无数据。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>pi.audio.onInputFrame((frame) =&gt; consume(frame.data));</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回值</pre>
+  <div class="callout"><b>一句话边界。</b>注册的是处理函数，不是事件名；不给设备句柄，<code>sequence</code> 出现缺口即表示宿主丢帧（不重排）。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.onInputFrame(handler)</code>，同步注册、立即返回 <code>void</code>。</li>
+    <li><b>校验：</b>宿主无音频后端时同步抛 <code>Error</code>（<code>code: "UNSUPPORTED"</code>）——不是事件订阅，不能靠 events 监听。</li>
+    <li><b>执行：</b>采集期间宿主按采集节奏向 handler 推送 <code>PluginAudioInputFrame</code>；handler 落后时宿主丢帧，<code>sequence</code> 出现缺口（不重排）。</li>
+    <li><b>解除：</b>调用 <code>offInputFrame</code> 传同一函数引用，或插件被禁用 / 卸载。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>宿主 → 插件</td><td>PCM16 帧（采集节奏推送，落后即丢）。</td></tr>
+      <tr><td>插件 → 宿主</td><td>无数据上行，仅注册 / 注销 handler。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>宿主无音频后端</td><td>同步抛 <code>Error</code>（<code>code: "UNSUPPORTED"</code>）；不是事件机制，无法经 events 订阅捕获</td><td><code>UNSUPPORTED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不给设备句柄；<code>sequence</code> 有缺口表示丢帧。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.offInputFrame"><code>host-api/audio.offInputFrame</code></a></li>
+    <li><a href="audio.html#audio.openInput"><code>host-api/audio.openInput</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>收 PCM 送识别</b></td><td>把 <code>data</code> 字节送进自有 ASR。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>注册处理函数，不是事件名。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.openInput">
+<h2><code>audio.openInput</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.openInput(options?: PluginAudioOpenInputOptions): Promise&lt;PluginAudioInputSession&gt;</pre>
+  <p class="lead">打开一条后台麦克风采集流并返回会话元数据（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <p class="lead">入参为可选对象 <code>PluginAudioOpenInputOptions</code>，可整体省略（省略即系统默认输入）。</p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">deviceId</td><td>string</td><td>否</td><td>来自 <code>getInputDevices</code> 的设备 id；省略表示系统默认输入。</td></tr>
+      <tr><td class="id">sampleRate</td><td>number</td><td>否</td><td>期望采样率。</td></tr>
+      <tr><td class="id">channels</td><td>number</td><td>否</td><td>声道数。</td></tr>
+      <tr><td class="id">echoCancellation</td><td>boolean</td><td>否</td><td>回声消除。</td></tr>
+      <tr><td class="id">noiseSuppression</td><td>boolean</td><td>否</td><td>噪声抑制。</td></tr>
+      <tr><td class="id">autoGainControl</td><td>boolean</td><td>否</td><td>自动增益。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">streamId</td><td>string</td><td>会话 id；<code>closeInput</code> 用它关闭，帧事件中的 <code>streamId</code> 与之对应。</td></tr>
+      <tr><td class="id">sampleRate</td><td>number</td><td>实际生效的采样率。</td></tr>
+      <tr><td class="id">channels</td><td>number</td><td>实际生效的声道数。</td></tr>
+      <tr><td class="id">deviceId</td><td>string</td><td>可选；实际打开的设备 id。</td></tr>
+      <tr><td class="id">label</td><td>string</td><td>可选；实际打开的设备显示名。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "deviceId": "", "sampleRate": 16000, "channels": 1, "echoCancellation": true }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "streamId": "in-3f9a2c", "sampleRate": 16000, "channels": 1, "label": "默认 - 麦克风 (Realtek Audio)" }</pre>
+  <div class="callout"><b>一句话边界。</b>每个插件同时只有一条输入流；拿到的是会话元数据，不是 <code>MediaStream</code>，也不暴露操作系统设备路径。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.openInput(options?)</code>，参数可整体省略。</li>
+    <li><b>校验：</b>宿主核对权限（未授权 <code>PERMISSION_DENIED</code>）与参数合法性（<code>INVALID_ARGUMENT</code>）。</li>
+    <li><b>执行：</b>宿主打开设备并替插件持有它；每个插件同时只允许一条输入流。</li>
+    <li><b>返回：</b>resolve 会话 <code>{ streamId, sampleRate, channels, deviceId?, label? }</code>；帧随后经 <code>onInputFrame</code> 到达。</li>
+    <li><b>生命周期：</b>插件禁用 / 卸载 / 崩溃时，宿主立即停止该采集。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>打开请求（设备 id、采样率 / 声道数、回声消除 / 降噪 / 自动增益偏好）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>会话元数据（<code>streamId</code> 与实际生效参数）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>打开选定的系统输入设备。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频采集权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+      <tr><td>入参不合法</td><td>调用失败（reject）</td><td><code>INVALID_ARGUMENT</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不给 <code>MediaStream</code>；不给操作系统设备路径。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.closeInput"><code>host-api/audio.closeInput</code></a></li>
+    <li><a href="audio.html#audio.onInputFrame"><code>host-api/audio.onInputFrame</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>开始录音</b></td><td>用户点录音后打开采集流。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>每插件一条输入流。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.openOutput">
+<h2><code>audio.openOutput</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.openOutput(options: PluginAudioOpenOutputOptions): Promise&lt;PluginAudioOutputSession&gt;</pre>
+  <p class="lead">打开一条由宿主持有的播放队列，返回播放会话（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sampleRate</td><td>number</td><td>是</td><td>目标播放采样率。</td></tr>
+      <tr><td class="id">channels</td><td>number</td><td>否</td><td>声道数。</td></tr>
+      <tr><td class="id">format</td><td>"pcm16"</td><td>否</td><td>采样格式；当前仅支持 PCM16。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">streamId</td><td>string</td><td>会话 id；<code>writeOutput</code> / <code>stopOutput</code> / <code>closeOutput</code> 都用它。</td></tr>
+      <tr><td class="id">sampleRate</td><td>number</td><td>实际生效的采样率。</td></tr>
+      <tr><td class="id">channels</td><td>number</td><td>实际生效的声道数。</td></tr>
+      <tr><td class="id">format</td><td>"pcm16"</td><td>播放采样格式。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "sampleRate": 24000, "channels": 1, "format": "pcm16" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "streamId": "out-8c11d0", "sampleRate": 24000, "channels": 1, "format": "pcm16" }</pre>
+  <div class="callout"><b>一句话边界。</b>仅支持 PCM16；拿到的是队列会话而不是设备句柄，播放队列由宿主持有。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.openOutput({ sampleRate, channels?, format? })</code>。</li>
+    <li><b>校验：</b>宿主核对权限（未授权 <code>PERMISSION_DENIED</code>）与参数（如缺 <code>sampleRate</code> 则 <code>INVALID_ARGUMENT</code>）。</li>
+    <li><b>执行：</b>宿主打开系统播放端，为本插件建立播放队列并持有它。</li>
+    <li><b>返回：</b>resolve 播放会话 <code>{ streamId, sampleRate, channels, format }</code>；音频经 <code>writeOutput</code> 入队。</li>
+    <li><b>生命周期：</b>插件禁用 / 卸载时，宿主丢弃未播音频。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>打开请求（采样率、声道数、格式）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>播放会话（<code>streamId</code> 与实际生效参数）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>打开并驱动系统播放设备。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频播放权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+      <tr><td>入参不合法（如缺 <code>sampleRate</code>）</td><td>调用失败（reject）</td><td><code>INVALID_ARGUMENT</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">仅 PCM16；不给设备句柄。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.writeOutput"><code>host-api/audio.writeOutput</code></a></li>
+    <li><a href="audio.html#audio.closeOutput"><code>host-api/audio.closeOutput</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>开始播报</b></td><td>TTS 插件打开播放队列准备排音频。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>播放队列由宿主持有。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.stopOutput">
+<h2><code>audio.stopOutput</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.stopOutput(streamId: string): Promise&lt;void&gt;</pre>
+  <p class="lead">丢弃指定播放会话中排队未播的音频（抢话原语），已播出部分不受影响（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">streamId</td><td>string</td><td>是</td><td><code>openOutput</code> 返回的播放会话 id。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td>Promise&lt;void&gt;</td><td>无数据。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>pi.audio.stopOutput("out-8c11d0")</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回值</pre>
+  <div class="callout"><b>一句话边界。</b>只清空排队未播的部分；不撤回已经播出的帧。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.stopOutput(streamId)</code>。</li>
+    <li><b>校验：</b>宿主核对权限（<code>PERMISSION_DENIED</code>）与会话存在性（<code>NOT_FOUND</code>）。</li>
+    <li><b>执行：</b>清空该会话中排队未播的音频（如用户开口说话时打断播报）。</li>
+    <li><b>返回：</b>resolve；会话本身保持打开（彻底关闭用 <code>closeOutput</code>）。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频播放权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+      <tr><td><code>streamId</code> 不存在或已关闭</td><td>调用失败（reject）</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不撤回已播出的帧。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.writeOutput"><code>host-api/audio.writeOutput</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>用户打断</b></td><td>用户开口说话时清掉未播的回复音频。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>抢话原语只清排队未播部分。</li></ul>
+</section>
+</article>
+<article class="api" id="audio.writeOutput">
+<h2><code>audio.writeOutput</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.audio.writeOutput(input: { streamId: string; data: Uint8Array }): Promise&lt;void&gt;</pre>
+  <p class="lead">把一段 PCM16 字节排进本插件的播放队列，由宿主按序播放（权限：<span class="pill perm">—</span>）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">input.streamId</td><td>string</td><td>是</td><td><code>openOutput</code> 返回的播放会话 id。</td></tr>
+      <tr><td class="id">input.data</td><td>Uint8Array</td><td>是</td><td>PCM16 小端采样字节；多声道按声道交错排列，不接受浮点 PCM。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td>Promise&lt;void&gt;</td><td>无数据；resolve 表示字节已入队（不表示已播完）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// data 为 Uint8Array（PCM16 小端，多声道交错）
+pi.audio.writeOutput({ streamId: "out-8c11d0", data: pcm16Bytes });</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回值</pre>
+  <div class="callout"><b>一句话边界。</b>只接受 PCM16 交错字节；队列满时以 <code>LIMIT_EXCEEDED</code> 拒绝，不会静默丢弃。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b><code>pi.audio.writeOutput({ streamId, data })</code>。</li>
+    <li><b>校验：</b>宿主核对权限（<code>PERMISSION_DENIED</code>）、会话存在性与字节格式（仅 PCM16 交错）。</li>
+    <li><b>执行：</b>字节进入该会话的宿主播放队列，按序等待播放。</li>
+    <li><b>返回：</b>resolve 表示已入队；队列满时以 <code>LIMIT_EXCEEDED</code> 拒绝，数据不静默丢弃。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>PCM16 字节（入队）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>按会话参数播放排队的音频。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>插件未获音频播放权限</td><td>调用失败（reject）</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>宿主无音频后端</td><td>调用失败（reject）</td><td><code>UNSUPPORTED</code></td></tr>
+      <tr><td>播放队列已满</td><td>调用失败（reject），字节不入队、不静默丢弃</td><td><code>LIMIT_EXCEEDED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不接受浮点 PCM；只接受交错（interleaved）布局，不接受平面（planar）布局。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="audio.html#audio.stopOutput"><code>host-api/audio.stopOutput</code></a></li>
+    <li><a href="audio.html#audio.openOutput"><code>host-api/audio.openOutput</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">设备后端落地时间未定。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>排一段语音</b></td><td>把合成好的一段 PCM 写进队列。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>明确不做什么</h3>
+  <p class="lead">不接受浮点 PCM；不接受多声道以外的交错格式之外布局。</p>
+</section>
+<section>
+  <h3><span class="n">9</span>已拍板</h3>
+  <ul><li>队列满则拒绝，不静默丢。</li></ul>
+</section>
+</article>
+</main>
+</body>
+</html>

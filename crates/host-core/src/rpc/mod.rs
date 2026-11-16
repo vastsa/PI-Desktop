@@ -11,12 +11,18 @@ mod review_actions_rpc;
 mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
+mod session_display;
 mod todos;
 mod window_corner_rpc;
+mod window_owner;
+mod window_snap_rpc;
 mod worktree_rpc;
 
 #[cfg(test)]
 mod session_mode_create_tests;
+
+#[cfg(test)]
+mod session_mode_migration_tests;
 
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
@@ -2065,6 +2071,7 @@ async fn handle_request(
         }
         "window.setNativeCornerPreference" => window_corner_rpc::handle(params),
         "browser.chromeSafeStoragePassword" => browser_keychain_rpc::handle().await,
+        "window.enableNativeSnap" => window_snap_rpc::handle(params),
         "keyboard.setGlobalShortcut" => {
             let binding = params
                 .get("binding")
@@ -2941,8 +2948,7 @@ async fn handle_request(
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let session = remote_tools::decorate_session(
                 &st.db,
-                serde_json::to_value(session)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
+                session_display::serialize(&st.db, session)?,
             )?;
             Ok(json!({ "session": session }))
         }

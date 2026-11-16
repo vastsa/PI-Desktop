@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   cloneGitRepository,
   parseGitCloneUrl,
+  runGitClone,
 } from "../electron/main/git-clone.ts";
 import { applyUserEndpointPolicyFromAppSettings } from "../electron/main/endpoint-policy.ts";
 
@@ -269,3 +270,108 @@ test("cloneGitRepository gates a plain http remote on the user's endpoint policy
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("cloneGitRepository cleans up a half-built destination after a timeout", async () => {
+  // git was killed mid-clone; keeping the residue made every retry of the
+  // same name hit CONFLICT until the user found and deleted it by hand.
+  const root = mkdtempSync(join(tmpdir(), "pi-clone-"));
+  try {
+    await assert.rejects(
+      cloneGitRepository({
+        url: "https://github.com/org/demo.git",
+        parentPath: root,
+        // git created the checkout before it was killed mid-clone.
+        run: async (_cwd, args) => {
+          mkdirSync(join(String(args[3]), ".git", "objects"), { recursive: true });
+          return { code: 1, stderr: "git clone timed out", errorCode: "TIMEOUT" };
+        },
+      }),
+      { errorCode: "TIMEOUT" },
+    );
+    assert.equal(existsSync(join(root, "demo")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("runGitClone resolves a timeout only after the killed process has exited", async () => {
+  // Cleaning the destination while git (or a helper holding its stdio) still
+  // writes there races open handles; the timeout must wait for `close`.
+  const root = mkdtempSync(join(tmpdir(), "pi-clone-run-"));
+  const marker = join(root, "exited");
+  try {
+    const script = `
+      process.on("SIGTERM", () => setTimeout(() => {
+        require("node:fs").writeFileSync(${JSON.stringify(marker)}, "");
+        process.exit(1);
+      }, 300));
+      process.stderr.write("ready");
+      setInterval(() => {}, 1000);
+    `;
+    const result = await runGitClone(root, ["-e", script], 200, {
+      command: process.execPath,
+      killGraceMs: 10_000,
+    });
+    assert.equal(result.errorCode, "TIMEOUT");
+    // Windows has no SIGTERM handler (kill terminates at once), so only
+    // POSIX can observe the delayed exit.
+    if (process.platform !== "win32") assert.equal(existsSync(marker), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("runGitClone force-kills a timed-out process that ignores SIGTERM", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-clone-run-"));
+  try {
+    const script = `process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);`;
+    const started = Date.now();
+    const result = await runGitClone(root, ["-e", script], 100, {
+      command: process.execPath,
+      killGraceMs: 200,
+    });
+    assert.equal(result.errorCode, "TIMEOUT");
+    assert.ok(Date.now() - started < 5_000);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("runGitClone reports a normal exit code and stderr", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-clone-run-"));
+  try {
+    const result = await runGitClone(
+      root,
+      ["-e", `process.stderr.write("fatal: nope"); process.exit(3);`],
+      10_000,
+      { command: process.execPath },
+    );
+    assert.deepEqual(result, { code: 3, stderr: "fatal: nope" });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test(
+  "cloneGitRepository keeps a destination entry that predates a timed-out clone",
+  { skip: process.platform === "win32" },
+  async () => {
+    // A dangling symlink passes `existsSync`, so git runs; the timeout path
+    // must not delete an entry this clone did not create.
+    const root = mkdtempSync(join(tmpdir(), "pi-clone-"));
+    try {
+      symlinkSync(join(root, "missing-target"), join(root, "demo"));
+      await assert.rejects(
+        cloneGitRepository({
+          url: "https://github.com/org/demo.git",
+          parentPath: root,
+          run: async () => ({ code: 1, stderr: "git clone timed out", errorCode: "TIMEOUT" }),
+        }),
+        { errorCode: "TIMEOUT" },
+      );
+      assert.equal(lstatSync(join(root, "demo")).isSymbolicLink(), true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

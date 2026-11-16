@@ -2,53 +2,45 @@
 
 - Status: Accepted for implementation
 - Date: 2026-09-08
-- Deciders: PI-Desktop core
-- Related: D352, D328, ADR 0166, ADR 0089, E2E-155
+- Related: ADR 0166, ADR 0089, D352, D328
 
 ## Context
 
-D328 / ADR 0166 keep a durable turn open when the parent *idles* with
-running delegates, then resume the parent with their reports. That path is
-correct for a parent that stopped calling tools.
-
-A terminal parent provider error is different. After a 429 budget is
-exhausted, Electron already finishes the durable turn as `error` and the
-renderer shows Continue. Leftover delegates — often on another model that
-is not rate-limited — kept `isRunning` true, so Continue was rejected as
-`AGENT_BUSY` (`session already has an active turn`). The main conversation
-looked finished while the sidecar was still busy.
+D328 / ADR 0166 keep a durable turn open when the parent idles with running
+delegates, which is right for a parent that merely stopped calling tools. After a
+terminal parent error the turn ends as `error`, yet leftover delegates kept
+`isRunning` true, so Continue was rejected as `AGENT_BUSY` while the conversation
+looked finished.
 
 ## Decision
 
-1. **Parent idle still does not abort delegates.** D328 is unchanged for a
-   parent that stops calling tools without a fatal error.
-2. **A terminal parent error does abort leftover delegates.** Exhausted
-   rate limits, other terminal provider/stream errors, overflow-recovery
-   failure, mutation-budget termination, and rejected-prompt failures abort
-   running delegates, skip the resume prompt, and emit `agent_end`.
-3. **The session becomes idle for Continue.** `getStatus().isRunning` does
-   not count leftover delegates after `turnHadError`. The failed
-   TurnOutcomeCard stays visible; a later `agent_end` must not overwrite it
-   with `completed`.
-4. **A later parent prompt does not inherit previous-turn delegates.** Each
-   `prompt()` / `executeApprovedPlan()` bumps a turn epoch, aborts leftover
-   runs from earlier epochs, and only auto-resumes delegates started in the
-   current turn.
+### 1. Parent idle still does not abort delegates
 
-No IPC, storage, or host-protocol change.
+D328 is unchanged for a parent that stops calling tools without a fatal error.
+
+### 2. A terminal parent error aborts leftover delegates
+
+Exhausted rate limits, other terminal provider or stream errors, overflow-recovery
+failure, mutation-budget termination, and rejected-prompt failures abort running
+delegates, skip the resume prompt, and emit `agent_end`.
+
+### 3. The session becomes idle for Continue
+
+`getStatus().isRunning` ignores leftover delegates after `turnHadError`; the failed
+TurnOutcomeCard stays visible and a later `agent_end` must not overwrite it.
+
+### 4. A later prompt inherits no earlier delegates
+
+Each `prompt()` / `executeApprovedPlan()` bumps a turn epoch, aborts runs from
+earlier epochs, and auto-resumes only delegates started in the current turn.
 
 ## Consequences
 
-- Continue after a 429 (or other terminal parent error) is accepted even if
-  a Gemini (or other) subagent was still running.
-- Work those leftover delegates had not yet reported is aborted rather than
-  written into a dead parent turn.
-- Parent idle with live delegates still shows a live turn until reports are
-  delivered.
+- Continue is accepted after a 429 even while an unrelated subagent was running.
+- Unreported delegate work is aborted instead of landing in a dead turn.
+- Idle parents with live delegates still show a live turn until reports arrive.
 
-## Alternatives rejected
+## Alternatives
 
-- **Keep leftover delegates running after parent error.** The session stays
-  busy and Continue is `AGENT_BUSY`.
-- **Detach leftover delegates from `isRunning` without aborting.** A later
-  Continue turn would race them on the workspace.
+- Detach leftovers from `isRunning` without aborting: rejected because a later
+  turn would race them on the workspace.

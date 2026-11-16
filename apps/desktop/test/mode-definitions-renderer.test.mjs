@@ -153,6 +153,14 @@ test("every run state has its own label and the controls the run allows", () => 
   assert.deepEqual([finished.stop, finished.remove, finished.edit], [false, false, false]);
 });
 
+test("a model-reported blocker uses the existing blocked label and requires explicit Resume", () => {
+  const blocked = { state: "waiting", waitReason: "blocked" };
+  assert.equal(runModel.modeRunStateKey(blocked), "blocked");
+  assert.deepEqual(runModel.modeRunControls(blocked), {
+    pause: false, resume: true, stop: true, remove: true, edit: true, approve: false, reject: false,
+  });
+});
+
 test("a run edit sends only what changed and rejects an empty objective or an out-of-range budget", () => {
   const run = { ...RUN, input: "ship it", maxTurns: 20, maxTokens: null };
   const draft = runModel.modeRunDraft(run);

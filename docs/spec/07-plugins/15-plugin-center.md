@@ -125,7 +125,7 @@ monotonic and is the accepted cost of committing artifacts (ADR 0102).
 
 ```text
             ┌──────────────────────────────┐
-            │ Next.js on Vercel            │
+            │ Next.js on its own server    │
             │ SEO pages · publisher console│
             └──────────────┬───────────────┘
                            │ HTTPS

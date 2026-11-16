@@ -127,7 +127,11 @@ pub(super) fn verify(path: &Path, reader: &mut BufReader<File>) -> Result<()> {
             break;
         }
         if let Err(error) = binary_storage::validate_line(line.trim()) {
-            if binary_storage::is_error(&error) {
+            // Same semantics as the read paths: a terminated torn prefix
+            // (`InvalidStorageEof`) is tolerated, so a crash mid-append never
+            // blocks every future write to the session. Complete encoded lines
+            // that are otherwise corrupt stay hard errors.
+            if binary_storage::is_error(&error) && !binary_storage::is_torn_eof(&error) {
                 return Err(error).with_context(|| format!("validate storage {}", path.display()));
             }
         }

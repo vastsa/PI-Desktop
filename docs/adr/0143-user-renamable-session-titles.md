@@ -2,51 +2,36 @@
 
 - Status: Accepted
 - Date: 2026-09-01
+- Related: Issue #27
 
 ## Context
 
-Tasks are durable sessions, but their labels are currently controlled by the
-default title and first-prompt auto-title flow. Once a task has accumulated
-history, users need a stable label that is easier to recognize in the sidebar,
-Project archive, topbar, and search results. Issue #27 requests renaming a
-project task without changing the task itself.
+Tasks are durable sessions, but their labels come from the default title and the
+first-prompt auto-title flow, so a task with accumulated history has no stable,
+recognizable label in the sidebar, Project archive, topbar, or search results.
 
 ## Decision
 
-Treat a task name as session metadata and expose one shared rename dialog. The
-dialog is available from the Sidebar session overflow/right-click menu and from
-the Project archive task row. It trims input, accepts 1–80 Unicode code points,
-and keeps the Save action unavailable for an empty value. The host validates the
-same rules so direct IPC callers cannot persist invalid titles.
+Treat a task name as session metadata and expose one shared rename dialog, opened
+from the Sidebar session menu and the Project archive task row. It trims input,
+accepts 1–80 Unicode code points, keeps Save unavailable while empty, and the host
+validates the same rules so direct IPC callers cannot persist invalid titles.
 
 Renaming updates `sessions.title` and marks its host-owned `title_source` as
-`manual`. It does not modify the transcript, message count, project binding,
-empty-session predicate, or `updated_at` activity timestamp. Plugin-generated
-titles use a compare-and-set against the automatic title, so a manual rename
-wins a race without renderer-local title state. The core's own first-prompt
-fallback keeps that source `default` and stays replaceable, which is why only a
-`manual` title opts out of automatic replacement.
-
-Historical notification title snapshots remain unchanged. Newly rendered
-surfaces read the current session summary, so the renamed title is shown in the
-Sidebar, topbar, Project archive, and search results after the local store
-update and across restart.
+`manual`, without touching the transcript, message count, project binding,
+empty-session predicate, or `updated_at`. Auto-titles compare-and-set against the
+automatic title, so a manual rename wins the race and only a `manual` title opts
+out of automatic replacement.
 
 ## Consequences
 
-- Users can name a task from both primary task navigation and the project index.
-- Host-side validation provides one durable contract for renderer and future
-  clients.
-- Renaming cannot accidentally move a task in recent-activity order or alter
-  agent context.
-- The renderer owns modal focus, error presentation, and the immediate local
-  title update after the host confirms the session exists.
+- A task can be renamed from both primary navigation and the project index, and the
+  new title appears there after the local store update and across restart.
+- Renaming cannot move a task in recent-activity order or alter agent context.
+- One host-side contract serves the renderer and future clients.
 
-## Alternatives considered
+## Alternatives
 
-- Rename only from the topbar: rejected because the task can be discovered and
-  managed from the Sidebar or Project archive before opening it.
-- Rename the project folder or project record: rejected because the request is
-  about an individual task/session, not the workspace identity.
-- Add a command-palette command: deferred; the existing row actions are the
-  discoverable surface and no new global command is needed for this operation.
+- Rename only from the topbar — rejected: the task is discoverable elsewhere before
+  it is opened.
+- Rename the project record — rejected: the request is about one task.

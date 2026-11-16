@@ -4,8 +4,8 @@ Implementation status: **COMPLETE** for Live Work v2.1. The task candidate is
 based on `origin/main` at
 `b360e04eb11edb8256b85ad314a8fdda7dc54e30`. No real provider account, paid
 endpoint, user project, or running Electron instance was used. The v2.1 case
-map is [`live-work-v21-coverage.md`](live-work-v21-coverage.md), and its manual
-device matrix is [`live-work-v21-device-matrix.md`](live-work-v21-device-matrix.md).
+map is [`live-work-v21-coverage.md`](live-work-v21-coverage.md); its manual
+device matrix is kept in git history.
 This status and the evidence below describe that prior v2.1 candidate only; they
 do not claim acceptance for the multi-backend extension.
 
@@ -291,8 +291,8 @@ only the named seam and assertions, not a complete provider-to-device journey.
   production `createLiveWorkBridge` mapping.
 
 The full W2-001—W2-096 case-level mapping, with Direct / Partial / Gap status
-and evidence boundaries, is in
-`docs/implementation/live-work-w2-coverage.md`. The fixture is deterministic
+and evidence boundaries, is kept in git history
+(`docs/implementation/live-work-w2-coverage.md`). The fixture is deterministic
 and crosses into AgentHost, but does not exercise the registered Main
 `createLiveWorkBridge` handler mapping or concrete socket/WebRTC adapters; it
 therefore remains partial evidence for W2-025 and W2-096.

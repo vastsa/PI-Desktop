@@ -2,44 +2,30 @@
 
 - Status: Accepted
 - Date: 2026-09-08
-- Related: ADR 0107, D117, D350, E2E-065, E2E-065a
-- Note: The native IPC field is `kind` (`task` | `interactive`). A duplicate
-  0187 that named the same field `source` was withdrawn.
+- Related: D117, D350, ADR 0107, E2E-065, E2E-065a
 
 ## Context
 
-Durable task completion rows are created for a focused background session, but
-the renderer and Electron main shared one native notification request with
-interactive ask/permission/plan prompts. Suppressing native output based only on
-the current session therefore showed a completion banner while the app was
-focused on another session, violating D117 and E2E-065.
+Durable task completion rows exist for a focused background session, but one
+native notification request was shared with interactive ask, permission, and plan
+prompts, so suppressing by current session showed a banner while another session
+was focused.
 
 ## Decision
 
-Add an explicit `kind` to the Electron-only native notification request:
-`task` or `interactive`. A task completion is never shown natively while the
-main window is both visible and focused, regardless of which session is
-currently selected. It remains eligible when the window is hidden, minimized,
-or unfocused. Interactive prompts retain their previous rule: suppress only the
-exact visible focused session, while a focused background request remains
-visible so the user can answer it.
-
-The durable task insertion policy is unchanged: the exact visible focused
-session suppresses the inbox row, while background, hidden, unknown, and
-unfocused state creates it. Plugin-native notifications remain on their separate
-permission-gated path.
+The Electron-only native notification request carries an explicit `kind` of `task`
+or `interactive`. A task completion never appears natively while the main window is
+visible and focused, whichever session is selected, and stays eligible when hidden,
+minimized, or unfocused; interactive prompts suppress only in the exact visible
+focused session. Durable task insertion is unchanged, and plugin-native
+notifications keep their permission-gated path.
 
 ## Consequences
 
-- Focused-background completions produce the durable inbox row without a
-  duplicate native banner.
-- Interactive requests remain actionable when another session is selected.
-- The behavior is unit-testable without launching Electron, and old callers
-  without a kind fail closed to the task behavior.
+- Focused-background completions produce the inbox row without a duplicate banner.
+- Callers without a `kind` fail closed to the task behavior.
 
-## Alternatives considered
+## Alternatives
 
-- Relax the shared focus gate for all calls: rejected because it would hide
-  actionable interactive prompts.
-- Add a second native IPC channel: rejected because an explicit kind keeps the
-  shared validation and click activation path without duplicating host code.
+- Relax the shared focus gate for all calls: hides actionable prompts.
+- Add a second native IPC channel: `kind` keeps shared validation and activation.

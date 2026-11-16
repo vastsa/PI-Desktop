@@ -5,27 +5,17 @@
 
 ## Context
 
-Products such as LiveAgent provide a remote WebUI/Gateway. Whether PI-Desktop should add remote control capability in the first phase is a trade-off that needs to be made.
+Products such as LiveAgent ship a remote WebUI/Gateway, so the first release had
+to decide whether remote control of the local agent belongs in scope.
 
 ## Decision
 
-The MVP will **not** build a remote Gateway / browser-based remote control.
-
-## Rationale
-
-1. It conflicts in priority with the local-first desktop closed-loop goal
-2. A remote link would significantly increase authentication, synchronization, and security complexity
-3. We should first prove that the local agent UX and permission model hold up
+The MVP builds no remote Gateway and no browser-based remote control. The
+local-first desktop loop and its permission model are proven first; a remote link
+would add authentication, synchronization, and security work ahead of that.
 
 ## Consequences
 
-### Positive
-- Scope convergence
-- Simpler security model
-
-### Negative
-- No browser-based remote control of the local agent in the short term
-
-## Follow-up
-
-If remote capability is to be built, a separate ADR must be added, with its own dedicated milestone.
+- Scope converges and the security model stays simple.
+- No browser-based remote control of the local agent in the short term.
+- Remote capability needs its own ADR and milestone.
