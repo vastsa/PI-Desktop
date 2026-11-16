@@ -219,3 +219,14 @@ test("the working step sweeps only while its session runs, so an idle window sto
     }
   });
 });
+
+
+test("pending completion displays its status and offers cancellation without dismissing the job", async () => {
+  await withDockRender(({ render }) => {
+    const pending = { ...task("pending", "exited", 0), continuation: "pending" };
+    const html = render({ tasks: [pending], sessionTasks: [pending] });
+    assert.match(html, /Waiting to resume/);
+    assert.match(html, /Cancel continuation/);
+    assert.doesNotMatch(html, />Remove</);
+  });
+});

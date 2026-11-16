@@ -15,6 +15,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub(crate) mod continuations;
 pub(crate) mod jobs;
 
 use crate::tools;
@@ -97,8 +98,8 @@ pub struct BackgroundTask {
     pub command_shell_id: String,
     pub started_at: Instant,
     pub shared: Arc<Mutex<TaskShared>>,
-    stop: watch::Sender<bool>,
-    settled: watch::Sender<Option<Duration>>,
+    pub(crate) stop: watch::Sender<bool>,
+    pub(crate) settled: watch::Sender<Option<Duration>>,
 }
 
 impl BackgroundTask {
@@ -122,6 +123,8 @@ pub struct BackgroundTaskSummary {
     pub elapsed_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation: Option<continuations::ContinuationState>,
 }
 
 #[derive(Default, Debug)]
@@ -129,6 +132,7 @@ pub struct BackgroundTaskRegistry {
     pub(crate) tasks: HashMap<String, BackgroundTask>,
     /// Insertion order, for stable oldest-first pruning of finished entries.
     order: Vec<String>,
+    pub(crate) continuations: HashMap<String, continuations::Continuation>,
 }
 
 /// Process-wide change counter. Every start, exit, and stop bumps it; the RPC
@@ -208,6 +212,7 @@ impl BackgroundTaskRegistry {
                     state,
                     elapsed_ms: task.elapsed_ms(),
                     exit_code,
+                    continuation: self.continuations.get(&task.id).map(|entry| entry.state),
                 }
             })
             .collect();
@@ -226,6 +231,7 @@ impl BackgroundTaskRegistry {
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn spawn_background_task_detached(
     state: &tokio::sync::Mutex<crate::state::AppState>,
     session_id: &str,
@@ -233,6 +239,27 @@ pub(crate) async fn spawn_background_task_detached(
     command_shell_id: &str,
     workspace: &std::path::Path,
     scratch: Option<&std::path::Path>,
+) -> Result<String, (String, String)> {
+    spawn_background_task_with_continuation(
+        state,
+        session_id,
+        command,
+        command_shell_id,
+        workspace,
+        scratch,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn spawn_background_task_with_continuation(
+    state: &tokio::sync::Mutex<crate::state::AppState>,
+    session_id: &str,
+    command: &str,
+    command_shell_id: &str,
+    workspace: &std::path::Path,
+    scratch: Option<&std::path::Path>,
+    source_turn: Option<&str>,
 ) -> Result<String, (String, String)> {
     let on_changed: Arc<dyn Fn() + Send + Sync> = Arc::new(bump_change_counter);
     let config = resolve_runner_config(command_shell_id, command, workspace, scratch)?;
@@ -248,6 +275,9 @@ pub(crate) async fn spawn_background_task_detached(
             "TOOL_FAILED".into(),
             "cannot start a background task for a session that no longer exists".into(),
         ));
+    }
+    if let Some(turn_id) = source_turn {
+        continuations::authorize_registration(&st, session_id, turn_id)?;
     }
     let running_here = st.background_tasks.running_count_for(session_id);
     if running_here >= MAX_RUNNING_TASKS_PER_SESSION {
@@ -281,6 +311,15 @@ pub(crate) async fn spawn_background_task_detached(
         runner,
         on_changed,
     );
+    if let Some(turn_id) = source_turn {
+        st.background_tasks.continuations.insert(
+            task.id.clone(),
+            continuations::Continuation {
+                source_turn_id: turn_id.to_owned(),
+                state: continuations::ContinuationState::Pending,
+            },
+        );
+    }
     // A start is a state change too. Without this bump the renderer would only
     // learn about the task once it finished, so the running-tasks bar would stay
     // empty for exactly as long as the process was alive.
@@ -524,22 +563,26 @@ pub fn stop_all_running_sync(registry: &BackgroundTaskRegistry) {
 
 impl BackgroundTaskRegistry {
     fn prune_finished(&mut self) {
-        let finished: Vec<String> = self
-            .order
-            .iter()
-            .filter(|id| {
-                self.tasks
-                    .get(*id)
-                    .is_some_and(|task| !BackgroundTaskRegistry::is_running(task))
-            })
-            .cloned()
-            .collect();
+        let finished: Vec<String> =
+            self.order
+                .iter()
+                .filter(|id| {
+                    !self.continuations.get(*id).is_some_and(|entry| {
+                        entry.state == continuations::ContinuationState::Pending
+                    }) && self
+                        .tasks
+                        .get(*id)
+                        .is_some_and(|task| !BackgroundTaskRegistry::is_running(task))
+                })
+                .cloned()
+                .collect();
         if finished.len() <= FINISHED_TASK_HISTORY {
             return;
         }
         for id in &finished[..finished.len() - FINISHED_TASK_HISTORY] {
             self.order.retain(|existing| existing != id);
             self.tasks.remove(id);
+            self.continuations.remove(id);
         }
     }
 }

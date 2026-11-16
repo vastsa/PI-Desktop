@@ -177,6 +177,9 @@ jobs:
           node scripts/e2e-goal-run-repairs.mjs
           node scripts/e2e-goal-completion.mjs
 
+      - name: Run background completion Host/process E2E
+        run: pnpm test:e2e:background-continuation
+
       - name: Run plugin project enumeration Host/process E2E
         run: pnpm test:e2e:plugin-projects
 

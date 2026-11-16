@@ -37,6 +37,9 @@ it("allows session job methods but denies global desktop process access", async 
   for (const method of ["capabilities", "list", "wait", "stop"]) {
     await expect(sidecar.call("probe", { method: `backgroundJobs.${method}`, params: { sessionId: "owner" } })).resolves.toEqual({ ok: true });
   }
+  for (const method of ["list", "claim", "consume", "cancel", "fail"]) {
+    await expect(sidecar.call("probe", { method: `backgroundContinuations.${method}`, params: { sessionId: "owner", id: "job" } })).rejects.toMatchObject({ code: -32601 });
+  }
   for (const method of ["list", "output", "stop"]) {
     await expect(sidecar.call("probe", { method: `backgroundTasks.${method}`, params: { id: "foreign" } })).rejects.toMatchObject({ code: -32601 });
   }

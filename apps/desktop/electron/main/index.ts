@@ -1,3 +1,4 @@
+import { createBackgroundContinuationCoordinator } from "./runtime/background-continuations";
 import {
   app,
   BrowserWindow,
@@ -707,6 +708,16 @@ const sessionCollaboration = createSessionCollaborationService({
   log: (message, data) => logger.app("runtime", "warn", message, { data }),
 });
 
+const backgroundContinuations = createBackgroundContinuationCoordinator({
+  getHost,
+  start: async (sessionId, origin) => {
+    if (!mainState.agentHostBridge) throw new Error("Agent Host unavailable");
+    return mainState.agentHostBridge.startBackgroundContinuation(sessionId, origin);
+  },
+  isQuitting: () => mainState.quitting,
+  log: (message, error) => logger.app("session", "warn", message, { data: String(error) }),
+});
+
 const modeServices = createModeServices({
   getHost,
   getAgentHostBridge: () => mainState.agentHostBridge,
@@ -738,7 +749,9 @@ const planRuntime = createPlanRuntime({
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting: () => mainState.quitting,
-  onTurnSettled: sessionCollaboration.settle,
+  onTurnSettled: async (sessionId, turnId) => {
+    try { await sessionCollaboration.settle(sessionId, turnId); } finally { backgroundContinuations.wake(); }
+  },
   onTurnEnded: (sessionId, turnId, end) => modeServices.runs.settleTurn(sessionId, turnId, end),
 });
 const {
@@ -789,6 +802,7 @@ function publishComputerGrant(grant: ComputerGrantView | null): void {
 }
 
 const sidecarRuntime = createSidecarRuntime({
+  observeBackgroundResult: backgroundContinuations.observe,
   runtimeState,
   steeringReplies,
   logger,
@@ -826,6 +840,7 @@ emitAgentEvent = sidecarRuntime.emitAgentEvent;
 const { startSidecar } = sidecarRuntime;
 
 const { startHost } = createHostRuntime({
+  onBackgroundTasksChanged: backgroundContinuations.wake,
   runtimeState,
   dataDir,
   logger,

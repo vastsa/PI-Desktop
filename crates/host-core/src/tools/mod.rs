@@ -896,6 +896,7 @@ pub struct BashExecutionOptions {
     /// Start as a background task detached from the turn: no timeout, no
     /// abort wiring. The caller owns the registry; see `background_tasks`.
     pub run_in_background: bool,
+    pub continuation_turn_id: Option<String>,
     /// Host state the background spawn registers into. Present for RPC-driven
     /// calls; `None` for test/`local` constructions that never go background.
     pub app_state: Option<Arc<tokio::sync::Mutex<crate::state::AppState>>>,
@@ -912,6 +913,7 @@ impl BashExecutionOptions {
             output_tx: None,
             extra_env: Vec::new(),
             run_in_background: false,
+            continuation_turn_id: None,
             app_state: None,
         }
     }
@@ -3021,17 +3023,19 @@ async fn tool_bash(
                 "background execution requires host state (not available for local calls)".into(),
             ));
         };
-        let started = crate::background_tasks::spawn_background_task_detached(
+        let started = crate::background_tasks::spawn_background_task_with_continuation(
             app_state,
             &options.session_id,
             command,
             &options.command_shell_id,
             root,
             scratch,
+            options.continuation_turn_id.as_deref(),
         )
         .await?;
         return Ok(serde_json::json!({
             "backgroundTaskId": started,
+            "continuationRequested": options.continuation_turn_id.is_some(),
             "job": { "kind": "bash", "id": started },
             "command": command,
             "commandShellId": options.command_shell_id,
@@ -5136,6 +5140,7 @@ mod tests {
                 output_tx: None,
                 extra_env: Vec::new(),
                 run_in_background: false,
+                continuation_turn_id: None,
                 app_state: None,
             }),
         )
@@ -5180,6 +5185,7 @@ mod tests {
                 output_tx: None,
                 extra_env: Vec::new(),
                 run_in_background: false,
+                continuation_turn_id: None,
                 app_state: None,
             }),
         )
@@ -5219,6 +5225,7 @@ mod tests {
                 output_tx: None,
                 extra_env: Vec::new(),
                 run_in_background: false,
+                continuation_turn_id: None,
                 app_state: None,
             }),
         )
@@ -5291,6 +5298,7 @@ mod tests {
             output_tx: Some(tx),
             extra_env: Vec::new(),
             run_in_background: false,
+            continuation_turn_id: None,
             app_state: None,
         };
         let mut notifier = OutputNotifier::new(&options);
@@ -5319,6 +5327,7 @@ mod tests {
             output_tx: None,
             extra_env: Vec::new(),
             run_in_background: false,
+            continuation_turn_id: None,
             app_state: None,
         };
 
@@ -5409,6 +5418,7 @@ mod tests {
             output_tx: None,
             extra_env: Vec::new(),
             run_in_background: false,
+            continuation_turn_id: None,
             app_state: None,
         };
         execute_tool_with_options(

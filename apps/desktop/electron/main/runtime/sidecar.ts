@@ -34,6 +34,7 @@ import { currentSystemProxyRelayUrl } from "../network-proxy";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
+  observeBackgroundResult?: (event: AgentEventEnvelope) => void;
   steeringReplies: Set<string>;
   logger: Logger;
   sendToRenderer: (channel: string, payload: unknown) => void;
@@ -77,6 +78,7 @@ export type SidecarRuntimeDependencies = {
 
 export function createSidecarRuntime({
   runtimeState,
+  observeBackgroundResult,
   steeringReplies,
   logger,
   sendToRenderer,
@@ -203,7 +205,9 @@ export function createSidecarRuntime({
       return;
     }
     if (method === "agent.event") {
+      if (runtimeState.sidecar !== s) return;
       const envelope = params as AgentEventEnvelope;
+      observeBackgroundResult?.(envelope);
       const event = envelope.event;
       if (event.type === "tool_start") {
         activeToolCalls.set(toolKey(envelope.sessionId, event.toolCallId), {

@@ -2025,3 +2025,7 @@ This does not prevent state changes — it makes them instant.
 - A settled cross-display move refreshes the native minimum without enlarging a
   window already placed in a narrower tile. Normal bounds persistence and the
   internal work-panel/chat-width IPC contracts are unchanged.
+
+## Background completion continuation
+
+Agent behavior → Execution offers a default-off “Continue after background jobs” switch. Enabling it permits the assistant to arrange follow-up using the current permission mode, without separate per-job approval. The task dock labels running intents “Continue when finished” and finished intents “Waiting to resume”. Pending rows survive expiry and reload and expose “Cancel continuation”; they cannot be dismissed while still pending. Cancellation withdraws only continuation, leaving the process and log accessible. Other states distinguish started, received, cancelled and failed. Completion never switches the active conversation or steals focus.

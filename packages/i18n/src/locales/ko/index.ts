@@ -807,6 +807,14 @@ export const ko = {
     renameSaving: "저장 중…",
   },
   backgroundTasks: {
+    continuationpending: "완료 후 계속",
+    continuationReady: "대화 재개 대기 중",
+    continuationstarted: "재개 시작됨",
+    continuationconsumed: "결과 수신됨",
+    continuationcancelled: "재개 취소됨",
+    continuationfailed: "재개 실패",
+    cancelContinuation: "재개 취소",
+
     running: "실행 중",
     exited: "종료됨",
     failed: "실패",
@@ -1733,6 +1741,8 @@ sklm: {
     noResults: "일치하는 설정 없음",
     enterToSend: "Enter로 보내기",
     enterToSendDesc: "끔: ⌘/Ctrl+Enter를 눌러 보내세요.",
+    backgroundJobContinuation: "백그라운드 작업 완료 후 계속",
+    backgroundJobContinuationDesc: "요청한 로컬 테스트나 빌드가 끝나면 기존 권한 모드로 대화를 재개합니다. 기본값은 꺼짐입니다. 끄면 대기 중인 재개만 취소되며 프로세스는 계속 실행됩니다.",
     infiniteProviderRetry: "성공할 때까지 재시도",
     infiniteProviderRetryDesc: "네트워크 및 일시적인 제공자 오류가 성공할 때까지 계속 재시도됩니다. 언제든 중지할 수 있지만 API 사용량이 계속 발생할 수 있습니다.",
     smoothStreaming: "부드러운 스트리밍",
