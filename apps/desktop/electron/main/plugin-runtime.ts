@@ -2749,6 +2749,11 @@ export class PluginRuntime {
 
   private handleChildMessage(loaded: LoadedPlugin, message: any): void {
     if (!message || typeof message !== "object") return;
+    if (message.t === "ping") {
+      // Parent-liveness keepalive: the host exits if this round-trip stops.
+      loaded.child?.postMessage({ t: "pong", id: message.id });
+      return;
+    }
     if (message.t === "res") {
       const entry = loaded.pending.get(message.id);
       if (!entry) return;
