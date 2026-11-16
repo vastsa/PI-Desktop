@@ -9,6 +9,7 @@ import {
   SUBAGENT_PRESETS,
   SUBAGENT_THINKING_LEVELS,
   findSubagentPreset,
+  imageGenerationBindings,
   isSubagentAssignableTool,
   isSubagentMutatingTool,
   resolveScope,
@@ -580,6 +581,8 @@ export function SubagentEditorSheet({
 }) {
   const { t } = useTranslation();
   const providers = useAppStore((state) => state.providers);
+  const settings = useAppStore((state) => state.settings);
+  const providerModels = useAppStore((state) => state.providerModels);
   const copiedPreset = Boolean(initialPresetId && findSubagentPreset(initialPresetId));
   const [nameTouched, setNameTouched] = useState(!!editing || copiedPreset);
   const [presetId, setPresetId] = useState<string | null>(
@@ -590,7 +593,21 @@ export function SubagentEditorSheet({
   const pristine = !editing && !draft.name.trim() && !draft.description.trim();
   const bytes = new TextEncoder().encode(draft.body).length;
   const slug = draft.id || subagentSlug(draft.name);
-  const modelChoices = useMemo(() => subagentModelChoices(providers), [providers]);
+  // Subscribe to the settings slices and the discovered catalog reactively:
+  // the catalog slice swaps providerModels without replacing the providers
+  // array, so a getState() read here kept stale metadata while the sheet
+  // stayed open (e.g. image-only metadata arriving after mount).
+  const imageGenerationBindingsFromSettings = useMemo(
+    () => imageGenerationBindings(
+      settings?.imageGenerationModels,
+      settings?.imageGeneration,
+    ),
+    [settings?.imageGenerationModels, settings?.imageGeneration],
+  );
+  const modelChoices = useMemo(
+    () => subagentModelChoices(providers, imageGenerationBindingsFromSettings, providerModels),
+    [providers, imageGenerationBindingsFromSettings, providerModels],
+  );
   const modelGroups = useMemo(
     () => groupSubagentModelChoices(modelChoices),
     [modelChoices],
