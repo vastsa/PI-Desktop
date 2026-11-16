@@ -15,6 +15,7 @@ const baseline = {
 };
 let info = { ...baseline };
 let chosen = "/new/PI-Desktop";
+let settingsReadError = true;
 let readError = false;
 let operationError = false;
 let operationGate = null;
@@ -25,6 +26,10 @@ window.piDesktop = {
   async invoke(channel, input) {
     let data;
     switch (channel) {
+      case IPC.invoke.settingsGet:
+        if (settingsReadError) return { ok: false, error: { code: "TEST", message: "settings unavailable" } };
+        data = { language: "en", theme: "light", defaultMode: "agent", enterToSend: true };
+        break;
       case IPC.invoke.storageGet:
         if (readError) return { ok: false, error: { code: "TEST", message: "storage unavailable" } };
         data = info;
@@ -45,7 +50,7 @@ window.piDesktop = {
   },
 };
 await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", interpolation: { escapeValue: false }, resources: Object.fromEntries(Object.entries(catalogs).map(([language, catalog]) => [language, { translation: catalog }])) });
-useAppStore.setState({ settingsTab: "general", settings: { language: "en", theme: "light", defaultMode: "agent", enterToSend: true }, version: null });
+useAppStore.setState({ settingsTab: "system", settings: null, version: null });
 const root = createRoot(document.getElementById("root"));
 let revision = 0;
 const assert = (value, message) => { if (!value) throw new Error(message); };
@@ -66,6 +71,16 @@ async function mount(overrides = {}) {
 window.storageSettingsProbe = async () => {
   const checks = [];
   await mount();
+  const recovery = document.querySelector(".settings-recovery");
+  assert(recovery?.textContent.includes(text("errors.HOST_UNAVAILABLE")), "System must explain a settings read failure");
+  const retry = recovery.querySelector("button");
+  assert(retry?.textContent.trim() === text("errors.action.retry"), "System must offer settings retry");
+  settingsReadError = false;
+  flushSync(() => retry.click());
+  await settled();
+  assert(!document.querySelector(".settings-recovery"), "Successful retry must replace the failure state");
+  assert(useAppStore.getState().settings?.theme === "light", "Retry must restore the settings snapshot");
+  checks.push("system settings failure and retry");
   assert(scope().textContent.includes(baseline.dataPath), "Current data path must be visible");
   assert(scope().textContent.includes("2 MiB"), "Reclaimable size must be visible");
   chosen = null;

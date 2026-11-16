@@ -96,7 +96,7 @@ await i18n.use(initReactI18next).init({
   },
   interpolation: { escapeValue: false },
 });
-useAppStore.setState({ settings, settingsTab: "ai", page: "settings" });
+useAppStore.setState({ settings, settingsTab: "chat", page: "settings" });
 initLanguageSync();
 const root = createRoot(document.getElementById("root"));
 flushSync(() => root.render(<SettingsPage />));
@@ -218,7 +218,7 @@ async function exerciseUpdatePreference() {
     "Manual mode must offer the release page for an available version",
   );
 
-  await select("AI");
+  await select("Conversation");
   await select("Info");
   await settle();
   assert(trigger().textContent?.includes("Manual"), "Manual preference must survive leaving and reopening Info");
@@ -228,7 +228,7 @@ async function exerciseUpdatePreference() {
 }
 
 async function exerciseBrazilianPortuguese() {
-  await select("General");
+  await select("Appearance");
   const trigger = document.querySelector(".settings-language-trigger");
   assert(trigger instanceof HTMLButtonElement, "Language picker trigger must render");
   flushSync(() => trigger.click());
@@ -253,8 +253,8 @@ async function exerciseBrazilianPortuguese() {
   assert(settings.language === "pt-BR", "Choosing Portuguese must persist pt-BR");
   assert(useAppStore.getState().settings?.language === "pt-BR", "App settings must retain pt-BR");
   assert(document.documentElement.lang === "pt-BR", "Document language must update to pt-BR");
-  assert(navButton("Geral"), "Settings navigation must switch to Brazilian Portuguese");
-  assert(!navButton("General"), "English navigation must be replaced after switching locales");
+  assert(navButton("Aparência"), "Settings navigation must switch to Brazilian Portuguese");
+  assert(!navButton("Appearance"), "English navigation must be replaced after switching locales");
   const languageTitle = [...document.querySelectorAll(".settings-row-title")]
     .find((node) => node.textContent?.trim() === "Idioma");
   assert(languageTitle, "The language setting label must be translated");
@@ -263,7 +263,7 @@ async function exerciseBrazilianPortuguese() {
   return { locale: i18n.language, language: settings.language, label: selectedLabel.textContent.trim() };
 }
 async function exerciseProxyDraftRestoration() {
-  await select("General");
+  await select("System");
   const urlInput = () => document.querySelector('input[aria-label="Proxy URL"]');
   const input = urlInput();
   assert(input instanceof HTMLInputElement, "Custom proxy URL field must render");
@@ -307,18 +307,18 @@ window.settingsScrollProbe = async () => {
   await checkCloudSyncVisibility();
   for (const theme of ["light", "dark"]) {
     document.documentElement.dataset.theme = theme;
-    await select("AI");
+    await select("Conversation");
     const position = await scroll();
-    await select("AI");
-    assert(pane().scrollTop === position, "Re-selecting AI must retain scroll");
+    await select("Conversation");
+    assert(pane().scrollTop === position, "Re-selecting Conversation must retain scroll");
     flushSync(() => useAppStore.setState({ settings: { ...settings, enterToSend: false } }));
     await settle();
     assert(pane().scrollTop === position, "Settings updates must retain scroll");
     await select("Shortcuts");
     assert(pane().scrollTop === 0, "AI → Shortcuts must start at top");
     await scroll();
-    await select("AI");
-    assert(pane().scrollTop === 0, "Returning to AI must start at top");
+    await select("Conversation");
+    assert(pane().scrollTop === 0, "Returning to Conversation must start at top");
     await scroll();
     await select("Themes A");
     assert(pane().scrollTop === 0, "Built-in → extension must start at top");
@@ -328,7 +328,7 @@ window.settingsScrollProbe = async () => {
     await select("Themes B");
     assert(pane().scrollTop === 0, "Extension → extension must start at top");
     await scroll();
-    await select("AI");
+    await select("Conversation");
     assert(pane().scrollTop === 0, "Extension → unchanged built-in tab must start at top");
     await select("Themes A");
     await scroll();
@@ -340,7 +340,7 @@ window.settingsScrollProbe = async () => {
     await scroll();
     flushSync(() => {
       useAppStore.getState().setSettingsAnchor("settings.enterToSend");
-      useAppStore.getState().setSettingsTab("ai");
+      useAppStore.getState().setSettingsTab("chat");
     });
     assert(!document.querySelector(".plugin-scenic-theme-card"), "Search must leave the plugin destination");
     const fromPlugin = document.querySelector(".settings-anchor-flash");
@@ -354,7 +354,7 @@ window.settingsScrollProbe = async () => {
     await scroll();
     flushSync(() => {
       useAppStore.getState().setSettingsAnchor("settings.enterToSend");
-      useAppStore.getState().setSettingsTab("ai");
+      useAppStore.getState().setSettingsTab("chat");
     });
     const target = document.querySelector(".settings-anchor-flash");
     assert(target && pane().scrollTop > 0, "Search anchor must be positioned before paint");
@@ -381,7 +381,7 @@ window.settingsScrollProbe = async () => {
 
 window.settingsSegmentProbe = async (language, fontScale) => {
   settings = { ...settings, language };
-  flushSync(() => useAppStore.setState({ settings, settingsTab: "ai" }));
+  flushSync(() => useAppStore.setState({ settings, settingsTab: "chat" }));
   await i18n.changeLanguage(language);
   document.documentElement.style.setProperty("--font-scale", String(fontScale));
   await settle();

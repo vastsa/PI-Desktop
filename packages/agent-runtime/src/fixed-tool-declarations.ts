@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
-import { getCurrentSystemMessage, toToolDeclaration, Type, type Api, type Model } from "@earendil-works/pi-ai";
+import { getCurrentSystemMessage, toToolDeclaration, type Api, type Model } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import * as Value from "typebox/value";
 import { contextBudgetLimitsFor, automaticCompactionThresholdFor } from "./context-budget.js";
 import { estimateOutputCapInputTokens } from "./output-cap.js";

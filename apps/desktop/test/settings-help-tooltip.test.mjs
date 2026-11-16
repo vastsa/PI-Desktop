@@ -9,6 +9,18 @@ const source = (path) =>
 const ui = await source("components/ui.tsx");
 const primitives = await source("features/settings/primitives.tsx");
 const settingsPage = await source("features/settings/SettingsPage.tsx");
+// Destination pages own the rows since the D684 split; the shell only routes.
+const destinationPages = (
+  await Promise.all(
+    [
+      "AboutSettings",
+      "AgentBehaviorSettings",
+      "AppearanceSettings",
+      "ConversationSettings",
+      "SystemSettings",
+    ].map((file) => source(`features/settings/pages/${file}.tsx`)),
+  )
+).join("\n");
 const importWorkbench = await source("features/settings/import-workbench.tsx");
 const modelImport = await source("features/settings/imports/ModelConfigImportPanel.tsx");
 const skillImport = await source("features/settings/imports/AgentSkillImportPanel.tsx");
@@ -50,6 +62,27 @@ test("a settings row explains itself from a help icon, not a second line", () =>
   );
 });
 
+/*
+  D684 adds the one exception: a card may carry a single visible line that says
+  what the group is for. It is orientation for a whole card, not an
+  explanation of a row, so it does not reopen the retired second line.
+*/
+test("a card may orient with one visible caption; a row still may not", () => {
+  assert.match(primitives, /\/\*\* One visible line of orientation under the heading\. \*\/\n {2}caption\?: string;/);
+  assert.match(
+    primitives,
+    /\{caption \? <p className="settings-card-caption">\{caption\}<\/p> : null\}/,
+  );
+  // The caption belongs to the card: SettingsRow keeps title, help mark and
+  // live detail only.
+  const rowStart = primitives.indexOf("export function SettingsRow(");
+  const rowEnd = primitives.indexOf("export function SettingsCard(");
+  assert.ok(rowStart >= 0 && rowEnd > rowStart);
+  assert.doesNotMatch(primitives.slice(rowStart, rowEnd), /caption\?: string/);
+  const caption = cssRule(".settings-card-caption");
+  assert.match(caption, /color:\s*var\(--ds-text-secondary\)/);
+});
+
 test("the help icon is a focusable button whose name is the sentence", () => {
   const start = ui.indexOf("export function HelpIcon(");
   assert.ok(start >= 0, "ui.tsx should export HelpIcon");
@@ -88,7 +121,7 @@ test("the row explanations survive the move into the tooltip", () => {
     "settings.feedbackDesc",
   ]) {
     assert.match(
-      settingsPage,
+      destinationPages,
       new RegExp(`description=\\{t\\("${key.replace(/\./g, "\\.")}"\\)\\}`),
       `${key} should still be the row's explanation`,
     );

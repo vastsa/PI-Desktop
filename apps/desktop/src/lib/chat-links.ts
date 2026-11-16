@@ -124,7 +124,16 @@ function normalizeMarkdownFilePath(url: string): string {
   const decoded = safeDecodeUri(url);
   if (parseFileRef(decoded) && parseFileRefPosition(decoded)) return encodeURIComponent(decoded);
   if (!/^[A-Za-z]:[\\/]/.test(decoded)) return url;
-  if (!parseFileRef(decoded)) return url;
+  if (!parseFileRef(decoded)) {
+    // A link destination is an explicit reference (the same rule
+    // markdownLinkFileTarget applies): keep a drive-anchored path even when it
+    // carries no file extension — a directory, a Makefile — or the sanitizer
+    // drops the href as an unknown `c:` scheme and the link dies before the
+    // click handler can resolve it (issue #2113).
+    const path = stripLineRef(decoded);
+    if (!path || /[\n\0]/.test(path) || /[\\/]$/.test(path)) return url;
+    return encodeWindowsPathForHref(decoded);
+  }
   return encodeWindowsPathForHref(decoded);
 }
 
@@ -287,19 +296,47 @@ export function handleMarkdownFileLinkClick(
   root: string | null | undefined,
   baseDir: string | undefined,
   openFileRef: (path: string, baseDir?: string, mimeType?: string,
-    position?: { line?: number; column?: number }) => void,
+    options?: { line?: number; column?: number; allowDirectory?: boolean }) => void,
 ): boolean {
-  const decoded = safeDecodeUri(href);
-  const target = resolvePreviewTarget(decoded, root, baseDir);
-  const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
-  if (!ref) return false;
+  const target = markdownLinkFileTarget(href, root, baseDir);
+  if (!target) return false;
   event.preventDefault();
-  if (target?.kind === "file" && target.line !== undefined) {
-    openFileRef(ref, baseDir, undefined, { line: target.line, column: target.column });
+  // The link names its target deliberately, so an extension-less directory
+  // destination opens in the file manager instead of missing (issue #2113).
+  if (target.line !== undefined) {
+    openFileRef(target.path, baseDir, undefined, {
+      line: target.line,
+      column: target.column,
+      allowDirectory: true,
+    });
   } else {
-    openFileRef(ref, baseDir);
+    openFileRef(target.path, baseDir, undefined, { allowDirectory: true });
   }
   return true;
+}
+
+/**
+ * The file a local Markdown link destination names, shared by click and the
+ * context menu. A link destination is an explicit reference, so an absolute
+ * path counts even without a file extension (`/etc/hosts`, `.../Makefile`):
+ * the extension heuristic only keeps prose from turning into chips. The main
+ * process still decides whether the file exists and may open (ADR 0339).
+ */
+export function markdownLinkFileTarget(
+  href: string,
+  root: string | null | undefined,
+  baseDir: string | null | undefined,
+): { path: string; line?: number; column?: number } | null {
+  const decoded = safeDecodeUri(href);
+  const target = resolvePreviewTarget(decoded, root, baseDir);
+  if (target?.kind === "file") return target;
+  const rel = toWorkspaceRel(decoded, root, baseDir);
+  if (rel) return { path: rel };
+  const trimmed = decoded.trim();
+  const path = stripLineRef(trimmed);
+  if (!path || /[\n\0]/.test(path) || /[\\/]$/.test(path) || !isAbsoluteFilePath(path)) return null;
+  const position = path === trimmed ? null : parseFileRefPosition(trimmed);
+  return { path, ...(position ?? {}) };
 }
 
 /** Tool-call args → preview target (Read/Write/Edit paths, fetch URLs). */

@@ -11,73 +11,39 @@
 
 ## Context
 
-The implemented Settings rail had grown to nine entries, including a separate
-`Extensions` destination for two marketplace-source controls. The rail also
-wrapped destinations in `Personal`, `Integrations`, and an implicit system
-section. Those headings repeated information already expressed by the
-destination labels, while `Extensions` had the same visible name as the
+The Settings rail had grown to nine entries, including a separate `Extensions`
+destination for two marketplace-source controls, and wrapped destinations in
+`Personal`, `Integrations`, and an implicit system section. Those headings repeated
+what the labels already said, while `Extensions` carried the same visible name as the
 app-shell destination that owns plugin management.
-
-The settings IA already defines eight useful destinations. Plugin marketplace
-source selection is a marketplace concern and belongs beside the catalog it
-controls, not beside appearance, providers, or project settings.
 
 ## Decision
 
-Keep the full-page Settings shell and render one flat, searchable directory in
-this exact order:
+Keep the full-page Settings shell and render one flat, searchable directory in this
+order: Basics, AI, Shortcuts, Instructions, Model configuration, Import, Project
+archive, Info. Remove the navigation group headings and the Settings `Extensions`
+destination.
 
-1. Basics
-2. AI
-3. Shortcuts
-4. Instructions
-5. Model configuration
-6. Import
-7. Project archive
-8. Info
-
-Remove navigation group headings and the Settings `Extensions` destination.
-At the time of this decision, move the official/mirror/custom marketplace
-source selector, including the custom catalog URL field and active-source
-status, into the app-shell `Extensions → Marketplace` surface. That selector
-has since been retired: the page now uses the official catalog only, and
-host-core ignores legacy source values. The shared Settings search index still
-contains only the eight Settings destinations.
-
-No IPC, host protocol, storage, provider, plugin permission, or project
-ownership contract changes.
+The official/mirror/custom marketplace source selector, including the custom catalog
+URL field and active-source status, moved into the app-shell
+`Extensions → Marketplace` surface. That selector has since been retired: the page
+uses the official catalog only, host-core ignores legacy source values, and the
+shared Settings search index contains only the eight destinations. No IPC, host
+protocol, storage, provider, plugin permission, or project ownership contract
+changes.
 
 ## Consequences
 
-- Settings has one visual hierarchy and fewer competing labels.
-- The rail matches the frozen eight-destination IA and no longer duplicates
-  the Extensions page name.
-- The marketplace-source selector described by this ADR is no longer present;
-  source selection is not a Settings destination or an Extensions control.
-- Screenshot capture scenes and marketplace E2E steps use the fixed official
-  catalog.
+- Settings has one visual hierarchy, the rail matches the frozen eight-destination
+  IA, and it no longer duplicates the Extensions page name.
+- Marketplace source selection is neither a Settings destination nor an Extensions
+  control; capture scenes and E2E steps use the fixed official catalog.
 
 ## Alternatives
 
-### Keep the three group headings
-
-Rejected because the groups do not add a second useful navigation level; they
-make the rail taller and repeat the meaning of the destination labels.
-
-### Rename Settings `Extensions` to `Marketplace`
-
-Rejected because it would preserve a one-card Settings destination and still
-split marketplace browsing from marketplace configuration.
-
-### Remove marketplace source configuration
-
-Rejected at the time because mirror and custom catalog sources were considered
-necessary for some networks and development catalogs. The later official-only
-decision retains the catalog URL fallback and a development environment
-override; see ADR 0276.
-
-## References
-
-- `docs/spec/04-ux/06-settings-ia.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md`
-- `docs/spec/07-plugins/07-plugin-marketplace.md`
+- Keep the three group headings: they add no second useful level and repeat the
+  labels.
+- Rename Settings `Extensions` to `Marketplace`: it preserves a one-card destination
+  and still splits browsing from configuration.
+- Remove source configuration: rejected at the time; the official-only decision keeps
+  the catalog URL fallback and a development override (ADR 0276).

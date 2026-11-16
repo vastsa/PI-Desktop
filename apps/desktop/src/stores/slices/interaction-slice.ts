@@ -18,9 +18,19 @@ import {
 import type { AppState } from "../app-state";
 import type { InteractionRuntime } from "../runtime/interaction-runtime";
 import type { SessionRuntime } from "../runtime/session-runtime";
+import { resolveSettingsTab } from "../../lib/settings-search";
 import type { StoreAccess } from "./types";
 
 const PLAN_APPROVAL_TIMEOUT = "PLAN_APPROVAL_TIMEOUT";
+
+/** The answering side no longer holds this request (already settled, expired
+ * or its runtime is gone), so retrying the same card cannot succeed. */
+const INTERACTION_REQUEST_GONE = new Set(["NOT_FOUND", "ASKTOOL_NOT_FOUND"]);
+
+function interactionRequestGone(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" && INTERACTION_REQUEST_GONE.has(code);
+}
 const TOAST_DURATION_MS = 4000;
 const TOAST_ERROR_DURATION_MS = 8000;
 const TOAST_STACK_LIMIT = 4;
@@ -86,7 +96,12 @@ export function createInteractionSlice({
       });
     },
 
-    setSettingsTab: (settingsTab) => {
+    setSettingsTab: (requested) => {
+      // A destination id can arrive from outside this build's index — a native
+      // menu, a capture scene, or a link written before the D684 split.
+      // Resolving it here lands a retired id on its successor instead of
+      // rendering an empty content pane.
+      const settingsTab = resolveSettingsTab(requested);
       get().setPage("settings");
       set((state) => ({
         settingsTab,
@@ -132,34 +147,41 @@ export function createInteractionSlice({
     resolvePermission: async (sessionId, requestId, decision) => {
       const permission = headPermission(get().pendingPermissions, sessionId);
       if (!permission || permission.requestId !== requestId) return;
+      const removeCard = () => set((state) => ({
+        pendingPermissions: removePermission(
+          state.pendingPermissions,
+          sessionId,
+          requestId,
+        ),
+      }));
       try {
         await api.resolvePermission({ requestId, decision });
-      } finally {
-        set((state) => ({
-          pendingPermissions: removePermission(
-            state.pendingPermissions,
-            sessionId,
-            requestId,
-          ),
-        }));
+      } catch (error) {
+        // A transient failure keeps the card so the user can retry. A request
+        // the Host no longer holds already ended with its tool call; retrying
+        // can never succeed, so the stale card is dropped without an error.
+        if (!interactionRequestGone(error)) throw error;
       }
+      removeCard();
     },
 
     resolveAsk: async (sessionId, resolution: AskToolResolution) => {
       const ask = headAsk(get().pendingAsks, sessionId);
       if (!ask || ask.requestId !== resolution.requestId) return;
+      const removeCard = () => set((state) => ({
+        pendingAsks: removeAsk(
+          state.pendingAsks,
+          sessionId,
+          resolution.requestId,
+        ),
+        askDrafts: removeAskDraft(state.askDrafts, resolution.requestId),
+      }));
       try {
         await api.resolveAskTool(resolution);
-      } finally {
-        set((state) => ({
-          pendingAsks: removeAsk(
-            state.pendingAsks,
-            sessionId,
-            resolution.requestId,
-          ),
-          askDrafts: removeAskDraft(state.askDrafts, resolution.requestId),
-        }));
+      } catch (error) {
+        if (!interactionRequestGone(error)) throw error;
       }
+      removeCard();
     },
 
     setAskDraft: (requestId: string, draft: AskDraft) => {

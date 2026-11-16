@@ -15,7 +15,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { AgentSidecar } from "../packages/host-runtime/dist/agent-sidecar.js";
 import { DEEPSEEK_MODELS } from "../packages/agent-runtime/node_modules/@earendil-works/pi-ai/dist/providers/deepseek.models.js";
 import { modelConfigFromPi } from "../packages/agent-runtime/dist/model-capabilities.js";
@@ -100,7 +100,7 @@ try {
         launch: { command: process.execPath,
           args: [fileURLToPath(new URL("../packages/agent-runtime/dist/sidecar.js", import.meta.url))],
           cwd: workspace,
-          env: { ...process.env, NODE_OPTIONS: `--import=${fetchHook}`, PI_DESKTOP_PLAN_UI_PROBE: "1", PI_DESKTOP_COMPACTION_STRATEGY: "fresh_window" },
+          env: { ...process.env, NODE_OPTIONS: `--import=${pathToFileURL(fetchHook).href}`, PI_DESKTOP_PLAN_UI_PROBE: "1", PI_DESKTOP_COMPACTION_STRATEGY: "fresh_window" },
         },
         onStderr: (chunk) => { stderr += chunk; },
       });
@@ -167,7 +167,11 @@ try {
       assert.equal((await detail()).messages.find(row=>row.id==="mcp-user").command,expansion.command);
       console.log("PASS: composer catalog → exact server selection → production sidecar → Host permission gate → real stdio MCP tools/call → provider follow-up");
       console.log("PASS: sixth selected tool executes without ToolSearch; server-only nonce reaches the model; original slash command persists");
-    } finally { await sidecar.dispose(); await writes; }
+    } finally {
+      await sidecar.dispose();
+      await writes;
+      await mcp.disposeAll();
+    }
   }, resolveHostBinary(), root, PROTOCOL_VERSION);
 } finally {
   await mcp.disposeAll();

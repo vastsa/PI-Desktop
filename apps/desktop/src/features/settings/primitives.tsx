@@ -29,6 +29,7 @@ export function SettingsRow({
   title,
   description,
   detail,
+  nested = false,
   children,
 }: {
   title: string;
@@ -37,9 +38,15 @@ export function SettingsRow({
   /** Live row metadata that stays visible (not an explanation). */
   detail?: ReactNode;
   children: ReactNode;
+  /**
+   * A row that only exists while the row above it is on. It indents one step and
+   * keeps its own control, so the dependency is visible without a second
+   * explanation, and hiding it must never rewrite the value it holds.
+   */
+  nested?: boolean;
 }) {
   return (
-    <div className="settings-row">
+    <div className={nested ? "settings-row settings-row-nested" : "settings-row"}>
       <div className="settings-row-copy">
         <div className="settings-row-title">
           {title}
@@ -53,44 +60,56 @@ export function SettingsRow({
 }
 
 /**
- * A titled group of rows. `description` follows the same rule as a row's: it
- * explains the card, so it lives behind the heading's help icon. `action` is a
- * card-level control (for example a link to another Settings destination) and
- * belongs on the heading line, not among the rows.
+ * A titled group of rows.
+ *
+ * `caption` is one short line under the heading, always visible: it says what
+ * the group is for, which is the cheapest way to stop a reader hovering every
+ * row to find out (D684). It is for orientation only — a sentence that needs a
+ * second sentence is a `description`, which follows a row's rule and lives
+ * behind the heading's help icon. `action` is a card-level control (for
+ * example a link to another Settings destination) and belongs on the heading
+ * line, not among the rows.
  */
 export function SettingsCard({
   title,
+  caption,
   description,
   action,
   children,
 }: {
   title?: string;
+  /** One visible line of orientation under the heading. */
+  caption?: string;
   description?: string;
   /** Card-level control rendered at the end of the heading line. */
   action?: ReactNode;
   children: ReactNode;
 }) {
+  /*
+    The help mark is the heading's sibling, not its child: a nested button
+    joins the heading's accessible name, and a screen reader's list of
+    headings should not read out every explanation.
+  */
+  const headline = (
+    <div className="settings-card-headline">
+      <div className="settings-card-heading-help">
+        <h3 className="settings-card-heading">{title}</h3>
+        {description ? <HelpIcon label={description} /> : null}
+      </div>
+      {caption ? <p className="settings-card-caption">{caption}</p> : null}
+    </div>
+  );
   return (
     <section className="settings-card-block">
       {title ? (
-        /*
-          The help mark is the heading's sibling, not its child: a nested
-          button joins the heading's accessible name, and a screen reader's
-          list of headings should not read out every explanation.
-        */
-        <div
-          className={
-            action
-              ? "settings-card-heading-row settings-card-heading-with-action"
-              : "settings-card-heading-help"
-          }
-        >
-          <div className="settings-card-heading-help">
-            <h3 className="settings-card-heading">{title}</h3>
-            {description ? <HelpIcon label={description} /> : null}
+        action ? (
+          <div className="settings-card-heading-row settings-card-heading-with-action">
+            {headline}
+            {action}
           </div>
-          {action}
-        </div>
+        ) : (
+          headline
+        )
       ) : null}
       <div className="settings-panel">{children}</div>
     </section>

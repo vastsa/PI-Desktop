@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { AgentEventEnvelope, UiMessage } from "@pi-desktop/shared";
 
 import type { LaunchResolver } from "./launch-resolver.js";
+import { PlanExecutionDispatcher } from "./plan-dispatch.js";
 import { RuntimeService, type RuntimeHostLink, type RuntimeSidecarLink, type TurnEndedInfo } from "./runtime-service.js";
 
 type Call = { method: string; params: Record<string, unknown> };
 
 class FakeHost implements RuntimeHostLink {
   calls: Call[] = [];
+  beforeCall?: (method: string) => Promise<void>;
   notify: ((method: string, params: unknown) => void) | null = null;
   available = true;
   private turnCounter = 0;
@@ -17,6 +19,7 @@ class FakeHost implements RuntimeHostLink {
 
   async call<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     this.calls.push({ method, params });
+    if (this.beforeCall) await this.beforeCall(method);
     switch (method) {
       case "settings.get":
         return {} as T;
@@ -37,6 +40,8 @@ class FakeHost implements RuntimeHostLink {
       case "session.saveInflightMessage":
         return { ok: true } as T;
       case "plans.abort":
+      case "plans.claimExecution":
+      case "plans.finishExecution":
         return {} as T;
       default:
         throw new Error(`unexpected host call ${method}`);
@@ -58,6 +63,7 @@ class FakeHost implements RuntimeHostLink {
 
 class FakeSidecar implements RuntimeSidecarLink {
   calls: Call[] = [];
+  beforeCall?: (method: string) => Promise<void>;
   notify: ((method: string, params: unknown) => void) | null = null;
   exit: ((info: { intentional: boolean; code: number | null; signal: NodeJS.Signals | null }) => void) | null = null;
   roots = new Map<string, string | undefined>();
@@ -70,8 +76,10 @@ class FakeSidecar implements RuntimeSidecarLink {
 
   async call<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     this.calls.push({ method, params });
+    if (this.beforeCall) await this.beforeCall(method);
     switch (method) {
       case "agent.prompt":
+      case "agent.executeApprovedPlan":
         if (this.rejectPrompt) throw Object.assign(new Error("model not configured"), { data: { errorCode: "MODEL_NOT_CONFIGURED" } });
         this.running = true;
         return { accepted: true, turnId: params.turnId } as T;
@@ -84,6 +92,7 @@ class FakeSidecar implements RuntimeSidecarLink {
         if (this.compactError) throw this.compactError;
         return { accepted: true } as T;
       case "agent.abort":
+        this.running = false;
         return { ok: true } as T;
       case "agent.stop":
         return { requested: this.running } as T;
@@ -205,6 +214,139 @@ const owner = { subject: "desktop", roles: ["owner" as const], pairedDevice: tru
 async function settle(): Promise<void> {
   for (let index = 0; index < 5; index += 1) await new Promise((resolve) => setImmediate(resolve));
 }
+
+function holdNextCall(link: FakeHost | FakeSidecar, method: string) {
+  let entered!: () => void;
+  let release!: () => void;
+  const reached = new Promise<void>((resolve) => { entered = resolve; });
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  link.beforeCall = async (calledMethod) => {
+    if (calledMethod !== method) return;
+    link.beforeCall = undefined;
+    entered();
+    await released;
+  };
+  return { reached, release };
+}
+
+describe("RuntimeService startup cancellation", () => {
+  for (const targeted of [false, true]) {
+    it.each([
+      ["host", "settings.get"],
+      ["host", "session.beginTurn"],
+      ["host", "session.appendMessage"],
+      ["sidecar", "agent.prompt"],
+    ] as const)(`settles a ${targeted ? "named" : "session"} abort after %s %s admission`, async (link, method) => {
+      const fixture = build();
+      const { host, sidecar, service, ended } = fixture;
+      const gate = holdNextCall(fixture[link], method);
+      const starting = service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
+      await gate.reached;
+      const stopping = service.abort("s1", targeted ? "turn-1" : undefined);
+      try {
+        await settle();
+      } finally {
+        gate.release();
+      }
+      await Promise.all([starting, stopping]);
+      expect(sidecar.running).toBe(false);
+      expect(service.isBusy("s1")).toBe(false);
+      expect(ended).toEqual([expect.objectContaining({ turnId: "turn-1", reason: "aborted" })]);
+      expect(host.calls.filter((call) => call.method === "session.endTurn")).toHaveLength(1);
+
+      // The abort acknowledgement is the boundary after which a new input may
+      // start; it must not inherit the canceled admission or its terminal event.
+      await expect(service.prompt({ sessionId: "s1", content: "follow-up", effectivePermissionMode: "ask", principal: owner }))
+        .resolves.toEqual({ turnId: "turn-2" });
+      expect(sidecar.running).toBe(true);
+      await service.dispose();
+    });
+  }
+
+  it("preserves an admission failure and releases the session for the next input", async () => {
+    const { host, sidecar, service, ended } = build();
+    host.failAppend = true;
+    const gate = holdNextCall(host, "session.appendMessage");
+    const starting = service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
+    const failedStart = expect(starting).rejects.toThrow("disk full");
+    await gate.reached;
+    const stopping = service.abort("s1");
+    await settle();
+    gate.release();
+    await Promise.all([failedStart, stopping]);
+    expect(sidecar.calls.some((call) => call.method === "agent.prompt")).toBe(false);
+    expect(service.isBusy("s1")).toBe(false);
+    expect(ended).toHaveLength(1);
+    host.failAppend = false;
+    await expect(service.prompt({ sessionId: "s1", content: "retry", effectivePermissionMode: "ask", principal: owner }))
+      .resolves.toEqual({ turnId: "turn-2" });
+    await service.dispose();
+  });
+
+  it.each([
+    ["host", "plans.claimExecution"],
+    ["sidecar", "agent.executeApprovedPlan"],
+  ] as const)("cancels an approved plan still being admitted at %s %s", async (link, method) => {
+    const fixture = build();
+    const { host, sidecar, service, ended } = fixture;
+    const dispatcher = new PlanExecutionDispatcher({
+      getHost: () => host, getSidecar: () => sidecar, launch, runtime: service, log: () => {},
+    });
+    const gate = holdNextCall(fixture[link], method);
+    const starting = dispatcher.dispatchApprovedPlan({
+      id: "execution-1", proposalId: "proposal-1", sessionId: "s1", state: "queued",
+      title: "Approved work", plan: "Work", question: "Proceed?", targetPermissionMode: "ask",
+      artifact: { relativePath: ".pi/plan/approved.md", sha256: "a".repeat(64), sizeBytes: 4 },
+    });
+    await gate.reached;
+    const stopping = service.abort("s1");
+    await settle();
+    gate.release();
+    await Promise.all([starting, stopping]);
+    await settle();
+    expect(sidecar.running).toBe(false);
+    expect(ended).toEqual([expect.objectContaining({ turnId: "turn-1", reason: "aborted" })]);
+    expect(host.calls.filter((call) => call.method === "plans.finishExecution")).toEqual([
+      { method: "plans.finishExecution", params: { executionId: "execution-1", status: "interrupted", errorCode: "TURN_ABORTED" } },
+    ]);
+    dispatcher.dispose();
+    await service.dispose();
+  });
+
+  it("locks an active turn's abort reason before a racing terminal event", async () => {
+    const { sidecar, service, ended } = build();
+    const { turnId } = await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
+    const stopping = service.abort("s1", turnId);
+    sidecar.notify?.("agent.event", { sessionId: "s1", turnId, ts: 1, event: { type: "agent_end", messageIds: [] } });
+    await stopping;
+    await settle();
+    expect(ended).toEqual([expect.objectContaining({ turnId, reason: "aborted" })]);
+    await service.dispose();
+  });
+
+  it("keeps a pending abort ahead of the next input without blocking other sessions", async () => {
+    const { host, sidecar, service } = build();
+    await service.prompt({ sessionId: "s1", content: "first", effectivePermissionMode: "ask", principal: owner });
+    const gate = holdNextCall(sidecar, "agent.abort");
+    const stopping = service.abort("s1", "turn-1");
+    await gate.reached;
+    const next = service.prompt({ sessionId: "s1", content: "next", effectivePermissionMode: "ask", principal: owner });
+    const staleStop = service.abort("s1", "turn-1");
+    try {
+      await expect(service.prompt({ sessionId: "s2", content: "independent", effectivePermissionMode: "ask", principal: owner }))
+        .resolves.toEqual({ turnId: "turn-2" });
+    } finally {
+      gate.release();
+    }
+    await stopping;
+    await expect(next).resolves.toEqual({ turnId: "turn-3" });
+    await staleStop;
+    expect(service.activeTurnId("s1")).toBe("turn-3");
+    expect(service.activeTurnId("s2")).toBe("turn-2");
+    expect(host.calls.filter((call) => call.method === "session.endTurn")).toHaveLength(1);
+    await service.dispose();
+  });
+});
 
 describe("RuntimeService prompt lifecycle", () => {
   it("opens a durable turn, persists the user row, then starts the runtime under that turn id", async () => {

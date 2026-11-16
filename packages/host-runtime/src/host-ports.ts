@@ -82,15 +82,19 @@ export function toRacpItem(message: UiMessage): RacpItemSummary {
 
 /** Session metadata and transcript pages straight from host `session.get`. */
 export function createHostSessionPort(getHost: () => HostRpc | null): SessionPort {
-  async function fetchSession(sessionId: string): Promise<HostSessionRecord | null> {
+  // `messageLimit` bounds the transcript read; metadata lookups need no messages.
+  async function fetchSession(sessionId: string, messageLimit?: number): Promise<HostSessionRecord | null> {
     const host = getHost();
     if (!host) return null;
-    const result = await host.call<{ session?: HostSessionRecord | null }>("session.get", { id: sessionId });
+    const result = await host.call<{ session?: HostSessionRecord | null }>("session.get", {
+      id: sessionId,
+      ...(messageLimit === undefined ? {} : { messageLimit }),
+    });
     return result.session ?? null;
   }
   return {
     async get(sessionId) {
-      const record = await fetchSession(sessionId);
+      const record = await fetchSession(sessionId, 1);
       return record ? toSessionSummary(record) : null;
     },
     async history(sessionId, { limit, beforeItemId }) {
@@ -114,6 +118,7 @@ export type HostQueueEntry = {
   idempotencyKey?: string;
   inputHash: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   userMessageId?: string;
   voiceOrigin?: VoiceOrigin;
@@ -132,6 +137,7 @@ export function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
     sessionId: entry.sessionId,
     principalSubject: entry.principal,
     content: entry.content,
+    startGoal: entry.startGoal === true,
     ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
     ...(entry.userMessageId ? { userMessageId: entry.userMessageId } : {}),
     ...(entry.voiceOrigin ? { voiceOrigin: entry.voiceOrigin } : {}),
@@ -161,6 +167,7 @@ export function createHostQueueStore(getHost: () => HostRpc | null): QueueStore 
         ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
         inputHash: record.inputHash,
         content: record.content,
+        ...(record.startGoal ? { startGoal: true } : {}),
         ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
         ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
         ...(record.voiceOrigin ? { voiceOrigin: record.voiceOrigin } : {}),

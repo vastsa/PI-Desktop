@@ -2,6 +2,8 @@
 
 > **Status — merged into global search.** The standalone command palette overlay was removed. Plugin (and built-in) commands now appear in the **Commands** section of the global search dialog, opened with `Cmd/Ctrl+Shift+P` (or `Cmd/Ctrl+K`). All rules below still apply to that section.
 
+> **Status — the command palette stays in global search; the plugin launcher is a separate surface.** ADR 0034 merged the standalone command palette overlay into global search, and that is still true: commands live in the **Commands** section of the global search dialog (`Cmd/Ctrl+Shift+P` / `Cmd/Ctrl+K`). The `Alt+Space` / `⌥+Space` *plugin launcher* is a different window with a different job — opening panel plugins and installed applications — and is specified in [18-plugin-launcher.md](18-plugin-launcher.md). The rules below describe the command list inside global search only.
+
 ## 1. Goals
 
 Provide a fast command entry point that unifies discovery and execution of built-in and plugin capabilities in a single searchable surface.

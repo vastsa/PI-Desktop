@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { LocalRequestError, Type, contentText, toToolDeclaration, type SystemMessage } from "@earendil-works/pi-ai";
+import { LocalRequestError, contentText, toToolDeclaration, type SystemMessage } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { MessageEntry } from "./pi-runtime-types.js";
 import type { UiMessage } from "@pi-desktop/shared";

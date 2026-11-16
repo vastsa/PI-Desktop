@@ -217,8 +217,14 @@ test("the shell watches the wait and renders the recovery surface", () => {
   assert.match(shell, /<StartupRecovery[\s\S]*onRetry=\{retryStartup\}/);
   assert.match(shell, /<StartupRecovery[\s\S]*retrying=\{startupRetrying\}/);
   assert.match(shell, /startupPhase !== "starting"/);
-  // Exactly one boot surface is mounted: the splash yields to the recovery.
-  assert.match(shell, /const splash = showSplash && startupPhase === "starting"/);
+  // Exactly one boot surface is mounted, and the recovery outranks both of the
+  // others: the phase is the first thing the splash expression tests, so a
+  // stalled launch can never be left behind the brand splash or behind an
+  // opaque startup animation (D679).
+  assert.match(
+    shell,
+    /const splash =\s*startupPhase !== "starting"\s*\? null/,
+  );
 });
 
 test("the boot surfaces keep the window controls, so a stuck launch is closable", () => {
@@ -264,8 +270,8 @@ test("a superseded startup attempt cannot publish over the retry", () => {
   assert.match(store, /const generation = \+\+bootstrapGeneration;/);
   assert.equal(
     (store.match(/if \(generation !== bootstrapGeneration\) return;/g) ?? []).length,
-    2,
-    "both the success and the failure path must refuse to publish",
+    3,
+    "sidebar recovery, success and failure must refuse stale publication",
   );
 });
 

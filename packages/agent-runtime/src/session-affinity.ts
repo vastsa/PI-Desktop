@@ -52,7 +52,7 @@ const SESSION_AFFINITY_BODY_APIS: ReadonlySet<string> = new Set([
 
 export type SessionAffinityCompat = {
   sendSessionAffinityHeaders: true;
-  sessionAffinityFormat: "openai";
+  sessionAffinityFormat: "openai" | "openai-nosession";
 };
 
 /** The provider fields that decide whether this row is the user's own endpoint. */
@@ -86,9 +86,9 @@ export function providerUsesSessionAffinity(
 /**
  * The model `compat` entry that makes the adapter write the session headers.
  *
- * `openai` is the adapter's own non-OpenRouter shape: `x-session-affinity` and
- * `x-client-request-id` beside `session_id`. The Anthropic adapter reads the
- * same flag and, for any format but `openrouter`, writes `x-session-affinity`.
+ * Completions uses `openai-nosession` to keep `x-session-affinity` and
+ * `x-client-request-id` without `session_id`, which strict gateways reject
+ * (#2278). Anthropic keeps its existing format and `x-session-affinity` header.
  * An endpoint reached through a provider row's own `compat` keeps its say: this
  * value is spread under it, so an explicit catalog entry still wins.
  */
@@ -99,7 +99,10 @@ export function sessionAffinityCompat(
 ): SessionAffinityCompat | undefined {
   return SESSION_AFFINITY_COMPAT_APIS.has(api) &&
       providerUsesSessionAffinity(provider, api, baseUrl)
-    ? { sendSessionAffinityHeaders: true, sessionAffinityFormat: "openai" }
+    ? {
+        sendSessionAffinityHeaders: true,
+        sessionAffinityFormat: api === "openai-completions" ? "openai-nosession" : "openai",
+      }
     : undefined;
 }
 

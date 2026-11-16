@@ -226,7 +226,43 @@ test("an established connection stays on its page when the user views another ta
   assert.equal(second.wc.clicks, 0);
   assert.equal(h.host.getState().tabId, "second");
   h.host.closeTab("A", "first");
+  assert.equal((await h.host.snapshot("A")).url, "https://fixture.invalid/second");
+  await h.host.click("e1", "A");
+  assert.equal(second.wc.clicks, 1);
+  await assert.rejects(h.host.snapshot("A", "first"), { code: "UNAVAILABLE" });
+});
+
+test("closing a preview lets tools connect to a newly opened visible tab", async (t) => {
+  const h = harness();
+  t.after(() => h.host.dispose());
+  const preview = h.host.openTab({ url: "https://fixture.invalid/preview" }, "A");
+  h.roots.at(-1).resolve(["/projects/A"]);
+  await settled();
+  h.loads.at(-1).finish();
+  const { tabId } = await preview;
+  h.host.closeTab("A", tabId);
+  const visible = await open(h, "A", "replacement", "https://fixture.invalid/replacement");
+  assert.equal((await h.host.snapshot("A")).url, "https://fixture.invalid/replacement");
+  await h.host.fill("e1", "replacement draft", "A");
+  assert.equal(visible.wc.value, "replacement draft");
+  const navigation = h.host.navigate({ url: "https://fixture.invalid/next" }, "A");
+  h.roots.at(-1).resolve(["/projects/A"]);
+  await settled();
+  h.loads.at(-1).finish();
+  assert.equal((await navigation).tabId, "replacement");
+  assert.deepEqual(h.host.getPages("A").map((page) => page.tabId), ["replacement"]);
+  h.host.closeTab("A", "replacement");
   await assert.rejects(h.host.snapshot("A"), { code: "UNAVAILABLE" });
+});
+
+test("closing an unconnected tab preserves the established connection", async (t) => {
+  const h = harness();
+  t.after(() => h.host.dispose());
+  await open(h, "A", "connected", "https://fixture.invalid/connected");
+  await h.host.snapshot("A");
+  await open(h, "A", "other", "https://fixture.invalid/other");
+  h.host.closeTab("A", "other");
+  assert.equal((await h.host.snapshot("A")).url, "https://fixture.invalid/connected");
 });
 
 test("background page metadata never repaints the visible browser chrome", async (t) => {

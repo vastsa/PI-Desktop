@@ -10,14 +10,16 @@ use std::collections::HashMap;
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
+#[cfg(test)]
+mod active_revision_tests;
 mod fork_files;
 mod history_mutations;
 pub use history_mutations::{
-    activate_message_revision_canonical, delete_message, retract_pending_prompt,
+    activate_message_revision_canonical, delete_message, retract_pending_prompt, running_turn,
 };
 mod model_system;
 mod usage;
-pub use usage::record_usage;
+pub use usage::{record_usage, session_usage_cost};
 
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
@@ -39,26 +41,44 @@ pub struct AutoTitleContext {
     pub model_key: Option<String>,
 }
 
-/// Compatibility normalization for v7 callers and imported records. The
-/// persisted operating profile is now always `plan`, `goal` or `agent`.
+/// Compatibility normalization for v7 callers and imported records. `chat`
+/// is the old name of `plan`; any valid mode id (builtin or user-defined,
+/// ADR mode-definitions) is kept, and anything else reads as `agent`.
 pub fn normalize_mode(mode: Option<&str>) -> String {
     match mode {
-        Some("plan") | Some("chat") => "plan".into(),
-        Some("goal") => "goal".into(),
-        Some("agent") => "agent".into(),
+        Some("chat") => "plan".into(),
+        Some(mode) if is_valid_mode(mode) => mode.into(),
         _ => "agent".into(),
     }
 }
 
+/// Builtin-only normalization for surfaces that never carry a custom mode
+/// (scheduled tasks): unknown ids read as `agent`.
+pub fn normalize_builtin_mode(mode: Option<&str>) -> String {
+    match mode {
+        Some("plan") | Some("chat") => "plan".into(),
+        Some("goal") => "goal".into(),
+        _ => "agent".into(),
+    }
+}
+
+/// Any id a session may persist: a builtin or a user-defined mode.
 pub fn is_valid_mode(mode: &str) -> bool {
+    crate::mode_runs::is_mode_id(mode)
+}
+
+pub fn is_builtin_mode(mode: &str) -> bool {
     MODES.contains(&mode)
 }
 
 /// Plan and Goal negotiate a contract before executing (D198), so they share one
-/// tool allowlist and one hard deny. Agent is the only executing mode.
+/// tool allowlist and one hard deny. Agent is the only executing mode. This
+/// names the builtin modes only; authorization uses `tool_policy`.
 pub fn is_contract_mode(mode: &str) -> bool {
     matches!(mode, "plan" | "goal")
 }
+
+pub use crate::mode_runs::{tool_policy, ToolPolicy};
 
 /// Values accepted by the persisted per-session thinking selector.  Keep this
 /// list in the host boundary so old clients cannot write arbitrary provider
@@ -172,6 +192,8 @@ pub struct MessageUsage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageAttachment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_reference: Option<String>,
     pub kind: String,
     pub name: String,
     #[serde(rename = "ref")]
@@ -204,6 +226,9 @@ pub struct UiMessage {
     /// Validated Skill tokens in `command`, with UTF-16 offsets for the renderer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_mentions: Option<Vec<SkillMention>>,
+    /// Validated `@agent` tokens in `command`, with UTF-16 offsets for the renderer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_mentions: Option<Vec<AgentMention>>,
     /// Host-authenticated agent-to-agent origin, never a human authorization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_message: Option<Value>,
@@ -220,10 +245,18 @@ pub struct UiMessage {
     pub thinking: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Additive transcript metadata; older records have no truncation marker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_truncated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
+    /// Concrete model the provider reports serving this turn when it differs
+    /// from `model_id` (virtual or fallback models). Stored in record meta; no
+    /// SQL migration, and older builds ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<MessageUsage>,
     /// Elapsed model streaming time for the response throughput statistic.
@@ -290,6 +323,14 @@ pub struct SkillMention {
     pub start: usize,
     pub end: usize,
     pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMention {
+    pub start: usize,
+    pub end: usize,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +448,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     if let Some(mentions) = &message.skill_mentions {
         meta_obj.insert("skillMentions".into(), json!(mentions));
     }
+    if let Some(mentions) = &message.agent_mentions {
+        meta_obj.insert("agentMentions".into(), json!(mentions));
+    }
     if let Some(origin) = &message.session_message {
         meta_obj.insert("sessionMessage".into(), origin.clone());
     }
@@ -419,11 +463,17 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     if let Some(status) = &message.status {
         meta_obj.insert("status".into(), json!(status));
     }
+    if let Some(truncated) = message.output_truncated {
+        meta_obj.insert("outputTruncated".into(), json!(truncated));
+    }
     if let Some(model_id) = &message.model_id {
         meta_obj.insert("modelId".into(), json!(model_id));
     }
     if let Some(provider_id) = &message.provider_id {
         meta_obj.insert("providerId".into(), json!(provider_id));
+    }
+    if let Some(response_model_id) = &message.response_model_id {
+        meta_obj.insert("responseModelId".into(), json!(response_model_id));
     }
     if let Some(usage) = &message.usage {
         meta_obj.insert("usage".into(), json!(usage));
@@ -524,6 +574,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
                 if let Some(size) = attachment.size {
                     block.insert("size".into(), json!(size));
                 }
+                if let Some(reference) = &attachment.local_reference {
+                    block.insert("localReference".into(), json!(reference));
+                }
                 if let Some(text) = &attachment.text {
                     block.insert("text".into(), json!(text));
                 }
@@ -564,6 +617,9 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
         .map(str::to_string);
     let skill_mentions = meta
         .get("skillMentions")
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
+    let agent_mentions: Option<Vec<AgentMention>> = meta
+        .get("agentMentions")
         .and_then(|value| serde_json::from_value(value.clone()).ok());
     let session_message = meta.get("sessionMessage").cloned();
     let voice_origin = meta.get("voiceOrigin").cloned();
@@ -615,6 +671,11 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let error = meta.get("error").cloned();
     let response_duration_ms = meta.get("responseDurationMs").and_then(|v| v.as_i64());
     let response_output_tokens = meta.get("responseOutputTokens").and_then(|v| v.as_i64());
+    let output_truncated = meta.get("outputTruncated").and_then(Value::as_bool);
+    let response_model_id = meta
+        .get("responseModelId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let revision_root_id = meta
         .get("revisionRootId")
         .and_then(|v| v.as_str())
@@ -660,6 +721,10 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
                 return None;
             }
             Some(MessageAttachment {
+                local_reference: block
+                    .get("localReference")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
                 kind: block.get("kind").and_then(|v| v.as_str())?.to_string(),
                 name: block.get("name").and_then(|v| v.as_str())?.to_string(),
                 reference: block.get("ref").and_then(|v| v.as_str())?.to_string(),
@@ -698,9 +763,11 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             content: text,
             command: command.clone(),
             skill_mentions: skill_mentions.clone(),
+            agent_mentions: agent_mentions.clone(),
             session_message,
             voice_origin: voice_origin.clone(),
             attachments: None,
+            output_truncated,
             steering,
             created_at: record.created_at,
             thinking,
@@ -710,6 +777,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             usage,
             response_duration_ms,
             response_output_tokens,
+            response_model_id: response_model_id.clone(),
             error,
             revision_root_id,
             revision_count,
@@ -753,9 +821,11 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             content,
             command,
             skill_mentions,
+            agent_mentions,
             session_message,
             voice_origin,
             attachments,
+            output_truncated,
             steering,
             created_at: record.created_at,
             thinking,
@@ -765,6 +835,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             usage,
             response_duration_ms,
             response_output_tokens,
+            response_model_id: response_model_id.clone(),
             error,
             revision_root_id,
             revision_count,
@@ -1432,6 +1503,16 @@ pub fn create_session_with_options(
     db: &Database,
     options: SessionCreateOptions,
 ) -> Result<SessionSummary> {
+    create_session_with_mode_snapshot(db, options, None)
+}
+
+/// Store a selected definition and its new session in one transaction.
+/// Legacy callers without a snapshot retain their existing creation semantics.
+pub fn create_session_with_mode_snapshot(
+    db: &Database,
+    options: SessionCreateOptions,
+    mode_snapshot: Option<&Value>,
+) -> Result<SessionSummary> {
     let SessionCreateOptions {
         title,
         mode,
@@ -1451,10 +1532,21 @@ pub fn create_session_with_options(
         TITLE_SOURCE_MANUAL
     };
     let mode = normalize_mode(mode.as_deref());
+    let prepared = mode_snapshot
+        .filter(|value| !value.is_null())
+        .map(|value| crate::mode_runs::prepare_session_mode(db, &id, &mode, Some(value)))
+        .transpose()?;
     let thinking_level = thinking_level.unwrap_or_else(default_thinking_level);
     validate_thinking_level(&thinking_level)?;
     let permission_mode = permission_mode.unwrap_or_else(default_permission_mode);
     validate_permission_mode(&permission_mode)?;
+    let transaction = prepared
+        .as_ref()
+        .map(|_| db.conn().unchecked_transaction())
+        .transpose()?;
+    if let Some(prepared) = &prepared {
+        crate::mode_runs::store_session_snapshot(db, prepared)?;
+    }
     let project_id = match project_path
         .as_deref()
         .filter(|path| !path.trim().is_empty())
@@ -1470,8 +1562,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, title_source, fast_mode, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
+                permission_mode, title_source, fast_mode, created_at, updated_at, mode_snapshot_hash
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12)",
         )?
         .execute(params![
             id,
@@ -1484,8 +1576,12 @@ pub fn create_session_with_options(
             permission_mode,
             title_source,
             fast_mode,
-            now
+            now,
+            prepared.as_ref().and_then(|value| value.snapshot_hash())
         ])?;
+    if let Some(transaction) = transaction {
+        transaction.commit()?;
+    }
     Ok(SessionSummary {
         id,
         title,
@@ -1847,11 +1943,11 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, fast_mode, source, pinned, last_seq, created_at,
-                    updated_at
+                    permission_mode, fast_mode, mode_snapshot_hash, source, pinned, last_seq,
+                    created_at, updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, fast_mode, NULL, 0, ?3, ?4, ?4
+                        permission_mode, fast_mode, mode_snapshot_hash, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1940,7 +2036,8 @@ pub fn configure_session_with_thinking(
 }
 
 /// Full configurator. Every `None` preserves the persisted value, including
-/// the `/fast` switch (ADR 0334).
+/// the `/fast` switch (ADR 0334). The mode snapshot is cleared: a builtin
+/// mode configured here never carries one.
 #[allow(clippy::too_many_arguments)]
 pub fn configure_session_with_fast_mode(
     db: &Database,
@@ -1952,8 +2049,35 @@ pub fn configure_session_with_fast_mode(
     permission_mode: Option<&str>,
     fast_mode: Option<bool>,
 ) -> Result<Option<SessionSummary>> {
+    configure_session_with_mode_snapshot(
+        db,
+        id,
+        mode,
+        provider_id,
+        model_id,
+        thinking_level,
+        permission_mode,
+        fast_mode,
+        None,
+    )
+}
+
+/// `configure_session_with_fast_mode` that also writes the session's mode
+/// snapshot hash (ADR mode-definitions) in the same statement as the mode.
+#[allow(clippy::too_many_arguments)]
+pub fn configure_session_with_mode_snapshot(
+    db: &Database,
+    id: &str,
+    mode: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    thinking_level: Option<&str>,
+    permission_mode: Option<&str>,
+    fast_mode: Option<bool>,
+    mode_snapshot_hash: Option<&str>,
+) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
-        return Err(anyhow!("mode must be plan or agent"));
+        return Err(anyhow!("mode must be a valid mode id"));
     }
     let mode = normalize_mode(Some(mode));
     if let Some(level) = thinking_level {
@@ -1979,7 +2103,8 @@ pub fn configure_session_with_fast_mode(
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
                  permission_mode = COALESCE(?6, permission_mode),
-                 fast_mode = COALESCE(?8, fast_mode), updated_at = ?7
+                 fast_mode = COALESCE(?8, fast_mode), mode_snapshot_hash = ?9,
+                 updated_at = ?7
              WHERE id = ?1",
         )?
         .execute(params![
@@ -1990,12 +2115,15 @@ pub fn configure_session_with_fast_mode(
             thinking_level,
             permission_mode,
             now_ms(),
-            fast_mode
+            fast_mode,
+            mode_snapshot_hash
         ])?;
     if changed == 0 {
         return Ok(None);
     }
-    Ok(get_session(db, id)?.map(|detail| detail.summary))
+    // Only the summary goes back; reading it through `get_session` parsed the
+    // whole transcript on every model, mode or permission switch.
+    session_summary(db, id)
 }
 
 pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
@@ -3538,10 +3666,15 @@ pub fn save_active_branch_revision(
     db: &Database,
     session_id: &str,
 ) -> Result<Option<ActiveRevisionSave>> {
-    let Some(detail) = get_session(db, session_id)? else {
+    // This runs after every turn. A session that was never regenerated owns no
+    // revision rows, and every path that stamps a root writes its rows first,
+    // so the index answers it without touching the transcript.
+    if !session_has_revisions(db, session_id)? {
+        return Ok(None);
+    }
+    let Some(mut messages) = revision_root_window(db, session_id)? else {
         return Ok(None);
     };
-    let mut messages = detail.messages;
     let Some(root_index) = messages
         .iter()
         .rposition(|message| message.role == "user" && message.revision_count.is_some())
@@ -3585,11 +3718,23 @@ pub fn save_active_branch_revision(
     }
 
     let root = &mut messages[root_index];
-    root.revision_root_id = Some(root_user_id.clone());
-    root.revision_count = Some(total);
-    root.active_revision = Some(active);
-    let (record, _) = ui_to_record(root);
-    transcripts::update_message(db.data_dir(), session_id, &record)?;
+    let stamp = (Some(root_user_id.clone()), Some(total), Some(active));
+    let stamped = (
+        root.revision_root_id.clone(),
+        root.revision_count,
+        root.active_revision,
+    ) == stamp;
+    (
+        root.revision_root_id,
+        root.revision_count,
+        root.active_revision,
+    ) = stamp;
+    // Once the branch has its stamp, later turns leave it unchanged. The root is
+    // rarely the last line, so restating it would scan and copy the whole file.
+    if !stamped {
+        let (record, _) = ui_to_record(root);
+        transcripts::update_message(db.data_dir(), session_id, &record)?;
+    }
     Ok(Some(ActiveRevisionSave {
         root_user_id,
         revision_count: total,
@@ -3597,6 +3742,57 @@ pub fn save_active_branch_revision(
         archived,
         root: root.clone(),
     }))
+}
+
+fn session_has_revisions(db: &Database, session_id: &str) -> Result<bool> {
+    Ok(db.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM message_revisions WHERE session_id = ?1)",
+        params![session_id],
+        |row| row.get(0),
+    )?)
+}
+
+/// The newest messages of a session, as the full read lists them, reaching back
+/// to the latest user row that carries revision metadata (every message when
+/// none does). `None` when the session does not exist.
+///
+/// The root usually sits a few turns from the end while the transcript can hold
+/// hundreds of megabytes, so this reads an id-closed suffix: positions and
+/// keep-last contents inside it match the full read, and so does the branch.
+fn revision_root_window(db: &Database, session_id: &str) -> Result<Option<Vec<UiMessage>>> {
+    if !session_exists(db, session_id)? {
+        return Ok(None);
+    }
+    // The record-level form of `role == "user" && revision_count.is_some()`,
+    // which is how `save_active_branch_revision` picks the root.
+    let carries_root = |record: &MessageRecord| {
+        record.role == "user"
+            && record
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.get("revisionCount"))
+                .and_then(Value::as_i64)
+                .is_some()
+    };
+    let suffix = transcripts::read_closed_message_suffix(db.data_dir(), session_id, |records| {
+        // Keep-last: only an id's newest line decides what it carries.
+        let mut seen = std::collections::HashSet::new();
+        records
+            .iter()
+            .rev()
+            .filter(|record| seen.insert(record.id.as_str()))
+            .any(carries_root)
+    })?;
+    let records = match suffix {
+        Some(records) => records,
+        None => transcripts::read_transcript_with_compactions(db.data_dir(), session_id)?.messages,
+    };
+    Ok(Some(
+        dedupe_records(records)
+            .into_iter()
+            .map(record_to_ui)
+            .collect(),
+    ))
 }
 
 /// Activate a stored revision: replace the live transcript with prefix + branch.
@@ -3811,7 +4007,19 @@ pub fn import_session(
     if exists > 0 {
         return Ok(false);
     }
-    let (records, texts) = records_and_texts(messages);
+    // An import brings no regenerate history, so a pager stamp it carries would
+    // name revisions that do not exist. Forks drop the stamp the same way.
+    let messages: Vec<UiMessage> = messages
+        .iter()
+        .cloned()
+        .map(|mut message| {
+            message.revision_root_id = None;
+            message.revision_count = None;
+            message.active_revision = None;
+            message
+        })
+        .collect();
+    let (records, texts) = records_and_texts(&messages);
     transcripts::write_transcript(db.data_dir(), &summary.id, &summary.created_at, &records)?;
     let indexed = (|| -> Result<()> {
         let tx = conn.unchecked_transaction()?;
@@ -4428,13 +4636,37 @@ mod tests {
         Database::open(&dir.join("test.sqlite")).unwrap()
     }
 
+    #[test]
+    fn agent_mentions_round_trip_through_record_meta() {
+        let mut message = user_msg("u1", "Call the `Task` tool", "2026-01-01T00:00:00Z");
+        message.command = Some("look @explorer here".into());
+        message.agent_mentions = Some(vec![AgentMention {
+            start: 5,
+            end: 14,
+            name: "explorer".into(),
+        }]);
+        let (record, _) = ui_to_record(&message);
+        let restored = record_to_ui(record);
+        let mentions = restored.agent_mentions.expect("agent mentions survive");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!((mentions[0].start, mentions[0].end), (5, 14));
+        assert_eq!(mentions[0].name, "explorer");
+        assert_eq!(restored.command.as_deref(), Some("look @explorer here"));
+
+        // A row written before the field existed reads back without it.
+        let (legacy, _) = ui_to_record(&user_msg("u2", "plain", "2026-01-01T00:00:00Z"));
+        assert!(record_to_ui(legacy).agent_mentions.is_none());
+    }
+
     fn user_msg(id: &str, content: &str, ts: &str) -> UiMessage {
         UiMessage {
+            output_truncated: None,
             id: id.into(),
             role: "user".into(),
             content: content.into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -4446,6 +4678,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -4873,7 +5106,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(preserved.thinking_level, "high");
-        assert!(configure_session(&db, &session.id, "invalid", None, None).is_err());
+        assert!(configure_session(&db, &session.id, "Not A Mode", None, None).is_err());
         assert!(configure_session_with_thinking(
             &db,
             &session.id,
@@ -5394,11 +5627,13 @@ mod tests {
         )
         .unwrap();
         let tool = UiMessage {
+            output_truncated: None,
             id: "m2".into(),
             role: "tool".into(),
             content: "ok".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -5410,6 +5645,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -5805,11 +6041,36 @@ mod tests {
     }
 
     #[test]
+    fn local_file_attachments_roundtrip_as_canonical_blocks() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut user = user_msg(
+            "local-file",
+            "Inspect the reference",
+            "2026-11-13T00:00:00Z",
+        );
+        user.attachments = Some(vec![MessageAttachment {
+            local_reference: Some("11111111-2222-4333-8444-555555555555".into()),
+            kind: "file".into(),
+            name: "large.bin".into(),
+            reference: "/synthetic/large.bin".into(),
+            mime_type: None,
+            size: Some(67_108_865),
+            text: None,
+            inline_path: Some("@/synthetic/large.bin".into()),
+        }]);
+        append_message(&db, &session.id, &user, None).unwrap();
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(detail.messages[0].attachments, user.attachments);
+    }
+
+    #[test]
     fn user_attachments_roundtrip_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let mut user = user_msg("image-1", "这是什么", "2025-05-01T00:00:00Z");
         user.attachments = Some(vec![MessageAttachment {
+            local_reference: None,
             kind: "image".into(),
             name: "image.png".into(),
             reference: "attachments/abc123".into(),
@@ -6185,15 +6446,55 @@ mod tests {
     }
 
     #[test]
+    fn output_truncation_survives_host_restart_and_legacy_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        let session_id = {
+            let db = Database::open(&path).unwrap();
+            let session = create_session(&db, None, None, None, None, None).unwrap();
+            for (id, truncated) in [
+                ("truncated", Some(true)),
+                ("legacy", None),
+                ("normal", Some(false)),
+            ] {
+                let mut wire = json!({
+                    "id": id, "role": "assistant", "content": "Original answer",
+                    "status": "complete", "createdAt": "2026-11-12T00:00:00Z"
+                });
+                if let Some(value) = truncated {
+                    wire["outputTruncated"] = json!(value);
+                }
+                let message: UiMessage = serde_json::from_value(wire).unwrap();
+                append_message(&db, &session.id, &message, None).unwrap();
+            }
+            session.id
+        };
+        let db = Database::open(&path).unwrap();
+        let detail = get_session(&db, &session_id).unwrap().unwrap();
+        assert_eq!(detail.messages.len(), 3);
+        let messages = serde_json::to_value(&detail.messages).unwrap();
+        assert_eq!(messages[0]["outputTruncated"], json!(true));
+        assert!(messages[1].get("outputTruncated").is_none());
+        assert_eq!(messages[2]["outputTruncated"], json!(false));
+        for message in &detail.messages {
+            assert_eq!(message.content, "Original answer");
+            assert_eq!(message.status.as_deref(), Some("complete"));
+            assert!(message.error.is_none());
+        }
+    }
+
+    #[test]
     fn assistant_thinking_roundtrips_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let assistant = UiMessage {
+            output_truncated: None,
             id: "assistant-1".into(),
             role: "assistant".into(),
             content: "final answer".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -6213,6 +6514,7 @@ mod tests {
             }),
             response_duration_ms: Some(2_000),
             response_output_tokens: Some(34),
+            response_model_id: Some("vendor/concrete-model".into()),
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -6272,6 +6574,10 @@ mod tests {
         assert_eq!(usage.total_tokens, 48);
         assert_eq!(detail.messages[0].response_duration_ms, Some(2_000));
         assert_eq!(detail.messages[0].response_output_tokens, Some(34));
+        assert_eq!(
+            detail.messages[0].response_model_id.as_deref(),
+            Some("vendor/concrete-model")
+        );
     }
 
     #[test]
@@ -6337,11 +6643,13 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let assistant = UiMessage {
+            output_truncated: None,
             id: "assistant-search-1".into(),
             role: "assistant".into(),
             content: "answer with sources".into(),
             command: None,
             skill_mentions: None,
+            agent_mentions: None,
             attachments: None,
             voice_origin: None,
             steering: None,
@@ -6353,6 +6661,7 @@ mod tests {
             usage: None,
             response_duration_ms: None,
             response_output_tokens: None,
+            response_model_id: None,
             error: None,
             revision_root_id: None,
             revision_count: None,
@@ -7657,6 +7966,8 @@ mod tests {
         root.revision_count = Some(1);
         root.active_revision = Some(1);
         append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        // Regenerate writes a family's revision rows before it stamps the root.
+        save_message_revision(&db, &session.id, "u1", &[root.clone()], true).unwrap();
 
         // Ten finished turns, each appending a sizeable answer, each archived
         // exactly the way a real turn ends.
@@ -7747,6 +8058,8 @@ mod tests {
         root.revision_count = Some(1);
         root.active_revision = Some(1);
         append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        // Regenerate writes a family's revision rows before it stamps the root.
+        save_message_revision(&db, &session.id, "u1", &[root.clone()], true).unwrap();
         let mut answer = user_msg("a1", "the answer", "2025-05-01T00:01:00Z");
         answer.role = "assistant".into();
         append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
@@ -7797,6 +8110,8 @@ mod tests {
         first.revision_count = Some(1);
         first.active_revision = Some(1);
         append_message(&db, &session.id, &first, Some(&turn)).unwrap();
+        // Regenerate writes a family's revision rows before it stamps the root.
+        save_message_revision(&db, &session.id, "u1", &[first.clone()], true).unwrap();
         let mut first_answer = user_msg("a1", "first answer", "2025-05-01T00:00:01Z");
         first_answer.role = "assistant".into();
         append_message(&db, &session.id, &first_answer, Some(&turn)).unwrap();
@@ -7808,6 +8123,7 @@ mod tests {
         second.revision_count = Some(1);
         second.active_revision = Some(1);
         append_message(&db, &session.id, &second, Some(&turn)).unwrap();
+        save_message_revision(&db, &session.id, "u2", &[second.clone()], true).unwrap();
         let mut second_answer = user_msg("a2", "second answer", "2025-05-01T00:01:01Z");
         second_answer.role = "assistant".into();
         append_message(&db, &session.id, &second_answer, Some(&turn)).unwrap();

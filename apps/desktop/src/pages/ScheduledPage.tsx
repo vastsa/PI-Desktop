@@ -29,6 +29,11 @@ export function ScheduledPage() {
   const locale = i18n.resolvedLanguage ?? i18n.language;
   const { tasks, projects, selectedTask, selectedTaskId, runs, latestRuns, selectedRunId, busy, loaded, error } =
     workspace;
+  const pageError = error || workspace.latestRunsError || workspace.runsError || (editor ? workspace.projectsError : "");
+  const openEditor = (task: ScheduledTask | "new") => {
+    setEditor(task);
+    void workspace.loadProjects();
+  };
 
   // Remember where the reader came from: the conversation offers the way back,
   // and this page restores the same task and the same run.
@@ -65,20 +70,29 @@ export function ScheduledPage() {
             <h1 className="page-title">{t("scheduled.title")}</h1>
             <p className="dest-row-meta">{t("scheduled.description")}</p>
           </div>
-          <Button variant="primary" disabled={busy} onClick={() => setEditor("new")}>
+          <Button variant="primary" disabled={busy} onClick={() => openEditor("new")}>
             {t("scheduled.create")}
           </Button>
         </div>
 
-        {error && (
+        {pageError && (
           <Panel className="scheduled-error">
-            <p role="alert">{error}</p>
-            <Button onClick={() => void workspace.refresh()}>{t("scheduled.retry")}</Button>
+            <p role="alert">{pageError}</p>
+            <Button onClick={() => {
+              void workspace.refresh();
+              if (editor) void workspace.loadProjects();
+            }}>{t("scheduled.retry")}</Button>
           </Panel>
         )}
         {!loaded && !error && <p role="status">{t("common.loading")}</p>}
 
-        {editor && (
+        {editor && !workspace.projectsLoaded && (
+          <div className="scheduled-editor-slot">
+            {!workspace.projectsError && <p role="status">{t("common.loading")}</p>}
+            <Button onClick={() => setEditor(null)}>{t("scheduled.cancel")}</Button>
+          </div>
+        )}
+        {editor && workspace.projectsLoaded && (
           <div className="scheduled-editor-slot">
             <ScheduledEditor
               key={editor === "new" ? "new" : editor.id}
@@ -109,6 +123,8 @@ export function ScheduledPage() {
             <ScheduledTaskRail
               tasks={tasks}
               latestRuns={latestRuns}
+              latestRunsLoaded={workspace.latestRunsLoaded}
+              latestRunsError={workspace.latestRunsError}
               selectedTaskId={selectedTaskId}
               now={now}
               locale={locale}
@@ -118,15 +134,18 @@ export function ScheduledPage() {
               <ScheduledTaskDetail
                 task={selectedTask}
                 runs={runs}
+                runsLoaded={workspace.runsLoaded}
+                runsError={workspace.runsError}
                 selectedRunId={selectedRunId}
                 running={workspace.taskIsRunning(selectedTask.id)}
+                runningKnown={workspace.latestRunsLoaded && !workspace.latestRunsError}
                 busy={busy}
                 now={now}
                 locale={locale}
                 onSelectRun={workspace.selectRun}
                 onOpenSession={(sessionId, runId) => void openSession(sessionId, runId)}
                 onRunNow={() => void workspace.runTaskNow(selectedTask.id)}
-                onEdit={() => setEditor(selectedTask)}
+                onEdit={() => openEditor(selectedTask)}
                 onToggleEnabled={() =>
                   void workspace.toggleTask(selectedTask.id, !selectedTask.enabled)
                 }

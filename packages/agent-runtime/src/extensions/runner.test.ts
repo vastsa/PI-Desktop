@@ -160,6 +160,41 @@ export default function (pi) { pi.setSessionName(String(newSessionApi)); }
     }
   });
 
+  it("chains provider payload returns across extensions and ignores unreturned mutations", async () => {
+    const first = spec("z-first", `export default function (pi) {
+      pi.on("before_provider_request", (e) => { e.payload.system += " A"; return e.payload; });
+      pi.on("before_provider_request", (e) => { e.payload.system += " unreturned"; });
+    }`);
+    const second = spec("a-second", `export default function (pi) {
+      pi.on("before_provider_request", (e) => ({ ...e.payload, system: e.payload.system + " B" }));
+    }`);
+    const { bridge } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [first, second], bridge });
+    await runner.load();
+    try {
+      const payload = { system: "base", messages: [] };
+      expect(await runner.emitBeforeProviderRequest(payload)).toEqual({ system: "base A B", messages: [] });
+      expect(payload).toEqual({ system: "base", messages: [] });
+      expect(await runner.emitBeforeProviderRequest(payload)).toEqual({ system: "base A B", messages: [] });
+    } finally {
+      await runner.dispose();
+    }
+  });
+
+  it("resolves undefined when no provider request handler returns a payload", async () => {
+    const ext = spec("provider-noop", `export default function (pi) {
+      pi.on("before_provider_request", () => {});
+    }`);
+    const { bridge } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    try {
+      expect(await runner.emitBeforeProviderRequest({ system: "base" })).toBeUndefined();
+    } finally {
+      await runner.dispose();
+    }
+  });
+
   it("keeps the last prompt after missing, malformed, or throwing results and isolated mutations", async () => {
     const ext = spec("prompt-errors", `export default function (pi) {
       pi.on("before_agent_start", (e) => ({ systemPrompt: e.systemPrompt + " A" }));

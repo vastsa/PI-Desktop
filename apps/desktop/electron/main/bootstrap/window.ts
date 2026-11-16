@@ -6,10 +6,12 @@ import { getModuleDirectory } from "../module-path";
 import {
   APP_NAME,
   builtinWindowBackground,
+  encodeStartupAnimationArgument,
   IPC,
   MAC_TRAFFIC_LIGHT_POSITION,
   type CloseBehavior,
 } from "@pi-desktop/shared";
+import type { ResolvedStartupAnimation } from "../startup-animation";
 import type { BrowserHost } from "../browser-host";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -37,6 +39,7 @@ import {
 import { readWindowState, writeWindowState } from "../window-preferences";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 import { isWindowFullScreen } from "../window-fullscreen";
+import { installWindowsNativeSnap } from "../window-native-snap";
 import { DEFAULT_WINDOW_CORNER_RADIUS, installWindowShape } from "../window-shape";
 import {
   installWindows11CornerController,
@@ -88,6 +91,20 @@ export type WindowLifecycleState = {
    * `settings.macosWindowTranslucency` is.
    */
   macosWindowTranslucency: boolean;
+  /**
+   * Boot animation this launch resolved from the data directory, or null to
+   * keep the brand splash. Held for the whole process because the
+   * `pi-startup:` handler reads it per request, not once.
+   */
+  startupAnimation: ResolvedStartupAnimation | null;
+  /**
+   * Whether a window has already been created with the animation.
+   *
+   * The animation is a launch moment, so it plays for the first window of the
+   * process only: reopening from the tray or the Dock after the window was
+   * closed replays nothing.
+   */
+  startupAnimationPlayed: boolean;
   pluginLauncherWindow: BrowserWindow | null;
   host: HostProcess | null;
 };
@@ -185,6 +202,13 @@ export async function createWindow({
   const initialWindowBackground = builtinWindowBackground(
     nativeTheme.shouldUseDarkColors ? "dark" : "light",
   );
+  // Only the first window of the process plays the animation (D679). Claiming
+  // it here, before `new BrowserWindow`, is what keeps a reopened window — and
+  // a second window racing this one — on the brand splash instead.
+  const startupAnimation = windowState.startupAnimationPlayed
+    ? null
+    : windowState.startupAnimation;
+  if (startupAnimation) windowState.startupAnimationPlayed = true;
   const windows11NativeCorners = usesWindows11NativeCorners(
     process.platform,
     process.getSystemVersion(),
@@ -241,11 +265,20 @@ export async function createWindow({
       // Preload runs in a sandbox and cannot import Electron's main-only `app`
       // module. Pass the display locale at process creation so it remains
       // available synchronously before the renderer's first paint.
-      additionalArguments: [`--pi-desktop-locale=${app.getLocale()}`],
+      additionalArguments: [
+        `--pi-desktop-locale=${app.getLocale()}`,
+        // The boot animation has to be on screen in the renderer's first
+        // frame, so the descriptor travels as a creation argument like the
+        // locale does; an IPC round-trip would land after the first paint.
+        ...(startupAnimation
+          ? [encodeStartupAnimationArgument(startupAnimation.descriptor)]
+          : []),
+      ],
     },
   });
   const window = windowState.mainWindow;
   if (process.platform === "win32") {
+    await installWindowsNativeSnap(window, () => windowState.host, logger);
     if (windows11NativeCorners) {
       await installWindows11CornerController(
         window,
@@ -1872,7 +1905,7 @@ export async function createWindow({
             await new Promise((r) => setTimeout(r, 800));
             await shot("pi-dark-project-archive");
             await setPage("settings");
-            await setSettingsTab("general");
+            await setSettingsTab("appearance");
             await new Promise((r) => setTimeout(r, 800));
             await shot("pi-dark-settings");
             await setTheme("light");
@@ -2072,9 +2105,10 @@ export async function createWindow({
                window.__PI_DESKTOP__?.seedPluginThemes?.(2)`,
             );
             await setPage("settings");
-            // The general tab carries the theme picker, including plugin themes
-            // (D175); earlier scenes leave the sidebar on the archive tab.
-            await setSettingsTab("general");
+            // The appearance destination carries the theme picker, including
+            // plugin themes (D175); earlier scenes leave the rail on the
+            // archive destination.
+            await setSettingsTab("appearance");
             // Seeding plugin themes activates one of them, which drags the
             // shell dark; the settings tabs are documented in light.
             await setTheme("light");

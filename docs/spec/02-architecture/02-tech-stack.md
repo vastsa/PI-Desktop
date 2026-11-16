@@ -12,9 +12,9 @@
 | Host backend | **Rust** | stable Rust toolchain | tools/plugins/permissions/persistence adapters |
 | Rust async | tokio | stable | host services |
 | Host RPC | stdio JSON-RPC (NDJSON) | frozen (D001) | Electron main ↔ Rust host |
-| Agent engine | `@earendil-works/pi-agent-core` | 1.4.0 | agent loop |
-| Model API | `@earendil-works/pi-ai` | 1.4.0 | provider adapters, OAuth, and stream handling |
-| Model catalog | models.dev + Pi Providers/Models | bundled models.dev + pinned Pi 1.4.0 | models.dev chat metadata; Pi account IDs, wire capabilities, and typed operations |
+| Agent engine | `@earendil-works/pi-agent-core` | 1.5.0 | agent loop |
+| Model API | `@earendil-works/pi-ai` | 1.5.0 | provider adapters, OAuth, and stream handling |
+| Model catalog | models.dev + Pi Providers/Models | bundled models.dev + pinned Pi 1.5.0 | models.dev chat metadata; Pi account IDs, wire capabilities, and typed operations |
 
 > models.dev owns published chat metadata; pi-ai owns transports and auth.
 > Host persists Desktop account rows, credentials, and explicit binding overrides.

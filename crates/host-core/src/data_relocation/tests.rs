@@ -20,6 +20,47 @@ fn read_json(path: &Path) -> Value {
 }
 
 #[test]
+fn sidebar_backup_relocates_internal_project_paths_without_rewriting_labels_or_external_projects() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("old");
+    let destination = temporary.path().join("new");
+    fs::create_dir_all(&source).unwrap();
+    let internal = source
+        .join("projects/default")
+        .to_string_lossy()
+        .into_owned();
+    let external = temporary
+        .path()
+        .join("external")
+        .to_string_lossy()
+        .into_owned();
+    let original = json!({
+        "openProjectPaths": [internal, external],
+        "projectMeta": {internal.clone(): {"name": internal, "collapsed": true}, external.clone(): {"pinned": true}},
+        "sessionMeta": {"session": {"pinned": true}}
+    });
+    fs::write(
+        source.join("sidebar-preferences.json"),
+        original.to_string(),
+    )
+    .unwrap();
+    copy_directory(&source, &destination);
+    relocate(&source, &destination).unwrap();
+    let moved = destination
+        .join("projects/default")
+        .to_string_lossy()
+        .into_owned();
+    let restored = read_json(&destination.join("sidebar-preferences.json"));
+    assert_eq!(restored["openProjectPaths"], json!([moved, external]));
+    assert_eq!(restored["projectMeta"][&moved]["name"], internal);
+    assert_eq!(restored["projectMeta"][&external]["pinned"], true);
+    assert_eq!(
+        read_json(&source.join("sidebar-preferences.json")),
+        original
+    );
+}
+
+#[test]
 fn relocated_project_memory_remains_readable_through_the_repository() {
     // Keep the synthetic profile for inspection; no user data is involved.
     let temporary = tempfile::tempdir().unwrap().keep();

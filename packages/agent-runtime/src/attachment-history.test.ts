@@ -55,6 +55,52 @@ describe("hydrateAttachmentHistory", () => {
     });
   });
 
+  it("does not let a pixel-limit rejection consume the history byte budget", async () => {
+    await withTempDir(async (tmp) => {
+      const olderBytes = Buffer.from("fake-png-bytes");
+      const olderPath = resolve(tmp, "older.png");
+      await writeFile(olderPath, olderBytes);
+      const newerPath = resolve(tmp, "page.png");
+      const header = Buffer.alloc(33);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(header);
+      header.write("IHDR", 12, "latin1");
+      header.writeUInt32BE(780, 16);
+      header.writeUInt32BE(14182, 20);
+      await writeFile(newerPath, header);
+      const history = [
+        userMessage("older", [
+          {
+            name: "older.png",
+            ref: olderPath,
+            kind: "image",
+            mimeType: "image/png",
+            size: olderBytes.length,
+          },
+        ]),
+        userMessage("newer", [
+          {
+            name: "page.png",
+            ref: newerPath,
+            kind: "image",
+            mimeType: "image/png",
+            size: header.length,
+          },
+        ]),
+      ];
+
+      const hydrated = await hydrateAttachmentHistory(history, {
+        projectPath: tmp,
+        supportsVision: true,
+        // Fits either image alone, not both. The newer one is over 8000 px.
+        maxInlinedImageBytes: 40,
+      });
+
+      expect(hydrated[1]?.attachments?.[0]?.data).toBeUndefined();
+      expect(hydrated[1]?.content).toContain("page.png");
+      expect(hydrated[0]?.attachments?.[0]?.data).toBe(olderBytes.toString("base64"));
+    });
+  });
+
   it("keeps the path fallback for an image past the pixel limit (#1913)", async () => {
     await withTempDir(async (tmp) => {
       const imgPath = resolve(tmp, "page.png");

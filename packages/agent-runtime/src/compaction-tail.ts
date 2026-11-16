@@ -29,6 +29,10 @@ import {
   estimateTokens,
 } from "./pi-runtime-estimates.js";
 import { isRecord, truncateMessageText } from "./agent-messages.js";
+import {
+  charBudgetWithinOutputCap,
+  estimateOutputCapInputTokens,
+} from "./output-cap.js";
 
 /**
  * `details` marker for a tail holding the real recent window rather than the
@@ -51,26 +55,60 @@ const RETAINED_TAIL_ROLES = new Set(["user", "assistant", "toolResult"]);
 const DROPPED_STOP_REASONS = new Set(["error", "aborted", "deferred"]);
 
 function messageTokens(message: AgentMessage): number {
-  return Math.max(1, Math.ceil(estimateTokens(message)));
+  const estimated = Math.max(1, Math.ceil(estimateTokens(message)));
+  // chars/3.5 under-counts Han, kana, and Hangul. The next request is gated
+  // on the output-cap estimate, so a CJK message that looks cheap here is
+  // still truncated.
+  const capped = estimateOutputCapInputTokens({
+    messages: [{
+      role: message.role,
+      content: (message as { content?: unknown }).content,
+    }],
+  });
+  return Math.max(estimated, capped);
+}
+
+/**
+ * Text {@link truncateMessageText} can actually shorten. Redacted thinking is
+ * an opaque signature and is left unchanged, so it must not pull the budget.
+ */
+function plainRetainedText(message: AgentMessage): string {
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let text = "";
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    if (block.type === "thinking" && block.redacted === true) continue;
+    if (block.type === "thinking" && typeof block.thinking === "string") {
+      text += block.thinking;
+      continue;
+    }
+    if (typeof block.text === "string") text += block.text;
+  }
+  return text;
 }
 
 /**
  * Bound one message to a token budget by truncating its text blocks. Tool calls
  * and tool results keep their identity, so a truncated message is still a
- * provider-valid message.
+ * provider-valid message. The character ceiling stays the ASCII chars/3.5 cap;
+ * CJK text is then shrunk to the output-cap estimate.
  */
 export function truncateMessageToTail(
   message: AgentMessage,
   maxTokens: number,
 ): AgentMessage {
-  return truncateMessageText(
-    message,
-    Math.max(
-      64,
-      Math.floor(Math.max(1, maxTokens) * ESTIMATED_TEXT_CHARS_PER_TOKEN),
-    ),
-    CHECKPOINT_TRUNCATION_MARKER,
+  const ceiling = Math.max(
+    64,
+    Math.floor(Math.max(1, maxTokens) * ESTIMATED_TEXT_CHARS_PER_TOKEN),
   );
+  const maxChars = charBudgetWithinOutputCap(maxTokens, ceiling, (chars) =>
+    plainRetainedText(
+      truncateMessageText(message, chars, CHECKPOINT_TRUNCATION_MARKER),
+    ),
+  );
+  return truncateMessageText(message, maxChars, CHECKPOINT_TRUNCATION_MARKER);
 }
 
 /** Content blocks of a message, whatever shape its role uses. */

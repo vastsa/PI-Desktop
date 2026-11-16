@@ -60,6 +60,16 @@ export const PLUGIN_PANEL_EMBEDDED_ARGUMENT = "--pi-plugin-panel-embedded=1";
 export const PLUGIN_PANEL_WIDGET_ARGUMENT = "--pi-plugin-panel-widget=1";
 
 /**
+ * Event name the launcher uses to hand a plugin the input that summoned it.
+ *
+ * The payload arrives after the panel page has loaded, so it cannot race the
+ * document; `pluginBridge.consumeLauncherPayload()` reads it exactly once, which
+ * is what keeps one typed input from being delivered twice or kept available for
+ * a later time the user did not type it.
+ */
+export const PLUGIN_PANEL_LAUNCH_EVENT = "launcher:payload";
+
+/**
  * Smallest surface each placement may ask for. A panel is sized around
  * plugin-drawn content; a widget draws its own silhouette — a floating orb —
  * and may shrink far below that.

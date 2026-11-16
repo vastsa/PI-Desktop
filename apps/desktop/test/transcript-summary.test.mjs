@@ -109,7 +109,12 @@ test("activity summary and compact visibility preserve error, search and thinkin
     { kind: "hostedSearch", message: message("search", ""), round: { id: "r", status: "failed" } },
   ];
   for (const subset of [[], items, items.slice(0, 1), items.slice(2, 4), items.slice(4)]) {
-    assert.deepEqual(cachedActivitySummary(subset), activitySummary(subset));
+    const cached = cachedActivitySummary(subset);
+    const legacy = activitySummary(subset);
+    // The cached summary is the production path; the legacy helper still owns
+    // the row counts it always reported, and nothing else is shared any more.
+    assert.equal(cached.tools, legacy.tools);
+    assert.equal(cached.thinking, legacy.thinking);
     for (const compact of [false, true]) for (const active of [false, true]) {
       assert.deepEqual(cachedVisibleActivityItems(subset, compact, active), visibleActivityItems(subset, compact, active));
       const parts = [{ kind: "activity", items: subset }, { kind: "message", message: message("progress", "progress") }];
@@ -141,8 +146,11 @@ test("text and delegate-child changes keep tool inputs stable; cross-part TaskWa
   const timings = collectDelegationTimings(inputs);
   assert.equal(statuses.get("d"), "failed");
   assert.deepEqual(delegationTimingBounds([task], timings), { startedAt: 1000, completedAt: 6000 });
-  assert.deepEqual(cachedActivitySummary([task], statuses), activitySummary([task], statuses));
-  assert.equal(cachedActivitySummary([task], statuses).issues, 1);
+  assert.equal(cachedActivitySummary([task]).tools, 1);
+  assert.deepEqual(
+    cachedActivitySummary([task]).buckets.filter((bucket) => bucket.count > 0),
+    [{ id: "delegate", count: 1 }],
+  );
   assert.equal(collectDelegationStatuses(getAssistantTurnSummary(first).toolItems, { turnLive: false }).get("d"), "aborted");
 });
 

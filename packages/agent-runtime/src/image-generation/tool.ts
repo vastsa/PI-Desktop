@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 
 export const imageGenerationDescription =
   "Generate raster images using the image model configured in Settings > Models. items supports distinct prompts and count variants; at most 10 images total. Each image may incur a charge. Generate only the requested number, report partial failures, and do not retry without the user's request. Results contain local image paths: display successful images with Markdown image links. For edits, provide images as local paths from the session, attachments, or project. Use previous result paths to refine generated images; preserve originals.";

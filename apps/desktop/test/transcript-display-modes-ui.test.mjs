@@ -33,9 +33,9 @@ test("command-first and fully-folded use distinct process segmentation", () => {
   assert.match(turnProcessSource, /isStandaloneRunActivity\(item\)/);
 });
 
-test("thinking rows expand by default in every transcript display mode", () => {
+test("reasoning rows start open only while they are still streaming", () => {
   assert.doesNotMatch(activityGroupSource, /thinkingDefaultOpen/);
-  assert.match(activityItemsSource, /<ThinkingRow[\s\S]*?\n\s*autoOpen\n/);
+  assert.match(activityItemsSource, /<ThinkingRow[\s\S]*?\n\s*autoOpen=\{thinkingRowStartsOpen\(/);
 });
 
 test("thinking collapsed state uses the whole-run TextShimmer, not a spinner", () => {

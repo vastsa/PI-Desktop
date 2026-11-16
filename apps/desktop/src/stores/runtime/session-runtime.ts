@@ -25,6 +25,7 @@ import {
 import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
 import { formatToolValue } from "../../lib/tool-display";
 import { recordPaneTranscript } from "../../lib/session-panes";
+import { withTranscriptTurnId } from "../../lib/transcript-turn-id";
 import type { AppState, SessionHistoryWindow } from "../app-state";
 import type { StoreAccess } from "../slices/types";
 
@@ -48,13 +49,14 @@ export type SessionConfiguration = Pick<
 export type SessionSelection = { id: string; intent: number };
 
 export type SessionRuntime = {
-  readonly pendingNewSessionRequests: Map<string, Promise<void>>;
+  readonly pendingNewSessionRequests: Map<string, Promise<string | null>>;
   readonly sessionTranscriptCache: Map<string, UiMessage[]>;
   readonly liveSessionTranscripts: Set<string>;
   readonly sessionHistoryCache: Map<string, SessionHistoryWindow>;
   readonly submittedComposerDrafts: Map<string, SubmittedComposerDraft>;
   readonly pendingSessionConfigurations: Map<string, SessionConfiguration>;
   readonly sessionConfigurationFlushes: Map<string, Promise<void>>;
+  readonly sessionModeSelections: Map<string, number>;
   beginNavigationIntent: () => number;
   navigationIntentIsCurrent: (intent: number) => boolean;
   newSessionScopeKey: (projectPath?: string | null) => string;
@@ -126,13 +128,14 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   let pendingSessionSelection: SessionSelection | null = null;
   let sessionWorkspaceQueue: Promise<unknown> = Promise.resolve();
 
-  const pendingNewSessionRequests = new Map<string, Promise<void>>();
+  const pendingNewSessionRequests = new Map<string, Promise<string | null>>();
   const sessionTranscriptCache = new Map<string, UiMessage[]>();
   const liveSessionTranscripts = new Set<string>();
   const sessionHistoryCache = new Map<string, SessionHistoryWindow>();
   const submittedComposerDrafts = new Map<string, SubmittedComposerDraft>();
   const pendingSessionConfigurations = new Map<string, SessionConfiguration>();
   const sessionConfigurationFlushes = new Map<string, Promise<void>>();
+  const sessionModeSelections = new Map<string, number>();
   const sessionDetailLoads = new Map<string, ReturnType<typeof api.getSession>>();
   const toolStartsByCallId = new Map<string, ToolStart>();
   const planSyncGenerations = new Map<string, number>();
@@ -165,6 +168,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   ) {
     const active = sessionDetailLoads.get(id);
     if (active && options?.messageBefore === undefined) return active;
+    const previous = sessionTranscriptCache.get(id);
     const request = api.getSession(id, options).then((detail) => {
       if (detail.session && options?.messageBefore === undefined) {
         const state = get();
@@ -179,6 +183,8 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
         // would then re-serve that emptiness on every later open, and the
         // session could not recover without a restart.
         if (messages.length > 0 || !sessionReadLooksEmpty(detail.session)) {
+          if (sessionTranscriptCache.get(id) !== previous &&
+            !liveSessionTranscripts.has(id) && !state.runningSessions[id]) return detail;
           cacheSessionTranscript(id, messages, {
             messageStart: detail.session.messageStart ?? 0,
             hasMoreBefore: detail.session.hasMoreBefore === true,
@@ -214,10 +220,11 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   }
 
   async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
+    const previous = sessionTranscriptCache.get(id);
     const detail = await api.getSession(id);
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
-    if (cache) cacheSessionTranscript(id, messages, {
+    if (cache && sessionTranscriptCache.get(id) === previous) cacheSessionTranscript(id, messages, {
         messageStart: 0,
         hasMoreBefore: false,
       });
@@ -261,7 +268,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   }
 
   function projectTranscriptEvent(current: UiMessage[], envelope: AgentEventEnvelope): UiMessage[] {
-    const { event } = envelope;
+    const { event } = withTranscriptTurnId(envelope);
     let next = current;
     switch (event.type) {
       case "message_start":
@@ -281,6 +288,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       case "tool_start":
         next = upsertLiveSessionMessage(current, {
           id: event.toolCallId,
+          ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
           role: "tool",
           content: "",
           createdAt: new Date(envelope.ts).toISOString(),
@@ -317,6 +325,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
         const completedAt = new Date(envelope.ts).toISOString();
         const completed: UiMessage = {
           id: event.toolCallId,
+          ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
           role: "tool",
           content:
             typeof event.result === "string"
@@ -400,6 +409,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     submittedComposerDrafts,
     pendingSessionConfigurations,
     sessionConfigurationFlushes,
+    sessionModeSelections,
     beginNavigationIntent: () => navigationIntents.begin(),
     navigationIntentIsCurrent: (intent) => navigationIntents.isCurrent(intent),
     newSessionScopeKey: (projectPath) =>

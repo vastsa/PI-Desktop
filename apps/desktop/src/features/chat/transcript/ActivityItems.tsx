@@ -3,6 +3,7 @@ import type { AssistantActivityItem } from "../../../lib/assistant-turns";
 import { isDelegationActivityItem, type DelegationActivityItem, type SubagentOutcome, type SubagentTiming } from "../../../lib/subagent-topology";
 import { reviewChangeFromMessage } from "../../../lib/workspace-review";
 import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
+import { thinkingRowStartsOpen } from "../../../lib/activity-group-folding";
 import { ThinkingRow } from "./shared";
 import { HostedSearchRow } from "./HostedSearchRow";
 import { SubagentTopology } from "./SubagentDetail";
@@ -23,6 +24,8 @@ type ActivityItemsProps = {
   delegationStatuses: ReadonlyMap<string, SubagentOutcome>;
   delegationTimings: ReadonlyMap<string, SubagentTiming>;
   onUserInteraction: () => void;
+  /** `resolveAutoCollapseThinking`: folded reasoning stays folded by default. */
+  collapseThinking: boolean;
 };
 
 type ActivityItemBlockProps = Omit<ActivityItemsProps, "items" | "delegateItems" | "delegationStatuses" | "delegationTimings"> & {
@@ -36,6 +39,7 @@ type ActivityItemBlockProps = Omit<ActivityItemsProps, "items" | "delegateItems"
 const ActivityItemBlock = memo(function ActivityItemBlock({
   block, isActive, live, topologyItem,
   delegateItems, delegationStatuses, delegationTimings, onUserInteraction,
+  collapseThinking,
 }: ActivityItemBlockProps) {
   return <>{block.items.map((item) => {
     // The topology predicate narrows to all tools, but a false result can still
@@ -78,11 +82,15 @@ const ActivityItemBlock = memo(function ActivityItemBlock({
       streaming={isActive && item.message.status === "streaming"}
       onUserInteraction={onUserInteraction}
     />;
+    // Reasoning folds once it stops streaming, unless the reader turned
+    // `autoCollapseThinking` off; the row keeps its own explicit choice either
+    // way.
+    const streaming = isActive && item.message.status === "streaming";
     return <ThinkingRow
       key={`thinking-${item.message.id}`}
       message={item.message}
-      streaming={isActive && item.message.status === "streaming"}
-      autoOpen
+      streaming={streaming}
+      autoOpen={thinkingRowStartsOpen({ streaming, collapseSettled: collapseThinking })}
       onUserInteraction={onUserInteraction}
     />;
   })}</>;
@@ -103,6 +111,7 @@ export const ActivityItems = memo(function ActivityItems({ items, ...context }: 
       delegationStatuses={ownsTopology ? context.delegationStatuses : undefined}
       delegationTimings={ownsTopology ? context.delegationTimings : undefined}
       onUserInteraction={context.onUserInteraction}
+      collapseThinking={context.collapseThinking}
     />;
   })}</>;
 });

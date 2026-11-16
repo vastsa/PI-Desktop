@@ -59,7 +59,7 @@ test("shows a completed outline only with enough markers and overflow", () => {
   );
 });
 
-test("uses one assistant marker for all response fragments in a user turn", () => {
+test("marks only user messages", () => {
   const markers = buildConversationMinimapMarkers([
     message("user-1", "user", "First question"),
     message("assistant-1a", "assistant", "First sentence."),
@@ -69,38 +69,19 @@ test("uses one assistant marker for all response fragments in a user turn", () =
     message("assistant-2", "assistant", "Second response."),
   ]);
 
-  assert.deepEqual(
-    markers.map(({ id, role }) => ({ id, role })),
-    [
-      { id: "user-1", role: "user" },
-      { id: "assistant-1a", role: "assistant" },
-      { id: "user-2", role: "user" },
-      { id: "assistant-2", role: "assistant" },
-    ],
-  );
-  assert.equal(markers[1].preview, "First sentence.\n\nSecond sentence.");
-});
-
-test("starts the assistant marker at the first contentful response fragment", () => {
-  const markers = buildConversationMinimapMarkers([
-    message("user-1", "user", "Question"),
-    { ...message("thinking", "assistant", ""), thinking: "Reasoning" },
-    message("tool-1", "tool", "tool output"),
-    message("answer", "assistant", "Final answer"),
+  assert.deepEqual(markers, [
+    { id: "user-1", preview: "First question" },
+    { id: "user-2", preview: "Second question" },
   ]);
-
-  assert.deepEqual(markers.map((marker) => marker.id), ["user-1", "answer"]);
 });
 
-test("caps the combined assistant preview", () => {
+test("caps the user preview", () => {
   const markers = buildConversationMinimapMarkers([
-    message("user-1", "user", "Question"),
-    message("assistant-1a", "assistant", "a".repeat(200)),
-    message("assistant-1b", "assistant", "b".repeat(200)),
+    message("user-1", "user", "a".repeat(400)),
   ]);
 
   assert.equal(
-    markers[1].preview.length,
+    markers[0].preview.length,
     CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS,
   );
 });

@@ -64,11 +64,21 @@ pub(crate) fn get_proposal(db: &Database, id: &str) -> Result<Option<PlanProposa
 
 /// The approval kind this session may submit, or `None` while it is executing
 /// freely in Agent mode.
+/// A session whose mode is defined by a snapshot (the staged builtin Goal or a
+/// user mode, ADR mode-definitions) never negotiates a contract.
 pub(crate) fn session_submit_kind(db: &Database, session_id: &str) -> Result<Option<&'static str>> {
-    let Some(mode) = sessions::session_mode(db, session_id)? else {
+    let row: Option<(String, Option<String>)> = db
+        .conn()
+        .prepare_cached("SELECT mode, mode_snapshot_hash FROM sessions WHERE id = ?1")?
+        .query_row(params![session_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()?;
+    let Some((mode, snapshot_hash)) = row else {
         return Err(plan_error("PLAN_SESSION_NOT_FOUND"));
     };
-    Ok(kind_for_mode(&mode))
+    if snapshot_hash.is_some() {
+        return Ok(None);
+    }
+    Ok(kind_for_mode(&sessions::normalize_mode(Some(&mode))))
 }
 
 pub(crate) fn live_turn_belongs_to_session(

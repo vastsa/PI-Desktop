@@ -18,6 +18,14 @@ import {
   type TurnUsageBreakdown,
 } from "../../../lib/context-usage";
 import { portalToBody } from "../../../lib/portal-visibility";
+import {
+  subscriptionProviderIds,
+  summarizeUsageCost,
+  turnProviderCosts,
+  usageCostView,
+} from "../../../lib/usage-cost";
+import { useAppStore } from "../../../stores/app-store";
+import { usageCostText } from "../context-usage/usage-cost-text";
 
 const CLOSE_DELAY_MS = 120;
 
@@ -106,6 +114,19 @@ export function TurnUsageCapsule({
     () => new Intl.NumberFormat(i18n.language),
     [i18n.language],
   );
+  const providers = useAppStore((state) => state.providers);
+  const costView = useMemo(
+    () => usageCostView(summarizeUsageCost(
+      turnProviderCosts(usage),
+      subscriptionProviderIds(providers),
+    )),
+    [providers, usage],
+  );
+  // Unpriced turns stay quiet: a dash on every local-model turn is noise.
+  const cost = costView.kind === "unknown"
+    ? undefined
+    : usageCostText(costView, t, i18n.language);
+  const inlineCost = costView.kind === "billed" ? cost : undefined;
 
   const cancelClose = useCallback(() => {
     if (closeTimerRef.current === null) return;
@@ -290,6 +311,13 @@ export function TurnUsageCapsule({
         <span>{t("chat.usageTotal")}</span>
         <strong>{numberFormat.format(breakdown.totalTokens)}</strong>
       </div>
+      {cost ? (
+        <div className="turn-usage-popover-footer turn-usage-cost">
+          <span>{t("chat.usageCost")}</span>
+          <strong>{cost.text}</strong>
+        </div>
+      ) : null}
+      {cost ? <p className="turn-usage-cost-help">{cost.help}</p> : null}
     </div>
   ) : null;
 
@@ -306,7 +334,7 @@ export function TurnUsageCapsule({
         aria-label={t("chat.usageTurnAria", {
           speed,
           count: compactTotal,
-        })}
+        }) + (inlineCost ? ` ${t("chat.usageCost")} ${inlineCost.text}` : "")}
         onPointerEnter={() => {
           overTriggerRef.current = true;
           openPopover();
@@ -325,6 +353,14 @@ export function TurnUsageCapsule({
           ·
         </span>
         <span className="turn-usage-total">{compactTotal}</span>
+        {inlineCost ? (
+          <>
+            <span className="turn-usage-separator" aria-hidden="true">
+              ·
+            </span>
+            <span className="turn-usage-cost-value">{inlineCost.text}</span>
+          </>
+        ) : null}
       </button>
       {popover && typeof document !== "undefined"
         ? portalToBody(popover)

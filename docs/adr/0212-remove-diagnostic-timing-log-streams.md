@@ -8,27 +8,23 @@
 ## Context
 
 D137/D183 added per-tool, per-model, boot-phase, and updater timing output to
-help diagnose a slow run. The investigation is complete, and those records now
-create noise in local log directories during normal use.
+diagnose a slow run. That investigation is complete and those records now only
+add noise to local log directories during normal use.
 
 ## Decision
 
-1. Stop emitting sidecar `[timing]` lines, host `tool timing` lines, boot-phase
-   timing records, updater timing records, and renderer bootstrap timing output.
-2. Remove the dedicated `timing` log category and the `PI_DESKTOP_TIMING`
-   suppression environment variable. The updater's functional timeout remains.
-3. Keep key lifecycle, state-change, permission, tool, plugin, provider,
-   persistence, updater, and error records. Keep structured audit fields and
-   UI/protocol duration metadata that are consumed by product features or
-   security forensics.
-4. Do not delete or migrate timing files already present in a user's local data
-   directory. They are historical records.
+Stop emitting sidecar `[timing]` lines, host `tool timing` lines, boot-phase and
+updater timing records, and renderer bootstrap timing, and remove the dedicated
+`timing` log category with the `PI_DESKTOP_TIMING` suppression variable; the
+updater's functional timeout stays. Lifecycle, state-change, permission, tool,
+plugin, provider, persistence, updater, and error records remain, as do audit
+fields and duration metadata consumed by product features or security forensics,
+and timing files already in a user's data directory are left untouched.
 
 ## Consequences
 
-- Normal launches, turns, retries, and tool calls produce fewer log records and
-  no longer create dedicated timing files.
-- Failures remain diagnosable through stable lifecycle records, error codes,
-  tool/permission audit rows, and the visible transcript.
-- Timing-specific troubleshooting scenarios and documentation are retired.
-- Existing local timing files may remain until the user removes them.
+- Normal launches, turns, retries, and tool calls produce fewer records and no
+  dedicated timing files.
+- Failures stay diagnosable through lifecycle records, error codes, audit rows,
+  and the visible transcript.
+- Timing-specific troubleshooting documentation is retired.

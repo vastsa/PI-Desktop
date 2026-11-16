@@ -10,151 +10,78 @@
 
 ## Context
 
-ADR 0163 made a file reference in the transcript clickable, but the click
-trusted the token as written. An agent that works on
-`/root/dir/openimage.js` routinely names only `openimage.js` in its reply, so
-the reference resolved against the workspace root, pointed at a path that does
-not exist, and the work panel painted an empty state — or, for a `.html` token,
-opened a blank page in the side browser. Nothing told the user which of the two
-had happened: a stale reference and a slow load looked the same.
-
-The same click also chose the wrong surface. Every file went to the host
-`file:` tab, a read-only viewer, while the work panel's capable file surface is
-the vendored `pi.file-manager` view (ADR 0241) — which can edit, preview
-images, media, CSV, JSON and SQLite, and which a user can already open from the
-launcher. It had no way to be told *which* file to show: ADR 0104 gives a
-contributed view a manifest entry and nothing else, and the `location` field a
-work-panel tab already carries was honoured by main for `pi.browser` only.
+ADR 0163 made transcript file references clickable but trusted the token as
+written, so an agent naming only `openimage.js` resolved at the workspace root and
+painted an empty panel or a blank browser page, indistinguishable from a slow
+load. The click also always chose the host `file:` tab, while the panel's capable
+surface is the vendored `pi.file-manager` view (ADR 0241), which had no way to be
+told which file to show.
 
 ## Decision
 
-1. **Completion runs in Electron main**, as `fs.resolveRef`, because only main
-   sees both the open project and the session's own scratch store
-   (`<data_dir>/scratch/<sessionId>/`, ADR 0124). The order is a product
-   contract, not an implementation detail:
-   - an absolute reference that already names a real file inside a known root
-     wins outright — that is path equality, not a guess;
-   - an `attachments/<sha256>` blob names a stored file by hash, so it resolves
-     against the attachment store directly;
-   - otherwise the roots are searched in priority order — **the open project
-     first, the session scratch store second, the attachment store last** — and
-     the first root that answers wins, so the project is searched to exhaustion
-     before the scratch store is considered;
-   - inside one root, an exact path beats a shorthand; a shorthand resolves
-     only when its complete supplied suffix uniquely identifies one safe file.
-     It never degrades to a shorter suffix, and ambiguous matches resolve to
-     nothing;
-   - the files panel's ignore set applies, so a dependency tree is never
-     searched;
-   - a reference that matches nothing opens **nothing** and reports itself. No
-     empty panel, no blank browser page.
-2. **The destination follows where the reference resolved.** A project file
-   opens in the `pi.file-manager` view, except a positioned reference (`:line`,
-   `:line:column`, `:line-range` or `#Lline[-Lend]`), which opens in the host's
-   read-only `file:` tab so the requested source line can
-   be brought into view. The bundled view accepts opaque path locations and has
-   no line-navigation contract; this keeps the path unchanged and uses the
-   host viewer's existing scroll support. A file in the session scratch or
-   attachment store opens in the
-   host `file:` tab, because it lives outside that view's project root — see
-   point 4. An unpositioned `.html` / `.htm` file in any folder of the
-   session's project group or its own scratch directory opens in the side browser
-   (ADR 0163), for an agent reply and a user chip alike: it is a page to run,
-   not a file to read. Main resolves browser roots from the owning session,
-   never a different visible project's root. The resolved absolute path is
-   carried through navigation, and realpath containment still applies.
-   Positioned HTML references retain the source viewer. A disabled browser
-   reports an error instead of silently dropping a click or enabling itself.
-   A direct user click on a project file actively ensures
-   the bundled file view is running: an off plugin is enabled, and an enabled
-   plugin with no contributed view is reloaded before the tab opens. This click
-   is explicit intent to use the bundled view. The host does not restore a
-   missing `ui.view` grant or widen project scope; if either boundary excludes
-   the current project, or the plugin still cannot start, the host `file:` tab
-   opens with a notice.
-3. **A contributed view's `location` stops being browser-only.** It travels as
-   the view entry URL's `piViewOpen` query parameter on creation — the only
-   channel that cannot race a document that has not run yet — and as the
-   `view:open` preload event once the document has loaded, through the same
-   channel every other panel event uses. A location that arrives before the
-   first `did-finish-load` restarts the load instead. A loaded view is never
-   navigated: a plugin may hold unsaved edits, and a chat click must not discard
-   them. Re-opening the same location does nothing. The payload is opaque to the
-   host; each plugin decides what it means. No new permission, no new SDK
-   method, no host-only capability.
+1. **Completion runs in Electron main** as `fs.resolveRef`, because only main sees
+   the open project and the session scratch store
+   (`<data_dir>/scratch/<sessionId>/`, ADR 0124). An absolute reference naming a
+   real file inside a known root wins outright; an `attachments/<sha256>` blob
+   resolves against the attachment store; otherwise roots are searched in priority
+   order — **open project, session scratch, attachment store** — with the project
+   exhausted before the scratch store is considered. Inside one root an exact path
+   beats a shorthand, which resolves only when its complete supplied suffix
+   uniquely identifies one safe file: it never degrades, ambiguous matches resolve
+   to nothing, the files-panel ignore set applies, and a reference that matches
+   nothing opens **nothing** and reports itself.
+2. **The destination follows where the reference resolved.** A project file opens
+   in `pi.file-manager`, except a positioned reference (`:line`, `:line:column`,
+   `:line-range`, `#Lline[-Lend]`), which opens in the host's read-only `file:` tab
+   so the requested source line can be shown — the bundled view has no
+   line-navigation contract. Scratch and attachment files open in the host `file:`
+   tab because they live outside that view's project root. An unpositioned
+   `.html` / `.htm` file in the session's project group or own scratch directory
+   opens in the side browser (ADR 0163), with browser roots resolved from the
+   owning session. A direct user click on a project file actively ensures the
+   bundled view runs — enabling an off plugin or reloading one with no contributed
+   view — without restoring a missing `ui.view` grant or widening project scope;
+   if either boundary excludes the project, or the plugin still cannot start, the
+   host `file:` tab opens with a notice.
+3. **A contributed view's `location` stops being browser-only.** It travels as the
+   view entry URL's `piViewOpen` query parameter on creation and as the `view:open`
+   preload event after load. A location that arrives before the first
+   `did-finish-load` restarts the load; a loaded view is never navigated, because a
+   plugin may hold unsaved edits, and re-opening the same location does nothing.
+   The payload is opaque to the host, and no permission or SDK method is added.
 4. **The view decides its own presentation.** `pi.file-manager` v0.4.0 opens the
-   requested file, expands its ancestors, and collapses its own left file list
-   for a host request — a new persisted state with a keyboard-reachable header
-   toggle, so the stored split width comes back when it is expanded again. An
-   absolute path outside the project root is treated as an explicitly
-   host-chosen file: raw Node `fs`, with the credential deny list still applied
-   to the raw, the normalized and the `realpath` form, and no root containment.
-   This is deliberate and is why the plugin's `safetyNotes` states the exception
-   instead of claiming the project-root containment still covers everything it
-   reads.
-5. **The bundled copy moves to v0.4.0** through ADR 0241's re-sync procedure, and
-   the same release is published to the plugin center: the marketplace and the
-   bundled copy ship the same bytes.
+   requested file, expands its ancestors, and collapses its left file list for a
+   host request. An absolute path outside the project root is treated as an
+   explicitly host-chosen file: raw Node `fs` with the credential deny list applied
+   to the raw, normalized and `realpath` forms and no root containment, which its
+   `safetyNotes` states. ADR 0339 drops root containment for the host as well:
+   `fs/resolveRef`, `fs/read`, `fs/reveal`, and `fs/open` open an exact absolute
+   path outside managed roots. The host applies no deny list because it only shows
+   the file to the user who clicked it, while the plugin keeps its own.
+5. **The bundled copy moves to v0.4.0** through ADR 0241's re-sync procedure and
+   ships the same bytes as the plugin-center release.
 
 ## Consequences
 
-- A click on a shorthand lands on the file the agent meant, or says that nothing
-  matched. The two failure modes ADR 0163 left indistinguishable are now
-  distinguishable.
-- The transcript's file surface is the same editable view the launcher offers,
-  so "show me that file" and "let me change it" are one surface.
-- The host now depends on a plugin version for a chat affordance. A direct
-  project-file click starts or retries the bundled view before falling back;
-  missing permissions, an out-of-scope project, or a failed load still degrades
-  to the host `file:` tab and reports that the File Manager could not start.
-- A direct project-file click can re-enable the bundled plugin, because the
-  click is an explicit request to use it. The plugin's recorded permission
-  grants and project scope remain unchanged.
-- The file view is no longer confined to the project root whenever, and only
-  when, the host asks it for a path the host itself picked. A defect in that
-  path handling is not caught by the host gateway; that is the same trust
-  position ADR 0241 already took, extended by one explicitly-named case.
-- A chat click no longer hands a file to the OS default application. That action
-  is still reachable from the file view's own context menu.
-- `fs.resolveRef` is a new renderer-facing channel. `fs/open` (ADR 0163) remains
-  part of the IPC surface; the transcript is simply no longer one of its
-  callers.
+- A shorthand lands on the file the agent meant, or says that nothing matched, so
+  the two failure modes ADR 0163 left indistinguishable are distinguishable.
+- The transcript's file surface is the same editable view the launcher offers; the
+  host now depends on a plugin version for a chat affordance and degrades to the
+  host `file:` tab with a notice when the plugin cannot start.
+- The view is unconfined to the project root only when the host asks for a path it
+  picked itself, extending ADR 0241's trust position by one named case.
+- A chat click no longer hands a file to the OS default application, which remains
+  in the file view's context menu. `fs.resolveRef` is a new renderer-facing channel
+  while `fs/open` (ADR 0163) stays on the IPC surface.
 
-## Alternatives considered
+## Alternatives
 
-### Resolve the shorthand in the renderer
-
-Rejected: the renderer cannot see the session scratch store, and the two roots
-have to be ranked against each other in one place for the priority order in
-point 1 to hold.
-
-### Add an `ui.openView(pluginId, viewId, payload)` SDK method
-
-Rejected for now: the work-panel tab already carries `location`, and
-`PluginViewHost.broadcast` already reaches docked views, so the feature needs no
-new public API surface. A method that opened *another* plugin's view for a
-plugin author would be a different decision, with its own consent question.
-
-### Reload the view with the new location
-
-Rejected: it discards whatever a plugin is holding, including unsaved edits.
-The one reload in point 3 happens only before the first document has run, where
-there is nothing to lose.
-
-### Widen the plugin's declared `fs` root to the scratch store
-
-Rejected: the manifest's root model is `workspace` or a user-selected directory.
-Widening it would grant every project's view the right to read every session's
-scratch data, which is a much larger grant than "the host asked for this one
-file".
-
-### Route workspace HTML through the file view for agent replies
-
-Rejected: the file view renders a page as source. ADR 0163 chose the browser for
-the same reason, and one contract is easier to reason about than two.
-
-### Keep the OS default application as the destination
-
-Rejected: it is not the right panel, and it is what the request replaces. The
-action survives in the file view's context menu, which is where the file is
-already on screen.
+- Resolve the shorthand in the renderer: rejected, it cannot see the scratch store
+  and both roots must be ranked in one place.
+- Add a `ui.openView(pluginId, viewId, payload)` SDK method: rejected, the tab
+  already carries `location` and no new public API is needed.
+- Reload the view with the new location: rejected, it discards plugin state.
+- Widen the plugin's declared `fs` root to the scratch store: rejected, it would
+  grant every project access to every session's scratch data.
+- Route workspace HTML through the file view: rejected, it renders a page as source.
+- Keep the OS default application as the destination: rejected, it is not the panel.

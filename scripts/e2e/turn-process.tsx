@@ -249,9 +249,18 @@ export async function turnProcessProbe() {
       visible(bash1Row) && visible(bash2Row),
       "opening the process reveals the Bash rows",
     );
+    const foldedGroupLabel =
+      completedGroupHeader?.querySelector(".tool-activity-label")?.textContent ?? "";
     check(
-      visible(row("read")) && completedGroupHeader?.getAttribute("aria-expanded") === "true",
-      "opening the process reveals the already-open activity group with its tool rows",
+      !visible(row("read")) && completedGroupHeader?.getAttribute("aria-expanded") === "false",
+      "opening the process reveals the folded activity group, not its tool rows",
+    );
+    check(
+      foldedGroupLabel.includes(i18n.t("chat.activityBucket.search")) &&
+        foldedGroupLabel.includes(i18n.t("chat.activityBucket.read")) &&
+        completedGroupHeader?.querySelector(".tool-activity-ops")?.textContent ===
+          i18n.t("chat.activityOps", { count: 2 }),
+      "a folded group header names the actions it contains and the operation count",
     );
 
     // Real geometry and hit testing: the turn title, a nested group title and a
@@ -666,8 +675,24 @@ export async function turnProcessProbe() {
     ];
     check(
       liveThinkingHeaders.length === 2 &&
-        liveThinkingHeaders.every((header) => header.getAttribute("aria-expanded") === "true"),
-      "fully folded expands each visible thinking row by default",
+        liveThinkingHeaders.every((header) => header.getAttribute("aria-expanded") === "false"),
+      "reasoning that is no longer the live tail stays folded",
+    );
+    // The row the turn is still producing is the only one that starts expanded.
+    render(
+      [earlierThinking, read, liveThinking],
+      true,
+      null,
+      "fully-folded-thinking-live-tail",
+    );
+    const tailThinkingHeaders = [
+      ...container.querySelectorAll<HTMLElement>(".tool-row.thinking .tool-row-header"),
+    ];
+    check(
+      tailThinkingHeaders.length === 2 &&
+        tailThinkingHeaders[0]?.getAttribute("aria-expanded") === "false" &&
+        tailThinkingHeaders[1]?.getAttribute("aria-expanded") === "true",
+      "the reasoning row the live turn is still streaming starts expanded",
     );
     render(
       [earlierThinking, read, completedThinking, thinkingAnswer],
@@ -687,13 +712,29 @@ export async function turnProcessProbe() {
       ".process-activity-group.grouped",
     )?.querySelector<HTMLElement>(".tool-activity-header");
     check(
-      settledThinkingGroupHeader?.getAttribute("aria-expanded") === "true" &&
+      settledThinkingGroupHeader?.getAttribute("aria-expanded") === "false" &&
         settledThinkingHeaders.length === 2 &&
-        settledThinkingHeaders.every((header) => header.getAttribute("aria-expanded") === "true") &&
-        container.textContent?.includes("Earlier reasoning remains available.") === true &&
-        container.textContent?.includes("Latest reasoning remains available.") === true &&
-        row("read")?.querySelector<HTMLElement>(".tool-row-header")?.getAttribute("aria-expanded") === "false",
-      "reopening the process reveals the open group and reasoning while tool payloads stay collapsed",
+        settledThinkingHeaders.every((header) => header.getAttribute("aria-expanded") === "false") &&
+        container.textContent?.includes("Earlier reasoning remains available.") === false &&
+        !visible(row("read")),
+      "a settled process settles both its group and its reasoning",
+    );
+    // Opening the group restores each reasoning row's own answer: the rows stay
+    // folded until the reader opens them, and tool payloads stay folded too.
+    click(settledThinkingGroupHeader ?? null);
+    check(
+      settledThinkingGroupHeader?.getAttribute("aria-expanded") === "true" &&
+        settledThinkingHeaders.every((header) => header.getAttribute("aria-expanded") === "false"),
+      "opening the group does not expand the reasoning inside it",
+    );
+    click(settledThinkingHeaders[0] ?? null);
+    check(
+      container.textContent?.includes("Earlier reasoning remains available.") === true,
+      "a folded reasoning row opens on request",
+    );
+    check(
+      row("read")?.querySelector<HTMLElement>(".tool-row-header")?.getAttribute("aria-expanded") === "false",
+      "tool payloads stay collapsed inside an opened group",
     );
 
     const largeGroup = Array.from({ length: 5 }, (_, index) =>
@@ -711,7 +752,24 @@ export async function turnProcessProbe() {
     click(processHeaders()[0] ?? null);
     check(
       largeGroupHeader?.getAttribute("aria-expanded") === "false",
-      "large activity groups remain collapsed by default",
+      "a settled group folds whatever its size",
+    );
+    // The switch is the only tier: turning auto-collapse off opens every settled
+    // group, including a five-row one.
+    setSettings({ autoCollapseSettledGroups: false });
+    render(
+      [...largeGroup, thinkingAnswer],
+      false,
+      null,
+      "large-completed-activity-group-open",
+    );
+    click(processHeaders()[0] ?? null);
+    const openedLargeGroupHeader = row("large-group-0")?.closest<HTMLElement>(
+      ".process-activity-group.grouped",
+    )?.querySelector<HTMLElement>(".tool-activity-header");
+    check(
+      openedLargeGroupHeader?.getAttribute("aria-expanded") === "true",
+      "turning auto-collapse off leaves settled groups open",
     );
     setSettings();
 

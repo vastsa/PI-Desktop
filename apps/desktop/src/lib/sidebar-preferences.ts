@@ -42,6 +42,9 @@ export type SidebarPreferences = {
 };
 
 export const SIDEBAR_PREFERENCES_KEY = "pi.desktop.sidebarPreferences";
+let mirrorSidebar: ((value: SidebarPreferences) => Promise<void>) | undefined;
+let sidebarRevision = 0;
+let latestSidebar: SidebarPreferences | undefined;
 export const SIDEBAR_WIDTH_KEY = "pi.desktop.sidebarWidth";
 export const SIDEBAR_WIDTH_MIN = 240;
 export const SIDEBAR_WIDTH_DEFAULT = 275;
@@ -164,8 +167,7 @@ function projectSort(value: unknown): ProjectSort {
     : "recent";
 }
 
-export function loadSidebarPreferences(): SidebarPreferences {
-  const raw = read(SIDEBAR_PREFERENCES_KEY);
+export function loadSidebarPreferences(raw: unknown = read(SIDEBAR_PREFERENCES_KEY)): SidebarPreferences {
   const root = object(raw) ? raw : {};
   const view = object(root.sessionView) ? root.sessionView : {};
   const result: SidebarPreferences = {
@@ -207,7 +209,7 @@ export function loadSidebarPreferences(): SidebarPreferences {
 }
 
 export function saveSidebarPreferences(value: SidebarPreferences): void {
-  write(SIDEBAR_PREFERENCES_KEY, {
+  const normalized: SidebarPreferences = {
     sessionMeta: cleanSessionMeta(value.sessionMeta),
     projectMeta: cleanProjectMeta(value.projectMeta),
     projectSort: projectSort(value.projectSort),
@@ -216,7 +218,66 @@ export function saveSidebarPreferences(value: SidebarPreferences): void {
       archived: value.sessionView.archived === true,
     },
     openProjectPaths: cleanPaths(value.openProjectPaths),
-  });
+  };
+  cacheSidebarPreferences(normalized);
+  void mirrorSidebar?.(normalized).catch(() => { /* Keep the renderer cache if the backup disk is unavailable. */ });
+}
+
+function cacheSidebarPreferences(value: SidebarPreferences): void {
+  sidebarRevision += 1;
+  latestSidebar = value;
+  write(SIDEBAR_PREFERENCES_KEY, value);
+}
+
+function validPreferences(value: unknown): value is SidebarPreferences {
+  return object(value) && object(value.sessionMeta) && object(value.projectMeta)
+    && Array.isArray(value.openProjectPaths) && object(value.sessionView);
+}
+
+/** Restore before startup writes the host-selected project into a fresh cache. */
+export async function restoreSidebarPreferences(port: {
+  read: () => Promise<unknown>;
+  write: (value: SidebarPreferences) => Promise<void>;
+  listProjects: () => Promise<{ projects: Array<{ path: string }> }>;
+}): Promise<SidebarPreferences | null> {
+  mirrorSidebar = undefined;
+  const revision = sidebarRevision;
+  let backup: unknown;
+  try { backup = await port.read(); }
+  catch { return null; } // Do not overwrite a backup we could not read.
+  const local = read(SIDEBAR_PREFERENCES_KEY);
+  let restored = loadSidebarPreferences();
+  if (revision !== sidebarRevision && latestSidebar) {
+    restored = latestSidebar;
+  } else if (validPreferences(backup)) {
+    restored = loadSidebarPreferences(backup);
+  } else if (!validPreferences(local)) {
+    const { projects } = await port.listProjects();
+    if (revision !== sidebarRevision) restored = latestSidebar ?? loadSidebarPreferences();
+    else restored.openProjectPaths = cleanPaths(projects.map(project => project.path));
+  }
+  // Queue the recovered snapshot before enabling mutation writes.
+  try { await port.write(restored); } catch { /* Recovery still restores the visible list. */ }
+  mirrorSidebar = port.write;
+  if (revision !== sidebarRevision) {
+    restored = latestSidebar ?? loadSidebarPreferences();
+    saveSidebarPreferences(restored);
+  } else cacheSidebarPreferences(restored);
+  return restored;
+}
+
+export function sidebarPreferencesState(preferences: SidebarPreferences) {
+  return {
+    ...preferences,
+    sessionView: { ...preferences.sessionView, sortBy: preferences.sessionView.sort, showArchived: preferences.sessionView.archived },
+    openProjects: preferences.openProjectPaths.map(path => {
+      const project = projectWorkspaceFromPath(path);
+      const name = preferences.projectMeta[normalizeProjectPath(path) ?? ""]?.name;
+      return name ? { ...project, name } : project;
+    }),
+    projectCollapsed: Object.fromEntries(Object.entries(preferences.projectMeta)
+      .filter(([, meta]) => meta.collapsed === true).map(([path]) => [path, true])),
+  };
 }
 
 export function loadSidebarWidth(): number {

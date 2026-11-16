@@ -2,6 +2,7 @@ import type { BrowserWindow, Screen } from "electron";
 import type { HostProcess } from "./host-process";
 import type { Logger } from "./logger";
 import { isWindowFullScreen } from "./window-fullscreen.ts";
+import { nativeWindowHandle } from "./window-native-handle.ts";
 import {
   DEFAULT_WINDOW_CORNER_RADIUS,
   normalizeWindowCornerRadius,
@@ -33,19 +34,6 @@ export function usesWindows11NativeCorners(
     (major > 10 || (major === 10 && minor === 0 && build >= 22000));
 }
 
-function nativeHandleAsDecimal(window: BrowserWindow): string {
-  const bytes = window.getNativeWindowHandle();
-  if (bytes.length === 0) throw new Error("native window handle is unavailable");
-  let handle = 0n;
-  for (let index = bytes.length - 1; index >= 0; index -= 1) {
-    const byte = bytes[index];
-    if (byte === undefined) throw new Error("native window handle is invalid");
-    handle = (handle << 8n) | BigInt(byte);
-  }
-  if (handle === 0n) throw new Error("native window handle is invalid");
-  return handle.toString(10);
-}
-
 /**
  * Use the Windows 11 DWM preference for the main window. The native API owns
  * the visible edge and hit testing; Electron's region-based shape remains the
@@ -58,7 +46,7 @@ export async function installWindows11CornerController(
   windowScreen: CornerScreen,
   logger: WindowLogger,
 ): Promise<NativeCornerController> {
-  const nativeHandle = nativeHandleAsDecimal(window);
+  const nativeHandle = nativeWindowHandle(window);
   let radius = normalizeWindowCornerRadius(initialRadius);
   let generation = 0;
   let disposed = false;

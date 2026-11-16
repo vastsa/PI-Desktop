@@ -308,20 +308,24 @@ fn replace_tx(
     turn_id: Option<&str>,
     normalized: &NormalizedTodos,
 ) -> Result<TodoSnapshot, TodoWriteError> {
-    let session: Option<(String, Option<i64>)> = tx
+    let deleted_at: Option<Option<i64>> = tx
         .query_row(
-            "SELECT mode, deleted_at FROM sessions WHERE id = ?1",
+            "SELECT deleted_at FROM sessions WHERE id = ?1",
             params![session_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| row.get(0),
         )
         .optional()?;
-    let Some((mode, deleted_at)) = session else {
+    let Some(deleted_at) = deleted_at else {
         return Err(TodoWriteError::Refused(TodoRefusal::SessionNotFound));
     };
     if deleted_at.is_some() {
         return Err(TodoWriteError::Refused(TodoRefusal::SessionNotFound));
     }
-    if crate::sessions::normalize_mode(Some(&mode)) != "agent" {
+    // The checklist is an executing-mode tool: the Host's tool policy (Agent,
+    // or an agent-permission stage of a user mode) decides, not the name.
+    if crate::mode_runs::tool_policy_conn(tx, session_id).map_err(TodoWriteError::Internal)?
+        != Some(crate::mode_runs::ToolPolicy::Agent)
+    {
         return Err(TodoWriteError::Refused(TodoRefusal::SessionNotAgent));
     }
 

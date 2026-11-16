@@ -94,7 +94,9 @@ test("the composer lists active skills last and routes slash skills to the Skill
     /\.\.\.extensionCommands,\s*\.\.\.mcpCommands,\s*\.\.\.skillCommands,/,
   );
   assert.match(mainSrc, /findSkillMentions\(req\.content, activeSkills\)/);
-  assert.match(mainSrc, /Call the \\`Skill\\` tool with each of these ids/);
+  // The Skill instruction text lives in shared `composeMentionPrompt`
+  // (ADR 0346); its exact wording is pinned in composer-trigger.test.ts.
+  assert.match(mainSrc, /composeMentionPrompt\(req\.content, mentions, foundAgents\)/);
   assert.match(composerAutocompleteSrc, /item\.command\.kind === "skill"/);
 });
 
@@ -163,14 +165,14 @@ test("plugin dev tools resolve paths inside the workspace and report failures", 
   assert.match(devToolsSrc, /loadPlugin\(target\.path, permissions\)/);
 });
 
-test("only PluginCheck is available outside agent mode", () => {
+test("plugin creation and packaging require agent-level tool policy", () => {
   const builderEnd = agentRuntimeSrc.indexOf(
     "const builtins = tools.map(exec)",
   );
   const builderStart = agentRuntimeSrc.lastIndexOf("const tools =", builderEnd);
   assert.ok(builderStart >= 0 && builderEnd > builderStart);
   const builder = agentRuntimeSrc.slice(builderStart, builderEnd);
-  const agentBranchStart = builder.indexOf('if (this.mode === "agent")');
+  const agentBranchStart = builder.indexOf("if (agentLevel) tools.push");
   assert.ok(agentBranchStart >= 0);
   const nonAgentBranch = builder.slice(0, agentBranchStart);
   assert.match(nonAgentBranch, /"PluginCheck"/);

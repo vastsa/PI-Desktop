@@ -16,10 +16,20 @@ Each ADR includes:
 - Consequences
 - Alternatives (optional)
 
+Keep records short: state the decision and its main consequences, not the
+implementation log or validation evidence. Behavior lives in the code, specs,
+and tests. Superseded records keep only a stub; the long-form originals stay in
+git history.
+
 ## Index
+
 
 | ID | Title | Status |
 |---|---|---|
+| mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
+| sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |
+| steering-local-tool-interruption | [Steering waits for confirmed tool settlement](steering-local-tool-interruption.md) | Accepted |
+| composer-pasted-directory-references | [Composer pasted directory references](composer-pasted-directory-references.md) | Accepted |
 | plugin-projects-list | [Read-only durable project enumeration for plugins](plugin-projects-list.md) | Accepted |
 | append-only-review-state | [Append-only review state](append-only-review-state.md) | Implemented candidate |
 | lossless-tool-image-storage | [Lossless tool-image storage and bounded history mutations](lossless-tool-image-storage.md) | Implemented candidate |
@@ -122,7 +132,7 @@ Each ADR includes:
 | 0076 | Capture the Windows-reserved plugin launcher chord in host-core | Accepted |
 | 0077 | Add an interactive multi-question asktool | Accepted for implementation |
 | 0078 | Cross-platform tray-resident minimize | Accepted for implementation (amended by 0117, 0123, and tray-session-shortcuts) |
-| 0079 | Use VitePress for the bilingual documentation site | Accepted |
+| 0079 | Use VitePress for the bilingual documentation site | Accepted; Chinese mirror scope amended by ADR chinese-docs-entry-points-only |
 | 0080 | Prewarm the global plugin launcher after boot | Accepted |
 | 0081 | Host-owned cross-platform plugin panel chrome | Accepted |
 | 0082 | Localized and page-adaptive plugin panel chrome | Accepted |
@@ -395,5 +405,19 @@ Each ADR includes:
 | 0332 | [macOS keeps its translucent window surface with an opaque opt-out](0332-macos-opaque-window-surface.md) | Accepted (D665, amended by D666 and D667; supersedes the macOS vibrancy window backing from D348; issue #1064) |
 | gen-ui-inline-visualization | [Inline generative UI visualizations](gen-ui-inline-visualization.md) | Accepted (D671) |
 | 0337 | [Keep the request prefix stable across delegation settlements](0337-stable-prompt-prefix-across-delegation.md) | Accepted (supersedes ADR 0279 §9) |
+| 0341 | [Explicit actions on reviewed files](0341-explicit-reviewed-file-actions.md) | Accepted |
+| 0338 | [A user-supplied video owns the boot surface, served over a host-owned scheme](0338-user-supplied-startup-animation.md) | Accepted (D679) |
+| 0339 | [Chat file references open absolute files outside the managed roots](0339-chat-file-refs-open-absolute-files-outside-managed-roots.md) | Accepted (amends ADR 0262 §4) |
 
 | model-reasoning-effort-override | [Model reasoning effort override](model-reasoning-effort-override.md) | Proposed |
+
+| 0342 | [Built-in computer use is a host-owned capability behind a user-picked scope grant](0342-os-computer-use-capability.md) | Proposed (D681; amends non-goal 9) |
+| 0340 | [Let a granted plugin reach every session, not only its imports](0340-plugin-session-all-scope.md) | Accepted (D680; amends ADR 0200 and ADR 0323) |
+| 0343 | [The plugin launcher enumerates and opens local applications](0343-plugin-launcher-local-apps.md) | Accepted (issue #2085) |
+| 0344 | [Computer use grants the whole desktop automatically, and Stop is the boundary](0344-computer-use-whole-desktop-grant.md) | Accepted (D682; amends ADR 0342 §4 and §6) |
+| 0345 | [One settings destination owns one subject](0345-one-settings-destination-one-subject.md) | Accepted (D684; amends D143, D166, D678) |
+| 0346 | [`@agent` mentions route a turn to a named subagent](0346-composer-agent-mentions.md) | Accepted (issue #986; extends 0024 / 0062) |
+| composer-local-file-references | [Pasted local files are live references](composer-local-file-references.md) | Accepted (issue #2314) |
+| chinese-docs-entry-points-only | [Chinese documentation keeps entry points only](chinese-docs-entry-points-only.md) | Accepted; amends ADR 0079 |
+| windows-native-snap-without-frame-insets | [Restore Windows snapping without Electron frame insets](windows-native-snap-without-frame-insets.md) | Accepted (issue #2330; amends ADR 0317) |
+| plan-approval-session-permission | [Plan approval defaults to the owning Session's permission](plan-approval-session-permission.md) | Accepted; amends ADR 0053 and ADR 0158 |

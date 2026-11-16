@@ -593,3 +593,7 @@ fix the Gateway identity source to the PI account service.
 D385 (2026-09-10) made remote control user-local by construction: no
 project-operated identity or account service, Host-issued device credentials
 everywhere, and a Gateway only as a self-hosted relay.
+
+### Unpublished SSH target feedback (#1707)
+
+When SSH uname identifies an unpublished macOS target, the bootstrap refuses before downloading and Settings explains that this release publishes Linux x64/arm64 Host bundles only. Other install/authentication failures retain their own messages. Desktop macOS packaging is separate from remote Host support.

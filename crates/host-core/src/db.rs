@@ -7,7 +7,7 @@ pub(crate) use serde_json::Value;
 pub(crate) use std::path::{Path, PathBuf};
 
 /// Current SQLite schema version.
-pub const SCHEMA_VERSION: i64 = 27;
+pub const SCHEMA_VERSION: i64 = 32;
 
 /// Absolute approval deadline for a newly submitted Plan or Goal proposal.
 pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
@@ -15,15 +15,20 @@ pub const PLAN_APPROVAL_TIMEOUT_MS: i64 = 30 * 60 * 1000;
 /// Durable notification rows kept globally.
 pub const NOTIFICATION_KEEP: i64 = 200;
 
+mod completion_report_migration;
 mod migrations;
+mod mode_run_elapsed_migration;
+mod mode_runs_migration;
 mod model;
 mod model_discovery_migration;
 mod plugin_providers_migration;
 mod project_groups;
+mod project_path_migration;
 mod repositories;
 mod schema;
 mod session_collaboration_migration;
 mod session_fast_mode_migration;
+mod session_mode_migration;
 mod session_title_source_migration;
 mod tool_image_storage_migration;
 mod worktree_migration;
@@ -34,6 +39,7 @@ pub(crate) use migrations::{
     migrate_v19_to_v20, migrate_v20_to_v21, migrate_v7_to_v8, migrate_v8_to_v15, migrate_v9_to_v15,
     migration_backup_path, validate_session_modes,
 };
+pub(crate) use mode_runs_migration::MODE_RUNS_SCHEMA;
 pub(crate) use model::PlanWorkRow;
 pub use model::{Database, ProjectMemoryEntryRecord, ProjectMemoryRecord, ProjectRecord};
 pub use project_groups::{
@@ -70,3 +76,11 @@ pub fn ms_to_ts(ms: i64) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "db/project_path_tests.rs"]
+mod project_path_tests;
+
+#[cfg(test)]
+#[path = "db/completion_report_migration_tests.rs"]
+mod completion_report_migration_tests;

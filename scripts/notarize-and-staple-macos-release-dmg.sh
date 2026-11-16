@@ -22,12 +22,13 @@
 set -euo pipefail
 
 RELEASE_DIR="${1:-apps/desktop/release}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 EXPECTED_TEAM_ID="DUV63RKYTW"
 # The ticket can take a moment to reach the stapler after Apple accepts, but a
 # retry is only legal once the submission returned Accepted. Overridable so
 # tests do not sleep for real.
-STAPLE_ATTEMPTS="${STAPLE_ATTEMPTS:-6}"
-STAPLE_DELAY_SECONDS="${STAPLE_DELAY_SECONDS:-10}"
+STAPLE_ATTEMPTS="${PI_STAPLER_MAX_ATTEMPTS:-${STAPLE_ATTEMPTS:-6}}"
+STAPLE_DELAY_SECONDS="${PI_STAPLER_RETRY_DELAY_SECONDS:-${STAPLE_DELAY_SECONDS:-10}}"
 
 if [[ -z "${APPLE_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
   echo "error: APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID are required to notarize the DMG." >&2
@@ -124,6 +125,9 @@ if [[ "$stapled" != "true" ]]; then
 fi
 
 echo "==> Validating the stapled ticket on $DMG"
-xcrun stapler validate "$DMG"
+PI_XCRUN_REAL="$(command -v xcrun)" \
+PI_STAPLER_MAX_ATTEMPTS="$STAPLE_ATTEMPTS" \
+PI_STAPLER_RETRY_DELAY_SECONDS="$STAPLE_DELAY_SECONDS" \
+  bash "$SCRIPT_DIR/macos-stapler-retry-shim.sh" stapler validate "$DMG"
 
 echo "==> Staple validation passed: $DMG (status=Accepted)"

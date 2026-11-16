@@ -14,6 +14,7 @@ import {
   PLUGIN_PERMISSIONS,
   PLUGIN_VIEW_ICONS,
   type PluginProviderContrib,
+  type PluginManifest,
 } from "./index.js";
 
 const base = { schemaVersion: 1, id: "demo.x", name: "X", version: "0.1.0", main: "main.js" };
@@ -82,6 +83,32 @@ describe("validateManifest", () => {
       },
     });
     expect(result.ok).toBe(true);
+  });
+
+  it("rejects ids that would share another plugin's directory or partition", () => {
+    for (const id of ["foo!bar", "foo/bar", "foo bar", "插件", ".", ".."]) {
+      expect(validateManifest({ ...base, id })).toEqual({
+        ok: false,
+        error: "manifest.id may only contain letters, digits, '.', '-' and '_'",
+      });
+    }
+    expect(validateManifest({ ...base, id: "e2e.foo." }).error).toBe("manifest.id must not end with '.'");
+    for (const id of ["con", "NUL.plugin", "com1.x"]) {
+      expect(validateManifest({ ...base, id }).error).toBe(
+        "manifest.id must not start with a Windows device name",
+      );
+    }
+    for (const id of [
+      "foo_bar",
+      "pi.browser",
+      "io.github.b1eight.pi-desktop-claude-theme",
+      "a..b",
+      "console.tools",
+      "com.example.x",
+      "com10.x",
+    ]) {
+      expect(validateManifest({ ...base, id }).ok).toBe(true);
+    }
   });
 
   it("accepts enabledByDefault as a boolean", () => {
@@ -646,6 +673,25 @@ describe("contributes.globalShortcuts", () => {
     expect(
       validateContributions(withShortcuts(shortcuts.slice(0, MAX_GLOBAL_SHORTCUTS_PER_PLUGIN))),
     ).toBeUndefined();
+  });
+});
+
+describe("contributes.launcherTriggers", () => {
+  it("types a declared trigger and keeps it on the parsed manifest", () => {
+    const contributes: NonNullable<PluginManifest["contributes"]> = {
+      launcherTriggers: [
+        {
+          id: "calculator",
+          pattern: "^[0-9+\\-*/(). ]+$",
+          title: { en: "Calculator", "zh-CN": "计算器" },
+        },
+        { id: "kilometres", pattern: "^\\d+\\s*km$", flags: "iu", title: "Kilometres" },
+      ],
+    };
+    expect(validateContributions(contributes)).toBeUndefined();
+    const result = validateManifest({ ...base, permissions: ["ui.panel"], contributes });
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.contributes?.launcherTriggers).toEqual(contributes.launcherTriggers);
   });
 });
 

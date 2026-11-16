@@ -223,7 +223,7 @@ export async function transcriptAutoCollapseProbe() {
       );
       check(
         [...container.querySelectorAll(".tool-row.thinking .tool-row-header")].every(expanded),
-        `${mode}: Show thinking keeps reasoning expanded`,
+        `${mode}: reasoning the turn is still streaming stays expanded`,
       );
 
       // A manual close is authoritative while the turn keeps streaming.
@@ -236,19 +236,43 @@ export async function transcriptAutoCollapseProbe() {
       click(header());
       focusOutside();
 
-      // Settled: plain tool rows fall back to the size rule, while reasoning the
-      // reader asked to see is never folded away.
+      // Settled: both nested levels fold, whatever the group's size.
       render(`settled-${mode}`, [...reads, answer], false);
       check(
         mode === "flat" || !expanded(groupHeader()),
-        `${mode}: a settled group of plain tool rows folds when it is large`,
+        `${mode}: a settled group of plain tool rows folds`,
       );
+      click(header());
+      check(
+        mode === "flat" || !expanded(groupHeader()),
+        `${mode}: opening the process leaves the settled group folded`,
+      );
+      configure({ transcriptDisplayMode: mode, autoCollapseSettledGroups: false });
+      render(`settled-open-${mode}`, [...reads, answer], false);
+      click(header());
+      check(
+        mode === "flat" || expanded(groupHeader()),
+        `${mode}: turning auto-collapse off opens the settled group`,
+      );
+      configure({ transcriptDisplayMode: mode });
       render(`reasoning-${mode}`, [thoughtDone, ...reads, answer], false);
       click(header());
       check(
-        (mode === "flat" || expanded(groupHeader())) && expanded(thoughtHeader()),
-        `${mode}: settled reasoning stays visible under Show thinking`,
+        (mode === "flat" || !expanded(groupHeader())) && !expanded(thoughtHeader()),
+        `${mode}: a settled group and the reasoning inside it both fold`,
       );
+      // Opening the group exposes the reasoning header, still folded; the row
+      // opens only on its own request.
+      configure({ transcriptDisplayMode: mode, autoCollapseSettledGroups: false });
+      render(`reasoning-open-${mode}`, [thoughtDone, ...reads, answer], false);
+      click(header());
+      check(
+        !expanded(thoughtHeader()),
+        `${mode}: an opened group does not open the reasoning inside it`,
+      );
+      click(thoughtHeader());
+      check(expanded(thoughtHeader()), `${mode}: the reasoning row opens on request`);
+      configure({ transcriptDisplayMode: mode });
 
       configure({ transcriptDisplayMode: mode, showThinking: false });
       check(
@@ -257,49 +281,26 @@ export async function transcriptAutoCollapseProbe() {
       );
       configure({ transcriptDisplayMode: mode });
       check(
-        expanded(thoughtHeader()),
-        `${mode}: re-enabling Show thinking restores expanded reasoning`,
+        container.querySelector(".tool-row.thinking .tool-row-header") !== null,
+        `${mode}: re-enabling Show thinking restores the reasoning row`,
       );
       focusOutside();
     }
 
     configure();
-    // The issue counter is real header metadata with the app stylesheet: icon
-    // and localized count stay on one centered line at both locale widths.
-    for (const locale of ["en", "zh-CN"]) {
-      await i18n.changeLanguage(locale);
-      render(`issues-${locale}`, [thoughtLive, ...reads], true);
-      for (const width of [320, 800]) {
-        host.style.width = `${width}px`;
-        for (const zoom of [1, 1.5]) {
-          host.style.zoom = String(zoom);
-          const issue = container.querySelector<HTMLElement>(".activity-issue-count");
-          const icon = issue?.querySelector("svg");
-          if (!issue || !icon) throw new Error("Missing activity issue counter");
-          const text = document.createRange();
-          text.selectNodeContents(issue);
-          text.setStartAfter(icon);
-          const iconRect = icon.getBoundingClientRect();
-          const textRect = text.getBoundingClientRect();
-          const issueRect = issue.getBoundingClientRect();
-          const parentRect = issue.parentElement?.getBoundingClientRect();
-          check(
-            textRect.width > 0 &&
-              textRect.left >= iconRect.right &&
-              Math.abs(
-                (textRect.top + textRect.bottom - iconRect.top - iconRect.bottom) / 2,
-              ) < 3 * zoom,
-            `${locale}/${width}/${zoom}: issue icon and count share one centered line`,
-          );
-          check(
-            Boolean(parentRect) &&
-              issueRect.right <= (parentRect as DOMRect).right + 1 &&
-              issueRect.height <= (parentRect as DOMRect).height + 1,
-            `${locale}/${width}/${zoom}: the issue counter stays inside its header row`,
-          );
-        }
-      }
+    // The group header no longer renders an issue counter: a failed call is
+    // reported by the tool row that failed, not repeated on the group.
+    for (const mode of ["flat", "command-first", "fully-folded"] as const) {
+      configure({ transcriptDisplayMode: mode });
+      render(`no-issue-${mode}`, [thoughtLive, ...reads], true);
+      check(
+        container.querySelector(".activity-issue-count") === null,
+        `${mode}: the group header carries no issue counter`,
+      );
     }
+    configure();
+    host.style.width = "800px";
+    host.style.zoom = "1";
     check(
       errors.length === 0,
       `React rendering has no errors: ${errors.map(String).join("; ")}`,

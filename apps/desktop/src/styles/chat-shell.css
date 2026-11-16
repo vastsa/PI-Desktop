@@ -569,10 +569,6 @@
   --dash-w: 13px;
 }
 
-.minimap-marker.assistant {
-  --dash-w: 8px;
-}
-
 .minimap-marker.history {
   --dash-w: 13px;
   --history-marker-color: color-mix(in oklab, var(--ds-text-primary) 14%, transparent);

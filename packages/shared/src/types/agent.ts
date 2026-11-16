@@ -11,6 +11,8 @@ import type { RacpPermissionMode } from "../racp.js";
 export type AgentPromptRequest = {
   sessionId: string;
   content: string;
+  /** Explicit user request to start a fresh builtin Goal, never inferred from text. */
+  startGoal?: boolean;
   /** Host-owned collaboration delivery; its durable record supplies the input. */
   sessionMessageId?: string;
   /** Attachments are resolved by Electron main and never trusted by the sidecar. */
@@ -61,6 +63,8 @@ export type AgentPromptRequest = {
 };
 
 export type AgentPromptAttachment = {
+  /** Main-owned selection id; metadata only, with no implicit file access. */
+  localReference?: string;
   path: string;
   name: string;
   kind: "image" | "file";
@@ -118,6 +122,7 @@ export type QueuedTurnSummary = {
   id: string;
   sessionId: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   userMessageId?: string;
   voiceOrigin?: VoiceOrigin;
@@ -131,6 +136,7 @@ export type QueuedTurnSummary = {
 export type AgentQueuePushRequest = {
   sessionId: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   userMessageId?: string;
   voiceOrigin?: VoiceOrigin;

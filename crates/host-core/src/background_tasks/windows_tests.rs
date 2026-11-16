@@ -89,11 +89,11 @@ async fn stop_terminates_the_command_the_runner_launched() {
     }
 
     assert!(
-        wait_for_exit(nested_pid),
+        wait_for_exit(nested_pid).await,
         "the command's own child must not survive stopping the task (#1805)"
     );
     assert!(
-        wait_for_exit(command_pid),
+        wait_for_exit(command_pid).await,
         "the launched command must not survive stopping the task (#1805)"
     );
 
@@ -130,12 +130,14 @@ fn process_running(pid: u32) -> bool {
 }
 
 #[cfg(windows)]
-fn wait_for_exit(pid: u32) -> bool {
+async fn wait_for_exit(pid: u32) -> bool {
     for _ in 0..120 {
         if !process_running(pid) {
             return true;
         }
-        std::thread::sleep(Duration::from_millis(50));
+        // The supervisor shares this Tokio test runtime; yield so it can stop
+        // and reap the process while we observe its exit.
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
     false
 }

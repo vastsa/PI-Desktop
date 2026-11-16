@@ -77,7 +77,7 @@ fn normalize_cadence(value: Option<&str>) -> String {
 }
 
 fn normalize_mode(value: Option<&Value>) -> String {
-    sessions::normalize_mode(value.and_then(Value::as_str))
+    sessions::normalize_builtin_mode(value.and_then(Value::as_str))
 }
 
 fn config_input(value: &Value) -> Option<&Value> {

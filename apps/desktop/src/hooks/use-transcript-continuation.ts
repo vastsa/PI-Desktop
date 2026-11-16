@@ -3,7 +3,7 @@ import type { UiMessage } from "@pi-desktop/shared";
 
 /** Continue a restored reading range without turning it into a manual search page. */
 export function useTranscriptContinuation({
-  scrollRef, contentRef, enabled, loading, messages, cursor, onLoadNewer,
+  scrollRef, contentRef, enabled, loading, messages, cursor, onLoadNewer, isNavigationActive,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   contentRef: RefObject<HTMLDivElement | null>;
@@ -13,6 +13,7 @@ export function useTranscriptContinuation({
   cursor?: number;
   /** The reading service owns request coalescing, stale results and error reporting. */
   onLoadNewer?: () => Promise<void>;
+  isNavigationActive?: () => boolean;
 }) {
   const attemptedRef = useRef<{ cursor?: number } | null>(null);
   useEffect(() => {
@@ -21,7 +22,7 @@ export function useTranscriptContinuation({
     if (!enabled || loading || !onLoadNewer || !scroller || !content) return;
     let requested = false;
     const check = () => {
-      if (requested || scroller.clientHeight <= 0) return;
+      if (requested || scroller.clientHeight <= 0 || isNavigationActive?.()) return;
       if (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop > 240) return;
       // A failed/empty page must not spin on loading, resize or queued scroll
       // events. New reading input can retry; new rows can fill a short viewport.
@@ -47,5 +48,5 @@ export function useTranscriptContinuation({
       for (const event of inputEvents) scroller.removeEventListener(event, onInput);
       observer?.disconnect();
     };
-  }, [contentRef, cursor, enabled, loading, messages, onLoadNewer, scrollRef]);
+  }, [contentRef, cursor, enabled, isNavigationActive, loading, messages, onLoadNewer, scrollRef]);
 }

@@ -33,8 +33,10 @@ test("configure, batch generate, edit a result, replace binding, clear; files su
     defaultProviderId: "chat-provider",
     imageGeneration: { providerId: "image-provider", modelId: "image-one" },
   };
+  const sessionReads = [];
   const host = {
-    call: async (method) => {
+    call: async (method, params) => {
+      if (method === "session.get") sessionReads.push(params);
       if (method === "settings.get") return structuredClone(settings);
       if (method === "providers.get")
         return {
@@ -63,6 +65,9 @@ test("configure, batch generate, edit a result, replace binding, clear; files su
   const batch = await call({ items: [{ prompt: "cover", count: 2 }, { prompt: "icon" }] });
   assert.equal(batch.ok, true);
   assert.equal(batch.content.results.length, 3);
+  // Only session metadata is needed; never pull the whole transcript.
+  assert.ok(sessionReads.length > 0);
+  for (const params of sessionReads) assert.deepEqual(params, { id: "session", messageLimit: 1 });
   for (const image of batch.content.results) assert.deepEqual(await readFile(image.path), png);
   assert.ok(
     requests.every(

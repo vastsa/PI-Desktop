@@ -114,7 +114,9 @@ export function createSessionLaunchRuntime({
         projectPath: projectPath ?? null,
       });
       const servers = result.servers ?? [];
-      userMcp.setRecords(servers);
+      // Each workspace keeps its own active list; refreshing this one must not
+      // take another project's servers away from a turn running there.
+      userMcp.setRecords(servers, projectPath ?? null);
       return servers;
     } catch (error) {
       if (!isHostUnavailable(error)) {
@@ -434,7 +436,16 @@ export function createSessionLaunchRuntime({
         apiStyle,
         modelId,
       });
-    const modelConfig = catalogModelConfig;
+    // The stored binding owns the model's effective capabilities: an explicit
+    // supportsImages/supportsDocuments pin must reach the send path even when
+    // the catalog row (or a catalog miss on a custom provider) disagrees, and
+    // the alias/id spelling a custom endpoint serves must not pick a catalog
+    // row that would undo it (#2120). The subagent path and enrichProvider
+    // already apply the binding; the main session was the one path that
+    // dropped it. Without a stored binding the catalog answer stands.
+    const modelConfig = storedModel
+      ? modelConfigWithBinding(catalogModelConfig, storedModel)
+      : catalogModelConfig;
     const thinkingCapabilities = capabilitiesFromModelConfig(modelConfig);
     const thinkingLevel = clampThinkingLevel(
       thinkingCapabilities,
@@ -745,6 +756,11 @@ export function createSessionLaunchRuntime({
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
         ...(jevApiKey ? { jevApiKey } : {}),
+        // A disabled feature is absent from the prompt rather than advertised
+        // and refused on every call (ADR 0342 §13).
+        ...(mode === "agent" && settings.computerUse?.enabled === true
+          ? { computerUseEnabled: true }
+          : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         // Remote-host tools write on that host; Main can only serve local files.

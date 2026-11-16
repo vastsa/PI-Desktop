@@ -1,4 +1,5 @@
-import { normalizeContext, Type, type Message, type Model } from "@earendil-works/pi-ai";
+import { normalizeContext, type Message, type Model } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { stream } from "@earendil-works/pi-ai/api/anthropic-messages";
 import { describe, expect, it } from "vitest";
 

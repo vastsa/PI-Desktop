@@ -5,9 +5,11 @@
  * means zero import overhead at startup.
  */
 
-import { app, BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import { randomUUID } from "node:crypto";
+import { onConfirmedQuit } from "./bootstrap/confirmed-quit";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
+import { pinUnpackedTranscribeLibrary } from "./transcribe-native-library";
 import type {
   AudioCaptureFactory,
   AudioInputDevice,
@@ -73,6 +75,9 @@ export class VoiceService {
 
   private async ensureRuntime(): Promise<void> {
     if (this.controller) return;
+
+    // Must run before ModelManager first imports transcribe-cpp's loader.
+    await pinUnpackedTranscribeLibrary();
 
     const {
       VoiceController,
@@ -254,6 +259,8 @@ export function createVoiceService(
   acquireMicrophoneLease?: (token: string) => () => void,
 ): VoiceService {
   const service = new VoiceService(modelCacheDir, getWindow, acquireMicrophoneLease);
-  app.once("before-quit", () => service.dispose());
+  // A cancelled quit keeps the app running, so disposal waits for a committed
+  // quit instead of the cancellable `before-quit`.
+  onConfirmedQuit(() => service.dispose());
   return service;
 }

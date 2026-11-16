@@ -81,7 +81,8 @@ test("mode chip cross-fades on switch and pulses while planning is live", () => 
   assert.match(composerSource, /className="composer-mode-chip-face"/);
   assert.match(
     composerSource,
-    /const planningLive =\s*isRunning &&\s*planningState === "planning" &&\s*\(mode === "plan" \|\| mode === "goal"\)/,
+    // Only the builtin Plan negotiates a proposal; Goal runs as a staged mode.
+    /const planningLive =\s*isRunning && planningState === "planning" && mode === "plan";/,
   );
   assert.match(
     styles,

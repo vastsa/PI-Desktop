@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { DEEPSEEK_MODELS } from "@earendil-works/pi-ai/providers/deepseek.models";
-import { Type, type Api, type Model } from "@earendil-works/pi-ai";
+import { type Api, type Model } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { toolDeclarationPolicy, toolActivationSection, restoredToolActivation, TOOL_ACTIVATION_SECTION } from "./fixed-tool-declarations.js";
 import { replaceSystemPrompt, systemTranscriptCheckpoint } from "./system-transcript.js";
 

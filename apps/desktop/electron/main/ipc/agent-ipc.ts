@@ -1,9 +1,12 @@
 import { expandMcpInvocation } from "../composer-mcp";
-import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
+import { modeContinuationOrigin, type ModeRunCoordinator, type PreparedModeTurn } from "../runtime/mode-runs";
+import { goalPromptMode, goalStartRequested } from "../runtime/goal-start";
 import { expandSlashInvocation, visionFromModelConfig, type ComposerTemplate } from "@pi-desktop/agent-runtime";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
 import { resolveSessionReferences } from "../session-references";
+import { resolvePromptAgentMentions } from "../agent-mentions";
 import { executionFromResponse, resolveSessionMessageInput } from "@pi-desktop/host-runtime";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { AgentHostBridge } from "../agent-host-bridge";
@@ -49,6 +52,8 @@ export type AgentIpcDependencies = {
   optionalWorkspaceRoot: () => Promise<string | null>;
   composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
+  /** Staged mode runs: claim before the sidecar starts a turn (ADR mode-definitions). */
+  modeRuns: Pick<ModeRunCoordinator, "definitionForPrompt" | "canContinue" | "prepareTurn" | "abandonTurn" | "replaceGoal" | "resetGoalInput">;
 };
 
 function rejectNativeAgentOperation(sessionId: string): void {
@@ -106,7 +111,13 @@ export function registerAgentIpc({
   optionalWorkspaceRoot,
   composerCommandService,
   loadComposerTemplatesCached,
+  modeRuns,
 }: AgentIpcDependencies): void {
+  // Sessions with a manual compaction request in flight. The session
+  // operation is released before the sidecar call so Stop stays live; this
+  // mark is what keeps a queued prompt from starting against a compacting
+  // runtime (issue #2289).
+  const compactingSessions = new Set<string>();
   let host: HostProcess | null = null;
   let sidecar: AgentSidecar | null = null;
   let agentHostBridge: AgentHostBridge | null = null;
@@ -184,10 +195,24 @@ export function registerAgentIpc({
     });
   });
 
+  async function queueGoal(request: AgentQueuePushRequest) {
+    if (!agentHostBridge) throw new Error("agent host unavailable");
+    await modeRuns.definitionForPrompt("goal");
+    return agentHostBridge.queue.push(request, async () => {
+      await modeRuns.replaceGoal(request.sessionId);
+      await modeRuns.resetGoalInput(request.sessionId);
+    });
+  }
+
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
+    // Set only on an in-process request built by the Agent Host bridge for a
+    // Host-started mode run turn; a renderer or plugin request never has it.
+    const modeOrigin = modeContinuationOrigin(req);
+    const startGoal = goalStartRequested(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
     if (req.sessionId.startsWith("native-pi:")) {
+      if (startGoal) rejectNativeAgentOperation(req.sessionId);
       // Desktop-managed MCP servers are not installed in native Pi sessions.
       if (/^\/mcp:\S/.test(req.content)) expandMcpInvocation(req.content, []);
       if (voiceOrigin) {
@@ -208,8 +233,21 @@ export function registerAgentIpc({
       });
     }
     if (!host) throw new Error("host unavailable");
+    if (startGoal && activeTurns.has(req.sessionId)) {
+      const entry = await queueGoal({ ...req, userMessageId: req.messageId });
+      return { accepted: true, turnId: entry.id };
+    }
     const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
     try {
+    // The mark is added while the compaction still holds the operation and
+    // cleared only when the sidecar call settles, so a prompt that acquires
+    // the operation after a compaction started always sees it here — checking
+    // before the acquire would race the compaction's own setup window.
+    if (compactingSessions.has(req.sessionId)) {
+      throw Object.assign(new Error("Session is compacting"), {
+        errorCode: ErrorCodes.AGENT_BUSY,
+      });
+    }
     const sessionMessage = await resolveSessionMessageInput(host, req);
     // Install the renderer's prompt-time snapshot before any asynchronous
     // setup. This closes the gap where a fast completion could beat the
@@ -222,6 +260,10 @@ export function registerAgentIpc({
         ? requestedViewingSessionId
         : null,
     );
+    if (modeOrigin && !(await modeRuns.canContinue(req.sessionId))) {
+      // The run was paused, stopped or claimed meanwhile: open no durable turn.
+      throw Object.assign(new Error("mode run cannot continue"), { errorCode: "MODE_CONTINUATION_SKIPPED" });
+    }
     const settings = await host.call<any>("settings.get");
     const sessionResult = await host.call<{ session?: any }>("session.get", {
       id: req.sessionId,
@@ -346,57 +388,91 @@ export function registerAgentIpc({
     recordTurnStart(req.sessionId, durableTurnId);
     activeTurnUsages.delete(req.sessionId);
 
+    // A staged mode claims its run for this durable turn before anything runs;
+    // the sidecar then executes the run's own definition snapshot.
+    const promptMode = goalPromptMode(launch.sidecarParams.mode ?? "agent", req.startGoal);
+    let preparedMode: PreparedModeTurn | undefined;
+    let modeDefinition: PreparedModeTurn["definition"] | undefined;
+    try {
+      preparedMode = await modeRuns.prepareTurn({
+        sessionId: req.sessionId,
+        turnId: durableTurnId,
+        sessionMode: typeof session.mode === "string" ? session.mode : "agent",
+        content: req.content,
+        origin: modeOrigin ?? "user",
+        startGoal: req.startGoal,
+      });
+      modeDefinition = preparedMode?.definition ?? await modeRuns.definitionForPrompt(promptMode);
+    } catch (error) {
+      await finishTurn(req.sessionId, modeOrigin ? "aborted" : "error", (error as any)?.errorCode, {
+        turnId: durableTurnId,
+      });
+      throw error;
+    }
+
     // Slash expansion (D123, ADR 0024): templates expand before persistence
     // so reseed replays exactly what the model saw; the typed form rides along
     // as `command` for transcript display. Skill aliases are converted into a
     // short model instruction that makes the existing Skill tool call
     // explicit, while the typed form remains the visible transcript chip.
+    // `@agent` mentions (ADR 0346) take the same shape with the `Task` tool.
     // Builtin/plugin slash aliases never reach this channel, and unknown
     // /names stay literal text.
     let promptContent = mcpExpansion?.expanded ?? sessionMessage?.content ?? req.content;
     let slashCommand: string | undefined = mcpExpansion?.command;
     let skillMentions: UiMessage["skillMentions"];
-    if (!sessionMessage && !mcpExpansion && /(^|\s)\/\S/.test(req.content)) {
+    let agentMentions: UiMessage["agentMentions"];
+    const hasSlashToken = /(^|\s)\/\S/.test(req.content);
+    if (!sessionMessage && !mcpExpansion && (hasSlashToken || req.content.includes("@"))) {
       try {
-        const root = await optionalWorkspaceRoot();
-        const commandEnd = req.content.search(/\s/);
-        const commandName = req.content.startsWith("/")
-          ? req.content.slice(1, commandEnd === -1 ? undefined : commandEnd)
-          : "";
-        const commands = await composerCommandService.buildComposerCommands(
-          session.remoteWorkspace ? null : launch.projectPath ?? root,
-          { remote: Boolean(session.remoteWorkspace) },
-        );
-        const command = commands.find((item) => item.name === commandName);
-        const activeSkills = new Map(
-          commands.flatMap((item) => item.kind === "skill" && item.skillId
-            ? [[item.name, item.skillId] as const]
-            : []),
-        );
-        const mentions = findSkillMentions(req.content, activeSkills);
-        if (mentions.length > 0 && (!command || command.kind === "skill")) {
-          let body = "";
-          let end = 0;
-          for (const mention of mentions) {
-            body += req.content.slice(end, mention.start);
-            end = mention.end;
+        const foundAgents = await resolvePromptAgentMentions({
+          content: req.content,
+          mode: launch.sidecarParams?.mode,
+          subagentNames: Array.isArray(launch.sidecarParams?.subagents)
+            ? launch.sidecarParams.subagents.map((definition: { name: string }) => definition.name)
+            : [],
+          workspaceRoot: session.remoteWorkspace
+            ? null
+            : (launch.workspaceRoot ?? launch.projectPath ?? null),
+        });
+        if (!hasSlashToken) {
+          if (foundAgents.length > 0) {
+            promptContent = composeMentionPrompt(req.content, [], foundAgents);
+            slashCommand = req.content;
+            agentMentions = foundAgents;
           }
-          body = (body + req.content.slice(end)).trim();
-          const ids = [...new Set(mentions.map((mention) => mention.id))];
-          promptContent = [
-            `Call the \`Skill\` tool with each of these ids before answering this request, in order: ${ids.map((id) => JSON.stringify(id)).join(", ")}. Follow the loaded skill instructions.`,
-            body,
-          ]
-            .filter(Boolean)
-            .join("\n\n");
-          slashCommand = req.content;
-          skillMentions = mentions;
-        } else if (req.content.startsWith("/")) {
-          const templates = await loadComposerTemplatesCached(root);
-          const expansion = expandSlashInvocation(req.content, templates);
-          if (expansion) {
-            promptContent = expansion.expanded;
-            slashCommand = expansion.command;
+        } else {
+          const root = await optionalWorkspaceRoot();
+          const commandEnd = req.content.search(/\s/);
+          const commandName = req.content.startsWith("/")
+            ? req.content.slice(1, commandEnd === -1 ? undefined : commandEnd)
+            : "";
+          const commands = await composerCommandService.buildComposerCommands(
+            session.remoteWorkspace ? null : launch.projectPath ?? root,
+            { remote: Boolean(session.remoteWorkspace) },
+          );
+          const command = commands.find((item) => item.name === commandName);
+          const activeSkills = new Map(
+            commands.flatMap((item) => item.kind === "skill" && item.skillId
+              ? [[item.name, item.skillId] as const]
+              : []),
+          );
+          const mentions = findSkillMentions(req.content, activeSkills);
+          // A leading template keeps its expansion; agent mentions ride along
+          // only on a draft whose first token is no app or template command.
+          const mentionable = !command || command.kind === "skill";
+          if (mentionable && (mentions.length > 0 || foundAgents.length > 0)) {
+            promptContent = composeMentionPrompt(req.content, mentions, foundAgents);
+            slashCommand = req.content;
+            if (mentions.length > 0) skillMentions = mentions;
+            if (foundAgents.length > 0) agentMentions = foundAgents;
+          } else if (req.content.startsWith("/")) {
+            const templates = await loadComposerTemplatesCached(root);
+            const expansion = expandSlashInvocation(req.content, templates);
+            if (expansion) {
+              promptContent = expansion.expanded;
+              slashCommand = expansion.command;
+            }
           }
         }
       } catch (error) {
@@ -467,6 +543,7 @@ export function registerAgentIpc({
       ),
 
       role: "user" as const,
+      turnId: durableTurnId,
       content: promptContent,
       ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
       createdAt: new Date().toISOString(),
@@ -482,6 +559,7 @@ export function registerAgentIpc({
       ...(voiceOrigin ? { voiceOrigin } : {}),
       ...(slashCommand ? { command: slashCommand } : {}),
       ...(skillMentions ? { skillMentions } : {}),
+      ...(agentMentions ? { agentMentions } : {}),
       ...(revisionMeta?.revisionCount
         ? {
             revisionRootId: revisionMeta.rootUserId,
@@ -490,13 +568,15 @@ export function registerAgentIpc({
           }
         : {}),
     };
-    try {
+    // A Host-started mode turn is not user input and is never recorded as one.
+    if (!modeOrigin) try {
       await host.call("session.appendMessage", {
         sessionId: req.sessionId,
         message: userMessage,
         turnId: durableTurnId,
       });
     } catch (error) {
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(
         req.sessionId,
         "error",
@@ -509,16 +589,18 @@ export function registerAgentIpc({
       // restarting it here would run a prompt the transcript does not contain.
       throw error;
     }
-    emitAgentEvent({
-      sessionId: req.sessionId,
-      ts: Date.now(),
-      event: { type: "message_start", message: userMessage },
-    } satisfies AgentEventEnvelope);
-    emitAgentEvent({
-      sessionId: req.sessionId,
-      ts: Date.now(),
-      event: { type: "message_end", message: userMessage },
-    } satisfies AgentEventEnvelope);
+    if (!modeOrigin) {
+      emitAgentEvent({
+        sessionId: req.sessionId,
+        ts: Date.now(),
+        event: { type: "message_start", message: userMessage },
+      } satisfies AgentEventEnvelope);
+      emitAgentEvent({
+        sessionId: req.sessionId,
+        ts: Date.now(),
+        event: { type: "message_end", message: userMessage },
+      } satisfies AgentEventEnvelope);
+    }
 
     let result: { accepted: boolean; turnId: string };
     const isTrustedCompletionNotice =
@@ -536,6 +618,11 @@ export function registerAgentIpc({
         "agent.prompt",
         {
           ...launch.sidecarParams,
+          mode: promptMode,
+          ...(modeDefinition ? { modeDefinition } : {}),
+          ...(preparedMode?.modeTurn
+            ? { mode: preparedMode.definition.id, modeDefinition: preparedMode.definition, modeTurn: preparedMode.modeTurn }
+            : {}),
           // The host-created durable turn is the approval identity used by
           // Rust. The runtime must not replace it with a provider-local UUID.
           turnId: durableTurnId,
@@ -565,7 +652,7 @@ export function registerAgentIpc({
               text: attachment.text,
             })),
           ],
-          userMessageId: userMessage.id,
+          ...(modeOrigin ? {} : { userMessageId: userMessage.id }),
           // Per-turn permission ceiling override (R1 leftover; spec §7.3). The
           // sidecar records it on the turn context; enforcement of a NARROWER
           // ceiling still routes through the session's stored mode until
@@ -575,10 +662,16 @@ export function registerAgentIpc({
       );
     } catch (e) {
       completionNoticeTurns.delete(durableTurnId);
+      if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(req.sessionId, "error", (e as any)?.errorCode, {
         turnId: durableTurnId,
       });
       throw e;
+    }
+    if (result.accepted && !modeOrigin && preparedMode?.definition.id === "goal") {
+      await modeRuns.resetGoalInput(req.sessionId).catch((error: unknown) => {
+        logger.app("session", "warn", "accepted Goal input mode reset failed", { sessionId: req.sessionId, data: String(error) });
+      });
     }
     logger.app("session", "info", "prompt accepted", {
       sessionId: req.sessionId,
@@ -594,51 +687,84 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentCompact, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!host || !sidecar) throw new Error("backend unavailable");
-    if (activeTurns.has(req.sessionId)) {
-      throw Object.assign(new Error("Session already has an active turn"), {
-        errorCode: ErrorCodes.AGENT_BUSY,
+    // Hold the session operation across admission (busy check, settings,
+    // session read, launch resolution) so a prompt submitted during setup
+    // queues behind it instead of starting a turn the compaction would run
+    // against mid-stream (issue #2289).
+    const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
+    let ownsCompaction = false;
+    let detail: { session?: any };
+    let launch: any;
+    try {
+      if (activeTurns.has(req.sessionId)) {
+        throw Object.assign(new Error("Session already has an active turn"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      // A second compact behind a still-pending first one must not reach the
+      // sidecar: its failure path would clear the mark the first compaction
+      // still holds and un-guard admission (issue #2289 re-review).
+      if (compactingSessions.has(req.sessionId)) {
+        throw Object.assign(new Error("Session is already compacting"), {
+          errorCode: ErrorCodes.AGENT_BUSY,
+        });
+      }
+      const settings = await host.call<any>("settings.get");
+      detail = await host.call<{ session?: any }>("session.get", {
+        id: req.sessionId,
       });
+      if (!detail.session) {
+        throw Object.assign(new Error("Session not found"), {
+          errorCode: ErrorCodes.NOT_FOUND,
+        });
+      }
+      launch = await resolveAgentRuntimeLaunch(
+        req.sessionId,
+        detail.session,
+        settings,
+      );
+      sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
+      // Mark before releasing: the mark is what admission sees, while the
+      // released operation is what keeps Stop live — agentAbort acquires the
+      // same operation and must not wait for the summarization to finish.
+      compactingSessions.add(req.sessionId);
+      ownsCompaction = true;
+    } finally {
+      releaseSessionOperation();
     }
-    const settings = await host.call<any>("settings.get");
-    const detail = await host.call<{ session?: any }>("session.get", {
-      id: req.sessionId,
-    });
-    if (!detail.session) {
-      throw Object.assign(new Error("Session not found"), {
-        errorCode: ErrorCodes.NOT_FOUND,
-      });
-    }
-    const launch = await resolveAgentRuntimeLaunch(
-      req.sessionId,
-      detail.session,
-      settings,
-    );
-    sidecar.setProjectInstructionRoot(req.sessionId, launch.workspaceRoot ?? launch.projectPath);
     // A lost reply is not the sidecar's verdict: the sidecar keeps summarizing
     // and persists the checkpoint through host-core, so the durable record
     // decides whether this manual compaction succeeded (issue #795).
     const startedWith = compactionRecordId(detail.session);
-    let result: unknown;
     try {
-      result = await sidecar.call("agent.compact", launch.sidecarParams);
-    } catch (error) {
-      if (!isRpcTimeoutError(error)) throw error;
-      const settled = await host.call<{ session?: unknown }>("session.get", {
-        id: req.sessionId,
-      });
-      const landed = compactionRecordId(settled.session);
-      if (landed === startedWith) throw error;
-      logger.app("session", "warn", "manual compaction outlived its transport deadline; the checkpoint landed", {
+      let result: unknown;
+      try {
+        result = await sidecar.call("agent.compact", launch.sidecarParams);
+      } catch (error) {
+        if (!isRpcTimeoutError(error)) throw error;
+        const settled = await host.call<{ session?: unknown }>("session.get", {
+          id: req.sessionId,
+        });
+        const landed = compactionRecordId(settled.session);
+        if (landed === startedWith) throw error;
+        logger.app("session", "warn", "manual compaction outlived its transport deadline; the checkpoint landed", {
+          sessionId: req.sessionId,
+          data: { compactionId: landed },
+        });
+        return { accepted: true };
+      }
+      logger.app("session", "info", "context compacted manually", {
         sessionId: req.sessionId,
-        data: { compactionId: landed },
+        data: { providerId: launch.providerId, modelId: launch.modelId },
       });
-      return { accepted: true };
+      return result;
+    } finally {
+      // Only the call that won compaction ownership may clear the mark: a
+      // rejected duplicate must never un-guard the first compaction.
+      if (ownsCompaction) {
+        compactingSessions.delete(req.sessionId);
+      }
     }
-    logger.app("session", "info", "context compacted manually", {
-      sessionId: req.sessionId,
-      data: { providerId: launch.providerId, modelId: launch.modelId },
-    });
-    return result;
   });
 
   handle(IPC.invoke.agentAbort, async (req: { sessionId: string; turnId?: string }) => {
@@ -732,7 +858,7 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentQueuePush, async (req: AgentQueuePushRequest) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!agentHostBridge) throw new Error("agent host unavailable");
-    return agentHostBridge.queue.push(req);
+    return goalStartRequested(req) ? queueGoal(req) : agentHostBridge.queue.push(req);
   });
   handle(IPC.invoke.agentQueueList, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);

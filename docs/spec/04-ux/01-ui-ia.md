@@ -236,8 +236,11 @@ destination, chat as the home surface, tools and permissions inline.
     never read as one number;
   - an **activity rail**: a 2px track down the group's left edge with a
     travelling pulse, spanning the opened conversation list and shrinking to
-    the header while the group is collapsed, plus a matching count.
-  Remote host groups carry the same pair. Settings → General → Sidebar owns
+    the header while the group is collapsed. It also carries the counts while
+    the badge is switched off; with both affordances on the badge owns the
+    figures and the rail stays a pure track, so one count is never printed
+    twice for the same group.
+  Remote host groups carry the same pair. Settings → Appearance → Sidebar owns
   one master switch (`AppSettings.sidebarRunningIndicators`) gating two
   sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`). When unset, the
   master and Count badge resolve on while Activity rail resolves off; explicit
@@ -303,6 +306,23 @@ destination, chat as the home surface, tools and permissions inline.
   focus.
 
 ### 3.3 Scheduled
+Task definitions render as soon as their own read completes; latest outcomes
+and the selected task's bounded history load independently. Pending or failed
+run reads never imply that a task has not run. Returning to the route displays
+the renderer's last successful in-memory snapshot while refreshing. Host loss
+or restart invalidates that snapshot and rejects late responses from the old
+lifecycle. Project options load only when opening Create/Edit; the form waits
+for that read to succeed and exposes retry on failure. Run now and Delete wait
+for known run status; Host admission remains authoritative. If Host loss/restart
+invalidates pending editor options, the next normal page poll replaces that
+read without closing the editor or waiting for the old request to settle.
+A replacement failure exposes the existing Retry action.
+
+Settings → Behavior → Execution → Scheduled tasks controls this feature, on by default
+(`scheduledTasksEnabled` absent or true). Off hides the footer and search page
+entries and prevents new runs without deleting tasks or run history. The
+settings switch remains searchable so the feature can be re-enabled.
+
 A task column beside the selected task's page, with an explicit create/edit form, a cadence dropdown, time,
 next occurrence, saved project, per-task permission/model selection, a per-task conversation mode (a new conversation per run, or one conversation every run continues), pause/resume and delete confirmation. Hourly
 schedules repeat at one-hour intervals without a time selector. An interval
@@ -320,7 +340,7 @@ open: the task column and the task page step aside rather than compete with the
 draft. The form also states an interval as a count with a minute or hour unit
 (5 minutes to 24 hours) and keeps that value while another cadence is selected,
 so switching a task between a calendar and an interval loses neither. The column
-reports each task's cadence and clock, the outcome of that task's own newest run
+reports each task's cadence and clock, the execution-session status of its own newest run
 — read per task from the host, so a task that has been idle while others ran is
 never reported as never run — with its duration, and whether it is paused or
 running. The task page shows that task's last run, next
@@ -336,6 +356,13 @@ this route is directly behind it. The footer clock and global search open
 this route. Run now dispatches in the background, selects the run it admitted,
 and leaves the reader on this page. Automatic runs never steal foreground
 focus. See [desktop automations](../../adr/scheduled-desktop-automations.md).
+
+Run status describes the execution session, not verified task success. In the
+English and Simplified Chinese catalogs, `completed` reads as **Session ended**
+rather than an unqualified completion claim. History copy directs the reader to
+the transcript and task evidence for actual outcome verification. No business
+outcome is inferred from a normal session ending; storage and dispatch semantics
+are unchanged.
 
 The application must remain running. The host polls every 30 seconds and skips
 occurrences more than 90 seconds late or overlapping a running task. Startup

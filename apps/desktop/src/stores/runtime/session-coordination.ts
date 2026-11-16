@@ -196,6 +196,7 @@ export function createSessionCoordination({
         ...shared,
         ...retainSessionPane(current, summary.id, messages),
         activeSessionId: summary.id,
+        selectingSessionId: undefined,
         messages,
         page: "chat" as const,
         isRunning: false,
@@ -349,11 +350,17 @@ export function createSessionCoordination({
     const scopeKey = runtime.newSessionScopeKey(state.workspace?.path ?? null);
     const pending = runtime.pendingNewSessionRequests.get(scopeKey);
     if (pending) {
-      await pending;
-      const activeId = get().activeSessionId;
-      if (activeId) return activeId;
+      return await pending;
     }
-    return persistSessionAndSelect({ intent });
+    const request = persistSessionAndSelect({ intent });
+    runtime.pendingNewSessionRequests.set(scopeKey, request);
+    try {
+      return await request;
+    } finally {
+      if (runtime.pendingNewSessionRequests.get(scopeKey) === request) {
+        runtime.pendingNewSessionRequests.delete(scopeKey);
+      }
+    }
   }
 
   return {

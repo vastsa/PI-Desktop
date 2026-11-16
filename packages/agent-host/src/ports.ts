@@ -32,9 +32,19 @@ export interface HostRpcPort {
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
 }
 
+/**
+ * Origin of a Host-started mode run turn (ADR mode-definitions). Carried under a
+ * Symbol key so JSON, structured clone and RACP clients can never set it; only
+ * in-process Electron Main code that holds the symbol can.
+ */
+export const TRUSTED_MODE_ORIGIN: unique symbol = Symbol("pi-desktop.modeOrigin");
+export type TrustedModeOrigin = "host" | "approval";
+
 export type TurnStartRequest = {
+  [TRUSTED_MODE_ORIGIN]?: TrustedModeOrigin;
   sessionId: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288); the runtime mints one otherwise. */
   userMessageId?: string;
@@ -81,6 +91,7 @@ export type QueuedTurnRecord = {
   sessionId: string;
   principalSubject: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288). */
   userMessageId?: string;

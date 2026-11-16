@@ -100,6 +100,19 @@ describe("check", () => {
     expect(result.errors.map((e) => e.code)).toContain("manifest.invalid-id");
   });
 
+  it("rejects a dotted id the installer refuses, with the installer's reason", async () => {
+    const dir = join(await tempDir(), "deviceid");
+    await scaffold({ dir, template: "panel-basic" });
+    await editManifest(dir, (m) => {
+      m.id = "nul.plugin";
+    });
+    const result = await check(dir);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual([
+      { code: "manifest.invalid-id", message: "manifest.id must not start with a Windows device name" },
+    ]);
+  });
+
   it("fails a manifest.renderer entry that does not exist, as the installer does (#1464)", async () => {
     const dir = join(await tempDir(), "renderer-entry");
     await scaffold({ dir, template: "panel-basic" });

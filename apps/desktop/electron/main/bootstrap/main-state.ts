@@ -20,6 +20,7 @@ import type { PlanRuntimeState } from "../runtime/plans";
 import type { StartupState } from "./startup";
 import type { ShutdownState } from "./shutdown";
 import type { HostProcess } from "../host-process";
+import type { ResolvedStartupAnimation } from "../startup-animation";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import type { McpControlController, McpControlServer } from "../mcp-control";
@@ -85,6 +86,13 @@ export class MainProcessState {
    * preference can only turn it off.
    */
   macosWindowTranslucency = true;
+  /**
+   * Boot animation resolved from the data directory for this launch (D679).
+   * Null — the default — keeps the brand splash, which is what every
+   * installation without a `startup/` directory gets.
+   */
+  startupAnimation: ResolvedStartupAnimation | null = null;
+  startupAnimationPlayed = false;
 
   updaterLocale = "en";
   pluginPanelTheme: PluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -261,6 +269,18 @@ export class MainProcessState {
       set macosWindowTranslucency(value) {
         self.macosWindowTranslucency = value;
       },
+      get startupAnimation() {
+        return self.startupAnimation;
+      },
+      set startupAnimation(value) {
+        self.startupAnimation = value;
+      },
+      get startupAnimationPlayed() {
+        return self.startupAnimationPlayed;
+      },
+      set startupAnimationPlayed(value) {
+        self.startupAnimationPlayed = value;
+      },
       get pluginLauncherWindow() {
         return self.pluginLauncherWindow;
       },
@@ -360,6 +380,12 @@ export class MainProcessState {
       },
       set applicationBooted(value) {
         self.applicationBooted = value;
+      },
+      get startupAnimation() {
+        return self.startupAnimation;
+      },
+      set startupAnimation(value) {
+        self.startupAnimation = value;
       },
       get closeBehavior() {
         return self.closeBehavior;

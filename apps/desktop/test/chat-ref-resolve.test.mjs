@@ -28,7 +28,8 @@ function roots(options) {
   return { ...rest, project: workspace ? [folder(workspace)] : [] };
 }
 
-const resolve = (ref, options) => resolveChatFileRef(ref, roots(options));
+const resolve = (ref, options, resolveOptions) =>
+  resolveChatFileRef(ref, roots(options), resolveOptions);
 
 /**
  * Partial-path completion for chat file references.
@@ -100,6 +101,30 @@ test("an exact absolute path with spaces resolves only inside an allowed root", 
   assert.equal(await isChatRefOutsideRoots(absolute, roots({ workspace })), false);
   assert.equal(await isChatRefOutsideRoots(join(dirname(workspace), "page.md"), roots({ workspace })), true);
 });
+/**
+ * A transcript link can root a drive path the POSIX way (`/c:/dir/file.md`),
+ * the shape a Markdown link copies from a POSIX example. Windows reads the
+ * leading `/` as a filesystem root and everything after it as directories, so
+ * the click missed a file that exists; only that shape is repaired.
+ */
+test("a POSIX-rooted drive path resolves to the file the drive names", async (t) => {
+  if (process.platform !== "win32") return t.skip("Windows drive spelling");
+  const workspace = tempTree("posix-drive", ["docs/spec/page.md"]);
+  const posixRooted = `/${workspace.slice(0, 2).toLowerCase()}${workspace
+    .slice(2)
+    .replaceAll("\\", "/")}/docs/spec/page.md`;
+  const match = await resolve(posixRooted, { workspace });
+  assert.equal(match?.root, "workspace");
+  assert.equal(match?.matchedBy, "exact-absolute");
+  assert.equal(match?.relativePath, "docs/spec/page.md");
+  assert.equal(match?.absolutePath, join(workspace, "docs", "spec", "page.md"));
+  assert.equal(await isChatRefOutsideRoots(posixRooted, roots({ workspace })), false);
+  // A positioned reference still works: the line suffix is stripped first.
+  assert.equal((await resolve(`${posixRooted}:12`, { workspace }))?.relativePath, "docs/spec/page.md");
+  // A POSIX path without a drive letter is not a drive path anywhere.
+  assert.equal(await isChatRefOutsideRoots("/root/dir/page.md", roots({ workspace })), true);
+});
+
 
 test("an absolute realpath alias resolves under the same registered root", async () => {
   const workspace = tempTree("alias-target", ["my project/page.md"]);
@@ -274,6 +299,62 @@ test("ignored directories are not searched", async () => {
 test("a directory with a matching name never matches", async () => {
   const workspace = tempTree("ws", ["openimage.js/placeholder.txt"]);
   assert.equal(await resolve("openimage.js", { workspace }), null);
+});
+
+test("an explicit directory reference resolves only with allowDirectory (issue #2113)", async () => {
+  const workspace = tempTree("ws-dir", ["examples/child.txt"]);
+
+  // Shorthand and default resolution keep answering nothing for a directory.
+  assert.equal(await resolve("examples", { workspace }), null);
+  assert.equal(await resolve("examples", { workspace }, { allowDirectory: false }), null);
+
+  // The exact reference names a real directory: it resolves as one.
+  const match = await resolve("examples", { workspace }, { allowDirectory: true });
+  assert.equal(match?.matchedBy, "exact-relative");
+  assert.equal(match?.target, "directory");
+  assert.equal(match?.relativePath, "examples");
+  assert.equal(match?.absolutePath, join(workspace, "examples"));
+
+  const absolute = join(workspace, "examples");
+  const absoluteMatch = await resolve(absolute, { workspace }, { allowDirectory: true });
+  assert.equal(absoluteMatch?.matchedBy, "exact-absolute");
+  assert.equal(absoluteMatch?.target, "directory");
+  assert.equal(absoluteMatch?.absolutePath, absolute);
+
+  // The existing pin keeps its contract on both sides: without the flag a
+  // directory named like the ref answers nothing; with it the exact reference
+  // names the directory honestly.
+  const named = tempTree("ws-named", ["openimage.js/placeholder.txt"]);
+  assert.equal(await resolve("openimage.js", { workspace: named }), null);
+  const namedMatch = await resolve("openimage.js", { workspace: named }, { allowDirectory: true });
+  assert.equal(namedMatch?.target, "directory");
+  assert.equal(namedMatch?.matchedBy, "exact-relative");
+
+  // A shorthand that suffix-matches a file still resolves to that file, never
+  // to a directory: directories cannot hijack fuzzy completion.
+  const fileMatch = await resolve("child.txt", { workspace }, { allowDirectory: true });
+  assert.equal(fileMatch?.matchedBy, "basename");
+  assert.equal(fileMatch?.target, undefined);
+});
+
+test("a dangling or escaping directory link never resolves, flag or not", async () => {
+  const workspace = tempTree("ws-dangling-dir", ["other/real.txt"]);
+  symlinkSync(join(workspace, "missing"), join(workspace, "linked"), process.platform === "win32" ? "junction" : "dir");
+  assert.equal(await resolve("linked", { workspace }, { allowDirectory: true }), null);
+
+  // A directory link that points outside the roots stays unreachable.
+  const outsideDir = tempTree("outside-dir", ["secret.txt"]);
+  symlinkSync(outsideDir, join(workspace, "escape"), process.platform === "win32" ? "junction" : "dir");
+  assert.equal(await resolve(join(workspace, "escape"), { workspace }, { allowDirectory: true }), null);
+});
+
+test("the scratch store answers an explicit directory reference when the project has nothing", async () => {
+  const workspace = tempTree("ws-files", ["src/index.ts"]);
+  const scratch = tempTree("scratch-dirs", ["run/artifact.txt"]);
+  const match = await resolve("run", { workspace, scratch }, { allowDirectory: true });
+  assert.equal(match?.root, "scratch");
+  assert.equal(match?.target, "directory");
+  assert.equal(match?.relativePath, "run");
 });
 
 test("a content-addressed attachment blob resolves against the attachment store", async () => {

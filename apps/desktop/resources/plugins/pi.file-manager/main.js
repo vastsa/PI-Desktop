@@ -803,7 +803,11 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
 
     const timer = setTimeout(() => {
       timedOut = true;
+      // close 可能被后代进程继承的管道拖住；截止时间必须直接结束等待。
+      finish(reject, fail("GIT_TIMEOUT", "git command timed out"));
       child.kill("SIGKILL");
+      child.stdout?.destroy?.();
+      child.stderr?.destroy?.();
     }, timeoutMs);
 
     child.stdout?.on("data", (chunk) => {
@@ -2521,6 +2525,12 @@ const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 function assertValidName(rawName) {
   if (typeof rawName !== "string") throw fail("INVALID_NAME", "name is required");
   const name = rawName.trim();
+  if (!name || name === "." || name === ".." || /[<>:"/\\|?*\x00-\x1f]/.test(name) || name.endsWith(".") || WINDOWS_RESERVED.test(name)) {
+    throw fail("INVALID_NAME", "name must be a valid file or directory name");
+  }
+  return name;
+}
+
 function entryFromStat(name, rel, stat) {
   return {
     name,
@@ -2533,17 +2543,6 @@ function entryFromStat(name, rel, stat) {
     outside: false,
     // 新建 / 改名 / 移动之后这一行是全新的：状态由下一次列表调用现算。
     git: null,
-  };
-}
-  return {
-    name,
-    path: rel,
-    isDirectory: stat.isDirectory(),
-    size: stat.isDirectory() ? undefined : stat.size,
-    mtimeMs: stat.mtimeMs,
-    ignored: false,
-    isSymlink: false,
-    outside: false,
   };
 }
 

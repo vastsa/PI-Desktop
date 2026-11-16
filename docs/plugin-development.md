@@ -172,8 +172,10 @@ The following three files show the complete command-to-panel path.
 `schemaVersion`, `id`, `name`, `version`, and `main` are required. Entry, view,
 and skill paths are relative to the plugin root and must stay
 inside it. Theme assets have a separately validated external-path route (§6.7).
-Plugin ids must match `^[a-z0-9]+(\.[a-z0-9_-]+)+$`; uppercase and undotted
-ids are rejected. `activationEvents` is descriptive metadata today, not a lazy
+The devkit’s `pi-plugin check` and `pi-plugin pack` require ids to match `^[a-z0-9]+(\.[a-z0-9_-]+)+$`; uppercase and undotted
+ids are rejected by those commands. Direct development loading does not enforce
+this pattern: runtime manifest validation currently requires only a non-empty id.
+`activationEvents` is descriptive metadata today, not a lazy
 activation scheduler: enabled plugins load at startup or explicit enable/load.
 Declare only the permissions the plugin actually needs.
 

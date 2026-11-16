@@ -20,6 +20,9 @@ export async function transcriptStatusProbe() {
   const root = createRoot(host);
   const failures: string[] = [];
   const checks: string[] = [];
+  // Layout boxes are rounded at fractional display scales. Keep the target
+  // spacing exact while allowing at most one physical pixel of quantization.
+  const pixelTolerance = 1 / window.devicePixelRatio;
   const check = (value: unknown, label: string) => {
     checks.push(label);
     if (!value) failures.push(label);
@@ -134,7 +137,7 @@ export async function transcriptStatusProbe() {
       const initialGap = userBubble && waitingLabel
         ? waitingLabel.getBoundingClientRect().top - userBubble.getBoundingClientRect().bottom
         : Number.NaN;
-      check(Math.abs(initialGap - 52) <= 0.01,
+      check(Math.abs(initialGap - 52) <= pixelTolerance,
         `${mode}: initial wait retains the user action row (${initialGap}px)`);
 
       await render({ messages: [{ ...user, revisionCount: 3, activeRevision: 2 }] });
@@ -194,7 +197,7 @@ export async function transcriptStatusProbe() {
             fragment.getBoundingClientRect().bottom
           : Number.NaN;
       check(
-        Math.abs(gap - 24) <= 0.01,
+        Math.abs(gap - 24) <= pixelTolerance,
         `${mode}: status stays adjacent to partial answer (${gap}px)`,
       );
       await render({
@@ -291,6 +294,11 @@ export async function transcriptStatusProbe() {
         ],
         isRunning: false,
       });
+      const errorDeadline = performance.now() + 3000;
+      while (!host.textContent?.includes("Fixture error")) {
+        if (performance.now() >= errorDeadline) throw new Error("Failed turn did not commit its error text");
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
       check(
         !host.querySelector(".message-row.assistant .message-actions"),
         `${mode}: failed turn has no empty toolbar`,

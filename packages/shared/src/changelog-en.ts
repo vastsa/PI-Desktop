@@ -2,9 +2,38 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const enEntries: ChangelogEntry[] = [
   {
+    version: "0.23.0",
+    highlights: [
+      "Turn on OpenAI Fast mode per model and use /fast in a conversation to request priority service; it may use subscription limits faster or cost more per token.",
+      "Inline visualizations load faster with reusable chart helpers, and failed scripts now show actionable errors instead of blank cards.",
+      "Test MCP servers from the selected project folder; after a successful test, project sessions can recover idle failed connections.",
+      "After an agent runtime rebuild, conversation history keeps provider reasoning and Gemini function-call signatures intact for the next request.",
+      "The context ring updates to the compacted estimate as soon as manual or automatic compaction finishes.",
+      "With a Chinese IME, slash commands wait for composition to commit and preserve the draft instead of inserting a duplicate slash.",
+      "Regenerated prompts keep their position after the latest reply when their archive finishes outside the loaded history.",
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-11-08",
+    highlights: [
+      "Use the Pi 1.5 agent engine and inspect turn and session costs in the usage surfaces.",
+      "Keep long conversations stable with safer context compaction, image handling, and tool execution.",
+      "Recover project layout and scheduled-task editors reliably, and save MCP configurations to the selected project.",
+      "Let the agent control desktop apps through computer use, with explicit permission grants and a visible cursor.",
+      "Launch installed apps and plugin commands from one grouped launcher, and pin frequently used apps in place.",
+      "Keep long conversations readable with folded completed activity and smoother navigation to the latest messages as older history loads.",
+      "Paste folders into chat as directory references, and open directory links directly in the file manager.",
+      "Choose models in a redesigned two-pane picker with direct access to provider settings.",
+      "Route prompts to a named subagent with an @agent mention.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "See what each turn and the whole conversation cost in the context inspector and turn usage capsule, with subscription usage kept apart from pay-as-you-go spend.",
+      "Use your own video as the startup animation by dropping one into the startup folder; the interface fades in after it plays.",
       "Let plugins list saved projects and their folders without switching the active session.",
       "Use the Pi 1.3.0 agent engine with safer tool-call validation and replay.",
       "Enable optional inline visualizations in Settings → AI to view interactive, sandboxed cards inside conversations.",

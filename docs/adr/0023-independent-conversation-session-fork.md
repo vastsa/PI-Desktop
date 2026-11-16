@@ -6,77 +6,53 @@ Accepted.
 
 ## Context
 
-PI-Desktop already preserves linear regenerate variants within one
-conversation. Users also need a Codex-style command that copies the current
-conversation so later prompts and configuration changes can diverge without
-rewriting the source.
-
-Composing `session.create` and message replacement in the renderer would expose
-partial children, lose canonical transcript blocks, omit per-session execution
-configuration, and cross the Rust host's persistence ownership boundary. Adding
-the operation while retaining protocol v4 would also allow an older host to
-pass startup handshake and fail only when the new command is invoked.
+PI-Desktop already keeps linear regenerate variants inside one conversation, but
+users also need a Codex-style command that copies the conversation so later prompts
+and configuration changes diverge without rewriting the source. Composing
+`session.create` with message replacement in the renderer would expose partial
+children, lose canonical transcript blocks, omit per-session execution
+configuration, and cross the Rust host's persistence ownership, while protocol v4
+would let an older host fail only when the new command runs.
 
 ## Decision
 
-- Protocol v5 adds required host RPC `session.fork` and renderer IPC
+- Protocol v5 adds the required host RPC `session.fork` and renderer IPC
   `session/fork`.
-- The Rust host owns one snapshot operation: by default it copies the source's
-  complete active canonical transcript into a new session and remaps message
-  and tool-call identifiers. Optional `throughMessageId` makes the snapshot end
-  inclusively at that message; an unknown boundary creates no child and returns
-  `NOT_FOUND`.
-- The child inherits project, provider, model, mode, thinking, and permission
-  mode. It does not inherit turns, regenerate revisions, notifications,
-  artifacts, session grants, arbitrary scratch outputs, pin state, or live
-  runtime state.
-- Referenced existing files under the source session's `scratch/<id>/pasted/`
-  directory are copied into the child's own input directory. Canonical message
-  and retained compaction references are rewritten before indexing. This keeps
-  pasted/imported inputs usable after source deletion without granting access
-  to another session's scratch directory. Already-expired inputs remain missing;
-  unrelated scratch outputs and unreferenced files are not inherited.
-- No parent/child lineage is stored. This is an independent conversation copy,
-  not a message tree and not a replacement for linear regenerate history.
-- Assistant response Fork uses the bounded snapshot directly. Assistant Edit
-  uses the same bounded child, stores original/edited response tails in that
-  child's existing linear revision store, and activates the edited tail. The
-  source transcript, revisions, runtime, and provider-cache state remain
-  untouched.
-- Whole-session fork remains idle-only. A Desktop message-scoped fork may
-  copy a completed assistant prefix while a later turn runs (issue #837).
-  Under the same host RPC lock as append/publication, the host checks that no
-  indexed message at or before the anchor belongs to a running turn. It rejects
-  non-assistant, streaming/error, and live-turn anchors with `CONFLICT`, mapped
-  to `AGENT_BUSY` by Electron. Native Pi ownership rules remain unchanged.
-  The renderer sends only the anchor id, without hydrating or replacing the
-  source transcript. This preserves live updates and avoids stopping the parent.
-  Disabling the button would leave the requested concurrent workflow unavailable;
-  removing all busy guards would allow copying a partially executed tool loop.
-- A handled file or index failure removes the child transcript and copied
-  inputs and leaves no visible child. Process crashes continue to follow the transcript store's
-  existing orphan-file recovery policy.
+- The Rust host owns one snapshot: it copies the source's complete active canonical
+  transcript into a new session and remaps message and tool-call identifiers.
+  Optional `throughMessageId` ends the snapshot inclusively there; an unknown
+  boundary creates no child and returns `NOT_FOUND`.
+- The child inherits project, provider, model, mode, thinking, and permission mode,
+  but no turns, regenerate revisions, notifications, artifacts, session grants,
+  scratch outputs, pin state, or live runtime state. Files under the source's
+  `scratch/<id>/pasted/` directory are copied into the child's own input directory and
+  the references rewritten before indexing, so pasted inputs survive source deletion
+  without widening scratch access.
+- No parent/child lineage is stored: this is an independent copy, not a message tree.
+  Response Fork uses the bounded snapshot, and Response Edit builds the same child and
+  stores original and edited tails in its linear revision store.
+- Whole-session fork stays idle-only. A desktop message-scoped fork may copy a
+  completed assistant prefix while a later turn runs (issue #837): under the same host
+  lock as append/publication, a non-assistant, streaming/error, or live-turn anchor is
+  rejected with `CONFLICT`, which Electron maps to `AGENT_BUSY`, and the renderer
+  sends only the anchor id so the parent keeps running.
+- A handled file or index failure removes the child and copied inputs; crashes follow
+  the transcript store's orphan-file recovery.
 
 ## Consequences
 
-- Renderer and host binaries from protocol v4 are rejected during startup
-  instead of failing lazily when Create branch is selected.
-- Source and child can evolve, reconfigure, persist, and delete independently.
-- Fork storage cost is proportional to the active transcript and its referenced
-  pasted inputs.
-- Message-scoped Fork/Edit storage cost is proportional to the canonical
-  prefix through the selected response plus any child-only revision payloads.
-- Every child has a new session id and first creates/reseeds its own pi runtime;
-  edited context never reuses cache state built from the source transcript.
-- The initial implementation intentionally has no ancestry UI, merge operation,
-  or arbitrary message-level branch tree; Edit rollback stays a two-entry
-  linear revision family.
+- Protocol v4 peers are rejected at startup instead of failing on Create branch.
+- Source and child evolve, reconfigure, persist, and delete independently, and each
+  child reseeds its own pi runtime instead of reusing source cache state.
+- Storage cost tracks the copied transcript, its pasted inputs, and child-only
+  revision payloads.
+- There is no ancestry UI, merge operation, or message-level branch tree; Edit
+  rollback stays a two-entry linear revision family (D109).
 
 ## Alternatives
 
-- Renderer-owned `create + replaceMessages`: rejected because it is not atomic
-  across the host-owned transcript and index.
-- Persistent parent/child lineage: deferred because the requested workflow only
-  needs an independent copy and D109 keeps message revision navigation linear.
-- Copy regenerate revisions: rejected because revision roots and message
-  identifiers would require a second branch graph and ambiguous pager history.
+- Renderer-owned `create + replaceMessages`: not atomic across the host-owned
+  transcript and index.
+- Persistent parent/child lineage: deferred, since D109 keeps revisions linear.
+- Copy regenerate revisions: it would need a second branch graph and ambiguous pager
+  history.

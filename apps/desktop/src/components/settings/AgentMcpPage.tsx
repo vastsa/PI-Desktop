@@ -74,6 +74,7 @@ type McpEditorState = {
   draft: McpDraft;
   editing: McpServerRecord | null;
   level: AgentCapabilityLevel;
+  projectPath?: string;
 };
 
 type McpCollection = {
@@ -176,8 +177,10 @@ export function AgentMcpPage() {
     }));
   };
 
-  /** New servers land at whichever level the filter is pointing at. */
-  const targetLevel: AgentCapabilityLevel = filter === "project" ? "project" : "global";
+  /** All is a visibility filter; a selected project owns new definitions. */
+  const targetLevel: AgentCapabilityLevel = filter === "project" || (filter === "all" && selectedProjectPath)
+    ? "project"
+    : "global";
 
   const openCreate = () => {
     if (targetLevel === "project" && !selectedProjectPath) {
@@ -194,31 +197,38 @@ export function AgentMcpPage() {
       },
       editing: null,
       level: targetLevel,
+      ...(targetLevel === "project" && selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
     });
   };
 
   const openEdit = (server: McpServerRecord, level: AgentCapabilityLevel) => {
     setMenuFor(null);
-    setEditor({ draft: draftFromRecord(server), editing: server, level });
+    setEditor({ draft: draftFromRecord(server), editing: server, level, projectPath: server.projectPath });
   };
 
   const save = async () => {
     if (!editor) return;
-    const projectPath = editor.level === "project" ? selectedProjectPath ?? undefined : undefined;
-    const candidateId = editor.draft.id.trim();
-    const candidateLabel = editor.draft.label.trim().toLocaleLowerCase();
-    const sameLevel = (editor.level === "global" ? globalServers : projectServers).some(
-      (server) =>
-        server.id !== editor.editing?.id &&
-        (server.id === candidateId ||
-          (!!candidateLabel && server.label.trim().toLocaleLowerCase() === candidateLabel)),
-    );
-    if (sameLevel) {
-      showToast(t("settings.mcpDuplicate"), { variant: "error" });
+    const projectPath = editor.level === "project" ? editor.projectPath : undefined;
+    if (editor.level === "project" && !projectPath) {
+      showToast(t("settings.selectProjectFirst"), { variant: "error" });
       return;
     }
+    const candidateId = editor.draft.id.trim();
+    const candidateLabel = editor.draft.label.trim().toLocaleLowerCase();
     setSaving(true);
     try {
+      // 保存校验跟随编辑器的归属，并读取最新列表，避免页面切换后的记录误拦截。
+      const { servers } = await api.listMcpServers({ level: editor.level, projectPath });
+      const sameLevel = servers.some(
+        (server) =>
+          server.id !== editor.editing?.id &&
+          (server.id === candidateId ||
+            (!!candidateLabel && server.label.trim().toLocaleLowerCase() === candidateLabel)),
+      );
+      if (sameLevel) {
+        showToast(t("settings.mcpDuplicate"), { variant: "error" });
+        return;
+      }
       await api.upsertMcpServer(draftToInput(editor.draft, { level: editor.level, projectPath }));
       await load();
       showToast(
@@ -830,7 +840,7 @@ export function AgentMcpPage() {
           status={editor.editing ? statusFor(statuses, editor.editing) : undefined}
           testing={testingId === editor.editing?.id}
           projects={[]}
-          currentProjectPath={selectedProjectPath}
+          currentProjectPath={editor.projectPath ?? selectedProjectPath}
           managementLevel={editor.level}
           managementProjectName={projectName}
           onClose={() => {

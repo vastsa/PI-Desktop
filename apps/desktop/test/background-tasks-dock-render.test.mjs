@@ -57,6 +57,7 @@ async function withDockRender(run) {
   try {
     const { TaskDock } = await server.ssrLoadModule("/src/components/TaskDock.tsx");
     const { useAppStore } = await server.ssrLoadModule("/src/stores/app-store.ts");
+    const { useModesStore } = await server.ssrLoadModule("/src/features/modes/modes-store.ts");
     const i18n = createInstance();
     await i18n.init({ lng: "en", resources: { en: { translation: catalogs.en } } });
     const render = (fixture) => {
@@ -67,6 +68,10 @@ async function withDockRender(run) {
         : undefined;
       Object.assign(useAppStore.getInitialState(), {
         sessionTodos: snapshot ? { [sessionId]: snapshot } : {},
+        runningSessions: fixture.sessionRunning ? { [sessionId]: true } : {},
+      });
+      Object.assign(useModesStore.getInitialState(), {
+        runs: fixture.run ? { [sessionId]: { sessionId, ...fixture.run } } : {},
       });
       globalThis.__piDockFixture = fixture;
       return renderToStaticMarkup(
@@ -132,6 +137,22 @@ test("a finished row inside its grace window still counts", async () => {
   });
 });
 
+test("an open Goal run hides the container; the checklist returns once the run ends", async () => {
+  await withDockRender(({ render }) => {
+    const running = task("t-running", "running");
+    const fixture = {
+      tasks: [running],
+      sessionTasks: [running],
+      todos: [{ content: "ship the dock fix", status: "in_progress", priority: "high" }],
+    };
+    assert.equal(render({ ...fixture, run: { id: "run-1", modeId: "goal", state: "running" } }), "");
+    assert.equal(render({ ...fixture, run: { id: "run-1", modeId: "goal", state: "paused" } }), "");
+    assert.match(render({ ...fixture, run: { id: "run-1", modeId: "goal", state: "finished" } }), /ship the dock fix/);
+    // Only the builtin Goal takes the dock's place.
+    assert.match(render({ ...fixture, run: { id: "run-2", modeId: "review", state: "running" } }), /ship the dock fix/);
+  });
+});
+
 test("a checklist keeps the container without inventing an empty task panel", async () => {
   await withDockRender(({ render }) => {
     const html = render({
@@ -147,5 +168,54 @@ test("a checklist keeps the container without inventing an empty task panel", as
       /role="tablist"/,
       "tabs appear only while both sides have content",
     );
+  });
+});
+
+for (const activeTab of ["todo", "tasks"]) {
+  test(`the selected ${activeTab} tab renders only its own panel`, async () => {
+    await withDockRender(({ render }) => {
+      const running = task("t-running", "running");
+      const html = render({
+        tasks: [running],
+        sessionTasks: [running],
+        activeTab,
+        collapsed: false,
+        todos: [{ content: "finish the checklist", status: "completed", priority: "high" }],
+      });
+      assert.match(html, /role="tablist"/);
+      assert.match(html, /1 running/, "the shared header still reports live work");
+      if (activeTab === "todo") {
+        assert.match(html, /class="todo-dock-list"/);
+        assert.doesNotMatch(html, /class="task-list"/, "tasks must not leak into Todo");
+      } else {
+        assert.match(html, /class="task-list"/);
+        assert.doesNotMatch(html, /class="todo-dock-list"/, "todos must not leak into Tasks");
+      }
+    });
+  });
+}
+
+test("the working step sweeps only while its session runs, so an idle window stops repainting", async () => {
+  await withDockRender(({ render }) => {
+    // A run that ends early (abort, error, a model that never closes its step)
+    // leaves an in_progress todo behind. The shimmer is an infinite animation,
+    // so tying it to the todo status alone would keep an idle window
+    // submitting frames forever (#1064).
+    const todos = [
+      { content: "done step", status: "completed", priority: "low" },
+      { content: "working step", status: "in_progress", priority: "high" },
+    ];
+    const shimmers = (html) => (html.match(/todo-dock-shimmer/g) ?? []).length;
+    for (const collapsed of [true, false]) {
+      const base = { tasks: [], sessionTasks: [], todos, collapsed, activeTab: "todo" };
+      const idle = render({ ...base, sessionRunning: false });
+      assert.match(idle, /working step/, "the step stays visible while idle");
+      assert.equal(shimmers(idle), 0, `no sweep on an idle session (collapsed=${collapsed})`);
+      assert.equal(
+        shimmers(render({ ...base, sessionRunning: true })),
+        1,
+        `one sweep while the session runs (collapsed=${collapsed})`,
+      );
+    }
   });
 });

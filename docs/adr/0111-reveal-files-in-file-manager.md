@@ -2,41 +2,28 @@
 
 - Status: Accepted
 - Date: 2026-08-22
-- Deciders: PI-Desktop maintainers
-- Related: [ADR 0105](0105-files-as-a-bundled-plugin.md) ·
-  [ADR 0109](0109-open-files-with-the-os-associated-application.md) ·
-  [07-plugins/03-plugin-api](../spec/07-plugins/03-plugin-api.md) · E2E-153
+- Related: ADR 0105, ADR 0109, E2E-153
 
 ## Context
 
-The bundled `pi.files` viewer previously used its header action to open the
-selected file with the operating system's associated application. That handoff
-is not reliable for every file type or platform, and it does not match the
-primary browsing intent of locating the file in the project. The viewer already
-knows the selected root-relative path and the host has a native file-manager
-reveal operation.
+The bundled `pi.files` viewer handed the selected file to the OS-associated
+application, a handoff that fails for some file types and platforms and does not
+match the intent of locating a file in the project.
 
 ## Decision
 
-1. Add `pi.fs.reveal(pathFromRoot)` and the matching panel bridge channel
-   `fs.reveal`.
-2. Gate the operation with the existing `fs.read` permission and the complete
-   declared file-scope checks: root containment, symlink resolution, protected
-   paths, deny-list, and manifest scope or consent. Only existing regular files
-   are accepted, and the plugin supplies no absolute path.
-3. Electron Main calls `shell.showItemInFolder` after the gate. The file manager
-   may select the file when supported by the platform.
-4. The bundled Files viewer replaces its header action with **Show in folder**
-   and reports a localized toast if the reveal fails. `fs.openDefault` remains
-   available as an additive public API for plugins that explicitly need the
-   associated-application handoff.
-5. Successful and failed reveals are audited with the plugin id and
-   root-relative path. No desktop IPC or host-core protocol version changes.
+Add `pi.fs.reveal(pathFromRoot)` with the panel bridge channel `fs.reveal`, gated by
+the existing `fs.read` permission plus the declared file-scope checks: root
+containment, symlink resolution, protected paths, deny-list, and manifest scope or
+consent. Only existing regular files are accepted, Electron Main calls
+`shell.showItemInFolder` after the gate, the viewer replaces its header action with
+**Show in folder**, and `fs.openDefault` stays an additive public API for the
+associated-application handoff. Reveals are audited with plugin id and
+root-relative path; no desktop IPC or host-core protocol version changes.
 
 ## Consequences
 
-- A selected file can be located without depending on a file association.
-- The action cannot reveal credentials, protected app data, files outside the
-  workspace or selected root, or files outside the plugin's declared read scope.
-- Third-party plugins can use the same bounded operation as the bundled Files
-  plugin; no private bundled-plugin capability is introduced.
+- A file can be located without depending on a file association.
+- Credentials, protected app data, and files outside the workspace or the plugin's
+  declared read scope cannot be revealed.
+- Third-party plugins get the same bounded operation.

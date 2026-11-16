@@ -104,62 +104,73 @@ globalThis.composerModelSelectionProbe = async () => {
   await settle();
   document.querySelector<HTMLButtonElement>(".composer-model-thinking-chip")!.click();
   await settle();
-  const recentRows = Array.from(document.querySelectorAll<HTMLButtonElement>(".composer-menu-root [role=menuitemradio]"));
-  if (recentRows.length !== 3 || !recentRows[0].textContent?.includes("model-d") || !recentRows[2].textContent?.includes("model-b")) {
-    throw new Error("The first model menu must show exactly the three most recent models in order");
+  const modelRows = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".composer-model-list [role=menuitemradio]"));
+  const railItems = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".composer-model-rail [role=menuitemradio]"));
+  const recentRows = modelRows();
+  if (recentRows.length !== 4 || !recentRows[0].textContent?.includes("model-d") || !recentRows[2].textContent?.includes("model-b")) {
+    throw new Error("The recent source must list recent models in usage order");
+  }
+  if (railItems().length !== 2 || railItems()[0].getAttribute("aria-checked") !== "true") {
+    throw new Error("The rail must offer recent plus each provider, with recent selected first");
   }
   recentRows[2].dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
   await settle();
-  const otherModels = document.querySelector<HTMLButtonElement>(".composer-menu-root [aria-expanded]")!;
-  otherModels.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-  otherModels.focus();
+  const providerSource = railItems()[1];
+  providerSource.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+  providerSource.focus();
   await settle();
   if (document.querySelector(".composer-model-list .kb-active")) {
-    throw new Error("Moving from a recent model to Other models must clear stale keyboard highlight");
+    throw new Error("Moving from a recent model to the rail must clear stale keyboard highlight");
   }
   const keyboardSearch = document.querySelector<HTMLInputElement>(".composer-model-search input")!;
   keyboardSearch.focus();
   keyboardSearch.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
   await settle();
   if (!document.querySelector(".composer-model-list .kb-active")) throw new Error("Arrow navigation must highlight a model");
-  otherModels.focus();
+  providerSource.focus();
   // The offscreen window does not own OS focus; deliver the native focusout edge.
-  keyboardSearch.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: otherModels }));
+  keyboardSearch.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: providerSource }));
   await settle();
   if (document.querySelector(".composer-model-list .kb-active")) throw new Error("Leaving search must clear keyboard highlight");
   recentRows[2].click();
   await settle();
-  if (!document.querySelector(".composer-menu-root [role=menuitemradio]")?.textContent?.includes("model-d")) {
+  if (!modelRows()[0]?.textContent?.includes("model-d")) {
     throw new Error("Selecting without sending must preserve actual usage order");
   }
 
   const switchedLevel = document.querySelector(".selected-thinking-level")?.textContent?.trim() ?? "";
   await globalThis.composerModelSelectionController!.commitThinkingLevel("low");
   await settle();
-  const disclosure = document.querySelector<HTMLButtonElement>(".composer-menu-root [aria-expanded]")!;
-  disclosure.click();
+  const recentStyle = getComputedStyle(modelRows()[0]);
+  const recentType = `${recentStyle.fontSize}/${recentStyle.fontWeight}`;
+  railItems()[1].click();
   await settle();
-  const expandedRows = document.querySelectorAll(".composer-model-list [role=menuitemradio]");
-  if (expandedRows.length !== 4) throw new Error("Expanded models must appear once in the same list");
-  const recentStyle = getComputedStyle(expandedRows[0]);
-  const otherStyle = getComputedStyle(expandedRows[3]);
-  if (recentStyle.fontSize !== otherStyle.fontSize || recentStyle.fontWeight !== otherStyle.fontWeight) {
-    throw new Error(`Model typography differs: recent ${recentStyle.fontSize}/${recentStyle.fontWeight}, other ${otherStyle.fontSize}/${otherStyle.fontWeight}`);
+  const providerRows = modelRows();
+  if (providerRows.length !== 4 || railItems()[1].getAttribute("aria-checked") !== "true") {
+    throw new Error("Choosing a provider source must list each of its models once");
   }
-  disclosure.click();
+  const otherStyle = getComputedStyle(providerRows[3]);
+  const otherType = `${otherStyle.fontSize}/${otherStyle.fontWeight}`;
+  if (recentType !== otherType) {
+    throw new Error(`Model typography differs: recent ${recentType}, other ${otherType}`);
+  }
+  railItems()[0].click();
   await settle();
   const search = document.querySelector<HTMLInputElement>(".composer-model-search input")!;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "model-b");
   search.dispatchEvent(new Event("input", { bubbles: true }));
   await settle();
+  if (modelRows().length !== 1 || railItems().some((item) => item.getAttribute("aria-checked") === "true")) {
+    throw new Error("Search must span every source and release the rail selection");
+  }
   search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await settle();
   const restored = useAppStore.getState().recentModels;
   if (restored[0]?.modelId !== "model-d") throw new Error("Menu interactions alone must not record usage");
   useAppStore.setState({ recentModels: [] });
   await settle();
-  if (document.querySelectorAll(".composer-model-list [role=menuitemradio]").length !== 4) {
-    throw new Error("Without history all configured models must be directly visible");
+  if (railItems().length !== 0 || modelRows().length !== 4) {
+    throw new Error("Without history a single source shows all configured models without a rail");
   }
   useAppStore.setState({ recentModels: restored });
   await settle();

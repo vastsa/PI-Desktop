@@ -151,6 +151,9 @@ test("a finished turn with a few files gets relaxed rows below the reply, above 
   assert.match(html, /<section class="turn-changes-card" aria-label="Files changed this turn">/);
   assert.match(html, /Changes this turn/);
   assert.match(html, /2 files/);
+  const disclosure = html.match(/<button[^>]*class="[^"]*turn-changes-head"[^>]*aria-expanded="false"[^>]*aria-controls="([^"]+)"/);
+  assert.ok(disclosure, "the summary header starts collapsed and controls its details");
+  assert.ok(html.includes(`id="${disclosure[1]}" hidden=""`), "file details are hidden initially");
   assert.match(html, /class="turn-changes-body"/, "two files use the relaxed rows");
   assert.equal(rows(html).length, 2);
   assert.match(html, /data-status="added"[^>]*aria-label="Open Added changes for src[^"]*a\.ts in Review \(19 additions, 0 deletions\)"/);
@@ -208,5 +211,12 @@ test("the card stays borderless and the Review tab honors focus requests", async
   );
   assert.match(reviewTab, /useReviewFocusRequest\(\)/);
   assert.match(reviewTab, /openRequest=\{/);
-  assert.match(reviewTab, /scrollIntoView/);
+  const historyPanel = await readFile(
+    new URL("../src/components/workpanel/ReviewHistoryPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(reviewTab, /scrollReviewToAnchor\(\s*scrollRef\.current,/);
+  assert.match(historyPanel, /scrollReviewToAnchor\(\s*scroller\.current,/);
+  assert.doesNotMatch(reviewTab, /scrollIntoView/);
+  assert.doesNotMatch(historyPanel, /scrollIntoView/);
 });

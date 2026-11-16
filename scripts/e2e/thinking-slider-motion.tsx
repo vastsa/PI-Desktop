@@ -57,7 +57,7 @@ globalThis.thinkingSliderMotionProbe = async () => {
   try {
     await mount("motion");
     const initial = center(thumb());
-    const end = center(node(".composer-thinking-dot:last-child"));
+    const end = center(node(".composer-thinking-tick:last-child"));
     click("max");
     await frame();
     const animation = thumb().getAnimations()[0];
@@ -71,7 +71,7 @@ globalThis.thinkingSliderMotionProbe = async () => {
     const redirected = center(thumb());
     assert(Math.abs(redirected - midway) < 1, "rapid click starts from the current visual position");
     await finish();
-    assert(Math.abs(center(thumb()) - center(node(".composer-thinking-dot.active"))) < 0.6, "redirected thumb lands on the selected dot");
+    assert(Math.abs(center(thumb()) - center(node(".composer-thinking-tick.active"))) < 0.6, "redirected pill lands on the selected label");
     assert(requested.join(",") === "max,low", "animation never commits intermediate levels");
 
     deferred = true;
@@ -115,13 +115,10 @@ globalThis.thinkingSliderMotionProbe = async () => {
         click(level);
         await finish();
         const tick = [...host.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === level)!;
-        assert(Math.abs(center(thumb()) - center(tick)) < 0.6, `${ladder.length} stops: ${level} thumb and label align`);
-        const rail = node(".composer-thinking-rail");
-        const fill = getComputedStyle(rail, "::after");
-        const fillLeft = rail.getBoundingClientRect().left + Number.parseFloat(fill.left);
-        const firstDot = node(".composer-thinking-dot").getBoundingClientRect();
-        assert(Math.abs(fillLeft - firstDot.left) < 0.05, `${ladder.length} stops: ${level} fill covers the first dot's left edge`);
-        assert(Math.abs(fillLeft + Number.parseFloat(fill.width) - center(thumb())) < 0.05, `${ladder.length} stops: ${level} fill still ends at the thumb center`);
+        assert(Math.abs(center(thumb()) - center(tick)) < 0.6, `${ladder.length} stops: ${level} pill and label align`);
+        const pill = thumb().getBoundingClientRect().width;
+        const column = tick.getBoundingClientRect().width;
+        assert(Math.abs(pill - (column - 4)) < 0.6, `${ladder.length} stops: ${level} pill fills its column inside the gutter`);
       }
     }
     return { ok: true, checks };

@@ -5,80 +5,53 @@
 
 ## Context
 
-The shipped Scheduled page stores a cadence but never dispatches work when
-that cadence becomes due. The pinned pi-ai, pi-agent-core and pi-coding-agent
-0.87.1 packages supply agent execution, not a persistent desktop wall-clock
-scheduler. The existing Host-owned task and run tables already provide the
-appropriate storage boundary.
+The Scheduled page stored a cadence but never dispatched work when it became due.
+The pinned pi packages supply agent execution, not a persistent desktop wall-clock
+scheduler, and the host-owned task and run tables already provide the right storage
+boundary.
 
 ## Decision
 
-Keep schedule calculation, persistence, duplicate admission and restart recovery
-in Rust host-core. A small Electron lifecycle service polls every 30 seconds
-while the app runs and dispatches admitted work through the existing agentPrompt
-handler. It never asks the renderer to execute a background task. The existing
-turn finalizer closes the task run. The service stops when the app quits.
+Schedule calculation, persistence, duplicate admission, and restart recovery stay in
+Rust host-core. A small Electron lifecycle service polls while the app runs and
+dispatches admitted work through the existing `agentPrompt` handler, never asking the
+renderer to execute a background task, and the existing turn finalizer closes the
+run. The existing `config_json` extension boundary carries a validated
+`{hour, minute, weekday, weekdays?}` schedule, `nextRunAt` in epoch milliseconds,
+and the `workspacePath` captured when the schedule is first configured, so no new
+tables, columns, or migration are needed; old cadence-only records stay unarmed until
+configured. `scheduled.run` keeps its prepare-only response, `scheduledExecute`
+dispatches a turn, and `scheduledListRuns` exposes the run ledger. Automatic runs use
+the task's saved permission mode, default to Ask when the field is absent, keep Plan
+and Goal denied, and reuse a saved provider and model or resolve the app defaults at
+execution time, while the task's project survives a foreground workspace change.
+Scheduled is reachable from a footer clock action and global search.
 
-Use the existing config_json extension boundary for a validated schedule
-{hour, minute, weekday, weekdays?}, nextRunAt in epoch milliseconds and workspacePath.
-The workspace is captured when a schedule is first configured. No new tables,
-columns, schema migration or change to existing task identifiers is needed.
-Old cadence-only records remain unarmed until explicitly configured. Existing
-scheduled.run retains its prepare-only response; additive scheduledExecute IPC
-dispatches a turn, and scheduledListRuns exposes the existing run ledger.
+### Calendar provenance
 
-Automatic runs use the task's saved permission mode and default to Ask when the
-field is absent. Ask runs may wait for a user in their result conversation;
-selecting Auto is an explicit per-task choice under ADR 0305. Plan/Goal rejection
-remains. A saved provider/model pair is used when present; otherwise the app
-defaults are resolved at execution time. Retain the task's project even when the
-foreground workspace changes.
+The optional `calendarConfigured` key records explicit Daily or Weekly intent
+separately from Hourly's internal placeholder. Legacy Daily and Weekly rows infer
+intent from their cadence, while legacy Hourly rows keep their fields but require an
+explicit schedule on conversion, because their origin cannot be recovered.
 
-Expose Scheduled through a footer clock action as well as global search.
-The page has task and run-history views, editing, pause/resume, Run now and
-conversation links. This amends the earlier omission of Scheduled from the
-home sidebar; other destinations and navigation ownership remain unchanged.
+### Conversation management
+
+Project-scoped CRUD is exposed as on-demand Agent tools through the existing
+`tools.execute` permission and audit pipeline. A thin host adapter reuses the
+scheduled RPC handlers with the calling session's project, so a background
+conversation cannot retarget tasks, and list stays read-only.
 
 ## Consequences
 
-The app must remain running. A due occurrence more than 90 seconds late is
-skipped, never replayed in a burst. An active run suppresses an overlapping
-occurrence. Startup interrupts orphaned runs and arms only future occurrences.
-Daily/weekly times follow the host's local timezone. Weekly schedules accept
-a nonempty unique selection of weekdays, falling back to the legacy single
-weekday when absent. Hourly tasks instead wait one elapsed hour after saving,
-enabling, startup or the preceding admission. This avoids a minute selector
-for a fixed interval while preserving calendar semantics for daily/weekly tasks.
-No cloud execution, OS service, arbitrary cron or sub-hourly interval is added.
-Downgrading keeps the existing records readable but removes automatic execution.
-
-## Calendar provenance compatibility
-
-The optional `calendarConfigured` configuration key records explicit Daily or
-Weekly calendar intent separately from Hourly's required internal placeholder.
-Legacy Daily/Weekly rows infer intent from their saved cadence. Legacy Hourly
-rows preserve saved fields but require an explicit schedule on calendar
-conversion, because their origin cannot be recovered reliably. Known calendar
-intent survives an Hourly round trip and restart. This uses the existing JSON
-extension boundary with no physical schema migration or new wire field.
-Downgrades retain readable task data but cannot enforce the conversion guard.
+- The app must keep running: a due occurrence more than ninety seconds late is
+  skipped rather than replayed in a burst, and an active run suppresses an
+  overlapping occurrence.
+- Daily and weekly times follow the host timezone and weekly schedules need a
+  nonempty unique weekday selection, while hourly tasks wait one elapsed hour after
+  saving, enabling, startup, or the previous admission.
+- No cloud execution, OS service, arbitrary cron, or sub-hourly interval is added.
 
 ## Alternatives
 
-A plugin would duplicate lifecycle/storage ownership and make baseline
-automation depend on extension availability. A second agent loop would bypass
-existing admission, persistence and permissions. Both are rejected. The pi
-agent implementation remains the execution engine.
-
-## Conversation management
-
-Expose project-scoped CRUD as on-demand Agent tools using the existing
-`tools.execute` permission and audit pipeline. A thin Host adapter reuses the
-scheduled RPC handlers with the calling session's project, so background
-conversations cannot retarget tasks when the foreground workspace changes.
-List is read-only; mutations keep normal approvals. Plan/Goal stay denied.
-
-The UI offers four time periods (09:00, 14:00, 19:00, 22:00) to keep setup
-simple. AI tools retain precise local time configuration, and the form preserves
-those custom times. Direct database access or renderer-mediated tool mutation
-would duplicate ownership or bypass permission gates and is rejected.
+- A plugin: duplicates lifecycle and storage ownership.
+- A second agent loop: bypasses existing admission, persistence, and permissions.

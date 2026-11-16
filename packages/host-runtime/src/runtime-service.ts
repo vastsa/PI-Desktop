@@ -424,21 +424,28 @@ export class RuntimeService implements RuntimePort {
   }
 
   async abort(sessionId: string, turnId?: string): Promise<void> {
-    const sidecar = this.requireSidecar();
-    const abortedTurnId = this.activeTurns.get(sessionId);
-    if (turnId && abortedTurnId !== turnId) return;
-    this.options.log("info", "prompt aborted", { sessionId });
-    // Lock the abort reason before the first await: the cancel RPC can take a
-    // while, and a terminal event arriving in that window must not settle the
-    // turn as completed.
-    this.lockAbortReason(sessionId, abortedTurnId);
-    try {
-      await sidecar.call("agent.abort", { sessionId, ...(turnId ? { turnId } : {}) });
-    } finally {
-      if (abortedTurnId) {
-        await this.finishTurn(sessionId, "aborted", "TURN_ABORTED", { turnId: abortedTurnId });
+    const id = sessionId.trim();
+    const requestedTurnId = turnId ?? this.activeTurns.get(id);
+    // Preserve an already-running turn's abort reason before waiting for the
+    // session operation, and never let its delayed abort target a later turn.
+    this.lockAbortReason(id, requestedTurnId);
+    await this.withSessionOperation(id, async () => {
+      // Admission owns this operation until the sidecar accepts the turn.
+      // Reading ownership and canceling before that boundary can miss the
+      // runtime, then allow the pending prompt to start after abort returns.
+      const abortedTurnId = this.activeTurns.get(id);
+      if (requestedTurnId && abortedTurnId !== requestedTurnId) return;
+      const sidecar = this.requireSidecar();
+      this.options.log("info", "prompt aborted", { sessionId: id });
+      this.lockAbortReason(id, abortedTurnId);
+      try {
+        await sidecar.call("agent.abort", { sessionId: id, ...(abortedTurnId ? { turnId: abortedTurnId } : {}) });
+      } finally {
+        if (abortedTurnId) {
+          await this.finishTurn(id, "aborted", "TURN_ABORTED", { turnId: abortedTurnId });
+        }
       }
-    }
+    });
   }
 
   async respondInput(resolution: AskToolResolution): Promise<void> {

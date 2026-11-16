@@ -102,7 +102,7 @@ test("a lifecycle row summarizes by agent name, never by delegation id", () => {
   // A lifecycle row is presented as a subagent row, not as "Delegated".
   assert.match(transcriptSource, /LIFECYCLE_RUNNING_KEYS\s*\n?\s*: LIFECYCLE_LABEL_KEYS\)\[lifecycle\]/);
   // It never falls back to its own arguments, so a pending wait shows no ids.
-  assert.match(transcriptSource, /const summary = lifecycle \? rosterSummary : argSummary;/);
+  assert.match(transcriptSource, /: lifecycle \? rosterSummary : argSummary;/);
   // ...and it is still not a topology node.
   assert.match(topologySource, /if \(isDelegationActivityItem\(item\)\) continue;/);
 });

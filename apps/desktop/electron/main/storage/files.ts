@@ -28,7 +28,7 @@ export function contains(parent: string, child: string): boolean {
 }
 async function optionalStat(path: string) {
   try { return await lstat(path); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error as NodeJS.ErrnoException).code === "ENOTDIR") return null; throw error; }
 }
 
 export async function validateTarget(path: string, source: StorageRoots, anchor: string, retryId?: string): Promise<string> {
@@ -202,7 +202,11 @@ async function safeCachePaths(roots: StorageRoots): Promise<string[]> {
   candidates.push(...BROWSER_CACHE_PATHS.map((path) => join(roots.browser, path)));
   const partitions = join(roots.browser, "Partitions");
   if ((await optionalStat(partitions))?.isDirectory() && !(await lstat(partitions)).isSymbolicLink()) {
-    for (const name of await readdir(partitions)) candidates.push(...BROWSER_CACHE_PATHS.map((path) => join(partitions, name, path)));
+    // Only real partition directories hold caches; Finder-style files such as
+    // .DS_Store must not become candidates whose <name>/Cache path is not statable.
+    for (const entry of await readdir(partitions, { withFileTypes: true })) {
+      if (entry.isDirectory()) candidates.push(...BROWSER_CACHE_PATHS.map((path) => join(partitions, entry.name, path)));
+    }
   }
   const result: string[] = [];
   for (const candidate of candidates) {

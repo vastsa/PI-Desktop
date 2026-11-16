@@ -2,63 +2,29 @@
 
 - Status: Superseded by [ADR 0241](0241-vendored-updatable-file-view-plugin.md)
 - Date: 2026-08-19
-- Deciders: PI-Desktop core
 - Related: [ADR 0019](0019-work-panel-subsystems.md) ·
   [ADR 0104](0104-plugin-contributed-work-panel-views.md) ·
   [ADR 0108](0108-remove-built-in-interactive-terminal.md) ·
-  [07-plugins/13-plugin-permissions-matrix](../spec/07-plugins/13-plugin-permissions-matrix.md)
-
-> Superseded by ADR 0241. Files is no longer a bundled first-party plugin: the
-> work panel's file view is now a vendored, updatable third-party plugin
-> (`pi.file-manager`). The reasoning below still holds and is what the
-> replacement inherits — the view is an ordinary plugin on the public
-> `contributes.views` channel, and Review stays with the transcript. The
-> terminal clause was already superseded by ADR 0108.
+  [ADR 0170](0170-work-panel-browser-as-bundled-plugin.md) · D451
 
 ## Context
 
-The work panel has a public extension point for plugin-contributed views. The
-bundled Files browser should exercise that public path rather than remaining a
-special host-only view. Review remains message-owned by ADR 0043 and therefore
-has a different ownership boundary.
+The work panel exposes a public extension point for contributed views, so the
+bundled Files browser had to exercise that public path instead of staying a
+host-only view. Review stays transcript-owned by ADR 0043 and therefore has a
+different boundary.
 
 ## Decision
 
-1. `pi.files` is a first-party plugin shipped from
-   `apps/desktop/resources/plugins/` and contributes its view through
-   `contributes.views` just like a third-party plugin.
-2. The bundled plugin is enabled by default, cannot be uninstalled, and can be
-   disabled by the user. Its filesystem access uses the public permission-gated
-   read APIs.
-3. Only the Files *tool* migrates. Transcript-owned `file:<path>` resources
-   stay as they are. Review remains the user-opened surface over the same
-   transcript-owned evidence and is never opened by a tool result (D451).
-4. Browser chrome and agent CDP ship as bundled plugin `pi.browser` (ADR 0170).
-   The guest `WebContentsView` and debugger remain host window machinery,
-   reached only through the public `pi.browser.*` API.
-5. The former proposal to keep an interactive terminal in the host is
-   superseded by ADR 0108. There is no plugin PTY API and no private bundled
-   plugin channel.
+`pi.files` becomes a bundled first-party plugin contributing its view through
+`contributes.views`, enabled by default, uninstallable, disableable by the user,
+and reading the filesystem only through public permission-gated APIs. Only the
+Files tool migrates; transcript-owned `file:<path>` resources stay, and Review
+opens only on explicit user action (D451). Browser chrome ships as bundled plugin
+`pi.browser` over the same public API.
 
 ## Consequences
 
-- The shipped plugin is a real consumer of the public contributed-view and
-  filesystem APIs; gaps in those APIs are caught by a first-party feature.
-- The launcher lists the Review row plus Browser and in-scope plugin views.
-  File resources are opened by conversation artifacts; Review opens only on
-  explicit user action (D451).
-- The plugin trust boundary stays unchanged: no plugin permission can spawn an
-  interactive shell.
-
-## Alternatives considered
-
-### Keep Files, Review, and the interactive terminal as host tools
-
-Rejected for Files: it would leave the public plugin extension point untested.
-Review remains host-owned because its evidence belongs to transcript messages.
-The interactive terminal is removed rather than migrated; ADR 0108 records why.
-
-### Give the bundled plugin private host capabilities
-
-Rejected: a private channel would not test the public plugin API and would
-recreate the host/plugin trust split this ADR is intended to reduce.
+Superseded by ADR 0241, which replaced the bundled plugin with the vendored,
+updatable file view plugin `pi.file-manager`; the reasoning above is what the
+replacement inherits. The terminal clause was already superseded by ADR 0108.

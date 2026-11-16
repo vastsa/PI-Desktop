@@ -63,6 +63,28 @@ async function probe(output: string) {
     const a = panes.at(-1)!;
     const aId = a.getWebContents()!.id;
     const snapshot = await host.snapshot("A");
+    if (process.env.BROWSER_CLOSE_CONNECTION_ONLY === "1") {
+      host.closeTab("A", "a");
+      host.setChromeSession("A", "replacement");
+      await host.navigate({ url: origin + "/c" }, "A", "replacement");
+      const replacement = await host.snapshot("A");
+      assert.equal(replacement.title, "Page C");
+      const input = replacement.tree.match(/- (e\d+) textbox "Note C"/)?.[1];
+      const button = replacement.tree.match(/- (e\d+) button "Increment C"/)?.[1];
+      assert(input && button, replacement.tree);
+      await host.fill(input, "Replacement draft", "A");
+      await host.click(button, "A");
+      assert.equal(await host.evaluate("window.count", "A"), 1);
+      assert.equal(await host.evaluate("document.querySelector('#note').value", "A"), "Replacement draft");
+      assert.equal((await host.navigate({ url: origin + "/a" }, "A"))?.tabId, "replacement");
+      assert.deepEqual(host.getPages("A").map((page) => page.tabId), ["replacement"]);
+      await assert.rejects(host.snapshot("A", "a"), { code: "UNAVAILABLE" });
+      assert.deepEqual(reveals, []);
+      host.closeTab("A", "replacement");
+      await assert.rejects(host.snapshot("A"), { code: "UNAVAILABLE" });
+      console.log("BROWSER_BACKGROUND " + JSON.stringify({ ok: true, scope: "close-connection", passed: ["close, reopen, snapshot, fill, click, navigate, explicit closed target, final close"] }));
+      return;
+    }
     host.setChromeSession("B", "b");
     await host.navigate({ url: origin + "/b" }, "B");
     const bId = panes.at(-1)!.getWebContents()!.id;
@@ -113,6 +135,18 @@ async function probe(output: string) {
     assert.equal((await host.snapshot("A")).title, "Page A");
     assert.deepEqual(reveals, ["C"]);
     passed.push("unknown and closed sessions cannot fall back to another page");
+
+    host.closeTab("A", "a");
+    host.setChromeSession("A", "replacement");
+    await host.navigate({ url: origin + "/c" }, "A", "replacement");
+    assert.equal((await host.snapshot("A")).title, "Page C");
+    await host.evaluate("document.querySelector('#note').value = 'Replacement draft'", "A");
+    assert.equal(await host.evaluate("document.querySelector('#note').value", "A"), "Replacement draft");
+    assert.equal((await host.navigate({ url: origin + "/a" }, "A"))?.tabId, "replacement");
+    assert.deepEqual(host.getPages("A").map((page) => page.tabId), ["replacement"]);
+    await assert.rejects(host.snapshot("A", "a"), { code: "UNAVAILABLE" });
+    assert.deepEqual(reveals, ["C"]);
+    passed.push("closed connections yield to the replacement page without creating invisible tabs");
     mkdirSync(output, { recursive: true });
     writeFileSync(join(output, "result.json"), JSON.stringify({ ok: true, passed }, null, 2));
     console.log("BROWSER_BACKGROUND " + JSON.stringify({ ok: true, passed }));

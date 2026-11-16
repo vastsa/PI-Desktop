@@ -32,7 +32,9 @@ test("the assistant bubble renders split content and cards; Markdown stays gen-u
   // The feature is opt-in, so the bubble passes the setting into the split.
   assert.match(bubble, /s\.settings\?\.inlineVisualizations === true/);
   assert.match(bubble, /const genUi = useGenUiSplit\(displayContent, streaming, inlineVisualizations\);/);
-  assert.match(bubble, /<Markdown source=\{genUi\.content\} streaming=\{streaming\} \/>/);
+  assert.match(bubble, /<TranscriptProse source=\{genUi\.content\} streaming=\{streaming\} \/>/);
+  const prose = await read("../src/features/chat/transcript/TranscriptProse.tsx");
+  assert.match(prose, /<Markdown source=\{source\} streaming=\{streaming\} \/>/);
   assert.match(bubble, /<GenUiCards references=\{genUi\.references\} sessionId=\{sessionId\} remote=\{remote\} \/>/);
   assert.match(bubble, /const sessionId = useSlotSessionId\(\);/);
   const markdown = await read("../src/components/Markdown.tsx");

@@ -61,6 +61,10 @@ describe("checkpointContextTokens", () => {
 });
 
 describe("contextCompactionMark", () => {
+  it("preserves the model that rebuilt the context", () => {
+    expect(contextCompactionMark(record({ providerId: "provider", modelId: "current" })))
+      .toMatchObject({ providerId: "provider", modelId: "current" });
+  });
   it("carries the post-compaction context estimate for the composer (#2015)", () => {
     expect(
       contextCompactionMark(record({ details: { generation: 2, contextTokens: 18_400 } })),

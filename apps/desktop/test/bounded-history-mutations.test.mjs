@@ -174,6 +174,8 @@ test("the real store/API/preload/IPC path uploads bounded ids with more than 64 
       assert.ok(["sessionDeleteMessage", "sessionRetractPendingPrompt", "sessionActivateRevision"].includes(key));
       return { ok: true, data: await ipc.invoke(key, input) };
     } } }, "@pi-desktop/shared": shared, "@pi-desktop/shared/protocol": shared,
+    // Boot-animation descriptor decoding (D679); no argument, nothing to read.
+    "@pi-desktop/shared/startup-animation": { decodeStartupAnimationArgument: () => null },
   });
   const { api } = load("../src/lib/api.ts", {
     "@pi-desktop/shared": shared, "./plan-history": {}, "./remote-session-safety": safety,

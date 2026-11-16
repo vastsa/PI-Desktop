@@ -89,7 +89,7 @@ export function reviewChangeFromMessage(message: UiMessage): ReviewChange | null
   }
 
   const details = toolResultDetails(message);
-  if (details?.root !== "workspace") return null;
+  if (!details || !["workspace", "scratch", "external", "visualization"].includes(String(details.root))) return null;
   const review = recordValue(details.review);
   if (!review || review.version !== 1) return null;
 
@@ -131,6 +131,7 @@ export function reviewChangeFromMessage(message: UiMessage): ReviewChange | null
     ...(review.binary === true ? { binary: true } : {}),
     ...(review.truncated === true ? { truncated: true } : {}),
     reversible: review.reversible === true,
+    ...(typeof review.root === "string" ? { root: review.root } : {}),
   };
 }
 

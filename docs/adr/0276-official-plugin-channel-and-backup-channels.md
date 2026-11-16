@@ -1,247 +1,123 @@
 # ADR 0276: Official plugin channel and backup channels
 
-> Amended 2026-10-08: the marketplace UI and persisted settings now use only
-> the official channel; legacy source values are ignored. The resolve request
-> is capped at three seconds and falls back to the official catalog URL after
-> a timeout, rate limit, or `NO_DOWNLOAD_SOURCE`. Publication refusals remain
-> authoritative.
+> Amended 2026-10-08: the marketplace uses only the official channel and legacy
+> source values are ignored; a resolve request is capped at three seconds and
+> falls back to the catalog URL on timeout, rate limit, or `NO_DOWNLOAD_SOURCE`.
 
 - Status: Accepted for implementation
 - Date: 2026-09-17
-- Deciders: PI-Desktop plugin and distribution maintainers
 - Related: ADR 0102, D238, E2E-024P, E2E-PLUGIN-official-channel-resolves-through-the-platform
 
 ## Context
 
-The client's marketplace source was a three-value union — `official`, `mirror`,
-`custom` — mapped to hardcoded catalog URLs, and `official` was
-indistinguishable from "never set": both landed on the GitHub default. A
-package was fetched by joining the catalog's relative `url` onto
-`artifactBaseUrl` or the catalog directory, and the `verified` trust tier was
-recognized only while the catalog URL equaled one of two constants.
-
-Since ADR 0102 the plugin center at `plugins.aiuo.net` is the publishing
-authority, and it defines the client-facing download contract:
-
-```text
-GET  /catalog.json                  the catalog the client reads
-POST /api/v1/download/resolve       JSON { deviceId, pluginId, version? }
-                                    -> 200 { sha256, sizeBytes, downloads[] }
-                                       Cache-Control: no-store
-GET  /download/{id}/{version}       byte route for the marketplace page and
-                                    console; not the client's path
-```
-
-The platform's own rules, verified against production: it never hosts the bytes
-of a published package, only answers where they are; `downloads` is ordered and
-never empty on `200`; a client calls resolve once per install or update, sends a
-**stable** device identifier, never caches the answer, verifies `sha256` before
-installing, and tries the next mirror when one fails; `counted: false` is normal;
-rate limiting is per device identifier (otherwise per source address), 600
-requests per minute by default, with `429` and `Retry-After`; refusals are
-`400 PLUGIN_REQUIRED`, `403 NOT_PUBLISHED`, `403 PLUGIN_ARCHIVED`,
-`404 NOT_FOUND`, `429`, and `503 NO_DOWNLOAD_SOURCE`; and a platform-unreachable
-install falls back to the catalog's URL and is not counted. Counting identity is
-the device identifier, the platform stores counts rather than identities, and
-the optional `source` field is a statistics hint only.
-
-Measured on the same day: the catalog declares
-`artifactBaseUrl = raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main`;
-all three mirrors answered `200` and every mirror host is already inside the
-client's download allowlist; the CNB mirror still served an older distribution
-(22 plugins, and `pi.todo-0.6.5` at 92487 bytes where the other mirror served
-92951 bytes). A version string may contain `+` (for example `0.3.0+0.2.0`), so
-the platform's byte route cannot be assumed to carry every published version.
-
-The original implementation decision made the center primary and offered the
-two Git hosts as catalog backups. The 2026-10-08 amendment retires those
-user-selectable catalog sources while keeping package mirrors returned by the
-official platform.
+The marketplace source was a three-value union — `official`, `mirror`, `custom` —
+mapped to hardcoded catalog URLs, and `official` was indistinguishable from "never
+set". Since ADR 0102 the plugin center at `plugins.aiuo.net` is the publishing
+authority and owns the client download contract: `GET /catalog.json`,
+`POST /api/v1/download/resolve`, and a byte route the marketplace page uses rather
+than clients. The platform hosts no package bytes itself, returns an ordered
+`downloads` list, counts one download per device and day, rate-limits per device,
+and refuses withdrawn or archived plugins with stable error codes.
 
 ## Decision
 
 ### 1. The product uses the official channel
 
-The product always reads `https://plugins.aiuo.net/catalog.json`; the Plugins
+The product always reads `https://plugins.aiuo.net/catalog.json` and the Plugins
 page has no source selector. `pluginMarketSource` and `pluginMarketCustomUrl`
-remain in persisted settings so older settings can be read without migration,
-but host-core ignores them. The development-only
-`PI_DESKTOP_PLUGIN_MARKET_URL` override remains available to tests and local
-development.
-
-| Channel | Value | Catalog URL | Install path |
-| --- | --- | --- | --- |
-| Official channel | `official` | `https://plugins.aiuo.net/catalog.json` | Platform resolve |
-
-`official` means the project's first-party plugin center. A package URL never
-crosses providers: the official catalog supplies its package URL, and fallback
-downloads remain inside the official channel.
+remain readable in persisted settings without a migration, but host-core ignores
+them, and the development-only `PI_DESKTOP_PLUGIN_MARKET_URL` override stays
+available to tests and local development. A package URL never crosses providers:
+the official catalog supplies it, and fallback downloads stay inside the official
+channel.
 
 ### 2. The official channel resolves through the platform
 
-1. Refresh the catalog, then `POST {center origin}/api/v1/download/resolve` with
-   `{ deviceId, pluginId, version }` — once per install or update. The client
-   gives this metadata request a three-second total deadline. POST rather than
-   GET, because the platform documents that a device id in a query string ends
-   up in access logs.
-2. Try the returned `downloads` entries in order. Every attempt is downloaded to
-   a temporary file, checked against the returned `sha256` and the announced
-   `sizeBytes`, and extracted only when both agree. A mirror that fails —
-   network error, HTTP error, digest mismatch, size mismatch — is abandoned and
-   the next one is tried. Requests stay on the download allowlist.
-3. When the request times out or fails at the transport boundary, the platform
-   rate-limits the device, or it answers `503 NO_DOWNLOAD_SOURCE`, the client
-   immediately falls back to the catalog's own package URL (`artifactBaseUrl`
-   plus the relative `url`). The catalog digest and size are still verified,
-   and that install is not counted. If every usable returned mirror fails at
-   the transport boundary, use the same fallback. A malformed resolve response
-   or integrity failure does not use this fallback.
-4. The answer is never cached (`Cache-Control: no-store` is the platform's
-   confirmation of this), so two installs of the same version are two calls.
-5. The resolve digest is authoritative on the resolve path; the catalog's
-   `shasum` stays authoritative on the catalog fallback. `sizeBytes` is a
-   sanity check on both paths.
-6. Publication refusals are reported, not papered over: `403 NOT_PUBLISHED`,
-   `403 PLUGIN_ARCHIVED` (hide the plugin from install and update selection),
-   and `404` (the platform has no such version — including a `+`-suffixed
-   version the byte route cannot carry). A rate limit or no-source deployment
-   answer uses the checked catalog URL without waiting or retrying.
-7. A resolve fallback does not change the selected channel. The product always
-   remains on the official channel and has no user-facing channel selector.
+Refresh the catalog, then `POST /api/v1/download/resolve` with
+`{ deviceId, pluginId, version }` once per install or update, under a three-second
+total deadline; POST rather than GET, because the platform documents that a device
+id in a query string ends up in access logs. Try the returned `downloads` entries
+in order, downloading each to a temporary file and extracting it only after
+`sha256` and `sizeBytes` agree, and abandon a failing mirror for the next one.
+When the request times out or fails at the transport boundary, the device is rate
+limited, or the platform answers `503 NO_DOWNLOAD_SOURCE`, fall back immediately
+to the catalog package URL (`artifactBaseUrl` plus the relative `url`) and leave
+that install uncounted; a malformed response or an integrity failure never uses
+that fallback. The answer is never cached, so two installs of one version are two
+calls. The resolve digest is authoritative on the resolve path and the catalog
+`shasum` on the fallback. Publication refusals are reported rather than papered
+over: `403 NOT_PUBLISHED`, `403 PLUGIN_ARCHIVED` (which also hides the plugin from
+install and update selection), and `404`. A fallback never changes the selected
+channel.
 
 ### 3. A stable device identifier, sent as a digest
 
-The resolve request carries a `deviceId` that host-core derives from the machine
-identity the operating system exposes — the Windows
-`HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`, the macOS platform UUID, or
-Linux `/etc/machine-id` (falling back to `/var/lib/dbus/machine-id` and
-`/sys/class/dmi/id/product_uuid`). What leaves the machine is
-`sha256("pi-desktop.device.v1:" + <machine id>)` as 64-character lowercase hex,
-never the machine code itself: the platform only needs to compare two requests
-for equality, so it has no use for the code, and a raw hardware identifier in a
-third-party request is a privacy downgrade the counting feature does not
-require. The fixed prefix domain-separates the value from every other hash the
-app computes, so a leaked digest cannot be matched against another digest of the
-same machine.
-
-When no machine identity is readable, host-core generates one random 64-hex id
-on first use and persists it under the application data directory
-(`plugins/market/device.json`), reusing it from then on. Either way the value is
-read once per process, is stable for an installation across restarts, is never
-shown in the UI, and is not a setting. It is a counting and rate-limit key, not
-an account.
+The resolve request carries a `deviceId` derived from the machine identity the
+operating system exposes, sent only as
+`sha256("pi-desktop.device.v1:" + <machine id>)` in 64-character lowercase hex:
+the platform only compares two requests for equality, so a raw hardware identifier
+in a third-party request would be a privacy downgrade with no functional gain, and
+the fixed prefix domain-separates the digest from every other hash the app
+computes. When no machine identity is readable, host-core generates one random id
+on first use and persists it at `plugins/market/device.json`. Either way the value
+is read once per process, stable across restarts, never shown in the UI, not a
+setting, and a counting and rate-limit key rather than an account.
 
 ### 4. Legacy catalog-source settings are ignored
 
-The legacy `github`, `mirror`, and `custom` settings no longer select a catalog.
-The platform may still return GitHub or CNB package mirrors for the official
-catalog; these use the platform's digest and the same download allowlist. The
-cache stays keyed by `sourceUrl`, so an older snapshot from another catalog is
-ignored rather than deleted; installed records are not rewritten.
+The legacy `github`, `mirror`, and `custom` values no longer select a catalog. The
+platform may still return GitHub or CNB package mirrors for the official catalog;
+those use its digest and the existing download allowlist. The cache stays keyed by
+`sourceUrl`, so an older snapshot from another catalog is ignored rather than
+deleted, and installed records are not rewritten.
 
 ### 5. Trust follows the official catalog
 
 `verified` renders as written only from the official catalog. A v1 catalog's
-boolean `verified` mapping is unchanged. Package mirrors returned by the
-official platform do not change the catalog's trust source.
+boolean `verified` mapping is unchanged, and platform-returned package mirrors do
+not change the trust source.
 
 ### 6. The download allowlist does not change
 
-The allowlist stays `github.com`, `githubusercontent.com`, `cnb.cool`, and the
-host that served the current catalog. The platform's resolve answers name
-mirrors on exactly those hosts today, so no entry is added. A mirror on any
-other host is refused like any other package URL: the next mirror is tried, and
-if every entry names such a host the install fails instead of widening the list.
-Moving a mirror outside the table is therefore a client-release dependency, not
-a platform-side change.
+The allowlist stays `github.com`, `githubusercontent.com`, `cnb.cool`, and the host
+that served the current catalog, which already covers every mirror the platform
+names. A mirror on any other host is refused like any other package URL and the
+next mirror is tried, so moving a mirror outside that set is a client-release
+dependency rather than a platform-side change.
 
-### 7. An install reports progress, and can be cancelled while it downloads
+### 7. An install reports progress and can be cancelled while it downloads
 
-An install or update is a single request, so a download that takes a minute is
-otherwise indistinguishable from a frozen window. Host-core therefore reports
-where the install is: `plugin.installProgress` carries `pluginId`, `version`,
-`phase` (`resolve`, `download`, `verify`, `install`, `enable`), the mirror in
-use (`source`) with its 1-based `attempt` / `attempts`, `receivedBytes` /
-`totalBytes` (`0` meaning the size is unknown), every mirror tried so far
-(`tried[]`, each `{ source, url, error }`), and `error` on the report that ends
-a failed install. Reports are throttled to at most one per 200 ms, plus one per
-phase change and the terminal report, so byte-level progress cannot flood the
-RPC channel or the interface.
-
-The report goes to the interface rather than only to the log. A log line helps
-an operator afterwards; the person waiting needs to see that the install moved
-on to the second mirror and how far it is. Progress is therefore
-observer-shaped, host-core emits it as a notification, and the RPC layer owns
-the throttle.
-
-`market.cancelInstall { id }` answers `{ cancelled, id }` and cancels only an
-install that is running right now, never a queued or finished one. Cancellation
-is honoured while bytes arrive, before each mirror is tried, and at the last
-safe point before the package is written, so only a download is actually
-interruptible: stopping after the package has been unpacked and the plugin's row
-is being written would leave the plugin directory and the registry in a state
-no later step can describe, which is worse than letting that step finish. A
-cancelled install fails with `PLUGIN_CANCELLED` (code 1019), and the dialog closes quietly instead of reporting an error.
-
-The dialog is for a manual install or update only; a background auto-update
-stays silent. It shows the phase, `mirror n/N · name`, a determinate bar, and a
-cancel button enabled only during `resolve` and `download`; success closes it
-about two seconds after the install finishes, failure keeps it open with the
-readable error, the mirrors that were tried with a copy action, and a retry
-action.
+`plugin.installProgress` carries `pluginId`, `version`, `phase` (`resolve`,
+`download`, `verify`, `install`, `enable`), the mirror in use as `source` with its
+1-based `attempt` and `attempts`, `receivedBytes` and `totalBytes` (`0` when the
+size is unknown), the mirrors tried so far in `tried[]` as
+`{ source, url, error }`, and `error` on the terminal report of a failure. Reports
+are throttled to a bounded rate plus one per phase change and the terminal report,
+so byte-level progress cannot flood the RPC channel. A manual install or update
+shows the phase, `mirror n/N · name`, a determinate bar, and a cancel button
+enabled only during `resolve` and `download`; a background auto-update stays
+silent. `market.cancelInstall { id }` answers `{ cancelled, id }` and cancels only
+an install running right now, honoured while bytes arrive, before each mirror is
+tried, and at the last safe point before the package is written, because stopping
+after unpacking would leave a state no later step can describe. A cancelled
+install fails with `PLUGIN_CANCELLED` and the dialog closes quietly.
 
 ## Consequences
 
-- The official channel gains per-mirror fallback, withdrawal and archive
-  signals, and download counting, and it acquires a dependency: an install asks
-  the platform. The catalog-URL fallback is the mitigation; users cannot select
-  another channel from the marketplace page.
-- Per-mirror digest verification becomes the reason a divergent mirror cannot
-  break an install. The measured CNB divergence (`pi.todo-0.6.5` at 92487 bytes
-  versus 92951) is exactly the case this absorbs.
-- A first third-party service now receives an installation-level identifier.
-  Only a digest is sent, the platform stores counts rather than identities, and
-  the privacy policy and the decisions log state it.
-- A resolve timeout is capped at three seconds. `429` no longer waits for
-  `Retry-After`; timeout, rate-limit, and no-source responses use the checked
-  catalog package URL. A batch update still makes one resolve call per plugin,
-  not one per mirror.
-- An install is no longer opaque: the interface sees the phase, the mirror being
-  tried, and the byte count, and a user can stop a download without leaving a
-  half-installed plugin. The cost is progress notifications on the RPC channel,
-  bounded by the 200 ms throttle and the per-phase reports.
-- No `.piplug` or manifest change, no catalog v1/v2 parsing change, no
-  permission-review change, and no storage schema change. Legacy persisted
-  source values are retained but ignored; approved package mirror hosts and
-  integrity checks remain unchanged.
-- Still open, deliberately: signature verification (optional as before) and the
-  center's own byte route, which stays the marketplace page and console path.
+- The official channel gains per-mirror fallback, withdrawal and archive signals,
+  and download counting, at the cost of a platform dependency that the catalog-URL
+  fallback mitigates.
+- Per-mirror digest verification absorbs a divergent mirror without failing the
+  install, and a first third-party service now receives an installation-level
+  digest, never an identity.
+- No manifest, catalog parsing, permission-review, or storage-schema change;
+  legacy source values are retained but ignored.
 
 ## Rejected alternatives
 
-- **Keep resolving the catalog's declared base on the client only.** The catalog
-  is a static file, so it cannot say which mirrors currently serve a version, it
-  cannot refuse an archived or unpublished plugin, and it is the same list for
-  every install. The client would also keep trusting a publisher-influenced base
-  without any per-mirror signal, and the platform would lose the counting and
-  rate-limit identity its contract depends on.
-- **Send a per-request identifier.** The platform counts one download per
-  device, version, and day and rate-limits per device, so a value that changes
-  per call counts every call as a new installation and degrades the limiter to
-  the source address. The requirement is stability.
-- **Send the raw machine code, or hash it without a prefix.** The platform only
-  compares values, so shipping the code itself would hand a third party a
-  reusable hardware identifier for no functional gain, and an unprefixed digest
-  could be correlated with other digests of the same machine.
-- **Expose the identifier in Settings (show or reset it).** It answers no user
-  question, it invites treating a counting key as an account, and a reset button
-  would silently let one machine inflate the platform's counters. The fallback
-  file is documented instead.
-- **An automatic fallback between channels.** A channel switch changes which
-  catalog, versions, trust verdicts, and bytes the user sees, so doing it
-  silently would attribute an install to a source the user did not choose. The
-  only automatic fallback stays inside the official channel, to the catalog URL
-  that channel served, and it is not counted.
-- **Cache the resolve answer.** The platform marks it `no-store` because mirrors
-  and availability change; a cached answer would pin a dead mirror and could
-  serve a version the platform has since withdrawn.
+- Resolve from the catalog's declared base only: a static file cannot say which
+  mirrors serve a version or refuse a withdrawn plugin.
+- A per-request identifier: counting per device needs stability, or the limiter
+  degrades to the source address.
+- Exposing the identifier in Settings: it answers no user question and invites
+  treating a counting key as an account.

@@ -47,12 +47,10 @@ test("totalRunningProjects counts groups with live work, not sessions", () => {
 });
 
 test("affordances default off so a fresh install shows a clean sidebar", () => {
-  assert.deepEqual(resolveSidebarRunningAffordances(undefined), {
-    badge: false,
-    rail: false,
-  });
-  assert.deepEqual(resolveSidebarRunningAffordances({}), { badge: false, rail: false });
-  assert.deepEqual(resolveSidebarRunningAffordances(null), { badge: false, rail: false });
+  const off = { badge: false, rail: false, railCount: false };
+  assert.deepEqual(resolveSidebarRunningAffordances(undefined), off);
+  assert.deepEqual(resolveSidebarRunningAffordances({}), off);
+  assert.deepEqual(resolveSidebarRunningAffordances(null), off);
 });
 
 test("the master switch gates both sub-switches", () => {
@@ -63,7 +61,7 @@ test("the master switch gates both sub-switches", () => {
       sidebarRunningBadge: true,
       sidebarRunningRail: true,
     }),
-    { badge: false, rail: false },
+    { badge: false, rail: false, railCount: false },
   );
   // Master off by absence (default), sub-switches on: still off.
   assert.deepEqual(
@@ -71,7 +69,7 @@ test("the master switch gates both sub-switches", () => {
       sidebarRunningBadge: true,
       sidebarRunningRail: true,
     }),
-    { badge: false, rail: false },
+    { badge: false, rail: false, railCount: false },
   );
 });
 
@@ -82,7 +80,7 @@ test("each sub-switch turns off independently while the master stays on", () => 
       sidebarRunningBadge: false,
       sidebarRunningRail: true,
     }),
-    { badge: false, rail: true },
+    { badge: false, rail: true, railCount: true },
   );
   assert.deepEqual(
     resolveSidebarRunningAffordances({
@@ -90,7 +88,30 @@ test("each sub-switch turns off independently while the master stays on", () => 
       sidebarRunningBadge: true,
       sidebarRunningRail: false,
     }),
-    { badge: true, rail: false },
+    { badge: true, rail: false, railCount: false },
+  );
+});
+
+test("both sub-switches on leave a single set of numbers", () => {
+  // The reported duplicate: badge and rail both on printed the same running
+  // count twice, side by side, because the rail's figures are the badge's
+  // stand-in rather than an addition to it.
+  assert.deepEqual(
+    resolveSidebarRunningAffordances({
+      sidebarRunningIndicators: true,
+      sidebarRunningBadge: true,
+      sidebarRunningRail: true,
+    }),
+    { badge: true, rail: true, railCount: false },
+  );
+  // The rail is on without the badge: its figures carry the count instead.
+  assert.deepEqual(
+    resolveSidebarRunningAffordances({
+      sidebarRunningIndicators: true,
+      sidebarRunningBadge: false,
+      sidebarRunningRail: true,
+    }),
+    { badge: false, rail: true, railCount: true },
   );
 });
 
@@ -110,6 +131,10 @@ test("the sidebar renders both affordances from the resolved switches", async ()
   assert.match(sidebar, /showRunBadge \? <ProjectRunBadge summary=\{runSummary\} \/>/);
   assert.match(sidebar, /showRunRail \? <ProjectRunRail summary=\{runSummary\} \/>/);
   assert.match(sidebar, /\{entry\.name\}<\/span>[\s\S]{0,220}ProjectRunBadge/);
+  // The rail's count is the badge's stand-in, so the header must gate it on the
+  // exclusive flag instead of the rail switch.
+  assert.match(sidebar, /showRunCount \? <ProjectRunCount summary=\{runSummary\} \/>/);
+  assert.doesNotMatch(sidebar, /showRunRail \? <ProjectRunCount/);
 });
 
 test("remote project groups carry the same affordances", async () => {
@@ -120,6 +145,8 @@ test("remote project groups carry the same affordances", async () => {
   assert.match(remote, /summarizeProjectRuns\(sessions, runningSessions, pendingPermissions\)/);
   assert.match(remote, /showRunRail \? <ProjectRunRail summary=\{runSummary\} \/>/);
   assert.match(remote, /showRunBadge \? <ProjectRunBadge summary=\{runSummary\} \/>/);
+  assert.match(remote, /showRunCount \? <ProjectRunCount summary=\{runSummary\} \/>/);
+  assert.doesNotMatch(remote, /showRunRail \? <ProjectRunCount/);
 });
 
 test("both affordance colours resolve through theme tokens", async () => {

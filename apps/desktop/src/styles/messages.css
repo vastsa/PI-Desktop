@@ -917,6 +917,14 @@
   text-align: left;
 }
 
+/* Keep the explicit outside-workspace prefix before the filename, even when
+   the normal path row uses RTL to preserve its basename on overflow. */
+.review-change-card-path[data-outside-path],
+.turn-changes-path[data-outside-path] {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .review-change-card-header:hover .review-change-card-path {
   color: var(--ds-text-primary);
 }
@@ -1563,6 +1571,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+.turn-usage-cost-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.turn-usage-cost-help {
+  margin: 4px 0 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .turn-usage-capsule,
   .turn-usage-popover {
@@ -2105,6 +2125,13 @@
    `--ds-tile` card belongs only to `.tool-activity-group.has-subagents`
    (D319) and the nested `.subagent-run`. */
 
+.message-output-notice {
+  margin: 12px 0 0;
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
 .message-error {
   /* The message column owns the dynamic chat width; do not add a second cap. */
   width: 100%;
@@ -2340,30 +2367,12 @@
 }
 
 /*
- * Issue counts are inline metadata in an activity-group header, never a second
- * line of the row. The icon and its localized count stay on one centered line
- * and truncate together when the band runs out of width.
+ * The operation count beside a group label never truncates: the composition
+ * phrase ellipsizes first, because "12 次操作" is the part that has to survive a
+ * narrow band (see `.tool-activity-label`).
  */
-.activity-issue-count {
-  display: inline-flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  color: var(--ds-error);
-  font-size: var(--text-xs-plus);
-  white-space: nowrap;
-}
-
-.activity-issue-count > svg {
+.tool-activity-count.tool-activity-ops {
   flex: none;
-}
-
-.activity-issue-count > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The caret closes the row, so a short label keeps it at the trailing edge. */
@@ -2465,6 +2474,7 @@
 /* Nodes are raised tiles on the group's tile; connectors are tinted 2px bars
    rather than hairlines, and the dotted canvas is gone (D297). */
 .subagent-topology {
+  --subagent-node-gap: 10px;
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(138px, 0.58fr) 34px minmax(248px, 1.42fr);
@@ -2532,19 +2542,8 @@
   position: relative;
   display: grid;
   min-width: 0;
-  gap: 10px;
+  gap: var(--subagent-node-gap);
   padding-left: 14px;
-}
-
-.subagent-topology-agents::before {
-  position: absolute;
-  top: 36px;
-  bottom: 36px;
-  left: 0;
-  width: 2px;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile-deep);
-  content: "";
 }
 
 .subagent-topology-node {
@@ -2558,12 +2557,35 @@
 
 .subagent-topology-node::before {
   position: absolute;
-  top: 35px;
+  top: calc(50% - 1px);
   right: 100%;
-  width: 15px;
+  width: 14px;
   height: 2px;
   background: var(--ds-tile-deep);
   content: "";
+}
+
+.subagent-topology-agents > .subagent-topology-node {
+  margin: 0;
+}
+
+/* Each card contributes a stem segment; only the outer ends stop at centers. */
+.subagent-topology-node::after {
+  position: absolute;
+  top: calc(var(--subagent-node-gap) / -2);
+  bottom: calc(var(--subagent-node-gap) / -2);
+  left: -14px;
+  width: 2px;
+  background: var(--ds-tile-deep);
+  content: "";
+}
+
+.subagent-topology-node:first-child::after {
+  top: 50%;
+}
+
+.subagent-topology-node:last-child::after {
+  bottom: 50%;
 }
 
 .subagent-stop-button {
@@ -2815,17 +2837,15 @@
   .subagent-topology-connector {
     width: 2px;
     height: 18px;
-    margin-left: 28px;
+    margin-left: 14px;
   }
 
   .subagent-topology-agents {
     padding-left: 28px;
   }
 
-  .subagent-topology-agents::before {
+  .subagent-topology-node:first-child::after {
     top: 0;
-    bottom: 36px;
-    left: 14px;
   }
 
   .subagent-topology-node::before {
@@ -3899,3 +3919,11 @@
     opacity: 0.7;
   }
 }
+
+/* File-type identity is shared by native Review and the transcript summary. */
+.review-file-type { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 14px; width: 14px; height: 14px; color: var(--ds-text-muted); }
+.review-file-type > svg { display: block; width: 14px; height: 14px; }
+.review-file-type.is-markdown { color: var(--ds-success); }
+.review-file-type.is-json { color: var(--ds-warning); }
+.review-file-type.is-code, .review-file-type.is-python { color: var(--ds-text-secondary); }
+.turn-changes-row[data-rolled-back] .review-file-type { color: var(--ds-text-faint); }

@@ -17,13 +17,13 @@ const tokensSource = await readFile(
 const styles = await loadStyles();
 
 test("Appearance card renders a font-size row after the font family picker", () => {
-  const generalStart = settingsPageSource.indexOf(
-    '{tab === "general" && settings && (',
-  );
-  const aiStart = settingsPageSource.indexOf('{tab === "ai" && settings && (');
-  const generalSource = settingsPageSource.slice(generalStart, aiStart);
-  const fontFamily = generalSource.indexOf("<FontFamilyRow ");
-  const fontSize = generalSource.indexOf("<FontSizeRow ");
+  const marker = "/* features/settings/pages/AppearanceSettings.tsx */";
+  const start = settingsPageSource.indexOf(marker);
+  assert.ok(start >= 0, "the Appearance destination is part of the contract");
+  const next = settingsPageSource.indexOf("\n/* features/settings/", start + marker.length);
+  const appearanceSource = settingsPageSource.slice(start, next === -1 ? undefined : next);
+  const fontFamily = appearanceSource.indexOf("<FontFamilyRow ");
+  const fontSize = appearanceSource.indexOf("<FontSizeRow ");
   assert.ok(fontFamily >= 0);
   assert.ok(fontSize > fontFamily);
 });

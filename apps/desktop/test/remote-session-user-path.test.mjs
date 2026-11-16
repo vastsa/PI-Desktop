@@ -196,7 +196,7 @@ function transcriptReader(initial, read) {
     visible: () => transcriptViewMessages(state.messages, state.transcriptViews[id]) };
 }
 
-test("shared transcript reader pages real remote history and returns to the live latest window", async () => {
+test("shared transcript reader retains real remote history when returning to the live latest window", async () => {
   const f = fixture();
   const original = f.client.request.bind(f.client);
   f.client.request = async (method, params) => {
@@ -213,17 +213,47 @@ test("shared transcript reader pages real remote history and returns to the live
   const live = r.get().messages;
   await r.loadTranscriptPage(id, "before");
   assert.deepEqual(r.visible().map((message) => message.id), ["m1", "m2"]);
+  const firstPage = r.get().transcriptViews[id];
+  r.returnToLatestTranscript(id);
+  assert.equal(r.get().transcriptViews[id].messages, firstPage.messages);
+  assert.equal(r.get().transcriptViews[id].messageStart, firstPage.messageStart);
+  assert.equal(r.get().messages, live, "retained history never becomes model input");
   await r.loadTranscriptPage(id, "before");
   assert.deepEqual(r.visible().map((message) => message.id), ["m0", "m1", "m2"]);
   assert.equal(r.get().transcriptViews[id].hasMoreBefore, false);
   assert.equal(r.get().messages, live, "history reads do not replace live/model input");
   assert.deepEqual(f.calls.filter((call) => call.method === "session/history").map((call) => call.params.beforeItemId), ["m2", "m1"]);
   r.returnToLatestTranscript(id);
-  assert.equal(r.get().transcriptViews[id], undefined);
-  assert.equal(r.visible(), live);
+  assert.deepEqual(r.visible().map((message) => message.id), ["m0", "m1", "m2"]);
+  assert.equal(r.get().transcriptViews[id].messageStart, 0);
+  assert.equal(r.get().transcriptViews[id].hasMoreBefore, false);
+  assert.equal(r.get().messages, live);
   await r.loadTranscriptPage(id, "before");
-  assert.equal(f.calls.filter((call) => call.method === "session/history").at(-1).params.beforeItemId, "m2");
+  assert.deepEqual(f.calls.filter((call) => call.method === "session/history").map((call) => call.params.beforeItemId),
+    ["m2", "m1"], "latest arrival must not reread already loaded pages");
 });
+
+for (const gap of [true, false]) {
+  test(`remote latest excludes ${gap ? "an unread historical gap" : "a disjoint historical range"}`, async () => {
+    const id = "remote:h1:s1";
+    const live = [{ id: "tail", role: "assistant", content: "latest" }];
+    const old = { id: "old", role: "assistant", content: "needle" };
+    const initial = { id, messages: live, messageStart: 100, hasMoreBefore: true };
+    const r = transcriptReader(initial, async (sessionId, options) => {
+      assert.equal(sessionId, id);
+      assert.equal(options.messageAround, old.id);
+      return { session: { ...initial, messages: gap ? [old, ...live] : [old],
+        messageStart: 10, hasMoreAfter: gap } };
+    });
+    await r.navigateTranscript({ sessionId: id, messageId: old.id, query: "needle" });
+    assert.equal(r.get().transcriptViews[id].focus.messageId, old.id);
+    assert.equal(r.get().transcriptViews[id].hasMoreAfter, gap);
+    assert.equal(r.get().messages, live);
+    r.returnToLatestTranscript(id);
+    assert.equal(r.get().transcriptViews[id], undefined);
+    assert.equal(r.visible(), live, "latest must not join across a historical gap");
+  });
+}
 
 test("remote reading preserves opaque cursor identity without sorting or forward arithmetic", async () => {
   const id = "remote:h1:s1";

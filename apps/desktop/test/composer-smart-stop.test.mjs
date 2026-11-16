@@ -60,3 +60,17 @@ test("legacy sends without a snapshot keep the text-only fallback", () => {
     draft: { text: "plain prompt", fileReferences: [] },
   });
 });
+
+test("a stop without a local snapshot restores the typed form of a rewritten prompt", () => {
+  // An `@agent` (or template / Skill) turn stores the model instruction in
+  // `content`; the composer must get back what the user typed.
+  const sent = {
+    role: "user",
+    content: "The user explicitly delegated this request with @mentions. Call the `Task` tool…\n\n@explorer find it",
+    command: "@explorer find it",
+  };
+  const result = resolveComposerSmartStop([sent]);
+  assert.equal(result.kind, "restore");
+  assert.equal(result.draft.text, "@explorer find it");
+  assert.equal(resolveComposerSmartStop([message("user", "plain")]).draft.text, "plain");
+});

@@ -207,7 +207,7 @@ test("deterministic replacement sequences match grouping after each update", () 
   }
 });
 
-test("a saturated minimap preview ignores later huge fragments but keeps user boundaries", () => {
+test("the minimap never reads assistant bodies and marks only user messages", () => {
   let reads = 0;
   const later = message("later", "assistant", "");
   Object.defineProperty(later, "content", { get() { reads++; return "x".repeat(100_000); } });
@@ -217,5 +217,5 @@ test("a saturated minimap preview ignores later huge fragments but keeps user bo
     message("u2", "user", "Next"), message("a2", "assistant", "Second answer"),
   ]);
   assert.equal(reads, 0);
-  assert.deepEqual(markers.map(({ id }) => id), ["u", "first", "u2", "a2"]);
+  assert.deepEqual(markers.map(({ id }) => id), ["u", "u2"]);
 });

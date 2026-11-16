@@ -33,6 +33,11 @@ target session's current model and permission policy.
   read for classification; changing target changes the eligible session.
   When disabled, no prior session messages are read. Context consent grants no
   execution authority and is not persisted.
+- A work request may reach the `Computer` tool, but only as the target session's
+  own Agent turn and only inside a scope grant the user already minted in the
+  desktop UI. A spoken request can ask for a grant and never mint one, cannot
+  choose or widen the target, and is refused outright in Plan and Goal
+  ([Computer Use](computer-use.md)).
 
 ## Candidate and routing flow
 

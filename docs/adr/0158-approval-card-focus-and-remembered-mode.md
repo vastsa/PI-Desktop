@@ -2,57 +2,37 @@
 
 - Status: Accepted for implementation
 - Date: 2026-08-12
-- Deciders: PI-Desktop core
 - Amends: D189 · ADR 0053
 - Related: D215 · E2E-106
 
 ## Context
 
-The Plan/Goal approval card duplicated the submitted question, status, and
-deadline alongside the artifact opener. The approval mode also reset to Ask for
-every proposal, even when the user had just chosen a different mode.
-
-Plan artifact filenames were title-derived for ASCII titles but fell back to a
-generic `plan`/`goal` stem for non-ASCII titles, making localized workspaces
-harder to scan.
+The Plan/Goal approval card repeated the question, status, and deadline beside
+the artifact opener, reset the approval mode to Ask for every proposal, and
+derived artifact filenames fell back to a generic `plan`/`goal` stem for
+non-ASCII titles.
 
 ## Decision
 
-1. The pending approval card renders only the proposal title, the host-created
-   artifact path/open action, Reject, and the Approve split-button. Question or
-   description text, status, validity/deadline, and inline safety warning are
-   not card content.
-2. Selecting Ask, Accept edits, or Auto stores that choice in renderer-local
-   device preferences. Each later approval uses the stored choice as its
-   default; Ask remains the fallback when storage is unavailable or invalid.
-3. Host-generated artifact filenames preserve alphanumeric Unicode title
-   characters, normalize separators to hyphens, and retain the timestamp and
-   collision suffix. Path validation continues to accept only the generated
-   safe filename shape under `.pi/<kind>/`.
-4. The existing host approval deadline remains an internal compatibility and
-   fail-closed boundary; it is no longer exposed as an approval-card concept.
+The pending card renders only the proposal title, the host-created artifact path
+and open action, Reject, and the Approve split-button. Choosing Ask, Accept
+edits, or Auto stores that choice in renderer-local device preferences as the
+default for later approvals, with Ask as the fallback when storage is unavailable
+or invalid, and generated filenames keep alphanumeric Unicode title characters,
+normalize separators to hyphens, and retain the timestamp and collision suffix
+under `.pi/<kind>/`. The host approval deadline stays an internal fail-closed
+boundary rather than card content.
 
 ## Consequences
 
-- The card is compact and keeps attention on the decision and the reviewable
-  artifact.
-- Users who routinely approve with Auto or Accept edits do not repeat that
-  selection for every proposal on the same device.
-- Localized titles produce recognizable artifact names while preserving unique,
-  host-owned immutable files.
-- The wire/storage contract remains compatible; legacy deadline data is not
-  presented by the renderer.
+- The card stays compact and keeps attention on the decision and the artifact.
+- Auto and Accept edits users do not reselect a mode per proposal on a device.
+- Localized titles yield recognizable names while files stay host-owned; the
+  wire and storage contract is unchanged.
 
 ## Alternatives considered
 
-### Persist the choice in the host settings table
-
-Rejected for this change. The choice is a renderer UI preference, and adding it
-to host settings would expand the protocol and settings ownership boundary for
-no additional approval safety.
-
-### Keep the question and deadline in a collapsed card section
-
-Rejected. The requested approval surface is intentionally limited to title,
-artifact review, and the two decisions; the full Markdown remains available by
-opening the host-created file.
+- Persist the mode in host settings: rejected; it is a renderer preference and
+  would widen the protocol boundary.
+- Keep a collapsed question and deadline section: rejected; the full Markdown is
+  reachable through the host-created file.

@@ -104,12 +104,12 @@ function bindingContextWindow(
     : undefined;
 }
 
-export function resolveContextWindow(
+export function resolveKnownContextWindow(
   providerId: string | undefined,
   modelId: string | undefined,
   providerModels: Record<string, ModelInfo[]>,
   providers: ProviderPublic[],
-): number {
+): number | undefined {
   const provider = providers.find((candidate) => candidate.id === providerId);
   const catalogModel = modelId
     ? providerId
@@ -131,7 +131,16 @@ export function resolveContextWindow(
   const providerWindow = !modelId || !provider?.models?.length
     ? providerContextWindow(provider)
     : undefined;
-  return providerWindow ?? DEFAULT_CONTEXT_WINDOW;
+  return providerWindow;
+}
+
+export function resolveContextWindow(
+  providerId: string | undefined,
+  modelId: string | undefined,
+  providerModels: Record<string, ModelInfo[]>,
+  providers: ProviderPublic[],
+): number {
+  return resolveKnownContextWindow(providerId, modelId, providerModels, providers) ?? DEFAULT_CONTEXT_WINDOW;
 }
 
 export type ContextUsage = {

@@ -6,11 +6,11 @@ import {
   getCurrentSystemPrompt,
   getCurrentTools,
   toToolDeclaration,
-  Type,
   type AssistantMessage,
   type SystemMessage,
   type Tool,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { convertToLlm } from "./pi-runtime-messages.js";
 import {

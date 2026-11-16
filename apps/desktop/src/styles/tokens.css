@@ -211,6 +211,12 @@
   --motion-duration-fast: 150ms;
   --motion-duration-normal: 200ms;
   --motion-duration-slow: 300ms;
+  /* The one duration outside the ramp above (D679): the boot animation's
+     reveal is the end of a cinematic, not a control answering a click, so it
+     is sized in that register instead of the in-flow feedback register. It is
+     used only by .startup-animation and must stay matched to
+     STARTUP_ANIMATION_REVEAL_MS in @pi-desktop/shared. */
+  --motion-startup-reveal: 1000ms;
   --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);

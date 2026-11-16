@@ -1341,6 +1341,13 @@ export function Sidebar({
 
   const deleteSession = async (session: SessionSummary) => {
     closeMenus();
+    // Same pre-check as the project-move entry: deleting a running session
+    // cascades its live rows away, so the row menu stops here with a
+    // translated notice and the main-side guard remains the race backstop.
+    if (runningSessions[session.id]) {
+      showToast(t("nav.deleteRunningSessionBlocked"), { variant: "warning" });
+      return;
+    }
     const wasActive = activeSessionId === session.id;
     const sameScope = session.projectPath
       ? projectEntries.find(
@@ -1394,6 +1401,10 @@ export function Sidebar({
       (s) => ids.includes(s.id) && s.source !== "pi-native",
     );
     for (const session of toDelete) {
+      if (runningSessions[session.id]) {
+        showToast(t("nav.deleteRunningSessionBlocked"), { variant: "warning" });
+        continue;
+      }
       try {
         await deleteSessionAction(session.id);
       } catch (error) {
@@ -2284,6 +2295,9 @@ export function Sidebar({
     const runIsLive = projectRunSummaryIsLive(runSummary);
     const showRunBadge = runningAffordances.badge && runIsLive;
     const showRunRail = runningAffordances.rail && runIsLive;
+    // Counts belong to one affordance only: the rail's figures stand in for
+    // the badge when it is switched off, so both on never prints them twice.
+    const showRunCount = runningAffordances.railCount && runIsLive;
 
     const renderProjectSessions = (sessions: SessionSummary[]) => {
       const result: React.ReactNode[] = [
@@ -2404,7 +2418,7 @@ export function Sidebar({
             )}
             <span>{entry.name}</span>
             {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
-            {showRunRail ? <ProjectRunCount summary={runSummary} /> : null}
+            {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
           </TooltipButton>
           <span id={`${projectId}-path-description`} className="sr-only">
@@ -2775,17 +2789,19 @@ export function Sidebar({
             >
               <IconPlug size={14} aria-hidden />
             </TooltipButton>
-            <TooltipButton
-              type="button"
-              className={`footer-action ${page === "scheduled" ? "active" : ""}`}
-              data-nav="scheduled"
-              tooltip={t("scheduled.title")}
-              ariaLabel={t("scheduled.title")}
-              onClick={() => setPage("scheduled")}
-              aria-pressed={page === "scheduled"}
-            >
-              <IconClock size={14} aria-hidden />
-            </TooltipButton>
+            {settings?.scheduledTasksEnabled !== false && (
+              <TooltipButton
+                type="button"
+                className={`footer-action ${page === "scheduled" ? "active" : ""}`}
+                data-nav="scheduled"
+                tooltip={t("scheduled.title")}
+                ariaLabel={t("scheduled.title")}
+                onClick={() => setPage("scheduled")}
+                aria-pressed={page === "scheduled"}
+              >
+                <IconClock size={14} aria-hidden />
+              </TooltipButton>
+            )}
             <NotificationCenter onBeforeOpen={() => closeMenus(false)} />
           </div>
 

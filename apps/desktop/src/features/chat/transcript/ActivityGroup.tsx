@@ -56,6 +56,10 @@ import {
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { useAppStore } from "../../../stores/app-store";
 import { resolveShowThinking } from "../../../lib/thinking-visibility";
+import {
+  resolveAutoCollapseSettledGroups,
+  resolveAutoCollapseThinking,
+} from "../../../lib/transcript-folding";
 import { resolveTranscriptDisplayMode } from "../../../lib/transcript-display-mode";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -116,6 +120,8 @@ export function runActivityLabel(
       return t("chat.waitingForModel");
     case "preparing":
       return t("chat.preparingNextRequest");
+    case "waiting-tool-stop":
+      return t("chat.waitingForToolStop");
     case "compacting":
       return t("chat.compactingContext");
     case "recovering":
@@ -208,6 +214,8 @@ export const ActivityGroup = memo(function ActivityGroup({
   const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
   const hideThinking = !showThinking;
   const displayMode = useAppStore((state) => resolveTranscriptDisplayMode(state.settings));
+  const collapseSettledGroups = useAppStore((state) => resolveAutoCollapseSettledGroups(state.settings));
+  const collapseThinking = useAppStore((state) => resolveAutoCollapseThinking(state.settings));
   const { t } = useTranslation();
   const detailsId = useId();
   const rawDelegateItems = useMemo(() => items.filter(isDelegationActivityItem), [items]);
@@ -245,13 +253,17 @@ export const ActivityGroup = memo(function ActivityGroup({
   const visibleItems = useMemo(() => cachedVisibleActivityItems(items, hideThinking, isActive), [items, hideThinking, isActive]);
   const first = items[0];
   // Groups frame their rows; each tool or search payload keeps its own
-  // disclosure, so leaving a small group open does not reveal tool details.
-  // Work the turn still owns and reasoning the reader asked to see stay open;
-  // only a settled group of plain tool rows falls back to the size rule.
-  const automaticallyOpen = activityGroupStartsOpen(visibleItems, {
-    subagentTopology: hasSubagentTopology,
+  // disclosure, so leaving a group open never reveals tool details.
+  //
+  // Live work stays visible; everything settled follows the reader's
+  // `autoCollapseSettledGroups` preference. A group no longer inherits "open"
+  // from the reasoning it contains - the group and its Thinking rows answer to
+  // their own switch, and the group's header states what it holds, so folding it
+  // hides no detail the reader needs to expand the group to discover.
+  const automaticallyOpen = activityGroupStartsOpen({
     turnActive,
     groupActive: live,
+    collapseSettled: collapseSettledGroups,
   });
   const disclosure = useAutomaticDisclosure(
     automaticallyOpen,
@@ -332,6 +344,7 @@ export const ActivityGroup = memo(function ActivityGroup({
     delegateItems={delegateItems}
     delegationStatuses={delegationStatuses}
     delegationTimings={delegationTimings}
+    collapseThinking={collapseThinking}
     onUserInteraction={claimDisclosure}
   />;
 

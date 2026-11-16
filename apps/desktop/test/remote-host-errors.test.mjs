@@ -21,6 +21,17 @@ test("remoteHostErrorKey falls back to the generic message for an unmapped code"
   assert.equal(remoteHostErrorKey(error), "remote:operationFailed");
 });
 
+test("only an explicit unpublished macOS target gets the platform explanation", () => {
+  for (const target of ["darwin-x64", "darwin-arm64"]) {
+    assert.equal(remoteHostErrorKey({ code: "HOST_BOOTSTRAP_FAILED", details: { target } }), "remote:hostPlatformUnsupported");
+  }
+  for (const target of ["linux-x64", "unknown", null]) {
+    assert.equal(remoteHostErrorKey({ code: "HOST_BOOTSTRAP_FAILED", details: { target } }), "remote:hostBootstrapFailed");
+  }
+  assert.match(remoteEn.hostPlatformUnsupported, /Linux/);
+  assert.match(remoteZh.hostPlatformUnsupported, /macOS/);
+});
+
 test("hostBootstrapFailed has an English and Chinese translation distinct from the generic fallback", () => {
   assert.equal(typeof remoteEn.hostBootstrapFailed, "string");
   assert.equal(typeof remoteZh.hostBootstrapFailed, "string");

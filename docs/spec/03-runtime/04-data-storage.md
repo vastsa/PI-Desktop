@@ -1,4 +1,24 @@
-# 04. Data Storage (Schema v27)
+# 04. Data Storage (Schema v32)
+
+### Project path aliases (#2148)
+
+The v27-to-v28 upgrade creates a verified database backup and atomically merges
+case/separator spellings that native filesystem resolution identifies as the
+same local directory. Prefer a row with sessions, then the latest last-opened
+time and lowest id. Rebind every session and schedule before deleting duplicate
+rows; retain pinned state, the earliest creation and latest opening timestamps,
+and update the current project id. Transcript files are never rewritten or
+deleted by this repair. Original path-keyed memory records remain intact; a
+missing canonical memory record inherits the preferred row's value.
+
+Upsert, listing and removal repeat this reconciliation for directories that
+become available after startup. Missing directories retain their normalized
+spelling until resolution proves an alias. Do not lowercase all Windows/macOS
+paths: case-sensitive directories/volumes remain distinct, remote project ids
+are opaque, and a retargeted symlink must not redirect stored ownership.
+After reconciliation, removal prefers an exact stored path before filesystem
+canonicalization. Existing busy checks and permanent-deletion confirmation apply
+to the resulting unified project and all of its sessions.
 
 
 ### Lossless tool-image storage (#1868)
@@ -90,7 +110,7 @@ or transcript format change is required.
 
 ### User-selected storage location (issue #1213)
 
-Settings → General → Storage can select an empty directory on a different
+Settings → System → Storage can select an empty directory on a different
 volume. A selected directory contains `data/` (the complete host/application
 profile) and `browser/` (Chromium default and persistent plugin/browser session
 state). The existing default directories remain unchanged until the user
@@ -250,7 +270,8 @@ This does not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
-Successful workspace `Write`/`Edit` tool results carry the bounded
+Successful authorized `Write`/`Edit` tool results, including scratch,
+visualization and approved external paths, carry the bounded
 `details.review` record described in [03-tools-and-permissions](03-tools-and-permissions.md).
 The transcript JSONL is the durable index for the visible card; the previous
 bytes and hashes live outside the workspace in
@@ -413,7 +434,9 @@ Rules:
   message. When the bound model requires DeepSeek-style reasoning replay,
   `details.retainedReasoning` may hold a bounded list of prior thinking turns
   (text + thinking only) so post-compaction Completions requests can echo
-  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). If the active message crossed the retention limit it is stored in
+  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). Only
+  completed turns are harvested: an `error`, `aborted`, or `deferred` assistant
+  is left out, as it is from the rebuilt context. If the active message crossed the retention limit it is stored in
   marked, truncated form; the original message lines stay complete and
   authoritative for UI/diagnostics. An automatic compaction failure may store
   `details.fallback = "retained_tail"` and a short recovery summary instead of
@@ -513,11 +536,22 @@ plugin's private data directory; the host settings schema does not change.
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
 
+#### Renderer review display preference
+
+The native Review context-line choice is stored as `1`, `3` or `5` under
+renderer localStorage key `pi.desktop.reviewContextLines`. It is shared across
+conversations and projects in the same application profile, survives panel and
+application reopening, and is not synchronized across devices. Missing, invalid
+or unreadable values fall back to 3; failed writes do not block the current
+view. Reading the preference does not rewrite storage. This presentation-only
+key does not change database schemas, transcript evidence or saved context hunks.
+
 #### Renderer sidebar preferences (D093)
 
-Sidebar organization is non-authoritative presentation state stored
-best-effort under renderer localStorage key
-`pi.desktop.sidebarPreferences`:
+Sidebar organization is non-authoritative presentation state. Main keeps an
+atomic `sidebar-preferences.json` backup in the selected app data root;
+renderer localStorage key `pi.desktop.sidebarPreferences` supplies first paint.
+See [sidebar layout recovery](../../adr/sidebar-layout-recovery.md).
 
 ```ts
 type SidebarPreferences = {
@@ -549,9 +583,16 @@ type SidebarPreferences = {
   Missing or invalid values fall back to stable path order; pinned and archived
   priority remains applied before manual order. Session `manual`/`order` remain
   compatibility fields and are not exposed by the sidebar.
-- Missing, malformed, or unwritable preferences fall back to empty metadata,
-  `recent`, archived hidden, and the host-selected project. Preference failure
-  never blocks a host operation.
+- Restore the application backup before bootstrap persists the selected Project.
+  Without a backup, migrate a valid legacy cache, including an explicitly empty
+  tab list. Only if neither copy is valid, recover registered Projects from
+  `projects.list`. Existing valid layouts never reopen intentionally closed tabs.
+- An unreadable backup must not be replaced with empty startup state; a failed
+  catalog read must not persist an empty recovery result. Writes are limited to
+  2 MiB, flushed and atomically renamed through dedicated trusted-Main-frame IPC.
+  Project/Session/Workspace authority remains with Rust. Offline storage
+  relocation remaps internal retained paths and Project metadata keys while
+  preserving external Projects and display labels.
 - The record never contains transcript content, tool arguments, provider
   configuration, or secrets. Clearing it changes presentation only.
 - `openProjectPaths` retains sidebar tabs. The selected workspace remains
@@ -1591,6 +1632,11 @@ prefix length those offsets describe. Serving a window seeks to its first
 selected line instead of parsing the history in front of it, so the common
 cached read is proportional to the requested page. Consequences:
 
+- A bounded tail page includes checkpoints appended after its last message,
+  so reopening a just-compacted session returns the newest checkpoint and its
+  context estimate. Middle pages retain the active checkpoint and only those
+  within their message offsets; they do not load the complete chain (#2163).
+
 - The layout is derived data, cached in memory and, when reliable file identity
   is available, in the sibling `<sessionId>.jsonl.layout` file. Unix uses the
   device and inode; Windows uses the volume serial number and file ID. If the
@@ -1937,6 +1983,12 @@ and host error, so one unclassifiable head cannot starve every session's writes
 (D656). A restarted host is a new generation and retries the head at once.
 Quarantined appends are never replayed automatically, and `session.delete`
 drops that session's quarantined appends too.
+Every outbox and dead-letter snapshot, including an empty array, is written
+to its sibling temporary file before replacing the committed file by rename.
+Interrupted writes leave the previous committed snapshot readable; a failed
+replacement rejects the persistence operation instead of reporting success.
+This prevents process termination during clearing from truncating recovery
+files. Existing corrupt files still fail closed without rewriting their bytes.
 When the 1024-entry cap remains
 full after a flush attempt, enqueue logs the rejected key/session and rejects;
 it does not report that entry as queued. Generic foreign-key errors are not
@@ -2053,3 +2105,89 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+## Round review reader
+
+New native review snapshots may include a bounded `contexts.json` containing
+only 1/3/5-line context hunks and optional execution-root/context-availability
+metadata. No complete after-image or full-file context cache is written. Existing `before` bytes
+and post-tool hashes retain their rollback roles. Extended context never reads
+current workspace bytes; legacy snapshots without the preview remain readable
+and report that extended context is unavailable. No database schema change or
+second capture store is introduced; normal session-owned cleanup applies.
+
+Preview computation removes identical line prefixes/suffixes before allocating
+its LCS matrix, then reattaches those equal lines to preserve original hunk
+coordinates and finite context. The existing 512 KiB-per-image, 4000-total-lines
+per side, 2,000,000-middle-cell, and context serialization caps are unchanged.
+This affects new captures only; missing historical previews are not reconstructed
+from current disk contents.
+
+
+## User-defined mode runs (schema 29)
+
+ADR `mode-definitions` adds one v28-to-v29 migration. It backs up the existing
+database before adding `mode_snapshots`, `mode_runs`, `mode_gate_results` and
+`sessions.mode_snapshot_hash`. Existing sessions and Plan approvals are retained.
+Mode ids remain in `sessions.mode`; `chat` still normalizes to `plan`.
+
+A run references an immutable definition snapshot, its current stage, revision,
+claim, permission origin, budgets, token usage and completed-round count.
+Gate results record the stage, action, outcome and bounded evidence. At most
+one open run exists per session. Restart clears in-flight claims and pauses
+those runs without replaying work. Deleting a session cascades its run records.
+
+Host-started custom modes evaluate Auto as Accept edits; builtin Goal retains
+the selected session permission. A run's original snapshot remains authoritative
+even when its source file changes or its input preference returns to Agent.
+
+### Active elapsed time and queued Goal intent (schema 30)
+
+The backed-up, transactional v29-to-v30 migration adds `mode_runs.elapsed_ms`
+(nonnegative safe integer, default 0), `mode_runs.active_since_ms` (nullable epoch
+milliseconds), and `turn_queue.start_goal` (boolean integer, default 0).
+Fresh databases use the same column definitions. Existing rows and queue order
+are preserved; old timestamps are never interpreted as active work.
+
+Run saves checkpoint the persisted clock under the same revision CAS. Running
+time accumulates; waiting, pause, budget exhaustion, completion and stop freeze
+it. Repeated settlement cannot charge twice. Startup pauses Running rows even
+between claims, clears active intervals, keeps only checkpointed elapsed time,
+and does not count offline time or replay execution.
+
+`start_goal` is explicit new-Goal input intent, not an execution permission.
+It round-trips with the existing queue identity and participates in idempotency;
+legacy queue rows remain ordinary input. Restored work is still held until a
+controller attaches. Replacement preserves old run accounting independently.
+
+### Structured completion reports (schema 31)
+
+A backed-up transactional v30-to-v31 migration adds nullable
+`mode_runs.completion_report_json`. Fresh databases and upgrades through earlier
+mode migrations use the same structure; an already-present column is retained.
+Existing elapsed time, Goal queue intent, accounting and immutable snapshots
+are preserved. The migration backup precedes the column and version stamp.
+The existing wait-reason CHECK is widened transactionally by a lossless table
+replacement. All columns, indexes, triggers and child gate rows are retained;
+foreign keys are checked and enforcement restored, including on rollback.
+
+The optional wire `completionReport` retains the last bounded model-submitted
+criterion outcomes, evidence, remaining work and blocker reason. It is not an
+independent verification of their truth. Missing legacy reports remain absent.
+The report is saved under the existing run revision CAS with its gate/state
+transition. A blocked report stores `waiting/blocked`, not `finished`; settlement
+releases the claim without autonomous continuation. Startup retains that wait
+and report rather than replaying work. A completed report never bypasses gates.
+
+### Custom session mode identifiers (schema 32)
+
+The backed-up transactional v31-to-v32 migration removes a retained builtin-only
+`sessions.mode` CHECK so upgraded databases accept the same validated custom mode
+ids as fresh databases. It preserves the actual table's other columns and checks,
+all session data, indexes, triggers, views, and referencing child records. Foreign
+keys are checked before commit; connection settings are restored on success or
+rollback. An already-unconstrained table is not rebuilt, and reopening schema 32
+does not repeat the migration. Earlier supported mode schemas upgrade through
+their existing migrations first. Host mode-id, snapshot, and permission validation
+is unchanged. Older binaries reject schema 32; rollback uses the retained
+`pi.sqlite.v31.bak` rather than deleting user data.

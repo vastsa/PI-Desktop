@@ -1,5 +1,30 @@
 # 01. IPC Protocol
 
+### Private native window snapping
+
+`window.enableNativeSnap` is Main-to-Host only: `{nativeHandle: string, ownerPid: number}`
+returns `{enabled: true, borderSuppressed: boolean}`. The decimal, nonzero HWND
+must belong to the Main process injected through `PI_DESKTOP_ELECTRON_PID`.
+Host validates both the requested PID and live window owner, restores the fixed
+`WS_THICKFRAME | WS_CAPTION` mask, and suppresses the Windows 11 DWM outline.
+Windows 10 reports `borderSuppressed: false` for the unsupported attribute.
+Invalid parameters, unauthorized owners, and other native failures remain errors.
+No renderer/preload/plugin channel, schema migration, or protocol version changes.
+See [native snapping ADR](../../adr/windows-native-snap-without-frame-insets.md).
+
+### composer/readClipboardDirectories
+
+An additive main-window-only Electron channel accepting no source paths. During
+an explicit native file paste, main captures at most 20 paths / 1 MiB of native
+metadata, resolves file/directory metadata and returns null if no directory is
+present. Otherwise it returns ordered items (`{kind: "directory", path, name}` or
+`{kind: "file", name}`) and an optional sender-bound one-shot token for regular
+files through `composer/importFiles`. MCP/plugin callers cannot invoke it.
+Directories remain prompt/draft metadata, never binary attachments, file previews
+or recursive snapshots. History retains their absolute paths without reading
+contents or granting access. Other clipboard text is never read by this channel.
+
+
 ## 1. Goal
 
 Define a stable contract between the renderer and main.
@@ -68,6 +93,7 @@ Examples:
 - `pi-desktop/session/getScratchPath`
 - `pi-desktop/session/openScratchPath`
 - `pi-desktop/session/collaboration`
+- `pi-desktop/session/usageCost`
 
 ## 3.1 Logical project groups
 
@@ -215,7 +241,9 @@ For a vision-capable model, images within the 10 MB per-image bound become
 transient pi-ai image blocks. Restored history also has a 30 MB aggregate raw
 image-byte budget: the sidecar considers persisted attachments newest-first and
 preserves every eligible image when the total fits. If the budget is exceeded,
-older images use the existing safe `@path` fallback. Unknown/custom models
+older images use the existing safe `@path` fallback. An image rejected for a
+longest edge above 8000 px does not consume that budget, so an older image
+that still fits stays inlined. Unknown/custom models
 without an explicit image override, non-vision models, oversized images, and
 unavailable refs also use the safe fallback. Main uses streamed hashing and file
 copying for oversized images. The durable user message stores `content` plus
@@ -270,6 +298,11 @@ The internal `agent.steeringContext` and `agent.steer` methods use only an
 existing runtime. They do not run launch configuration, `runtimeFor`, or
 `session.beginTurn`. Steering cannot change the active model, permission mode,
 workspace, or approved execution. Slash text is literal input on this channel.
+
+After accepted steering, status activity may be `waiting-tool-stop` while the
+current turn waits for a tool to settle. Local foreground shell and read calls
+receive cancellation; the activity does not assert that a process has exited.
+Remote or uncertain external operations retain their settlement fence.
 
 Accepted input is echoed as ordinary user message events with the current
 `turnId`, main-prepared attachment refs, and `UiMessage.steering: true`. This
@@ -517,8 +550,10 @@ current renderer lifetime while live `plans.changed` events arrive.
 
 For `approve`, host-core and Electron require an explicit
 `targetPermissionMode`; Electron never fills it from stored settings. The
-renderer initializes each approval to Ask, which remains the product default,
-and the host does not persist the selection as the next approval default.
+renderer initializes each approval from its owning Session's effective
+permission (Session override, then global default, then Ask), and ignores old
+device-wide approval preferences. The Host still persists the explicitly
+approved mode on the Session; it does not change the global default.
 `reject` carries no permission mode.
 Responses with a wrong proposal, session, turn, tool-call, version, or expired
 host-owned deadline fail with a stable Plan/Goal approval error. There is no
@@ -977,6 +1012,7 @@ type UiMessage = {
  sessionMessage?: SessionMessageOrigin;
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
+ responseModelId?: string; // concrete served model when it differs from modelId
  responseDurationMs?: number; // elapsed assistant response duration for throughput
  providerWaitMs?: number; // request start to first model response event
  modelStreamDurationMs?: number; // streamed thinking and answer duration
@@ -1057,6 +1093,27 @@ window system menu does not open. Non-Windows hosts treat the method as a
 no-op. `responseDurationMs` and `responseOutputTokens` are optional transcript
   metadata persisted in message metadata, so protocol v11 and storage schema v16
 remain unchanged.
+
+`responseModelId` is the same kind of optional message metadata. Agent Runtime
+sets it from the provider-reported response model (Pi `responseModel`) only when
+that model differs from the requested `modelId` and is not a dated snapshot of
+it; the value is trimmed, bounded to 200 characters, and rejected when it holds
+control characters. The transcript model chip shows it and names the requested
+model in its label. `MessageUsage.costStatus` is `reported` when the provider
+returned the billed total (Pi `usage.cost.totalFromProvider`), `estimated` when
+the total comes from catalog rates, and `unknown` without a usable price; a
+rollup is `reported` only when every part is.
+
+`pi-desktop/session/usageCost({ sessionId }) -> SessionUsageCost` is a
+read-only rollup of every turn the session ever ran, served by Host
+`session.usageCost`. The renderer holds only a window of the transcript, so the
+session total is never summed from loaded messages. Each physical request in a
+turn ledger is counted once and grouped by its `providerId`; turns of every
+status count, because aborted and failed requests were still billed.
+`ProviderUsageCost.total` sums only priced requests, `reportedRequests` counts
+those the provider billed, and `unpricedRequests` counts requests without a
+usable price, including legacy token-only turns grouped without a
+`providerId`. Imported `native-pi:` sessions return an empty rollup.
 
 The Settings font picker (ADR 0083) reads installed system font families
 through one Electron-only allowlisted channel:
@@ -1935,16 +1992,22 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   accepted after a realpath check (D334 / ADR 0172), as is an absolute path in
   another folder of the same project group (ADR 0249 §5, ADR 0263). A known
   image extension wins over `mimeType`; extension-less blobs accept only the
-  image MIME allowlist. Traversal, `~`, and other escapes are rejected
+  image MIME allowlist. An exact absolute path outside every one of those
+  roots is also accepted when its real path is an existing regular file
+  (ADR 0339); no path is withheld, since the file is only shown to the user who
+  clicked it. Relative traversal, `~`, and other escapes are rejected
   (`INVALID_ARGUMENT`).
 - `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`
-  (`image` with `dataUrl`, or `missing` / `notImage` / `tooLarge`). Same
-  containment as `fs/read`. Never returns non-image bytes. Renderer-only;
+  (`image` with `dataUrl`, or `missing` / `notImage` / `tooLarge`). Root
+  containment only: the ADR 0339 external-file rule does not apply, so a
+  model-written image reference cannot render an arbitrary local image. Never returns non-image bytes. Renderer-only;
   not a plugin host API.
-- `fs/reveal({path})` → reveal in Finder. Same containment as `fs/read`.
+- `fs/reveal({path})` → reveal in Finder. Same rules as `fs/read`,
+  including the ADR 0339 external-file rule.
 - `fs/open({path, mimeType?})` → open an existing regular file with the OS
-  default application. It uses the same realpath containment as `fs/read`,
-  including rejection of symlink escapes. For a content-addressed
+  default application. It uses the same rules as `fs/read` — realpath
+  containment, including rejection of symlink escapes, plus the ADR 0339
+  external-file rule. For a content-addressed
   `attachments/<sha256>` blob declared as `video/mp4`, the host creates a
   `.mp4` symlink inside its private app-data directory before the OS handoff,
   so the extensionless blob has a media association without copying its bytes.
@@ -1955,8 +2018,8 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   file exists, so the branch copy opens instead of reporting
   `outside-allowed-roots`)
   (`{ match: FsChatRefMatch | null, reason?: "outside-allowed-roots" }`, the match naming the answering `root`
-  (`workspace` / `scratch` / `attachments`), the `relativePath` relative to that
-  root, optional `sessionScratch: true` for the current session's own scratch
+  (`workspace` / `scratch` / `attachments` / `external`), the `relativePath`
+  relative to that root (the file name for `external`), optional `sessionScratch: true` for the current session's own scratch
   (not the wider read-only scratch containment store), the absolute
   `absolutePath`, `matchedBy` (`exact-relative` /
   `exact-absolute` / `path-suffix` / `basename`), and — for a `workspace` match
@@ -1986,9 +2049,18 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   `fs/open`, the image reader) already accept it, so such a path completes
   instead of reporting a restriction. A shorthand never completes from that
   wider store; it still searches the session's own one. A reference that matches
-  nothing returns `match: null`; an absolute path outside every allowed root
-  also returns `reason: "outside-allowed-roots"`, without trying a same-name
-  file inside a root. Resolving never opens anything (ADR 0262).
+  nothing returns `match: null`. A Windows drive path rooted the POSIX way
+  (`/c:/dir/file.md`, the shape a Markdown link copies from a POSIX example)
+  is read as `C:\dir\file.md` before matching, so that spelling reaches the
+  file its drive names instead of reporting a miss; a POSIX host keeps
+  `/c:/...`, which is a real path there. An exact absolute path outside every allowed
+  root never tries a same-name file inside a root; it is answered by the
+  `fs/read` external-file rule instead (ADR 0339): an existing regular file
+  that passes it returns `root: "external"` with `matchedBy: "exact-absolute"`
+  and its real path, a path with no regular file behind it returns
+  `match: null`; `reason: "outside-allowed-roots"` remains only for a reference
+  outside the roots that is not such an exact absolute path. Resolving never
+  opens anything (ADR 0262).
 - `fs/list` stays workspace-only; traversal outside is rejected
   (`INVALID_ARGUMENT`).
 
@@ -2308,19 +2380,38 @@ renderer receives the token but never receives the selected absolute paths.
 ### composer/importFiles
 
 ```ts
-composer/importFiles({ sessionId, token }) -> {
+composer/importFiles({ sessionId, token, reference?: boolean }) -> {
   files: ComposerPastedFile[];
 }
 ```
 
 Electron main consumes the sender-bound picker token, resolves each recorded
 path through `realpath`, requires an existing regular file, applies the same
-20-file / 64 MiB per file / 128 MiB total limits as clipboard transfer, and
+20-file / 64 MiB per file / 128 MiB total limits as clipboard byte transfer, and
 copies the bytes into `<data_dir>/scratch/<sessionId>/pasted/` under a
 UUID-backed sanitized name. The token is deleted before import starts, so it
 cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
+
+For native clipboard files, `reference: true` consumes the same one-shot token
+but registers metadata instead of copying bytes. Main requires a local project,
+stores a durable UUID selection record, and returns the canonical original path,
+name, MIME, exact byte size and additive `localReference` id. Only the main window
+may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
+both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
+apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
+`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+
+Drafts, queue entries and message attachments retain `localReference` and `size`.
+On dispatch, main matches the id/path to the selection record and current local
+project, rejects missing files or canonical-target changes, and refreshes size.
+The Agent receives path and byte size as reference context. No referenced file
+or image contents are read, hashed, snapshotted or uploaded by dispatch; normal
+tool access policy governs subsequent reads, including outside-project approval.
+Input history can restore the live reference into another session in the same
+project. Original contents can change and the reference can become unavailable.
+See [the decision record](../../adr/composer-local-file-references.md).
 
 ### composer/pasteFiles
 
@@ -2338,6 +2429,7 @@ type ComposerPasteFile = {
 };
 
 type ComposerPastedFile = {
+  localReference?: string; // main-owned metadata record for a live disk reference
   path: string;     // UUID-backed absolute storage path
   name: string;     // sanitized original leaf display name
   kind: "image" | "file";

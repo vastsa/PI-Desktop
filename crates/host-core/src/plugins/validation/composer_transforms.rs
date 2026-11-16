@@ -44,7 +44,7 @@ pub(super) fn validate(map: &Map<String, Value>, manifest: &PluginManifest) -> R
 }
 
 /// Composer labels accept either a plain string or both contract locales.
-fn is_plugin_label(value: &Value) -> bool {
+pub(super) fn is_plugin_label(value: &Value) -> bool {
     if value.as_str().is_some_and(|label| !label.trim().is_empty()) {
         return true;
     }

@@ -198,6 +198,9 @@ globalThis.transcriptLiveTailProbe = async () => {
     set({ messages });
     set({ transcriptViews: { "live-tail": view }, runningSessions: {}, isRunning: false });
     await frame();
+    assert(label()?.textContent === i18n.t("chat.processUnsettled") && !activeLabel(), "an unsettled streaming row has no completed outcome");
+    set({ messages: [user, tool, { ...answer, status: "complete" }] });
+    await frame();
     assert(label()?.textContent === i18n.t("chat.processCompleted") && !activeLabel(), "only settled run state shows Finished");
     set({ messages: [user, tool, { ...answer, status: "aborted" }] });
     await frame();

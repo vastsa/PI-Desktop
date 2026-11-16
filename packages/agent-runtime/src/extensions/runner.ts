@@ -101,6 +101,8 @@ export type ExtensionExecResult = {
   stderr: string;
   code: number;
   killed: boolean;
+  /** Output exceeded `maxBuffer`; stdout and stderr are incomplete and `code` is nonzero. */
+  truncated: boolean;
 };
 
 export type ExtensionToolInfo = { name: string; description: string; active: boolean };
@@ -565,6 +567,25 @@ export class TrustedExtensionRunner {
       },
     );
     return result?.systemPrompt;
+  }
+
+  /**
+   * Chain provider payload replacements within this request while keeping
+   * handler inputs isolated: handler N sees the payload returned by handler N-1.
+   * Resolves to undefined when no handler returned a replacement.
+   */
+  async emitBeforeProviderRequest(payload: unknown): Promise<unknown> {
+    const event = { type: "before_provider_request", payload };
+    return this.emit<unknown>(
+      "before_provider_request",
+      event,
+      (_acc, next) => {
+        // dispatch clones this updated event for the next handler. Only a
+        // timely returned value reaches this fold, never a late input mutation.
+        event.payload = next;
+        return next;
+      },
+    );
   }
 
   private async dispatch<R>(

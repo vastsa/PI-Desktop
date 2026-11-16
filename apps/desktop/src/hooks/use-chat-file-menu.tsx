@@ -2,9 +2,10 @@
  * The right-click action every file reference in the conversation shares.
  *
  * HTML references expose explicit open destinations in the context menu: the
- * bundled File Manager, built-in browser, and default browser. Each destination
- * goes through the same resolver as a normal click, so a reference that resolves
- * to nothing cannot open a lookalike somewhere else.
+ * bundled File Manager, built-in browser, and default browser. Every local
+ * reference can also be shown in its folder in the system file manager. Each
+ * action goes through the same resolver as a normal click, so a reference that
+ * resolves to nothing cannot open or reveal a lookalike somewhere else.
  *
  * Items are data, exactly as `ContextMenu` takes them: every surface keeps the
  * menu instance it already owns and shares only this vocabulary, so a row that
@@ -26,6 +27,7 @@ import { useChatNativeFilesAllowed } from "./use-chat-session-capability";
 import {
   useCopyChatFileRef,
   useOpenChatFileRef,
+  useRevealChatFileRef,
 } from "./use-preview-target";
 
 export type ChatFileMenuTarget = {
@@ -39,6 +41,7 @@ export function useChatFileMenuItems() {
   const { t } = useTranslation();
   const nativeFilesAllowed = useChatNativeFilesAllowed();
   const openFileRef = useOpenChatFileRef();
+  const revealFileRef = useRevealChatFileRef();
   const copyFileRef = useCopyChatFileRef();
   return useCallback(
     ({ path, baseDir }: ChatFileMenuTarget): ContextMenuItem[] => [
@@ -78,11 +81,19 @@ export function useChatFileMenuItems() {
             ],
           }]
         : []),
+      ...(nativeFilesAllowed
+        ? [{
+            id: "reveal-in-folder",
+            label: t("chat.revealFileInFolder"),
+            icon: <IconFolderOpen size={14} />,
+            onSelect: () => revealFileRef(path, baseDir),
+          }]
+        : []),
       {
         id: "copy-full-path",
         label: t("chat.copyFullPath"),
         icon: <IconCopy size={14} />,
-        separatorBefore: nativeFilesAllowed && isHtmlFilePath(path),
+        separatorBefore: nativeFilesAllowed,
         onSelect: () => copyFileRef(path, baseDir, "absolute"),
       },
       {
@@ -92,7 +103,7 @@ export function useChatFileMenuItems() {
         onSelect: () => copyFileRef(path, baseDir, "relative"),
       },
     ],
-    [copyFileRef, nativeFilesAllowed, openFileRef, t],
+    [copyFileRef, nativeFilesAllowed, openFileRef, revealFileRef, t],
   );
 }
 

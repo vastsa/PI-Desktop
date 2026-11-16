@@ -83,7 +83,7 @@ const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: false, width: 1200, height: 720, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  const window = new BrowserWindow({ show: true, width: 1200, height: 720, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   window.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await window.loadFile(path.join(__dirname, "index.html"));

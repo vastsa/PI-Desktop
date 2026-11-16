@@ -13,7 +13,11 @@ type Props = {
   commit: (level: SessionThinkingLevel) => Promise<boolean>;
 };
 
-/** Native input owns interaction; the decorative thumb owns visual motion. */
+/**
+ * Segmented reasoning control. A native range overlays the segments and owns
+ * keyboard, drag and accessibility; the raised pill (the thumb) and the labels
+ * underneath it are decoration that share the range's column geometry.
+ */
 export function ThinkingLevelSlider({ levels, level, label, commit }: Props) {
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -48,8 +52,8 @@ export function ThinkingLevelSlider({ levels, level, label, commit }: Props) {
     data-dragging={dragging ? "true" : undefined}
     onPointerMove={(event) => {
       if (event.pointerType === "touch" || !rail.current) return;
-      // The native range covers the decorative dots. Resolve both rows against
-      // the same equal-width columns, including the gap between dot and label.
+      // The native range covers the labels; resolve the pointer against the
+      // same equal-width columns the labels and the pill use.
       const bounds = rail.current.getBoundingClientRect();
       const next = Math.floor((event.clientX - bounds.left) / bounds.width * levels.length);
       setHoveredIndex(next >= 0 && next < levels.length ? next : null);
@@ -62,13 +66,14 @@ export function ThinkingLevelSlider({ levels, level, label, commit }: Props) {
     } as CSSProperties}
   >
     <div className="composer-thinking-rail" ref={rail}>
-      <div className="composer-thinking-dots" aria-hidden="true">
-        {levels.map((candidate, stop) => <span key={candidate}
-          data-filled={stop < index ? "true" : undefined}
-          data-hovered={hoveredIndex === stop ? "true" : undefined}
-          className={`composer-thinking-dot ${index === stop ? "active" : ""}`} />)}
-      </div>
       <span className="composer-thinking-thumb" aria-hidden="true" />
+      <div className="composer-thinking-ticks" aria-hidden="true">
+        {levels.map((candidate, stop) => <button key={candidate} type="button" tabIndex={-1}
+          data-hovered={hoveredIndex === stop ? "true" : undefined}
+          className={`composer-thinking-tick ${index === stop ? "active" : ""}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => select(stop)}>{candidate}</button>)}
+      </div>
       <input
         type="range"
         className="composer-thinking-range"
@@ -91,13 +96,6 @@ export function ThinkingLevelSlider({ levels, level, label, commit }: Props) {
           if (SLIDER_KEYS.has(event.key)) event.stopPropagation();
         }}
       />
-    </div>
-    <div className="composer-thinking-ticks" aria-hidden="true">
-      {levels.map((candidate, stop) => <button key={candidate} type="button" tabIndex={-1}
-        data-hovered={hoveredIndex === stop ? "true" : undefined}
-        className={`composer-thinking-tick ${index === stop ? "active" : ""}`}
-        title={candidate} onMouseDown={(event) => event.preventDefault()}
-        onClick={() => select(stop)}>{candidate}</button>)}
     </div>
   </div>;
 }

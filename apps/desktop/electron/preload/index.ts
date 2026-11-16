@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC, IPC_WHITELIST } from "@pi-desktop/shared/protocol";
+// Narrow subpath, not the package barrel: the preload is a single bundled file
+// for a sandboxed renderer, so it must not pull the whole shared surface in.
+import { decodeStartupAnimationArgument } from "@pi-desktop/shared/startup-animation";
 
 const LOCALE_ARGUMENT_PREFIX = "--pi-desktop-locale=";
 
@@ -46,6 +49,11 @@ const api = {
   // creation argument. This keeps the locale available before first paint
   // without importing Electron's main-only `app` module in the sandbox.
   locale: readOsLocale(),
+  // The boot animation must be on screen in the renderer's first frame, so it
+  // arrives the same way the locale does: resolved in main, passed as a
+  // creation argument, read synchronously here (D679). Null — no file, the
+  // setting off, a later window of the same process — means the brand splash.
+  startupAnimation: decodeStartupAnimationArgument(process.argv),
   /** Resolve a real dropped File without exposing Node or Electron to the page. */
   getDroppedFilePath: (file: File): string | null => {
     try {

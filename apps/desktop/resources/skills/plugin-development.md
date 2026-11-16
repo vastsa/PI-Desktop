@@ -181,6 +181,12 @@ when working in the host repository. Major gates include:
   skill catalogs/bodies; `agent.complete` for quota-spending one-shot completions.
 - `models.list`, `usage.read`, `session.read`, and the separate ownership-scoped
   `session.import`, `session.read.own`, `session.update.own`, `session.delete.own`.
+  `session.read.all`, `session.update.all`, and `session.delete.all` are the
+  wider family: they carry the same verbs over every live session, including the
+  conversations the user created in this app, and they are what
+  `pi.session.appendMessage` / `replaceMessages` / `deleteMessage` /
+  `truncateFrom` require. Declaring both a `.own` and a `.all` grant behaves as
+  `.all`; the user approves the wider name at install.
 - `provider.register` for manifest providers, `provider.oauth` for OAuth callbacks,
   `composer.transform` for draft transformations, `composer.suggest` for one
   dismissible placeholder line; these do not implicitly grant transcript reads.

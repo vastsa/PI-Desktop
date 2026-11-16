@@ -37,6 +37,7 @@ import {
   hostedSearchReplayProjection,
   type HostedSearchReplayOptions,
 } from "@earendil-works/pi-ai/utils/hosted-search";
+import { truncateTextWithMarker } from "./agent-messages.js";
 
 /** Structural view of the request context; assignable from pi-ai's `Context`. */
 export type OutputCapContext = {
@@ -112,18 +113,34 @@ const OUTPUT_SAFETY_WINDOW_RATIO = 0.01;
 const CHARS_PER_TOKEN = 4;
 const ESTIMATED_CHARS_PER_IMAGE = 4800;
 
+// Han, Japanese kana, and Korean Hangul tokenize at ~1 token per character,
+// as do CJK punctuation and full-width forms. The chars/4 baseline charges
+// all of these 0.25.
 function countCjkChars(text: string): number {
   let count = 0;
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     if (
+      // Hangul Jamo.
+      (code >= 0x1100 && code <= 0x11ff) ||
+      // CJK punctuation.
+      (code >= 0x3000 && code <= 0x303f) ||
+      // Hiragana and katakana.
+      (code >= 0x3040 && code <= 0x30ff) ||
+      // Hangul compatibility Jamo.
+      (code >= 0x3130 && code <= 0x318f) ||
+      // Katakana phonetic extensions.
+      (code >= 0x31f0 && code <= 0x31ff) ||
       // CJK Unified Ideographs + Extension A.
       (code >= 0x3400 && code <= 0x9fff) ||
+      // Hangul syllables.
+      (code >= 0xac00 && code <= 0xd7af) ||
+      // CJK compatibility ideographs.
+      (code >= 0xf900 && code <= 0xfaff) ||
+      // Full-width and half-width forms.
+      (code >= 0xff00 && code <= 0xffef) ||
       // CJK Extension B..F (historical/supplementary plane).
-      (code >= 0x20000 && code <= 0x2ebef) ||
-      // CJK punctuation and full-width forms.
-      (code >= 0x3000 && code <= 0x303f) ||
-      (code >= 0xff00 && code <= 0xffef)
+      (code >= 0x20000 && code <= 0x2ebef)
     ) {
       count += 1;
     }
@@ -172,7 +189,11 @@ function estimateMessageTokens(
     ) {
       const payload = stringifyForEstimate(b.arguments ?? b.input);
       chars += b.name.length + payload.length;
-      cjkChars += countCjkChars(b.name);
+      // JSON.stringify leaves Han unescaped, so the payload the chars/4
+      // baseline measured is the same string the correction has to see.
+      // A \uXXXX form would already be ASCII in that string; decoding it
+      // would charge the character twice.
+      cjkChars += countCjkChars(b.name) + countCjkChars(payload);
     } else if (b.type === "hostedSearch") {
       // 与适配器共用回放投影；搜索结果不是图片，也不是普通工具参数。
       // 投影会校验结构，失败必须保留为本地错误，不能按零成本继续请求。
@@ -251,12 +272,78 @@ export function estimateOutputCapInputTokens(
     cjkChars += countCjkChars(context.systemPrompt);
   }
   if (context.tools?.length) {
-    baseline += Math.ceil(
-      stringifyForEstimate(context.tools).length / CHARS_PER_TOKEN,
-    );
+    // Same formula as system toolsAdded. Subagent budgets pass schemas here,
+    // and chars/4 under-counts CJK in the serialized schema.
+    const serialized = stringifyForEstimate(context.tools);
+    baseline += Math.ceil(serialized.length / CHARS_PER_TOKEN);
+    cjkChars += countCjkChars(serialized);
   }
   // CJK chars are ~1 token each; the chars/4 baseline charged them 0.25.
   return baseline + Math.ceil(cjkChars * 0.75);
+}
+
+/**
+ * Largest character budget in `1..charCeiling` for which `textAt` stays within
+ * `tokenBudget` under {@link estimateOutputCapInputTokens}.
+ *
+ * `charCeiling` is the historical ASCII cap (token budget times the 3.5
+ * chars-per-token ratio). Latin text already estimates under that cap, so it
+ * is returned unchanged. CJK text estimates near one token per character, and
+ * the cap is walked down until the same estimator that gates the output
+ * ceiling fits. A budget too small to hold the truncation marker may still
+ * exceed it by that marker alone.
+ */
+export function charBudgetWithinOutputCap(
+  tokenBudget: number,
+  charCeiling: number,
+  textAt: (maxChars: number) => string,
+): number {
+  const budget = Math.max(
+    1,
+    Math.floor(Number.isFinite(tokenBudget) ? tokenBudget : 1),
+  );
+  const ceiling = Math.max(
+    1,
+    Math.floor(Number.isFinite(charCeiling) ? charCeiling : 1),
+  );
+  const tokensAt = (maxChars: number) =>
+    estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: textAt(maxChars) }],
+    });
+  if (tokensAt(ceiling) <= budget) return ceiling;
+
+  let low = 1;
+  let high = ceiling - 1;
+  let best = 1;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (tokensAt(mid) <= budget) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return best;
+}
+
+/**
+ * Cut `text` with `marker` so {@link estimateOutputCapInputTokens} fits
+ * `tokenBudget`. See {@link charBudgetWithinOutputCap} for why ASCII keeps
+ * the character ceiling.
+ */
+export function truncateTextWithinOutputCap(
+  text: string,
+  tokenBudget: number,
+  marker: string,
+  charCeiling: number,
+): string {
+  const maxChars = charBudgetWithinOutputCap(
+    tokenBudget,
+    charCeiling,
+    (chars) => truncateTextWithMarker(text, chars, marker),
+  );
+  return truncateTextWithMarker(text, maxChars, marker);
 }
 
 /**

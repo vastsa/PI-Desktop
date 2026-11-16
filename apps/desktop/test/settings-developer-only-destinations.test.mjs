@@ -8,8 +8,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  DEFAULT_SETTINGS_TAB,
   SETTINGS_NAV,
   isSettingsDestinationHidden,
+  resolveSettingsTab,
   searchSettings,
   visibleSettingsNav,
 } from "../src/lib/settings-search.ts";
@@ -144,7 +146,21 @@ test("packaged builds hide developer-only destinations and retain Experimental s
     assert.equal(isSettingsDestinationHidden(id, true, false), false);
     assert.equal(isSettingsDestinationHidden(id, false, false), false);
   }
-  assert.equal(isSettingsDestinationHidden("general", true, false), false);
+  assert.equal(isSettingsDestinationHidden("appearance", true, false), false);
+});
+
+test("a destination id retired by the D684 split still opens a page", () => {
+  // A stored selection, a native menu, or a link written before the split must
+  // not land on an empty content pane.
+  assert.equal(resolveSettingsTab("general"), "appearance");
+  assert.equal(resolveSettingsTab("ai"), "behavior");
+  assert.equal(resolveSettingsTab("nonsense"), DEFAULT_SETTINGS_TAB);
+  assert.equal(DEFAULT_SETTINGS_TAB, SETTINGS_NAV[0].id);
+  // An id the index still owns is returned unchanged, including a
+  // developer-gated one: visibility is decided separately.
+  for (const entry of SETTINGS_NAV) {
+    assert.equal(resolveSettingsTab(entry.id), entry.id);
+  }
 });
 
 test("settings search mirrors developer and packaged visibility", () => {
@@ -178,7 +194,10 @@ test("settings routes, global search, and composer use build visibility", () => 
   assert.match(settingsPage, /const includeDevelopmentOnly = import\.meta\.env\.DEV/);
   assert.match(settingsPage, /visibleSettingsNav\(developerMode, includeDevelopmentOnly\)/);
   assert.match(settingsPage, /isSettingsDestinationHidden\([\s\S]*includeDevelopmentOnly/);
-  assert.match(settingsPage, /setSettingsTab\("general"\)/);
+  // A hidden destination falls back to the default one by name, so the
+  // fallback cannot drift from the index (D684).
+  assert.match(settingsPage, /setSettingsTab\(DEFAULT_SETTINGS_TAB\)/);
+  assert.doesNotMatch(settingsPage, /setSettingsTab\("general"\)/);
   assert.match(settingsPage, /tab === "sync" && !tabHidden && <ConfigSyncPage \/>/);
   assert.match(settingsPage, /tab === "remoteHosts" && !tabHidden && <RemoteHostsPage \/>/);
   assert.match(searchDialog, /includeDevelopmentOnly: import\.meta\.env\.DEV/);

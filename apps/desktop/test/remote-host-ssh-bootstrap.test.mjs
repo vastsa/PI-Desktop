@@ -179,6 +179,8 @@ test("an unpublished target fails without downloading anything", async () => {
   const error = await catchError(() => bootstrap.bootstrap(request()));
   assert.equal(error.errorCode, "HOST_BOOTSTRAP_FAILED");
   assert.equal(error.target, "darwin-x64");
+  const { remoteHostErrorKey } = await import("../src/lib/remote-host-errors.ts");
+  assert.equal(remoteHostErrorKey({ code: error.errorCode, details: { target: error.target } }), "remote:hostPlatformUnsupported");
   assert.deepEqual(fetched, [], "no checksum request for a bundle that does not exist");
   assert.deepEqual(transport.calls.uploads, []);
 });

@@ -88,7 +88,11 @@ the issue-234 transport diagnostics and rebuild do not fire for it.
 Session identity follows the endpoint's owner. On `openai-completions` and
 `anthropic-messages`, a row whose base URL host is not a published vendor host
 receives the session-affinity headers and, on Chat Completions, a
-`prompt_cache_key` body key. A custom `openai-responses` row keeps the
+`prompt_cache_key` body key. Custom Chat Completions defaults to the adapter's
+`openai-nosession` format: `x-session-affinity` and `x-client-request-id`,
+without the `session_id` header rejected by strict gateways (issue #2278).
+Explicit model `compat` settings still take precedence. A custom
+`openai-responses` row keeps the
 adapter's existing session headers and cache key, and also receives the
 hyphenated `x-session-affinity` alias so a reverse proxy can route it after
 dropped underscore headers. A published vendor host and the OpenCode path
