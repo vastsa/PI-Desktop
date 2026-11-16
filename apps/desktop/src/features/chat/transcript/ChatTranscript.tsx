@@ -51,6 +51,7 @@ import {
   RADIAL_MENU_DIRECTIONS,
   resolveRadialMenu,
 } from "../../../lib/radial-menu";
+import { TranscriptSelectionAction } from "./TranscriptSelectionAction";
 import { SlotSessionProvider } from "../../../plugins/renderer-slots/use-slots";
 
 type ChatTranscriptProps = {
@@ -120,7 +121,7 @@ function TranscriptBody({
 }: ChatTranscriptProps) {
   const { t } = useTranslation();
   const openTranscriptMenu = useTranscriptMenu();
-  const { copyText, selectText } = useChatTextActions();
+  const { copyText, selectText, addToConversation } = useChatTextActions();
   const showToast = useAppStore((state) => state.showToast);
   const radialMenu = resolveRadialMenu(
     useAppStore((state) => state.settings),
@@ -420,7 +421,7 @@ function TranscriptBody({
         onCopyConversation: () => void copyConversation(),
         scrollRef,
         contentRef,
-        actions: { copyText, selectText },
+        actions: { copyText, selectText, addToConversation },
         onReturnToLatest: returnToLatest,
       }),
     });
@@ -521,6 +522,11 @@ function TranscriptBody({
           ) : null}
         </div>
       </div>
+      <TranscriptSelectionAction
+        scrollRef={scrollRef}
+        sessionId={sessionId}
+        visible={paneVisible && !veilCovering}
+      />
       {veilPhase !== "off" ? (
         // Positioned without a z-index on purpose: it paints above the scroller
         // in tree order and stays beneath the docked composer, so the user can

@@ -4,6 +4,7 @@ import {
   serializeInlineComposerFileReferences,
 } from "@pi-desktop/shared";
 import type { AppState } from "../../../../stores/app-store";
+import { serializeComposerExcerpts, type ComposerExcerpt } from "../../../../lib/composer-excerpts";
 import { api } from "../../../../lib/api";
 import { runExtensionCommand, runPaletteCommand } from "../../../../lib/commands";
 import { resolveComposerCommand } from "../../../../hooks/use-composer-autocomplete";
@@ -28,6 +29,8 @@ type UseComposerSubmitOptions = {
   invalidateComposerTransforms: () => void;
   pasting: boolean;
   activeFileReferences: ComposerFileReference[];
+  /** Conversation excerpts attached to this draft; omitted callers send none. */
+  excerpts?: ComposerExcerpt[];
   t: TFunction;
   sendPrompt: AppState["sendPrompt"];
   steerPrompt: AppState["steerPrompt"];
@@ -46,6 +49,8 @@ type UseComposerSubmitOptions = {
     | "restoreDraftForKey"
   >;
 };
+
+const NO_EXCERPTS: ComposerExcerpt[] = [];
 
 export type ComposerSubmitController = { submit: (steering?: boolean) => Promise<void> };
 
@@ -66,6 +71,7 @@ export function useComposerSubmit({
   invalidateComposerTransforms,
   pasting,
   activeFileReferences,
+  excerpts = NO_EXCERPTS,
   t,
   sendPrompt,
   steerPrompt,
@@ -80,13 +86,18 @@ export function useComposerSubmit({
     // An image chip keeps its place in the prompt: main resolves the `@path` it
     // serializes to against the attachment it prepared, so the image block
     // arrives where the user put it instead of trailing the text.
-    const inlineContent = serializeInlineComposerFileReferences(rawText, activeFileReferences);
+    // Excerpts stay beside the typed draft and join the message only here, after
+    // the question the user wrote.
+    const inlineContent = serializeComposerExcerpts(
+      serializeInlineComposerFileReferences(rawText, activeFileReferences),
+      excerpts,
+    );
     const serializedContent = serializeComposerFileReferences(rawText, activeFileReferences);
     // A follow-up that was queued during the turn has already left the editor,
     // so the steer shortcut would otherwise find no draft and do nothing. With
     // the composer empty it sends the first waiting row now instead, which is
     // the same promotion its own Send now button performs.
-    if (!serializedContent) {
+    if (!serializedContent && !excerpts.length) {
       const waiting = steering && !sendBlocked ? nextSendableQueuedPrompt(queuedPrompts) : undefined;
       if (waiting) await sendQueuedNow(waiting.id);
       return;
@@ -129,6 +140,10 @@ export function useComposerSubmit({
         return;
       }
       if (dispatch.action === "dispatch") {
+        if (excerpts.length) {
+          showToast(t("chat.removeExcerptsBeforeCommand"), { variant: "info" });
+          return;
+        }
         const command = dispatch.command;
         const commandBody = dispatch.body;
         const isModeCommand =
