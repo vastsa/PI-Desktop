@@ -17,6 +17,8 @@
  *   *      -> *      { t: "res", id, ok, value } | { t: "res", id, ok: false, error: { code, message } }
  *   parent -> child  { t: "event", event, ... }           push, no reply (bus.message, host events)
  *   child  -> parent { t: "log", level, message }         diagnostics, fire and forget
+ *   child  -> parent { t: "ping", id } / parent -> child { t: "pong", id }
+ *                                                    keepalive proving the parent is alive
  */
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -31,14 +33,46 @@ function send(message) {
   else process.send?.(message);
 }
 
-function onHostMessage(handler) {
-  if (parentPort) parentPort.on("message", (event) => handler(event.data));
-  else process.on("message", handler);
+// Once the parent channel is gone, diagnostics must never re-enter it: every
+// further send attempt would only produce a new failure to report. One stderr
+// note is the last thing a broken channel gets.
+let transportBroken = false;
+
+/** Best-effort send. Never throws, so callers that report failures through
+ * this channel cannot recurse into reporting the failure of the report. */
+function trySend(message) {
+  if (transportBroken) return false;
+  try {
+    send(message);
+    return true;
+  } catch {
+    transportBroken = true;
+    try {
+      process.stderr.write("plugin host: parent IPC channel is broken\n");
+    } catch {
+      // Even stderr can be gone (closed pipe); nothing left to report to.
+    }
+    // The channel to the owner is gone: nothing this process does is useful
+    // anymore, and lingering here would leak the plugin host. A settled
+    // process.exit cannot recurse through further diagnostics.
+    process.exit(0);
+  }
 }
 
 function log(level, message) {
-  send({ t: "log", level, message: String(message) });
+  trySend({ t: "log", level, message: String(message) });
 }
+
+// Keepalive tunables. The parent answers every `ping` with a `pong`; missing
+// that round-trip repeatedly means the parent (or its connector) is gone.
+function positiveIntEnv(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+const PING_INTERVAL_MS = positiveIntEnv("PI_PLUGIN_PING_INTERVAL_MS", 10_000);
+const PING_MISSES = positiveIntEnv("PI_PLUGIN_PING_MISSES", 2);
+let missedPings = 0;
+let nextPingId = 1;
 
 let pluginId = "";
 let pluginPath = "";
@@ -715,8 +749,37 @@ async function handleParentCall(method, payload, invocationId, callId) {
   }
 }
 
+function onHostMessage(handler) {
+  if (parentPort) parentPort.on("message", (event) => handler(event.data));
+  else process.on("message", handler);
+}
+
+// Parent liveness. node:child_process emits `disconnect` when the parent side
+// goes away, but Electron's pinned parent-port (utilityProcess) only closes its
+// connector without any JavaScript-visible event: there we keep a ping/pong
+// round-trip going and exit when the parent stops answering. Either way the
+// host must not outlive the parent that owns it.
+if (parentPort) {
+  const heartbeat = setInterval(() => {
+    missedPings += 1;
+    if (missedPings > PING_MISSES || !trySend({ t: "ping", id: nextPingId++ })) {
+      clearInterval(heartbeat);
+      process.exit(0);
+    }
+  }, PING_INTERVAL_MS);
+  heartbeat.unref?.();
+} else {
+  process.on("disconnect", () => {
+    process.exit(0);
+  });
+}
+
 onHostMessage((message) => {
   if (!message || typeof message !== "object") return;
+  if (message.t === "pong") {
+    missedPings = 0;
+    return;
+  }
   if (message.t === "res") {
     settle(message);
     return;
@@ -737,9 +800,11 @@ onHostMessage((message) => {
   }
   if (message.t === "init") {
     void handleInit(message)
-      .then((value) => send({ t: "res", id: message.id, ok: true, value }))
-      .catch((error) =>
-        send({
+      .then((value) => {
+        trySend({ t: "res", id: message.id, ok: true, value });
+      })
+      .catch((error) => {
+        trySend({
           t: "res",
           id: message.id,
           ok: false,
@@ -747,15 +812,17 @@ onHostMessage((message) => {
             code: error?.code || "PLUGIN_LOAD_FAILED",
             message: error?.message ? String(error.message) : String(error),
           },
-        }),
-      );
+        });
+      });
     return;
   }
   if (message.t === "call") {
     void invocationContext.run(undefined, () => handleParentCall(message.method, message.payload, message.invocationId, message.id))
-      .then((value) => send({ t: "res", id: message.id, ok: true, value: value ?? null }))
-      .catch((error) =>
-        send({
+      .then((value) => {
+        trySend({ t: "res", id: message.id, ok: true, value: value ?? null });
+      })
+      .catch((error) => {
+        trySend({
           t: "res",
           id: message.id,
           ok: false,
@@ -763,16 +830,26 @@ onHostMessage((message) => {
             code: error?.code || "PLUGIN_CALL_FAILED",
             message: error?.message ? String(error.message) : String(error),
           },
-        }),
-      );
+        });
+      });
   }
 });
 
 // A misbehaving plugin must not take down its own host process silently, and it
-// can never take down the app: the broker owns teardown decisions.
+// can never take down the app: the broker owns teardown decisions. Diagnostics
+// go through the guarded channel, so a broken transport can never re-enter
+// these handlers recursively.
 process.on("uncaughtException", (error) => {
-  log("error", `uncaught exception: ${error?.stack || error}`);
+  try {
+    log("error", `uncaught exception: ${error?.stack || error}`);
+  } catch {
+    // Reporting failed; survive to keep the transport diagnostics bounded.
+  }
 });
 process.on("unhandledRejection", (reason) => {
-  log("error", `unhandled rejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
+  try {
+    log("error", `unhandled rejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
+  } catch {
+    // Reporting failed; survive to keep the transport diagnostics bounded.
+  }
 });
