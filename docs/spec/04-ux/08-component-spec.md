@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+The renderer commits a project-filtered plugin view refresh only when it is the latest request and its project is still active. Older success or failure responses cannot replace or clear the current project's view catalog. This protects UI response ownership; it does not change service lifetime or desktop.control permissions. (Refs #2377)
+
 Workspace file index Git queries settle at their deadline or output limit,
 even when inherited child pipes do not close. Composer file search and the
 Files index then use the existing bounded filesystem fallback (Refs #1731).
