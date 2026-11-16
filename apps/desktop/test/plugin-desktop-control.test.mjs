@@ -192,3 +192,93 @@ test("desktop control fails closed without its permission", async (t) => {
     (error) => error.code === "PERMISSION_DENIED",
   );
 });
+
+test("project-scoped plugins get session/list filtered by activation scope", async (t) => {
+  const calls = [];
+  const runtime = createRuntime(t, calls, {
+    desktopControl: {
+      operations: [
+        { id: "session/list", channel: "sessionList", description: "List durable sessions", risk: "read" },
+      ],
+      invoke: async (input) => {
+        calls.push(input);
+        return {
+          sessions: [
+            { id: "in-scope", projectPath: "/workspace/allowed" },
+            { id: "out-of-scope", projectPath: "/workspace/other" },
+            { id: "no-project" },
+          ],
+        };
+      },
+    },
+    pluginActiveInProject: (pluginId, projectPath) => projectPath === "/workspace/allowed",
+  });
+  const dir = writePlugin("demo.scoped.list", ["desktop.control"], `
+    module.exports = {
+      onPanelInvoke: async () => pi.desktop.invoke({ operation: "session/list", args: [] }),
+    };
+  `);
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  const result = await runtime.invokePanelBridge("demo.scoped.list", "desktop.test");
+  assert.deepEqual(result.sessions, [{ id: "in-scope", projectPath: "/workspace/allowed" }]);
+});
+
+test("project-scoped plugins cannot read an out-of-scope session via desktop.control", async (t) => {
+  const calls = [];
+  const runtime = createRuntime(t, calls, {
+    desktopControl: {
+      operations: [
+        { id: "session/get", channel: "sessionGet", description: "Read a session", risk: "read" },
+      ],
+      invoke: async (input) => {
+        calls.push(input);
+        return { session: { id: "secret", projectPath: "/workspace/other" } };
+      },
+    },
+    pluginActiveInProject: (pluginId, projectPath) => projectPath !== "/workspace/other",
+    getWorkspacePathForSession: (sessionId) => sessionId === "secret" ? "/workspace/other" : null,
+  });
+  const dir = writePlugin("demo.scoped.get", ["desktop.control"], `
+    module.exports = {
+      onPanelInvoke: async () => {
+        try {
+          return { ok: true, result: await pi.desktop.invoke({
+            operation: "session/get",
+            args: [{ sessionId: "secret" }],
+          }) };
+        } catch (error) {
+          return { ok: false, code: error.code, message: error.message };
+        }
+      },
+    };
+  `);
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  const result = await runtime.invokePanelBridge("demo.scoped.get", "desktop.test");
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "PERMISSION_DENIED");
+  assert.deepEqual(calls, [], "an out-of-scope targeted read never reaches the controller");
+});
+
+test("an unscoped plugin keeps full desktop.control session reads", async (t) => {
+  const calls = [];
+  const runtime = createRuntime(t, calls, {
+    desktopControl: {
+      operations: [
+        { id: "session/list", channel: "sessionList", description: "List durable sessions", risk: "read" },
+      ],
+      invoke: async (input) => {
+        calls.push(input);
+        return { sessions: [{ id: "any", projectPath: "/anywhere" }] };
+      },
+    },
+    pluginActiveInProject: () => true,
+  });
+  const dir = writePlugin("demo.global.list", ["desktop.control"], `
+    module.exports = {
+      onPanelInvoke: async () => pi.desktop.invoke({ operation: "session/list", args: [] }),
+    };
+  `);
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  const result = await runtime.invokePanelBridge("demo.global.list", "desktop.test");
+  assert.deepEqual(result.sessions, [{ id: "any", projectPath: "/anywhere" }]);
+});

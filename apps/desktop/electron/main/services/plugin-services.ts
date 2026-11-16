@@ -758,6 +758,12 @@ export function createPluginServices({
      */
     isPluginActiveInProject: (pluginId) => isPluginActiveInProject(pluginId),
     /**
+     * #2377: the project-aware form backs the desktop.control session-read
+     * gate, so a scoped plugin's `session/list` (including the reads a
+     * background service makes) never crosses its activation scope.
+     */
+    pluginActiveInProject,
+    /**
      * `pi.ui.revealView`: the runtime validated the view and the session; the
      * shell owns work-panel tabs, so it is the surface that opens the tab.
      */
