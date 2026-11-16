@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+Deleting a session invalidates all in-flight full and bounded transcript reads for that session. Late responses neither repopulate its released message/window cache nor return deleted history to action callers. The matching pending selection is invalidated; independent sessions and future reads retain their own lifetime. (Refs #2086)
+
 Workspace file index Git queries settle at their deadline or output limit,
 even when inherited child pipes do not close. Composer file search and the
 Files index then use the existing bounded filesystem fallback (Refs #1731).

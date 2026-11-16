@@ -153,6 +153,7 @@ function clearLocalSessionState(
   id: string,
 ): void {
   forgetTranscriptReadingState(id);
+  runtime.invalidateSessionReads(id);
   runtime.pendingSessionConfigurations.delete(id);
   runtime.sessionTranscriptCache.delete(id);
   runtime.sessionHistoryCache.delete(id);
