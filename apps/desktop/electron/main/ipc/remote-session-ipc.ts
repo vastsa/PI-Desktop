@@ -41,6 +41,17 @@ export function registerRemoteSessionIpc(registrar: IpcRegistrar, getBoot: () =>
   registrar.handle(IPC.invoke.remoteHostSessions, async (request: unknown) => {
     return { sessions: await getBoot().sessions(hostKey(object(request))) };
   });
+  registrar.handle(IPC.invoke.remoteHostModels, async (request: unknown) => {
+    return { models: await getBoot().hostModels(hostKey(object(request))) };
+  });
+  registrar.handle(IPC.invoke.remoteSessionUsage, async (request: unknown) => {
+    const input = object(request);
+    const sessionId = text(input.sessionId, "sessionId", 512);
+    // Only a namespaced remote id can name a Host session; a local id would
+    // otherwise be forwarded to a machine that never saw it.
+    if (!sessionId.startsWith("remote:")) invalid("sessionId");
+    return { usage: await getBoot().sessionUsage(sessionId) };
+  });
   registrar.handle(IPC.invoke.remoteHostRegisterProject, async (request: unknown) => {
     const input = object(request);
     const key = hostKey(input);

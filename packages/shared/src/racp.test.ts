@@ -144,9 +144,9 @@ describe("RACP schemas", () => {
     expect(Value.Check(RacpSessionSnapshotSchema, snapshot)).toBe(true);
   });
 
-  it("keeps every named schema in the generated fixture bundle", () => {
+  it("keeps every named schema in the generated fixture bundle", async () => {
     const bundle = JSON.stringify(RACP_SCHEMAS, null, 2) + "\n";
-    expect(bundle).toMatchFileSnapshot("../fixtures/racp.schema.json");
+    await expect(bundle).toMatchFileSnapshot("../fixtures/racp.schema.json");
   });
 });
 

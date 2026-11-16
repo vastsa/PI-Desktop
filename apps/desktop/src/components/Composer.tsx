@@ -56,6 +56,10 @@ import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSu
 import { useComposerTransforms } from "../features/chat/composer/hooks/useComposerTransforms";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
 import { useComposerModelMenu } from "../features/chat/composer/hooks/useComposerModelMenu";
+import {
+  useRemoteModelCatalog,
+  useRemoteSessionUsage,
+} from "../features/chat/composer/hooks/useRemoteSessionModel";
 import { useVoiceInput } from "../features/voice/useVoiceInput";
 import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
 import { ComposerStatus } from "../features/chat/composer/ComposerStatus";
@@ -123,8 +127,22 @@ export function Composer({
   const sessionCompactions = useAppStore((s) =>
     s.activeSessionId ? s.sessionCompactions[s.activeSessionId] : undefined,
   );
+  // A remote session runs on the Host's providers, so its catalog and its
+  // context figure both come from the Host rather than this store.
+  const remoteModelCatalog = useRemoteModelCatalog(
+    remoteSession ? activeSessionSummary?.remoteHostKey : undefined,
+  );
+  const sessionRunningForUsage = useAppStore((s) =>
+    s.activeSessionId ? s.runningSessions[s.activeSessionId] ?? s.isRunning : false,
+  );
+  const remoteUsage = useRemoteSessionUsage(
+    remoteSession ? activeSessionSummary : undefined,
+    sessionRunningForUsage,
+  );
+  const modelProviders = remoteSession ? remoteModelCatalog.providers : providers;
+  const modelProviderModels = remoteSession ? remoteModelCatalog.providerModels : providerModels;
   // One inspector in the composer toolbar, always the newest turn with usage.
-  const composerContextUsage = useMemo(
+  const localContextUsage = useMemo(
     () =>
       latestTurnContextInspector(
         liveMessages,
@@ -135,6 +153,9 @@ export function Composer({
       ),
     [liveMessages, providerModels, providers, sessionCompactions, activeSessionSummary],
   );
+  // The Host owns a remote session's context figure; the local projection has no
+  // top-level usage row for a remote transcript and would report zero.
+  const composerContextUsage = remoteSession ? remoteUsage : localContextUsage;
   const configureActiveSession = useAppStore((s) => s.configureActiveSession);
   const showToast = useAppStore((s) => s.showToast);
   const composerPrefill = useAppStore((s) => s.composerPrefill);
@@ -249,6 +270,10 @@ export function Composer({
   const runActive = isRunning || executionActive;
   const inputBlocked = approvalPending || pasting || nativeInputBlocked;
   const controlsBlocked = approvalPending || nativeSession || !sessionAllows(capabilitySession, "canConfigureModel");
+  // A Host that publishes no catalog cannot be reconfigured from here, even
+  // though `session/configure` exists: there is nothing to choose.
+  const modelControlsBlocked = controlsBlocked
+    || (remoteSession && remoteModelCatalog.providers.length === 0);
   const sendBlocked = approvalPending || pasting || nativeInputBlocked;
   // Edit returns one queued row to the composer. The row is removed and its
   // captured draft becomes the input, so the input must be empty first: the
@@ -350,9 +375,9 @@ export function Composer({
     providers,
     recentModels,
   });
-  const provider = providers.find(candidate => candidate.id === selectedModel.providerId);
+  const provider = modelProviders.find(candidate => candidate.id === selectedModel.providerId);
   const modelId = selectedModel.modelId;
-  const selectedModelCatalog = provider ? providerModels[provider.id] : undefined;
+  const selectedModelCatalog = provider ? modelProviderModels[provider.id] : undefined;
   const catalogThinkingProvider = thinkingProviderForModel(
     provider,
     modelId,
@@ -404,7 +429,11 @@ export function Composer({
     modelId,
     thinkingProvider,
     thinkingLevel,
-    controlsBlocked,
+    controlsBlocked: modelControlsBlocked,
+    // A remote session offers exactly the models its Host can run.
+    ...(remoteSession
+      ? { providers: modelProviders, providerModels: modelProviderModels }
+      : {}),
   });
   const modelReady = remoteSession ? promptAllowed : nativeSession
     ? activeSessionSummary.capabilities?.canPrompt === true
@@ -644,6 +673,7 @@ export function Composer({
             contextUsage={composerContextUsage ?? null}
             value={value}
             modelReady={modelReady}
+            modelControlsBlocked={modelControlsBlocked}
             sendBlocked={sendBlocked}
             composerTransforms={composerTransforms}
             activeTransformKey={composerTransformController.activeTransformKey}

@@ -19,7 +19,7 @@ pub use history_mutations::{
 };
 mod model_system;
 mod usage;
-pub use usage::{record_usage, session_usage_cost};
+pub use usage::{latest_request_usage, record_usage, session_usage_cost};
 
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 

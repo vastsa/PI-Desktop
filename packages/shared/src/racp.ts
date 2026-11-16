@@ -169,6 +169,14 @@ export const RacpSessionSchema = Type.Object({
   status: RacpSessionStatusSchema,
   planningState: RacpPlanningStateSchema,
   permissionMode: RacpPermissionModeSchema,
+  /**
+   * The Host's own provider/model binding for this session, and the reasoning
+   * level it is configured with. Absent on Hosts that predate the model
+   * catalog, so a client must fall back to a read-only model display.
+   */
+  providerId: Type.Optional(Type.String()),
+  modelId: Type.Optional(Type.String()),
+  thinkingLevel: Type.Optional(Type.String()),
   activeTurnId: Type.Optional(Type.String()),
   queuedTurnIds: Type.Array(Type.String()),
   revision: Type.Integer({ minimum: 0 }),
@@ -176,6 +184,57 @@ export const RacpSessionSchema = Type.Object({
   updatedAt: Type.String(),
 });
 export type RacpSession = Static<typeof RacpSessionSchema>;
+
+/**
+ * One model the Host can actually run, published so a paired client can offer
+ * the same choice the Host offers itself. Only public catalog metadata crosses
+ * the boundary: no endpoint, credential, or provider secret (spec §5.2).
+ */
+export const RacpHostModelSchema = Type.Object({
+  providerId: Type.String({ minLength: 1 }),
+  providerName: Type.String(),
+  modelId: Type.String({ minLength: 1 }),
+  displayName: Type.String(),
+  contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
+  capabilities: Type.Optional(Type.Array(Type.String())),
+  supportedThinkingLevels: Type.Optional(Type.Array(Type.String())),
+  fastMode: Type.Optional(Type.Boolean()),
+}, { additionalProperties: false });
+export type RacpHostModel = Static<typeof RacpHostModelSchema>;
+
+export const RacpHostModelCatalogSchema = Type.Object({
+  models: Type.Array(RacpHostModelSchema),
+  defaultProviderId: Type.Optional(Type.String()),
+  defaultModelId: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export type RacpHostModelCatalog = Static<typeof RacpHostModelCatalogSchema>;
+
+/**
+ * The last physical model request the Host recorded for a session. Context
+ * occupancy is a Host-side fact: the paired client cannot read the Host's
+ * provider catalog or its turn ledger, so the Host reports the figure the
+ * Composer ring is drawn from.
+ */
+export const RacpTurnUsageSchema = Type.Object({
+  inputTokens: Type.Integer({ minimum: 0 }),
+  outputTokens: Type.Integer({ minimum: 0 }),
+  cacheReadTokens: Type.Optional(Type.Integer({ minimum: 0 })),
+  cacheWriteTokens: Type.Optional(Type.Integer({ minimum: 0 })),
+  reasoningTokens: Type.Optional(Type.Integer({ minimum: 0 })),
+  totalTokens: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+export type RacpTurnUsage = Static<typeof RacpTurnUsageSchema>;
+
+export const RacpSessionUsageSchema = Type.Object({
+  /** Absent until the session completes its first model request. */
+  usage: Type.Optional(RacpTurnUsageSchema),
+  providerId: Type.Optional(Type.String()),
+  modelId: Type.Optional(Type.String()),
+  /** The Host's effective window for that model, when it knows one. */
+  contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
+  updatedAt: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export type RacpSessionUsage = Static<typeof RacpSessionUsageSchema>;
 
 export const RacpRemoteErrorSchema = Type.Object({
   code: Type.String({ minLength: 1 }),
@@ -612,6 +671,10 @@ export const RACP_OPERATIONS = {
   "session/deriveTitle": { role: "controller", profile: "remote-host", mutation: true },
   "session/delete": { role: "owner", profile: "remote-host", mutation: true },
   "session/compact": { role: "controller", profile: "remote-host", mutation: true },
+  /** Public model catalog, so a client can offer the Host's own model choice. */
+  "models/list": { role: "viewer", profile: "remote-host", mutation: false },
+  /** Last recorded physical model request, for the Composer's context ring. */
+  "session/usage": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/list": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/read": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/diff": { role: "viewer", profile: "remote-host", mutation: false },
@@ -694,6 +757,8 @@ export const RACP_HTTP_ROUTES: Partial<Record<RacpOperation, { method: "GET" | "
   "events/subscribe": { method: "GET", path: "/v1/sessions/{sessionId}/events" },
   "approval/respond": { method: "POST", path: "/v1/approvals/{approvalId}:respond" },
   "input/respond": { method: "POST", path: "/v1/inputs/{inputId}:respond" },
+  "models/list": { method: "GET", path: "/v1/models" },
+  "session/usage": { method: "GET", path: "/v1/sessions/{sessionId}/usage" },
 };
 
 export const RACP_HTTP_HOST_EVENTS_PATH = "/v1/events" as const;
@@ -914,6 +979,9 @@ export const RACP_SCHEMAS = {
   InputResponse: RacpInputResponseSchema,
   Attachment: RacpAttachmentSchema,
   HostSummary: RacpHostSummarySchema,
+  HostModel: RacpHostModelSchema,
+  HostModelCatalog: RacpHostModelCatalogSchema,
+  SessionUsage: RacpSessionUsageSchema,
   ProjectSummary: RacpProjectSummarySchema,
   InitializeParams: RacpInitializeParamsSchema,
   InitializeResult: RacpInitializeResultSchema,

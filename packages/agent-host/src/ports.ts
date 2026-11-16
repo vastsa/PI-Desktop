@@ -131,6 +131,10 @@ export type SessionSummary = {
   /** Private session-root identity used only for final local admission checks. */
   workspaceIdentity?: string | null;
   mode: "agent" | "plan" | "goal";
+  /** The Host's own provider/model binding; exposed to RACP clients read-write. */
+  providerId?: string;
+  modelId?: string;
+  thinkingLevel?: string;
   permissionMode: RacpPermissionMode;
   planningState?: RacpPlanningState;
   createdAt: string;

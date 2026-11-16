@@ -183,7 +183,7 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
   assert.match(composerSource, /binding\.thinkingLevels\.includes/);
   assert.match(
     composerSource,
-    /const selectedModelCatalog = provider \? providerModels\[provider\.id\]/,
+    /const selectedModelCatalog = provider \? modelProviderModels\[provider\.id\]/,
   );
   assert.match(composerSource, /const catalogThinkingProvider = thinkingProviderForModel\(/);
   assert.match(composerSource, /resolveComposerThinkingProvider\(\{/);

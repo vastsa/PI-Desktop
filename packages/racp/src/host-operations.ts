@@ -33,6 +33,51 @@ export type SessionConfigureInput = {
   permissionMode?: "ask" | "accept-edits" | "auto";
 };
 
+/**
+ * One model the Host can actually run. Only public catalog metadata: a paired
+ * client learns which models exist, never an endpoint or credential.
+ */
+export type HostModelRow = {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+  contextWindow?: number;
+  capabilities?: string[];
+  supportedThinkingLevels?: string[];
+  fastMode?: boolean;
+};
+
+export type HostModelCatalog = {
+  models: HostModelRow[];
+  defaultProviderId?: string;
+  defaultModelId?: string;
+};
+
+export interface RacpModelCatalog {
+  list(): Promise<HostModelCatalog>;
+}
+
+/** The last physical model request the Host recorded for one session. */
+export type HostSessionUsage = {
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    reasoningTokens?: number;
+    totalTokens: number;
+  };
+  providerId?: string;
+  modelId?: string;
+  contextWindow?: number;
+  updatedAt?: string;
+};
+
+export interface RacpUsageReport {
+  read(sessionId: string): Promise<HostSessionUsage>;
+}
+
 export interface RacpSessionCatalog {
   list(): Promise<SessionSummary[]>;
   create(input: SessionCreateInput, principal: Principal): Promise<SessionSummary>;
@@ -85,6 +130,10 @@ export interface RacpTerminalAccess {
 
 export type RacpHostOperations = {
   sessions: RacpSessionCatalog;
+  /** Present on Hosts that publish a model catalog (spec §5.2). */
+  models?: RacpModelCatalog;
+  /** Present on Hosts that can report a session's last request usage. */
+  usage?: RacpUsageReport;
   projects: RacpProjectCatalog;
   workspace: RacpWorkspaceAccess;
   terminal?: RacpTerminalAccess;

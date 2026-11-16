@@ -2,7 +2,8 @@
  * projection and transport recovery live in their own domain modules. */
 import {
   IPC,
-  type RacpEventEnvelope, type RacpItemSummary, type RacpProjectSummary, type RacpSession,
+  type RacpEventEnvelope, type RacpHostModelCatalog, type RacpItemSummary, type RacpProjectSummary, type RacpSession,
+  type RacpSessionUsage,
   type RemoteHostBootstrapRequest, type RemoteHostBootstrapResult,
   type RemoteHostCreateSessionRequest, type RemoteHostSummary, type RemoteHostBrowseProjectsResult,
   type RemoteHostConnectionStatus, type RemoteHostSyncProvidersRequest, type RemoteHostSyncProvidersResult, type SessionSummary,
@@ -62,6 +63,10 @@ export interface RemoteHostsBoot {
   removeHost(hostKey: string): Promise<void>;
   sessionSummaries(): SessionSummary[];
   sessions(hostKey: string): Promise<SessionSummary[]>;
+  /** The Host's own model catalog, so the Composer can offer its models. */
+  hostModels(hostKey: string): Promise<RacpHostModelCatalog>;
+  /** The newest physical request usage for one remote session. */
+  sessionUsage(remoteSessionId: string): Promise<RacpSessionUsage>;
   projects(hostKey: string): Promise<RacpProjectSummary[]>;
   browseProjects(hostKey: string, path?: string): Promise<RemoteHostBrowseProjectsResult>;
   registerProject(hostKey: string, path: string): Promise<RacpProjectSummary & { path?: string }>;
@@ -411,6 +416,12 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
     async list() { return (await registry.list()).map(summaryOf); },
     sessionSummaries: () => catalog.summaries(),
     sessions: catalog.sessions,
+    hostModels: (hostKey) => catalog.hostModels(hostKey),
+    async sessionUsage(remoteSessionId) {
+      const parsed = parseRemoteSessionId(remoteSessionId);
+      if (!parsed) throw Object.assign(new Error("invalid remote session id"), { errorCode: "INVALID_ARGUMENT" });
+      return catalog.sessionUsage(parsed.hostKey, parsed.hostSessionId);
+    },
     projects: catalog.projects,
     async browseProjects(hostKey, path) {
       await ensureReady(hostKey);

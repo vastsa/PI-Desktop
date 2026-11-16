@@ -13,6 +13,7 @@
  * `remote:<hostKey>:<hostSessionId>`, mirroring the proven `native-pi:` prefix
  * (session-ipc.ts). The renderer never parses the prefix; it is resolved here.
  */
+import { IPC } from "@pi-desktop/shared";
 
 /** Sentinel telling the caller to run the existing local handler unchanged. */
 export const ROUTE_LOCAL = Symbol("pi-desktop.route-local");
@@ -140,16 +141,29 @@ export function sessionIdForCall(args: readonly unknown[]): string | null {
   return null;
 }
 
+/**
+ * Renderer channels that address a Host rather than a session, even though
+ * their request object carries a `sessionId`. `remoteHost/sessionUsage` asks
+ * this desktop's paired-host layer for one session's context occupancy; the
+ * Host round-trip happens inside that local handler, which owns the host key
+ * lookup and the RACP call. Treating it as a session channel would route the
+ * call back into a RemoteBackend that does not serve it.
+ */
+const HOST_SCOPED_CHANNELS: ReadonlySet<string> = new Set([IPC.invoke.remoteSessionUsage]);
+
+export function isHostScopedChannel(channel: string): boolean {
+  return HOST_SCOPED_CHANNELS.has(channel);
+}
+
 export function createBackendRouter(options: BackendRouterOptions = {}): BackendRouter {
   const log = options.log ?? (() => undefined);
   const sessionBackends = new Map<string, RemoteBackend>();
-
   const resolveBackend = (
     channel: string,
     args: readonly unknown[],
   ): RemoteBackend | null => {
     const sessionId = sessionIdForCall(args);
-    if (!sessionId) return null;
+    if (!sessionId || isHostScopedChannel(channel)) return null;
     const backend = sessionBackends.get(sessionId);
     if (!backend) return null;
     return backend.handles(channel) ? backend : null;
@@ -164,6 +178,7 @@ export function createBackendRouter(options: BackendRouterOptions = {}): Backend
     },
     resolveBackend,
     async route(channel, args) {
+      if (isHostScopedChannel(channel)) return ROUTE_LOCAL;
       const sessionId = sessionIdForCall(args);
       if (!sessionId) return ROUTE_LOCAL;
       if (!parseRemoteSessionId(sessionId)) {

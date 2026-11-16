@@ -132,6 +132,8 @@ import type {
   PlanningStateEvent,
   PlansPendingResult,
   RemoteHostProjectsResult,
+  RemoteHostModelsResult,
+  RemoteSessionUsageResult,
   RemoteHostBrowseProjectsResult,
   RemoteHostRegisterProjectResult,
   RemoteHostSessionsResult,
@@ -2128,6 +2130,12 @@ export const api = {
     invoke<RemoteHostRegisterProjectResult>(IPC.invoke.remoteHostRegisterProject, { hostKey, path }),
   remoteHostSessions: (hostKey: string) =>
     invoke<RemoteHostSessionsResult>(IPC.invoke.remoteHostSessions, { hostKey }),
+  /** The Host's own model catalog, so a remote Composer offers its models. */
+  remoteHostModels: (hostKey: string) =>
+    invoke<RemoteHostModelsResult>(IPC.invoke.remoteHostModels, { hostKey }),
+  /** Context occupancy of one remote session's newest physical request. */
+  remoteSessionUsage: (sessionId: string) =>
+    invoke<RemoteSessionUsageResult>(IPC.invoke.remoteSessionUsage, { sessionId }),
   createRemoteSession: (request: RemoteHostCreateSessionRequest) =>
     invoke<RemoteHostCreateSessionResult>(IPC.invoke.remoteHostCreateSession, request),
   syncRemoteProviders: (request: RemoteHostSyncProvidersRequest) =>

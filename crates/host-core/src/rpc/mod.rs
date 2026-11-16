@@ -2950,6 +2950,19 @@ async fn handle_request(
             )?;
             Ok(json!({ "session": session }))
         }
+        // Context occupancy for a paired client's Composer ring: the newest
+        // physical request, which is a Host-owned fact this Desktop cannot
+        // read from its own catalog.
+        "session.turnUsage" => {
+            let id = params
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let usage = sessions::latest_request_usage(&st.db, id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "usage": usage }))
+        }
         "todos.get" => {
             let session_id = params
                 .get("sessionId")

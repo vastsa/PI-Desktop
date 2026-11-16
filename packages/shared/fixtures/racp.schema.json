@@ -294,6 +294,15 @@
           }
         ]
       },
+      "providerId": {
+        "type": "string"
+      },
+      "modelId": {
+        "type": "string"
+      },
+      "thinkingLevel": {
+        "type": "string"
+      },
       "activeTurnId": {
         "type": "string"
       },
@@ -791,6 +800,15 @@
                 "const": "auto"
               }
             ]
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "thinkingLevel": {
+            "type": "string"
           },
           "activeTurnId": {
             "type": "string"
@@ -1980,6 +1998,168 @@
         "type": "string"
       }
     }
+  },
+  "HostModel": {
+    "type": "object",
+    "required": [
+      "providerId",
+      "providerName",
+      "modelId",
+      "displayName"
+    ],
+    "properties": {
+      "providerId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "providerName": {
+        "type": "string"
+      },
+      "modelId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "contextWindow": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "capabilities": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "supportedThinkingLevels": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "fastMode": {
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  },
+  "HostModelCatalog": {
+    "type": "object",
+    "required": [
+      "models"
+    ],
+    "properties": {
+      "models": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "providerId",
+            "providerName",
+            "modelId",
+            "displayName"
+          ],
+          "properties": {
+            "providerId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "providerName": {
+              "type": "string"
+            },
+            "modelId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "contextWindow": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "supportedThinkingLevels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fastMode": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "defaultProviderId": {
+        "type": "string"
+      },
+      "defaultModelId": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "SessionUsage": {
+    "type": "object",
+    "properties": {
+      "usage": {
+        "type": "object",
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "totalTokens"
+        ],
+        "properties": {
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cacheReadTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cacheWriteTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reasoningTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalTokens": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "providerId": {
+        "type": "string"
+      },
+      "modelId": {
+        "type": "string"
+      },
+      "contextWindow": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
   },
   "ProjectSummary": {
     "type": "object",

@@ -4,18 +4,25 @@
  * a local session. The renderer never learns the transport: only the
  * `source: "remote"` badge and the namespaced id distinguish it (spec §3.4).
  *
- * RACP does not carry a per-session `thinkingLevel` (it is a desktop provider
- * concern), so remote summaries default it to `"off"`; the renderer treats it
- * as advisory display state and never round-trips it back to the host.
+ * A Host publishes its own provider/model/thinking binding for each session, so
+ * the Composer can offer the Host's model catalog and switch it through
+ * `session/configure`. Hosts that predate the catalog simply omit those fields,
+ * which leaves the Composer on its read-only display.
  */
 import type {
   RacpSession,
   RacpSessionSnapshot,
   SessionDetail,
   SessionSummary,
+  SessionThinkingLevel,
   UiMessage,
 } from "@pi-desktop/shared";
+import { SESSION_THINKING_LEVELS } from "@pi-desktop/shared";
 import { parseRemoteSessionId } from "./backend-router.js";
+
+function sessionThinkingLevel(value: string | undefined): SessionThinkingLevel | undefined {
+  return SESSION_THINKING_LEVELS.find((level) => level === value);
+}
 
 /** Build the flat summary a session list / header row renders. */
 export function racpSessionToSummary(
@@ -24,6 +31,7 @@ export function racpSessionToSummary(
   messageCount: number,
   hostLabel?: string,
 ): SessionSummary {
+  const thinkingLevel = sessionThinkingLevel(session.thinkingLevel);
   return {
     id: remoteSessionId,
     source: "remote",
@@ -33,7 +41,11 @@ export function racpSessionToSummary(
     remoteWorkspaceLabel: session.workspaceLabel,
     capabilities: {
       canPrompt: true, canStop: true, canRefresh: true,
-      canConfigureModel: false, canAttach: false, canSteer: false,
+      // The Host owns the binding and exposes `session/configure` for it. A
+      // Host that publishes no model catalog leaves the Composer on a
+      // read-only display, which the renderer decides from the catalog itself.
+      canConfigureModel: true,
+      canAttach: false, canSteer: false,
       canEditMessages: false, canUseLocalTools: false, canUseTerminal: false,
       canReadWorkspace: true,
     },
@@ -42,7 +54,11 @@ export function racpSessionToSummary(
     // RACP's mode and permission-mode literals are a subset of the renderer's,
     // so they pass through unchanged; `inherit` is desktop-only and never sent.
     mode: session.mode,
-    thinkingLevel: "off",
+    ...(session.providerId ? { providerId: session.providerId } : {}),
+    ...(session.modelId ? { modelId: session.modelId } : {}),
+    // A Host that predates the field (or has no reasoning to configure)
+    // reports no level; the renderer's neutral value keeps the control off.
+    thinkingLevel: thinkingLevel ?? "off",
     permissionMode: session.permissionMode,
     updatedAt: session.updatedAt,
     createdAt: session.createdAt,

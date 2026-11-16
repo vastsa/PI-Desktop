@@ -293,6 +293,10 @@ export const IPC = {
     remoteHostBrowseProjects: "pi-desktop/remoteHost/browseProjects",
     remoteHostRegisterProject: "pi-desktop/remoteHost/registerProject",
     remoteHostSessions: "pi-desktop/remoteHost/sessions",
+    /** The Host's own model catalog, so a remote Composer can offer its models. */
+    remoteHostModels: "pi-desktop/remoteHost/models",
+    /** Context occupancy of one remote session's newest physical request. */
+    remoteSessionUsage: "pi-desktop/remoteHost/sessionUsage",
     remoteHostCreateSession: "pi-desktop/remoteHost/createSession",
     remoteHostSyncProviders: "pi-desktop/remoteHost/syncProviders",
     providersList: "pi-desktop/providers/list",

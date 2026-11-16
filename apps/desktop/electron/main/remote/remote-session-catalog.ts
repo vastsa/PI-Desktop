@@ -1,9 +1,10 @@
 import type {
-  RacpProjectSummary, RacpSession, RemoteHostCreateSessionRequest, SessionSummary, RemoteHostBrowseProjectsResult,
+  RacpHostModelCatalog, RacpProjectSummary, RacpSession, RacpSessionUsage, RemoteHostCreateSessionRequest, SessionSummary, RemoteHostBrowseProjectsResult,
 } from "@pi-desktop/shared";
 import { makeRemoteSessionId } from "./backend-router.js";
 import type { RemoteHostConnection } from "./remote-host-connection.js";
 import type { RemoteRacpClient } from "./remote-backend.js";
+import { validateModelCatalog, validateSessionUsage } from "./remote-host-models.js";
 import { racpSessionToSummary } from "./remote-transcript.js";
 
 export type RemoteCatalogHost = {
@@ -63,6 +64,20 @@ export function createRemoteSessionCatalog(options: {
       });
     },
     forget(hostKey: string) { cache.delete(hostKey); pending.delete(hostKey); },
+    /** The Host's own model catalog, for the Composer's model menu. */
+    async hostModels(hostKey: string): Promise<RacpHostModelCatalog> {
+      const host = requireHost(hostKey);
+      const result = await host.client.request<unknown>("models/list");
+      stillCurrent(host);
+      return validateModelCatalog(result);
+    },
+    /** The newest physical request behind this session's context ring. */
+    async sessionUsage(hostKey: string, hostSessionId: string): Promise<RacpSessionUsage> {
+      const host = requireHost(hostKey);
+      const result = await host.client.request<unknown>("session/usage", { sessionId: hostSessionId });
+      stillCurrent(host);
+      return validateSessionUsage(result);
+    },
     async projects(hostKey: string): Promise<RacpProjectSummary[]> {
       const host = requireHost(hostKey);
       const result = await host.client.request<{ projects: RacpProjectSummary[] }>("project/list");
