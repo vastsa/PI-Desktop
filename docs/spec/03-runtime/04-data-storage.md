@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v28)
+# 04. Data Storage (Schema v32)
 
 ### Project path aliases (#2148)
 
@@ -2137,5 +2137,57 @@ Gate results record the stage, action, outcome and bounded evidence. At most
 one open run exists per session. Restart clears in-flight claims and pauses
 those runs without replaying work. Deleting a session cascades its run records.
 
-Host-started turns evaluate Auto as Accept edits. A run's original snapshot
-remains authoritative even when its source file changes.
+Host-started custom modes evaluate Auto as Accept edits; builtin Goal retains
+the selected session permission. A run's original snapshot remains authoritative
+even when its source file changes or its input preference returns to Agent.
+
+### Active elapsed time and queued Goal intent (schema 30)
+
+The backed-up, transactional v29-to-v30 migration adds `mode_runs.elapsed_ms`
+(nonnegative safe integer, default 0), `mode_runs.active_since_ms` (nullable epoch
+milliseconds), and `turn_queue.start_goal` (boolean integer, default 0).
+Fresh databases use the same column definitions. Existing rows and queue order
+are preserved; old timestamps are never interpreted as active work.
+
+Run saves checkpoint the persisted clock under the same revision CAS. Running
+time accumulates; waiting, pause, budget exhaustion, completion and stop freeze
+it. Repeated settlement cannot charge twice. Startup pauses Running rows even
+between claims, clears active intervals, keeps only checkpointed elapsed time,
+and does not count offline time or replay execution.
+
+`start_goal` is explicit new-Goal input intent, not an execution permission.
+It round-trips with the existing queue identity and participates in idempotency;
+legacy queue rows remain ordinary input. Restored work is still held until a
+controller attaches. Replacement preserves old run accounting independently.
+
+### Structured completion reports (schema 31)
+
+A backed-up transactional v30-to-v31 migration adds nullable
+`mode_runs.completion_report_json`. Fresh databases and upgrades through earlier
+mode migrations use the same structure; an already-present column is retained.
+Existing elapsed time, Goal queue intent, accounting and immutable snapshots
+are preserved. The migration backup precedes the column and version stamp.
+The existing wait-reason CHECK is widened transactionally by a lossless table
+replacement. All columns, indexes, triggers and child gate rows are retained;
+foreign keys are checked and enforcement restored, including on rollback.
+
+The optional wire `completionReport` retains the last bounded model-submitted
+criterion outcomes, evidence, remaining work and blocker reason. It is not an
+independent verification of their truth. Missing legacy reports remain absent.
+The report is saved under the existing run revision CAS with its gate/state
+transition. A blocked report stores `waiting/blocked`, not `finished`; settlement
+releases the claim without autonomous continuation. Startup retains that wait
+and report rather than replaying work. A completed report never bypasses gates.
+
+### Custom session mode identifiers (schema 32)
+
+The backed-up transactional v31-to-v32 migration removes a retained builtin-only
+`sessions.mode` CHECK so upgraded databases accept the same validated custom mode
+ids as fresh databases. It preserves the actual table's other columns and checks,
+all session data, indexes, triggers, views, and referencing child records. Foreign
+keys are checked before commit; connection settings are restored on success or
+rollback. An already-unconstrained table is not rebuilt, and reopening schema 32
+does not repeat the migration. Earlier supported mode schemas upgrade through
+their existing migrations first. Host mode-id, snapshot, and permission validation
+is unchanged. Older binaries reject schema 32; rollback uses the retained
+`pi.sqlite.v31.bak` rather than deleting user data.

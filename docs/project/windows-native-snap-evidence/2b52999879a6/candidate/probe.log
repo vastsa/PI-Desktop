@@ -1,0 +1,27 @@
+2026-11-13T16:47:04.4693511Z starting native snap acceptance
+2026-11-13T16:47:13.6960789Z checking Win+Left
+2026-11-13T16:47:21.2755560Z checking pixels: left
+2026-11-13T16:47:21.3323103Z window command: reset False
+2026-11-13T16:47:29.6075375Z checking pixels: right
+2026-11-13T16:47:29.6743845Z window command: reset False
+2026-11-13T16:47:38.7434518Z window command: reset False
+2026-11-13T16:47:43.3844026Z checking pixels: normal
+2026-11-13T16:47:52.7143086Z checking pixels: resized
+2026-11-13T16:47:52.7542418Z window command: reset False
+2026-11-13T16:47:57.2257169Z window command: reset False
+2026-11-13T16:48:01.4361064Z window command: reset False
+2026-11-13T16:48:05.8201000Z window command: snapshot False
+2026-11-13T16:48:09.7864182Z checking pixels: keyboardMaximized
+2026-11-13T16:48:15.9856014Z window command: restore False
+2026-11-13T16:48:16.5693574Z window command: reset False
+2026-11-13T16:48:17.1375856Z window command: maximize False
+2026-11-13T16:48:20.9399958Z checking pixels: maximized
+2026-11-13T16:48:21.0296823Z window command: minimize False
+2026-11-13T16:48:21.5999147Z window command: restore False
+2026-11-13T16:48:24.0549564Z checking pixels: restoredMaximized
+2026-11-13T16:48:24.1431986Z window command: unmaximize False
+2026-11-13T16:48:28.2574143Z checking pixels: restored
+2026-11-13T16:48:28.2832163Z window command: fullscreen True
+2026-11-13T16:48:28.8354748Z window command: fullscreen False
+2026-11-13T16:48:31.3750022Z checking pixels: after-fullscreen
+2026-11-13T16:48:34.9655448Z completed: True checks=144

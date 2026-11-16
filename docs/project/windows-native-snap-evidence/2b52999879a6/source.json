@@ -1,0 +1,26 @@
+{
+  "revision": "2b52999879a65d35ce7c29dc0dcf29047ee3a02d",
+  "tree": "944f38119a26f2864303ec9fec961c79bc5d41c3",
+  "hostTree": "eb9870fa29f490581e1515b8f230fbc36ce3391c",
+  "clean": true,
+  "hashes": {
+    "scripts/e2e-window-snap.mjs": "5fc62688ebd8cd7d77af899f5920ef23b5cc810eb28a02951b159cb988699da4",
+    "scripts/e2e/run-window-snap.ps1": "0323b53e0b482fe96bc5d120f0b2d16f92e17feac83c1c199bb62b29a3113c76",
+    "scripts/e2e/probe-window-snap.cs": "80f35526d1a975e60190f2d340ea8a78ff0342972d92c1816f688b08561123db",
+    "scripts/e2e/fixtures/window-snap/main.cjs": "b236a2259e97e7c4c61e3723b2a4b763022238ae5314ff53656cbdf7144d529b",
+    "scripts/e2e/host.mjs": "6eea875e4bc1d226d8e1ac31e3700bace23489e97fa1bcc37051c04b47a62ec9",
+    "pnpm-lock.yaml": "42c880e344ed45d01f73b3a140a42ab666c50dce0a480783eb77d8f7f450d714",
+    "Cargo.lock": "4563b62f0de0a0a3c10cffd66cdfe9f5d2cdae4fe14425ec9b6b061f54677bbf",
+    "Cargo.toml": "a6836cdd459a7a457c94e0c0e2e1cbd85c3e0b327c0d0406f7ebf54e9f27dc93",
+    "crates/host-core/Cargo.toml": "28c1fcf38329a30a52f3a48b7af5bcdc8bed14ed5051c0aa57d32253ef660ed6",
+    ".cargo/config.toml": "b82d4eaffaee640929c297936664ec0b9b78a76d1028cf8d4d52fbbc08530f7f",
+    "apps/desktop/package.json": "a9b3afef20e62c88165504c1764a9526e0e51b703eee5a27028aa01559ba94cc",
+    "apps/desktop/electron/main/window-native-snap.ts": "e2299933a198ae0e36f68e9d843adef751a29a8f0139bcc6671c49a3d4c3b86f",
+    "apps/desktop/electron/main/window-native-corners.ts": "e8c711a07f5df1f2dbdee653536c158c0ee103a31cac2177a6b7b5e10dafc1da",
+    "apps/desktop/electron/main/window-native-handle.ts": "d575f86b7a04ce607f30a8c58d39de68d13a8d5c5315eef256c45f9f3dec6696",
+    "apps/desktop/electron/main/window-fullscreen.ts": "b6ce7bec705ecf083fe2ef0018e46004b09decac635111d634af2d1fe870a272",
+    "apps/desktop/electron/main/window-shape.ts": "5ec51ff87c17983b4028856c9c108eb21697127a9eb63181f3b505331aa4a9a0",
+    "crates/host-core/src/rpc/window_snap_rpc.rs": "9741dd886521a985528ea2612b011f01fc00a1e779e9d5a34cede48fbda7e701",
+    "crates/host-core/src/rpc/window_owner.rs": "175e3c7b3f0874b49091a1b78f3ba34eb543e705380ab1059dbe44aad44ff271"
+  }
+}

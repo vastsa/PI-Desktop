@@ -4,86 +4,47 @@
 - Date: 2026-08-04
 - Amends: ADR 0030 / D158
 - Amended by: ADR 0061 (the fallback stays reserved for the blocking hard
-  boundary; a failed background build is discarded silently) / ADR 0064 (there
-  is no background build left to discard, and the `fresh_window` family issues
-  no summary request, so this path cannot trigger there) / ADR 0282 (the
-  summary request retries transient failures and the preflight guard sizes
-  the serialized prompt, with one reduced pass, before this fallback runs) /
-  ADR 0302 (the fallback keeps the real recent window rather than one user
+  boundary) / ADR 0064 (no background build is left to discard, and the
+  `fresh_window` family never reaches this path) / ADR 0282 (the summary
+  request retries transient failures and a preflight guard sizes the serialized
+  prompt before this fallback runs) / ADR 0302 (the fallback keeps the real
+  recent window)
 
 ## Context
 
-The turn-boundary context guard correctly prevents an oversized provider
-request, but an LLM summary request can fail after the session has already
-reached the hard boundary. Treating every automatic summary failure as a
-terminal turn leaves the complete transcript durable but forces the next user
-message to recover the session manually. It also makes a transient or
-provider-specific summarizer failure indistinguishable from an inability to
-persist a checkpoint.
-
-The visible transcript and the model-facing context are already separate. A
-checkpoint can therefore preserve the recent provider-valid message tail even
-when no new natural-language summary is available. The checkpoint must still
-be durable and must pass the same hard-budget recheck; otherwise the provider
-request remains blocked.
-
-This also covers the boundary case where the newest checkpoint is the current
-transcript leaf. pi reports no new history to summarize in that shape, but a
-new prompt can still make the retained tail too large. The full transcript is
-the source for rebuilding a smaller tail while the existing summary is carried
-forward.
+The turn-boundary guard stops an oversized provider request, but an LLM summary
+can fail after the session already reached the hard boundary, turning a
+transient summarizer failure into a terminal turn. Since the visible transcript
+and the model-facing context are separate, a durable checkpoint can keep a
+provider-valid recent tail even when no new summary exists.
 
 ## Decision
 
-For automatic `threshold` and `overflow` compaction only, PI-Desktop uses a
-three-outcome controller:
+For automatic `threshold` and `overflow` compaction only, a three-outcome
+controller applies. It first preflights the summary input against the model
+window and skips a doomed summary request. If summary generation fails, or a
+generated checkpoint stays above the safe budget, it prepares a deterministic
+fallback checkpoint that reuses the previous summary, adds a recovery marker,
+keeps a bounded recent tail, and records `details.fallback = "retained_tail"`.
+The fallback is appended through host-core and re-estimated; success emits
+`compaction_end` with `fallback: "retained_tail"` and the run continues with a
+renderer warning.
 
-1. Preflight the summary input against the provider model window. If the
-   serialized history plus the summary output allowance cannot fit, skip the
-   doomed summary request; otherwise run the desktop-owned summary compaction.
-2. If summary generation fails, or a generated checkpoint remains above the
-   safe budget, prepare a deterministic fallback checkpoint. It reuses the
-   previous checkpoint summary when available, adds a short recovery marker,
-   keeps an aggressively bounded recent tail, and records
-   `details.fallback = "retained_tail"`.
-3. Append the fallback through host-core and re-estimate the model context. A
-   successful fallback emits `compaction_end` with
-   `fallback: "retained_tail"`; the active run continues, and the renderer
-   shows a warning rather than a normal success toast.
-
-Manual `/compact` never silently falls back. Durable append failures, missing
-transcript boundaries, and fallback checkpoints that remain oversized emit
-`CONTEXT_COMPACTION_FAILED` and block the guarded provider request.
-
-The complete transcript is never deleted, rewritten, or replaced by the
-fallback. The fallback is only the model-context view rebuilt after restart.
+Manual `/compact` never falls back. Durable append failures, missing transcript
+boundaries, and still-oversized fallbacks emit `CONTEXT_COMPACTION_FAILED` and
+block the provider request. The full transcript is never deleted or rewritten;
+the fallback is only the model-context view rebuilt after restart.
 
 ## Consequences
 
-- Automatic compaction failures no longer terminate a run when a safe durable
-  retained tail can be installed.
-- The model may lose older task details when summary generation fails; the
-  warning and checkpoint metadata make that degradation explicit.
-- Host persistence and hard-budget validation remain mandatory, so recovery
-  cannot trade a better UX for an unsafe provider request.
-- Manual compaction remains an explicit user action with fail-fast semantics.
-- The event and checkpoint metadata provide a stable diagnostic signal without
-  persisting provider error text that may contain sensitive endpoint details.
+- Automatic failures no longer end a run when a durable retained tail is safe.
+- Older task detail may be lost; the warning and checkpoint metadata make that
+  degradation explicit.
+- Host persistence and hard-budget validation stay mandatory.
 
 ## Alternatives
 
-### Continue without a checkpoint
-
-Rejected because the next provider request would bypass the hard guard and
-could reproduce the provider context-limit failure.
-
-### Delete visible transcript history
-
-Rejected because it destroys searchability, diagnostics, fork inputs, and the
-user's complete conversation.
-
-### Retry the summary indefinitely
-
-Rejected because a long or incompatible provider failure can hold the session
-busy indefinitely. The bounded deterministic fallback is predictable and
-keeps the provider request gate intact.
+- Continue without a checkpoint: rejected; the next request would bypass the
+  hard guard.
+- Delete visible transcript history: rejected; it destroys search, diagnostics,
+  and fork inputs.

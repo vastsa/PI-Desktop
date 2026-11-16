@@ -1,5 +1,18 @@
 # 07. UI Design System
 
+## Windows native snapping without a painted frame
+
+The main window retains Electron's `frame: false` / `thickFrame: false` client
+layout. Host restores the shell's native snap/caption styles and suppresses
+Windows 11's DWM outline. Keyboard and physical titlebar-drag snapping remain
+OS-owned; left/right/bottom pixels remain renderer-owned without native insets.
+Focus and blur reapply the native border hint without moving, sizing or
+activating the window; fullscreen keeps its existing exclusion.
+Existing minimum sizes, corner preferences, fullscreen and work-area maximize
+correction remain in effect. Hover Snap Layouts on the custom maximize button
+is not provided by this style repair. See
+[native snapping ADR](../../adr/windows-native-snap-without-frame-insets.md).
+
 ## 1. Goals
 
 1. Provide a **single source of truth** for visual tokens, component foundations, and layout metrics across PI-Desktop

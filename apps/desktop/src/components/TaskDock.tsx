@@ -38,6 +38,10 @@ export function TaskDock({ sessionId }: { sessionId: string }) {
 function TaskDockPanel({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const snapshot = useAppStore((state) => state.sessionTodos[sessionId]);
+  // The shimmer is an infinite animation. A run that ends early can leave an
+  // in_progress step behind, so the sweep follows the session's run state, not
+  // the step's status alone: an idle window must stop submitting frames (#1064).
+  const sessionRunning = useAppStore((state) => state.runningSessions[sessionId] ?? false);
   const panelId = useId();
 
   // The container now owns the todo read, so it recovers the snapshot the same
@@ -117,7 +121,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
             <span className="dock-header-text">{headerText}</span>
             {progress?.current ? (
               <span
-                className={`dock-header-current${collapsed ? " todo-dock-shimmer" : ""}`}
+                className={`dock-header-current${collapsed && sessionRunning ? " todo-dock-shimmer" : ""}`}
                 title={progress.current.content}
               >
                 {progress.current.content}
@@ -200,6 +204,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
               todos={todos}
               listId={`${panelId}-todo`}
               interactive={!collapsed && tab === "todo"}
+              animate={sessionRunning}
             />
           ) : null}
           {hasTasks && tab === "tasks" ? (

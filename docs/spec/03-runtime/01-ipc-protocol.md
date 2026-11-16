@@ -1,5 +1,17 @@
 # 01. IPC Protocol
 
+### Private native window snapping
+
+`window.enableNativeSnap` is Main-to-Host only: `{nativeHandle: string, ownerPid: number}`
+returns `{enabled: true, borderSuppressed: boolean}`. The decimal, nonzero HWND
+must belong to the Main process injected through `PI_DESKTOP_ELECTRON_PID`.
+Host validates both the requested PID and live window owner, restores the fixed
+`WS_THICKFRAME | WS_CAPTION` mask, and suppresses the Windows 11 DWM outline.
+Windows 10 reports `borderSuppressed: false` for the unsupported attribute.
+Invalid parameters, unauthorized owners, and other native failures remain errors.
+No renderer/preload/plugin channel, schema migration, or protocol version changes.
+See [native snapping ADR](../../adr/windows-native-snap-without-frame-insets.md).
+
 ### composer/readClipboardDirectories
 
 An additive main-window-only Electron channel accepting no source paths. During
@@ -538,8 +550,10 @@ current renderer lifetime while live `plans.changed` events arrive.
 
 For `approve`, host-core and Electron require an explicit
 `targetPermissionMode`; Electron never fills it from stored settings. The
-renderer initializes each approval to Ask, which remains the product default,
-and the host does not persist the selection as the next approval default.
+renderer initializes each approval from its owning Session's effective
+permission (Session override, then global default, then Ask), and ignores old
+device-wide approval preferences. The Host still persists the explicitly
+approved mode on the Session; it does not change the global default.
 `reject` carries no permission mode.
 Responses with a wrong proposal, session, turn, tool-call, version, or expired
 host-owned deadline fail with a stable Plan/Goal approval error. There is no

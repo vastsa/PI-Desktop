@@ -2,74 +2,51 @@
 
 - Status: Accepted
 - Date: 2026-09-13
-- Deciders: PI-Desktop maintainers
 - Amends: ADR 0233, ADR 0234, ADR 0016
 
 ## Context
 
-The first multi-folder project flow selected several directories but treated
-every directory after the first as an independent sidebar project. That does
-not match the user-facing meaning of a ChatGPT Project: one named container
-should own its chats, instructions, memory, and attached sources.
-
-PI-Desktop still has a frozen security boundary in which host-core exposes one
-visible workspace to the agent at a time. A logical project group must therefore
-not be implemented by making the renderer or sidecar own a multi-root security
+The first multi-folder flow selected several directories but treated every
+directory after the first as an independent sidebar project, which is not the
+ChatGPT Project meaning of one named container owning its chats, instructions,
+memory, and sources. Host-core still exposes one visible workspace at a time, so
+a logical group cannot be built by giving the renderer a multi-root security
 policy.
 
 ## Decision
 
 1. A project group is a host-owned logical identity with a display name, an
-   ordered list of local folder roots, and a primary root. The first selected
-   folder is always primary.
-2. Group records and group-level instructions/memory are stored through the
-   host-owned `kv` extension boundary. Existing path projects remain readable
-   as legacy single-root groups, so no user database reset or migration is
-   required.
-3. Sessions created for a group continue to carry their primary project path
-   for compatibility. The runtime resolves group instructions and memory from
-   that path before launching the agent, so all chats in the logical group see
-   the same project context.
-4. The sidebar and Project archive render one row per logical group. Expanding
-   a row shows all roots and the group's sessions; additional roots are not
-   opened as independent project tabs.
-5. The host keeps the primary root as the default visible workspace for builtin
-   file tools. A tool request using an absolute path under another registered
-   group root is canonicalized and may use that root as its containment base;
-   group membership never grants arbitrary external filesystem access.
-6. The project overflow action is named **Edit project**. The editor can change
-   the group name and adjust its root list through the additive
-   `project.group.update` capability, which also promotes any registered root to
-   the primary root when the caller names it. The primary root remains first and
-   cannot be removed. An additional root can be detached even when it has chats;
-   those chats remain available under the detached path as a standalone project.
-   Future chats use that project's path-scoped context, while the group's shared
-   instructions and memory remain with the original group.
-7. Group creation, editing, shared instruction editing, and shared memory editing
-   are additive IPC capabilities. Legacy path-scoped instruction and memory
-   APIs remain available for legacy single-root groups.
+   ordered list of local folder roots, and a primary root, which is always the
+   first selected folder.
+2. Group records and group-level instructions and memory live in the host-owned
+   `kv` extension boundary, and existing path projects stay readable as legacy
+   single-root groups, so no database reset or migration is required.
+3. Sessions keep their primary project path, and the runtime resolves group
+   instructions and memory from it before launching the agent.
+4. The sidebar and Project archive render one row per group; expanding it shows
+   all roots and the group's sessions instead of opening extra project tabs.
+5. The host keeps the primary root as the default visible workspace, and a tool
+   request under another registered root is canonicalized against that root;
+   group membership never grants arbitrary filesystem access.
+6. **Edit project** changes the group name and root list through the additive
+   `project.group.update` capability, which can promote a registered root to
+   primary; the primary root stays first and cannot be removed, and detaching a
+   root that has chats leaves those chats as a standalone project.
+7. Group creation, editing, shared instruction editing, and shared memory
+   editing are additive IPC capabilities, and path-scoped legacy APIs remain.
 
 ## Consequences
 
-- A named group behaves like one ChatGPT-style project in the UI: its chats,
-  instructions, and memory are shared across the selected roots.
-- Existing projects retain their paths, sessions, transcripts, and renderer
-  presentation metadata.
-- The first folder remains meaningful as the default execution root and cannot
-  be reordered in this iteration. Additional roots can be adjusted from Edit
-  project; detaching one with chats preserves those sessions as a standalone
-  project. Group membership and path access still pass host ownership checks
-  and explicit absolute paths through host canonical containment.
-- Selecting another group still changes the one visible host workspace; a
-  background session remains bound to its own primary path.
-- The native picker remains local-only. Remote project sources are not implied.
+- A group behaves like one ChatGPT-style project, sharing chats, instructions,
+  and memory across its roots.
+- Existing projects keep their paths, sessions, transcripts, and presentation
+  metadata.
+- Selecting a group still switches the one visible host workspace, and the
+  native picker stays local-only.
 
-## Alternatives considered
+## Alternatives
 
-- **Keep additional folders as independent tabs:** rejected because it loses the
-  logical project relationship and duplicates the ChatGPT Project identity.
-- **Move multi-root execution into the renderer or sidecar:** rejected because it
-  bypasses the host-owned filesystem and permission boundary.
-- **Add a new relational schema immediately:** rejected because the existing
-  host `kv` extension boundary can durably store this configuration without
-  changing the schema version.
+- Keep additional folders as independent tabs: rejected, it loses the logical
+  project relationship.
+- Move multi-root execution into the renderer or sidecar: rejected, it bypasses
+  the host-owned filesystem boundary.

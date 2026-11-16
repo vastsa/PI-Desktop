@@ -945,6 +945,118 @@ describe("classifyAgentError", () => {
     });
   });
 
+  // Volcengine Ark reports an overdue account as AccountOverdueError
+  // ("your account has an overdue balance"). pi-ai often drops the HTTP 403
+  // and leaves the message, a JSON body, or error.code. Backing off cannot
+  // clear the balance, so those shapes are terminal before the status table.
+  // A bare "overdue" / "account" / "forbidden" is not this failure.
+  it.each([
+    "The request failed because your account has an overdue balance.",
+    "AccountOverdueError: The request failed because your account has an overdue balance.",
+    JSON.stringify({
+      error: {
+        code: "AccountOverdueError",
+        message: "The request failed because your account has an overdue balance.",
+        type: "Forbidden",
+      },
+    }),
+  ])("treats statusless Volcengine overdue-balance text as terminal: %s", (message) => {
+    expect(classifyAgentError(message)).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error(message))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("treats a structured AccountOverdueError code as terminal billing exhaustion", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("The request failed because your account has an overdue balance."),
+      { code: "AccountOverdueError" },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerCode: "AccountOverdueError" },
+    });
+    // The code alone is enough when the message text was replaced.
+    expect(classifyAgentError(Object.assign(
+      new Error("request rejected"),
+      { code: "AccountOverdueError" },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerCode: "AccountOverdueError" },
+    });
+  });
+
+  it.each([429, 400])(
+    "does not retry AccountOverdueError when HTTP %s is still attached",
+    (status) => {
+      expect(classifyAgentError(Object.assign(
+        new Error("The request failed because your account has an overdue balance."),
+        { status, code: "AccountOverdueError" },
+      ))).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: false,
+        details: { providerStatus: status, providerCode: "AccountOverdueError" },
+      });
+    },
+  );
+
+  it("does not retry an overdue-balance message reported as HTTP 429", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("The request failed because your account has an overdue balance."),
+      { status: 429 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerStatus: 429 },
+    });
+  });
+
+  // Exhaustion is probed before the 403 branch, so a body that still carries
+  // 403 and the overdue wording is billing-terminal. A plain 403 is not.
+  it("classifies a 403 AccountOverdueError body as terminal billing exhaustion", () => {
+    expect(classifyAgentError(
+      "Error code: 403 - { 'error': { 'code': 'AccountOverdueError', 'message': 'The request failed because your account has an overdue balance.', 'type': 'Forbidden' } }",
+    )).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerStatus: 403 },
+    });
+  });
+
+  it("does not treat unrelated overdue, account, or forbidden wording as billing exhaustion", () => {
+    for (const message of [
+      "overdue library book",
+      "overdue",
+      "account",
+      "balance",
+      "credits",
+      "insufficient credentials",
+      "Forbidden",
+      "account has overdue",
+    ]) {
+      expect(classifyAgentError(message)).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+    }
+    expect(classifyAgentError("403 Forbidden")).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("permission denied"),
+      { status: 403 },
+    ))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+  });
+
   it.each([
     "Rate limit exceeded",
     "Too many requests",

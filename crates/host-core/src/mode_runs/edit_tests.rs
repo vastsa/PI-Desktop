@@ -46,6 +46,7 @@ fn complete_with_input(
             summary: "done".into(),
             artifacts: Some(BTreeMap::from([("goal".to_string(), artifact.to_string())])),
             input: Some(input.into()),
+            report: None,
         },
     )
 }

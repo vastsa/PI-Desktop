@@ -46,6 +46,40 @@ pub fn begin_turn(
     Ok(turn)
 }
 
+/// What a sender reads when its delivery settles. The receipt is a report a model
+/// can act on, not an encoded envelope: the labels are stable so a skill can name
+/// them, and the worker's own text carries whatever structure it chose.
+fn report_content(message: &Message) -> String {
+    let mut text = String::from("Sub-session report\n");
+    text.push_str(&format!(
+        "Session: {} ({})\n",
+        message.target_title, message.target_session_id
+    ));
+    text.push_str(&format!("Status: {}\n", message.status));
+    match message.turn_id.as_deref() {
+        Some(turn) => text.push_str(&format!("Delivery: {} (turn {turn})\n", message.id)),
+        None => text.push_str(&format!("Delivery: {}\n", message.id)),
+    }
+    match message.result.as_deref() {
+        Some(report) if !report.trim().is_empty() => {
+            text.push_str("\nReport:\n");
+            text.push_str(report.trim_end());
+            text.push('\n');
+        }
+        Some(_) => text.push_str("\nReport: (the worker finished without a final text)\n"),
+        None => text.push_str("\nReport: (none)\n"),
+    }
+    if let Some(error) = message
+        .error
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        text.push_str(&format!("\nError: {error}\n"));
+    }
+    text
+}
+
 pub(super) fn callback(db: &Database, message: &Message) -> Result<Option<Message>> {
     if !message.notify_on_completion || message.kind == "completion" {
         return Ok(None);
@@ -68,8 +102,7 @@ pub(super) fn callback(db: &Database, message: &Message) -> Result<Option<Messag
     let Some(target_title) = target_title else {
         return Ok(None);
     };
-    let content = json!({"sessionId":message.target_session_id,"messageId":message.id,
-        "turnId":message.turn_id,"status":message.status,"result":message.result,"error":message.error}).to_string();
+    let content = report_content(message);
     let at = ms_to_ts(now_ms());
     let receipt = Message {
         id: Uuid::new_v4().to_string(),
@@ -197,10 +230,27 @@ pub(super) fn cancel(db: &Database, input: &Value) -> Result<Value> {
 
 /// The startup fence keeps received data but never replays an unclaimed or
 /// interrupted operation. Existing turn_queue rows are restored held by Agent Host.
+///
+/// Nothing will ever settle a run this fence closes, so a sender that opted into
+/// the completion callback gets the receipt it is waiting for instead of waiting
+/// forever. The callback key keeps repeated starts idempotent.
 pub fn recover(db: &Database) -> Result<()> {
     db.conn().execute("UPDATE session_collaboration_messages SET status='interrupted',
         error='Execution interrupted by application restart',updated_at=?1 WHERE status='running'
         OR (status='queued' AND NOT EXISTS(SELECT 1 FROM turn_queue q WHERE q.session_message_id=session_collaboration_messages.id))",
         params![now_ms()])?;
+    let interrupted = {
+        let mut statement = db.conn().prepare_cached(
+            "SELECT id FROM session_collaboration_messages
+            WHERE status='interrupted' AND notify_on_completion=1 AND kind<>'completion'",
+        )?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for id in interrupted {
+        if let Some(message) = repository::get(db, &id)? {
+            callback(db, &message)?;
+        }
+    }
     Ok(())
 }

@@ -2,75 +2,54 @@
 
 - Status: Accepted
 - Date: 2026-10-17
-- Deciders: PI-Desktop maintainers
 - Related: [ADR 0329](0329-session-worktree-isolation.md) ·
   [03-runtime/11-provider-model-system](../spec/03-runtime/11-provider-model-system.md) ·
-  [04-ux/04-builtin-commands](../spec/04-ux/04-builtin-commands.md) ·
-  issue #1657 · E2E-FAST-MODE
+  issue #1657
 
 ## Context
 
-OpenAI serves a faster priority tier that Codex CLI and the OpenAI API call
-Fast mode. On the wire it is the Responses body field `service_tier:
-"priority"`; the Codex backend rejects `"fast"`. The tier costs more: a ChatGPT
-subscription spends its plan limits faster, and the OpenAI API bills a higher
-per-token price. PI-Desktop never asked for a tier. pi-ai's Responses and
-Codex adapters already accept `serviceTier` and price the tier the response
-reports, but `streamSimple` dropped the option while building its base options.
-
-The cost is a decision about one conversation, while whether an endpoint
-honors the field is something only the user knows for a relay. Issue #1657 asks
-for the subscription speed-up; maintainers asked that capability be configured
-in model settings.
+OpenAI's faster priority tier, Fast mode, is the Responses body field
+`service_tier: "priority"` (the Codex backend rejects `"fast"`) and it costs more
+in plan limits or per-token price, while PI-Desktop never asked for a tier.
+pi-ai's adapters already accept `serviceTier` and price the reported tier, but
+`streamSimple` dropped the option. Issue #1657 asks for the speed-up and
+maintainers asked that the capability be configured in model settings.
 
 ## Decision
 
 1. **Model settings own capability.** `ModelBinding.fastModeAllowed` is an
-   opt-in, stored in the existing provider `config_json` like
-   `nativeWebSearch`, so it needs no migration. The checkbox is enabled only
-   for Responses wires (`openai_codex_responses`, `responses`), including
-   relays; its hint names the cost on that wire.
-2. **`/fast` owns the session switch.** A new builtin `builtin.session.fast`
-   (`/fast`) toggles a persisted `sessions.fast_mode` column (schema v27,
-   additive, v25 backup). `session.create` and `session.configure` accept an
-   optional boolean `fastMode`; omission keeps the stored value. Forks copy it;
-   scheduled runs and delegated workers start off. A draft carries it into the
-   session its first prompt creates. Remote sessions refuse it.
-3. **`/fast` only works on a configured model.** When the selected model's
-   wire cannot carry the tier or the model is not allowed, `/fast` stores
-   nothing and points to Settings → Models → Advanced, in either direction. A
-   stale stored switch on such a model is inert because launch also requires
-   the opt-in.
-4. **The launcher resolves; the runtime only stamps the wire.** Session launch
-   sends `fastMode: true` to the sidecar only when the session switch is on and
-   the user's stored binding allows it. The runtime passes pi-ai's native
-   `serviceTier: "priority"` on main turns whose resolved wire is
-   `openai-codex-responses` or `openai-responses`; the existing pi-ai patch
-   forwards `serviceTier` through `streamSimple`, so the adapters also apply
-   their own tier pricing. Subagents, compaction, and one-shot plugin requests
-   build their own options and keep the default tier. Authorization belongs to
-   the launch model: when a trusted extension switches the runtime to one of
-   its own models (bridge `setModel` or agent activation), the runtime clears
-   the switch, since that model has no `fastModeAllowed` binding. The next
-   launch re-applies it through `setFastMode` from the stored binding.
-
-## Alternatives
-
-- **Per-model switch only (no session state).** Avoids a migration, but turns
-  a per-conversation cost into a global one: enabling Fast for one task speeds
-  up and costs every conversation on that model.
-- **Hard-coded capability rule (official OpenAI host only).** Removes a
-  setting, but excludes relays the user knows support the field and hides the
-  decision in code.
-- **Generic request-parameter injection with presets.** More flexible, but an
-  arbitrary body-field channel needs its own validation and permission story,
-  which is larger than this need.
+   opt-in stored in the existing provider `config_json` like
+   `nativeWebSearch`, needing no migration, enabled only for the
+   `openai_codex_responses` and `responses` wires including relays, with a hint
+   naming that wire's cost.
+2. **`/fast` owns the session switch.** The `builtin.session.fast` builtin
+   toggles a persisted `sessions.fast_mode` column (schema v27, additive), and
+   `session.create` / `session.configure` accept an optional `fastMode` where
+   omission keeps the stored value, forks copy it, scheduled runs and delegated
+   workers start off, and a draft carries it into the session its first prompt
+   creates.
+3. **`/fast` only works on a configured model.** When the selected wire cannot
+   carry the tier or the model is not allowed, `/fast` stores nothing and points
+   to Settings → Models → Advanced, and a stale switch is inert because launch
+   also requires the opt-in.
+4. **The launcher resolves; the runtime only stamps the wire.** Launch sends
+   `fastMode: true` only when the session switch is on and the binding allows it,
+   and the runtime passes `serviceTier: "priority"` on main turns whose resolved
+   wire is `openai-codex-responses` or `openai-responses`; subagents, compaction,
+   and one-shot plugin requests keep the default tier, and a trusted extension
+   switching to its own model clears the switch until the next launch.
 
 ## Consequences
 
-- Schema v27 adds one column; older apps opening a v27 database refuse it as
-  newer, the existing downgrade behavior.
-- The capability can be wrong for a relay that ignores or rebills the field;
-  the settings hint states that risk, and the user owns the opt-in.
+- Schema v27 adds one column, and older apps refuse a v27 database as newer.
+- The capability can be wrong for a relay that ignores or rebills the field, so
+  the settings hint states that risk and the user owns the opt-in.
 - The Composer model chip shows a Fast mark while the switch is on for an
-  allowed model, so the cost is visible at send time.
+  allowed model, keeping the cost visible at send time.
+
+## Alternatives
+
+- A per-model switch without session state: it turns a per-conversation cost
+  into a global one for every conversation on that model.
+- A hard-coded official-host-only rule: it excludes relays the user knows
+  support the field and hides the decision in code.

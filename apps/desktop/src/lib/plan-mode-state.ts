@@ -4,7 +4,7 @@ import type {
   PlanningStateEvent,
 } from "@pi-desktop/shared";
 
-/** Every new approval is an explicit, per-proposal Ask decision. */
+/** Fail closed when no effective session permission is available. */
 export const PLAN_APPROVAL_DEFAULT_MODE: GlobalPermissionMode = "ask";
 
 export type PlanCheckpointStatus =
