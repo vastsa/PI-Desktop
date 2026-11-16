@@ -1,5 +1,7 @@
 # 08. Component Spec
 
+Composer Stop completion owns only the session that requested it. Switching to another running session while Stop hydrates history must retain that session's Stop button, transcript and running flag. The original session clears its flag and releases the matching submitted draft. (Refs #1990)
+
 A confirmed Native Pi or remote Stop updates its running flag before requesting source details. If that follow-up read fails, the session remains stopped and keeps its known transcript; the refresh error stays visible. A rejected Stop still retains running state. (Refs #1990)
 
 Workspace file index Git queries settle at their deadline or output limit,

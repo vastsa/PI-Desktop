@@ -582,6 +582,13 @@ export function createTranscriptSlice({
         const fullMessages = await runtime.loadFullSessionMessages(sessionId);
         if (!fullMessages || get().activeSessionId !== sessionId) {
           submittedDraft?.resolveAbort?.(false);
+          if (runtime.submittedComposerDrafts.get(sessionId) === submittedDraft) {
+            runtime.submittedComposerDrafts.delete(sessionId);
+          }
+          set((current) => ({
+            runningSessions: { ...current.runningSessions, [sessionId]: false },
+            isRunning: current.activeSessionId === sessionId ? false : current.isRunning,
+          }));
           return;
         }
         const merged = mergeLiveSessionMessages(fullMessages, get().messages);
@@ -684,7 +691,7 @@ export function createTranscriptSlice({
           current.activeSessionId === sessionId
             ? stoppedRows(current.messages)
             : current.messages,
-        isRunning: false,
+        isRunning: current.activeSessionId === sessionId ? false : current.isRunning,
         runningSessions: { ...current.runningSessions, [sessionId]: false },
       }));
       void flushPendingSessionConfiguration(sessionId);
