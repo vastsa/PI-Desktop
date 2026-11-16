@@ -231,7 +231,9 @@ type Session = {
 projection and `awaiting_approval` means a pending contract approval exists
 even though no turn is running. An absolute workspace path MUST NOT be
 included unless the principal has an explicit path-disclosure scope. A
-`workspaceLabel` is display-only.
+`workspaceLabel` is display-only. A session that belongs to a project reports
+the same `projectId` through `session/list`, `session/get`, and the
+`session/attach` snapshot; clients group it under that project in every view.
 
 ### 5.2 Turn
 

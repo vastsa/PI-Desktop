@@ -69,6 +69,41 @@ describe("host ports", () => {
     expect(calls).toEqual([{ id: "s1", messageLimit: 1 }, { id: "s1" }]);
   });
 
+  it("keeps the project id on the summary a client attaches to", async () => {
+    const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const port = createHostSessionPort(() => ({
+      async call<T>(method: string, params?: Record<string, unknown>) {
+        calls.push({ method, params });
+        if (method === "session.get") {
+          return { session: { id: "s1", title: "Remote work", projectPath: "/home/user/work/pi", messages: [] } } as T;
+        }
+        if (method === "projects.list") {
+          return { projects: [{ id: 7, path: "/home/user/work/pi" }] } as T;
+        }
+        throw new Error(`unexpected ${method}`);
+      },
+    }));
+    // host-core stores the project path, not the id, so `session/list` decorates
+    // its rows. `session/attach` resolves the same session through this port; if
+    // the id is missing here the renderer loses the project group as soon as the
+    // conversation is opened.
+    expect(await port.get("s1")).toMatchObject({ id: "s1", projectId: "7", workspaceLabel: "pi" });
+    expect(calls.map((call) => call.method)).toEqual(["session.get", "projects.list"]);
+  });
+
+  it("leaves a session without a known project undecorated", async () => {
+    const port = createHostSessionPort(() => ({
+      async call<T>(method: string) {
+        if (method === "session.get") return { session: { id: "s1", projectPath: "/removed/project" } } as T;
+        if (method === "projects.list") return { projects: [] } as T;
+        throw new Error(`unexpected ${method}`);
+      },
+    }));
+    const summary = await port.get("s1");
+    expect(summary).toMatchObject({ id: "s1" });
+    expect(summary?.projectId).toBeUndefined();
+  });
+
   it("round-trips queue records through the host-core RPC shape", async () => {
     const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
     const store = createHostQueueStore(() => ({

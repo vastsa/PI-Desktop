@@ -80,25 +80,59 @@ export function toRacpItem(message: UiMessage): RacpItemSummary {
   };
 }
 
+/** A project row as host-core lists it. */
+export type HostProjectRow = { id: number; path: string };
+
+/**
+ * Host-core keys a session by its project path while RACP exposes the project
+ * id (spec §5.1). `session/list` decorates its summaries from the projects
+ * table; the Agent Host resolves the very same session through {@link SessionPort}
+ * for `session/attach`, prompts, and configuration, so the lookup has to happen
+ * there too. Without it the id disappears the moment a client attaches, and the
+ * renderer can no longer place the session under its project group.
+ */
+export async function withProjectIds(
+  host: HostRpc,
+  records: HostSessionRecord[],
+): Promise<SessionSummary[]> {
+  const needsLookup = records.some((record) => record.projectPath);
+  const byPath = new Map<string, string>();
+  if (needsLookup) {
+    const { projects } = await host.call<{ projects?: HostProjectRow[] }>("projects.list", {});
+    for (const project of projects ?? []) byPath.set(project.path, String(project.id));
+  }
+  return records.map((record) => {
+    const summary = toSessionSummary(record);
+    const projectId = record.projectPath ? byPath.get(record.projectPath) : undefined;
+    return projectId ? { ...summary, projectId } : summary;
+  });
+}
+
 /** Session metadata and transcript pages straight from host `session.get`. */
 export function createHostSessionPort(getHost: () => HostRpc | null): SessionPort {
   // `messageLimit` bounds the transcript read; metadata lookups need no messages.
-  async function fetchSession(sessionId: string, messageLimit?: number): Promise<HostSessionRecord | null> {
+  async function fetchSession(
+    sessionId: string,
+    messageLimit?: number,
+  ): Promise<{ host: HostRpc; record: HostSessionRecord } | null> {
     const host = getHost();
     if (!host) return null;
     const result = await host.call<{ session?: HostSessionRecord | null }>("session.get", {
       id: sessionId,
       ...(messageLimit === undefined ? {} : { messageLimit }),
     });
-    return result.session ?? null;
+    const record = result.session ?? null;
+    return record ? { host, record } : null;
   }
   return {
     async get(sessionId) {
-      const record = await fetchSession(sessionId, 1);
-      return record ? toSessionSummary(record) : null;
+      const found = await fetchSession(sessionId, 1);
+      if (!found) return null;
+      const [summary] = await withProjectIds(found.host, [found.record]);
+      return summary ?? null;
     },
     async history(sessionId, { limit, beforeItemId }) {
-      const record = await fetchSession(sessionId);
+      const record = (await fetchSession(sessionId))?.record;
       const messages = record?.messages ?? [];
       const end = beforeItemId ? messages.findIndex((message) => message.id === beforeItemId) : messages.length;
       const cut = end === -1 ? messages.length : end;

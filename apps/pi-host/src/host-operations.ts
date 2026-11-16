@@ -10,7 +10,7 @@ import {
   collectWorkspaceDiff,
   listDir,
   readWorkspaceFile,
-  toSessionSummary,
+  withProjectIds,
   type HostRpc,
   type HostSessionRecord,
   type RuntimeService,
@@ -67,34 +67,19 @@ export function createSessionCatalog(deps: HostOperationsDeps): RacpSessionCatal
     if (!project) throw new RacpError("NOT_FOUND", `project ${projectId} is unknown`);
     return project.path;
   }
-  /**
-   * host-core keys a session by its project path; RACP exposes the project id
-   * (spec §5.1), so the summary is decorated from the projects table. A path
-   * with no row (a session whose project was removed) simply has no id.
-   */
-  async function withProjectIds(host: HostRpc, records: HostSessionRecord[]): Promise<SessionSummary[]> {
-    const needsLookup = records.some((record) => record.projectPath);
-    const byPath = new Map<string, string>();
-    if (needsLookup) {
-      const { projects } = await host.call<{ projects: ProjectRow[] }>("projects.list", {}).catch(hostError);
-      for (const project of projects ?? []) byPath.set(project.path, String(project.id));
-    }
-    return records.map((record) => {
-      const summary = toSessionSummary(record);
-      const projectId = record.projectPath ? byPath.get(record.projectPath) : undefined;
-      return projectId ? { ...summary, projectId } : summary;
-    });
-  }
+  /** Project identity plus RACP error mapping, shared with the Agent Host port. */
+  const decorate = (host: HostRpc, records: HostSessionRecord[]) =>
+    withProjectIds(host, records).catch(hostError);
   async function get(host: HostRpc, sessionId: string): Promise<SessionSummary> {
     const result = await host.call<{ session?: HostSessionRecord | null }>("session.get", { id: sessionId, messageLimit: 1 }).catch(hostError);
     if (!result.session) throw new RacpError("NOT_FOUND", `session ${sessionId} is unknown`);
-    return (await withProjectIds(host, [result.session]))[0]!;
+    return (await decorate(host, [result.session]))[0]!;
   }
   return {
     async list() {
       const host = requireHost(getHost);
       const result = await host.call<{ sessions: HostSessionRecord[] }>("session.list", {}).catch(hostError);
-      return withProjectIds(host, result.sessions ?? []);
+      return decorate(host, result.sessions ?? []);
     },
     async create(input, _principal: Principal) {
       const host = requireHost(getHost);
