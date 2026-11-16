@@ -556,12 +556,9 @@ type HostModel = {
 }
 
 type HostModelCatalog = {
-  providers: {
-    id: string
-    name: string
-    models: HostModel[]
-  }[]
-  defaults?: { providerId?: string; modelId?: string }
+  models: HostModel[]
+  defaultProviderId?: string
+  defaultModelId?: string
 }
 
 type SessionUsage = {
@@ -581,8 +578,9 @@ type SessionUsage = {
 ```
 
 Only public catalog metadata crosses the boundary — never an endpoint,
-credential, or provider secret. Two Host providers that share a display name
-remain distinct rows keyed by `providerId`.
+credential, or provider secret. A row is keyed by the pair
+`(providerId, modelId)`, so two Host providers that share a display name remain
+distinct rows.
 
 `SessionUsage` reports the newest *physical request* the Host completed, not
 the turn aggregate: a turn that called tools issued several requests, and only
