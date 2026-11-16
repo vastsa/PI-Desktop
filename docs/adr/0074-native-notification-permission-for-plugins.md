@@ -5,18 +5,10 @@
 
 ## Context
 
-The plugin `notify` capability currently exposes only an in-app Toast. PI-Desktop
-already uses Electron's native notification API for terminal task outcomes, but
-that surface is intentionally owned by the application and backed by the
-durable task notification inbox. Plugins need a way to ask the operating system
-for notification access and deliver a native notification without gaining
-access to Electron objects or the task inbox.
-
-Electron does not expose a cross-platform, read-only notification permission
-query or a separate permission-request method for its main-process
-`Notification` class. Native delivery reports success or failure through the
-notification lifecycle, and operating-system policies may suppress a banner
-without reporting a durable state.
+The plugin `notify` capability currently exposes only an in-app Toast.
+PI-Desktop already uses Electron's native notification API for terminal task
+outcomes, but that surface is intentionally owned by the application and backed
+by the durable task notification inbox.
 
 ## Decision
 
@@ -32,13 +24,7 @@ permission-gated APIs under `pi.ui`:
 
 All three APIs use the existing low-risk manifest `notify` permission. The
 Electron main process owns the native objects, limits title/body lengths, and
-keeps plugin notifications separate from the durable task inbox. Native plugin
-notifications do not create inbox rows or session activation events on click.
-
-The permission result is deliberately best-effort. Before a native result is
-observed, or when the operating system does not report one, the API returns
-`unknown`; unsupported platforms return `unsupported`. This avoids pretending
-that Electron can reliably reflect a platform setting it cannot query.
+keeps plugin notifications separate from the durable task inbox.
 
 ## Consequences
 
@@ -57,5 +43,5 @@ that Electron can reliably reflect a platform setting it cannot query.
 - Adding a platform-specific permission package: rejected for this API revision;
   it would add platform-specific dependencies without a common Electron
   permission contract.
-- Allowing plugins to construct Electron `Notification` objects: rejected by
-  the plugin isolation boundary.
+- Allowing plugins to construct Electron `Notification` objects: rejected by the
+  plugin isolation boundary.

@@ -10,16 +10,7 @@
 The Model configuration service list has two halves with different sources of
 truth. Vendor accounts are derived at runtime from pi-ai
 (`models.getProviders().filter(p => p.auth.oauth)`), so a subscriptions vendor
-added to the library shows up in the app without a code change. The API-key
-half is hand-maintained in `NAMED_ENDPOINT_PRESETS`
-(`packages/shared/src/provider-presets.ts`), and it had drifted: pi-ai 0.87.1
-ships 41 built-in providers, and fifteen of the ids that take a plain API key
-had no named preset of their own — only `minimax` resolved to the China row
-by alias, and the rest fell to the custom form.
-
-Users could still reach those hosts through the custom endpoint form, but they
-had to know the base URL, the vendor key stayed `custom`, and the models.dev
-catalog binding was lost.
+added to the library shows up in the app without a code change.
 
 ## Decision
 
@@ -53,17 +44,9 @@ Rules that follow from the existing preset contract:
   `qwen-token-plan-individual`, `qwen-token-plan-cn`, `opencode-zen`, `hf`,
   `hugging-face`, `nim`).
 - `apiStyle` follows the wire style this app can actually drive with discovery
-  and catalog metadata. Vercel AI Gateway and OpenCode Zen publish several
-  protocols; both are reachable over the OpenAI-compatible face
-  (`chat_completions`), which is also what the models.dev catalog adapter maps
-  to. MiniMax (`anthropic_messages`) and Meta (`responses`) follow the
-  providers' own single protocol.
+  and catalog metadata.
 - `minimax` (international, `api.minimax.io`) and `minimax-cn`
   (`api.minimaxi.com`) stay separate rows; `moonshotai` and `moonshotai-cn` too.
-
-Eight built-in providers intentionally stay without a preset. The guard
-`packages/agent-runtime/src/pi-ai-provider-sync.test.ts` records each reason and
-fails when the list goes stale:
 
 - Amazon Bedrock, Azure OpenAI: request signing / per-resource endpoint and
   deployment id rather than a base URL plus API key.
@@ -75,24 +58,16 @@ fails when the list goes stale:
 
 ## Consequences
 
-The Service select grows by fifteen API-key rows in the international and
-China groups; each row prefills name, base URL, and format, and
-`vendorKey` binds it to its models.dev catalog entry. Aliases make existing
-rows that stored a pi-ai provider id resolve to the same preset.
+The Service select grows by fifteen API-key rows in the international and China
+groups; each row prefills name, base URL, and format, and `vendorKey` binds it
+to its models.dev catalog entry.
 
 The sync guard now fails on a pi-ai upgrade that adds a provider, which turns
-silent drift into a build-time signal. Providers that expose several protocols
-or no protocol at all still need a human decision, and the guard's exception
-list is where that decision is recorded.
-
-No protocol, IPC, storage schema, permission, or default-selection change.
+silent drift into a build-time signal.
 
 ## Alternatives
 
 - **Derive the API-key list from pi-ai at runtime**, as vendor accounts do.
-  Rejected for now: pi-ai providers carry no display ordering, some need
-  account-scoped URLs, and the app's preset table also carries the
-  `apiStyle` and `zhipuCompat` bindings that the library does not express.
 - **Custom endpoint only.** Rejected: it hides the services, loses the
   models.dev binding, and leaves the drift invisible.
 - **Group providers by library id, ignoring models.dev keys.** Rejected: the

@@ -14,8 +14,7 @@
 The bundled File Manager can open files with the OS application or reveal them
 in the file manager. HTML previews need the bundled work-panel Browser, but its
 public `pi.browser.*` API is gated by high-risk `browser.cdp` and also exposes
-page inspection and control. That permission is broader than a file-tree
-preview action needs.
+page inspection and control.
 
 ## Decision
 
@@ -23,16 +22,12 @@ preview action needs.
    channel `fs.openInBrowser`, covered by the existing `fs.read` permission.
 2. Resolve the path with the same real-path, protected-path, credential
    deny-list, declared-scope, and project-group root checks as the other
-   host-mediated file actions. Accept only existing regular `.html`, `.htm`, or
-   `.xhtml` files, and audit successful and refused requests.
+   host-mediated file actions.
 3. After validation, Electron Main sends a dedicated Browser-open event to the
-   renderer. The renderer creates a Browser resource tab for the active local
-   session. The bundled Browser plugin must be enabled; disabled Browser state
-   fails with `UNAVAILABLE`.
+   renderer.
 4. This action does not grant `browser.cdp`, expose Browser actions or page
    contents, broaden `BrowserPreview`, or change the Browser's existing local
-   file navigation policy (ADR 0328). No host-core protocol version or
-   persisted data changes.
+   file navigation policy (ADR 0328).
 
 ## Consequences
 
@@ -52,11 +47,8 @@ actions, while this interaction only needs the host to open one scoped file.
 
 ### Reuse `BrowserPreview`
 
-Rejected: `BrowserPreview` is workspace-rooted and session-originated. File
-Manager also supports explicitly browsing another registered folder in a
-project group, and its user-driven action needs to follow the selected file.
+Rejected: `BrowserPreview` is workspace-rooted and session-originated.
 
 ### Open through `shell.openExternal(file:)`
 
-Rejected: external URL opening intentionally excludes local file URLs. A
-separate scoped host action preserves that boundary.
+Rejected: external URL opening intentionally excludes local file URLs.

@@ -8,17 +8,9 @@
 
 ## Context
 
-Read/search tools were classified as low risk before their path resolver ran.
-An absolute path outside the session workspace therefore bypassed the normal
-permission card and failed later as `PATH_OUTSIDE_WORKSPACE`. That made a
-legitimate inspection request look like a broken Plan turn and gave the agent
-an incentive to retry or replace the native tools with shell commands.
-
-The host already had bounded, cross-platform Rust implementations for
-`Read`/`Glob`/`Grep`, but the sidecar schemas exposed only a subset of their
-scoping controls. Models could not reliably provide `path`, `include`,
-`outputMode`, `headLimit`, `offset`, `limit`, or `Glob.limit`; some providers
-also emitted a shell-style `files_with_matches` value that the host rejected.
+Read/search tools were classified as low risk before their path resolver ran. An
+absolute path outside the session workspace therefore bypassed the normal
+permission card and failed later as `PATH_OUTSIDE_WORKSPACE`.
 
 ## Decision
 
@@ -37,13 +29,9 @@ risk matrix:
   paths.
 
 After approval, host-core resolves the path with the same canonicalized-ancestor
-logic used for contained paths. It never turns the external location into a
-new workspace root, and implicit Bash cwd or recursive walks do not gain this
-exception. Successful external results report `root: "external"` where a root
-field exists and keep absolute canonical paths visible to the model.
-
-Plan's existing hard deny for Write/Edit/plugin/unknown tools remains above this
-path rule.
+logic used for contained paths. It never turns the external location into a new
+workspace root, and implicit Bash cwd or recursive walks do not gain this
+exception.
 
 ### 2. Native search is the portable default
 
@@ -51,35 +39,23 @@ The runtime exposes the host's complete bounded search contract:
 
 - `Read`: `offset` and `limit`;
 - `Glob`: `path` and `limit`;
-- `Grep`: `path`, `include`, `outputMode`, `headLimit`, and
-  `caseInsensitive`.
+- `Grep`: `path`, `include`, `outputMode`, `headLimit`, and `caseInsensitive`.
 
 `outputMode` exposes exactly `content`, `filesWithMatches`, and `count` in the
-schema. The host also normalizes `files_with_matches` and
-`files-with-matches` as compatibility aliases before execution.
-Search guidance prefers workspace-relative paths and the native tools on every
-platform. Grep may exec a user-installed `rg` when one is on the process PATH
-or the Unix login PATH (D181 / D315). That is an implementation backend, not a
-shell search: stdin is null, arguments are not quoted through a shell, and the
-host still applies budgets, newest-first order, scoped ignore (`--no-ignore-parent`
-when `path` is explicit), and the same JSON shape. A missing, overridden-invalid,
-or failing `rg` (spawn error or exit 2) falls back to the in-process `ignore` +
-`regex` searcher. `PI_DESKTOP_RG` selects a binary; `PI_DESKTOP_DISABLE_RG`
-forces the fallback. Bash search remains a bounded last resort and still does
-not assume POSIX utilities, PowerShell, or `rg` availability.
+schema. The host also normalizes `files_with_matches` and `files-with-matches`
+as compatibility aliases before execution.
 
 ## Consequences
 
 - A Plan inspection outside the project can wait for a clear user decision
   instead of failing at the resolver boundary.
-- Auto remains suitable for fully automated sessions, while Ask and Accept
-  edits preserve an explicit consent boundary for external data and mutations.
+- Auto remains suitable for fully automated sessions, while Ask and Accept edits
+  preserve an explicit consent boundary for external data and mutations.
 - Search requests can narrow scope and output before execution, reducing shell
   fallbacks, invalid output-mode retries, and context growth.
 - External reads and searches are visible through absolute paths; external
   mutations do not create workspace Review or artifact records.
-- The security denylist remains the default. This ADR changes the decision
-  point for explicit paths, not the authority of host-core or the Bash cwd.
+- The security denylist remains the default.
 
 ## Alternatives rejected
 
@@ -91,14 +67,13 @@ missing permission opportunity, and Plan loses a legitimate inspection path.
 ### Treat all low-risk reads as Auto
 
 Rejected because a low-risk operation can still disclose data from an unrelated
-directory. Scope and user consent must be evaluated separately.
+directory.
 
 ### Use shell-specific search commands
 
 Rejected because command availability and quoting differ across macOS, Linux,
 and Windows, and unbounded shell output was a measured source of context
-exhaustion. Execing `rg` from Grep is not this alternative: the model still
-calls Grep, and host-core owns the result budget.
+exhaustion.
 
 ## Related docs
 

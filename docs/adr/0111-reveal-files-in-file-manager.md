@@ -12,9 +12,7 @@
 The bundled `pi.files` viewer previously used its header action to open the
 selected file with the operating system's associated application. That handoff
 is not reliable for every file type or platform, and it does not match the
-primary browsing intent of locating the file in the project. The viewer already
-knows the selected root-relative path and the host has a native file-manager
-reveal operation.
+primary browsing intent of locating the file in the project.
 
 ## Decision
 
@@ -22,16 +20,12 @@ reveal operation.
    `fs.reveal`.
 2. Gate the operation with the existing `fs.read` permission and the complete
    declared file-scope checks: root containment, symlink resolution, protected
-   paths, deny-list, and manifest scope or consent. Only existing regular files
-   are accepted, and the plugin supplies no absolute path.
-3. Electron Main calls `shell.showItemInFolder` after the gate. The file manager
-   may select the file when supported by the platform.
+   paths, deny-list, and manifest scope or consent.
+3. Electron Main calls `shell.showItemInFolder` after the gate.
 4. The bundled Files viewer replaces its header action with **Show in folder**
-   and reports a localized toast if the reveal fails. `fs.openDefault` remains
-   available as an additive public API for plugins that explicitly need the
-   associated-application handoff.
+   and reports a localized toast if the reveal fails.
 5. Successful and failed reveals are audited with the plugin id and
-   root-relative path. No desktop IPC or host-core protocol version changes.
+   root-relative path.
 
 ## Consequences
 

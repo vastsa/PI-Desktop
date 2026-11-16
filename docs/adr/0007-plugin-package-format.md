@@ -5,11 +5,13 @@
 
 ## Context
 
-We need a plugin package format that is convenient for local sharing and marketplace download.
+We need a plugin package format that is convenient for local sharing and
+marketplace download.
 
 ## Decision
 
-Adopt `.piplug` as the product-level distribution extension. Its contents are a zip archive, with a `manifest.json` at the root.
+Adopt `.piplug` as the product-level distribution extension. Its contents are a
+zip archive, with a `manifest.json` at the root.
 
 ## Rationale
 

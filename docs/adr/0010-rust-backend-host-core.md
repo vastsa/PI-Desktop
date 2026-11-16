@@ -11,9 +11,6 @@ PI-Desktop needs a robust local backend for:
 - process/command execution
 - plugin isolation boundary
 - secure storage adapters
-- long-running host services
-
-A pure Electron main TypeScript backend is workable, but weaker for systems work and isolation.
 
 ## Decision
 

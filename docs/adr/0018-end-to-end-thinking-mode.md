@@ -7,14 +7,8 @@
 
 The desktop previously exposed an effort label that lived only in renderer
 state. The pi runtime was constructed with reasoning disabled, the selected
-level never crossed IPC, and assistant thinking events had no durable or
-visible representation. Removing that decorative control fixed the misleading
-UI but also left reasoning-capable models without an operational selector.
-
-Pi already provides model reasoning metadata, supported thinking levels,
-provider-specific request serialization, and separate thinking stream blocks.
-PI-Desktop needs one authoritative session value and a lossless path through
-every process boundary rather than another renderer-only preference.
+level never crossed IPC, and assistant thinking events had no durable or visible
+representation.
 
 ## Decision
 
@@ -29,24 +23,18 @@ model capability -> session.thinkingLevel -> renderer/main IPC
 -> UiMessage.thinking -> host canonical blocks -> transcript disclosure
 ```
 
-- Model capability is inferred from pi's built-in catalog when the provider
-  has no explicit override. Custom providers may explicitly enable or disable
-  reasoning.
+- Model capability is inferred from pi's built-in catalog when the provider has
+  no explicit override.
 - Capability-aware UI/main/sidecar boundaries use the same nearest-supported
-  clamp. The host validates the canonical enum without provider knowledge. A
-  provider without reasoning support always resolves to `off`.
+  clamp.
 - The Composer renders the selector only for a reasoning-capable selected
   provider/model and persists changes through `session.configure`.
 - Thinking text remains separate from answer text in streaming events,
   persistence, rendering, and copy actions.
 - Host schema v3 adds `sessions.thinking_level`; assistant reasoning is stored
-  as a canonical `thinking` content block. Existing v2 sessions migrate to
-  `off`.
+  as a canonical `thinking` content block.
 - The shared/host protocol version advances to 2 because session and message
   wire shapes changed.
-
-This extends D091: a reasoning control may be visible only because it now has
-an end-to-end runtime implementation.
 
 ## Consequences
 
@@ -55,8 +43,8 @@ an end-to-end runtime implementation.
 - Sparse model capability sets, including models that cannot fully disable
   reasoning and boolean-like custom sets such as `["off","high"]`, resolve
   consistently across Settings, Composer, main, and sidecar.
-- Thinking-only stream updates can open the transcript without creating an
-  empty answer bubble.
+- Thinking-only stream updates can open the transcript without creating an empty
+  answer bubble.
 - Search and answer-copy behavior exclude thinking text.
 - Older databases migrate additively; older protocol peers fail the normal
   version handshake rather than silently dropping the new fields.
@@ -69,8 +57,8 @@ Rejected because it cannot affect requests or survive as session truth.
 
 ### Put thinking text inside the assistant answer
 
-Rejected because it corrupts answer markdown, copy semantics, search text,
-and the distinction pi already provides between reasoning and final output.
+Rejected because it corrupts answer markdown, copy semantics, search text, and
+the distinction pi already provides between reasoning and final output.
 
 ### Enable one generic reasoning boolean
 

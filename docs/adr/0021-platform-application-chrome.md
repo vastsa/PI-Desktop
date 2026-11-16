@@ -5,30 +5,22 @@
 
 ## Context
 
-Electron's default chrome does not satisfy all three desktop conventions used
-by PI-Desktop. macOS needs a conventional native application menu and inset
-traffic lights. Frameless Windows and Linux windows need visible application
-menus plus minimize, maximize/restore, and close controls.
-
-Renderer-owned commands such as New Task and Settings cannot execute directly
-inside Electron Main. Native editing, zoom, fullscreen, and window operations
-must not become an arbitrary privileged command bridge.
+Electron's default chrome does not satisfy all three desktop conventions used by
+PI-Desktop. macOS needs a conventional native application menu and inset traffic
+lights. Frameless Windows and Linux windows need visible application menus plus
+minimize, maximize/restore, and close controls.
 
 ## Decision
 
 1. macOS keeps `hiddenInset` traffic lights and installs a native Electron
    application menu.
-2. Windows and Linux use the shared frameless 46px shell with a renderer
-   menubar and renderer-drawn window controls.
+2. Windows and Linux use the shared frameless 46px shell with a renderer menubar
+   and renderer-drawn window controls.
 3. Renderer-owned menu commands use the fixed `APP_MENU_COMMANDS` allowlist.
-   Native menu and window operations use separate fixed allowlists.
-4. The preload exposes only the operating-system identifier and allowlisted
-   IPC channels required by the chrome.
+4. The preload exposes only the operating-system identifier and allowlisted IPC
+   channels required by the chrome.
 5. Native commands wait for a renderer-ready acknowledgement before delivery.
-   Window creation is single-flight, and closing or reloading a window resets
-   the acknowledgement.
-6. Windows and Linux packaging remains shell-readiness work. This decision
-   does not change the macOS-arm64 first-release scope in D010.
+6. Windows and Linux packaging remains shell-readiness work.
 
 ## Consequences
 
@@ -45,8 +37,8 @@ must not become an arbitrary privileged command bridge.
 
 ### Keep Electron's default menu and frame everywhere
 
-Rejected because the existing hidden titlebar design would remain incomplete
-on Windows and Linux, while macOS would lack product-specific commands.
+Rejected because the existing hidden titlebar design would remain incomplete on
+Windows and Linux, while macOS would lack product-specific commands.
 
 ### Implement every menu action in the renderer
 
@@ -56,7 +48,7 @@ and must remain behind an explicit capability boundary.
 ### Send commands after a fixed delay
 
 Rejected because renderer subscription timing varies by machine and reload
-state. An acknowledgement is deterministic.
+state.
 
 ## References
 

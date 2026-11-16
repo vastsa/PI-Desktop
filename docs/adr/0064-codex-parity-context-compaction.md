@@ -22,33 +22,19 @@ Context section is wrong:
 | Two families: LLM-summary compaction and a no-summary rollover into a fresh window | One family, always summarized |
 | Two-tier budget reminders (`TokenBudgetReminder`, then `AutoCompactFallbackPrompt`), each once per window | No model-facing nudge at all (clause 6) |
 
-Source anchors for each of the above:
-
 - `core/src/compact.rs` — `COMPACT_USER_MESSAGE_MAX_TOKENS = 20_000`;
   `build_compacted_history_with_limit()` walks history newest-first keeping only
-  user messages, truncates the one that crosses the limit, `reverse()`s back into
-  order, then appends the summary; `:384` raises `EventMsg::Warning` after every
-  compaction.
+  user messages, truncates the one that crosses the limit, `reverse()`s back
+  into order, then appends the summary; `:384` raises `EventMsg::Warning` after
+  every compaction.
 - `core/src/compact_token_budget.rs` — the no-summary path runs the same
   compaction lifecycle, emits the same `ContextCompaction` turn item, and then
   calls `start_new_context_window()`.
 - `session/mod.rs:3665 start_new_context_window()` — history is cleared to the
   initial context plus the turn context item, with `message: String::new()`.
-- `session/turn.rs:423` —
-  `should_roll_over = needs_follow_up && (take_new_context_window_request() || token_limit_reached)`:
-  the trigger is evaluated at a turn boundary, inline.
-- `session/token_budget.rs:66 maybe_record()` — tier one at
-  `remaining <= reminder_threshold_tokens`, tier two at `remaining == 0 &&
-  allow_fallback`, each claimed once per window.
-- `tools/spec_plan.rs:994` and `tools/handlers/new_context_window_spec.rs` —
-  `new_context`, parameterless, described as "Start a new context window. Does
-  not clear, reset, or otherwise affect environment state."
-
-The user asked for Codex parity explicitly, was told it reverses the
-imperceptibility goal they had asked for one round earlier, and reaffirmed it.
-Only one ADR 0061 clause survives on its own merits *and* matches Codex: hiding
-the tuning knobs. Codex reads reserve and retention values from model metadata
-and never asks the user either.
+- `session/turn.rs:423` — `should_roll_over = needs_follow_up &&
+  (take_new_context_window_request() || token_limit_reached)`: the trigger is
+  evaluated at a turn boundary, inline.
 
 ## Decision
 
@@ -61,11 +47,6 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
    `pendingBackgroundCheckpoint`, `backgroundCompaction`, `backgroundAbort`,
    `checkpointBaselineTokens`, `backgroundLimit`, and the three call sites in
    `tool_execution_start`, `prompt()`, and the run `finally`.
-   `prompt()` and `prepareNextTurn()` re-estimate at their pre-request
-   boundaries and compact synchronously when the estimate reaches
-   `floor(hardLimit * 0.9)`. There is no background checkpoint. `hardLimit`
-   remains the non-negotiable request safety guard; failed compaction below it
-   may continue, but no request is issued at or above it.
 2. **Codex's retained shape.** `codexShapedPreparation()` keeps
    `prepareCompaction()`'s cut point (and therefore its turn-boundary and
    split-turn handling), then folds `turnPrefixMessages` and `retainedTail` back
@@ -75,98 +56,53 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
    checkpoint's retained users newest-first up to
    `COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS = 20_000` (capped at half the
    hard budget so retention alone cannot fill a small window), truncates the
-   message that crosses the limit instead of dropping it, and reverses back
-   into chronological order. Folding the tail into the summary is not optional:
-   `prepareCompaction()` only summarizes below the cut point, so filtering the
-   tail without doing this would silently lose assistant and tool content that
-   nothing summarized. Dropping assistant messages also drops their tool calls,
-   so no orphaned `tool_use` can reach the provider.
-3. **Two families behind an internal switch.**
-   `CompactionStrategy = "summary" | "fresh_window"` resolves from a
-   construction option, then `PI_DESKTOP_COMPACTION_STRATEGY`, defaulting to
-   `"summary"`. `fresh_window` issues no summary request: it installs a
-   checkpoint with an empty retained tail and the fixed
-   `CONTEXT_ROLLOVER_SUMMARY` marker text, then continues through the identical
-   lifecycle — budget re-estimation, `session.appendCompaction`,
-   `compaction_end`, transcript row, warning — mirroring Codex modelling its
-   token-budget rollover as an ordinary compaction. The switch reaches neither
-   `AppSettings`, Settings, nor i18n.
+   message that crosses the limit instead of dropping it, and reverses back into
+   chronological order.
+3. **Two families behind an internal switch.** `CompactionStrategy = "summary" |
+   "fresh_window"` resolves from a construction option, then
+   `PI_DESKTOP_COMPACTION_STRATEGY`, defaulting to `"summary"`.
 4. **`new_context` is back.** The tool is parameterless and carries Codex's
    description verbatim; executing it only sets `pendingModelCompaction` and
-   returns the family's rollover message. `prepareNextTurn()` compacts when
-   the model requested `new_context` or the estimate reaches
-   `floor(hardLimit * 0.9)`, matching the `should_roll_over` turn boundary.
-   `hardLimit` remains the final request guard (D623). The name is synchronized
-   across `activeTools()`,
-   `isCoreTool()`, the contract-mode allowlists, and the host-core
-   no-confirmation allowlist (`crates/host-core/src/permissions.rs`), where it
-   replaces `"CompactContext"`.
-5. **Two-tier reminders, once each per window.** With
-   `remaining = hardLimit - tokens`: tier one at
-   `remaining <= clamp(hardLimit * 0.15, 8k, 32k)` states the remaining budget
-   and asks the model to start closing out; tier two at `remaining <= 2_000`
-   tells it to write down now whatever must survive. Each is claimed once and
-   both claims reset when a checkpoint is installed. The reminder is appended to
-   the current turn's system prompt and restored in `finally` — the same
-   mechanism as `SILENT_TURN_NUDGE` — so it never enters the transcript or the
-   durable history.
+   returns the family's rollover message.
+5. **Two-tier reminders, once each per window.** With `remaining = hardLimit -
+   tokens`: tier one at `remaining <= clamp(hardLimit * 0.15, 8k, 32k)` states
+   the remaining budget and asks the model to start closing out; tier two at
+   `remaining <= 2_000` tells it to write down now whatever must survive.
 6. **The whole checkpoint chain is durable.** `read_compactions()` and
    `write_transcript_with_compactions()` replace their latest-only predecessors;
    `sessions.rs` validates, forks, and remaps every record and adds
    `compactions: Vec<CompactionRecord>` to the session detail payload, keeping
-   `compaction` as its last element. One transcript row per compaction requires
-   the chain to survive restart, late truncation, and forks.
+   `compaction` as its last element.
 7. **One transcript row per compaction, and a warning every time.**
-   `compaction_end` carries `mark?: ContextCompactionMark`
-   (`id`, `throughMessageId`, `generation`, `summaryTokens`, `summarized`)
-   instead of ADR 0061's `status`, and drops `phase` entirely; the durable
-   records supply the same marks on session open or fork.
-   `buildTranscriptEntries()` inserts a `kind: "compaction"` entry after the
-   anchor message, ending whatever assistant turn contains it, and discards a
-   mark whose anchor no longer exists. A successful compaction also raises an
-   unconditional warning toast; the fallback, overflow, and manual toasts stay,
-   because each says something more specific. The context inspector keeps its
-   line, now reading the newest mark.
+   `compaction_end` carries `mark?: ContextCompactionMark` (`id`,
+   `throughMessageId`, `generation`, `summaryTokens`, `summarized`) instead of
+   ADR 0061's `status`, and drops `phase` entirely; the durable records supply
+   the same marks on session open or fork.
 
 Manual `/compact` is unchanged and remains fail-fast. Settings still exposes no
-compaction controls and still ignores persisted `contextCompaction` values
-(ADR 0061 clause 9).
+compaction controls and still ignores persisted `contextCompaction` values (ADR
+0061 clause 9).
 
 ### Deliberate deviations from Codex
 
 - **Summary position.** Codex appends the summary after the retained user
-  messages. `buildSessionContext()` in pi-agent-core emits
-  `createCompactionSummaryMessage(summary)` before `entry.retainedTail`, and
-  that order is not ours to choose. Both orders present the same content.
+  messages.
 - **Task boundary.** ADR 0136 narrows the retained tail: an active turn may
-  retain only its latest user message, while a completed-turn checkpoint has
-  an empty tail so the next prompt cannot be mistaken for a continuation of
+  retain only its latest user message, while a completed-turn checkpoint has an
+  empty tail so the next prompt cannot be mistaken for a continuation of
   completed work.
-- **`hardLimit` derivation.** Codex compacts at 90% of the window; we keep
-  ADR 0030's "window − output reserve". Codex can afford the looser number
-  because it has a separate full-window guard; we do not, and an oversized
-  request is a hard provider error.
+- **`hardLimit` derivation.** Codex compacts at 90% of the window; we keep ADR
+  0030's "window − output reserve".
 - **Tool registration.** Codex gates `new_context` behind
-  `Feature::TokenBudget`, so it exists only for the no-summary family. We
-  register it in both, because the requirement was that the model has the tool.
-  `get_context_remaining` is not implemented; the reminders carry the number
-  instead.
+  `Feature::TokenBudget`, so it exists only for the no-summary family.
 - **Reminder thresholds and text.** Codex reads both from per-model metadata.
-  We have no such feed, so the thresholds derive from the same `hardLimit` the
-  guard uses and the wording is ours.
-- **Reminder delivery.** Codex injects synthetic history items. We have no
-  channel for a history entry that stays out of the transcript, so the reminder
-  is a per-turn system-prompt append instead — equivalent in effect and with no
-  persistence risk.
+- **Reminder delivery.** Codex injects synthetic history items.
 
 ## Consequences
 
-- Compaction is paid for at the moment the user is waiting again. That is the
-  cost of parity; Codex pays it too. The zero-wait property from ADR 0061 is
-  gone.
+- Compaction is paid for at the moment the user is waiting again.
 - Model context after a compaction is much smaller and much lossier: no
   assistant reasoning and no tool output survives except through the summary.
-  The visible transcript is untouched, so nothing is lost to the user.
 - The summary input covers the entire compacted range rather than the range
   minus the tail, so each summary request remains larger than under ADR 0061.
 - The 90% safety trigger intentionally pays for some additional summaries to
@@ -174,13 +110,6 @@ compaction controls and still ignores persisted `contextCompaction` values
   backstop.
 - Compaction is auditable from the transcript again, restoring ADR 0030's
   visibility property that ADR 0061 reversed.
-- Every compaction interrupts the user with a warning. This is intended: only
-  the user can decide to start a fresh session instead, and after several
-  compactions that is usually the better answer.
-- The model can compact early and deliberately, and can also ignore the
-  reminders — the hard boundary is still there when it does.
-- The no-summary family is implemented but unreachable in a shipped build. It
-  exists so the mechanism is complete and testable, not as a product option.
 
 ## Alternatives
 
@@ -214,8 +143,7 @@ The desktop runtime now owns the compaction preparation and context projection
 described here because pi-agent-core removed its experimental harness APIs.
 Cut-point, split-turn, retained-tail, and summary behavior remain governed by
 this ADR and the runtime specification; durable checkpoint ownership remains
-with Rust host-core. See
-`docs/spec/02-architecture/06-pi-runtime-dependency-boundary.md`.
+with Rust host-core.
 
 - `docs/spec/03-runtime/01-ipc-protocol.md`
 - `docs/spec/03-runtime/02-agent-runtime.md`
@@ -228,12 +156,9 @@ with Rust host-core. See
 - `codex-rs/core/src/compact.rs`, `compact_token_budget.rs`,
   `session/token_budget.rs`, `tools/handlers/new_context_window_spec.rs`
   (behavioral reference)
+
 ## Amendment (2026-09-23, D623 / issue #970): Earlier inline compaction trigger
 
 The inline-only lifecycle is unchanged. Automatic compaction now starts at 90%
-of the derived safe budget from both new-prompt preflight and in-run turn-boundary
-checks. This leaves a deterministic margin for estimator drift and growth during
-the preceding model/tool turn. A failed soft-trigger compaction may proceed only
-while the context remains below `hardLimit`; at or above the hard boundary the
-runtime still blocks the provider request. No settings, background work, host
-protocol, or storage semantics are added.
+of the derived safe budget from both new-prompt preflight and in-run
+turn-boundary checks.

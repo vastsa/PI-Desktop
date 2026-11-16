@@ -12,23 +12,15 @@ The Plan/Goal approval card duplicated the submitted question, status, and
 deadline alongside the artifact opener. The approval mode also reset to Ask for
 every proposal, even when the user had just chosen a different mode.
 
-Plan artifact filenames were title-derived for ASCII titles but fell back to a
-generic `plan`/`goal` stem for non-ASCII titles, making localized workspaces
-harder to scan.
-
 ## Decision
 
 1. The pending approval card renders only the proposal title, the host-created
-   artifact path/open action, Reject, and the Approve split-button. Question or
-   description text, status, validity/deadline, and inline safety warning are
-   not card content.
+   artifact path/open action, Reject, and the Approve split-button.
 2. Selecting Ask, Accept edits, or Auto stores that choice in renderer-local
-   device preferences. Each later approval uses the stored choice as its
-   default; Ask remains the fallback when storage is unavailable or invalid.
+   device preferences.
 3. Host-generated artifact filenames preserve alphanumeric Unicode title
    characters, normalize separators to hyphens, and retain the timestamp and
-   collision suffix. Path validation continues to accept only the generated
-   safe filename shape under `.pi/<kind>/`.
+   collision suffix.
 4. The existing host approval deadline remains an internal compatibility and
    fail-closed boundary; it is no longer exposed as an approval-card concept.
 
@@ -47,9 +39,7 @@ harder to scan.
 
 ### Persist the choice in the host settings table
 
-Rejected for this change. The choice is a renderer UI preference, and adding it
-to host settings would expand the protocol and settings ownership boundary for
-no additional approval safety.
+Rejected for this change.
 
 ### Keep the question and deadline in a collapsed card section
 

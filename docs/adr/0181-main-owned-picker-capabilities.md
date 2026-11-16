@@ -13,25 +13,13 @@ then copied into the owning session's scratch directory. The renderer needs to
 request the copy after it materializes a home draft, but a renderer IPC payload
 must not be treated as proof that a user selected the paths it contains.
 
-The earlier picker flow returned native absolute paths to the renderer and then
-accepted those paths again through `composer/importFiles`. That allowed any
-renderer code with access to the bridge to request a copy of an arbitrary
-regular file, including outside the workspace and attachment roots. The same
-flow also advertised directory selection even though the importer accepted
-regular files only.
-
 ## Decision
 
 1. `composer/pickFiles` and `composer/pickPhotos` execute the native dialog in
-   Electron main. Main stores the selected paths against a random token bound to
-   the invoking `WebContents`.
+   Electron main.
 2. The picker token expires after 60 seconds and is consumed before the import
-   starts. `composer/importFiles` accepts the token and durable `sessionId`,
-   never renderer-supplied source paths. A token cannot be replayed or used by
-   another renderer WebContents.
-3. `pickFiles` offers regular files only in the MVP. Folder import remains a
-   separate future feature that must define bounded traversal and ownership
-   rules before it is exposed in the UI.
+   starts.
+3. `pickFiles` offers regular files only in the MVP.
 4. Main still realpaths and stats every recorded source, enforces the existing
    per-file and total-size limits, and copies only into the session scratch
    directory.

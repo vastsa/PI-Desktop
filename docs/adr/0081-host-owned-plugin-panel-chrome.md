@@ -12,33 +12,20 @@ plugin-owned HTML. Those windows previously used Electron's default frame, so
 their titlebar did not match the main PI-Desktop window and differed materially
 between macOS, Windows, and Linux.
 
-The panel page cannot be trusted with the main renderer preload or an arbitrary
-window-control bridge. The host chrome also must not depend on plugin CSS,
-while existing plugin layouts need to begin below the new titlebar without
-losing their original top padding.
-
 ## Decision
 
 1. Plugin panels use the same platform split as the main window: macOS uses
    `hiddenInset` with traffic lights at `{x:16,y:16}`, while Windows and Linux
    use a frameless window with renderer-drawn controls.
 2. The existing sandboxed plugin-panel preload installs a host-owned 46px
-   titlebar in a closed Shadow DOM. It renders the manifest panel title and
-   offsets the plugin body by 46px in addition to its computed top padding. It
-   also publishes `--pi-plugin-titlebar-height: 46px` for fixed/sticky plugin
-   UI that must sit below the host chrome.
+   titlebar in a closed Shadow DOM.
 3. Windows/Linux expose minimize, maximize/restore, and close through one
-   Electron-local fixed action tuple. Electron Main accepts the action only
-   when the sender belongs to a live plugin panel and publishes maximize state
-   only back to that panel.
+   Electron-local fixed action tuple.
 4. The public `window.pluginBridge` surface does not gain window primitives.
-   The existing per-plugin session partition, sandbox, context isolation, and
-   permission-checked panel bridge remain unchanged.
 5. Controls carry localized accessible names, visible keyboard focus, theme-
-   aware light/dark surfaces, and reduced-motion behavior. Reopening an already
-   minimized panel restores and focuses the existing window.
+   aware light/dark surfaces, and reduced-motion behavior.
 6. Development panels receive a host-only titlebar reminder for the 46px safe
-   area. Installed panels do not show this authoring hint.
+   area.
 
 ## Consequences
 
@@ -46,10 +33,8 @@ losing their original top padding.
   release platforms without granting plugins broader Electron access.
 - Plugin CSS cannot style the closed titlebar tree, although a plugin can still
   replace its own document and therefore remove the preload-injected visual
-  element. That does not grant a capability or cross the panel sandbox.
-- The host reserves 46px above plugin content. Panels that deliberately pin
-  viewport-fixed content to `top: 0` must account for the titlebar, using the
-  injected `--pi-plugin-titlebar-height` variable.
+  element.
+- The host reserves 46px above plugin content.
 - The private window-control channel remains outside host-core protocol v9.
 
 ## Alternatives

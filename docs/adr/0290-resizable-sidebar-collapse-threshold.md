@@ -13,38 +13,20 @@
 
 ## Context
 
-ADR 0141 made the expanded sidebar a persisted `240px..520px` column. D408 /
-ADR 0238 later pinned that column at 275px and hid the handle so the
-three-column budget could treat the left dock as a constant while MainChat
-kept a 450px floor.
-
-Users still need to widen the sidebar for long project and session labels, and
-to reclaim space. The right work panel already has a pointer divider; the left
-column should match that affordance. Dragging past a usable minimum should
-fold the sidebar rather than leave a cramped strip.
+ADR 0141 made the expanded sidebar a persisted `240px..520px` column. D408 / ADR
+0238 later pinned that column at 275px and hid the handle so the three-column
+budget could treat the left dock as a constant while MainChat kept a 450px
+floor.
 
 ## Decision
 
 1. Restore ADR 0141's renderer-owned handle on the expanded sidebar's right
-   edge. Pointer motion previews a width anchored at press, rounded and
-   clamped to `240px..520px` (default `275px`). Pointer release persists the
-   preferred width. Keyboard ArrowLeft/ArrowRight step 16px; Home and End
-   select the live bounds; keyboard changes commit immediately. Escape,
-   cancellation, lost capture, and unmount restore the press-time width.
-2. A pointer width below `160px` collapses the sidebar immediately. Collapse
-   is a user action: it does not record an automatic-yield, and it does not
-   persist the in-progress width. Reopening restores the preferred expanded
-   width from the start of the gesture (or the last committed value). Keyboard
-   resize never collapses; `Cmd/Ctrl+B` remains the keyboard fold.
+   edge.
+2. A pointer width below `160px` collapses the sidebar immediately.
 3. The live maximum is the three-column remainder after MainChat's 450px floor
-   and, when the work panel occupies space, its requested width. A user-chosen
-   sidebar width therefore cannot trip D408's `<= 450px` yield. Work-panel
-   growth and window shrink still collapse the expanded sidebar at that
-   threshold. Preview mode (MainChat unmounted) caps the sidebar so the panel
-   keeps at least its 244px minimum.
-4. Renderer only. No IPC, native-window bounds, host protocol, or storage
-   schema change. The existing `pi.desktop.sidebarWidth` preference is the
-   persistence key.
+   and, when the work panel occupies space, its requested width.
+4. Renderer only. No IPC, native-window bounds, host protocol, or storage schema
+   change.
 
 ## Consequences
 
@@ -65,10 +47,8 @@ freezing it.
 ### Collapse at 240px with no snap zone
 
 Rejected because hitting the minimum during a small adjustment would fold the
-sidebar. The 160px threshold requires an explicit extra drag past the floor.
+sidebar.
 
 ### Persist the in-progress width on collapse
 
-Rejected because collapse is a cancel of the current gesture plus a fold. The
-preferred expanded width stays the value captured at pointer-down (or the last
-committed width).
+Rejected because collapse is a cancel of the current gesture plus a fold.

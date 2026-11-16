@@ -10,15 +10,8 @@
 ADR 0233 gave the renderer one Create project surface that collects a name and
 local folders, and the home switcher already cloned a git project through
 `project/clone` under the public-host rules of ADR 0247. A user with no project
-at all still could not start from a repository: the switcher only renders
-inside the hero of a project-bound session, and the dialog had no repository
-source. The first project of a fresh installation therefore required a local
-folder before any clone entry was reachable.
-
-The existing clone picks its parent through a native dialog and returns a
-workspace the renderer activates immediately. Reusing it inside the dialog would
-either end the dialog flow halfway or activate a project before its group
-exists.
+at all still could not start from a repository: the switcher only renders inside
+the hero of a project-bound session, and the dialog had no repository source.
 
 ## Decision
 
@@ -30,10 +23,7 @@ exists.
 3. Main exposes additive `project/cloneCheckout({ url, parentPath })`: it clones
    into an explicit parent folder and returns `{ path, name }` without touching
    the active workspace and without opening a picker.
-4. Project creation still flows through `project-group/create`. A checkout
-   becomes the primary root of one logical group and the entered name names the
-   group, exactly like a folder pick (ADR 0233). Folder picks and checkouts
-   share one creation helper in the project slice.
+4. Project creation still flows through `project-group/create`.
 5. `project/clone` keeps its current behavior for the home switcher; the two
    clone entries do not share UI.
 
@@ -55,8 +45,8 @@ exists.
 - **Move the home switcher clone entry to the empty home:** rejected because the
   hero without a project-bound session has no switcher surface, and the create
   dialog is the documented first-project entry.
-- **Reuse `project/clone` inside the dialog:** rejected because its native parent
-  picker and immediate workspace return would activate a project before the group
-  is created.
+- **Reuse `project/clone` inside the dialog:** rejected because its native
+  parent picker and immediate workspace return would activate a project before
+  the group is created.
 - **Let the main process pick the destination silently:** rejected because a
   `git clone` should never choose its own destination folder.

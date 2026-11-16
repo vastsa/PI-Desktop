@@ -11,24 +11,15 @@ Task completion has two renderer-visible effects: the transcript receives an
 agent lifecycle event, and Electron may receive a durable notification from
 `session.endTurn`. The renderer previously treated every `agent_end` or terminal
 `error` event as an unread sidebar outcome, even when the focused current chat
-was already showing that result. Separately, the active-session viewing hint
-was delivered by an asynchronous React effect, so a fast turn could finish
-before Electron received the hint.
+was already showing that result.
 
 ## Decision
 
 1. Treat unread `task.completed` and `task.failed` notification records as the
-   sole source of terminal sidebar marks. Agent lifecycle events continue to
-   drive running state, transcript updates, and the in-chat turn result card,
-   but never create an unread sidebar outcome by themselves.
+   sole source of terminal sidebar marks.
 2. Carry an optional `viewingSessionId` snapshot on renderer-originated
-   `agent/prompt` requests. Electron validates that it exactly matches the
-   requested session and installs it before asynchronous turn setup. Missing,
-   null, or mismatched snapshots clear the hint and fail safe to notification.
+   `agent/prompt` requests.
 3. Keep the existing viewing-context IPC and Main-owned visibility/focus gate.
-   Suppression is allowed only for the exact finishing session in a visible,
-   focused window; background, hidden, unfocused, or unknown state creates the
-   durable notification and preserves native delivery behavior.
 
 ## Consequences
 
@@ -50,5 +41,4 @@ durable or native notifications.
 ### Rely only on the React viewing-context effect
 
 Rejected: the effect is asynchronous and can lose a race with a fast completion
-or renderer navigation. The prompt-time snapshot closes the dispatch boundary
-without trusting renderer focus or bypassing Main's fail-safe checks.
+or renderer navigation.

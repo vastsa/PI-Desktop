@@ -7,17 +7,14 @@
 
 Development plugins are watched and hot-reloaded from their local folders. The
 watcher intentionally refuses a manifest that adds permissions beyond the
-ceiling approved when the folder was loaded. Before this action existed, the
-developer had to load the folder again through the picker to review the changed
-manifest and resume development.
+ceiling approved when the folder was loaded.
 
 ## Decision
 
 Add a renderer-to-main `pi-desktop/plugin/reload` invoke channel. Electron main
 resolves the plugin id through the host registry, loads the registered path with
 the registry's current permissions, and re-arms the development watcher after a
-successful load. The Plugins page exposes the action only for `source: "dev"`
-rows and refreshes its list after the invoke completes.
+successful load.
 
 The automatic watcher remains conservative: it cannot widen the permission
 ceiling. A manual reload is an explicit developer action that acknowledges the

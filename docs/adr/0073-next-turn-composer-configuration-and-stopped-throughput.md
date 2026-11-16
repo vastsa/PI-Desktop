@@ -11,32 +11,17 @@
 
 The composer previously made its draft, mode, thinking, and permission controls
 read-only for an entire agent run. That prevented preparing the next prompt and
-next-turn configuration while preserving the correct safety rule: host-core
-must not mutate the configuration pinned by an in-flight turn.
-
-A user-initiated Stop could also arrive before the provider's final usage
-record. The partial assistant answer was retained, but its stream duration and
-output count were absent from durable transcript metadata, so conversation
-statistics could not show generation throughput.
+next-turn configuration while preserving the correct safety rule: host-core must
+not mutate the configuration pinned by an in-flight turn.
 
 ## Decision
 
 1. During an active turn, the composer draft and mode, thinking, and permission
-   selectors remain editable. Send alone remains disabled and the Stop action
-   remains available. A pending Plan/Goal approval continues to block the draft
-   and configuration controls because it owns the session decision boundary.
-2. The renderer stores the latest full session configuration per running
-   session and projects it optimistically. On `agent_end`, `error`, or manual
-   compaction completion it submits that configuration through the existing
-   idle-only `session/configure` API. New selections replace older queued ones;
-   they never modify the running runtime.
-3. Runtime terminal messages preserve `responseDurationMs`. If an aborted
-   response has no positive provider-reported output usage, runtime and renderer
-   reconciliation estimate visible thinking plus answer text at four Unicode
-   code points per token and attach optional `responseOutputTokens`.
+   selectors remain editable.
+2. The renderer stores the latest full session configuration per running session
+   and projects it optimistically.
+3. Runtime terminal messages preserve `responseDurationMs`.
 4. Rust transcript conversion persists both optional fields in message metadata.
-   Exact provider usage wins over the estimate; an estimate is labeled as such
-   in conversation metadata. Older records without either field remain valid.
 
 ## Consequences
 

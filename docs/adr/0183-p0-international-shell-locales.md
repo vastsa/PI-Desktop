@@ -10,19 +10,19 @@
 The locale registry could add languages without renderer-specific picker work,
 but the shipped shell stopped at English, Simplified Chinese, Traditional
 Chinese, and Turkish. Spanish, French, and German are high-value international
-locales for the desktop product and were missing from the UI catalog and
-in-app release notes.
+locales for the desktop product and were missing from the UI catalog and in-app
+release notes.
 
 ## Decision
 
-1. Ship complete shell catalogs for `de`, `es`, and `fr`, keeping English as
-   the source catalog and preserving key and interpolation parity.
+1. Ship complete shell catalogs for `de`, `es`, and `fr`, keeping English as the
+   source catalog and preserving key and interpolation parity.
 2. Register native names `Deutsch`, `Español`, and `Français`; the searchable
    picker continues to derive its options from the shared locale registry.
 3. Resolve `de-*`, `es-*`, and `fr-*` OS locale tags to their shipped base
-   catalogs. Persisted `AppSettings.language` accepts the three new ids.
+   catalogs.
 4. Ship matching product changelog catalogs so release notes follow the active
-   locale. No host protocol, storage schema, or Electron IPC version changes.
+   locale.
 
 ## Consequences
 

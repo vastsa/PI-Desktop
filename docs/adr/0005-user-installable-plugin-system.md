@@ -6,7 +6,8 @@
 
 ## Context
 
-Built-in features alone are not enough. Users need to install and develop plugins that extend:
+Built-in features alone are not enough. Users need to install and develop
+plugins that extend:
 
 - commands
 - panels

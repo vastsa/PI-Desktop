@@ -34,12 +34,17 @@ function titleFromMarkdown(filePath: string): string {
   return source.match(/^#\s+(.+)$/m)?.[1]?.replace(/`/g, '') ?? path.basename(filePath, '.md')
 }
 
-function specItems(directory: string, locale: Locale): DefaultTheme.SidebarItem[] {
-  const sourceDirectory = path.join(docsRoot, locale === 'en' ? 'spec' : 'zh-CN/spec', directory)
-  const routePrefix = locale === 'en' ? '/spec' : '/zh-CN/spec'
+/**
+ * Specification pages are English-only; the Chinese locale keeps its own
+ * index (`zh-CN/spec/README.md`) and links into these English routes.
+ */
+function specItems(directory: string): DefaultTheme.SidebarItem[] {
+  const sourceDirectory = path.join(docsRoot, 'spec', directory)
   if (!fs.existsSync(sourceDirectory)) return []
-  return fs.readdirSync(sourceDirectory)
-    .filter((file) => file.endsWith('.md'))
+  const entries = fs.readdirSync(sourceDirectory, { withFileTypes: true })
+  const pages = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => entry.name)
     .sort((left, right) => {
       if (left === 'README.md') return -1
       if (right === 'README.md') return 1
@@ -47,8 +52,16 @@ function specItems(directory: string, locale: Locale): DefaultTheme.SidebarItem[
     })
     .map((file) => ({
       text: titleFromMarkdown(path.join(sourceDirectory, file)),
-      link: `${routePrefix}/${directory}/${file.slice(0, -3)}`,
+      link: `/spec/${directory}/${file.slice(0, -3)}`,
     }))
+  // One nested level, e.g. `06-delivery/e2e/` holding the per-domain E2E catalogs.
+  const groups = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right, 'en'))
+    .map((name) => ({ text: name, collapsed: true, items: specItems(`${directory}/${name}`) }))
+    .filter((group) => group.items.length > 0)
+  return [...pages, ...groups]
 }
 
 function adrItems(): DefaultTheme.SidebarItem[] {
@@ -78,30 +91,27 @@ function projectItems(): DefaultTheme.SidebarItem[] {
 }
 
 function specSidebar(locale: Locale): DefaultTheme.SidebarItem[] {
-  const localizedRoot = path.join(docsRoot, locale === 'en' ? 'spec' : 'zh-CN/spec')
-  const routePrefix = locale === 'en' ? '/spec' : '/zh-CN/spec'
-  const rootFiles = fs.readdirSync(localizedRoot)
-    .filter((file) => file.endsWith('.md'))
-  const startItems = preferredRootFiles
-    .filter((file) => fs.existsSync(path.join(localizedRoot, file)))
-    .map((file) => ({
-      text: titleFromMarkdown(path.join(localizedRoot, file)),
-      link: `${routePrefix}/${file.slice(0, -3)}`,
-    }))
+  const specRoot = path.join(docsRoot, 'spec')
+  const rootFiles = fs.readdirSync(specRoot).filter((file) => file.endsWith('.md'))
+  const page = (file: string) => ({
+    text: titleFromMarkdown(path.join(specRoot, file)),
+    link: `/spec/${file.slice(0, -3)}`,
+  })
+  const startItems = preferredRootFiles.filter((file) => rootFiles.includes(file)).map(page)
+  if (locale === 'zh-CN') {
+    startItems[0] = { text: titleFromMarkdown(path.join(docsRoot, 'zh-CN/spec/README.md')), link: '/zh-CN/spec/README' }
+  }
   const referenceItems = rootFiles
     .filter((file) => !preferredRootFiles.includes(file))
     .sort((left, right) => left.localeCompare(right, 'en'))
-    .map((file) => ({
-      text: titleFromMarkdown(path.join(localizedRoot, file)),
-      link: `${routePrefix}/${file.slice(0, -3)}`,
-    }))
+    .map(page)
 
   return [
     { text: locale === 'en' ? 'Start here' : '从这里开始', items: startItems },
     ...specSections.map((section) => ({
       text: locale === 'en' ? section.en : section.zh,
       collapsed: section.collapsed,
-      items: specItems(section.directory, locale),
+      items: specItems(section.directory),
     })),
     ...(referenceItems.length ? [{
       text: locale === 'en' ? 'Compatibility references' : '兼容性参考',
@@ -113,7 +123,7 @@ function specSidebar(locale: Locale): DefaultTheme.SidebarItem[] {
 
 const enSidebar: DefaultTheme.Sidebar = {
   '/guide/': [{ text: 'Guide', items: [{ text: 'Start here', link: '/guide/' }, { text: 'Screens', link: '/guide/screenshots' }, { text: 'MCP market', link: '/guide/mcp-market' }] }],
-  '/plugin-development': [{ text: 'Plugin authoring', items: [{ text: 'Zero to one', link: '/plugin-development' }, ...specItems('07-plugins', 'en')] }],
+  '/plugin-development': [{ text: 'Plugin authoring', items: [{ text: 'Zero to one', link: '/plugin-development' }, ...specItems('07-plugins')] }],
   '/project/': [{ text: 'Project records', items: projectItems() }],
   '/spec/': specSidebar('en'),
   '/adr/': [
@@ -131,7 +141,7 @@ const enSidebar: DefaultTheme.Sidebar = {
 
 const zhSidebar: DefaultTheme.Sidebar = {
   '/zh-CN/guide/': [{ text: '指南', items: [{ text: '快速开始', link: '/zh-CN/guide/' }, { text: '界面截图', link: '/zh-CN/guide/screenshots' }, { text: 'MCP 市场', link: '/zh-CN/guide/mcp-market' }] }],
-  '/zh-CN/plugin-development': [{ text: '插件开发', items: [{ text: '从零到一', link: '/zh-CN/plugin-development' }, ...specItems('07-plugins', 'zh-CN')] }],
+  '/zh-CN/plugin-development': [{ text: '插件开发', items: [{ text: '从零到一', link: '/zh-CN/plugin-development' }, ...specItems('07-plugins')] }],
   '/zh-CN/spec/': specSidebar('zh-CN'),
   '/zh-CN/adr/': [
     {
@@ -139,7 +149,7 @@ const zhSidebar: DefaultTheme.Sidebar = {
       items: [
         { text: 'ADR 索引', link: '/zh-CN/adr/' },
         { text: '文档站决策', link: '/adr/0079-vitepress-documentation-site' },
-        { text: '最新决策', link: '/zh-CN/spec/08-meta/decisions-log' },
+        { text: '最新决策（英文）', link: '/spec/08-meta/decisions-log' },
       ],
     },
     { text: '全部英文决策', collapsed: true, items: adrItems() },

@@ -9,10 +9,8 @@
 ## Context
 
 The Bash tool currently resolves one Bash implementation per process. That
-prevents users from choosing the command language that matches their project
-and makes a changed executable hard to detect. The protocol name and Agent
-tool vocabulary must remain stable while shell selection becomes explicit and
-host-authoritative.
+prevents users from choosing the command language that matches their project and
+makes a changed executable hard to detect.
 
 ## Decision
 
@@ -30,48 +28,29 @@ Host-core exposes a platform-aware catalog with stable IDs:
 
 The Windows catalog contains `windows-powershell`, `windows-pwsh`, `cmd`, and
 `git-bash`; the Unix catalog contains `bash`. The catalog does not accept an
-arbitrary renderer- or sidecar-supplied executable path. Windows PowerShell 5.1
-stays the platform default; `windows-pwsh` is selectable but never selected
-implicitly, so choosing it cannot change an existing user's shell by surprise.
-
-Settings writes accept only an available ID for the current platform. Unknown,
-unavailable, and wrong-platform IDs are rejected. If a persisted ID later
-becomes unavailable, host-core intentionally selects the first available shell
-in the platform catalog and reports `fallback: true`; if none is available,
-Bash fails with `SHELL_NOT_FOUND`.
+arbitrary renderer- or sidecar-supplied executable path.
 
 ### 2. Persisted default and stable identity
 
 The host persists one `defaultCommandShell` ID in app settings. Selection is
 allowed only from the available catalog and only while the affected session is
-idle. At turn launch, the runtime pins the effective shell ID and dialect. The
-execution request carries the pinned ID; host-core resolves the catalog again
-before spawn and rejects a changed effective ID or dialect with
-`COMMAND_SHELL_CHANGED`. This identity check is about the catalog selection,
-not executable path hashing. A runtime fallback is selected before the turn is
-pinned; execution never silently changes shell after that point.
+idle.
 
 ### 3. Stable Bash protocol contract
 
 The Agent tool and host method remain `Bash` and `tools.execute`; shell choice
 is data on the request, not a new `PowerShell`, `Cmd`, or `GitBash` tool name.
-The command runs non-interactively in the originating session workspace with
-the selected shell's documented invocation form.
+The command runs non-interactively in the originating session workspace with the
+selected shell's documented invocation form.
 
-Host-core streams stdout and stderr as separate ordered output events. The
-final tool result remains bounded and records whether either stream was
-truncated. No stream chunk may contain secrets or be attributed to another
-session/turn.
+Host-core streams stdout and stderr as separate ordered output events. The final
+tool result remains bounded and records whether either stream was truncated.
 
 ### 4. Timeout and cancellation
 
 Every Bash execution has a mandatory 60-second default timeout. A caller may
 request a host-validated override only from 1 second through 300 seconds;
 missing values use exactly 60 seconds, and out-of-range values are rejected.
-Timeout and user abort terminate the complete process tree, not only the shell
-leader: Unix uses a process group and Windows uses a job/process-tree boundary.
-The host waits for shutdown, closes the stream, records the terminal outcome,
-and returns `TOOL_TIMEOUT` or `TURN_ABORTED` without leaving an orphan.
 
 ## Consequences
 

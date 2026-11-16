@@ -17,17 +17,16 @@ identity, session ownership, and tool roots remain host-owned.
 Project groups expose a hover/focus-visible reorder grip. Native drag/drop and
 ArrowUp/ArrowDown on the grip write contiguous non-negative integer `order`
 values keyed by normalized project path and select the renderer-local `manual`
-project sort. Reordering is allowed only within the same archived/pinned
-priority bucket; those priority rules remain ahead of manual order.
+project sort.
 
 The interaction is presentation-only. It does not move directories, change the
 selected host workspace, change session ordering, or change durable session
-project membership. Escape cancels a drag without consulting stale transfer
-payload data. Invalid legacy ranks are ignored and fall back to stable path order.
+project membership.
 
 ## Consequences
 
-- Users can keep repositories in a stable personal order across renderer restarts.
+- Users can keep repositories in a stable personal order across renderer
+  restarts.
 - Renderer localStorage remains the only persistence surface; no IPC, host RPC,
   schema, or migration is required.
 - Priority boundaries make cross-bucket drops and keyboard moves no-ops instead

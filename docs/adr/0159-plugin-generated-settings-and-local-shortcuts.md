@@ -14,15 +14,12 @@ and lifecycle surface before the plugin settings contract is stable.
 ## Decision
 
 1. `contributes.settings` is the source of truth for the generated settings UI.
-   Supported types are `string`, `number`, `boolean`, `select`, `json`, and
-   `shortcut`.
 2. A shortcut setting declares a plugin command through `command` and has the
-   fixed `scope: "plugin"`. The user may edit it in the installed plugin page.
-3. Plugin shortcuts are handled by the renderer only while the PI-Desktop
-   window is focused. The host re-checks the plugin activation scope before
-   executing the command. They are not Electron/global shortcuts.
-4. The host validates values, persists them in the plugin-private settings
-   file, and sends `plugin:settingsChanged` to the plugin process.
+   fixed `scope: "plugin"`.
+3. Plugin shortcuts are handled by the renderer only while the PI-Desktop window
+   is focused.
+4. The host validates values, persists them in the plugin-private settings file,
+   and sends `plugin:settingsChanged` to the plugin process.
 5. Secret settings remain rejected until a dedicated secure storage contract is
    designed.
 

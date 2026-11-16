@@ -9,24 +9,18 @@
 ## Context
 
 The empty chat home placed contextual prompt buttons between the hero and the
-composer. Those controls added an extra decision before the first task and
-made the composer part of the scrollable content stack. Optional onboarding
-content could therefore push the primary task-entry surface away from the
-bottom of the chat area.
+composer. Those controls added an extra decision before the first task and made
+the composer part of the scrollable content stack.
 
 ## Decision
 
 1. Remove the former empty-home contextual quick-action row and its
-   project-opening buttons. The current surface also omits the separate
-   developer starter grid introduced by ADR 0067 (D206).
+   project-opening buttons.
 2. Keep the hero and optional onboarding checklist inside `.home-scroll`, the
    only vertical overflow surface for empty-home content.
 3. Render the home composer in a sibling `.home-composer-wrap` after the
-   scroller. The wrapper is flex-fixed at the bottom of `home-main-content`
-   with the existing content width and bottom spacing, so the composer remains
-   visible while the content region scrolls independently.
+   scroller.
 4. Preserve the checklist's existing inline actions and dismissal behavior.
-   Short windows may scroll the checklist, but the composer must not cover it.
 
 ## Consequences
 

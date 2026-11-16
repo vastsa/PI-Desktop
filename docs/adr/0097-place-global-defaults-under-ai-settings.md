@@ -7,17 +7,16 @@
 
 ## Context
 
-The flat Settings directory removed redundant navigation levels, but the
-Basics page still owned a Defaults card containing the default operating mode,
-command shell, and Enter-to-send preference. These controls change agent
-behavior rather than application appearance, so their location made the
-Basics page mix visual preferences with global AI behavior.
+The flat Settings directory removed redundant navigation levels, but the Basics
+page still owned a Defaults card containing the default operating mode, command
+shell, and Enter-to-send preference. These controls change agent behavior rather
+than application appearance, so their location made the Basics page mix visual
+preferences with global AI behavior.
 
 ## Decision
 
 Keep the eight-destination Settings directory unchanged. Basics owns the
-Appearance card and platform-supported close behavior. The **全局 AI / AI**
-destination owns the Permissions card and the Defaults card, whose rows are:
+Appearance card and platform-supported close behavior.
 
 - default operating mode (Agent / Plan / Goal)
 - command shell selection and its host-backed fallback status

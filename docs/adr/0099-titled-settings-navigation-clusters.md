@@ -9,9 +9,7 @@
 
 The Settings rail is intentionally a flat, searchable directory of eight
 destinations. The rows are correct and remain in one navigation level, but the
-unbroken list is visually dense. The previous visual-only spacing used divider
-lines, which was especially easy to lose against the dark rail and did not
-provide a useful scan landmark.
+unbroken list is visually dense.
 
 ## Decision
 
@@ -25,9 +23,7 @@ existing row clusters:
 - About / 关于: Info
 
 Use muted typography and whitespace between clusters. Do not render divider
-lines or add nested navigation. Search continues to filter destinations as one
-flat index; a cluster and its heading disappear when no destination remains in
-that cluster.
+lines or add nested navigation.
 
 ## Consequences
 

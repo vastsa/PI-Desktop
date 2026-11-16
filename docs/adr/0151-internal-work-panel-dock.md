@@ -11,34 +11,18 @@
 
 ## Context
 
-The work panel is already rendered as an in-flow flex sibling, but ADR 0122
-made the renderer request a matching native reservation. Electron consequently
-grew and later shrank the whole application window whenever the panel opened or
-collapsed. The panel should behave like the left sidebar: its width is taken
-from the existing client area and MainChat reflows beside it.
-
-The native Browser `WebContentsView` does not require a larger window. It is
-positioned from the renderer-measured panel rectangle, which remains valid when
-the panel is inside the existing client area.
+The work panel is already rendered as an in-flow flex sibling, but ADR 0122 made
+the renderer request a matching native reservation. Electron consequently grew
+and later shrank the whole application window whenever the panel opened or
+collapsed.
 
 ## Decision
 
-1. The work panel remains a fixed-width, right-side in-flow flex column. Opening
-   and collapsing animate its flex allocation between zero and the committed
-   `244..720px` width without changing native BrowserWindow bounds. *(Amended by
-   ADR 0238: the committed width is bounded by the live three-column budget
-   instead of a fixed `244..720px` range, and the expanded sidebar yields when
-   MainChat reaches its 360px floor; every other clause here stands.)*
-2. The renderer keeps the `window/setWorkPanelReservation` seam at zero. Main
-   normalizes every valid request to `{ requested: 0, reserved: 0 }` and never
-   applies panel width or x-offset geometry.
-3. The panel's inner left-edge separator is renderer-owned. Moving it left grows
-   the panel into MainChat's internal space; moving it right returns space to
-   MainChat. Pointer preview is frame-coalesced, release commits the preferred
-   width, and Escape/cancellation/lost capture restores the press-time width.
+1. The work panel remains a fixed-width, right-side in-flow flex column.
+2. The renderer keeps the `window/setWorkPanelReservation` seam at zero.
+3. The panel's inner left-edge separator is renderer-owned.
 4. Native window edges and corners continue to resize the application window,
-   but never resize or reserve the work panel. The preferred panel width remains
-   renderer-local and persists independently of native window bounds.
+   but never resize or reserve the work panel.
 5. The Browser view continues to use the renderer-measured panel rectangle and
    is detached before the panel exit animation, because a native view cannot
    follow renderer CSS animation.

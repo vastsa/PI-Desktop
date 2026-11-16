@@ -9,8 +9,6 @@ Product requirement:
 
 > Provider support must cover market vendors/models broadly, not a small fixed set.
 
-Implementing and maintaining every vendor SDK in-house is unrealistic. pi-ai already provides multi-provider abstractions, and most long-tail vendors expose OpenAI-compatible APIs.
-
 ## Decision
 
 1. Use **pi-ai** as the native multi-provider engine
@@ -27,12 +25,11 @@ Implementing and maintaining every vendor SDK in-house is unrealistic. pi-ai alr
 - Native quality where pi-ai has integrations
 - Easy support for gateways and local model servers
 - Universal escape hatch for everything else
-- Future vendors can often be onboarded without an app rewrite
-- Catalog remains evolvable without an app rewrite
 
 ### Negative / tradeoffs
 - Capability quality differs by vendor
-- Catalog/capability metadata may be incomplete (especially for obscure models) and needs refresh/manual overrides
+- Catalog/capability metadata may be incomplete (especially for obscure models)
+  and needs refresh/manual overrides
 - OpenAI-compatible quirks still need compatibility flags
 - Catalog freshness depends on refresh/bundled snapshots
 
@@ -40,7 +37,8 @@ Implementing and maintaining every vendor SDK in-house is unrealistic. pi-ai alr
 
 1. **Tiny fixed vendor list only** (e.g., only 3-4 top vendors)
    - Rejected: fails globalization and user expectation
-2. **Build and maintain all vendor SDKs ourselves** (e.g., reimplement every vendor SDK in Rust)
+2. **Build and maintain all vendor SDKs ourselves** (e.g., reimplement every
+   vendor SDK in Rust)
    - Rejected: duplicates pi-ai, slows delivery, high maintenance
 3. **Only OpenAI-compatible, no native providers**
    - Rejected: worse UX/quality for major vendors with native quirks

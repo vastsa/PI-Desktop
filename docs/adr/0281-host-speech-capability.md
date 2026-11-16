@@ -10,31 +10,23 @@
 
 Chat models, image generation, transcription, and speech synthesis are different
 jobs. `@earendil-works/pi-ai` has no TTS/ASR surface, and Whisper / MIMO TTS
-must not appear in the chat model picker. Local OpenAI-Audio-compatible servers
-(Speaches, whisper.cpp, LocalAI) should work through an existing
-`openai_compatible` provider.
+must not appear in the chat model picker.
 
 ## Decision
 
-1. The host owns a speech capability independent of chat:
-   `transcribe(audio) → text` and `synthesize(text) → audio`.
-2. Bindings live on optional `AppSettings.speech` (no schema bump). Each role
-   names an existing provider, a model id, and an open protocol id.
+1. The host owns a speech capability independent of chat: `transcribe(audio) →
+   text` and `synthesize(text) → audio`.
+2. Bindings live on optional `AppSettings.speech` (no schema bump).
 3. Built-in protocols: `openai_audio` (REST `/audio/transcriptions` and
    `/audio/speech`) and `openai_chat_audio` (chat completions `audio` field;
-   MIMO `mimo-v2.5-tts`). New vendors add an adapter, not a new IPC channel.
+   MIMO `mimo-v2.5-tts`).
 4. Plugins may register a protocol with `pi.speech.registerAdapter` under
-   high-risk `speech.adapter.register`. Handles stay in the guest; HTTP plans
-   are executed by the host with the bound provider's key and must stay on that
-   origin. Built-in protocol ids are reserved.
+   high-risk `speech.adapter.register`.
 5. v1 product entry is the host API only: the `speech/*` IPC and plugin
-   adapters. No Settings card and no Composer transcription / draft-speech
-   control exists (ADR 0291 withdrew both). Audio bytes never enter the renderer
-   (path in, scratch out).
+   adapters.
 6. Out of scope: microphone / `pi.audio` device backend, Realtime, agent
    `transcribe`/`speak` tools, audio as LLM content blocks, changing pi-ai.
 
 ## Consequences
 
-An unconfigured role fails `SPEECH_NOT_CONFIGURED`. Provider
-deletion makes the binding fail `NOT_FOUND`. Plugin unload drops its protocols.
+An unconfigured role fails `SPEECH_NOT_CONFIGURED`.

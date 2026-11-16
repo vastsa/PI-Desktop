@@ -10,28 +10,20 @@
 
 ADR 0171 added host-owned completed-turn token history and a Settings → Usage
 destination. The marketplace plugin `pi.token-insights` already ships a private
-local dashboard (heatmap, KPIs, filters, streaks, agent tool) across
-PI-Desktop, Claude Code, Codex, and OpenCode. Keeping both surfaces duplicated
-a weaker PI-Desktop-only matrix inside Preferences.
-
-Plugins cannot write `pi.sqlite` (D002). They already read appearance and
-provider labels read-only. The host still needs `session.endTurn.usage` so
-subagent spend is durable without rewriting parent `message.usage`.
+local dashboard (heatmap, KPIs, filters, streaks, agent tool) across PI-Desktop,
+Claude Code, Codex, and OpenCode.
 
 ## Decision
 
 1. **Settings has no Usage destination.** Preferences is General, AI, and
-   Shortcuts. Search does not index a usage tab.
+   Shortcuts.
 2. **`pi.token-insights` is the user-facing dashboard.** Command palette
    keywords (`usage`, `tokens`, `用量`) open that plugin.
 3. **Host persistence stays.** Electron still sums parent `message_end` usages
    plus `turn_end.subagentUsage` into `session.endTurn.usage`.
-   `stats.getTokenUsageHistory` remains an additive host RPC / IPC for local
-   completed-turn rollups. It is not a Settings page.
 4. **The plugin may fold host completed-turn remainders** into its PI-Desktop
    fact cube when those totals exceed transcript assistant `meta.usage`, so
-   subagent spend is visible without double-counting JSONL messages. It still
-   never rewrites `message.usage`.
+   subagent spend is visible without double-counting JSONL messages.
 
 ## Consequences
 
@@ -45,5 +37,5 @@ subagent spend is durable without rewriting parent `message.usage`.
 
 - Keep Settings → Usage beside the plugin: rejected (duplicate IA).
 - Delete host turn persistence: rejected (D331 accounting).
-- Let the plugin replace JSONL with the turns table: rejected (loses
-  per-message model/provider rankings and pre-persistence history).
+- Let the plugin replace JSONL with the turns table: rejected (loses per-message
+  model/provider rankings and pre-persistence history).

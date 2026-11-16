@@ -8,25 +8,12 @@
 ## Context
 
 Nothing stopped a second PI-Desktop process from starting. Launching the app
-again while it was already running — a double click on Windows or Linux, a
-`open -n` or a packaged app started next to a development host on macOS, or a
+again while it was already running — a double click on Windows or Linux, a `open
+-n` or a packaged app started next to a development host on macOS, or a
 tray-resident session the user assumed had exited — booted a complete second
 copy: another host-core over the same `pi.sqlite`, another persistence outbox
 and log tree in the same data directory, another agent sidecar, another tray
 icon, another global launcher shortcut registration, and another updater.
-
-host-core owns SQLite exclusively (D002) precisely so there is a single writer.
-A second app process defeats that: the two shells show divergent session lists
-over one database, the second registration of the launcher chord silently loses,
-and quitting one of them tears down state the other is still using. The user's
-mental model is one desktop app; the process model was the only thing that
-disagreed.
-
-The data directory is what cannot be shared, but Electron's single-instance lock
-is scoped to `userData`, not to `PI_DESKTOP_DATA_DIR`. Runs that point at their
-own data directory — the E2E harnesses, the capture rig, a deliberate
-side-by-side profile — share no state with the default installation and must
-stay launchable while one is running.
 
 ## Decision
 
@@ -34,37 +21,28 @@ stay launchable while one is running.
    evaluation, after `app.setName` (the lock file lives under the name-derived
    `userData` path) and before anything reads or writes the data directory.
 2. A launch that does not get the lock calls `app.quit()` immediately and boots
-   nothing. The readiness handler and the shutdown handler both return early for
-   it, so it never creates a window, a tray, a child process, or a log line in
-   the running instance's data directory.
+   nothing.
 3. The instance that holds the lock handles `second-instance` by restoring and
    focusing its main window through the same path as the tray's Show action,
    which recreates a window that was closed or hidden into the tray.
-4. The lock is requested only when `PI_DESKTOP_DATA_DIR` is unset. A run given
-   its own data directory keeps the current start-anytime behavior.
+4. The lock is requested only when `PI_DESKTOP_DATA_DIR` is unset.
 
 ## Consequences
 
-- One installation is one process: one host-core, one SQLite writer, one
-  outbox, one tray, one launcher shortcut binding, one updater.
+- One installation is one process: one host-core, one SQLite writer, one outbox,
+  one tray, one launcher shortcut binding, one updater.
 - Relaunching the app is a reliable way back to a tray-hidden or closed window,
   alongside the tray, the Dock, and `did-become-active` (ADR 0078, ADR 0086).
 - E2E harnesses, the capture rig, and side-by-side profiles are unaffected
   because they set `PI_DESKTOP_DATA_DIR`.
 - Two runs that are pointed at the *same* explicit data directory are still
-  admitted. That combination is a deliberate act, not an accidental relaunch,
-  and scoping the lock to it would mean relocating `userData` under the data
-  directory and discarding renderer-local state for every profile user.
+  admitted.
 
 ## Alternatives
 
 ### Relocate `userData` under `PI_DESKTOP_DATA_DIR`
 
 This would scope the lock to the resource that actually cannot be shared.
-Rejected because `userData` also holds renderer `localStorage` (retained project
-tabs and sidebar presentation, D093), plugin panel partitions, and browser pane
-cookies; moving it would silently discard that state for existing profile users
-to close a rare edge case.
 
 ### Keep a lock file in the data directory
 
@@ -75,8 +53,7 @@ also block the app with no recovery path.
 ### Let the second launch focus the first and stay alive
 
 Rejected because a resident duplicate keeps a second Electron process, tray, and
-shortcut registration for no purpose. Quitting immediately is the same visible
-result with none of the cost.
+shortcut registration for no purpose.
 
 ### Do nothing and document the hazard
 
@@ -91,17 +68,10 @@ The alternatives below still stand: the lock is not scoped to
 What changed is that a development build is no longer the same installation as
 the packaged app. It takes `PI-Desktop Dev` in the OS application-data root and
 `~/.pi-desktop-dev`, so `pnpm dev` starts while the packaged app holds its lock
-and the two never share `pi.sqlite`, the outbox, or the log tree. An explicit
-`--user-data-dir` still wins, because the E2E harnesses point a build at a
-throwaway profile with it. Only the development side moved: a shipped
-installation keeps `PI-Desktop` and `~/.pi-desktop`, so no existing profile is
-relocated. See D599.
+and the two never share `pi.sqlite`, the outbox, or the log tree.
 
 ## Amendment: explicit storage relocation (2026-10-01)
 
 Issue #1213 adds an explicitly confirmed, offline relocation of the complete app
 and Chromium profile. The stable `userData` installation lock is retained, while
-Chromium `sessionData` may follow the copied browser profile. No silent relocation
-or reset of existing renderer state is introduced. The original rejection of
-implicitly relocating `userData` for locking remains valid. See
-[Custom storage location](custom-storage-location.md).
+Chromium `sessionData` may follow the copied browser profile.

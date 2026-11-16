@@ -12,11 +12,6 @@ scheduled tasks bypassed the Rust host, and several product surfaces had no
 durable model for turns, artifacts, task runs, model metadata, or indexed
 search.
 
-Those boundaries conflict with the frozen host-ownership rule in ADR 0011 and
-make protocol-visible behavior depend on which process last wrote a local
-file. Expanding the old tables in place would also leave ambiguous ownership
-and inconsistent migration behavior.
-
 ## Decision
 
 Adopt schema v2 in the single host-owned `pi.sqlite` database.
@@ -31,14 +26,6 @@ The Rust host is the exclusive writer for:
 - scheduled tasks and task-run history;
 - indexed, prunable audit events.
 
-Electron accesses this state only through the host RPC protocol. Scheduled
-task JSON is imported into the host database and is no longer authoritative.
-
-Migrations are ordered Rust functions keyed by `PRAGMA user_version`. The
-v1-to-v2 migration creates a one-shot backup before rebuilding incompatible
-tables, preserves recoverable user data, and completes transactionally.
-Session/project imports and legacy scheduled-task imports are idempotent.
-
 ## Consequences
 
 - Durable state has one ownership boundary and one migration mechanism.
@@ -49,8 +36,6 @@ Session/project imports and legacy scheduled-task imports are idempotent.
 - The backup consumes additional disk space until the user removes it.
 - Protocol, storage, migration, and E2E specifications must move together with
   future structural changes.
-- Schema v2 replaces the storage implementation described before D086 while
-  retaining ADR 0011's Rust-host ownership boundary.
 
 ## Alternatives
 
@@ -66,8 +51,8 @@ atomic task/run lifecycle updates.
 
 ### Let the renderer write SQLite directly
 
-Rejected because concurrent writers would couple UI lifecycle to data
-integrity and bypass host RPC validation.
+Rejected because concurrent writers would couple UI lifecycle to data integrity
+and bypass host RPC validation.
 
 ## References
 

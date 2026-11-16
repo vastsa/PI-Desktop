@@ -8,35 +8,19 @@
 ## Context
 
 PI-Desktop enforced a shared radius-token scale, but that scale preserved a
-collection of historical 5/6/7/8/10/12/14/16/18/22px values. The one-pixel
-steps at the compact end were difficult to distinguish, and the shared button
+collection of historical 5/6/7/8/10/12/14/16/18/22px values. The one-pixel steps
+at the compact end were difficult to distinguish, and the shared button
 primitive used a capsule even though most of its 28–32px actions belong to a
 dense desktop interface.
 
-Apple's current design guidance separates fixed rounded rectangles, capsules,
-and concentric shapes. It continues to use rounded rectangles for Mini, Small,
-and Medium macOS controls, reserves capsules for emphasis and appropriate
-component families, and defines a concentric child radius from its containing
-radius and inset. Applying that geometry is more important than copying one
-radius across every component.
-
-The renderer is pinned to Electron 37 / Chromium 138. CSS `corner-shape` and
-its `squircle` value ship in Chromium 139, so relying on them would silently
-fall back in the packaged application.
-
 ## Decision
 
-1. Replace the fixed-radius ladder with
-   4/6/8/10/12/14/16/18/20/24px values. Keep `--radius-full` for capsules and
-   `--radius-round` for circles.
-2. Standard compact and medium controls use fixed rounded rectangles. The
-   shared button and field primitives use `--radius-sm` (10px).
+1. Replace the fixed-radius ladder with 4/6/8/10/12/14/16/18/20/24px values.
+2. Standard compact and medium controls use fixed rounded rectangles.
 3. Pills, badges, segmented selections, switches, tracks, status dots, and
    equal-width circular icon controls keep their explicit capsule or circle
    geometry.
-4. Surfaces increase radius with size and elevation. When a child corner sits
-   near and parallel to a rounded container corner, use the concentric relation
-   `outer radius = inner radius + inset`.
+4. Surfaces increase radius with size and elevation.
 5. Full-width structural shell surfaces remain square at the window edge.
 6. The composer aliases its established 20px radius to `--radius-xl`, keeping
    the visible composer geometry while bringing it into the global ladder.
@@ -59,14 +43,12 @@ fall back in the packaged application.
 
 ### Make every component a capsule
 
-Rejected because Apple retains rounded rectangles for compact macOS controls
-and uses capsules selectively for emphasis and specific control families.
+Rejected because Apple retains rounded rectangles for compact macOS controls and
+uses capsules selectively for emphasis and specific control families.
 
 ### Add `corner-shape: squircle` now
 
-Rejected because the packaged Chromium 138 runtime does not support it. A
-declaration that only works in newer development browsers would make visual
-verification and shipped behavior diverge.
+Rejected because the packaged Chromium 138 runtime does not support it.
 
 ### Keep the historical values and change individual components
 
@@ -78,9 +60,7 @@ steps would continue to make the hierarchy hard to perceive and maintain.
 The Context and Alternatives above are left as recorded. Their runtime premise
 no longer holds: the shell moved to Electron 43, which bundles Chromium 150, and
 `CSS.supports("corner-shape", "squircle")` returns `true` in the packaged
-renderer. The deferral in Consequences and the "Add `corner-shape: squircle`
-now" rejection were both about availability alone, so nothing stands in the way
-of revisiting them.
+renderer.
 
 This addendum does not change the decision. The fixed-radius ladder stays as
 specified; adopting continuous corners is a design change that needs its own

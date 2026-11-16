@@ -11,17 +11,10 @@ within two walls that made real theming impossible:
 
 1. **References were `data:`-only.** `sanitizeThemeCss` refuses every `url()`
    target that is not a `data:` URI, and the sheet itself is capped at 256 KB.
-   Base64 inflates by about a third, so a photographic background is not
-   expressible at all: the usable original is under ~190 KB.
 2. **The native window background ignored plugin themes.** The window is created
    with the host palette for the resolved light/dark base, so a plugin theme
-   with a dark #0d1424 plate flashed — and kept — the host's `#181818`, while the
-   renderer painted the theme's own colours inside it.
-
-Both walls were deliberate. The first existed because a relative or remote
-`url()` in plugin-authored CSS is a path the renderer would resolve on its own,
-with no host in the loop to check it. The second existed because only built-in
-theme ids had a background colour to apply.
+   with a dark #0d1424 plate flashed — and kept — the host's `#181818`, while
+   the renderer painted the theme's own colours inside it.
 
 ## Decision
 
@@ -34,26 +27,19 @@ is on a whitelist (`png`, `jpg`, `jpeg`, `webp`, `avif`, `svg`, `woff2`) and
 whose summed size is at most 4 MB. The declaration **does not** widen the sheet:
 validation still refuses the raw text of any reference, and instead rewrites
 each `url()` that matches a declared asset to
-`plugin-asset://<pluginId>/<normalizedPath>`. Everything else keeps the existing
-`data:`-only rule.
+`plugin-asset://<pluginId>/<normalizedPath>`.
 
 The scheme is host-owned:
 
-- Reserved as privileged (`standard`, `secure`, `supportFetchAPI`, `corsEnabled`,
-  `stream`) before the app is ready.
+- Reserved as privileged (`standard`, `secure`, `supportFetchAPI`,
+  `corsEnabled`, `stream`) before the app is ready.
 - Handled by a main-process resolver that answers only from the runtime's
   per-plugin asset map — populated at theme registration from files that exist
-  inside the plugin package, are not under `node_modules`, and fit the budget. A
-  path nobody declared has no URL to begin with, and unloading a plugin clears
-  its whole map.
+  inside the plugin package, are not under `node_modules`, and fit the budget.
 - Served with an explicit MIME type, `nosniff`, and `no-store`.
 - Admitted by the renderer CSP for `img-src` and `font-src`, and by the plugin
   panel egress policy as a local scheme (it is read-only and package-scoped, so
   it does not widen panel egress).
-
-Permission: unchanged. Reading a file the plugin already ships, through a host
-scheme that resolves only to that plugin's declared list, is the same capability
-`ui.theme` already grants.
 
 ### 2. `contributes.windowAppearance.backgroundColor.{light,dark}`
 
@@ -64,15 +50,7 @@ is the selected theme, and only for the palette the renderer has resolved —
 
 Restoration is **derived, not remembered**. The renderer recomputes the colour
 from the persisted preference and the live theme catalog on every theme, plugin,
-and OS-appearance change and sends the result (or nothing). A switch to another
-theme, a plugin disable, and a plugin uninstall all converge on the host palette
-because the plugin theme is simply gone from the catalog. There is no stored
-value to leak, and no exit path that can leave a half-applied colour behind —
-including a crashed renderer, which leaves the host default with no theme
-applied at all.
-
-macOS keeps its `vibrancy` plate and never receives a colour, matching the
-existing rule that darwin does not download one.
+and OS-appearance change and sends the result (or nothing).
 
 > **Amended by ADR 0332.** macOS keeps its translucent vibrancy surface by
 > default, so `windowAppearance.backgroundColor` is skipped there exactly as
@@ -80,20 +58,6 @@ existing rule that darwin does not download one.
 > opaque native surface and applies the colour like every other platform. The
 > permission, the derived-not-remembered restoration, and the palette resolution
 > above are unchanged.
-
-Permission: new `ui.window.appearance`, confirmed at install and shown in the
-Settings permission list. A declaration without the grant is audited and
-ignored.
-
-Built-in themes reach the same value through a shared table
-(`packages/shared/src/theme.ts`): `BUILTIN_THEMES` carries each palette's
-`windowBackground` once, and `isThemeColorScheme` carries the "is this a
-palette rather than `system`/a plugin theme" question once. The renderer, main,
-the plugin panel host, the panel preload, and the theme picker all read it
-instead of restating the `#ffffff` / `#181818` pair or re-listing the built-in
-ids. The two paths therefore differ only in where the colour is declared, not in
-how it is applied or restored. `system` stays resolved locally, because the
-renderer asks `matchMedia` and main asks `nativeTheme`.
 
 ## Consequences
 
@@ -105,16 +69,8 @@ renderer asks `matchMedia` and main asks `nativeTheme`.
   error in the SDK validator and in host-core, so the mismatch surfaces at
   install rather than at load.
 - The window is created before any theme is known, so the very first frame of a
-  cold start still uses the host palette. It is replaced as soon as the renderer
-  runs its theme effect, which is the same moment the base palette is applied
-  today.
-- The asset handler reads each file synchronously. Within a 4 MB per-plugin
-  budget this is bounded and avoids holding a stream open across a plugin
-  unload, which is the failure mode that would matter more.
-- The built-in window palette has one definition. It previously lived in four
-  files, so a palette change could leave one of them behind and split the
-  built-in and contributed paths — the exact divergence this ADR exists to
-  prevent.
+  cold start still uses the host palette.
+- The asset handler reads each file synchronously.
 
 ## Alternatives
 

@@ -14,33 +14,20 @@
 
 ## Context
 
-Work-panel visibility and divider commits previously called
-`window/resizeBy` so Electron could grow or shrink the native window. Renderer
-`window.resize` events then inferred whether the user moved the native right
-edge and wrote part of that delta back into the panel width. Time-limited
-attribution tickets attempted to distinguish those programmatic events from
-real window gestures.
-
-This formed a circular ownership model: the panel changed the native window,
-and the native window changed the panel. It produced a second layout jump after
-divider release, stale asynchronous growth on rapid open/close, window-position
-drift near a display edge, platform-specific behavior, and preference values
-that changed during an unrelated native resize.
+Work-panel visibility and divider commits previously called `window/resizeBy` so
+Electron could grow or shrink the native window. Renderer `window.resize` events
+then inferred whether the user moved the native right edge and wrote part of
+that delta back into the panel width.
 
 ## Decision
 
 Native window geometry and renderer column geometry have independent owners:
 
-1. Electron Main exclusively owns `BrowserWindow` bounds and persists the
-   actual normal bounds. The supported minimum is 1040x700.
-2. The renderer owns one preferred work-panel width in localStorage. The
-   effective width is derived by clamping that preference against the current
-   viewport, visible sidebar, and MainChat reserve.
-3. Native window-edge gestures resize the shell only. They may temporarily
-   clamp the effective panel width but never overwrite its preference.
-4. The work-panel divider resizes internal columns only. Pointer math is
-   anchored to the gesture start; move rendering is frame-coalesced; release
-   commits once; Escape, pointer cancellation, and lost capture roll back.
+1. Electron Main exclusively owns `BrowserWindow` bounds and persists the actual
+   normal bounds.
+2. The renderer owns one preferred work-panel width in localStorage.
+3. Native window-edge gestures resize the shell only.
+4. The work-panel divider resizes internal columns only.
 5. Opening, collapsing, session-switching, and closing the panel never change
    native bounds on any platform.
 6. The renderer-to-Main `window/resizeBy` IPC method, programmatic resize
@@ -57,10 +44,6 @@ Native window geometry and renderer column geometry have independent owners:
   becomes available.
 - The preload surface is smaller, and Electron window-state persistence no
   longer needs a panel-specific offset.
-- Normal bounds are read independently of maximized/fullscreen state and are
-  flushed synchronously on close so a pending debounce cannot lose them.
-- Opening a panel reallocates the existing client area, so MainChat can become
-  narrower until the operator resizes either the divider or native window.
 
 ## Alternatives
 
@@ -77,8 +60,7 @@ moving split-pane layout across IPC would add latency and duplicate DOM truth.
 ### Keep native right-edge ownership for the work panel
 
 Rejected. Edge-source inference is not reliable across frameless windows,
-display scaling, macOS window chrome, and Wayland. A native edge should retain
-its standard meaning: resize the window.
+display scaling, macOS window chrome, and Wayland.
 
 ## References
 

@@ -6,9 +6,8 @@
 
 ## Context
 
-The original MVP placed the full agent loop in Electron main process for simplicity.
-
-New product constraints:
+The original MVP placed the full agent loop in Electron main process for
+simplicity.
 
 1. Prefer a stronger systems backend
 2. Keep pi Agent Harness as the model/agent engine
@@ -22,9 +21,12 @@ MVP agent loop in Electron main process.
 
 Adopt a hybrid model:
 
-- **Rust backend host core** owns desktop host services, tools sandbox, plugin host boundary, persistence adapters, and privileged operations
-- **Node/TypeScript pi runtime** remains the agent loop engine (`pi-ai` + `pi-agent-core`) and runs as a controlled sidecar/utility process
-- **Electron main** becomes a thin orchestrator between renderer IPC and Rust/Node services
+- **Rust backend host core** owns desktop host services, tools sandbox, plugin
+  host boundary, persistence adapters, and privileged operations
+- **Node/TypeScript pi runtime** remains the agent loop engine (`pi-ai` +
+  `pi-agent-core`) and runs as a controlled sidecar/utility process
+- **Electron main** becomes a thin orchestrator between renderer IPC and
+  Rust/Node services
 
 ## Consequences
 

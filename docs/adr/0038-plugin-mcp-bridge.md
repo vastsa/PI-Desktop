@@ -14,57 +14,19 @@ that wanted to expose an MCP server's tools had to reimplement each one as a
 plugin agent tool and proxy the traffic itself — duplicated work, and the
 proxying happened in plugin code the host cannot inspect.
 
-Two constraints shape the design. First, the agent already has a working path
-for plugin tools: `plugin_<pluginIdSafe>_<toolName>` flows from the model through
-the sidecar to host-core's permission gate and back out to Electron main
-(`07-plugins/12` appendix). Anything that reuses that path inherits the timeout,
-the audit trail, and the per-plugin disable switch for free. Second, MCP servers
-are two very different things wearing one name: a local executable we spawn, and
-a remote endpoint we send arguments to. They fail differently and they leak
-differently.
-
 ## Decision
 
 1. MCP servers are **declared in the manifest**, never opened at runtime.
-   `contributes.mcpServers` carries `{ id, label?, transport }` plus exactly one
-   transport's fields — `stdio` uses `command` / `args` / `env`, `http` uses
-   `url` / `headers`. A manifest that mixes them fails validation in both
-   host-core and the SDK validator.
 2. The two transports carry **separate permissions**: `mcp.server.local` for
-   stdio, `mcp.server.remote` for HTTP. Running a local binary and shipping tool
-   arguments to a third party are different consents, so the permission copy
-   states each plainly.
+   stdio, `mcp.server.remote` for HTTP.
 3. The client lives in `apps/desktop/electron/main/plugin-mcp.ts` and speaks
-   protocol `2025-06-18`: `initialize`, `tools/list`, `tools/call`. Framing is
-   NDJSON over stdio pipes, or streamable HTTP with SSE responses. Budgets: 10s
-   to complete the handshake, 100s per call, 4MB per stdio line, 8 servers per
-   plugin. 2048 tools, 100 `tools/list` pages, 30s for the whole traversal, and
-   a cursor that repeats or is malformed — a server that breaks any bound is
-   refused instead of truncated. host-core's 150s dispatch deadline carries the
-   whole leg — handshake, traversal, and call — so the client reports its own
-   timeout first.
-   Connection is lazy — declaring a server costs nothing
-   until a tool is called — and teardown follows unload.
+   protocol `2025-06-18`: `initialize`, `tools/list`, `tools/call`.
 4. Discovered tools register into the **existing** plugin tool map as
    `plugin_<pluginIdSafe>_<serverId>_<toolName>`, so no new routing exists
    anywhere between the model and the server.
-5. Every discovered tool is registered at `risk: "medium"`. The name, schema,
-   and description come from a third-party server; a self-declared risk level
-   from that source is not evidence.
-6. Credentials resolve **only** from the plugin's own settings through
-   `{ "setting": "<key>" }` (D018). A stdio child receives `PATH`, temp/locale
-   and profile/toolchain variables (`HOME`, `USERPROFILE`, `PATHEXT`, `ComSpec`,
-   `FNM_DIR`, …), `PI_PLUGIN_ID`, and the declared values — not the host
-   environment, which holds provider keys. Unix PATH is the login-shell PATH
-   (D600). Bare `npx`/`uvx` resolve to real binaries: official Node
-   (`node.exe` + `npx-cli.js`) first, then fnm/nvm/Volta, then a Windows
-   `.cmd` shim through `cmd.exe /d /s /c` with quoted literal args (D624,
-   issue #789). On Windows a bare `python3`/`python` skips the Microsoft
-   Store alias in `WindowsApps` (it exits 9009 when no Store Python is
-   installed) for a `python3`/`python` elsewhere on PATH, then `py -3`, and
-   keeps the alias only when nothing else exists. `command` must be a bare
-   PATH name or stay inside the plugin directory; `url` may use `http` or `https`, with non-loopback HTTP subject
-   to ADR 0142 and the plugin network allowlist.
+5. Every discovered tool is registered at `risk: "medium"`.
+6. Credentials resolve **only** from the plugin's own settings through `{
+   "setting": "<key>" }` (D018).
 
 ## Consequences
 
@@ -75,13 +37,10 @@ differently.
 - Catalog size is a protocol guard, not a prompt budget: a server with 300 tools
   contributes all 300, because MCP tools reach the model as deferred on-demand
   entries behind `ToolSearch` and only the prompt block that advertises them is
-  capped. A server that breaks a guard (count, pages, cursor, time) is refused
-  and contributes nothing, rather than flooding the prompt with a prefix of its
-  catalog.
+  capped.
 - Because MCP tools sit in the same map as hand-written plugin tools, disabling
   the plugin removes both, and a crashed plugin loses both.
-- A remote server sees tool arguments. No amount of host-side care changes that;
-  the permission and its copy exist so the user decides.
+- A remote server sees tool arguments.
 
 ## Alternatives
 
@@ -94,8 +53,7 @@ unreviewable proxy, which is worse on both counts than a declared HTTP(S) URL.
 ### A separate `type: "mcp"` plugin kind
 
 Rejected. It would need its own lifecycle, its own management UI, and its own
-tool routing. A contribution point on the existing plugin type reuses install,
-enable/disable, permissions, and audit as they are.
+tool routing.
 
 ### Let the plugin process own the MCP connection
 
@@ -105,13 +63,10 @@ credentials out of the plugin's reach.
 
 ### Trust the server's declared tool risk
 
-Rejected. Risk drives host-core's confirmation flow. A value chosen by the
-inspected party cannot gate the inspection.
+Rejected. Risk drives host-core's confirmation flow.
 
 ## Amendment: stdio launcher resolution
 
-GUI launches inherit a PATH that may not include fnm/nvm/uv shims. Windows
-`npx` from the official Node installer is `npx.cmd` (plus a Git-Bash `npx`
-script), which `spawn({ shell: false })` cannot start. Resolution stays in
-Electron main, arguments stay literal, and remaining `.cmd` files go through
-`cmd.exe` rather than `shell: true`.
+GUI launches inherit a PATH that may not include fnm/nvm/uv shims. Windows `npx`
+from the official Node installer is `npx.cmd` (plus a Git-Bash `npx` script),
+which `spawn({ shell: false })` cannot start.

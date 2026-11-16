@@ -19,19 +19,13 @@ action and the header became difficult to scan.
 
 ## Decision
 
-1. The open work-panel header exposes one compact resource switcher. Closing a
-   resource is owned by its existing unified context-menu row, which keeps the
-   close action next to the resource it affects without adding another `X` to
-   the window chrome.
+1. The open work-panel header exposes one compact resource switcher.
 2. The viewport-fixed work-panel toggle remains the sole panel-level collapse
-   control. Windows/Linux native window controls remain in their fixed right
-   edge band.
+   control.
 3. Subagent detail uses a back chevron to return to the resource list, so its
    navigation action is visually distinct from both resource close and native
    window close.
-4. The change is renderer presentation and interaction only. It does not alter
-   panel state ownership, resource lifecycle, window geometry, IPC, protocol,
-   or storage.
+4. The change is renderer presentation and interaction only.
 
 ## Consequences
 
@@ -46,6 +40,5 @@ action and the header became difficult to scan.
 
 - **Keep the header resource `X` and shrink the native controls:** rejected;
   native window affordances must keep their platform-sized hit targets.
-- **Add another panel-specific close or collapse icon:** rejected; D357 and
-  ADR 0195 make the viewport-fixed toggle the sole panel-level collapse
-  control.
+- **Add another panel-specific close or collapse icon:** rejected; D357 and ADR
+  0195 make the viewport-fixed toggle the sole panel-level collapse control.

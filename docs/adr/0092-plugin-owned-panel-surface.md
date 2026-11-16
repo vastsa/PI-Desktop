@@ -9,31 +9,17 @@
 
 The first plugin-panel chrome revision made the host render a complete 46px
 titlebar. It still split behavior by platform: macOS retained native traffic
-lights, while Windows and Linux received a flat 112px control band. The host
-also rendered the manifest title and a development-only safe-area reminder.
-
-That chrome consumes the visual top-level hierarchy of a plugin panel. Plugin
-authors cannot build their own toolbar without competing with a host title, and
-the platform split makes the same plugin feel different on each desktop.
+lights, while Windows and Linux received a flat 112px control band.
 
 ## Decision
 
 1. Plugin panels use frameless `BrowserWindow` instances on macOS, Windows, and
-   Linux. Native traffic lights and native panel menus are not part of the
-   panel window surface.
+   Linux.
 2. The sandboxed preload reserves a transparent 46px safe area and renders one
-   fixed capsule at the top-right. The capsule contains exactly three buttons:
-   minimize, maximize/restore, and close. The host renders no panel title and
-   no development reminder.
+   fixed capsule at the top-right.
 3. The plugin owns its title, toolbar, background, content, and all other
-   visible panel UI. Normal-flow content is offset automatically; fixed or
-   sticky plugin UI uses `--pi-plugin-titlebar-height: 46px`. A plugin-owned
-   toolbar may opt into `-webkit-app-region: drag`, with interactive children
-   opting out through `no-drag`.
-4. The capsule remains in a closed preload-owned Shadow DOM. Its localized
-   accessible labels, theme-adaptive colors, keyboard focus, reduced-motion
-   behavior, and sender-validated private window-control channel remain
-   unchanged. `window.pluginBridge` does not gain window primitives.
+   visible panel UI.
+4. The capsule remains in a closed preload-owned Shadow DOM.
 
 ## Consequences
 

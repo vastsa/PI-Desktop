@@ -9,46 +9,24 @@
 
 The first vendor-account implementation used the pi-ai vendor id as the local
 identity. Electron main kept one provider-row id and one `CredentialStore` per
-vendor, so a second sign-in could only reuse the first account. The renderer
-also showed OAuth rows in the AI provider list while a separate Vendor accounts
-card managed the same rows. Its sign-out action cleared the credential but left
-the provider row behind, which made the two surfaces disagree.
-
-Multiple accounts are a real requirement: a user may have separate personal,
-work, or team subscriptions for one vendor. The account boundary must also be
-the security boundary, because refresh and access tokens must never cross from
-one account into another.
+vendor, so a second sign-in could only reuse the first account.
 
 ## Decision
 
-1. **The provider row id is the account identity.** Every successful login starts
-   with a new `authKind: "oauth"` provider row, even if another row has the same
-   `vendorKey`. Its OAuth credential is stored only at
-   `secret:provider:<providerId>:oauth`.
+1. **The provider row id is the account identity.** Every successful login
+   starts with a new `authKind: "oauth"` provider row, even if another row has
+   the same `vendorKey`.
 2. **Each account gets a scoped pi-ai collection.** Electron main creates one
-   `MutableModels` instance and one `CredentialStore` for each provider row. The
-   store accepts the builtin vendor id only inside that instance and translates
-   it to the row-specific secret ref. Refresh serialization is keyed by the row
-   id, so concurrent accounts cannot read-modify-write each other's token.
+   `MutableModels` instance and one `CredentialStore` for each provider row.
 3. **Vendor accounts own OAuth row lifecycle.** The Vendor accounts card lists
    every local account, allows the vendor picker to be selected repeatedly, and
-   removes an account through `providers.delete`. Host-core therefore clears the
-   row, OAuth secret, API-key secret, and secret metadata together. A stale row
-   without a credential remains visible as `Needs sign-in` until the user
-   removes it.
+   removes an account through `providers.delete`.
 4. **AI services and vendor accounts are separate settings surfaces.** The AI
-   services list contains API-key and custom/no-auth services only. Connected
-   OAuth rows remain available to the default-model selector and runtime, but
-   are edited and deleted only from Vendor accounts.
+   services list contains API-key and custom/no-auth services only.
 5. **Runtime bindings use provider ids end to end.** The sidecar binding table
-   stores only the OAuth provider row ids allowed for a session. Its
-   `provider.resolveAuth` request is checked against that set and main resolves
-   the corresponding row-scoped collection. A vendor key is never used as an
-   ambiguous account lookup at the sidecar boundary.
+   stores only the OAuth provider row ids allowed for a session.
 6. **Ambiguous subagent aliases fail closed.** A subagent pin may use an exact
-   provider id. A vendor/name alias is accepted only when it resolves to one
-   provider row; duplicate vendor accounts require an exact row id rather than
-   silently selecting the first account.
+   provider id.
 
 ## Consequences
 
@@ -59,8 +37,6 @@ one account into another.
 - Existing OAuth rows remain readable after upgrade; the next sign-in creates a
   new row instead of mutating the existing one.
 - The IPC host protocol and SQLite schema do not need a new table or version.
-  The renderer uses the Electron-main `providers/oauth/delete` invoke channel,
-  which delegates to the existing host provider deletion contract.
 
 ## Alternatives
 

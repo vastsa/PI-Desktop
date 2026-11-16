@@ -17,18 +17,10 @@ builds, including local debug artifacts.
 
 Neither macOS DMG nor ZIP includes `PI-Desktop-macOS-open.command`,
 `PI-Desktop-macOS-opening-help.txt`, or another bundled quarantine-clearing
-helper or opening note. The ZIP contains `PI-Desktop.app` at its root. This
-applies to signed releases and local or opt-in unsigned debug builds; signing,
-notarization, stapling, and updater behavior are unchanged.
+helper or opening note. The ZIP contains `PI-Desktop.app` at its root.
 
 ## Consequences
 
 - Both macOS package formats omit the two first-launch guidance files.
 - Unsigned debug builds do not ship a Gatekeeper workaround and must not be
   represented as equivalent to signed, notarized releases.
-
-## Verification
-
-`apps/desktop/test/packaging-footprint.test.mjs` guards the macOS builder
-configuration against reintroducing either file. E2E-196b covers native DMG
-and ZIP archive inspection.

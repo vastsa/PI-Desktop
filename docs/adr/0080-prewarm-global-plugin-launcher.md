@@ -9,27 +9,17 @@
 The global plugin launcher was created lazily on the first Option/Alt+Space
 invocation. That path had to allocate a second Electron `BrowserWindow`, start
 its sandboxed renderer, load the shared renderer bundle, mount React, and only
-then reveal the launcher. The first invocation therefore felt substantially
-slower than later invocations even though the window was retained after use.
+then reveal the launcher.
 
 ## Decision
 
 As soon as Electron is ready, before backend/plugin boot completes, Electron
 starts creating and loading the launcher window in the background while keeping
-it hidden. This work runs in parallel with primary startup. Shortcut
-invocations continue to set the current display bounds, show, and focus the
-same retained window.
+it hidden. This work runs in parallel with primary startup.
 
 Window creation is represented by one shared in-flight promise. A shortcut
 received while warm-up is still loading joins that promise, preventing a blank
-window, a lost shown event, or duplicate renderer creation. A failed warm-up is
-logged, destroys the incomplete window, clears the promise, and leaves the
-normal shortcut path able to retry creation.
-
-The launcher still refreshes the plugin catalog whenever it is shown, so
-preloading changes presentation latency without making plugin availability
-stale or changing IPC, host RPC, permissions, protocol v9, or storage schema
-v11.
+window, a lost shown event, or duplicate renderer creation.
 
 ## Consequences
 
@@ -45,8 +35,7 @@ v11.
 
 - Keep first-use lazy creation: preserves the smallest idle footprint but keeps
   the reported first-launch delay.
-- Await warm-up as part of application boot: guarantees readiness before the
-  app is marked booted but lengthens the primary window's critical startup
-  path.
+- Await warm-up as part of application boot: guarantees readiness before the app
+  is marked booted but lengthens the primary window's critical startup path.
 - Reuse the main renderer: avoids a second renderer but cannot provide the
   independent system-wide utility window while PI-Desktop is unfocused.

@@ -14,13 +14,7 @@
 The implemented Settings rail had grown to nine entries, including a separate
 `Extensions` destination for two marketplace-source controls. The rail also
 wrapped destinations in `Personal`, `Integrations`, and an implicit system
-section. Those headings repeated information already expressed by the
-destination labels, while `Extensions` had the same visible name as the
-app-shell destination that owns plugin management.
-
-The settings IA already defines eight useful destinations. Plugin marketplace
-source selection is a marketplace concern and belongs beside the catalog it
-controls, not beside appearance, providers, or project settings.
+section.
 
 ## Decision
 
@@ -36,22 +30,16 @@ this exact order:
 7. Project archive
 8. Info
 
-Remove navigation group headings and the Settings `Extensions` destination.
-At the time of this decision, move the official/mirror/custom marketplace
-source selector, including the custom catalog URL field and active-source
-status, into the app-shell `Extensions → Marketplace` surface. That selector
-has since been retired: the page now uses the official catalog only, and
-host-core ignores legacy source values. The shared Settings search index still
-contains only the eight Settings destinations.
-
-No IPC, host protocol, storage, provider, plugin permission, or project
-ownership contract changes.
+Remove navigation group headings and the Settings `Extensions` destination. At
+the time of this decision, move the official/mirror/custom marketplace source
+selector, including the custom catalog URL field and active-source status, into
+the app-shell `Extensions → Marketplace` surface.
 
 ## Consequences
 
 - Settings has one visual hierarchy and fewer competing labels.
-- The rail matches the frozen eight-destination IA and no longer duplicates
-  the Extensions page name.
+- The rail matches the frozen eight-destination IA and no longer duplicates the
+  Extensions page name.
 - The marketplace-source selector described by this ADR is no longer present;
   source selection is not a Settings destination or an Extensions control.
 - Screenshot capture scenes and marketplace E2E steps use the fixed official
@@ -72,9 +60,7 @@ split marketplace browsing from marketplace configuration.
 ### Remove marketplace source configuration
 
 Rejected at the time because mirror and custom catalog sources were considered
-necessary for some networks and development catalogs. The later official-only
-decision retains the catalog URL fallback and a development environment
-override; see ADR 0276.
+necessary for some networks and development catalogs.
 
 ## References
 

@@ -14,15 +14,10 @@ preference state belongs at the same renderer boundary.
 
 The expanded sidebar exposes a resize handle on its right edge. Pointer motion
 previews a width anchored to the pointer-down position and the main pane reflows
-continuously. The width is rounded and clamped to `240px..520px`, with a
-`275px` default; only pointer release persists the preferred width under the
-sidebar renderer preference storage.
+continuously.
 
-The handle is an ARIA vertical separator. It supports ArrowLeft/ArrowRight
-with 16px steps, Home, and End. Keyboard changes commit immediately. Escape,
-pointer cancellation, lost ownership, and component unmount restore the width
-captured at pointer-down. Collapsing the sidebar preserves the preferred
-expanded width.
+The handle is an ARIA vertical separator. It supports ArrowLeft/ArrowRight with
+16px steps, Home, and End.
 
 ## Consequences
 

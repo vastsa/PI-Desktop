@@ -16,13 +16,10 @@ focused on another session, violating D117 and E2E-065.
 
 ## Decision
 
-Add an explicit `kind` to the Electron-only native notification request:
-`task` or `interactive`. A task completion is never shown natively while the
-main window is both visible and focused, regardless of which session is
-currently selected. It remains eligible when the window is hidden, minimized,
-or unfocused. Interactive prompts retain their previous rule: suppress only the
-exact visible focused session, while a focused background request remains
-visible so the user can answer it.
+Add an explicit `kind` to the Electron-only native notification request: `task`
+or `interactive`. A task completion is never shown natively while the main
+window is both visible and focused, regardless of which session is currently
+selected.
 
 The durable task insertion policy is unchanged: the exact visible focused
 session suppresses the inbox row, while background, hidden, unknown, and

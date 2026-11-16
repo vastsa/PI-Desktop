@@ -7,23 +7,18 @@
 
 ## Context
 
-ADR 0228 removed the reorder grip and armed a drag after a 400ms still
-press. That delay is a mobile long-press pattern. On a desktop sidebar it
-makes reorder slower than ChatGPT, Claude, and similar product lists, where
-grabbing a row and moving it starts the drag immediately.
+ADR 0228 removed the reorder grip and armed a drag after a 400ms still press.
+That delay is a mobile long-press pattern.
 
 ## Decision
 
 The project title remains the reorder control, with no grip. Pointer
 disambiguation is movement, not time:
 
-- Mouse and pen: an 8px move while pressed arms the drag. A click with no
-  qualifying movement still selects the project and toggles collapse.
-- Touch presses do not start a reorder, so a one-finger pan can scroll the
-  list. Keyboard ArrowUp/ArrowDown on the focused title remains available.
+- Mouse and pen: an 8px move while pressed arms the drag.
+- Touch presses do not start a reorder, so a one-finger pan can scroll the list.
 - While dragging, an accent insertion line on the target group shows
-  before/after placement from the pointer's vertical midpoint. Escape
-  cancels. Persistence and pin/archive buckets are unchanged.
+  before/after placement from the pointer's vertical midpoint.
 
 ## Consequences
 

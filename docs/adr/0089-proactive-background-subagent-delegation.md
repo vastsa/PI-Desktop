@@ -16,9 +16,9 @@ context. In practice the main agent almost never delegates:
 - The system prompt says nothing about delegation, so the model only ever sees
   the tool's defensive description ("do not delegate what you can finish in a
   couple of tool calls") with no positive trigger patterns to act on.
-- `Task` blocks the parent's tool loop until the delegate finishes, so from
-  the model's perspective delegation trades one long job for another; there is
-  no way to keep working while a delegate runs.
+- `Task` blocks the parent's tool loop until the delegate finishes, so from the
+  model's perspective delegation trades one long job for another; there is no
+  way to keep working while a delegate runs.
 - All builtin delegates are read-only report machines, so there is nothing to
   delegate implementation work to, and a write-capable delegate would hit the
   session's permission prompts for every file it touches.
@@ -28,8 +28,8 @@ context. In practice the main agent almost never delegates:
 
 ## Decision
 
-Make delegation a first-class, proactive orchestration capability while
-keeping every containment boundary ADR 0062 established.
+Make delegation a first-class, proactive orchestration capability while keeping
+every containment boundary ADR 0062 established.
 
 ### 1. The delegate lifecycle is non-blocking and tool-driven
 
@@ -37,10 +37,10 @@ keeping every containment boundary ADR 0062 established.
 `delegationId`. Three new Agent-mode tools drive the lifecycle, all in the core
 tool set beside `Task`:
 
-- `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` converges
-  on running delegations (all by default) and returns their reports;
-  `mode: "any"` + `minCompleted` converges as soon as the first N finish, and
-  settled delegations return immediately so reports can be re-read by id.
+- `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` converges on
+  running delegations (all by default) and returns their reports; `mode: "any"`
+  + `minCompleted` converges as soon as the first N finish, and settled
+  delegations return immediately so reports can be re-read by id.
 - `TaskList()` reports the session's delegations with status.
 - `TaskStop(delegationIds?)` stops running delegations; stopped reads as
   `stopped`.
@@ -48,9 +48,7 @@ tool set beside `Task`:
 The session runtime owns a delegation registry (id, agent, status, timings,
 result, completion promise, abort handle). Settled records are retained for the
 session (capped at 100) so `TaskWait` can re-read a report without re-running
-the delegate. Running delegates are aborted when the run ends (`agent_end`),
-when the parent aborts, or when the runtime is disposed; the system prompt
-instructs the model to converge or stop before ending a turn.
+the delegate.
 
 ### 2. The system prompt names positive trigger patterns
 
@@ -58,10 +56,9 @@ The base prompt gains a `## Delegation` section (only when the catalog is
 non-empty) listing concrete situations: parallel exploration of independent
 directions, adversarial review before commit, multi-file implementation via
 `fixer`, context-economy searches, and batch sharding — plus the convergence
-rules (continue working after `Task`, fill `description` for the user, never
-end the turn with running delegates). The `Task` description is rewritten to
-lead with these triggers and keep the old "do not" list as a single boundary
-line.
+rules (continue working after `Task`, fill `description` for the user, never end
+the turn with running delegates). The `Task` description is rewritten to lead
+with these triggers and keep the old "do not" list as a single boundary line.
 
 ### 3. New builtins: a faster `explorer` and a write-capable `fixer`
 
@@ -77,16 +74,10 @@ write-capable builtin; the other three stay read-only.
 ### 4. Definitions may declare a permission scope
 
 Frontmatter gains `permission: inherit | ask | accept-edits | auto` (default
-`inherit`). A definition with an explicit non-`inherit` scope causes the
-sidecar to attach that scope to the delegate's `tools.execute` calls, and
-host-core resolves each call under that mode instead of the session's effective
-permission mode. An omitted or `inherit` scope carries no override, so the
-call uses the parent session's effective mode. The override is a permission-mode
-override only: the contract modes' hard deny and the external-path gate stay in
-force, so `accept-edits` auto-allows `Write`/`Edit` inside the workspace and
-scratch roots while Bash and external paths keep the session's behavior. The
-builtin `fixer` uses the default `inherit` scope; explicit scopes remain
-available to eligible builtin and user definitions.
+`inherit`). A definition with an explicit non-`inherit` scope causes the sidecar
+to attach that scope to the delegate's `tools.execute` calls, and host-core
+resolves each call under that mode instead of the session's effective permission
+mode.
 
 ### 5. Concurrency
 
@@ -113,11 +104,9 @@ runs 10 delegates, telling the model to wait or stop first.
 ## Alternatives considered
 
 - **Background tasks across turns (Proma-style).** Delegates that keep running
-  after the parent turn ends, with the UI showing pending background work,
-  would maximize parallelism but requires reworking Electron main's turn
-  lifecycle, completion semantics and the renderer's session-idle handling.
-  Within-turn background delegation delivers the parent-continues-its-mainline
-  behavior the pattern exists for, with the existing turn model unchanged.
+  after the parent turn ends, with the UI showing pending background work, would
+  maximize parallelism but requires reworking Electron main's turn lifecycle,
+  completion semantics and the renderer's session-idle handling.
 - **Let delegates inherit the session permission mode.** Rejected: a delegate
   that needs `auto` would silently re-enable prompting or force the whole
   session to `auto`; the per-definition scope keeps the relaxation explicit and
@@ -127,33 +116,13 @@ runs 10 delegates, telling the model to wait or stop first.
   makes "start, work, converge" a sequence the model can follow and the prompt
   can teach.
 
-
 ## Amendment — session-owned job controls (2026-11-05)
 
-Background Bash already belongs to Host and exposes results to the desktop,
-but the model's controls only resolve runtime delegation IDs. Extending each
-tool independently would duplicate target selection and risk adding permanent
-servers to default delegation wait/stop sets.
+Background Bash already belongs to Host and exposes results to the desktop, but
+the model's controls only resolve runtime delegation IDs. Extending each tool
+independently would duplicate target selection and risk adding permanent servers
+to default delegation wait/stop sets.
 
-TaskWait/List/Stop therefore share explicit typed job references. Runtime
-routes delegation references to the existing delegation implementation and
-Bash references to session-scoped Host RPC. The controls are registered even
-without a subagent catalog. Existing identifier fields and implicit delegation
-targets remain compatible. Host checks ownership and operating mode and keeps
-process supervision; this decision does not move delegation reports or
-resumption chains into Rust.
-
-Bash waits use bounded, completion-aware Host observations. Cancelling a wait
-does not signal the process. Output tails are repeatable and independently
-bounded for stdout and stderr. This keeps desktop and model readers independent
-without introducing log files or stdin access. A full process-lifecycle
-migration would unnecessarily couple Host to runtime report delivery; a
-TaskWait-only special case would leave discovery and cancellation inconsistent.
-Completion notifications are deferred: Bash completion is queried explicitly,
-while delegate auto-delivery retains its existing behavior. Remote workspaces
-and older Hosts explicitly report unsupported Bash controls.
-
-Trade-offs include up to one observation per second during a long wait and
-finite Host output/history retention. A process does not gain durability across
-Host restart. Protocol, runtime and real-process tests cover the changed
-boundary; process-tree termination remains the existing supervisor's job.
+TaskWait/List/Stop therefore share explicit typed job references. Runtime routes
+delegation references to the existing delegation implementation and Bash
+references to session-scoped Host RPC.

@@ -7,23 +7,19 @@
 
 ## Context
 
-ADR 0227 added renderer-local manual project order behind a hover/focus
-grip. The grip consumed a leading column, stayed hidden until hover, and
-made reorder a second control beside the title that already selects and
-collapses the group.
+ADR 0227 added renderer-local manual project order behind a hover/focus grip.
+The grip consumed a leading column, stayed hidden until hover, and made reorder
+a second control beside the title that already selects and collapses the group.
 
 ## Decision
 
-Retained project groups no longer render a reorder grip. The project title
-is the reorder control:
+Retained project groups no longer render a reorder grip. The project title is
+the reorder control:
 
-- A still press of 400ms on the title arms a pointer reorder. Pointer
-  movement beyond 8px before that delay cancels the press so a click still
-  activates the project and toggles collapse.
-- After the title is armed, moving the pointer highlights another group in
-  the same pinned/archived bucket; release inserts before or after that
-  group from the pointer's vertical midpoint. Escape cancels without writing
-  order.
+- A still press of 400ms on the title arms a pointer reorder.
+- After the title is armed, moving the pointer highlights another group in the
+  same pinned/archived bucket; release inserts before or after that group from
+  the pointer's vertical midpoint.
 - ArrowUp/ArrowDown on the focused title remains the keyboard path.
 - Persistence is unchanged: contiguous normalized-path `order` values and
   `projectSort: "manual"` in renderer-local sidebar preferences.

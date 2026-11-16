@@ -5,19 +5,25 @@
 
 ## Context
 
-We need plugin extensibility, and there is a choice between building the marketplace first or building the local plugin runtime first.
+We need plugin extensibility, and there is a choice between building the
+marketplace first or building the local plugin runtime first.
 
 ## Decision
 
-1. First complete the **local plugin system** (loading, permissions, commands, tools, lifecycle)
-2. Treat the **plugin marketplace** as a deferred capability; freeze the protocol and data model first
-3. The first version of the marketplace only does browse / download / verification / manual update, with no transactions or social features
+1. First complete the **local plugin system** (loading, permissions, commands,
+   tools, lifecycle)
+2. Treat the **plugin marketplace** as a deferred capability; freeze the
+   protocol and data model first
+3. The first version of the marketplace only does browse / download /
+   verification / manual update, with no transactions or social features
 
 ## Rationale
 
-1. Without a stable runtime, the marketplace would only distribute packages that cannot run safely
+1. Without a stable runtime, the marketplace would only distribute packages that
+   cannot run safely
 2. Local plugins already satisfy the core "user customization" demand
-3. The marketplace involves trust, signing, and a remote supply chain, which are significantly more complex
+3. The marketplace involves trust, signing, and a remote supply chain, which are
+   significantly more complex
 
 ## Consequences
 
@@ -30,4 +36,5 @@ We need plugin extensibility, and there is a choice between building the marketp
 
 ## Follow-up trigger conditions
 
-Once R1/R2 are complete and the plugin API is basically stable, start R4 Marketplace.
+Once R1/R2 are complete and the plugin API is basically stable, start R4
+Marketplace.

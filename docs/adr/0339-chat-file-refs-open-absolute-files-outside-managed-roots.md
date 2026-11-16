@@ -10,53 +10,33 @@
 
 ## Context
 
-The agent is instructed to reference files by their exact absolute path, and
-it routinely works on files outside the open project: a download, a chat
-client's folder, the system temporary directory, or any path in a session with
-no project at all. The main process answered `fs/resolveRef`, `fs/read`,
-`fs/reveal`, and `fs/open` by **root containment** — the project folders, the
-session scratch store, the whole scratch store, and the attachment store. Every
-correctly written absolute link to a file outside those roots therefore
-reported "outside the locations this app can access" and could not be opened
-(#1722 follow-up, #1837).
-
-The restriction protected nothing. The agent reads and writes those files with
-its own tools, and a renderer that can issue arbitrary IPC already controls the
-agent. Opening a file the user clicked shows it to that same user on this
-machine: the bytes reach neither the model nor the network. A credential deny
-list was considered to stop a prompt-injected link to
-`~/.ssh/id_ed25519`, but such a click only shows the user their own file — there
-is no disclosure to defend against. Comparable agent desktops (ZCode 3.16)
-open any clicked local file, dotfiles included, and hand any file to the OS
-default application without a deny list.
+The agent is instructed to reference files by their exact absolute path, and it
+routinely works on files outside the open project: a download, a chat client's
+folder, the system temporary directory, or any path in a session with no project
+at all. The main process answered `fs/resolveRef`, `fs/read`, `fs/reveal`, and
+`fs/open` by **root containment** — the project folders, the session scratch
+store, the whole scratch store, and the attachment store.
 
 ## Decision
 
-1. For a **user-initiated open of an exact absolute path** outside every
-   managed root, the host replaces containment with one shape check: the path
-   is absolute (no `~`, no relative shorthand, no `attachments/<sha256>`) and
-   its real path is an existing regular file. No path is withheld, dotfile
-   folders such as `.ssh` included.
+1. For a **user-initiated open of an exact absolute path** outside every managed
+   root, the host replaces containment with one shape check: the path is
+   absolute (no `~`, no relative shorthand, no `attachments/<sha256>`) and its
+   real path is an existing regular file.
 2. The rule lives in one module, `packages/host-runtime/src/external-files.ts`
    (`resolveExternalFile`, `resolveUserOpenablePath`, `readUserOpenableFile`),
-   and is applied by `fs/read`, `fs/reveal`, and `fs/open`. Containment still
-   answers first, unchanged. `fs/resolveRef` answers an absolute outside
-   reference with `resolveExternalChatRef`: a match with the new
-   `root: "external"`, `matchedBy: "exact-absolute"`, or `match: null` when no
-   regular file is there.
-3. A shorthand never resolves outside the managed roots, and an outside
-   absolute path never falls back to a same-name file inside a root.
-4. A Markdown link whose destination is an absolute path reaches the opener
-   even without a file extension (`/etc/hosts`, `.ssh/config`); the host, not a
-   renderer filename heuristic, decides. Bare prose tokens keep the extension
-   heuristic that decides which of them become chips.
+   and is applied by `fs/read`, `fs/reveal`, and `fs/open`.
+3. A shorthand never resolves outside the managed roots, and an outside absolute
+   path never falls back to a same-name file inside a root.
+4. A Markdown link whose destination is an absolute path reaches the opener even
+   without a file extension (`/etc/hosts`, `.ssh/config`); the host, not a
+   renderer filename heuristic, decides.
 5. Unchanged: `fs/list` (project only), `fs/readImageDataUrl` (inline chat
    images load without a click, so a model-written image reference must not
    render an arbitrary local image), remote and headless-host file reads
    (`apps/pi-host`), the `pi.file-manager` plugin's own deny list (plugin code
    receives the bytes), and the renderer routing, which already sends a
-   non-project match to the host `file:` tab. An external `.html` file opens as
-   source there, never in the side browser.
+   non-project match to the host `file:` tab.
 
 ## Consequences
 
@@ -65,14 +45,8 @@ default application without a deny list.
 - An exact absolute path to an existing outside file now verifies as a chip in
   user messages too.
 - `fs/open` can hand any such file to its OS default application, including a
-  script or application bundle that the OS runs when "opened". That is the same
-  capability the agent already has through its shell and that project files
-  already had, and it still requires the user to choose the default-app
-  destination.
-- `FsChatRefRoot` gains `"external"`. Consumers that switch on the root treat
-  any value other than `workspace` as an absolute-path file, so no consumer
-  changes. `reason: "outside-allowed-roots"` keeps its shape and remains only
-  for an outside reference that is not an exact absolute path.
+  script or application bundle that the OS runs when "opened".
+- `FsChatRefRoot` gains `"external"`.
 
 ## Alternatives considered
 
