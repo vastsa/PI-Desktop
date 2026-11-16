@@ -39,9 +39,7 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  font-size: var(
-    --text-md
-  ); /* session titles stay compact within the sidebar */
+  font-size: var(--text-md); /* session titles stay compact within the sidebar */
   line-height: var(--leading-row);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -193,9 +191,7 @@
   padding: 5px 6px;
   background: transparent;
   color: inherit;
-  font-size: var(
-    --text-md
-  ); /* project/group labels one step quieter than sessions */
+  font-size: var(--text-md); /* project/group labels one step quieter than sessions */
   font-weight: var(--font-weight-medium);
   line-height: var(--leading-compact);
   text-align: left;
