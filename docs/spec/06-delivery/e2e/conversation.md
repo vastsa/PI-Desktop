@@ -54,6 +54,18 @@ An attachment combining `lineRange` and `localReference` is rejected before any
 Read. Coverage: `composer-input-history.test.mjs`, `composer-file-reference-draft.test.mjs`,
 `composer-file-references.test.mjs` and `runtime.test.ts`.
 
+Automated installed-package coverage:
+`PI_FILE_MANAGER_QA_DIR=<existing Playwright install> PI_DESKTOP_HOST_BIN=<candidate Host> node scripts/e2e-file-manager-lines.mjs <File Manager .piplug>`.
+Build the candidate Desktop and workspace packages first. The runner installs
+the package through Host with its declared grants, selects the real session,
+and opens the production view through its public IPC. Context-menu input then
+reaches the real Composer. It verifies unsaved-selection rejection, scoped
+reads of current disk lines at the provider boundary, and range persistence
+across a full Desktop/Host restart without resending. The provider is a
+loopback Chat Completions fixture; application, capability and agent state
+use temporary directories. Native clipboard gestures and live providers
+remain separate qualification.
+
 ## E2E-CHAT-output-token-truncation (#2277)
 
 Use the real Desktop runtime and Pi loop with a controlled provider stream
