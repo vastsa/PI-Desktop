@@ -17,12 +17,6 @@ The site exposes two locale entry points:
 - `/zh-CN/` — Simplified Chinese orientation plus a path-for-path companion
   page for every document under `docs/spec/`.
 
-For Vercel deployments whose Root Directory is `docs`, `docs/vercel.json`
-declares the VitePress build output as `.vitepress/dist` and enables Vercel's
-`cleanUrls` routing. This keeps extensionless links such as `/spec/README` and
-`/adr/README` working after a direct page refresh instead of becoming static
-hosting 404s.
-
 Existing `spec/`, `adr/`, `project/`, and guide Markdown files remain in place
 so repository links and review history stay stable. Chinese specification pages
 live under `docs/zh-CN/spec/` with the same relative paths as their English

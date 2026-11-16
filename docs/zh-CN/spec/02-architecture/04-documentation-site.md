@@ -20,12 +20,6 @@
 - `/zh-CN/` — 简体中文方向以及路径对路径伴侣
   `docs/spec/` 下每个文档的页面。
 
-对于根目录为 `docs`、`docs/vercel.json` 的 Vercel 部署
-将 VitePress 构建输出声明为 `.vitepress/dist` 并启用 Vercel
-`cleanUrls` 路由。这会保留无扩展的链接，例如 `/spec/README` 和
-`/adr/README` 在直接页面刷新后工作而不是变成静态
-托管 404。
-
 现有 `spec/`、`adr/`、`project/` 和指南 Markdown 文件保持不变
 因此存储库链接和评论历史记录保持稳定。中文规格页
 生活在 `docs/zh-CN/spec/` 下，相对路径与英语相同

@@ -12663,15 +12663,12 @@ This test plan spec is accepted when:
   results. The mobile navigation opens and closes without shifting or obscuring
   the page. Code blocks and tables remain readable through contained scrolling,
   theme contrast stays clear, and every Chinese spec identifies the English
-  page as its canonical source. Directly refresh `/zh-CN/spec/README`,
-  `/zh-CN/spec/03-runtime/01-ipc-protocol`, `/zh-CN/adr/`, `/spec/README`, and
-  `/adr/README` on Vercel; each route resolves through the documented
-  `cleanUrls` configuration instead of returning 404.
+  page as its canonical source.
 - **Specs linked**: `02-architecture/04-documentation-site.md`, ADR 0079
 - **Acceptance**: Quality, documentation discoverability, responsive layout
 - **Milestone**: M6+
 - **Status**: Browser-rendered desktop/mobile verification is authorized for
-  this documentation redesign; remote deployment refresh checks remain Draft.
+  this documentation redesign.
 
 #### E2E-126: Appearance card selects a global UI font
 

@@ -7127,15 +7127,12 @@ eleven-tool-round desktop paths are verified by
   结果。移动导航打开和关闭不会移动或遮挡
   页面。代码块和表格通过包含的滚动保持可读，
   主题对比清晰，每个中文规范都标识英文
-  页面作为其规范来源。直接刷新`/zh-CN/spec/README`，
-  `/zh-CN/spec/03-runtime/01-ipc-protocol`、`/zh-CN/adr/`、`/spec/README` 和
-  Vercel 上的 `/adr/README`；每条路线都通过记录的解析
-  `cleanUrls` 配置而不是返回 404。
+  页面作为其规范来源。
 - **链接规格**：`02-architecture/04-documentation-site.md`、ADR 0079
 - **验收**：质量、文档可发现性、响应式布局
 - **里程碑**：M6+
 - **状态**：浏览器渲染的 desktop/mobile 验证已获得授权
-  本文档重新设计；远程部署刷新检查仍处于草稿状态。
+  本文档重新设计。
 
 #### E2E-126：外观卡片选择全局界面字体
 
