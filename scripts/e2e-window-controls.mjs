@@ -130,7 +130,7 @@ async function checkWindowsRoundedCorners(
         probeError = undefined;
         if (corners.windowsBuild >= 22000) {
           return corners.cornerMode === "dwm-native" &&
-            corners.innerCornerOwned === true && corners.thickFrameStyle === false &&
+            corners.innerCornerOwned === true && corners.thickFrameStyle === true &&
             corners.nativeHitSampleCount > 0;
         }
         return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
@@ -154,7 +154,7 @@ async function checkWindowsRoundedCorners(
     ], [rounded, rounded, rounded, rounded], label);
   }
   assert.equal(corners.innerCornerOwned, true, label);
-  assert.equal(corners.thickFrameStyle, false, label);
+  assert.equal(corners.thickFrameStyle, true, label);
   if (corners.windowsBuild < 22000) {
     assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
   }

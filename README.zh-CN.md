@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/image/readme/logo.png" alt="PI-Desktop" width="108" />
+<img src="docs/public/readme/logo.png" alt="PI-Desktop" width="108" />
 
 # PI-Desktop
 
@@ -30,7 +30,7 @@
 
 <br />
 
-<img src="docs/image/readme/home.webp" alt="PI-Desktop" width="94%" />
+<img src="docs/public/readme/home.webp" alt="PI-Desktop" width="94%" />
 
 <br />
 
@@ -102,10 +102,7 @@ Subagent 与 Worker Session 可以承担独立任务并行工作。
 
 </div>
 
-> [!NOTE]
-> **PI-Desktop 目前仍处于 Early Preview。** 已可用于真实开发工作流，部分 API、插件接口与桌面能力仍在持续演进。
-
-> **当前发布线：0.21.x（Early Preview）。**
+> **当前发布线：0.23.x。**
 
 ---
 
@@ -329,7 +326,7 @@ Worker 是完整的 PI-Desktop Session：
 
 <td width="50%">
 
-<img src="docs/image/readme/session-orchestrator-overview.png" alt="Session Orchestrator" />
+<img src="docs/public/readme/session-orchestrator-overview.webp" alt="Session Orchestrator" />
 
 <p align="center"><sub>一个 Session 编排多个 Worker</sub></p>
 
@@ -337,7 +334,7 @@ Worker 是完整的 PI-Desktop Session：
 
 <td width="50%">
 
-<img src="docs/image/readme/session-orchestrator-worker.png" alt="Worker Session" />
+<img src="docs/public/readme/session-orchestrator-worker.webp" alt="Worker Session" />
 
 <p align="center"><sub>每个 Worker 都是完整、可查看的 Session</sub></p>
 
@@ -390,7 +387,7 @@ PI-Desktop 围绕：
 
 <td width="50%">
 
-<img src="docs/image/readme/chat_en.png" alt="PI-Desktop Session" />
+<img src="docs/public/readme/chat_en.webp" alt="PI-Desktop Session" />
 
 <p align="center"><sub>长期 Session，而不是一次性对话</sub></p>
 
@@ -398,7 +395,7 @@ PI-Desktop 围绕：
 
 <td width="50%">
 
-<img src="docs/image/readme/model_en.png" alt="PI-Desktop Model" />
+<img src="docs/public/readme/model_en.webp" alt="PI-Desktop Model" />
 
 <p align="center"><sub>在 Session 中直接切换模型与推理等级</sub></p>
 
@@ -410,7 +407,7 @@ PI-Desktop 围绕：
 
 <td width="50%">
 
-<img src="docs/image/readme/plugins_en.png" alt="PI-Desktop Plugins" />
+<img src="docs/public/readme/plugins_en.webp" alt="PI-Desktop Plugins" />
 
 <p align="center"><sub>插件市场：扩展 Agent，也扩展整个桌面</sub></p>
 
@@ -418,7 +415,7 @@ PI-Desktop 围绕：
 
 <td width="50%">
 
-<img src="docs/image/readme/addmodel_en.png" alt="PI-Desktop Providers" />
+<img src="docs/public/readme/addmodel_en.webp" alt="PI-Desktop Providers" />
 
 <p align="center"><sub>连接 Provider、Gateway 或本地模型</sub></p>
 
@@ -748,7 +745,7 @@ PI-Desktop 使用 **GNU Lesser General Public License v3.0**。
 
 <div align="center">
 
-<img src="docs/image/readme/logo.png" alt="PI-Desktop" width="72" />
+<img src="docs/public/readme/logo.png" alt="PI-Desktop" width="72" />
 
 ## PI-Desktop
 

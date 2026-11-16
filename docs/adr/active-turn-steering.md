@@ -6,45 +6,36 @@
 
 ## Context
 
-The Composer queues follow-ups, but cannot redirect a running turn. A second
+The Composer queues follow-ups but cannot redirect a running turn, and a second
 prompt is correctly rejected with `AGENT_BUSY`. pi-agent-core already supplies
-`Agent.steer`; Codex's [turn/steer contract](https://learn.chatgpt.com/docs/app-server#steer-an-active-turn)
-provides the expected-turn admission model.
+`Agent.steer`, and Codex's turn/steer contract provides the expected-turn
+admission model to follow.
 
 ## Decision
 
-Keep Send/Enter as follow-up. Alt+Enter (Option+Enter on macOS) uses an additive
-`agent/steer` channel with `expectedTurnId`. The existing queue slice submits
-optimistic input and restores rejected drafts. The agent IPC handler reuses
-attachment validation against the running model and workspace; the sidecar
-rechecks the target after asynchronous preparation and calls `Agent.steer`.
+Send and Enter stay follow-up; Alt+Enter (Option+Enter on macOS) uses an additive
+`agent/steer` channel carrying `expectedTurnId`, with the existing queue slice
+submitting optimistic input and restoring rejected drafts, the IPC handler
+reusing attachment validation against the running model and workspace, and the
+sidecar rechecking the target before calling `Agent.steer`.
 
-Steering keeps the active configuration and durable turn. Local foreground
-shell and read calls receive cancellation; the runtime waits for their results
-before the next request, without the normal Stop grace timeout. An unconfirmed
-shell lifecycle failure remains pending until Stop. Remote and other operations
-continue to settlement. Calls not yet started are skipped. `TaskWait` yields
-without canceling its delegates (issue #1607); background commands keep running.
-The runtime handles admission at its closing boundary and while awaiting delegates.
-Stop closes admission
-and retains accepted input as history without independently replaying it.
-
-The existing event-persistence module journals input through the outbox.
-`precedingAssistant` reserves an unfinished reply's position before the user
-row. Host append permits a terminal assistant to replace its own streaming
-reservation, retaining sequence and turn ownership; completed rows remain
-immutable on replay. Recovery updates the reservation in place. The persisted
-`UiMessage.steering` marker protects input from Smart Stop, including after
-renderer reload; no separate renderer submission registry is needed. Host
+Steering keeps the active configuration and durable turn: local foreground shell
+and read calls are cancelled and awaited without the normal Stop grace, an
+unconfirmed shell failure stays pending until Stop, calls not yet started are
+skipped, `TaskWait` yields without cancelling its delegates (issue #1607), and
+Stop closes admission while retaining accepted input as history. The event
+persistence module journals input through the outbox, `precedingAssistant`
+reserves an unfinished reply's position, and the persisted `UiMessage.steering`
+marker protects input from Smart Stop across renderer reload, while host
 provenance treats steering into a claimed collaboration delivery turn as extra
-human input: it must target that delivery's session, does not inherit the
-delivery's agent origin, and strips any client-supplied `session_message`
-(D597).
+human input that must target that delivery's session and strips any
+client-supplied `session_message` (D597).
 
-## Consequences and validation
+## Consequences
 
-No new provider transport, host protocol version, or storage migration is
-required. Streaming reservation updates are the sole exception to append-only
-message persistence. Existing regression suites cover surrounding behavior;
-E2E-AGENT-alt-enter-steers-active-turn specifies the full journey and remains
-Draft until rendered E2E validation is performed.
+- No new provider transport, protocol version, or storage migration is required.
+- Streaming reservation updates remain the only exception to append-only message
+  persistence.
+- Existing regression suites cover surrounding behavior, and
+  E2E-AGENT-alt-enter-steers-active-turn stays Draft until rendered E2E
+  validation is performed.

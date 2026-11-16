@@ -51,15 +51,21 @@ const RATE_LIMIT_PATTERN =
  * OpenAI's `insufficient_quota` type, OpenRouter-style "insufficient credits"
  * / "requires more credits" / "Payment Required" wording, DeepSeek /
  * SiliconFlow / MiniMax "Insufficient Balance" / "account balance is
- * insufficient", and explicit 429 error codes. Checked before the status
- * table because those conditions do not recover by backing off. Generic
- * "quota exceeded" wording remains eligible for rate-limit classification
- * below. A bare "credits" or "balance" is not exhaustion, and
- * "insufficient credentials" must not match it either. HTTP 402 is
- * terminal in the status table even when the body omits these phrases.
+ * insufficient", Volcengine Ark `AccountOverdueError` / "overdue balance" /
+ * "account has an overdue", and explicit 429 error codes. Anthropic's
+ * "credit balance is too low" and DashScope's `Arrearage` code, or
+ * "Access denied" paired with "account is in good standing", are the same
+ * terminal exhaustion. Checked before the status table because those
+ * conditions do not recover by backing off, including when a gateway
+ * labels them HTTP 429. Generic "quota exceeded" wording remains eligible
+ * for rate-limit classification below. A bare "credits", "balance",
+ * "overdue", "account", "forbidden", "Access denied", or "account is in
+ * good standing" is not exhaustion, and "insufficient credentials" must
+ * not match it either. HTTP 402 is terminal in the status table even when
+ * the body omits these phrases.
  */
 const EXHAUSTED_QUOTA_CODE_PATTERN =
-  /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded|FreeUsageLimitError)\b/i;
+  /\b(?:insufficient_quota|credit_balance_exhausted|organization_spend_limit_exceeded|project_spend_limit_exceeded|organization_usage_limit_exceeded|FreeUsageLimitError|Arrearage|AccountOverdueError)\b/i;
 
 /**
  * Zhipu/Z.ai (open.bigmodel.cn) error code 1308: the plan usage limit is
@@ -70,7 +76,7 @@ const EXHAUSTED_QUOTA_CODE_PATTERN =
 const ZHIPU_USAGE_LIMIT_PATTERN = /"code"\s*:\s*"?1308(?![0-9])/;
 
 const EXHAUSTED_QUOTA_MESSAGE_PATTERN =
-  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+(?:credits|balance)\b|\bbalance\s+is\s+insufficient\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b/i;
+  /\b(?:billing|spending|credit|disk)\s+quotas?\b|\b(?:organization|project)\s+spend\s+limit\s+(?:reached|exceeded)\b|\bquota\b.{0,100}\b(?:plan|billing)\b|\binsufficient\s+(?:credits|balance)\b|\bbalance\s+is\s+insufficient\b|\brequires\s+more\s+credits\b|\bpayment\s+required\b|\bcredit\s+balance\s+is\s+too\s+low\b|\bArrearage\b|\baccess\s+denied\b.{0,80}\baccount\s+is\s+in\s+good\s+standing\b|\boverdue\s+balance\b|\baccount\s+has\s+an\s+overdue\b/i;
 
 /**
  * Whether a provider message reports a context overflow.

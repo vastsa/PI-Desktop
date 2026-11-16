@@ -5781,6 +5781,32 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     await runtime.dispose();
     await restored.dispose();
   });
+  it("preserves local file reference size in live input and restored history", async () => {
+    const attachment = {
+      kind: "file" as const, name: "large.png", ref: "/external/large.png",
+      size: 67108865, localReference: "11111111-2222-4333-8444-555555555555",
+    };
+    const restored = createRuntime({ history: [{
+      id: "reference-user", role: "user", content: "Inspect",
+      createdAt: "2026-11-13T00:00:00Z", attachments: [attachment],
+    }] });
+    const live = createRuntime();
+    try {
+      const message = (restored as unknown as { agent: Agent }).agent.state.messages.find(row => row.role === "user");
+      expect(typeof message?.content).toBe("string");
+      expect(message?.content).toContain("/external/large.png");
+      expect(message?.content).toContain("67108865 bytes");
+      const agent = (live as unknown as { agent: Agent }).agent;
+      const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+      vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+      await live.prompt({ text: "Inspect", attachments: [{ ...attachment, path: attachment.ref }] }, "user", "turn");
+      expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ role: "user", content: message?.content }));
+    } finally {
+      await live.dispose();
+      await restored.dispose();
+    }
+  });
+
   it("replays every under-budget historical image as a provider image block", async () => {
     const history: UiMessage[] = Array.from({ length: 6 }, (_, index) => {
       const payload = Buffer.from(`historical-image-${index + 1}`).toString("base64");
@@ -8557,6 +8583,47 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     ).toBeLessThanOrEqual(20_000);
     expect(retained[0].content.slice(0, 7)).toBe("newest:");
     expect(retained[0].content).toContain("[checkpoint truncated:");
+    // ASCII stays at the 3.5 chars/token ceiling (~70k), not one char per token.
+    expect(retained[0].content.length).toBeGreaterThan(20_000 * 3);
+    await runtime.dispose();
+  });
+
+  it("truncates a CJK user message the character estimate would have kept whole", async () => {
+    const runtime = createRuntime();
+    // 50k Han characters are ~14k tokens at 3.5 chars/token, under the 20k
+    // retention cap, but ~50k under the output-cap estimate. Keeping the
+    // message whole overflows the next request.
+    const asks = ["oldest", "newest"].map((label, index) => ({
+      type: "message",
+      id: `ask-${index}`,
+      parentId: index === 0 ? null : `ask-${index - 1}`,
+      timestamp: `2026-07-30T00:00:0${index}Z`,
+      message: {
+        role: "user",
+        content: `${label}:${"中".repeat(index === 1 ? 50_000 : 100)}`,
+        timestamp: index + 1,
+      },
+    }));
+    (runtime as any).fullEntries = asks;
+
+    const entries = (runtime as any).entriesWithCompaction();
+    const budget = (runtime as any).contextBudget(
+      entries.map((entry: any) => entry.message),
+    );
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "active_turn",
+    );
+    const retained = preparation.value.retainedTail;
+
+    expect(retained).toHaveLength(1);
+    expect(retained[0].content.slice(0, 7)).toBe("newest:");
+    expect(retained[0].content).toContain("[checkpoint truncated:");
+    expect(estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: retained[0].content }],
+    })).toBeLessThanOrEqual(20_000);
     await runtime.dispose();
   });
 

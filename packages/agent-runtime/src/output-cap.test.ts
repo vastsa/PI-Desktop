@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { getCurrentSystemPrompt, normalizeContext, type Message } from "@earendil-works/pi-ai";
+import { CHECKPOINT_TRUNCATION_MARKER } from "./compaction-tail.js";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import {
   clampOutputToContext,
   estimateOutputCapInputTokens,
   requestTranscript,
+  truncateTextWithinOutputCap,
   type OutputCapContext,
 } from "./output-cap.js";
 
@@ -586,4 +589,48 @@ it("counts instruction sections and tool declarations in transcript-only request
   const state = { messages: [{ role: "system", content: "", sections: { skills: "中文说明" }, toolsAdded: [{ name: "Read", parameters: { type: "object" } }] }] };
   expect(estimateOutputCapInputTokens(state)).toBeGreaterThan(estimateOutputCapInputTokens(base));
   expect(estimateOutputCapInputTokens(state)).toBeGreaterThan(4);
+});
+
+describe("truncateTextWithinOutputCap", () => {
+  const budget = 200;
+  const ceiling = Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN);
+
+  it("leaves ASCII at the character ceiling", () => {
+    const text = truncateTextWithinOutputCap(
+      "a".repeat(1_600),
+      budget,
+      CHECKPOINT_TRUNCATION_MARKER,
+      ceiling,
+    );
+    expect(text.length).toBe(ceiling);
+    expect(estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: text }],
+    })).toBeLessThanOrEqual(budget);
+  });
+
+  it("shrinks CJK that is longer than the ceiling", () => {
+    const text = truncateTextWithinOutputCap(
+      "中".repeat(1_600),
+      budget,
+      CHECKPOINT_TRUNCATION_MARKER,
+      ceiling,
+    );
+    expect(text).toContain(CHECKPOINT_TRUNCATION_MARKER.trim());
+    expect(estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: text }],
+    })).toBeLessThanOrEqual(budget);
+  });
+
+  it("shrinks CJK that fits the character ceiling but not the token budget", () => {
+    const text = truncateTextWithinOutputCap(
+      "中".repeat(600),
+      budget,
+      CHECKPOINT_TRUNCATION_MARKER,
+      ceiling,
+    );
+    expect(text.length).toBeLessThan(600);
+    expect(estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: text }],
+    })).toBeLessThanOrEqual(budget);
+  });
 });

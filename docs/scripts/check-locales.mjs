@@ -31,22 +31,36 @@ function themeSection(source) {
   return source.split(/^### 6\.7[^\n]*$/m)[1]?.split(/^### /m)[0]
 }
 
+/**
+ * Chinese specification pages that must exist. Every other English page is
+ * read in English; a Chinese companion is optional, but one that exists must
+ * still mirror an English page and carry a valid source notice (ADR
+ * chinese-docs-entry-points-only).
+ */
+export const REQUIRED_SPEC_MIRRORS = ['README.md']
+
 export function verifyLocalePairs(root = docsRoot) {
   const englishRoot = path.join(root, 'spec')
   const chineseRoot = path.join(root, 'zh-CN/spec')
-  const englishFiles = markdownFiles(englishRoot)
+  const chineseFiles = fs.existsSync(chineseRoot) ? markdownFiles(chineseRoot) : []
+  const englishFiles = [...new Set([...REQUIRED_SPEC_MIRRORS, ...chineseFiles])].sort()
   const missing = []
   const invalid = []
 
   for (const relativePath of englishFiles) {
     const translatedPath = path.join(chineseRoot, relativePath)
+    const englishPath = path.join(englishRoot, relativePath)
     if (!fs.existsSync(translatedPath)) {
       missing.push(relativePath)
       continue
     }
+    if (!fs.existsSync(englishPath)) {
+      invalid.push(relativePath)
+      continue
+    }
 
     const source = fs.readFileSync(translatedPath, 'utf8')
-    const englishSource = fs.readFileSync(path.join(englishRoot, relativePath), 'utf8')
+    const englishSource = fs.readFileSync(englishPath, 'utf8')
     const englishRoute = noticeRoute(relativePath)
     const tableStructureMatches = JSON.stringify(tableShape(source)) === JSON.stringify(tableShape(englishSource))
     const fenceStructureMatches = (source.match(/^```/gm) ?? []).length === (englishSource.match(/^```/gm) ?? []).length
@@ -91,8 +105,8 @@ function main() {
   const { englishFiles, missing, invalid } = verifyLocalePairs()
 
   if (missing.length || invalid.length) {
-    if (missing.length) console.error(`Missing Chinese specifications:\n${missing.join('\n')}`)
-    if (invalid.length) console.error(`Invalid Chinese source notices:\n${invalid.join('\n')}`)
+    if (missing.length) console.error(`Missing required Chinese pages:\n${missing.join('\n')}`)
+    if (invalid.length) console.error(`Invalid Chinese pages (no English source, bad notice, or diverging structure):\n${invalid.join('\n')}`)
     process.exitCode = 1
   } else {
     console.log(`Verified ${englishFiles.length} English/Chinese documentation pairs.`)

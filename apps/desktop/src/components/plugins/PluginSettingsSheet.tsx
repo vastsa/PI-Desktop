@@ -37,6 +37,9 @@ type Props = {
 };
 
 function initialValue(setting: PluginSettingDefinition): unknown {
+  if (setting.type === "json") {
+    return serializeJson(setting.value !== undefined ? setting.value : setting.default);
+  }
   if (setting.value !== undefined) return setting.value;
   if (setting.default !== undefined) return setting.default;
   switch (setting.type) {
@@ -44,8 +47,6 @@ function initialValue(setting: PluginSettingDefinition): unknown {
       return false;
     case "number":
       return 0;
-    case "json":
-      return {};
     case "select":
       return setting.enum?.[0]?.value ?? "";
     default:
@@ -61,18 +62,13 @@ function shortcutLabel(value: unknown, platform: ShortcutPlatform): string {
 
 function serializeJson(value: unknown): string {
   try {
-    return JSON.stringify(value ?? {}, null, 2);
+    return JSON.stringify(value === undefined ? {} : value, null, 2);
   } catch {
     return "{}";
   }
 }
 
-/**
- * A json setting's draft is the stored value until the user edits its
- * textarea, and the textarea text afterwards. Only text needs parsing:
- * `String({})` is `"[object Object]"`, so parsing an untouched object made
- * every save fail with "invalid JSON" for the first json setting.
- */
+/** JSON drafts start as serialized editor text, including stored strings. */
 export function parseJsonSettingDraft(draft: unknown): unknown {
   if (typeof draft !== "string") return draft ?? {};
   const text = draft.trim();

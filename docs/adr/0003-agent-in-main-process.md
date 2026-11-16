@@ -2,37 +2,19 @@
 
 - Status: Superseded in part by ADR 0010 / ADR 0011
 - Date: 2026-07-25
-- Updated: 2026-07-25
 
 ## Context
 
-The original MVP placed the full agent loop in Electron main process for simplicity.
+An all-in-main agent loop gave no strong systems backend, no isolated native
+capability, and no privilege boundary around host work.
 
-New product constraints:
+## Decision
 
-1. Prefer a stronger systems backend
-2. Keep pi Agent Harness as the model/agent engine
-3. Improve long-term isolation and native capability quality
-
-## Original Decision
-
-MVP agent loop in Electron main process.
-
-## Revised Direction
-
-Adopt a hybrid model:
-
-- **Rust backend host core** owns desktop host services, tools sandbox, plugin host boundary, persistence adapters, and privileged operations
-- **Node/TypeScript pi runtime** remains the agent loop engine (`pi-ai` + `pi-agent-core`) and runs as a controlled sidecar/utility process
-- **Electron main** becomes a thin orchestrator between renderer IPC and Rust/Node services
+A Rust host core owns host services, the tool sandbox, persistence adapters, and
+privileged operations; a Node `pi-ai` + `pi-agent-core` sidecar stays the agent
+loop; Electron main is a thin orchestrator between renderer IPC and both.
 
 ## Consequences
 
-### Positive
-- Better native/host capability foundation
-- Clearer privilege boundary
-- Keeps pi ecosystem leverage
-
-### Negative
-- Higher integration complexity than pure Node main
-- Requires stable local RPC between Electron/Rust/Node
+- Stronger native foundation and privilege boundary; the pi ecosystem stays.
+- More integration complexity and a stable local RPC across three processes.

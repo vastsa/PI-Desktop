@@ -153,6 +153,14 @@ test("every run state has its own label and the controls the run allows", () => 
   assert.deepEqual([finished.stop, finished.remove, finished.edit], [false, false, false]);
 });
 
+test("a model-reported blocker uses the existing blocked label and requires explicit Resume", () => {
+  const blocked = { state: "waiting", waitReason: "blocked" };
+  assert.equal(runModel.modeRunStateKey(blocked), "blocked");
+  assert.deepEqual(runModel.modeRunControls(blocked), {
+    pause: false, resume: true, stop: true, remove: true, edit: true, approve: false, reject: false,
+  });
+});
+
 test("a run edit sends only what changed and rejects an empty objective or an out-of-range budget", () => {
   const run = { ...RUN, input: "ship it", maxTurns: 20, maxTokens: null };
   const draft = runModel.modeRunDraft(run);
@@ -247,8 +255,13 @@ test("Goal and user modes are never shown as Plan-style planning and keep their 
   }
   // A legacy Goal proposal still awaiting approval stays resolvable.
   assert.equal(planning.visiblePlanningState("goal", "awaiting_approval", true), "awaiting_approval");
-  // `inactive` means the Host moved the session back to Agent.
-  assert.equal(planning.modeAfterPlanningUpdate("goal", "inactive", agent), "agent");
+  assert.equal(planning.modeAfterPlanningUpdate("goal", "inactive", agent, {
+    kind: "goal", status: "approved",
+  }), "agent");
+  // Inactive Plan state does not establish a mode change for other modes.
+  for (const mode of ["goal", "review"]) {
+    assert.equal(planning.modeAfterPlanningUpdate(mode, "inactive", agent), mode);
+  }
 });
 
 test("Settings → Modes starts documents with valid ids and an exact name", () => {

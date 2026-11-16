@@ -171,8 +171,7 @@ const timeout = setTimeout(() => {
 }, 25 * 60_000);
 
 try {
-  // A) Settings budget -> autonomous turns -> verified completion -> Agent.
-  await host.call("settings.set", { goalBudget: { maxTurns: 6, maxTokens: null } });
+  // A) Definition budget -> autonomous turns -> verified completion -> Agent.
   const a = await openGoalSession("complete");
   a.onEvent = track;
   await runTurn(a, "user", "In the workspace, create the file notes/hello.txt containing exactly the line `hello goal`, then verify its content with a shell command.");
@@ -190,7 +189,7 @@ try {
     hello: await readFile(join(a.workspace, "notes/hello.txt"), "utf8").catch(() => null),
     artifactHeadings: ["# Objective", "# Acceptance criteria", "# Evidence"].map((heading) => artifact.includes(heading)),
   };
-  assert.equal(startedBudget, 6, "a new Goal run takes the settings budget");
+  assert.equal(startedBudget, 20, "a new Goal run takes the definition budget");
   assert.equal(aRun, null, "the Goal run finished");
   assert.equal(report.complete.sessionMode, "agent");
   assert.equal(report.complete.hello?.trim(), "hello goal");

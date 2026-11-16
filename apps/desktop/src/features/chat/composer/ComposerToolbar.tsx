@@ -250,7 +250,9 @@ export function ComposerToolbar({
             tooltip={t("chat.stopGenerating")}
             ariaLabel={t("chat.stopGenerating")}
             disabled={!stopAllowed}
-            onClick={() => void abort()}
+            onClick={() => void abort().catch((error) => {
+              showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+            })}
           >
             <IconStop size={14} />
           </TooltipButton>

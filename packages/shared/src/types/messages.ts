@@ -70,6 +70,7 @@ export type SessionUsageCost = {
 export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
+  localReference?: string;
   kind: "image" | "file" | "session";
   name: string;
   /** Workspace-relative path, session-scratch absolute path, or a session id. */
@@ -110,6 +111,8 @@ export type ToolTokenUsage = {
 
 export type UiMessage = {
   id: string;
+  /** Durable root conversation identity for display grouping, never authorization. */
+  turnId?: string;
   role: UiMessageRole;
   content: string;
   /** Internal model instructions/tool declarations; never a visible chat row. */
@@ -133,6 +136,8 @@ export type UiMessage = {
   thinking?: string;
   createdAt: string;
   status?: "streaming" | "complete" | "error" | "aborted";
+  /** The provider cut off this text response at its output-token limit. */
+  outputTruncated?: boolean;
   /** Provider/model that produced this assistant turn, when known. */
   modelId?: string;
   providerId?: string;

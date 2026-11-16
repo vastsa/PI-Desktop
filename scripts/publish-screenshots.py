@@ -13,7 +13,7 @@ the Chinese pass), then publish each pass:
     python3 scripts/publish-screenshots.py --source /tmp/shots-zh --locale zh
 
 Scenes land in ``docs/public/screenshots/app/<locale>/`` for the gallery page and
-the README subset lands in ``docs/image/readme/``. Scenes the rig produces but
+the README subset lands in ``docs/public/readme/``. Scenes the rig produces but
 this list omits are duplicates of another frame, not surfaces we hide.
 """
 
@@ -27,7 +27,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 GALLERY_ROOT = ROOT / "docs" / "public" / "screenshots" / "app"
-README_ROOT = ROOT / "docs" / "image" / "readme"
+README_ROOT = ROOT / "docs" / "public" / "readme"
 
 # Rendered at 2x the ~800px docs content column; webp keeps each frame around
 # 35 KB, so the whole bilingual gallery costs a few megabytes.

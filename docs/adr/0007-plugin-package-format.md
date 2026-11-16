@@ -5,28 +5,22 @@
 
 ## Context
 
-We need a plugin package format that is convenient for local sharing and marketplace download.
+Plugins need one distributable package format that is easy to share locally,
+download from a marketplace, and verify before installation.
 
 ## Decision
 
-Adopt `.piplug` as the product-level distribution extension. Its contents are a zip archive, with a `manifest.json` at the root.
-
-## Rationale
-
-1. Simple to implement, cross-platform
-2. Easy to do checksum / signing
-3. Developer-friendly (can be unzipped and inspected locally)
+`.piplug` is the product-level distribution extension; the payload is a zip
+archive with `manifest.json` at the root. The same verification logic covers
+packages and loose local directories. Path-safety checks run before installation,
+and marketplace packages carry at least a sha256 checksum.
 
 ## Consequences
 
-### Positive
-- Lightweight toolchain
-- Can share unified verification logic with local directory packages
+- A lightweight toolchain that developers can unzip and inspect.
+- Installation must reject zip-slip paths and oversized archives.
 
-### Negative
-- Must guard against zip slip and oversized-package attacks
+## Alternatives
 
-## Constraints
-
-- Path safety checks must be performed before installation
-- Marketplace packages must provide at least sha256
+- An opaque single-file bundle: rejected because it is harder to inspect and
+  verify before install.

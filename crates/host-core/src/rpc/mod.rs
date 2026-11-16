@@ -10,9 +10,18 @@ mod review_actions_rpc;
 mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
+mod session_display;
 mod todos;
 mod window_corner_rpc;
+mod window_owner;
+mod window_snap_rpc;
 mod worktree_rpc;
+
+#[cfg(test)]
+mod session_mode_create_tests;
+
+#[cfg(test)]
+mod session_mode_migration_tests;
 
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
@@ -1173,9 +1182,6 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             }
         }
     }
-    if let Err(message) = crate::mode_runs::validate_goal_budget_setting(value) {
-        return Err(rpc_err(1002, message, "INVALID_PARAMS"));
-    }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
         if !infinite_retry.is_boolean() {
             return Err(rpc_err(
@@ -2060,6 +2066,7 @@ async fn handle_request(
             }))
         }
         "window.setNativeCornerPreference" => window_corner_rpc::handle(params),
+        "window.enableNativeSnap" => window_snap_rpc::handle(params),
         "keyboard.setGlobalShortcut" => {
             let binding = params
                 .get("binding")
@@ -2767,7 +2774,7 @@ async fn handle_request(
             } else {
                 None
             };
-            let session = sessions::create_session_with_options(
+            let session = sessions::create_session_with_mode_snapshot(
                 &st.db,
                 sessions::SessionCreateOptions {
                     title: params
@@ -2794,8 +2801,9 @@ async fn handle_request(
                     permission_mode,
                     fast_mode,
                 },
+                params.get("modeSnapshot"),
             )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            .map_err(modes_rpc::error)?;
             let Some(project) = isolated_project else {
                 let session = remote_tools::decorate_session(
                     &st.db,
@@ -2935,8 +2943,7 @@ async fn handle_request(
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let session = remote_tools::decorate_session(
                 &st.db,
-                serde_json::to_value(session)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
+                session_display::serialize(&st.db, session)?,
             )?;
             Ok(json!({ "session": session }))
         }
@@ -8259,31 +8266,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(retry_settings["infiniteProviderRetry"], true);
-
-        handle_request(
-            state.clone(),
-            "settings.set",
-            json!({ "goalBudget": { "maxTurns": 40, "maxTokens": null } }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        let goal_settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
-            .await
-            .unwrap();
-        assert_eq!(
-            goal_settings["goalBudget"],
-            json!({ "maxTurns": 40, "maxTokens": null })
-        );
-        let invalid_goal = handle_request(
-            state.clone(),
-            "settings.set",
-            json!({ "goalBudget": { "maxTurns": 0, "maxTokens": null } }),
-            tx.clone(),
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(invalid_goal.data.unwrap()["errorCode"], "INVALID_PARAMS");
 
         handle_request(
             state.clone(),

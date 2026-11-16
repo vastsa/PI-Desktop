@@ -6,56 +6,41 @@
 
 ## Context
 
-The authorized migration targets pi-ai and pi-agent-core. Pi 0.99.1 exposes typed
-Models operations, provider refresh/filter hooks and native thinking metadata.
-Keeping a second executable catalog alongside them creates inconsistent limits,
-account entitlement and pricing. Desktop accounts and persistence remain owned
-by Host; Desktop plugins retain their SDK and lifecycle.
+The authorized migration targets pi-ai and pi-agent-core, and Pi 0.99.1 exposes
+typed Models operations, provider refresh/filter hooks, and native thinking
+metadata; a second executable catalog would disagree about limits, entitlement, and
+pricing, while accounts and persistence stay Host-owned and plugins keep their SDK
+and lifecycle.
 
 ## Decision
 
-Use Pi Providers/Models as the published model authority. Maintain one Models
-collection per account, with Host credential storage and explicit Desktop binding
-projection. Disable ambient auth for catalog startup. Put OAuth live discovery
-inside the same provider refresh/filter boundary. Keep raw published metadata
-separate from effective user overrides. Route images through generateImages with
-a registered compatible adapter where a native provider operation is absent.
+Use Pi Providers/Models as the published model authority: one Models collection per
+account, Host credential storage, an explicit Desktop binding projection, ambient
+auth disabled at catalog startup, OAuth live discovery inside the same
+refresh/filter boundary, raw published metadata separate from user overrides, and
+images routed through `generateImages`. Non-chat settings keep a display-only
+metadata supplement that grants no authentication, dispatch, pricing, or
+entitlement, unknown relay matches cannot rewrite wire IDs, and the independent
+release-catalog fetch and packaging resource are removed.
 
-Preserve non-chat settings visibility with a display-only metadata supplement;
-it must not provide authentication, dispatch, pricing or entitlement. Unknown
-relay matches remain conservative and cannot rewrite physical wire IDs. Remove
-the independent release catalog fetch and packaging resource.
-
-Attribute usage to physical operation identities through runtime, events and
-Host persistence. Aggregate replayed records once and retain unknown costs as
-unknown. Immediate nested-tool parent and owning Task are separate fields.
-
-Keep pi-coding-agent as the existing compaction/file compatibility dependency.
-Do not adopt its AgentSession, Codemode, tool composition or virtual routing as
-part of this migration. Their reusable designs and adoption conditions are
-recorded in [the design review](../project/pi-coding-agent-design-review.md).
-
-## Alternatives
-
-Retaining models.dev as executable authority would require duplicating Pi's
-operation metadata and refresh semantics. Adopting ModelRuntime/AgentSession
-would introduce another account/session owner and impede later removal.
+Usage is attributed to physical operation identities, replayed records aggregate
+once, unknown costs stay unknown, and `pi-coding-agent` remains only the compaction
+and file compatibility dependency rather than the owner of `AgentSession`, Codemod,
+or virtual routing ([design review](../project/pi-coding-agent-design-review.md)).
 
 ## Consequences
 
-The account adapter reuses Desktop's existing boundaries and preserves saved data,
-with a small explicit display-only compatibility gap. Catalog changes now track
-reviewed Pi pins. No schema migration is needed for the usage ledger: it uses the
-existing turns usage JSON with optional compatible provenance fields.
+- The adapter reuses Desktop's boundaries and saved data with a small display-only
+  gap, catalog changes follow reviewed Pi pins, and the usage ledger needs no
+  migration because it reuses the turns usage JSON with optional provenance fields.
+- The harness APIs kept during the first migration were later removed: the runtime
+  owns transcript projection, estimation, checkpoint preparation, and summary
+  generation, host-core stays the durable session owner, and `pi-coding-agent` is
+  limited to native Pi session continuation and the trusted-extension shim
+  (`02-architecture/06-pi-runtime-dependency-boundary.md`).
 
-### Implementation note (2026-10-03)
+## Alternatives
 
-The 0.99.1 migration initially retained pi-coding-agent for compaction and file
-compatibility. Its experimental pi-agent-core harness APIs have since been
-removed. The normal Desktop runtime now owns transcript projection, estimation,
-checkpoint preparation, and summary generation; Rust host-core remains the
-durable session owner. pi-coding-agent remains temporarily limited to native Pi
-session continuation (including that path's native session behavior) and the
-trusted-extension compatibility shim. Its removal seams and migration criteria
-are recorded in
-`docs/spec/02-architecture/06-pi-runtime-dependency-boundary.md`.
+- Retaining models.dev as executable authority: duplicates Pi's metadata and refresh
+  semantics.
+- Adopting ModelRuntime/AgentSession: adds another account and session owner.

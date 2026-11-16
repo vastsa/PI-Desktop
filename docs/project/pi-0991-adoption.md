@@ -2,7 +2,7 @@
 
 Status: scoped migration implemented and local candidate validated; release
 qualification is separate. Comprehensive review findings and repairs are in
-[the migration review](pi-0991-review.md). These are local candidate results;
+the migration review (`pi-0991-review.md`, kept in git history). These are local candidate results;
 installed release qualification is separate.
 
 ## Scope and implementation
@@ -88,7 +88,7 @@ Installed Electron, real accounts/paid providers, cross-platform artifacts and
 cross-version rollback were not tested. No UI verification command was run because
 it was not requested. These checks are release qualification, not evidence supplied
 by local offline regression. Remaining release work is in
-[pi-0991-gaps.md](pi-0991-gaps.md).
+`pi-0991-gaps.md` (kept in git history).
 
 ## Main integration validation
 

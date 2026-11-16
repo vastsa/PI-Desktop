@@ -276,6 +276,7 @@ fn parse_message(
     };
 
     Ok(UiMessage {
+        output_truncated: None,
         id: Uuid::new_v4().to_string(),
         role: role.to_string(),
         content: input.content.clone(),
