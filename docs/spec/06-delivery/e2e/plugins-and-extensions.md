@@ -7,6 +7,15 @@ Hold the first project's plugin view request, switch projects and complete the s
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Plugins, MCP, trusted extensions, subagents, hooks, skills, and generated UI.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.
+
 ## E2E-EXTENSION-thinking-request-state
 
 Set high thinking through the production extension bridge, send a prompt and

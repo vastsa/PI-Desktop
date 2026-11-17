@@ -27,6 +27,7 @@ import {
   type PluginPanelBlockedRequest,
 } from "./plugin-panel-host";
 import {
+  PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT,
   PLUGIN_PANEL_EMBEDDED_ARGUMENT,
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
   type PluginPanelTheme,
@@ -65,6 +66,7 @@ export type PluginViewOpenRequest = {
   theme: PluginPanelTheme;
   /** Absolute path to the view's HTML entry. */
   htmlPath: string;
+  composerFileLines?: boolean;
   /** Egress allowlist from `manifest.net.domains`. */
   netDomains?: readonly string[];
   /** The install-time `net.anyHost` grant, passed through to the egress policy. */
@@ -220,6 +222,10 @@ export class PluginViewHost {
   /** Whether a live web contents exists for this view. */
   has(pluginId: string, viewId: string): boolean {
     return this.views.has(pluginViewKey(pluginId, viewId));
+  }
+
+  isVisibleViewSender(senderId: number | undefined, key: string): boolean {
+    return senderId !== undefined && this.visibleKey === key && this.views.get(key)?.view.webContents.id === senderId;
   }
 
   /**
@@ -531,6 +537,9 @@ export class PluginViewHost {
           `${PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX}${encodeURIComponent(request.locale)}`,
           `--pi-plugin-panel-theme=${request.theme}`,
           PLUGIN_PANEL_EMBEDDED_ARGUMENT,
+          ...(request.composerFileLines
+            ? [PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT]
+            : []),
         ],
       },
     });
