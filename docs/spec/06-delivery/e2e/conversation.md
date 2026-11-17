@@ -4886,9 +4886,19 @@ a custom SYSTEM.md and a delegate. Switch to English in the same Session and
 verify the next turn uses `en`, with the previous language guidance replaced.
 Auto follows the resolved OS/UI locale. An explicit user language request wins;
 code, identifiers, paths, commands and quoted text retain their required language.
-Hidden provider reasoning is not an inspectable acceptance surface. Main launch
-and runtime tests cover construction, delegation and cache invalidation; native
-UI and real-model compliance require separate acceptance.
+`PI_DESKTOP_HOST_BIN=<candidate-host> pnpm test:e2e:response-language` drives
+the production Desktop, Host and sidecar against a loopback provider. It uses
+the real Settings language picker and Composer, inspects provider-bound system
+prompts, and verifies Chinese/English changes in one Session, custom SYSTEM.md,
+explicit user-language text and precedence, and persisted language after a full
+Desktop/Host restart without resending. The same harness fails on main before
+the fix because the provider prompt lacks the application-language guidance.
+Main launch and runtime tests additionally cover construction, delegation,
+extension replacement and cache invalidation.
+
+The provider returns scripted text: this verifies dispatch and precedence
+instructions, not real-model compliance or provider-hidden reasoning language.
+Installed-release acceptance and native Windows UI remain separate.
 
 ## E2E-ISSUE-2350: Delegation connector centers and stem endpoints
 

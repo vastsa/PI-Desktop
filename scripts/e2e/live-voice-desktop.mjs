@@ -19,7 +19,7 @@ async function availablePort() {
   return port;
 }
 
-export async function launchLiveVoiceDesktop({ root, dataDir, profile, home, certificate, evidence, syntheticMicrophone = true }) {
+export async function launchLiveVoiceDesktop({ root, dataDir, profile, home, certificate, evidence, syntheticMicrophone = true, env: extraEnv = {} }) {
   const { appDir, electronBinary } = resolveElectronBinary(root);
   const port = await availablePort();
   const env = { ...process.env };
@@ -36,6 +36,7 @@ export async function launchLiveVoiceDesktop({ root, dataDir, profile, home, cer
     PI_DESKTOP_START_MAXIMIZED: "0",
     ELECTRON_RENDERER_URL: "",
     ...(certificate ? { NODE_EXTRA_CA_CERTS: certificate } : {}),
+    ...extraEnv,
   });
   const child = spawn(electronBinary, [
     `--remote-debugging-port=${port}`,
@@ -168,7 +169,7 @@ export async function launchLiveVoiceDesktop({ root, dataDir, profile, home, cer
       };
       await send("Runtime.enable");
       await send("Page.enable");
-      return { evaluate, click, clickSelector, clickText, input, invoke, screenshot };
+      return { send, evaluate, click, clickSelector, clickText, input, invoke, screenshot };
     };
     const isMainWindow = (entry) => entry.url.includes("index.html") &&
       !entry.url.includes("plugin-launcher") && !entry.url.includes("live-voice-widget");
