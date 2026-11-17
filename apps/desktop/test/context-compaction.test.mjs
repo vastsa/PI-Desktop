@@ -27,6 +27,7 @@ const [
   hostTranscripts,
   transcript,
   inspector,
+  dashboard,
   turns,
   styles,
   enLocale,
@@ -50,6 +51,7 @@ const [
   read("../../../crates/host-core/src/transcripts.rs"),
   readTranscriptSource(),
   read("../src/components/ContextUsageInspector.tsx"),
+  read("../src/features/chat/context-usage/ContextUsageDashboard.tsx"),
   read("../src/lib/assistant-turns.ts"),
   loadStyles(),
   read("../../../packages/i18n/src/locales/en/index.ts"),
@@ -356,7 +358,7 @@ test("a fallback notice is stripped without discarding its carried summary", () 
   );
 });
 
-test("the transcript shows one row per compaction, the inspector the newest", () => {
+test("the transcript shows one row per compaction, the inspector the full event list", () => {
   assert.match(types, /type ContextCompactionMark = ContextCompactionStatus & \{/);
   assert.match(types, /mark\?: ContextCompactionMark/);
   // The generation counter and the family both ride inside the opaque details
@@ -381,12 +383,13 @@ test("the transcript shows one row per compaction, the inspector the newest", ()
   assert.match(transcript, /mark\.fallback/);
   assert.match(transcript, /chat\.compactionRowSummaryFailed/);
   assert.match(styles, /\.transcript-compaction-row \{/);
-  // The inspector keeps its own line, now fed by the newest row.
-  assert.match(
-    inspector,
-    /state\.sessionCompactions\[state\.activeSessionId\]\?\.at\(-1\)/,
-  );
-  assert.match(inspector, /chat\.usageCompaction/);
+  // The inspector hands the whole per-session list to the insights dashboard,
+  // which lists newest first (D675).
+  assert.match(inspector, /state\.sessionCompactions\[state\.activeSessionId\]/);
+  assert.match(inspector, /<ContextUsageDashboard/);
+  assert.match(dashboard, /t\("chat\.insightsEvents"\)/);
+  assert.match(dashboard, /\[\.\.\.compactions\]\.reverse\(\)/);
+  assert.match(dashboard, /chat\.compactionRow/);
   assert.match(enLocale, /usageCompaction:/);
   assert.match(enLocale, /compactionRow:/);
 });

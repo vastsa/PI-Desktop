@@ -20,6 +20,8 @@ const dataDir = join(directory, "data");
 app.setPath("userData", join(directory, "profile"));
 app.commandLine.appendSwitch("disable-background-networking");
 protocol.registerSchemesAsPrivileged([GEN_UI_SCHEME_PRIVILEGES]);
+// The probe owns exit after Host teardown and its result have completed.
+app.on("window-all-closed", () => {});
 let nativeHost;
 process.once("exit", () => nativeHost?.child?.kill());
 

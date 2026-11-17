@@ -1,5 +1,14 @@
 # E2E Scenarios: Plugins and Extensions
 
+## E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.
+
 ## E2E-plugin-view-refresh-order
 
 Hold the first project's plugin view request, switch projects and complete the second request, then resolve or reject the first. Verify the production WorkPanel launcher retains only the current project's views. Also switch projects without another request and reject stale writes. Coverage: `plugin-view-refresh-order.test.mjs`, view contracts and `scripts/e2e-plugin-view-refresh-order.mjs` with production WorkPanel/useAppStore in Electron. Host view results are controlled.

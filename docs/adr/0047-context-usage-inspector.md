@@ -2,6 +2,9 @@
 
 - Status: Accepted (amended by D225, D244, D347, D355)
 - Date: 2026-08-02
+- Amended by: D225 (click-toggled panel), D244 (compact summary presentation),
+  D347 (composer toolbar placement), D355 (last-request occupancy), and D686
+  (insights dashboard body)
 - Related: D103, D183, D184
 
 ## Context
