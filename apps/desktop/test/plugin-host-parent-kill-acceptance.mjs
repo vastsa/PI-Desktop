@@ -189,6 +189,10 @@ function pidAlive(pid) {
     // Linux runners can leave a dead orphan as a zombie until PID 1 reaps it.
     if (process.platform === "linux") {
       const state = spawnSync("ps", ["-p", String(pid), "-o", "stat="], { encoding: "utf8" });
+      if (state.error) throw state.error;
+      // The process can be reaped between kill(0) and ps.
+      if (state.status === 1 && !state.stdout.trim()) return false;
+      if (state.status !== 0) throw new Error(`ps failed: ${state.stderr}`);
       if (/^Z/.test(state.stdout.trim())) return false;
     }
     return true;
@@ -274,11 +278,13 @@ try {
   process.kill(electron.pid, "SIGKILL");
   const startedAt = Date.now();
   const deadline = startedAt + KILL_GRACE_MS;
-  while (pidAlive(hostPid) && Date.now() < deadline) {
+  let hostAlive = pidAlive(hostPid);
+  while (hostAlive && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 200));
+    hostAlive = pidAlive(hostPid);
   }
-  if (pidAlive(hostPid)) {
-    fail(`orphaned host pid ${hostPid} still alive ${KILL_GRACE_MS}ms after the parent was SIGKILLed`);
+  if (hostAlive) {
+    fail(`orphaned host pid ${hostPid} still alive ${Date.now() - startedAt}ms after the parent was SIGKILLed`);
   }
   const exitCode = existsSync(join(dir, "host-exit")) ? readFileSync(join(dir, "host-exit"), "utf8") : "(no exit record)";
   process.stdout.write(
