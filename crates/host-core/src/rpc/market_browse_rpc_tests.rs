@@ -136,19 +136,22 @@ fn remote_page() -> Value {
     json!({
         "total": 30,
         "pageCount": 15,
-        "categories": [{ "id": "Tools", "count": 30 }],
+        "categories": [{ "id": "developer-tools", "count": 30 }],
+        "categoryLabels": {
+            "developer-tools": { "en": "Developer Tools", "zh-CN": "开发工具" }
+        },
         "artifactBaseUrl": null,
         "plugins": [
             {
                 "id": "acme.remote-only", "name": "Remote Only", "description": "From the center",
-                "author": "acme", "categories": ["Tools"], "trust": "community", "downloads": 7,
+                "author": "acme", "categories": ["developer-tools"], "trust": "community", "downloads": 7,
                 "versions": [{ "version": "2.0.0", "publishedAt": "2026-03-01T00:00:00Z",
                     "shasum": "ab".repeat(32), "url": "packages/acme.remote-only-2.0.0.piplug",
                     "sizeBytes": 10, "permissions": ["ui.panel"] }]
             },
             {
                 "id": "acme.second", "name": "Second", "description": "",
-                "author": "acme", "categories": ["Tools"],
+                "author": "acme", "categories": ["developer-tools"],
                 "versions": [{ "version": "1.0.0", "publishedAt": "2026-02-01T00:00:00Z",
                     "shasum": "cd".repeat(32), "url": "packages/acme.second-1.0.0.piplug",
                     "sizeBytes": 10, "permissions": [] }]
@@ -188,12 +191,21 @@ async fn browse_serves_the_centers_page_caches_it_and_opens_its_detail() {
         (Some(2), Some(2), Some(15))
     );
     assert_eq!(first["sort"], "popular");
-    assert_eq!(first["categories"][0]["id"], "Tools");
+    assert_eq!(first["categories"][0]["id"], "developer-tools");
+    // The facet carries the label for the host's language, and the card keeps
+    // both the label it shows and the id a filter selects.
+    assert!(
+        first["categories"][0]["name"].is_string(),
+        "facet has no label: {}",
+        first["categories"]
+    );
     let plugins = first["plugins"].as_array().unwrap();
     assert_eq!(plugins.len(), 2);
     assert_eq!(plugins[0]["id"], "acme.remote-only");
     assert_eq!(plugins[0]["latestVersion"], "2.0.0");
     assert_eq!(plugins[0]["installed"], false);
+    assert_eq!(plugins[0]["categoryIds"][0], "developer-tools");
+    assert!(plugins[0]["categories"][0].as_str().unwrap() != "developer-tools");
 
     let searches = center.searches();
     assert_eq!(searches.len(), 1);

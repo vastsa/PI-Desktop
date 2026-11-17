@@ -45,11 +45,12 @@ const catalog = Array.from({ length: 60 }, (_, i) => ({
   author: "acme",
   latestVersion: "1.0.0",
   updatedAt: "2026-01-01T00:00:00Z",
-  categories: [i % 5 === 0 ? "Writing" : "Tools"],
+  categories: [i % 5 === 0 ? "writing" : "tools"],
   permissionSummary: [],
   installable: true,
   downloads: 100 - i,
 }));
+const labels = { writing: { en: "Writing", "zh-CN": "写作与文档" }, tools: { en: "Tools", "zh-CN": "工具" } };
 const browseCalls = [];
 let hold = null;
 let failNext = null;
@@ -67,7 +68,7 @@ function answer(input) {
     plugins: filtered.slice((page - 1) * size, page * size),
     total: filtered.length, page, pageSize: size, pageCount: Math.ceil(filtered.length / size),
     sort: input.sort || "recommended",
-    categories: [...counts].map(([id, count]) => ({ id, count })),
+    categories: [...counts].map(([id, count]) => ({ id, name: labels[id].en, count })),
     source: "remote", providerId: "official", sourceUrl: "https://center.invalid/catalog.json",
   };
 }
@@ -176,9 +177,11 @@ window.marketProbe = async () => {
 
   await click(byText(".plugins-sort-btn", label("sortRecommended")), "recommended missing");
   const writing = [...document.querySelectorAll(".plugins-filter")].find((n) => n.textContent.startsWith("Writing"));
+  check(writing, "the chip must show the label, not the id");
   check(writing?.querySelector(".plugins-filter-count")?.textContent === "12", "category count missing");
   await click(writing, "writing chip missing");
-  await until(() => lastCall().category === "Writing" && cards().length === 12 && settled(), "category not applied");
+  // The chip shows "Writing"; the filter carries the id it stands for.
+  await until(() => lastCall().category === "writing" && cards().length === 12 && settled(), "category not applied");
   await click([...document.querySelectorAll(".plugins-filter")].find((n) => n.textContent.trim() === label("categoryAll")), "all chip missing");
   await until(() => lastCall().category === "" && settled(), "category not cleared");
 

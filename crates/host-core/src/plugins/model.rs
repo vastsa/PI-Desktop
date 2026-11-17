@@ -265,8 +265,12 @@ pub struct MarketPluginSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub downloads: Option<u64>,
     pub updated_at: String,
+    /// Display labels for the categories, in the app's language.
     #[serde(default)]
     pub categories: Vec<String>,
+    /// The canonical category ids, for filtering.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub category_ids: Vec<String>,
     pub permission_summary: Vec<String>,
     #[serde(default)]
     pub verified: bool,
@@ -446,6 +450,10 @@ pub(crate) struct MarketCatalogEntry {
     pub(crate) versions: Vec<MarketVersion>,
 }
 
+/// Category labels keyed by category id, then by locale.
+pub(crate) type CategoryLabels =
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct MarketCatalogFile {
     /// Absent or 1 means the v1 schema. v2 adds provenance, review verdicts,
@@ -470,6 +478,11 @@ pub(crate) struct MarketCatalogFile {
     /// base, so switching source never sends a download to another provider.
     #[serde(default)]
     pub(crate) artifact_base_url: Option<String>,
+    /// Category labels by id, in both guaranteed languages. Entries carry ids;
+    /// a client renders the label for its own language and falls back to the
+    /// id, so a catalog published before the vocabulary existed still renders.
+    #[serde(default, rename = "categoryLabels", alias = "category_labels")]
+    pub(crate) category_labels: CategoryLabels,
     #[serde(default)]
     pub(crate) plugins: Vec<MarketCatalogEntry>,
 }

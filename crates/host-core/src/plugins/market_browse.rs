@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
+use super::marketplace::category_label;
 use super::reviews::{encode_component, get_json_limited, review_origin_for_catalog};
 use super::*;
 
@@ -129,6 +130,9 @@ impl MarketBrowseQuery {
 #[serde(rename_all = "camelCase")]
 pub struct MarketCategoryFacet {
     pub id: String,
+    /// The label for the app's language, when the source published one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub count: u64,
 }
 
@@ -138,6 +142,8 @@ pub(crate) struct BrowsePage {
     pub(crate) entries: Vec<MarketCatalogEntry>,
     pub(crate) total: u64,
     pub(crate) categories: Vec<MarketCategoryFacet>,
+    /// Labels for the page's category ids, from the center or the snapshot.
+    pub(crate) labels: CategoryLabels,
 }
 
 /// Where a page came from.
@@ -176,6 +182,8 @@ struct BrowseWire {
     plugins: Vec<MarketCatalogEntry>,
     #[serde(default)]
     artifact_base_url: Option<String>,
+    #[serde(default)]
+    category_labels: CategoryLabels,
 }
 
 #[derive(Default)]
@@ -369,6 +377,7 @@ pub(crate) fn parse_remote_page(
     }
     Ok(BrowsePage {
         entries,
+        labels: wire.category_labels,
         total: wire.total,
         categories: wire
             .categories
@@ -412,6 +421,7 @@ pub(crate) fn local_browse(catalog: &MarketCatalogFile, query: &MarketBrowseQuer
                 .and_modify(|facet| facet.count += 1)
                 .or_insert_with(|| MarketCategoryFacet {
                     id: category.to_string(),
+                    name: None,
                     count: 1,
                 });
         }
@@ -473,6 +483,7 @@ pub(crate) fn local_browse(catalog: &MarketCatalogFile, query: &MarketBrowseQuer
     categories.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.id.cmp(&b.id)));
     BrowsePage {
         entries,
+        labels: catalog.category_labels.clone(),
         total,
         categories,
     }
@@ -578,14 +589,25 @@ impl PluginManager {
             plugins: page
                 .entries
                 .iter()
-                .map(|entry| self.to_market_summary(entry))
+                .map(|entry| {
+                    let mut summary = self.to_market_summary(entry);
+                    self.localize_categories(entry, &mut summary, &page.labels);
+                    summary
+                })
                 .collect(),
             total: page.total,
             page: query.page,
             page_size,
             page_count,
             sort: query.sort.as_str(),
-            categories: page.categories,
+            categories: page
+                .categories
+                .into_iter()
+                .map(|mut facet| {
+                    facet.name = Some(category_label(&page.labels, &facet.id, &self.locale));
+                    facet
+                })
+                .collect(),
             source: match source {
                 BrowseSource::Remote => "remote",
                 BrowseSource::Local => "local",
@@ -725,14 +747,17 @@ mod tests {
             got.categories,
             vec![
                 MarketCategoryFacet {
+                    name: None,
                     id: "Productivity".into(),
                     count: 2
                 },
                 MarketCategoryFacet {
+                    name: None,
                     id: "Tools".into(),
                     count: 2
                 },
                 MarketCategoryFacet {
+                    name: None,
                     id: "Writing".into(),
                     count: 1
                 },
@@ -742,6 +767,52 @@ mod tests {
         assert_eq!(ids(&got), ["pi.notes", "pi.todo", "pi.git", "pi.browser"]);
         let got = local_browse(&catalog, &query(json!({ "sort": "updated" })));
         assert_eq!(ids(&got), ["pi.browser", "pi.todo", "pi.git", "pi.notes"]);
+    }
+
+    #[test]
+    fn category_labels_fall_back_in_a_defined_order() {
+        let mut labels = CategoryLabels::new();
+        let mut zh = std::collections::BTreeMap::new();
+        zh.insert("en".to_string(), "Productivity".to_string());
+        zh.insert("zh-CN".to_string(), "效率工具".to_string());
+        labels.insert("productivity".to_string(), zh);
+
+        assert_eq!(category_label(&labels, "productivity", "zh-CN"), "效率工具");
+        // Traditional Chinese reads the Simplified label rather than English.
+        assert_eq!(category_label(&labels, "productivity", "zh-TW"), "效率工具");
+        assert_eq!(
+            category_label(&labels, "productivity", "de"),
+            "Productivity"
+        );
+        // A catalog that predates the vocabulary names nothing; the id stands.
+        assert_eq!(category_label(&labels, "themes", "zh-CN"), "themes");
+    }
+
+    #[test]
+    fn a_page_carries_the_labels_of_its_categories() {
+        let q = query(json!({ "pageSize": 2 }));
+        let payload = json!({
+            "total": 1,
+            "categoryLabels": {
+                "themes": { "en": "Themes", "zh-CN": "外观主题" }
+            },
+            "categories": [{ "id": "themes", "count": 1 }],
+            "plugins": [{
+                "id": "pi.parchment", "name": "Parchment", "description": "", "author": "acme",
+                "categories": ["themes"],
+                "versions": [{ "version": "1.0.0", "publishedAt": "2026-01-01T00:00:00Z",
+                    "shasum": "ab", "url": "packages/x.piplug", "sizeBytes": 1, "permissions": [] }]
+            }]
+        });
+        let page = parse_remote_page(
+            "https://plugins.example/catalog.json",
+            &q,
+            payload.to_string().as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(page.labels["themes"]["zh-CN"], "外观主题");
+        assert_eq!(category_label(&page.labels, "themes", "en"), "Themes");
+        assert_eq!(page.entries[0].categories, ["themes"]);
     }
 
     #[test]
