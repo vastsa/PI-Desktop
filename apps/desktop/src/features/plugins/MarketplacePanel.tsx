@@ -73,7 +73,7 @@ export function MarketplacePanel({
                         aria-pressed={active}
                         onClick={() => setCategory(active ? "" : facet.id)}
                       >
-                        {facet.id}
+                        {facet.name ?? facet.id}
                         {facet.count > 0 ? (
                           <span className="plugins-filter-count">{facet.count}</span>
                         ) : null}

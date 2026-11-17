@@ -307,6 +307,26 @@ Client rules for v2:
   optional until the center's signing phase lands. An unverifiable signature is
   never treated as a valid one.
 
+### Category vocabulary
+
+A category is an **id**, never a display string. Ids are stable lowercase
+slugs in the plugin center's closed vocabulary: `ai-models`, `agents-workflow`,
+`memory-knowledge`, `developer-tools`, `productivity`, `usage-analytics`,
+`search-web`, `media-creative`, `integrations`, `desktop-system`, `themes`,
+`writing`, `fun`. Each carries an English and a Simplified Chinese label;
+Traditional Chinese reads the same label, and any other client language falls
+back to English, so a shelf is never blank.
+
+A plugin carries one to three ids, the first being its primary shelf. The
+catalog and every browse answer publish the labels by id (`categoryLabels` on
+`catalog.json` and `/api/v1/catalog/search`), so the desktop renders a shelf in
+the app's language without shipping its own copy: `MarketPluginSummary`
+carries the labels in `categories` and the ids in `categoryIds`, and a browse
+facet carries `name` beside its `id`. A filter sends the **id**; the center
+also accepts a label in either language so a link written before the
+vocabulary existed still selects what it meant. A catalog that predates the
+vocabulary carries no labels, and the id is rendered instead.
+
 ### MarketPluginSummary
 ```ts
 type MarketPluginSummary = {

@@ -12,6 +12,7 @@ export const ptBREntries: ChangelogEntry[] = [
       "Com um IME chinês, comandos com barra aguardam o fim da composição e preservam o rascunho, evitando inserir uma barra duplicada.",
       "Prompts regenerados permanecem na posição correta após a resposta mais recente quando o arquivamento termina fora do histórico carregado.",
       "Navegue pelo marketplace de plugins em uma lista que carrega mais ao rolar, ordene por recomendados, populares, recentes ou nome e veja quantos plugins correspondem a cada categoria; se a central de plugins não responder, o último catálogo salvo é usado.",
+      "Cada plugin agora fica em uma prateleira bilíngue, então o marketplace é lido em português ou chinês e filtra pela mesma categoria.",
     ],
   },
   {

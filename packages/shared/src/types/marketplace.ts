@@ -15,7 +15,10 @@ export type MarketPluginSummary = {
   latestVersion: string;
   downloads?: number;
   updatedAt: string;
+  /** Category labels in the app's language, for display. */
   categories?: string[];
+  /** The canonical category ids, for filtering. */
+  categoryIds?: string[];
   permissionSummary: string[];
   verified?: boolean;
   /** Catalog v2 trust tier, as the host is willing to render it. */
@@ -46,7 +49,13 @@ export type MarketBrowseQuery = {
 };
 
 /** One category and how many of the query's matches carry it. */
-export type MarketCategoryFacet = { id: string; count: number };
+export type MarketCategoryFacet = {
+  /** The canonical category id; what a filter selects. */
+  id: string;
+  /** The label for the app's language, when the source published one. */
+  name?: string;
+  count: number;
+};
 
 /** One page of the marketplace, as `market.browse` answers it. */
 export type MarketBrowseResult = {

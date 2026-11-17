@@ -35,13 +35,13 @@ mod validation;
 
 pub use manifest::PluginManifest;
 pub use marketplace::{market_channel_from_settings, MarketChannel, OFFICIAL_CHANNEL_CATALOG_URL};
+pub(crate) use model::{CategoryLabels, MarketCatalogEntry, MarketCatalogFile};
 pub use model::{
     InstallOptions, InstallResult, MarketDownloadInfo, MarketPluginDetail, MarketPluginSummary,
     MarketProvenance, MarketReview, MarketVersion, PluginDisplayI18n, PluginI18nMap,
     PluginMarketplaceMeta, PluginSettingDefinition, PluginSettingOption, PluginSummary,
     PluginUiMeta, PluginUpdateInfo, PluginYankNotice,
 };
-pub(crate) use model::{MarketCatalogEntry, MarketCatalogFile};
 pub(crate) use progress::{
     CancelToken, DownloadReport, InstallObserver, InstallPhase, InstallProgress, NoProgress,
     TriedMirror,
