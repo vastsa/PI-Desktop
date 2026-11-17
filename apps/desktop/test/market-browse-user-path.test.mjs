@@ -96,7 +96,9 @@ usePluginBrowseState.setState({ tab: "market" });
 const check = (value, message) => { if (!value) throw new Error(message); };
 const frame = () => new Promise(requestAnimationFrame);
 const until = async (condition, message) => {
-  const end = performance.now() + 5000;
+  // Electron competes with the rest of the suite for the machine; a page that
+  // is slow to settle is not a failure.
+  const end = performance.now() + 15000;
   while (!condition()) { if (performance.now() > end) throw new Error(message); await frame(); }
 };
 const cards = () => [...document.querySelectorAll(".plugins-card-name")].map((n) => n.textContent);

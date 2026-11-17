@@ -112,6 +112,10 @@ impl PluginManager {
     pub(crate) fn ensure_default_catalog(&self) -> Result<()> {
         let path = self.catalog_path();
         if path.exists() {
+            // The snapshot may have been written by a build that could not read
+            // the catalog's multi-word fields; replacing it is a one-time cost
+            // and a no-op afterwards.
+            let _ = self.migrate_catalog_metadata();
             return Ok(());
         }
         // Prefer the official remote marketplace repo; fall back to bundled demos.
@@ -265,9 +269,42 @@ impl PluginManager {
             "providerId": catalog.provider_id,
             "fetchedAt": Utc::now().to_rfc3339(),
             "pluginCount": catalog.plugins.len(),
+            "metadataGeneration": CATALOG_METADATA_GENERATION,
         });
         fs::write(meta_path, serde_json::to_string_pretty(&meta)?)?;
         Ok(catalog)
+    }
+
+    /// Bring a snapshot written before the catalog fields were readable back to
+    /// the current shape, once.
+    ///
+    /// The previous parser accepted snake_case only, so `readmeMarkdown`,
+    /// `publisherId`, `safetyNotes` and `iconUrl` were dropped and recorded as
+    /// null. A snapshot like that cannot be repaired without the source: it is
+    /// fetched again, and the marker in `cache-meta.json` keeps the next launch
+    /// from repeating the request. A failed fetch leaves the snapshot in place
+    /// and the marker absent, so the next launch tries again.
+    pub(crate) fn migrate_catalog_metadata(&self) -> Result<()> {
+        let meta_path = self.market_cache_meta_path();
+        let Ok(raw) = fs::read_to_string(&meta_path) else {
+            return Ok(());
+        };
+        let Ok(meta) = serde_json::from_str::<Value>(&raw) else {
+            return Ok(());
+        };
+        if meta
+            .get("metadataGeneration")
+            .and_then(Value::as_u64)
+            .is_some_and(|generation| generation >= u64::from(CATALOG_METADATA_GENERATION))
+        {
+            return Ok(());
+        }
+        if !self.catalog_path().exists() || !self.uses_download_resolve() {
+            // A bundled or local-file catalog has no center to ask; its entries
+            // are written by this build and already carry the fields.
+            return Ok(());
+        }
+        self.refresh_catalog_from_remote(true).map(|_| ())
     }
 
     pub fn refresh_market(&self, force: bool) -> Result<Value> {
@@ -684,6 +721,11 @@ pub(crate) fn category_label(labels: &CategoryLabels, id: &str, locale: &str) ->
     }
     id.to_string()
 }
+
+/// Shape of the catalog metadata this build reads and writes. A snapshot
+/// recorded under an older generation is refreshed once; see
+/// `migrate_catalog_metadata`.
+const CATALOG_METADATA_GENERATION: u32 = 2;
 
 pub(crate) fn host_supports_version(version: &MarketVersion) -> bool {
     let Some(required) = version.min_pi_desktop.as_deref().map(str::trim) else {

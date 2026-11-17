@@ -13,6 +13,7 @@ export const trEntries: ChangelogEntry[] = [
       "Yeniden oluşturulan istemler, arşivleri yüklenen geçmişin dışında tamamlandığında en son yanıttan sonraki doğru konumlarında kalır.",
       "Eklenti pazarına kaydırdıkça yüklenen tek bir listede göz atın, önerilen, popüler, en yeni veya ada göre sıralayın ve her kategoride kaç eklentinin eşleştiğini görün; eklenti merkezine ulaşılamazsa son kaydedilen katalog kullanılır.",
       "Her eklenti artık iki dilli bir rafa yerleşiyor; pazar yeri Türkçe veya Çince okunuyor ve aynı kategoriyle filtreleniyor.",
+      "Eklenti ayrıntıları artık yayıncıyı, README'yi ve güvenlik notlarını gösteriyor; katalog okunurken kayboluyorlardı.",
     ],
   },
   {

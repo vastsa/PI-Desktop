@@ -2511,6 +2511,7 @@ sklm: {
     marketSource: "來源：{{url}}",
     marketLoading: "正在載入外掛市場…",
     marketEmpty: "沒有匹配的外掛",
+    publisher: "發布者 {{id}}",
     browseTotal: "共 {{count}} 個外掛",
     sortLabel: "排序",
     sortRecommended: "推薦",

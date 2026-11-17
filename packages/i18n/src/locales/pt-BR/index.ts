@@ -2482,6 +2482,7 @@ export const ptBR = {
     marketSource: "Fonte: {{url}}",
     marketLoading: "Carregando marketplace…",
     marketEmpty: "Nenhum plugin corresponde à sua pesquisa.",
+    publisher: "Publicador {{id}}",
     browseTotal: "{{count}} plugins",
     sortLabel: "Ordenar",
     sortRecommended: "Recomendados",

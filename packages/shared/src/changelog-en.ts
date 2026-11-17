@@ -13,6 +13,7 @@ export const enEntries: ChangelogEntry[] = [
       "Regenerated prompts keep their position after the latest reply when their archive finishes outside the loaded history.",
       "Browse the plugin marketplace as one list that loads more as you scroll, sort by recommended, popular, newest, or name, and see how many plugins match each category; the last saved catalog answers when the plugin center is unreachable.",
       "Every plugin now sits on a bilingual shelf, so the marketplace reads in English or Chinese and filters by one shared category.",
+      "Plugin details now show the publisher, the readme and the safety notes the catalog publishes; they were being dropped when the catalog was read.",
     ],
   },
   {

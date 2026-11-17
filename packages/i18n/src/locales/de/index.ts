@@ -2516,6 +2516,7 @@ sklm: {
     "marketSource": "Quelle: {{url}}",
     "marketLoading": "Marktplatz wird geladen…",
     "marketEmpty": "Keine Plugins entsprechen Ihrer Suche",
+    "publisher": "Herausgeber {{id}}",
     "browseTotal": "{{count}} Plugins",
     "sortLabel": "Sortieren",
     "sortRecommended": "Empfohlen",

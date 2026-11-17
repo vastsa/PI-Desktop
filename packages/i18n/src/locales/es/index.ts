@@ -2516,6 +2516,7 @@ sklm: {
     "marketSource": "Fuente: {{url}}",
     "marketLoading": "Cargando mercado...",
     "marketEmpty": "Ningún complemento coincidió con su búsqueda",
+    "publisher": "Editor {{id}}",
     "browseTotal": "{{count}} complementos",
     "sortLabel": "Ordenar",
     "sortRecommended": "Recomendados",
