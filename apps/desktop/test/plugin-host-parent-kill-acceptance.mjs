@@ -9,13 +9,14 @@
  *
  *   1. Healthy-parent responsiveness: with the broker answering every `ping`
  *      with a `pong`, the host keeps round-tripping and stays alive well past
- *      the miss budget — and every ping is answered within a deadline.
+ *      the miss budget. Registration, panel calls, and exception reporting
+ *      still work over the real parent-port transport.
  *   2. Parent kill: SIGKILL the Electron main process (no disconnect
  *      handshake, nothing graceful). The orphaned host must exit by itself
  *      within the keepalive budget.
  *
- * Run from apps/desktop (requires `electron` from devDependencies, i.e. a
- * completed `pnpm install`):
+ * Run from apps/desktop using the provisioned Electron runtime (or set
+ * ELECTRON_BIN to its executable):
  *
  *     node test/plugin-host-parent-kill-acceptance.mjs
  *
@@ -23,8 +24,8 @@
  * needs no app build: it forks `electron/main/plugin-host-process.mjs` directly
  * with a minimal fixture plugin.
  */
-import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,9 +44,7 @@ const HEALTHY_MS = PING_INTERVAL_MS * (PING_MISSES + 1) + 1000;
 const PONG_DEADLINE_MS = 3000;
 
 function fail(message) {
-  process.stderr.write(`ACCEPTANCE FAIL: ${message}\n`);
-  if (brokerOutput) process.stderr.write(`--- electron output ---\n${brokerOutput}\n`);
-  process.exit(1);
+  throw new Error(`ACCEPTANCE FAIL: ${message}`);
 }
 
 function findElectronBinary() {
@@ -70,7 +69,19 @@ function writeBrokerMain(dir) {
   // Referenced timer: proves liveness comes from the transport, not the plugin.
   writeFileSync(
     join(dir, "main.js"),
-    "module.exports = { onLoad() { setInterval(() => {}, 1000); } };",
+    `module.exports = {
+      async onLoad() {
+        setInterval(() => {}, 1000);
+        await pi.commands.register({ id: "fixture.ping", title: "Ping", run() { return "pong"; } });
+      },
+      onPanelInvoke(channel, payload) {
+        if (channel === "exception") {
+          setImmediate(() => { throw new Error("fixture native exception"); });
+          return null;
+        }
+        return payload.value;
+      },
+    };`,
     "utf8",
   );
   writeFileSync(
@@ -81,6 +92,16 @@ const { writeFileSync } = require("node:fs");
 
 const dir = __dirname;
 let answered = 0;
+let calls = 0;
+let initialized = false;
+let exceptionTriggered = false;
+app.setPath("userData", join(dir, "profile"));
+writeFileSync(join(dir, "electron-version"), process.versions.electron);
+
+function reject(message) {
+  writeFileSync(join(dir, "failure"), message);
+  app.exit(1);
+}
 
 app.whenReady().then(() => {
   const child = utilityProcess.fork(${JSON.stringify(hostEntry)}, [], {
@@ -101,6 +122,27 @@ app.whenReady().then(() => {
       child.postMessage({ t: "pong", id: message.id });
       writeFileSync(join(dir, "pings-answered"), String(answered));
       writeFileSync(join(dir, "last-pong-at"), String(Date.now()));
+      if (initialized) {
+        const id = "health-" + answered;
+        child.postMessage({ t: "call", id, method: "panel.invoke", payload: { channel: "echo", payload: { value: id } } });
+      }
+    } else if (message.t === "call") {
+      if (message.api !== "commands.register") return reject("unexpected host API: " + message.api);
+      child.postMessage({ t: "res", id: message.id, ok: true, value: null });
+      writeFileSync(join(dir, "registration"), "ok");
+    } else if (message.t === "res") {
+      if (!message.ok) return reject(JSON.stringify(message));
+      if (message.id === 1) initialized = true;
+      if (String(message.id).startsWith("health-")) {
+        if (message.value !== message.id) return reject("panel response did not match its request");
+        writeFileSync(join(dir, "healthy-calls"), String(++calls));
+        if (!exceptionTriggered) {
+          exceptionTriggered = true;
+          child.postMessage({ t: "call", id: "exception", method: "panel.invoke", payload: { channel: "exception" } });
+        }
+      }
+    } else if (message.t === "log" && message.message.includes("fixture native exception")) {
+      writeFileSync(join(dir, "exception-reported"), "ok");
     } else {
       process.stdout.write("host: " + JSON.stringify(message) + "\\n");
     }
@@ -126,6 +168,8 @@ function waitFor(predicateFile, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolvePromise, rejectPromise) => {
     const tick = () => {
+      const failureFile = join(dirname(predicateFile), "failure");
+      if (existsSync(failureFile)) return rejectPromise(new Error(readFileSync(failureFile, "utf8")));
       try {
         const content = readFileSync(predicateFile, "utf8").trim();
         if (content) return resolvePromise(content);
@@ -142,17 +186,23 @@ function waitFor(predicateFile, timeoutMs) {
 function pidAlive(pid) {
   try {
     process.kill(pid, 0);
+    // Linux runners can leave a dead orphan as a zombie until PID 1 reaps it.
+    if (process.platform === "linux") {
+      const state = spawnSync("ps", ["-p", String(pid), "-o", "stat="], { encoding: "utf8" });
+      if (/^Z/.test(state.stdout.trim())) return false;
+    }
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
   }
 }
 
 const electronBin = findElectronBinary();
 if (!electronBin || !existsSync(String(electronBin))) {
   fail(
-    "electron binary not found — run `pnpm install` in apps/desktop first, " +
-      "or set ELECTRON_BIN. This acceptance must run in an environment with " +
+    "electron binary not found — restore the provisioned runtime or set ELECTRON_BIN. " +
+      "This acceptance must run in an environment with " +
       "the real Electron runtime (it cannot run in a sandbox without Electron).",
   );
 }
@@ -166,6 +216,10 @@ const electron = spawn(String(electronBin), [...(isRoot ? ["--no-sandbox"] : [])
   env: { ...process.env, ELECTRON_RUN_AS_NODE: "" },
 });
 let brokerOutput = "";
+const electronExited = new Promise((resolveExit) => {
+  electron.once("exit", resolveExit);
+  electron.once("error", (error) => { brokerOutput += String(error); resolveExit(); });
+});
 electron.stdout.on("data", (chunk) => {
   brokerOutput += String(chunk);
 });
@@ -178,12 +232,23 @@ electron.stderr.on("data", (chunk) => {
 // round-trip keeps flowing (host still alive several intervals later) and
 // that no pong was missed (pings answered keeps increasing past the miss
 // budget — an unresponsive parent would have let the host exit instead).
+let hostPid;
 try {
-  const hostPid = Number(await waitFor(join(dir, "host-pid"), 15000));
+  hostPid = Number(await waitFor(join(dir, "host-pid"), 15000));
   await waitFor(join(dir, "pings-answered"), 15000);
   const firstAnswered = Number(readFileSync(join(dir, "pings-answered"), "utf8"));
 
-  await new Promise((r) => setTimeout(r, HEALTHY_MS));
+  await waitFor(join(dir, "registration"), 3000);
+  await waitFor(join(dir, "exception-reported"), 3000);
+  await waitFor(join(dir, "healthy-calls"), 3000);
+  const healthyDeadline = Date.now() + HEALTHY_MS + 10000;
+  while (Number(readFileSync(join(dir, "pings-answered"), "utf8")) < firstAnswered + PING_MISSES + 2 ||
+    Number(readFileSync(join(dir, "healthy-calls"), "utf8")) < PING_MISSES + 2) {
+    if (Date.now() > healthyDeadline) fail("healthy-parent heartbeat round-trips stalled");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const healthyCalls = Number(await waitFor(join(dir, "healthy-calls"), 3000));
+  if (healthyCalls < PING_MISSES + 2) fail("healthy parent stopped completing panel calls");
   const answeredAfterHealthy = Number(readFileSync(join(dir, "pings-answered"), "utf8"));
   if (answeredAfterHealthy <= firstAnswered) {
     fail(`healthy parent received no further pings after the first (${answeredAfterHealthy}/${firstAnswered})`);
@@ -199,7 +264,8 @@ try {
     fail(`healthy-parent pong round-trips stalled (${Date.now() - lastPongAt}ms since last pong)`);
   }
   process.stdout.write(
-    `phase 1 OK: healthy parent answered ${answeredAfterHealthy} pings; host pid ${hostPid} alive\n`,
+    `phase 1 OK: Electron ${readFileSync(join(dir, "electron-version"), "utf8")}; ${answeredAfterHealthy} pings, ` +
+      `${healthyCalls} panel calls, registration and exception recovery; host pid ${hostPid} alive\n`,
   );
 
   // --- Phase 2: parent kill ------------------------------------------------
@@ -219,8 +285,15 @@ try {
     `phase 2 OK: orphaned host exited on its own after ${Date.now() - startedAt}ms (exit record: ${exitCode})\n`,
   );
   process.stdout.write("ACCEPTANCE PASS\n");
-  process.exit(0);
 } catch (error) {
   process.stderr.write(brokerOutput);
-  fail(error?.message ?? String(error));
+  process.stderr.write(`${error?.message ?? String(error)}\n`);
+  process.exitCode = 1;
+} finally {
+  // Every failure path owns and reaps its test processes before removing files.
+  if (electron.exitCode === null && electron.signalCode === null) electron.kill("SIGKILL");
+  await electronExited;
+  if (!hostPid && existsSync(join(dir, "host-pid"))) hostPid = Number(readFileSync(join(dir, "host-pid"), "utf8"));
+  if (hostPid && pidAlive(hostPid)) process.kill(hostPid, "SIGKILL");
+  rmSync(dir, { recursive: true, force: true });
 }

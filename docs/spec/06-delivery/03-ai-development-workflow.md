@@ -95,6 +95,14 @@ The rules below govern every change to the PI-Desktop codebase and documentation
 - If the user requests a launch after delivery, build and start the app from
   the integrated `main` checkout and its development environment.
 
+Before removing a worktree used to run a development build, quit that
+application and confirm its plugin hosts have exited. Include this read-only
+orphan-process check in daily macOS/Linux development maintenance:
+`ps -Ao pid,ppid,%cpu,etime,args | awk '$2==1 && /plugin-host-process/'`.
+
+Investigate any matching PID before cleanup; removing a worktree does not stop
+processes that were launched from it.
+
 ### R5 — Verify linked GitHub issues before work, then reply and close
 
 > **A linked GitHub issue is not a task until the reported problem is shown to exist. After the outcome is conclusive, reply on that issue and close it.**

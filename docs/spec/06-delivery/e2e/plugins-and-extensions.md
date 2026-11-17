@@ -599,13 +599,13 @@ window; opening a normal panel afterward must still work.
 
 ## E2E-026: Plugin error does not crash app
 
-- **Preconditions**: Plugin loaded.
-- **Steps**: 1) Trigger a scenario where plugin throws an error. 2) Observe app behavior.
-- **Expected**: App remains running; error is captured and reported; no crash.
-- **Specs linked**: `07-plugins/04-plugin-security.md`
+- **Preconditions**: Synthetic plugin loaded with an active timer; isolated application data.
+- **Steps**: 1) Trigger an uncaught plugin exception with working IPC. 2) Inject synchronous diagnostic transport failure and asynchronous Node IPC send failure, for both exceptions and rejections. 3) Disconnect the Node parent. 4) In isolated native Electron, register a plugin command and verify panel calls continue after a reported exception and beyond the heartbeat miss budget; SIGKILL that Electron main and observe its resident utility host. 5) Quit a development instance before deleting its worktree, then run the orphan-process check in the development workflow.
+- **Expected**: Working IPC reports the exception and the plugin host remains callable; the app stays running. Failed diagnostic transport exits the child with code 0 and at most one stderr note without recursive logging. Node disconnect exits with code 0 despite the timer. An Electron utility host exits when its parent-port closes or the heartbeat miss budget is exceeded; no plugin host remains after teardown.
+- **Specs linked**: `07-plugins/04-plugin-security.md`, `07-plugins/05-plugin-lifecycle.md` §3.1
 - **Acceptance**: G (plugin error → no crash)
 - **Milestone**: M4
-- **Status**: Draft
+- **Status**: Process integration covered by `plugin-host-lifecycle.test.mjs`, `plugin-host-lifetime.test.mjs`, and `plugin-isolation.test.mjs`; simulated parentPort failures remain boundary fixtures. `pnpm test:e2e:plugin-host-lifetime` covers native Electron registration, continued calls after an exception, heartbeats, and parent kill; it runs in the trusted-extensions CI job. The development-worktree journey remains manual.
 
 ## E2E-024X: Page copy stays concise in both locales
 

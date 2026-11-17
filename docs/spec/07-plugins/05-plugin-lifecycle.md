@@ -122,6 +122,23 @@ The sequence is bounded — `onUnload` gets 1.5s per plugin and teardown 3s in
 total, after which the children are killed outright. A plugin's cleanup must
 never be the reason the app appears to hang on quit.
 
+### Parent loss and diagnostic failures
+
+A plugin host exits with code 0 when its Node IPC parent disconnects, even
+when plugin timers or watchers remain active. Electron utility hosts use
+`parentPort`, which has no disconnect event; they send a ping every ten seconds
+and the broker answers with a pong. More than two unanswered pings terminates
+the host with code 0. `PI_PLUGIN_PING_INTERVAL_MS` and `PI_PLUGIN_PING_MISSES`
+allow bounded test intervals. Abrupt parent loss does not wait for plugin
+cleanup hooks.
+
+Diagnostics still reach a connected parent. A synchronous log transport
+failure, asynchronous Node IPC delivery error, or parent-port close/message
+error takes one terminal path and exits the child with code 0. A successful
+Node send callback (`null`) is not a failure. At most one broken-channel note
+goes to stderr; diagnostics never retry through the failed channel. Both
+uncaught exceptions and unhandled rejections follow this rule.
+
 ## 4. Enable / disable semantics
 
 ### enable
