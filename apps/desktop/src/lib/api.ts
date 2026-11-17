@@ -77,6 +77,8 @@ import type {
   PluginViewMeta,
   PluginScenicThemesDestinationMeta,
   PluginTheme,
+  MarketBrowseQuery,
+  MarketBrowseResult,
   MarketPluginSummary,
   MarketPluginDetail,
   PluginInstallResult,
@@ -1606,6 +1608,9 @@ export const api = {
       providerId: string;
       sourceUrl: string;
     }>(IPC.invoke.marketSearch, { query, category }),
+  /** One page of the marketplace; the host falls back to its snapshot offline. */
+  marketBrowse: (query: MarketBrowseQuery) =>
+    invoke<MarketBrowseResult>(IPC.invoke.marketBrowse, query),
   marketGetDetail: (id: string) =>
     invoke<{ plugin: MarketPluginDetail }>(IPC.invoke.marketGetDetail, id),
   marketInstall: (input: {

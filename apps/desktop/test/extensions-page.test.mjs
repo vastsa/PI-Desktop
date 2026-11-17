@@ -118,7 +118,7 @@ test("marketplace keeps refresh and install actions without source switching", (
     source,
     /MarketplaceSourceSettings|pluginMarketSource|pluginMarketCustomUrl|marketProvider|marketCustomUrl|marketSource/,
   );
-  assert.match(marketPanelSrc, /refreshMarket\(query, \{ refreshRemote: true \}\)/);
+  assert.match(marketPanelSrc, /refreshMarket\(\{ refreshRemote: true \}\)/);
   assert.match(marketPanelSrc, /queueInstall/);
 });
 
@@ -141,7 +141,9 @@ test("extension row actions stay visible and labelled", () => {
 test("the client hides development-only demo plugins from marketplace results", () => {
   assert.match(pageSrc, /function isClientVisibleMarketPlugin/);
   assert.match(pageSrc, /!plugin\.id\.startsWith\("demo\."\)/);
-  assert.match(pageSrc, /setMarket\(\(res\.plugins \?\? \[\]\)\.filter\(isClientVisibleMarketPlugin\)\)/);
+  // The host already drops samples from a page; the client filter stays as a
+  // second line for a snapshot or center that does not.
+  assert.match(pageSrc, /answer\.plugins\.filter\(isClientVisibleMarketPlugin\)/);
 });
 
 test("Settings exposes three independent Agent capability destinations", () => {

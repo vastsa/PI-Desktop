@@ -11,6 +11,7 @@ export const esEntries: ChangelogEntry[] = [
       "El indicador de contexto muestra la estimación compactada en cuanto termina una compactación manual o automática.",
       "Con un IME chino, los comandos con barra esperan a que termine la composición y conservan el borrador para evitar insertar una barra duplicada.",
       "Los prompts regenerados mantienen su posición después de la respuesta más reciente cuando su archivo se completa fuera del historial cargado.",
+      "Explora el marketplace de complementos en una lista que carga más al desplazarte, ordena por recomendados, populares, recientes o nombre y consulta cuántos coinciden en cada categoría; si el centro de complementos no responde, se usa el último catálogo guardado.",
     ],
   },
   {

@@ -592,7 +592,7 @@ test("Plugins marketplace keeps official refresh without source settings", () =>
     /MarketplaceSourceSettings|pluginMarketSource|pluginMarketCustomUrl|marketProvider|marketCustomUrl|marketSource/,
   );
   assert.match(pluginsPageSource, /api\.marketRefresh\(true\)/);
-  assert.match(pluginsPageSource, /refreshMarket\(query, \{ refreshRemote: true \}\)/);
+  assert.match(pluginsPageSource, /refreshMarket\(\{ refreshRemote: true \}\)/);
   assert.doesNotMatch(settingsPageSource, /ExtensionMarketSection/);
   assert.doesNotMatch(settingsPageSource, /tab === "extensions"/);
 });

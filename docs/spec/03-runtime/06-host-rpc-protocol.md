@@ -819,6 +819,10 @@ against a live host, and replaying one after the final row would be wrong.
 ### Marketplace
 - `market.refresh` — fetch and cache the catalog from the configured URL
 - `market.search` / `market.getDetail`
+- `market.browse` — one page of the marketplace from the plugin center's
+  `/api/v1/catalog/search`, fetched off the state lock and cached for 60 s;
+  falls back to paging the local snapshot (`source: "local"`, with
+  `fallbackReason`) instead of failing
 - `market.install` — download, verify (`PLUGIN_INTEGRITY`,
   `PLUGIN_MARKET_*`), and install one catalog release
 - `market.checkUpdates` / `market.applyUpdates`

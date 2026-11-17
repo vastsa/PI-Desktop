@@ -27,7 +27,7 @@ export function PluginsPage() {
     filteredInstalled,
     setInstalledQuery,
     marketLoading,
-    market,
+    marketTotal,
     showToast,
   } = page;
 
@@ -62,7 +62,7 @@ export function PluginsPage() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => void refreshMarket(query, { refreshRemote: true })}
+                onClick={() => void refreshMarket({ refreshRemote: true })}
               >
                 <IconCloudDown size={14} />
                 {t("plugins.refreshMarket")}
@@ -138,8 +138,8 @@ export function PluginsPage() {
               onClick={() => setTab("market")}
             >
               {t("plugins.tabMarket")}
-              {market.length ? (
-                <span className="plugins-segment-count">{market.length}</span>
+              {marketTotal ? (
+                <span className="plugins-segment-count">{marketTotal}</span>
               ) : null}
             </button>
           </div>

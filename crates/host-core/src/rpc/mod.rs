@@ -3,6 +3,7 @@ mod computer_rpc;
 mod config_sync_rpc;
 mod file_batches;
 mod gen_ui;
+mod market_browse_rpc;
 mod modes_rpc;
 mod plugin_reviews_rpc;
 mod remote_tools;
@@ -23,6 +24,8 @@ mod session_mode_create_tests;
 #[cfg(test)]
 mod session_mode_migration_tests;
 
+#[cfg(test)]
+mod market_browse_rpc_tests;
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
@@ -5710,6 +5713,7 @@ async fn handle_request(
             let meta = st.plugins.refresh_market(force).map_err(plugin_err)?;
             Ok(meta)
         }
+        "market.browse" => market_browse_rpc::browse(&state, params).await,
         "market.search" => {
             let query = params.get("query").and_then(|v| v.as_str());
             let category = params.get("category").and_then(|v| v.as_str());
