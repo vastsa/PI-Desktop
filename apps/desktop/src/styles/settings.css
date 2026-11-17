@@ -123,6 +123,7 @@
   background: var(--ds-bg-primary);
   /* Let the settings content and titlebar read as one surface. */
   border-bottom: 0;
+  --window-drag-region: drag;
   -webkit-app-region: drag;
 }
 
