@@ -231,6 +231,7 @@ export const ptBR = {
     newTask: "Nova tarefa",
     newProject: "Novo projeto",
     projects: "Projetos",
+    remoteProjects: "Remoto",
     plugins: "Extensões",
     settings: "Configurações",
     checkForUpdates: "Verificar atualizações",

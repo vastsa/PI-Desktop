@@ -58,6 +58,7 @@ const { createBackendRouter } =
   await import("../apps/desktop/electron/main/remote/backend-router.ts");
 const {
   groupRemoteProjectSessions,
+  listRemoteProjects,
   remoteProjectKey,
   remoteProjectCollapseKey,
 } = await import("../apps/desktop/src/lib/remote-project-catalog.ts");
@@ -524,7 +525,7 @@ try {
   // which group the session lands in.
   const compare = (left, right) =>
     (left.title ?? "").localeCompare(right.title ?? "");
-  const groups = groupRemoteProjectSessions(storeAfterAttach, compare);
+  const groups = groupRemoteProjectSessions(storeAfterAttach, compare, "recent");
   record(
     "groups-one-per-project",
     groups.length === 2,
@@ -562,6 +563,45 @@ try {
     JSON.stringify(groupKeys),
   );
 
+  // Stable project ordering: both arrays below describe the same two host
+  // projects, and a host may list the project that was just opened first. Group
+  // order must come from the sidebar project sort, so the rendered order is the
+  // same for both. The unsorted project list is the negative control: it still
+  // follows insertion order, which is what the sort has to override.
+  const pickForProject = (projectId) => {
+    const row = storeAfterAttach.find(
+      (entry) => entry.remoteProjectId === projectId,
+    );
+    assert.ok(row, `a stored session under project ${projectId}`);
+    return row;
+  };
+  const orderingProbe = {
+    older: { ...pickForProject(registered1.id), updatedAt: "2026-01-01T00:00:00.000Z" },
+    newer: { ...pickForProject(registered2.id), updatedAt: "2026-01-02T00:00:00.000Z" },
+  };
+  const orderFor = (rows) =>
+    groupRemoteProjectSessions(rows, compare, "recent").map(
+      (group) => group.project.projectId,
+    );
+  const openedFirst = orderFor([orderingProbe.older, orderingProbe.newer]);
+  const openedLast = orderFor([orderingProbe.newer, orderingProbe.older]);
+  record(
+    "group-order-follows-project-sort-not-session-arrival",
+    JSON.stringify(openedFirst) === JSON.stringify(openedLast) &&
+      openedFirst[0] === registered2.id,
+    `first=${JSON.stringify(openedFirst)} last=${JSON.stringify(openedLast)}`,
+  );
+  const arrivalOrder = listRemoteProjects(
+    [],
+    [],
+    [orderingProbe.older, orderingProbe.newer],
+  ).map((entry) => entry.projectId);
+  record(
+    "negative-unsorted-arrival-order-would-differ",
+    JSON.stringify(arrivalOrder) !== JSON.stringify(openedFirst),
+    JSON.stringify(arrivalOrder),
+  );
+
   const collapseKeys = groupKeys.map((key) => remoteProjectCollapseKey(key));
   record(
     "collapse-keys-remote-namespaced-and-unique",
@@ -581,6 +621,7 @@ try {
   const brokenGroups = groupRemoteProjectSessions(
     storeWithoutDecoration,
     compare,
+    "recent",
   );
   const brokenExclusive =
     brokenGroups.length === 2 &&

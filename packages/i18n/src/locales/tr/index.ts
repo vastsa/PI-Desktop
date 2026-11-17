@@ -241,6 +241,7 @@ export const tr = {
     newTask: "Yeni görev",
     newProject: "Yeni proje",
     projects: "Projeler",
+    remoteProjects: "Uzak",
     plugins: "Uzantılar",
     settings: "Ayarlar",
     checkForUpdates: "Güncellemeleri denetle",
