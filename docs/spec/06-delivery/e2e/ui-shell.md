@@ -367,8 +367,8 @@
   Badge and Unread show the exact unread count without opening implicitly
   reading rows. Read state and both
   records survive restart. Row selection marks it read and activates its bound
-  project/session. The fixture retains exactly the newest 200 rows. Mark all
-  preserves rows with zero unread. Selecting the other session clears its
+  project/session. The fixture retains exactly the newest 200 history rows. Mark all
+  preserves durable history but empties the bell list and its badge. Selecting the other session clears its
   terminal sidebar mark and marks its task notification read; neither mark
   returns after refresh or restart. Clear empties only the inbox and leaves
   sessions, turns, and transcripts intact. Clear/read also dismisses any
@@ -379,9 +379,9 @@
   duplicate, delayed, and historical rows do not replay it. On Windows, the
   taskbar overlay is a smooth black circular badge with a centered white system-font numeral. Its visual weight matches common
   Windows taskbar badges for both single- and two-digit counts. A success-only
-  outcome increments the taskbar badge without adding a bell row or bell
-  count; both toolbar actions remain enabled when relevant and clear the
-  taskbar badge. The badge also clears when no unread outcomes remain. The
+  outcome increments the taskbar badge without adding to the original bell
+  unread count; its independent pending attention row follows E2E-064Q.
+  Both toolbar actions remain enabled when relevant and clear the taskbar badge. The badge also clears when no unread outcomes remain. The
   underlying taskbar button keeps the
   PI-Desktop `P` icon and PI-Desktop name while the overlay is present.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
@@ -391,6 +391,55 @@
 - **Acceptance**: C (turn completion), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Draft
+
+## E2E-064Q: Notification acknowledgement is independent of answering or approval
+
+- **Preconditions**: An isolated app profile, two project chats and one unscoped
+  chat; a pending ask and an unseen successful turn; existing failure history.
+- **Steps**:
+  1. Receive a background ask; hold list-refresh responses, then open the bell.
+     Its row must be immediately clickable, with the correct top-right badge,
+     icon, and project/chat title. Opening its chat keeps the reminder and badge.
+  2. Submit the whole ask; repeat with a transient failure and cancellation.
+  3. Mark all reminders read without opening their chats. Repeat when pending
+     completions exist but the ordinary unread count is zero; add a new completion
+     and confirm mark-all becomes usable again. Clear and refresh/reopen the Host
+     database: acknowledged completion reminders must not return, even after pruning.
+  4. After mark-all-read, verify both All and Unread are empty, with no badge,
+     including pending question/approval reminders. Reopen/refresh, collapse and
+     rebuild the sidebar: they stay hidden without resolving inline cards. New
+     asks/approvals restore their own reminders; clear must not hide future requests.
+  5. Verify project/unscoped labels, no ID fallback, original failure body, three
+     distinct question/completion/failure icons, and one total badge that includes
+     approvals/completions without counting mirrored completion rows twice.
+  6. In Ask permission mode, create two permission requests in one background
+     chat and one in another. Hold list refresh, then click an approval immediately.
+     The owning project/chat opens without a permission response or badge removal.
+     Reopen the bell: all undecided rows remain unread. Fail one approval response,
+     retry Allow once, then Deny the queued request. Only accepted decisions remove
+     those rows and badge contributions. The other chat remains pending until its
+     existing card receives an explicit decision. Also bulk-read a mixed ask/approval
+     list and verify neither answer nor permission response was submitted.
+  7. Fail completion navigation, refresh, and verify its exact reminder stays unread.
+     Delay an ordinary snapshot until after visible confirmation; it must not restore
+     an empty-list badge. Insert a live completion during backlog pagination and
+     verify it appears once with an exact total and no spurious load-more row.
+- **Expected**: Mark-all-read and clear remove every current reminder and its badge
+  contribution from both filters without answering questions or approving/denying
+  tools. Actual requests and inline cards remain until accepted responses/cancellation.
+  Navigation alone retains interactive reminders and badges. Refresh never disables
+  available rows. Completion reminders keep their existing viewed/read acknowledgement;
+  failed/stale navigation alone does not acknowledge them. New notifications remain
+  actionable. Native delivery, sound, OS taskbar counts, and original decision paths
+  remain unchanged.
+- **Specs linked**: [Notification center](../../04-ux/08-component-spec.md#20-notificationinbox-d117),
+  [Ask card](../../04-ux/11-asktool-question-card.md),
+  [Host RPC](../../03-runtime/06-host-rpc-protocol.md#4a-notification-contracts-protocol-v4).
+- **Acceptance criterion**: C (turn completion), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Automated component user path (`test:e2e:question-notification`),
+  state/IPC tests, and Rust migration/notification tests; native focus is controlled
+  at the external window boundary in the isolated component probe.
 
 ## E2E-065: Native task notifications are unfocused-only and activate sessions
 

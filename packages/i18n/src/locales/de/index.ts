@@ -3035,6 +3035,7 @@ sklm: {
     "longThreadWarning": "Kontext komprimiert. Lange Threads verlieren mit jeder Komprimierung frühere Details. Starten Sie eine neue Sitzung für nicht zusammenhängende Arbeiten."
   },
   "notifications": {
+    ...en.notifications,
     "title": "Benachrichtigungen",
     "open": "Offene Benachrichtigungen",
     "openUnread": "Offene Benachrichtigungen, {{count}} ungelesen",

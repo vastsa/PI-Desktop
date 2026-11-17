@@ -847,7 +847,7 @@ The second failure emits the terminal normalized `STREAM_FAILED` error.
 Durable inbox requests are allowlisted preload invokes that Electron forwards
 to the singular host RPC domain without renderer access to SQLite:
 
-- `pi-desktop/notification/list({ unreadOnly?, limit? })`
+- `pi-desktop/notification/list({ unreadOnly?, limit?, completionOffset? })`
 - `pi-desktop/notification/markRead({ id })`
 - `pi-desktop/notification/markAllRead()`
 - `pi-desktop/notification/clear()`
@@ -885,7 +885,12 @@ type AppNotification = {
 type NotificationListResult = {
   notifications: AppNotification[];
   unreadCount: number;
+  pendingCompletions?: AppNotification[];
+  pendingCompletionCount?: number;
 };
+// completionOffset defaults to zero; limit (max 200) bounds each completion page.
+// Mark-read acknowledges the exact completion, including pruned history.
+// Mark-all-read and clear also acknowledge all pending completions without navigation.
 
 type NotificationChangedEvent = {
   notification: AppNotification;

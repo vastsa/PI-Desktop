@@ -58,6 +58,7 @@ test("notification center renders the filtered inbox instead of the raw store", 
 test("notification center actions can clear taskbar-only completed outcomes", () => {
   assert.match(componentSource, /const allUnreadCount = useAppStore\(/);
   assert.match(componentSource, /state\.unreadNotificationCount/);
-  assert.match(componentSource, /disabled=\{busy \|\| allUnreadCount === 0\}/);
-  assert.match(componentSource, /disabled=\{busy \|\| storedNotifications\.length === 0\}/);
+  assert.match(componentSource, /attention\.completionCount > 0/);
+  assert.match(componentSource, /disabled=\{busy \|\| !hasUnread\}/);
+  assert.match(componentSource, /disabled=\{busy \|\| !hasItems\}/);
 });

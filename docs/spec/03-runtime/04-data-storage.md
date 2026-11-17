@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v33)
+# 04. Data Storage (Schema v34)
 
 ### Project path aliases (#2148)
 
@@ -1535,9 +1535,10 @@ CREATE INDEX idx_notifications_unread
 - After an insert, the same transaction prunes all but the newest 200 rows by
   `(created_at DESC, id DESC)`. This is a global cap; session deletion also
   cascades its rows.
-- Mark-read updates are idempotent (`read_at` changes only from null), mark all
-  read is one indexed update, and clear deletes notification rows only. None of
-  these operations changes sessions, turns, or transcripts.
+- Mark-read updates are idempotent (`read_at` changes only from null). Mark-read,
+  mark-all-read, and clear atomically acknowledge matching pending completion
+  reminders, including reminders whose history rows were pruned. Clear also deletes
+  notification history. None changes sessions, turns, or transcripts.
 
 ### Dropped from v1
 
@@ -2212,3 +2213,20 @@ upgrade chain first. Reopening schema 33 does not repeat the repair or replace
 the backup. Mode snapshots, permissions, and staged-run contracts are unchanged.
 Older Host binaries reject schema 33; retain the compatible backup rather than
 deleting application data or manually lowering the version marker.
+
+### Pending completion attention (schema 34)
+
+`pending_completion_notifications` is a Rust-owned projection of unseen successful
+terminal notifications, inserted in the same transaction and keyed by the original
+notification ID. It retains session/turn identity, session-title snapshot, and
+creation time independently of the bounded ordinary notification history. Pruning
+history does not delete this projection. Reading a notification removes its exact
+pending completion; mark-all-read and clear atomically remove all pending completions,
+including those whose history rows were pruned. Session deletion also cancels
+pending records through the foreign key.
+
+Schema 33 upgrades transactionally to 34 and backfills only retained unread
+`task.completed` rows. Already-read outcomes and failures are not resurrected.
+Pending completions are queried in bounded pages, with an independent total.
+See [notification attention lifetimes](../../adr/notification-attention-lifetimes.md).
+Older binaries reject schema 34; rollback requires the normal compatible backup.

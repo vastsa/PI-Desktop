@@ -3031,6 +3031,7 @@ sklm: {
     longThreadWarning: "上下文已壓縮。每壓縮一次都會丟掉更早的細節，無關的新任務建議開新會話。",
   },
   notifications: {
+    ...en.notifications,
     title: "通知",
     open: "開啟通知中心",
     openUnread: "開啟通知中心，{{count}} 條未讀",

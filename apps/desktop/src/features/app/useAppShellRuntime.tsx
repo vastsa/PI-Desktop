@@ -22,6 +22,7 @@ import { usePluginBrowseState } from "../plugins/browse-state";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
 import { startModesSync } from "../modes/modes-sync";
 import { playNotificationChime } from "../../lib/notification-sound";
+import { formatNotificationSessionLabel, notificationSessionLabel } from "../../lib/notification-inbox";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
@@ -789,10 +790,14 @@ export function useAppShellRuntime() {
       // banner for an event the store intentionally rejected.
       if (!accepted) return;
       playNotificationChime();
+      useAppStore.getState().receiveCompletionNotification(notification);
       const failed = notification.kind === "task.failed";
       const title = t(
         failed ? "notifications.failedTitle" : "notifications.completedTitle",
-        { sessionTitle: notification.sessionTitle },
+        { sessionTitle: formatNotificationSessionLabel(
+          notificationSessionLabel(notification.sessionId, useAppStore.getState().sessions,
+            useAppStore.getState().projectMeta, notification.sessionTitle),
+          t("nav.sessions"), t("chat.untitledTask")) },
       );
       const body = failed
         ? notification.errorCode

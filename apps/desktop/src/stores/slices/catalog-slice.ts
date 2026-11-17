@@ -10,6 +10,7 @@ import type { AppState } from "../app-state";
 import { providerModelRetryDelayMs, type CatalogRuntime } from "../runtime/catalog-runtime";
 import type { SessionRuntime } from "../runtime/session-runtime";
 import type { StoreAccess } from "./types";
+import { visibleNotificationSession } from "./notification-attention-slice";
 
 export type CatalogSliceDependencies = StoreAccess & {
   catalogRuntime: CatalogRuntime;
@@ -321,7 +322,7 @@ export function createCatalogSlice({
 
     markNotificationRead: async (id) => {
       const item = get().notifications.find((notification) => notification.id === id);
-      if (!item || item.readAt) return;
+      if (item?.readAt) return;
       const generation = catalogRuntime.invalidateNotificationRefresh();
       try {
         await api.markNotificationRead(id);
@@ -356,7 +357,8 @@ export function createCatalogSlice({
           notifications,
           unreadNotificationCount: Math.max(
             0,
-            state.unreadNotificationCount - 1,
+            state.unreadNotificationCount - (state.notifications.some(
+              (notification) => notification.id === id && !notification.readAt) ? 1 : 0),
           ),
           sessionOutcomes,
         };
@@ -364,7 +366,7 @@ export function createCatalogSlice({
     },
 
     markAllNotificationsRead: async () => {
-      if (get().unreadNotificationCount === 0) return;
+      if (get().unreadNotificationCount === 0 && !get().pendingCompletionCount) return;
       const acknowledgedIds = new Set(
         get()
           .notifications.filter((notification) => !notification.readAt)
@@ -446,7 +448,7 @@ export function createCatalogSlice({
       const intent = sessionRuntime.beginNavigationIntent();
       const notification = get().notifications.find((item) => item.id === id);
       if (!notification) return;
-      await get().markNotificationRead(id);
+      if (notification.kind !== "task.completed") await get().markNotificationRead(id);
       if (!sessionRuntime.navigationIntentIsCurrent(intent)) return;
       await get().selectSession(notification.sessionId, {
         navigationIntent: intent,
@@ -460,7 +462,8 @@ export function createCatalogSlice({
           : {},
       );
       const unread = get().notifications.filter(
-        (item) => item.sessionId === sessionId && !item.readAt,
+        (item) => item.sessionId === sessionId && !item.readAt &&
+          (item.kind !== "task.completed" || visibleNotificationSession(get()) === sessionId),
       );
       for (const item of unread) {
         await get().markNotificationRead(item.id);

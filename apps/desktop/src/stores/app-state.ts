@@ -197,6 +197,10 @@ export type AppState = {
   toasts: ToastItem[];
   notifications: AppNotification[];
   unreadNotificationCount: number;
+  pendingCompletions: AppNotification[];
+  pendingCompletionCount: number;
+  /** Renderer-lifetime acknowledgement; never settles the underlying request. */
+  dismissedNotificationRequests: Record<string, true>;
   page: "chat" | "scheduled" | "plugins" | "settings";
   /** Tab ids come from the shared settings index. */
   settingsTab: SettingsTabId;
@@ -356,6 +360,11 @@ export type AppState = {
   /** Reload contributed work panel views. */
   refreshPluginViews: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
+  refreshNotificationAttention: () => Promise<void>;
+  loadMoreCompletionNotifications: () => Promise<void>;
+  receiveCompletionNotification: (notification: AppNotification) => void;
+  acknowledgeVisibleCompletions: () => Promise<void>;
+  dismissNotificationRequests: (ids: string[]) => void;
   /** Returns true only when this event was accepted as a new durable row. */
   receiveNotification: (notification: AppNotification) => boolean;
   markNotificationRead: (id: string) => Promise<void>;

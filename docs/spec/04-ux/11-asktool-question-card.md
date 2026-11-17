@@ -94,6 +94,21 @@ in the card header, outside that scroller, so they remain reachable. Short
 prompts do not reserve a scrollbar gutter. This behavior also
 applies on narrow screens; the card does not rely on page-level scrolling.
 
+## Notification attention
+
+The bell derives question attention rows from pending ask queues, including
+background sessions. Each displayed multi-question reminder contributes once to
+the shared top-right badge. Opening the list leaves existing rows immediately
+clickable while reconciliation runs in the background. Navigating to the owning
+chat leaves both reminder and badge unchanged until successful whole-request
+submission (including explicit decline/skip) or authoritative cancellation.
+Mark-all-read and clear hide the current reminder from both filters and the badge
+for this renderer lifetime, without changing the pending question card. Drafts,
+toast expiry/dismissal, and navigation never submit an answer; submission failures
+retain the request. Bootstrap/bell reconciliation does not persist drafts or
+resume an ask after a whole-runtime restart. See
+[notification center attention](08-component-spec.md#204-interactions).
+
 ## Request transitions
 
 The question index and draft answers belong to the request, not to the mounted

@@ -1,3 +1,10 @@
+mod pending_completions;
+
+#[cfg(test)]
+mod pending_completion_tests;
+
+pub use pending_completions::list_pending_completions;
+
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde::Serialize;
@@ -96,7 +103,7 @@ pub fn insert_for_terminal_turn(
         params![NOTIFICATION_KEEP],
     )?;
 
-    Ok(Some(Notification {
+    let notification = Notification {
         id,
         kind: kind.to_string(),
         session_id,
@@ -105,7 +112,9 @@ pub fn insert_for_terminal_turn(
         error_code: error_code.map(str::to_string),
         created_at: ms_to_ts(created_at),
         read_at: None,
-    }))
+    };
+    pending_completions::insert(tx, &notification, created_at)?;
+    Ok(Some(notification))
 }
 
 pub fn list(db: &Database, unread_only: bool, limit: i64) -> Result<(Vec<Notification>, i64)> {
@@ -134,22 +143,29 @@ pub fn list(db: &Database, unread_only: bool, limit: i64) -> Result<(Vec<Notific
 }
 
 pub fn mark_read(db: &Database, id: &str) -> Result<bool> {
-    let updated = db
-        .conn()
+    let tx = db.conn().unchecked_transaction()?;
+    let updated = tx
         .prepare_cached("UPDATE notifications SET read_at = COALESCE(read_at, ?1) WHERE id = ?2")?
         .execute(params![now_ms(), id])?;
-    Ok(updated > 0)
+    let acknowledged = pending_completions::acknowledge(&tx, id)?;
+    tx.commit()?;
+    Ok(updated > 0 || acknowledged)
 }
 
 pub fn mark_all_read(db: &Database) -> Result<()> {
-    db.conn()
-        .prepare_cached("UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL")?
+    let tx = db.conn().unchecked_transaction()?;
+    tx.prepare_cached("UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL")?
         .execute(params![now_ms()])?;
+    tx.execute("DELETE FROM pending_completion_notifications", [])?;
+    tx.commit()?;
     Ok(())
 }
 
 pub fn clear(db: &Database) -> Result<()> {
-    db.conn().execute("DELETE FROM notifications", [])?;
+    let tx = db.conn().unchecked_transaction()?;
+    tx.execute("DELETE FROM notifications", [])?;
+    tx.execute("DELETE FROM pending_completion_notifications", [])?;
+    tx.commit()?;
     Ok(())
 }
 

@@ -3035,6 +3035,7 @@ sklm: {
     "longThreadWarning": "Contexte compacté. Les threads longs perdent les détails antérieurs à chaque compactage : démarrez une nouvelle session pour un travail sans rapport."
   },
   "notifications": {
+    ...en.notifications,
     "title": "Notifications",
     "open": "Notifications ouvertes",
     "openUnread": "Notifications ouvertes, {{count}} non lues",

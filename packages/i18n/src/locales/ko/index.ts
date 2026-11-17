@@ -3074,6 +3074,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "컨텍스트가 압축되었습니다. 긴 대화는 압축할 때마다 이전 세부 정보가 줄어드니 관련 없는 작업은 새 세션을 시작하세요.",
   },
   notifications: {
+    ...en.notifications,
     title: "알림",
     open: "알림 열기",
     openUnread: "알림 열기, 읽지 않은 알림 {{count}}개",

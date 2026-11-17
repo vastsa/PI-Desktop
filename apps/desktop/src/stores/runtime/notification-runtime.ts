@@ -1,6 +1,7 @@
 import i18n from "i18next";
 import { api } from "../../lib/api";
 import { playNotificationChime } from "../../lib/notification-sound";
+import { formatNotificationSessionLabel, notificationSessionLabel } from "../../lib/notification-inbox";
 import type { StoreGet } from "../slices/types";
 
 export type InteractivePromptNotifier = (
@@ -13,8 +14,10 @@ export function createInteractivePromptNotifier(
   get: StoreGet,
 ): InteractivePromptNotifier {
   return (sessionId, kind, payload) => {
-    const session = get().sessions.find((item) => item.id === sessionId);
-    const sessionTitle = session?.title || i18n.t("chat.untitledTask");
+    const state = get();
+    const sessionTitle = formatNotificationSessionLabel(
+      notificationSessionLabel(sessionId, state.sessions, state.projectMeta),
+      i18n.t("nav.sessions"), i18n.t("chat.untitledTask"));
     let title = "";
     let body = "";
     if (kind === "ask") {

@@ -92,7 +92,7 @@ export function registerNotificationIpc({
 
   handle(
     IPC.invoke.notificationList,
-    async (input: { unreadOnly?: boolean; limit?: number } = {}) => {
+    async (input: { unreadOnly?: boolean; limit?: number; completionOffset?: number } = {}) => {
       const host = getHost();
       if (!host) throw new Error("host unavailable");
       return host.call("notification.list", input);

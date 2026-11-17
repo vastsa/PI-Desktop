@@ -27,6 +27,9 @@ mod session_mode_migration_tests;
 #[cfg(test)]
 mod market_browse_rpc_tests;
 #[cfg(test)]
+mod notification_rpc_tests;
+
+#[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
 mod review_rpc_tests;
@@ -3657,12 +3660,21 @@ async fn handle_request(
                 .get("limit")
                 .and_then(|value| value.as_i64())
                 .unwrap_or(crate::db::NOTIFICATION_KEEP);
+            let completion_offset = params
+                .get("completionOffset")
+                .and_then(|value| value.as_i64())
+                .unwrap_or(0);
             let st = state.lock().await;
             let (notifications, unread_count) = notifications::list(&st.db, unread_only, limit)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let (pending_completions, pending_completion_count) =
+                notifications::list_pending_completions(&st.db, limit, completion_offset)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({
                 "notifications": notifications,
-                "unreadCount": unread_count
+                "unreadCount": unread_count,
+                "pendingCompletions": pending_completions,
+                "pendingCompletionCount": pending_completion_count
             }))
         }
         "notification.markRead" => {

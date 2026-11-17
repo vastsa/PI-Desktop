@@ -250,7 +250,7 @@ test("notification list refreshes cannot resurrect cleared rows", () => {
     catalogSource.indexOf("markNotificationRead:"),
     catalogSource.indexOf("markAllNotificationsRead:", refreshStart),
   );
-  assert.match(readBlock, /state\.unreadNotificationCount\s*-\s*1/);
+  assert.match(readBlock, /state\.unreadNotificationCount\s*-\s*\(state\.notifications\.some/);
 });
 
 test("plugins can request and send native notifications behind notify permission", () => {

@@ -1049,10 +1049,15 @@
   height: 32px;
 }
 
-.notification-badge {
+.notification-badges {
   position: absolute;
   top: -5px;
   right: -6px;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.notification-badge {
   display: inline-flex;
   min-width: 16px;
   height: 16px;
