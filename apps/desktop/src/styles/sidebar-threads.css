@@ -43,6 +43,16 @@
   white-space: nowrap;
 }
 
+/* Source tags (Pi, Remote) are badges: they never shrink or wrap into stacked
+   words in a narrow sidebar — the title next to them truncates instead. */
+.thread-item-source {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-row);
+  white-space: nowrap;
+}
+
 .thread-item-meta {
   /* The action and date overlap in one slot; opacity keeps its width stable. */
   display: grid;

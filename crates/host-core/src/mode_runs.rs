@@ -21,7 +21,6 @@ mod repository;
 mod return_mode;
 mod snapshot;
 
-pub use budget::validate_goal_budget_setting;
 pub use engine::{
     claim_turn, configure_session_mode, control, open_run, prepare_session_mode, recover,
     reset_goal_input, resolve, settle_turn, start, start_goal, store_session_snapshot, update,

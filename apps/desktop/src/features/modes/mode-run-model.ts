@@ -143,7 +143,6 @@ const MODE_ERROR_KEYS: Record<string, string> = {
   MODE_RUN_ACTIVE: "modes.errors.runActive",
   MODE_NOT_FOUND: "modes.errors.notFound",
   MODE_DEFINITION_INVALID: "modes.errors.definitionInvalid",
-  MODE_ID_RESERVED: "modes.errors.idReserved",
   MODE_ID_INVALID: "modes.errors.idInvalid",
   MODE_REVISION_CONFLICT: "modes.errors.revisionConflict",
   MODE_NOT_AWAITING_APPROVAL: "modes.errors.notAwaitingApproval",

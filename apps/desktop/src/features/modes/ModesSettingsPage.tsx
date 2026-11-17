@@ -36,9 +36,10 @@ const ID_PROBLEM_KEYS: Record<NewModeIdProblem, string> = {
 
 /**
  * Settings → Modes (ADR mode-definitions): every mode in the catalog, the
- * definitions folder, and a source editor. Builtins are read-only and can be
- * duplicated under a new id; user documents are validated while typing and
- * saved or deleted through Electron main.
+ * definitions folder, and a source editor. Every mode is validated while
+ * typing and saved through Electron main. Saving a builtin writes its
+ * override file and Restore default deletes it; user documents can also be
+ * deleted. Any mode can be duplicated under a new id.
  */
 export function ModesSettingsPage() {
   const { t } = useTranslation();
@@ -50,7 +51,9 @@ export function ModesSettingsPage() {
   const [busy, setBusy] = useState(false);
   const readTicket = useRef(0);
   const { armed, setArmed } = useArmedDelete();
-  const editable = !!open && !open.builtin;
+  const editable = !!open;
+  // A builtin's file is its override: deleting it restores the shipped one.
+  const removable = !!open && open.saved && (!open.builtin || !!open.filePath);
   const dirty = !!open && (!open.saved || draft !== open.savedSource);
   const { validation, pending, record } = useModeSourceValidation(open?.id ?? null, draft, editable);
 
@@ -102,14 +105,17 @@ export function ModesSettingsPage() {
   };
 
   const save = async () => {
-    if (!open || open.builtin || busy) return;
+    if (!open || busy) return;
     const source = draft;
     setBusy(true);
     try {
       const next = await modesApi.write({ id: open.id, source });
       if (next) setModeCatalog(next);
+      const filePath = next?.modes.find((entry) => entry.id === open.id && !entry.reserved)?.filePath;
       setOpen((current) =>
-        current?.id === open.id ? { ...current, savedSource: source, saved: true } : current,
+        current?.id === open.id
+          ? { ...current, savedSource: source, saved: true, ...(filePath ? { filePath } : {}) }
+          : current,
       );
       showToast(t("modes.settings.saved"), { variant: "success" });
     } catch (error) {
@@ -122,7 +128,7 @@ export function ModesSettingsPage() {
   };
 
   const remove = async () => {
-    if (!open || open.builtin || busy) return;
+    if (!open || !removable || busy) return;
     if (armed !== open.id) {
       setArmed(open.id);
       return;
@@ -132,10 +138,20 @@ export function ModesSettingsPage() {
     try {
       const next = await modesApi.remove(open.id);
       if (next) setModeCatalog(next);
-      readTicket.current += 1;
-      setOpen(null);
-      setDraft("");
-      showToast(t("modes.settings.deleted"), { variant: "success" });
+      const ticket = ++readTicket.current;
+      if (open.builtin) {
+        // Show the shipped definition the builtin is back to.
+        const document = await modesApi.read(open.id);
+        if (ticket === readTicket.current) {
+          setOpen({ id: document.id, builtin: true, savedSource: document.source, saved: true });
+          setDraft(document.source);
+        }
+        showToast(t("modes.settings.restored"), { variant: "success" });
+      } else {
+        setOpen(null);
+        setDraft("");
+        showToast(t("modes.settings.deleted"), { variant: "success" });
+      }
     } catch (error) {
       showToast(modeErrorMessage(t, error), { variant: "error" });
     } finally {
@@ -198,6 +214,7 @@ export function ModesSettingsPage() {
                   </span>
                   <span className="modes-settings-row-badges">
                     <Badge>{t(entry.source === "builtin" ? "modes.settings.builtin" : "modes.settings.user")}</Badge>
+                    {entry.customized ? <Badge>{t("modes.settings.customized")}</Badge> : null}
                     {entry.staged ? <Badge>{t("modes.settings.staged")}</Badge> : null}
                     {entry.reserved ? (
                       <Badge tone="warning">{t("modes.settings.reserved")}</Badge>
@@ -221,9 +238,11 @@ export function ModesSettingsPage() {
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => setIdForm({ purpose: "duplicate", value: "" })}>
                   {t("modes.settings.duplicate")}
                 </Button>
-                {editable && open.saved ? (
+                {removable ? (
                   <Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove()}>
-                    {armed === open.id ? t("modes.settings.deleteConfirm") : t("modes.settings.delete")}
+                    {open.builtin
+                      ? t(armed === open.id ? "modes.settings.restoreConfirm" : "modes.settings.restore")
+                      : t(armed === open.id ? "modes.settings.deleteConfirm" : "modes.settings.delete")}
                   </Button>
                 ) : null}
                 {editable ? (
@@ -233,11 +252,10 @@ export function ModesSettingsPage() {
                 ) : null}
               </div>
             </div>
-            {open.builtin ? <p className="modes-settings-hint">{t("modes.settings.readOnly")}</p> : null}
+            {open.builtin ? <p className="modes-settings-hint">{t("modes.settings.builtinHint", { id: open.id })}</p> : null}
             <Textarea
               className="modes-settings-source"
               value={draft}
-              readOnly={open.builtin}
               aria-label={t("modes.settings.source")}
               onChange={(event) => setDraft(event.target.value)}
             />

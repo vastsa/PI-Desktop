@@ -24,9 +24,14 @@ global-only discovery (D202).
 
 `~/.pi/modes/<name>/mode.md` holds YAML frontmatter and a Markdown body that is the
 shared system prompt, with optional artifact templates in `templates/`; builtins
-`agent`, `plan` and `goal` use the same format, and their reserved ids make a user
-document using one reported in settings and not loaded. Discovery is global only, and
-settings re-read the directory on each catalog load. A simple mode is a prompt and a
+`agent`, `plan` and `goal` use the same format. A document in a builtin's own folder
+(`~/.pi/modes/goal/mode.md`) overrides that builtin: Settings → Modes edits it in
+place and Restore default deletes the file. An override must keep the shape the
+builtin's id-keyed behavior relies on (Agent and Plan stay simple at `agent` and
+`contract`; Goal stays staged and returns to `agent`); an invalid one is reported and
+the shipped definition stays in effect. Any other document that claims a builtin id
+is reported and not loaded. Discovery is global only, and settings re-read the
+directory on each catalog load. A simple mode is a prompt and a
 permission level, without stages or a run:
 
 ```markdown
@@ -169,15 +174,18 @@ stage, gate index, action, result, evidence and timestamp, and existing
 
 ### 9. Builtins and compatibility
 
-- `agent`: a simple mode.
+- `agent`: a simple mode. Agent and Plan prompts come from the runtime builtins unless
+  an override is in effect, in which case its definition is sent with the turn; the
+  Host never needs a snapshot for either.
 - `plan`: a simple `contract` mode keeping the ADR 0053 proposal pipeline unchanged
   (EnterPlanMode, SubmitPlan, approval, queued execution) with the same behavior, tool
   names and stored approvals; a staged Plan would rewrite a released approval flow.
 - `goal`: stage `work` (`agent`, `loop`, artifact `goal` from a template seeded with
   `{{run.input}}`, `inject` on compaction, gate `require: artifact:goal` with headings
   Objective, Acceptance criteria and Evidence), completion staying a model self-report,
-  with a new run taking its budget from the valid `goalBudget` setting or else the
-  definition. The legacy `EnterGoalMode` / `SubmitGoal` negotiation is no longer offered
+  with a new run taking the definition budget. The default budget is edited in the
+  Goal override file; there is no separate settings value, and an open run's budget
+  is edited through `modes.update`. The legacy `EnterGoalMode` / `SubmitGoal` negotiation is no longer offered
   and the Host rejects new proposals with `PLAN_GOAL_ACTIVATION_DISABLED`, while old
   approval rows stay readable; accepted Goal input returns the composer preference to
   Agent without changing the run, its snapshot or its claim.

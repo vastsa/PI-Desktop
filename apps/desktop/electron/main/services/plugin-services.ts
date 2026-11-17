@@ -60,6 +60,7 @@ import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
 import { createPluginSessionContext } from "./plugin-session-context";
 import { createPluginProjectLister } from "./plugin-projects";
+import { createPluginSessionProjectResolver } from "./plugin-session-project";
 import { createComposerSuggestionRelay } from "./composer-suggestion";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
@@ -748,6 +749,7 @@ export function createPluginServices({
      * runtime has not launched yet, which falls back to the visible workspace.
      */
     getWorkspacePathForSession: (sessionId) => sessionProjects.get(sessionId) ?? null,
+    resolveSessionProjectPath: createPluginSessionProjectResolver(getHost),
     agentExtensionsChanged: () =>
       sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
     /** `pi.session.getActive`: the selected session as the shell shows it. */
@@ -757,6 +759,12 @@ export function createPluginServices({
      * and revealing a view stay inside the project the plugin was activated in.
      */
     isPluginActiveInProject: (pluginId) => isPluginActiveInProject(pluginId),
+    /**
+     * #2377: the project-aware form backs the desktop.control session-read
+     * gate, so a scoped plugin's `session/list` (including the reads a
+     * background service makes) never crosses its activation scope.
+     */
+    pluginActiveInProject,
     /**
      * `pi.ui.revealView`: the runtime validated the view and the session; the
      * shell owns work-panel tabs, so it is the surface that opens the tab.
