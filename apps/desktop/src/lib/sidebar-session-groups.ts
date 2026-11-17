@@ -1,6 +1,6 @@
 import type { SessionSummary } from "@pi-desktop/shared";
 import { isRemoteSession } from "./remote-session-safety.ts";
-import type { ProjectMeta, SessionMeta } from "./sidebar-preferences";
+import type { ProjectMeta, SessionMeta, SessionSort } from "./sidebar-preferences";
 
 export function normalizeProjectPath(projectPath?: string | null): string | null {
   const value = projectPath?.trim();
@@ -38,6 +38,77 @@ export function projectPathsForNewSessions(
     if (path) paths.add(path);
   }
   return [...paths];
+}
+
+export type SessionDisplaySort = Exclude<SessionSort, "manual">;
+export type SessionTaskTitle = (title?: string | null) => string;
+
+export function optionalTimestamp(value?: string): number | null {
+  const parsed = value ? Date.parse(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function compareOptionalDate(
+  a: number | null,
+  b: number | null,
+  descending: boolean,
+): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return descending ? b - a : a - b;
+}
+
+export function compareSessionsForDisplay({
+  sort,
+  sessionMeta,
+  taskTitle,
+  emptySessionId,
+}: {
+  sort: SessionDisplaySort;
+  sessionMeta: Record<string, SessionMeta>;
+  taskTitle: SessionTaskTitle;
+  emptySessionId?: string;
+}): (a: SessionSummary, b: SessionSummary) => number {
+  return (a, b) => {
+    const aMeta = sessionMeta[a.id] ?? {};
+    const bMeta = sessionMeta[b.id] ?? {};
+    const archiveOrder =
+      Number(sessionArchived(a, aMeta)) - Number(sessionArchived(b, bMeta));
+    if (archiveOrder !== 0) return archiveOrder;
+    const pinOrder = Number(sessionPinned(b, bMeta)) - Number(sessionPinned(a, aMeta));
+    if (pinOrder !== 0) return pinOrder;
+    if (sort === "name") {
+      const byName = taskTitle(a.title).localeCompare(taskTitle(b.title), undefined, {
+        sensitivity: "base",
+      });
+      if (byName !== 0) return byName;
+    } else if (sort === "oldest") {
+      const byCreated = compareOptionalDate(
+        optionalTimestamp(a.createdAt),
+        optionalTimestamp(b.createdAt),
+        false,
+      );
+      if (byCreated !== 0) return byCreated;
+    } else if (sort === "created") {
+      const byCreated = compareOptionalDate(
+        optionalTimestamp(a.createdAt),
+        optionalTimestamp(b.createdAt),
+        true,
+      );
+      if (byCreated !== 0) return byCreated;
+    } else {
+      const emptyOrder = Number(b.id === emptySessionId) - Number(a.id === emptySessionId);
+      if (emptyOrder !== 0) return emptyOrder;
+      const byRecent = compareOptionalDate(
+        optionalTimestamp(a.updatedAt),
+        optionalTimestamp(b.updatedAt),
+        true,
+      );
+      if (byRecent !== 0) return byRecent;
+    }
+    return a.id.localeCompare(b.id);
+  };
 }
 
 export function groupSidebarSessions(

@@ -676,10 +676,13 @@ visually distinct from list content.
   respect reduced motion.
 - Right-click the `Projects` heading or empty project-list chrome: open a
   single-item create menu that runs the same Create project dialog action
-- Click project `+`: activate that project, then select its most recent empty
-  session or create a durable empty session bound to its exact path
+- Click project `+`: activate that project, reuse its selected ordinary empty
+  session first, then consider its most recent session or create a durable empty
+  session bound to its exact path. Background activity cannot displace that
+  selected empty row in recent sort or make repeated clicks create another slot.
 - Click the `Sessions` heading message-plus action: clear the workspace, then
-  select the most recent empty temporary session or create a durable empty one
+  reuse the selected empty temporary session first, then consider the most recent
+  temporary session or create a durable empty one
 - Sessions and Projects heading actions reveal together when their toolbar is
   hovered or keyboard-focused; the controls remain keyboard-reachable while
   visually hidden at rest

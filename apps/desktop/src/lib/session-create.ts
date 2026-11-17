@@ -1,4 +1,5 @@
 import { isAutomationSession } from "./session-origin";
+import type { SessionSummary, UiMessage } from "@pi-desktop/shared";
 
 /**
  * New Task empty-slot reuse (ADR 0113) and first-frame empty reveal (ADR 0154).
@@ -14,6 +15,22 @@ export const EMPTY_SESSION_WINDOW = {
   messageStart: 0,
   hasMoreBefore: false,
 } as const;
+
+/** Keep the selected unsent task stable while other sessions run. */
+export function activeEmptySessionId(state: {
+  activeSessionId?: string;
+  sessions: SessionSummary[];
+  messages: UiMessage[];
+  runningSessions: Record<string, boolean>;
+}): string | undefined {
+  if (!state.activeSessionId) return undefined;
+  const session = state.sessions.find(row => row.id === state.activeSessionId);
+  if (!session || session.messageCount !== 0) return undefined;
+  return sessionIsReusableEmpty(session, {
+    running: state.runningSessions[session.id] === true,
+    liveMessageCount: state.messages.length,
+  }) ? session.id : undefined;
+}
 
 export function sessionIsReusableEmpty(
   session: { messageCount: number; worktree?: unknown; scheduledRun?: boolean },

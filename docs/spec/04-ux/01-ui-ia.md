@@ -495,11 +495,16 @@ shared capability contract:
   project. A temporary session shows dedicated temporary-chat copy with no
   project underline or switcher; and with no project open the generic welcome
   title stands.
-- New task resolves the current project or temporary group by its most recent
-  session: if that session has `messageCount = 0`, it is selected and reused;
+- New task first reuses the selected ordinary empty session in the requested
+  project or temporary group, even if a background run has a newer update
+  timestamp. Otherwise it resolves the group by its most recent session: if
+  that session has `messageCount = 0`, it is selected and reused;
   otherwise a durable empty session is created immediately and appears in the
   sidebar. Repeated clicks therefore keep one empty slot per visible group;
   an empty slot remains persisted until the user deletes or archives it.
+  In recent sort, the selected empty session precedes ordinary unpinned history
+  until it has live/durable messages, starts running, or is deselected. Pins,
+  archives, and explicit name/creation sorts retain their existing precedence.
 
 ## 6. Keyboard map (IA level)
 

@@ -17,6 +17,7 @@ import {
 import { getSessionMessageSnapshot, getSessionToolMessagePositions } from "../../lib/session-transcript-updates";
 import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
 import { isAutomationSession } from "../../lib/session-origin";
+import { activeEmptySessionId } from "../../lib/session-create";
 import { sessionIsArchived, type SessionMeta } from "../../lib/sidebar-preferences";
 import {
   normalizeProjectPath,
@@ -414,21 +415,25 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     navigationIntentIsCurrent: (intent) => navigationIntents.isCurrent(intent),
     newSessionScopeKey: (projectPath) =>
       normalizeProjectPath(projectPath) ?? "<temporary>",
-    latestSessionInScope: (sessions, projectPath, sessionMeta) =>
-      sessions
+    latestSessionInScope: (sessions, projectPath, sessionMeta) => {
+      const emptySessionId = activeEmptySessionId(get());
+      return sessions
         .filter(
           (session) =>
             !isAutomationSession(session) &&
             sessionMatchesProject(session, projectPath),
         )
         .sort((a, b) => {
+          const emptyOrder = Number(b.id === emptySessionId) - Number(a.id === emptySessionId);
+          if (emptyOrder !== 0) return emptyOrder;
           const aUpdated = Date.parse(a.updatedAt);
           const bUpdated = Date.parse(b.updatedAt);
           const aTime = Number.isFinite(aUpdated) ? aUpdated : 0;
           const bTime = Number.isFinite(bUpdated) ? bUpdated : 0;
           return bTime - aTime || b.id.localeCompare(a.id);
         })
-        .find((session) => !sessionIsArchived(session.id, sessionMeta)),
+        .find((session) => !sessionIsArchived(session.id, sessionMeta));
+    },
     liveMessageCountForSession: (id, state) =>
       state.activeSessionId === id
         ? state.messages.length

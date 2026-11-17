@@ -1001,23 +1001,32 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   (`app-store-sidebar.test.mjs`, `composer-send-state.test.mjs`,
   `session-create.test.mjs`); full UI scenario Draft
 
-## E2E-011e: Empty-session reuse is scoped to the latest session
+## E2E-011e: Empty-session reuse preserves the selected slot during background activity
 
 - **Preconditions**: One project group contains an older empty session and a
-  newer session with messages; a separate project and the Temporary group are
-  available.
+  newer session with messages, with the non-empty session selected; a separate
+  project and the Temporary group are available.
 - **Steps**: 1) Click New Task in the first project group. 2) Confirm the new
   row is created even though the older empty session remains. 3) Click New Task
-  again before sending. 4) Repeat in the second project and Temporary group.
+  again before sending. 4) Keep an older conversation running, allow it to update
+  after the new empty row was created, and type without sending. 5) Click New Task
+  repeatedly, then send the draft and invoke New Task again. 6) Repeat in the
+  second project and Temporary group; check pins and explicit name/creation sorts.
 - **Expected**: The first click creates a new durable row because only the
-  latest session is considered and it is non-empty. The second click reuses
+  latest session is considered when no empty slot is selected and it is non-empty.
+  The second click reuses
   that newly created empty row. The older empty row remains untouched, while
   each other group gets its own independent empty-slot decision.
+  Background updates leave the selected empty row first among unpinned recent
+  history and repeated New Task creates no duplicate. Sending releases this
+  priority and permits the next empty slot. The selected transcript and unsent
+  text remain intact. Pins, archives, and explicit sorts retain their precedence.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, `04-ux/01-ui-ia.md`,
   `04-ux/08-component-spec.md`
 - **Acceptance**: C (session creation and grouping), F (persistence)
 - **Milestone**: M2
-- **Status**: Source-level regression covered; full UI scenario Draft
+- **Status**: Deterministic store/ordering regression covered in
+  `selected-empty-session.test.mjs`; full UI scenario Draft
 
 ## E2E-012b: Project memory persists only within its project
 

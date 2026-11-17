@@ -35,7 +35,9 @@ builtin command contracts.
   palette results and are not renderer dispatch cases; plugin commands remain
   independently discoverable.
 - `New Task` uses the current project or temporary group. It selects the
-  group's most recent empty session when present; otherwise it reveals the
+  selected ordinary empty session in that group before considering the group's
+  most recent session. Background activity cannot invalidate that selected slot.
+  When the most recent session is empty it is reused; otherwise it reveals the
   empty home on the first frame and creates the durable empty session. The
   action is idempotent within a group.
 - `Compact Conversation Context` is available while the active session is idle;

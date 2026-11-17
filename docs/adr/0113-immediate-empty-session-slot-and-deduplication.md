@@ -17,7 +17,9 @@ define emptiness, but the host already stores the message count in
 
 ## Decision
 
-New Task sorts the group's non-archived sessions by `updatedAt` descending. If the
+New Task first prefers the selected ordinary empty session in the requested group,
+then sorts the remaining non-archived sessions by `updatedAt` descending. This
+2026-11-17 correction keeps background run updates from invalidating that slot. If the
 latest is empty — `messageCount = 0` with no live renderer rows, running turn, or
 submitted draft — the renderer selects it and reveals its transcript on the first
 frame, treating a click on the active row as a no-op; otherwise it reveals the
@@ -36,7 +38,12 @@ only explicit New Task creates or reuses the durable slot.
 - New sessions are visible and selectable before the first message, and repeated
   clicks in one group are idempotent while groups stay independent.
 - Empty sessions persist until deleted or archived, and an older empty session
-  can remain when the newest session in the group is non-empty.
+  can remain when the newest session in the group is non-empty and that older
+  empty session is not selected.
+- In recent sidebar sort, the selected ordinary empty slot precedes unpinned
+  history until it has live/durable messages, starts running, or is deselected.
+  Pins, archives and explicit name/creation sorts keep their precedence. No
+  timestamp is rewritten.
 - Protocol v9 gains one additive summary field; storage schema v11 and host
   ownership are unchanged.
 

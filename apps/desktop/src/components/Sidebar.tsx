@@ -31,6 +31,8 @@ import { useSessionHoverCard } from "../features/sessions/useSessionHoverCard";
 import { isDefaultSessionTitle, useAppStore } from "../stores/app-store";
 import {
   getGlobalPinnedSessions,
+  compareOptionalDate,
+  compareSessionsForDisplay,
   normalizeProjectPath,
   sessionArchived,
   sessionPinned,
@@ -40,6 +42,7 @@ import {
   updateProjectSessionExpansion,
 } from "../lib/sidebar-project-sessions";
 import { listableSessions } from "../lib/session-origin";
+import { activeEmptySessionId } from "../lib/session-create";
 import {
   composerDropItems,
   hasComposerFileDrag,
@@ -186,11 +189,6 @@ function timestamp(value?: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function optionalTimestamp(value?: string): number | null {
-  const parsed = value ? Date.parse(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function projectMetaFor(
   path: string,
   projectMeta: Record<string, ProjectMeta>,
@@ -227,17 +225,6 @@ function lastSessionDate(
   return values.length ? Math.max(...values) : null;
 }
 
-function compareOptionalDate(
-  a: number | null,
-  b: number | null,
-  descending: boolean,
-): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return descending ? b - a : a - b;
-}
-
 export function Sidebar({
   onToggleSidebar,
   sidebarToggleShortcut,
@@ -262,6 +249,7 @@ export function Sidebar({
   const { t, i18n } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const emptySessionId = useAppStore(activeEmptySessionId);
   const selectingSessionId = useAppStore((s) => s.selectingSessionId);
   const workspace = useAppStore((s) => s.workspace);
   const openProjects = useAppStore((s) => s.openProjects);
@@ -701,42 +689,10 @@ export function Sidebar({
     return candidates;
   }, [sessions, showArchived, sessionMeta]);
 
-  const compareSessions = useCallback((a: SessionSummary, b: SessionSummary) => {
-    const aMeta = sessionMeta[a.id] ?? {};
-    const bMeta = sessionMeta[b.id] ?? {};
-    const archiveOrder = Number(sessionArchived(a, aMeta)) - Number(sessionArchived(b, bMeta));
-    if (archiveOrder !== 0) return archiveOrder;
-    const pinOrder = Number(sessionPinned(b, bMeta)) - Number(sessionPinned(a, aMeta));
-    if (pinOrder !== 0) return pinOrder;
-    if (displaySessionSort === "name") {
-      const byName = taskTitle(a.title).localeCompare(taskTitle(b.title), undefined, {
-        sensitivity: "base",
-      });
-      if (byName !== 0) return byName;
-    } else if (displaySessionSort === "oldest") {
-      const byCreated = compareOptionalDate(
-        optionalTimestamp(a.createdAt),
-        optionalTimestamp(b.createdAt),
-        false,
-      );
-      if (byCreated !== 0) return byCreated;
-    } else if (displaySessionSort === "created") {
-      const byCreated = compareOptionalDate(
-        optionalTimestamp(a.createdAt),
-        optionalTimestamp(b.createdAt),
-        true,
-      );
-      if (byCreated !== 0) return byCreated;
-    } else {
-      const byRecent = compareOptionalDate(
-        optionalTimestamp(a.updatedAt),
-        optionalTimestamp(b.updatedAt),
-        true,
-      );
-      if (byRecent !== 0) return byRecent;
-    }
-    return a.id.localeCompare(b.id);
-  }, [displaySessionSort, sessionMeta, taskTitle]);
+  const compareSessions = useCallback(
+    compareSessionsForDisplay({ sort: displaySessionSort, sessionMeta, taskTitle, emptySessionId }),
+    [displaySessionSort, sessionMeta, taskTitle, emptySessionId],
+  );
 
   const pinnedSessions = useMemo(
     () => getGlobalPinnedSessions(filtered, sessionMeta, projectMeta, showArchived)
