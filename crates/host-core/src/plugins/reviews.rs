@@ -606,6 +606,9 @@ pub(crate) fn get_json_limited(url: &str, limit: usize, what: &str) -> Result<(u
         "--show-error".into(),
         "--max-time".into(),
         REVIEW_TIMEOUT_SECONDS.to_string(),
+        // The center sits behind a compressing CDN; JSON shrinks several-fold.
+        // The size check below runs on the decoded body.
+        "--compressed".into(),
         "--max-filesize".into(),
         limit.to_string(),
         "--output".into(),
