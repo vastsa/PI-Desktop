@@ -11,6 +11,7 @@ export const enEntries: ChangelogEntry[] = [
       "The context ring updates to the compacted estimate as soon as manual or automatic compaction finishes.",
       "With a Chinese IME, slash commands wait for composition to commit and preserve the draft instead of inserting a duplicate slash.",
       "Regenerated prompts keep their position after the latest reply when their archive finishes outside the loaded history.",
+      "Browse the plugin marketplace page by page, sort by recommended, popular, newest, or name, and see how many plugins match each category; the last saved catalog answers when the plugin center is unreachable.",
     ],
   },
   {

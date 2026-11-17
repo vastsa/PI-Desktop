@@ -20,6 +20,7 @@ pub(crate) const MAX_PACKAGE_FILES: usize = 2000;
 mod device;
 mod install;
 mod manifest;
+pub(crate) mod market_browse;
 pub mod marketplace;
 mod model;
 mod permissions;

@@ -272,6 +272,11 @@ impl PluginManager {
 
     pub fn refresh_market(&self, force: bool) -> Result<Value> {
         let catalog = self.refresh_catalog_from_remote(force)?;
+        // A refresh the user asked for must not be answered by a page cached
+        // before it.
+        if force {
+            super::market_browse::clear_browse_cache();
+        }
         Ok(json!({
             "providerId": catalog.provider_id,
             "name": catalog.name,
@@ -298,7 +303,7 @@ impl PluginManager {
     /// A snapshot left by a different source is skipped rather than deleted,
     /// so its package URLs and checksums cannot be paired with the official
     /// catalog.
-    fn load_cached_catalog(&self) -> Result<MarketCatalogFile> {
+    pub(crate) fn load_cached_catalog(&self) -> Result<MarketCatalogFile> {
         if self.cached_catalog_matches_source(&self.market_source_url()) {
             if let Ok(raw) = fs::read_to_string(self.catalog_path()) {
                 if let Ok(catalog) = serde_json::from_str::<MarketCatalogFile>(&raw) {
@@ -362,11 +367,12 @@ impl PluginManager {
 
     pub fn market_get(&self, plugin_id: &str) -> Result<MarketPluginDetail> {
         let catalog = self.load_catalog()?;
-        let mut entry = catalog
-            .plugins
-            .into_iter()
-            .find(|p| p.id == plugin_id)
-            .ok_or_else(|| anyhow!("PLUGIN_NOT_FOUND: {plugin_id}"))?;
+        // A card from a remote page can be newer than the snapshot; its entry
+        // is what the user just clicked, so the detail reads it from there.
+        let mut entry =
+            super::market_browse::cached_browse_entry(&self.market_source_url(), plugin_id)
+                .or_else(|| catalog.plugins.into_iter().find(|p| p.id == plugin_id))
+                .ok_or_else(|| anyhow!("PLUGIN_NOT_FOUND: {plugin_id}"))?;
         entry
             .versions
             .sort_by(|a, b| compare_plugin_versions(&b.version, &a.version));

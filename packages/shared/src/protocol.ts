@@ -435,6 +435,7 @@ export const IPC = {
     subagentReveal: "pi-desktop/subagent/reveal",
     marketRefresh: "pi-desktop/market/refresh",
     marketSearch: "pi-desktop/market/search",
+    marketBrowse: "pi-desktop/market/browse",
     marketGetDetail: "pi-desktop/market/getDetail",
     marketInstall: "pi-desktop/market/install",
     marketCheckUpdates: "pi-desktop/market/checkUpdates",

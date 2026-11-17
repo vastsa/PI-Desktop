@@ -997,6 +997,154 @@
   color: var(--ds-text-primary);
 }
 
+/* Browse bar: category chips on the left, sort pills on the right. */
+.plugins-browse-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+}
+
+.plugins-browse-bar > .plugins-filters {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.plugins-filter-count {
+  margin-left: 6px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.plugins-filter.active .plugins-filter-count {
+  color: var(--ds-text-secondary);
+}
+
+.plugins-sort {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: var(--plugins-tile);
+}
+
+.plugins-sort-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  white-space: nowrap;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-sort-btn:hover {
+  color: var(--ds-text-primary);
+}
+
+.plugins-sort-btn.active {
+  background: var(--plugins-raised);
+  color: var(--ds-text-primary);
+  box-shadow: var(--plugins-raised-shadow);
+}
+
+/* Result line sits close under the bar it describes. */
+.plugins-browse-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -12px;
+}
+
+.plugins-source-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-3xs);
+  cursor: default;
+}
+
+/* A page being replaced stays readable but visibly settling. */
+.plugins-card-grid.is-refreshing {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: -4px;
+}
+
+.plugins-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--plugins-tile);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-pager-btn:hover:not(:disabled) {
+  background: var(--plugins-tile-hover);
+  color: var(--ds-text-primary);
+}
+
+.plugins-pager-btn.active {
+  background: var(--plugins-raised);
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium-plus);
+  box-shadow: var(--plugins-raised-shadow);
+}
+
+.plugins-pager-btn:disabled:not(.active) {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.plugins-pager-gap {
+  min-width: 20px;
+  color: var(--ds-text-muted);
+  text-align: center;
+}
+
+.plugins-pager-status {
+  margin-left: 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugins-card-grid.is-refreshing,
+  .plugins-sort-btn,
+  .plugins-pager-btn {
+    transition: none;
+  }
+}
+
 .plugins-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
