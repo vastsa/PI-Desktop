@@ -2511,6 +2511,7 @@ sklm: {
     marketSource: "来源：{{url}}",
     marketLoading: "正在加载插件市场…",
     marketEmpty: "没有匹配的插件",
+    publisher: "发布者 {{id}}",
     browseTotal: "共 {{count}} 个插件",
     sortLabel: "排序",
     sortRecommended: "推荐",

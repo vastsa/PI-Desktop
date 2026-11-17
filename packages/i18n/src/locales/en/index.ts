@@ -2536,6 +2536,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     marketSource: "Source: {{url}}",
     marketLoading: "Loading marketplace…",
     marketEmpty: "No plugins matched your search",
+    publisher: "Publisher {{id}}",
     browseTotal: "{{count}} plugins",
     sortLabel: "Sort",
     sortRecommended: "Recommended",

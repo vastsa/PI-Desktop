@@ -2526,6 +2526,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     marketSource: "Kaynak: {{url}}",
     marketLoading: "Mağaza yükleniyor…",
     marketEmpty: "Aramanızla eşleşen eklenti yok",
+    publisher: "Yayıncı {{id}}",
     browseTotal: "{{count}} eklenti",
     sortLabel: "Sırala",
     sortRecommended: "Önerilen",

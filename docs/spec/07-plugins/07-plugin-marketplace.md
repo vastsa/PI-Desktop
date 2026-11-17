@@ -559,6 +559,11 @@ This is a renderer-only presentation choice; plugin permissions and activation
 contracts are unchanged.
 
 The Detail sheet must show:
+- The publisher account the catalog names, beside the display author — one is
+  who wrote the plugin, the other is who the platform recorded
+- The published readme, rendered as Markdown, and the publisher's safety notes
+  as a callout; both come from the catalog document, so a client that drops
+  them in parsing shows a plugin with no description of itself
 - Permissions, grouped and labeled by risk tier
 - Ratings summary between permissions and versions: the one-decimal average,
   the rating count, and the good / medium / bad split; an unavailable centre

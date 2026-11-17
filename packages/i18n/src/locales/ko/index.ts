@@ -2532,6 +2532,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     marketSource: "출처: {{url}}",
     marketLoading: "마켓플레이스 불러오는 중…",
     marketEmpty: "검색과 일치하는 플러그인 없음",
+    publisher: "게시자 {{id}}",
     browseTotal: "플러그인 {{count}}개",
     sortLabel: "정렬",
     sortRecommended: "추천",
