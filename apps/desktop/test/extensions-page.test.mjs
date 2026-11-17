@@ -143,7 +143,7 @@ test("the client hides development-only demo plugins from marketplace results", 
   assert.match(pageSrc, /!plugin\.id\.startsWith\("demo\."\)/);
   // The host already drops samples from a page; the client filter stays as a
   // second line for a snapshot or center that does not.
-  assert.match(pageSrc, /\(result\?\.plugins \?\? \[\]\)\.filter\(isClientVisibleMarketPlugin\)/);
+  assert.match(pageSrc, /answer\.plugins\.filter\(isClientVisibleMarketPlugin\)/);
 });
 
 test("Settings exposes three independent Agent capability destinations", () => {

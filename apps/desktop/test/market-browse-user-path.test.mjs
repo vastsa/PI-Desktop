@@ -9,13 +9,14 @@ import { repositoryRoot, resolveElectronBinary } from "../../../scripts/e2e/boot
 import { loadStyles } from "./helpers/styles.mjs";
 
 /*
- * The marketplace browse path as a user drives it: open the tab, page forward,
- * re-order, filter by category, then type a search — and a slow answer for an
- * earlier search must not replace the answer for the latest one.
+ * The marketplace browse path as a user drives it: open the tab, scroll to the
+ * end so the next pages load on their own, re-order, filter by category, retry
+ * a page that failed, then type a search — and an answer for something the user
+ * has since left (a first page or a next page) must never land in the list.
  *
  * The real Extensions page runs in a sandboxed Electron renderer. Only the
  * preload bridge is stubbed: `market.browse` is answered by a small fake
- * center that pages thirty plugins, so every request the page sends is the
+ * center that pages sixty plugins, so every request the page sends is the
  * contract the host receives.
  */
 
@@ -37,7 +38,7 @@ await i18n.use(initReactI18next).init({ lng: "en", keySeparator: false,
   resources: { en: { translation: flattenCatalog(catalogs.en) } }, interpolation: { escapeValue: false } });
 const label = (key, options) => i18n.t("plugins." + key, options);
 
-const catalog = Array.from({ length: 30 }, (_, i) => ({
+const catalog = Array.from({ length: 60 }, (_, i) => ({
   id: "acme.plugin-" + String(i + 1).padStart(2, "0"),
   name: "Plugin " + (i + 1),
   description: "Fixture plugin " + (i + 1),
@@ -50,13 +51,16 @@ const catalog = Array.from({ length: 30 }, (_, i) => ({
   downloads: 100 - i,
 }));
 const browseCalls = [];
-const held = new Map();
+let hold = null;
+let failNext = null;
 function answer(input) {
   const q = (input.query || "").toLowerCase();
   const matches = catalog.filter((p) => !q || p.name.toLowerCase().includes(q));
   const counts = new Map();
   for (const p of matches) for (const c of p.categories) counts.set(c, (counts.get(c) || 0) + 1);
   const filtered = matches.filter((p) => !input.category || p.categories.includes(input.category));
+  if (input.sort === "popular") filtered.sort((a, b) => b.downloads - a.downloads);
+  else if (input.sort === "name") filtered.sort((a, b) => a.name.localeCompare(b.name));
   const size = input.pageSize || 24;
   const page = input.page || 1;
   return {
@@ -73,8 +77,8 @@ window.piDesktop = { platform: "darwin", channels: IPC,
     let data;
     if (channel === IPC.invoke.marketBrowse) {
       browseCalls.push(JSON.parse(JSON.stringify(input)));
-      const gate = held.get(input.query);
-      if (gate) await gate.promise;
+      if (hold && hold.match(input)) { const gate = hold; hold = null; await gate.promise; }
+      if (failNext && failNext(input)) { failNext = null; return { ok: false, error: { code: "PLUGIN_NETWORK", message: "center unreachable" } }; }
       data = answer(input);
     } else if (channel === IPC.invoke.listProjects) data = { projects: [] };
     else if (channel === IPC.invoke.marketCheckUpdates) data = { updates: [], plugins: [] };
@@ -111,46 +115,85 @@ const settled = () => !document.querySelector("#plugins-panel-market[aria-busy]"
 
 createRoot(document.getElementById("root")).render(React.createElement(PluginsPage));
 
+const scrollEnd = async () => {
+  const end = document.querySelector(".plugins-load-more");
+  check(end, "end of list missing");
+  end.scrollIntoView({ block: "end" });
+  await frame();
+};
+const loaded = () => document.querySelector(".plugins-load-more .plugins-result-count")?.textContent ?? "";
+const gate = (match) => { let release; hold = { match, promise: new Promise((r) => { release = r; }) }; return () => release(); };
+const pages = (filter) => browseCalls.filter(filter).map((c) => c.page);
+
 window.marketProbe = async () => {
-  await until(() => cards().length === 24 && settled(), "first page did not render");
+  await until(() => cards().length >= 24 && settled(), "first page did not render");
   const first = browseCalls[0];
   check(first.page === 1 && first.pageSize === 24 && first.sort === "recommended", "first request " + JSON.stringify(first));
   check(Number.isInteger(first.seed) && first.seed > 0, "no session seed");
-  check(document.body.textContent.includes(label("browseTotal", { count: 30 })), "total missing");
-  check(document.querySelector('[aria-current="page"]')?.textContent === "1", "page one not current");
+  check(document.body.textContent.includes(label("browseTotal", { count: 60 })), "total missing");
+  check(!document.querySelector(".plugins-pager"), "a pager must not render");
 
-  await click(document.querySelector('button[aria-label="' + label("pageNext") + '"]'), "next page unavailable");
-  await until(() => cards().length === 6 && settled(), "second page did not render");
-  check(lastCall().page === 2 && lastCall().seed === first.seed, "page two request " + JSON.stringify(lastCall()));
-  check(document.querySelector('[aria-current="page"]')?.textContent === "2", "page two not current");
+  // Scrolling to the end loads the remaining pages on its own, in order.
+  for (let i = 0; i < 4 && cards().length < 60; i++) {
+    await scrollEnd();
+    await until(() => !document.querySelector(".plugins-load-more button[disabled]"), "next page did not settle");
+  }
+  await until(() => cards().length === 60, "pages did not append: " + cards().length);
+  check(new Set(cards()).size === 60, "a plugin appeared twice");
+  check(pages((c) => c.sort === "recommended").join() === "1,2,3", "pages " + pages((c) => c.sort === "recommended"));
+  check(browseCalls.every((c) => c.seed === first.seed), "seed changed while scrolling");
+  check(loaded() === label("loadedCount", { count: 60, total: 60 }), "loaded count " + loaded());
+  check(!document.querySelector(".plugins-load-more button"), "load more must leave at the end");
 
+  // A next page still loading when the sort changes must not join the new list.
+  const releaseNamePage = gate((c) => c.sort === "name" && c.page === 2);
+  await click(byText(".plugins-sort-btn", label("sortName")), "name sort missing");
+  await until(() => lastCall().sort === "name" && settled(), "name sort not requested");
+  await scrollEnd();
+  await until(() => browseCalls.some((c) => c.sort === "name" && c.page === 2), "name page two not requested");
   await click(byText(".plugins-sort-btn", label("sortPopular")), "popular sort missing");
-  await until(() => lastCall().sort === "popular" && settled(), "sort not requested");
-  check(lastCall().page === 1, "sorting must return to page one");
-  check(byText(".plugins-sort-btn", label("sortPopular")).getAttribute("aria-checked") === "true", "sort not selected");
+  await until(() => lastCall().sort === "popular" && lastCall().page === 1 && settled(), "popular not requested");
+  check(lastCall().page === 1 || browseCalls.at(-2)?.page === 1, "sorting must restart the list");
+  // Popular is Plugin 1, 2, 3… in order; any name-sorted card from the stale
+  // page would break that run.
+  const popularRun = () => cards().every((name, i) => name === "Plugin " + (i + 1));
+  releaseNamePage();
+  await new Promise((r) => setTimeout(r, 150));
+  await frame();
+  check(popularRun(), "a stale next page joined the new list: " + cards().slice(0, 30).join(","));
 
+  // A failed page pauses automatic loading until the user retries.
+  failNext = (c) => c.sort === "popular" && c.page === 2;
+  await scrollEnd();
+  const retry = () => byText(".plugins-load-more button", label("loadMoreRetry"));
+  await until(() => retry(), "retry did not appear");
+  const before = browseCalls.length;
+  await scrollEnd();
+  await new Promise((r) => setTimeout(r, 100));
+  check(browseCalls.length === before, "a failed page must not be retried on its own");
+  await click(retry(), "retry unavailable");
+  await until(() => cards().length >= 48, "retry did not load the page");
+
+  await click(byText(".plugins-sort-btn", label("sortRecommended")), "recommended missing");
   const writing = [...document.querySelectorAll(".plugins-filter")].find((n) => n.textContent.startsWith("Writing"));
-  check(writing?.querySelector(".plugins-filter-count")?.textContent === "6", "category count missing");
+  check(writing?.querySelector(".plugins-filter-count")?.textContent === "12", "category count missing");
   await click(writing, "writing chip missing");
-  await until(() => lastCall().category === "Writing" && cards().length === 6 && settled(), "category not applied");
-  check(!document.querySelector(".plugins-pager"), "one page must not show a pager");
+  await until(() => lastCall().category === "Writing" && cards().length === 12 && settled(), "category not applied");
   await click([...document.querySelectorAll(".plugins-filter")].find((n) => n.textContent.trim() === label("categoryAll")), "all chip missing");
   await until(() => lastCall().category === "" && settled(), "category not cleared");
 
-  // A slow answer for an earlier search must not land over the latest one.
-  let release;
-  held.set("plugin 1", { promise: new Promise((resolve) => { release = resolve; }) });
+  // A slow first page for an earlier search must not land over the latest one.
+  const releaseSearch = gate((c) => c.query === "plugin 1");
   await type("plugin 1");
   await until(() => lastCall().query === "plugin 1", "first search not sent");
   await type("plugin 2");
   await until(() => lastCall().query === "plugin 2" && settled(), "second search did not settle");
   const latest = cards().join(",");
-  release();
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  releaseSearch();
+  await new Promise((r) => setTimeout(r, 100));
   await frame();
   check(cards().join(",") === latest, "stale search replaced the latest: " + cards().join(","));
   check(cards().includes("Plugin 2") && cards().includes("Plugin 20") && !cards().includes("Plugin 1"), "wrong results " + latest);
-  check(lastCall().page === 1, "searching must return to page one");
   return { passed: true, requests: browseCalls.length };
 };
 `;
@@ -183,7 +226,7 @@ const path = require("node:path");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
   session.defaultSession.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] }, (_details, callback) => callback({ cancel: true }));
-  const win = new BrowserWindow({ show: false, width: 1200, height: 900,
+  const win = new BrowserWindow({ show: false, width: 1100, height: 700,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   win.webContents.on("console-message", (event) => console.log("RENDERER " + event.message));
   try {

@@ -503,8 +503,8 @@ Extensions
 │ ├─ Search
 │ ├─ Categories (with match counts) + Sort
 │ ├─ Result total
-│ ├─ Card grid (one page)
-│ └─ Pager
+│ ├─ Card grid (grows as you scroll)
+│ └─ End of list: loaded count + Load more
 ├─ Detail sheet (shared by both tabs)
 │ └─ Review drawer (public reads; covers the detail sheet)
 └─ Permission dialog (install / upgrade)
@@ -588,7 +588,7 @@ renderer performs no remote image loads (D169).
 
 ### Paged browsing
 
-The Marketplace tab shows one page of 24 cards from `market.browse`
+The Marketplace tab is one growing list fed 24 cards at a time by `market.browse`
 (`{ query, category, sort, seed, page, pageSize }` →
 `{ plugins, total, page, pageSize, pageCount, sort, categories[{id,count}],
 source, fallbackReason?, providerId, sourceUrl }`). The host asks the plugin
@@ -601,9 +601,15 @@ summary rules, so trust, installability and update state are unchanged.
   app session so every page agrees), `popular`, `updated` or `name`.
 - Categories are counted over the query's matches before the category filter;
   the selected category stays a chip even at zero matches so it can be cleared.
-- Changing the query, category or sort returns to page one; typing is
-  debounced, every other control asks at once; only the newest request may
-  land, and a page past the end snaps to the last page.
+- The next page is requested when the end of the list comes within 600 px of
+  the viewport; a "Load more" button does the same for keyboard users. The
+  end shows "N of M loaded". Only one next-page request runs at a time, a
+  plugin already shown is not appended twice, and a failed page pauses
+  automatic loading until the user presses Retry.
+- Changing the query, category, sort or language restarts the list from the
+  first page; typing is debounced, every other control asks at once. Any
+  answer — first or next page — for something the user has since left is
+  dropped. An install updates its card in place instead of reloading the list.
 - Remote pages are cached in the host for 60 s and cleared by an explicit
   marketplace refresh; a center without the route is remembered for 5 min and
   an unreachable one for 30 s, so offline typing answers from the snapshot at

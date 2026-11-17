@@ -62,19 +62,20 @@ export function usePluginsPage() {
     setCategory,
     sort,
     setSort,
-    setPage,
   } = usePluginBrowseState();
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const {
     market,
     marketLoading,
+    marketLoadingMore,
+    marketLoadMoreFailed,
     marketTotal,
-    marketPage,
-    marketPageCount,
+    marketHasMore,
     browseOrigin,
-    browse,
     categories,
     reloadMarket,
+    loadMoreMarket,
+    markMarketInstalled,
   } = useMarketBrowse({
     active: tab === "market",
     locale,
@@ -661,7 +662,7 @@ export function usePluginsPage() {
         grantedPermissions: request.grantedPermissions,
       });
       await refreshPlugins();
-      await refreshMarket();
+      markMarketInstalled(request.id, request.version);
       if (selectedId === request.id) await openDetail(request.id);
       showToast(t("plugins.installed", { name: request.name }), {
         variant: "success",
@@ -780,14 +781,14 @@ export function usePluginsPage() {
     setCategory,
     sort,
     setSort,
-    setPage,
     market,
     marketLoading,
+    marketLoadingMore,
+    marketLoadMoreFailed,
     marketTotal,
-    marketPage,
-    marketPageCount,
+    marketHasMore,
+    loadMoreMarket,
     browseOrigin,
-    marketFallbackReason: browse?.fallbackReason,
     isPluginBusy: rowBusy.isBusy,
     reloadingId,
     pendingInstall,

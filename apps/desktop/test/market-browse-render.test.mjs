@@ -37,23 +37,15 @@ async function withModules(run) {
   }
 }
 
-test("the pager shows first, last and the current neighbourhood, never a one-page gap", async () => {
-  await withModules(({ paging: { paginationItems } }) => {
-    assert.deepEqual(paginationItems(1, 0), []);
-    assert.deepEqual(paginationItems(1, 1), [1]);
-    assert.deepEqual(paginationItems(1, 5), [1, 2, "gap", 5]);
-    assert.deepEqual(paginationItems(3, 5), [1, 2, 3, 4, 5]);
-    assert.deepEqual(paginationItems(5, 10), [1, "gap", 4, 5, 6, "gap", 10]);
-    assert.deepEqual(paginationItems(10, 10), [1, "gap", 9, 10]);
-    // An out-of-range page is clamped rather than producing a dangling button.
-    assert.deepEqual(paginationItems(40, 3), [1, 2, 3]);
-  });
-});
-
-test("the selected category stays a chip even when the query no longer matches it", async () => {
-  await withModules(({ paging: { categoryChips, newBrowseSeed } }) => {
+test("appending a page keeps the first position of a plugin that moved between pages", async () => {
+  await withModules(({ paging: { appendPage, hasMorePages, categoryChips, newBrowseSeed } }) => {
+    const a = { id: "a" }, b = { id: "b" }, c = { id: "c" };
+    assert.deepEqual(appendPage([a, b], [b, c]).map((p) => p.id), ["a", "b", "c"]);
+    assert.deepEqual(appendPage([], [a]).map((p) => p.id), ["a"]);
+    assert.equal(hasMorePages(0, 3), false, "nothing loaded yet is not 'more'");
+    assert.equal(hasMorePages(1, 3), true);
+    assert.equal(hasMorePages(3, 3), false);
     const facets = [{ id: "Tools", count: 3 }];
-    assert.deepEqual(categoryChips(facets, ""), facets);
     assert.deepEqual(categoryChips(facets, "tools"), facets);
     assert.deepEqual(categoryChips(facets, "Writing"), [{ id: "Writing", count: 0 }, ...facets]);
     assert.equal(newBrowseSeed(() => 0), 1);
@@ -61,26 +53,16 @@ test("the selected category stays a chip even when the query no longer matches i
   });
 });
 
-test("changing what is searched, filtered or ordered starts again at page one", async () => {
+test("browse choices are kept and the session seed never changes", async () => {
   await withModules(({ usePluginBrowseState }) => {
     const state = () => usePluginBrowseState.getState();
     const seed = state().seed;
     assert.ok(Number.isInteger(seed) && seed > 0);
-    state().setPage(4);
-    assert.equal(state().page, 4);
     state().setQuery("todo");
-    assert.equal(state().page, 1);
-    state().setPage(3);
-    state().setQuery("todo");
-    assert.equal(state().page, 3, "re-applying the same query keeps the page");
     state().setCategory("Tools");
-    assert.equal(state().page, 1);
-    state().setPage(2);
     state().setSort("popular");
-    assert.equal(state().page, 1);
-    state().setPage(0);
-    assert.equal(state().page, 1, "a page below one is clamped");
-    assert.equal(state().seed, seed, "the session seed never changes while browsing");
+    assert.deepEqual([state().query, state().category, state().sort], ["todo", "Tools", "popular"]);
+    assert.equal(state().seed, seed);
   });
 });
 
@@ -112,11 +94,12 @@ function model(t, overrides = {}) {
     setCategory: () => {},
     sort: "recommended",
     setSort: () => {},
-    setPage: () => {},
     marketLoading: false,
+    marketLoadingMore: false,
+    marketLoadMoreFailed: false,
     marketTotal: 30,
-    marketPage: 2,
-    marketPageCount: 2,
+    marketHasMore: true,
+    loadMoreMarket: async () => {},
     browseOrigin: "remote",
     market,
     visibleMarket: market,
@@ -131,54 +114,55 @@ function model(t, overrides = {}) {
   };
 }
 
-test("one page renders with its facets, sort, total and pager", async () => {
+test("the list renders its facets, sort, total and an end-of-list loader", async () => {
   await withModules(({ MarketplacePanel, t }) => {
     const html = renderToStaticMarkup(createElement(MarketplacePanel, model(t)));
     assert.match(html, />Tools<span class="plugins-filter-count">30<\/span>/);
     assert.match(html, /role="radio" aria-checked="true" class="plugins-sort-btn active">Recommended</);
-    assert.match(html, />Popular</);
     assert.match(html, /30 plugins/);
     assert.equal((html.match(/class="plugins-card"/g) ?? []).length, 2);
-    assert.match(html, /<nav class="plugins-pager" aria-label="Pages">/);
-    assert.match(html, /aria-label="Page 2" aria-current="page"/);
-    assert.match(html, /aria-label="Next page" disabled=""/);
-    assert.match(html, /Page 2 of 2/);
-    assert.doesNotMatch(html, /plugins-source-chip/);
+    assert.match(html, /class="plugins-load-more"/);
+    assert.match(html, /2 of 30 loaded/);
+    assert.match(html, />Load more</);
+    assert.doesNotMatch(html, /plugins-pager|plugins-source-chip/);
   });
 });
 
-test("a snapshot answer is labelled, a refresh dims the page, and one page hides the pager", async () => {
+test("the loader reports loading and retry, and drops its button at the end", async () => {
+  await withModules(({ MarketplacePanel, t }) => {
+    const loading = renderToStaticMarkup(createElement(MarketplacePanel, model(t, { marketLoadingMore: true })));
+    assert.match(loading, /disabled="">Loading…</);
+    const failed = renderToStaticMarkup(createElement(MarketplacePanel, model(t, { marketLoadMoreFailed: true })));
+    assert.match(failed, />Retry loading</);
+    const done = renderToStaticMarkup(
+      createElement(MarketplacePanel, model(t, { marketHasMore: false, marketTotal: 2 })),
+    );
+    assert.match(done, /2 of 2 loaded/);
+    assert.doesNotMatch(done, />Load more</);
+  });
+});
+
+test("a snapshot answer is labelled and a refresh dims the list", async () => {
   await withModules(({ MarketplacePanel, t }) => {
     const html = renderToStaticMarkup(
-      createElement(
-        MarketplacePanel,
-        model(t, { browseOrigin: "local", marketLoading: true, marketPage: 1, marketPageCount: 1 }),
-      ),
+      createElement(MarketplacePanel, model(t, { browseOrigin: "local", marketLoading: true })),
     );
     assert.match(html, /class="plugins-source-chip">Saved catalog</);
     assert.match(html, /aria-busy="true"/);
     assert.match(html, /plugins-card-grid is-refreshing/);
-    assert.doesNotMatch(html, /plugins-pager/);
   });
 });
 
-test("an empty page offers to clear the filters that produced it", async () => {
+test("an empty result offers to clear the filters that produced it", async () => {
   await withModules(({ MarketplacePanel, t }) => {
     const html = renderToStaticMarkup(
       createElement(
         MarketplacePanel,
-        model(t, {
-          query: "nothing",
-          market: [],
-          visibleMarket: [],
-          marketTotal: 0,
-          marketPage: 1,
-          marketPageCount: 0,
-        }),
+        model(t, { query: "nothing", market: [], visibleMarket: [], marketTotal: 0, marketHasMore: false }),
       ),
     );
     assert.match(html, /No plugins matched your search/);
     assert.match(html, /Clear search/);
-    assert.doesNotMatch(html, /plugins-pager/);
+    assert.doesNotMatch(html, /plugins-load-more/);
   });
 });

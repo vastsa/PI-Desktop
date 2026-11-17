@@ -1,7 +1,14 @@
-import type { MarketBrowseSort, MarketCategoryFacet } from "@pi-desktop/shared";
+import type {
+  MarketBrowseSort,
+  MarketCategoryFacet,
+  MarketPluginSummary,
+} from "@pi-desktop/shared";
 
-/** Cards per marketplace page: four rows of the widest grid, six of the narrowest. */
+/** Cards fetched per request: four rows of the widest grid, six of the narrowest. */
 export const MARKET_PAGE_SIZE = 24;
+
+/** Start the next page this far before the end of the list comes into view. */
+export const MARKET_PREFETCH_MARGIN = "600px 0px";
 
 export const MARKET_SORTS: readonly MarketBrowseSort[] = [
   "recommended",
@@ -22,28 +29,28 @@ export function newBrowseSeed(random: () => number = Math.random): number {
   return 1 + Math.floor(random() * 0x7ffffffe);
 }
 
-export type PageItem = number | "gap";
-
 /**
- * Page buttons for a pager: always the first and last page, the current page
- * with one neighbour each side, and a gap wherever pages are skipped. A gap
- * that would hide a single page shows that page instead, so the row never
- * reads "1 … 3".
+ * Append a page to what is already on screen. A plugin that moved between
+ * pages while the user scrolled (a publish reordered the catalog) is kept
+ * where it was first shown rather than appearing twice.
  */
-export function paginationItems(page: number, pageCount: number): PageItem[] {
-  if (pageCount <= 0) return [];
-  const current = Math.min(Math.max(1, page), pageCount);
-  const shown = new Set<number>([1, pageCount, current - 1, current, current + 1]);
-  const pages = [...shown].filter((n) => n >= 1 && n <= pageCount).sort((a, b) => a - b);
-  const items: PageItem[] = [];
-  let previous = 0;
-  for (const n of pages) {
-    if (n - previous === 2) items.push(previous + 1);
-    else if (n - previous > 2) items.push("gap");
-    items.push(n);
-    previous = n;
+export function appendPage(
+  loaded: readonly MarketPluginSummary[],
+  page: readonly MarketPluginSummary[],
+): MarketPluginSummary[] {
+  const seen = new Set(loaded.map((plugin) => plugin.id));
+  const next = [...loaded];
+  for (const plugin of page) {
+    if (seen.has(plugin.id)) continue;
+    seen.add(plugin.id);
+    next.push(plugin);
   }
-  return items;
+  return next;
+}
+
+/** Whether another page exists after `loadedPages` pages. */
+export function hasMorePages(loadedPages: number, pageCount: number): boolean {
+  return loadedPages > 0 && loadedPages < pageCount;
 }
 
 /**

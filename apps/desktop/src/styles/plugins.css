@@ -1081,66 +1081,19 @@
   transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.plugins-pager {
+/* End of the list: the loaded count, and a manual "load more" for keyboard
+   users and retries. The next page is fetched before this comes into view. */
+.plugins-load-more {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: -4px;
-}
-
-.plugins-pager-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: var(--radius-full);
-  background: var(--plugins-tile);
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.plugins-pager-btn:hover:not(:disabled) {
-  background: var(--plugins-tile-hover);
-  color: var(--ds-text-primary);
-}
-
-.plugins-pager-btn.active {
-  background: var(--plugins-raised);
-  color: var(--ds-text-primary);
-  font-weight: var(--font-weight-medium-plus);
-  box-shadow: var(--plugins-raised-shadow);
-}
-
-.plugins-pager-btn:disabled:not(.active) {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.plugins-pager-gap {
-  min-width: 20px;
-  color: var(--ds-text-muted);
-  text-align: center;
-}
-
-.plugins-pager-status {
-  margin-left: 10px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-  font-variant-numeric: tabular-nums;
+  gap: 8px;
+  padding: 4px 0 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .plugins-card-grid.is-refreshing,
-  .plugins-sort-btn,
-  .plugins-pager-btn {
+  .plugins-sort-btn {
     transition: none;
   }
 }

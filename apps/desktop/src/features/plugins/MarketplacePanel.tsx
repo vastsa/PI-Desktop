@@ -1,9 +1,8 @@
-import { useRef } from "react";
 import { Button, Tooltip, cx } from "../../components/ui";
 import { IconCheck, IconSearch, IconShield } from "../../components/icons";
 import { PermissionChips, RatingChip } from "./presentation";
 import { ReviewTicker } from "./ReviewTicker";
-import { MarketPagination } from "./MarketPagination";
+import { MarketLoadMore } from "./MarketLoadMore";
 import { MARKET_SORTS, MARKET_SORT_LABEL_KEYS } from "./market-paging";
 import {
   formatDate,
@@ -23,11 +22,12 @@ export function MarketplacePanel({
   setCategory,
   sort,
   setSort,
-  setPage,
   marketLoading,
+  marketLoadingMore,
+  marketLoadMoreFailed,
   marketTotal,
-  marketPage,
-  marketPageCount,
+  marketHasMore,
+  loadMoreMarket,
   browseOrigin,
   market,
   visibleMarket,
@@ -39,16 +39,9 @@ export function MarketplacePanel({
   reviewSummaries,
   reviewTickers,
 }: PluginsPageModel) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const goToPage = (next: number) => {
-    setPage(next);
-    // A new page starts at its first row, not where the previous page ended.
-    panelRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  };
   const selected = category.toLowerCase();
   return (
           <div
-            ref={panelRef}
             id="plugins-panel-market"
             role="tabpanel"
             aria-labelledby="plugins-tab-market"
@@ -281,13 +274,17 @@ export function MarketplacePanel({
               </div>
             )}
 
-            <MarketPagination
-              t={t}
-              page={marketPage}
-              pageCount={marketPageCount}
-              disabled={marketLoading}
-              onPage={goToPage}
-            />
+            {!marketLoading || market.length > 0 ? (
+              <MarketLoadMore
+                t={t}
+                loaded={market.length}
+                total={marketTotal}
+                hasMore={marketHasMore}
+                loading={marketLoadingMore}
+                failed={marketLoadMoreFailed}
+                onLoadMore={() => void loadMoreMarket()}
+              />
+            ) : null}
           </div>
 );
 }
