@@ -82,6 +82,13 @@ Examples:
 
 ## 5. Non-UI language surfaces
 
+Agent thinking, reasoning, progress updates and final responses follow the
+resolved current application language unless the user explicitly requests a
+different language. Auto uses the existing OS/UI locale resolver. Code,
+identifiers, paths, commands and quoted text keep their required language.
+This is model-facing guidance; hidden provider reasoning cannot be inspected
+or guaranteed to follow a locale. Historical messages are not translated.
+
 Also English-first:
 
 - docs/spec

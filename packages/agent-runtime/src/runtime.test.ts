@@ -171,6 +171,8 @@ const commandShell: CommandShellOption = {
 function createRuntime(
   overrides: Partial<{
     provider: RuntimeProviderConfig;
+    systemPrompt: string;
+    responseLanguage: string;
     mode: Mode | "chat";
     thinkingLevel: SessionThinkingLevel;
     history: UiMessage[];
@@ -204,6 +206,8 @@ function createRuntime(
     jevApiKey: overrides.jevApiKey,
     turnId: overrides.turnId,
     provider: overrides.provider ?? provider,
+    systemPrompt: overrides.systemPrompt,
+    responseLanguage: overrides.responseLanguage,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
     history: overrides.history,
@@ -1707,6 +1711,42 @@ describe("DesktopAgentRuntime configuration matching", () => {
     expect(prompt).toContain("Resolve recoverable blockers yourself");
 
     await runtime.dispose();
+  });
+
+  it.each(["zh-CN", "en"])("uses application language %s for thinking and responses", async responseLanguage => {
+    const customSystemPrompt = { replace: "Custom persona" };
+    const runtime = createRuntime({ responseLanguage, customSystemPrompt });
+    const view = runtime as unknown as {
+      agent: { state: { systemPrompt: string } };
+      subagentGuidance(definition: SubagentDefinition): string[];
+    };
+    try {
+      const prompt = view.agent.state.systemPrompt;
+      expect(prompt).toContain(`Use the current application language (${responseLanguage})`);
+      expect(prompt).toContain("thinking, reasoning, progress updates, and final responses");
+      expect(prompt).toContain("unless the user explicitly requests a different language");
+      expect(prompt).toContain("Keep code, identifiers, paths, commands, and quoted text in their required language");
+      const worker: SubagentDefinition = { name: "worker", description: "Test worker", tools: [], prompt: "Report findings.", source: "builtin" };
+      expect(view.subagentGuidance(worker).join("\n")).toContain(`Use the current application language (${responseLanguage})`);
+      expect(runtimeMatches(runtime, { responseLanguage, customSystemPrompt })).toBe(true);
+      expect(runtime.firstMismatch({ mode: "agent", provider, thinkingLevel: "medium", commandShell, responseLanguage: responseLanguage === "en" ? "zh-CN" : "en" })).toBe("responseLanguage");
+    } finally { await runtime.dispose(); }
+  });
+
+  it("retains application language when an extension replaces a programmatic prompt", async () => {
+    const runtime = createRuntime({ responseLanguage: "zh-CN", systemPrompt: "Explicit persona" });
+    const view = runtime as unknown as {
+      agent: { state: { systemPrompt: string } };
+      extensionRunner: { hasHandlers(name: string): boolean; emitBeforeAgentStart(): Promise<string>; dispose(): Promise<void> };
+      extensionBeforeAgentStart(input: string): Promise<void>;
+    };
+    try {
+      expect(view.agent.state.systemPrompt).toContain("Explicit persona");
+      view.extensionRunner = { hasHandlers: name => name === "before_agent_start", emitBeforeAgentStart: async () => "Extension persona", dispose: async () => {} };
+      await view.extensionBeforeAgentStart("Task");
+      expect(view.agent.state.systemPrompt).toContain("Extension persona");
+      expect(view.agent.state.systemPrompt).toContain("Use the current application language (zh-CN)");
+    } finally { await runtime.dispose(); }
   });
 
   it("provides ToolSearch so deferred tools can be activated on demand", async () => {

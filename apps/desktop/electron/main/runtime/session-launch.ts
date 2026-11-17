@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { resolveLocale } from "@pi-desktop/i18n";
 import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
@@ -54,6 +55,7 @@ const ErrorCodes = {
 } as const;
 
 export type SessionLaunchRuntimeDependencies = {
+  getDisplayLocale?: () => string;
   runtimeState: RuntimeState;
   logger: Logger;
   userMcp: UserMcpRuntime;
@@ -83,6 +85,7 @@ export type SessionLaunchRuntimeDependencies = {
 };
 
 export function createSessionLaunchRuntime({
+  getDisplayLocale,
   runtimeState,
   logger,
   userMcp,
@@ -753,6 +756,7 @@ export function createSessionLaunchRuntime({
       projectPath,
       workspaceRoot,
       sidecarParams: {
+        responseLanguage: getDisplayLocale ? resolveLocale(getDisplayLocale()) : undefined,
         sessionId,
         mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),

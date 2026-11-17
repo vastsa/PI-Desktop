@@ -4877,6 +4877,19 @@ While the parent is revalidating, invoke sidebar forkSession and complete the Ho
 
 Build two actual runtimes with identical configuration and different scratch directories. Their leading runtime system sections match; each trailing context retains its own path. Check PowerShell/POSIX guidance and custom system prompt behavior. Coverage: runtime.test.ts. No paid provider requests or cache-hit claims.
 
+## E2E-RESPONSE-LANGUAGE: Application language reaches reasoning and replies
+
+Select Simplified Chinese and send an English task without an explicit language
+request. Inspect the provider-bound system prompt for the resolved `zh-CN`
+guidance covering thinking/reasoning, progress and final responses. Repeat with
+a custom SYSTEM.md and a delegate. Switch to English in the same Session and
+verify the next turn uses `en`, with the previous language guidance replaced.
+Auto follows the resolved OS/UI locale. An explicit user language request wins;
+code, identifiers, paths, commands and quoted text retain their required language.
+Hidden provider reasoning is not an inspectable acceptance surface. Main launch
+and runtime tests cover construction, delegation and cache invalidation; native
+UI and real-model compliance require separate acceptance.
+
 ## E2E-ISSUE-2350: Delegation connector centers and stem endpoints
 
 - Serve `apps/desktop` locally and open

@@ -109,6 +109,7 @@ function testRuntimeIdentity(sessionId: string) {
 }
 
 type RuntimeParams = {
+  responseLanguage?: string;
   sessionId: string;
   /** Any valid mode id; validated by `parseModeLaunchParams`. */
   mode?: unknown;
@@ -242,6 +243,7 @@ async function runtimeFor(
     });
   }
   const config = {
+    responseLanguage: params.responseLanguage,
     mode,
     provider,
     thinkingLevel,
@@ -318,6 +320,7 @@ async function runtimeFor(
     }
   }
   const runtime = new DesktopAgentRuntime({
+    responseLanguage: params.responseLanguage,
     host: hostProxy,
     sessionId,
     mode,

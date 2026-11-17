@@ -26,8 +26,9 @@ const provider = {
   models: [{ id: "parent", thinkingLevels: ["off"] }],
 };
 
-function launchRuntime() {
+function launchRuntime(getDisplayLocale) {
   return createSessionLaunchRuntime({
+    getDisplayLocale,
     runtimeState: { host: {
       isAvailable: () => true,
       call: async (method) => {
@@ -59,6 +60,14 @@ async function launchParams(runtime) {
   }, {});
   return launch.sidecarParams;
 }
+
+test("launch captures the current application language on every turn", async () => {
+  let locale = "zh-CN";
+  const runtime = launchRuntime(() => locale);
+  assert.equal((await launchParams(runtime)).responseLanguage, "zh-CN");
+  locale = "en";
+  assert.equal((await launchParams(runtime)).responseLanguage, "en");
+});
 
 // The global (~/.pi/agent) precedence and per-kind independence are covered
 // against injectable directories in packages/agent-runtime/src/custom-system-prompt.test.ts;

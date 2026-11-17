@@ -270,6 +270,7 @@ import { genericModelConfig, visionFromModelConfig } from "./model-capabilities.
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
 import type { CustomSystemPrompt } from "./custom-system-prompt.js";
+import { responseLanguagePrompt } from "./response-language-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
 import {
   pluginSkillsPrompt,
@@ -1055,6 +1056,8 @@ export type AgentRuntimeOptions = {
    */
   computerUseEnabled?: boolean;
   systemPrompt?: string;
+  /** Resolved application locale captured by the trusted launch adapter. */
+  responseLanguage?: string;
   /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
   customSystemPrompt?: CustomSystemPrompt;
   /** Session-bound workspace root used for path-scoped instruction requests. */
@@ -1126,6 +1129,7 @@ export type AgentRuntimeDiagnostic = {
 };
 
 export type RuntimeMatchConfig = {
+  responseLanguage?: string;
   mode: Mode;
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
@@ -1855,6 +1859,7 @@ export class DesktopAgentRuntime {
   private onDiagnostic: (diagnostic: AgentRuntimeDiagnostic) => void;
   private streamSink: StreamCoalescer;
   private baseSystemPrompt: string;
+  private readonly responseLanguagePrompt?: string;
   private customSystemPrompt?: CustomSystemPrompt;
   private planningState: PlanningState;
   private pendingPlanId?: string;
@@ -2093,6 +2098,7 @@ export class DesktopAgentRuntime {
 
   constructor(opts: AgentRuntimeOptions) {
     this.sessionId = opts.sessionId;
+    this.responseLanguagePrompt = responseLanguagePrompt(opts.responseLanguage);
     this.turnId = opts.turnId;
     // A restored checkpoint already compacted the window: stage
     // `on.compaction` injects apply from the first run turn.
@@ -2544,7 +2550,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const memoryPrompt = projectMemoryPrompt(this.projectMemory);
     const optionalToolsPrompt = this.optionalToolsPrompt();
     this.composedSections = {
-      runtime: this.baseSystemPrompt,
+      runtime: [this.baseSystemPrompt, this.responseLanguagePrompt].filter(Boolean).join("\n\n"),
       ...(this.trackToolActivation && this.declarationPolicy ? {
         [TOOL_ACTIVATION_SECTION]: toolActivationSection(this.declarationPolicy.key, this.activeDeferredToolNames),
       } : {}),
@@ -2813,6 +2819,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     const checks: Array<[string, boolean]> = [
       ["disposed", !this.disposed],
+      ["responseLanguage", this.responseLanguagePrompt === responseLanguagePrompt(config.responseLanguage)],
       ["mode", this.mode === config.mode],
       ["jevApiKey", this.jevApiKey === config.jevApiKey],
       // Turning computer use on or off changes the tool list, so the runtime
@@ -4783,6 +4790,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       resolveSubagentToolNames(definition, [...this.toolCatalog.keys()]),
     );
     const blocks: string[] = [];
+    if (this.responseLanguagePrompt) blocks.push(this.responseLanguagePrompt);
     if (tools.has("Read") || tools.has("Grep") || tools.has("Glob")) {
       blocks.push(
         "Searching and reading: prefer Read, Grep, and Glob over shell text utilities. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob when it is available; otherwise use a bounded available search or listing tool instead of guessing a file name or reading the directory. Scope every call — Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit` and always reports `totalLines`; use Grep to locate content in large files before reading a targeted range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when contents are not needed. Grep uses the system's `rg` when installed and an in-process searcher otherwise — call Grep rather than shelling out to `rg`. Your context is finite too: an unscoped search over the whole workspace costs the tokens you need to finish.",
@@ -9577,7 +9585,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       typeof input === "string" ? input : input.text,
       base,
     );
-    this.setAgentSystemPrompt(prompt ?? base);
+    const effective = prompt ?? base;
+    this.setAgentSystemPrompt(this.responseLanguagePrompt && !effective.includes(this.responseLanguagePrompt)
+      ? `${effective}\n\n${this.responseLanguagePrompt}` : effective);
   }
   /**
    * `before_provider_request` rides pi-ai's `onPayload`, `after_provider_response`

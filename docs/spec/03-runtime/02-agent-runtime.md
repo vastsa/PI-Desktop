@@ -1554,6 +1554,14 @@ gains no affinity header or body key.
 
 ## 7. System prompt composition
 
+Main captures the resolved application locale on each launch as the optional
+private sidecar field `responseLanguage`. Runtime composition retains its
+thinking/reasoning, progress and final-response language guidance independently
+of custom personas, programmatic base prompts and extension prompt replacement.
+Delegates receive the same guidance. A changed locale retires the cached runtime
+on the next turn; existing transcript history follows the normal restore path.
+Callers without an application locale retain their existing language fallback.
+
 ```text
 [base product prompt in English]
 + [operating-state prompt: agent/plan/goal]

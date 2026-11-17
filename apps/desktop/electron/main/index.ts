@@ -383,7 +383,7 @@ const {
 } = providerCatalogRuntime;
 
 const createdSessionLaunchRuntime = createSessionLaunchRuntime({
-  runtimeState,
+  runtimeState, getDisplayLocale: () => mainState.updaterLocale,
   logger,
   userMcp,
   plugins,
