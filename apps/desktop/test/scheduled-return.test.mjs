@@ -56,7 +56,6 @@ async function renderTopbar(server, session, locale = "en") {
       { i18n },
       createElement(ConversationTopbar, {
         sidebarCollapsed: false,
-        workPanelOpen: false,
         onToggleSidebar() {},
         onNewTask() {},
         onOpenSearch() {},

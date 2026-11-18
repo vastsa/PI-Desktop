@@ -39,6 +39,7 @@
 }
 
 .main-pane {
+  anchor-name: --main-pane;
   position: relative;
   display: flex;
   /* MainChat is the first-priority column and must never be compressed below
