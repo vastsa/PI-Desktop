@@ -39,6 +39,12 @@ The new `sideQuestion` tab and right-click entry are the narrow amendment to
 ADR 0268. Its retired actions, identifiers, annotations and send-back workflow
 stay retired.
 
+## Consequences
+
+Multiple side questions can stay open for one main conversation. The work
+panel owns their display and history, while the Host enforces the same
+read-only tool limit even when a request bypasses the UI.
+
 ## Verification
 
 Use separate evidence for snapshot boundaries, the desktop work-panel flow, and

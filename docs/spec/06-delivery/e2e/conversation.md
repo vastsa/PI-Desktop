@@ -4898,12 +4898,15 @@ Build two actual runtimes with identical configuration and different scratch dir
   Select a sentence in the main transcript and use the context menu to open
   another side question. Send a question from the shared Composer. Exercise
   `/btw <question>`, cancellation, permission changes and confirmed deletion.
+  With two side tabs running, type a draft in B, switch to A and stop it,
+  then reopen B.
 - **Expected**: `+` starts with a launcher. Opening the previous item reuses
   its child. The selection appears as a short removable reference and the
   child starts with an empty transcript. The reference preserves the complete
   selection. Sending, stopping and changing permissions target the side
   session. The active main transcript and its running turn remain separate.
   A rejected send preserves later edits and never restores a removed reference.
+  Stopping A preserves the main reading position and B's draft and turn.
 - **Coverage**: `pnpm test:e2e:side-question` exercises the renderer in an
   isolated Electron profile with synthetic backend responses. Host tests under
   `sessions::side_questions::tests` exercise persistence, settled prefixes,

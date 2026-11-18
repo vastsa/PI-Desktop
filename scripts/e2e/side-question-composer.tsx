@@ -182,7 +182,10 @@ window.sideQuestionProbe = async () => {
     useAppStore.setState({ workPanelOpen: true, workPanelWidth: 650, activeWorkPanelTabId: null, workPanelTabs: [], workPanelContexts: {} });
     flushSync(() => root.render(<I18nextProvider i18n={i18n}>
       <div id="main" style={{ position: "relative", width: 750 }}>
-        <TranscriptMenuProvider><SourceSelection /></TranscriptMenuProvider>
+        <div id="main-reading" style={{ height: 140, overflow: "auto" }}>
+          <TranscriptMenuProvider><SourceSelection /></TranscriptMenuProvider>
+          <div style={{ minHeight: 480 }} />
+        </div>
         <Composer />
       </div>
       <WorkPanel containerWidth={1500} sidebarCollapsed />
@@ -248,6 +251,48 @@ window.sideQuestionProbe = async () => {
     confirm?.click();
     await until(() => !children.has("created-3"), "Confirmed deletion reached child");
     check(useAppStore.getState().activeSessionId === "main" && panels.messages === useAppStore.getState().messages, "Panel lifecycle leaves main transcript untouched");
+    const reading = element("#main-reading");
+    reading.scrollTop = 60;
+    const readingPosition = reading.scrollTop;
+    assert(readingPosition > 0, "Main reading position is measurable");
+    const editorIn = (id: string) => `[aria-labelledby="work-panel-tab-side-question:${id}"] .composer-input`;
+    const activate = async (id: string) => {
+      element(`[data-work-panel-tab-id="side-question:${id}"] [role="tab"]`).click();
+      await until(() => document.querySelector(editorIn(id)), `Side tab ${id} ready`);
+      await frame();
+    };
+    const typeSide = (id: string, text: string) => {
+      const editor = element(editorIn(id));
+      editor.textContent = text;
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      return editor;
+    };
+    const running = (id: string, active: boolean) => useAppStore.setState(state => ({
+      runningSessions: { ...state.runningSessions, [id]: active },
+    }));
+    api.promptSideQuestion = async request => {
+      running(request.sessionId, true);
+      return { accepted: true };
+    };
+    api.abort = async id => { stopped = id; running(id, false); return { requested: true }; };
+    const start = async (id: string, prompt: string) => {
+      await activate(id);
+      typeSide(id, prompt).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      await until(() => useAppStore.getState().runningSessions[id], `${id} started`);
+    };
+    await start("created-1", "A is running");
+    await start("created-2", "B is running");
+    check(Boolean(useAppStore.getState().runningSessions["created-1"]), "Both sibling branches run independently");
+    typeSide("created-2", "Keep this next question for B");
+    await frame();
+    await activate("created-1");
+    await until(() => document.querySelector(".work-panel-main .stop-btn"), "A has its own Stop button");
+    element(".work-panel-main .stop-btn").click();
+    await until(() => stopped === "created-1" && !useAppStore.getState().runningSessions["created-1"], "A stopped");
+    await activate("created-2");
+    check(element(editorIn("created-2")).textContent === "Keep this next question for B", "B draft survived switching and stopping A");
+    check(Boolean(useAppStore.getState().runningSessions["created-2"]), "A stop leaves B running");
+    check(reading.scrollTop === readingPosition && useAppStore.getState().runningSessions.main, "Main keeps its reading position and turn");
     return { checks, inputHeight };
   } finally { flushSync(() => root.unmount()); host.remove(); }
 };
