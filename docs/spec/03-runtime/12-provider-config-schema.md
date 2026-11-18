@@ -444,7 +444,8 @@ MiniMax (OpenAI) (`chat_completions` at `https://api.minimaxi.com/v1`, aliases
 `minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`),
 Qwen Token Plan (`alibaba-token-plan`, aliases `qwen-token-plan` /
 `qwen-token-plan-individual`), Qwen Token Plan (China)
-(`alibaba-token-plan-cn`, alias `qwen-token-plan-cn`), Xiaomi Token Plan
+(`alibaba-token-plan-cn`, aliases `qwen-token-plan-cn` /
+`qwen-token-plan-individual-cn`), Xiaomi Token Plan
 (`xiaomi-token-plan-cn` / `-ams` / `-sgp`).
 
 StepFun Plan uses the `stepfun-plan` preset with catalog vendor key
