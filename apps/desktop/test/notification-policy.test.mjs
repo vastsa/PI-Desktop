@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import {
+  isSideChatNotificationWorkspace,
   shouldCreateTaskNotification,
   shouldShowNativeNotification,
 } from "../electron/main/notification-policy.ts";
@@ -102,4 +104,19 @@ test("preserves focused background banners for interactive prompts", () => {
     }),
     false,
   );
+});
+
+test("only the current profile's private Side Chat workspaces are excluded", () => {
+  const profile = resolve("fixture", "current-profile");
+  const id = "0123456789abcdef0123456789abcdef";
+  const root = join(profile, "plugins", "data", "com.vastsa.side-chat", "attachments");
+  const sideChat = join(root, id);
+  assert.equal(isSideChatNotificationWorkspace(profile, sideChat), true);
+  assert.equal(isSideChatNotificationWorkspace(profile, sideChat.replaceAll("\\", "/")), true);
+  for (const other of [
+    undefined, root, join(root, "not-a-chat"), join(sideChat, "files"),
+    resolve("fixture", "other-profile", "plugins", "data", "com.vastsa.side-chat", "attachments", id),
+    join(profile, "plugins", "data", "other-plugin", "attachments", id),
+    join(profile, "workspace", "Side Chat · read-only"),
+  ]) assert.equal(isSideChatNotificationWorkspace(profile, other), false, String(other));
 });

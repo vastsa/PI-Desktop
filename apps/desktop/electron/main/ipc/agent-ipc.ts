@@ -1,3 +1,4 @@
+import { isSideChatNotificationWorkspace } from "../notification-policy";
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
@@ -29,7 +30,7 @@ export type AgentIpcDependencies = {
   dataDir: string;
   activeTurns: Map<string, string>;
   completionNoticeTurns: Set<string>;
-  recordTurnStart: (sessionId: string, turnId: string) => void;
+  recordTurnStart: (sessionId: string, turnId: string, options?: { suppressTaskNotification?: boolean }) => void;
   /** Whether the named turn can still start or steer host work. */
   isTurnDispatchable: (sessionId: string, turnId: string | null | undefined) => boolean;
   activeTurnUsages: Map<string, MessageUsage>;
@@ -249,17 +250,12 @@ export function registerAgentIpc({
       });
     }
     const sessionMessage = await resolveSessionMessageInput(host, req);
-    // Install the renderer's prompt-time snapshot before any asynchronous
-    // setup. This closes the gap where a fast completion could beat the
-    // effect that reports the active chat session. Missing or mismatched
-    // context is deliberately fail-safe.
-    const requestedViewingSessionId =
-      typeof req.viewingSessionId === "string" ? req.viewingSessionId.trim() : "";
-    setNotificationViewingSessionId(
-      requestedViewingSessionId && requestedViewingSessionId === req.sessionId
-        ? requestedViewingSessionId
-        : null,
-    );
+    // Only a prompt with a viewing snapshot updates the shell's viewing state.
+    // Side Chat and other out-of-band callers omit it; absence is not a clear.
+    if (req.viewingSessionId !== undefined) {
+      const viewingSessionId = typeof req.viewingSessionId === "string" ? req.viewingSessionId.trim() : "";
+      setNotificationViewingSessionId(viewingSessionId === req.sessionId ? viewingSessionId : null);
+    }
     if (modeOrigin && !(await modeRuns.canContinue(req.sessionId))) {
       // The run was paused, stopped or claimed meanwhile: open no durable turn.
       throw Object.assign(new Error("mode run cannot continue"), { errorCode: "MODE_CONTINUATION_SKIPPED" });
@@ -275,6 +271,8 @@ export function registerAgentIpc({
         errorCode: ErrorCodes.NOT_FOUND,
       });
     }
+    const suppressTaskNotification = !session.remoteWorkspace &&
+      isSideChatNotificationWorkspace(dataDir, session.projectPath);
     // Validate explicit MCP selection before a turn or history replacement.
     // Use the session's project, never the currently focused renderer project.
     const mcpExpansion = !sessionMessage && /^\/mcp:\S/.test(req.content)
@@ -385,7 +383,7 @@ export function registerAgentIpc({
       throw new Error("session.beginTurn returned no turn");
     }
     activeTurns.set(req.sessionId, durableTurnId);
-    recordTurnStart(req.sessionId, durableTurnId);
+    recordTurnStart(req.sessionId, durableTurnId, { suppressTaskNotification });
     activeTurnUsages.delete(req.sessionId);
 
     // A staged mode claims its run for this durable turn before anything runs;

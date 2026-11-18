@@ -4514,6 +4514,10 @@ Sidebar footer                                        Popover (360px max)
   popover also refreshes the bounded list from host-core. A
   `notification.activated` event from Electron follows the same session
   activation path as a row click.
+- Local Side Chat turns in the plugin's private chat workspaces keep their
+  normal transcript and settlement, but do not create a task notification,
+  unread badge contribution, completion chime, or native banner. Sending a
+  side-chat prompt does not replace the main conversation's viewing state.
 - Completion/failure enters the durable inbox unless the main window is
   visible/focused and the exact finishing session is the current chat. A
   focused background session still enters the inbox without a native banner;

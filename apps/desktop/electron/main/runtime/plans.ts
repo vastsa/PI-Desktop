@@ -114,6 +114,7 @@ const {
   waitForTurnSettlement,
   planSubmissionTurnKey,
   shouldCreateTaskNotification,
+  takeTaskNotificationSuppression,
   isActiveTurn,
   peekAbortReason,
   clearAbortReason,
@@ -169,6 +170,7 @@ function finishTurn(
   // when both agent_end and error arrive.
   const existing = turnFinalizations.get(finalizationKey);
   if (existing) return existing;
+  const suppressTaskNotification = takeTaskNotificationSuppression(id, turnId);
   // A turn that no longer owns its session was already settled by whoever took
   // it over. Recreating a record here would release the newer turn's queue, so
   // the settlement is refused — but this turn can no longer finalize itself
@@ -195,9 +197,8 @@ function finishTurn(
   const runId = scheduledRunsBySession.get(id);
   if (runId) scheduledRunsBySession.delete(id);
   const wasPlanSubmission = planSubmissionTurnIds.has(finalizationKey);
-  const createNotification =
-    options.createNotification ??
-    (!wasPlanSubmission && shouldCreateTaskNotification(id));
+  const createNotification = !suppressTaskNotification &&
+    (options.createNotification ?? (!wasPlanSubmission && shouldCreateTaskNotification(id)));
   const recoverInflight = options.recoverInflight === true;
 
   const runFinalization = async (): Promise<void> => {

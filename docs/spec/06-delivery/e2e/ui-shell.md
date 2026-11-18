@@ -463,6 +463,17 @@
   bulk acknowledgement, failed navigation, and sidebar remount. Native focus is
   controlled at the external window boundary in the isolated component probe.
 
+### Side Chat notification exclusion
+
+- **Steps**: In an isolated profile, finish and fail turns in the Side Chat
+  plugin, both with the panel open and with it closed or unfocused. Also finish
+  an ordinary chat while sending a side-chat prompt, then repeat with the
+  ordinary chat in the background.
+- **Expected**: Side Chat still receives replies and failures, but creates no
+  task notification, badge increment, system banner, or notification chime.
+  Its prompt does not clear the main chat's viewing state. Ordinary foreground
+  and background outcomes still follow their existing notification policy.
+
 ## E2E-065: Native task notifications are unfocused-only and activate sessions
 
 - **Preconditions**: Native notifications are supported; sessions A and B
