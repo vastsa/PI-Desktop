@@ -504,7 +504,7 @@ export function createTranscriptSlice({
         const stateAfterRead = get();
         const turnOwnsTranscript =
           stateAfterRead.runningSessions[sessionId] === true ||
-          runtime.liveSessionTranscripts.has(sessionId) ||
+          runtime.liveSessionTranscripts?.has(sessionId) === true ||
           (stateAfterRead.activeSessionId === sessionId &&
             stateAfterRead.isRunning === true);
         if (turnOwnsTranscript) return;
