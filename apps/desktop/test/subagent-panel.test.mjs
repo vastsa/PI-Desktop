@@ -1,7 +1,11 @@
 import { readAppSource, readStoreSource, readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { register } from "node:module";
 import test from "node:test";
+
+register(new URL("helpers/ts-import-hooks.mjs", import.meta.url));
+const { workPanelTabLabel, workPanelSubagentLabels } = await import("../src/lib/work-panel-tab-label.ts");
 
 const tabSource = await readFile(
   new URL("../src/components/workpanel/SubagentTranscriptTab.tsx", import.meta.url),
@@ -68,9 +72,19 @@ test("a topology node opens a real subagent tab in the work panel", () => {
 
 test("the work panel renders the delegation tab like every other resource", () => {
   assert.match(workPanelSource, /subagent: IconBot/);
-  assert.match(workPanelSource, /if \(tab\.kind === "subagent"\) return tab\.label \?\? t\("panel\.tabs\.subagent"\);/);
-  assert.match(workPanelSource, /const subagentTabsInOrder = tabs\.filter\(\(tab\) => tab\.kind === "subagent"\)/);
-  assert.match(workPanelSource, /subagentTabDisplayLabels\(/);
+  assert.match(workPanelSource, /import \{ workPanelTabLabel as tabLabel, workPanelSubagentLabels \} from "\.\.\/\.\.\/lib\/work-panel-tab-label"/);
+  assert.match(workPanelSource, /const subagentLabelById = workPanelSubagentLabels\(tabs, t, pluginViews\)/);
+  assert.match(workPanelSource, /subagentLabelById\.get\(tab\.id\)/);
+  const t = (key) => key === "panel.tabs.subagent" ? "Subagent" : key;
+  const named = { id: "subagent:a", kind: "subagent", label: "Worker" };
+  const unnamed = { id: "subagent:b", kind: "subagent" };
+  assert.equal(workPanelTabLabel(named, t, []), "Worker");
+  assert.equal(workPanelTabLabel(unnamed, t, []), "Subagent");
+  assert.deepEqual([...workPanelSubagentLabels([
+    named, { ...named, id: "subagent:c" }, unnamed,
+  ], t, [])], [
+    ["subagent:a", "Worker#1"], ["subagent:c", "Worker#2"], ["subagent:b", "Subagent"],
+  ]);
   assert.match(workPanelSource, /\{activeTab\?\.kind === "subagent" && \(/);
   assert.match(
     workPanelSource,

@@ -403,6 +403,7 @@ accepted and dropped during normalization.
 type PluginPermission =
  | "ui.panel"
  | "ui.view"
+ | "ui.shell"
  | "ui.theme"
  | "ui.settings"
  | "ui.window.appearance"
@@ -463,6 +464,15 @@ stable base-10 `projects.id` strings, display names, primary paths, and non-empt
 primary-first roots. Unavailable project lookup returns `[]`. See the
 [projects / workspace API](03-plugin-api.md#projects-workspace-fs) for ordering,
 group-root enrichment, and the distinction between project and group ids.
+
+For application layout rather than project metadata, `pi.shell.getLayout()` and
+`pi.workPanel.listTabs()` read the foreground shell and its existing tabs.
+`ui.shell` permits `shell.setSidebar`, `shell.setWorkPanel` and
+`workPanel.activateTab`. Layout reads and `shell:layout` subscriptions need no
+grant. Neither `ui.view` nor `desktop.control` implies `ui.shell`. DevKit checks
+the entry source for undeclared mutation calls (`permission.shell-missing`) and
+unused grants; these are authoring hints, while the host enforces the grant on
+every mutation. See [shell layout](03-plugin-api.md#shell-layout).
 
 `fs.read.workspace`, `fs.write.workspace` and `fs.delete.workspace` are the
 pre-scope names. They still validate, and the host rewrites them on load to the

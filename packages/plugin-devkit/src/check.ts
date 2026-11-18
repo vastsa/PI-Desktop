@@ -58,6 +58,7 @@ export const HIGH_RISK_PERMISSIONS = [
 /** Host API surface each permission unlocks, used for the unused-permission hint. */
 const PERMISSION_API_HINTS: Record<string, string[]> = {
   "ui.panel": ["ui.openPanel", "ui.closePanel"],
+  "ui.shell": ["shell.setSidebar", "shell.setWorkPanel", "workPanel.activateTab"],
   notify: [
     "ui.notify",
     "ui.getNotificationPermission",
@@ -447,6 +448,15 @@ export async function check(dirInput: string): Promise<CheckResult> {
   // a needless prompt for the user, and the reverse is a runtime denial.
   const mainSource = await readFile(join(dir, manifest.main), "utf8").catch(() => "");
   if (mainSource) {
+    if (!permissions.includes("ui.shell")) {
+      const mutations = PERMISSION_API_HINTS["ui.shell"].filter((api) => mainSource.includes(api));
+      if (mutations.length) {
+        warnings.push({
+          code: "permission.shell-missing",
+          message: `${manifest.main} calls ${mutations.join(" / ")} without the "ui.shell" permission; the host will refuse these mutations`,
+        });
+      }
+    }
     for (const permission of permissions) {
       const apis = PERMISSION_API_HINTS[permission];
       if (!apis) continue;

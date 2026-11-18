@@ -39,6 +39,12 @@ ipcRenderer.on(`pi-plugin-panel-event:${PLUGIN_PANEL_LAUNCH_EVENT}`, (
     payload: incoming.payload,
   };
 });
+const shellSubscriptions = new Set<() => void>();
+let panelUnloaded = false;
+window.addEventListener("unload", () => {
+  panelUnloaded = true;
+  for (const dispose of shellSubscriptions) dispose();
+});
 const bridge = {
   invoke: async (channel: string, payload?: Record<string, unknown>) => {
     return ipcRenderer.invoke("pi-plugin-panel-invoke", channel, payload ?? {});
@@ -48,9 +54,25 @@ const bridge = {
     return ipcRenderer.sendSync("pi-plugin-panel-bridge", channel, payload ?? {});
   },
   on: (event: string, handler: (...args: unknown[]) => void) => {
-    const wrapped = (_evt: Electron.IpcRendererEvent, ...args: unknown[]) => handler(...args);
+    let active = !panelUnloaded;
+    let sequence = 0;
+    const wrapped = (_evt: Electron.IpcRendererEvent, ...args: unknown[]) => {
+      sequence += 1;
+      if (active) handler(...args);
+    };
+    const dispose = () => {
+      active = false;
+      ipcRenderer.removeListener(`pi-plugin-panel-event:${event}`, wrapped);
+      shellSubscriptions.delete(dispose);
+    };
     ipcRenderer.on(`pi-plugin-panel-event:${event}`, wrapped);
-    return () => ipcRenderer.removeListener(`pi-plugin-panel-event:${event}`, wrapped);
+    if (event === "shell:layout") {
+      shellSubscriptions.add(dispose);
+      void ipcRenderer.invoke("pi-plugin-panel-invoke", "shell.getLayout", {}).then((layout) => {
+        if (active && sequence === 0) handler(layout);
+      }).catch((error) => console.error("shell:layout initial replay failed", error));
+    }
+    return dispose;
   },
   /**
    * The launcher input that summoned this panel, or null.

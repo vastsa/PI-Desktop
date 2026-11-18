@@ -1,3 +1,5 @@
+import type { PluginShellLayout, PluginSidebarLayoutInput, PluginWorkPanelLayoutInput, PluginWorkPanelTabs } from "@pi-desktop/shared";
+export type { PluginShellLayout, PluginWorkPanelTab, PluginWorkPanelTabs, PluginSidebarLayoutInput, PluginWorkPanelLayoutInput } from "@pi-desktop/shared";
 import { isValidBusTopic, isValidBusTopicPattern } from "./bus-topics.js";
 import {
   parseFsPolicy,
@@ -1602,7 +1604,19 @@ export type PluginHostApi = {
     writeText: (text: string) => Promise<void>;
     getHistory: () => Promise<ClipboardHistoryEntry[]>;
   };
+  workPanel: {
+    /** Pure read of the displayed session's retained tabs; never opens the panel. */
+    listTabs: () => Promise<PluginWorkPanelTabs>;
+    /** Requires ui.shell. Unknown ids are a no-op; activation never opens the panel. */
+    activateTab: (tabId: string) => Promise<PluginWorkPanelTabs>;
+  };
   shell: {
+    /** Live shell geometry and tab metadata; no permission required. */
+    getLayout: () => Promise<PluginShellLayout>;
+    /** Requires ui.shell. Widths are clamped and the returned state is applied. */
+    setSidebar: (input: PluginSidebarLayoutInput) => Promise<PluginShellLayout>;
+    /** Requires ui.shell. Reopens retained tabs or an empty panel without creating a tab. */
+    setWorkPanel: (input: PluginWorkPanelLayoutInput) => Promise<PluginShellLayout>;
     openExternal: (url: string) => Promise<void>;
   };
   browser: {
@@ -1642,8 +1656,11 @@ export type PluginHostApi = {
     };
   };
   events: {
-    on: (event: string, handler: (...args: unknown[]) => void) => void;
-    off: (event: string, handler: (...args: unknown[]) => void) => void;
+    /** Replays current layout once, then only committed layout changes. */
+    on(event: "shell:layout", handler: (layout: PluginShellLayout) => void): void;
+    on(event: string, handler: (...args: unknown[]) => void): void;
+    off(event: "shell:layout", handler: (layout: PluginShellLayout) => void): void;
+    off(event: string, handler: (...args: unknown[]) => void): void;
   };
 };
 
@@ -1677,6 +1694,7 @@ export const MAX_GLOBAL_SHORTCUTS_PER_PLUGIN = 8;
 export const PLUGIN_PERMISSIONS = [
   "ui.panel",
   "ui.view",
+  "ui.shell",
   "ui.microphone",
   "ui.theme",
   "ui.settings",

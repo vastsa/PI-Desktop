@@ -958,6 +958,7 @@ function registerIpc() {
     },
     /** The shell reports the session on screen; plugin surfaces read it. */
     setActivePluginSession: (next) => pluginServices.pluginSession.setActiveSession(next),
+    shellLayout: pluginServices.shellLayout,
     /** The shell answers a composer suggestion through the same invoke list. */
     settleComposerSuggestion: (answer: ComposerSuggestionAnswer) =>
       pluginServices.composerSuggestion.settle(answer),
@@ -1081,12 +1082,17 @@ app.on("browser-window-created", (_event, window) => {
       void liveCallService.endForWebContents(contentsId, "window-hidden");
     });
     window.webContents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
-      if (isMainFrame) void liveCallService.endForWebContents(contentsId, "window-navigated", true);
+      if (isMainFrame) {
+        pluginServices.shellLayout.rendererLost();
+        void liveCallService.endForWebContents(contentsId, "window-navigated", true);
+      }
     });
     window.webContents.once("render-process-gone", () => {
+      pluginServices.shellLayout.rendererLost();
       void liveCallService.endForWebContents(contentsId, "renderer-gone", true);
     });
     window.webContents.once("destroyed", () => {
+      pluginServices.shellLayout.rendererLost();
       void liveCallService.endForWebContents(contentsId, "renderer-gone", true);
     });
   });

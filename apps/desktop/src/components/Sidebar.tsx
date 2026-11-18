@@ -246,6 +246,7 @@ export function Sidebar({
   onWidthChange,
   onWidthCommit,
   onResizeCollapse,
+  onResizingChange,
   className,
   onAnimationEnd,
 }: {
@@ -256,6 +257,7 @@ export function Sidebar({
   onWidthChange: (width: number) => void;
   onWidthCommit: (width: number) => void;
   onResizeCollapse: () => void;
+  onResizingChange?: (resizing: boolean) => void;
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
 }) {
@@ -344,6 +346,8 @@ export function Sidebar({
   const [dropProjectKey, setDropProjectKey] = useState<string | null>(null);
   const [projectsDropActive, setProjectsDropActive] = useState(false);
   const [sidebarResizing, setSidebarResizing] = useState(false);
+  useLayoutEffect(() => { onResizingChange?.(sidebarResizing); }, [sidebarResizing, onResizingChange]);
+  useLayoutEffect(() => () => onResizingChange?.(false), [onResizingChange]);
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ key: string; insertAfter: boolean } | null>(null);
   const [windowFocused, setWindowFocused] = useState(true);

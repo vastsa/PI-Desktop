@@ -1,3 +1,4 @@
+import { usePluginShellLayout } from "./usePluginShellLayout";
 import {
   type AppMenuCommand,
   isActiveInProject,
@@ -177,8 +178,8 @@ export function useAppShellRuntime() {
   const handleSidebarWidthChange = useCallback((width: number) => {
     setSidebarWidth(clampSidebarWidth(width, resolveSidebarMax()));
   }, []);
-  const handleSidebarWidthCommit = useCallback((width: number) => {
-    const nextWidth = clampSidebarWidth(width, resolveSidebarMax());
+  const handleSidebarWidthCommit = useCallback((width: number, maximum = resolveSidebarMax()) => {
+    const nextWidth = clampSidebarWidth(width, maximum);
     sidebarPreferredWidthRef.current = nextWidth;
     setSidebarWidth(nextWidth);
     saveSidebarWidth(nextWidth);
@@ -1129,6 +1130,15 @@ export function useAppShellRuntime() {
     workPanelMaximized,
   });
 
+  const { onWorkPanelLayoutChange, onSidebarResizingChange } = usePluginShellLayout({
+    ready, page, containerWidth: shellWidth,
+    sidebarCollapsed, sidebarWidth, sidebarEntering, sidebarExiting,
+    presentedWorkPanelOpen, workPanelExiting, workPanelMaximized,
+    getSidebarPreferredWidth: () => sidebarPreferredWidthRef.current,
+    commitSidebarWidth: handleSidebarWidthCommit,
+    toggleSidebar, autoCollapseSidebar, t,
+  });
+
   return {
     t,
     ready,
@@ -1145,6 +1155,8 @@ export function useAppShellRuntime() {
     sidebarWidthMax,
     handleSidebarWidthChange,
     handleSidebarWidthCommit,
+    onWorkPanelLayoutChange,
+    onSidebarResizingChange,
     handleSidebarResizeCollapse,
     toggleSidebar,
     reopenSidebar,

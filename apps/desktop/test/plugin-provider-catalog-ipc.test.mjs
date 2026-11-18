@@ -69,7 +69,7 @@ test("the plugin Add Service IPC returns declared categories through the Host ha
   });
 
   loadPluginUiIpc()({
-    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler), handleWithEvent: (channel, handler) => handlers.set(channel, handler) },
     plugins: {
       listLoaded: () => [
         plugin("community.sites", "Community Sites", ["provider.register"], {
@@ -103,7 +103,7 @@ test("the plugin session IPC resets ordering on renderer reload and rejects stal
   const handlers = new Map();
   const activeSessions = [];
   loadPluginUiIpc({ gateFactory: createSessionPushGate })({
-    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler), handleWithEvent: (channel, handler) => handlers.set(channel, handler) },
     plugins: { listLoaded: () => [] },
     browserHost: {},
     pluginViews: {},
@@ -138,4 +138,32 @@ test("the plugin session IPC resets ordering on renderer reload and rejects stal
     { sessionId: "after-reload", projectPath: "/work/b" },
     { sessionId: "after-newer-push", projectPath: "/work/b" },
   ]);
+});
+
+
+test("shell layout IPC accepts only the authenticated main renderer frame", async () => {
+  const handlers = new Map();
+  const accepted = [];
+  const mainFrame = {};
+  const sender = { id: 1, mainFrame };
+  loadPluginUiIpc()({
+    registrar: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      handleWithEvent: (channel, handler) => handlers.set(channel, handler),
+      assertMainWindowSender: (event) => {
+        if (event.sender !== sender) throw Object.assign(new Error("foreign renderer"), { errorCode: "PERMISSION_DENIED" });
+      },
+    },
+    shellLayout: {
+      publish: (payload) => { accepted.push(payload); return true; },
+      settle: (payload) => { accepted.push(payload); return false; },
+    },
+  });
+  for (const channel of [IPC.invoke.pluginShellLayoutPublish, IPC.invoke.pluginShellLayoutResult]) {
+    const handler = handlers.get(channel);
+    await assert.rejects(handler({ sender: { id: 2 }, senderFrame: mainFrame }, {}), { errorCode: "PERMISSION_DENIED" });
+    await assert.rejects(handler({ sender, senderFrame: {} }, {}), { errorCode: "PERMISSION_DENIED" });
+    await handler({ sender, senderFrame: mainFrame }, { requestId: "r" });
+  }
+  assert.equal(accepted.length, 2);
 });

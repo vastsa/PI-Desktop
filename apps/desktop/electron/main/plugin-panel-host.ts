@@ -1,3 +1,4 @@
+import { createPluginCallLifetime } from "./plugin-call-lifetime";
 import { BrowserWindow, ipcMain, Menu, session, systemPreferences } from "electron";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
@@ -91,7 +92,7 @@ type BridgeHandler = (
   pluginId: string,
   channel: string,
   payload?: Record<string, unknown>,
-  context?: { droppedPath?: string },
+  context?: { droppedPath?: string; signal?: AbortSignal },
 ) => Promise<unknown>;
 
 /** Reports an egress attempt a panel was not allowed to make. */
@@ -256,7 +257,12 @@ export class PluginPanelHost {
           channel === "fs.registerDropped"
             ? this.consumeDroppedPath(event.sender.id, payload?.path)
             : undefined;
-        return this.bridge(pluginId, channel, payload, droppedPath ? { droppedPath } : undefined);
+        const lifetime = createPluginCallLifetime(event.sender);
+        try {
+          return await this.bridge(pluginId, channel, payload, { ...(droppedPath ? { droppedPath } : {}), signal: lifetime.signal });
+        } finally {
+          lifetime.dispose();
+        }
       },
     );
 
@@ -290,9 +296,10 @@ export class PluginPanelHost {
         // rejects when the plugin is unloaded or times out, and a panel page
         // can call this at will, so the rejection must be observed here
         // rather than surfacing as an unhandled rejection in main.
-        this.bridge(pluginId, channel, payload).catch((error) => {
+        const lifetime = createPluginCallLifetime(event.sender);
+        void this.bridge(pluginId, channel, payload, { signal: lifetime.signal }).catch((error) => {
           this.onBridgeError?.(pluginId, channel, error);
-        });
+        }).finally(() => lifetime.dispose());
         event.returnValue = { ok: true, accepted: true };
       },
     );
@@ -634,9 +641,10 @@ export class PluginPanelHost {
    * receivers; the event names are fixed by the host (e.g. `appearance:changed`).
    */
 
-  broadcast(event: string, payload: unknown): void {
+  broadcast(event: string, payload: unknown, filter?: (pluginId: string) => boolean): void {
     const channel = `pi-plugin-panel-event:${event}`;
-    for (const win of this.windows.values()) {
+    for (const [pluginId, win] of this.windows) {
+      if (filter && !filter(pluginId)) continue;
       if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
       try {
         win.webContents.send(channel, payload);

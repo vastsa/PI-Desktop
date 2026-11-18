@@ -3949,3 +3949,21 @@ editing. Cover both creating and editing before changing the page selection.
 ## E2E-ISSUE-2184
 
 Load the actual bundled plugin in an isolated workspace. Create a file and Unicode directory, rename and move the file; verify disk entries and response metadata. Invalid create/rename names fail before writing, and duplicate destinations are refused. Coverage: apps/desktop/test/file-manager-mutations.test.mjs. Existing Electron directory-location path also passes.
+
+## E2E-ISSUE-1997-plugin-shell-layout
+
+Run `node scripts/e2e-plugin-shell-layout.mjs` with an isolated Electron profile
+and a real fixture plugin, without personal data or a provider. Read layout and
+subscribe through process and panel/view bridges; verify the initial event,
+collapse/restore and clamp widths, show a blank work panel, list/activate existing
+and unknown tabs without expanding it, and hide/reopen with tabs preserved.
+Assert the correlated result and rendered geometry, one committed drag event,
+no duplicate setter events, active-session isolation and cleanup after
+unsubscribe/unload. Without `ui.shell`, reads/subscriptions still work and all
+three mutations are denied. Renderer loss must reject pending calls explicitly.
+
+Shell layout cross-process regression runner: `node scripts/e2e-plugin-shell-layout.mjs`.
+Use an isolated profile and seeded development plugin; no live model is needed.
+Check both async panel invoke and legacy send cancellation during a document
+reload while a user drag keeps the command queued. Unit regressions additionally
+bind scope to the displayed session project during Main/renderer project races.

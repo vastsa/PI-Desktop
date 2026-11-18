@@ -1,3 +1,4 @@
+import { useWorkPanelGeometry, type PluginPanelGeometry } from "../../lib/work-panel-geometry";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { FsEntry, FsReadResult, SessionSummary, WorkspaceDiff } from "@pi-desktop/shared";
@@ -7,9 +8,11 @@ import { useAppStore } from "../../stores/app-store";
 import { Button, SegmentedControl } from "../ui";
 import "../../styles/remote-mvp.css";
 
-export function RemoteWorkspace({ session, width, exiting, onExitAnimationEnd }: {
+export function RemoteWorkspace({ session, width, exiting, onExitAnimationEnd, onLayoutChange }: {
   session: SessionSummary; width: number; exiting?: boolean; onExitAnimationEnd?: () => void;
+  onLayoutChange?: (geometry: PluginPanelGeometry | null) => void;
 }) {
+  const panelElement = useWorkPanelGeometry(width, false, onLayoutChange);
   const { t } = useTranslation("remote");
   const [tab, setTab] = useState<"files" | "review">("files");
   const [directory, setDirectory] = useState("");
@@ -57,7 +60,7 @@ export function RemoteWorkspace({ session, width, exiting, onExitAnimationEnd }:
     finally { if (current(request)) setBusy(false); }
   };
   return (
-    <aside className={`work-panel remote-workspace${exiting ? " is-exiting" : ""}`}
+    <aside ref={panelElement} className={`work-panel remote-workspace${exiting ? " is-exiting" : ""}`}
       style={{ "--work-panel-width": `${width}px` } as CSSProperties}
       onAnimationEnd={(event) => { if (event.target === event.currentTarget && exiting) onExitAnimationEnd?.(); }}
       aria-label={t("workspace")}>
