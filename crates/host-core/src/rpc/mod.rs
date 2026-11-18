@@ -1,4 +1,5 @@
 mod background_jobs;
+mod browser_keychain_rpc;
 mod computer_rpc;
 mod config_sync_rpc;
 mod file_batches;
@@ -2069,6 +2070,7 @@ async fn handle_request(
             }))
         }
         "window.setNativeCornerPreference" => window_corner_rpc::handle(params),
+        "browser.chromeSafeStoragePassword" => browser_keychain_rpc::handle().await,
         "window.enableNativeSnap" => window_snap_rpc::handle(params),
         "keyboard.setGlobalShortcut" => {
             let binding = params
