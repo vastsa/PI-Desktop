@@ -484,7 +484,8 @@ is the endpoint that vendor actually publishes:
   with the account id taken from the access token. The endpoint requires
   `client_version` and hides models whose minimum Codex client is newer, so
   the value is a pinned Codex CLI version (`CODEX_MODELS_CLIENT_VERSION`) that
-  is bumped when an account model goes missing. A `{ data: [...] }` payload is
+  is bumped when an account model goes missing (0.169.1 since `gpt-6.2-sol` and
+  `gpt-6.2-astra` require 0.166.0, #2411). A `{ data: [...] }` payload is
   not accepted. A newly published id such as `gpt-6-luna` is selectable
   without a client update when that response includes it.
 - GitHub Copilot: `GET {base}/models` with the pinned IDE identity headers and
