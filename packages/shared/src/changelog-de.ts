@@ -14,6 +14,7 @@ export const deEntries: ChangelogEntry[] = [
       "Den Plugin-Marktplatz als eine Liste durchsuchen, die beim Scrollen nachlädt, nach Empfohlen, Beliebt, Neueste oder Name sortieren und die Trefferzahl je Kategorie sehen; ist das Plugin-Center nicht erreichbar, antwortet der zuletzt gespeicherte Katalog.",
       "Jedes Plugin liegt jetzt auf einem zweisprachigen Regal, sodass der Marktplatz auf Deutsch oder Englisch liest und nach derselben Kategorie filtert.",
       "Plugin-Details zeigen jetzt Herausgeber, Readme und Sicherheitshinweise aus dem Katalog; sie gingen beim Einlesen verloren.",
+      "Wähle GPT-6.2 Sol und GPT-6.2 Astra bei OpenAI, ChatGPT, GitHub Copilot, OpenCode und Gateways, die sie anbieten, mit ihren veröffentlichten Limits und Preisen.",
     ],
   },
   {

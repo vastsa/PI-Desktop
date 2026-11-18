@@ -57,4 +57,27 @@ describe("pi-ai built-in provider sync", () => {
       .map((provider) => provider.id);
     expect(unmatched).toEqual([]);
   });
+
+  // pi-ai 1.5.2 predates GPT-6.2; the Desktop patch adds the entries until upstream ships them.
+  it.each([
+    ["openai", "gpt-6.2-sol", "gpt-6.1-sol", 2, 10],
+    ["openai", "gpt-6.2-astra", "gpt-6-astra", 8, 40],
+    ["openai-codex", "gpt-6.2-sol", "gpt-6.1-sol", 2, 10],
+    ["openai-codex", "gpt-6.2-astra", "gpt-6-astra", 8, 40],
+    ["github-copilot", "gpt-6.2-sol", "gpt-6.1-sol", 2, 10],
+    ["github-copilot", "gpt-6.2-astra", "gpt-6-astra", 8, 40],
+    ["opencode", "gpt-6.2-sol", "gpt-6.1-sol", 2, 10],
+    ["opencode", "gpt-6.2-astra", "gpt-6-astra", 8, 40],
+  ])("ships %s/%s with its sibling's transport and its own prices", (providerId, id, siblingId, input, output) => {
+    const models = providers.find((provider) => provider.id === providerId)?.getModels() ?? [];
+    const model = models.find((entry) => entry.id === id);
+    const sibling = models.find((entry) => entry.id === siblingId);
+    expect(model, `${providerId}/${id}`).toBeDefined();
+    expect(sibling).toBeDefined();
+    expect(model!.api).toBe(sibling!.api);
+    expect(model!.baseUrl).toBe(sibling!.baseUrl);
+    expect(model!.compat).toEqual(sibling!.compat);
+    expect(model!.reasoning).toBe(true);
+    expect([model!.cost.input, model!.cost.output]).toEqual([input, output]);
+  });
 });
