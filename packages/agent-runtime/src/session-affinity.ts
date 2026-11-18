@@ -135,8 +135,8 @@ export function withSessionPromptCacheKey(input: {
 
 /**
  * `options` with session identity appended at the request boundary. Responses
- * already emits `session_id`, but common reverse proxies drop underscore
- * headers; add the stable hyphenated alias for custom endpoints. Completions
+ * already emits `session-id`; custom endpoints also get the stable
+ * `x-session-affinity` alias their routers key on. Completions
  * gets its missing body key after every other `onPayload` hook, so a
  * payload-rewriting extension cannot drop it.
  *

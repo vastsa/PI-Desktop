@@ -14,6 +14,7 @@ export const ptBREntries: ChangelogEntry[] = [
       "Navegue pelo marketplace de plugins em uma lista que carrega mais ao rolar, ordene por recomendados, populares, recentes ou nome e veja quantos plugins correspondem a cada categoria; se a central de plugins não responder, o último catálogo salvo é usado.",
       "Cada plugin agora fica em uma prateleira bilíngue, então o marketplace é lido em português ou chinês e filtra pela mesma categoria.",
       "Os detalhes do plugin agora mostram o publicador, o readme e as notas de segurança do catálogo, que eram descartados na leitura.",
+      "Escolha GPT-6.2 Sol e GPT-6.2 Astra com OpenAI, ChatGPT, GitHub Copilot, OpenCode e gateways que os publicam, com os limites e preços publicados.",
     ],
   },
   {
