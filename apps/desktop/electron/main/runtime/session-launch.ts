@@ -351,6 +351,9 @@ export function createSessionLaunchRuntime({
     const extensionAgentKey = requestedProviderId
       ? trustedExtensionAgentKeyFromProviderId(requestedProviderId)
       : undefined;
+    if (session.sideQuestion && extensionAgentKey) {
+      throw new Error("Side questions require a model with Host-enforced tools");
+    }
     const provider: RuntimeProvider = extensionAgentKey
       ? {
           id: requestedProviderId!,
@@ -754,6 +757,7 @@ export function createSessionLaunchRuntime({
       workspaceRoot,
       sidecarParams: {
         sessionId,
+        ...(session.sideQuestion ? { readOnlyTools: true } : {}),
         mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
@@ -799,7 +803,7 @@ export function createSessionLaunchRuntime({
           supportedThinkingLevels: [...thinkingCapabilities.supportedThinkingLevels],
           ...(modelConfig ? { modelConfig } : {}),
         },
-        pluginTools: [
+        pluginTools: session.sideQuestion ? [] : [
           ...plugins
             .getTools()
             .filter((tool) => pluginActiveInProject(tool.pluginId, projectPath))
@@ -825,10 +829,10 @@ export function createSessionLaunchRuntime({
         ],
         // Plugin skills (D174): only the catalog crosses to the sidecar; the
         // document body is fetched on demand through the local `Skill` tool.
-        pluginSkills,
+        pluginSkills: session.sideQuestion ? [] : pluginSkills,
         // Trusted extensions enabled for this project (spec 16 §3.2). The set
         // is part of the runtime match, so a toggle retires the runtime.
-        trustedExtensions: plugins
+        trustedExtensions: session.sideQuestion ? [] : plugins
           .getAgentExtensions()
           .filter((extension) => pluginActiveInProject(extension.pluginId, projectPath))
           .map((extension) => ({
@@ -838,7 +842,7 @@ export function createSessionLaunchRuntime({
             source: "plugin" as const,
             root: extension.root,
           })),
-        subagents: subagentCatalog.definitions,
+        subagents: session.sideQuestion ? [] : subagentCatalog.definitions,
         subagentProviders: subagentBindings.providers,
         subagentModelKeys,
       },

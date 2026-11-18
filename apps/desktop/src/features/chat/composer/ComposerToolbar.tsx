@@ -33,6 +33,7 @@ type ContextUsage = Parameters<typeof ContextUsageInspector>[0];
 export type ComposerToolbarProps = {
   t: TFunction;
   mode: Mode;
+  fixedMode?: boolean;
   planningLive: boolean;
   providerId?: string;
   modelId?: string;
@@ -76,6 +77,7 @@ export type ComposerToolbarProps = {
 export function ComposerToolbar({
   t,
   mode,
+  fixedMode,
   planningLive,
   providerId,
   modelId,
@@ -143,7 +145,7 @@ export function ComposerToolbar({
           planningLive={planningLive}
           open={modeOpen}
           setOpen={setModeOpen}
-          controlsBlocked={controlsBlocked}
+          controlsBlocked={controlsBlocked || fixedMode === true}
           onCloseOtherMenus={() => {
             modelMenu.setOpen(false);
             setPermissionOpen(false);

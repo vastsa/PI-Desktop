@@ -11,6 +11,7 @@ export type BuiltinCommandDef = CommandItem & {
 
 export const BUILTIN_COMMANDS: BuiltinCommandDef[] = [
   { id: "builtin.session.new", title: "New task", category: "Session", keywords: ["new", "chat", "task"], source: "builtin", slash: "new" },
+  { id: "builtin.session.sideQuestion", title: "Ask a side question", category: "Session", keywords: ["btw", "side", "question"], source: "builtin", slash: "btw" },
   { id: "builtin.agent.compact", title: "Compact conversation context", category: "Session", keywords: ["compact", "context", "tokens"], source: "builtin", slash: "compact" },
   { id: "builtin.mode.agent", title: "Switch to Agent mode", category: "Session", keywords: ["mode", "agent"], source: "builtin", slash: "agent-mode" },
   { id: "builtin.mode.plan", title: "Switch to Plan mode", category: "Session", keywords: ["mode", "plan", "planning"], source: "builtin", slash: "plan-mode" },

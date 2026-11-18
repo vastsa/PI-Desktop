@@ -1028,6 +1028,7 @@ export type PluginToolDef = {
 };
 
 export type AgentRuntimeOptions = {
+  readOnlyTools?: boolean;
   host: RuntimeHost;
   sessionId: string;
   mode: Mode;
@@ -1127,6 +1128,7 @@ export type AgentRuntimeDiagnostic = {
 };
 
 export type RuntimeMatchConfig = {
+  readOnlyTools?: boolean;
   mode: Mode;
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
@@ -2092,7 +2094,10 @@ export class DesktopAgentRuntime {
     plannedChunks: number;
   };
 
+  private readonly readOnlyTools: boolean;
+
   constructor(opts: AgentRuntimeOptions) {
+    this.readOnlyTools = opts.readOnlyTools === true;
     this.sessionId = opts.sessionId;
     this.turnId = opts.turnId;
     // A restored checkpoint already compacted the window: stage
@@ -2776,6 +2781,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * leaving "why did my cache reset" unanswerable.
    */
   firstMismatch(config: RuntimeMatchConfig): string | null {
+    if (this.readOnlyTools !== (config.readOnlyTools === true)) return "readOnlyTools";
     const requestedPluginTools = config.pluginTools ?? [];
     const current = safeJson([...this.pluginTools].sort((a, b) => a.name.localeCompare(b.name)));
     const next = safeJson([...requestedPluginTools].sort((a, b) => a.name.localeCompare(b.name)));
@@ -4297,6 +4303,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private rebuildToolCatalog(): void {
     const catalog = new Map<string, AgentTool>();
     for (const tool of this.buildToolDefinitions()) {
+      if (this.readOnlyTools && !READ_ONLY_CORE_TOOLS.has(tool.name)) continue;
       if (!this.isToolAllowedInMode(tool.name) && !retainModeToolDeclaration(tool.name)) continue;
       // The execution mode is decided here, in one place, so no tool can grow
       // an accidental parallel batch: unknown tools remain sequential.

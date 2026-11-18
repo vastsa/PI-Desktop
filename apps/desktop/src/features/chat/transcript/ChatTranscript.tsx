@@ -406,7 +406,7 @@ function TranscriptBody({
   };
 
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (radialMenu.enabled) {
+    if (radialMenu.enabled && !window.getSelection()?.toString().trim()) {
       event.preventDefault();
       event.stopPropagation();
       setRadialPoint({ x: event.clientX, y: event.clientY });
@@ -454,6 +454,7 @@ function TranscriptBody({
       <div
         className="thread-scroll"
         ref={scrollRef}
+        data-transcript-session-id={sessionId}
         data-scroll-owner="transcript"
         onContextMenu={onContextMenu}
         onScroll={handleScroll}

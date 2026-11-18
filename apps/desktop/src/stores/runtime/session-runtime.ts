@@ -370,7 +370,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     const { sessionId } = envelope;
     const state = get();
     const current =
-      sessionTranscriptCache.get(sessionId) ?? state.retainedTranscripts[sessionId];
+      sessionTranscriptCache.get(sessionId) ?? state.sideQuestionTranscripts[sessionId] ?? state.retainedTranscripts[sessionId];
     if (!current) return;
 
     const next = projectTranscriptEvent(current, envelope);
@@ -381,6 +381,9 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       next,
       sessionHistoryCache.get(sessionId) ?? state.sessionHistory[sessionId],
     );
+    if (state.sideQuestionTranscripts[sessionId]) {
+      set(current => ({ sideQuestionTranscripts: { ...current.sideQuestionTranscripts, [sessionId]: next } }));
+    }
   }
 
   function queueWorkspaceAlignment<T>(task: () => Promise<T>): Promise<T> {

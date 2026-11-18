@@ -1,3 +1,6 @@
+import { closeWorkPanelTabState } from "../../lib/work-panel-tabs";
+import { clearChatContextChips } from "../../lib/chat-context-chips";
+import { deleteComposerDraft } from "../../lib/composer-draft-cache";
 import { forgetTranscriptReadingState } from "../../lib/transcript-reading-position";
 import i18n from "i18next";
 import type { ProjectWorkspace } from "@pi-desktop/shared";
@@ -189,6 +192,8 @@ function clearLocalSessionState(
       retainedNav.length > 0 ? retainedNav : [{ page: "chat" as const }];
     return {
       ...releaseSessionPane(state, id),
+      sideQuestionSessions: withoutRecordKey(state.sideQuestionSessions, id),
+      sideQuestionTranscripts: withoutRecordKey(state.sideQuestionTranscripts, id),
       sessionMeta,
       sessions,
       runningSessions,
@@ -249,6 +254,7 @@ export function createProjectSlice({
   | "restoreSession"
   | "renameSession"
   | "moveSessionProject"
+  | "deleteSideQuestion"
   | "deleteSession"
   | "setSessionSort"
   | "setSessionArchiveVisibility"
@@ -585,6 +591,26 @@ export function createProjectSlice({
         ),
       }));
       return true;
+    },
+
+    deleteSideQuestion: async (id) => {
+      await api.deleteSession(id);
+      clearLocalSessionState({ get, set, runtime, withoutRecordKey }, id);
+      deleteComposerDraft(id);
+      clearChatContextChips(id);
+      const tabId = `side-question:${id}`;
+      if (get().workPanelTabs.some(tab => tab.id === tabId)) get().closeWorkPanelTab(tabId);
+      set(state => {
+        const contexts = Object.entries(state.workPanelContexts)
+          .filter(([, context]) => context.tabs.some(tab => tab.id === tabId));
+        if (!contexts.length) return {};
+        return { workPanelContexts: {
+          ...state.workPanelContexts,
+          ...Object.fromEntries(contexts.map(([sessionId, context]) => [
+            sessionId, { ...context, ...closeWorkPanelTabState(context, tabId) },
+          ])),
+        } };
+      });
     },
 
     deleteSession: async (id) => {

@@ -1,5 +1,5 @@
 import type { MessageAttachment } from "@pi-desktop/shared";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { splitChatText } from "../lib/chat-links";
 import { chatFileCandidates, createChatFileVerificationQueue, verifiedChatSegments, verifyChatFiles } from "../lib/verified-chat-files";
@@ -8,10 +8,13 @@ import { useAppStore } from "../stores/app-store";
 const scheduleVerification = createChatFileVerificationQueue();
 const EMPTY: ReadonlySet<string> = new Set();
 
+export const ChatFileSessionContext = createContext<{ id: string; projectPath?: string } | null>(null);
+
 /** Confirmation belongs to this text and workspace path/session, never the next one. */
 export function useVerifiedChatText(text: string, attachments?: readonly MessageAttachment[]) {
-  const workspacePath = useAppStore((s) => s.workspace?.path);
-  const sessionId = useAppStore((s) => s.activeSessionId);
+  const owner = useContext(ChatFileSessionContext);
+  const workspacePath = useAppStore((s) => owner ? owner.projectPath : s.workspace?.path);
+  const sessionId = useAppStore((s) => owner?.id ?? s.activeSessionId);
   const request = useMemo(() => {
     const segments = splitChatText(text, workspacePath);
     const trusted = new Set(attachments?.map((attachment) => attachment.ref));

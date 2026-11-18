@@ -921,7 +921,8 @@ pub fn list(
                 s.model_id, s.provider_id
          FROM sessions s
          LEFT JOIN session_import_origins oi ON oi.session_id = s.id
-         WHERE s.deleted_at IS NULL"
+         WHERE s.deleted_at IS NULL
+         AND NOT EXISTS(SELECT 1 FROM kv WHERE ns = 'session:side-question' AND key = s.id)"
     );
     if scope.owns_only() {
         sql.push_str(" AND oi.plugin_id = ?");
@@ -996,7 +997,8 @@ fn session_row(
                 oi.session_id, s.model_id, s.provider_id
          FROM sessions s
          LEFT JOIN session_import_origins oi ON oi.session_id = s.id
-         WHERE s.id = ?2 AND s.deleted_at IS NULL"
+         WHERE s.id = ?2 AND s.deleted_at IS NULL
+         AND NOT EXISTS(SELECT 1 FROM kv WHERE ns = 'session:side-question' AND key = s.id)"
     );
     if scope.owns_only() {
         sql.push_str(" AND oi.plugin_id = ?1");

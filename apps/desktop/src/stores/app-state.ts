@@ -26,6 +26,7 @@ import type {
   ProviderPublic,
   ReviewRollbackResult,
   SessionSummary,
+  SessionDetail,
   SessionThinkingLevel,
   SessionTodoSnapshot,
   UiMessage,
@@ -150,6 +151,9 @@ export type AppState = {
   retainedSessionIds: string[];
   /** Last transcript each retained pane painted. */
   retainedTranscripts: Record<string, UiMessage[]>;
+  retainSideQuestion: (session: SessionDetail) => void;
+  sideQuestionSessions: Record<string, SessionSummary>;
+  sideQuestionTranscripts: Record<string, UiMessage[]>;
   /** Renderer-owned range metadata for the lazily loaded active transcript. */
   sessionHistory: Record<string, SessionHistoryWindow>;
   /** Reading ranges are separate from the live/runtime transcript projection. */
@@ -327,6 +331,7 @@ export type AppState = {
   /** Move an idle session into an already-known project, preserving history. */
   moveSessionProject: (id: string, projectPath: string) => Promise<boolean>;
   deleteSession: (id: string) => Promise<void>;
+  deleteSideQuestion: (id: string) => Promise<void>;
   setSessionSort: (sort: SessionSort) => void;
   setSessionArchiveVisibility: (show: boolean) => void;
   setSessionView: (view: Partial<SessionView> | boolean) => void;

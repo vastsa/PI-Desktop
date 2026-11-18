@@ -1,4 +1,16 @@
 export const en = {
+  sideQuestions: {
+    removeReference: "Remove reference",
+    title: "Side question", untitled: "New side question", history: "Side-question history",
+    input: "Ask in this side conversation…", source: "From: {{title}}", readOnly: "Read only",
+    viewAll: "View all ({{count}})", open: "Open", search: "Search titles or questions",
+    archived: "Archived", archive: "Archive", restore: "Restore", delete: "Delete",
+    textOnlyCommand: "Use /btw with text only. Remove attachments and context chips first.",
+    deleteTitle: "Delete side question", deleteDescription: "Delete this side question? This cannot be undone.",
+    tree: "Conversation tree", list: "List", start: "Conversation start", empty: "No side questions.",
+    loadMore: "Load more", working: "Working…", unavailable: "This side question is unavailable.",
+    selectModel: "Select model", sendFailed: "The message was not accepted.",
+  },
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "New isolated session",

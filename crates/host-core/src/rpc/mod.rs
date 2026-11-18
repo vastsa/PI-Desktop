@@ -12,6 +12,7 @@ mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
 mod session_display;
+mod side_question_rpc;
 mod todos;
 mod window_corner_rpc;
 mod window_owner;
@@ -2824,6 +2825,12 @@ async fn handle_request(
             let session = remote_tools::session_value(&st.db, session)?;
             Ok(json!({ "session": session, "worktree": created }))
         }
+        "session.sideQuestion.create"
+        | "session.sideQuestion.list"
+        | "session.sideQuestion.archive" => {
+            let mut st = state.lock().await;
+            side_question_rpc::handle(&mut st, method, params)
+        }
         "session.fork" => {
             let session_id = params
                 .get("sessionId")
@@ -4172,6 +4179,18 @@ async fn handle_request(
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            {
+                let st = state.lock().await;
+                if !sessions::side_questions::tool_allowed(&st.db, &p.session_id, &p.tool_name)
+                    .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+                {
+                    return Err(rpc_err(
+                        1002,
+                        "Side questions allow Read, Glob and Grep only",
+                        "SIDE_QUESTION_READ_ONLY",
+                    ));
+                }
+            }
             let _pending_file_call = if let Some(ticket) = p.file_batch_ticket.as_deref() {
                 Some(
                     state

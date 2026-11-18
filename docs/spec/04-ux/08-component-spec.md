@@ -4858,6 +4858,22 @@ Closing the connected Browser tab clears its connection. Subsequent session-only
 
 While a checkpoint estimate supplies context occupancy, use its recorded provider/model capacity, or the current exact session binding for legacy checkpoints. Keep historical request usage unchanged. Unknown capacity is marked approximate. Verify 20,619 / 1,000,000 = 2%, unknown routes, legacy records and usage after a newer request with `compaction-context-usage.test.mjs`.
 
+### Side questions in the work panel
+
+The work panel’s `+` opens the normal launcher. Its Side question action opens
+an independent conversation beside the current one. The launcher shows up to
+five recent side questions and links to the full history. History supports
+search, a list or grouping by source message, pages of 20, archive and restore.
+Delete asks for confirmation and is unavailable for a running side question.
+
+The side tab shows a source title and only the new exchange. It uses the shared
+Composer for editing, model and permission controls, send and stop. Agent mode
+is fixed. A normal side question or `/btw` takes the latest settled prefix.
+`/btw <question>` sends that question to the new side tab. To ask about a
+specific passage in the main transcript, select it and choose Side question
+from the context menu. This starts a fresh conversation with a compact,
+removable reference containing the selected text.
+
 ### Fork activation selection ownership (#2086)
 
 Activating a completed session fork clears the previous selectingSessionId together with its visible pane switch. A superseded fork only lists its durable child and does not clear a newer pending selection. This prevents stale switching UI from hiding the activated branch.

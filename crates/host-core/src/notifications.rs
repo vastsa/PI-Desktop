@@ -55,7 +55,9 @@ pub fn insert_for_terminal_turn(
         .query_row(
             "SELECT t.session_id, s.title
              FROM turns t JOIN sessions s ON s.id = t.session_id
-             WHERE t.id = ?1",
+             WHERE t.id = ?1 AND NOT EXISTS (
+                 SELECT 1 FROM kv WHERE ns = 'session:side-question' AND key = t.session_id
+             )",
             params![turn_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
         )

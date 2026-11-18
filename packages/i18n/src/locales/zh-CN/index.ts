@@ -1,6 +1,18 @@
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const zhCN = {
+  sideQuestions: {
+    removeReference: "移除引用",
+    title: "支线提问", untitled: "新支线提问", history: "支线历史",
+    input: "继续支线提问…", source: "来自：{{title}}", readOnly: "只读",
+    viewAll: "查看全部（{{count}}）", open: "打开", search: "搜索标题或提问内容",
+    archived: "已归档", archive: "归档", restore: "恢复", delete: "删除",
+    textOnlyCommand: "/btw 暂只支持文字，请先移除附件和上下文引用。",
+    deleteTitle: "删除支线提问", deleteDescription: "确定要删除此支线提问吗？此操作无法撤销。",
+    tree: "会话树", list: "列表", start: "会话起点", empty: "暂无支线提问。",
+    loadMore: "加载更多", working: "处理中…", unavailable: "此支线提问不可用。",
+    selectModel: "选择模型", sendFailed: "消息未能发送。",
+  },
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "新建隔离会话",

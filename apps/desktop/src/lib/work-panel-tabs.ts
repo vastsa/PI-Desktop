@@ -1,5 +1,7 @@
 export type WorkPanelTabKind =
   | "new"
+  | "sideQuestion"
+  | "sideQuestionHistory"
   | "review"
   | "file"
   | "plugin"
@@ -88,7 +90,7 @@ export function switchWorkPanelContextState(
 }
 
 export function toolWorkPanelTab(
-  kind: Exclude<WorkPanelTabKind, "new" | "file" | "plugin" | "subagent">,
+  kind: Exclude<WorkPanelTabKind, "new" | "file" | "plugin" | "subagent" | "sideQuestion" | "sideQuestionHistory">,
 ): WorkPanelTab {
   return { id: kind, kind };
 }
@@ -248,7 +250,7 @@ export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
     Boolean(tab) &&
     (tab.kind === "new" || tab.kind === "review" ||
       tab.kind === "file" || tab.kind === "plugin" ||
-      tab.kind === "subagent")
+      tab.kind === "subagent" || tab.kind === "sideQuestion" || tab.kind === "sideQuestionHistory")
   );
 }
 
@@ -449,4 +451,12 @@ export function subagentTabDisplayLabels(
     seen.set(label, index);
     return `${label}#${index}`;
   });
+}
+
+export function sideQuestionWorkPanelTab(id: string, label: string): WorkPanelTab {
+  return { id: `side-question:${id}`, kind: "sideQuestion", resource: id, label };
+}
+
+export function sideQuestionHistoryWorkPanelTab(parentId: string): WorkPanelTab {
+  return { id: `side-question-history:${parentId}`, kind: "sideQuestionHistory", resource: parentId };
 }

@@ -1,3 +1,5 @@
+import { ChatContextChips } from "../../../components/ChatContextChips";
+import type { ChatContextChip } from "../../../lib/chat-context-chips";
 import { useLayoutEffect } from "react";
 import { installComposerDeletionGuard } from "./native-deletion";
 import type {
@@ -19,6 +21,8 @@ import type { CompletionController } from "./hooks/useComposerCompletions";
 import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
 
 export type ComposerInputProps = {
+  contextChips?: ChatContextChip[];
+  onRemoveContext?: (id: string) => void;
   imagePreview?: ComposerImagePreviewController;
   directoryReferences?: ComposerFileReference[];
   onRemoveDirectory?: (id: string) => void;
@@ -59,6 +63,8 @@ export type ComposerInputProps = {
 
 /** Rich contenteditable input; draft state and async operations stay outside. */
 export function ComposerInput({
+  contextChips,
+  onRemoveContext,
   imagePreview,
   directoryReferences = [],
   onRemoveDirectory,
@@ -105,6 +111,7 @@ export function ComposerInput({
           ))}
         </div>
       ) : null}
+      {contextChips?.length ? <ChatContextChips chips={contextChips} onRemove={onRemoveContext} /> : null}
       <div className="composer-input-stage">
         {/* React does not render children into this node; the editor module
           paints atomic attachment chips imperatively. */}

@@ -9,10 +9,12 @@ import { Button } from "./ui";
 export function PermissionCard({
   permission,
   queued = 0,
+  restoreFocus = true,
 }: {
   permission: PendingPermission;
   /** Requests waiting behind this one; the user answers them in order. */
   queued?: number;
+  restoreFocus?: boolean;
 }) {
   const { t } = useTranslation();
   const resolvePermission = useAppStore((state) => state.resolvePermission);
@@ -23,6 +25,7 @@ export function PermissionCard({
   const [resolving, setResolving] = useState(false);
 
   const restoreComposerFocus = () => {
+    if (!restoreFocus) return;
     window.requestAnimationFrame(() => {
       document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus();
     });

@@ -1468,3 +1468,84 @@
   padding: 0;
   margin: 2px 2px 0 0;
 }
+
+.composer-ctx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px 0;
+}
+
+.composer-ctx-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-primary);
+  font-size: var(--text-xs);
+}
+
+.composer-ctx-chip-icon {
+  flex-shrink: 0;
+  color: var(--ds-text-muted);
+}
+
+.composer-ctx-chips[data-readonly] {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.composer-ctx-chip:focus-visible {
+  outline: 2px solid var(--ds-text-primary);
+  outline-offset: 2px;
+}
+
+.composer-ctx-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-ctx-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-3xs);
+  background: transparent;
+  color: var(--ds-text-muted);
+  cursor: pointer;
+}
+
+.composer-ctx-chip-remove:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-error);
+}
+
+/* Read-only snapshot preview; the pointer can enter to scroll long details. */
+.composer-ctx-chip-preview {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: auto;
+  max-width: min(480px, calc(100vw - 16px));
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}

@@ -57,6 +57,8 @@ export function createInitialState(): AppStateData {
     retainedSessionIds: [],
     dismissedAssistantErrorMessages: {},
     retainedTranscripts: {},
+    sideQuestionSessions: {},
+    sideQuestionTranscripts: {},
     transcriptViews: {},
     sessionHistory: {},
     draftConfiguration: null,

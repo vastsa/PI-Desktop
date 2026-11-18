@@ -1,3 +1,4 @@
+import { registerSideQuestionIpc } from "./side-question-ipc";
 import { shell } from "electron";
 import type { ModeCatalogService } from "../runtime/mode-catalog";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -129,6 +130,7 @@ export function registerSessionIpc({
   stripWinLongPrefix,
   modeCatalog,
 }: SessionIpcDependencies): void {
+  registerSideQuestionIpc({ registrar, getHost, sessionCapabilityContext, enrichSession, persistenceOutbox });
   let host: HostProcess | null = null;
   let sidecar: AgentSidecar | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {

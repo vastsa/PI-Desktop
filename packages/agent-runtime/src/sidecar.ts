@@ -110,6 +110,7 @@ function testRuntimeIdentity(sessionId: string) {
 
 type RuntimeParams = {
   sessionId: string;
+  readOnlyTools?: boolean;
   /** Any valid mode id; validated by `parseModeLaunchParams`. */
   mode?: unknown;
   /** Definition of `mode` resolved by Electron main (ADR mode-definitions). */
@@ -242,6 +243,7 @@ async function runtimeFor(
     });
   }
   const config = {
+    readOnlyTools: params.readOnlyTools,
     mode,
     provider,
     thinkingLevel,
@@ -319,6 +321,7 @@ async function runtimeFor(
   }
   const runtime = new DesktopAgentRuntime({
     host: hostProxy,
+    readOnlyTools: params.readOnlyTools,
     sessionId,
     mode,
     modeDefinition,

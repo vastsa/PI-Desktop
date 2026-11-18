@@ -1,6 +1,6 @@
 # ADR 0268: Remove quotes, annotations, and side chats
 
-- Status: Accepted; supersedes ADR message-quotes-and-side-chats, ADR
+- Status: Accepted; proposed narrow amendment in [ADR 0347](0347-independent-side-questions.md); supersedes ADR message-quotes-and-side-chats, ADR
   response-annotations, and ADR floating-annotation-index; amends ADR 0254
 - Date: 2026-09-16
 - Related: D097, D128, D134, D209, D254, D261, D301, ADR 0023, ADR 0254

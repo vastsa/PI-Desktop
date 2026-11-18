@@ -37,6 +37,7 @@
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-history": "node scripts/e2e-plan-history.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
+    "test:e2e:side-question": "node scripts/e2e-side-question-composer.mjs",
     "test:e2e:theme-surfaces": "node scripts/e2e-theme-surfaces.mjs",
     "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",

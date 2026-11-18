@@ -28,6 +28,8 @@ import {
 } from "../../../components/ContextMenu";
 import { useAppStore } from "../../../stores/app-store";
 import { copySelectionOrFallback } from "../../../lib/chat-transcript-text";
+import { openSideQuestion } from "../../side-questions/actions";
+import { isRemoteSession } from "../../../lib/remote-session-safety";
 
 export type OpenTranscriptMenu = (
   event: ReactMouseEvent<HTMLElement>,
@@ -45,9 +47,33 @@ export function useTranscriptMenu(): OpenTranscriptMenu {
 }
 
 export function TranscriptMenuProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
+  const openWithSelection = useCallback<OpenTranscriptMenu>((event, request) => {
+    const state = useAppStore.getState();
+    const id = state.activeSessionId;
+    const source = state.sessions.find(session => session.id === id);
+    const selection = window.getSelection();
+    const root = event.currentTarget.closest<HTMLElement>("[data-transcript-session-id]");
+    const quote = selection?.toString() ?? "";
+    if (id && !state.selectingSessionId && source && !isRemoteSession(source) &&
+        source.source !== "pi-native" && !source.scheduledRun && quote.trim() &&
+        root?.dataset.transcriptSessionId === id && selection?.anchorNode && selection.focusNode &&
+        root.contains(selection.anchorNode) && root.contains(selection.focusNode)) {
+      request = { ...request, items: [...request.items, {
+        id: "side-question", label: t("sideQuestions.title"), separatorBefore: true,
+        onSelect: () => {
+          const current = useAppStore.getState();
+          if (current.activeSessionId !== id || current.selectingSessionId) return;
+          void openSideQuestion(id, t("sideQuestions.untitled"), quote)
+            .catch(error => current.showToast(String(error), { variant: "error" }));
+        },
+      }] };
+    }
+    openContextMenu(event, request);
+  }, [openContextMenu, t]);
   return (
-    <TranscriptMenuContext.Provider value={openContextMenu}>
+    <TranscriptMenuContext.Provider value={openWithSelection}>
       {children}
       <ContextMenu state={contextMenu} onClose={closeContextMenu} />
     </TranscriptMenuContext.Provider>

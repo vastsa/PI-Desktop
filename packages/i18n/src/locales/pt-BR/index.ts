@@ -1,6 +1,7 @@
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const ptBR = {
+  sideQuestions: en.sideQuestions,
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "Nova sessão isolada",

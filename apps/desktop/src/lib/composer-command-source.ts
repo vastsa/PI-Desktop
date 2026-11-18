@@ -23,7 +23,7 @@ export function commandsForSession(
 ): ComposerCommand[] {
   if (!remote) return commands;
   return commands.filter(
-    (command) => !(command.kind === "skill" && command.skillId === GEN_UI_SKILL_ID),
+    (command) => command.id !== "builtin.session.sideQuestion" && !(command.kind === "skill" && command.skillId === GEN_UI_SKILL_ID),
   );
 }
 

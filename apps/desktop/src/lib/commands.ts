@@ -1,3 +1,5 @@
+import { openSideQuestion } from "../features/side-questions/actions";
+import { isRemoteSession } from "./remote-session-safety";
 import i18n from "i18next";
 import { api } from "./api";
 import { useAppStore } from "../stores/app-store";
@@ -9,12 +11,18 @@ import { trustedExtensionCommandName, type Mode } from "@pi-desktop/shared";
  * composer "/" dispatch (D123). Builtin ids run app actions locally; other
  * ids round-trip to the plugin runtime via commandPalette/execute.
  */
-export async function runPaletteCommand(commandId: string): Promise<void> {
+export async function runPaletteCommand(commandId: string, args = "", sourceSessionId?: string): Promise<void> {
   const store = useAppStore.getState();
   switch (commandId) {
     case "builtin.session.new":
       await store.newSession();
       break;
+    case "builtin.session.sideQuestion": {
+      const parent = store.sessions.find(session => session.id === (sourceSessionId ?? store.activeSessionId));
+      if (!parent || isRemoteSession(parent) || parent.source === "pi-native" || parent.scheduledRun) throw new Error(i18n.t("sideQuestions.unavailable"));
+      await openSideQuestion(parent.id, i18n.t("sideQuestions.untitled"), undefined, args);
+      break;
+    }
     case "builtin.agent.compact":
       await store.compactContext();
       break;

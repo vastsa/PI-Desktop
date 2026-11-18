@@ -138,6 +138,8 @@ fn validate_thinking_level(level: &str) -> Result<()> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_question: Option<side_questions::SideQuestionOrigin>,
     pub id: String,
     pub title: String,
     /// Number of messages in the current canonical transcript. This is the
@@ -1390,12 +1392,29 @@ const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
             s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
             EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run,
-            s.fast_mode
+            s.fast_mode,
+            (SELECT value_json FROM kv WHERE ns = 'session:side-question' AND key = s.id) AS side_question_meta
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
 pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
+    let side_question = if let Ok(index) = row.as_ref().column_index("side_question_meta") {
+        row.get::<_, Option<String>>(index)?
+            .map(|raw| {
+                serde_json::from_str(&raw).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        index,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })
+            })
+            .transpose()?
+    } else {
+        None
+    };
     Ok(SessionSummary {
+        side_question,
         id: row.get(0)?,
         title: row.get(1)?,
         message_count: row.get(2)?,
@@ -1430,7 +1449,7 @@ fn attach_worktrees(db: &Database, summaries: &mut [SessionSummary]) -> Result<(
 // ---- sessions ---------------------------------------------------------------
 
 pub fn list_sessions(db: &Database) -> Result<Vec<SessionSummary>> {
-    let sql = format!("{SUMMARY_SELECT} ORDER BY s.updated_at DESC");
+    let sql = format!("{SUMMARY_SELECT} AND NOT EXISTS (SELECT 1 FROM kv WHERE ns = 'session:side-question' AND key = s.id) ORDER BY s.updated_at DESC");
     let mut stmt = db.conn().prepare_cached(&sql)?;
     let rows = stmt.query_map([], summary_from_row)?;
     let mut out = Vec::new();
@@ -1583,6 +1602,7 @@ pub fn create_session_with_mode_snapshot(
         transaction.commit()?;
     }
     Ok(SessionSummary {
+        side_question: None,
         id,
         title,
         message_count: 0,
@@ -1827,178 +1847,9 @@ pub fn session_has_running_turn(db: &Database, id: &str) -> Result<bool> {
     Ok(running)
 }
 
-/// Create an independent session from the source transcript, optionally
-/// stopping after one message. Message-scoped forks use this to keep later
-/// turns out of the child while preserving the same cache/runtime isolation as
-/// a full session fork.
-pub fn fork_session_through(
-    db: &Database,
-    source_id: &str,
-    title: Option<&str>,
-    through_message_id: Option<&str>,
-) -> Result<ForkSessionResult> {
-    let Some(source) = get_session(db, source_id)? else {
-        return Ok(ForkSessionResult::NotFound);
-    };
-    let running = session_has_running_turn(db, source_id)?;
-    let anchor = through_message_id
-        .map(str::trim)
-        .filter(|id| !id.is_empty());
-    if running && anchor.is_none() {
-        return Ok(ForkSessionResult::Busy);
-    }
-    let mut source_records =
-        dedupe_records(transcripts::read_transcript(db.data_dir(), source_id)?);
-    if let Some(message_id) = anchor {
-        let Some(position) = source_records
-            .iter()
-            .position(|record| record.id == message_id)
-        else {
-            return Ok(ForkSessionResult::NotFound);
-        };
-        if running {
-            let record = &source_records[position];
-            // An assistant message can be complete while its tool loop is still
-            // running. Reject any prefix containing rows owned by a live turn,
-            // not merely a streaming anchor. The RPC holds the host state lock
-            // across this check and publication, including transcript appends.
-            let settled_prefix: bool = db.conn().query_row(
-                "SELECT EXISTS (
-                    SELECT 1 FROM messages anchor
-                    WHERE anchor.session_id = ?1 AND anchor.id = ?2
-                    AND NOT EXISTS (
-                        SELECT 1 FROM messages m JOIN turns t ON t.id = m.turn_id
-                        WHERE m.session_id = ?1 AND t.status = 'running'
-                          AND m.seq <= anchor.seq
-                    )
-                 )",
-                params![source_id, message_id],
-                |row| row.get(0),
-            )?;
-            if record.role != "assistant"
-                || record.is_error
-                || !matches!(
-                    record
-                        .meta
-                        .as_ref()
-                        .and_then(|meta| meta.get("status"))
-                        .and_then(Value::as_str),
-                    None | Some("complete")
-                )
-                || record
-                    .meta
-                    .as_ref()
-                    .and_then(|meta| meta.get("error"))
-                    .is_some_and(|error| !error.is_null())
-                || !settled_prefix
-            {
-                return Ok(ForkSessionResult::Busy);
-            }
-        }
-        source_records.truncate(position + 1);
-    }
-    let source_compactions = transcripts::read_compactions(db.data_dir(), source_id)?;
-    let (mut records, message_ids, tool_call_ids) = clone_records_for_fork(source_records);
-    // Each checkpoint is remapped on its own: a message-scoped fork can cut the
-    // anchor of a later checkpoint while the earlier ones stay intact.
-    let mut compactions: Vec<CompactionRecord> = source_compactions
-        .into_iter()
-        .filter_map(|record| clone_compaction_for_fork(record, &message_ids, &tool_call_ids))
-        .collect();
-    let id = Uuid::new_v4().to_string();
-    let files = fork_files::preserve(
-        db.data_dir(),
-        source_id,
-        &id,
-        &mut records,
-        &mut compactions,
-    )?;
-    let visualization_files = fork_files::preserve_visualizations(
-        db.data_dir(),
-        source_id,
-        &id,
-        &mut records,
-        &mut compactions,
-    )?;
-    let texts = records.iter().map(record_index_text).collect::<Vec<_>>();
-    let now = now_ms();
-    let created_at = ms_to_ts(now);
-    let requested_title = title.map(str::trim).filter(|value| !value.is_empty());
-    let title = requested_title
-        .map(|value| value.chars().take(100).collect::<String>())
-        .unwrap_or_else(|| format!("{} (branch)", source.summary.title));
-    if let Err(error) = transcripts::write_transcript_with_compactions(
-        db.data_dir(),
-        &id,
-        &created_at,
-        &records,
-        &compactions,
-    ) {
-        transcripts::remove_session_files(db.data_dir(), &id);
-        return Err(error);
-    }
-    let indexed = (|| -> Result<()> {
-        let tx = db.conn().unchecked_transaction()?;
-        let inserted = tx
-            .prepare_cached(
-                "INSERT INTO sessions (
-                    id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, fast_mode, mode_snapshot_hash, source, pinned, last_seq,
-                    created_at, updated_at
-                 )
-                 SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, fast_mode, mode_snapshot_hash, NULL, 0, ?3, ?4, ?4
-                 FROM sessions WHERE id = ?5",
-            )?
-            .execute(params![id, title, records.len() as i64, now, source_id])?;
-        if inserted == 0 {
-            return Err(anyhow!("session not found: {source_id}"));
-        }
-        for (seq, record) in records.iter().enumerate() {
-            insert_index_row(&tx, &id, seq as i64, None, record, texts[seq].as_deref())?;
-        }
-        tx.commit()?;
-        Ok(())
-    })();
-    if let Err(error) = indexed {
-        transcripts::remove_session_files(db.data_dir(), &id);
-        return Err(error);
-    }
-    files.commit();
-    visualization_files.commit();
-
-    let summary = SessionSummary {
-        id,
-        title,
-        message_count: records.len() as i64,
-        project_path: source.summary.project_path,
-        model_id: source.summary.model_id,
-        provider_id: source.summary.provider_id,
-        mode: source.summary.mode,
-        thinking_level: source.summary.thinking_level,
-        permission_mode: source.summary.permission_mode,
-        fast_mode: source.summary.fast_mode,
-        updated_at: created_at.clone(),
-        created_at,
-        // A fork is the user's own conversation, not the automation's transcript.
-        scheduled_run: false,
-        // A new or forked session starts without a worktree (ADR 0329).
-        worktree: None,
-    };
-    let messages = records.into_iter().map(record_to_ui).collect();
-    Ok(ForkSessionResult::Created(Box::new(SessionDetail {
-        summary,
-        plan_history: Vec::new(),
-        navigation_parent: None,
-        message_start: None,
-        message_end: None,
-        has_more_after: None,
-        has_more_before: None,
-        messages,
-        compaction: compactions.last().cloned(),
-        compactions,
-    })))
-}
+mod fork;
+pub mod side_questions;
+pub use fork::fork_session_through;
 
 /// Backwards-compatible configurator.  Omitting the thinking level preserves
 /// the current persisted value.
@@ -2080,6 +1931,11 @@ pub fn configure_session_with_mode_snapshot(
         return Err(anyhow!("mode must be a valid mode id"));
     }
     let mode = normalize_mode(Some(mode));
+    if (mode != "agent" || mode_snapshot_hash.is_some())
+        && side_questions::origin(db, id)?.is_some()
+    {
+        return Err(anyhow!("Side questions use Agent mode"));
+    }
     if let Some(level) = thinking_level {
         validate_thinking_level(level)?;
     }
@@ -2127,11 +1983,18 @@ pub fn configure_session_with_mode_snapshot(
 }
 
 pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
+    if side_questions::origin(db, id)?.is_some() && session_has_running_turn(db, id)? {
+        return Err(anyhow!("Cannot delete a running side question"));
+    }
     let n = db
         .conn()
         .prepare_cached("DELETE FROM sessions WHERE id = ?1")?
         .execute(params![id])?;
     if n > 0 {
+        db.conn().execute(
+            "DELETE FROM kv WHERE ns = 'session:side-question' AND key = ?1",
+            [id],
+        )?;
         // Here rather than in the RPC handler so every deletion path (UI,
         // failed scheduled-run cleanup) also drops the transcript files.
         transcripts::remove_session_files(db.data_dir(), id);
@@ -5482,6 +5345,7 @@ mod tests {
     fn import_session_is_idempotent_and_preserves_timestamps() {
         let db = test_db();
         let summary = SessionSummary {
+            side_question: None,
             id: "import-claude-code-abc".into(),
             title: "Imported".into(),
             message_count: 1,
@@ -5536,6 +5400,7 @@ mod tests {
     fn import_materializes_unique_projects_but_keeps_pathless_sessions_temporary() {
         let db = test_db();
         let base = SessionSummary {
+            side_question: None,
             id: "import-codex-one".into(),
             title: "Imported".into(),
             message_count: 0,
@@ -6792,6 +6657,7 @@ mod tests {
     fn import_and_replace_preserve_thinking() {
         let db = test_db();
         let summary = SessionSummary {
+            side_question: None,
             id: "thinking-import".into(),
             title: "Thinking".into(),
             message_count: 0,

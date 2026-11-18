@@ -271,6 +271,7 @@ export function createEventsSlice({
           reconcilePersistedUserMessage(messages, event.optimisticMessageId, event.message);
         const state = get();
         const current = runtime.sessionTranscriptCache.get(sessionId) ??
+          state.sideQuestionTranscripts[sessionId] ??
           state.retainedTranscripts[sessionId] ??
           (state.activeSessionId === sessionId ? state.messages : undefined);
         if (!current) return;
@@ -278,6 +279,9 @@ export function createEventsSlice({
         runtime.cacheSessionTranscript(sessionId, reconcile(current));
         set((state) => ({
           ...(state.activeSessionId === sessionId ? { messages: reconcile(state.messages) } : {}),
+          ...(state.sideQuestionTranscripts[sessionId] ? { sideQuestionTranscripts: {
+            ...state.sideQuestionTranscripts, [sessionId]: reconcile(state.sideQuestionTranscripts[sessionId]),
+          } } : {}),
           retainedTranscripts: state.retainedTranscripts[sessionId]
             ? { ...state.retainedTranscripts, [sessionId]: reconcile(state.retainedTranscripts[sessionId]) }
             : state.retainedTranscripts,

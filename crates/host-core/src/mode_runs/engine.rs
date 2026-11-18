@@ -126,6 +126,9 @@ fn start_with_snapshot(
     explicit: Option<Snapshot>,
 ) -> Result<ClaimResult> {
     require_text(&params.turn_id, "turnId")?;
+    if crate::sessions::side_questions::origin(db, &params.session_id)?.is_some() {
+        return Err(mode_error("MODE_NOT_STAGED"));
+    }
     if params.input.len() > MAX_TEXT_BYTES {
         return Err(invalid_argument("input is too long"));
     }

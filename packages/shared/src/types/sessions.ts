@@ -34,6 +34,8 @@ export type SessionCapabilities = {
 };
 
 export type SessionSummary = {
+  /** Host-owned origin for an independent, user-operated side-panel conversation. */
+  sideQuestion?: SideQuestionOrigin;
   remoteWorkspace?: RemoteWorkspace;
   id: string;
   /** Transcript authority. Omitted by older hosts and normalized to `desktop`. */
@@ -82,6 +84,20 @@ export type SessionSummary = {
   worktree?: SessionWorktreeSummary;
   updatedAt: string;
   createdAt: string;
+};
+
+export type SideQuestionOrigin = {
+  parentSessionId: string;
+  parentTitle: string;
+  throughMessageId?: string;
+  anchorLabel: string;
+  inheritedMessageCount: number;
+  archived: boolean;
+};
+
+export type SideQuestionList = {
+  sessions: SessionSummary[];
+  total: number;
 };
 
 export type SessionDetail = SessionSummary & {

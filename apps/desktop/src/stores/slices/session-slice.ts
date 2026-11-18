@@ -160,6 +160,7 @@ export function createSessionSlice({
   flushPendingSessionConfiguration,
 }: SessionSliceDependencies): Pick<
   AppState,
+  | "retainSideQuestion"
   | "refreshSessions"
   | "restorePendingInteractive"
   | "restorePendingPlan"
@@ -188,6 +189,18 @@ export function createSessionSlice({
   });
 
   return {
+    retainSideQuestion: (session) => {
+      if (!session.sideQuestion) return;
+      const { messages, compactions, compaction, messageStart, hasMoreBefore, ...summary } = session;
+      const history = { messageStart: messageStart ?? 0, hasMoreBefore: hasMoreBefore === true };
+      runtime.cacheSessionTranscript(session.id, messages, history);
+      if (compactions || compaction) rememberSessionCompactions(session.id, { compaction, compactions });
+      set(state => ({
+        sideQuestionSessions: { ...state.sideQuestionSessions, [session.id]: summary },
+        sideQuestionTranscripts: { ...state.sideQuestionTranscripts, [session.id]: messages },
+        sessionHistory: { ...state.sessionHistory, [session.id]: history },
+      }));
+    },
     refreshSessions: async (options) => {
       const previousSessions = get().sessions;
       const sessions = await refreshSessionList();

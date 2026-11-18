@@ -12,7 +12,7 @@ import type { TFunction } from "i18next";
 import {
   rewriteIdeographicCommaTrigger,
 } from "@pi-desktop/shared";
-import { useAppStore } from "../../../../stores/app-store";
+import { useComposerStore } from "../composer-store";
 import { sessionAllows } from "../../../../lib/remote-session-safety";
 import { api } from "../../../../lib/api";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
@@ -140,6 +140,7 @@ export function useComposerDraft({
   invalidateComposerTransforms,
   inputBlocked,
 }: UseComposerDraftOptions): ComposerDraftController {
+  const useAppStore = useComposerStore();
   const draftKey = draftKeyForSession(activeSessionId);
   const referenceSessionId = activeSessionId ?? "";
   const initialDraft = readComposerDraft(draftKey);
@@ -450,6 +451,7 @@ export function useComposerDraft({
 
   useEffect(() => {
     pruneComposerDrafts([
+      ...Object.keys(useAppStore.getState().sideQuestionSessions ?? {}),
       HOME_DRAFT_KEY,
       draftKey,
       ...sessions.map((session) => session.id),
@@ -697,7 +699,7 @@ export function useComposerDraft({
 
   const restoreDraftForKey = (key: string, snapshot: ComposerDraftSnapshot) => {
     const currentActiveSessionId = useAppStore.getState().activeSessionId;
-    const currentKey = draftKeyForSession(currentActiveSessionId);
+    const currentKey = ref.current ? draftKeyForSession(currentActiveSessionId) : undefined;
     if (currentKey !== key) {
       const cached = readComposerDraft(key);
       if (!cached?.text && !cached?.fileReferences.length) {

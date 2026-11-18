@@ -204,13 +204,18 @@ export function registerAgentIpc({
     });
   }
 
-  handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
+  const prompt = async (req: AgentPromptRequest, sideQuestion = false) => {
     // Set only on an in-process request built by the Agent Host bridge for a
     // Host-started mode run turn; a renderer or plugin request never has it.
     const modeOrigin = modeContinuationOrigin(req);
     const startGoal = goalStartRequested(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
+    if (sideQuestion && (startGoal || modeOrigin || voiceOrigin || req.sessionMessageId ||
+        req.sessionId.startsWith("native-pi:") || req.sessionId.startsWith("remote:") ||
+        req.truncateFromMessageId || req.truncateBefore !== undefined)) {
+      throw Object.assign(new Error("Side questions require a direct local prompt"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    }
     if (req.sessionId.startsWith("native-pi:")) {
       if (startGoal) rejectNativeAgentOperation(req.sessionId);
       // Desktop-managed MCP servers are not installed in native Pi sessions.
@@ -255,7 +260,7 @@ export function registerAgentIpc({
     // context is deliberately fail-safe.
     const requestedViewingSessionId =
       typeof req.viewingSessionId === "string" ? req.viewingSessionId.trim() : "";
-    setNotificationViewingSessionId(
+    if (!sideQuestion) setNotificationViewingSessionId(
       requestedViewingSessionId && requestedViewingSessionId === req.sessionId
         ? requestedViewingSessionId
         : null,
@@ -275,9 +280,12 @@ export function registerAgentIpc({
         errorCode: ErrorCodes.NOT_FOUND,
       });
     }
+    if (Boolean(session.sideQuestion) !== sideQuestion) {
+      throw Object.assign(new Error("Use the owning conversation's prompt entry"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    }
     // Validate explicit MCP selection before a turn or history replacement.
     // Use the session's project, never the currently focused renderer project.
-    const mcpExpansion = !sessionMessage && /^\/mcp:\S/.test(req.content)
+    const mcpExpansion = !sideQuestion && !sessionMessage && /^\/mcp:\S/.test(req.content)
       ? expandMcpInvocation(
           req.content,
           await composerCommandService.buildComposerCommands(
@@ -423,7 +431,7 @@ export function registerAgentIpc({
     let skillMentions: UiMessage["skillMentions"];
     let agentMentions: UiMessage["agentMentions"];
     const hasSlashToken = /(^|\s)\/\S/.test(req.content);
-    if (!sessionMessage && !mcpExpansion && (hasSlashToken || req.content.includes("@"))) {
+    if (!sideQuestion && !sessionMessage && !mcpExpansion && (hasSlashToken || req.content.includes("@"))) {
       try {
         const foundAgents = await resolvePromptAgentMentions({
           content: req.content,
@@ -682,8 +690,9 @@ export function registerAgentIpc({
     } finally {
       releaseSessionOperation();
     }
-  });
-
+  };
+  handle(IPC.invoke.agentPrompt, (req: AgentPromptRequest) => prompt(req));
+  handle(IPC.invoke.sideQuestionPrompt, (req: AgentPromptRequest) => prompt(req, true));
   handle(IPC.invoke.agentCompact, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!host || !sidecar) throw new Error("backend unavailable");

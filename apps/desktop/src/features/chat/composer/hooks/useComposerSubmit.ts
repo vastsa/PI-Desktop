@@ -1,3 +1,6 @@
+import { useRef } from "react";
+import { clearChatContextChips, type ChatContextChip } from "../../../../lib/chat-context-chips";
+import { serializeChatContextChips } from "../../../../lib/chat-context-format";
 import type { TFunction } from "i18next";
 import {
   serializeComposerFileReferences,
@@ -24,6 +27,7 @@ type UseComposerSubmitOptions = {
   modelReady: boolean;
   sendBlocked: boolean;
   localCommandsAllowed?: boolean;
+  contextChips?: ChatContextChip[];
   steeringAllowed?: boolean;
   invalidateComposerTransforms: () => void;
   pasting: boolean;
@@ -62,6 +66,7 @@ export function useComposerSubmit({
   modelReady,
   sendBlocked,
   localCommandsAllowed = true,
+  contextChips = [],
   steeringAllowed = true,
   invalidateComposerTransforms,
   pasting,
@@ -75,12 +80,15 @@ export function useComposerSubmit({
   recordHistory,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
+  const sideQuestionPending = useRef(false);
   const submit = async (steering = false) => {
     const rawText = draft.ref.current ? readEditorValue(draft.ref.current) : value;
     // An image chip keeps its place in the prompt: main resolves the `@path` it
     // serializes to against the attachment it prepared, so the image block
     // arrives where the user put it instead of trailing the text.
-    const inlineContent = serializeInlineComposerFileReferences(rawText, activeFileReferences);
+    const prompt = serializeInlineComposerFileReferences(rawText, activeFileReferences);
+    const references = serializeChatContextChips(contextChips);
+    const inlineContent = references ? `${references}\n\n${prompt}` : prompt;
     const serializedContent = serializeComposerFileReferences(rawText, activeFileReferences);
     // A follow-up that was queued during the turn has already left the editor,
     // so the steer shortcut would otherwise find no draft and do nothing. With
@@ -91,7 +99,7 @@ export function useComposerSubmit({
       if (waiting) await sendQueuedNow(waiting.id);
       return;
     }
-    if (sendBlocked || (steering && !steeringAllowed)) {
+    if (sendBlocked) {
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
       return;
     }
@@ -99,6 +107,25 @@ export function useComposerSubmit({
     const submittedDraftKey = draftKey;
     const submittedDraftRevision = draft.draftRevision(submittedDraftKey);
     const submittedDraft = draft.draftSnapshot(rawText);
+    const sideQuestion = localCommandsAllowed && /^\/btw(?:\s|$)/.test(rawText.trimStart());
+    if (sideQuestion) {
+      if (activeFileReferences.length) {
+        showToast(t("sideQuestions.textOnlyCommand"), { variant: "error" });
+        return;
+      }
+      if (sideQuestionPending.current) return;
+      sideQuestionPending.current = true;
+      try {
+        await runPaletteCommand("builtin.session.sideQuestion", rawText.trimStart().slice(4).trim(), activeSessionId ?? undefined);
+        draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+      } finally {
+        sideQuestionPending.current = false;
+      }
+      return;
+    }
+    if (steering && !steeringAllowed) return;
     // Recall keeps what the user typed, in the conversation that submitted it.
     // For a mode command that is the whole `/agent …` text rather than its body,
     // so re-submitting re-runs it; every other recorded path stores exactly the
@@ -207,6 +234,7 @@ export function useComposerSubmit({
       () => draft.restoreDraftForKey(submittedDraftKey, submittedDraft),
     );
     if (accepted) remember();
+    if (accepted && contextChips.length) clearChatContextChips(submittedDraftKey, contextChips);
   };
 
   return { submit };

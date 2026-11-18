@@ -52,6 +52,8 @@ import { ReviewTab } from "./ReviewTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
 import { SubagentTranscriptTab } from "./SubagentTranscriptTab";
+import { SideQuestionTab } from "../../features/side-questions/SideQuestionTab";
+import { SideQuestionHistory, SideQuestionLauncher } from "../../features/side-questions/SideQuestionHistory";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
@@ -65,6 +67,8 @@ import {
 
 const TAB_ICONS = {
   new: IconPlus,
+  sideQuestion: IconBot,
+  sideQuestionHistory: IconBot,
   review: IconDiff,
   file: IconFileText,
   plugin: IconPlug,
@@ -121,6 +125,8 @@ function tabLabel(
     // back to its id rather than leaving the tab blank until it closes.
     return view?.title ?? tab.resource ?? t("panel.tabs.plugin");
   }
+  if (tab.kind === "sideQuestion") return tab.label ?? t("sideQuestions.title");
+  if (tab.kind === "sideQuestionHistory") return t("sideQuestions.history");
   if (tab.kind === "new") return t("panel.new.title");
   if (tab.kind === "subagent") return tab.label ?? t("panel.tabs.subagent");
   if (tab.kind !== "file") return t(`panel.tabs.${tab.kind}`);
@@ -1144,6 +1150,16 @@ function LocalWorkPanel({
                 </div>
               );
             })()}
+          {activeTab?.kind === "sideQuestion" && activeTab.resource && activeSessionId ? (
+            <div className="work-panel-tabpane" role="tabpanel" aria-labelledby={`work-panel-tab-${activeTab.id}`}>
+              <SideQuestionTab key={activeTab.resource} id={activeTab.resource} parentId={activeSessionId} />
+            </div>
+          ) : null}
+          {activeTab?.kind === "sideQuestionHistory" && activeTab.resource === activeSessionId && activeSessionId ? (
+            <div className="work-panel-tabpane" role="tabpanel" aria-labelledby={`work-panel-tab-${activeTab.id}`}>
+              <SideQuestionHistory key={activeSessionId} parentId={activeSessionId} />
+            </div>
+          ) : null}
           {(!activeTab || activeTab.kind === "new") && (
             <div
               className="work-panel-tabpane"
@@ -1181,6 +1197,7 @@ function LocalWorkPanel({
                       {item.shortcut ? <kbd>{item.shortcut}</kbd> : null}
                     </button>
                   ))}
+                  <SideQuestionLauncher key={activeSessionId} parentId={activeSessionId} />
                 </div>
               </div>
             </div>

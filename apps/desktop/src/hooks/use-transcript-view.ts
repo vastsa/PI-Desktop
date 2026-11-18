@@ -7,7 +7,7 @@ export function useTranscriptView(sessionId: string) {
   const live = useAppStore((state) =>
     state.activeSessionId === sessionId
       ? state.messages
-      : (state.retainedTranscripts[sessionId] ?? EMPTY_TRANSCRIPT),
+      : (state.sideQuestionTranscripts[sessionId] ?? state.retainedTranscripts[sessionId] ?? EMPTY_TRANSCRIPT),
   );
   const history = useAppStore((state) => state.sessionHistory[sessionId]);
   const view = useAppStore((state) => state.transcriptViews[sessionId]);

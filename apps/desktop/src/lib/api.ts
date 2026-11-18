@@ -828,6 +828,15 @@ export const api = {
       title,
       throughMessageId,
     }).then((result) => ({ ...result, session: normalizeSessionDetail(result.session)! })),
+  createSideQuestion: (parentSessionId: string, title: string, options: { referenceOnly?: boolean } = {}) =>
+    invoke<{ session: SessionDetail }>(IPC.invoke.sideQuestionCreate, { parentSessionId, title, ...options })
+      .then(result => ({ session: normalizeSessionDetail(result.session)! })),
+  listSideQuestions: (parentSessionId: string, options: { query?: string; archived?: boolean; limit?: number; offset?: number } = {}) =>
+    invoke<import("@pi-desktop/shared").SideQuestionList>(IPC.invoke.sideQuestionList, { parentSessionId, ...options }),
+  archiveSideQuestion: (id: string, archived: boolean) =>
+    invoke<{ ok: boolean }>(IPC.invoke.sideQuestionArchive, { id, archived }),
+  promptSideQuestion: (req: AgentPromptRequest) =>
+    invoke<AgentPromptResponse>(IPC.invoke.sideQuestionPrompt, req),
   searchSessions: (query: string, offset = 0) =>
     invoke<SessionSearchPage>(IPC.invoke.sessionSearch, { query, offset }),
   getSearchContext: (request: SessionSearchContextRequest) =>

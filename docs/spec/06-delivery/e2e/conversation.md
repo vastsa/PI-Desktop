@@ -4890,3 +4890,21 @@ Build two actual runtimes with identical configuration and different scratch dir
   wrapped descriptions; preserve detail navigation, Stop and responsive layout.
 - Qualification: isolated Chromium geometry checks cover this layout regression;
   installed-client and live-provider checks remain separate.
+
+## E2E-CHAT-side-question-work-panel
+
+- **Steps**: Keep a synthetic main conversation running. Click `+` in the
+  work panel and choose Side question. Reopen the result from launcher history.
+  Select a sentence in the main transcript and use the context menu to open
+  another side question. Send a question from the shared Composer. Exercise
+  `/btw <question>`, cancellation, permission changes and confirmed deletion.
+- **Expected**: `+` starts with a launcher. Opening the previous item reuses
+  its child. The selection appears as a short removable reference and the
+  child starts with an empty transcript. The reference preserves the complete
+  selection. Sending, stopping and changing permissions target the side
+  session. The active main transcript and its running turn remain separate.
+  A rejected send preserves later edits and never restores a removed reference.
+- **Coverage**: `pnpm test:e2e:side-question` exercises the renderer in an
+  isolated Electron profile with synthetic backend responses. Host tests under
+  `sessions::side_questions::tests` exercise persistence, settled prefixes,
+  tool policy and completion notification suppression.

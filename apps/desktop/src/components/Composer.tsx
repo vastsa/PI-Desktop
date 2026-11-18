@@ -19,7 +19,10 @@ import {
   isImageOnlyChatModel,
   normalizeLargePasteThreshold,
 } from "@pi-desktop/shared";
-import { useAppStore } from "../stores/app-store";
+import { useAppStore as mainComposerStore } from "../stores/app-store";
+import { useComposerDockHeight } from "../features/chat/composer/hooks/useComposerDockHeight";
+import { ComposerStoreContext } from "../features/chat/composer/composer-store";
+import { useChatContextChips, removeChatContextChip } from "../lib/chat-context-chips";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
@@ -72,10 +75,23 @@ export {
 export function Composer({
   variant = "docked",
   prefill,
+  store: useAppStore = mainComposerStore,
 }: {
   variant?: "home" | "docked";
   prefill?: ComposerPrefill | null;
+  store?: typeof mainComposerStore;
 }) {
+  return <ComposerStoreContext.Provider value={useAppStore}>
+    <SessionComposer variant={variant} prefill={prefill} useAppStore={useAppStore} />
+  </ComposerStoreContext.Provider>;
+}
+
+function SessionComposer({ variant, prefill, useAppStore }: {
+  variant: "home" | "docked";
+  prefill?: ComposerPrefill | null;
+  useAppStore: typeof mainComposerStore;
+}) {
+  const sideQuestion = useAppStore !== mainComposerStore;
   const { t } = useTranslation();
   const sendPrompt = useAppStore((s) => s.sendPrompt);
   const steerPrompt = useAppStore((s) => s.steerPrompt);
@@ -102,21 +118,21 @@ export function Composer({
   const capabilitySession = activeSessionSummary ?? (activeSessionId?.startsWith("remote:") ? { id: activeSessionId } : undefined);
   const composerTransforms = useMemo(
     () =>
-      (sessionAllows(capabilitySession, "canUseLocalTools") ? plugins : [])
+      (!sideQuestion && sessionAllows(capabilitySession, "canUseLocalTools") ? plugins : [])
         .filter((plugin) => plugin.enabled && plugin.status === "ready")
         .flatMap((plugin) => plugin.composerTransforms ?? []),
-    [plugins, activeSessionSummary, activeSessionId],
+    [plugins, activeSessionSummary, activeSessionId, sideQuestion],
   );
   const remoteSession = isRemoteSession(capabilitySession);
-  const localToolsAllowed = sessionAllows(capabilitySession, "canUseLocalTools");
-  const attachmentsAllowed = sessionAllows(capabilitySession, "canAttach");
+  const localToolsAllowed = !sideQuestion && sessionAllows(capabilitySession, "canUseLocalTools");
+  const attachmentsAllowed = !sideQuestion && sessionAllows(capabilitySession, "canAttach");
   const promptAllowed = sessionAllows(capabilitySession, "canPrompt");
   const nativeSession = activeSessionSummary?.source === "pi-native";
   const nativeReadOnly =
     nativeSession && activeSessionSummary.capabilities?.canPrompt !== true;
   const nativeInputBlocked = nativeReadOnly || !promptAllowed || ((nativeSession || remoteSession) && isRunning);
   const localWorkspacePath = useAppStore((s) => s.workspace?.path ?? "");
-  const workspacePath = remoteSession ? "" : localWorkspacePath;
+  const workspacePath = sideQuestion ? activeSessionSummary?.projectPath ?? "" : remoteSession ? "" : localWorkspacePath;
   const providers = useAppStore((s) => s.providers);
   const providerModels = useAppStore((s) => s.providerModels);
   const liveMessages = useAppStore((s) => s.messages);
@@ -159,7 +175,6 @@ export function Composer({
   const composerTransformInvalidateRef = useRef<() => void>(() => {});
   const composerShellRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
-  const publishedDockHeightRef = useRef(-1);
 
   const invalidateComposerTransforms = () => {
     composerTransformInvalidateRef.current();
@@ -205,6 +220,7 @@ export function Composer({
     insertNewlineInEditor,
     handleInput,
   } = draft;
+  const contextChips = useChatContextChips(draftKey);
   const inputHistory = useComposerInputHistory({
     draftKey,
     referenceSessionId,
@@ -454,7 +470,8 @@ export function Composer({
     invalidateComposerTransforms,
     sendBlocked,
     localCommandsAllowed: localToolsAllowed,
-    steeringAllowed: sessionAllows(capabilitySession, "canSteer"),
+    contextChips,
+    steeringAllowed: !sideQuestion && sessionAllows(capabilitySession, "canSteer"),
     pasting,
     activeFileReferences,
     t,
@@ -514,29 +531,7 @@ export function Composer({
   // placeholder layer and `Tab` takes it (ADR 0333).
   const suggestion = useComposerSuggestion();
 
-  // Keep the transcript's bottom reserve in sync with the composer's real
-  // height (it grows with multi-line input) so the last message sits just
-  // above the box instead of far below it.
-  useEffect(() => {
-    const el = dockRef.current;
-    if (!el) return;
-    // Setting a custom property on documentElement invalidates style for the
-    // whole document, so an unchanged dock height must not be republished.
-    const publish = () => {
-      const h = Math.round(el.getBoundingClientRect().height);
-      if (h === publishedDockHeightRef.current) return;
-      publishedDockHeightRef.current = h;
-      document.documentElement.style.setProperty(
-        "--composer-dock-height",
-        `${h}px`,
-      );
-    };
-    publish();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(publish);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [variant]);
+  useComposerDockHeight(dockRef, variant, !sideQuestion);
 
   return (
     <div
@@ -549,7 +544,7 @@ export function Composer({
             header, so the gate now covers both the way it already covered the
             todo dock. */}
         {activeSessionId && localToolsAllowed ? <TaskDock sessionId={activeSessionId} /> : null}
-        {activeSessionId ? <ModeRunStatusBar sessionId={activeSessionId} /> : null}
+        {activeSessionId ? !sideQuestion ? <ModeRunStatusBar sessionId={activeSessionId} /> : null : null}
         {planCheckpoint?.status === "pending" ? (
           <PlanApprovalBar proposal={planCheckpoint} />
         ) : null}
@@ -592,6 +587,8 @@ export function Composer({
             />
           ) : null}
           <ComposerInput
+            contextChips={contextChips}
+            onRemoveContext={(id) => removeChatContextChip(draftKey, id)}
             imagePreview={draft.imagePreview}
             directoryReferences={activeFileReferences.filter((reference) => reference.kind === "directory")}
             onRemoveDirectory={draft.removeDirectoryReference}
@@ -630,6 +627,7 @@ export function Composer({
           <ComposerToolbar
             t={t}
             mode={mode}
+            fixedMode={sideQuestion}
             planningLive={planningLive}
             providerId={provider?.id}
             modelId={modelId}
