@@ -1,0 +1,980 @@
+<!-- status: implemented -->
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>host-api · fs</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+
+  article.api{margin:0 0 56px;padding-top:8px;border-top:1px solid var(--line)}
+  article.api>h2{display:flex;align-items:center;gap:10px;margin:18px 0 4px;font-size:19px}
+  article.api>.meta{margin:0 0 18px;color:var(--faint);font-size:12.5px}
+  section>h3{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:15.5px}
+  section>h3 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">plugin-plan</a><span class="sep">/</span><a href="index.html">host-api</a><span class="sep">/</span><a href="fs.html" aria-current="page">fs</a>
+  <span class="spacer"></span>
+  <a href="#fs.glob">glob</a>
+  <a href="#fs.list">list</a>
+  <a href="#fs.openDefault">openDefault</a>
+  <a href="#fs.readPreview">readPreview</a>
+  <a href="#fs.readRange">readRange</a>
+  <a href="#fs.readText">readText</a>
+  <a href="#fs.remove">remove</a>
+  <a href="#fs.requestDirectory">requestDirectory</a>
+  <a href="#fs.reveal">reveal</a>
+  <a href="#fs.stat">stat</a>
+  <a href="#fs.writeText">writeText</a>
+</nav>
+<header class="top">
+  <h1>host-api · fs</h1>
+  <p>命名空间 <code>fs</code> · 11 条。每条 API 一节：接口约定、数据怎么走、出错、不提供什么、相关条目、典型场景、已拍板。</p>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+<article class="api" id="fs.glob">
+<h2><code>fs.glob</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.glob(pattern: string): Promise&lt;string[]&gt;</pre>
+  <p class="lead">按 glob 模式列出规则根内匹配的根相对路径。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pattern</td><td class="id">string</td><td>是</td><td>根相对 glob（如 <code>**/*.ts</code>）；没有 pathFromRoot 参数。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">string[]</td><td>匹配的根相对路径，可直接用于 <code>fs.readText</code> / <code>fs.stat</code>。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>const files = await pi.fs.glob("**/*.test.ts");</pre>
+  <p><b>输出样例</b></p>
+  <pre>["src/fs.test.ts", "src/policy.test.ts"]</pre>
+  <div class="callout"><b>一句话边界。</b>只给路径不给正文；结果不是目录树导航，逐层看用 <code>fs.list</code>。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传一个根相对 glob 模式（无 pathFromRoot 参数，作用域就是规则根）。</li>
+    <li><b>匹配：</b>模式与 <code>manifest.fs</code> scope 共用同一套语义 —— <code>**</code> 跨目录段，<code>*</code>/<code>?</code> 只在单段内；含 <code>..</code> 的路径永不匹配；Windows/macOS 上忽略大小写。</li>
+    <li><b>过滤：</b>结果只保留声明读范围允许、且未命中拒绝列表（<code>.git</code>、<code>.env</code> 等）的路径。</li>
+    <li><b>返回：</b>匹配的根相对路径数组回给插件。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>glob 模式。</td></tr>
+      <tr><td>宿主 → 插件</td><td>匹配的根相对路径数组。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>模式不是合法的根相对 glob</td><td>拒绝</td><td><code>INVALID_ARGUMENT</code></td></tr>
+      <tr><td>匹配结果超过宿主允许的上限</td><td>拒绝</td><td><code>LIMIT_EXCEEDED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不读正文；结果不是目录树导航（用 <code>fs.list</code>）。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.list"><code>host-api/fs.list</code></a></li>
+    <li><a href="fs.html#fs.readText"><code>host-api/fs.readText</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>找测试文件</b></td><td>按 <code>**/*.test.ts</code> 收集待跑清单。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>唯一参数是 pattern。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.list">
+<h2><code>fs.list</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.list(pathFromRoot: string): Promise&lt;PluginFsEntry[]&gt;</pre>
+  <p class="lead">列出一个目录下的条目（按名称排序），用于懒加载目录树。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>根相对目录路径；只列直接子项，不递归。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">PluginFsEntry[]</td><td>按名称排序的条目数组；数组元素结构见下。</td></tr>
+      <tr><td class="id">name</td><td class="id">string</td><td>条目名称（文件名或目录名）。</td></tr>
+      <tr><td class="id">path</td><td class="id">string</td><td>根相对路径，可直接用于 <code>fs.readText</code> / <code>fs.list</code>。</td></tr>
+      <tr><td class="id">isDirectory</td><td class="id">boolean</td><td>是否为目录。</td></tr>
+      <tr><td class="id">size</td><td class="id">number</td><td>仅文件：字节数（目录省略）。</td></tr>
+      <tr><td class="id">mtimeMs</td><td class="id">number</td><td>仅文件：修改时间，Unix 纪元毫秒（目录省略）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>const entries = await pi.fs.list("src");</pre>
+  <p><b>输出样例</b></p>
+  <pre>[
+  { "name": "index.ts", "path": "src/index.ts", "isDirectory": false, "size": 1024, "mtimeMs": 1739462400000 },
+  { "name": "utils", "path": "src/utils", "isDirectory": true }
+]</pre>
+  <div class="callout"><b>一句话边界。</b>目录总会列出以便导航，文件按读范围过滤；不递归，整棵树用 <code>fs.glob</code>。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对目录路径。</li>
+    <li><b>校验：</b>路径规范化后不得含 <code>..</code>、不得命中拒绝列表；目录须可访问。</li>
+    <li><b>执行：</b>宿主读一层目录 —— 目录条目始终列出（保持树可导航），文件条目按 <code>manifest.fs</code> 声明的读范围过滤，重目录/受保护目录跳过。</li>
+    <li><b>返回：</b>按名称排序的条目数组回给插件。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对目录路径。</td></tr>
+      <tr><td>宿主 → 插件</td><td>排序后的 PluginFsEntry[]。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或目录不可访问</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>目录不存在</td><td>拒绝</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">目录总会列出以便导航，文件按读范围过滤；不递归。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.glob"><code>host-api/fs.glob</code></a></li>
+    <li><a href="fs.html#fs.stat"><code>host-api/fs.stat</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>文件树面板</b></td><td>用户展开文件夹时现列一层。</td></tr>
+<tr><td><b>找入口文件</b></td><td>看根目录有没有 <code>main.ts</code>。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.openDefault">
+<h2><code>fs.openDefault</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.openDefault(pathFromRoot: string): Promise&lt;void&gt;</pre>
+  <p class="lead">用操作系统的默认应用打开一个已有可读文件。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>根相对路径，须指向已存在的可读文件；受读范围与拒绝列表约束。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无返回数据；resolve 即已交给系统处理。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>await pi.fs.openDefault("reports/周报.pdf");</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回（void）；resolve 即已交给系统打开</pre>
+  <div class="callout"><b>一句话边界。</b>由系统决定用哪个应用打开；只打开，不执行文件。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对路径。</li>
+    <li><b>校验：</b>文件须已存在且可读；读范围与拒绝列表照常生效（仅限声明范围内的显式可读文件）。</li>
+    <li><b>执行：</b>宿主把解析后的文件交给操作系统，按系统默认应用关联打开。</li>
+    <li><b>返回：</b>resolve 即完成，无数据。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无数据（仅成功/失败）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>调起 OS 默认应用打开该文件。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或路径不在读范围</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>文件不存在</td><td>拒绝</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不指定打开用哪个应用；不执行文件。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.reveal"><code>host-api/fs.reveal</code></a></li>
+    <li><a href="shell.html#shell.openExternal"><code>host-api/shell.openExternal</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>打开导出的 PDF</b></td><td>用户点「用系统打开」看报告。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>仅限显式可读文件。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.readPreview">
+<h2><code>fs.readPreview</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.readPreview(pathFromRoot: string): Promise&lt;PluginFsPreview&gt;</pre>
+  <p class="lead">对一个已有可读文件做有界分类预览。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>根相对路径，须指向已存在的可读文件；受读范围与拒绝列表约束。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">kind</td><td class="id">"text" | "image" | "binary" | "tooLarge"</td><td>宿主判定的预览分类。</td></tr>
+      <tr><td class="id">content</td><td class="id">string</td><td>可选；仅 kind 为 "text" 时存在，UTF-8 文件内容（有长度上限）。</td></tr>
+      <tr><td class="id">dataUrl</td><td class="id">string</td><td>可选；仅 kind 为 "image" 时存在，Base64 data URL。</td></tr>
+      <tr><td class="id">size</td><td class="id">number</td><td>文件字节数；binary/tooLarge 时也能拿到，便于提示。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>const preview = await pi.fs.readPreview("screenshots/报错.png");</pre>
+  <p><b>输出样例</b></p>
+  <pre>// text → content；image → dataUrl；binary/tooLarge → 仅 kind 与 size
+{ "kind": "image", "dataUrl": "data:image/png;base64,iVBORw0KGgo…", "size": 48213 }</pre>
+  <div class="callout"><b>一句话边界。</b>不倾倒二进制正文；图片给 data URL 而不是磁盘路径。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对路径。</li>
+    <li><b>校验：</b>文件须已存在且可读；读范围与拒绝列表照常生效。</li>
+    <li><b>分类：</b>宿主判定 kind —— 文本（有长度上限）、图片（Base64 data URL）、二进制或超大（不返回字节）。</li>
+    <li><b>返回：</b>分类结果回给插件，超大文件只报 kind 与 size。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径。</td></tr>
+      <tr><td>宿主 → 插件</td><td>分类预览结果（PluginFsPreview）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或路径不在读范围</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>文件不存在或不可读</td><td>拒绝</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不倾倒二进制正文；图片给 data URL 而不是磁盘路径。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.readText"><code>host-api/fs.readText</code></a></li>
+    <li><a href="fs.html#fs.readRange"><code>host-api/fs.readRange</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>附件预览</b></td><td>用户点了一张图，面板显示 data URL。</td></tr>
+<tr><td><b>日志前几行</b></td><td>text 预览看是不是日志。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>分类预览，超大只报 kind。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.readRange">
+<h2><code>fs.readRange</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.readRange(pathFromRoot: string, byteOffset: number, length: number, grantId?: string): Promise&lt;PluginFsRange&gt;</pre>
+  <p class="lead">读一个文件中有界的字节区间。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>根相对路径；受读范围与拒绝列表约束。</td></tr>
+      <tr><td class="id">byteOffset</td><td class="id">number</td><td>是</td><td>起始字节偏移（参数名是 byteOffset，不是 offset）。</td></tr>
+      <tr><td class="id">length</td><td class="id">number</td><td>是</td><td>要读取的字节数，区间有界。</td></tr>
+      <tr><td class="id">grantId</td><td class="id">string</td><td>否</td><td>仅拖放授权（dropped-file grant）场景使用。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">bytes</td><td class="id">Uint8Array</td><td>读到的字节区间。</td></tr>
+      <tr><td class="id">totalSize</td><td class="id">number</td><td>文件总字节数，便于判断是否已读到末尾。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>const head = await pi.fs.readRange("logs/app.log", 0, 4096);</pre>
+  <p><b>输出样例</b></p>
+  <pre>// bytes 为 Uint8Array（此处示意），totalSize 是文件总字节数
+{ "bytes": &lt;Uint8Array 4096 字节&gt;, "totalSize": 946176 }</pre>
+  <div class="callout"><b>一句话边界。</b>不给整个大文件；参数名是 <code>byteOffset</code> 不是 <code>offset</code>。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传路径、byteOffset、length；拖放来的文件可带 <code>grantId</code>。</li>
+    <li><b>校验：</b>按读范围与拒绝列表检查路径；byteOffset / length 必须是数字。</li>
+    <li><b>执行：</b>宿主只读该字节区间，不载入全文。</li>
+    <li><b>返回：</b>bytes 与 totalSize 回给插件。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>路径 + 起始偏移 + 长度（可选 grantId）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>字节区间 bytes + 文件总大小 totalSize。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或路径不在读范围</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>文件不存在</td><td>拒绝</td><td><code>NOT_FOUND</code></td></tr>
+      <tr><td>byteOffset / length 缺失或类型不符</td><td>拒绝调用</td><td><code>INVALID_ARGUMENT</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不给整个大文件；参数名是 <code>byteOffset</code> 不是 <code>offset</code>。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.readText"><code>host-api/fs.readText</code></a></li>
+    <li><a href="fs.html#fs.readPreview"><code>host-api/fs.readPreview</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>看文件头</b></td><td>只读前 4KB 判断格式。</td></tr>
+<tr><td><b>分片翻日志</b></td><td>按偏移翻看大日志。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>区间读取有界。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.readText">
+<h2><code>fs.readText</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.readText(pathFromRoot: string): Promise&lt;string&gt;</pre>
+  <p class="lead">读取规则根下一个文本文件的 UTF-8 全文。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>规则根下的相对路径（正斜杠、无前导 <code>/</code>，不接受 <code>..</code>）；受 <code>manifest.fs</code> 读范围与拒绝列表约束。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">string</td><td>文件 UTF-8 全文；内容不是合法 UTF-8 时按实现处理。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>const text = await pi.fs.readText("docs/README.md");</pre>
+  <p><b>输出样例</b></p>
+  <pre># PI-Desktop
+
+插件宿主与运行时文档。</pre>
+  <div class="callout"><b>一句话边界。</b>只收根相对路径，不接受绝对路径或 <code>..</code> 逃逸；不分块，大文件用 <code>fs.readRange</code>。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件把根相对路径传给宿主。</li>
+    <li><b>校验：</b>路径规范化为正斜杠、去前导 <code>/</code>；含 <code>..</code> 或命中拒绝列表（<code>.git</code>、<code>.env</code> 等）的路径直接拒绝；不在 <code>manifest.fs</code> 声明读范围内的访问落到用户确认。</li>
+    <li><b>执行：</b>宿主把整个文件读入并按 UTF-8 解码。</li>
+    <li><b>返回：</b>全文以字符串回给插件，无写入副作用。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径。</td></tr>
+      <tr><td>宿主 → 插件</td><td>文件 UTF-8 全文。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或用户拒绝了范围外访问</td><td>拒绝读取</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>文件不存在</td><td>拒绝读取</td><td><code>NOT_FOUND</code></td></tr>
+      <tr><td>内容不是合法 UTF-8</td><td>按实现处理</td><td>—</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不接受绝对路径或 <code>..</code> 逃逸；不分块。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：路径限制在声明范围内。已接受代价：范围外无法静默读取。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.readRange"><code>host-api/fs.readRange</code></a></li>
+    <li><a href="fs.html#fs.stat"><code>host-api/fs.stat</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>读项目配置</b></td><td>解析工作区里的配置文件。</td></tr>
+<tr><td><b>喂给摘要</b></td><td>把 README 全文传给 <code>agent.complete</code>。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>范围外访问落到用户确认。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.remove">
+<h2><code>fs.remove</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.remove(pathFromRoot: string): Promise&lt;void&gt;</pre>
+  <p class="lead">删除规则根下的文件或目录，删除后不可恢复。权限：<span class="pill perm">—</span>（删除须有 <code>fs.delete</code>）</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>根相对路径（正斜杠、无前导 <code>/</code>，不接受 <code>..</code>）；须在声明删除范围内，或声明 <code>fs.delete.own</code> 且确为本插件写入的路径。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无返回数据；resolve 即删除完成。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>await pi.fs.remove("tmp/中间产物.json");</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回（void）；resolve 即删除完成</pre>
+  <div class="callout"><b>一句话边界。</b>不进回收站，删除不可恢复；范围外删除必须走用户确认。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对路径。</li>
+    <li><b>校验：</b>须有 <code>fs.delete</code>；路径不得含 <code>..</code>、不得命中拒绝列表；在声明删除范围内，或命中 <code>fs.delete.own</code>（删自己写过的路径，无需 scope 与确认）；范围外删除落到用户确认。</li>
+    <li><b>执行：</b>宿主删除该文件或目录，不经回收站。</li>
+    <li><b>返回：</b>resolve 即完成，无数据。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无数据（仅成功/失败）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>直接删除磁盘上的文件/目录。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>无 fs.delete，或路径不在删除范围且用户未确认</td><td>拒绝删除</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>路径不存在</td><td>拒绝删除</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不进回收站；删除范围外必须走用户确认。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：删不到声明范围之外。已接受代价：没有回收站 API。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.writeText"><code>host-api/fs.writeText</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>清理临时产物</b></td><td>删掉插件自己写入的 <code>tmp/</code> 中间文件。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>需要 <code>fs.delete</code> 权限。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.requestDirectory">
+<h2><code>fs.requestDirectory</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.requestDirectory(): Promise&lt;{ path: string; name: string } | null&gt;</pre>
+  <p class="lead">请用户选择一个目录，作为本次运行 userSelected 规则的根。权限：<span class="pill perm">—</span></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">{ path: string; name: string } | null</td><td>用户取消选择时整个结果为 null。</td></tr>
+      <tr><td class="id">path</td><td class="id">string</td><td>选中目录的路径。</td></tr>
+      <tr><td class="id">name</td><td class="id">string</td><td>选中目录的名称。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "path": "C:\\Users\\me\\Documents\\日志", "name": "日志" }</pre>
+  <div class="callout"><b>一句话边界。</b>授权不持久化，只活到进程结束；选中后写入/删除仍分别需要 <code>fs.write</code> / <code>fs.delete</code>。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件发起请求，宿主弹出系统目录选择器。</li>
+    <li><b>授权：</b>用户选中的目录只对声明了 <code>root: "userSelected"</code> 的规则生效，成为本次运行那些规则的根。</li>
+    <li><b>生命周期：</b>授权不落盘、不跨重启记忆，随进程结束而结束。</li>
+    <li><b>返回：</b>选中则回 path 与 name，取消回 null。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>打开目录选择请求（无参数）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>选中目录的 path / name，或 null。</td></tr>
+      <tr><td>宿主 → 系统</td><td>弹出操作系统目录选择器。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <p class="lead">用户取消不是错误（resolve null）；一般不失败。</p>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">选中后写入/删除仍分别需要 <code>fs.write</code> / <code>fs.delete</code>。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：授权不持久化。已接受代价：重启后要用户再选一次。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.list"><code>host-api/fs.list</code></a></li>
+    <li><a href="fs.html#fs.readText"><code>host-api/fs.readText</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>临时授权</b></td><td>用户点「选择日志文件夹」后插件才能读那棵树。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>授权随进程结束而结束。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.reveal">
+<h2><code>fs.reveal</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.reveal(pathFromRoot: string): Promise&lt;void&gt;</pre>
+  <p class="lead">在操作系统的文件管理器中显示一个已有可读文件。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>根相对路径，须指向已存在的可读文件；受读范围与拒绝列表约束。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无返回数据；resolve 即已交给文件管理器。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>await pi.fs.reveal("reports/周报.pdf");</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回（void）；resolve 即已在文件管理器中定位</pre>
+  <div class="callout"><b>一句话边界。</b>只显示单个文件，不选中多个文件。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对路径。</li>
+    <li><b>校验：</b>文件须已存在且可读；读范围与拒绝列表照常生效。</li>
+    <li><b>执行：</b>宿主调用系统文件管理器，定位并选中该文件。</li>
+    <li><b>返回：</b>resolve 即完成，无数据。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无数据（仅成功/失败）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>打开文件管理器并定位该文件。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或路径不在读范围</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>文件不存在</td><td>拒绝</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不选中多个文件。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.openDefault"><code>host-api/fs.openDefault</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>定位输出文件</b></td><td>生成报告后帮用户在文件夹里找到它。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.stat">
+<h2><code>fs.stat</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.stat(pathFromRoot: string, grantId?: string): Promise&lt;PluginFsStat&gt;</pre>
+  <p class="lead">读一个文件的大小和修改时间，不载入正文。权限：<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>规则根下的相对路径，指向一个文件；受读范围与拒绝列表约束。</td></tr>
+      <tr><td class="id">grantId</td><td class="id">string</td><td>否</td><td>仅拖放授权（dropped-file grant）场景使用。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">size</td><td class="id">number</td><td>文件字节数。</td></tr>
+      <tr><td class="id">mtimeMs</td><td class="id">number</td><td>修改时间，Unix 纪元毫秒。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>const info = await pi.fs.stat("logs/app.log");</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "size": 20480, "mtimeMs": 1739462400000 }</pre>
+  <div class="callout"><b>一句话边界。</b>不读目录，也不给权限位/属主 —— 只有 size 与 mtimeMs。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对路径；拖放来的文件可带 <code>grantId</code>。</li>
+    <li><b>校验：</b>按读范围与拒绝列表检查路径；<code>grantId</code> 只对拖放授权有效。</li>
+    <li><b>执行：</b>宿主只取该文件的元数据，不读内容。</li>
+    <li><b>返回：</b>size 与 mtimeMs 回给插件。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径（可选 grantId）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>size 与 mtimeMs。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>缺少 fs.read，或路径不在读范围</td><td>拒绝</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>文件不存在</td><td>拒绝</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不读目录；不给权限位/属主。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.readText"><code>host-api/fs.readText</code></a></li>
+    <li><a href="fs.html#fs.list"><code>host-api/fs.list</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>跳过大文件</b></td><td>先 stat，超过阈值再决定要不要 readText。</td></tr>
+<tr><td><b>变更检测</b></td><td>比较 mtime 决定是否重建缓存。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li><code>grantId</code> 只用于拖放授权路径。</li></ul>
+</section>
+</article>
+<article class="api" id="fs.writeText">
+<h2><code>fs.writeText</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.fs.writeText(pathFromRoot: string, content: string): Promise&lt;void&gt;</pre>
+  <p class="lead">把文本新建或覆盖写入规则根下的路径。权限：<span class="pill perm">—</span>（写入受 <code>fs.write</code> 与声明写范围约束）</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">pathFromRoot</td><td class="id">string</td><td>是</td><td>规则根下的相对路径（正斜杠、无前导 <code>/</code>，不接受 <code>..</code>）；必须落在 <code>manifest.fs</code> 声明的写范围内，写范围不允许覆盖整棵根。</td></tr>
+      <tr><td class="id">content</td><td class="id">string</td><td>是</td><td>要写入的完整文本，整体覆盖，无追加模式。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无返回数据；Promise resolve 即写入完成。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>await pi.fs.writeText("reports/周报.md", "# 周报\n\n本周完成插件沙箱梳理。");</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无返回（void）；resolve 即写入成功</pre>
+  <div class="callout"><b>一句话边界。</b>无追加模式，改大文件要整段重写；不写二进制；整棵树的写范围过不了校验。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件传根相对路径与全文。</li>
+    <li><b>校验：</b>须有 <code>fs.write</code>；路径规范化后不得含 <code>..</code>、不得命中拒绝列表，且必须落在声明写范围内（写范围不得为整棵根，manifest 校验阶段就拒绝）。</li>
+    <li><b>执行：</b>宿主在范围内新建或覆盖该文件，写入文本内容。</li>
+    <li><b>返回：</b>resolve 即完成，无数据。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>根相对路径 + 文本全文。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无数据（仅成功/失败）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>落盘写入工作区（或 userSelected 根）下的文件。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>无 fs.write，或路径不在声明写范围内</td><td>拒绝写入</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>参数缺失或类型不符（如 content 非字符串）</td><td>拒绝调用</td><td><code>INVALID_ARGUMENT</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">无追加模式 API；不写二进制；整棵树写范围不能通过校验。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：写不到声明范围之外。已接受代价：没有追加写，改大文件要整段重写。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="fs.html#fs.remove"><code>host-api/fs.remove</code></a></li>
+    <li><a href="fs.html#fs.readText"><code>host-api/fs.readText</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>导出报告</b></td><td>把生成的 Markdown 写到 <code>reports/</code>。</td></tr>
+<tr><td><b>更新本地索引</b></td><td>把计算结果落盘缓存。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>必须声明写范围；范围外写入要用户确认。</li></ul>
+</section>
+</article>
+</main>
+</body>
+</html>

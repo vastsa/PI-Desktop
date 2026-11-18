@@ -18,6 +18,7 @@ import {
   STREAM_IDLE_TIMEOUT_DEFAULT_MS,
   STREAM_IDLE_TIMEOUT_FLOOR_MS,
   streamIdleTimeoutMs,
+  isOutputLimitRejection,
   outputTokenCeiling,
   stripOutputLimitFields,
   withoutDerivedOutputLimit,
@@ -25,7 +26,7 @@ import {
 } from "./provider-retry.js";
 import { activeNodeTransportRoute } from "./node-proxy.js";
 import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
-import type { ClassifiedAgentError } from "./agent-errors.js";
+import { classifyAgentError, type ClassifiedAgentError } from "./agent-errors.js";
 
 const model = {
   id: "model",
@@ -1122,6 +1123,10 @@ const DEEPSEEK_OUTPUT_CEILING =
   "400 Invalid max_tokens value, the valid range of max_tokens is [1, 8192]";
 const GROQ_OUTPUT_CEILING =
   "`max_tokens` must be less than or equal to `16384`, the maximum value for `max_tokens` is less than the `context_window` for this model";
+const PERPLEXITY_OUTPUT_CEILING =
+  '400: {"error":{"message":"max_tokens must be at most 128000","type":"invalid_request","code":400,"param":"max_tokens"}}';
+const MINIMAX_OUTPUT_CEILING =
+  "400: invalid params, model[MiniMax-M2] does not support max tokens > 196608 (2013)";
 
 describe("outputTokenCeiling", () => {
   it("reads the upper bound of a DeepSeek max_tokens range", () => {
@@ -1164,9 +1169,57 @@ describe("outputTokenCeiling", () => {
     ).toBe(16384);
   });
 
+  it("reads a Perplexity at-most ceiling with or without backticks", () => {
+    expect(outputTokenCeiling("max_tokens must be at most 128000")).toBe(128000);
+    expect(outputTokenCeiling("`max_tokens` must be at most 128000")).toBe(128000);
+    expect(outputTokenCeiling(PERPLEXITY_OUTPUT_CEILING)).toBe(128000);
+    expect(
+      outputTokenCeiling("InvalidRequestError: max_tokens must be at most 4096"),
+    ).toBe(4096);
+    expect(
+      outputTokenCeiling("max_completion_tokens must be at most 8,192"),
+    ).toBe(8192);
+    expect(
+      outputTokenCeiling("`max_output_tokens` must be at most `4096`"),
+    ).toBe(4096);
+  });
+
+  it("reads a MiniMax max tokens ceiling and ignores the business code", () => {
+    expect(
+      outputTokenCeiling(
+        "invalid params, model[MiniMax-M2] does not support max tokens > 196608 (2013)",
+      ),
+    ).toBe(196608);
+    expect(outputTokenCeiling(MINIMAX_OUTPUT_CEILING)).toBe(196608);
+  });
+
+  it("treats those 400s as output-limit rejections", () => {
+    expect(
+      isOutputLimitRejection(
+        classifyAgentError("400: max_tokens must be at most 128000"),
+      ),
+    ).toBe(true);
+    expect(
+      isOutputLimitRejection(classifyAgentError(MINIMAX_OUTPUT_CEILING)),
+    ).toBe(true);
+    expect(
+      isOutputLimitRejection(
+        classifyAgentError(
+          "400: Prompt tokens plus max_tokens must be at most 131,072",
+        ),
+      ),
+    ).toBe(false);
+  });
+
   it("does not treat a context-length message as an output ceiling", () => {
     expect(outputTokenCeiling("maximum context length is 131072 tokens")).toBeUndefined();
     expect(outputTokenCeiling("Range of input length should be [1, 30720]")).toBeUndefined();
+    expect(
+      outputTokenCeiling("Prompt tokens plus max_tokens must be at most 131,072"),
+    ).toBeUndefined();
+    expect(
+      outputTokenCeiling("Prompt tokens plus `max_tokens` must be at most 131,072"),
+    ).toBeUndefined();
   });
 });
 
@@ -1278,6 +1331,46 @@ describe("explicit output-limit repair", () => {
       marked: true,
       max_tokens: 8192,
     });
+  });
+
+  it("clamps a Perplexity at-most ceiling instead of failing the turn", async () => {
+    const result = await repairPayload(PERPLEXITY_OUTPUT_CEILING, {
+      max_tokens: 200000,
+      stream: true,
+    });
+
+    expect(result.attempts).toBe(2);
+    expect(result.claim).not.toHaveBeenCalled();
+    expect(result.sleep).not.toHaveBeenCalled();
+    expect(result.repaired).toEqual({
+      marked: true,
+      max_tokens: 128000,
+      stream: true,
+    });
+  });
+
+  it("clamps a MiniMax max tokens ceiling and ignores the business code", async () => {
+    const result = await repairPayload(MINIMAX_OUTPUT_CEILING, {
+      max_tokens: 200000,
+    });
+
+    expect(result.attempts).toBe(2);
+    expect(result.claim).not.toHaveBeenCalled();
+    expect(result.sleep).not.toHaveBeenCalled();
+    expect(result.repaired).toEqual({
+      marked: true,
+      max_tokens: 196608,
+    });
+  });
+
+  it("leaves a prompt-plus-max_tokens context sum terminal", async () => {
+    const result = await repairPayload(
+      "400: Prompt tokens plus max_tokens must be at most 131,072",
+      { max_tokens: 65536 },
+    );
+
+    expect(result.attempts).toBe(1);
+    expect(result.claim).toHaveBeenCalledTimes(1);
   });
 
   it("clamps a proxy expected-value ceiling without adding a missing field", async () => {

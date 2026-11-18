@@ -1,116 +1,63 @@
 # ADR 0134: Use models.dev as the sole model metadata source with a local snapshot
 
-- Status: Superseded for chat metadata by [models.dev catalog authority](models-dev-catalog-authority.md)
+- Status: Superseded for chat metadata by
+  [models.dev catalog authority](models-dev-catalog-authority.md); amends
+  ADR 0027, ADR 0133, D136, D266
 - Date: 2026-08-29
-- Deciders: PI-Desktop core
-- Amends: ADR 0027, ADR 0133, D136, D266
+- Related: D136, D266, ADR 0027, ADR 0133
 
 ## Context
 
 The first models.dev integration still retained a second model metadata path in
-pi-ai. That made it possible for a package upgrade or a provider-specific pi
-record to change the model name, capabilities, limits, thinking levels, input
-modes, or prices that PI-Desktop presented and sent to the sidecar. It also did
-not persist the complete public models.dev document, so model updates depended
-on the process staying online.
-
-The supplied models.dev records publish more than context and output limits:
-they include model descriptions, families, attachments, reasoning options,
-tool and structured-output support, temperature support, knowledge/release
-metadata, input/output modalities, weights, status, interleaving, limits, and
-cost tiers. Those fields need one stable owner and a local offline snapshot.
+pi-ai, so a package upgrade or a provider-specific pi record could change the
+model name, capabilities, limits, thinking levels, input modes, or prices that
+PI-Desktop presented and sent to the sidecar, and it did not persist the complete
+public models.dev document, so model updates depended on the process staying
+online.
 
 ## Decision
 
 `https://models.dev/api.json` is the only model metadata/configuration source.
+Electron main reads the bundled public document from
+`resources/models.dev/api.json` in development and `<resources>/models.dev/api.json`
+in packaged builds — part of the release artifact, not the user data directory —
+and `scripts/release.mjs <version> --tag` fetches, validates, and atomically
+replaces that checked-in resource before tagging. Startup reads the snapshot
+without network I/O; Settings → Model configuration exposes **Refresh model
+catalog**, which refetches the URL into the in-memory snapshot for the current
+process only, never writing the packaged file or a user cache. The parser maps
+every supported models.dev field into `ModelInfo` and the sidecar `ModelConfig`,
+and provider/model matching accepts the configured vendor key, normalized API URL,
+catalog provider identity, and unambiguous vendor-prefixed IDs without changing
+the user-visible ID. The runtime passes the models.dev `ModelConfig` to pi-ai's
+selected wire adapter, leaving pi-ai an implementation dependency for request
+serialization, OAuth login and account availability, and stream handling only,
+with its builtin model catalog and capability functions unconsulted. A model
+absent from models.dev remains runnable through an explicit generic text model
+shape with conservative limits and no reasoning or vision claims, and provider
+`/models` discovery or authenticated OAuth availability may supply unlisted IDs
+but cannot invent metadata.
 
-1. Electron main reads the bundled public document from
-   `resources/models.dev/api.json` in development and
-   `<resources>/models.dev/api.json` in packaged builds. The file is part of the
-   repository/release artifact, not the user data directory.
-2. `scripts/release.mjs <version> --tag` fetches
-   `https://models.dev/api.json`, validates it, atomically replaces the checked-in
-   resource, and includes that file in the release commit before tagging.
-3. On startup, Electron reads the bundled snapshot without network I/O. Settings
-   → Model configuration exposes **Refresh model catalog**, which always
-   refetches the URL and replaces the in-memory snapshot for the current process;
-   it never writes the packaged file or a user cache.
-4. The parser maps all supported models.dev fields into the existing
-   `ModelInfo` and sidecar `ModelConfig`: `id`, `name`, `description`, `family`,
-   `attachment`, `reasoning`, `reasoning_options`, `tool_call`,
-   `structured_output`, `temperature`, `knowledge`, `release_date`,
-   `last_updated`, `modalities.input/output`, `open_weights`, `limit.context`
-   / `input` / `output`, `cost` including audio/reasoning/cache/tier prices,
-   `interleaved`, `status`, `experimental`, and `provider`. Provider/model
-   matching accepts the configured vendor key, normalized API URL, catalog
-   provider identity, and unambiguous vendor-prefixed IDs; an unprefixed
-   configured ID can match a `vendor/model` catalog ID without changing the
-   user-visible ID.
-5. The runtime passes the models.dev `ModelConfig` to pi-ai's selected wire
-   adapter. pi-ai remains an implementation dependency for request
-   serialization, OAuth login/account availability, and stream handling only;
-   its builtin model catalog and model capability functions are not consulted.
-6. A model absent from models.dev remains runnable through an explicit generic
-   text model shape with conservative limits and no reasoning/vision claims.
-   Provider `/models` discovery and authenticated OAuth availability still
-   supply IDs that models.dev does not list, but they cannot invent metadata.
-
-Models.dev reasoning mappings retain `effort` values that match the canonical
-levels (`none` → `off`), map `toggle`/`budget_tokens` to `off` + `medium`, and
-use `low`/`medium`/`high` when a reasoning record has no usable level list.
-Input and output modality arrays retain `text`, `image`, `audio`, `video`, and
-`pdf`; the current text agent picker excludes models that cannot accept and
-produce text, while the raw bundled snapshot keeps those records for future
-surfaces. Image attachments use the transient image block supported by pi-ai;
-PDF capability is surfaced from the catalog, but PDF files remain bounded file
-references until a transport with native PDF blocks is available.
+Reasoning mappings keep `effort` values matching the canonical levels (`none` →
+`off`), map `toggle` and `budget_tokens` to `off` plus `medium`, and fall back to
+`low`/`medium`/`high` without a usable level list; modality arrays keep `text`,
+`image`, `audio`, `video`, and `pdf`, while the text agent picker excludes models
+that cannot accept and produce text.
 
 ## Consequences
 
-- Model metadata has one authoritative source and is reproducible offline from
-  the checked-in release resource.
-- Every release refreshes the catalog before tag creation without requiring a
-  database or host-core schema migration.
-- Settings can fetch a newer snapshot immediately for the current process; the
-  next app launch returns to the bundled release snapshot until a new release
-  is shipped.
-- Provider bindings remain user-owned selections/overrides; the catalog owns
+- Model metadata has one authoritative source and is reproducible offline from the
+  checked-in release resource, which every release refreshes without a schema
+  migration.
+- Settings can fetch a newer snapshot for the current process; the next launch
+  returns to the bundled release snapshot, and models.dev outages preserve the last
+  local snapshot.
+- Provider bindings stay user-owned selections and overrides: the catalog owns
   published model semantics and the generic fallback owns unknown IDs.
-- Models.dev outages preserve the last local snapshot, provider endpoint
-  discovery, and explicit custom IDs.
-- Changes to the models.dev schema require parser fixtures and source/runtime
-  contract tests before release.
 
 ## Alternatives
 
-### Keep pi-ai as a model metadata fallback
-
-Rejected: it creates a second authority and allows package updates to silently
-change the model configuration selected by the user. It remains for transport
-and OAuth only.
-
-### Keep a user-data snapshot
-
-Rejected: the release artifact must be reproducible and the user cache would
-make different installations use different model configuration. Settings
-refresh is intentionally process-local until the next release.
-
-### Fetch only when a provider dialog opens
-
-Rejected: model capability state is also needed by Composer and runtime launch;
-the bundled release snapshot gives all surfaces one deterministic baseline.
-Settings refresh remains an explicit remote action.
-
-## References
-
-- `scripts/release.mjs` (release-time catalog refresh)
-- `apps/desktop/resources/models.dev/api.json` (bundled snapshot)
-- `apps/desktop/electron/main/models-dev-catalog.ts` (catalog parsing and refresh)
-- `apps/desktop/electron/main/index.ts` (main-process loading and IPC)
-- `apps/desktop/src/components/settings/ModelConfigPage.tsx` (settings refresh action)
-- `packages/agent-runtime/src/model-capabilities.ts`
-- `packages/agent-runtime/src/provider-binding.ts`
-- `docs/spec/03-runtime/11-provider-model-system.md`
-- `docs/spec/03-runtime/12-provider-config-schema.md`
-- `docs/spec/03-runtime/13-model-catalog-and-selection.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-066, E2E-080, E2E-154)
+- Keep pi-ai as a metadata fallback: it creates a second authority and lets package
+  updates silently change the configuration the user selected.
+- Keep a user-data snapshot: the release artifact must be reproducible, and a user
+  cache would make installations diverge.

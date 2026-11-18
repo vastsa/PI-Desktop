@@ -2,56 +2,37 @@
 
 - Status: Superseded in part by ADR 0108 and ADR 0170
 - Date: 2026-07-26
-- Deciders: PI-Desktop maintainers
-- Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·
-  [08-component-spec §5](../spec/04-ux/08-component-spec.md) ·
-  [01-ipc-protocol §13a](../spec/03-runtime/01-ipc-protocol.md) ·
-  [ADR 0108](0108-remove-built-in-interactive-terminal.md) ·
+- Related: [ADR 0108](0108-remove-built-in-interactive-terminal.md) ·
   [ADR 0170](0170-work-panel-browser-as-bundled-plugin.md)
 
 ## Context
 
-The work panel was introduced as a docked surface for workspace review,
-embedded browser preview, file browsing, and an interactive shell. Each surface
-needed a host-owned boundary because the sandboxed renderer could not safely
-perform workspace or window operations itself.
+The work panel docks workspace review, browser preview, file browsing, and, once,
+an interactive shell beside the conversation. The sandboxed renderer cannot do
+workspace or window work itself, so each surface needs a host-owned boundary.
 
 ## Decision
 
-The retained work-panel subsystems are:
+1. **Browser.** Bundled plugin `pi.browser` provides Chrome and agent CDP
+   (ADR 0170); Electron Main owns the guest `WebContentsView`, navigation and
+   popup policy, permission denial, and bounds clamping.
+2. **Review.** Review snapshots and guarded rollback open only on explicit user
+   action, never from a tool result (D451).
+3. **Files.** Project browsing is the bundled `pi.files` plugin over the public
+   contributed-view and filesystem APIs.
+4. **Transcript resources.** File and URL artifacts stay session-scoped tabs.
 
-1. **Browser.** Chrome and agent CDP ship as bundled plugin `pi.browser`
-   (ADR 0170). Electron Main still owns the guest `WebContentsView`,
-   navigation policy, permission denial, external popup handling, and
-   measured bounds clamp.
-2. **Review.** Message-owned review snapshots and guarded rollback remain
-   host-integrated; Review opens only on explicit user action and never from a
-   tool result (D451).
-3. **Files.** Project browsing is supplied by the bundled `pi.files` plugin over
-   the public contributed-view and filesystem APIs.
-4. **Transcript resources.** File and URL artifacts remain session-scoped tabs
-   opened by the conversation rather than generic launchers.
-
-The former interactive-terminal subsystem is not part of the current product.
-Its removal, including the desktop IPC and packaging cleanup, is defined by
-ADR 0108. Agent Bash is an independent non-interactive agent tool and is not a
-work-panel subsystem.
+The interactive terminal is gone (ADR 0108); Agent Bash is an independent
+non-interactive tool.
 
 ## Consequences
 
-- The renderer remains sandboxed and native Browser/plugin surfaces continue to
-  use the existing measured-bounds and visibility rules.
-- Review and file artifacts retain conversation ownership, while project
-  browsing uses the bundled Files plugin.
-- Interactive shell access is provided by an external terminal rather than by a
-  PI-Desktop work-panel tab.
+- Native surfaces keep their bounds rules and the renderer stays sandboxed.
+- Review and artifacts keep conversation ownership; browsing is a plugin.
 
 ## Alternatives considered
 
-- Making every panel surface an agent tool was rejected because user-driven
-  browsing and review would inherit agent permissions, truncation, and audit
-  semantics.
-- Giving bundled plugins private host capabilities was rejected because it
-  would bypass the public plugin boundary.
-- Keeping the former interactive shell was rejected by ADR 0108 to remove its
-  separate native and lifecycle surface.
+- Every surface as an agent tool: rejected; browsing and review would inherit
+  agent permissions.
+- Private host capabilities for bundled plugins: rejected; it bypasses the public
+  plugin boundary.

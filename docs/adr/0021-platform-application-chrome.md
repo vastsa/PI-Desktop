@@ -2,66 +2,46 @@
 
 - Status: Superseded in part by ADR 0025
 - Date: 2026-07-26
+- Related: D010, D118
 
 ## Context
 
-Electron's default chrome does not satisfy all three desktop conventions used
-by PI-Desktop. macOS needs a conventional native application menu and inset
-traffic lights. Frameless Windows and Linux windows need visible application
-menus plus minimize, maximize/restore, and close controls.
-
-Renderer-owned commands such as New Task and Settings cannot execute directly
-inside Electron Main. Native editing, zoom, fullscreen, and window operations
-must not become an arbitrary privileged command bridge.
+Electron's default chrome fits none of the three desktop conventions PI-Desktop
+needs: macOS wants a native application menu and inset traffic lights, while
+frameless Windows and Linux windows want visible application menus plus window
+controls. Renderer-owned commands such as New Task cannot run in Main directly,
+and native editing, zoom, fullscreen, and window operations must not become an
+arbitrary privileged command bridge.
 
 ## Decision
 
 1. macOS keeps `hiddenInset` traffic lights and installs a native Electron
    application menu.
-2. Windows and Linux use the shared frameless 46px shell with a renderer
-   menubar and renderer-drawn window controls.
-3. Renderer-owned menu commands use the fixed `APP_MENU_COMMANDS` allowlist.
-   Native menu and window operations use separate fixed allowlists.
-4. The preload exposes only the operating-system identifier and allowlisted
-   IPC channels required by the chrome.
-5. Native commands wait for a renderer-ready acknowledgement before delivery.
-   Window creation is single-flight, and closing or reloading a window resets
-   the acknowledgement.
-6. Windows and Linux packaging remains shell-readiness work. This decision
-   does not change the macOS-arm64 first-release scope in D010.
+2. Windows and Linux use the shared frameless shell with a renderer menubar and
+   renderer-drawn window controls.
+3. Renderer-owned menu commands pass through the fixed `APP_MENU_COMMANDS`
+   allowlist; native menu and window operations use separate fixed allowlists.
+4. The preload exposes only the OS identifier and the allowlisted IPC channels the
+   chrome needs.
+5. Native commands wait for a renderer-ready acknowledgement before delivery,
+   window creation is single-flight, and closing or reloading resets the
+   acknowledgement.
+6. Windows and Linux packaging remains shell-readiness work and does not change
+   the macOS-arm64 first-release scope in D010.
 
 ## Consequences
 
-- Each platform receives familiar menus and window controls without exposing
-  arbitrary Main-process execution.
-- A native menu command can recreate the macOS window without racing renderer
-  subscription setup or creating duplicate windows.
-- Windows and Linux require native-runner packaging and visual qualification
-  before release.
-- Custom chrome must preserve keyboard, focus, localization, drag-region, and
-  maximize-state behavior across renderer reloads.
+- Each platform gets familiar menus and window controls without arbitrary
+  Main-process execution.
+- A native command can recreate the macOS window without racing renderer
+  subscription or duplicating windows.
+- Windows and Linux need native-runner packaging and visual qualification, and
+  custom chrome must keep keyboard, focus, localization, drag-region, and
+  maximize state across reloads.
 
 ## Alternatives
 
-### Keep Electron's default menu and frame everywhere
-
-Rejected because the existing hidden titlebar design would remain incomplete
-on Windows and Linux, while macOS would lack product-specific commands.
-
-### Implement every menu action in the renderer
-
-Rejected because native editing and window operations belong to Electron Main
-and must remain behind an explicit capability boundary.
-
-### Send commands after a fixed delay
-
-Rejected because renderer subscription timing varies by machine and reload
-state. An acknowledgement is deterministic.
-
-## References
-
-- `docs/spec/03-runtime/01-ipc-protocol.md`
-- `docs/spec/04-ux/08-component-spec.md`
-- `docs/spec/04-ux/09-interaction-patterns.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-067)
-- `docs/spec/08-meta/decisions-log.md` (D118)
+- Keep Electron's default menu and frame everywhere: rejected because the hidden
+  titlebar design would stay incomplete and macOS would lack product commands.
+- Send commands after a fixed delay: rejected because subscription timing varies,
+  while an acknowledgement is deterministic.

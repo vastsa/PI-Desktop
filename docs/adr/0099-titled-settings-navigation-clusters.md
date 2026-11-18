@@ -2,54 +2,37 @@
 
 - Status: Accepted
 - Date: 2026-08-18
-- Deciders: PI-Desktop core
 - Related: D238, D241, ADR 0096
 
 ## Context
 
-The Settings rail is intentionally a flat, searchable directory of eight
-destinations. The rows are correct and remain in one navigation level, but the
-unbroken list is visually dense. The previous visual-only spacing used divider
-lines, which was especially easy to lose against the dark rail and did not
-provide a useful scan landmark.
+The Settings rail is a flat, searchable directory of eight destinations whose
+unbroken list is visually dense, and the previous visual-only spacing used divider
+lines that were easy to lose against the dark rail and named nothing.
 
 ## Decision
 
-Keep the destination index flat and preserve its order, IDs, search behavior,
-and ownership. Render four localized, non-interactive headings above the
-existing row clusters:
+The destination index stays flat and keeps its order, IDs, search behavior, and
+ownership; four localized, non-interactive headings are rendered above the
+existing row clusters, with muted typography and whitespace instead of dividers:
 
 - Personal / 个人: Basics, AI, Shortcuts
 - Agent / 智能体: Instructions, Model configuration
 - Workspace / 工作区: Import, Project archive
 - About / 关于: Info
 
-Use muted typography and whitespace between clusters. Do not render divider
-lines or add nested navigation. Search continues to filter destinations as one
-flat index; a cluster and its heading disappear when no destination remains in
-that cluster.
+Search still filters one flat index, and a cluster and its heading disappear when
+no destination remains in it.
 
 ## Consequences
 
-- The rail gains clear scan landmarks without introducing another interactive
-  navigation level.
-- The headings are available in both supported UI locales.
-- The rail no longer depends on border contrast to communicate grouping in
-  either theme.
-- The existing destination ordering and deep-link behavior remain stable.
+- The rail gains scan landmarks without another interactive navigation level, in
+  both supported UI locales.
+- Grouping no longer depends on border contrast, and destination ordering and
+  deep-link behavior stay stable.
 
 ## Alternatives
 
-### Keep the completely flat rail
-
-Rejected because the compact rows remain difficult to scan as one block.
-
-### Use divider lines between groups
-
-Rejected because the previous rule was low-salience in dark mode and added
-chrome without naming the groups.
-
-### Add interactive nested navigation
-
-Rejected because the Settings IA is intentionally a flat destination index and
-the groups do not own additional navigation state.
+- Use divider lines between groups: low-salience in dark mode and they name
+  nothing.
+- Add interactive nested navigation: the groups own no additional state.

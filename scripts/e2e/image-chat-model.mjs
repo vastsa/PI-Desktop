@@ -38,7 +38,7 @@ export function imageChatModel() {
     try {
       if (req.method === "GET" && req.url.endsWith("/models")) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ data: [{ id: "fixture", object: "model" }] }));
+        res.end(JSON.stringify({ data: [{ id: "fixture", object: "model" }, { id: "gpt-image-1", object: "model" }] }));
         return;
       }
       const chunks = [];

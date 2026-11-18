@@ -231,8 +231,9 @@ the provider message in both phases, so a generic 429 body still enters the
 429 budget while known non-retryable classifications remain terminal. Explicit
 billing/account exhaustion (including `insufficient_quota`, spend-limit
 codes, Zhipu/Z.ai usage-limit code `1308`, Anthropic "credit balance is too
-low", and DashScope `Arrearage` / "access denied … account is in good
-standing") is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
+low", DashScope `Arrearage` / "access denied … account is in good
+standing", and Volcengine Ark `AccountOverdueError` / `overdue balance`)
+is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
 builtin subagents use the same controller and policy.
 
 429 retries are silent at the transcript lifecycle: no intermediate assistant
@@ -707,7 +708,9 @@ request. The automatic summary request retries transient provider failures
 under a bounded pi-ai retry policy (3 retries, 2s/4s/8s backoff, cancelled by
 Stop); deterministic failures such as quota or auth return at once. The
 preflight guard sizes the prompt pi actually serializes — tool results already
-capped — rather than the raw messages, and when that prompt still exceeds the
+capped — rather than the raw messages, with the CJK correction the output-cap
+estimator carries (Han, kana, and Hangul run ~1 token per character, not the
+1/3.5 the chars-per-token baseline bills), and when that prompt still exceeds the
 window it tries exactly one reduced input (tool results cut to a short prefix,
 thinking dropped, no message removed). If even that input does not fit, the range
 is split into contiguous chunks that each do: at most 16 requests, each carrying

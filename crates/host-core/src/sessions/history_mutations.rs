@@ -126,6 +126,10 @@ pub fn delete_message(
 }
 
 fn substantive_reply(message: &UiMessage) -> bool {
+    // The per-turn model system snapshot is request state, not reply content.
+    if message.role == "system" && message.model_system.is_some() {
+        return false;
+    }
     message.role != "assistant"
         || !message.content.trim().is_empty()
         || message

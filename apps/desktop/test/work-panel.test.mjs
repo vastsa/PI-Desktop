@@ -505,12 +505,13 @@ test("Electron enforces the responsive shell minimum", () => {
   assert.match(mainSource, /export const WINDOW_MIN_WIDTH = 800/);
   assert.match(mainSource, /export const WINDOW_MIN_HEIGHT = 560/);
   // The window creation clamps the minimum to fit the current work area
-  // (issues #544 / #1175), so the props are the clamped `initialMin*` values.
+  // (issues #544 / #1175) and to a native half-screen tile, so the props are
+  // the clamped `initialMin*` values.
   assert.match(mainSource, /minWidth:\s*initialMinWidth/);
   assert.match(mainSource, /minHeight:\s*initialMinHeight/);
   assert.match(
     mainSource,
-    /\{ width: initialMinWidth, height: initialMinHeight \} =\s*clampMinimumSizeToWorkArea\(/,
+    /\{ width: initialMinWidth, height: initialMinHeight \} =\s*nativeWindowMinimumSize\(/,
   );
   // Every unconditional app-minimum reassertion goes through the same clamp.
   assert.doesNotMatch(mainSource, /setMinimumSize\(windowMinWidth, windowMinHeight\);\n\s*\/\/ Prefer normal layer/);

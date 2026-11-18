@@ -2,56 +2,61 @@
 
 - **Status**: Accepted
 - **Date**: 2026-09-18
-- **Related**: [ADR 0038](0038-plugin-mcp-bridge.md) ·
-  [ADR 0098](0098-multiple-vendor-oauth-accounts.md) ·
-  [ADR 0142](0142-allow-non-loopback-http-mcp.md) ·
-  [03-runtime/01-ipc-protocol](../spec/03-runtime/01-ipc-protocol.md) ·
-  [03-runtime/06-host-rpc-protocol](../spec/03-runtime/06-host-rpc-protocol.md)
+- **Related**: [ADR 0038](0038-plugin-mcp-bridge.md) · [ADR 0098](0098-multiple-vendor-oauth-accounts.md) · [ADR 0142](0142-allow-non-loopback-http-mcp.md)
 
 ## Context
 
-Remote HTTP MCP servers (such as Notion, Linear, or custom enterprise servers) often protect endpoints with OAuth 2.1 authorization rather than static tokens. Model Context Protocol specifies authorization discovery via RFC 9728 (OAuth Protected Resource Metadata) and RFC 8414 (Authorization Server Metadata), dynamic registration via RFC 7591, and resource indicators via RFC 8707.
-
-Previous MCP implementations in PI-Desktop supported only static HTTP headers. Users had to manually obtain Bearer tokens or were unable to connect to OAuth-protected servers.
+Remote HTTP MCP servers such as Notion, Linear, or an enterprise server often
+protect endpoints with OAuth 2.1 instead of static tokens, and MCP specifies
+authorization discovery through RFC 9728 and RFC 8414, dynamic registration
+through RFC 7591, and resource indicators through RFC 8707. PI-Desktop supported
+only static HTTP headers, so users had to obtain bearer tokens by hand or could not
+connect at all.
 
 ## Decision
 
-1. **Authentication Architecture**:
-   - OAuth login runs in the Electron main process via `McpOAuthManager`, mirroring the `VendorOAuth` non-blocking pattern (ADR 0098): `mcp/oauth/start` returns `{ ok: true, loginId }` immediately and streams progress, authorization URL, completion, or failure events via `pi-desktop/mcp/oauth/event`.
-   - IPC calls are never blocked during the user's browser interaction. A user or UI cancellation triggers `pi-desktop/mcp/oauth/cancel`, which closes the loopback listener and aborts the login.
-2. **Loopback & Security Boundaries**:
-   - The loopback callback server binds strictly to IPv4 loopback `127.0.0.1` on an ephemeral port (`port 0`), and the redirect URI is formatted as `http://127.0.0.1:<port>/callback` per RFC 8252 (preventing IPv6 loopback resolution mismatches).
-   - Inbound query parameters (`error`, `error_description`, `code`, `state`) rendered on the loopback HTML completion page are strictly HTML-entity escaped to eliminate reflected XSS.
-   - Per ADR 0142, discovery and token requests use `redirect: "manual"` to prevent silent cross-host redirect attacks.
-3. **MCP Protocol Compliance**:
-   - RFC 8707 `resource` indicators are passed on both the authorization endpoint and token exchange/refresh requests, pointing to the protected resource URI discovered via RFC 9728.
-   - Dynamic Client Registration (RFC 7591) credentials (`clientId`, `clientSecret`) are cached and reused for subsequent logins against the same registration endpoint.
-   - Token lifetimes (`expires_in`) are parsed as numbers or strings (e.g. `"3600"`), computing an absolute expiry time.
-4. **Token Storage & Isolation**:
-   - OAuth tokens never reach the renderer. They are stored in host-core encrypted secrets under `secret:mcp:<serverId>:oauth`.
-   - Token refresh operations are serialized per server to prevent race conditions with rotating refresh tokens.
-   - Moving or renaming an MCP server (`mcp.transfer`) migrates the corresponding `secret:mcp:<serverId>:oauth` to the new ID.
-5. **Runtime Integration**:
-   - `UserMcpRuntime` injects the valid OAuth access token as `Authorization: Bearer <token>` into live HTTP MCP connections.
-   - Token refreshes or re-authorizations invalidate stale connection entries so live clients immediately adopt updated credentials.
-   - If a tool invocation returns a 401 Unauthorized status, the server is marked with `authRequired: true` and `state: "failed"`.
+OAuth login runs in Electron main inside `McpOAuthManager`, mirroring the
+non-blocking vendor pattern of ADR 0098: `mcp/oauth/start` returns
+`{ ok: true, loginId }` immediately and streams progress, the authorization URL,
+completion, and failure through `pi-desktop/mcp/oauth/event`, while
+`pi-desktop/mcp/oauth/cancel` closes the loopback listener and aborts the login.
+The callback server binds strictly to IPv4 loopback on an ephemeral port with an
+RFC 8252 redirect URI, escapes every inbound query parameter on its completion
+page, and uses `redirect: "manual"` for discovery and token requests per ADR 0142.
+RFC 8707 `resource` indicators are sent on the authorization and token requests,
+dynamic-registration credentials are reused for the same registration endpoint, and
+`expires_in` is parsed from numbers or strings. Tokens never reach the renderer:
+they live in host-core encrypted secrets under `secret:mcp:<serverId>:oauth`,
+refresh is serialized per server because refresh tokens rotate, and `mcp.transfer`
+migrates the secret to the new id. `UserMcpRuntime` injects
+`Authorization: Bearer <token>` into live connections and drops stale entries when
+a token refreshes, and a `401` marks the server `authRequired: true` with
+`state: "failed"`.
 
 ## Consequences
 
-- Remote HTTP MCP servers requiring OAuth 2.1 PKCE can be authorized securely from the Settings UI.
-- Long-running browser interactions do not block IPC channels or leave orphan HTTP listeners upon window reload or quit.
-- Token material is kept out of the renderer process and ordinary logs.
+- OAuth-protected remote servers can be authorized from Settings, and a long
+  browser interaction blocks no IPC channel or leaves an orphan listener on
+  reload or quit.
+- Token material stays out of the renderer and ordinary logs.
+- Endpoints must be HTTPS except for loopback, so a local or LAN-loopback
+  authorization server still works while the MCP resource may stay `http://`.
 
 ## Amendment (2026-09-18) — landing hardening
 
-- Authorization-server endpoints (`authorization_endpoint`, `token_endpoint`, `registration_endpoint`, discovered `authorization_servers`, and `resource_metadata`) must be HTTPS. Loopback `http://127.0.0.1` / `localhost` / `::1` remains allowed so local mock and LAN-loopback AS still work. The MCP resource URL itself may still be `http://` (ADR 0142).
-- Dynamic client registration prefers RFC 8252 portless `http://127.0.0.1/callback` plus the current exact URI. Stored clients are reused only when that portless URI is on file, or the exact current redirect matches. Otherwise a new client is registered. Login also tries to rebind the previously used loopback port so strict AS that require an exact URI keep working.
-- Loopback `/callback` validates `state` before looking at `error` or `code`. A mismatched `state` is a stray request and does not abort the login. A matching callback is consumed once (replay returns 409).
-- `invalid_grant` on refresh deletes the stored secret; transient 5xx keeps the existing access token.
-- `mcp/oauth/start` passes the listed `McpServerRecord` through to `onAuthorized` so a project-level server that is not in the current workspace runtime can still handshake after login.
-- Scope selection initially used an MVP heuristic (`default` if advertised, else `scopes_supported[0]`); the amendment below supersedes it. There is no per-server scope picker, device-code flow, or DPoP.
+Registration prefers the RFC 8252 portless loopback redirect and reuses a stored
+client only when that URI is on file or the exact current redirect matches.
+`/callback` validates `state` before reading `error` or `code`, a mismatched
+`state` does not abort the login, and a replay of a consumed callback returns
+409. `invalid_grant` on refresh deletes the stored secret while a transient 5xx
+keeps the access token, and `mcp/oauth/start` passes the `McpServerRecord` through
+to `onAuthorized` so a project-level server can handshake after login.
 
 ## Amendment (2026-09-29) — issuer discovery and resource scopes (#1221)
 
-- Preserve issuer paths when discovering authorization metadata: try OAuth path insertion, OIDC path insertion, then OIDC path appending. Root issuers retain the two root discovery URLs. Keep the existing TLS checks and manual redirect policy.
-- Request scopes from the initial 401 Bearer challenge first, otherwise all valid `scopes_supported` entries from protected-resource metadata. Omit `scope` when neither supplies one; authorization-server scope catalogs do not describe the resource's requirements and must not supply defaults or extra scopes.
+Issuer paths are preserved during discovery by trying OAuth path insertion, then
+OIDC path insertion, then OIDC path appending, with root issuers keeping the root
+URLs. Scopes come from the initial 401 Bearer challenge, otherwise from
+`scopes_supported` in protected-resource metadata, and `scope` is omitted when
+neither supplies one, because an authorization-server scope catalog does not
+describe the resource.

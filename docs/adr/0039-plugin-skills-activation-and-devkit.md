@@ -2,109 +2,46 @@
 
 - Status: Accepted
 - Date: 2026-07-31
-- Related: [Plugin developer experience](../spec/07-plugins/10-plugin-devex.md),
-  [Plugin permissions matrix](../spec/07-plugins/13-plugin-permissions-matrix.md),
-  [ADR 0008](0008-plugin-runtime-isolation-target.md),
-  [ADR 0037](0037-project-instruction-chain.md),
-  [ADR 0040](0040-plugin-resident-services-and-message-bus.md)
+- Related: D174, ADR 0008, ADR 0037, ADR 0040
 
 ## Context
 
-`contributes.skills` has been part of manifest v1 since R1: `validateManifest`
-accepts it and `examples/plugins/hello` ships a skill file. Nothing read it.
-Declaring a skill had no observable effect, so the contribution point was
-documentation, not a feature.
-
-The authoring path was incomplete in the other direction. A `.piplug` package
-could be installed but not produced: host-core owns `install_from_package`, and
-nothing in the repository could write the store-only zip it accepts. There were
-no templates, no manifest validation ahead of install, and every source edit to
-a development plugin required re-picking its folder through the native dialog.
-
-The two gaps are the same gap: PI-Desktop asked users to write plugins without
-giving them the loop — scaffold, run, inspect, package.
+`validateManifest` accepted `contributes.skills` since manifest v1, but nothing
+read it, so declaring a skill had no effect, and a `.piplug` could be installed but
+not produced — no templates, no pre-install validation, no packaging loop. Users
+were asked to write plugins without scaffold, run, inspect, and package.
 
 ## Decision
 
-1. **Skills reach the model as a permission-gated catalog it can load from.**
-   `PluginRuntime` indexes each declared skill file at load time, only for
-   plugins granted `agent.prompt.inject`, and only through the same containment
-   guard as the gated `fs` APIs. The system prompt carries a `# Skills` section
-   of one line per skill — id, name, applicability — and the model pulls a body
-   on demand with the `Skill` tool, served from Electron main because the plugin
-   directories live there. A skill document may be 128 KiB and a plugin may
-   teach 32 of them, because an unread document costs nothing (D174, which
-   supersedes this ADR's original 16 KiB whole-body prompt injection).
-2. **Prompt order is host skills, then plugin skills, then project
-   instructions.** Later text carries more weight, so a user's own instruction
-   files keep the last word and an installed plugin can refine the built-in
-   guidance but never the reverse.
-3. **Catalog changes update an idle runtime's skills section.** The chronological
-   system-transcript decision supersedes the original digest-based retirement:
-   enabling a plugin, revoking `agent.prompt.inject`, or renaming a skill appends
-   a section update before the next request. The digest excludes bodies; the
-   `Skill` tool reads the file and rechecks permissions at call time. Removing
-   the last catalog entry also removes the executable `Skill` declaration.
-4. **Plugin authoring ships as a first-party devkit, not as a plugin.**
-   `@pi-desktop/plugin-devkit` owns scaffold, check and pack; three surfaces
-   share that one implementation — the `pi-plugin` CLI, the `PluginScaffold` /
-   `PluginCheck` / `PluginPack` agent tools served from Electron main, and the
-   plugins-page template action.
-5. **The built-in plugin-development skill activates only for plugin
-   workspaces** — a `manifest.json` at the workspace root, or a loaded plugin
-   directory inside it. Ordinary sessions pay for three tool descriptions and
-   nothing else; scaffolding writes a manifest, which activates the full skill
-   on the next prompt.
-6. **Hot reload may not widen a permission set.** A watched development plugin
-   reloads on save, but the reload reads the manifest first: permissions outside
-   the set approved when the folder was picked stop the reload with an error
-   telling the user to load the plugin again. Grants do follow the manifest
-   downwards, so a removed permission stops being available.
+`PluginRuntime` indexes each declared skill file at load time, only for plugins
+granted `agent.prompt.inject` and through the gated `fs` containment guard, and the
+system prompt carries a `# Skills` section of one line per skill (id, name,
+applicability) whose bodies the model pulls on demand with the `Skill` tool served
+from Electron main, so a 128 KiB document costs nothing until it is read (D174).
+Prompt order is host skills, plugin skills, then project instructions, so project
+rules keep the last word, and enabling a plugin, revoking `agent.prompt.inject`, or
+renaming a skill appends a section update to an idle runtime. Authoring ships as
+`@pi-desktop/plugin-devkit` — scaffold, check, pack — shared by the `pi-plugin`
+CLI, the `PluginScaffold` / `PluginCheck` / `PluginPack` agent tools, and the
+plugins-page template action, and its built-in development skill activates only for
+a workspace holding a `manifest.json` or a loaded plugin. A hot reload reads the
+manifest first, so permissions beyond the set approved when the folder was picked
+stop it with an error asking the user to load the plugin again, while grants still
+follow the manifest downwards.
 
 ## Consequences
 
-- A skill file is now executable surface. `agent.prompt.inject` keeps its
-  high-risk tier in the permissions matrix and is the only gate; the install
-  review already shows it.
-- `check` passing implies install will pass, because the devkit reproduces the
-  rules host-core enforces (store-only entries, 2000 files, 50 MB, no symlinks,
-  no `.git`/`node_modules`). Those limits are duplicated in TypeScript and Rust
-  and must move together.
-- Skill files are read when the model asks for one rather than every prompt, so
-  an edit takes effect on the next `Skill` call and a session that needs no skill
-  reads nothing. The catalog metadata is indexed at load time, so renaming a
-  skill still needs a reload — which a watched development plugin does on save.
-- A failed hot reload leaves the plugin unloaded but still watched, so the next
-  save recovers it. host-core's registry still reports `ready` in that window:
-  it has no RPC for a runtime-side load failure, so the reload reports itself
-  through a toast and `pluginChanged`, exactly as a plugin crash does.
-- Skill front-matter parsing lives in the plugin SDK (`parseSkillFrontmatter`),
-  shared by the runtime registry, the built-in skills and the devkit's `check`.
+- A skill file is executable surface: `agent.prompt.inject` is the only, high-risk
+  gate, and install review shows it.
+- `check` reproduces the host rules, so passing implies install will pass; those
+  limits live in TypeScript and Rust and must move together.
+- Bodies apply on the next `Skill` call while catalog metadata is indexed at load
+  time, so a rename needs a reload, and a failed reload leaves the plugin unloaded
+  but watched, reporting through a toast and `pluginChanged` like a crash.
 
 ## Alternatives
 
-### Ship plugin authoring as a bundled plugin
-
-Rejected. A plugin cannot produce a `.piplug`: there is no archive API in
-`HOST_API_ALLOWLIST` and adding one would hand every plugin a zip writer.
-Scaffolding would also require `fs.write.workspace`, a high-risk permission, for
-a capability the application itself should provide. First-party means always
-available, with no permission prompt and no chicken-and-egg.
-
-### Inject the plugin-development skill into every session
-
-Rejected. A plugin-authoring primer in every system prompt is pure waste for
-users who will never write one. The three tool descriptions are enough to
-bootstrap, and the workspace gate turns the full skill on exactly when it
-becomes relevant.
-
-### Share the 32 KiB instruction-chain budget with skills
-
-Rejected. Skills come from third-party code and instructions come from the user.
-A shared budget would let an installed plugin displace a project's own rules.
-
-### Reload with the previously granted permissions regardless of the manifest
-
-Rejected. The grant set was approved against a specific manifest. Reusing it
-after a manifest edit would let a file write widen capabilities behind the
-permission gateway — the one boundary the plugin system exists to hold.
+- Authoring as a bundled plugin: no archive API in `HOST_API_ALLOWLIST`, and
+  scaffolding would need `fs.write.workspace`.
+- Share the instruction-chain budget with skills: plugin content could displace a
+  project's own rules.

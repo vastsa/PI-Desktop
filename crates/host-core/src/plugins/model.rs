@@ -265,8 +265,12 @@ pub struct MarketPluginSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub downloads: Option<u64>,
     pub updated_at: String,
+    /// Display labels for the categories, in the app's language.
     #[serde(default)]
     pub categories: Vec<String>,
+    /// The canonical category ids, for filtering.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub category_ids: Vec<String>,
     pub permission_summary: Vec<String>,
     #[serde(default)]
     pub verified: bool,
@@ -412,12 +416,13 @@ pub struct MarketDownloadInfo {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct MarketCatalogEntry {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) description: String,
     pub(crate) author: String,
-    #[serde(default)]
+    #[serde(default, alias = "icon_url")]
     pub(crate) icon_url: Option<String>,
     #[serde(default)]
     pub(crate) categories: Vec<String>,
@@ -427,7 +432,7 @@ pub(crate) struct MarketCatalogEntry {
     /// from the official/mirror source; see `resolve_trust`.
     #[serde(default)]
     pub(crate) trust: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "publisher_id")]
     pub(crate) publisher_id: Option<String>,
     #[serde(default)]
     pub(crate) downloads: Option<u64>,
@@ -435,41 +440,51 @@ pub(crate) struct MarketCatalogEntry {
     pub(crate) homepage: Option<String>,
     #[serde(default)]
     pub(crate) repository: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "readme_markdown")]
     pub(crate) readme_markdown: Option<String>,
     /// Display strings per locale, resolved against the app language before a
     /// card or detail view is built.
     #[serde(default)]
     pub(crate) i18n: Option<PluginI18nMap>,
-    #[serde(default)]
+    #[serde(default, alias = "safety_notes")]
     pub(crate) safety_notes: Option<String>,
     pub(crate) versions: Vec<MarketVersion>,
 }
 
+/// Category labels keyed by category id, then by locale.
+pub(crate) type CategoryLabels =
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct MarketCatalogFile {
     /// Absent or 1 means the v1 schema. v2 adds provenance, review verdicts,
     /// yank state, and a declared artifact base.
-    #[serde(default = "default_schema_version")]
+    #[serde(default = "default_schema_version", alias = "schema_version")]
     pub(crate) schema_version: u32,
-    #[serde(default = "default_provider_id")]
+    #[serde(default = "default_provider_id", alias = "provider_id")]
     pub(crate) provider_id: String,
-    #[serde(default)]
+    #[serde(default, alias = "catalog_id")]
     pub(crate) catalog_id: Option<String>,
     #[serde(default)]
     pub(crate) name: Option<String>,
     #[serde(default)]
     pub(crate) homepage: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "updated_at")]
     pub(crate) updated_at: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "generated_at")]
     pub(crate) generated_at: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "policy_version")]
     pub(crate) policy_version: Option<String>,
     /// Base a relative package URL resolves against. A mirror declares its own
     /// base, so switching source never sends a download to another provider.
-    #[serde(default)]
+    #[serde(default, alias = "artifact_base_url")]
     pub(crate) artifact_base_url: Option<String>,
+    /// Category labels by id, in both guaranteed languages. Entries carry ids;
+    /// a client renders the label for its own language and falls back to the
+    /// id, so a catalog published before the vocabulary existed still renders.
+    #[serde(default, rename = "categoryLabels", alias = "category_labels")]
+    pub(crate) category_labels: CategoryLabels,
     #[serde(default)]
     pub(crate) plugins: Vec<MarketCatalogEntry>,
 }
@@ -512,4 +527,101 @@ pub struct InstallResult {
     pub upgraded: bool,
     #[serde(default)]
     pub permission_diff: Vec<String>,
+}
+
+#[cfg(test)]
+mod catalog_parsing_tests {
+    use super::*;
+
+    /// The center publishes camelCase. Every multi-word field used to be
+    /// dropped silently, which is why a detail sheet showed no readme, no
+    /// safety notes and no publisher.
+    const CAMEL: &str = r##"{
+        "schemaVersion": 2,
+        "providerId": "official",
+        "catalogId": "pi-plugin-center",
+        "updatedAt": "2026-11-01T00:00:00Z",
+        "policyVersion": "2026.10.2",
+        "artifactBaseUrl": "https://cdn.example/plugins",
+        "categoryLabels": { "themes": { "en": "Themes", "zh-CN": "外观主题" } },
+        "plugins": [{
+            "id": "pi.parchment", "name": "Parchment", "description": "warm", "author": "acme",
+            "iconUrl": "https://example.test/icon.png",
+            "publisherId": "tioit-wang",
+            "readmeMarkdown": "# Parchment\n\nwarm paper.",
+            "safetyNotes": "Writes nothing.",
+            "categories": ["themes"],
+            "versions": [{ "version": "1.0.0", "publishedAt": "2026-01-01T00:00:00Z",
+                "shasum": "ab", "url": "packages/pi.parchment-1.0.0.piplug",
+                "sizeBytes": 1, "permissions": [] }]
+        }]
+    }"##;
+
+    fn parse(raw: &str) -> MarketCatalogFile {
+        serde_json::from_str(raw).unwrap_or_else(|error| panic!("catalog is unreadable: {error}"))
+    }
+
+    #[test]
+    fn every_camel_case_field_reaches_the_entry() {
+        let file = parse(CAMEL);
+        assert_eq!(file.schema_version, 2);
+        assert_eq!(file.provider_id, "official");
+        assert_eq!(file.catalog_id.as_deref(), Some("pi-plugin-center"));
+        assert_eq!(file.policy_version.as_deref(), Some("2026.10.2"));
+        assert_eq!(file.updated_at.as_deref(), Some("2026-11-01T00:00:00Z"));
+        assert_eq!(
+            file.artifact_base_url.as_deref(),
+            Some("https://cdn.example/plugins")
+        );
+        assert_eq!(file.category_labels["themes"]["zh-CN"], "外观主题");
+
+        let entry = &file.plugins[0];
+        assert_eq!(entry.publisher_id.as_deref(), Some("tioit-wang"));
+        assert_eq!(
+            entry.icon_url.as_deref(),
+            Some("https://example.test/icon.png")
+        );
+        assert_eq!(
+            entry.readme_markdown.as_deref(),
+            Some("# Parchment\n\nwarm paper.")
+        );
+        assert_eq!(entry.safety_notes.as_deref(), Some("Writes nothing."));
+    }
+
+    /// A snapshot written by an older build is snake_case, and an upgrade must
+    /// not turn it into a catalog with no metadata until the next refresh.
+    #[test]
+    fn a_snapshot_written_by_an_older_build_still_reads() {
+        let legacy = CAMEL
+            .replace("\"schemaVersion\"", "\"schema_version\"")
+            .replace("\"providerId\"", "\"provider_id\"")
+            .replace("\"artifactBaseUrl\"", "\"artifact_base_url\"")
+            .replace("\"publisherId\"", "\"publisher_id\"")
+            .replace("\"readmeMarkdown\"", "\"readme_markdown\"")
+            .replace("\"safetyNotes\"", "\"safety_notes\"");
+        let file = parse(&legacy);
+        let entry = &file.plugins[0];
+        assert_eq!(file.schema_version, 2);
+        assert_eq!(entry.publisher_id.as_deref(), Some("tioit-wang"));
+        assert_eq!(
+            entry.readme_markdown.as_deref(),
+            Some("# Parchment\n\nwarm paper.")
+        );
+        assert_eq!(entry.safety_notes.as_deref(), Some("Writes nothing."));
+    }
+
+    #[test]
+    fn what_the_client_writes_is_what_the_client_reads() {
+        let file = parse(CAMEL);
+        let written = serde_json::to_string(&file).unwrap();
+        assert!(
+            written.contains("\"readmeMarkdown\""),
+            "snapshot must stay camelCase: {written}"
+        );
+        let reread = parse(&written);
+        assert_eq!(
+            reread.plugins[0].readme_markdown,
+            file.plugins[0].readme_markdown
+        );
+    }
 }

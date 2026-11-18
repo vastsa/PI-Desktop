@@ -60,6 +60,7 @@ export function installCaptureRig(): CaptureRig {
     useAppStore.getState().refreshNotifications;
   const originalListPluginServices = api.listPluginServices;
   const originalMarketSearch = api.marketSearch;
+  const originalMarketBrowse = api.marketBrowse;
   const originalMarketDetail = api.marketGetDetail;
   const originalListMcpServers = api.listMcpServers;
   const originalListUserSkills = api.listUserSkills;
@@ -513,6 +514,7 @@ export function installCaptureRig(): CaptureRig {
         useAppStore.setState({ plugins: [] });
         (api as any).listPluginServices = originalListPluginServices;
         (api as any).marketSearch = originalMarketSearch;
+        (api as any).marketBrowse = originalMarketBrowse;
         (api as any).marketGetDetail = originalMarketDetail;
         return;
       }
@@ -624,6 +626,26 @@ export function installCaptureRig(): CaptureRig {
           },
         ],
       });
+      // The paged browse wraps the same cards in one page of results.
+      (api as any).marketBrowse = async () => {
+        const { plugins } = await (api as any).marketSearch();
+        const counts = new Map<string, number>();
+        for (const plugin of plugins) {
+          for (const id of plugin.categories ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
+        return {
+          plugins,
+          total: plugins.length,
+          page: 1,
+          pageSize: 24,
+          pageCount: 1,
+          sort: "recommended",
+          categories: [...counts].map(([id, count]) => ({ id, count })),
+          source: "remote",
+          providerId: "official",
+          sourceUrl: "https://example.invalid/catalog.json",
+        };
+      };
       // The rows read service state straight from IPC, which reports nothing
       // for a fixture plugin; stand in for the supervisor here.
       (api as any).listPluginServices = async () => [
@@ -1181,6 +1203,7 @@ export function installCaptureRig(): CaptureRig {
       });
       api.listPluginServices = originalListPluginServices;
       api.marketSearch = originalMarketSearch;
+      api.marketBrowse = originalMarketBrowse;
       api.marketGetDetail = originalMarketDetail;
       api.listMcpServers = originalListMcpServers;
       api.listUserSkills = originalListUserSkills;

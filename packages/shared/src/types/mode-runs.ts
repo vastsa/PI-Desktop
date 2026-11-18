@@ -139,8 +139,13 @@ export type ModeCatalogEntry = {
   source: "builtin" | "user";
   staged: boolean;
   available: boolean;
-  /** A user document with a builtin id is reported, not loaded. */
+  /** A user document outside a builtin's folder that claims its id; reported, not loaded. */
   reserved?: boolean;
+  /**
+   * A builtin with an override document at `filePath`. The override is in
+   * effect unless the catalog reports errors for that file.
+   */
+  customized?: boolean;
   filePath?: string;
 };
 
@@ -151,6 +156,10 @@ export type ModeCatalog = {
   directory: string;
 };
 
+/**
+ * `builtin` marks a builtin id. Its `source` is the override document when
+ * `filePath` is set, and the shipped definition otherwise.
+ */
 export type ModeDocumentReadResult = { id: string; source: string; filePath?: string; builtin: boolean };
 
 export type ModeDocumentValidation = {

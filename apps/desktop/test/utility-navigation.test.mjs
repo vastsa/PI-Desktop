@@ -104,6 +104,6 @@ test("plugin browsing choices survive subscribers disconnecting without retainin
     assert.equal(reopened.installedQuery, "local");
     assert.equal(reopened.category, "productivity");
     assert.deepEqual(Object.keys(reopened).filter((key) => typeof reopened[key] !== "function").sort(),
-      ["category", "installedQuery", "query", "tab"]);
+      ["category", "installedQuery", "query", "seed", "sort", "tab"]);
   } finally { usePluginBrowseState.setState(before, true); }
 });

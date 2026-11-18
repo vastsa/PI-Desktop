@@ -342,8 +342,9 @@ export function verifyChineseMirrors(relativePaths) {
 }
 
 /**
- * `docs/spec` is the numbered domain tree and `docs/zh-CN/spec` mirrors it
- * path-for-path, so both must hold the same section directories.
+ * `docs/spec` is the numbered domain tree. `docs/zh-CN/spec` holds only
+ * optional Chinese companions, so any section directory it has must exist in
+ * the English tree and follow the same numbering.
  */
 export function verifySpecTreeSymmetry(root = docsRoot) {
   const failures = []

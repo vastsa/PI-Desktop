@@ -47,12 +47,13 @@ PI-Desktop/
 ├── docs/                     # VitePress site and the English source of truth
 │ ├── spec/                   # numbered specification domains (see spec/README.md)
 │ ├── adr/                    # architecture decision records
-│ ├── project/                # board, audits, implementation plans
+│ ├── project/                # historical records still cited by specs and tests
+│ ├── implementation/         # evidence and coverage maps cited by specs
+│ ├── plugin-plan/            # plugin slot, render, runtime, and host API catalog (HTML)
 │ ├── guide/                  # user-facing quick guide
-│ ├── zh-CN/                  # path-for-path Chinese mirror of spec/ and guide/
-│ ├── image/                  # images embedded by the repository READMEs
-│ ├── public/                 # static assets served by the docs site
-│ ├── scripts/                # docs-only checks (check-locales.mjs)
+│ ├── zh-CN/                  # Chinese entry points: home, guides, plugin guide, ADR map, spec index
+│ ├── public/                 # static assets for the site and the repository READMEs
+│ ├── scripts/                # docs-only checks (check-locales.mjs, check-docs.mjs)
 │ └── .vitepress/             # site config and theme
 ├── scripts/                  # repository automation (see scripts/README.md)
 ├── .github/                  # CI and release workflows, issue templates

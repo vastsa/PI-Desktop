@@ -109,12 +109,19 @@ test("simple custom modes resolve their definition for prompt dispatch", async (
   await assert.rejects(coordinator.definitionForPrompt("missing"), { errorCode: "MODE_NOT_FOUND" });
 });
 
-test("Agent and Plan dispatch use builtin runtime instructions without a snapshot", async () => {
-  const coordinator = createModeRunCoordinator({
-    catalog: { definition: async () => assert.fail("plain modes need no catalog snapshot") },
+test("Agent and Plan dispatch use builtin runtime instructions unless the user overrides them", async () => {
+  const shipped = createModeRunCoordinator({
+    catalog: { definition: async (id) => ({ ...staged, id, stages: [], source: "builtin" }) },
   });
-  assert.equal(await coordinator.definitionForPrompt("agent"), undefined);
-  assert.equal(await coordinator.definitionForPrompt("plan"), undefined);
+  assert.equal(await shipped.definitionForPrompt("agent"), undefined);
+  assert.equal(await shipped.definitionForPrompt("plan"), undefined);
+
+  const override = { ...staged, id: "plan", stages: [], permission: "contract", prompt: "Plan my way.", source: "user" };
+  const customized = createModeRunCoordinator({
+    catalog: { definition: async (id) => (id === "plan" ? override : undefined) },
+  });
+  assert.equal(await customized.definitionForPrompt("plan"), override);
+  assert.equal(await customized.definitionForPrompt("agent"), undefined);
 });
 
 test("a user turn in a simple mode claims nothing", async () => {
@@ -287,7 +294,8 @@ test("the catalog reads, validates, writes and deletes user modes in its own dir
     assert.equal((await catalog.validate("review", source)).ok, true);
     const invalid = await catalog.validate("review", "---\nname: review\ntools: [Read]\n---\n");
     assert.equal(invalid.ok, false);
-    await assert.rejects(catalog.write("plan", source), { errorCode: "MODE_ID_RESERVED" });
+    // A builtin's folder only accepts that builtin, in its own shape.
+    await assert.rejects(catalog.write("plan", source), { errorCode: "MODE_DEFINITION_INVALID" });
     await assert.rejects(catalog.write("review", "---\nname: review\npermission: auto\n---\n"), { errorCode: "MODE_DEFINITION_INVALID" });
 
     const written = await catalog.write("review", source);
@@ -299,12 +307,33 @@ test("the catalog reads, validates, writes and deletes user modes in its own dir
     assert.equal(await catalog.snapshotFor("plan"), undefined);
     await assert.rejects(catalog.snapshotFor("missing"), { errorCode: "MODE_NOT_FOUND" });
 
-    // A user document that claims a builtin id is reported, never loaded.
+    // Editing a builtin writes its override; deleting it restores the shipped one.
+    const shippedGoal = (await catalog.read("goal")).source;
+    const goal = shippedGoal.replace("maxTurns: 20", "maxTurns: 50");
+    assert.equal((await catalog.validate("goal", goal)).ok, true);
+    const customized = await catalog.write("goal", goal);
+    assert.equal(await readFile(join(dir, "goal", "mode.md"), "utf8"), goal);
+    assert.ok(customized.modes.some((mode) => mode.id === "goal" && mode.source === "builtin" && mode.customized));
+    assert.deepEqual(await catalog.read("goal"), { id: "goal", source: goal, filePath: join(dir, "goal", "mode.md"), builtin: true });
+    assert.equal((await catalog.snapshotFor("goal")).budget.maxTurns, 50);
+    await catalog.remove("goal");
+    assert.deepEqual(await catalog.read("goal"), { id: "goal", source: shippedGoal, builtin: true });
+    assert.equal((await catalog.definition("goal")).source, "builtin");
+    await assert.rejects(catalog.remove("goal"), { errorCode: "MODE_NOT_FOUND" });
+
+    // A broken override is reported and the shipped builtin keeps running.
     await mkdir(join(dir, "goal"), { recursive: true });
     await writeFile(join(dir, "goal", "mode.md"), "---\nname: goal\n---\nmine\n");
     const refreshed = await catalog.refresh();
-    assert.ok(refreshed.modes.some((mode) => mode.id === "goal" && mode.reserved));
+    assert.ok(refreshed.modes.some((mode) => mode.id === "goal" && mode.customized && mode.available));
+    assert.ok(refreshed.diagnostics.some((item) => item.modeId === "goal" && item.errors.length > 0));
     assert.equal((await catalog.definition("goal")).source, "builtin");
+
+    // Outside its own folder a builtin id is still reserved.
+    await mkdir(join(dir, "shadow"), { recursive: true });
+    await writeFile(join(dir, "shadow", "mode.md"), "---\nname: plan\n---\nmine\n");
+    assert.ok((await catalog.refresh()).modes.some((mode) => mode.id === "plan" && mode.reserved));
+    assert.equal(await catalog.snapshotFor("plan"), undefined);
 
     const removed = await catalog.remove("review");
     assert.ok(!removed.modes.some((mode) => mode.id === "review"));

@@ -11,6 +11,9 @@ export const frEntries: ChangelogEntry[] = [
       "L’indicateur de contexte affiche l’estimation compactée dès la fin d’une compression manuelle ou automatique.",
       "Avec une IME chinoise, les commandes slash attendent la validation de la composition et préservent le brouillon au lieu de dupliquer la barre oblique.",
       "Les prompts régénérés gardent leur place après la réponse la plus récente lorsque leur archivage se termine hors de l’historique chargé.",
+      "Parcourez la marketplace de plugins dans une liste qui se charge au défilement, triez par recommandés, populaires, récents ou nom, et voyez le nombre de résultats par catégorie ; le dernier catalogue enregistré répond si le centre de plugins est injoignable.",
+      "Chaque plugin est désormais rangé sur une étagère bilingue : la marketplace se lit en français ou en chinois et filtre par la même catégorie.",
+      "Les détails d'un plugin affichent désormais l’éditeur, le readme et les notes de sécurité du catalogue, qui étaient perdus à la lecture.",
     ],
   },
   {

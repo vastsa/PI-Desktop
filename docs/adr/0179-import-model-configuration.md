@@ -4,104 +4,58 @@
   superseded by ADR 0319 / D645 (amended 2026-10-18: Pi auth.json and cached
   catalog)
 - Date: 2026-09-08
-- Deciders: PI-Desktop core
-- Related: D007, D342, ADR 0012,
-  ADR 0188,
-  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md` §18.5,
-  `03-runtime/01-ipc-protocol.md`, `03-runtime/11-provider-model-system.md`
+- Related: ADR 0012, ADR 0188, D007, D342
 
 ## Context
 
-At the time this decision was recorded, Settings → Import scanned Claude Code,
-Codex, OpenCode, and Pi session stores. The same tools keep provider URLs,
-model ids, and often API keys in well-known files. Users who switch to
-PI-Desktop otherwise retype those endpoints on Settings → Models.
-
-D007 forbids auto-import of `~/.pi` so PI-Desktop owns `~/.pi-desktop`. That
-must stay true for model configuration: a scan is an explicit action, and
-nothing is written until Import selected.
-
-Secrets cannot cross the renderer. Session import already keeps `filePath`
-in the main-process scan cache; model import must keep keys the same way.
-
-OAuth/subscription grants from those tools (Codex ChatGPT login, Claude
-subscription, OpenCode `type: oauth`) are not PI-Desktop vendor-account
-credentials. Copying refresh tokens would be the wrong security boundary.
+Users switching to PI-Desktop otherwise retype provider URLs, model ids, and API
+keys that other local agents already keep in well-known files. D007 forbids
+auto-importing `~/.pi`, so a scan must stay an explicit action with nothing
+written until the user imports, and secrets must never cross the renderer.
 
 ## Decision
 
-1. The original placement was a Model configuration card under
-   **Settings → Import**, with its own Scan / selection / Import selected.
-   ADR 0319 / D645 supersedes that placement and retires the Settings
-   session-import UI. The model scan/import semantics below remain in force;
-   plugin session-import contracts remain unchanged.
-
-2. **Sources** (same family as session import):
-   - Claude Code: `~/.claude/settings.json` plus `settings.local.json`
-     overlay (`env.ANTHROPIC_*`, `model`)
-   - Codex: `~/.codex/config.toml` `[model_providers.<id>]`
-   - OpenCode: `~/.config/opencode/opencode.json` `provider` map plus
-     `~/.local/share/opencode/auth.json` API keys
-   - Pi: `~/.pi/agent/models.json` (fallback `~/.pi/models.json`).
-     Providers connected through Pi's `~/.pi/agent/auth.json` API keys (fallback
-     `~/.pi/auth.json`) are paired with Pi's cached
-     `~/.pi/agent/models-store.json` (fallback `~/.pi/models-store.json`) so an
-     auth-only provider still gets its endpoint, model list, and limits. When
-     both files describe one provider, `models.json` stays authoritative.
-   - CC Switch: `~/.cc-switch/cc-switch.db` `providers` table (legacy
-     `config.json`). Each row's `settings_config` is converted by app type.
-     Empty official seeds and OAuth-only rows are omitted. A live Claude /
-     Codex / OpenCode / Pi file that matches a CC Switch endpoint and
-     credential is not listed twice; a different credential remains visible.
-
-3. **IPC** (Electron only, no host protocol bump):
-   `pi-desktop/modelConfig/importScan` returns public drafts
+1. The model configuration card originally lived under Settings → Import; ADR
+   0319 / D645 retires that Settings session-import UI while the model
+   scan/import semantics below stay in force and plugin session-import contracts
+   are unchanged.
+2. Sources match the session-import family: Claude Code, Codex, OpenCode, Pi, and
+   CC Switch, each read from its own settings, config, or database file. For Pi,
+   provider entries and API keys from `auth.json` are paired with Pi's cached
+   `models-store.json` so an auth-only provider still gets its endpoint, models,
+   and limits, and `models.json` stays authoritative when both files describe one
+   provider. CC Switch rows are converted by app type, official seeds and
+   OAuth-only rows are omitted, and a live file matching the same endpoint and
+   credential is not listed twice.
+3. The Electron-only IPC `pi-desktop/modelConfig/importScan` returns public drafts
    (`source`, `externalId`, `name`, `baseUrl`, `apiStyle`, `modelIds`,
-   `hasSecret`). `importRun` looks the selection up in the latest scan
-   cache and calls host `providers.create`.
-
-4. **Secrets.** A stored API key, `env:` / `env_key` resolution, or
-   `Authorization: Bearer` header is copied into the host secret store.
-   Placeholder values (`YOUR_API_KEY`, `${VAR}`) are treated as missing.
-   A pi `apiKey` or auth header written as a `!<shell command>` is never
-   executed or stored; that provider is imported without a secret. Pi
-   `auth.json` entries of type `oauth` are skipped entirely; plain
-   `type: "api_key"` entries are copied. An unresolved `env:` / `$VAR`
-   reference in `models.json` is filled from the matching `auth.json` key
-   before import.
-
-5. **Idempotence.** A candidate whose normalized base URL, API style, and
-   credential match an existing provider is skipped. Different credentials
-   remain independent provider rows; the credential comparison stays in
-   Electron main and never reaches the renderer. Named presets may set
-   `vendorKey`; a custom URL stays `custom`. ADR 0188 amends this rule.
-
-6. **Default model.** If `settings.defaultProviderId` is empty after the
-   first successful create in that run, that provider and its first model
-   become the global default. An existing default is never overwritten.
+   `hasSecret`); `importRun` resolves the selection from the latest scan cache and
+   calls host `providers.create`. No host protocol bump.
+4. A stored API key, `env:` / `env_key` resolution, or `Authorization: Bearer`
+   header is copied into the host secret store, while placeholder values count as
+   missing, a `!<shell command>` key or header is never executed or stored, Pi
+   `oauth` entries are skipped entirely, plain `api_key` entries are copied, and
+   an unresolved environment reference in `models.json` is filled from the
+   matching `auth.json` key.
+5. Import is idempotent: a candidate whose normalized base URL, API style, and
+   credential match an existing provider is skipped, different credentials stay
+   independent rows, and credential comparison never reaches the renderer. ADR
+   0188 amends this rule.
+6. If `settings.defaultProviderId` is empty after the first successful create in a
+   run, that provider and its first model become the global default; an existing
+   default is never overwritten.
 
 ## Consequences
 
-- Switching from another local agent can bring both transcripts and the
-  models those transcripts used, without pasting keys into Settings.
-- PI-Desktop still does not silently ingest `~/.pi`.
-- Users with only a ChatGPT/Claude subscription still sign in through
-  Vendor accounts; import cannot impersonate that grant.
+- Switching tools can bring transcripts and the models they used, without pasting
+  keys into Settings.
+- PI-Desktop still never silently ingests `~/.pi`, and subscription grants stay
+  with their own vendor sign-in.
+- The 2026-10-18 amendment makes Settings → Models discover Pi auth-only providers
+  through `auth.json` plus the cached catalog.
 
 ## Alternatives
 
 - Auto-import on first launch: rejected by D007.
-- Merge keys into an existing same-URL provider: would overwrite a working
-  row. Skip is safer; the user can edit the Models page.
-- Renderer-side `providers.create` with the key in the IPC payload: the
-  scan cache already exists for sessions; keep secrets off the renderer.
-
-## Amendment — 2026-10-18: discover Pi auth-only providers
-
-Settings → Models only scanned `models.json`, so providers connected through
-`pi /login` (for example DeepSeek or a Z.AI coding plan) never appeared in the
-Pi group. The explicit scan now reads `auth.json` API keys and pairs them with
-the catalog Pi already cached in `models-store.json`. OAuth/subscription grants
-still stay in Pi, `!command` values are never executed or stored, and a
-`models.json` provider remains authoritative when both files describe it.
-
+- Merge keys into an existing same-URL provider: rejected because it would
+  overwrite a working row; skipping is safer.

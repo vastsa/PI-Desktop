@@ -3,56 +3,35 @@
 - Status: Accepted
 - Date: 2026-09-08
 - Related: ADR 0175, D358, US-UI-60d
-- Note: First filed as ADR 0186, then 0195; 0186 is session titles and 0195 is the work-panel toggle.
+- Note: first filed as ADR 0186, then ADR 0195.
 
 ## Context
 
-The live `retrying` status row tells users that a provider request is being
-retried, but not why. The same classified provider failures already become
-structured assistant errors when the retry budget is exhausted. During the
-backoff, users should be able to inspect the current cause without creating a
-duplicate transcript error or waiting for the retry to finish.
+The live `retrying` status row says a provider request is being retried but not
+why, even though the classified cause already becomes a structured assistant
+error once the retry budget is exhausted. Users should be able to inspect the
+cause during backoff without a duplicate transcript error.
 
 ## Decision
 
-Extend the shared `AgentActivity.retrying` payload with optional bounded error
-details: the stable error code, the already-redacted and length-limited provider
-message, and the HTTP status when known. The runtime supplies the details for
-both request-setup and mid-stream retries.
-
-The renderer keeps the existing compact retry row at rest. Hovering or focusing
-its retry label reveals a small error-styled tooltip that reuses the assistant
-error card's hierarchy: icon, localized summary, stable code/status, and the
-provider message. The trigger is keyboard-focusable and exposes the same reason
-through its accessible name. The tooltip closes when the activity phase clears;
-the final assistant error and outcome surfaces remain the only terminal error
-presentation.
+The shared `AgentActivity.retrying` payload gains optional bounded error details:
+the stable error code, the already-redacted and length-limited provider message,
+and the HTTP status when known, supplied for request-setup and mid-stream retries.
+The renderer keeps the compact retry row at rest and reveals an error-styled
+tooltip from a keyboard-focusable trigger that reuses the assistant error card's
+hierarchy, closing when the activity phase clears.
 
 ## Consequences
 
 - Users can identify rate limits, timeouts, network failures, and provider
-  errors during a retry wait.
-- The transcript remains free of intermediate error rows and retry behavior is
-  unchanged.
-- The protocol exposes only diagnostics already classified and redacted by the
-  runtime; arbitrary provider payloads do not cross the boundary.
-- Older status payloads without `error` continue to render the ordinary retry
-  label.
+  errors while waiting, with retry behavior unchanged.
+- Only diagnostics the runtime already classified and redacted cross the
+  protocol boundary.
+- Older status payloads without `error` still render the ordinary retry label.
 
 ## Alternatives
 
-### Use only a native `title`
-
-Rejected because it cannot match the existing error presentation, is difficult
-to read for long provider messages, and provides inconsistent keyboard access.
-
-### Add an assistant error row for every retry
-
-Rejected because intermediate failures would duplicate the final assistant
-error and make a successful same-turn retry look like a failed turn.
-
-### Expose the full provider response
-
-Rejected because provider responses can contain unstable or sensitive data. The
-existing classifier's bounded message and low-cardinality status are sufficient
-for diagnosis.
+- Use only a native `title`: rejected; it cannot match the error presentation or
+  give consistent keyboard access.
+- Add an assistant error row for every retry: rejected; a successful same-turn
+  retry would look like a failed turn.

@@ -6,46 +6,28 @@
 
 ## Context
 
-Plugins can read and write the current clipboard, but a plugin process has no
-Electron clipboard access. Clipboard-history plugins therefore used to poll
-`readText()` and maintain a second store, while the host polled the native
-clipboard to capture images. That work repeatedly read and encoded unchanged
-screenshots, consumed resources while idle, and still missed copies between
-samples.
-
-Clipboard history is also more sensitive than the current clipboard: it may
-retain screenshots, credentials, or private documents. Giving each plugin its
-own recorder would duplicate data, make retention inconsistent, and weaken the
-permission boundary.
+Clipboard-history plugins had no Electron clipboard access, so they polled
+`readText()` and kept a second store while the host polled the native clipboard
+for images. That repeated work read and encoded unchanged screenshots, burned
+idle resources, and still missed copies between samples. History is also more
+sensitive than the current clipboard, so per-plugin recorders would duplicate
+data and weaken the permission boundary.
 
 ## Decision
 
-The Electron main process maintains one rolling, in-memory history and exposes
-it to plugins as `pi.clipboard.getHistory()`. The API reuses `clipboard.read`,
-returns newest-first text and image entries, and audits every call with the
-entry count. Plugin processes receive only the typed result over the existing
-broker; they do not receive Electron objects or a new capability.
-
-The host does not poll the system clipboard. It records text written through
-`writeText` and records content from the Composer's user-initiated `paste`
-event. The renderer passes the bytes it already received from that event to the
-host; the host never reads the OS clipboard again for the same paste. Images
-are normalized to PNG during that paste request only.
-
-Consecutive identical content is collapsed with a refreshed timestamp. The
-history is cleared on application exit and is bounded to:
-
-- 30 days retention;
-- 500 entries and 256 MiB total payload;
-- 100 KiB of UTF-8 text or 50 MiB of PNG image bytes per entry.
+The Electron main process keeps one rolling in-memory history and exposes it to
+plugins as `pi.clipboard.getHistory()`, reusing the `clipboard.read` permission
+and returning newest-first text and image entries. The host never polls the
+system clipboard: it records text written through `writeText` and content from
+the Composer's user-initiated `paste` event, whose bytes the renderer already
+holds, normalizing images to PNG during that request only. Consecutive identical
+content collapses with a refreshed timestamp, retention, entry count, and total
+payload are bounded, and the history is cleared on application exit.
 
 ## Consequences
 
-- Idle applications do not read or encode clipboard contents, and Composer
-  paste handling does not perform a second native clipboard read.
-- `getHistory()` contains host writes and content pasted into Composer; a copy
-  that is never pasted is intentionally not captured. Content copied before the
-  app starts is not recoverable.
-- The history remains host-owned, in-memory only, and protected by the existing
-  `clipboard.read` permission. This limits privacy exposure without changing
-  the plugin API.
+- Idle applications stop reading and encoding clipboard content, and a paste
+  costs no second native read.
+- `getHistory()` holds host writes and Composer pastes only; content copied
+  before startup or never pasted is not recoverable.
+- History stays host-owned, in memory, and behind the existing permission.

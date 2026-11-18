@@ -2,48 +2,37 @@
 
 - Status: Accepted
 - Date: 2026-09-11
-- Deciders: PI-Desktop runtime and desktop UI maintainers
 - Amends: ADR 0101, D243
 
 ## Context
 
-Advanced model settings allow a provider binding to override whether an endpoint
-accepts image input. The override is intentionally three-state: `null` means
-follow the published model record, while `true` and `false` explicitly enable or
-disable image input. Composer model rows still derived their vision badge only
-from the published catalog, so a configured text-only model could transport an
-image while appearing text-only, or a configured vision model could advertise a
-capability that the endpoint had been disabled from using.
+A provider binding can override whether an endpoint accepts image input with a
+three-state `supportsImages`: `null` follows the published model record while
+`true` and `false` enable or disable it. Composer model rows read the vision
+badge from the published catalog alone, so the badge and the transport decision
+could disagree.
 
 ## Decision
 
-1. Resolve the effective image-input capability for the exact provider/model
-   binding. An explicit `supportsImages` value wins; `null` or an absent value
-   follows the published model capability.
-2. Use that same effective result for the Composer model-row badge, attachment
-   status, and main-process image transport. Do not mutate the shared published
-   `ModelInfo` record.
-3. Keep unknown or custom model ids conservative when no explicit binding
-   override exists. Discovery or cache metadata alone cannot promote them to
-   image transport.
-4. Preserve the existing attachment boundary: eligible images within the
-   decimal 10 MB app limit use transient image blocks; disabled, unknown, or
-   oversized images use the safe `@path` fallback.
+Resolve one effective image-input capability per provider/model binding, where an
+explicit `supportsImages` wins and `null` or absence follows the published model
+capability, and use that result for the Composer badge, attachment status, and
+main-process image transport without mutating the shared `ModelInfo` record.
+Unknown or custom model ids stay conservative when no binding override exists,
+because discovery or cache metadata alone cannot promote them to image
+transport. The attachment boundary is unchanged: eligible images within the app
+limit become transient image blocks, and disabled, unknown, or oversized images
+fall back to `@path`.
 
 ## Consequences
 
-- A provider binding can accurately describe a custom or proxied endpoint in
-  both the model picker and the request path.
-- Resetting an override to `null` restores the published catalog behavior.
-- Published catalog metadata remains immutable and authoritative when no local
-  endpoint-specific override is configured.
-- The Composer's vision badge and transport decision cannot drift apart.
+- A binding describes a custom or proxied endpoint the same way in the picker
+  and in the request path.
+- Resetting an override to `null` restores published catalog behavior.
+- Published catalog metadata stays immutable and authoritative.
 
-## Alternatives considered
+## Alternatives
 
-- **Keep the badge catalog-only:** rejected because it misrepresents configured
-  endpoints and diverges from the transport decision.
-- **Mutate the published model record:** rejected because it would leak
-  endpoint-local settings into shared catalog state and other bindings.
-- **Trust discovery for unknown models:** rejected because discovery is not a
-  sufficient serialization or safety guarantee for image transport.
+- Keep the badge catalog-only: rejected, it misreports configured endpoints.
+- Mutate the published model record: rejected, it leaks endpoint-local settings
+  into shared catalog state.

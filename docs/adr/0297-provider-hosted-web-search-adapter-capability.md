@@ -5,128 +5,68 @@
 
 ## Context
 
-Some providers execute web search server-side: Anthropic Messages ships a
-`web_search_20250305` server tool, and OpenAI Responses (plus compatible
-gateways) ships a `web_search` tool. Unlike an MCP search server, the search
-runs inside the provider request, is billed by the provider per search, and
-returns structured blocks (`server_tool_use` + `web_search_tool_result`,
-`web_search_call`, `url_citation` annotations) that the client must keep in
-the conversation for multi-turn grounding.
-
-PR #570 previously added this as a composer toggle with runtime-level SSE
-re-parsing; it was reverted (#608) with the owner asking for a plugin-shaped
-follow-up. A capability review found the plugin SDK cannot reach the request
-payload, the response stream, the composer, the transcript, or message
-persistence, so "web search as a plugin" would require four new SDK extension
-points — larger than the feature itself. This ADR records the host-built
-shape that landed instead.
-
-Two upstream facts forced the design:
-
-- pi-ai 0.86.1 drops vendor search blocks in both adapters: the Anthropic
-  stream loop has no `server_tool_use` / `web_search_tool_result` /
-  `citations_delta` branches, and the Responses item loop has no
-  `web_search_call` slot or annotation handling. Extraction must therefore
-  live inside the adapters, not beside them.
-- Anthropic requires `server_tool_use` + `web_search_tool_result` blocks
-  (including `encrypted_content`) to be replayed verbatim on later turns.
-  A display-only normalization cannot satisfy that; replay needs the raw
-  wire blocks.
+Some providers run web search server-side — Anthropic Messages ships a
+`web_search_20250305` server tool and OpenAI Responses ships `web_search` — and
+that search runs inside the provider request, is billed per search, and returns
+structured blocks the client must keep for multi-turn grounding. PR #570 added it
+as a composer toggle with runtime SSE re-parsing and was reverted in #608,
+because a plugin-shaped version would need four new SDK extension points and
+pi-ai 0.86.1 drops vendor search blocks in both adapters.
 
 ## Decision
 
-1. **Capability is declared data and gated by the resolved wire API.** The
-   per-model opt-in is `ModelBinding.nativeWebSearch` (settings UI: a checkbox
-   in the model's advanced sheet, disabled unless its resolved search route is
-   `responses`, `openai_codex_responses`, or `anthropic_messages`). models.dev
-   publishes no hosted-tool capability, so there is no catalog default; absent
-   means off. Runtime `resolveNativeWebSearch` keys on the final adapter API —
-   never vendor names or model-id substrings. The official-route amendment
-   below resolves an opted-in request before this final wire gate.
+### 1. The capability is declared data gated by the resolved wire API
 
-2. **Attachment and extraction live in pi-ai adapters**, delivered by
-   extending `patches/@earendil-works__pi-ai@0.87.1.patch`:
-   - `anthropic-messages.js` appends `web_search_20250305` when opted in,
-     captures search blocks as `hostedSearch`, collects citations, and replays
-     both halves of each pair on later turns.
-   - `openai-responses(-shared).js` and Azure's `buildParams` append `web_search`,
-     request `web_search_call.action.sources`, capture search items/citations,
-     and replay the item for the same model.
-   - `openai-codex-responses.js` uses a separate Codex request builder and
-     ChatGPT subscription endpoint. It appends the same top-level Responses
-     `web_search` tool and source include only when opted in; it reuses the
-     shared Responses stream parser and model-scoped replay projection. This
-     is the classic Codex Responses request shape; the backend is not the
-     public `/v1/responses` API.
-   All three adapter paths push `hosted_search_update` transitions. The
-   `pi-agent-core` patch forwards them as `message_update`, so activity renders
-   while a search is in flight instead of only at turn completion. These
-   patches are a stopgap; propose the changes upstream and remove them once
-   released.
+The per-model opt-in is `ModelBinding.nativeWebSearch`, offered only when the
+resolved route is `responses`, `openai_codex_responses`, or
+`anthropic_messages`; absent means off, because models.dev publishes no
+hosted-tool capability. Runtime `resolveNativeWebSearch` keys on the final adapter
+API, never on vendor names or model-id substrings.
 
-3. **The flag travels the existing model-config channel.**
-   `ModelConfigWithBinding` copies `nativeWebSearch` into
-   `ModelConfig.webSearch`; `buildProviderModel` spreads catalog fields into
-   the pi-ai `Model`, so no new IPC, sidecar parameter, or runtime rebuild
-   hook is needed.
+### 2. Attachment and extraction live in the pi-ai adapters
 
-4. **Display data and replay data are separated, and both persist.** The
-   runtime normalizes `hostedSearch` blocks into `UiMessage.hostedSearch`
-   (`status/rounds[]` for activity rows; `replay[]` for the adapter's raw
-   content parts, stripped of streaming scratch). Persistence is an additive
-   `hostedSearch` transcript block (`ui_to_record` / `record_to_ui`) — no SQL
-   migration. `historyToEntries` restores `replay` after thinking and before
-   text so convertMessages can ground later turns after a restart. Transcripts
-   written without `replay` still render; they just cannot ground. The
-   wire-slimming functions (`streamingMessageIdentity`, `applyMessageUpdate`)
-   carry the field so delta frames cannot drop it.
+A `patches/@earendil-works__pi-ai` patch appends the vendor tool, captures search
+blocks and citations, and replays each request and result pair on later turns in
+the Anthropic, OpenAI Responses (including Azure), and Codex Responses adapters,
+each pushing `hosted_search_update` transitions that the `pi-agent-core` patch
+forwards as `message_update`. The patches are a stopgap to propose upstream and
+remove once released.
 
-5. **UI is a transcript activity row per round, not a composer control.**
-   Each round of a `hostedSearch` activity renders as a `HostedSearchRow` on
-   the tool-row idiom (icon + name + query summary, chevron disclosure):
-   searching state while the round is in flight, sources when expanded.
-   Sources are plain text links — no favicon fetches — so reading a
-   transcript never leaks source hostnames anywhere (the #579 rule).
-   Citation badges in message text are out of scope for v1; links stay
-   ordinary markdown links.
+### 3. The flag travels the existing model-config channel
+
+`ModelConfigWithBinding` copies `nativeWebSearch` into `ModelConfig.webSearch` and
+`buildProviderModel` spreads it into the pi-ai `Model`, so no new IPC, sidecar
+parameter, or runtime rebuild hook is needed.
+
+### 4. Display data and replay data are separated, and both persist
+
+The runtime normalizes `hostedSearch` into `UiMessage.hostedSearch` with
+`status/rounds[]` for activity rows and `replay[]` for the adapter's raw content
+parts, persisted as an additive `hostedSearch` transcript block with no SQL
+migration; `historyToEntries` restores `replay` after thinking and before text so
+later turns stay grounded. Transcripts written without `replay` still render, they
+just cannot ground.
+
+### 5. The UI is a transcript activity row per round, not a composer control
+
+Each round renders as a `HostedSearchRow` on the tool-row idiom with a searching
+state and an expandable list of plain text source links, so reading a transcript
+never fetches favicons or leaks source hostnames (the #579 rule). Citation badges
+in message text are out of scope for v1.
+
+Amended 2026-09-24: an opted-in request may be resolved through a shared
+published-route table before the final wire gate, so DeepSeek Completions uses its
+same-origin Anthropic interface and xAI and legacy OpenAI Completions use
+same-origin Responses while search is enabled. Only exact official HTTPS origins
+and paths match, saved provider settings are never rewritten, and the model,
+registry, history restoration, and delegation all use the same effective API.
 
 ## Consequences
 
-- Enabling the tool is per model, always-on while enabled, and takes effect
-  on the next turn (runtime rebuild follows from modelConfig change). A
-  session-level toggle and composer affordance can layer on later without
-  touching the adapter contract.
-- Gateways that mangle replay blocks surface as provider errors on the next
-  turn; the user-visible remedy is unchecking the model's opt-in. No silent
-  fallback strips the tool — a search that quietly did not happen is worse
-  than an error.
-- `pause_turn` keeps pi-ai's existing mapping to `stop`; a long searching
-  turn may end early on the official Anthropic wire. This is a known
-  limitation to revisit with the upstream patch.
-- The original implementation omitted search from compaction serialization.
-  The 2026-09-22 contract repair supplies actual search replay projections to
-  the summary request instead. Prefix/tail retention is unchanged: compacted
-  content becomes a model-generated text summary (not lossless raw replay),
-  and retained-tail search follows the existing adapter replay policy. The
-  model can search again when the summary lacks sufficient grounding.
-- Search executes on the provider. There is no local fetch, no ask/allow
-  prompt, and billing is the provider's. The model-level opt-in (default
-  off) is the user consent surface.
-
-## 2026-09-24 amendment: one service entry for official search
-
-DeepSeek's saved Completions configuration cannot carry the hosted search
-tool available on its published Anthropic interface. Keep the existing
-per-model search opt-in and resolve the request
-through a shared published-route table instead. DeepSeek Completions requests
-use its same-origin Anthropic interface only when search is enabled; xAI and
-legacy OpenAI Completions use same-origin Responses. The existing adapters own
-request construction, search parsing, citations and history replay.
-
-Only exact official HTTPS origins and paths match; vendor/model labels do not.
-Unknown relays and explicit non-Completions protocols stay unchanged. Saved
-provider settings are never rewritten, so turning search off restores the
-original route. The model, registry, history restoration and delegation must
-all use the same effective API. No new engine, tool executor or persistence
-contract is introduced. Distinct vendor formats need their own tested adapter;
-a disabled control describes missing app integration, not vendor inability.
+- Enabling the tool is per model, always-on once enabled, and effective on the
+  next turn; a session toggle can layer on later without touching the adapters.
+- A gateway that mangles replay blocks surfaces as a provider error whose remedy
+  is unchecking the opt-in; nothing silently strips the tool.
+- Search runs on the provider with no local fetch and no allow prompt, so the
+  model-level opt-in is the consent surface, and compaction replays search
+  projections through the 2026-09-22 contract repair.
