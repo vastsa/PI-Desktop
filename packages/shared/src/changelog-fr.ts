@@ -14,6 +14,7 @@ export const frEntries: ChangelogEntry[] = [
       "Parcourez la marketplace de plugins dans une liste qui se charge au défilement, triez par recommandés, populaires, récents ou nom, et voyez le nombre de résultats par catégorie ; le dernier catalogue enregistré répond si le centre de plugins est injoignable.",
       "Chaque plugin est désormais rangé sur une étagère bilingue : la marketplace se lit en français ou en chinois et filtre par la même catégorie.",
       "Les détails d'un plugin affichent désormais l’éditeur, le readme et les notes de sécurité du catalogue, qui étaient perdus à la lecture.",
+      "Choisissez GPT-6.2 Sol et GPT-6.2 Astra avec OpenAI, ChatGPT, GitHub Copilot, OpenCode et les passerelles qui les publient, avec leurs limites et tarifs publiés.",
     ],
   },
   {
