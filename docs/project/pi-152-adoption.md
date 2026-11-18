@@ -74,6 +74,20 @@ Official release notes: [Pi 1.5.1](https://github.com/earendil-works/pi/releases
   agent's own tools, RPC-mode shutdown, and the session fork prompt for a
   missing working directory (1.5.2).
 
+## Desktop patch additions
+
+- **GPT-6.2 Sol and Astra.** pi-ai 1.5.2 does not list `gpt-6.2-sol` or
+  `gpt-6.2-astra` (released 2026-11-17). The pi-ai patch adds both to the
+  `openai`, `openai-codex`, `github-copilot` and `opencode` provider data,
+  cloned from `gpt-6.1-sol` / `gpt-6-astra` (same API, base URL, compat and
+  thinking map) with the published prices. Gateway data (`openrouter`,
+  `vercel-ai-gateway`) is not patched: those files are single-line JSON of
+  several hundred KB and carry no transcript capability Desktop reads beyond
+  `supportsMidConvoSystemMessages`. The bundled models.dev snapshot gains only
+  the published records for these two ids (OpenAI, OpenCode, OpenRouter,
+  Vercel and other gateways), not a full refresh. Drop the patch hunks once
+  pi-ai ships the entries.
+
 ## Explicitly unchanged
 
 - Existing user data needs no migration. No persisted format, RPC, Plugin

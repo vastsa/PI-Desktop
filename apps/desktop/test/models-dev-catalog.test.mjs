@@ -163,6 +163,34 @@ test("the bundled models.dev OpenAI record supplies the selected model limits", 
   assert.equal(config.maxTokens, 128_000);
 });
 
+test("GPT-6.2 Sol and Astra launch with bundled limits, prices and Pi transport capabilities", async () => {
+  const catalogPath = fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url));
+  const catalog = new ModelsDevCatalog({ catalogPath });
+  assert.equal(await catalog.ensureLoaded(), true);
+  const rows = [
+    ["openai", "https://api.openai.com/v1", "openai-responses"],
+    ["openai-codex", "https://chatgpt.com/backend-api", "openai-codex-responses"],
+  ];
+  for (const [modelId, input, output] of [["gpt-6.2-sol", 2, 10], ["gpt-6.2-astra", 8, 40]]) {
+    for (const [vendorKey, baseUrl, api] of rows) {
+      const target = { providerId: "account", vendorKey, modelId, baseUrl, apiStyle: resolveApiStyle(api) };
+      const config = catalog.modelConfigFor(target);
+      assert.equal(config.source, "models.dev", `${vendorKey}/${modelId}`);
+      assert.equal(config.contextWindow, 1_050_000);
+      assert.equal(config.maxTokens, 128_000);
+      assert.equal(config.cost.input, input);
+      assert.equal(config.cost.output, output);
+      assert.ok(config.supportedThinkingLevels.includes("max"));
+      assert.deepEqual(config.transcriptBinding, { modelId, api, baseUrl });
+      const wire = buildProviderModel({ ...target, id: "account", name: "Fixture", apiKey: "", authKind: "none",
+        supportsReasoning: true, supportedThinkingLevels: ["low"], modelConfig: config });
+      assert.equal(wire.id, modelId);
+      assert.equal(wire.compat.supportsMidConvoSystemMessages, true, `${vendorKey}/${modelId}`);
+      assert.equal(wire.compat.supportsToolSearch, true, `${vendorKey}/${modelId}`);
+    }
+  }
+});
+
 test("explicit account limits stay pinned over a later models.dev value", async (t) => {
   const catalog = await loadFixtureCatalog(t, {
     openai: {

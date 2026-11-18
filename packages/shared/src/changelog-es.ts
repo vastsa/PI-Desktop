@@ -14,6 +14,7 @@ export const esEntries: ChangelogEntry[] = [
       "Explora el marketplace de complementos en una lista que carga más al desplazarte, ordena por recomendados, populares, recientes o nombre y consulta cuántos coinciden en cada categoría; si el centro de complementos no responde, se usa el último catálogo guardado.",
       "Cada complemento está ahora en un estante bilingüe, así que el marketplace se lee en español o chino y filtra por la misma categoría.",
       "Los detalles del complemento muestran ahora el editor, el readme y las notas de seguridad del catálogo, que se perdían al leerlo.",
+      "Elige GPT-6.2 Sol y GPT-6.2 Astra con OpenAI, ChatGPT, GitHub Copilot, OpenCode y las pasarelas que los publican, con sus límites y precios publicados.",
     ],
   },
   {
