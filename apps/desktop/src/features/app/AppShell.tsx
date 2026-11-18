@@ -205,6 +205,7 @@ export function AppShell() {
                   <ConversationTopbar
                     sidebarCollapsed={sidebarCollapsed}
                     workPanelOpen={presentedWorkPanelOpen}
+                    workPanelExiting={workPanelExiting}
                     onToggleSidebar={toggleSidebar}
                     onNewTask={() => void runMenuCommand("newTask")}
                     onOpenSearch={() => setSearchOpen(true)}
@@ -213,7 +214,9 @@ export function AppShell() {
                   <div
                     className={cx(
                       "main-titlebar",
-                      presentedWorkPanelOpen && "work-panel-open",
+                      presentedWorkPanelOpen &&
+                        !workPanelExiting &&
+                        "work-panel-open",
                     )}
                   >
                     {sidebarCollapsed && (

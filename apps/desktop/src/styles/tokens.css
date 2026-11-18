@@ -177,6 +177,13 @@
      cannot drift away from the viewport-fixed toggle. */
   --ds-work-panel-toggle-size: 28px;
   --ds-work-panel-toggle-inset: 12px;
+  /* In-flow reserve in the conversation topbar for the viewport-fixed toggle:
+     the control itself plus the same 8px gap `.ct-right` uses between children.
+     A real flex lane spends this token so New Task / Search cannot sit under
+     the toggle when padding would otherwise be dropped mid-animation. */
+  --ds-work-panel-toggle-lane-width: calc(
+    var(--ds-work-panel-toggle-size) + 8px
+  );
   /* The one gap between adjacent controls in the panel header row: the tab
      strip to the action group, between `+` and maximize, and — through the
      lane reserve that spends this token — between that group and the

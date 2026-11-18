@@ -597,10 +597,18 @@
   border-bottom: 0;
   --window-drag-region: drag;
   -webkit-app-region: drag;
+  /* Closing uses work-panel-out timing so the window-control inset and the
+   * 12px padding return as the panel shrinks instead of after it is gone. */
+  transition:
+    padding-right var(--motion-duration-fast) var(--motion-ease-in),
+    right var(--motion-duration-fast) var(--motion-ease-in);
 }
 
 .main-titlebar.work-panel-open {
   padding-right: 0;
+  transition:
+    padding-right var(--motion-duration-normal) var(--motion-ease-out),
+    right var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 /* Conversation top bar (Codex/WorkBuddy-style): replaces the empty chat
@@ -629,7 +637,9 @@
    * first frame and crawls back. The base timing matches sidebar-in, so it
    * governs expansion; the .ct-collapsed rule below matches sidebar-out.
    */
-  transition: padding-left var(--motion-duration-normal) var(--motion-ease-out);
+  transition:
+    padding-left var(--motion-duration-normal) var(--motion-ease-out),
+    right var(--motion-duration-fast) var(--motion-ease-in);
   --window-drag-region: drag;
   -webkit-app-region: drag;
   app-region: drag;
@@ -639,7 +649,24 @@
   /* The out-of-flow .ct-lead reserves no space of its own, so the title's
    * offset is the inset plus the 28px button and .ct-left's 8px gap. */
   padding-left: calc(var(--ct-lead-inset) + 36px);
-  transition: padding-left var(--motion-duration-fast) var(--motion-ease-in);
+  transition:
+    padding-left var(--motion-duration-fast) var(--motion-ease-in),
+    right var(--motion-duration-fast) var(--motion-ease-in);
+}
+
+.conversation-topbar.ct-work-panel-open {
+  /* Opening uses the same timing as work-panel-in so the window-control
+   * inset and the toggle lane shrink with the panel instead of dropping
+   * on the first (width: 0) animation frame. */
+  transition:
+    padding-left var(--motion-duration-normal) var(--motion-ease-out),
+    right var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.conversation-topbar.ct-collapsed.ct-work-panel-open {
+  transition:
+    padding-left var(--motion-duration-fast) var(--motion-ease-in),
+    right var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 .conversation-topbar .ct-left,
@@ -662,11 +689,6 @@
 .conversation-topbar .ct-right {
   flex: 0 0 auto;
   justify-content: flex-end;
-  padding-right: 36px;
-}
-
-.conversation-topbar.ct-work-panel-open .ct-right {
-  padding-right: 0;
 }
 
 .conversation-topbar .ct-title-wrap {
@@ -891,11 +913,37 @@
 
 .conversation-topbar .ct-actions {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0;
   padding: 2px;
   border-radius: var(--radius-md);
   background: var(--ds-tile);
+}
+
+/* In-flow seat for the viewport-fixed work-panel toggle. A hand-written
+ * padding-right used to hold this space and was zeroed the instant
+ * `.ct-work-panel-open` landed, while `work-panel-in` still has width 0
+ * (`animation-fill-mode: both`). A flex item cannot be stacked under the
+ * toggle, and collapsing it uses the same durations as the panel. */
+.conversation-topbar .ct-work-panel-toggle-lane {
+  flex: 0 0 var(--ds-work-panel-toggle-lane-width);
+  width: var(--ds-work-panel-toggle-lane-width);
+  height: var(--ds-work-panel-toggle-size);
+  pointer-events: none;
+  visibility: hidden;
+  overflow: hidden;
+  transition:
+    flex-basis var(--motion-duration-fast) var(--motion-ease-in),
+    width var(--motion-duration-fast) var(--motion-ease-in);
+}
+
+.conversation-topbar.ct-work-panel-open .ct-work-panel-toggle-lane {
+  flex-basis: 0;
+  width: 0;
+  transition:
+    flex-basis var(--motion-duration-normal) var(--motion-ease-out),
+    width var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 /* Keep the sole work-panel toggle anchored to the viewport while the in-flow

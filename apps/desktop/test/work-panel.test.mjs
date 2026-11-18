@@ -25,6 +25,10 @@ const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
 );
+const topbarSource = await readFile(
+  new URL("../src/components/ConversationTopbar.tsx", import.meta.url),
+  "utf8",
+);
 const transcriptSource = await readTranscriptSource();
 const storeSource = await readStoreSource();
 const globalStyles = await loadStyles();
@@ -191,6 +195,52 @@ test("a viewport-fixed toggle is the sole pointer collapse control", () => {
   assert.match(
     globalStyles,
     /:root\[data-platform="win32"\] \.conversation-topbar\.ct-work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.conversation-topbar\.ct-work-panel-open\s*\{[^}]*right:\s*0;/,
+  );
+});
+
+test("the conversation topbar keeps an in-flow lane under the fixed toggle", () => {
+  assert.match(
+    globalStyles,
+    /--ds-work-panel-toggle-lane-width:\s*calc\(\s*var\(--ds-work-panel-toggle-size\)\s*\+\s*8px\s*\)/,
+  );
+  assert.match(
+    topbarSource,
+    /className="ct-actions"[\s\S]*?className="ct-work-panel-toggle-lane"/,
+  );
+  assert.match(topbarSource, /workPanelExiting = false/);
+  assert.match(
+    topbarSource,
+    /workPanelOpen && !workPanelExiting \? " ct-work-panel-open" : ""/,
+  );
+  assert.match(
+    appSource,
+    /workPanelOpen=\{presentedWorkPanelOpen\}[\s\S]*?workPanelExiting=\{workPanelExiting\}/,
+  );
+  assert.match(
+    appSource,
+    /presentedWorkPanelOpen &&\s*!workPanelExiting &&\s*"work-panel-open"/,
+  );
+  assert.match(
+    globalStyles,
+    /\.conversation-topbar \.ct-work-panel-toggle-lane \{[^}]*flex:\s*0 0 var\(--ds-work-panel-toggle-lane-width\);[^}]*width:\s*var\(--ds-work-panel-toggle-lane-width\);/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.conversation-topbar \.ct-work-panel-toggle-lane \{[^}]*transition:[^}]*flex-basis var\(--motion-duration-fast\) var\(--motion-ease-in\)/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.conversation-topbar\.ct-work-panel-open \.ct-work-panel-toggle-lane \{[^}]*flex-basis:\s*0;[^}]*width:\s*0;[^}]*transition:[^}]*flex-basis var\(--motion-duration-normal\) var\(--motion-ease-out\)/s,
+  );
+  // The reserve must not be a lone padding value that `.ct-work-panel-open`
+  // can drop while work-panel-in still has width 0.
+  assert.doesNotMatch(
+    globalStyles,
+    /\.conversation-topbar \.ct-right \{[^}]*padding-right:\s*36px;/s,
+  );
+  assert.doesNotMatch(
+    globalStyles,
+    /\.conversation-topbar\.ct-work-panel-open \.ct-right \{[^}]*padding-right:\s*0;/s,
   );
 });
 
