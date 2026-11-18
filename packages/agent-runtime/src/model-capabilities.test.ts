@@ -288,3 +288,47 @@ it("keeps native Pi null and absent extended mappings unavailable", () => {
   expect(configured.thinkingLevelMap?.xhigh).toBeNull();
   expect(configured.thinkingLevelMap?.max).toBeUndefined();
 });
+
+describe("allowEmptyThinkingSignature binding", () => {
+  const relay = () => ({
+    ...genericModelConfig("relay/deepseek-v4.1-flash", "https://relay.example"),
+    reasoning: true,
+  });
+  const limits = { contextWindow: 128_000, maxTokens: 8_192, thinkingLevels: ["low", "high"] as ThinkingLevel[] };
+
+  it("writes compat.allowEmptySignature when the row opts in", () => {
+    const configured = modelConfigWithBinding(relay(), {
+      ...limits,
+      allowEmptyThinkingSignature: true,
+    });
+    expect(configured.compat?.allowEmptySignature).toBe(true);
+  });
+
+  it("keeps an existing compat map intact while opting in", () => {
+    const configured = modelConfigWithBinding(
+      { ...relay(), compat: { supportsStrictTools: true } },
+      { ...limits, allowEmptyThinkingSignature: true },
+    );
+    expect(configured.compat).toMatchObject({
+      supportsStrictTools: true,
+      allowEmptySignature: true,
+    });
+  });
+
+  it("records an explicit opt-out instead of omitting the key", () => {
+    const configured = modelConfigWithBinding(relay(), {
+      ...limits,
+      allowEmptyThinkingSignature: false,
+    });
+    expect(configured.compat?.allowEmptySignature).toBe(false);
+  });
+
+  it("leaves compat untouched when the row says nothing", () => {
+    const withCompat = modelConfigWithBinding(
+      { ...relay(), compat: { supportsStrictTools: true } },
+      limits,
+    );
+    expect(withCompat.compat).toEqual({ supportsStrictTools: true });
+    expect(modelConfigWithBinding(relay(), limits).compat).toBeUndefined();
+  });
+});
