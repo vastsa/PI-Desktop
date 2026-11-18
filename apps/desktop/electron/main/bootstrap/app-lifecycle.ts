@@ -1,5 +1,5 @@
 import {
-  app, BrowserWindow, Menu, nativeImage, nativeTheme, powerSaveBlocker, Tray,
+  app, BrowserWindow, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, Tray,
   type MenuItemConstructorOptions,
 } from "electron";
 import { existsSync } from "node:fs";
@@ -20,6 +20,7 @@ import {
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { installApplicationMenu } from "../application-menu";
 import { isWindowFullScreen, setWindowFullScreen } from "../window-fullscreen";
+import { planMaximizeToggle } from "../window-maximize";
 import { createTraySessions } from "../tray-sessions";
 import { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
 import { createWindow, type WindowLifecycleState } from "./window";
@@ -496,7 +497,23 @@ export function createApplicationLifecycle({
         // Maximizing a fullscreen window must leave fullscreen first, or the
         // window keeps both flags and the same stranding path above applies
         // (issue #1655).
-        if (target.isMaximized()) {
+        //
+        // `isMaximized()` alone cannot drive the toggle: on Windows the
+        // native maximized flag can be lost while the window still fills
+        // the work area, and then every click lands in the maximize branch
+        // and changes nothing (issue #1993). The plan's geometric fallback
+        // catches that pseudo-maximized state.
+        const maximizePlan = planMaximizeToggle({
+          isMaximized: target.isMaximized(),
+          isFullScreen: isWindowFullScreen(target),
+          platform: process.platform,
+          bounds: target.getBounds(),
+          workArea: workAreaForWindow(target),
+        });
+        if (maximizePlan === "unmaximize") {
+          target.unmaximize();
+        } else if (maximizePlan === "resyncUnmaximize") {
+          target.maximize();
           target.unmaximize();
         } else {
           if (isWindowFullScreen(target)) {
@@ -518,6 +535,16 @@ export function createApplicationLifecycle({
       maximized: !target.isDestroyed() && target.isMaximized(),
       fullScreen: !target.isDestroyed() && isWindowFullScreen(target),
     };
+  }
+
+  /** Work area of the display a window is on, or null when it is gone. */
+  function workAreaForWindow(target: BrowserWindow) {
+    try {
+      if (target.isDestroyed()) return null;
+      return screen.getDisplayMatching(target.getBounds()).workArea;
+    } catch {
+      return null;
+    }
   }
 
   function dispatchNativeMenuAction(action: NativeMenuAction) {
