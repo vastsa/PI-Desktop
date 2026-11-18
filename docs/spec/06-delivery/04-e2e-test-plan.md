@@ -26,6 +26,13 @@ that owns its domain; keep its ID unique across all files.
 | UI Shell | [`e2e/ui-shell.md`](e2e/ui-shell.md) |
 | Live Sessions and Remote Control | [`e2e/live-and-remote.md`](e2e/live-and-remote.md) |
 
+Notification attention scenario [E2E-064Q](e2e/ui-shell.md#e2e-064q-notification-acknowledgement-is-independent-of-answering-or-approval)
+covers the unchanged schema-33 contracts and latest-200 notification retention:
+retained unread completions survive restart, while pruning may discard older
+unread reminders. It also covers the single success/failure-plus-visible-request
+badge, navigation confirmation, and renderer-lifetime bulk dismissal without
+resolving asks or permissions. No separate completion store or pagination is introduced.
+
 ---
 
 ## 2. Non-goals

@@ -3054,7 +3054,6 @@ sklm: {
     questionSession: "会话中「{{sessionTitle}}」对话有问题未回答",
     completionProject: "「{{projectName}}」项目中「{{sessionTitle}}」对话任务已完成",
     completionSession: "会话中「{{sessionTitle}}」对话任务已完成",
-    loadMoreCompletions: "加载更多已完成任务",
     askTitle: "有问题需要你回答",
     askBody: "{{question}}",
     askBodyFallback: "任务需要您的回答以继续执行。",

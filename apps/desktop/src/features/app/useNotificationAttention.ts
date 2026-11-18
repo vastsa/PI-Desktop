@@ -9,8 +9,9 @@ export function useNotificationAttention() {
   const ready = useAppStore((state) => state.ready);
   const queues = useAppStore((state) => state.pendingAsks);
   const permissionQueues = useAppStore((state) => state.pendingPermissions);
-  const completions = useAppStore((state) => state.pendingCompletions);
-  const completionCount = useAppStore((state) => state.pendingCompletionCount);
+  const notifications = useAppStore((state) => state.notifications);
+  const completions = useMemo(() => notifications.filter((item) =>
+    item.kind === "task.completed" && !item.readAt), [notifications]);
   const sessionId = useAppStore((state) => state.activeSessionId);
   const selecting = useAppStore((state) => state.selectingSessionId);
   const page = useAppStore((state) => state.page);
@@ -45,5 +46,5 @@ export function useNotificationAttention() {
     };
   }, [ready, sessionId, selecting, page, completions, acknowledge, reportError]);
 
-  return { questions, permissions, completions, completionCount, refresh, dismiss };
+  return { questions, permissions, completions, refresh, dismiss };
 }

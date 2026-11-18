@@ -790,7 +790,6 @@ export function useAppShellRuntime() {
       // banner for an event the store intentionally rejected.
       if (!accepted) return;
       playNotificationChime();
-      useAppStore.getState().receiveCompletionNotification(notification);
       const failed = notification.kind === "task.failed";
       const title = t(
         failed ? "notifications.failedTitle" : "notifications.completedTitle",

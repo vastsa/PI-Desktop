@@ -421,4 +421,4 @@ git history.
 | chinese-docs-entry-points-only | [Chinese documentation keeps entry points only](chinese-docs-entry-points-only.md) | Accepted; amends ADR 0079 |
 | windows-native-snap-without-frame-insets | [Restore Windows snapping without Electron frame insets](windows-native-snap-without-frame-insets.md) | Accepted (issue #2330; amends ADR 0317) |
 | plan-approval-session-permission | [Plan approval defaults to the owning Session's permission](plan-approval-session-permission.md) | Accepted; amends ADR 0053 and ADR 0158 |
-| notification-attention-lifetimes | [Question and completion attention have separate lifetimes](notification-attention-lifetimes.md) | Accepted; additive completion persistence and viewed confirmation |
+| notification-attention-lifetimes | [Notification attention lifetimes](notification-attention-lifetimes.md) | Accepted; schema-33 bounded completion reminders and request lifetimes |

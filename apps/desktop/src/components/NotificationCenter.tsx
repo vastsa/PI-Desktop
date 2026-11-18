@@ -14,7 +14,6 @@ import { useAppStore } from "../stores/app-store";
 import {
   formatNotificationSessionLabel,
   inboxNotifications,
-  inboxUnreadCount,
   notificationBadgeCount,
   notificationSessionLabel,
 } from "../lib/notification-inbox";
@@ -72,19 +71,13 @@ export function NotificationCenter({
   const { t, i18n } = useTranslation();
   const attention = useNotificationAttention();
   const selectSession = useAppStore((state) => state.selectSession);
-  const loadMoreCompletions = useAppStore((state) => state.loadMoreCompletionNotifications);
   const storedNotifications = useAppStore((state) => state.notifications);
   // Read records remain in durable history, not in the bell's attention list.
   const notifications = useMemo(
     () => inboxNotifications(storedNotifications).filter((notification) => !notification.readAt),
     [storedNotifications],
   );
-  const unreadCount = useMemo(
-    () => inboxUnreadCount(storedNotifications),
-    [storedNotifications],
-  );
   const allUnreadCount = useAppStore((state) => state.unreadNotificationCount);
-  const refreshNotifications = useAppStore((state) => state.refreshNotifications);
   const markAllNotificationsRead = useAppStore(
     (state) => state.markAllNotificationsRead,
   );
@@ -107,9 +100,9 @@ export function NotificationCenter({
   const permissions = attention.permissions;
   const questionCount = questions.length;
   const interactiveCount = questions.length + permissions.length;
-  const badgeCount = notificationBadgeCount(allUnreadCount, unreadCount, attention.completionCount, interactiveCount);
+  const badgeCount = notificationBadgeCount(allUnreadCount, interactiveCount);
   const hasUnread = badgeCount > 0;
-  const hasItems = notifications.length > 0 || attention.completionCount > 0 || interactiveCount > 0;
+  const hasItems = notifications.length > 0 || attention.completions.length > 0 || interactiveCount > 0;
   const acknowledgeAttention = async (action: () => Promise<void>) => {
     const ids = requests.map((item) => item.requestId);
     await action();
@@ -154,12 +147,12 @@ export function NotificationCenter({
         ?.focus();
     });
     // Refresh must not disable already available actions or steal focus later.
-    void Promise.all([refreshNotifications(), attention.refresh()])
+    void attention.refresh()
       .catch(() =>
         showToast(t("notifications.actionFailed"), { variant: "error" }),
       );
     return () => cancelAnimationFrame(focusFrame);
-  }, [open, refreshNotifications, attention.refresh, showToast, t]);
+  }, [open, attention.refresh, showToast, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -327,7 +320,7 @@ export function NotificationCenter({
             ))}
           </div>
 
-          {notifications.length > 0 || questions.length > 0 || permissions.length > 0 || attention.completionCount > 0 ? (
+          {hasItems ? (
             <ul className="notification-list">
               <NotificationAttentionItems {...attention} questions={questions} permissions={permissions}
                 busy={busy}
@@ -335,8 +328,7 @@ export function NotificationCenter({
                   closePopover();
                   void selectSession(sessionId).catch(() =>
                     showToast(t("notifications.actionFailed"), { variant: "error" }));
-                }}
-                onLoadMore={() => void runToolbarAction(loadMoreCompletions)} />
+                }} />
               {notifications.map((notification) => {
                 const sessionTitle = formatNotificationSessionLabel(
                   notificationSessionLabel(notification.sessionId, sessions, projectMeta, notification.sessionTitle),

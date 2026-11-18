@@ -51,15 +51,12 @@ test("notification context consistently combines project or sessions with the co
     "Sessions · New task");
 });
 
-test("the shared badge counts every unread notification type without duplicating completions", () => {
-  assert.equal(inbox.notificationBadgeCount(1, 1, 0, 0), 1, "failure-only notification");
-  assert.equal(inbox.notificationBadgeCount(1, 0, 1, 0), 1, "completion mirrored in history");
-  assert.equal(inbox.notificationBadgeCount(0, 0, 1, 0), 1, "pending-only completion");
-  assert.equal(inbox.notificationBadgeCount(0, 0, 0, 3), 3, "unread questions or approvals");
-  assert.equal(inbox.notificationBadgeCount(2, 1, 1, 3), 5, "mixed task and interactive notifications");
-  assert.equal(inbox.notificationBadgeCount(200, 1, 203, 2), 206, "completions beyond bounded history");
-  assert.equal(inbox.notificationBadgeCount(4, 0, 0, 0), 4, "history available before attention refresh");
-  assert.equal(inbox.notificationBadgeCount(0, 0, 0, 0), 0, "all reminders acknowledged");
-  assert.equal(inbox.notificationBadgeCount(1, 0, 1, 1), 2, "new reminders after clear");
-  assert.equal(inbox.notificationBadgeCount(0, 0, 0, 120), 120, "rendering owns the 99+ cap");
+test("the shared badge counts durable tasks once and adds unanswered requests", () => {
+  assert.equal(inbox.notificationBadgeCount(1, 0), 1, "failure or completion already included in history");
+  assert.equal(inbox.notificationBadgeCount(0, 3), 3, "unread questions or approvals");
+  assert.equal(inbox.notificationBadgeCount(2, 3), 5, "mixed task and interactive reminders");
+  assert.equal(inbox.notificationBadgeCount(200, 2), 202, "bounded task history plus pending requests");
+  assert.equal(inbox.notificationBadgeCount(0, 0), 0, "all reminders acknowledged");
+  assert.equal(inbox.notificationBadgeCount(1, 1), 2, "new reminders after clear");
+  assert.equal(inbox.notificationBadgeCount(0, 120), 120, "rendering owns the 99+ cap");
 });

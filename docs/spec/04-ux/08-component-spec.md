@@ -4462,7 +4462,7 @@ Sidebar footer                                        Popover (360px max)
 - Trigger: 32px Lucide `Bell` icon button at the right of the expanded sidebar
   footer, replacing the former Help shortcut. The main titlebar has no
   duplicate. A compact badge renders `1`–`99` and `99+`; its accessible label
-  retains the exact count (ordinary history is capped at 200; pending completions are independent).
+  retains the exact total (up to 200 retained task outcomes plus visible asks and permissions).
 - Popover: width `min(360px, calc(100vw - 24px))`, opens above and to the right
   of the footer, and is no taller than the available window, with one internally
   scrollable row list.
@@ -4492,11 +4492,13 @@ Sidebar footer                                        Popover (360px max)
 - Bell toggles the popover. Opening does not implicitly mark anything read.
 - Both `All` and `Unread` omit acknowledged reminders. Read terminal records remain
   in durable history rather than appearing as gray bell rows.
-- Selecting a failure row first calls `notification.markRead`, closes the popover, then
-  activates the row's durable session (including its project when applicable)
-  and scrolls the transcript to its latest content. Completion rows defer read until the chat loads visibly.
-  dismisses the matching task-native banner before a late activation can
-  surface it again.
+- Selecting a failure row first calls `notification.markRead`, closes the popover,
+  then activates the row's durable session (including its project when applicable)
+  and scrolls the transcript to its latest content. Completion navigation defers
+  read until the intended chat has successfully loaded and is still selected in a
+  visible focused window. Failed or superseded navigation retains the reminder.
+  Acknowledgement dismisses the matching task-native banner before a late
+  activation can surface it again.
 - Restoring/focusing the app from its taskbar or Dock while an unread terminal
   outcome's session is already visible in the chat marks that session's
   matching durable notifications read; it does not mark outcomes belonging to
@@ -4523,16 +4525,19 @@ Sidebar footer                                        Popover (360px max)
   use the source-aware native surface while the app is focused on a different
   session.
 - **Attention additions** ([ADR](../../adr/notification-attention-lifetimes.md)):
-  the same All/Unread lists prepend open ask/permission requests and pending
-  completion notices without replacing the original failure rows, text, native
-  banners, sounds, or taskbar badge. One red badge at the bell's top-right counts
-  all unread inbox records, completion reminders, asks, and permission requests.
-  Completion history/attention projections must not be counted twice. Read/cleared
+  the same All/Unread lists prepend open ask/permission requests and derive
+  completion rows from unread `task.completed` records in the ordinary notification
+  list, without replacing failure rows, text, native banners, sounds, or taskbar
+  policy. One red badge at the bell's top-right is
+  `unreadNotificationCount + visibleAskCount + visiblePermissionCount`.
+  `unreadNotificationCount` includes both successful and failed outcomes; completion
+  rows never contribute through a second attention/history count path. Read/cleared
   reminders do not count; zero hides the badge and values above 99 show `99+`.
   Bulk read and clear hide interactive reminders from both filters and the badge
-  for this renderer lifetime, including sidebar collapse/rebuild. Every visible
-  interactive row remains unread. Large completion backlogs have a load-more action.
-  Question/check/alert/shield icons distinguish asks, completions, failures, and permission requests.
+  for this renderer lifetime, including sidebar collapse/remount. Every visible
+  interactive row remains unread. There is no completion pagination or load-more
+  action. Question/check/alert/shield icons distinguish asks, completions, failures,
+  and permission requests.
 - Project copy identifies the owning sidebar project display name and chat
   title: `Project “{projectName}”, chat “{sessionTitle}” has unanswered questions`
   or `…has completed its task`. Unscoped copy starts `In sessions, chat…`.
@@ -4556,14 +4561,16 @@ Sidebar footer                                        Popover (360px max)
   Bulk read/clear hides the reminder, not the pending permission. Only accepted
   Allow once / Allow for session / Deny or authoritative cancellation settles that
   request; the existing inline card owns approval controls.
-- Completion reminders can be acknowledged without navigation: mark-read removes
-  the exact reminder, and mark-all-read/clear acknowledges every pending completion,
-  including pruned history. Opening its loaded, visible, focused chat remains an
-  optional acknowledgement. Opening the bell/project or failed/superseded navigation
-  alone does not acknowledge it. New notifications re-enable the bulk actions.
-  A live insertion during completion paging re-reads a coherent Host snapshot rather
-  than adding the same event to an already-inclusive total. Confirmation invalidates
-  older ordinary notification snapshots so an empty list cannot regain a stale badge.
+- Completion reminders can be acknowledged without navigation: ordinary mark-read
+  updates the exact retained notification, mark-all-read updates every unread
+  notification, and clear deletes notification history. These schema-33 semantics
+  are unchanged. Opening the successfully loaded, selected chat in a visible
+  focused window is an optional acknowledgement, confirmed after navigation settles.
+  Opening the bell/project or failed/superseded navigation alone does not
+  acknowledge it. New notifications re-enable the bulk actions. A live insertion
+  during refresh appears once in the bounded ordinary list and its unread count.
+  Confirmation invalidates older ordinary notification snapshots so an empty list
+  cannot regain a stale badge.
 
 ### 20.5 Accessibility
 
@@ -4583,13 +4590,15 @@ Sidebar footer                                        Popover (360px max)
 
 ### 20.6 Constraints
 
-- Original history retains only the newest 200 terminal outcomes and keeps its
-  existing read/clear persistence semantics; the bell displays outstanding
-  reminders only. Open ask rows are live projections, not persisted history.
-  Pending completions are independently durable, paged in batches of at most 200,
-  and survive history pruning until acknowledged or their session is deleted.
-  Permission/Plan reminders and native prompt banners remain outside durable
-  history. Restarting the whole runtime does not resume an old ask Promise.
+- The existing `notifications` table is the sole durable source for completion
+  reminders. Schema 33 stays unchanged: no schema bump, migration, or new table.
+  History retains only the newest 200 terminal outcomes, read or unread, and keeps
+  its existing read/clear semantics; the bell displays outstanding reminders only.
+  Unread completion reminders survive restart only while retained; pruning beyond
+  the latest 200 may deliberately discard them. Open ask/permission rows are live
+  projections, not persisted history. Permission/Plan reminders and native prompt
+  banners remain outside durable history. Restarting the whole runtime does not
+  resume an old ask Promise.
 
 ---
 

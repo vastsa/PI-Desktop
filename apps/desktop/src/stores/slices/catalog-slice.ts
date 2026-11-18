@@ -306,6 +306,8 @@ export function createCatalogSlice({
       catalogRuntime.invalidateNotificationRefresh();
       set((state) => {
         const notifications = [notification, ...state.notifications].slice(0, 200);
+        const evictedUnread = state.notifications.slice(notifications.length - 1)
+          .filter((item) => !item.readAt).length;
         return {
           notifications,
           sessionOutcomes: {
@@ -314,7 +316,7 @@ export function createCatalogSlice({
               notification.kind === "task.failed" ? "failed" : "completed",
           },
           unreadNotificationCount:
-            state.unreadNotificationCount + (notification.readAt ? 0 : 1),
+            state.unreadNotificationCount + (notification.readAt ? 0 : 1) - evictedUnread,
         };
       });
       return true;
@@ -322,7 +324,7 @@ export function createCatalogSlice({
 
     markNotificationRead: async (id) => {
       const item = get().notifications.find((notification) => notification.id === id);
-      if (item?.readAt) return;
+      if (!item || item.readAt) return;
       const generation = catalogRuntime.invalidateNotificationRefresh();
       try {
         await api.markNotificationRead(id);
@@ -366,7 +368,7 @@ export function createCatalogSlice({
     },
 
     markAllNotificationsRead: async () => {
-      if (get().unreadNotificationCount === 0 && !get().pendingCompletionCount) return;
+      if (get().unreadNotificationCount === 0) return;
       const acknowledgedIds = new Set(
         get()
           .notifications.filter((notification) => !notification.readAt)

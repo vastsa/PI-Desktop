@@ -3104,7 +3104,6 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     questionSession: 'In sessions, chat “{{sessionTitle}}” has unanswered questions',
     completionProject: 'Project “{{projectName}}”, chat “{{sessionTitle}}” has completed its task',
     completionSession: 'In sessions, chat “{{sessionTitle}}” has completed its task',
-    loadMoreCompletions: "Load more completed tasks",
     askTitle: "A question needs your answer",
     askBody: "{{question}}",
     askBodyFallback: "The task requires your response to proceed.",

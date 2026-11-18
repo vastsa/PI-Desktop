@@ -79,12 +79,16 @@ reveals its still-pending card.
 
 The notification bell mirrors live requests with a shield icon. Existing rows
 are immediately clickable while list reconciliation runs in the background.
-Navigation retains the reminder and its badge contribution until an accepted
-decision or authoritative cancellation. Mark-all-read and clear hide current
-reminders from both filters and the badge for this renderer lifetime, without
-settling the pending permission. Notification actions never approve, deny, or
-cancel a request: only the original inline card/response API and authoritative
-cancellation settle it. Transient response failures retain the card and reminder.
+Each visible request adds one to the single bell badge, on top of
+`unreadNotificationCount` (both successful and failed task outcomes) and visible
+ask reminders; completion rows do not add a second count. Navigation retains the
+reminder and its badge contribution until an accepted decision or authoritative
+cancellation. Mark-all-read and clear hide current reminders from both filters
+and the badge for this renderer lifetime, including sidebar collapse/remount,
+without settling the pending permission. New requests remain visible.
+Notification actions never approve, deny, or cancel a request: only the original
+inline card/response API and authoritative cancellation settle it. Transient
+response failures retain the card and reminder.
 
 Resolving a request never initiates navigation. Any resulting tool artifact is
 recorded in the same session's retained work-panel context. If that session is

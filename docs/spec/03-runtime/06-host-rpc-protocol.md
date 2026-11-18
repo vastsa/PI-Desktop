@@ -944,29 +944,29 @@ type SessionEndTurnResult = {
 type NotificationListParams = {
   unreadOnly?: boolean; // default false
   limit?: number;       // default/max 200
-  completionOffset?: number; // default 0, offset within independent pending completions
 };
 
 type NotificationListResult = {
   notifications: AppNotification[]; // newest first
   unreadCount: number;               // global count, independent of filter
-  pendingCompletions?: AppNotification[]; // task.completed only; independently paged
-  pendingCompletionCount?: number;       // total pending, unaffected by unreadOnly
 };
 ```
 
 - `notification.markRead({ id }) -> { ok }` is idempotent. `ok=false` means
   the id does not exist; an already-read row remains successful.
-- `notification.markAllRead({}) -> { ok: true }` updates every unread history row
-  and acknowledges every pending completion in one transaction.
-- `notification.clear({}) -> { ok: true }` atomically deletes history and pending completions.
-- Schema 34 adds independently retained completion attention (see
-  [notification attention lifetimes](../../adr/notification-attention-lifetimes.md)).
-  The optional fields above are additive; older callers can ignore them.
-  `notification.markRead({ id })` also removes the exact pending completion;
-  `ok` is true when either the history row or pending completion exists, including
-  a completion whose history was pruned. Navigation is not required.
-  Session deletion cancels both records.
+- `notification.markAllRead({}) -> { ok: true }` updates every unread notification
+  row, including successful and failed outcomes, without deleting history.
+- `notification.clear({}) -> { ok: true }` deletes notification history.
+- Schema 33 and these request/result contracts remain unchanged: no migration,
+  new table, separate completion fields, or completion pagination is introduced
+  (see [notification attention lifetimes](../../adr/notification-attention-lifetimes.md)).
+  Completion reminders derive from unread `task.completed` rows in the ordinary
+  notification list. They survive restart only while retained among the latest
+  200 notifications; pruning may discard unread reminders. `unreadCount` counts
+  both completion and failure rows, not a separate reminder projection.
+  Ordinary mark-read acknowledges a retained completion without navigation; a
+  pruned id does not exist and returns `ok=false`. Session deletion removes its
+  notification rows. Read, mark-all-read, and clear never resolve asks or permissions.
 - `id` is the stable exactly-once key for renderer and native delivery. A
   client must discard duplicate or delayed records for an id it has already
   acknowledged/cleared; clearing the inbox never makes an old terminal turn

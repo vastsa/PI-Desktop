@@ -847,7 +847,7 @@ The second failure emits the terminal normalized `STREAM_FAILED` error.
 Durable inbox requests are allowlisted preload invokes that Electron forwards
 to the singular host RPC domain without renderer access to SQLite:
 
-- `pi-desktop/notification/list({ unreadOnly?, limit?, completionOffset? })`
+- `pi-desktop/notification/list({ unreadOnly?, limit? })`
 - `pi-desktop/notification/markRead({ id })`
 - `pi-desktop/notification/markAllRead()`
 - `pi-desktop/notification/clear()`
@@ -885,12 +885,7 @@ type AppNotification = {
 type NotificationListResult = {
   notifications: AppNotification[];
   unreadCount: number;
-  pendingCompletions?: AppNotification[];
-  pendingCompletionCount?: number;
 };
-// completionOffset defaults to zero; limit (max 200) bounds each completion page.
-// Mark-read acknowledges the exact completion, including pruned history.
-// Mark-all-read and clear also acknowledge all pending completions without navigation.
 
 type NotificationChangedEvent = {
   notification: AppNotification;
@@ -907,6 +902,16 @@ type SessionsChangedEvent = {
   pluginId: string;
 };
 ```
+
+These request/result contracts remain unchanged at schema 33. `unreadCount`
+includes both `task.completed` and `task.failed` rows in the existing
+`notifications` table. Completion reminders derive from unread `task.completed`
+rows in the ordinary list, bounded by the latest 200 retained notifications; they
+survive restart only while retained. Pruning may discard unread reminders. There
+is no separate completion page, count, or load-more request. Ordinary mark-read
+acknowledges the retained row, mark-all-read updates all unread rows, and clear
+deletes notification history. These actions never answer or resolve pending asks
+or permissions.
 
 Main sends two events:
 

@@ -21,7 +21,6 @@ const sessions: SessionSummary[] = ["A", "B", "C"].map((id) => ({
 }));
 const requests = new Map<string, AskToolRequest>();
 const resolutions: unknown[] = [];
-const completions = new Map<string, import("@pi-desktop/shared").AppNotification>();
 const history = new Map<string, import("@pi-desktop/shared").AppNotification>();
 const permissions = new Map<string, ToolPermissionRequest[]>();
 const approvals: unknown[] = [];
@@ -87,12 +86,12 @@ function Surface() {
 }
 function reset(page: "chat" | "settings" = "chat", activeSessionId?: string) {
   requests.clear();
-  completions.clear();
+  history.clear();
   permissions.clear();
   flushSync(() => useAppStore.setState({
     page, activeSessionId, selectingSessionId: undefined, messages: [],
     toasts: [], pendingAsks: {}, workspace: undefined, activeProjectPath: undefined,
-    pendingCompletions: [], pendingCompletionCount: 0, dismissedNotificationRequests: {},
+    notifications: [], unreadNotificationCount: 0, dismissedNotificationRequests: {},
     pendingPermissions: {},
   }));
 }
@@ -182,23 +181,20 @@ globalThis.questionNotificationProbe = async () => {
       } else if (channel === IPC.invoke.notificationList) {
         await notificationListGate;
         data = { notifications: [...history.values()],
-          unreadCount: [...history.values()].filter((row) => !row.readAt).length,
-          pendingCompletions: [...completions.values()], pendingCompletionCount: completions.size };
+          unreadCount: [...history.values()].filter((row) => !row.readAt).length };
       } else if (channel === IPC.invoke.notificationMarkRead) {
         if (input && typeof input === "object" && "id" in input) {
           const id = String(input.id);
           acknowledged.push(id);
-          completions.delete(id);
           const row = history.get(id);
           if (row) history.set(id, { ...row, readAt: createdAt });
         }
         data = { ok: true };
       } else if (channel === IPC.invoke.notificationMarkAllRead) {
         for (const [id, row] of history) history.set(id, { ...row, readAt: createdAt });
-        completions.clear();
         data = { ok: true };
       } else if (channel === IPC.invoke.notificationClear) {
-        history.clear(); completions.clear(); data = { ok: true };
+        history.clear(); data = { ok: true };
       } else if (channel === IPC.invoke.projectClear) data = { ok: true };
       else {
         unexpected.push(channel);
@@ -209,7 +205,7 @@ globalThis.questionNotificationProbe = async () => {
   };
   useAppStore.setState({
     sessions, notifications: [], runningSessions: {}, retainedSessionIds: [], retainedTranscripts: {},
-    ready: true, pendingCompletions: [], pendingCompletionCount: 0,
+    ready: true,
     projectMeta: { "C:/fixture/B": { name: "Research" } },
     pendingPlans: {}, pendingPermissions: {}, providers: [], providerModels: {},
   });
@@ -462,14 +458,14 @@ globalThis.questionNotificationProbe = async () => {
     turnId: "turn-C", createdAt,
   };
   const addCompletion = () => {
-    done = { ...done, id: `completion-C-${++sequence}`, turnId: `turn-C-${sequence}` };
-    completions.set(done.id, done);
+    done = { ...done, id: `completion-C-${++sequence}`, turnId: `turn-C-${sequence}`,
+      createdAt: new Date(Date.now() + sequence).toISOString() };
     history.set(done.id, done);
-    flushSync(() => useAppStore.getState().receiveCompletionNotification(done));
+    flushSync(() => useAppStore.getState().receiveNotification(done));
   };
   addCompletion();
   history.set("original-failure", { ...done, id: "original-failure", kind: "task.failed", errorCode: "ORIGINAL_ERROR" });
-  flushSync(() => useAppStore.setState({ notifications: [...history.values()], unreadNotificationCount: 0 }));
+  flushSync(() => useAppStore.setState({ notifications: [...history.values()], unreadNotificationCount: 2 }));
   const openBell = async () => {
     if (!document.querySelector(".notification-popover")) document.querySelector<HTMLButtonElement>(".notification-trigger")?.click();
     await until(() => Boolean(document.querySelector(".notification-completion:not(:disabled)")), "completion inbox");
@@ -486,9 +482,10 @@ globalThis.questionNotificationProbe = async () => {
   const bellRect = document.querySelector(".notification-trigger")!.getBoundingClientRect();
   assert(badgeRect.top < bellRect.top && badgeRect.right >= bellRect.right, "Question badge is not at the top-right");
   const markAll = () => document.querySelector<HTMLButtonElement>('[aria-label="Mark all as read"]');
-  assert(!markAll()?.disabled, "Only-pending completions must enable mark-all even when the history count is zero");
+  assert(!markAll()?.disabled, "Unread completions must enable mark-all through ordinary history");
   markAll()!.click();
-  await until(() => useAppStore.getState().pendingCompletionCount === 0 && !document.querySelector(".notification-completion"), "bulk-read completion removed without navigation");
+  await until(() => !useAppStore.getState().notifications.some((item) => item.kind === "task.completed" && !item.readAt) &&
+    !document.querySelector(".notification-completion"), "bulk-read completion removed without navigation");
   await until(() => !document.querySelector(".notification-item") && !document.querySelector(".notification-badge"), "mark-all removes every notice, not just its unread styling");
   assert(requests.get("B")?.requestId === unanswered.requestId, "Mark-all must not answer the pending question");
   assert(!acknowledged.includes(done.id), "Bulk-read must not issue individual acknowledgements");
@@ -518,7 +515,7 @@ globalThis.questionNotificationProbe = async () => {
   await until(() => Boolean(document.querySelector(".notification-completion:not(:disabled)")) && !markAll()?.disabled &&
     document.querySelector(".notification-badge")?.textContent === "1", "new completion restores the total badge and re-enables mark-all");
   document.querySelector<HTMLButtonElement>('[aria-label="Clear all"]')!.click();
-  await until(() => useAppStore.getState().pendingCompletionCount === 0 && !document.querySelector(".notification-question"), "clear removes all reminders");
+  await until(() => useAppStore.getState().notifications.length === 0 && !document.querySelector(".notification-question"), "clear removes all reminders");
   assert(requests.get("B")?.requestId === unanswered.requestId, "Clear must not cancel the pending question");
   await useAppStore.getState().refreshNotificationAttention();
   assert(!document.querySelector(".notification-completion"), "Cleared completion resurrected after refresh");
@@ -532,10 +529,10 @@ globalThis.questionNotificationProbe = async () => {
   rejectReads = true;
   document.querySelector<HTMLButtonElement>(".notification-completion")!.click();
   await until(() => useAppStore.getState().toasts.some((item) => item.variant === "error"), "failed completion navigation");
-  assert(completions.has(done.id), "Failed navigation confirmed the task result");
+  assert(history.get(done.id)?.readAt === undefined, "Failed navigation confirmed the task result");
   await useAppStore.getState().refreshNotifications();
   assert(!acknowledged.includes(done.id), "Failed navigation acknowledged the completion before loading");
-  assert(completions.has(done.id), "Refreshing after failed navigation removed its reminder");
+  assert(history.get(done.id)?.readAt === undefined, "Refreshing after failed navigation removed its reminder");
   rejectReads = false;
   await openBell();
   document.querySelector<HTMLButtonElement>(".notification-completion")!.click();
@@ -545,7 +542,7 @@ globalThis.questionNotificationProbe = async () => {
   Object.defineProperty(document, "hasFocus", { configurable: true, value: () => true });
   try {
     window.dispatchEvent(new Event("focus"));
-    await until(() => acknowledged.includes(done.id) && useAppStore.getState().pendingCompletions.length === 0,
+    await until(() => acknowledged.includes(done.id) && Boolean(useAppStore.getState().notifications.find((item) => item.id === done.id)?.readAt),
       "viewing a completion acknowledges its exact notification");
   } finally {
     if (focusDescriptor) Object.defineProperty(document, "hasFocus", focusDescriptor);

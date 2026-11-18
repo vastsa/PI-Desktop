@@ -88,8 +88,6 @@ export function createInitialState(): AppStateData {
     toasts: [],
     notifications: [],
     unreadNotificationCount: 0,
-    pendingCompletions: [],
-    pendingCompletionCount: 0,
     dismissedNotificationRequests: {},
     composerPrefill: null,
     error: null,

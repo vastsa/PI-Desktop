@@ -1,10 +1,3 @@
-mod pending_completions;
-
-#[cfg(test)]
-mod pending_completion_tests;
-
-pub use pending_completions::list_pending_completions;
-
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde::Serialize;
@@ -103,7 +96,7 @@ pub fn insert_for_terminal_turn(
         params![NOTIFICATION_KEEP],
     )?;
 
-    let notification = Notification {
+    Ok(Some(Notification {
         id,
         kind: kind.to_string(),
         session_id,
@@ -112,9 +105,7 @@ pub fn insert_for_terminal_turn(
         error_code: error_code.map(str::to_string),
         created_at: ms_to_ts(created_at),
         read_at: None,
-    };
-    pending_completions::insert(tx, &notification, created_at)?;
-    Ok(Some(notification))
+    }))
 }
 
 pub fn list(db: &Database, unread_only: bool, limit: i64) -> Result<(Vec<Notification>, i64)> {
@@ -143,29 +134,22 @@ pub fn list(db: &Database, unread_only: bool, limit: i64) -> Result<(Vec<Notific
 }
 
 pub fn mark_read(db: &Database, id: &str) -> Result<bool> {
-    let tx = db.conn().unchecked_transaction()?;
-    let updated = tx
+    let updated = db
+        .conn()
         .prepare_cached("UPDATE notifications SET read_at = COALESCE(read_at, ?1) WHERE id = ?2")?
         .execute(params![now_ms(), id])?;
-    let acknowledged = pending_completions::acknowledge(&tx, id)?;
-    tx.commit()?;
-    Ok(updated > 0 || acknowledged)
+    Ok(updated > 0)
 }
 
 pub fn mark_all_read(db: &Database) -> Result<()> {
-    let tx = db.conn().unchecked_transaction()?;
-    tx.prepare_cached("UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL")?
+    db.conn()
+        .prepare_cached("UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL")?
         .execute(params![now_ms()])?;
-    tx.execute("DELETE FROM pending_completion_notifications", [])?;
-    tx.commit()?;
     Ok(())
 }
 
 pub fn clear(db: &Database) -> Result<()> {
-    let tx = db.conn().unchecked_transaction()?;
-    tx.execute("DELETE FROM notifications", [])?;
-    tx.execute("DELETE FROM pending_completion_notifications", [])?;
-    tx.commit()?;
+    db.conn().execute("DELETE FROM notifications", [])?;
     Ok(())
 }
 
@@ -225,18 +209,30 @@ mod tests {
     }
 
     #[test]
-    fn terminal_turns_keep_only_the_latest_two_hundred_notifications() {
+    fn schema_33_terminal_turns_keep_only_the_latest_two_hundred_notifications() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.sqlite");
         let db = Database::open(&path).unwrap();
         let session =
             sessions::create_session(&db, Some("Long task".into()), None, None, None, None)
                 .unwrap();
+        assert_eq!(crate::db::SCHEMA_VERSION, 33);
+        assert_eq!(
+            db.conn()
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            33
+        );
+        assert!(!db.conn().query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_completion_notifications')",
+            [], |row| row.get::<_, bool>(0),
+        ).unwrap());
 
+        let mut ids = Vec::new();
         for _ in 0..201 {
             let turn = sessions::begin_turn(&db, &session.id, None, None).unwrap();
             let result = sessions::end_turn(&db, &turn, "completed", None, None, true).unwrap();
-            assert!(result.notification.is_some());
+            ids.push(result.notification.unwrap().id);
         }
 
         let stored: i64 = db
@@ -245,6 +241,7 @@ mod tests {
             .unwrap();
         assert_eq!(stored, NOTIFICATION_KEEP);
         assert_eq!(list(&db, false, 500).unwrap().0.len(), 200);
+        assert_eq!(list(&db, true, 500).unwrap().1, 200);
 
         drop(db);
         let reopened = Database::open(&path).unwrap();
@@ -253,5 +250,29 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM notifications", [], |row| row.get(0))
             .unwrap();
         assert_eq!(stored_after_restart, NOTIFICATION_KEEP);
+        let (retained, unread) = list(&reopened, false, 500).unwrap();
+        assert_eq!(unread, 200);
+        assert!(retained
+            .iter()
+            .all(|item| item.kind == "task.completed" && item.read_at.is_none()));
+        let pruned_id = ids
+            .iter()
+            .find(|id| !retained.iter().any(|item| &item.id == *id))
+            .unwrap();
+        assert!(!mark_read(&reopened, pruned_id).unwrap());
+        assert!(mark_read(&reopened, &retained[0].id).unwrap());
+        assert_eq!(list(&reopened, true, 500).unwrap().1, 199);
+        mark_all_read(&reopened).unwrap();
+        assert_eq!(list(&reopened, true, 500).unwrap().1, 0);
+        assert_eq!(list(&reopened, false, 500).unwrap().0.len(), 200);
+        clear(&reopened).unwrap();
+        assert!(list(&reopened, false, 500).unwrap().0.is_empty());
+        assert_eq!(
+            reopened
+                .conn()
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            33
+        );
     }
 }

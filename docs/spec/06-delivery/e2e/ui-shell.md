@@ -354,7 +354,7 @@
   delayed `notification.changed` payload for a cleared/read durable id and a
   duplicate payload for an id that is already present. 13) On Windows, create
   one unread successful outcome while the bell has no failure rows. Open the
-  empty bell popover, use Mark all read, then create another success and use
+  bell popover, use Mark all read, then create another success and use
   Clear. 14) Create enough unread outcomes for a two-digit count and inspect
   the taskbar overlay before and after marking all outcomes read.
 - **Expected**: A's visible-current completion creates no row or terminal
@@ -379,8 +379,8 @@
   duplicate, delayed, and historical rows do not replay it. On Windows, the
   taskbar overlay is a smooth black circular badge with a centered white system-font numeral. Its visual weight matches common
   Windows taskbar badges for both single- and two-digit counts. A success-only
-  outcome increments the taskbar badge without adding to the original bell
-  unread count; its independent pending attention row follows E2E-064Q.
+  outcome increments `unreadNotificationCount` and the taskbar badge, and appears
+  once in the single bell total; its reminder follows E2E-064Q.
   Both toolbar actions remain enabled when relevant and clear the taskbar badge. The badge also clears when no unread outcomes remain. The
   underlying taskbar button keeps the
   PI-Desktop `P` icon and PI-Desktop name while the overlay is present.
@@ -394,52 +394,74 @@
 
 ## E2E-064Q: Notification acknowledgement is independent of answering or approval
 
-- **Preconditions**: An isolated app profile, two project chats and one unscoped
-  chat; a pending ask and an unseen successful turn; existing failure history.
+- **Preconditions**: An isolated schema-33 app profile, two project chats and one
+  unscoped chat; a pending ask, an unseen successful turn, and failure history.
+  Retention fixtures use deterministic terminal ordering, not a user's database.
 - **Steps**:
   1. Receive a background ask; hold list-refresh responses, then open the bell.
      Its row must be immediately clickable, with the correct top-right badge,
      icon, and project/chat title. Opening its chat keeps the reminder and badge.
-  2. Submit the whole ask; repeat with a transient failure and cancellation.
-  3. Mark all reminders read without opening their chats. Repeat when pending
-     completions exist but the ordinary unread count is zero; add a new completion
-     and confirm mark-all becomes usable again. Clear and refresh/reopen the Host
-     database: acknowledged completion reminders must not return, even after pruning.
-  4. After mark-all-read, verify both All and Unread are empty, with no badge,
-     including pending question/approval reminders. Reopen/refresh, collapse and
-     rebuild the sidebar: they stay hidden without resolving inline cards. New
+  2. Submit the whole ask; repeat with a transient failure and cancellation. Only
+     accepted submission or authoritative cancellation removes the request reminder.
+  3. Acknowledge existing outcomes, then create one unread successful outcome.
+     Verify the ordinary unread count is one and bulk actions are enabled. Use
+     ordinary mark-read on its ID; its reminder disappears while read history remains.
+     Repeat with mark-all-read, then clear, creating a new completion for each action.
+     A later completion re-enables bulk actions. Refresh and restart: acknowledged
+     rows stay read; clear deletes only history, leaving sessions, turns, and transcripts intact.
+  4. Create fresh question/approval reminders and mark all read. Verify both All
+     and Unread are empty, with no badge. Reopen/refresh, collapse and rebuild the
+     sidebar: they stay hidden without resolving inline cards. New
      asks/approvals restore their own reminders; clear must not hide future requests.
-  5. Verify project/unscoped labels, no ID fallback, original failure body, three
-     distinct question/completion/failure icons, and one total badge that includes
-     approvals/completions without counting mirrored completion rows twice.
+  5. Verify project/unscoped labels, no ID fallback, original failure body, distinct
+     question/completion/failure/permission icons, and exactly one badge equal to
+     `unreadNotificationCount + visibleAskCount + visiblePermissionCount`.
+     Successes and failures belong to the ordinary unread count; completion rows
+     must not contribute a second time.
   6. In Ask permission mode, create two permission requests in one background
      chat and one in another. Hold list refresh, then click an approval immediately.
      The owning project/chat opens without a permission response or badge removal.
      Reopen the bell: all undecided rows remain unread. Fail one approval response,
      retry Allow once, then Deny the queued request. Only accepted decisions remove
      those rows and badge contributions. The other chat remains pending until its
-     existing card receives an explicit decision. Also bulk-read a mixed ask/approval
-     list and verify neither answer nor permission response was submitted.
-  7. Fail completion navigation, refresh, and verify its exact reminder stays unread.
-     Delay an ordinary snapshot until after visible confirmation; it must not restore
-     an empty-list badge. Insert a live completion during backlog pagination and
-     verify it appears once with an exact total and no spurious load-more row.
+     existing card receives an explicit decision. Also bulk-read and clear mixed
+     ask/approval lists; neither action submits an answer or permission response.
+  7. Fail and supersede completion navigation, then refresh: its exact reminder
+     stays unread. Load its chat while the window is unfocused: it stays unread
+     until that successfully loaded chat is still selected, visible, and focused.
+     After confirmation, release an older ordinary snapshot; it must not restore
+     the reminder or an empty-list badge. No unrelated chat's completion is read.
+  8. Verify an unread completion survives restart while its ordinary notification
+     row is retained. Generate 201 ordered terminal notifications, including unread
+     completions older than the final 200. Refresh and restart: only the latest
+     200 rows remain, and pruned unread completions have no reminder or badge
+     contribution. Schema stays 33 and no completion table or migration is added;
+     there is no completion page or load-more control. Reading a pruned ID returns
+     `ok=false`; Host mark-all-read and clear affect only retained notification rows.
+  9. Insert a live completion during an ordinary list refresh. It appears once
+     with an exact unread count; no duplicate attention/history badge path exists.
 - **Expected**: Mark-all-read and clear remove every current reminder and its badge
   contribution from both filters without answering questions or approving/denying
   tools. Actual requests and inline cards remain until accepted responses/cancellation.
   Navigation alone retains interactive reminders and badges. Refresh never disables
-  available rows. Completion reminders keep their existing viewed/read acknowledgement;
-  failed/stale navigation alone does not acknowledge them. New notifications remain
-  actionable. Native delivery, sound, OS taskbar counts, and original decision paths
-  remain unchanged.
+  available rows. Completion reminders derive solely from unread `task.completed`
+  rows in the latest 200 ordinary notifications; restart preserves retained rows,
+  not pruned unread reminders. Existing list/read/bulk-read/clear contracts and
+  schema 33 remain unchanged. Completion navigation acknowledges only a successfully
+  loaded, selected chat in a visible focused window; failed/stale navigation does
+  not. Native delivery, sound, OS taskbar policy, and decision paths remain unchanged.
 - **Specs linked**: [Notification center](../../04-ux/08-component-spec.md#20-notificationinbox-d117),
   [Ask card](../../04-ux/11-asktool-question-card.md),
+  [Permission UX](../../04-ux/03-permission-ux.md),
+  [Storage](../../03-runtime/04-data-storage.md#completion-attention-from-bounded-notifications-schema-33-unchanged),
   [Host RPC](../../03-runtime/06-host-rpc-protocol.md#4a-notification-contracts-protocol-v4).
 - **Acceptance criterion**: C (turn completion), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Automated component user path (`test:e2e:question-notification`),
-  state/IPC tests, and Rust migration/notification tests; native focus is controlled
-  at the external window boundary in the isolated component probe.
+  real catalog/attention state tests, and Rust schema-33 notification/RPC tests.
+  Coverage includes retained completion restart, 200-row pruning, exact-ID read,
+  bulk acknowledgement, failed navigation, and sidebar remount. Native focus is
+  controlled at the external window boundary in the isolated component probe.
 
 ## E2E-065: Native task notifications are unfocused-only and activate sessions
 

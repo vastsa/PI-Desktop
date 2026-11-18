@@ -3,33 +3,26 @@ import { register } from "node:module";
 import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createNotificationAttentionSlice } = await import("../src/stores/slices/notification-attention-slice.ts");
-const { api } = await import("../src/lib/api.ts");
 const { createCatalogSlice } = await import("../src/stores/slices/catalog-slice.ts");
 const { createCatalogRuntime } = await import("../src/stores/runtime/catalog-runtime.ts");
-
-function wireCatalog(h) {
-  h.set({ notifications: [], unreadNotificationCount: 0, sessionOutcomes: {},
-    ...createCatalogSlice({ get: h.get, set: h.set, catalogRuntime: createCatalogRuntime(),
-      sessionRuntime: {}, decorateSessions: (rows) => rows,
-      withoutRecordKey: (record, key) => Object.fromEntries(Object.entries(record).filter(([id]) => id !== key)),
-    }) });
-}
+const { api } = await import("../src/lib/api.ts");
 const completion = (id, sessionId = "a") => ({ id, sessionId, sessionTitle: sessionId,
   kind: "task.completed", turnId: id, createdAt: "2026-11-16T00:00:00Z" });
 function harness() {
-  let state = { pendingCompletions: [], pendingCompletionCount: 0, pendingAsks: {},
-    pendingPermissions: {}, dismissedNotificationRequests: {},
-    markNotificationRead: (id) => api.markNotificationRead(id),
+  let state = { notifications: [], unreadNotificationCount: 0, sessionOutcomes: {},
+    pendingAsks: {}, pendingPermissions: {}, dismissedNotificationRequests: {},
     sessions: [{ id: "a" }, { id: "b" }], page: "chat", activeSessionId: undefined,
-    selectingSessionId: undefined, restorePendingInteractive: async () => {},
-    refreshNotifications: async () => {} };
+    selectingSessionId: undefined, restorePendingInteractive: async () => {} };
   const get = () => state;
   const set = (update) => { state = { ...state, ...(typeof update === "function" ? update(state) : update) }; };
-  Object.assign(state, createNotificationAttentionSlice({ get, set }));
+  Object.assign(state, createCatalogSlice({ get, set, catalogRuntime: createCatalogRuntime(),
+    sessionRuntime: {}, decorateSessions: (rows) => rows,
+    withoutRecordKey: (record, key) => Object.fromEntries(Object.entries(record).filter(([id]) => id !== key)),
+  }), createNotificationAttentionSlice({ get, set }));
   return { get, set };
 }
-const snapshot = (rows) => ({ notifications: [], unreadCount: 0,
-  pendingCompletions: rows, pendingCompletionCount: rows.length });
+const snapshot = (rows) => ({ notifications: rows,
+  unreadCount: rows.filter((row) => !row.readAt).length });
 function visible(t, focused = true) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
   const fixture = { visibilityState: "visible", hasFocus: () => focused };
@@ -38,104 +31,88 @@ function visible(t, focused = true) {
   return fixture;
 }
 
-test("refresh restores asks in every session without navigation or modifying original notifications", async (t) => {
+test("refresh restores asks in every session and uses only the existing history response", async (t) => {
   const h = harness(), restored = [];
-  t.mock.method(api, "listNotifications", async () => snapshot([completion("old")]));
+  t.mock.method(api, "listNotifications", async (input) => {
+    assert.deepEqual(input, { limit: 200 });
+    return snapshot([completion("old")]);
+  });
   h.set({ restorePendingInteractive: async (id) => restored.push(id) });
   await h.get().refreshNotificationAttention();
   assert.deepEqual(restored, ["a", "b"]);
   assert.equal(h.get().activeSessionId, undefined);
-  assert.equal(h.get().pendingCompletions[0].id, "old");
+  assert.equal(h.get().notifications[0].id, "old");
+  assert.equal(h.get().unreadNotificationCount, 1);
 });
 
-test("a completion arriving during refresh is not overwritten by an older snapshot", async (t) => {
+test("a completion arriving during refresh is not overwritten by an older history snapshot", async (t) => {
   const h = harness(); let release;
+  const fresh = completion("new", "b");
   t.mock.method(api, "listNotifications", () => release
-    ? Promise.resolve(snapshot([completion("new", "b"), completion("old")]))
+    ? Promise.resolve(snapshot([fresh, completion("old")]))
     : new Promise((resolve) => { release = resolve; }));
   const read = h.get().refreshNotificationAttention();
-  h.get().receiveCompletionNotification(completion("new", "b"));
+  h.get().receiveNotification(fresh);
   release(snapshot([completion("old")])); await read;
-  assert.deepEqual(h.get().pendingCompletions.map((row) => row.id), ["new", "old"]);
-  assert.equal(h.get().pendingCompletionCount, 2);
+  assert.deepEqual(h.get().notifications.map((row) => row.id), ["new"]);
+  await h.get().refreshNotificationAttention();
+  assert.deepEqual(h.get().notifications.map((row) => row.id), ["new", "old"]);
+  assert.equal(h.get().unreadNotificationCount, 2);
 });
 
 test("opening the bell, settings, a hidden chat, or loading another chat never confirms completion", async (t) => {
   const h = harness(), reads = [];
   const document = visible(t, false);
-  t.mock.method(api, "markNotificationRead", async (...args) => { reads.push(args); return { ok: true }; });
-  h.get().receiveCompletionNotification(completion("done"));
+  t.mock.method(api, "markNotificationRead", async (id) => { reads.push(id); return { ok: true }; });
+  h.get().receiveNotification(completion("done"));
   h.set({ activeSessionId: "a" }); await h.get().acknowledgeVisibleCompletions();
   document.hasFocus = () => true; h.set({ page: "settings" }); await h.get().acknowledgeVisibleCompletions();
   h.set({ page: "chat", selectingSessionId: "b" }); await h.get().acknowledgeVisibleCompletions();
   h.set({ selectingSessionId: undefined, activeSessionId: "b" }); await h.get().acknowledgeVisibleCompletions();
   assert.deepEqual(reads, []);
-  assert.equal(h.get().pendingCompletions.length, 1);
+  assert.equal(h.get().notifications[0].readAt, undefined);
 });
 
-test("only the visible successfully loaded conversation confirms its own completion; asks stay pending", async (t) => {
+test("only the visible loaded conversation confirms its own completion through ordinary history", async (t) => {
   const h = harness(), reads = []; visible(t);
   h.set({ activeSessionId: "a", pendingAsks: { a: [{ requestId: "unanswered" }] } });
-  h.get().receiveCompletionNotification(completion("a-done"));
-  h.get().receiveCompletionNotification(completion("b-done", "b"));
-  t.mock.method(api, "markNotificationRead", async (...args) => { reads.push(args); return { ok: true }; });
-  t.mock.method(api, "listNotifications", async () => snapshot([completion("b-done", "b")]));
+  h.get().receiveNotification(completion("a-done"));
+  h.get().receiveNotification(completion("b-done", "b"));
+  t.mock.method(api, "markNotificationRead", async (id) => { reads.push(id); return { ok: true }; });
   await h.get().acknowledgeVisibleCompletions();
-  assert.deepEqual(reads, [["a-done"]]);
-  assert.deepEqual(h.get().pendingCompletions.map((row) => row.id), ["b-done"]);
+  assert.deepEqual(reads, ["a-done"]);
+  assert.equal(h.get().unreadNotificationCount, 1);
+  assert.equal(h.get().notifications.find((row) => row.id === "b-done").readAt, undefined);
+  assert.ok(h.get().notifications.find((row) => row.id === "a-done").readAt);
   assert.equal(h.get().pendingAsks.a[0].requestId, "unanswered");
 });
 
-test("confirmation failure leaves attention available for retry", async (t) => {
+test("confirmation failure leaves unread history available for retry", async (t) => {
   const h = harness(); visible(t); h.set({ activeSessionId: "a" });
-  h.get().receiveCompletionNotification(completion("done"));
+  h.get().receiveNotification(completion("done"));
+  t.mock.method(api, "listNotifications", async () => snapshot([completion("done")]));
   t.mock.method(api, "markNotificationRead", async () => { throw new Error("unavailable"); });
   await assert.rejects(h.get().acknowledgeVisibleCompletions(), /unavailable/);
-  assert.equal(h.get().pendingCompletions[0].id, "done");
+  assert.equal(h.get().notifications[0].readAt, undefined);
+  assert.equal(h.get().unreadNotificationCount, 1);
 });
 
-test("late confirmation never removes a newly completed turn in the same chat", async (t) => {
+test("late confirmation never reads a newly completed turn in the same chat", async (t) => {
   const h = harness(); visible(t); h.set({ activeSessionId: "a" });
-  h.get().receiveCompletionNotification(completion("old")); let finish;
+  h.get().receiveNotification(completion("old")); let finish;
   t.mock.method(api, "markNotificationRead", () => new Promise((resolve) => { finish = resolve; }));
-  t.mock.method(api, "listNotifications", async () => snapshot([completion("new")]));
   const ack = h.get().acknowledgeVisibleCompletions();
-  h.get().receiveCompletionNotification(completion("new"));
+  h.get().receiveNotification(completion("new"));
   finish({ ok: true }); await ack;
-  assert.deepEqual(h.get().pendingCompletions.map((row) => row.id), ["new"]);
-});
-
-test("completion pages deduplicate rows and keep a total separate from the bell badge", async (t) => {
-  const h = harness(); h.get().receiveCompletionNotification(completion("first"));
-  t.mock.method(api, "listNotifications", async (input) => {
-    assert.equal(input.completionOffset, 1);
-    return { ...snapshot([completion("first"), completion("second")]), pendingCompletionCount: 3 };
-  });
-  await h.get().loadMoreCompletionNotifications();
-  assert.deepEqual(h.get().pendingCompletions.map((row) => row.id), ["first", "second"]);
-  assert.equal(h.get().pendingCompletionCount, 3);
-});
-
-test("opening a chat confirms its completion beyond the first loaded page", async (t) => {
-  const h = harness(), reads = []; visible(t);
-  const others = Array.from({ length: 200 }, (_, index) => completion(`other-${index}`, "b"));
-  h.set({ activeSessionId: "a", pendingCompletions: others, pendingCompletionCount: 201 });
-  t.mock.method(api, "listNotifications", async (input) => ({
-    ...snapshot(input.completionOffset === 200 ? [completion("unloaded")] : others),
-    pendingCompletionCount: reads.length ? 200 : 201,
-  }));
-  t.mock.method(api, "markNotificationRead", async (...args) => { reads.push(args); return { ok: true }; });
-  await h.get().acknowledgeVisibleCompletions();
-  assert.deepEqual(reads, [["unloaded"]]);
-  assert.equal(h.get().pendingCompletionCount, 200);
-  assert.equal(h.get().pendingCompletions.length, 200);
+  assert.equal(h.get().notifications.find((row) => row.id === "new").readAt, undefined);
+  assert.ok(h.get().notifications.find((row) => row.id === "old").readAt);
+  assert.equal(h.get().unreadNotificationCount, 1);
 });
 
 test("selection does not acknowledge a completion before its conversation loads", async (t) => {
-  const h = harness(); wireCatalog(h);
-  const done = completion("done");
-  h.set({ notifications: [done], unreadNotificationCount: 1, selectingSessionId: "a" });
-  const reads = [];
+  const h = harness(), reads = [];
+  h.get().receiveNotification(completion("done"));
+  h.set({ selectingSessionId: "a" });
   t.mock.method(api, "markNotificationRead", async (id) => { reads.push(id); return { ok: true }; });
   await h.get().acknowledgeSessionOutcome("a");
   assert.deepEqual(reads, []);
@@ -143,48 +120,54 @@ test("selection does not acknowledge a completion before its conversation loads"
 });
 
 test("completion acknowledgement invalidates older ordinary notification snapshots", async (t) => {
-  const h = harness(); wireCatalog(h); visible(t);
-  const done = completion("done");
-  h.set({ activeSessionId: "a", notifications: [done], unreadNotificationCount: 1 });
-  h.get().receiveCompletionNotification(done);
+  const h = harness(); visible(t); h.set({ activeSessionId: "a" });
+  const done = completion("done"); h.get().receiveNotification(done);
   let release;
-  t.mock.method(api, "listNotifications", () => release
-    ? Promise.resolve(snapshot([]))
-    : new Promise((resolve) => { release = resolve; }));
+  t.mock.method(api, "listNotifications", () => new Promise((resolve) => { release = resolve; }));
   t.mock.method(api, "markNotificationRead", async () => ({ ok: true }));
   const oldRead = h.get().refreshNotifications();
   await h.get().acknowledgeVisibleCompletions();
-  release({ ...snapshot([done]), notifications: [done], unreadCount: 1 });
-  await oldRead;
-  assert.equal(h.get().pendingCompletionCount, 0);
+  release(snapshot([done])); await oldRead;
+  assert.ok(h.get().notifications[0].readAt);
   assert.equal(h.get().unreadNotificationCount, 0);
 });
 
-test("a live completion included in an in-flight page is not counted twice", async (t) => {
-  const h = harness();
-  const rows = Array.from({ length: 201 }, (_, index) => completion(`old-${index}`, "b"));
-  h.set({ pendingCompletions: rows.slice(0, 200), pendingCompletionCount: rows.length });
-  let release;
-  const gate = new Promise((resolve) => { release = resolve; });
-  t.mock.method(api, "listNotifications", async (input) => {
-    await gate;
-    return { ...snapshot(rows.slice(input.completionOffset, input.completionOffset + 200)),
-      pendingCompletionCount: rows.length };
-  });
-  const page = h.get().loadMoreCompletionNotifications();
-  const fresh = completion("fresh", "b");
-  rows.unshift(fresh);
-  h.get().receiveCompletionNotification(fresh);
-  release(); await page;
-  assert.equal(h.get().pendingCompletions.length, 202);
-  assert.equal(h.get().pendingCompletionCount, 202);
+test("bulk read acknowledges completion-only history without individual reads and permits future events", async (t) => {
+  const h = harness(); h.get().receiveNotification(completion("done"));
+  t.mock.method(api, "markAllNotificationsRead", async () => ({ ok: true }));
+  t.mock.method(api, "markNotificationRead", async () => { throw new Error("unexpected individual read"); });
+  await h.get().markAllNotificationsRead();
+  assert.equal(h.get().unreadNotificationCount, 0);
+  assert.ok(h.get().notifications[0].readAt);
+  h.get().receiveNotification({ ...completion("fresh"), createdAt: new Date(Date.now() + 10_000).toISOString() });
+  assert.equal(h.get().unreadNotificationCount, 1);
 });
 
-test("acknowledging pruned completion history does not decrement an unrelated unread failure", async (t) => {
-  const h = harness(); wireCatalog(h);
-  h.set({ notifications: [{ ...completion("failure", "b"), kind: "task.failed" }], unreadNotificationCount: 1 });
-  t.mock.method(api, "markNotificationRead", async () => ({ ok: true }));
+test("request dismissal retains pending decisions and prunes only obsolete IDs", () => {
+  const h = harness();
+  const ask = { requestId: "question" }, permission = { requestId: "permission" };
+  h.set({ pendingAsks: { a: [ask] }, pendingPermissions: { b: [permission] } });
+  h.get().dismissNotificationRequests(["question", "permission"]);
+  assert.deepEqual(h.get().dismissedNotificationRequests, { question: true, permission: true });
+  assert.equal(h.get().pendingAsks.a[0], ask);
+  assert.equal(h.get().pendingPermissions.b[0], permission);
+  h.set({ pendingAsks: { a: [{ requestId: "fresh" }] } });
+  h.get().dismissNotificationRequests([]);
+  assert.deepEqual(h.get().dismissedNotificationRequests, { permission: true });
+});
+
+test("pruned completion IDs do not decrement an unrelated unread failure", async (t) => {
+  const h = harness(); h.get().receiveNotification({ ...completion("failure", "b"), kind: "task.failed" });
+  t.mock.method(api, "markNotificationRead", async () => { throw new Error("pruned history must not be read"); });
   await h.get().markNotificationRead("pruned-completion");
   assert.equal(h.get().unreadNotificationCount, 1);
   assert.equal(h.get().notifications[0].readAt, undefined);
+});
+
+test("live completion history and its unread count obey the same 200-row retention cap", () => {
+  const h = harness();
+  for (let index = 0; index < 201; index++) h.get().receiveNotification(completion(`done-${index}`));
+  assert.equal(h.get().notifications.length, 200);
+  assert.equal(h.get().unreadNotificationCount, 200);
+  assert.equal(h.get().notifications.some((row) => row.id === "done-0"), false);
 });

@@ -17,9 +17,6 @@ export type AppNotification = {
 export type NotificationListResult = {
   notifications: AppNotification[];
   unreadCount: number;
-  /** Paged completion attention; retention is independent, read/clear acknowledges it. */
-  pendingCompletions?: AppNotification[];
-  pendingCompletionCount?: number;
 };
 
 export type RemoteWorkspace = { hostKey: string; path: string };

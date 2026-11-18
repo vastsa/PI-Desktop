@@ -98,13 +98,16 @@ applies on narrow screens; the card does not rely on page-level scrolling.
 
 The bell derives question attention rows from pending ask queues, including
 background sessions. Each displayed multi-question reminder contributes once to
-the shared top-right badge. Opening the list leaves existing rows immediately
-clickable while reconciliation runs in the background. Navigating to the owning
-chat leaves both reminder and badge unchanged until successful whole-request
+the single top-right badge: `unreadNotificationCount` (successful and failed task
+outcomes) plus visible ask and permission reminders. Completion rows do not add
+a second count. Opening the list leaves existing rows immediately clickable
+while reconciliation runs in the background. Navigating to the owning chat
+leaves both reminder and badge unchanged until successful whole-request
 submission (including explicit decline/skip) or authoritative cancellation.
 Mark-all-read and clear hide the current reminder from both filters and the badge
-for this renderer lifetime, without changing the pending question card. Drafts,
-toast expiry/dismissal, and navigation never submit an answer; submission failures
+for this renderer lifetime, including sidebar collapse/remount, without changing
+the pending question card. New requests remain visible. Drafts, toast
+expiry/dismissal, and navigation never submit an answer; submission failures
 retain the request. Bootstrap/bell reconciliation does not persist drafts or
 resume an ask after a whole-runtime restart. See
 [notification center attention](08-component-spec.md#204-interactions).

@@ -150,7 +150,6 @@ impl Database {
                 tx.execute_batch(super::MODE_RUNS_SCHEMA)?;
                 super::mode_run_elapsed_migration::initialize(&tx)?;
                 super::completion_report_migration::initialize(&tx)?;
-                super::pending_completion_migration::initialize(&tx)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -226,7 +225,6 @@ impl Database {
             30 => {}
             31 => {}
             32 => {}
-            33 => {}
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -313,10 +311,6 @@ impl Database {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version == 32 {
             super::legacy_goal_migration::migrate(&conn, path)?;
-        }
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version == 33 {
-            super::pending_completion_migration::migrate(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

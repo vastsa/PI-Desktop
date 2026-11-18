@@ -2,11 +2,9 @@ import type { AppNotification, AskToolRequest, SessionSummary } from "@pi-deskto
 import { normalizeProjectPath, type ProjectMeta } from "./sidebar-preferences.ts";
 
 /**
- * The inbox popover surfaces only outcomes that need attention (D295). Successful
- * completions stay in the durable record so the sidebar outcome badge and the
- * native system notification keep working, but listing every one of them
- * buried the failures under noise. The OS shell/taskbar unread overlay is
- * separate and counts all unread task notifications (completed + failed).
+ * Failure-row projection for the bell. Unread completed outcomes render in the
+ * attention section from the same bounded notification history. The shared
+ * durable unread total already includes both kinds.
  */
 export function inboxNotifications(
   notifications: AppNotification[],
@@ -23,11 +21,11 @@ export function inboxUnreadCount(notifications: AppNotification[]): number {
   );
 }
 
-/** Completion attention mirrors task history, so count the larger task projection. */
+/** The durable unread total already includes both completion and failure rows. */
 export function notificationBadgeCount(
-  taskUnreadCount: number, inboxCount: number, completionCount: number, interactiveCount: number,
+  taskUnreadCount: number, interactiveCount: number,
 ): number {
-  return Math.max(taskUnreadCount, inboxCount + completionCount) + interactiveCount;
+  return taskUnreadCount + interactiveCount;
 }
 
 /** Draft answers and notification read markers never settle an open ask. */

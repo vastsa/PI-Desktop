@@ -9,14 +9,12 @@ type Props = {
   questions: AskToolRequest[];
   permissions: ToolPermissionRequest[];
   completions: AppNotification[];
-  completionCount: number;
   busy: boolean;
   onActivate: (sessionId: string) => void;
-  onLoadMore: () => void;
 };
 
-export function NotificationAttentionItems({ questions, permissions, completions, completionCount,
-  busy, onActivate, onLoadMore }: Props) {
+export function NotificationAttentionItems({ questions, permissions, completions,
+  busy, onActivate }: Props) {
   const { t } = useTranslation();
   const sessions = useAppStore((state) => state.sessions);
   const projectMeta = useAppStore((state) => state.projectMeta);
@@ -64,10 +62,5 @@ export function NotificationAttentionItems({ questions, permissions, completions
         </span>
       </Button>
     </li>)}
-    {completions.length < completionCount ? <li>
-      <Button variant="ghost" disabled={busy} onClick={onLoadMore}>
-        {t("notifications.loadMoreCompletions")}
-      </Button>
-    </li> : null}
   </>;
 }
