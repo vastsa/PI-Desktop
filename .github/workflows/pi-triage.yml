@@ -40,4 +40,4 @@ jobs:
           model: deepseek-v4.1-flash
           base_url: https://platform.aimom.net/v1
           api_style: openai-completions
-          api_key: ${{ secrets.AIMOM_API_KEY }}
+          api_key: ${{ secrets.API_KEY }}
