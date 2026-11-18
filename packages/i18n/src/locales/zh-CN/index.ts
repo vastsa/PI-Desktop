@@ -2,6 +2,7 @@ import { en, type EnglishCatalog } from "../en/index.js";
 
 export const zhCN = {
   sideQuestions: {
+    retry: "重试",
     removeReference: "移除引用",
     title: "支线提问", untitled: "新支线提问", history: "支线历史",
     input: "继续支线提问…", source: "来自：{{title}}", readOnly: "只读",

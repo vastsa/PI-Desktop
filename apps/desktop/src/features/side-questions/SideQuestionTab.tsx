@@ -103,7 +103,7 @@ function SideQuestionConversation({ id, parentId }: { id: string; parentId: stri
       <div className="side-question-toolbar-actions"><Button variant="ghost" onClick={() => useAppStore.getState().openWorkPanelTabForSession(parentId, sideQuestionHistoryWorkPanelTab(parentId))}>{t("sideQuestions.history")}</Button>
       <DeleteSideQuestionButton id={id} disabled={!session || composerBusy} /></div>
     </div>
-    {error ? <div className="side-question-error" role="alert">{error}{!session ? <Button variant="ghost" onClick={() => void load()}>{t("common.retry")}</Button> : null}</div> : null}
+    {error ? <div className="side-question-error" role="alert">{error}{!session ? <Button variant="ghost" onClick={() => void load()}>{t("sideQuestions.retry")}</Button> : null}</div> : null}
     <div className="side-question-scroll" ref={follow.scrollRef} onScroll={follow.handleScroll} role="log" aria-live="polite" tabIndex={0}>
       <ChatFileSessionContext.Provider value={{ id, projectPath: session?.projectPath }}>
       <div ref={follow.contentRef}>

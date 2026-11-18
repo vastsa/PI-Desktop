@@ -1,5 +1,6 @@
 export const en = {
   sideQuestions: {
+    retry: "Retry",
     removeReference: "Remove reference",
     title: "Side question", untitled: "New side question", history: "Side-question history",
     input: "Ask in this side conversation…", source: "From: {{title}}", readOnly: "Read only",

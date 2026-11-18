@@ -12,6 +12,7 @@ const imports = {
   "@pi-desktop/shared": { IPC, ErrorCodes, isModeId }, "../importers": {},
   "../services/session-collaboration": {}, "../bootstrap/remote-hosts.js": {},
   "../services/session-search": {},
+  "./side-question-ipc": { registerSideQuestionIpc() {} },
 };
 new Function("require", "exports", "module", ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },

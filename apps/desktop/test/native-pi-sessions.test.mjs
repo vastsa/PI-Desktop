@@ -77,7 +77,7 @@ function stateHarness(state) {
 test("durable user acknowledgement reconciles active, cached and background rows across reselects", () => {
   for (const activeSessionId of ["native-pi:fixture", "desktop-session"]) {
     const id = "native-pi:fixture";
-    const state = { activeSessionId, messages: [user("optimistic-1"), user("optimistic-2")], retainedTranscripts: { [id]: [user("optimistic-1"), user("optimistic-2")] } };
+    const state = { activeSessionId, sideQuestionTranscripts: {}, messages: [user("optimistic-1"), user("optimistic-2")], retainedTranscripts: { [id]: [user("optimistic-1"), user("optimistic-2")] } };
     const runtime = {
       liveSessionTranscripts: new Set(), sessionTranscriptCache: new Map([[id, [...state.messages]]]),
       cacheSessionTranscript: (key, rows) => runtime.sessionTranscriptCache.set(key, rows),
@@ -245,6 +245,7 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
     "../importers": { convertSession() {}, scanAllSources() {}, scanModelConfigs() {} },
     "../services/session-collaboration": { readSessionCollaboration() {} },
     "../services/session-search": { localNativeProjectPaths, searchSessionsAcrossSources },
+    "./side-question-ipc": { registerSideQuestionIpc() {} },
     "../bootstrap/remote-hosts.js": { getActiveRemoteHostsBoot: () => null },
   });
   registerSessionIpc({
