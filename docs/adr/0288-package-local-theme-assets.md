@@ -7,37 +7,26 @@
 
 ## Context
 
-ADR 0255 made external absolute paths available to theme contributions. That
-supports a theme whose plugin owns a user-selected image outside its package,
-but an absolute path cannot identify an image in an installed marketplace
-archive on another machine.
-
-Host-rendered scenic Settings destinations need preview images and background
-images that travel with their theme package. Requiring an absolute path would
-make a packaged theme either non-portable or dependent on a separate file
-selection capability.
+ADR 0255 allowed external absolute paths for theme contributions, which cannot
+identify an image inside an installed marketplace archive on another machine, while
+host-rendered scenic Settings destinations need images that travel with the theme
+package.
 
 ## Decision
 
-1. A declared theme asset may be either an extension-whitelisted absolute path
-   or an extension-whitelisted package-relative path.
+1. A declared theme asset may be an extension-whitelisted absolute path, keeping
+   ADR 0255's validation and percent-encoded URL keys, or a package-relative path.
 2. The host resolves a package-relative path with `resolveInsidePlugin`, rejects
-   traversal and `node_modules`, verifies existence and the shared asset budget,
-   then records the resolved file under its package-relative key.
-3. Absolute assets retain ADR 0255's existing validation, percent-encoded URL
-   keys, and runtime registration behavior.
-4. The `plugin-asset:` protocol remains the sole renderer access path. It only
-   serves a file recorded by the loaded plugin's asset registry, uses the
-   extension MIME allowlist, no-store, nosniff, and revokes the registry on
+   traversal and `node_modules`, checks existence and the shared asset budget, then
+   records the file under its package-relative key.
+3. `plugin-asset:` remains the sole renderer access path: it serves only registry
+   files with the extension MIME allowlist, no-store and nosniff, and is revoked on
    disable, unload, or crash.
-5. Scenic card previews must name one declared asset owned by the same plugin.
-   They do not add filesystem, network, renderer-DOM, or image-upload authority.
+4. Scenic card previews must name a declared asset of the same plugin and add no
+   filesystem, network, or renderer-DOM authority.
 
 ## Consequences
 
-- Marketplace theme packs can ship portable local art without exposing arbitrary
-  filesystem reads.
-- Existing themes that intentionally name an external absolute path keep
-  working.
-- Theme authors must declare every image and font; an undeclared CSS `url()` is
-  rejected before it reaches the renderer.
+Marketplace theme packs ship portable local art without arbitrary filesystem reads,
+themes naming an absolute path keep working, and an undeclared CSS `url()` is
+rejected before it reaches the renderer.

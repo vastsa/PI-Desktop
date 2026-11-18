@@ -287,14 +287,7 @@ The Linux updater feeds carry the architecture they were built for:
 channel files `electron-updater` requests on the matching architecture, so a
 lane fails before upload if its own feed is missing.
 
-### 4.4 Documentation site deployment
-
-The release workflow does not deploy the documentation site. Vercel Git
-Deployments are disabled in `docs/vercel.json`, so changes to documentation
-sources do not automatically update the production site. Deployments must be
-initiated manually in Vercel when required.
-
-### 4.5 CNB mirror trigger
+### 4.4 CNB mirror trigger
 
 After `softprops/action-gh-release` publishes or updates a GitHub Release,
 `.github/workflows/mirror-to-cnb.yml` starts the CNB pipeline at
@@ -317,7 +310,7 @@ Re-running the workflow for the same tag is safe if the CNB pipeline is
 idempotent. It does not rebuild desktop artifacts and does not change
 electron-updater feeds.
 
-### 4.6 GitHub Actions secrets for macOS signing
+### 4.5 GitHub Actions secrets for macOS signing
 
 Create these under GitHub → repository `vastsa/PI-Desktop` → Settings →
 Secrets and variables → Actions. Never commit the p12, password, Apple ID, or
@@ -340,7 +333,7 @@ base64 -i developer-id-application.p12 | pbcopy
 On Linux use `base64 -w0 developer-id-application.p12`. Files that must never
 enter git: `*.p12`, `*.cer`, `*.p8`, `*.mobileprovision`.
 
-### 4.7 macOS signing observability and timeouts
+### 4.6 macOS signing observability and timeouts
 
 `electron-builder` prints one line before signing — `signing
 file=release/mac-arm64/PI-Desktop.app platform=darwin type=distribution

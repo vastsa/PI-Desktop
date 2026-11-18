@@ -21,8 +21,10 @@ docs/plugin-plan/
   render/<api-id>/     one renderer interface  e.g. render/draft
   runtime/<contract-id>/  one runtime hook or session data contract
                           e.g. runtime/before-send, runtime/session-context
-  host-api/<api-id>/   one callable host API or lifecycle hook (implemented
-                        surface; Chinese title 曾经是「已有能力」) e.g. host-api/fs.readText
+  host-api/index.html  the complete host API list
+  host-api/<namespace>.html  every callable host API or lifecycle hook in one
+                        namespace, one <article id="<api-id>"> each
+                        e.g. host-api/fs.html#fs.readText
 ```
 
 Folder id is lowercase-kebab and must match the name the SDK will use. Titles
@@ -30,6 +32,10 @@ inside the pages are Chinese; ids, field names, code, and commit messages stay
 English.
 
 ## Required files per folder
+
+This applies to `ui/`, `render/`, and `runtime/` folders. `host-api/` uses one
+page per namespace; each API article carries the data-flow sections below
+followed by its scenarios and decisions.
 
 Every folder carries its own `index.html` first. It lists the pages in that
 folder, the status, and what the folder covers.

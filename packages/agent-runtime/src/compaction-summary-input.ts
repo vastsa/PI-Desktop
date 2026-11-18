@@ -8,6 +8,7 @@ import {
   estimateTokens,
 } from "./pi-runtime-estimates.js";
 import { convertToLlm, serializeConversation } from "./pi-runtime-messages.js";
+import { countCjkChars } from "./output-cap.js";
 import type { CompactionPreparation } from "./pi-runtime-types.js";
 import { DEFAULT_MAX_TOKENS } from "./provider-binding.js";
 
@@ -78,22 +79,76 @@ export type CompactionSummaryInput = Pick<
 >;
 
 /**
+ * CJK-aware token estimate of one serialized prompt string: the chars/3.5
+ * baseline pi's text estimator uses, plus the shortfall the baseline charges
+ * CJK text — Han, kana, and Hangul tokenize at ~1 token per character while
+ * the baseline bills them 1/3.5, so 0.75 tokens per CJK character are added
+ * back (issue #2364). A CJK prompt that looks like it fits at chars/3.5 is
+ * otherwise sent whole and rejected as a context overflow.
+ */
+export function estimatePromptTextTokens(text: string): number {
+  return (
+    Math.ceil(text.length / ESTIMATED_TEXT_CHARS_PER_TOKEN) +
+    Math.ceil(countCjkChars(text) * 0.75)
+  );
+}
+
+/** CJK characters carried by one message's text-bearing content blocks. */
+function messageCjkChars(message: AgentMessage): number {
+  const content: unknown = (message as { content?: unknown }).content;
+  if (typeof content === "string") return countCjkChars(content);
+  if (!Array.isArray(content)) return 0;
+  let count = 0;
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const record = block as { type?: unknown; [key: string]: unknown };
+    if (record.type === "text" && typeof record.text === "string") {
+      count += countCjkChars(record.text);
+    } else if (record.type === "thinking" && typeof record.thinking === "string") {
+      count += countCjkChars(record.thinking);
+    } else if (
+      (record.type === "toolCall" || record.type === "functionCall") &&
+      typeof record.name === "string"
+    ) {
+      // JSON.stringify leaves Han unescaped, so the arguments the provider
+      // receives carry the same characters the correction has to charge.
+      const payload = (() => {
+        try {
+          const serialized = JSON.stringify(record.arguments ?? record.input);
+          return serialized === undefined ? "" : serialized;
+        } catch {
+          return "";
+        }
+      })();
+      count += countCjkChars(record.name) + countCjkChars(payload);
+    }
+  }
+  return count;
+}
+
+/** Per-message chunk cost: pi's estimator plus the CJK shortfall it ignores. */
+function estimateChunkMessageTokens(message: AgentMessage): number {
+  return (
+    Math.ceil(estimateTokens(message)) +
+    Math.ceil(messageCjkChars(message) * 0.75)
+  );
+}
+
+/**
  * Tokens the summary request(s) will carry for this input, using pi's own
  * serialization and text-token estimate. A split turn issues two requests
  * (history, then turn prefix);
  * the larger one is the one that has to fit.
  */
 export function estimateSummaryPromptTokens(input: CompactionSummaryInput): number {
-  const historyChars =
-    serializeConversation(convertToLlm(input.messagesToSummarize)).length +
-    (input.previousSummary?.length ?? 0);
-  const turnPrefixChars =
+  const history =
+    serializeConversation(convertToLlm(input.messagesToSummarize)) +
+    (input.previousSummary ?? "");
+  const turnPrefix =
     input.isSplitTurn && input.turnPrefixMessages.length > 0
-      ? serializeConversation(convertToLlm(input.turnPrefixMessages)).length
-      : 0;
-  return Math.ceil(
-    Math.max(historyChars, turnPrefixChars) / ESTIMATED_TEXT_CHARS_PER_TOKEN,
-  );
+      ? serializeConversation(convertToLlm(input.turnPrefixMessages))
+      : "";
+  return Math.max(estimatePromptTextTokens(history), estimatePromptTextTokens(turnPrefix));
 }
 
 /**
@@ -194,7 +249,9 @@ export function compactionSummaryReserveTokens(input: {
   outputBudget: number;
 }): number {
   return Math.max(
-    Math.ceil((input.previousSummary?.length ?? 0) / ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    input.previousSummary
+      ? estimatePromptTextTokens(input.previousSummary)
+      : 0,
     input.outputBudget,
   );
 }
@@ -214,6 +271,30 @@ export function compactionSummaryReserveTokens(input: {
  * message larger than the budget is truncated rather than dropped, so no message
  * ever leaves the summary's scope.
  */
+/**
+ * Largest character budget that keeps a truncated message inside the chunk's
+ * token budget. Plain ASCII keeps the chars/3.5 cap; a CJK-bearing message is
+ * cut further by binary search so the truncated text still meets the same
+ * CJK-aware estimate the guard and the planner use (issue #2364).
+ */
+function chunkTruncationChars(message: AgentMessage, budgetTokens: number): number {
+  const asciiCap = Math.floor(budgetTokens * ESTIMATED_TEXT_CHARS_PER_TOKEN);
+  if (messageCjkChars(message) === 0) return asciiCap;
+  let lo = 0;
+  let hi = asciiCap;
+  while (lo < hi) {
+    const mid = lo + Math.ceil((hi - lo) / 2);
+    const truncated = truncateMessageText(
+      message,
+      mid,
+      SUMMARY_CHUNK_TRUNCATION_MARKER,
+    );
+    if (estimateChunkMessageTokens(truncated) <= budgetTokens) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
 export function planSummaryChunks(
   input: CompactionSummaryInput,
   options: { summaryInputLimit: number; reserveTokens: number },
@@ -234,7 +315,7 @@ export function planSummaryChunks(
   let current: AgentMessage[] = [];
   let tokens = 0;
   for (const message of range) {
-    const cost = Math.max(1, Math.ceil(estimateTokens(message)));
+    const cost = Math.max(1, estimateChunkMessageTokens(message));
     if (current.length > 0 && tokens + cost > budget) {
       chunks.push(current);
       if (chunks.length >= COMPACTION_SUMMARY_MAX_CHUNKS) return undefined;
@@ -245,7 +326,7 @@ export function planSummaryChunks(
       cost > budget
         ? truncateMessageText(
             message,
-            Math.floor(budget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+            chunkTruncationChars(message, budget),
             SUMMARY_CHUNK_TRUNCATION_MARKER,
           )
         : message,

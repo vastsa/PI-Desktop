@@ -144,10 +144,37 @@ describe("loadModeDefinitions", () => {
     ]);
   });
 
-  it("never lets a user document replace a builtin", () => {
+  it("lets a document in a builtin's folder override it, keeping its shape", () => {
+    const goal = builtinModeSource("goal")!.replace("maxTurns: 20", "maxTurns: 50");
+    const result = loadModeDefinitions({
+      userDocuments: [
+        userDocument("goal", goal),
+        userDocument("plan", "---\nname: plan\nlabel: My plan\npermission: contract\n---\nPlan my way.\n"),
+      ],
+    });
+
+    expect(result.definitions.map((definition) => [definition.id, definition.source])).toEqual([
+      ["agent", "builtin"],
+      ["plan", "user"],
+      ["goal", "user"],
+    ]);
+    expect(result.definitions[1].prompt).toBe("Plan my way.");
+    expect(result.definitions[2].budget).toEqual({ maxTurns: 50, maxTokens: null });
+    expect(result.catalog.slice(0, 3)).toEqual([
+      expect.not.objectContaining({ customized: true }),
+      expect.objectContaining({ id: "plan", source: "builtin", customized: true, available: true, label: "My plan", filePath: "/home/user/.pi/modes/plan/mode.md" }),
+      expect.objectContaining({ id: "goal", source: "builtin", customized: true, available: true, staged: true, filePath: "/home/user/.pi/modes/goal/mode.md" }),
+    ]);
+    expect(result.catalog).toHaveLength(3);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps the shipped builtin when its override is invalid or changes its shape", () => {
     const result = loadModeDefinitions({
       userDocuments: [
         userDocument("agent", "---\nlabel: Mine\npermission: contract\n---\nMine\n"),
+        userDocument("goal", "---\nname: goal\n---\nno stages\n"),
+        userDocument("plan", "---\nname: plan\npermission: nope\n---\n"),
         userDocument("other", "---\nname: plan\npermission: agent\n---\nMine\n"),
       ],
     });
@@ -158,13 +185,24 @@ describe("loadModeDefinitions", () => {
       ["goal", "builtin"],
     ]);
     expect(result.definitions[0].permission).toBe("agent");
-    expect(result.definitions[1].permission).toBe("contract");
-    const reserved = result.catalog.filter((entry) => entry.reserved);
-    expect(reserved).toEqual([
-      expect.objectContaining({ id: "agent", reserved: true, available: false, source: "user" }),
-      expect.objectContaining({ id: "plan", reserved: true, available: false, source: "user" }),
+    expect(result.definitions[2].budget.maxTurns).toBe(20);
+    for (const id of ["agent", "plan", "goal"]) {
+      expect(result.catalog.find((entry) => entry.id === id && entry.source === "builtin")).toMatchObject({
+        available: true,
+        customized: true,
+        filePath: `/home/user/.pi/modes/${id}/mode.md`,
+      });
+    }
+    const errors = (id: string, filePath: string) =>
+      result.diagnostics.find((item) => item.modeId === id && item.filePath === filePath)?.errors ?? [];
+    expect(errors("agent", "/home/user/.pi/modes/agent/mode.md")).toEqual([expect.stringContaining('must keep "agent"')]);
+    expect(errors("goal", "/home/user/.pi/modes/goal/mode.md")).toEqual([expect.stringContaining("at least one stage")]);
+    expect(errors("plan", "/home/user/.pi/modes/plan/mode.md").length).toBeGreaterThan(0);
+    // Outside the builtin's own folder, a builtin id is still reserved.
+    expect(result.catalog.filter((entry) => entry.reserved)).toEqual([
+      expect.objectContaining({ id: "plan", reserved: true, available: false, source: "user", filePath: "/home/user/.pi/modes/other/mode.md" }),
     ]);
-    expect(result.diagnostics.map((diagnostic) => diagnostic.modeId)).toEqual(["agent", "plan"]);
+    expect(errors("plan", "/home/user/.pi/modes/other/mode.md")).toEqual([expect.stringContaining("is a builtin mode")]);
   });
 
   it("refuses a duplicate id and caps the number of user modes", () => {

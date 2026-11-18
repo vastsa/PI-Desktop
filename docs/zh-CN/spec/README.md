@@ -2,6 +2,8 @@
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/README) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
+> **说明：** 中文站只保留首页、指南、插件开发和本索引；各规格正文仅提供英文版，下表链接直接进入英文页面。
+
 
 > 冻结基线：`0.4.16` · 当前应用版本线：`0.13.3`
 > 更新：`2026-09-05`
@@ -18,24 +20,24 @@
 
 | 医生 | 描述 |
 |---|---|
-| [NAV.md](/zh-CN/spec/NAV) | 单页完整导航 |
-| [00-基线.md](/zh-CN/spec/00-baseline) | 冻结基线 |
-| [08-meta/decisions-log.md](/zh-CN/spec/08-meta/decisions-log) | 冻结细节决策 |
-| [01-product/00-overview.md](/zh-CN/spec/01-product/00-overview) | 概述 |
-| [01-product/01-product-scope.md](/zh-CN/spec/01-product/01-product-scope) | 目前的产品范围和运营模式 |
-| [02-architecture/01-architecture.md](/zh-CN/spec/02-architecture/01-architecture) | 建筑 |
-| [02-architecture/05-remote-agent-control.md](/zh-CN/spec/02-architecture/05-remote-agent-control) | 远程 Agent Host 和 Gateway 目标架构 |
-| [03-runtime/05-host-core-rust.md](/zh-CN/spec/03-runtime/05-host-core-rust) | Rust 主机核心 |
-| [03-runtime/19-remote-agent-control-protocol.md](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol) | 远程控制协议 |
-| [05-security/02-remote-control-security.md](/zh-CN/spec/05-security/02-remote-control-security) | 远程控制安全 |
-| [04-ux/02-i18n-english-first.md](/zh-CN/spec/04-ux/02-i18n-english-first) | 国际化政策 |
-| [04-ux/07-ui-design-system.md](/zh-CN/spec/04-ux/07-ui-design-system) | 设计系统（令牌、运动、密度） |
-| [04-ux/01-ui-ia.md](/zh-CN/spec/04-ux/01-ui-ia) | 已发货的外壳和目的地地图 |
+| [NAV.md](/spec/NAV) | 单页完整导航 |
+| [00-基线.md](/spec/00-baseline) | 冻结基线 |
+| [08-meta/decisions-log.md](/spec/08-meta/decisions-log) | 冻结细节决策 |
+| [01-product/00-overview.md](/spec/01-product/00-overview) | 概述 |
+| [01-product/01-product-scope.md](/spec/01-product/01-product-scope) | 目前的产品范围和运营模式 |
+| [02-architecture/01-architecture.md](/spec/02-architecture/01-architecture) | 建筑 |
+| [02-architecture/05-remote-agent-control.md](/spec/02-architecture/05-remote-agent-control) | 远程 Agent Host 和 Gateway 目标架构 |
+| [03-runtime/05-host-core-rust.md](/spec/03-runtime/05-host-core-rust) | Rust 主机核心 |
+| [03-runtime/19-remote-agent-control-protocol.md](/spec/03-runtime/19-remote-agent-control-protocol) | 远程控制协议 |
+| [05-security/02-remote-control-security.md](/spec/05-security/02-remote-control-security) | 远程控制安全 |
+| [04-ux/02-i18n-english-first.md](/spec/04-ux/02-i18n-english-first) | 国际化政策 |
+| [04-ux/07-ui-design-system.md](/spec/04-ux/07-ui-design-system) | 设计系统（令牌、运动、密度） |
+| [04-ux/01-ui-ia.md](/spec/04-ux/01-ui-ia) | 已发货的外壳和目的地地图 |
 | [../project/plan-mode-implementation-plan.md](/project/plan-mode-implementation-plan) | Plan 运行状态实施计划 |
-| [07-plugins/01-plugin-system.md](/zh-CN/spec/07-plugins/01-plugin-system) | 插件系统 |
-| [06-delivery/03-ai-development-workflow.md](/zh-CN/spec/06-delivery/03-ai-development-workflow) | AI开发工作流程规则 |
-| [06-delivery/04-e2e-test-plan.md](/zh-CN/spec/06-delivery/04-e2e-test-plan) | E2E 测试计划和场景 |
-| [06-delivery/05-change-checklist.md](/zh-CN/spec/06-delivery/05-change-checklist) | 更改清单 |
+| [07-plugins/01-plugin-system.md](/spec/07-plugins/01-plugin-system) | 插件系统 |
+| [06-delivery/03-ai-development-workflow.md](/spec/06-delivery/03-ai-development-workflow) | AI开发工作流程规则 |
+| [06-delivery/04-e2e-test-plan.md](/spec/06-delivery/04-e2e-test-plan) | E2E 测试计划和场景 |
+| [06-delivery/05-change-checklist.md](/spec/06-delivery/05-change-checklist) | 更改清单 |
 
 ## 目录映射
 

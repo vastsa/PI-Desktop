@@ -29,10 +29,12 @@
 }
 
 .drag {
+  --window-drag-region: drag;
   -webkit-app-region: drag;
 }
 
 .no-drag {
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
 }
 
@@ -439,6 +441,7 @@
   cursor: col-resize;
   touch-action: none;
   user-select: none;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -538,6 +541,7 @@
     calc(4px - var(--minimap-marker-count) * 0.05px),
     2px
   );
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

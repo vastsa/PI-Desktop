@@ -6,53 +6,38 @@
 
 ## Context
 
-Electron 43's net module leaves its client certificate responder unimplemented.
-A server requesting an optional client certificate therefore aborts model
-metadata discovery with `net::ERR_SSL_CLIENT_AUTH_CERT_NEEDED` before HTTP is
-sent, even when it accepts an empty client identity. An app-level
-`select-client-certificate` listener cannot reach that path. Electron #52162
-fixes it in 44, but that release also removes macOS 12 support and changes the
-clipboard API. This repair retains the existing platform compatibility.
+Electron 43 leaves its client certificate responder unimplemented, so a server
+requesting an optional client certificate aborts model metadata discovery with
+`net::ERR_SSL_CLIENT_AUTH_CERT_NEEDED` before HTTP is sent, even when it accepts
+an empty client identity. Electron 44 (issue Electron #52162) fixes this but
+drops macOS 12 support and changes the clipboard API.
 
 ## Decision
 
-Keep Chromium as the primary transport. Extract the metadata transport from
-model discovery and connection probes. On exactly the client-auth-certificate
-error, retry that HTTPS GET or OPTIONS once through Node TLS, without a client
-identity. Do not install a global fetch fallback or retry agent turns, plugin
-requests, ordinary HTTP responses, unrelated TLS failures or cancelled work.
-
-The retry uses the existing authenticated loopback SOCKS relay. Its resolver
-consults the default Chromium session, including the active System/PAC, Direct,
-custom proxy and bypass configuration. There is no direct fallback when proxy
-routing fails. The request retains its original AbortSignal and manual redirect
-mode; the existing model discovery origin guard remains the only redirect owner.
-
-Use bundled/default and OS CA roots per request, without changing process-wide
-TLS settings or disabling chain, expiration or hostname verification. The
-metadata attempt owns its tunnel, TLS socket and HTTP agent through response
-consumption and closes them on success, failure or cancellation. A tunnel that
-completes after cancellation is destroyed on arrival; the underlying existing
-SOCKS handshake remains bounded by its own timeout.
+Keep Chromium as the primary transport but extract the metadata transport from
+model discovery and connection probes, and on exactly the
+client-auth-certificate error retry that HTTPS GET or OPTIONS once through Node
+TLS without a client identity. The retry travels over the existing
+authenticated loopback SOCKS relay, whose resolver consults the default Chromium
+session including System/PAC, Direct, and custom proxy configuration, with no
+direct fallback when proxy routing fails; it keeps the original AbortSignal and
+manual redirect mode, uses bundled and OS CA roots per request without changing
+process-wide TLS settings, and owns and closes its tunnel, socket, and agent.
+Nothing else retries: no global fetch fallback, no agent turns, plugin
+requests, ordinary HTTP responses, unrelated TLS failures, or cancelled work.
 
 ## Consequences
 
-Optional client authentication reaches ordinary HTTP responses; mandatory client
-authentication still fails. There are no persistence, IPC or plugin contract
-changes. The Node retry inherits the existing relay limitation for interactive
-or OS-integrated proxy authentication and fails closed in those environments.
-
-A focused Electron E2E reproduces the original failure and exercises actual
-model discovery and connection tests through direct and authenticated proxy
-routes. Lower-level TLS tests cover trust, hostname validation, mandatory client
-authentication, redirects, compressed metadata and cancellation.
+- Optional client authentication reaches ordinary HTTP responses while
+  mandatory client authentication still fails.
+- There are no persistence, IPC, or plugin contract changes, and the retry
+  fails closed where proxy authentication is interactive or OS-integrated.
+- The compatibility retry is removed once a validated runtime provides native
+  recovery.
 
 ## Alternatives
 
-- Electron 44: the upstream solution, but requires a separate platform/API
-  migration decision. Remove the compatibility retry when a validated runtime
-  provides native recovery and an explicit client-identity policy.
-- Only add an app event handler: Electron 43 never emits it for net requests.
-- Replace global fetch with Node: changes unrelated networking, cookies, proxy
-  authentication and plugin behavior.
-- Disable server certificate checks: unrelated to the root cause and unsafe.
+- Electron 44: the upstream solution, but it needs its own platform and API
+  migration decision.
+- Replace global fetch with Node: rejected, it changes unrelated networking,
+  cookies, proxy authentication, and plugin behavior.

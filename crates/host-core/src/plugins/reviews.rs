@@ -591,14 +591,26 @@ fn center_refusal(url: &str, status: u16, payload: &[u8]) -> anyhow::Error {
 /// Redirects are never followed: the request already targets the trusted
 /// origin, and `3xx` answers become refusals.
 fn get_json(url: &str) -> Result<(u16, Vec<u8>)> {
+    get_json_limited(url, MAX_REVIEW_RESPONSE_BYTES, "review")
+}
+
+/// Bounded anonymous GET against the trusted plugin center.
+///
+/// `limit` caps the body and `what` names the read in its errors ("review",
+/// "marketplace search"), so every center read shares one transport with its
+/// own size policy.
+pub(crate) fn get_json_limited(url: &str, limit: usize, what: &str) -> Result<(u16, Vec<u8>)> {
     let response_path = super::install::download_scratch_path();
     let mut args: Vec<String> = vec![
         "--silent".into(),
         "--show-error".into(),
         "--max-time".into(),
         REVIEW_TIMEOUT_SECONDS.to_string(),
+        // The center sits behind a compressing CDN; JSON shrinks several-fold.
+        // The size check below runs on the decoded body.
+        "--compressed".into(),
         "--max-filesize".into(),
-        MAX_REVIEW_RESPONSE_BYTES.to_string(),
+        limit.to_string(),
         "--output".into(),
         response_path.to_string_lossy().into_owned(),
         "--write-out".into(),
@@ -623,9 +635,10 @@ fn get_json(url: &str) -> Result<(u16, Vec<u8>)> {
                 .unwrap_or(0);
             let payload = fs::read(&response_path).unwrap_or_default();
             let _ = fs::remove_file(&response_path);
-            if payload.len() > MAX_REVIEW_RESPONSE_BYTES {
+            if payload.len() > limit {
                 bail!(
-                    "PLUGIN_MARKET_INVALID: the plugin center's review answer exceeds the 1MiB limit"
+                    "PLUGIN_MARKET_INVALID: the plugin center's {what} answer exceeds the {} limit",
+                    byte_limit_label(limit)
                 );
             }
             if status == 0 {
@@ -639,11 +652,12 @@ fn get_json(url: &str) -> Result<(u16, Vec<u8>)> {
             // outage.
             if output.status.code() == Some(63) {
                 bail!(
-                    "PLUGIN_MARKET_INVALID: the plugin center's review answer exceeds the 1MiB limit"
+                    "PLUGIN_MARKET_INVALID: the plugin center's {what} answer exceeds the {} limit",
+                    byte_limit_label(limit)
                 );
             }
             bail!(
-                "PLUGIN_NETWORK: review request failed for {url}: {}",
+                "PLUGIN_NETWORK: {what} request failed for {url}: {}",
                 decode_curl_output(&output.stderr)
             )
         }
@@ -653,11 +667,20 @@ fn get_json(url: &str) -> Result<(u16, Vec<u8>)> {
     }
 }
 
+/// `1MiB`-style label for a byte limit, as the refusals have always said it.
+fn byte_limit_label(limit: usize) -> String {
+    if limit.is_multiple_of(1024 * 1024) {
+        format!("{}MiB", limit / (1024 * 1024))
+    } else {
+        format!("{limit} byte")
+    }
+}
+
 /// Percent-encode one URL component.
 ///
 /// Ids are validated before they get here, but the cursor is opaque center
 /// state, so everything outside the unreserved set is encoded.
-fn encode_component(value: &str) -> String {
+pub(crate) fn encode_component(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {

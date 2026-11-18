@@ -2,70 +2,49 @@
 
 - Status: Accepted
 - Date: 2026-11-13
-- Related: issue #2330, ADR 0317, ADR 0325, E2E-167
+- Related: ADR 0317, ADR 0325, issue #2330
 
 ## Context
 
-Pinned Electron 43.6.0 removes `WS_THICKFRAME` and `WS_CAPTION` when the main
-window uses `thickFrame: false`, excluding it from native keyboard and titlebar
-drag snapping. Enabling Electron's thick frame restores its left/right/bottom
-client-area insets and would regress the borderless surface fixed by ADR 0317.
+The pinned Electron drops `WS_THICKFRAME` and `WS_CAPTION` for a `thickFrame:
+false` window, excluding it from native keyboard and titlebar-drag snapping, while
+enabling Electron's thick frame would restore client-area insets and regress the
+borderless surface fixed by ADR 0317.
 
 ## Decision
 
-Keep `frame: false` and `thickFrame: false`. Private Main-to-Host RPC
-`window.enableNativeSnap` restores only the HWND's `WS_THICKFRAME | WS_CAPTION`
-bits, preserving other styles and bounds. Electron keeps its inset-free client
-layout. `WS_CAPTION` also prevents the maximized DWM overshoot seen when only
-`WS_THICKFRAME` is restored. Set Windows 11's `DWMWA_BORDER_COLOR` to
-`DWMWA_COLOR_NONE` so DWM cannot paint an outline over the client edges.
-Windows 10's unsupported-attribute `E_INVALIDARG` is handled explicitly; other
-native failures remain errors.
+Keep `frame: false` and `thickFrame: false` and let a private Main-to-Host RPC,
+`window.enableNativeSnap`, restore only the HWND's `WS_THICKFRAME | WS_CAPTION`
+bits while preserving other styles and bounds, so Electron keeps its inset-free
+client layout; `WS_CAPTION` also avoids the maximized DWM overshoot seen with
+`WS_THICKFRAME` alone, and Windows 11's `DWMWA_BORDER_COLOR` is set to
+`DWMWA_COLOR_NONE` so DWM cannot paint an outline over client edges, with Windows
+10's unsupported-attribute `E_INVALIDARG` handled explicitly and other native
+failures left as errors.
 
-The RPC accepts a decimal HWND and owner PID, never an arbitrary style mask.
-Host checks the requested PID against Main's injected PID and verifies the live
-HWND owner before mutation. Share this validation with the corner RPC. No raw
-handle or new channel is exposed to renderer, preload, plugins, or remote clients.
-
-Main awaits initial application before showing the window and reapplies after
-show, focus/blur, restore, maximize, unmaximize, and leaving fullscreen. Active fullscreen
-is excluded; closing cancels queued work and subscriptions. Errors are logged
-without preventing startup, and later transitions can retry with the current
-Host. Existing minimum sizes, persistence, resizing, corners, fullscreen
-interlocks, and maximize/work-area correction remain unchanged.
-
-Activation changes also refresh the border hint: DWM requires applications to
-maintain border appearance across activation, and replay exposed a painted rim
-after focus transfer when only show/restore events refreshed it.
+The RPC accepts a decimal HWND and owner PID, never an arbitrary style mask: Host
+checks the PID against Main's injected PID and verifies the live HWND owner before
+mutating, sharing that validation with the corner RPC, and exposes no raw handle or
+new channel to renderer, preload, plugins, or remote clients. Main awaits initial
+application before showing the window and reapplies after show, focus and blur,
+restore, maximize and unmaximize, leaving fullscreen, activation changes, and
+returning from fullscreen, cancelling queued work on close and logging errors
+without blocking startup. Existing minimum sizes, persistence, resizing, corners,
+fullscreen interlocks, and maximize/work-area correction are unchanged.
 
 ## Consequences
 
-`test:e2e:window-snap` exercises the production Main service and compiled Host in
-an isolated profile. It checks keyboard snapping, physical titlebar drag,
-client-edge pixels, native edge resize/minimums, maximize/minimize/restore, and
-fullscreen/restore. Both the client and DWM-visible maximized frame must match
-the work area; invisible resize margins in `GetWindowRect` are not overflow.
+- Keyboard and titlebar-drag snapping work on the borderless window, with the
+  client and the DWM-visible maximized frame matching the work area.
+- Renderer, plugin, and remote surfaces gain no window-handle capability.
+- The custom maximize button still needs separate `HTMAXBUTTON` integration for
+  hover Snap Layouts, and native layout and pixels must be requalified on Electron
+  upgrades. The isolated replay is described in
+  [independent replay](../project/windows-native-snap-replay.md).
 
-`--baseline` omits service installation and must fail the keyboard-snap check.
-`--prepare <directory>` prepares a fixture for an existing Windows runtime and
-is not a passing test. `--legacy-surface` exercises the transparent/shape path
-on the available Windows version, not a real Windows 10 installation.
-`--external-pointer` lets an existing remote-desktop input adapter acknowledge
-`pointer-request.json` through `pointer-response.json` with the same `runId`, `id` and
-`ok: true`. Native geometry/pixel assertions are identical for both input paths;
-the fixture never treats an input acknowledgement alone as success.
+## Alternatives
 
-`--matrix --artifacts <new-directory>` runs the expected failing baseline and
-passing candidate as one acceptance job. The portable `run.ps1` and Windows
-workflow retain revision/hash provenance, results, logs and pixel captures on
-failure as well as success. A baseline startup/input failure cannot qualify
-the reproduction. See [independent replay](../project/windows-native-snap-replay.md).
-
-The renderer's custom maximize button still needs separate `HTMAXBUTTON`
-integration for hover-triggered Snap Layouts. This keyboard/drag fix introduces
-no global key interception or renderer snapping implementation. Requalify native
-layout and pixels on Electron upgrades: separating its layout option from the
-HWND styles is deliberate.
-
-References: [Electron style handling](https://github.com/electron/electron/blob/v43.6.0/shell/browser/native_window_views.cc#L395-L411),
-[DWM border attributes](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute).
+- Enable Electron's thick frame: rejected because its client-area insets regress
+  the borderless surface.
+- Intercept keys or implement snapping in the renderer: rejected because native
+  window behavior stays outside the renderer.

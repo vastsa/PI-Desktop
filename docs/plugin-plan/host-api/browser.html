@@ -1,0 +1,1098 @@
+<!-- status: implemented -->
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>host-api · browser</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+
+  article.api{margin:0 0 56px;padding-top:8px;border-top:1px solid var(--line)}
+  article.api>h2{display:flex;align-items:center;gap:10px;margin:18px 0 4px;font-size:19px}
+  article.api>.meta{margin:0 0 18px;color:var(--faint);font-size:12.5px}
+  section>h3{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:15.5px}
+  section>h3 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">plugin-plan</a><span class="sep">/</span><a href="index.html">host-api</a><span class="sep">/</span><a href="browser.html" aria-current="page">browser</a>
+  <span class="spacer"></span>
+  <a href="#browser.action">action</a>
+  <a href="#browser.cdp">cdp</a>
+  <a href="#browser.click">click</a>
+  <a href="#browser.console">console</a>
+  <a href="#browser.evaluate">evaluate</a>
+  <a href="#browser.fill">fill</a>
+  <a href="#browser.getState">getState</a>
+  <a href="#browser.navigate">navigate</a>
+  <a href="#browser.openExternal">openExternal</a>
+  <a href="#browser.screenshot">screenshot</a>
+  <a href="#browser.setBounds">setBounds</a>
+  <a href="#browser.setVisible">setVisible</a>
+  <a href="#browser.snapshot">snapshot</a>
+</nav>
+<header class="top">
+  <h1>host-api · browser</h1>
+  <p>命名空间 <code>browser</code> · 13 条。每条 API 一节：接口约定、数据怎么走、出错、不提供什么、相关条目、典型场景、已拍板。</p>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+<article class="api" id="browser.action">
+<h2><code>browser.action</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.action(input: { action: "back" | "forward" | "reload" | "stop" }): Promise&lt;void&gt;</pre>
+  <p class="lead">对本插件访客页执行后退 / 前进 / 刷新 / 停止加载。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">action</td><td class="id">"back" | "forward" | "reload" | "stop"</td><td>是</td><td>浏览动作枚举，四选一。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无出参；<code>Promise&lt;void&gt;</code> 完成即动作已提交。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "action": "reload" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无出参（Promise&lt;void&gt;）</pre>
+  <div class="callout"><b>一句话边界。</b>只对本插件访客页的浏览历史和加载状态生效，不能逃出访客页边界。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.action({ action: "reload" })</code>。</li>
+    <li><b>校验：</b>宿主检查 <code>action</code> 是否为 back / forward / reload / stop 之一。</li>
+    <li><b>执行：</b>宿主把对应浏览动作落到本插件面板绑定的访客页。</li>
+    <li><b>返回：</b><code>Promise&lt;void&gt;</code> 完成，无返回值；插件卸载后绑定失效。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>动作枚举（back / forward / reload / stop）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无返回数据（<code>Promise&lt;void&gt;</code>）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>action 不在四个枚举值内</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>用户点后退</b></td><td>面板工具条把后退交给访客页。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.cdp">
+<h2><code>browser.cdp</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.cdp(input: { method: string; params?: unknown }): Promise&lt;unknown&gt;</pre>
+  <p class="lead">在白名单范围内对访客页调用一条 CDP 方法。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">method</td><td class="id">string</td><td>是</td><td>CDP 方法名，必须在宿主白名单内。</td></tr>
+      <tr><td class="id">params</td><td class="id">unknown</td><td>否</td><td>方法参数，形状随 method 而定。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">unknown</td><td>CDP 响应；SDK 声明为 <code>Promise&lt;unknown&gt;</code>，形状随 method 而定。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "method": "Network.enable" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为实现定义（Promise&lt;unknown&gt;），形状随 method 而定
+{}</pre>
+  <div class="callout"><b>一句话边界。</b>白名单之外的 CDP 方法一律被拒绝；访客页边界与站点隔离仍然生效。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.cdp({ method, params })</code>。</li>
+    <li><b>校验：</b>宿主检查 <code>method</code> 是否在 CDP 白名单内；<code>params</code> 可选、形状随 method。</li>
+    <li><b>执行：</b>宿主把该 CDP 命令发到本插件面板绑定的访客页。</li>
+    <li><b>返回：</b>Promise 带回 CDP 响应；插件卸载后绑定失效，不能再操作。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>CDP 方法名与参数（<code>method</code>、<code>params</code>）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>CDP 响应（形状随 method，实现定义）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>method 缺省或非字符串</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+      <tr><td>CDP 方法不在白名单内</td><td>调用被拒绝</td><td class="id">—（现页未标码，仅注明“走白名单，之外拒绝”）</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>细粒度控制</b></td><td>白名单里的 CDP 做网络拦截。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.click">
+<h2><code>browser.click</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.click(input: { uid: string }): Promise&lt;void&gt;</pre>
+  <p class="lead">按 snapshot 给出的 uid 点击访客页元素。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">uid</td><td class="id">string</td><td>是</td><td>browser.snapshot 返回的元素 uid。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无出参；<code>Promise&lt;void&gt;</code> 完成即点击已提交。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "uid": "e3" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无出参（Promise&lt;void&gt;）</pre>
+  <div class="callout"><b>一句话边界。</b>uid 必须来自本插件访客页的 browser.snapshot。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>前置：</b>先 <code>pi.browser.snapshot()</code> 拿到元素 uid（先 snapshot 拿 uid 再 click）。</li>
+    <li><b>调用：</b>插件执行 <code>pi.browser.click({ uid })</code>。</li>
+    <li><b>校验：</b>宿主检查 <code>uid</code> 为字符串且能在访客页元素里找到。</li>
+    <li><b>执行/返回：</b>宿主在本插件访客页上执行点击，<code>Promise&lt;void&gt;</code> 完成。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>目标元素 <code>uid</code>。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无返回数据（<code>Promise&lt;void&gt;</code>）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>uid 不存在或访客页不存在</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>uid 缺省或非字符串</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>点提交按钮</b></td><td>自动填表后点「提交」。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.console">
+<h2><code>browser.console</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.console(input?: { limit?: number }): Promise&lt;{ messages: unknown[] }&gt;</pre>
+  <p class="lead">读取本插件访客页的控制台消息，可用 limit 限量。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">limit</td><td class="id">number</td><td>否</td><td>返回消息条数上限；整个 input 可省略，缺省值由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">messages</td><td class="id">unknown[]</td><td>控制台消息数组；元素结构为实现定义（SDK 未固定字段）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "limit": 50 }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// messages 元素结构为实现定义，以下为示意
+{
+  "messages": [
+    { "level": "log", "text": "boot ok", "ts": 1765132800000 },
+    { "level": "error", "text": "Uncaught TypeError: x is not a function", "ts": 1765132801500 }
+  ]
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只收得到本插件访客页的控制台消息，不是宿主全局日志。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.console({ limit: 50 })</code> 或 <code>pi.browser.console()</code>。</li>
+    <li><b>校验：</b>input 可整体省略；<code>limit</code> 为可选数值。</li>
+    <li><b>执行：</b>宿主收集本插件访客页缓冲的控制台消息，按 limit 截取。</li>
+    <li><b>返回：</b>Promise 带回 <code>{ messages }</code>；插件卸载后绑定失效。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>可选条数上限 <code>limit</code>。</td></tr>
+      <tr><td>宿主 → 插件</td><td><code>{ messages }</code> 消息数组（元素结构实现定义）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权读取访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>limit 类型不符（非数值）</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>看网页报错</b></td><td>自动化失败时收集控制台。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.evaluate">
+<h2><code>browser.evaluate</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.evaluate(input: { expression: string }): Promise&lt;unknown&gt;</pre>
+  <p class="lead">在本插件访客页上下文执行一个表达式并取回结果。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">expression</td><td class="id">string</td><td>是</td><td>在访客页里执行的 JS 表达式。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">unknown</td><td>表达式求值结果；SDK 声明为 <code>Promise&lt;unknown&gt;</code>，形状由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "expression": "document.title" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为实现定义（Promise&lt;unknown&gt;），以下为示意
+"快速开始 · Example 文档"</pre>
+  <div class="callout"><b>一句话边界。</b>表达式可以改访客页 DOM，站点行为风险自担；出不了访客页边界。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.evaluate({ expression: "document.title" })</code>。</li>
+    <li><b>校验：</b>宿主检查 <code>expression</code> 为必填字符串。</li>
+    <li><b>执行：</b>宿主在本插件访客页上下文里求值该表达式。</li>
+    <li><b>返回：</b>Promise 带回求值结果；插件卸载后绑定失效，不能再操作。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>表达式字符串 <code>expression</code>。</td></tr>
+      <tr><td>宿主 → 插件</td><td>求值结果（形状实现定义）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>expression 缺省或非字符串</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。可以改访客页 DOM，需自担站点行为风险。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>读页面变量</b></td><td>取出网页里某个 JS 状态值。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.fill">
+<h2><code>browser.fill</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.fill(input: { uid: string; text: string }): Promise&lt;void&gt;</pre>
+  <p class="lead">按 uid 向访客页输入框填入文本。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">uid</td><td class="id">string</td><td>是</td><td>browser.snapshot 返回的输入框元素 uid。</td></tr>
+      <tr><td class="id">text</td><td class="id">string</td><td>是</td><td>要填入的文本。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无出参；<code>Promise&lt;void&gt;</code> 完成即填写已提交。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "uid": "e2", "text": "PI Desktop 插件" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无出参（Promise&lt;void&gt;）</pre>
+  <div class="callout"><b>一句话边界。</b>uid 必须来自本插件访客页的 browser.snapshot。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>前置：</b>先 <code>pi.browser.snapshot()</code> 拿到输入框元素 uid。</li>
+    <li><b>调用：</b>插件执行 <code>pi.browser.fill({ uid, text })</code>。</li>
+    <li><b>校验：</b>宿主检查 <code>uid</code> 与 <code>text</code> 均为必填字符串。</li>
+    <li><b>执行/返回：</b>宿主把文本填入访客页对应输入框，<code>Promise&lt;void&gt;</code> 完成。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>目标元素 <code>uid</code> 与文本 <code>text</code>。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无返回数据（<code>Promise&lt;void&gt;</code>）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>uid 不存在或访客页不存在</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>uid / text 缺省或非字符串</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>填搜索框</b></td><td>把用户问题填进网页搜索框。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.getState">
+<h2><code>browser.getState</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.getState(): Promise&lt;unknown&gt;</pre>
+  <p class="lead">读取本插件访客页当前状态。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">unknown</td><td>访客页状态；SDK 声明为 <code>Promise&lt;unknown&gt;</code>，形状由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为实现定义（Promise&lt;unknown&gt;），以下为示意
+{ "url": "https://docs.example.com/quickstart", "title": "快速开始", "loading": false, "canGoBack": true }</pre>
+  <div class="callout"><b>一句话边界。</b>只反映本插件访客页，不代表宿主其他浏览器状态。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.getState()</code>。</li>
+    <li><b>执行：</b>宿主采集本插件面板绑定访客页的当前状态。</li>
+    <li><b>返回：</b>Promise 带回状态对象；插件卸载后绑定失效，不能再操作。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权读取访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>传入了本接口不需要的参数</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>刷新工具条</b></td><td>按是否可后退启用按钮。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.navigate">
+<h2><code>browser.navigate</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.navigate(input: { url?: string; path?: string }): Promise&lt;unknown&gt;</pre>
+  <p class="lead">把本插件面板的访客页导航到指定 <code>url</code> 或站内 <code>path</code>。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">url</td><td class="id">string</td><td>否</td><td>完整网址，与 <code>path</code> 二选一。</td></tr>
+      <tr><td class="id">path</td><td class="id">string</td><td>否</td><td>站内路径，与 <code>url</code> 二选一。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">unknown</td><td>SDK 声明为 <code>Promise&lt;unknown&gt;</code>，形状由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "url": "https://docs.example.com/quickstart" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为实现定义（Promise&lt;unknown&gt;），以下为示意
+{ "url": "https://docs.example.com/quickstart", "title": "快速开始", "canGoBack": true }</pre>
+  <div class="callout"><b>一句话边界。</b>只作用于调用插件自己的访客页，不能逃出访客页边界；要看页面结构用 browser.snapshot。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.navigate({ url })</code>。</li>
+    <li><b>校验：</b>宿主按 SDK 类型检查入参，<code>url</code>/<code>path</code> 二选一、均为字符串。</li>
+    <li><b>执行：</b>宿主把导航落到本插件面板绑定的访客页。</li>
+    <li><b>返回：</b>Promise 完成并带回结果；插件卸载后绑定失效，不能再操作。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>导航目标（<code>url</code> 或 <code>path</code>）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>Promise 结果（形状实现定义）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>入参不合法（url/path 类型不符或两者皆缺）</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>打开文档页</b></td><td>把访客页导到产品文档。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.openExternal">
+<h2><code>browser.openExternal</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.openExternal(): Promise&lt;void&gt;</pre>
+  <p class="lead">把当前访客页交给系统浏览器打开。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无出参；<code>Promise&lt;void&gt;</code> 完成即转交已提交。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无出参（Promise&lt;void&gt;）</pre>
+  <div class="callout"><b>一句话边界。</b>只能转交当前访客页，无法指定 URL（要指定地址用 browser.navigate）。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.openExternal()</code>。</li>
+    <li><b>执行：</b>宿主取本插件访客页的当前页面，交给系统浏览器打开。</li>
+    <li><b>返回：</b><code>Promise&lt;void&gt;</code> 完成，无返回值；插件卸载后绑定失效。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>转交请求（零参数）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无返回数据（<code>Promise&lt;void&gt;</code>）。</td></tr>
+      <tr><td>宿主 → 系统</td><td>由系统浏览器打开当前访客页。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权转交访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>传入了本接口不需要的参数</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>完整窗口阅读</b></td><td>用户要在系统浏览器里看长文。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.screenshot">
+<h2><code>browser.screenshot</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.screenshot(input?: { fullPage?: boolean }): Promise&lt;{ mimeType: string; data: string; path?: string }&gt;</pre>
+  <p class="lead">截取本插件访客页图像，返回 base64 图像数据。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">fullPage</td><td class="id">boolean</td><td>否</td><td>true 截整页；整个 input 可省略，缺省范围由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">mimeType</td><td class="id">string</td><td>图像 MIME 类型。</td></tr>
+      <tr><td class="id">data</td><td class="id">string</td><td>base64 编码的图像数据。</td></tr>
+      <tr><td class="id">path</td><td class="id">string</td><td>可选；宿主把图像写入文件时才有此路径。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "fullPage": true }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "mimeType": "image/png",
+  "data": "iVBORw0KGgoAAAANSUhEUgAA...(base64, 已截断)",
+  "path": "screenshots/quickstart-2026-02-16.png"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只能截本插件访客页的画面，不能逃出访客页边界。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.screenshot({ fullPage: true })</code> 或 <code>pi.browser.screenshot()</code>。</li>
+    <li><b>校验：</b>input 可整体省略；<code>fullPage</code> 为可选布尔。</li>
+    <li><b>执行：</b>宿主对本插件访客页渲染并截取一帧图像。</li>
+    <li><b>返回：</b>Promise 带回 <code>{ mimeType, data, path? }</code>；插件卸载后绑定失效。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>截图选项（<code>fullPage</code>，可整体省略）。</td></tr>
+      <tr><td>宿主 → 插件</td><td><code>{ mimeType, data, path? }</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权截取访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>fullPage 非布尔值等入参不合法</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>截图取证</b></td><td>保存当前页画面给后续比对。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.setBounds">
+<h2><code>browser.setBounds</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.setBounds(hole: { x: number; y: number; width: number; height: number }): Promise&lt;unknown&gt;</pre>
+  <p class="lead">设置访客页在宿主面板里的矩形区域。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">x</td><td class="id">number</td><td>是</td><td>访客页矩形左上角横坐标。</td></tr>
+      <tr><td class="id">y</td><td class="id">number</td><td>是</td><td>访客页矩形左上角纵坐标。</td></tr>
+      <tr><td class="id">width</td><td class="id">number</td><td>是</td><td>矩形宽度。</td></tr>
+      <tr><td class="id">height</td><td class="id">number</td><td>是</td><td>矩形高度。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">unknown</td><td>SDK 声明为 <code>Promise&lt;unknown&gt;</code>，形状由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "x": 320, "y": 0, "width": 640, "height": 480 }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为实现定义（Promise&lt;unknown&gt;），以下为示意
+{ "x": 320, "y": 0, "width": 640, "height": 480 }</pre>
+  <div class="callout"><b>一句话边界。</b>矩形只在本插件面板内摆放，访客页边界限制在调用插件视图。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.setBounds({ x, y, width, height })</code>。</li>
+    <li><b>校验：</b>宿主按 SDK 类型检查四个数值字段（hole）是否齐全。</li>
+    <li><b>执行：</b>宿主把本插件访客页摆放到给定矩形。</li>
+    <li><b>返回：</b>Promise 完成并带回结果；插件卸载后绑定失效，不能再操作。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>目标矩形（<code>{ x, y, width, height }</code>）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>Promise 结果（形状实现定义）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>x / y / width / height 缺省或非数值</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>主从分栏</b></td><td>左侧聊天、右侧网页时改访客页矩形。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.setVisible">
+<h2><code>browser.setVisible</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.setVisible(visible: boolean | { visible: boolean }): Promise&lt;void&gt;</pre>
+  <p class="lead">显示或隐藏访客页。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">visible</td><td class="id">boolean | { visible: boolean }</td><td>是</td><td>true 显示、false 隐藏；直接传布尔或包一层对象均可。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">void</td><td>无出参；<code>Promise&lt;void&gt;</code> 完成即切换已提交。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>pi.browser.setVisible(false)
+pi.browser.setVisible({ visible: false })</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 无出参（Promise&lt;void&gt;）</pre>
+  <div class="callout"><b>一句话边界。</b>只切换本插件访客页的可见性，不碰其他面板；不能逃出访客页边界。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.setVisible(false)</code> 或 <code>pi.browser.setVisible({ visible: false })</code>。</li>
+    <li><b>校验：</b>宿主检查入参为 boolean 或 <code>{ visible: boolean }</code> 两种形态之一。</li>
+    <li><b>执行：</b>宿主切换本插件访客页的显示状态。</li>
+    <li><b>返回：</b><code>Promise&lt;void&gt;</code> 完成，无返回值；插件卸载后绑定失效。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>可见性开关（boolean 或 <code>{ visible }</code>）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>无返回数据（<code>Promise&lt;void&gt;</code>）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>入参既非 boolean 也非 { visible: boolean }</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>暂藏网页</b></td><td>切到纯聊天布局时把网页藏起来。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+<article class="api" id="browser.snapshot">
+<h2><code>browser.snapshot</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.browser.snapshot(): Promise&lt;{ tree: string; url: string; title: string }&gt;</pre>
+  <p class="lead">抓取本插件访客页的可访问性树快照。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">tree</td><td class="id">string</td><td>可访问性树文本，元素带 uid（供 browser.click / browser.fill 使用）；记法由实现定义。</td></tr>
+      <tr><td class="id">url</td><td class="id">string</td><td>访客页当前 URL。</td></tr>
+      <tr><td class="id">title</td><td class="id">string</td><td>页面标题。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "tree": "- heading \"快速开始\" [uid=e1]\n  - textbox \"搜索文档\" [uid=e2]\n  - button \"搜索\" [uid=e3]",
+  "url": "https://docs.example.com/quickstart",
+  "title": "快速开始"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>tree 里的 uid 只在本插件访客页的快照里有意义，配合 browser.click / browser.fill 使用。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.snapshot()</code>。</li>
+    <li><b>执行：</b>宿主采集本插件访客页的可访问性树，连同当前 URL、标题一起打包。</li>
+    <li><b>返回：</b>Promise 带回 <code>{ tree, url, title }</code>；插件卸载后绑定失效。</li>
+    <li><b>使用：</b>插件解析 <code>tree</code>，取出目标元素 uid 交给 <code>pi.browser.click</code> / <code>pi.browser.fill</code>（先 snapshot 拿 uid 再 click）。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>快照请求（零参数）。</td></tr>
+      <tr><td>宿主 → 插件</td><td><code>{ tree, url, title }</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权读取访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>传入了本接口不需要的参数</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="browser.html#browser.snapshot"><code>host-api/browser.snapshot</code></a></li>
+    <li><a href="browser.html#browser.navigate"><code>host-api/browser.navigate</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>找可点元素</b></td><td>先 snapshot 拿 uid 再 click。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>访客页边界限制在调用插件视图；CDP 走白名单。</li></ul>
+</section>
+</article>
+</main>
+</body>
+</html>

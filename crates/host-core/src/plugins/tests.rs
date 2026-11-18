@@ -2706,3 +2706,58 @@ fn a_valid_id_cannot_take_over_a_legacy_plugin_stored_under_its_sanitized_name()
     assert_eq!(fs::read_to_string(&registry_path).unwrap(), registry);
     assert_eq!(ids(&mgr), ["e2e.foo!bar"]);
 }
+
+/// What the detail sheet reads comes from the catalog document, and the
+/// document is camelCase. The parser used to accept snake_case only, so a
+/// published readme, safety notes and publisher were recorded as null and the
+/// sheet showed none of them.
+#[test]
+fn detail_carries_readme_safety_notes_and_publisher() {
+    let _guard = lock_market_env();
+    let dir = tempdir().unwrap();
+    let catalog_path = dir.path().join("catalog.json");
+    let catalog = r##"{
+        "schemaVersion": 2,
+        "providerId": "official",
+        "catalogId": "pi-plugin-center",
+        "plugins": [{
+            "id": "pi.rich", "name": "Rich", "description": "has metadata", "author": "Rich Author",
+            "publisherId": "tioit-wang",
+            "readmeMarkdown": "# Rich\n\nA readme the sheet should render.",
+            "safetyNotes": "Reads nothing outside its own folder.",
+            "categories": ["themes"],
+            "versions": [{
+                "version": "1.0.0", "publishedAt": "2026-01-01T00:00:00Z",
+                "shasum": "abababababababababababababababababababababababababababababababab",
+                "url": "packages/pi.rich-1.0.0.piplug", "sizeBytes": 12,
+                "permissions": [], "minPiDesktop": ">=0.2.0"
+            }]
+        }]
+    }"##;
+    fs::write(&catalog_path, catalog).unwrap();
+    // Safety: test-only process env mutation, serialized by the market lock.
+    unsafe {
+        std::env::set_var(
+            "PI_DESKTOP_PLUGIN_MARKET_URL",
+            format!("file://{}", catalog_path.to_string_lossy()),
+        );
+        std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
+    }
+
+    let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    let detail = mgr.market_get("pi.rich").unwrap();
+    unsafe {
+        std::env::remove_var("PI_DESKTOP_PLUGIN_MARKET_URL");
+        std::env::remove_var("PI_DESKTOP_DATA_DIR");
+    }
+
+    assert_eq!(
+        detail.readme_markdown.as_deref(),
+        Some("# Rich\n\nA readme the sheet should render.")
+    );
+    assert_eq!(
+        detail.safety_notes.as_deref(),
+        Some("Reads nothing outside its own folder.")
+    );
+    assert_eq!(detail.summary.publisher_id.as_deref(), Some("tioit-wang"));
+}

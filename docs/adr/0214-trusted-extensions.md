@@ -2,92 +2,52 @@
 
 - Status: Accepted (v1 implemented 2026-09-10)
 - Date: 2026-09-10
-- Decision: D387
-- Related: ADR 0002, ADR 0008, D007, `07-plugins/16-trusted-extensions.md`,
-  `07-plugins/01-plugin-system.md` §14
+- Related: ADR 0002, ADR 0008, D007, D387
 
 ## Context
 
-PI-Desktop's plugin system (ADR 0008) runs plugins in their own process behind
-a permission gateway. That is the right shape for distributed, untrusted code,
-but it leaves no surface for code that must sit on the agent loop itself:
-tools that execute in-process with the session's working directory, hooks on
-every turn, tool call, and provider request, and slash commands that carry
-session context. The desktop runtime in
-`packages/agent-runtime/src/runtime.ts` already exposes these hook points
-internally; nothing lets a user attach code to them.
-
-The kernel packages `pi-ai` and `pi-agent-core` (ADR 0002) have a sibling,
-`pi-coding-agent`, that defines an `ExtensionAPI` contract and a loader for
-TypeScript extension modules. Adopting that contract gives PI-Desktop a
-second extension surface with an existing, documented API and an existing
-body of extensions written against it.
-
-Three routes were evaluated: implement `ExtensionAPI` over the desktop
-runtime; express the same capabilities as a new plugin contribution type; or
-replace the desktop runtime with `pi-coding-agent`'s `AgentSession`.
+The plugin system (ADR 0008) runs plugins in their own process behind a permission
+gateway, which leaves no surface for code that must sit on the agent loop itself:
+in-process tools, hooks on turns, tool calls, and provider requests, and slash
+commands carrying session context. The kernel's sibling `pi-coding-agent` package
+already defines an `ExtensionAPI` contract and loader with existing extensions
+written against it.
 
 ## Decision
 
 1. **Trusted extensions are the second extension surface.** The sidecar pins
-   `pi-coding-agent` at the same version as the other two kernel packages as
-   a types-only dependency, mirrors its discovery rules, loads modules with
-   `jiti/static` and virtual modules, and implements `ExtensionAPI` on top
-   of the desktop runtime's hook points in a desktop-owned Runner. One
-   Runner per session. (The upstream `ExtensionRunner` binds the terminal
-   theme and is not reused.)
+   `pi-coding-agent` as a types-only dependency, mirrors its discovery rules,
+   loads modules with `jiti/static` and virtual modules, and implements
+   `ExtensionAPI` over the desktop runtime's hook points in a desktop-owned
+   Runner, one per session.
 2. **Trusted, opt-in, no auto-import.** Extensions are labelled "Trusted
-   extension", run with sidecar trust, and are disabled until the user enables
-   each one. D007 is unchanged: `~/.pi` is scanned for candidates, never
-   imported. Project-scoped extensions are enabled per project.
+   extension", run with sidecar trust, and stay disabled until the user enables
+   each one. D007 still holds: `~/.pi` is scanned for candidates, never imported,
+   and project-scoped extensions are enabled per project.
 3. **Explicit support classes.** Every `ExtensionAPI` member is Supported,
-   Deferred, or Unsupported. Unsupported members are inert and produce
-   diagnostics; they never throw. Terminal-UI surfaces stay Unsupported.
-4. **Plugins are untouched.** No plugin manifest, permission, or process
-   boundary changes. Extension tools and commands enter the same catalogs
-   plugins use, after plugins, and lose name collisions.
-5. **No host-core change in v1.** Enablement is app settings; new traffic is
-   sidecar-to-main proxy methods and Electron IPC only.
+   Deferred, or Unsupported; unsupported members stay inert and produce
+   diagnostics instead of throwing, and terminal-UI surfaces stay Unsupported.
+4. **Plugins are untouched.** No manifest, permission, or process boundary
+   changes; extension tools and commands join the same catalogs after plugins and
+   lose name collisions.
+5. **No host-core change in v1.** Enablement is app settings, and the new traffic
+   is sidecar-to-main proxy methods plus Electron IPC.
 
 ## Consequences
 
-### Prompt chaining amendment (2026-09-29, issue #1023)
-
-The desktop initially folded `before_agent_start` results while giving every
-handler the original prompt. Two extensions appending to that input therefore
-lost all but the last addition. Chain successful string replacements through a
-turn-local payload, retaining the existing extension and registration order.
-Reuse the runner's isolated handler inputs and lifecycle checks; only timely
-returned strings reach the next handler. Start from a fresh base on each turn.
-
-This matches the sequential prompt replacement behavior of the pinned Pi
-extension runner without sharing mutable handler inputs. A dedicated runner
-entry point keeps this event's composition out of the generic dispatcher and
-leaves other event contracts unchanged. Explicit full replacements still win;
-an additive-only API would require existing extensions to migrate and would not
-fix their current append pattern. Extensions that relied on always seeing the
-original base now see prior successful edits instead. No permissions or message
-roles change, and no provider-cache guarantee is added.
-
-### General consequences
-
-- Users can attach in-process tools, hooks, and commands to the agent loop
-  without a new app release.
-- Two extension surfaces coexist and are explained in user documentation as
-  "plugins" (sandboxed) and "trusted extensions" (in-sidecar).
-- The three kernel packages move in lockstep; a contract test with sample
-  extensions guards every upgrade.
-- The sidecar bundle must keep jiti loadable; this is verified first.
+- Users attach in-process tools, hooks, and commands without an app release, and
+  documentation separates sandboxed plugins from in-sidecar trusted extensions.
+- The three kernel packages move in lockstep, guarded by a contract test with
+  sample extensions.
 - Module-level extension state is shared across sessions in one sidecar.
+- The prompt-chaining amendment of 2026-09-29 (issue #1023) chains
+  `before_agent_start` string replacements through a turn-local payload in the
+  existing order, starting fresh each turn, so two extensions appending to the
+  same input no longer overwrite each other.
 
-## Alternatives considered
+## Alternatives
 
-- A new plugin contribution type for in-process hooks. Rejected: it would
-  either punch through the plugin sandbox or duplicate `ExtensionAPI` under a
-  second name with no existing extensions to run.
-- Replace the desktop runtime with `AgentSession`. Rejected for now: it
-  discards the desktop's modes, plans, deferred tools, and subagent logic,
-  and terminal-UI surfaces remain unusable regardless. Kept as a long-term
-  option.
-- Run extensions inside the plugin host process. Rejected: the permission
-  gateway would deny most of what extensions do, and they would fail at load.
+- A new plugin contribution type for in-process hooks: rejected because it would
+  breach the plugin sandbox or duplicate `ExtensionAPI` with no extensions to run.
+- Run extensions in the plugin host process: rejected because the permission
+  gateway denies most of what extensions do.

@@ -5,70 +5,30 @@
 
 ## Context
 
-The transcript already shows a compact `Working…` row before the first model
-or tool event and inline rows for concrete thinking and tool activity. A
-provider request can still spend a long interval before its first event, and a
-bounded retry backoff or parent-side delegated-task wait can contain no
-transcript row. During those intervals the only visible signal was the Stop
-button and a generic local timer. Users could not tell whether the turn was
-waiting normally, retrying, or waiting on delegated work (Issue #56).
+The transcript shows a compact `Working…` row before the first model or tool event,
+but a provider request can spend a long interval before that event, and a retry
+backoff or a parent-side delegated-task wait carries no row at all. The only signals
+were the Stop button and a local timer, so users could not tell a normal wait from a
+retry or a delegation wait (issue #56).
 
 ## Decision
 
-Extend the existing normalized `status` event with an optional runtime-owned
-`AgentActivity` value:
-
-1. `starting` covers the initial prompt handoff.
-2. `waiting-model` starts when a provider request is issued and lasts until
-   the first assistant event.
-3. `retrying` covers an abortable provider backoff and carries the attempt
-   number and calculated delay when available.
-4. `waiting-subagents` covers parent-side convergence on delegated work and
-   carries the number of running targets.
-
-The sidecar emits these phases from the same boundaries that own provider
-requests, retry delays, and delegation waits. It clears the phase when
-assistant output starts or the turn reaches a terminal event. The renderer
-stores the latest status per session and renders a compact, localized inline
-row with a monotonic phase timer. The row is not a second progress card, does
-not claim a completion percentage, and does not change Stop or abort
-semantics.
+Extend the normalized `status` event with an optional runtime-owned `AgentActivity`
+value. `starting` covers the prompt handoff, `waiting-model` runs from issuing a
+provider request until the first assistant event, `retrying` covers an abortable
+backoff and carries the attempt number and delay, and `waiting-subagents` covers
+parent-side convergence with the number of running targets. The sidecar emits these
+from the boundaries that already own provider requests, retry delays, and
+delegation waits, and clears them when output starts or the turn terminates. The
+renderer keeps the latest status per session and renders a compact localized inline
+row with a monotonic phase timer; it claims no completion percentage and leaves Stop
+and abort semantics alone.
 
 ## Consequences
 
-- A quiet active turn explains its current runtime-owned wait without adding
-  decorative or duplicate progress chrome.
-- Retry lifecycle remains silent in the transcript, while the retry backoff
-  becomes observable and remains cancellable.
-- Session switching remains isolated because status is keyed by session id and
-  is cleared with terminal events and session deletion.
-- The status is intentionally coarse: provider internals and subagent child
-  events remain out of the renderer protocol unless they explain one of these
-  user-visible waits.
-
-## Alternatives
-
-### Keep the generic Working row for every wait
-
-Rejected because it does not distinguish a normal provider wait from a retry or
-delegation wait, which was the ambiguity reported in Issue #56.
-
-### Add a permanent multi-step progress card
-
-Rejected because agent turns do not have a reliable total-step or percentage
-model, and the existing active-turn contract keeps the lower transcript
-surface inline and compact.
-
-### Emit raw provider or child-agent events
-
-Rejected because it would expose unstable implementation details and create a
-larger protocol surface than the user needs. The runtime-owned phases provide
-the smallest useful explanation.
-
-## References
-
-- `docs/spec/03-runtime/01-ipc-protocol.md`
-- `docs/spec/03-runtime/02-agent-runtime.md`
-- `docs/spec/04-ux/09-interaction-patterns.md`
-- `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-008c, E2E-094)
-- GitHub Issue #56
+- A quiet turn explains its runtime-owned wait without duplicate progress chrome,
+  and a retry backoff becomes observable while staying cancellable.
+- Status is keyed by session id and cleared on terminal events and deletion, so
+  session switching stays isolated.
+- The protocol stays coarse: provider internals and child-agent events remain out of
+  the renderer unless they explain one of these waits.

@@ -3,6 +3,7 @@ mod computer_rpc;
 mod config_sync_rpc;
 mod file_batches;
 mod gen_ui;
+mod market_browse_rpc;
 mod modes_rpc;
 mod plugin_reviews_rpc;
 mod remote_tools;
@@ -20,6 +21,11 @@ mod worktree_rpc;
 #[cfg(test)]
 mod session_mode_create_tests;
 
+#[cfg(test)]
+mod session_mode_migration_tests;
+
+#[cfg(test)]
+mod market_browse_rpc_tests;
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
@@ -1178,9 +1184,6 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
                 ));
             }
         }
-    }
-    if let Err(message) = crate::mode_runs::validate_goal_budget_setting(value) {
-        return Err(rpc_err(1002, message, "INVALID_PARAMS"));
     }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
         if !infinite_retry.is_boolean() {
@@ -5710,6 +5713,7 @@ async fn handle_request(
             let meta = st.plugins.refresh_market(force).map_err(plugin_err)?;
             Ok(meta)
         }
+        "market.browse" => market_browse_rpc::browse(&state, params).await,
         "market.search" => {
             let query = params.get("query").and_then(|v| v.as_str());
             let category = params.get("category").and_then(|v| v.as_str());
@@ -8266,31 +8270,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(retry_settings["infiniteProviderRetry"], true);
-
-        handle_request(
-            state.clone(),
-            "settings.set",
-            json!({ "goalBudget": { "maxTurns": 40, "maxTokens": null } }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        let goal_settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
-            .await
-            .unwrap();
-        assert_eq!(
-            goal_settings["goalBudget"],
-            json!({ "maxTurns": 40, "maxTokens": null })
-        );
-        let invalid_goal = handle_request(
-            state.clone(),
-            "settings.set",
-            json!({ "goalBudget": { "maxTurns": 0, "maxTokens": null } }),
-            tx.clone(),
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(invalid_goal.data.unwrap()["errorCode"], "INVALID_PARAMS");
 
         handle_request(
             state.clone(),
