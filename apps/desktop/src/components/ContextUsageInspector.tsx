@@ -19,6 +19,7 @@ import { TooltipButton } from "./ui";
 import {
   aggregateToolTokenUsage,
   calculateCacheRate,
+  calculateContextUsage,
   composerContextUsage,
   calculateTokenRate,
   contextOccupancyTokens,
@@ -31,6 +32,7 @@ import {
 } from "../lib/context-inspector-position";
 import { useSessionTiming } from "../features/chat/context-usage/useSessionTiming";
 import { ContextCostKpis } from "../features/chat/context-usage/ContextCostKpis";
+import { useActiveNativeContext } from "../hooks/use-active-native-context";
 
 const CONTEXT_RING_RADIUS = 9;
 const CONTEXT_RING_CIRCUMFERENCE = 2 * Math.PI * CONTEXT_RING_RADIUS;
@@ -45,6 +47,7 @@ export function ContextUsageInspector({
   responseOutputTokens,
   responseOutputEstimated = false,
   compactedContextTokens,
+  turnUsageAvailable = true,
 }: {
   usage: MessageUsage;
   turnUsage: MessageUsage;
@@ -55,6 +58,7 @@ export function ContextUsageInspector({
   responseOutputTokens?: number;
   responseOutputEstimated?: boolean;
   compactedContextTokens?: number;
+  turnUsageAvailable?: boolean;
 }) {
   const { t } = useTranslation();
   const panelId = useId();
@@ -99,16 +103,28 @@ export function ContextUsageInspector({
     isRunning: isSessionRunning,
     modelRequestActivity,
   });
-  const context = composerContextUsage({
-    usage,
-    contextWindow,
-    compactedContextTokens,
-  });
   // The display preference flips the leading figure only; capacity colors
   // still follow remaining space so the warning state keeps one meaning.
   const usageDisplay = useAppStore((state) =>
     resolveContextUsageDisplay(state.settings?.contextUsageDisplay),
   );
+  const nativeContext = useActiveNativeContext();
+  const effectiveWindow = nativeContext ? nativeContext.hardLimit : contextWindow;
+  const effectiveWindowEstimated = nativeContext ? false : contextWindowEstimated;
+  const context = nativeContext
+    ? calculateContextUsage(
+        {
+          inputTokens: nativeContext.tokens,
+          outputTokens: 0,
+          totalTokens: nativeContext.tokens,
+        },
+        nativeContext.hardLimit,
+      )
+    : composerContextUsage({
+        usage,
+        contextWindow,
+        compactedContextTokens,
+      });
   const display = contextUsageView(context, usageDisplay);
   // Occupancy, turn total, and provider cache/input/output are the last
   // model request. Summing every tool-loop call inflates cache read past
@@ -233,7 +249,7 @@ export function ContextUsageInspector({
   }, [
     compaction,
     context.usedTokens,
-    contextWindow,
+    effectiveWindow,
     open,
     toolRows.length,
     toolTotal,
@@ -338,13 +354,14 @@ export function ContextUsageInspector({
         <strong>
           {t("chat.usageContextTokens", {
             used: formatCompactTokenCount(context.usedTokens),
-            window: `${contextWindowEstimated ? "≈ " : ""}${formatCompactTokenCount(contextWindow)}`,
+            window: `${effectiveWindowEstimated ? "≈ " : ""}${formatCompactTokenCount(effectiveWindow)}`,
           })}
         </strong>
         <span className="context-inspector-window-percent">
           {context.usedPercent}%
         </span>
       </div>
+      {turnUsageAvailable && (<>
       <div className="context-inspector-kpis">
         <div>
           <span>{t("chat.usageTurnTotal")}</span>
@@ -372,6 +389,7 @@ export function ContextUsageInspector({
         turnUsage={turnUsage}
         refreshKey={`${session?.updatedAt ?? ""}:${isSessionRunning}:${turnUsage.totalTokens}:${turnUsage.cost?.total ?? ""}`}
       />
+      </>)}
       {sessionTiming.timing ? (
         <div className="context-inspector-kpis">
           <div>
@@ -413,6 +431,7 @@ export function ContextUsageInspector({
           </div>
         </div>
       ) : null}
+      {turnUsageAvailable && (
       <div className="context-inspector-summary">
         <div className="context-inspector-summary-row">
           <strong>{t("chat.usageProviderUsage")}</strong>
@@ -458,6 +477,7 @@ export function ContextUsageInspector({
           </span>
         </div>
       </div>
+      )}
       {compaction ? (
         <div className="context-inspector-compaction">
           <span>

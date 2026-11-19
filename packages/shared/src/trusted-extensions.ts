@@ -59,6 +59,14 @@ export type TrustedExtensionLoadReport = {
   eventNames: string[];
 };
 
+/** In-memory context snapshot for a session's active model. Never alters provider requests or billing records; upstream `used` anchors only the active session's input budget numerator while `hardLimit` stays derived from the local model window. */
+export type NativeContextSnapshot = {
+  providerId: string;
+  modelId: string;
+  tokens: number;
+  hardLimit: number;
+};
+
 /** Interactive and status calls the sidecar sends to the desktop (spec §9). */
 export type TrustedExtensionUiRequest =
   | { kind: "cancel"; requestId: string }
@@ -66,6 +74,7 @@ export type TrustedExtensionUiRequest =
   | { kind: "confirm"; title: string; message: string }
   | { kind: "select"; title: string; options: string[] }
   | { kind: "input"; title: string; placeholder?: string }
+  | { kind: "contextSnapshot"; snapshot: NativeContextSnapshot | null }
   | { kind: "setStatus"; key: string; text: string | undefined }
   | { kind: "setWorkingMessage"; text: string | undefined };
 
@@ -75,6 +84,7 @@ export type TrustedExtensionUiResponse =
   | { kind: "confirm"; value: boolean; cancelled?: boolean }
   | { kind: "select"; value: string | undefined; cancelled?: boolean }
   | { kind: "input"; value: string | undefined; cancelled?: boolean }
+  | { kind: "contextSnapshot" }
   | { kind: "setStatus" }
   | { kind: "setWorkingMessage" };
 
@@ -112,6 +122,8 @@ export type TrustedExtensionStatusEvent = {
   /** `working` is the working message; other keys are `setStatus` keys. */
   key: string;
   text: string | undefined;
+  /** If present this is not a floating status; null removes this source. */
+  contextSnapshot?: NativeContextSnapshot | null;
 };
 
 /** Enablement scope as stored by the desktop (spec §3.2). */

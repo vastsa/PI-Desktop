@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { TrustedExtensionUiPrompt } from "@pi-desktop/shared";
 import { api } from "../lib/api";
+import { recordExtensionStatus } from "../lib/native-context-store";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import { useHostSafetySurface } from "../lib/host-safety-layer";
 import { useAppStore } from "../stores/app-store";
@@ -30,6 +31,10 @@ export function ExtensionPromptHost() {
       setQueue((prev) => (prev.some((p) => p.promptId === prompt.promptId) ? prev : [...prev, prompt]));
     });
     const offStatus = api.onExtensionStatus((event) => {
+      // An event that carries a context snapshot is data for the composer's
+      // context inspector, never a floating line; a `null` retires only that
+      // extension's own snapshot in that session.
+      if (recordExtensionStatus(event)) return;
       setStatus((prev) => {
         const session = { ...(prev[event.sessionId] ?? {}) };
         const key = `${event.extensionId}\u0000${event.key}`;

@@ -54,6 +54,208 @@ async function probeExtensionCwd(options: { projectPath?: string; scratchDir: st
 }
 
 describe("Desktop extension lifecycle", () => {
+  it("does not let an expired extension callback overwrite or detach a newer context sample", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-context-owner-"));
+    const entry = join(root, "observer.mjs");
+    writeFileSync(entry, `export default function (pi) {
+      let prior;
+      pi.registerCommand("observe", { handler: (_args, ctx) => {
+        prior = ctx.ui.setProviderContext; prior({used: 10_000});
+      }});
+      pi.registerCommand("replace", { handler: (_args, ctx) => {
+        ctx.ui.setProviderContext({used: 20_000});
+        prior({used: 99_000}); prior(undefined);
+      }});
+      pi.registerCommand("clear", { handler: (_args, ctx) => ctx.ui.setProviderContext(undefined) });
+    }`);
+    const seen: unknown[] = [];
+    const runtime = new DesktopAgentRuntime({
+      host: { call: async (method: string, params: { request?: { kind: string; snapshot?: unknown } }) => {
+        if (method === "extensions.ui.request" && params.request?.kind === "contextSnapshot") seen.push(params.request.snapshot);
+        return {};
+      }, onNotification: () => () => {} } as never,
+      sessionId: "context-owner", projectPath: root, mode: "agent", thinkingLevel: "off",
+      provider: { id: "fixture", name: "Fixture", apiKey: "", authKind: "none", baseUrl: "http://127.0.0.1:1/v1", modelId: "fixture", supportsReasoning: false, supportedThinkingLevels: ["off"] },
+      commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
+      trustedExtensions: [{ id: entry, entry, label: "Observer", root, source: "plugin" }], onEvent: () => {},
+    });
+    try {
+      await runtime.loadTrustedExtensions();
+      for (const name of ["observe", "replace"]) expect(await runtime.runTrustedExtensionCommand(name, "")).toEqual({ handled: true });
+      expect(seen).toMatchObject([{ providerId: "fixture", modelId: "fixture", tokens: 10_000 }, { providerId: "fixture", modelId: "fixture", tokens: 20_000 }]);
+      await runtime.runTrustedExtensionCommand("clear", "");
+      expect(seen.at(-1)).toBeNull();
+    } finally {
+      await runtime.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("calibrates only the context budget numerator from provider telemetry while preserving local hardLimit, trailing deltas, rollback, and compaction boundaries", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-context-upstream-budget-"));
+    const entry = join(root, "observer.mjs");
+    writeFileSync(entry, `export default function (pi) {
+      pi.registerCommand("set", { handler: (args, ctx) => {
+        const parsed = args.trim() ? JSON.parse(args) : undefined;
+        ctx.ui.setProviderContext(parsed);
+      }});
+      pi.registerCommand("usage", { handler: (_args, ctx) => {
+        ctx.ui.notify(JSON.stringify(ctx.getContextUsage()));
+      }});
+    }`);
+    const seen: Array<Record<string, unknown> | null> = [];
+    const notices: string[] = [];
+    const runtime = new DesktopAgentRuntime({
+      host: {
+        call: async (method: string, params: { request?: { kind: string; snapshot?: Record<string, unknown> | null; message?: string } }) => {
+          if (method === "extensions.ui.request" && params.request?.kind === "contextSnapshot") {
+            seen.push(params.request.snapshot ?? null);
+          }
+          if (method === "extensions.ui.request" && params.request?.kind === "notify" && params.request.message) {
+            notices.push(params.request.message);
+          }
+          return {};
+        },
+        onNotification: () => () => {},
+      } as never,
+      sessionId: "context-upstream-budget",
+      projectPath: root,
+      mode: "agent",
+      thinkingLevel: "off",
+      provider: {
+        id: "gateway",
+        name: "Local Gateway",
+        apiKey: "local",
+        authKind: "none",
+        baseUrl: "http://127.0.0.1:1/v1",
+        modelId: "gateway/coder-pro",
+        supportsReasoning: false,
+        supportedThinkingLevels: ["off"],
+        modelConfig: {
+          source: "generic",
+          name: "gateway/coder-pro",
+          baseUrl: "http://127.0.0.1:1/v1",
+          reasoning: false,
+          input: ["text"],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 256_000,
+          maxTokens: 32_000,
+        },
+      },
+      commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
+      trustedExtensions: [{ id: entry, entry, label: "Observer", root, source: "plugin" }],
+      onEvent: () => {},
+    });
+    try {
+      await runtime.loadTrustedExtensions();
+      const rt = runtime as any;
+      const u1 = { role: "user" as const, content: "hello", timestamp: 1 };
+      const a1 = {
+        role: "assistant" as const,
+        content: [{ type: "text", text: "world" }],
+        stopReason: "stop",
+        usage: { input: 205_000, output: 5_000, cacheRead: 0, cacheWrite: 0, totalTokens: 210_000 },
+        timestamp: 2,
+      };
+      rt.appendLiveEntry("u1", u1);
+      rt.appendLiveEntry("a1", a1);
+      rt.setAgentMessages([...rt.agent.state.messages, u1, a1]);
+      rt.lastProviderRequest = {
+        model: rt.model,
+        compaction: rt.activeCompaction,
+        lastInputMessage: u1,
+        assistantMessage: a1,
+        settled: "ok",
+      };
+
+      // 1. Aligns numerator to 160,000 while keeping local hardLimit (224,000) separate from upstream size (1,000,000).
+      await runtime.runTrustedExtensionCommand("set", JSON.stringify({ used: 160_000, size: 1_000_000 }));
+      await runtime.runTrustedExtensionCommand("usage", "");
+      const latestSnap = () => seen.at(-1) as Record<string, any> | null;
+      expect(latestSnap()).toEqual({
+        providerId: "gateway",
+        modelId: "gateway/coder-pro",
+        tokens: 160_000,
+        hardLimit: 224_000,
+      });
+      expect(JSON.parse(notices.at(-1)!)).toMatchObject({
+        tokens: 160_000,
+        contextWindow: 224_000,
+      });
+
+      // 2. Appending unsent local messages adds trailing delta on top of 160,000 and triggers auto-compaction at 201,600.
+      const extra = { role: "user" as const, content: "x".repeat(170_000), timestamp: 3 };
+      const withExtraBudget = rt.contextBudget([...rt.liveSessionContext().messages, extra]);
+      expect(withExtraBudget.tokens).toBeGreaterThanOrEqual(201_600);
+      expect(withExtraBudget.hardLimit).toBe(224_000);
+      expect(rt.automaticCompactionNeeded([extra])).toBe(true);
+
+      // 3. Starting a new in-flight request (`{}` before receipt arrives) keeps the settled prefix anchor;
+      //    an unsettled mid-stream sample rolls back if that request fails.
+      const u2 = { role: "user" as const, content: "follow up ".repeat(400), timestamp: 4 };
+      rt.appendLiveEntry("u2", u2);
+      rt.setAgentMessages([...rt.agent.state.messages, u2]);
+      const settledPlusDelta = rt.contextBudget(rt.agent.state.messages).tokens;
+      expect(settledPlusDelta).toBeGreaterThan(160_000);
+      const inFlightReq = {
+        model: rt.model,
+        compaction: rt.activeCompaction,
+        lastInputMessage: u2,
+      };
+      rt.lastProviderRequest = inFlightReq;
+      await runtime.runTrustedExtensionCommand("set", "{}");
+      expect(Object.keys(latestSnap()!).sort()).toEqual(["hardLimit", "modelId", "providerId", "tokens"]);
+      expect(latestSnap()?.tokens).toBe(settledPlusDelta);
+
+      await runtime.runTrustedExtensionCommand("set", JSON.stringify({ used: 195_000, size: 1_000_000 }));
+      expect(latestSnap()?.tokens).toBe(195_000);
+      rt.retireProviderRequestAnchor(inFlightReq);
+      expect(latestSnap()?.tokens).toBe(settledPlusDelta);
+
+      // 3b. A genuine upstream checkpoint drop (24,000) is respected despite an older high assistant.usage (210,000) when local text is small.
+      const checkpointedReq = {
+        model: rt.model,
+        compaction: rt.activeCompaction,
+        lastInputMessage: u2,
+        settled: "ok" as const,
+      };
+      rt.lastProviderRequest = checkpointedReq;
+      await runtime.runTrustedExtensionCommand("set", JSON.stringify({ used: 24_000, size: 1_000_000 }));
+      expect(latestSnap()?.tokens).toBe(24_000);
+      expect(latestSnap()?.hardLimit).toBe(224_000);
+
+      // 4. Candidate checkpoint & persisted compaction clear the pre-compaction anchor without polluting post-compaction budget.
+      const candidateCheckpoint = {
+        id: "cp-1",
+        summary: "compact summary",
+        firstKeptMessageId: "u2",
+        throughMessageId: "u2",
+        tokensBefore: settledPlusDelta,
+        retainedTail: [],
+        createdAt: new Date().toISOString(),
+      };
+      const postBudget = rt.contextBudget(rt.liveSessionContext(candidateCheckpoint).messages);
+      expect(postBudget.tokens).toBeLessThan(20_000);
+      expect(postBudget.hardLimit).toBe(224_000);
+
+      // 5. Safety floor prevents a low/zero upstream report from hiding a large uncompacted local transcript.
+      const bigUser = { role: "user" as const, content: "y".repeat(820_000), timestamp: 5 };
+      rt.appendLiveEntry("big", bigUser);
+      rt.setAgentMessages([...rt.agent.state.messages, bigUser]);
+      rt.lastProviderRequest = {
+        model: rt.model,
+        compaction: rt.activeCompaction,
+        lastInputMessage: bigUser,
+        settled: "ok",
+      };
+      await runtime.runTrustedExtensionCommand("set", JSON.stringify({ used: 12_000, size: 1_000_000 }));
+      expect(rt.contextBudget(rt.liveSessionContext().messages).tokens).toBeGreaterThanOrEqual(195_000);
+    } finally {
+      await runtime.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("loads trusted extensions once when the first calls race the lazy import", async () => {
     const root = mkdtempSync(join(tmpdir(), "pi-hooks-load-race-"));
     const entry = join(root, "extension.ts");

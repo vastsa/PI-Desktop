@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type {
+  MessageUsage,
   Mode,
   PermissionMode,
 } from "@pi-desktop/shared";
@@ -21,6 +22,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
+import { useActiveNativeContext } from "../hooks/use-active-native-context";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
@@ -61,6 +63,7 @@ import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
 import { ComposerStatus } from "../features/chat/composer/ComposerStatus";
 
 const EMPTY_QUEUED_PROMPTS: QueuedPrompt[] = [];
+const EMPTY_CONTEXT_USAGE: MessageUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
 export {
   THINKING_LEVELS,
@@ -134,6 +137,26 @@ export function Composer({
         activeSessionSummary,
       ),
     [liveMessages, providerModels, providers, sessionCompactions, activeSessionSummary],
+  );
+  // A first turn has no reported usage yet, but a snapshot that matches this
+  // session, provider and model still describes the context. The ring and its
+  // menu then stay openable instead of vanishing, and the card leaves out the
+  // per-turn rows rather than showing zero as this turn's bill.
+  const nativeContext = useActiveNativeContext();
+  const activeContextUsage = useMemo(
+    () =>
+      composerContextUsage ??
+      (nativeContext
+        ? {
+            usage: EMPTY_CONTEXT_USAGE,
+            turnUsage: EMPTY_CONTEXT_USAGE,
+            contextWindow: nativeContext.hardLimit,
+            tools: [],
+            responseOutputEstimated: false,
+            turnUsageAvailable: false,
+          }
+        : null),
+    [composerContextUsage, nativeContext],
   );
   const configureActiveSession = useAppStore((s) => s.configureActiveSession);
   const showToast = useAppStore((s) => s.showToast);
@@ -651,7 +674,7 @@ export function Composer({
             modelLabel={modelLabel}
             thinkingLabel={thinkingLabel}
             modelFastMode={sessionFastModeActive(provider, modelId, activeSession ?? draftConfiguration)}
-            contextUsage={composerContextUsage ?? null}
+            contextUsage={activeContextUsage}
             value={value}
             modelReady={modelReady}
             sendBlocked={sendBlocked}
