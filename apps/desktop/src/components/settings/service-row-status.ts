@@ -20,7 +20,46 @@ export function serviceRowKind(provider: ProviderPublic): ServiceRowKind {
   if (provider.authKind === OAUTH_AUTH_KIND) return "account";
   return provider.ownerPluginId ? "plugin" : "api";
 }
+/**
+ * The dialog that owns a service's models, or null when nothing may open one.
+ *
+ * The Models page has two entry points into a service editor (the AI service
+ * list and the subagent delegation list); both route through here so neither can
+ * send a row to a dialog that will refuse to save it. A plugin-declared row is
+ * refreshed from its manifest on every load and `providers.update` refuses it
+ * (`PROVIDER_OWNED_BY_PLUGIN`), so it has no editor at all — the same rule the
+ * service list already applies when it hides its own edit action.
+ */
+export type ServiceEditorTarget = {
+  /** `account` opens the vendor account dialog, `provider` the provider form. */
+  kind: "account" | "provider";
+  providerId: string;
+};
 
+export function serviceEditorTarget(provider: ProviderPublic): ServiceEditorTarget | null {
+  // Owner check first: a plugin-declared account row is refused by the same RPC
+  // the account dialog writes through, so its kind does not matter.
+  if (provider.ownerPluginId) return null;
+  return {
+    kind: serviceRowKind(provider) === "account" ? "account" : "provider",
+    providerId: provider.id,
+  };
+}
+
+/**
+ * A service as one line, disambiguated by account when the row is one.
+ *
+ * `serviceRowTitle` needs the vendor entry and a translator, so it can add the
+ * ordinal of two unlabeled logins; surfaces that only hold a `ProviderPublic`
+ * (the delegation list built by a pure helper) use this instead. A login whose
+ * label merely repeats the vendor name adds nothing, exactly as in the row.
+ */
+export function serviceDisplayLabel(provider: ProviderPublic): string {
+  const name = provider.name?.trim() || provider.id;
+  if (serviceRowKind(provider) !== "account") return name;
+  const account = provider.oauthAccountLabel?.trim();
+  return account && account !== name ? `${name} · ${account}` : name;
+}
 export type ServiceRowTitle = {
   /** The service, or the vendor an account signs in to. */
   name: string;

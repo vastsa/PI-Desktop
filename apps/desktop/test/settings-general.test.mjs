@@ -348,10 +348,14 @@ test("model configuration lists AI services and vendor accounts together", () =>
   assert.doesNotMatch(providersSource, /provider-config-hero/);
   assert.doesNotMatch(providersSource, /settings-section-subtitle/);
   // An account row still lives and dies through the vendor-account editor and
-  // deleteOauthAccount, never through the provider CRUD.
+  // deleteOauthAccount, never through the provider CRUD. The page resolves the
+  // editor through `serviceEditorTarget` first — which keeps a plugin-declared
+  // row out of both dialogs — and only then picks the account form over the
+  // provider form.
+  assert.match(providersSource, /serviceEditorTarget\(provider\)/);
   assert.match(
     providersSource,
-    /serviceRowKind\(provider\) === "account"\s*\?\s*setEditingAccountId\(provider\.id\)\s*:\s*setSetupFor\(provider\.id\)/,
+    /if \(target\.kind === "account"\) setEditingAccountId\(target\.providerId\);\s*else setSetupFor\(target\.providerId\)/,
   );
   assert.match(
     providersSource,
