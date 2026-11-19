@@ -58,3 +58,18 @@ test("home project switcher is a fixed portaled menu that stays inline in the he
     /\.home-project-switcher-menu\.is-open \{[\s\S]*?visibility:\s*visible;/,
   );
 });
+
+test("home project switcher trigger shows a dropdown chevron after the underlined name", () => {
+  assert.match(
+    switcher,
+    /<span className="project-underline-name">\{name\}<\/span>\s*<IconChevronDown[\s\S]*?className="project-underline-chevron"[\s\S]*?aria-hidden/,
+  );
+  assert.match(
+    styles,
+    /\.empty-hero \.project-underline-name \{[\s\S]*?text-decoration:\s*underline dotted;/,
+  );
+  assert.match(
+    styles,
+    /\.empty-hero \.project-underline\[aria-expanded="true"\] \.project-underline-chevron \{[\s\S]*?transform:\s*rotate\(180deg\);/,
+  );
+});

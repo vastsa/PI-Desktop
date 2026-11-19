@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const frEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Activez OpenAI Fast par modèle et utilisez /fast dans une conversation pour demander un service prioritaire ; les limites d’abonnement peuvent baisser plus vite ou le coût par token augmenter.",
       "Les visualisations intégrées se chargent plus vite grâce à des outils de graphique réutilisables ; les scripts en échec affichent désormais des erreurs utiles au lieu de cartes vides.",
@@ -15,6 +16,9 @@ export const frEntries: ChangelogEntry[] = [
       "Chaque plugin est désormais rangé sur une étagère bilingue : la marketplace se lit en français ou en chinois et filtre par la même catégorie.",
       "Les détails d'un plugin affichent désormais l’éditeur, le readme et les notes de sécurité du catalogue, qui étaient perdus à la lecture.",
       "Choisissez GPT-6.2 Sol et GPT-6.2 Astra avec OpenAI, ChatGPT, GitHub Copilot, OpenCode et les passerelles qui les publient, avec leurs limites et tarifs publiés.",
+      "Les paramètres s’ouvrent désormais dans une boîte de dialogue au-dessus de la page actuelle, la barre latérale place Nouvelle tâche, Planifiées et Marché des plugins en haut, et un court guide de démarrage vous aide à ajouter un modèle et à découvrir le raccourci du lanceur de plugins.",
+      "Choisissez les modules affichés dans la barre latérale via Paramètres → Apparence → Modules de la barre latérale : Nouvelle tâche, Planifiées, Marketplace de plugins, sessions épinglées, Sessions, Projets, leurs boutons et la version.",
+      "La section Sessions de la barre latérale devient Récentes : toutes les conversations non épinglées, des plus récentes aux plus anciennes, avec Charger plus ; le titre de l'accueil vide affiche aussi une flèche déroulante pour changer de projet.",
     ],
   },
   {
@@ -36,6 +40,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copiez les diagrammes Mermaid en texte SVG ou exportez-les en fichiers SVG autonomes, y compris depuis les aperçus README.",
       "Voyez le coût de chaque tour et de toute la conversation dans l’inspecteur de contexte et la capsule d’usage du tour, l’usage d’abonnement restant distinct des dépenses à l’usage.",
       "Utilisez votre propre vidéo comme animation de démarrage : déposez-en une dans le dossier « startup » ; l’interface apparaît ensuite en fondu.",
       "Les plugins peuvent lister les projets enregistrés et leurs dossiers sans changer de session active.",
