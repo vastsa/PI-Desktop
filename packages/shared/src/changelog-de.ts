@@ -15,6 +15,7 @@ export const deEntries: ChangelogEntry[] = [
       "Jedes Plugin liegt jetzt auf einem zweisprachigen Regal, sodass der Marktplatz auf Deutsch oder Englisch liest und nach derselben Kategorie filtert.",
       "Plugin-Details zeigen jetzt Herausgeber, Readme und Sicherheitshinweise aus dem Katalog; sie gingen beim Einlesen verloren.",
       "Wähle GPT-6.2 Sol und GPT-6.2 Astra bei OpenAI, ChatGPT, GitHub Copilot, OpenCode und Gateways, die sie anbieten, mit ihren veröffentlichten Limits und Preisen.",
+      "Die Einstellungen öffnen sich jetzt als Dialog über der aktuellen Seite, die Seitenleiste zeigt Neue Aufgabe, Geplant und Plugin-Marktplatz oben, und eine kurze Startanleitung hilft beim Hinzufügen eines Modells und beim Kennenlernen des Plugin-Launcher-Kürzels.",
     ],
   },
   {

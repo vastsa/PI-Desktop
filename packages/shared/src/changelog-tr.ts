@@ -15,6 +15,7 @@ export const trEntries: ChangelogEntry[] = [
       "Her eklenti artık iki dilli bir rafa yerleşiyor; pazar yeri Türkçe veya Çince okunuyor ve aynı kategoriyle filtreleniyor.",
       "Eklenti ayrıntıları artık yayıncıyı, README'yi ve güvenlik notlarını gösteriyor; katalog okunurken kayboluyorlardı.",
       "GPT-6.2 Sol ve GPT-6.2 Astra modellerini OpenAI, ChatGPT, GitHub Copilot, OpenCode ve bunları yayımlayan ağ geçitlerinde, yayımlanan sınır ve fiyatlarıyla seçin.",
+      "Ayarlar artık geçerli sayfanın üzerinde bir iletişim kutusu olarak açılıyor, kenar çubuğu Yeni görev, Zamanlanmış ve Eklenti pazarını en üste taşıyor ve kısa bir başlangıç rehberi model eklemenize ve eklenti başlatıcı kısayolunu öğrenmenize yardımcı oluyor.",
     ],
   },
   {

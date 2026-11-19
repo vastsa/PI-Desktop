@@ -15,6 +15,7 @@ export const enEntries: ChangelogEntry[] = [
       "Every plugin now sits on a bilingual shelf, so the marketplace reads in English or Chinese and filters by one shared category.",
       "Plugin details now show the publisher, the readme and the safety notes the catalog publishes; they were being dropped when the catalog was read.",
       "Choose GPT-6.2 Sol and GPT-6.2 Astra with OpenAI, ChatGPT, GitHub Copilot, OpenCode and gateways that publish them, with their published limits and prices.",
+      "Settings now opens as a dialog over the current page, the sidebar puts New task, Scheduled and Plugin market at the top, and a short startup guide helps you add a model and learn the plugin launcher shortcut.",
     ],
   },
   {
