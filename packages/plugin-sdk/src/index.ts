@@ -889,6 +889,20 @@ export const PLUGIN_VIEW_ICONS = [
 export type PluginViewIcon = (typeof PLUGIN_VIEW_ICONS)[number];
 
 /**
+ * Host presentations a docked view may opt into (ADR 0348).
+ *
+ * The default presentation is the ordinary docked pane. `"workbench"` asks the
+ * host for a temporary working layout instead: while this view is the
+ * foreground tab of the work panel the host maximizes the panel and collapses
+ * the left sidebar, and it restores the layout the user had as soon as the
+ * view is left. The opt-in is presentation only — it grants no permission and
+ * no host API beyond what `ui.view` already gives the plugin.
+ */
+export const PLUGIN_VIEW_PRESENTATIONS = ["workbench"] as const;
+
+export type PluginViewPresentation = (typeof PLUGIN_VIEW_PRESENTATIONS)[number];
+
+/**
  * One surface the plugin docks inside the host's work panel.
  *
  * A view is the same isolated web page as `ui.panel`, rendered in the panel
@@ -906,6 +920,13 @@ export type PluginViewContrib = {
   entry: string;
   /** Ascending sort key within the plugin-views menu group. Defaults to 0. */
   order?: number;
+  /**
+   * Host presentation opt-in (ADR 0348). Omitted keeps the ordinary docked
+   * pane; `"workbench"` requests the temporary maximize-and-collapse layout
+   * while the view is the foreground tab, with the previous layout restored
+   * when the user leaves it.
+   */
+  presentation?: PluginViewPresentation;
 };
 
 export type PluginCommand = {
@@ -2402,8 +2423,16 @@ export function validateContributions(
     if (view.order !== undefined && !Number.isFinite(view.order)) {
       return `view "${view.id}" order must be a number`;
     }
+    if (
+      view.presentation !== undefined &&
+      !(PLUGIN_VIEW_PRESENTATIONS as readonly unknown[]).includes(view.presentation)
+    ) {
+      return `view "${view.id}" presentation must be ${PLUGIN_VIEW_PRESENTATIONS.map((value) => `"${value}"`).join(" or ")}`;
+    }
     // `icon` is intentionally unchecked: an unknown token degrades to a letter
     // tile, so rejecting one would break a plugin over a cosmetic detail.
+    // `presentation` is checked because the host acts on it: a value it does not
+    // know must fail loudly instead of silently reshaping the host layout.
   }
 
   const sessionSourceIds = new Set<string>();

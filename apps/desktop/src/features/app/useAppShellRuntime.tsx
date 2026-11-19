@@ -10,7 +10,7 @@ import {
   resolveKeybinding,
   type ShortcutPlatform,
 } from "@pi-desktop/shared";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { installRendererApi } from "../../capture/renderer-api";
 import { StartupAnimation } from "../../components/StartupAnimation";
@@ -29,6 +29,13 @@ import {
 } from "../../lib/sidebar-preferences";
 import { DEFAULT_SETTINGS_TAB } from "../../lib/settings-search";
 import { sidebarWidthBudget } from "../../lib/sidebar-resize";
+import {
+  EMPTY_WORKBENCH_LAYOUT,
+  markWorkbenchLayoutUserChange,
+  type WorkbenchLayoutState,
+  workbenchLayoutTransition,
+  workbenchViewActivationKey,
+} from "../../lib/plugin-view-workbench-layout";
 import { commitWorkPanelPresentation } from "../../lib/work-panel-presentation";
 import {
   MAIN_PANE_MIN_WIDTH,
@@ -78,6 +85,9 @@ export function useAppShellRuntime() {
     }
   }, [page, settings?.scheduledTasksEnabled]);
   const workPanelOpen = useAppStore((s) => s.workPanelOpen);
+  const workPanelTabs = useAppStore((s) => s.workPanelTabs);
+  const activeWorkPanelTabId = useAppStore((s) => s.activeWorkPanelTabId);
+  const pluginViews = useAppStore((s) => s.pluginViews);
   const workPanelWidth = useAppStore((s) => s.workPanelWidth);
   const workPanelYieldedWidth = useAppStore((s) => s.workPanelYieldedWidth);
   const pluginThemes = useAppStore((s) => s.pluginThemes);
@@ -135,6 +145,13 @@ export function useAppShellRuntime() {
   const workPanelOpenRef = useRef(workPanelVisible);
   const workPanelMaximizedRef = useRef(false);
   const autoCollapsedSidebarRef = useRef(false);
+  /**
+   * The borrowed layout of the workbench view currently on top, or the empty
+   * state when the ordinary docked layout is in charge (ADR 0348).
+   */
+  const workbenchLayoutRef = useRef<WorkbenchLayoutState>(
+    EMPTY_WORKBENCH_LAYOUT,
+  );
   sidebarCollapsedRef.current = sidebarCollapsed;
   sidebarWidthRef.current = sidebarWidth;
   shellWidthRef.current = shellWidth;
@@ -185,6 +202,10 @@ export function useAppShellRuntime() {
   }, []);
   const handleSidebarResizeCollapse = useCallback(() => {
     autoCollapsedSidebarRef.current = false;
+    workbenchLayoutRef.current = markWorkbenchLayoutUserChange(
+      workbenchLayoutRef.current,
+      "sidebarCollapsed",
+    );
     setSidebarCollapsed(true);
   }, []);
   // Reopening prefers the right column: the work panel gives up width first so
@@ -213,6 +234,10 @@ export function useAppShellRuntime() {
         );
     }
     autoCollapsedSidebarRef.current = false;
+    workbenchLayoutRef.current = markWorkbenchLayoutUserChange(
+      workbenchLayoutRef.current,
+      "sidebarCollapsed",
+    );
     setSidebarWidth(preferredWidth);
     setSidebarCollapsed(false);
   }, []);
@@ -223,6 +248,12 @@ export function useAppShellRuntime() {
   // action, so it clears an automatic-collapse record before toggling.
   const toggleSidebar = useCallback(() => {
     autoCollapsedSidebarRef.current = false;
+    // A manual toggle owns the sidebar again, so a workbench view can neither
+    // re-collapse nor re-open it for the rest of that activation (ADR 0348).
+    workbenchLayoutRef.current = markWorkbenchLayoutUserChange(
+      workbenchLayoutRef.current,
+      "sidebarCollapsed",
+    );
     if (sidebarCollapsedRef.current) reopenSidebar();
     else setSidebarCollapsed(true);
   }, [reopenSidebar]);
@@ -279,6 +310,55 @@ export function useAppShellRuntime() {
     presentedWorkPanelRef.current = presentedWorkPanelOpen;
   }, [presentedWorkPanelOpen]);
 
+  /**
+   * A view that opts into `presentation: "workbench"` borrows the host layout
+   * while it is the foreground tab (ADR 0348). The activation key is null for
+   * every other state, so ordinary docked views, other pages, a closed panel,
+   * and a background session all keep the layout the user set.
+   */
+  const workbenchViewKey = useMemo(
+    () =>
+      workbenchViewActivationKey({
+        page,
+        sessionId: activeSessionId ?? null,
+        workPanelOpen,
+        presented: presentedWorkPanelOpen,
+        tabs: workPanelTabs,
+        activeTabId: activeWorkPanelTabId,
+        views: pluginViews,
+      }),
+    [
+      page,
+      activeSessionId,
+      workPanelOpen,
+      presentedWorkPanelOpen,
+      workPanelTabs,
+      activeWorkPanelTabId,
+      pluginViews,
+    ],
+  );
+
+  // One transition per activation change: entering borrows the layout, leaving
+  // gives back exactly the parts this policy changed, and a direct switch
+  // between two workbench views keeps it. Nothing here runs on an unrelated
+  // re-render, so a manual restore or a manual sidebar reopen stays in effect
+  // for as long as the user is in the view.
+  useEffect(() => {
+    const command = workbenchLayoutTransition(workbenchLayoutRef.current, {
+      key: workbenchViewKey,
+      maximized: workPanelMaximizedRef.current,
+      sidebarCollapsed: sidebarCollapsedRef.current,
+    });
+    if (command.state === workbenchLayoutRef.current) return;
+    workbenchLayoutRef.current = command.state;
+    if (command.setMaximized !== undefined) {
+      setWorkPanelMaximized(command.setMaximized);
+    }
+    if (command.setSidebarCollapsed !== undefined) {
+      setSidebarCollapsed(command.setSidebarCollapsed);
+    }
+  }, [workbenchViewKey]);
+
   // Destination pages own the center pane. Leaving Chat while previewing must
   // restore that pane before the destination is presented; otherwise the
   // sidebar can change `page` successfully while the route stays unmounted.
@@ -294,8 +374,14 @@ export function useAppShellRuntime() {
 
   // Preview mode: MainChat is not rendered and the panel takes its width as
   // well, so the user can read a wide plugin view or preview. Transient: it is
-  // never persisted and it ends with the panel.
+  // never persisted and it ends with the panel. A toggle inside a workbench view
+  // also takes that axis back from the view's borrowed layout (ADR 0348), so a
+  // manual restore stays restored for as long as the view is open.
   const toggleWorkPanelMaximize = useCallback(() => {
+    workbenchLayoutRef.current = markWorkbenchLayoutUserChange(
+      workbenchLayoutRef.current,
+      "maximized",
+    );
     setWorkPanelMaximized((current) => !current);
   }, []);
 
