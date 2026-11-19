@@ -16,6 +16,7 @@ export const frEntries: ChangelogEntry[] = [
       "Les détails d'un plugin affichent désormais l’éditeur, le readme et les notes de sécurité du catalogue, qui étaient perdus à la lecture.",
       "Choisissez GPT-6.2 Sol et GPT-6.2 Astra avec OpenAI, ChatGPT, GitHub Copilot, OpenCode et les passerelles qui les publient, avec leurs limites et tarifs publiés.",
       "Les paramètres s’ouvrent désormais dans une boîte de dialogue au-dessus de la page actuelle, la barre latérale place Nouvelle tâche, Planifiées et Marché des plugins en haut, et un court guide de démarrage vous aide à ajouter un modèle et à découvrir le raccourci du lanceur de plugins.",
+      "Choisissez les modules affichés dans la barre latérale via Paramètres → Apparence → Modules de la barre latérale : Nouvelle tâche, Planifiées, Marketplace de plugins, sessions épinglées, Sessions, Projets, leurs boutons et la version.",
     ],
   },
   {

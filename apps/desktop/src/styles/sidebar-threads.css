@@ -316,6 +316,19 @@
   flex: 0 0 auto;
 }
 
+/* Projects hidden in Settings: the session list takes the freed height. */
+.sidebar-standalone-sessions.is-fill {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.sidebar-standalone-sessions.is-fill .sidebar-session-group-body.standalone {
+  max-height: none;
+  flex: 1 1 auto;
+}
+
 .sidebar-session-empty {
   padding: 5px 8px;
   color: var(--ds-text-muted);
