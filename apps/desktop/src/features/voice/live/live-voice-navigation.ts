@@ -9,5 +9,4 @@ export function openLiveVoiceSettings() {
     import.meta.env.DEV,
   );
   store.setSettingsTab(voiceHidden ? "agent" : "voice");
-  store.setPage("settings");
 }

@@ -304,7 +304,7 @@ test("the sidebar toggle never captures a stale collapsed state", () => {
     appSource,
     /setSidebarCollapsed\(\(collapsed\) => !collapsed\)/,
   );
-  assert.match(appSource, /useSidebarTransition\(\s*sidebarCollapsed,\s*ready && page !== "settings"/);
+  assert.match(appSource, /useSidebarTransition\(\s*sidebarCollapsed,\s*ready,?\s*\)/);
   assert.match(appSource, /if \(current !== transition\) setTransition\(current\)/);
   assert.match(appSource, /return \(\) => window\.clearTimeout\(timer\)/);
   assert.match(appSource, /state === current \? \{ \.\.\.state, phase: "idle" \} : state/);

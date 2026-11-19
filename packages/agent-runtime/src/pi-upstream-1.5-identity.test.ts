@@ -15,7 +15,7 @@ describe("Pi 1.5 client identity", () => {
     );
 
     expect(identity?.attribution).toBeNull();
-    expect(formatUserAgent(identity)).toMatch(/^pi\/1\.5\.0 \(/);
+    expect(formatUserAgent(identity)).toMatch(/^pi\/1\.5\.2 \(/);
     for (const target of [
       { provider: "openrouter", baseUrl: "https://openrouter.ai/api/v1" },
       { provider: "nvidia", baseUrl: "https://integrate.api.nvidia.com/v1" },

@@ -237,6 +237,22 @@
   animation: overlay-in var(--motion-duration-normal) var(--motion-ease-out) both;
 }
 
+/*
+  Layer host a modal (Settings, startup guide) renders right after itself.
+  Menus, popovers and sheets opened inside the modal mount here so they stack
+  above it; the empty host never takes pointer input.
+*/
+.modal-layer-host {
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  pointer-events: none;
+}
+
+.modal-layer-host > * {
+  pointer-events: auto;
+}
+
 .dialog {
   width: min(100%, 440px);
   /* Overlay is a flex box; auto min-width would let wide content overflow it. */

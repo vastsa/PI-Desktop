@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const enEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Turn on OpenAI Fast mode per model and use /fast in a conversation to request priority service; it may use subscription limits faster or cost more per token.",
       "Inline visualizations load faster with reusable chart helpers, and failed scripts now show actionable errors instead of blank cards.",
@@ -14,6 +15,10 @@ export const enEntries: ChangelogEntry[] = [
       "Browse the plugin marketplace as one list that loads more as you scroll, sort by recommended, popular, newest, or name, and see how many plugins match each category; the last saved catalog answers when the plugin center is unreachable.",
       "Every plugin now sits on a bilingual shelf, so the marketplace reads in English or Chinese and filters by one shared category.",
       "Plugin details now show the publisher, the readme and the safety notes the catalog publishes; they were being dropped when the catalog was read.",
+      "Choose GPT-6.2 Sol and GPT-6.2 Astra with OpenAI, ChatGPT, GitHub Copilot, OpenCode and gateways that publish them, with their published limits and prices.",
+      "Settings now opens as a dialog over the current page, the sidebar puts New task, Scheduled and Plugin market at the top, and a short startup guide helps you add a model and learn the plugin launcher shortcut.",
+      "Choose which sidebar modules to show in Settings → Appearance → Sidebar modules: New task, Scheduled, Plugin market, pinned sessions, Sessions, Projects, their toolbar buttons and the version chip.",
+      "The sidebar's Sessions section is now Recent: every unpinned conversation, newest first, with Load more; the empty home title also shows a dropdown arrow for switching projects.",
     ],
   },
   {
@@ -35,6 +40,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copy rendered Mermaid diagrams as SVG text or export them as standalone SVG files, including from README previews.",
       "See what each turn and the whole conversation cost in the context inspector and turn usage capsule, with subscription usage kept apart from pay-as-you-go spend.",
       "Use your own video as the startup animation by dropping one into the startup folder; the interface fades in after it plays.",
       "Let plugins list saved projects and their folders without switching the active session.",

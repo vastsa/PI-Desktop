@@ -272,6 +272,12 @@ export type AppSettings = {
    * disabled, so a fresh install shows a clean sidebar until the user opts in.
    */
   sidebarSessionTime?: boolean;
+  /**
+   * Per-module visibility for the left sidebar. Every module is shown unless
+   * its key is explicitly `false`, so an absent object keeps the released
+   * layout. Settings stays reachable regardless: it has no key here.
+   */
+  sidebarModules?: SidebarModulePreferences;
   /** Voice input settings (D-voice-runtime). */
   voice?: VoiceInputSettings;
   /**
@@ -300,6 +306,26 @@ export type VoiceInputSettings = {
 export type LinkOpenTarget = "workpanel" | "external";
 
 export type ContextUsageDisplay = "remaining" | "used";
+
+/**
+ * Hideable sidebar modules. Child modules (a section's toolbar buttons) only
+ * render while their parent section is visible.
+ */
+export type SidebarModuleId =
+  | "newTask"
+  | "scheduled"
+  | "pluginMarket"
+  | "pinnedSessions"
+  | "sessions"
+  | "sessionSort"
+  | "newSession"
+  | "projects"
+  | "newProject"
+  | "projectNewTask"
+  | "buildVersion";
+
+/** `false` hides a module; absent or `true` shows it. */
+export type SidebarModulePreferences = Partial<Record<SidebarModuleId, boolean>>;
 
 /**
  * One action the transcript background radial menu can place on a direction.

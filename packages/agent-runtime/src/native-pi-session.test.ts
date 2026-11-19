@@ -524,7 +524,7 @@ describe("native continuation review regressions", () => {
       expect(identities).toHaveLength(1);
       expect(identities[0]).toMatchObject({
         userAgent: "detailed",
-        version: "1.5.0",
+        version: "1.5.2",
         attribution: enabled ? PI_ATTRIBUTION : null,
       });
     } finally {
