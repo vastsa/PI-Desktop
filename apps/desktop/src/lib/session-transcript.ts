@@ -9,6 +9,8 @@ import {
 } from "./session-transcript-updates";
 
 type OptimisticFileReference = {
+  size?: number;
+  localReference?: string;
   path: string;
   name: string;
   kind?: "image" | "file" | "session" | "directory" | "agent";
@@ -41,7 +43,7 @@ export function optimisticUserMessage(
     const kind =
       reference.kind ??
       (IMAGE_PATH_PATTERN.test(reference.path) ? ("image" as const) : ("file" as const));
-    return reference.token && kind !== "image" ? [] : [{ reference, kind }];
+    return reference.token && kind !== "image" && !reference.localReference ? [] : [{ reference, kind }];
   });
   const spans = locateInlinePromptPaths(
     content,
@@ -51,6 +53,8 @@ export function optimisticUserMessage(
     kind,
     name: reference.name,
     ref: reference.path,
+    ...(reference.size !== undefined ? { size: reference.size } : {}),
+    ...(reference.localReference ? { localReference: reference.localReference } : {}),
     ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
     ...(spans[index] ? { inlinePath: formatPromptPathText(reference.path) } : {}),
   }));

@@ -88,7 +88,11 @@ the issue-234 transport diagnostics and rebuild do not fire for it.
 Session identity follows the endpoint's owner. On `openai-completions` and
 `anthropic-messages`, a row whose base URL host is not a published vendor host
 receives the session-affinity headers and, on Chat Completions, a
-`prompt_cache_key` body key. A custom `openai-responses` row keeps the
+`prompt_cache_key` body key. Custom Chat Completions defaults to the adapter's
+`openai-nosession` format: `x-session-affinity` and `x-client-request-id`,
+without the `session_id` header rejected by strict gateways (issue #2278).
+Explicit model `compat` settings still take precedence. A custom
+`openai-responses` row keeps the
 adapter's existing session headers and cache key, and also receives the
 hyphenated `x-session-affinity` alias so a reverse proxy can route it after
 dropped underscore headers. A published vendor host and the OpenCode path
@@ -480,7 +484,8 @@ is the endpoint that vendor actually publishes:
   with the account id taken from the access token. The endpoint requires
   `client_version` and hides models whose minimum Codex client is newer, so
   the value is a pinned Codex CLI version (`CODEX_MODELS_CLIENT_VERSION`) that
-  is bumped when an account model goes missing. A `{ data: [...] }` payload is
+  is bumped when an account model goes missing (0.169.1 since `gpt-6.2-sol` and
+  `gpt-6.2-astra` require 0.166.0, #2411). A `{ data: [...] }` payload is
   not accepted. A newly published id such as `gpt-6-luna` is selectable
   without a client update when that response includes it.
 - GitHub Copilot: `GET {base}/models` with the pinned IDE identity headers and

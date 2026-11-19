@@ -2,66 +2,46 @@
 
 - Status: Accepted for implementation
 - Date: 2026-08-11
-- Deciders: PI-Desktop core
 - Amends: D189
-- Related: D212 · [Agent runtime](../spec/03-runtime/02-agent-runtime.md) ·
-  [Component spec](../spec/04-ux/08-component-spec.md) · E2E-120
+- Related: D212
 
 ## Context
 
-The composer previously made its draft, mode, thinking, and permission controls
-read-only for an entire agent run. That prevented preparing the next prompt and
-next-turn configuration while preserving the correct safety rule: host-core
-must not mutate the configuration pinned by an in-flight turn.
-
-A user-initiated Stop could also arrive before the provider's final usage
-record. The partial assistant answer was retained, but its stream duration and
-output count were absent from durable transcript metadata, so conversation
-statistics could not show generation throughput.
+The composer made draft, mode, thinking, and permission controls read-only for a
+whole run, so users could not prepare the next prompt, while the real safety rule
+is only that host-core must not mutate configuration pinned by an in-flight turn.
+A user Stop could also arrive before final provider usage, leaving stopped answers
+without stream duration or output counts.
 
 ## Decision
 
-1. During an active turn, the composer draft and mode, thinking, and permission
-   selectors remain editable. Send alone remains disabled and the Stop action
-   remains available. A pending Plan/Goal approval continues to block the draft
-   and configuration controls because it owns the session decision boundary.
-2. The renderer stores the latest full session configuration per running
-   session and projects it optimistically. On `agent_end`, `error`, or manual
-   compaction completion it submits that configuration through the existing
-   idle-only `session/configure` API. New selections replace older queued ones;
-   they never modify the running runtime.
-3. Runtime terminal messages preserve `responseDurationMs`. If an aborted
-   response has no positive provider-reported output usage, runtime and renderer
-   reconciliation estimate visible thinking plus answer text at four Unicode
-   code points per token and attach optional `responseOutputTokens`.
-4. Rust transcript conversion persists both optional fields in message metadata.
-   Exact provider usage wins over the estimate; an estimate is labeled as such
-   in conversation metadata. Older records without either field remain valid.
+1. During an active turn the draft and the mode, thinking, and permission
+   selectors stay editable; Send alone is disabled, Stop stays available, and a
+   pending Plan/Goal approval keeps blocking the draft and configuration controls.
+2. The renderer keeps the latest full session configuration per running session
+   and, on `agent_end`, `error`, or compaction completion, submits it through the
+   existing idle-only `session/configure` API, newer selections replacing queued
+   ones without touching the running runtime.
+3. Runtime terminal messages preserve `responseDurationMs`, and an aborted
+   response without positive provider output usage gets an estimated optional
+   `responseOutputTokens` counted at four code points per token over visible
+   thinking plus answer text.
+4. Rust transcript conversion persists both optional fields in message metadata,
+   exact provider usage wins over the estimate, the estimate stays labeled, and
+   records without either field remain valid.
 
 ## Consequences
 
-- Users can prepare the next request and adjust its operating profile without
-  waiting for the current answer, but cannot send a concurrent prompt.
-- Host idle-only admission, one-turn-per-session, Plan/Goal approval, and
-  permission enforcement remain unchanged.
-- Stopped partial answers show a stable approximate tokens-per-second value and
-  retain it after reload; complete answers continue to use exact provider usage.
-- `responseOutputTokens` is an additive shared field stored inside existing
-  message metadata, so neither protocol v9 nor storage schema v11 changes.
+- Users prepare the next request and its operating profile without sending
+  concurrently.
+- Idle-only admission, one turn per session, Plan/Goal approval, and permission
+  enforcement are unchanged.
+- Stopped answers show a stable approximate tokens-per-second value after reload,
+  and the additive field changes neither protocol v9 nor storage schema v11.
 
-## Alternatives considered
+## Alternatives
 
-### Configure the host immediately while running
-
-Rejected. It would either violate idle-only admission or risk changing the
-permission/tool/model configuration already pinned for the active turn.
-
-### Keep controls disabled but allow only draft typing
-
-Rejected. Mode, thinking, and permission are part of preparing the next prompt;
-making only text editable leaves the workflow unnecessarily serialized.
-
-### Hide throughput when final usage is missing
-
-Rejected. The visible partial output and measured stream interval provide a
-useful estimate, and the UI can distinguish it from provider-reported usage.
+- Configure the host while running: rejected because it breaks idle-only
+  admission or mutates pinned turn configuration.
+- Hide throughput without final usage: rejected because output and stream interval
+  already support a labeled estimate.

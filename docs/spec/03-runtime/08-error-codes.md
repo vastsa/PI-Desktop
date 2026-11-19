@@ -91,12 +91,14 @@ does not turn temporary thread pressure into a host process exit.
 ### 3.2 Agent / session
 
 Provider status parsing also recognizes DashScope `Code: <status>` envelopes
-at the start of an error message. A streamed `InvalidParameter: <400>`
+at the start of an error message, and an OpenAI SDK `Error code: NNN` prefix
+(HTTP 400-599) at the start of the message. A streamed `InvalidParameter: <400>`
 rejection is terminal even when the enclosing HTTP response was 200:
 resending unchanged tool history cannot repair it. Structured error status
 fields retain precedence; arbitrary angle-bracket numbers in prose are not
-HTTP statuses. Authentication, rate-limit and transient 5xx envelopes retain
-their existing classifications.
+HTTP statuses, and neither is a bare `code: NNN` business field such as
+SiliconFlow `30001` or Zhipu JSON `"code":1308`. Authentication, rate-limit
+and transient 5xx envelopes retain their existing classifications.
 
 | code | retriable | meaning |
 |---|---|---|
@@ -421,10 +423,11 @@ replayed by either retry budget, and a delegate reports it as
 `SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
 messages (including OpenCode Zen's `FreeUsageLimitError`, `insufficient_quota`,
 `credit_balance_exhausted`,
-organization/project spend-limit codes, `insufficient credits`, and
-`requires more credits`, and Zhipu/Z.ai JSON error code `1308` for a reached plan
-usage limit) map to terminal `PROVIDER_ERROR` even when the HTTP
-status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
+organization/project spend-limit codes, `insufficient credits`,
+`insufficient balance` / `balance is insufficient` (DeepSeek, SiliconFlow,
+MiniMax), and `requires more credits`, and Zhipu/Z.ai JSON error code `1308`
+for a reached plan usage limit) map to terminal `PROVIDER_ERROR` even when the
+HTTP status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
 omits those phrases. Throughput rate-limit wording, including
 Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
 stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
@@ -434,8 +437,10 @@ classified from that 400-599 code the same way as a `<status>:` message:
 `MODEL_NOT_CONFIGURED`, 429 stays retryable, and 5xx stay retryable unless
 the body reports a context overflow that is not a rate limit, which is
 terminal `CONTEXT_TOO_LARGE`. A 400 or 422 that explicitly rejects the API
-key (`invalid api key`, `api key not valid`, or `API_KEY_INVALID`, including
-Gemini's `API key not valid` body) is terminal `PROVIDER_UNAUTHORIZED`;
+key (`invalid api key`, `invalid x-api-key`, `incorrect api key`,
+`api key expired`, `api key not valid`, or `API_KEY_INVALID`, including
+Gemini's `API key not valid` body and OpenAI's statusless
+`Incorrect API key provided`) is terminal `PROVIDER_UNAUTHORIZED`;
 `permission denied` and a bare `unauthorized` on those statuses stay
 `PROVIDER_ERROR`.
 

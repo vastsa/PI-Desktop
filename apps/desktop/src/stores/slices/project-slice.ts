@@ -589,7 +589,18 @@ export function createProjectSlice({
 
     deleteSession: async (id) => {
       if (!id) return;
-      await api.deleteSession(id);
+      try {
+        await api.deleteSession(id);
+      } catch (error) {
+        // The main-side running guard is the backstop for races the sidebar's
+        // pre-check cannot see (issue #2291); surface it translated instead
+        // of the raw IPC error.
+        if (error instanceof Error && error.message.includes("Cannot delete a running session")) {
+          get().showToast(i18n.t("nav.deleteRunningSessionBlocked"), { variant: "warning" });
+          return;
+        }
+        throw error;
+      }
       void api.pluginViewClose("pi.browser", "browser", { sessionId: id })
         .catch((error) => get().showToast(String(error), { variant: "error" }));
       clearLocalSessionState({ get, set, runtime, withoutRecordKey }, id);

@@ -25,7 +25,14 @@ const execFileAsync = promisify(execFile);
 const { appDir } = assertDesktopBuild(root);
 const { electronBinary } = resolveElectronBinary(root);
 const binary = resolveHostBinary();
-const temp = await mkdtemp(join(tmpdir(), "pi-window-controls-"));
+const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR || tmpdir(), "pi-window-controls-"));
+const isolatedEnv = {
+  HOME: join(temp, "home"), USERPROFILE: join(temp, "home"),
+  XDG_CONFIG_HOME: join(temp, "home/.config"),
+  PI_CODING_AGENT_DIR: join(temp, "home/.pi/agent"),
+  PI_DESKTOP_AGENTS_DIR: join(temp, "home/agents"),
+};
+await mkdir(isolatedEnv.HOME, { recursive: true });
 const port = Number(process.env.PI_DESKTOP_CHROME_CDP_PORT || 9347);
 const pending = new Map();
 let sequence = 0;
@@ -130,7 +137,7 @@ async function checkWindowsRoundedCorners(
         probeError = undefined;
         if (corners.windowsBuild >= 22000) {
           return corners.cornerMode === "dwm-native" &&
-            corners.innerCornerOwned === true && corners.thickFrameStyle === false &&
+            corners.innerCornerOwned === true && corners.thickFrameStyle === true &&
             corners.nativeHitSampleCount > 0;
         }
         return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
@@ -154,7 +161,7 @@ async function checkWindowsRoundedCorners(
     ], [rounded, rounded, rounded, rounded], label);
   }
   assert.equal(corners.innerCornerOwned, true, label);
-  assert.equal(corners.thickFrameStyle, false, label);
+  assert.equal(corners.thickFrameStyle, true, label);
   if (corners.windowsBuild < 22000) {
     assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
   }
@@ -230,7 +237,7 @@ try {
   }));
   await writeFile(join(radiusPluginPath, "main.js"), "// E2E theme fixture.\n");
   await writeFile(join(radiusPluginPath, "theme.css"), ":root[data-theme=\"dark\"] { --ds-bg-primary: #181818; }\n");
-  const host = new Host(binary, join(temp, "data"));
+  const host = new Host(binary, join(temp, "data"), { env: isolatedEnv });
   let sessionId;
   try {
     await host.start();
@@ -240,7 +247,7 @@ try {
   } finally {
     await host.stop();
   }
-  const env = { ...process.env, PI_DESKTOP_DATA_DIR: join(temp, "data"),
+  const env = { ...process.env, ...isolatedEnv, PI_DESKTOP_DATA_DIR: join(temp, "data"),
     PI_DESKTOP_HOST_BIN: binary, PI_DESKTOP_START_MAXIMIZED: "0",
     PI_DESKTOP_MCP_CONTROL: "0", ELECTRON_RENDERER_URL: "" };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -313,8 +320,17 @@ try {
     assert.equal(JSON.parse(stdout.trim()).appCoversTaskbar, true, `fullscreen covers the taskbar: ${stdout.trim()}`);
     console.log("PASS fullscreen covers the taskbar");
   }
+  await evaluate(`(() => {
+    window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ = false;
+    const off = window.piDesktop.on('pi-desktop/window/event/fullscreen', payload => {
+      if (payload.fullScreen) return;
+      window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ = true;
+      off();
+    });
+  })()`);
   await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
-  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'restoreMainWindow'}).then(s => s.ok && !s.data.fullScreen)`), "leave native fullscreen");
+  await waitFor(() => evaluate(`window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ === true`), "native leave-full-screen event");
+  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.fullScreen)`), "leave native fullscreen");
   await settle();
   if (process.platform !== "darwin") {
     await click(".window-control-btn:nth-child(2)");
@@ -322,6 +338,28 @@ try {
     await checkControls("native window maximized with panel open");
     await click(".window-control-btn:nth-child(2)");
     await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.maximized)`), "native window restored");
+  } else {
+    await evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'toggleMaximize'})`);
+    await waitFor(() => evaluate(`document.documentElement.dataset.windowMaximized === 'true'`), "macOS maximized caption lock");
+    await settle();
+    const point = await evaluate(`(() => {
+      for (let y = 8; y < 46; y += 8) for (let x = 180; x < innerWidth - 40; x += 32) {
+        const el = document.elementFromPoint(x, y);
+        if (!el) continue;
+        const style = getComputedStyle(el);
+        if (style.getPropertyValue('--window-drag-region').trim() !== 'drag') continue;
+        if (style.getPropertyValue('-webkit-app-region').trim() !== 'no-drag') throw new Error('Maximized caption is still natively draggable');
+        return { x, y };
+      }
+      throw new Error('No visible caption region');
+    })()`);
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+    for (const clickCount of [1, 2]) for (const type of ["mousePressed", "mouseReleased"]) {
+      await send("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount });
+    }
+    await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.maximized)`), "macOS caption double-click restore");
+    await waitFor(() => evaluate(`document.documentElement.dataset.windowMaximized === 'false'`), "macOS normal caption unlock");
+    console.log("PASS macOS maximized caption cannot drag and double-click restores through real IPC");
   }
   await click(".app-work-panel-toggle");
   await waitFor(() => evaluate(`!document.querySelector('.work-panel')`), "panel closed again");

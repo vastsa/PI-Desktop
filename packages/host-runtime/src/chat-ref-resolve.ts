@@ -92,12 +92,35 @@ function matchesSegment(candidate: string, wanted: string): boolean {
   return CASE_INSENSITIVE_FS && candidate.toLowerCase() === wanted.toLowerCase();
 }
 
-/** Strip the composer sigil, optional quotes, and a file line reference. */
+/**
+ * Strip the composer sigil, optional quotes, and a file line reference, then
+ * repair a Windows drive path that arrived rooted the POSIX way.
+ */
 function cleanRef(raw: string): string {
   let value = stripRefDecorations(String(raw ?? ""));
   if (value.includes("\0")) return "";
   value = value.replace(/(?::\d+(?::\d+|-\d+)?|#L\d+(?:-L?\d+)?)$/i, "");
-  return value;
+  return normalizeDriveRef(value);
+}
+
+/**
+ * A chat link may root a Windows drive path the way a POSIX example does:
+ * `/f:/project/file.md` instead of `F:\project\file.md`. Both the transcript's
+ * Markdown links and the agent's own prose spell paths that way, and on Windows
+ * the leading `/` turns the drive into an ordinary directory name — `resolve()`
+ * builds `F:\f:\project\file.md`, `realpath` misses, and a file that exists is
+ * reported as missing.
+ *
+ * Only that shape is repaired here. Existence, root priority, and containment
+ * stay the resolver's own decisions, and a POSIX host keeps `/c:/...`, which is
+ * a real path there.
+ */
+const POSIX_ROOTED_DRIVE = /^\/+([A-Za-z]):\//;
+
+function normalizeDriveRef(value: string): string {
+  if (process.platform !== "win32") return value;
+  const match = POSIX_ROOTED_DRIVE.exec(value);
+  return match ? `${match[1].toUpperCase()}:/${value.slice(match[0].length)}` : value;
 }
 
 function stripRefDecorations(raw: string): string {

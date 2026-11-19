@@ -2,75 +2,48 @@
 
 - Status: Accepted
 - Date: 2026-09-08
-- Deciders: PI-Desktop core
-- Amends ADR 0176 / ADR 0095 / ADR 0156
+- Related: ADR 0095, ADR 0156, ADR 0176, D621
+- Amends: ADR 0176 / ADR 0095 / ADR 0156
 - Supersedes the User-Agent-only surface of ADR 0176
 
 ## Context
 
-ADR 0176 added a per-row User-Agent override because gateways inspect that
-header and Codex overwrites it after extra headers. Users then needed the same
-last-writer path for other non-secret request headers (routing, tenant, or
-client identification), not a dedicated User-Agent field. The provider schema
-already listed `headers`; 0176 left that map unimplemented and said User-Agent
-would win if both existed.
-
-The Advanced editor for a single User-Agent field sat in a two-column grid and
-looked sparse.
+ADR 0176 added a per-row User-Agent override because gateways inspect that header
+and Codex overwrites it after extra headers. Users needed the same last-writer path
+for other non-secret request headers such as routing, tenant, or client
+identification, and the provider schema already listed a `headers` map that ADR
+0176 left unimplemented.
 
 ## Decision
 
-Each provider row — API-key AI service and OAuth vendor account — may store an
-optional `headers` map in `config_json.headers`.
-
-- Empty, omitted, or update `{}` keeps today's adapter defaults.
-- A non-empty map is last-writer on that row's outbound HTTP: session turns,
-  builtin subagents, prompt enhancement, plugin one-shots, `/models` discovery
-  (including unsaved form values), connection tests, and OAuth token refresh.
-- A fetch wrapper is the last writer so Codex and the Anthropic SDK cannot
-  overwrite the map. The same values are also placed on pi-ai stream-option
-  headers so OpenCode's caller-wins rule stays true.
-- Stored `config_json.userAgent` migrates to `headers["User-Agent"]` on read.
-  Writing `headers` drops leftover `userAgent`. If both exist, `headers` wins
-  for a User-Agent key already in the map.
-- Host validation: trim keys and values; case-insensitive unique keys; at most
-  32 headers; key ≤ 256 bytes; value ≤ 4096 bytes; no CR/LF; header names are
-  alphanumeric plus hyphen. Reserved keys are rejected so this cannot smash
-  signing or hop-by-hop framing: `authorization`, `proxy-authorization`,
-  `host`, `content-type`, `content-length`, `cookie`, `set-cookie`,
-  `connection`, `transfer-encoding`, `te`, `trailer`, `upgrade`, `keep-alive`,
-  `x-api-key`, `api-key`, `chatgpt-account-id`, `x-opencode-session`.
-- Values are folded to half-width before that validation, and again on read:
-  the fullwidth block (U+FF01–U+FF5E) and the ideographic space (U+3000) become
-  their ASCII counterparts, because that is what an IME or a fullwidth-formatted
-  page produces for plain ASCII. What remains must be HTAB, printable ASCII or
-  the Latin-1 supplement — a header value is a ByteString, and Han text, emoji or
-  a control character makes `Headers.set` throw `Cannot convert argument to a
-  ByteString` mid-turn. The interactive write refuses those with the character
-  and its index named; the read path and an incoming sync bundle fold and drop
-  them, so a store or a peer that predates the rule cannot fail a turn or a
-  whole revision. See D621.
-- Not a secret. No SQLite or host-protocol version bump.
-- UI is an explicit Advanced settings button in the upper-right dialog actions
-  (named, custom, and vendor account) that opens a separate compact modal. The
-  modal offers common header presets including `User-Agent`, Copy JSON of the
-  same normalized record used for persistence, JSON import for either a direct
-  header object or `{ "headers": { ... } }`, and case-insensitive merge without
-  duplicate rows. At most two header rows are visible; additional
-  rows scroll inside the editor. Named display name stays above the header
-  controls. First OAuth login does not collect headers; they are edited after
-  the account exists.
-- `AgentRuntime.matches()` includes the header map so editing it rebuilds the
-  warm runtime.
-
-Overriding Anthropic OAuth's `claude-cli/…` User-Agent can make Claude Pro/Max
-reject the request. That is the user's choice.
+Each provider row, API-key service or OAuth account, may store an optional
+`headers` map in `config_json.headers`. An empty or omitted map keeps the adapter
+defaults; a non-empty map is the last writer on that row's outbound HTTP, covering
+session turns, subagents, prompt enhancement, plugin one-shots, `/models`
+discovery, connection tests, and OAuth token refresh. A fetch wrapper applies it
+so Codex and the Anthropic SDK cannot overwrite it, and the same values ride
+pi-ai stream-option headers so OpenCode's caller-wins rule stays true. A stored
+`config_json.userAgent` migrates to `headers["User-Agent"]` on read, and writing
+`headers` drops the leftover field. Host validation trims keys and values, makes
+keys case-insensitively unique, and rejects CR/LF, oversized keys or values, and
+reserved names that would smash signing or hop-by-hop framing: `authorization`,
+`host`, `content-type`, `content-length`, `cookie`, `connection`,
+`transfer-encoding`, and the provider auth keys such as `x-api-key` and
+`chatgpt-account-id`. Values are folded to half-width and must stay within the
+ByteString range, because Han text or an emoji makes `Headers.set` throw mid-turn
+(D621). The map is not a secret, so no storage or protocol version changes. The
+UI is an Advance
+d settings button that opens a compact modal with common presets including
+`User-Agent`, JSON copy and import of the normalized record, and
+case-insensitive merge. First OAuth login does not collect headers.
+`AgentRuntime.matches()` includes the map, so editing it rebuilds the warm
+runtime.
 
 ## Consequences
 
-- Users can impersonate another client and attach gateway-specific headers per
-  service or account without a global header dump or an auth-bearing editor.
-- OAuth login HTTP uses the row map only after it is saved; first-login traffic
-  keeps pi-ai defaults.
-- A previously saved User-Agent still applies until the row is next saved, at
-  which point it is stored only in `headers`.
+- Users can attach gateway-specific headers per service or account without a
+  global dump, and can override the Anthropic OAuth User-Agent even though Claude
+  Pro/Max may then reject the request.
+- OAuth login traffic keeps pi-ai defaults until the row is saved.
+- A previously saved User-Agent applies until the next save, after which it lives
+  only in `headers`.

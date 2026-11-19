@@ -1,50 +1,36 @@
 # ADR 0191: Label Both macOS Release Architectures
 
-- Status: Accepted (amended by D450 / ADR 0289)
+- Status: Accepted (amended by D450 / ADR 0289: architecture-labelled ZIPs stay the
+  in-app updater payloads and official tag artifacts are signed and notarized)
 - Date: 2026-09-09
-- Deciders: PI-Desktop core
-- Related: D126, D285, D353, D354, D450, ADR 0145, ADR 0289, E2E-092
+- Related: D126, D285, D353, D354, D450, ADR 0145, ADR 0289
 
 ## Context
 
-D353 added an explicit `Intel` marker to the native macOS x64 artifacts but left
-Apple Silicon artifacts with electron-builder's generic version-only name. A
-file such as `PI-Desktop-0.14.4.dmg` therefore still does not reveal whether it
-contains arm64 or x64 code, which is ambiguous when both downloads are listed in
-the same GitHub Release.
+D353 marked native macOS x64 artifacts `Intel` but left Apple Silicon artifacts with
+electron-builder's generic version-only name, so a file such as
+`PI-Desktop-0.14.4.dmg` never says whether it contains arm64 or x64 code when both
+downloads sit in the same release.
 
 ## Decision
 
 1. Both native macOS release lanes pass target-specific artifact patterns to
-electron-builder.
-2. The arm64 lane publishes `PI-Desktop-<version>-arm64.dmg` and
-   `PI-Desktop-<version>-arm64-mac.zip`.
-3. The Intel x64 lane publishes `PI-Desktop-<version>-x64.dmg` and
-   `PI-Desktop-<version>-x64-mac.zip`.
-4. The convention applies to unsigned and signed macOS workflow paths. The
-   generated per-architecture updater feeds retain these final asset URLs and
-   checksums before the publish job merges them.
-5. This changes release asset naming only. Signing policy and in-app macOS
-   delivery are recorded in D450 / ADR 0289.
+   electron-builder.
+2. The arm64 lane publishes `PI-Desktop-<version>-arm64.dmg` and `-arm64-mac.zip`,
+   and the Intel x64 lane publishes the matching `-x64.dmg` and `-x64-mac.zip`
+   names.
+3. The convention covers unsigned and signed workflow paths, and the generated
+   per-architecture updater feeds retain these asset URLs and checksums before the
+   publish job merges them.
 
 ## Consequences
 
-- Users can identify the required macOS installer from its filename alone.
-- DMG and ZIP names are consistent with the release matrix's `arm64` and `x64`
-  values instead of using a special `Intel` label for only one lane.
-- Existing generic arm64 and `-Intel` x64 asset names are not reused by future
-  releases; the naming change is intentionally scoped to release artifacts.
+- Users can identify the required installer from its filename alone, and DMG and
+  ZIP names match the release matrix's `arm64` and `x64` values.
+- Existing generic arm64 and `-Intel` x64 names are not reused by future releases.
 
-## Alternatives considered
+## Alternatives
 
-- Keep the arm64 name generic: rejected because it leaves one of the two
-  architectures ambiguous.
-- Use `Intel` for x64 and `Apple-Silicon` for arm64: rejected because the release
-  matrix and Electron target use standard architecture identifiers, which are
-  shorter and easier to match to the actual package contents.
-
-## Amendment (D450 / ADR 0289)
-
-Architecture-labelled ZIP names remain the in-app updater payloads. Official
-tag artifacts are signed and notarized; the `-arm64` / `-x64` convention is
-unchanged.
+- Keep the arm64 name generic: leaves one of the two architectures ambiguous.
+- Use `Intel` and `Apple-Silicon`: the release matrix and Electron target use the
+  standard architecture identifiers.

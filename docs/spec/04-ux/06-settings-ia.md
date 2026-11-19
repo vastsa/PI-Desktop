@@ -141,7 +141,10 @@ D684.
     settings control column, and shows the current name. The menu pins System,
     Light, and Dark at the top, then lists plugin themes after a divider with a
     "Provided by …" hint. Search matches labels, descriptions, ids, and plugin
-    ids. Selection updates `settings.theme`.
+    ids. Selection updates `settings.theme`. With System selected, OS appearance
+    changes refresh the resolved plugin palette and broadcast it to open plugin
+    surfaces, including Browser chrome, without another settings write or restart.
+    Explicit light/dark and registered plugin palettes remain fixed.
   - **Language**: a searchable picker row (not a card grid). The closed trigger
     sizes to the current label, capped by the settings control column, and
     shows the current native name, or Match system. The menu pins Auto at the
@@ -428,13 +431,6 @@ Card order is **Session defaults → Execution → Computer use**.
   anchored-menu surface rather than a platform-drawn `<select>` popup, so every
   Settings picker opens the same way. The closed trigger sizes to the current
   label, capped by the settings control column.
-- The **Goal budget** row sits under the default mode in Session defaults: two
-  numeric fields (turns, tokens) persisted as optional
-  `AppSettings.goalBudget { maxTurns, maxTokens }`. A field saves on blur or
-  Enter; empty is unlimited and an out-of-range value (turns 1–10000, tokens
-  at least 1000) reverts to the saved one. Absent keeps the builtin Goal
-  budget (20 turns, unlimited tokens). Only new Goal runs use it; an open run
-  is edited from its status bar.
 - **Execution** card: the infinite provider retry switch and the app-wide
   **Scheduled tasks** switch. The retry switch is off by default and explains
   that network/transient provider failures keep retrying until success; Stop

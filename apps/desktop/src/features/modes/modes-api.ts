@@ -72,6 +72,7 @@ export function parseModeCatalog(value: unknown): ModeCatalog | null {
       staged: mode.staged === true,
       available: mode.available,
       ...(mode.reserved === true ? { reserved: true } : {}),
+      ...(mode.customized === true ? { customized: true } : {}),
       ...(typeof mode.filePath === "string" ? { filePath: mode.filePath } : {}),
     });
   }

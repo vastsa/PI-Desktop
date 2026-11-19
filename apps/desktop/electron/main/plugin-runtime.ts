@@ -341,6 +341,14 @@ export type PluginHostServices = {
    * visible workspace -- for a panel call or an unknown session.
    */
   getWorkspacePathForSession?: (sessionId: string) => string | null;
+  /** Authoritative durable session metadata for desktop-control scope checks. */
+  resolveSessionProjectPath?: (sessionId: string) => Promise<string | null>;
+  /**
+   * Whether a plugin's activation scope covers `projectPath` — the same
+   * project-aware check the UI surfaces apply (#2377). Optional so a headless
+   * test host without scope records keeps every plugin global.
+   */
+  pluginActiveInProject?: (pluginId: string, projectPath: string | null | undefined) => boolean;
   readRemoteWorkspaceFiles?: PluginRemoteFilesRead;
   /** The set of `contributes.agentExtensions` modules changed (load/unload). */
   agentExtensionsChanged?: () => void;
@@ -575,6 +583,27 @@ export type PluginOAuthProvider = {
 };
 
 /** Host APIs a plugin process may reach. Anything else does not exist (spec 04 §2). */
+// #2377: desktop.control session reads that reveal which sessions exist are
+// activation-scope boundaries, like `session.getActive` and the #1754 event
+// fan-out. `session/list` is filtered to in-scope sessions; the targeted reads
+// are refused when the target session belongs to an out-of-scope project.
+const SESSION_LIST_DESKTOP_OPERATION = "session/list";
+const SESSION_READ_DESKTOP_OPERATIONS = new Set([
+  SESSION_LIST_DESKTOP_OPERATION,
+  "session/get",
+  "session/listMessages",
+  "session/listRevisions",
+]);
+
+/** The single session a targeted session read names, when its args carry one. */
+function desktopSessionTargetId(args: readonly unknown[]): string | undefined {
+  const first = args[0];
+  if (!first || typeof first !== "object" || Array.isArray(first)) return undefined;
+  const record = first as Record<string, unknown>;
+  const raw = record.sessionId ?? record.id;
+  return typeof raw === "string" ? raw : undefined;
+}
+
 const HOST_API_ALLOWLIST = new Set([
   "app.getVersion",
   "app.getLocale",
@@ -2722,6 +2751,11 @@ export class PluginRuntime {
 
   private handleChildMessage(loaded: LoadedPlugin, message: any): void {
     if (!message || typeof message !== "object") return;
+    if (message.t === "ping") {
+      // Parent-liveness keepalive: the host exits if this round-trip stops.
+      loaded.child?.postMessage({ t: "pong", id: message.id });
+      return;
+    }
     if (message.t === "res") {
       const entry = loaded.pending.get(message.id);
       if (!entry) return;
@@ -5003,6 +5037,81 @@ export class PluginRuntime {
    * actually authorised the call, which is what lets an operator tell an
    * imported-session read from a read of the user's own conversation.
    */
+  /**
+   * #2377: refuse a targeted desktop.control session read whose target session
+   * belongs to a project the caller's activation scope excludes. Resolved from
+   * durable metadata rather than the live runtime map. Unknown metadata is
+   * checked as null so project-scoped callers fail closed. Hosts without a
+   * scope service retain their existing global behavior.
+   */
+  private async assertDesktopSessionScope(
+    pluginId: string,
+    operation: string,
+    args: readonly unknown[],
+  ): Promise<void> {
+    if (operation === SESSION_LIST_DESKTOP_OPERATION) return;
+    if (!SESSION_READ_DESKTOP_OPERATIONS.has(operation)) return;
+    const activeInProject = this.services.pluginActiveInProject;
+    if (!activeInProject) return;
+    const sessionId = desktopSessionTargetId(args);
+    if (!sessionId) return;
+    const projectPath = this.services.resolveSessionProjectPath
+      ? await this.services.resolveSessionProjectPath(sessionId)
+      : this.services.getWorkspacePathForSession?.(sessionId) ?? null;
+    if (activeInProject(pluginId, projectPath)) return;
+    this.services.audit?.({
+      pluginId,
+      api: "desktop.invoke",
+      operation,
+      ok: false,
+      errorCode: "PERMISSION_DENIED",
+      reason: "scope",
+      ts: Date.now(),
+    });
+    throw apiError(
+      "PERMISSION_DENIED",
+      `${operation} targets a session outside this plugin's activation scope`,
+    );
+  }
+
+  /**
+   * #2377: hold the activation-scope line on the results of a desktop.control
+   * session read. `session/list` loses the sessions whose project the caller's
+   * scope excludes, so a project-scoped plugin never learns which sessions
+   * another project has open — the same guarantee `session.getActive` and the
+   * #1754 fan-out enforce on their channels.
+   */
+  private scopeDesktopSessionResult(
+    pluginId: string,
+    operation: string,
+    result: unknown,
+  ): unknown {
+    if (operation !== SESSION_LIST_DESKTOP_OPERATION) return result;
+    const activeInProject = this.services.pluginActiveInProject;
+    if (!activeInProject) return result;
+    const sessions = (result as { sessions?: unknown[] } | null | undefined)?.sessions;
+    if (!Array.isArray(sessions)) return result;
+    const scoped = sessions.filter((session) =>
+      activeInProject(
+        pluginId,
+        (session as { projectPath?: string | null } | null)?.projectPath ?? null,
+      ),
+    );
+    if (scoped.length !== sessions.length) {
+      this.services.audit?.({
+        pluginId,
+        api: "desktop.invoke",
+        operation,
+        ok: true,
+        scope: "filtered",
+        total: sessions.length,
+        returned: scoped.length,
+        ts: Date.now(),
+      });
+    }
+    return { ...(result as Record<string, unknown>), sessions: scoped };
+  }
+
   private assertSessionScope(
     loaded: LoadedPlugin,
     verb: SessionAccessVerb,
@@ -5837,6 +5946,7 @@ export class PluginRuntime {
           const operationInfo = this.services.desktopControl.operations.find(
             (candidate) => candidate.id === operation,
           );
+          await this.assertDesktopSessionScope(pluginId, operation, args);
           // The controller's `confirm` flag is an acknowledgement by the
           // caller, not a decision by the user. A plugin can set it at will,
           // so a dangerous operation additionally needs the host's native
@@ -5895,6 +6005,7 @@ export class PluginRuntime {
               },
               ...(invocation ? { signal: invocation.signal } : {}),
             } satisfies McpControlInvokeInput);
+            const scopedResult = this.scopeDesktopSessionResult(pluginId, operation, result);
             this.services.audit?.({
               pluginId,
               api: "desktop.invoke",
@@ -5903,7 +6014,7 @@ export class PluginRuntime {
               ok: true,
               ts: Date.now(),
             });
-            return result;
+            return scopedResult;
           } catch (error) {
             this.services.audit?.({
               pluginId,

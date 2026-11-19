@@ -7,93 +7,67 @@
 
 ## Context
 
-ADR 0213 moved the queue into host-core and gave "Send now" exactly one shape:
-`prioritize` rewrites the entry's `position` below the current minimum, so the
-entry jumps to the head of the whole queue. The renderer mirrored that as a
-single in-memory `sendNowRequested` flag cleared on every other row, which meant
-only one row could ever be waiting for the next boundary, and two "Send now"
-clicks resolved as "the last click wins".
-
-The queued row also only offered Remove and Send now. Users could not correct a
-queued prompt without deleting it and retyping, and could not reorder the plain
-queue at all even though the Host already orders it by a durable `position`.
+ADR 0213 moved the queue into host-core, where `prioritize` rewrites an entry's
+`position` below the current minimum so it jumps to the head of the whole queue.
+The renderer mirrored that as one in-memory `sendNowRequested` flag cleared by
+every other row, so only one row could wait for the next boundary and two clicks
+resolved as "the last wins". The row also offered only Remove and Send now, so a
+prompt could not be corrected without retyping and the plain queue could not be
+reordered at all.
 
 ## Decision
 
 1. **A promotion block, ordered by click.** `turn_queue` gains a nullable
-   `priority` column (schema v18). Promoting an entry writes
-   `COALESCE(MAX(priority), 0) + 1` inside the session, so the first promotion
-   is delivered first and each later promotion queues behind it. Delivery order
-   is `priority ASC, position ASC` for promoted entries followed by
-   `position ASC` for the rest; the plain queue keeps its own order.
+   `priority` column (schema v18). Promotion writes
+   `COALESCE(MAX(priority), 0) + 1` within the session, so the first promotion is
+   delivered first; delivery is `priority ASC, position ASC` for promoted entries
+   followed by `position ASC` for the rest.
 2. **Promotion is one-way and idempotent-hostile.** Promoting an entry that
    already carries a `priority` fails with `CONFLICT`/`ALREADY_PRIORITIZED`
-   instead of silently moving it again. `session.queuePrioritize` keeps moving
-   optimistic mirror does the same.
-3. **Promotion fixes order, but does not prevent cancellation.** A promoted
-   row disables move up, move down, edit, and Send now. Its label is Waiting to
-   send. Remove remains available until delivery, and the renderer waits for
-   Host confirmation before removing it.
-   Cancellation, promotion, reordering, and delivery reservation share session
-   admission serialization. Runtime delivery runs outside that lock and reserves
-   only its own input. Once an input is reserved or accepted as steering input,
-   cancellation returns `CONFLICT`; consuming an input in another turn must
-   not be mistaken for an earlier successful cancellation. Refused steering
-   retains the queued input for the next turn. There is no un-promote path.
-   Acceptance is recorded before durable cleanup; failed cleanup
-   emits an error and remains retryable without re-execution in the live Host.
-   The queue retains its record when persistence fails. Acceptance is an in-memory
-   guard, not a durable receipt: restart after failed cleanup retains the existing
-   replay risk and does not provide exactly-once delivery.
-4. **A reorder operation for the plain queue.** `session.queueReorder` swaps one
-   entry's `position` with its adjacent non-prioritized neighbour in the
-   requested direction, and reports `moved: false` for a missing entry, a
-   promoted entry, or a block/queue edge. Promoted entries are never neighbours,
-   so reordering can never cross into the priority block. The renderer mirrors
-   one swap and never reaches the Host for a boundary no-op.
-5. **Edit returns the row to the composer.** Editing is renderer-local: the row
-   is removed (through the existing removal path) and its captured
-   `ComposerDraftSnapshot` — text plus inline file references — replaces the
-   composer input through the existing `composerPrefill` channel. The
-   token-stripped `content` is never used to rebuild the prompt. The action is
-   refused with a toast while the input is non-empty, and the emptiness check
-   runs against the live editor read because the draft cache is not written per
-   keystroke.
+   instead of moving it again, and the renderer's optimistic mirror follows the
+   same rule.
+3. **Promotion fixes order, not cancellation.** A promoted row disables move up,
+   move down, edit, and Send now and reads Waiting to send, while Remove survives
+   until delivery and waits for Host confirmation. Cancellation, promotion,
+   reordering, and delivery reservation share session admission serialization;
+   runtime delivery runs outside that lock and reserves only its own input. Once
+   input is reserved or accepted as steering, cancellation returns `CONFLICT`, and
+   refused steering keeps the queued input for the next turn. There is no
+   un-promote path.
+4. **A reorder operation for the plain queue.** `session.queueReorder` swaps an
+   entry's `position` with its adjacent non-prioritized neighbour and reports
+   `moved: false` for a missing or promoted entry or a block edge, so reordering
+   never crosses into the priority block.
+5. **Edit returns the row to the composer.** Editing is renderer-local: the row is
+   removed through the existing path and its captured `ComposerDraftSnapshot` —
+   text plus inline file references — replaces the composer input through
+   `composerPrefill`. The token-stripped `content` never rebuilds the prompt, and
+   the action is refused while the live editor is non-empty.
 6. **The promoted block is delivered into the active turn.** Promotion uses
-   steering so the parent handles user input while delegates keep working
-   (issue #1607). An active `TaskWait` yields to accepted steering; ordinary
-   tools keep their normal boundaries. Immediate delivery accepts only the
-   paired caller's own input with the active turn's permission mode. External
-   Desktop turns use the stored session mode; module-admitted turns use their
-   principal-specific ceiling. Other input retains turn-boundary delivery.
-   When there is no active turn, the first promoted entry starts the turn and
-   later promoted entries join it as steering input, in click order.
-   Runtime refusals are retried within a bounded budget. Undelivered input
-   remains queued for its own turn at the next boundary.
-   An injected entry's own RACP turn is canceled: its input was
-   delivered by another turn, and no client may be left believing it is still
-   waiting.
+   steering so the parent handles user input while delegates keep working (issue
+   #1607): an active `TaskWait` yields to accepted steering while ordinary tools
+   keep their boundaries. Immediate delivery accepts only the paired caller's own
+   input under the active turn's permission mode — external Desktop turns use the
+   stored session mode, module-admitted turns their principal ceiling — and other
+   input keeps turn-boundary delivery. Without an active turn the first promoted
+   entry starts the turn and later ones join as steering in click order; refusals
+   are retried within a bounded budget, and an injected entry's own RACP turn is
+   canceled.
 7. **The turn's owner is authoritative about its end.** A runtime terminal event
-   is not a reliable release: Main drops one that names a turn it no longer owns
-   (`isStaleTerminalEvent`), and an abort need not produce one at all. A turn
-   left active inside the module holds its session's queue forever, which is how
-   "Send now, then Stop" stranded a queued row. So the settlement reported by
-   `finishTurn` closes the turn in the module (marking it as the settlement
-   reason, canceling its approvals and inputs) and lets the queue run, and the
-   module's drain request is remembered while a pass is running instead of being
-   dropped.
+   is not a reliable release: Main drops one naming a turn it no longer owns
+   (`isStaleTerminalEvent`), and an abort need not produce one at all. A turn left
+   active in the module would hold its session's queue forever, so the settlement
+   reported by `finishTurn` closes the turn and lets the queue run, and the
+   module's drain request is remembered while a pass runs instead of dropped.
 
-## Consequences and validation
+Session collaboration completion receipts are promoted automatically, so a
+worker's report runs at the next turn boundary rather than behind the plain queue,
+under the same promotion and steering rules.
 
-No breaking change to existing channels: `agentQueuePrioritize` /
-`session.queuePrioritize` keep their names and gain the block semantics, and
-`agentQueueReorder` / `session.queueReorder` are additive. Existing rows migrate
-with `priority = NULL`, so an upgraded database keeps its FIFO order and its
-eight-entry bound. Row-level unit coverage lives in `turn_queue` tests
-(promotion order, reorder, prioritized-row rejection, v16 upgrade),
-`turn-queue.test.ts` / `agent-host.test.ts` (block order, permissions), and
-`composer-send-state.test.mjs` (lock, reorder, and edit contracts). The rendered
-journeys are specified as E2E-QUEUE-promote-orders-delivery-by-click,
-E2E-QUEUE-reorder-moves-plain-neighbours, and
-E2E-QUEUE-edit-restores-draft-only-when-input-empty, and remain Draft until
-rendered E2E validation is performed.
+## Consequences
+
+- Existing channels keep their names: `agentQueuePrioritize` /
+  `session.queuePrioritize` gain the block semantics and `agentQueueReorder` /
+  `session.queueReorder` are additive.
+- Rows migrate with `priority = NULL`, so an upgraded database keeps its FIFO
+  order and eight-entry bound.

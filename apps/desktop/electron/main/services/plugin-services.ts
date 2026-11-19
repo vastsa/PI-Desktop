@@ -60,6 +60,7 @@ import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
 import { createPluginSessionContext } from "./plugin-session-context";
 import { createPluginProjectLister } from "./plugin-projects";
+import { createPluginSessionProjectResolver } from "./plugin-session-project";
 import { createComposerSuggestionRelay } from "./composer-suggestion";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
@@ -548,15 +549,11 @@ export function createPluginServices({
     log: (level, message, data) => logger.app("plugin", level, message, { data }),
     onAuthorized: async (serverId, record): Promise<McpServerStatus> => {
       const existed = userMcp.listRecords().some((item) => item.id === serverId);
-      if (record && !existed) {
-        userMcp.setRecords([...userMcp.listRecords(), record]);
-      }
       userMcp.invalidate(serverId);
-      const status: McpServerStatus = await userMcp.test(serverId);
-      if (!existed) {
-        userMcp.invalidate(serverId);
-        userMcp.setRecords(userMcp.listRecords().filter((item) => item.id !== serverId));
-      }
+      // A server no workspace lists yet is tested as saved, without being
+      // adopted into a list, and its probe connection is dropped afterwards.
+      const status: McpServerStatus = await userMcp.test(serverId, null, existed ? undefined : record);
+      if (!existed) userMcp.invalidate(serverId);
       sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: serverId });
       return status;
     },
@@ -699,7 +696,7 @@ export function createPluginServices({
       const host = getHost();
       if (!host) throw new Error("Browser preview host is unavailable.");
       const res = await host.call<{ session: { projectPath?: string; worktree?: unknown } | null }>(
-        "session.get", { id: sessionId },
+        "session.get", { id: sessionId, messageLimit: 1 },
       );
       if (!res?.session) throw new Error("Browser preview session is unavailable.");
       if (res.session.worktree) {
@@ -752,6 +749,7 @@ export function createPluginServices({
      * runtime has not launched yet, which falls back to the visible workspace.
      */
     getWorkspacePathForSession: (sessionId) => sessionProjects.get(sessionId) ?? null,
+    resolveSessionProjectPath: createPluginSessionProjectResolver(getHost),
     agentExtensionsChanged: () =>
       sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
     /** `pi.session.getActive`: the selected session as the shell shows it. */
@@ -761,6 +759,12 @@ export function createPluginServices({
      * and revealing a view stay inside the project the plugin was activated in.
      */
     isPluginActiveInProject: (pluginId) => isPluginActiveInProject(pluginId),
+    /**
+     * #2377: the project-aware form backs the desktop.control session-read
+     * gate, so a scoped plugin's `session/list` (including the reads a
+     * background service makes) never crosses its activation scope.
+     */
+    pluginActiveInProject,
     /**
      * `pi.ui.revealView`: the runtime validated the view and the session; the
      * shell owns work-panel tabs, so it is the surface that opens the tab.

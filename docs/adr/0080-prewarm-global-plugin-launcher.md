@@ -1,52 +1,35 @@
 # ADR 0080: Prewarm the global plugin launcher after boot
 
-- **Status:** Accepted
-- **Date:** 2026-08-13
-- **Related:** D211 · D217 · ADR 0072 · E2E-120
+- Status: Accepted
+- Date: 2026-08-13
+- Related: ADR 0072, D211, D217
 
 ## Context
 
 The global plugin launcher was created lazily on the first Option/Alt+Space
-invocation. That path had to allocate a second Electron `BrowserWindow`, start
-its sandboxed renderer, load the shared renderer bundle, mount React, and only
-then reveal the launcher. The first invocation therefore felt substantially
-slower than later invocations even though the window was retained after use.
+invocation, so that press paid for a second `BrowserWindow`, a sandboxed renderer,
+the shared renderer bundle, and React mount before anything appeared.
 
 ## Decision
 
-As soon as Electron is ready, before backend/plugin boot completes, Electron
-starts creating and loading the launcher window in the background while keeping
-it hidden. This work runs in parallel with primary startup. Shortcut
-invocations continue to set the current display bounds, show, and focus the
-same retained window.
-
-Window creation is represented by one shared in-flight promise. A shortcut
-received while warm-up is still loading joins that promise, preventing a blank
-window, a lost shown event, or duplicate renderer creation. A failed warm-up is
-logged, destroys the incomplete window, clears the promise, and leaves the
-normal shortcut path able to retry creation.
-
-The launcher still refreshes the plugin catalog whenever it is shown, so
-preloading changes presentation latency without making plugin availability
-stale or changing IPC, host RPC, permissions, protocol v9, or storage schema
-v11.
+Once Electron is ready, and in parallel with backend and plugin boot, Main starts
+creating and loading the launcher window hidden. One shared in-flight promise
+represents that creation, so a shortcut arriving during warm-up joins it instead of
+raising a blank window or a duplicate renderer. A failed warm-up is logged,
+destroys the incomplete window, clears the promise, and leaves the shortcut path
+able to retry. Invocations still set display bounds, show, and focus the retained
+window, and the launcher still refreshes its plugin catalog on every show, with no
+IPC, host RPC, permission, protocol, or storage change.
 
 ## Consequences
 
-- The first post-boot shortcut no longer pays BrowserWindow and renderer load
-  latency on its visible path; warm-up starts early enough to overlap backend
-  startup.
-- One hidden sandboxed renderer remains resident after boot, trading a bounded
-  memory cost for consistent launch latency.
-- Application boot is not blocked on launcher warm-up, and warm-up failure does
-  not prevent a later shortcut from retrying.
+- The first post-boot shortcut no longer pays window and renderer load time.
+- One hidden sandboxed renderer stays resident for consistent latency.
+- Boot never blocks on warm-up, and failure does not disable later launches.
 
-## Alternatives considered
+## Alternatives
 
-- Keep first-use lazy creation: preserves the smallest idle footprint but keeps
-  the reported first-launch delay.
-- Await warm-up as part of application boot: guarantees readiness before the
-  app is marked booted but lengthens the primary window's critical startup
-  path.
-- Reuse the main renderer: avoids a second renderer but cannot provide the
-  independent system-wide utility window while PI-Desktop is unfocused.
+- Keep first-use lazy creation: rejected because it keeps the reported first-launch
+  delay.
+- Reuse the main renderer: rejected because a system-wide utility window must work
+  while PI-Desktop is unfocused.

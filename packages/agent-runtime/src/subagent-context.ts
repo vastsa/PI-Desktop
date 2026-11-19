@@ -36,12 +36,18 @@ import {
 } from "./context-budget.js";
 import {
   estimateOutputCapInputTokens,
+  truncateTextWithinOutputCap,
   type OutputCapContext,
   type OutputCapReplayTarget,
 } from "./output-cap.js";
 import {
   COMPACTION_SUMMARY_RETRY_POLICY,
+  addSummaryUsage,
+  compactionSummaryInputLimit,
+  compactionSummaryOutputBudget,
+  compactionSummaryReserveTokens,
   estimateSummaryPromptTokens,
+  planSummaryChunks,
   reduceSummaryInput,
   type CompactionSummaryInput,
 } from "./compaction-summary-input.js";
@@ -276,11 +282,18 @@ async function compactDelegateContext(
 > {
   // A prior in-memory compaction left its summary message at the head; it
   // threads into the next summary as `previousSummary` instead of being
-  // summarized a second time.
-  const head = input.messages[0];
+  // summarized a second time. The delegate's state keeps its system row at
+  // the head, so the detection — and the compactable range — start past
+  // it: reading index 0 made every in-run boundary compaction see the
+  // system row, `previousSummary` never threaded, and the earlier
+  // checkpoint summary was re-summarized under the from-scratch prompt.
+  // The system row itself is never compactable; the caller reinstalls it.
+  const historyOffset = input.messages[0]?.role === "system" ? 1 : 0;
+  const head = input.messages[historyOffset];
   const previousSummary = isCompactionSummary(head) ? head.summary : undefined;
-  const compactable =
-    previousSummary === undefined ? input.messages : input.messages.slice(1);
+  const compactable = input.messages.slice(
+    historyOffset + (previousSummary === undefined ? 0 : 1),
+  );
   const prepared = prepareCompaction(delegateMessageEntries(compactable), {
     enabled: true,
     reserveTokens: budget.requestHeadroom,
@@ -301,41 +314,69 @@ async function compactDelegateContext(
     previousSummary,
   };
   // The summary request itself must fit the window; shrink it one bounded
-  // step the way the session does, then give up to the degradation path.
+  // step the way the session does. When even the reduced input cannot fit one
+  // prompt — a CJK-bearing range the chars/3.5 baseline under-counts (issue
+  // #2364) — the shared chunk planner splits it into requests that each fit,
+  // the same machinery the session compaction uses (issue #827).
+  let chunkedRequests: AgentMessage[][] | undefined;
   if (delegateSummaryInputExceedsBudget(summaryInput, input.model, budget)) {
     const reduced = reduceSummaryInput(summaryInput);
-    if (
-      !reduced ||
-      delegateSummaryInputExceedsBudget(reduced, input.model, budget)
-    ) {
-      return undefined;
+    if (reduced) summaryInput = reduced;
+    if (delegateSummaryInputExceedsBudget(summaryInput, input.model, budget)) {
+      // The reduced input still cannot fit one prompt — a CJK-bearing range
+      // the chars/3.5 baseline under-counts (issue #2364) — so the shared
+      // chunk planner splits it into requests that each fit, the same
+      // machinery the session compaction uses (issue #827).
+      const chunks = planSummaryChunks(summaryInput, {
+        summaryInputLimit: compactionSummaryInputLimit({
+          hardLimit: budget.hardLimit,
+          requestHeadroom: budget.requestHeadroom,
+          modelMaxTokens: input.model.maxTokens,
+        }),
+        reserveTokens: compactionSummaryReserveTokens({
+          previousSummary: summaryInput.previousSummary,
+          outputBudget: compactionSummaryOutputBudget({
+            requestHeadroom: budget.requestHeadroom,
+            modelMaxTokens: input.model.maxTokens,
+          }),
+        }),
+      });
+      if (!chunks) return undefined;
+      chunkedRequests = chunks;
     }
-    summaryInput = reduced;
   }
 
-  const result = await generateSummaryWithUsage(
-    summaryInput.messagesToSummarize,
-    input.summaryModels(),
-    input.model,
-    budget.requestHeadroom,
-    undefined,
-    summaryInput.previousSummary,
-    input.thinkingLevel,
-    COMPACTION_SUMMARY_RETRY_POLICY,
-    undefined,
-    input.signal,
-  );
-  if (!result.ok) {
-    if (result.error.code === "aborted" || input.signal.aborted) {
-      // A stop that landed mid-summary is an abort, not a compaction failure.
-      throw new Error("Turn aborted while compacting context");
+  let runningSummary = summaryInput.previousSummary;
+  let summaryUsage: Usage | undefined;
+  for (const chunk of chunkedRequests ?? [summaryInput.messagesToSummarize]) {
+    const result = await generateSummaryWithUsage(
+      chunk,
+      input.summaryModels(),
+      input.model,
+      budget.requestHeadroom,
+      undefined,
+      runningSummary,
+      input.thinkingLevel,
+      COMPACTION_SUMMARY_RETRY_POLICY,
+      undefined,
+      input.signal,
+    );
+    if (!result.ok) {
+      if (result.error.code === "aborted" || input.signal.aborted) {
+        // A stop that landed mid-summary is an abort, not a compaction failure.
+        throw new Error("Turn aborted while compacting context");
+      }
+      return undefined;
     }
-    return undefined;
+    runningSummary = result.value.text;
+    summaryUsage = addSummaryUsage(summaryUsage, result.value.usage);
   }
   return {
     messages: [
       createCompactionSummaryMessage(
-        result.value.text,
+        // The loop always summarizes at least one chunk, so the running
+        // summary is the last request's text by the time we get here.
+        runningSummary ?? "",
         prepared.value.tokensBefore,
         Date.now(),
       ),
@@ -346,7 +387,7 @@ async function compactDelegateContext(
       ),
     ],
     tokensBefore: prepared.value.tokensBefore,
-    summaryUsage: result.value.usage,
+    summaryUsage,
   };
 }
 
@@ -454,26 +495,19 @@ function truncateDelegateUserMessage(
   tokenBudget: number,
 ): UserMessage {
   const text = delegateUserMessageText(message);
-  const maxChars = Math.max(
+  const ceiling = Math.max(
     1,
-    Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    Math.floor(Math.max(1, tokenBudget) * ESTIMATED_TEXT_CHARS_PER_TOKEN),
   );
-  if (text.length <= maxChars) return message;
-  if (maxChars <= DELEGATE_RETENTION_TRUNCATION_MARKER.length) {
-    return {
-      ...message,
-      content: DELEGATE_RETENTION_TRUNCATION_MARKER.trim().slice(0, maxChars),
-    };
-  }
-  const retainedChars = maxChars - DELEGATE_RETENTION_TRUNCATION_MARKER.length;
-  const headChars = Math.ceil(retainedChars * 0.75);
-  const tailChars = retainedChars - headChars;
-  return {
-    ...message,
-    content: `${text.slice(0, headChars)}${DELEGATE_RETENTION_TRUNCATION_MARKER}${
-      tailChars > 0 ? text.slice(-tailChars) : ""
-    }`,
-  };
+  const content = truncateTextWithinOutputCap(
+    text,
+    tokenBudget,
+    DELEGATE_RETENTION_TRUNCATION_MARKER,
+    ceiling,
+  );
+  // A block-shaped brief that already fits stays a block-shaped message.
+  if (content === text) return message;
+  return { ...message, content };
 }
 
 /** Flatten a user message the way the session's checkpoint truncation does. */

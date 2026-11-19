@@ -4,9 +4,10 @@ import type {
   SessionSummary,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { isRemoteSession, safeSessionSummary } from "../../lib/remote-session-safety";
 import { latestSessionOutcomes } from "../../lib/sidebar-session-status";
 import type { AppState } from "../app-state";
-import type { CatalogRuntime } from "../runtime/catalog-runtime";
+import { providerModelRetryDelayMs, type CatalogRuntime } from "../runtime/catalog-runtime";
 import type { SessionRuntime } from "../runtime/session-runtime";
 import type { StoreAccess } from "./types";
 
@@ -43,6 +44,7 @@ export function createCatalogSlice({
   | "openNotification"
   | "acknowledgeSessionOutcome"
 > {
+  let pluginViewRefresh: object | undefined;
   return {
     rememberModel: (model) => {
       const recentModels = rememberModelInList(get().recentModels, model);
@@ -62,18 +64,29 @@ export function createCatalogSlice({
         api.getOnboarding(),
       ]);
       if (generation !== catalogRuntime.providerGeneration()) return;
-      set((state) => ({
-        providers: providers.providers,
-        providerModels: {},
-        sessions: decorateSessions(sessions.sessions, state.sessionMeta),
-        settings,
-        onboarding,
-      }));
+      set((state) => {
+        const next = sessions.sessions.map(safeSessionSummary);
+        const active = state.sessions.find(session => session.id === state.activeSessionId);
+        if (active && isRemoteSession(active) && !next.some(session => session.id === active.id)) {
+          next.push(safeSessionSummary(active));
+        }
+        return {
+          providers: providers.providers,
+          providerModels: {},
+          sessions: decorateSessions(next, state.sessionMeta),
+          settings,
+          onboarding,
+        };
+      });
     },
 
     loadProviderModels: async (providerId) => {
-      const { refreshedProviderModels, providerModelLoads } = catalogRuntime;
+      const { refreshedProviderModels, providerModelLoads, providerModelRetry } = catalogRuntime;
       if (refreshedProviderModels.has(providerId)) return;
+      // A failed discovery waits out its backoff; this also stops callers that
+      // were coalesced onto the failed load from each starting another probe.
+      const retry = providerModelRetry.get(providerId);
+      if (retry && Date.now() < retry.retryAt) return;
       const generation = catalogRuntime.providerGeneration();
       const existing = providerModelLoads.get(providerId);
       if (existing) {
@@ -108,12 +121,16 @@ export function createCatalogSlice({
           }
         }
 
+        let discovered = false;
         try {
           const refreshed = await api.listProviderModels({
             providerId,
             source: "refresh",
           });
           if (generation !== catalogRuntime.providerGeneration()) return;
+          // Main reports a failed live sweep as `error` beside whatever
+          // fallback it could offer, rather than throwing.
+          discovered = !refreshed.error;
           if (
             (refreshed.source === "remote" || refreshed.source === "catalog") &&
             refreshed.models.length > 0
@@ -136,7 +153,16 @@ export function createCatalogSlice({
           // Keep the cached catalog; the menu already has a usable fallback.
         } finally {
           if (generation === catalogRuntime.providerGeneration()) {
-            refreshedProviderModels.add(providerId);
+            if (discovered) {
+              refreshedProviderModels.add(providerId);
+              providerModelRetry.delete(providerId);
+            } else {
+              const failures = (providerModelRetry.get(providerId)?.failures ?? 0) + 1;
+              providerModelRetry.set(providerId, {
+                failures,
+                retryAt: Date.now() + providerModelRetryDelayMs(failures),
+              });
+            }
           }
         }
       })();
@@ -176,10 +202,19 @@ export function createCatalogSlice({
     },
 
     refreshPluginViews: async () => {
+      const request = {};
+      pluginViewRefresh = request;
+      const projectPath = get().activeProjectPath;
       try {
-        set({ pluginViews: await api.listPluginViews() });
+        const pluginViews = await api.listPluginViews();
+        if (pluginViewRefresh !== request || get().activeProjectPath !== projectPath) return;
+        set({ pluginViews });
       } catch {
-        set({ pluginViews: [] });
+        if (pluginViewRefresh === request && get().activeProjectPath === projectPath) {
+          set({ pluginViews: [] });
+        }
+      } finally {
+        if (pluginViewRefresh === request) pluginViewRefresh = undefined;
       }
     },
 

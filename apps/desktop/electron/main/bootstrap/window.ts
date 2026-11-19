@@ -39,6 +39,12 @@ import {
 import { readWindowState, writeWindowState } from "../window-preferences";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 import { isWindowFullScreen } from "../window-fullscreen";
+import { installWindowsNativeSnap } from "../window-native-snap";
+import {
+  installMaximizedWindowGuard,
+  installTransparentWindowsMaximize,
+  nativeWindowMinimumSize,
+} from "../window-native-behavior";
 import { DEFAULT_WINDOW_CORNER_RADIUS, installWindowShape } from "../window-shape";
 import {
   installWindows11CornerController,
@@ -194,9 +200,10 @@ export async function createWindow({
     ? clampBoundsToWorkArea(savedState, restoreWorkArea)
     : null;
   const { width: initialMinWidth, height: initialMinHeight } =
-    clampMinimumSizeToWorkArea(
+    nativeWindowMinimumSize(
       { width: windowMinWidth, height: windowMinHeight },
       restoreWorkArea,
+      process.platform,
     );
   const initialWindowBackground = builtinWindowBackground(
     nativeTheme.shouldUseDarkColors ? "dark" : "light",
@@ -276,7 +283,19 @@ export async function createWindow({
     },
   });
   const window = windowState.mainWindow;
+  installMaximizedWindowGuard(window, process.platform);
+  const setNativeMinimumSize = (width: number, height: number) => {
+    if (window.isMaximized() || isWindowFullScreen(window)) return;
+    const minimum = nativeWindowMinimumSize(
+      { width, height },
+      screen.getDisplayMatching(window.getBounds()).workArea,
+      process.platform,
+    );
+    window.setMinimumSize(minimum.width, minimum.height);
+  };
   if (process.platform === "win32") {
+    if (!windows11NativeCorners) installTransparentWindowsMaximize(window);
+    await installWindowsNativeSnap(window, () => windowState.host, logger);
     if (windows11NativeCorners) {
       await installWindows11CornerController(
         window,
@@ -401,7 +420,7 @@ export async function createWindow({
       display.workArea.width,
       windowMinWidth + panelWidth,
     );
-    window.setMinimumSize(
+    setNativeMinimumSize(
       minimumWidth,
       Math.min(windowMinHeight, display.workArea.height),
     );
@@ -447,7 +466,7 @@ export async function createWindow({
     // Never demand more width than the current work area offers, or a narrow
     // display could no longer shrink the window back on-screen (issue #544).
     const resizeWorkArea = screen.getDisplayMatching(currentBounds).workArea;
-    window.setMinimumSize(
+    setNativeMinimumSize(
       Math.min(baseBounds.width + WORK_PANEL_MIN_WIDTH, resizeWorkArea.width),
       Math.min(windowMinHeight, resizeWorkArea.height),
     );
@@ -489,12 +508,12 @@ export async function createWindow({
     );
     const minimumHeight = Math.min(windowMinHeight, display.workArea.height);
     if (next.bounds.width < currentBounds.width) {
-      window.setMinimumSize(minimumWidth, minimumHeight);
+      setNativeMinimumSize(minimumWidth, minimumHeight);
     }
     windowState.expectedWorkPanelBounds = next.bounds;
     window.setBounds(next.bounds, false);
     if (next.bounds.width >= currentBounds.width) {
-      window.setMinimumSize(minimumWidth, minimumHeight);
+      setNativeMinimumSize(minimumWidth, minimumHeight);
     }
     const appliedBounds = window.getBounds();
     windowState.expectedWorkPanelBounds = appliedBounds;
@@ -690,7 +709,7 @@ export async function createWindow({
       { width: windowMinWidth, height: windowMinHeight },
       workArea,
     );
-    window.setMinimumSize(minimum.width, minimum.height);
+    setNativeMinimumSize(minimum.width, minimum.height);
     const fitted = clampBoundsToWorkArea(currentBounds, workArea);
     if (windowBoundsEqual(fitted, currentBounds)) return;
     windowState.expectedWorkPanelBounds = fitted;
@@ -701,14 +720,14 @@ export async function createWindow({
   };
   // Custom window controls (Windows/Linux) need maximize state to swap the
   // maximize/restore glyph.
+  window.on("maximize", sendMaximized);
   if (process.platform !== "darwin") {
-    window.on("maximize", sendMaximized);
     // Native-runner E2E fixture: establish the initial native state before
     // the renderer mounts, then let WindowControls query it through IPC.
     if (process.env.PI_DESKTOP_START_MAXIMIZED === "1") window.maximize();
   }
   window.on("unmaximize", () => {
-    if (process.platform !== "darwin") sendMaximized();
+    sendMaximized();
     refitWindowToWorkArea();
     scheduleWorkPanelReservation();
   });
@@ -718,6 +737,9 @@ export async function createWindow({
     const display = screen.getDisplayMatching(window.getBounds());
     const nextDisplayKey = displayWorkAreaKey(display.id, display.workArea);
     if (nextDisplayKey === windowState.workPanelDisplayKey) return;
+    // Refresh the snap constraint after a cross-display move without enlarging
+    // a window the user already placed in a narrower native tile.
+    setNativeMinimumSize(Math.min(windowMinWidth, window.getBounds().width), windowMinHeight);
     scheduleWorkPanelReservation();
   };
 
@@ -782,7 +804,7 @@ export async function createWindow({
         { width: workPanelMinimumWindowWidth(), height: windowMinHeight },
         screen.getDisplayMatching(window.getBounds()).workArea,
       );
-      window.setMinimumSize(minimum.width, minimum.height);
+      setNativeMinimumSize(minimum.width, minimum.height);
     }
     reconcileWorkPanelDisplay();
   };
@@ -913,7 +935,7 @@ export async function createWindow({
         { width: windowMinWidth, height: windowMinHeight },
         screen.getDisplayMatching(electronBounds).workArea,
       );
-      window.setMinimumSize(minimum.width, minimum.height);
+      setNativeMinimumSize(minimum.width, minimum.height);
       // Prefer normal layer so CG helpers and Stage Manager stay stable.
       window.setAlwaysOnTop(false);
       window.show();
@@ -1651,7 +1673,7 @@ export async function createWindow({
             await new Promise((r) => setTimeout(r, 250));
             captureViewportOverride = true;
             try {
-              windowState.mainWindow!.setMinimumSize(windowMinWidth, windowMinHeight);
+              setNativeMinimumSize(windowMinWidth, windowMinHeight);
               windowState.mainWindow!.setSize(windowMinWidth, windowMinHeight, false);
               await new Promise((r) => setTimeout(r, 350));
               await probeWorkPanelHeader("minimum-supported");
@@ -1662,7 +1684,7 @@ export async function createWindow({
                 { width: workPanelMinimumWindowWidth(), height: windowMinHeight },
                 screen.getDisplayMatching(windowState.mainWindow!.getBounds()).workArea,
               );
-              windowState.mainWindow!.setMinimumSize(
+              setNativeMinimumSize(
                 restoredMinimum.width,
                 restoredMinimum.height,
               );
@@ -1884,7 +1906,7 @@ export async function createWindow({
                 { width: workPanelMinimumWindowWidth(), height: windowMinHeight },
                 screen.getDisplayMatching(windowState.mainWindow!.getBounds()).workArea,
               );
-              windowState.mainWindow!.setMinimumSize(
+              setNativeMinimumSize(
                 restoredMinimum.width,
                 restoredMinimum.height,
               );

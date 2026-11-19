@@ -50,6 +50,34 @@ test("the plugin and MCP paths share desktop operation validation", async () => 
   ]);
 });
 
+test("agent/pendingInteractive is a read operation that exposes the requestIds the resolve operations need", async () => {
+  const calls = [];
+  const pending = {
+    asks: [{ requestId: "r1", toolCallId: "t1", questions: [] }],
+    permissions: [],
+  };
+  const controller = createMcpControlController({
+    channels: {
+      pendingInteractive: "pi-desktop/agent/pendingInteractive",
+    },
+    invoke: async (channel, args) => {
+      calls.push({ channel, args });
+      return pending;
+    },
+  });
+
+  const listed = controller.operations.find((operation) => operation.id === "agent/pendingInteractive");
+  assert.equal(listed?.risk, "read");
+  const result = await controller.invoke({
+    operation: "agent/pendingInteractive",
+    args: [{ sessionId: "s1" }],
+  });
+  assert.deepEqual(calls, [
+    { channel: "pi-desktop/agent/pendingInteractive", args: [{ sessionId: "s1" }] },
+  ]);
+  assert.deepEqual(result, pending);
+});
+
 async function post(url, token, body, headers = {}) {
   const response = await fetch(url, {
     method: "POST",

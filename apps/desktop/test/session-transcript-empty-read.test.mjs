@@ -76,7 +76,7 @@ test("the empty read is retried once and then recovered instead of committed", (
 test("the durable-read cache never stores a suspiciously empty window", () => {
   assert.match(
     sessionRuntime,
-    /if \(messages\.length > 0 \|\| !sessionReadLooksEmpty\(detail\.session\)\) \{\s*cacheSessionTranscript\(/,
+    /if \(messages\.length > 0 \|\| !sessionReadLooksEmpty\(detail\.session\)\) \{[\s\S]{0,240}?cacheSessionTranscript\(/,
     "hover prefetch shares this cache boundary and must not poison it",
   );
 });

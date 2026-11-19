@@ -240,6 +240,7 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("closeBehaviorGet", "window/closeBehavior/get", "Read close behavior.", "read", []),
   spec("scheduledList", "scheduled/list", "List scheduled tasks.", "read", []),
   spec("toolResolvePermission", "tool/resolvePermission", "Resolve a pending tool permission request.", "dangerous", ["resolution"]),
+  spec("pendingInteractive", "agent/pendingInteractive", "List pending Agent questions and tool permission requests.", "read", ["input"]),
   spec("askToolResolve", "agent/askTool/resolve", "Answer an Agent question.", "dangerous", ["resolution"]),
   spec("plansPending", "plans/pending", "List pending Plan or Goal approvals.", "read", ["input"]),
   spec("plansResolve", "plans/resolve", "Approve or reject a Plan or Goal checkpoint.", "dangerous", ["resolution"]),

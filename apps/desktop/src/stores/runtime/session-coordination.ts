@@ -196,6 +196,7 @@ export function createSessionCoordination({
         ...shared,
         ...retainSessionPane(current, summary.id, messages),
         activeSessionId: summary.id,
+        selectingSessionId: undefined,
         messages,
         page: "chat" as const,
         isRunning: false,
@@ -289,6 +290,7 @@ export function createSessionCoordination({
       settings,
       providers: state.providers,
       recentModels: state.recentModels,
+      discovered: state.providers.flatMap((candidate) => state.providerModels[candidate.id] ?? []),
     });
     const defaultProvider = state.providers.find(
       (provider) => provider.id === inherited.providerId,

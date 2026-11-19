@@ -77,6 +77,8 @@ import type {
   PluginViewMeta,
   PluginScenicThemesDestinationMeta,
   PluginTheme,
+  MarketBrowseQuery,
+  MarketBrowseResult,
   MarketPluginSummary,
   MarketPluginDetail,
   PluginInstallResult,
@@ -1126,10 +1128,11 @@ export const api = {
     window.piDesktop?.getDroppedFilePath?.(file) ?? null,
   pickPhotos: () =>
     invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickPhotos),
-  importFiles: (sessionId: string, token: string) =>
+  importFiles: (sessionId: string, token: string, reference = false) =>
     invoke<{ files: ComposerPastedFile[] }>(IPC.invoke.composerImportFiles, {
       sessionId,
       token,
+      reference,
     }),
   pasteFiles: (sessionId: string, files: ComposerPasteFile[]) =>
     invoke<{ files: ComposerPastedFile[] }>(IPC.invoke.composerPasteFiles, {
@@ -1605,6 +1608,9 @@ export const api = {
       providerId: string;
       sourceUrl: string;
     }>(IPC.invoke.marketSearch, { query, category }),
+  /** One page of the marketplace; the host falls back to its snapshot offline. */
+  marketBrowse: (query: MarketBrowseQuery) =>
+    invoke<MarketBrowseResult>(IPC.invoke.marketBrowse, query),
   marketGetDetail: (id: string) =>
     invoke<{ plugin: MarketPluginDetail }>(IPC.invoke.marketGetDetail, id),
   marketInstall: (input: {

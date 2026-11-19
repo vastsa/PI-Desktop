@@ -8,6 +8,7 @@ import { api } from "../../lib/api";
 import { resolveComposerSmartStop } from "../../lib/composer-smart-stop";
 import {
   clearSessionPermissions,
+  removePermission,
   sessionPermissions,
 } from "../../lib/pending-permissions";
 import {
@@ -488,6 +489,10 @@ export function createTranscriptSlice({
       if (target?.source === "pi-native" || isRemoteSession(target)) {
         await api.abort(sessionId);
         runtime.submittedComposerDrafts.delete(sessionId);
+        set((current) => ({
+          runningSessions: { ...current.runningSessions, [sessionId]: false },
+          ...(current.activeSessionId === sessionId ? { isRunning: false } : {}),
+        }));
         // Bypass in-flight pre-abort detail reads; request settled source state.
         const detail = await api.getSession(sessionId);
         const messages = detail.session?.messages;
@@ -507,16 +512,18 @@ export function createTranscriptSlice({
         .slice(submittedDraft?.messageCountBeforeSend ?? 0)
         .findLast((message) => message.role === "user")?.steering;
       const stoppedAtMs = Date.now();
+      let createdAbortResolution: Promise<boolean> | undefined;
       if (submittedDraft && !submittedDraft.abortResolution) {
-        submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
+        createdAbortResolution = new Promise<boolean>((resolve) => {
           submittedDraft.resolveAbort = resolve;
         });
+        submittedDraft.abortResolution = createdAbortResolution;
       }
       const pendingForSession = sessionPermissions(
         stateBeforeAbort.pendingPermissions,
         sessionId,
       );
-      await Promise.allSettled([
+      const [abortResult, ...denials] = await Promise.allSettled([
         api.abort(sessionId),
         ...pendingForSession.map((permission) =>
           api.resolvePermission({
@@ -525,6 +532,33 @@ export function createTranscriptSlice({
           }),
         ),
       ]);
+      if (abortResult.status === "rejected") {
+        // The turn is still running: keep its rows, running state and the
+        // submitted draft so Stop can be retried. Only a waiter this call
+        // created is released, so a submission awaiting it does not hang.
+        if (createdAbortResolution && submittedDraft?.abortResolution === createdAbortResolution) {
+          submittedDraft.resolveAbort?.(false);
+          delete submittedDraft.abortResolution;
+          delete submittedDraft.resolveAbort;
+        }
+        // A denial the Host accepted (or a request it no longer holds) is
+        // settled even though the abort failed; its card must not linger.
+        const settled = pendingForSession.filter((_, index) => {
+          const denial = denials[index];
+          return denial?.status === "fulfilled" ||
+            (denial?.reason as { code?: unknown } | undefined)?.code === "NOT_FOUND";
+        });
+        if (settled.length) {
+          set((current) => ({
+            pendingPermissions: settled.reduce(
+              (permissions, permission) =>
+                removePermission(permissions, sessionId, permission.requestId),
+              current.pendingPermissions,
+            ),
+          }));
+        }
+        throw abortResult.reason;
+      }
       set((current) => ({
         pendingPermissions: clearSessionPermissions(
           current.pendingPermissions,
@@ -548,6 +582,13 @@ export function createTranscriptSlice({
         const fullMessages = await runtime.loadFullSessionMessages(sessionId);
         if (!fullMessages || get().activeSessionId !== sessionId) {
           submittedDraft?.resolveAbort?.(false);
+          if (runtime.submittedComposerDrafts.get(sessionId) === submittedDraft) {
+            runtime.submittedComposerDrafts.delete(sessionId);
+          }
+          set((current) => ({
+            runningSessions: { ...current.runningSessions, [sessionId]: false },
+            isRunning: current.activeSessionId === sessionId ? false : current.isRunning,
+          }));
           return;
         }
         const merged = mergeLiveSessionMessages(fullMessages, get().messages);
@@ -650,7 +691,7 @@ export function createTranscriptSlice({
           current.activeSessionId === sessionId
             ? stoppedRows(current.messages)
             : current.messages,
-        isRunning: false,
+        isRunning: current.activeSessionId === sessionId ? false : current.isRunning,
         runningSessions: { ...current.runningSessions, [sessionId]: false },
       }));
       void flushPendingSessionConfiguration(sessionId);

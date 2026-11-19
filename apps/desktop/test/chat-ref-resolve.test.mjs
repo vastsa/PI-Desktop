@@ -101,6 +101,30 @@ test("an exact absolute path with spaces resolves only inside an allowed root", 
   assert.equal(await isChatRefOutsideRoots(absolute, roots({ workspace })), false);
   assert.equal(await isChatRefOutsideRoots(join(dirname(workspace), "page.md"), roots({ workspace })), true);
 });
+/**
+ * A transcript link can root a drive path the POSIX way (`/c:/dir/file.md`),
+ * the shape a Markdown link copies from a POSIX example. Windows reads the
+ * leading `/` as a filesystem root and everything after it as directories, so
+ * the click missed a file that exists; only that shape is repaired.
+ */
+test("a POSIX-rooted drive path resolves to the file the drive names", async (t) => {
+  if (process.platform !== "win32") return t.skip("Windows drive spelling");
+  const workspace = tempTree("posix-drive", ["docs/spec/page.md"]);
+  const posixRooted = `/${workspace.slice(0, 2).toLowerCase()}${workspace
+    .slice(2)
+    .replaceAll("\\", "/")}/docs/spec/page.md`;
+  const match = await resolve(posixRooted, { workspace });
+  assert.equal(match?.root, "workspace");
+  assert.equal(match?.matchedBy, "exact-absolute");
+  assert.equal(match?.relativePath, "docs/spec/page.md");
+  assert.equal(match?.absolutePath, join(workspace, "docs", "spec", "page.md"));
+  assert.equal(await isChatRefOutsideRoots(posixRooted, roots({ workspace })), false);
+  // A positioned reference still works: the line suffix is stripped first.
+  assert.equal((await resolve(`${posixRooted}:12`, { workspace }))?.relativePath, "docs/spec/page.md");
+  // A POSIX path without a drive letter is not a drive path anywhere.
+  assert.equal(await isChatRefOutsideRoots("/root/dir/page.md", roots({ workspace })), true);
+});
+
 
 test("an absolute realpath alias resolves under the same registered root", async () => {
   const workspace = tempTree("alias-target", ["my project/page.md"]);

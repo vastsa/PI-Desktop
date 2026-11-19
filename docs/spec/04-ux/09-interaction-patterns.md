@@ -1667,6 +1667,16 @@ Project drag/drop follows these patterns:
   whose total heights cancel. Corrections run in the current layout/resize
   delivery, not in a later painted frame, and unchanged/subpixel alignment does
   not write `scrollTop` and interrupt native smooth scrolling.
+- Reading displacement excludes the browser's mandatory boundary clamp after
+  content/viewport shrinkage; that clamp must not shift the intended text offset
+  a second time. Native input in the same layout delivery still advances the
+  reading target. An unreachable target degrades to the legal scroll boundary.
+  Where parser-owned source positions exist, the anchor identifies the message,
+  source block, exact rendered text version, and visible character rather than
+  treating a DOM node as identity. Reconstructed unchanged content is re-resolved,
+  including line wrapping within a long paragraph. Changed/missing content falls
+  back to the message anchor without inventing an equivalent sentence. Boundary
+  fallback rebases the held target so repeated restores do not repeat writes.
 - All paging paths leave `overflow-y` and input untouched, including the
   `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
   top-boundary observer. Wheel/trackpad, touch and keyboard input continue
@@ -1982,3 +1992,33 @@ This does not prevent state changes — it makes them instant.
     the expanded sidebar yields at the threshold and returns when the panel
     closes, and divider cancellation restores the prior panel width
     (ADR 0033 / ADR 0151 / ADR 0238)
+
+
+## Native main-window gestures
+
+- Titlebar double-click and left/right edge tiling remain OS-owned. macOS
+  honors the user's titlebar double-click preference; edge tiling requires
+  macOS 15 or later and enabled system tiling. Linux behavior depends on its
+  compositor/window manager. The renderer must not duplicate native double-click.
+- On transparent Windows 10 main windows, Main observes `SC_MAXIMIZE` and
+  defers the public maximize API until Electron has consumed the otherwise
+  blocked native command. Caption double-click, keyboard and top-edge maximize
+  share this repair. Restore/minimize, opaque Windows 11 windows and fullscreen
+  are untouched; pending work is cancelled when the window closes.
+- The native main-window minimum width is capped to half the current display's
+  work area, with 16 DIP reserved for macOS tile margins. The nominal 800 DIP
+  chat-width contract is unchanged; this exception only relaxes the native
+  window constraint so small/scaled displays can accept side-by-side tiles.
+  The minimum height remains 560 DIP, capped to the work-area height.
+- On macOS and Windows a maximized main window rejects manual edge resizing.
+  Windows retains native drag-to-restore. On macOS the shell temporarily disables
+  CSS caption dragging and handles caption double-click as Restore; normal
+  windows retain native double-click behavior. The inherited `--window-drag-region`
+  marker distinguishes caption text from explicit no-drag controls. Do not use
+  `setMovable(false)`: it prevents native double-click restore in parts of the
+  inset titlebar. Native zoom/green controls, fullscreen, and programmatic bounds
+  remain enabled. Linux retains compositor-owned maximized geometry and
+  drag-to-restore.
+- A settled cross-display move refreshes the native minimum without enlarging a
+  window already placed in a narrower tile. Normal bounds persistence and the
+  internal work-panel/chat-width IPC contracts are unchanged.

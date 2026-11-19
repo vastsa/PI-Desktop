@@ -2,78 +2,36 @@
 
 - Status: Accepted
 - Date: 2026-07-30
-- Related: [04-ux/06-settings-ia](../spec/04-ux/06-settings-ia.md) ·
-  [04-ux/02-i18n-english-first](../spec/04-ux/02-i18n-english-first.md) ·
-  [04-e2e-test-plan](../spec/06-delivery/04-e2e-test-plan.md) · E2E-091
-- Updates: the `window.piDesktop` preload contract in
-  [api.ts](../..//apps/desktop/src/lib/api.ts)
+- Related: [04-ux/06-settings-ia](../spec/04-ux/06-settings-ia.md) · [04-ux/02-i18n-english-first](../spec/04-ux/02-i18n-english-first.md) · [04-e2e-test-plan](../spec/06-delivery/04-e2e-test-plan.md) · E2E-091
 
 ## Context
 
-The Settings → Basics → Language control offers an **Auto** option that should
-follow the user's OS display language. The original implementation resolved
-"auto" from the renderer's `navigator.language`.
-
-In Electron, the renderer's `navigator.language` is the embedded browser
-locale and defaults to `en-US` regardless of the actual OS language. On a
-Chinese system the renderer still reports `en-US`, so "Auto" resolved to
-English even though the OS was Simplified Chinese. The same default also seeded
-the initial i18n language on first paint.
-
-The reliable source is the main process: `app.getLocale()` reads the OS display
-language (macOS `AppleLanguages`, Windows user UI language, Linux `LANG`). The
-main process already owns OS-level facts; the renderer only needed a way to read
-them synchronously before first paint.
+The Settings → Basics → Language **Auto** option follows the OS display
+language, but it resolved "auto" from the renderer's `navigator.language`. In
+Electron that value is the embedded browser locale and reports `en-US` even on a
+Simplified Chinese system, so Auto chose English and seeded the first paint with
+the wrong language. Only the main process can read the real OS locale.
 
 ## Decision
 
-1. Expose the authoritative OS locale from the preload bridge as a synchronous
-   field `window.piDesktop.locale`. The main process resolves `app.getLocale()`
-   while creating the window and passes it through `webPreferences.additionalArguments`;
-   sandboxed preload code reads that argument rather than importing Electron's
-   main-only `app` module (alongside the existing `platform` field).
-2. Add optional `locale?: string` to the `window.piDesktop` type in `api.ts`;
-   non-Electron contexts do not receive a window creation argument.
-3. Resolve "auto" language through a new `resolveOsLocale()` helper in
-   `lib/app-language.ts` that prefers `window.piDesktop.locale` and falls back to
-   `navigator.language` / `userLanguage` for non-Electron contexts (e.g. tests).
-4. Seed the initial i18n `lng` in `main.tsx` from `resolveOsLocale()` instead of
-   `navigator.language`.
-
-This keeps OS-fact resolution in the main process and requires no new IPC
-channel (the value is available before first paint, like `platform`).
+Expose the authoritative locale through the preload bridge as a synchronous
+`window.piDesktop.locale` field: main resolves `app.getLocale()` at window
+creation and passes it through `webPreferences.additionalArguments`, which
+sandboxed preload reads without importing `app`. `api.ts` types the field as
+optional because non-Electron contexts receive no window argument. A new
+`resolveOsLocale()` helper in `lib/app-language.ts` prefers the bridge field and
+falls back to `navigator.language`, and `main.tsx` seeds i18n `lng` from it. No
+IPC channel is needed, and the value is available before first paint like
+`platform`.
 
 ## Consequences
 
-- "Auto" language now matches the real OS display language (e.g. Simplified
-  Chinese on a Chinese system), and the Auto card shows the detected language
-  inline ("当前：简体中文").
-- Initial i18n language on first paint is correct for the OS locale.
-- The `window.piDesktop` preload contract grows one read-only string field.
-- Non-Electron contexts (unit tests, potential web builds) fall back to
-  `navigator.language` and remain functional.
+- Auto matches the real OS language, and the Auto card shows the detected one.
+- First paint starts in the correct language.
+- The `window.piDesktop` contract gains one read-only string; unit tests and web
+  builds keep working through the `navigator.language` fallback.
 
 ## Alternatives
 
-### Keep using `navigator.language`
-
-Rejected: it is the root cause of the misdetection and cannot see the OS
-language from the renderer in Electron.
-
-### Add an async IPC call for the OS locale
-
-Rejected: an async round-trip would delay first paint of the correct language
-and complicate the synchronous pre-paint setup that already uses `platform`.
-Surfacing the value synchronously from the bridge is simpler and sufficient.
-
-## References
-
-- `apps/desktop/electron/main/index.ts` (passes `app.getLocale()` through
-  `additionalArguments`)
-- `apps/desktop/electron/preload/index.ts` (reads the locale argument without
-  importing `app`)
-- `apps/desktop/src/lib/api.ts` (`window.piDesktop.locale` type)
-- `apps/desktop/src/lib/app-language.ts` (`resolveOsLocale`, `resolveAppLanguage`)
-- `apps/desktop/src/main.tsx` (initial `lng` from `resolveOsLocale`)
-- `apps/desktop/src/pages/SettingsPage.tsx` (Auto card shows detected language)
-- `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-091 added)
+- Keep `navigator.language`: it is the root cause and cannot see the OS locale.
+- Async IPC call: delays the first paint that a pre-paint value avoids.

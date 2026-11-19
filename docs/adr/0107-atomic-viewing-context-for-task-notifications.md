@@ -2,53 +2,33 @@
 
 - Status: Accepted
 - Date: 2026-08-20
-- Deciders: PI-Desktop core
-- Related: D117, D135, E2E-064, E2E-065, `03-runtime/01-ipc-protocol.md`
+- Related: D117, D135, E2E-064, E2E-065
 
 ## Context
 
-Task completion has two renderer-visible effects: the transcript receives an
-agent lifecycle event, and Electron may receive a durable notification from
-`session.endTurn`. The renderer previously treated every `agent_end` or terminal
-`error` event as an unread sidebar outcome, even when the focused current chat
-was already showing that result. Separately, the active-session viewing hint
-was delivered by an asynchronous React effect, so a fast turn could finish
-before Electron received the hint.
+A finished task has two renderer-visible effects: the transcript receives an agent
+lifecycle event, and Electron may receive a durable notification from
+`session.endTurn`. The renderer treated every `agent_end` or terminal `error` as a
+new unread sidebar outcome even when the focused chat already showed the result,
+and the active viewing hint arrived through an asynchronous React effect that a
+fast turn could outrun.
 
 ## Decision
 
-1. Treat unread `task.completed` and `task.failed` notification records as the
-   sole source of terminal sidebar marks. Agent lifecycle events continue to
-   drive running state, transcript updates, and the in-chat turn result card,
-   but never create an unread sidebar outcome by themselves.
-2. Carry an optional `viewingSessionId` snapshot on renderer-originated
-   `agent/prompt` requests. Electron validates that it exactly matches the
-   requested session and installs it before asynchronous turn setup. Missing,
-   null, or mismatched snapshots clear the hint and fail safe to notification.
-3. Keep the existing viewing-context IPC and Main-owned visibility/focus gate.
-   Suppression is allowed only for the exact finishing session in a visible,
-   focused window; background, hidden, unfocused, or unknown state creates the
-   durable notification and preserves native delivery behavior.
+Unread `task.completed` and `task.failed` notification records are the sole source
+of terminal sidebar marks; lifecycle events keep driving run state, transcript
+updates, and the in-chat result card but never create an unread outcome alone.
+Renderer-originated `agent/prompt` requests carry an optional `viewingSessionId`
+snapshot that Electron validates as an exact match and installs before
+asynchronous turn setup, and a missing, null, or mismatched snapshot clears the
+hint and fails safe to notifying. The existing viewing-context IPC and Main-owned
+visibility and focus gate stay: suppression applies only to the exact finishing
+session in a visible, focused window.
 
 ## Consequences
 
-- A focused user who remains in a conversation sees the transcript completion
-  without a duplicate sidebar mark, inbox row, or native notification.
-- Background and unfocused sessions retain durable and native recovery notices.
-- The prompt request gains one additive optional field; older callers that omit
-  it fail safe rather than suppressing a result using stale renderer state.
-- Sidebar outcome state becomes consistent with the notification inbox and its
-  read/acknowledgement lifecycle.
-
-## Alternatives considered
-
-### Hide the completed icon only for the selected row
-
-Rejected: this would leave stale unread state in the store and would not prevent
-durable or native notifications.
-
-### Rely only on the React viewing-context effect
-
-Rejected: the effect is asynchronous and can lose a race with a fast completion
-or renderer navigation. The prompt-time snapshot closes the dispatch boundary
-without trusting renderer focus or bypassing Main's fail-safe checks.
+- A focused user who stays in the conversation sees the completion without a
+  duplicate sidebar mark, inbox row, or native notification.
+- Background, hidden, and unfocused sessions keep durable and native notices, and
+  older callers that omit the field fail safe.
+- Sidebar outcome state now matches the inbox and its read lifecycle.

@@ -156,6 +156,14 @@ test("an empty assistant message with an error payload stays durable", () => {
   assert.equal(f.enqueued.length, 1);
 });
 
+test("an output-limited answer keeps its text and truncation metadata in the outbox", () => {
+  const f = fixture();
+  f.persistAssistant({ id: "truncated", content: "Partial answer", status: "complete", outputTruncated: true });
+  assert.equal(f.enqueued.length, 1);
+  assert.equal(f.enqueued[0].message.content, "Partial answer");
+  assert.equal(f.enqueued[0].message.outputTruncated, true);
+});
+
 test("an empty assistant message reserved for steering is persisted", () => {
   const f = fixture();
   f.steeringReplies.add("m5");

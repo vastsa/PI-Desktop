@@ -61,6 +61,7 @@ import { switchWorkPanelSession } from "./work-panel-slice";
 
 export type SessionSliceDependencies = StoreAccess & {
   runtime: SessionRuntime;
+  flushPendingSessionConfiguration: (sessionId: string) => Promise<void>;
   decorateSessions: (
     sessions: SessionSummary[],
     meta: Record<string, SessionMeta>,
@@ -156,6 +157,7 @@ export function createSessionSlice({
   rememberSessionCompactions,
   commitForkedSession,
   persistSessionAndSelect,
+  flushPendingSessionConfiguration,
 }: SessionSliceDependencies): Pick<
   AppState,
   | "refreshSessions"
@@ -261,6 +263,7 @@ export function createSessionSlice({
                   ...session,
                   mode: modeAfterPlanningUpdate(durableMode, hostState, () =>
                     sessionModeForPlanningState(hostState, nextKind),
+                    wasPending ? checkpoint : undefined,
                   ),
                 }
               : session,
@@ -494,6 +497,11 @@ export function createSessionSlice({
           runtime.cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
           commitSelection([], true, EMPTY_SESSION_WINDOW);
         }
+        // Baseline for the stale-read guard below. It is taken after this
+        // selection's own provisional commits (which can move the cache entry
+        // themselves) but before workspace alignment, so an idle edit landing
+        // during alignment or the read is still detected.
+        const transcriptBeforeAlignment = runtime.sessionTranscriptCache.get(id);
         if (summary) {
           if (
             !(await runtime.queueWorkspaceAlignment(() =>
@@ -564,6 +572,22 @@ export function createSessionSlice({
             }
           : { messageStart: 0, hasMoreBefore: false };
         const currentState = get();
+        // An idle-session edit (message delete, revision switch) that landed
+        // while this selection aligned the workspace or awaited the bounded
+        // read replaces the transcript cache entry; committing the stale
+        // window now would revert that edit on screen. loadSessionDetail
+        // already refuses to cache such a read, but its baseline predates this
+        // selection's own provisional commits, so the caller keeps its own.
+        // An entry that vanished (cache eviction) is not an edit.
+        const transcriptNow = runtime.sessionTranscriptCache.get(id);
+        const supersedingTranscript =
+          transcriptNow !== undefined &&
+          transcriptNow !== transcriptBeforeAlignment &&
+          !runtime.liveSessionTranscripts.has(id) &&
+          currentState.runningSessions[id] !== true
+            ? transcriptNow
+            : undefined;
+        const transcriptMovedWhileReading = supersedingTranscript !== undefined;
         const liveMessages =
           (runningAtSelection ||
             currentState.runningSessions[id] === true ||
@@ -578,6 +602,7 @@ export function createSessionSlice({
             ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
             : detail.session.messages ?? []
           : liveMessages ?? [];
+        const committedMessages = supersedingTranscript ?? selectedMessages;
         if (detail.session) {
           if (isRemoteSession(detail.session)) {
           const { messages: _messages, ...summary } = detail.session;
@@ -585,9 +610,15 @@ export function createSessionSlice({
             safeSessionSummary(summary), ...state.sessions.filter((session) => session.id !== id),
           ], state.sessionMeta) }));
           }
-          runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
+          if (!transcriptMovedWhileReading) {
+            runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
+          }
         }
-        commitSelection(selectedMessages, false, historyWindow);
+        commitSelection(
+          committedMessages,
+          false,
+          transcriptMovedWhileReading ? undefined : historyWindow,
+        );
         if (
           currentState.runningSessions[id] !== true &&
           durableCoversLiveSessionMessages(detail.session?.messages ?? [], liveMessages)
@@ -608,10 +639,12 @@ export function createSessionSlice({
         ) {
           const pin = pinnedSessionModelBinding({
             session: selected,
-            messages: selectedMessages,
+            messages: committedMessages,
             settings: get().settings,
             providers: get().providers,
             recentModels: get().recentModels,
+            discovered: get().providers.flatMap((candidate) =>
+              get().providerModels[candidate.id] ?? []),
           });
           if (pin.providerId && pin.modelId) {
             set((state) => ({
@@ -824,6 +857,9 @@ export function createSessionSlice({
       }
       if (!sessionAllows(get().sessions.find((session) => session.id === sessionId), "canConfigureModel")) return;
       if (get().pendingPlans[sessionId]?.status === "pending") return;
+      if (config.mode !== get().sessions.find((session) => session.id === sessionId)?.mode) {
+        runtime.sessionModeSelections.set(sessionId, (runtime.sessionModeSelections.get(sessionId) ?? 0) + 1);
+      }
       if (
         get().runningSessions[sessionId] ||
         runtime.sessionConfigurationFlushes.has(sessionId)
@@ -849,8 +885,7 @@ export function createSessionSlice({
         config,
       );
       runtime.pendingSessionConfigurations.delete(sessionId);
-      const result = await api.configureSession(sessionId, payload);
-      set((state) => ({
+      const write = api.configureSession(sessionId, payload).then((result) => set((state) => ({
         sessions: state.sessions.map((session) =>
           session.id === sessionId
             ? {
@@ -864,7 +899,16 @@ export function createSessionSlice({
           ...state.planningStates,
           [sessionId]: result.session.mode === "plan" ? "planning" : "inactive",
         },
-      }));
+      })));
+      runtime.sessionConfigurationFlushes.set(sessionId, write);
+      try {
+        await write;
+      } finally {
+        if (runtime.sessionConfigurationFlushes.get(sessionId) === write) {
+          runtime.sessionConfigurationFlushes.delete(sessionId);
+        }
+        await flushPendingSessionConfiguration(sessionId);
+      }
     },
 
     /** Abort one session's running turn, whether or not it is the visible one. */
