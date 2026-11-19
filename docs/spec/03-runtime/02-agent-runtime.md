@@ -205,6 +205,15 @@ and existing provider replay signatures, which retain the phase after reload.
 Classification does not change stop reasons, tool execution, usage, or the
 messages sent back to the provider.
 
+Responses-only `UiMessage.responseLayout` is an optional readonly block sequence:
+`{ type: "thinking" | "commentary" | "text", length: number }` or
+`{ type: "search", id: string }`. UTF-16 lengths consume canonical `thinking`
+or, for commentary/text, a shared cursor into `content`; search IDs match
+`hostedSearch.rounds[].id`. Starts may have zero length; delta updates carry the
+current full layout. Completed messages retain it for reopen. Without layout,
+legacy display is unchanged; no interleaving is inferred. This presentation
+metadata changes neither canonical text, provider replay nor tool/group policies.
+
 While an active turn has no new transcript row, the runtime emits a normalized
 `status` event that names the quiet interval: `starting` for the prompt
 handoff, `waiting-model` while a provider request waits for its first assistant

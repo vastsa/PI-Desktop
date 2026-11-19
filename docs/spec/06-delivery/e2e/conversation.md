@@ -4525,6 +4525,26 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
 
+## E2E-CHAT-responses-interleaved-process
+
+- **Preconditions:** Offline mounted React transcript with Responses layout;
+  clipboard writes mocked, no live Desktop/provider.
+- **Steps:** In Flat/Fully folded, start empty thinking, then stream thinking,
+  commentary, search, thinking, commentary, search and final text start/deltas.
+  Include non-BMP characters. Open the first search before its group grows;
+  close only the second thinking row. Complete, expand groups and copy; repeat
+  after remounting a cloned completed model with layout and no live ranges.
+- **Expected:** The empty start has no turn; the next visible delta must render.
+  Two independent thinking/search rows retain block order and disclosure choices
+  through deltas/completion. Expanded completed/reopened groups keep that order.
+  Only `Verified answer 🚀.` appears outside the process under the original ID
+  and reaches Copy. Empty starts and progress text never appear as an answer.
+- **Automation:** `scripts/e2e/turn-process.tsx` via `pnpm test:e2e:transcript`;
+  reopened UI model only, not Host persistence.
+- **Specs:** `03-runtime/02-agent-runtime.md`, `04-ux/08-component-spec.md`;
+  ADR turn-process-and-thinking-display. **Acceptance:** C / F.
+  **Milestone:** Maintenance. **Status:** Automated; isolated Windows harness passed 2026-11-19.
+
 ## E2E-OUTPUT-CAP-716: Keep model requests inside the published context window
 
 - **Preconditions:** A deterministic provider fixture exposes a published context

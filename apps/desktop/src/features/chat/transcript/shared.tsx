@@ -703,18 +703,20 @@ export function DisclosureCollapseRail({
 
 export const ThinkingRow = memo(function ThinkingRow({
   message,
+  sourceMessageId,
   streaming,
   autoOpen = false,
   onUserInteraction,
 }: {
   message: UiMessage;
+  sourceMessageId?: string;
   streaming: boolean;
   autoOpen?: boolean;
   onUserInteraction?: () => void;
 }) {
   const { t } = useTranslation();
   const detailsId = useId();
-  const revealRequest = useMessageRevealRequest(message.id);
+  const revealRequest = useMessageRevealRequest(sourceMessageId ?? message.id);
   const disclosure = useAutomaticDisclosure(autoOpen, revealRequest, disclosureKey("thinking", message.id));
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
   const titleRef = disclosure.titleRef;
@@ -781,6 +783,7 @@ export const ThinkingRow = memo(function ThinkingRow({
   );
 }, (previous, next) =>
   previous.message === next.message &&
+  previous.sourceMessageId === next.sourceMessageId &&
   previous.streaming === next.streaming &&
   previous.autoOpen === next.autoOpen &&
   previous.onUserInteraction === next.onUserInteraction,

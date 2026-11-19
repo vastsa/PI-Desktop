@@ -306,14 +306,17 @@ describe("Responses commentary routing", () => {
       phase: index === 0 ? "commentary" : "final_answer",
       content: [{ type: "output_text", text, annotations: [] }],
     }));
+    const search = { type: "web_search_call", id: "ws_fixture", status: "completed", action: { type: "search", query: "fixture" } };
+    const thought = { type: "reasoning", id: "rs_fixture", summary: [{ type: "summary_text", text: "Checked." }] };
+    const output = [items[0], search, thought, items[1]];
     const frames = [
       { type: "response.created", response: { id: "resp_fixture" } },
-      ...items.flatMap((item, index) => [
-        { type: "response.output_item.added", output_index: index, item: { ...item, content: [] } },
-        { type: "response.output_text.delta", output_index: index, content_index: 0, delta: item.content[0].text },
+      ...output.flatMap((item, index) => [
+        { type: "response.output_item.added", output_index: index, item: { ...item, content: [], summary: [] } },
+        ...("content" in item ? [{ type: "response.output_text.delta", output_index: index, content_index: 0, delta: item.content[0].text }] : []),
         { type: "response.output_item.done", output_index: index, item },
       ]),
-      { type: "response.completed", response: { id: "resp_fixture", status: "completed", output: items } },
+      { type: "response.completed", response: { id: "resp_fixture", status: "completed", output } },
     ];
     vi.stubGlobal("fetch", vi.fn(async () => new Response(
       frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
@@ -327,14 +330,25 @@ describe("Responses commentary routing", () => {
     try {
       await runtime.prompt("Check the references and answer.", "fixture-user", "fixture-turn");
       // The runtime may batch progress and answer tokens into one update.
-      const update = events.find((event) => event.type === "message_update" && event.deltaText?.startsWith(progress));
-      expect(update).toMatchObject({ message: { commentaryRanges: [{ start: 0, end: progress.length }] } });
+      const updates = events.flatMap(event => event.type === "message_update" ? [event.message] : []);
+      expect(updates.some(row => row.commentaryRanges?.[0]?.end === progress.length)).toBe(true);
+      const withSearch = updates.filter(row => row.hostedSearch?.rounds.some(round => round.id === search.id));
+      expect(withSearch.length).toBeGreaterThan(0);
+      for (const row of withSearch) {
+        expect(row.responseLayout?.slice(0, 2)).toEqual([{ type: "commentary", length: progress.length }, { type: "search", id: search.id }]);
+      }
       const finish = events.find((event) => event.type === "message_end" && event.message.role === "assistant");
-      expect(finish).toMatchObject({ message: { content: progress + answer, status: "complete" } });
-      expect(finish?.type === "message_end" && finish.message.providerReplay?.blocks).toEqual(items.map((item) => ({
-        type: "text", length: item.content[0].text.length,
-        signature: JSON.stringify({ v: 1, id: item.id, phase: item.phase }),
-      })));
+      expect(finish).toMatchObject({ message: { content: progress + answer, thinking: "Checked.", status: "complete", responseLayout: [
+        { type: "commentary", length: progress.length }, { type: "search", id: search.id },
+        { type: "thinking", length: thought.summary[0].text.length }, { type: "text", length: answer.length },
+      ] } });
+      // The transcript-only search position never becomes a model replay block.
+      const replay = finish?.type === "message_end" ? finish.message.providerReplay?.blocks : undefined;
+      expect(replay).toEqual([
+        { type: "text", length: progress.length, signature: JSON.stringify({ v: 1, id: items[0].id, phase: "commentary" }) },
+        { type: "thinking", length: thought.summary[0].text.length, signature: expect.any(String) },
+        { type: "text", length: answer.length, signature: JSON.stringify({ v: 1, id: items[1].id, phase: "final_answer" }) },
+      ]);
     } finally {
       await runtime.dispose();
       vi.unstubAllGlobals();
@@ -12949,7 +12963,12 @@ describe("DesktopAgentRuntime hosted web search rounds (ADR 0297)", () => {
     // Round 1 starts searching.
     await handleAgentEvent({
       type: "message_start",
-      message: { role: "assistant", content: [round("ws_1", "in_progress", "first query")] },
+      message: { role: "assistant", api: "openai-responses", content: [round("ws_1", "in_progress", "first query")] },
+    });
+    // An empty partial has no replacement for the search or its position.
+    await handleAgentEvent({ type: "message_update", message: { role: "assistant", api: "openai-responses", content: [] } });
+    expect(onEvent.mock.calls.at(-1)?.[0].event).toMatchObject({
+      type: "message_update", message: { responseLayout: [{ type: "search", id: "ws_1" }] },
     });
     // Round 1 completes and round 2 starts, still without any text.
     await handleAgentEvent({

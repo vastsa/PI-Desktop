@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-17
-- Amended: 2026-10-22, 2026-11-04
+- Amended: 2026-10-22, 2026-11-04, 2026-11-19
 - Issues: #510, #461, #1806, #2094
 - Amends: D071, [ADR 0242](0242-delta-only-streaming-updates.md)
 
@@ -23,6 +23,12 @@ Untagged trailing text stays visible while streaming and moves into the process
 if later activity follows. The renderer never guesses intent from wording.
 Neither projection changes stored model history; user/system messages and
 compaction dividers keep their turn boundaries.
+
+Concatenated Responses text cannot recover interleaved thinking, commentary and
+searches. Optional `UiMessage.responseLayout` retains UTF-16 slice lengths and
+existing search IDs in block order through streaming and reopen, without
+duplicating text or reinterpreting replay. No-layout messages keep legacy display;
+tool/group and thinking/folding policies are unchanged.
 
 One turn renders exactly one disclosure holding every row produced before the
 answer, so a long turn collapses in one gesture. An untouched process closes when

@@ -151,6 +151,7 @@ import {
 } from "./assistant-provider-replay.js";
 import {
   assistantContent,
+  responseLayoutForBubble,
   isRecord,
   nowIso,
   timestampMs,
@@ -8498,27 +8499,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
-  /**
-   * Fold pi-ai hostedSearch content blocks and message citations into the
-   * current assistant bubble as `UiMessage.hostedSearch`, emitting a
-   * full-frame message_update when the normalized state actually changed.
-   * Search state transitions are low frequency, so a full frame costs less
-   * than teaching every delta path about the field.
-   */
-  private applyHostedSearch(message: AssistantMessage): void {
-    if (!this.currentAssistant) return;
+  /** Keep search-only updates observable without sending a frame with stale text/order first. */
+  private snapshotHostedSearch(message: AssistantMessage, previous?: UiMessage["hostedSearch"]) {
+    // Reuse the previous snapshot for partial events with no new search state.
     const next = hostedSearchFromMessage({
       content: message.content,
       citations: message.hostedSearchCitations,
     });
-    if (!next) return;
-    const previous = this.currentAssistant.hostedSearch;
-    if (previous && JSON.stringify(previous) === JSON.stringify(next)) return;
-    this.currentAssistant = {
-      ...this.currentAssistant,
-      hostedSearch: next,
-    };
-    this.emit({ type: "message_update", message: this.currentAssistant });
+    return !next || (previous && JSON.stringify(previous) === JSON.stringify(next)) ? previous : next;
   }
 
   private async handleAgentEvent(event: AgentEvent) {
@@ -8551,7 +8539,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (event.message.role === "assistant") {
           this.clearAgentActivity();
           this.streamStartedAt = Date.now();
-          const content = assistantContent((event.message as any).content);
+          const content = assistantContent(event.message.content, event.message.api);
           const retryingAssistant =
             this.providerRetryInProgress ||
             this.overflowRecoveryInProgress ||
@@ -8578,6 +8566,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             id: retryingAssistant?.id ?? randomUUID(),
             role: "assistant",
             content: initialText,
+            commentaryRanges: initialText === content.text ? content.commentaryRanges : retryingAssistant?.commentaryRanges,
+            responseLayout: initialText === content.text ? content.responseLayout : undefined,
+            hostedSearch: this.snapshotHostedSearch(event.message),
             ...(content.hasThinking && content.thinking
               ? { thinking: content.thinking }
               : {}),
@@ -8604,8 +8595,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             this.emit({ type: "message_update", message: this.currentAssistant });
           } else {
             this.emit({ type: "message_start", message: this.currentAssistant });
+            // Search subscribers consume updates, including a first round already present on start.
+            if (this.currentAssistant.hostedSearch) this.emit({ type: "message_update", message: this.currentAssistant });
           }
-          this.applyHostedSearch(event.message);
         }
         // User messages are echoed and persisted by the desktop main process
         // (agentPrompt handler); re-emitting them here would duplicate the
@@ -8614,8 +8606,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       case "message_update": {
         if (this.currentAssistant && event.message.role === "assistant") {
-          this.applyHostedSearch(event.message);
-          const content = assistantContent((event.message as any).content);
+          const content = assistantContent(event.message.content, event.message.api);
+          const previousLayout = this.currentAssistant.responseLayout;
+          const previousSearch = this.currentAssistant.hostedSearch;
+          const hostedSearch = this.snapshotHostedSearch(event.message, previousSearch);
           const previousText = this.currentAssistant.content;
           const previousThinking = this.currentAssistant.thinking ?? "";
           const nextText = content.hasText ? content.text : previousText;
@@ -8628,6 +8622,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const nextThinking = content.hasThinking
             ? content.thinking
             : previousThinking;
+          const responseLayout = responseLayoutForBubble(content, this.currentAssistant, nextText, nextThinking);
           const textDelta = content.hasText
             ? cumulativeDelta(previousText, content.text)
             : { delta: "", reset: false };
@@ -8638,6 +8633,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             ...this.currentAssistant,
             content: nextText,
             commentaryRanges,
+            responseLayout,
+            hostedSearch,
             ...(nextThinking
               ? { thinking: nextThinking }
               : content.hasThinking
@@ -8650,7 +8647,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             thinkingDelta.delta ||
             textDelta.reset ||
             thinkingDelta.reset ||
-            commentaryChanged
+            commentaryChanged || hostedSearch !== previousSearch ||
+            (previousLayout !== responseLayout && JSON.stringify(previousLayout) !== JSON.stringify(responseLayout))
           ) {
             this.emit({
               type: "message_update",
@@ -8698,7 +8696,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         if (this.currentAssistant && event.message.role === "assistant") {
           const assistantId = this.currentAssistant.id;
-          const content = assistantContent((event.message as any).content);
+          const content = assistantContent(event.message.content, event.message.api);
           // pi-agent-core encodes stream failures in the final message
           // (stopReason "error"/"aborted" + errorMessage) and resolves the
           // prompt normally, so this is where provider/model errors surface.
@@ -8736,6 +8734,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const nextThinking = content.hasThinking
             ? content.thinking
             : this.currentAssistant.thinking ?? "";
+          // A terminal (or recovery) event can be the first frame carrying the finished layout.
+          this.currentAssistant = {
+            ...this.currentAssistant,
+            commentaryRanges: content.hasText ? content.commentaryRanges : this.currentAssistant.commentaryRanges,
+            responseLayout: responseLayoutForBubble(content, this.currentAssistant, nextText, nextThinking),
+          };
           // `nextText` may include text retained in a reused assistant bubble
           // from an earlier recovery attempt. Recovery classification must
           // inspect only the response that just ended, or a silent retry after
@@ -8972,7 +8976,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
-            commentaryRanges: content.hasText ? content.commentaryRanges : this.currentAssistant.commentaryRanges,
             ...(nextThinking
               ? { thinking: nextThinking }
               : content.hasThinking

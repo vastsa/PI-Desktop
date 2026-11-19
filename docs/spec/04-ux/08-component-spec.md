@@ -975,6 +975,13 @@ from the turn's Copy action. Missing or unusable phase metadata leaves the
 existing trailing-text rule in place. This does not move reasoning, rewrite
 saved text, or change the assistant messages sent back to the provider.
 
+Responses `responseLayout` preserves thinking/commentary/search/text block order
+within one message, live and reopened. Final text stays outside the process;
+Copy excludes thinking, commentary and searches. Independent disclosure choices
+survive deltas and completion, and expanded groups keep block order. Empty starts
+do not manufacture visible content. No-layout messages keep legacy display;
+replay, tool/group and thinking/folding policies are unchanged.
+
 The disclosure owns every row the turn produced before its answer: ordinary
 activity groups and `Bash` run rows alike. A turn therefore renders exactly one
 top-level process disclosure, including a Bash-only turn; no run row is a sibling

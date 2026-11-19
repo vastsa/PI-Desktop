@@ -7,7 +7,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { JsonObject, JsonValue, Usage } from "@earendil-works/pi-ai";
-import { isResponsesCommentary, type AssistantCommentaryRange, type MessageUsage, type UsageProvenance } from "@pi-desktop/shared";
+import { isResponsesCommentary, type AssistantCommentaryRange, type MessageUsage, type ResponseLayoutBlock, type UiMessage, type UsageProvenance } from "@pi-desktop/shared";
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -124,10 +124,19 @@ export type AssistantContent = {
   hasText: boolean;
   hasThinking: boolean;
   commentaryRanges?: AssistantCommentaryRange[];
+  responseLayout?: ResponseLayoutBlock[];
 };
 
+/** An empty event can retain the live bubble. Never attach its old layout to replacement text. */
+export function responseLayoutForBubble(content: AssistantContent, previous: UiMessage, text: string, thinking: string) {
+  if ((content.responseLayout || content.hasText || content.hasThinking) && text === content.text && thinking === content.thinking) {
+    return content.responseLayout;
+  }
+  return text === previous.content && thinking === (previous.thinking ?? "") ? previous.responseLayout : undefined;
+}
+
 /** Flatten a pi-ai assistant content array into visible text and reasoning. */
-export function assistantContent(content: unknown): AssistantContent {
+export function assistantContent(content: unknown, api?: string): AssistantContent {
   if (typeof content === "string") {
     return { text: content, thinking: "", hasText: true, hasThinking: false };
   }
@@ -140,31 +149,38 @@ export function assistantContent(content: unknown): AssistantContent {
   let hasText = false;
   let hasThinking = false;
   let commentaryRanges: AssistantCommentaryRange[] | undefined;
-  for (const part of content) {
-    if (!part || typeof part !== "object") continue;
-    const block = part as {
-      type?: string;
-      text?: string;
-      thinking?: string;
-      textSignature?: unknown;
-    };
+  let searchIds: Set<string> | undefined;
+  const layout: ResponseLayoutBlock[] | undefined =
+    api === "openai-responses" || api === "openai-codex-responses" || api === "azure-openai-responses" ? [] : undefined;
+  for (const [index, block] of content.entries()) {
+    if (!isRecord(block)) continue;
     if (block.type === "text" && typeof block.text === "string") {
       hasText = true;
-      if (block.text && isResponsesCommentary(block.textSignature)) {
+      const commentary = isResponsesCommentary(block.textSignature);
+      layout?.push({ type: commentary ? "commentary" : "text", length: block.text.length });
+      if (block.text && commentary) {
         (commentaryRanges ??= []).push({ start: text.length, end: text.length + block.text.length });
       }
       text += block.text;
     } else if (block.type === "thinking") {
       hasThinking = true;
-      if (typeof block.thinking === "string") {
-        thinking += block.thinking;
-      } else if (typeof block.text === "string") {
-        // Accept OpenAI-compatible adapters that expose thinking as `text`.
-        thinking += block.text;
-      }
+      // Some compatible adapters expose reasoning as `text`.
+      const value = typeof block.thinking === "string" ? block.thinking : typeof block.text === "string" ? block.text : "";
+      layout?.push({ type: "thinking", length: value.length });
+      thinking += value;
+    } else if (layout && block.type === "hostedSearch" && block.phase === "web_search_call") {
+      const id = typeof block.blockId === "string" && block.blockId ? block.blockId : `anon-${index}`;
+      searchIds ??= new Set();
+      if (searchIds.has(id)) continue;
+      searchIds.add(id);
+      layout.push({ type: "search", id });
     }
   }
-  return { text, thinking, hasText, hasThinking, ...(commentaryRanges ? { commentaryRanges } : {}) };
+  return {
+    text, thinking, hasText, hasThinking,
+    ...(commentaryRanges ? { commentaryRanges } : {}),
+    ...(layout?.some(block => block.type !== "text") ? { responseLayout: layout } : {}),
+  };
 }
 
 /**

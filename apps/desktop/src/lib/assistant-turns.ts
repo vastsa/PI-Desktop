@@ -10,10 +10,10 @@ import {
   withoutReasoningReplayPlaceholder,
 } from "@pi-desktop/shared";
 import { getToolAction, isDelegationStartTool } from "./tool-display";
-import { messageContentFacts } from "./transcript-summary";
+import { getAssistantTurnContent, messageContentFacts } from "./transcript-summary";
 
 export type AssistantActivityItem =
-  | { kind: "thinking"; message: UiMessage }
+  | { kind: "thinking"; message: UiMessage; sourceMessageId?: string }
   | {
       kind: "tool";
       message: UiMessage;
@@ -571,10 +571,7 @@ export function assistantTurnResponseOutputIsEstimated(
 }
 
 export function assistantTurnContent(entry: AssistantTurnEntry): string {
-  return assistantTurnMessages(entry)
-    .map((message) => (message.content || "").trim())
-    .filter(Boolean)
-    .join("\n\n");
+  return getAssistantTurnContent(entry);
 }
 
 export function assistantTurnUsage(

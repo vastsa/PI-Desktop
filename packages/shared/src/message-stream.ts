@@ -46,6 +46,7 @@ export function streamingMessageIdentity(message: UiMessage): UiMessage {
     ...(message.agentName ? { agentName: message.agentName } : {}),
     ...(message.hostedSearch ? { hostedSearch: message.hostedSearch } : {}),
     ...(message.commentaryRanges ? { commentaryRanges: message.commentaryRanges } : {}),
+    ...(message.responseLayout ? { responseLayout: message.responseLayout } : {}),
   };
 }
 
@@ -168,6 +169,7 @@ export function applyMessageUpdate(
     status: event.message.status ?? seed.status,
     content,
     commentaryRanges: event.message.commentaryRanges,
+    responseLayout: event.message.responseLayout,
     ...(thinking ? { thinking } : { thinking: undefined }),
     ...(event.message.modelId ? { modelId: event.message.modelId } : {}),
     ...(event.message.providerId ? { providerId: event.message.providerId } : {}),
@@ -196,6 +198,8 @@ export function deltaStreamPayloadFits(
   if (!event || event.type !== "message_update" || event.stream !== "delta") {
     return false;
   }
+  // Phase ranges and block references are variable-sized; use the caller's exact size check.
+  if (event.message?.responseLayout || event.message?.commentaryRanges) return false;
   const chars =
     (event.deltaText?.length ?? 0) +
     (event.deltaThinking?.length ?? 0) +

@@ -15,10 +15,9 @@ export function isThinkingActive(message: UiMessage, active: boolean): boolean {
 }
 
 export function isTurnThinking(
-  parts: readonly AssistantTurnPart[],
+  latestPart: AssistantTurnPart | undefined,
   active: boolean,
 ): boolean {
-  const latestPart = parts.at(-1);
   const latestActivity =
     latestPart?.kind === "activity" ? latestPart.items.at(-1) : undefined;
   return (
@@ -34,7 +33,7 @@ export function processContainsMessage(
   return parts.some((part) => {
     if (part.kind === "message") return part.message.id === messageId || part.sourceMessageId === messageId;
     return part.items.some((item) => {
-      if (item.message.id === messageId) return true;
+      if (item.message.id === messageId || (item.kind === "thinking" && item.sourceMessageId === messageId)) return true;
       return (
         item.kind === "tool" &&
         Boolean(item.delegate?.items.some((row) => row.message.id === messageId))

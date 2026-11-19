@@ -57,6 +57,7 @@ export function TurnProcess({
   turnId,
   processParts,
   turnParts,
+  activePart,
   visibleSteps,
   isActive,
   failed,
@@ -66,6 +67,7 @@ export function TurnProcess({
   turnId: string;
   processParts: readonly AssistantTurnPart[];
   turnParts: readonly AssistantTurnPart[];
+  activePart?: AssistantTurnPart;
   /** Visible steps the process reveals; `0` draws no disclosure. */
   visibleSteps: number;
   isActive: boolean;
@@ -82,7 +84,7 @@ export function TurnProcess({
   const summary = useMemo(() => cachedActivitySummary(
     processParts.flatMap((part) => part.kind === "activity" ? part.items : []),
   ), [processParts]);
-  const thinkingNow = useMemo(() => isTurnThinking(turnParts, isActive), [turnParts, isActive]);
+  const thinkingNow = isTurnThinking(activePart, isActive);
   // Active processes start open and untouched completed ones close by default;
   // an explicit user choice stays authoritative. This does not depend on the
   // thinking preference, and a recorded failure keeps an untouched active
