@@ -64,6 +64,28 @@ describe("toWireMessageUpdate / applyMessageUpdate", () => {
     expect(applied.id).toBe("m1");
   });
 
+  it("carries the latest commentary ranges through batching and clears them on replacement", () => {
+    const start = assistant({ id: "m1", content: "" });
+    const ranges = [{ start: 0, end: 9 }];
+    const progress = toWireMessageUpdate({
+      type: "message_update", deltaText: "Checking.",
+      message: { ...start, content: "Checking.", commentaryRanges: ranges },
+    });
+    const final = toWireMessageUpdate({
+      type: "message_update", deltaText: "Answer.",
+      message: { ...start, content: "Checking.Answer.", commentaryRanges: ranges },
+    });
+    expect(progress.message.content).toBe("");
+    const applied = applyMessageUpdate(start, mergeMessageUpdates(progress, final));
+    expect(applied.content).toBe("Checking.Answer.");
+    expect(applied.commentaryRanges).toEqual(ranges);
+    const replacement = toWireMessageUpdate({
+      type: "message_update", deltaText: "Replacement", resetText: true,
+      message: { ...start, content: "Replacement" },
+    });
+    expect(applyMessageUpdate(applied, replacement).commentaryRanges).toBeUndefined();
+  });
+
   it("keeps snapshot updates as replacements", () => {
     const snapshot = assistant({ id: "m1", content: "replaced" });
     const event = { type: "message_update" as const, message: snapshot };

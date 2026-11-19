@@ -109,12 +109,17 @@ export type ToolTokenUsage = {
   estimated: true;
 };
 
+export type AssistantCommentaryRange = { start: number; end: number };
+
 export type UiMessage = {
   id: string;
   /** Durable root conversation identity for display grouping, never authorization. */
   turnId?: string;
   role: UiMessageRole;
   content: string;
+  /** Live presentation metadata: UTF-16 ranges of provider-labelled progress in content.
+   * Completed history derives these from providerReplay instead of persisting them twice. */
+  commentaryRanges?: readonly AssistantCommentaryRange[];
   /** Internal model instructions/tool declarations; never a visible chat row. */
   modelSystem?: {
     version: 1;

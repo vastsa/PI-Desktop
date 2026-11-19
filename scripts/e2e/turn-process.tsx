@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
-import type { AppSettings, UiMessage } from "@pi-desktop/shared";
+import { applyMessageUpdate, toWireMessageUpdate, type AppSettings, type UiMessage } from "@pi-desktop/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ShowThinkingRow } from "../../apps/desktop/src/components/settings/ShowThinkingRow";
 import { TranscriptDisplayModeRow } from "../../apps/desktop/src/components/settings/TranscriptDisplayModeRow";
@@ -186,6 +186,37 @@ export async function turnProcessProbe() {
   const contiguous = [read, grep, bash1, bash2, edit, answer];
 
   try {
+    // The same provider message holds both progress and the final answer.
+    setSettings({ smoothStreaming: false, showThinking: false });
+    const progress = "Checking references.";
+    const finalText = "Here is the result.";
+    const phased = message("phased", "assistant", "", { status: "streaming" });
+    const commentaryRanges = [{ start: 0, end: progress.length }];
+    const live = applyMessageUpdate(phased, toWireMessageUpdate({
+      type: "message_update", deltaText: progress,
+      message: { ...phased, content: progress, commentaryRanges },
+    }));
+    render([live], true, null, "live-phased-response");
+    check(firstProcess()?.textContent?.includes(progress) && !row("phased"), "live commentary is only in the process");
+    const answered = applyMessageUpdate(live, toWireMessageUpdate({
+      type: "message_update", deltaText: finalText,
+      message: { ...live, content: progress + finalText },
+    }));
+    render([answered], true, null, "live-phased-response");
+    check(row("phased")?.textContent === finalText && !row("phased")?.closest(".turn-process"), "final text streams outside the process");
+
+    const savedPhaseMessage = { ...answered, status: "complete" as const, commentaryRanges: undefined,
+      providerReplay: { version: 1 as const, blocks: [{
+        type: "text" as const, length: progress.length,
+        signature: JSON.stringify({ v: 1, id: "msg_progress", phase: "commentary" }),
+      }, { type: "text" as const, length: finalText.length }] },
+    };
+    render([savedPhaseMessage], false, null, "reopened-phased-response");
+    check(processHeaders()[0]?.getAttribute("aria-expanded") === "false" && row("phased")?.textContent === finalText, "reloaded commentary starts folded without polluting the answer");
+    click(processHeaders()[0]);
+    check(firstProcess()?.textContent?.includes(progress) && row("phased")?.textContent === finalText, "reopening the process reveals the saved commentary only there");
+    setSettings();
+
     // One disclosure per turn: the Bash rows are rows inside the turn's process,
     // not siblings of it, so a long turn collapses in one gesture.
     render(mixed, true, null, "settling-activity-group");

@@ -48,7 +48,7 @@ export type SubagentRun = {
 };
 
 export type AssistantTurnPart =
-  | { kind: "message"; message: UiMessage }
+  | { kind: "message"; message: UiMessage; sourceMessageId?: string }
   | {
       kind: "activity";
       items: AssistantActivityItem[];

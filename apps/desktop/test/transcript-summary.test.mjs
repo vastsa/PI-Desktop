@@ -19,6 +19,55 @@ const message = (id, content, extra = {}) => ({
 });
 const entry = (messages) => ({ kind: "assistant-turn", id: "turn", parts: messages.map((message) => ({ kind: "message", message })) });
 
+test("provider commentary in a saved assistant message is process text, not reply text", () => {
+  const commentary = ["Looking up the docs 🔍.", "Checking the routing details."];
+  const answer = "Here is the answer.";
+  const row = message("reply", [...commentary, answer].join(""), {
+    providerReplay: { version: 1, blocks: [...commentary, answer].map((text, index) => ({
+      type: "text",
+      length: text.length,
+      signature: JSON.stringify({ v: 1, id: `msg_${index}`, phase: index < 2 ? "commentary" : "final_answer" }),
+    })) },
+  });
+  const turn = entry([row]);
+  const summary = getAssistantTurnSummary(turn);
+  assert.deepEqual(summary.responses.map((part) => part.message.content), [answer]);
+  assert.deepEqual(summary.process.map((part) => part.message.content), commentary);
+  assert.equal(getAssistantTurnContent(turn), answer);
+  assert.equal(summary.actionMessage.id, row.id);
+  assert.equal(row.content, [...commentary, answer].join(""));
+});
+
+test("unusable commentary offsets leave the full text visible", () => {
+  const content = "I will check. This still belongs to the answer.";
+  const fields = [
+    {},
+    { commentaryRanges: [{ start: 0, end: content.length + 1 }] },
+    { providerReplay: { version: 1, blocks: [{
+      type: "text", length: content.length - 1,
+      signature: JSON.stringify({ v: 1, id: "msg_short", phase: "commentary" }),
+    }] } },
+  ];
+  for (const extra of fields) {
+    const turn = entry([message("reply", content, extra)]);
+    assert.equal(getAssistantTurnContent(turn), content);
+    assert.equal(getAssistantTurnSummary(turn).responses[0].message.content, content);
+  }
+});
+
+test("commentary without a reply does not swallow an assistant error", () => {
+  const content = "Checking.";
+  const turn = entry([message("partial", content, {
+    commentaryRanges: [{ start: 0, end: content.length }],
+    error: { code: "INTERNAL", message: "Offline" },
+  })]);
+  const summary = getAssistantTurnSummary(turn);
+  assert.equal(summary.process[0].message.content, content);
+  assert.equal(summary.responses[0].message.error.message, "Offline");
+  assert.equal(summary.responses[0].message.content, "");
+  assert.equal(getAssistantTurnContent(turn), "");
+});
+
 test("tail text updates do not read historical assistant content", () => {
   let reads = 0;
   const old = Array.from({ length: 1024 }, (_, index) => ({

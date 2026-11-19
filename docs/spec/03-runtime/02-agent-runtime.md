@@ -197,6 +197,14 @@ truncated tool calls retain their existing behavior.
     visible assistant error message
 12. finalize and persist successful answer/thinking blocks independently
 
+For Responses text with a known `commentary` phase, live assistant updates
+carry presentation-only UTF-16 ranges in `commentaryRanges`, relative to the
+whole reconstructed `content`. A delta carries the current ranges, not an
+incremental range list. Persisted messages still use the original content
+and existing provider replay signatures, which retain the phase after reload.
+Classification does not change stop reasons, tool execution, usage, or the
+messages sent back to the provider.
+
 While an active turn has no new transcript row, the runtime emits a normalized
 `status` event that names the quiet interval: `starting` for the prompt
 handoff, `waiting-model` while a provider request waits for its first assistant

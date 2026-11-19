@@ -4437,6 +4437,11 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   singleton segment, literal-final-item leaf selection, failure/denial/recovery,
   retained-pane remounts, run rows keeping their details closed until opened, and
   a legacy search reveal.
+  Stream a Responses assistant message containing explicitly labelled progress
+  followed by final text in the same message. Check that the progress is
+  inside the disclosure before the final text appears. Settle and reload the
+  message; only the final text should remain outside the collapsed process,
+  and expanding it should reveal the progress without changing the answer.
   In AI settings, check the display selector in English and Simplified Chinese
   at 800px, 1000px, and 1440px window widths with 100% and 150% font scales.
   Select all three values and verify each remains visibly selected and saved.

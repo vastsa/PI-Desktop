@@ -7,7 +7,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { JsonObject, JsonValue, Usage } from "@earendil-works/pi-ai";
-import type { MessageUsage, UsageProvenance } from "@pi-desktop/shared";
+import { isResponsesCommentary, type AssistantCommentaryRange, type MessageUsage, type UsageProvenance } from "@pi-desktop/shared";
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -123,6 +123,7 @@ export type AssistantContent = {
   thinking: string;
   hasText: boolean;
   hasThinking: boolean;
+  commentaryRanges?: AssistantCommentaryRange[];
 };
 
 /** Flatten a pi-ai assistant content array into visible text and reasoning. */
@@ -138,15 +139,20 @@ export function assistantContent(content: unknown): AssistantContent {
   let thinking = "";
   let hasText = false;
   let hasThinking = false;
+  let commentaryRanges: AssistantCommentaryRange[] | undefined;
   for (const part of content) {
     if (!part || typeof part !== "object") continue;
     const block = part as {
       type?: string;
       text?: string;
       thinking?: string;
+      textSignature?: unknown;
     };
     if (block.type === "text" && typeof block.text === "string") {
       hasText = true;
+      if (block.text && isResponsesCommentary(block.textSignature)) {
+        (commentaryRanges ??= []).push({ start: text.length, end: text.length + block.text.length });
+      }
       text += block.text;
     } else if (block.type === "thinking") {
       hasThinking = true;
@@ -158,7 +164,7 @@ export function assistantContent(content: unknown): AssistantContent {
       }
     }
   }
-  return { text, thinking, hasText, hasThinking };
+  return { text, thinking, hasText, hasThinking, ...(commentaryRanges ? { commentaryRanges } : {}) };
 }
 
 /**

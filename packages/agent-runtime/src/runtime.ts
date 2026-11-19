@@ -8619,6 +8619,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const previousText = this.currentAssistant.content;
           const previousThinking = this.currentAssistant.thinking ?? "";
           const nextText = content.hasText ? content.text : previousText;
+          const previousCommentary = this.currentAssistant.commentaryRanges;
+          const commentaryRanges = content.hasText ? content.commentaryRanges : previousCommentary;
+          const commentaryChanged = commentaryRanges?.length !== previousCommentary?.length ||
+            commentaryRanges?.some(({ start, end }, index) =>
+              start !== previousCommentary?.[index]?.start || end !== previousCommentary?.[index]?.end,
+            );
           const nextThinking = content.hasThinking
             ? content.thinking
             : previousThinking;
@@ -8631,6 +8637,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
+            commentaryRanges,
             ...(nextThinking
               ? { thinking: nextThinking }
               : content.hasThinking
@@ -8642,7 +8649,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             textDelta.delta ||
             thinkingDelta.delta ||
             textDelta.reset ||
-            thinkingDelta.reset
+            thinkingDelta.reset ||
+            commentaryChanged
           ) {
             this.emit({
               type: "message_update",
@@ -8964,6 +8972,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
+            commentaryRanges: content.hasText ? content.commentaryRanges : this.currentAssistant.commentaryRanges,
             ...(nextThinking
               ? { thinking: nextThinking }
               : content.hasThinking

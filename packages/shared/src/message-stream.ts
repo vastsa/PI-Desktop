@@ -45,6 +45,7 @@ export function streamingMessageIdentity(message: UiMessage): UiMessage {
       : {}),
     ...(message.agentName ? { agentName: message.agentName } : {}),
     ...(message.hostedSearch ? { hostedSearch: message.hostedSearch } : {}),
+    ...(message.commentaryRanges ? { commentaryRanges: message.commentaryRanges } : {}),
   };
 }
 
@@ -166,6 +167,7 @@ export function applyMessageUpdate(
     createdAt: event.message.createdAt || seed.createdAt,
     status: event.message.status ?? seed.status,
     content,
+    commentaryRanges: event.message.commentaryRanges,
     ...(thinking ? { thinking } : { thinking: undefined }),
     ...(event.message.modelId ? { modelId: event.message.modelId } : {}),
     ...(event.message.providerId ? { providerId: event.message.providerId } : {}),

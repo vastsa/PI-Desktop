@@ -297,6 +297,51 @@ describe("Pi 1.4 client identity", () => {
   });
 });
 
+describe("Responses commentary routing", () => {
+  it("carries stage ranges while streaming and leaves the saved model text intact", async () => {
+    const progress = "Checking references.";
+    const answer = "Here is the result.";
+    const items = [progress, answer].map((text, index) => ({
+      id: `msg_fixture_${index}`, type: "message", role: "assistant", status: "completed",
+      phase: index === 0 ? "commentary" : "final_answer",
+      content: [{ type: "output_text", text, annotations: [] }],
+    }));
+    const frames = [
+      { type: "response.created", response: { id: "resp_fixture" } },
+      ...items.flatMap((item, index) => [
+        { type: "response.output_item.added", output_index: index, item: { ...item, content: [] } },
+        { type: "response.output_text.delta", output_index: index, content_index: 0, delta: item.content[0].text },
+        { type: "response.output_item.done", output_index: index, item },
+      ]),
+      { type: "response.completed", response: { id: "resp_fixture", status: "completed", output: items } },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      { headers: { "content-type": "text/event-stream" } },
+    )));
+    const events: AgentEventEnvelope["event"][] = [];
+    const runtime = createRuntime({
+      provider: { ...provider, apiStyle: "responses", baseUrl: "https://responses-fixture.invalid/v1" },
+      onEvent: (value) => { events.push((value as AgentEventEnvelope).event); },
+    });
+    try {
+      await runtime.prompt("Check the references and answer.", "fixture-user", "fixture-turn");
+      // The runtime may batch progress and answer tokens into one update.
+      const update = events.find((event) => event.type === "message_update" && event.deltaText?.startsWith(progress));
+      expect(update).toMatchObject({ message: { commentaryRanges: [{ start: 0, end: progress.length }] } });
+      const finish = events.find((event) => event.type === "message_end" && event.message.role === "assistant");
+      expect(finish).toMatchObject({ message: { content: progress + answer, status: "complete" } });
+      expect(finish?.type === "message_end" && finish.message.providerReplay?.blocks).toEqual(items.map((item) => ({
+        type: "text", length: item.content[0].text.length,
+        signature: JSON.stringify({ v: 1, id: item.id, phase: item.phase }),
+      })));
+    } finally {
+      await runtime.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("ordered read preparation", () => {
   it.each([
     ["Bash", false], ["Write", false], ["Edit", false], ["Bash", true],

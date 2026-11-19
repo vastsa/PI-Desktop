@@ -1,5 +1,6 @@
 import type { MessageUsage, UiMessage } from "@pi-desktop/shared";
 import type { AssistantActivityItem, AssistantTurnEntry, AssistantTurnPart } from "./assistant-turns";
+import { projectAssistantCommentary } from "./assistant-commentary";
 
 const contentFacts = new WeakMap<UiMessage, { trimmedContent: string; hasContent: boolean }>();
 
@@ -51,7 +52,6 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
     hasContent: false, process: [], responses: [],
   };
   const last = entry.parts.at(-1);
-  const answer = last?.kind === "message" && messageContentFacts(last.message).hasContent ? last : undefined;
   for (const part of entry.parts) {
     if (part.kind === "activity") {
       result.process.push(part);
@@ -66,9 +66,17 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
     }
     const message = part.message;
     result.messages.push(message);
-    if (part === answer || message.error) result.responses.push(part);
-    else result.process.push(part);
-    if (messageContentFacts(message).hasContent) {
+    const projected = projectAssistantCommentary(message);
+    if (projected) {
+      for (const progress of projected.progress) {
+        result.process.push({ kind: "message", message: progress, sourceMessageId: message.id });
+      }
+    }
+    const reply = projected ? { ...part, message: projected.reply } : part;
+    const hasReply = messageContentFacts(reply.message).hasContent;
+    if ((part === last && hasReply) || message.error) result.responses.push(reply);
+    else if (hasReply || !projected) result.process.push(reply);
+    if (hasReply) {
       result.actionMessage = message;
       result.hasContent = true;
     }
@@ -105,7 +113,7 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
 /** Do not retain duplicated reply text in the session-wide projection cache. */
 export function getAssistantTurnContent(entry: AssistantTurnEntry): string {
   return getAssistantTurnSummary(entry).messages
-    .map((message) => messageContentFacts(message).trimmedContent)
+    .map((message) => messageContentFacts(projectAssistantCommentary(message)?.reply ?? message).trimmedContent)
     .filter(Boolean)
     .join("\n\n");
 }

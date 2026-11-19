@@ -967,6 +967,14 @@ can reclassify provisional answer text into the process without changing the
 stored message. Assistant errors and stopped trailing partial answers also stay
 outside it. User/system messages and compaction boundaries are unchanged.
 
+Responses assistant text explicitly marked `commentary` is progress even
+when it is the only text so far or shares a message with `final_answer`.
+It streams inside the process once the provider marks it, remains there on
+history reopen when replay metadata matches the saved text, and is excluded
+from the turn's Copy action. Missing or unusable phase metadata leaves the
+existing trailing-text rule in place. This does not move reasoning, rewrite
+saved text, or change the assistant messages sent back to the provider.
+
 The disclosure owns every row the turn produced before its answer: ordinary
 activity groups and `Bash` run rows alike. A turn therefore renders exactly one
 top-level process disclosure, including a Bash-only turn; no run row is a sibling
