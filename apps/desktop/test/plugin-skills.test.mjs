@@ -79,7 +79,8 @@ test("a reloaded plugin re-indexes its skills, so an edit needs no restart", () 
 test("main forwards the skill catalog and serves the Skill tool locally", () => {
   assert.match(mainSrc, /const pluginSkills = \[/);
   assert.match(mainSrc, /\.\.\.plugins\s*\n?\s*\.getSkills\(\)/);
-  assert.match(mainSrc, /\n\s+pluginSkills,\n/);
+  // Side questions run read-only without plugin skills (ADR 0347).
+  assert.match(mainSrc, /\n\s+pluginSkills: session\.sideQuestion \? \[\] : pluginSkills,/);
   assert.match(mainSrc, /setLocalTool\("Skill"/);
   assert.match(mainSrc, /loadSkillBody\(id\)/);
 });

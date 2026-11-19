@@ -31,7 +31,7 @@ function fixture({ active, includeRoot, evictCache = false, hostCall }) {
     activeSessionId: active ? sessionId : "other-session",
     messages: active ? messages : otherMessages,
     retainedSessionIds: [sessionId], retainedTranscripts: { [sessionId]: messages },
-    runningSessions: {}, sessionHistory: {},
+    runningSessions: {}, sessionHistory: {}, sideQuestionTranscripts: {},
   };
   let runtime;
   const access = {

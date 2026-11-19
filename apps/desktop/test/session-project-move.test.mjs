@@ -193,11 +193,14 @@ test("session move and prompt setup share a per-session critical section", () =>
   )?.[0] ?? "";
   assert.match(moveHandler, /acquireSessionOperation\(sessionId\)/);
   assert.match(moveHandler, /finally \{[\s\S]*?releaseSessionOperation\(\)/);
-  const promptHandler = main.match(
-    /handle\(IPC\.invoke\.agentPrompt,[\s\S]*?\n  \}\);\n\n  handle\(IPC\.invoke\.agentCompact/,
+  const promptEntry = main.match(
+    /const prompt = async \(req: AgentPromptRequest, sideQuestion = false\) => \{[\s\S]*?\n  \};\n  handle\(IPC\.invoke\.agentPrompt/,
   )?.[0] ?? "";
-  assert.match(promptHandler, /acquireSessionOperation\(req\.sessionId\)/);
-  assert.match(promptHandler, /finally \{[\s\S]*?releaseSessionOperation\(\)/);
+  assert.match(promptEntry, /acquireSessionOperation\(req\.sessionId\)/);
+  assert.match(promptEntry, /finally \{[\s\S]*?releaseSessionOperation\(\)/);
+  // The side-question entry reuses the same body, so a parent turn and a side
+  // question on one session can never interleave.
+  assert.match(main, /handle\(IPC\.invoke\.sideQuestionPrompt, \(req: AgentPromptRequest\) => prompt\(req, true\)\)/);
   const planDispatch = main.match(
     /async function dispatchApprovedPlan\([\s\S]*?\n\}\n\nasync function drainApprovedPlanExecutions/,
   )?.[0] ?? "";

@@ -134,11 +134,11 @@ test("each retained session keeps its own mounted pane", () => {
   assert.match(panes, /export function retainSessionPane\(/);
   assert.match(panes, /export function releaseSessionPane\(/);
   assert.match(sessionSlice, /\.\.\.retainSessionPane\(state, id, messages\)/);
-  // A pane reads the live projection only while it owns the active session.
-  assert.match(
-    readingView,
-    /state\.activeSessionId === sessionId\s*\? state\.messages\s*:\s*\(?state\.retainedTranscripts\[sessionId\]/,
-  );
+  // A pane reads the live projection only while it owns the active session, and
+  // falls back to the retained transcript otherwise. Side questions keep their
+  // own projection ahead of it, so the fallback chain may carry extra stores.
+  assert.match(readingView, /state\.activeSessionId === sessionId\s*\?\s*state\.messages\s*:/);
+  assert.match(readingView, /state\.retainedTranscripts\[sessionId\]/);
   assert.doesNotMatch(chatSurface, /SessionLoadingSkeleton/);
   assert.doesNotMatch(styles, /session-loading-skeleton/);
 });

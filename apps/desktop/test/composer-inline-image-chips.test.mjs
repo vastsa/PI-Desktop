@@ -52,8 +52,10 @@ test("image tokens stay in the prompt so the image keeps its place", () => {
   // and sends the image block at that position; only the bytes travel detached.
   assert.match(
     submitHook,
-    /const inlineContent = serializeInlineComposerFileReferences\(rawText, activeFileReferences\);/,
+    /const prompt = serializeInlineComposerFileReferences\(rawText, activeFileReferences\);/,
   );
+  // Context chips ride ahead of the prompt; the image tokens stay inside it.
+  assert.match(submitHook, /const inlineContent = references \? `\$\{references\}\\n\\n\$\{prompt\}` : prompt;/);
   assert.match(submitHook, /const serializedContent = serializeComposerFileReferences\(rawText, activeFileReferences\);/);
   assert.doesNotMatch(submitHook, /detachImageTokens/);
   assert.match(submitHook, /const submittedDraft = draft\.draftSnapshot\(rawText\);/);

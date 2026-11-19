@@ -24,6 +24,7 @@ const [
   hostRpc,
   hostPermissions,
   hostSessions,
+  hostSessionFork,
   hostTranscripts,
   transcript,
   inspector,
@@ -47,6 +48,7 @@ const [
   read("../../../crates/host-core/src/rpc/mod.rs"),
   read("../../../crates/host-core/src/permissions.rs"),
   read("../../../crates/host-core/src/sessions.rs"),
+  read("../../../crates/host-core/src/sessions/fork.rs"),
   read("../../../crates/host-core/src/transcripts.rs"),
   readTranscriptSource(),
   read("../src/components/ContextUsageInspector.tsx"),
@@ -188,7 +190,7 @@ test("every checkpoint is durable, not just the newest one", () => {
     /\.filter\(\|record\| compaction_valid_for_records\(record, &records\)\)/,
   );
   assert.match(
-    hostSessions,
+    hostSessionFork,
     /\.filter_map\(\|record\| clone_compaction_for_fork\(record, &message_ids, &tool_call_ids\)\)/,
   );
 });

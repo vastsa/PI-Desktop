@@ -153,6 +153,7 @@ and transient 5xx envelopes retain their existing classifications.
 | `EDIT_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Edit |
 | `PLUGIN_DISABLED_IN_PLAN` | no | contract-mode hard-deny for every plugin tool |
 | `TOOL_DISABLED_IN_PLAN` | no | contract-mode hard-deny for an unknown/unlisted tool |
+| `SIDE_QUESTION_READ_ONLY` | no | a side question turn called a tool other than Read, Glob or Grep |
 | `PLAN_NOT_ACTIVE` | no | a submit tool ran while no contract was being negotiated |
 | `PLAN_KIND_MISMATCH` | no | `SubmitPlan` in Goal mode, or `SubmitGoal` in Plan mode |
 | `PLAN_APPROVAL_REQUIRED` | no | SubmitPlan/SubmitGoal is waiting for a separate approval |

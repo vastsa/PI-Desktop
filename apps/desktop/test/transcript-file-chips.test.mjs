@@ -151,7 +151,8 @@ test("user-message bare paths wait for fs/resolveRef before becoming chips", asy
   ]);
   assert.match(transcript, /useVerifiedChatText\(text, attachments\)/);
   assert.match(transcript, /attachments=\{message\.attachments\}/);
-  assert.match(verified, /useAppStore\(\(s\) => s\.workspace\?\.path\)/);
+  // A side question reads its owning conversation's project, not the active one.
+  assert.match(verified, /useAppStore\(\(s\) => owner \? owner\.projectPath : s\.workspace\?\.path\)/);
   assert.doesNotMatch(verified, /useAppStore\(\(s\) => s\.workspace\)(?!\?)/);
   assert.match(verified, /api\.fsResolveRef\(/);
   assert.match(files, /MAX_MESSAGE_CANDIDATES = 32/);

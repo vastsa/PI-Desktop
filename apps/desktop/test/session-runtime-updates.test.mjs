@@ -24,7 +24,7 @@ function harness(messages, background = []) {
     retainedSessionIds: ["active", "background"],
     retainedTranscripts: { active: messages, background },
     runningSessions: { active: true, background: true },
-    sessionHistory: {},
+    sessionHistory: {}, sideQuestionTranscripts: {},
   };
   const access = {
     get: () => state,

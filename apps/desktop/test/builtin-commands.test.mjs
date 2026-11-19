@@ -12,6 +12,7 @@ const [registry, dispatch, specEn] = await Promise.all([
 
 const coreIds = [
   "builtin.session.new",
+  "builtin.session.sideQuestion",
   "builtin.agent.compact",
   "builtin.mode.agent",
   "builtin.mode.plan",
@@ -19,7 +20,7 @@ const coreIds = [
   "builtin.session.fast",
 ];
 
-const coreAliases = ["new", "compact", "agent-mode", "plan-mode", "goal-mode", "fast"];
+const coreAliases = ["new", "btw", "compact", "agent-mode", "plan-mode", "goal-mode", "fast"];
 
 const removedIds = [
   "builtin.session.delete",
@@ -38,7 +39,7 @@ const removedIds = [
   "builtin.app.toggleDevtools",
 ];
 
-test("builtin registry exposes exactly the six core commands and aliases", () => {
+test("builtin registry exposes exactly the seven core commands and aliases", () => {
   const ids = [...registry.matchAll(/\bid: "([^"]+)"/g)].map((match) => match[1]);
   const aliases = [...registry.matchAll(/slash: "([^"]+)"/g)].map((match) => match[1]);
 

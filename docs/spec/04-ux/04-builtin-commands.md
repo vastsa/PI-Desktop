@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-Define the six first-party command palette entries available without plugins.
+Define the seven first-party command palette entries available without plugins.
 The same entries are available in the composer `/` menu.
 
 Shortcut: **Cmd/Ctrl + Shift + P** (D014)
@@ -15,7 +15,7 @@ builtin.<domain>.<action>
 
 ## 3. Core builtin catalog
 
-The builtin registry intentionally contains exactly these six commands. Plugin
+The builtin registry intentionally contains exactly these seven commands. Plugin
 commands extend the searchable command list dynamically; app navigation,
 project management, settings, plugin management, and diagnostics are not
 builtin command contracts.
@@ -23,6 +23,7 @@ builtin command contracts.
 | id | title | keywords | category | risk | behavior |
 |---|---|---|---|---|---|
 | `builtin.session.new` | New Task | new, chat, task | Session | low | reuse the latest empty session in the current group or create a durable empty session, then focus the composer |
+| `builtin.session.sideQuestion` | Ask a side question | btw, side, question | Session | low | open a side question tab in the work panel for the active session and send the prompt there |
 | `builtin.agent.compact` | Compact Conversation Context | compact, context, tokens | Session | low | create a model-context checkpoint for the idle active session |
 | `builtin.mode.agent` | Switch to Agent | mode, agent | Session | low | set the idle session mode to Agent |
 | `builtin.mode.plan` | Switch to Plan | mode, plan, planning | Session | low | set the idle session mode to Plan |
@@ -31,7 +32,7 @@ builtin command contracts.
 
 ## 4. Visibility and execution rules
 
-- The six IDs are the complete first-party registry. Removed IDs are not
+- The seven IDs are the complete first-party registry. Removed IDs are not
   palette results and are not renderer dispatch cases; plugin commands remain
   independently discoverable.
 - `New Task` uses the current project or temporary group. It selects the
@@ -72,7 +73,7 @@ type CommandExecutionResult =
 
 ## 6. Acceptance
 
-1. The builtin registry contains exactly six unique, prefixed IDs.
+1. The builtin registry contains exactly seven unique, prefixed IDs.
 2. Palette search matches each title and keyword set.
 3. Mode switch commands update the idle session mode immediately; Plan, Goal,
    and Agent refer to the same pi Agent.
@@ -90,6 +91,7 @@ in the same registry that feeds palette search
 | alias | palette id |
 |---|---|
 | `/new` | `builtin.session.new` |
+| `/btw` | `builtin.session.sideQuestion` |
 | `/compact` | `builtin.agent.compact` |
 | `/agent-mode` | `builtin.mode.agent` |
 | `/plan-mode` | `builtin.mode.plan` |

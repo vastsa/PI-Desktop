@@ -46,7 +46,8 @@ test("every launch resolves the subagent catalog and its pinned models", () => {
     /userDocuments: await activeUserSubagentDocuments\(projectPath\),/,
   );
   assert.match(sessionLaunchSource, /await resolveSubagentProviders\(\{/);
-  assert.match(sessionLaunchSource, /subagents: subagentCatalog\.definitions,/);
+  // A side question cannot launch subagents, so it forwards an empty catalog.
+  assert.match(sessionLaunchSource, /subagents: session\.sideQuestion \? \[\] : subagentCatalog\.definitions,/);
   assert.match(sessionLaunchSource, /subagentProviders: subagentBindings\.providers,/);
   // Discovery problems must not fail the turn, only be reported.
   assert.match(sessionLaunchSource, /"subagent definitions have problems"/);

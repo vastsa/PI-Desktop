@@ -246,6 +246,11 @@ export const ErrorCodes = {
   PLAN_EXECUTION_CONFLICT: "PLAN_EXECUTION_CONFLICT",
   PLAN_EXECUTION_FAILED: "PLAN_EXECUTION_FAILED",
   PLAN_EXECUTION_INTERRUPTED: "PLAN_EXECUTION_INTERRUPTED",
+  /**
+   * A side question owns a read-only turn: only Read, Glob and Grep tools
+   * resolve, so a write-capable tool call is rejected before it runs.
+   */
+  SIDE_QUESTION_READ_ONLY: "SIDE_QUESTION_READ_ONLY",
   PLUGIN_INVALID: "PLUGIN_INVALID",
   PLUGIN_LOAD_FAILED: "PLUGIN_LOAD_FAILED",
   /**

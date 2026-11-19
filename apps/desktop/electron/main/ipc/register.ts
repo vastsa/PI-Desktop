@@ -26,6 +26,7 @@ import type { ModeServices } from "../runtime/mode-services";
 import { registerProviderIpc } from "./provider-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
+import { registerSideQuestionIpc } from "./side-question-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerStorageIpc } from "../storage/ipc";
 import { registerConfigSyncIpc } from "./config-sync-ipc";
@@ -304,6 +305,13 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     forgetTranscriptRewriteHistory,
     stripWinLongPrefix,
     modeCatalog: dependencies.modeServices.catalog,
+  });
+  registerSideQuestionIpc({
+    registrar,
+    getHost,
+    sessionCapabilityContext,
+    enrichSession,
+    persistenceOutbox,
   });
   registerSettingsIpc({
     registrar,

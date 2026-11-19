@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { clearChatContextChips, type ChatContextChip } from "../../../../lib/chat-context-chips";
 import { serializeChatContextChips } from "../../../../lib/chat-context-format";
 import type { TFunction } from "i18next";
@@ -19,6 +18,13 @@ import { nextSendableQueuedPrompt, type QueuedPrompt } from "../../../../lib/que
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import type { ComposerDraftController } from "./useComposerDraft";
 import { submitWithLatestDraftRestore } from "./submit-with-latest-draft-restore.mjs";
+
+/**
+ * Guards `/btw` against a duplicate submit while its palette command runs. It is
+ * keyed by draft rather than held in React state so the hook stays callable from
+ * the unit tests that drive it without a renderer.
+ */
+const sideQuestionSubmits = new Set<string>();
 
 type UseComposerSubmitOptions = {
   value: string;
@@ -80,7 +86,6 @@ export function useComposerSubmit({
   recordHistory,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
-  const sideQuestionPending = useRef(false);
   const submit = async (steering = false) => {
     const rawText = draft.ref.current ? readEditorValue(draft.ref.current) : value;
     // An image chip keeps its place in the prompt: main resolves the `@path` it
@@ -113,15 +118,15 @@ export function useComposerSubmit({
         showToast(t("sideQuestions.textOnlyCommand"), { variant: "error" });
         return;
       }
-      if (sideQuestionPending.current) return;
-      sideQuestionPending.current = true;
+      if (sideQuestionSubmits.has(submittedDraftKey)) return;
+      sideQuestionSubmits.add(submittedDraftKey);
       try {
         await runPaletteCommand("builtin.session.sideQuestion", rawText.trimStart().slice(4).trim(), activeSessionId ?? undefined);
         draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
       } catch (error) {
         showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
       } finally {
-        sideQuestionPending.current = false;
+        sideQuestionSubmits.delete(submittedDraftKey);
       }
       return;
     }

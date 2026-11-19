@@ -59,7 +59,8 @@ test("the transcript keeps the vertical menu unless the ring is enabled", () => 
     ),
     "utf8",
   );
-  assert.match(source, /if \(radialMenu\.enabled\) \{/);
+  // A live text selection belongs to the selection menu, never to the ring.
+  assert.match(source, /if \(radialMenu\.enabled && !window\.getSelection\(\)\?\.toString\(\)\.trim\(\)\) \{/);
   assert.match(source, /<RadialMenu/);
   assert.match(source, /openTranscriptMenu\(event, \{/);
 });
