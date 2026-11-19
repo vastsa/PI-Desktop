@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import type { AgentInstructionFile } from "@pi-desktop/shared";
@@ -128,7 +128,5 @@ export function ProjectInstructionsDialog({
     </OverlayBackdrop>
   );
 
-  return typeof document === "undefined"
-    ? dialog
-    : createPortal(dialog, document.body);
+  return portalToBody(dialog);
 }

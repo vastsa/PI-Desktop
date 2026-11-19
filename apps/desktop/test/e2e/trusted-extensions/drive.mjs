@@ -268,6 +268,17 @@ await ui.until(
   "OAuth account row before sign-out",
 );
 await ui.click(`[data-provider-id="${pluginOAuthId}"] button[aria-haspopup="menu"]`);
+// The row menu must be on top of the Settings dialog, not painted beneath it:
+// a person's pointer has to land on the item itself.
+const menuOnTop = await ui.until(() => {
+  const item = [...document.querySelectorAll('[role="menuitem"]')].find((entry) => entry.textContent?.includes("Sign out"));
+  if (!item) return null;
+  const box = item.getBoundingClientRect();
+  if (box.width === 0 || box.height === 0) return null;
+  const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  return { onTop: Boolean(hit && item.contains(hit)), by: hit?.className ?? "nothing" };
+}, null, "OAuth row menu item");
+check("Settings row menu is clickable above the Settings dialog", menuOnTop.onTop, JSON.stringify(menuOnTop));
 const armedSignOut = await ui.run(() => {
   const item = [...document.querySelectorAll('[role="menuitem"]')].find((entry) => entry.textContent?.includes("Sign out"));
   item?.click();
