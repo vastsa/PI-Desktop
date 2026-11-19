@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const zhCNEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "可按模型启用 OpenAI Fast 模式，并在会话中输入 /fast 请求优先服务；这会更快消耗订阅限额，或增加按 Token 计费的费用。",
       "内联可视化加载更快，并提供可复用的图表助手；脚本失败时会显示可用于修复的错误信息，不再只留空白卡片。",
@@ -17,6 +18,7 @@ export const zhCNEntries: ChangelogEntry[] = [
       "可在 OpenAI、ChatGPT、GitHub Copilot、OpenCode 及已发布的网关中选择 GPT-6.2 Sol 和 GPT-6.2 Astra，并使用其公开的上下文上限与价格。",
       "设置改为在当前页面上弹出的对话框，侧边栏顶部新增“新任务”“定时任务”和“插件市场”入口，并提供简短的启动引导，帮助你添加模型并了解插件启动器快捷键。",
       "可在“设置 → 外观 → 侧边栏模块”中选择显示哪些侧边栏模块：新任务、定时任务、插件市场、置顶会话、会话、项目及其工具栏按钮和版本号。",
+      "侧边栏的“会话”改为“最近”：按时间倒序列出所有未置顶的对话，可点击加载更多；空白首页标题的项目名旁新增下拉箭头，便于切换项目。",
     ],
   },
   {
