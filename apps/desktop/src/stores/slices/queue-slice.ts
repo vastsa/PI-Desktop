@@ -45,7 +45,7 @@ export type QueueSliceDependencies = StoreAccess & {
   promptAttachmentsFromDraft: PromptAttachmentConverter;
   withoutRecordKey: <T>(record: Record<string, T>, key: string) => Record<string, T>;
   viewingSessionIdForPrompt: (
-    state: Pick<AppState, "page" | "activeSessionId">,
+    state: Pick<AppState, "page" | "settingsOpen" | "activeSessionId">,
     sessionId: string,
   ) => string | null;
   messageErrorFromUnknown: (error: unknown) => AppError;

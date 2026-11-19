@@ -28,7 +28,7 @@ export type TranscriptSliceDependencies = StoreAccess & {
     attachments: UiMessage["attachments"],
   ) => NonNullable<Parameters<typeof api.prompt>[0]["attachments"]>;
   viewingSessionIdForPrompt: (
-    state: Pick<AppState, "page" | "activeSessionId">,
+    state: Pick<AppState, "page" | "settingsOpen" | "activeSessionId">,
     sessionId: string,
   ) => string | null;
   flushPendingSessionConfiguration: (sessionId: string) => Promise<void>;

@@ -216,9 +216,12 @@ recency only breaks ties between equally relevant matches.
 ### 1.6 Sidebar project and conversation organization
 
 The sidebar is a path-keyed presentation of host-owned projects and sessions.
-The `Sessions` heading appears first and contains path-less conversations plus
-their create and sort controls. Its bounded list keeps standalone work visible
-without consuming the full sidebar. The following `Projects` section heading
+The `Recent` heading appears first and lists the newest conversations across
+the temporary scope and retained projects, plus the temporary-chat create and
+sort controls. Project conversations show both in Recent and in their project
+group, so parallel project work stays visible while groups are folded;
+path-less conversations show only in Recent. Its bounded list opens with seven
+rows and loads ten more per Load more click. The following `Projects` section heading
 exposes the project picker above retained project groups. Several project groups
 may be retained while exactly one workspace supplies the visible shell context.
 
@@ -1859,8 +1862,8 @@ Project drag/drop follows these patterns:
 
 ### 9.2 Sidebar scrolling
 
-- The standalone Sessions body is capped at five compact rows and scrolls
-  internally when additional sessions exist.
+- The Recent sessions body is capped at ten compact rows and scrolls
+  internally once Load more has added rows beyond that height.
 - Retained project groups occupy the remaining sidebar height and scroll in a
   separate region. Both regions stay independent from the footer and primary
   navigation.

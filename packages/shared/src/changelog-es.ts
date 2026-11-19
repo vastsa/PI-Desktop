@@ -15,6 +15,8 @@ export const esEntries: ChangelogEntry[] = [
       "Cada complemento está ahora en un estante bilingüe, así que el marketplace se lee en español o chino y filtra por la misma categoría.",
       "Los detalles del complemento muestran ahora el editor, el readme y las notas de seguridad del catálogo, que se perdían al leerlo.",
       "Elige GPT-6.2 Sol y GPT-6.2 Astra con OpenAI, ChatGPT, GitHub Copilot, OpenCode y las pasarelas que los publican, con sus límites y precios publicados.",
+      "Los ajustes ahora se abren como un diálogo sobre la página actual, la barra lateral muestra Nueva tarea, Programadas y Mercado de plugins arriba, y una breve guía de inicio te ayuda a añadir un modelo y conocer el atajo del lanzador de plugins.",
+      "Elige qué módulos de la barra lateral se muestran en Configuración → Apariencia → Módulos de la barra lateral: Nueva tarea, Programadas, Mercado de plugins, sesiones fijadas, Sesiones, Proyectos, sus botones y la versión.",
     ],
   },
   {
@@ -36,6 +38,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copia diagramas Mermaid como texto SVG o expórtalos como archivos SVG independientes, también desde las vistas previas de README.",
       "Consulta cuánto cuesta cada turno y la conversación completa en el inspector de contexto y la cápsula de uso del turno, con el uso de suscripción separado del gasto por uso.",
       "Usa tu propio vídeo como animación de inicio: coloca uno en la carpeta «startup» y la interfaz aparece con un fundido al terminar.",
       "Los plugins pueden listar los proyectos guardados y sus carpetas sin cambiar la sesión activa.",

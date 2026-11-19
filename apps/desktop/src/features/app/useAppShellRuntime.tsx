@@ -42,6 +42,7 @@ import {
   pluginWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { notificationViewingSessionId } from "../../stores/helpers/store-helpers";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupAnimation } from "./useStartupAnimation";
 import { useStartupWatchdog } from "./useStartupWatchdog";
@@ -65,6 +66,7 @@ export function useAppShellRuntime() {
   const ready = useAppStore((s) => s.ready);
   const page = useAppStore((s) => s.page);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const viewingSessionId = useAppStore(notificationViewingSessionId);
   const acknowledgeSessionOutcome = useAppStore(
     (s) => s.acknowledgeSessionOutcome,
   );
@@ -118,7 +120,7 @@ export function useAppShellRuntime() {
   const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
   const { sidebarEntering, sidebarExiting, handleSidebarAnimationEnd } = useSidebarTransition(
     sidebarCollapsed,
-    ready && page !== "settings",
+    ready,
   );
   const [shellWidth, setShellWidth] = useState(0);
   const appShellRef = useRef<HTMLDivElement>(null);
@@ -350,8 +352,7 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
-    const pageHidesWorkPanel =
-      page === "settings" || page === "plugins" || page === "scheduled";
+    const pageHidesWorkPanel = page === "plugins" || page === "scheduled";
     const shouldPresent =
       ready && !pageHidesWorkPanel && workPanelOpen;
     const request = ++workPanelReservationRequest.current;
@@ -426,6 +427,7 @@ export function useAppShellRuntime() {
         switch (command) {
           case "newTask":
             if (workPanelMaximizedRef.current) setWorkPanelMaximized(false);
+            store.closeSettings();
             await store.newSession();
             requestAnimationFrame(() =>
               document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus(),
@@ -491,11 +493,10 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
-    const viewingSessionId = page === "chat" ? activeSessionId ?? null : null;
     void api
       .setNotificationViewingSession(viewingSessionId)
       .catch(() => undefined);
-  }, [activeSessionId, page]);
+  }, [viewingSessionId]);
 
   /**
    * The selected session is shell state, so the shell publishes it. Plugin
@@ -520,16 +521,18 @@ export function useAppShellRuntime() {
 
   useEffect(() => {
     const acknowledgeFocusedSession = () => {
-      if (!ready || page !== "chat" || !activeSessionId) return;
+      const state = useAppStore.getState();
+      const viewingSessionId = notificationViewingSessionId(state);
+      if (!state.ready || !viewingSessionId) return;
       // Restoring the existing chat from the taskbar is a read action even
       // when the active session did not change. Keep the host row and shell
       // badge in sync with what the user can now see.
-      void acknowledgeSessionOutcome(activeSessionId).catch(() => undefined);
+      void acknowledgeSessionOutcome(viewingSessionId).catch(() => undefined);
     };
 
     window.addEventListener("focus", acknowledgeFocusedSession);
     return () => window.removeEventListener("focus", acknowledgeFocusedSession);
-  }, [acknowledgeSessionOutcome, activeSessionId, page, ready]);
+  }, [acknowledgeSessionOutcome]);
 
   useEffect(() => {
     if (!ready) return;
@@ -949,7 +952,7 @@ export function useAppShellRuntime() {
             break;
           case "openWorkPanel": {
             const p = useAppStore.getState().page;
-            if (p !== "settings" && p !== "plugins" && p !== "scheduled") {
+            if (p !== "plugins" && p !== "scheduled") {
               useAppStore.getState().toggleWorkPanel();
             }
             break;

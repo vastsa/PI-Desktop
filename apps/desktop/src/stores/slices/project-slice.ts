@@ -115,7 +115,7 @@ async function createNamedProjectGroup(
       if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
       const onboarding = await api.getOnboarding();
       if (!runtime.navigationIntentIsCurrent(intent)) return;
-      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
+      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat", settingsOpen: false });
       return;
     }
   }
@@ -132,7 +132,7 @@ async function createNamedProjectGroup(
   get().renameProject(groupPrimary, normalizedName);
   const onboarding = await api.getOnboarding();
   if (!runtime.navigationIntentIsCurrent(intent)) return;
-  set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
+  set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat", settingsOpen: false });
 }
 
 /**
@@ -416,7 +416,7 @@ export function createProjectSlice({
       get().renameProject(group.primaryPath, normalizedName);
       const onboarding = await api.getOnboarding();
       if (!runtime.navigationIntentIsCurrent(intent)) return;
-      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
+      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat", settingsOpen: false });
     },
     createProjectFromGit: async ({ name, url, parentPath }) => {
       // Clone first, then create the project through the same group path, so a

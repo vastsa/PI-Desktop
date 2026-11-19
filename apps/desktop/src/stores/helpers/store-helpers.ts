@@ -74,13 +74,17 @@ export function withoutRecordKey<T>(record: Record<string, T>, key: string): Rec
   return next;
 }
 
+type NotificationView = Pick<AppState, "page" | "settingsOpen" | "activeSessionId">;
+
+export function notificationViewingSessionId(state: NotificationView): string | null {
+  return state.page === "chat" && !state.settingsOpen ? state.activeSessionId ?? null : null;
+}
+
 export function viewingSessionIdForPrompt(
-  state: Pick<AppState, "page" | "activeSessionId">,
+  state: NotificationView,
   sessionId: string,
 ): string | null {
-  return state.page === "chat" && state.activeSessionId === sessionId
-    ? sessionId
-    : null;
+  return notificationViewingSessionId(state) === sessionId ? sessionId : null;
 }
 
 export function messageErrorFromUnknown(error: unknown): AppError {

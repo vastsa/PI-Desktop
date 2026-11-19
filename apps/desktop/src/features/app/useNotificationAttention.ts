@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { questionInboxItems } from "../../lib/notification-inbox";
 import { useAppStore } from "../../stores/app-store";
+import { notificationViewingSessionId } from "../../stores/helpers/store-helpers";
 
 /** Own the notification-center subscriptions even while its popover is closed. */
 export function useNotificationAttention() {
@@ -12,9 +13,8 @@ export function useNotificationAttention() {
   const notifications = useAppStore((state) => state.notifications);
   const completions = useMemo(() => notifications.filter((item) =>
     item.kind === "task.completed" && !item.readAt), [notifications]);
-  const sessionId = useAppStore((state) => state.activeSessionId);
+  const viewingSession = useAppStore(notificationViewingSessionId);
   const selecting = useAppStore((state) => state.selectingSessionId);
-  const page = useAppStore((state) => state.page);
   const refresh = useAppStore((state) => state.refreshNotificationAttention);
   const acknowledge = useAppStore((state) => state.acknowledgeVisibleCompletions);
   const showToast = useAppStore((state) => state.showToast);
@@ -44,7 +44,7 @@ export function useNotificationAttention() {
       window.removeEventListener("focus", confirm);
       document.removeEventListener("visibilitychange", confirm);
     };
-  }, [ready, sessionId, selecting, page, completions, acknowledge, reportError]);
+  }, [ready, viewingSession, selecting, completions, acknowledge, reportError]);
 
   return { questions, permissions, completions, refresh, dismiss };
 }

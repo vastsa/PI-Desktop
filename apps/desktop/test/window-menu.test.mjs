@@ -223,7 +223,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   assert.match(stylesSource, /--ds-window-controls-width:\s*120px;/);
   assert.match(
     stylesSource,
-    /:root\[data-platform="win32"\] \.main-titlebar,[\s\S]*:root\[data-platform="linux"\] \.settings-titlebar\s*\{[^}]*right:\s*var\(--ds-window-controls-width\);/,
+    /:root\[data-platform="win32"\] \.main-titlebar,\s*:root\[data-platform="linux"\] \.main-titlebar\s*\{[^}]*right:\s*var\(--ds-window-controls-width\);/,
   );
   assert.match(
     stylesSource,

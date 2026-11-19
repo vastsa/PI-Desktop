@@ -12,7 +12,7 @@ function harness() {
   let state = { notifications: [], unreadNotificationCount: 0, sessionOutcomes: {},
     pendingAsks: {}, pendingPermissions: {}, dismissedNotificationRequests: {},
     sessions: [{ id: "a" }, { id: "b" }], page: "chat", activeSessionId: undefined,
-    selectingSessionId: undefined, restorePendingInteractive: async () => {} };
+    settingsOpen: false, selectingSessionId: undefined, restorePendingInteractive: async () => {} };
   const get = () => state;
   const set = (update) => { state = { ...state, ...(typeof update === "function" ? update(state) : update) }; };
   Object.assign(state, createCatalogSlice({ get, set, catalogRuntime: createCatalogRuntime(),
@@ -60,14 +60,17 @@ test("a completion arriving during refresh is not overwritten by an older histor
   assert.equal(h.get().unreadNotificationCount, 2);
 });
 
-test("opening the bell, settings, a hidden chat, or loading another chat never confirms completion", async (t) => {
+test("a hidden chat, settings dialog, or unfinished navigation never confirms completion", async (t) => {
   const h = harness(), reads = [];
   const document = visible(t, false);
   t.mock.method(api, "markNotificationRead", async (id) => { reads.push(id); return { ok: true }; });
   h.get().receiveNotification(completion("done"));
   h.set({ activeSessionId: "a" }); await h.get().acknowledgeVisibleCompletions();
-  document.hasFocus = () => true; h.set({ page: "settings" }); await h.get().acknowledgeVisibleCompletions();
-  h.set({ page: "chat", selectingSessionId: "b" }); await h.get().acknowledgeVisibleCompletions();
+  document.hasFocus = () => true;
+  h.set({ settingsOpen: true });
+  await h.get().acknowledgeVisibleCompletions();
+  await h.get().acknowledgeSessionOutcome("a");
+  h.set({ settingsOpen: false, selectingSessionId: "b" }); await h.get().acknowledgeVisibleCompletions();
   h.set({ selectingSessionId: undefined, activeSessionId: "b" }); await h.get().acknowledgeVisibleCompletions();
   assert.deepEqual(reads, []);
   assert.equal(h.get().notifications[0].readAt, undefined);

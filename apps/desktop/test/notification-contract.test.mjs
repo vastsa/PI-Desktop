@@ -67,8 +67,9 @@ test("terminal notifications flow from host completion to the renderer", () => {
   assert.match(storeSource, /receiveNotification:/);
   assert.match(storeSource, /unreadNotificationCount/);
   assert.match(appSource, /api\.onNotificationChanged/);
-  assert.match(sidebarSource, /<NotificationCenter onBeforeOpen=\{\(\) => closeMenus\(false\)\} \/>/);
-  assert.doesNotMatch(appSource, /<NotificationCenter \/>/);
+  // The sidebar footer stays simplified; the app shell owns the only bell.
+  assert.doesNotMatch(sidebarSource, /<NotificationCenter\b/);
+  assert.equal([...appSource.matchAll(/<NotificationCenter\b/g)].length, 1);
   const changedHandler = appSource.match(
     /api\.onNotificationChanged[\s\S]*?\n\s*\}\);/,
   )?.[0] ?? "";
@@ -84,7 +85,7 @@ test("the visible chat session suppresses durable task notifications", () => {
   assert.match(mainSource, /createNotification,/);
   assert.match(mainSource, /"did-start-loading"[\s\S]*windowState\.notificationViewingSessionId = null/);
   assert.match(mainSource, /"render-process-gone"[\s\S]*windowState\.notificationViewingSessionId = null/);
-  assert.match(appSource, /page === "chat" \? activeSessionId \?\? null : null/);
+  assert.match(appSource, /useAppStore\(notificationViewingSessionId\)/);
   assert.match(appSource, /setNotificationViewingSession\(viewingSessionId\)/);
 });
 
@@ -96,9 +97,9 @@ test("restoring the focused chat acknowledges its session outcome", () => {
   );
   assert.match(
     shellRuntimeSource,
-    /ready \|\| page !== "chat" \|\| !activeSessionId/,
+    /!state\.ready \|\| !viewingSessionId/,
   );
-  assert.match(shellRuntimeSource, /acknowledgeSessionOutcome\(activeSessionId\)/);
+  assert.match(shellRuntimeSource, /acknowledgeSessionOutcome\(viewingSessionId\)/);
 });
 
 test("sidebar terminal outcomes are notification-backed, not lifecycle-backed", () => {

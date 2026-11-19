@@ -30,7 +30,7 @@ try {
     nodePaths: [join(root, "apps/desktop/node_modules")],
   });
   // Use the production toast rules; no app build or existing user profile required.
-  const styles = await Promise.all(["ui-kit.css", "overlays.css", "chrome.css"].map((name) =>
+  const styles = await Promise.all(["tokens.css", "ui-kit.css", "overlays.css", "chrome.css"].map((name) =>
     readFile(join(root, "apps/desktop/src/styles", name), "utf8")));
   await writeFile(join(temp, "index.html"), `<!doctype html><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">

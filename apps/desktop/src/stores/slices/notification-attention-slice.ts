@@ -1,12 +1,13 @@
 import type { AppState } from "../app-state";
+import { notificationViewingSessionId } from "../helpers/store-helpers";
 import type { StoreAccess } from "./types";
 
 /** A hidden window or an unfinished navigation is not a read. */
 export function visibleNotificationSession(state: Pick<AppState,
-  "page" | "activeSessionId" | "selectingSessionId">): string | undefined {
-  return state.page === "chat" && !state.selectingSessionId &&
+  "page" | "settingsOpen" | "activeSessionId" | "selectingSessionId">): string | undefined {
+  return !state.selectingSessionId &&
     typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus()
-    ? state.activeSessionId : undefined;
+    ? notificationViewingSessionId(state) ?? undefined : undefined;
 }
 
 export function createNotificationAttentionSlice({ get, set }: StoreAccess): Pick<AppState,

@@ -63,11 +63,7 @@ function formatRelativeTime(value: string, locale: string, justNow: string): str
   }
 }
 
-export function NotificationCenter({
-  onBeforeOpen,
-}: {
-  onBeforeOpen?: () => void;
-}) {
+export function NotificationCenter() {
   const { t, i18n } = useTranslation();
   const attention = useNotificationAttention();
   const selectSession = useAppStore((state) => state.selectSession);
@@ -88,7 +84,7 @@ export function NotificationCenter({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<NotificationFilter>("all");
-  const [popoverPos, setPopoverPos] = useState<{ bottom: number; left: number } | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -126,11 +122,8 @@ export function NotificationCenter({
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const width = Math.min(360, window.innerWidth - 24);
-      const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-      setPopoverPos({
-        bottom: Math.max(12, window.innerHeight - rect.top + 8),
-        left,
-      });
+      const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
+      setPopoverPos({ top: rect.bottom + 8, left });
     };
     place();
     window.addEventListener("resize", place);
@@ -238,7 +231,7 @@ export function NotificationCenter({
       <TooltipButton
         ref={triggerRef}
         type="button"
-        className={`footer-notification notification-trigger ${open ? "active" : ""}`}
+        className="notification-trigger"
         tooltip={triggerLabel}
         ariaLabel={triggerLabel}
         aria-haspopup="dialog"
@@ -246,10 +239,7 @@ export function NotificationCenter({
         aria-expanded={open}
         onClick={() => {
           if (open) closePopover();
-          else {
-            onBeforeOpen?.();
-            setOpen(true);
-          }
+          else setOpen(true);
         }}
       >
         <IconBell size={14} aria-hidden />
@@ -274,7 +264,7 @@ export function NotificationCenter({
               role="dialog"
               aria-labelledby="notification-title"
               onKeyDown={onPopoverKeyDown}
-              style={{ bottom: popoverPos.bottom, left: popoverPos.left }}
+              style={popoverPos}
             >
           <header className="notification-header">
             <h2 id="notification-title">{t("notifications.title")}</h2>

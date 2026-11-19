@@ -42,6 +42,7 @@ import {
   paintEditorValue,
   readEditorValue,
   setEditorCaret,
+  syncTailPlaceholder,
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerPrefill } from "../model";
@@ -305,6 +306,13 @@ export function useComposerDraft({
     editorValueRef.current = nextValue;
   };
 
+  // An empty last line has no box of its own, so Chromium types the next
+  // keystroke one line up; give it a placeholder break after every commit.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element) syncTailPlaceholder(element);
+  }, [value]);
+
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -406,14 +414,11 @@ export function useComposerDraft({
     if (!selection || selection.rangeCount === 0) return;
     const range = selection.getRangeAt(0);
     if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
+    const { start } = editorSelectionRange(element);
     range.deleteContents();
     const node = document.createTextNode("\n");
     range.insertNode(node);
-    const after = document.createRange();
-    after.setStart(node, 1);
-    after.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(after);
+    setEditorCaret(element, start + 1);
     commitEditorDom();
   };
 

@@ -89,7 +89,7 @@ function reset(page: "chat" | "settings" = "chat", activeSessionId?: string) {
   history.clear();
   permissions.clear();
   flushSync(() => useAppStore.setState({
-    page, activeSessionId, selectingSessionId: undefined, messages: [],
+    page: "chat", settingsOpen: page === "settings", activeSessionId, selectingSessionId: undefined, messages: [],
     toasts: [], pendingAsks: {}, workspace: undefined, activeProjectPath: undefined,
     notifications: [], unreadNotificationCount: 0, dismissedNotificationRequests: {},
     pendingPermissions: {},
@@ -291,7 +291,8 @@ globalThis.questionNotificationProbe = async () => {
   assert(dismiss, "Missing dismiss control");
   dismiss.click();
   await until(() => useAppStore.getState().toasts.length === 0, "dismiss animation");
-  assert(readCount === reads && useAppStore.getState().page === "settings", "Dismiss unexpectedly navigated");
+  assert(readCount === reads && useAppStore.getState().settingsOpen && !useAppStore.getState().activeSessionId,
+    "Dismiss unexpectedly closed Settings or navigated");
 
   // Controlled timers prove focus/hover transitions never duplicate the countdown.
   reset();
@@ -481,6 +482,9 @@ globalThis.questionNotificationProbe = async () => {
   const badgeRect = document.querySelector(".notification-badge")!.getBoundingClientRect();
   const bellRect = document.querySelector(".notification-trigger")!.getBoundingClientRect();
   assert(badgeRect.top < bellRect.top && badgeRect.right >= bellRect.right, "Question badge is not at the top-right");
+  const popoverRect = document.querySelector(".notification-popover")!.getBoundingClientRect();
+  assert(popoverRect.top > bellRect.bottom && popoverRect.left >= 0 && popoverRect.right <= window.innerWidth,
+    "The titlebar popover must open below the bell and fit the viewport");
   const markAll = () => document.querySelector<HTMLButtonElement>('[aria-label="Mark all as read"]');
   assert(!markAll()?.disabled, "Unread completions must enable mark-all through ordinary history");
   markAll()!.click();
@@ -542,8 +546,17 @@ globalThis.questionNotificationProbe = async () => {
   Object.defineProperty(document, "hasFocus", { configurable: true, value: () => true });
   try {
     window.dispatchEvent(new Event("focus"));
-    await until(() => acknowledged.includes(done.id) && Boolean(useAppStore.getState().notifications.find((item) => item.id === done.id)?.readAt),
+    const visibleId = done.id;
+    await until(() => acknowledged.includes(visibleId) && Boolean(useAppStore.getState().notifications.find((item) => item.id === visibleId)?.readAt),
       "viewing a completion acknowledges its exact notification");
+    flushSync(() => useAppStore.getState().openSettings());
+    addCompletion();
+    const coveredId = done.id;
+    window.dispatchEvent(new Event("focus"));
+    assert(!acknowledged.includes(coveredId) && history.get(coveredId)?.readAt === undefined,
+      "Settings must not acknowledge the chat beneath it");
+    flushSync(() => useAppStore.getState().closeSettings());
+    await until(() => acknowledged.includes(coveredId), "closing Settings reveals and confirms the completion");
   } finally {
     if (focusDescriptor) Object.defineProperty(document, "hasFocus", focusDescriptor);
     else Reflect.deleteProperty(document, "hasFocus");

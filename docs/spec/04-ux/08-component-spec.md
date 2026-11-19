@@ -498,7 +498,7 @@ Expanded (~275px, D034/D070):
 |   • Project session      |
 | project-B      [>] [+] … |
 |                           |
-| [⚙][plug][bell]          [version]|
+| [Settings]       [version]|
 +---------------------------+
 
 Collapsed (48px):
@@ -507,7 +507,7 @@ Collapsed (48px):
 | ses |
 | ses |
 | ──  |
-| [⚙][plug][☾][bell] |
+| [titlebar controls] |
 +----+
 ```
 
@@ -545,11 +545,11 @@ visually distinct from list content.
 | Hover row | Project headers and all conversation rows share one full-row `--ds-bg-hover` surface, radius and transition; selected conversation fill takes precedence |
 | Project session metadata | When Session time is enabled, the trailing slot shows the last-reply date at rest and replaces it with session actions on hover or keyboard focus, without a divider. Dates within seven calendar days are relative; older dates show localized month and day without a year |
 | Current workspace | Project header shows the workspace dot, never a persistent selection fill; topbar follows that workspace; composer exposes no workspace identity |
-| Navigation selection | Only the selected conversation on the chat page uses `--ds-bg-active`, including pinned and standalone rows; folding its group never transfers selection to the header. No conversation or a non-chat page means no selected conversation row |
+| Navigation selection | Only the selected conversation on the chat page uses `--ds-bg-active`, including pinned and Recent rows (a project conversation shown in both Recent and its project marks both copies); folding its group never transfers selection to the header. No conversation or a non-chat page means no selected conversation row |
 | Keyboard focus | The focused control keeps its visible outline; the project title stays transparent and independent action buttons retain their own hover feedback |
 | Collapsed project | Header remains visible; unpinned child conversations are hidden; global pins remain visible |
 | Archived row | Hidden by default; visible in the explicit archived view |
-| No retained project | Compact Open project entry; standalone Sessions rows remain available |
+| No retained project | Compact Open project entry; Recent rows remain available |
 | Empty group | Muted one-line empty state; group create action remains available |
 | Default session title | New task/New chat (localized where applicable) until the first prompt, the user, or an installed title plugin sets one |
 | First prompt title | A normalized 48-character prompt fallback appears immediately and is stored as a still-replaceable automatic title |
@@ -737,7 +737,7 @@ visually distinct from list content.
   non-Settings route
 - Click the local profile trigger: open or close the identity menu containing
   Settings, Logs, and Theme
-- Click the footer bell: open or close the durable notification inbox
+- Click the app titlebar bell: open or close the notification inbox.
 
 ### 3.6 Accessibility
 
@@ -859,7 +859,6 @@ account, subscription, or collaboration backend.
 | User glyph | `30px` circular local-user glyph; decorative when the text label names the control |
 | Identity copy | Primary `Custom`; secondary `Local profile` or localized `本地配置`; two lines truncate independently |
 | Chevron | Trailing disclosure indicator; reflects the menu's open state without motion when reduced motion is requested |
-| Notification shortcut | Separate `32px` square Bell target with unread badge; opens the durable inbox above and to the right of the footer |
 | Profile menu | `280px` wide, bottom anchored `8px` above the footer; opaque elevated surface |
 | Identity header | Repeats the glyph and two-line local identity; non-interactive |
 | Menu actions | Divider, then Settings, Logs, and Theme in that order; Theme retains its current-value metadata |
@@ -1698,9 +1697,14 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   local view controls rather than host queries.
 - Temporary means **not bound to a project**, not ephemeral storage; these
   sessions survive restart.
-- The standalone Sessions body is a 146px window over five compact 28px rows,
-  their 1px row gaps, and the 2px label inset; it
-  scrolls internally when more rows exist. The Projects list uses the remaining
+- The Recent sessions section lists every unpinned conversation from the
+  temporary scope and from retained, non-archived projects, newest
+  `updatedAt` first. A project conversation therefore appears both in Recent
+  and in its project group, so it stays visible while that project is folded;
+  a temporary conversation appears only in Recent. Recent opens with seven
+  rows; a trailing Load more button appends ten more per click. Its body is a
+  291px window over ten compact 28px rows, their 1px row gaps, and the 2px
+  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
   sidebar height and scrolls independently; neither region scrolls the footer
   or primary navigation. Both list scrollbars use the same global 6px,
   trackless, transparent-at-rest rule as the conversation and work-panel
@@ -2368,8 +2372,18 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   DOMPurify SVG-profile pass precede insertion. Unsafe external/media elements,
   `foreignObject`, event-capable links, and URL attributes are removed. Invalid
   or oversized input falls back to a readable source view. The toolbar toggles
-  diagram/source and copies the original source; light/dark theme changes
-  re-render the SVG. Thinking prose deliberately keeps `mermaid` fences as
+  diagram/source and copies the original source. Once rendering succeeds,
+  **Copy diagram as SVG** writes a standalone SVG document as clipboard text,
+  and **Export diagram as SVG** downloads `diagram.svg` with the same bytes.
+  Both actions are disabled while rendering or when no valid SVG is available;
+  failures show localized feedback. Export preserves the sanitized SVG,
+  viewBox dimensions, and the preview's resolved fonts and colors. Variable-
+  dependent CSS rules, inline styles, and presentation attributes are frozen
+  from each rendered element's computed style, including nested fallbacks and
+  subtree overrides. Only the detached export is modified. Source view hides
+  but retains the SVG so copying there uses the same style context, without
+  rerunning Mermaid or requiring new host permissions. These actions also appear in host Markdown
+  file previews, including README files. Light/dark theme changes re-render the SVG. Thinking prose deliberately keeps `mermaid` fences as
   source code so a collapsed reasoning trace cannot start diagram layout.
 - **Syntax highlighting**: Shiki singleton with the JavaScript regex engine
   (no wasm), themes `one-light`/`one-dark-pro` following `data-theme`.
@@ -4055,7 +4069,7 @@ Guidance surfaces when key data is absent. Must always provide an **action link*
 ### 15.5 MVP constraints
 
 - No animated empty-state illustrations
-- No product tour overlays (per [05-onboarding.md](05-onboarding.md) §6)
+- No product tour overlays (per [05-onboarding.md](05-onboarding.md) §2)
 
 ---
 
@@ -4449,7 +4463,7 @@ restarts.
 ### 20.2 Anatomy
 
 ```text
-Sidebar footer                                        Popover (360px max)
+App titlebar                                          Popover (360px max)
 [Bell (12)]  ->  [Notifications]       [All | Unread] [Mark all read] [Clear]
                  ------------------------------------------------------------
                  [unread dot] [check] Task completed              2m
@@ -4459,13 +4473,13 @@ Sidebar footer                                        Popover (360px max)
                                       Session title · ERROR_CODE
 ```
 
-- Trigger: 32px Lucide `Bell` icon button at the right of the expanded sidebar
-  footer, replacing the former Help shortcut. The main titlebar has no
-  duplicate. A compact badge renders `1`–`99` and `99+`; its accessible label
-  retains the exact total (up to 200 retained task outcomes plus visible asks and permissions).
-- Popover: width `min(360px, calc(100vw - 24px))`, opens above and to the right
-  of the footer, and is no taller than the available window, with one internally
-  scrollable row list.
+- Trigger: one Lucide `Bell` icon button in the app's top-right chrome,
+  next to the work-panel toggle and clear of the native window controls. The
+  sidebar has no notification entry. A compact badge renders `1`–`99` and `99+`;
+  its accessible label retains the exact total (up to 200 retained task outcomes
+  plus visible asks and permissions).
+- Popover: width `min(360px, calc(100vw - 24px))`, opens below the bell,
+  and stays within the viewport with one internally scrollable row list.
 - Header: localized title, `All` / `Unread` segmented filter, Lucide
   `CheckCheck` mark-all-read button, and Lucide `Trash2` clear button. Icon-only
   actions carry localized tooltips and accessible names.
@@ -4812,6 +4826,14 @@ their normal behavior. Native undo of chip deletion restores its file-reference 
 as well as its DOM, so submission and draft caching retain the path. Deleted
 reference history is local to the current draft/workspace and is cleared on send;
 pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
+
+An empty last line keeps its own caret. Chromium has no box for a line that holds
+nothing, so a caret left after the final line break types the next keystroke onto
+the line above. The editor paints a placeholder break on that line, places an
+end-of-draft caret before it when the draft ends in a newline, and restores it
+after every commit; the draft string, its indices and the caret's position in it
+are unchanged, and the placeholder disappears as soon as the line holds text. A
+middle empty line needs none: the break that ends it already gives it a box.
 
 ### Dialog long-text containment
 

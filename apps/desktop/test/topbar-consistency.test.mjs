@@ -12,7 +12,6 @@ test("shell titlebar surfaces share the toolbar metric and borderless surface", 
   for (const selector of [
     "\\.main-titlebar",
     "\\.conversation-topbar",
-    "\\.settings-titlebar",
   ]) {
     const block = styleBlock(selector);
     assert.match(block, /height:\s*var\(--ds-toolbar-height\);/);
@@ -41,8 +40,6 @@ test("sidebar and work-panel headers use the shared toolbar metric", () => {
   assert.match(styleBlock("\\.sidebar-header"), /height:\s*var\(--ds-toolbar-height\);/);
   assert.match(styleBlock("\\.sidebar-header"), /flex:\s*0 0 var\(--ds-toolbar-height\);/);
   assert.match(styleBlock("\\.work-panel-header"), /height:\s*var\(--ds-toolbar-height\);/);
-  assert.match(
-    styleBlock("\\.settings-content"),
-    /padding:\s*calc\(var\(--ds-toolbar-height\) \+ 8px\) 48px 56px 40px;/,
-  );
+  // The Settings dialog has no titlebar band to clear.
+  assert.match(styleBlock("\\.settings-content"), /padding:\s*28px 48px 48px 40px;/);
 });
