@@ -42,7 +42,10 @@ rules, `AppOverlayHost.tsx` owns presentation).
 - **Replay**: Settings → About → *Startup guide* opens the guide for the
   user's current state. A replay never writes the completion marker. While it
   is up, Settings waits underneath and returns when the guide ends.
-- Not shown in screenshot capture (`window.__PI_CAPTURE__`).
+- Not shown in screenshot capture (`window.__PI_CAPTURE__`) or after
+  automation calls `window.__PI_DESKTOP__.skipStartupOverlays()` (the shared
+  E2E renderer client does this on connect); suppression records nothing as
+  seen and also keeps the announcement off.
 
 ## 4. Release announcement
 

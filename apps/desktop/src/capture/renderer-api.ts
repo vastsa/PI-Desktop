@@ -11,6 +11,7 @@
  */
 import { useAppStore, type AppState, type ToastOptions } from "../stores/app-store";
 import type { CaptureRig, CaptureRigMethods } from "./capture-rig";
+import { useStartupGuideRequest } from "../features/startup/startup-guide-request";
 
 type CaptureRigMethod = keyof CaptureRigMethods;
 
@@ -30,6 +31,8 @@ export type RendererApi = {
   setThemeAttr: (theme: "light" | "dark") => void;
   clearProject: () => Promise<void>;
   showToast: (message: string, opts?: ToastOptions) => void;
+  /** Keep the startup guide and release announcement off for automation. */
+  skipStartupOverlays: () => void;
 } & (CaptureRigStubs | CaptureRigMethods);
 
 declare global {
@@ -109,6 +112,7 @@ export function installRendererApi(): () => void {
     },
     clearProject: () => useAppStore.getState().clearProject(),
     showToast: (message, opts) => useAppStore.getState().showToast(message, opts),
+    skipStartupOverlays: () => useStartupGuideRequest.getState().suppress(),
     ...stubs,
   };
   window.__PI_DESKTOP__ = surface;

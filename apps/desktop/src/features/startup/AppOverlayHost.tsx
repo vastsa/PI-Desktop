@@ -67,6 +67,7 @@ export function AppOverlayHost({ active }: { active: boolean }) {
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const replayRequested = useStartupGuideRequest((s) => s.requested);
   const clearReplay = useStartupGuideRequest((s) => s.clear);
+  const suppressed = useStartupGuideRequest((s) => s.suppressed);
   const hasUsableModel = useHasUsableModel();
   const [decided, setDecided] = useState(false);
   const [guide, setGuide] = useState<ActiveGuide | null>(null);
@@ -75,8 +76,9 @@ export function AppOverlayHost({ active }: { active: boolean }) {
   useEffect(() => {
     if (!active || decided) return;
     setDecided(true);
-    // Screenshot capture drives a fixed scene; first-run hints would cover it.
-    if (window.__PI_CAPTURE__) return;
+    // Screenshot capture and automation drive a fixed scene; first-run hints
+    // would cover it.
+    if (window.__PI_CAPTURE__ || suppressed) return;
     const plan = planStartupGuide({
       completedVersion: loadStartupGuideCompletedVersion(),
       hasUsableModel,
@@ -90,7 +92,15 @@ export function AppOverlayHost({ active }: { active: boolean }) {
     ) {
       setAnnouncement(schedule);
     }
-  }, [active, decided, hasUsableModel]);
+  }, [active, decided, hasUsableModel, suppressed]);
+
+  // Suppression may arrive after the decision: drop what is showing without
+  // recording it as seen.
+  useEffect(() => {
+    if (!suppressed) return;
+    setGuide((current) => (current?.source === "auto" ? null : current));
+    setAnnouncement(null);
+  }, [suppressed]);
 
   useEffect(() => {
     if (!replayRequested) return;
