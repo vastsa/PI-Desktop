@@ -73,8 +73,8 @@ const PLUGIN_VIEW_ICON_MAP: Record<string, ComponentType<IconProps>> = {
 export function pluginViewIcon(
   token: string | undefined,
 ): ComponentType<IconProps> | null {
-  if (!token) return null;
-  return PLUGIN_VIEW_ICON_MAP[token] ?? null;
+  if (!token || !Object.hasOwn(PLUGIN_VIEW_ICON_MAP, token)) return null;
+  return PLUGIN_VIEW_ICON_MAP[token];
 }
 
 /** First character of a view title, for the fallback tile. */
