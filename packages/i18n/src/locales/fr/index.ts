@@ -228,6 +228,8 @@ export const fr = {
   },
   "nav": {
     "pinnedSessions": "Épinglées",
+    "primary": "Navigation principale",
+    "pluginMarket": "Catalogue de plugins",
     "home": "Accueil",
     "newTask": "Nouvelle tâche",
     "newProject": "Nouveau projet",
@@ -960,7 +962,40 @@ export const fr = {
     "loadPlugin": "Charger un plugin de développement (facultatif)",
     "dismiss": "Ignorer"
   },
+  "startupGuide": {
+    "progress": "Étape {{current}} sur {{total}}",
+    "skip": "Passer",
+    "next": "Suivant",
+    "later": "Configurer plus tard",
+    "finish": "Terminé",
+    "model": {
+      "title": "Configurer votre premier modèle",
+      "description": "Connectez un fournisseur d’IA pour que PI puisse commencer : ajoutez un fournisseur ci-dessous, puis enregistrez sa clé API ou connectez-vous.",
+      "ready": "Modèle prêt",
+      "pending": "Aucun modèle utilisable pour l’instant",
+    },
+    "launcher": {
+      "title": "Appelez vos plugins d’un raccourci",
+      "description": "Appuyez sur ce raccourci à tout moment pour ouvrir le lanceur de plugins.",
+      "unbound": "Aucun raccourci attribué",
+      "pointAnywhere": "Fonctionne même quand PI-Desktop est en arrière-plan.",
+      "pointPlugins": "Recherchez et lancez vos plugins installés au même endroit.",
+      "tryIt": "Essayer maintenant",
+      "customize": "Modifier le raccourci",
+      "pressPrompt": "Appuyez sur le raccourci pour essayer",
+      "pressed": "Lanceur de plugins ouvert",
+      "previewSearch": "Rechercher des plugins",
+    },
+  },
+  "announcement": {
+    "title": "Nouveautés",
+    "close": "Fermer",
+    "gotIt": "Compris",
+  },
   "settings": {
+    "startupGuide": "Guide de démarrage",
+    "startupGuideDesc": "Revoir les conseils de configuration du modèle et du raccourci du lanceur de plugins.",
+    "openStartupGuide": "Ouvrir le guide",
     scheduledTasks: "Tâches planifiées",
     scheduledTasksDesc: "Désactiver masque les tâches planifiées et empêche de nouvelles exécutions. Les tâches existantes et leur historique sont conservés.",
     storage: {

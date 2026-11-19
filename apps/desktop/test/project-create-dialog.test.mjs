@@ -82,7 +82,7 @@ test("project creation creates one logical group with a primary workspace", () =
   assert.match(store, /get\(\)\.renameProject\(groupPrimary, normalizedName\)/);
   assert.match(
     store,
-    /set\(\{\s*createProjectDialogOpen: false,\s*createProjectDialogRemoteHostKey: undefined,\s*onboarding,\s*page: "chat"\s*\}\)/,
+    /set\(\{\s*createProjectDialogOpen: false,\s*createProjectDialogRemoteHostKey: undefined,\s*onboarding,\s*page: "chat",\s*settingsOpen: false\s*\}\)/,
   );
   // Folder picks and git checkouts share one project creation semantic.
   assert.match(store, /async function createNamedProjectGroup\(/);

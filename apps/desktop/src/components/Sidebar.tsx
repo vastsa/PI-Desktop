@@ -1,4 +1,3 @@
-import { IconClock } from "./icons";
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
 import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
@@ -82,7 +81,7 @@ import {
   sidebarResetWidth,
 } from "../lib/sidebar-resize";
 import { BrandLogo } from "./BrandLogo";
-import { NotificationCenter } from "./NotificationCenter";
+import { SidebarFooter, SidebarPrimaryNav } from "./SidebarNavigation";
 import {
   WorktreeBadge,
   WorktreeDialogs,
@@ -101,7 +100,6 @@ import {
   type SidebarMenuPanelContent,
 } from "../lib/sidebar-menu";
 import { useArmedDelete } from "../hooks/use-armed-delete";
-import { useUpdateState } from "../hooks/use-update-state";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectEditDialog } from "./ProjectEditDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
@@ -109,7 +107,6 @@ import {
   IconArchive,
   IconArchiveRestore,
   IconArrowUpDown,
-  IconPlug,
   IconBranch,
   IconCheck,
   IconChevronDown,
@@ -122,7 +119,6 @@ import {
   IconPin,
   IconPencil,
   IconSidebar,
-  IconSettings,
   IconStar,
   IconTrash,
   IconX,
@@ -240,6 +236,7 @@ function compareOptionalDate(
 
 export function Sidebar({
   onToggleSidebar,
+  onNewTask,
   sidebarToggleShortcut,
   sidebarWidth,
   widthMax = SIDEBAR_WIDTH_MAX,
@@ -250,6 +247,7 @@ export function Sidebar({
   onAnimationEnd,
 }: {
   onToggleSidebar: () => void;
+  onNewTask: () => void;
   sidebarToggleShortcut: string;
   sidebarWidth: number;
   widthMax?: number;
@@ -276,8 +274,6 @@ export function Sidebar({
   const sessionOutcomes = useAppStore((s) => s.sessionOutcomes);
   const pendingPermissions = useAppStore((s) => s.pendingPermissions);
   const setPage = useAppStore((s) => s.setPage);
-  const navBack = useAppStore((s) => s.navBack);
-  const canNavBack = useAppStore((s) => s.canNavBack);
   const page = useAppStore((s) => s.page);
   const settings = useAppStore((s) => s.settings);
   // Project headers must answer "is anything running under here?" while the
@@ -308,10 +304,6 @@ export function Sidebar({
   const setProjectSort = useAppStore((s) => s.setProjectSort);
   const reorderProjects = useAppStore((s) => s.reorderProjects);
   const showToast = useAppStore((s) => s.showToast);
-  const version = useAppStore((s) => s.version);
-  const setSettingsTab = useAppStore((s) => s.setSettingsTab);
-  const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
-  const update = useUpdateState();
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
@@ -667,21 +659,6 @@ export function Sidebar({
     sortOpen,
   ]);
 
-  // An update only earns the accent dot once it is actionable — a pending
-  // check or a failed one keeps the chip quiet.
-  const updateReady =
-    update?.status === "available" || update?.status === "downloaded";
-  const appVersion = update?.currentVersion || version?.version || "";
-  const buildLabel = updateReady
-    ? `v${update?.availableVersion ?? appVersion}`
-    : update?.status === "checking"
-      ? t("updates.checking")
-      : appVersion
-        ? `v${appVersion}`
-        : t("nav.buildUnknown");
-  const buildTitle = updateReady
-    ? t("updates.available", { version: update?.availableVersion ?? "" })
-    : t("nav.checkForUpdates");
   const taskTitle = useCallback((title?: string | null) => {
     const value = (title || "").trim();
     return isDefaultSessionTitle(value) ? t("chat.untitledTask") : value;
@@ -2600,6 +2577,7 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-body no-drag">
+        <SidebarPrimaryNav onNewTask={onNewTask} onBeforeNavigate={() => closeMenus(false)} />
 
         {pinnedSessions.length > 0 ? (
           <section
@@ -2763,71 +2741,7 @@ export function Sidebar({
             })} />
         </div>
 
-        <div className="sidebar-footer no-drag">
-          <div className="footer-actions">
-            <TooltipButton
-              type="button"
-              className={`footer-action ${page === "settings" ? "active" : ""}`}
-              data-nav="settings"
-              tooltip={t("nav.settings")}
-              ariaLabel={t("nav.settings")}
-              onClick={() => setPage("settings")}
-              aria-pressed={page === "settings"}
-            >
-              <IconSettings size={14} aria-hidden />
-            </TooltipButton>
-            <TooltipButton
-              type="button"
-              className={`footer-action ${page === "plugins" ? "active" : ""}`}
-              data-nav="plugins"
-              tooltip={t("nav.plugins")}
-              ariaLabel={t("nav.plugins")}
-              onClick={() => page === "plugins"
-                ? (canNavBack() ? navBack() : setPage("chat"))
-                : setPage("plugins")}
-              aria-pressed={page === "plugins"}
-            >
-              <IconPlug size={14} aria-hidden />
-            </TooltipButton>
-            {settings?.scheduledTasksEnabled !== false && (
-              <TooltipButton
-                type="button"
-                className={`footer-action ${page === "scheduled" ? "active" : ""}`}
-                data-nav="scheduled"
-                tooltip={t("scheduled.title")}
-                ariaLabel={t("scheduled.title")}
-                onClick={() => setPage("scheduled")}
-                aria-pressed={page === "scheduled"}
-              >
-                <IconClock size={14} aria-hidden />
-              </TooltipButton>
-            )}
-            <NotificationCenter onBeforeOpen={() => closeMenus(false)} />
-          </div>
-
-          <TooltipButton
-            type="button"
-            className={`footer-build ${updateReady ? "has-update" : ""}`}
-            data-nav="build"
-            tooltip={buildTitle}
-            ariaLabel={buildTitle}
-            onClick={() => {
-              if (updateReady) {
-                setSettingsAnchor("updates.title");
-                setSettingsTab("about");
-                return;
-              }
-              void (async () => {
-                try {
-                  await api.updatesCheck();
-                } catch { /* ignore */ }
-              })();
-            }}
-          >
-            <span className="footer-build-version">{buildLabel}</span>
-            {updateReady ? <span className="footer-build-dot" aria-hidden /> : null}
-          </TooltipButton>
-        </div>
+        <SidebarFooter />
       </div>
       {renderFloatingMenu()}
       {sessionHoverCard ? (

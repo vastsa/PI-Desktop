@@ -227,6 +227,8 @@ export const ptBR = {
   },
   nav: {
     pinnedSessions: "Fixadas",
+    primary: "Navegação principal",
+    pluginMarket: "Mercado de plugins",
     home: "Início",
     newTask: "Nova tarefa",
     newProject: "Novo projeto",
@@ -959,7 +961,40 @@ export const ptBR = {
     loadPlugin: "Carregar um plugin de desenvolvimento (opcional)",
     dismiss: "Dispensar"
   },
+  startupGuide: {
+    progress: "Etapa {{current}} de {{total}}",
+    skip: "Pular",
+    next: "Próximo",
+    later: "Configurar depois",
+    finish: "Concluir",
+    model: {
+      title: "Configure seu primeiro modelo",
+      description: "Conecte um provedor de IA para o PI começar a trabalhar: adicione um provedor abaixo e salve a chave de API ou entre na conta.",
+      ready: "Modelo pronto",
+      pending: "Ainda não há modelo utilizável",
+    },
+    launcher: {
+      title: "Abra plugins com um atalho",
+      description: "Pressione este atalho a qualquer momento para abrir o inicializador de plugins.",
+      unbound: "Nenhum atalho atribuído",
+      pointAnywhere: "Funciona mesmo com o PI-Desktop em segundo plano.",
+      pointPlugins: "Pesquise e execute seus plugins instalados em um só lugar.",
+      tryIt: "Experimentar agora",
+      customize: "Alterar atalho",
+      pressPrompt: "Pressione o atalho para experimentar",
+      pressed: "Inicializador de plugins aberto",
+      previewSearch: "Pesquisar plugins",
+    },
+  },
+  announcement: {
+    title: "Novidades",
+    close: "Fechar",
+    gotIt: "Entendi",
+  },
   settings: {
+    startupGuide: "Guia inicial",
+    startupGuideDesc: "Veja de novo as dicas de configuração do modelo e do atalho do inicializador de plugins.",
+    openStartupGuide: "Abrir guia",
     storage: {
       unavailableHint: "O diretório de armazenamento está indisponível no momento. Reconecte a unidade antes de iniciar; o aplicativo não criará dados vazios nem mudará para outro diretório.",
       browserSource: "Origem dos dados do navegador",

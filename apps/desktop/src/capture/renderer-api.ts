@@ -22,7 +22,8 @@ type CaptureRigStubs = {
 };
 
 export type RendererApi = {
-  setPage: (page: AppState["page"]) => void;
+  /** `"settings"` is kept for capture scripts: it opens the Settings dialog. */
+  setPage: (page: AppState["page"] | "settings") => void;
   refreshProviders: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   setSettingsTab: (tab: AppState["settingsTab"]) => void;
@@ -95,7 +96,11 @@ export function installRendererApi(): () => void {
   ) as CaptureRigStubs;
 
   const surface: RendererApi = {
-    setPage: (page) => useAppStore.getState().setPage(page),
+    setPage: (page) => {
+      const store = useAppStore.getState();
+      if (page === "settings") store.openSettings();
+      else store.setPage(page);
+    },
     refreshProviders: () => useAppStore.getState().refreshProviders(),
     selectSession: (id) => useAppStore.getState().selectSession(id),
     setSettingsTab: (tab) => useAppStore.getState().setSettingsTab(tab),

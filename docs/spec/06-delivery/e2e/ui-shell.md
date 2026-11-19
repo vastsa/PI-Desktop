@@ -344,8 +344,9 @@
   window and complete another turn in A. 4) Restore/focus the app from its
   taskbar or Dock without switching sessions and confirm A's visible terminal
   outcome is acknowledged. 5) Abort a fourth turn. 6) Repeat each terminal
-  RPC. 7) Confirm the main titlebar has no bell, then open the bell in
-  the expanded sidebar footer and switch between All and Unread. 8) Mark one
+  RPC. 7) Confirm neither the main titlebar nor the sidebar has a bell
+  (issue #2431); the remaining steps verify durable inbox state through the
+  host fixture rather than a visible inbox. 8) Mark one
   row read and confirm its session has no terminal sidebar mark, then
   close/reopen the popover and restart the app. 9) Select the other session
   from its terminal-marked sidebar row. 10) Generate a host fixture with 205
@@ -362,8 +363,7 @@
   matching durable outcome and taskbar count without clearing B. Exactly two
   rows exist, newest first: the unfocused A completion and background B failure,
   with localized labels, snapshotted session titles, and B's stable code.
-  Abort/repeated terminal calls create no row. The former footer Help shortcut
-  is absent; the 32px footer bell and its upward-opening popover replace it.
+  Abort/repeated terminal calls create no row. No bell is rendered.
   Badge and Unread show the exact unread count without opening implicitly
   reading rows. Read state and both
   records survive restart. Row selection marks it read and activates its bound
@@ -1209,11 +1209,12 @@
   remains a dotted-underline action when a workspace is open.
 
 ## US-UI-03 Sidebar destinations
-- Expect the expanded home sidebar to show Sessions and Projects without
-  standalone Plugins or Scheduled rows.
-- Click the plug-shaped Plugins icon in the sidebar footer, immediately to the
-  right of Settings, and expect it to replace the main pane with a dedicated
-  page.
+- Expect the expanded home sidebar to show, top to bottom: New task,
+  Scheduled, Plugin market, then Sessions and Projects. The footer holds only
+  Settings and the version chip; there is no notification entry.
+- Click Plugin market and expect the Extensions page to replace the main pane
+  on its Market tab, with the Installed tab and enable/disable controls still
+  available.
 - Open Settings → Project archive and use it to open, switch, and close a local
   folder workspace.
 
@@ -1225,8 +1226,8 @@
 
 ## US-UI-05 Locale chrome
 - On a zh-CN system locale, sidebar labels render in Chinese (项目 / 临时会话),
-  with no extra standalone destination rows. The footer plug-shaped Plugins icon
-  exposes the localized accessible name 插件.
+  and the primary rows read 新建任务 / 定时任务 / 插件市场; the footer reads 设置
+  plus the version chip.
 - Empty-thread hero and supporting line are localized Chinese copy; project
   name remains a dotted-underline action when a workspace is open.
 - Composer omits the 本地 workspace label and shows Agent/Plan/Goal plus the
@@ -1290,11 +1291,9 @@
 
 ## US-UI-16 Sidebar footer utility layout
 - On the light/dark home shell, the sidebar footer is a transparent utility
-  band with no separator. Settings, Plugins, and notification actions
-  are grouped on the left, while the build/version chip is right-aligned.
-- The notification Bell remains visible in the left action group with its
-  unread badge and opens the inbox above the footer; the main titlebar has no
-  duplicate Bell.
+  band with no separator. A labelled Settings entry sits on the left and the
+  build/version chip is right-aligned; nothing else is in the footer.
+- Clicking Settings opens the Settings dialog over the current page.
 - Clicking the build/version chip checks for updates when current, or opens
   Settings → Info when an actionable update is available.
 - Traffic lights sit at Codex `{x:16,y:16}` with a 46px toolbar; the expanded
@@ -1394,17 +1393,42 @@
 - Switch the sort to Name and expect rows to reorder inside every section with
   no row hidden; clear the search and expect the complete index back.
 
-## US-UI-24 Settings full-page shell
-- Open Settings (footer profile → Settings).
-- Expect **full-page** Codex settings (no app sidebar/nav). Left rail has Back
-  to app, search, and exactly General / AI / Shortcuts / Instructions / Models /
-  Skills / MCP / Subagents / Projects, Cloud sync / Remote Hosts / Info in that
-  order; packaged builds show both Cloud sync and Remote Hosts with Experimental
-  badges. The content pane shows the selected destination.
-- Return to the app shell and expect Plugins to remain an independent
-  sidebar-footer destination.
-- Drag the empty 46px top band over either the rail or content pane; the native
-  window moves while Back, search, and navigation remain clickable.
+## US-UI-24 Settings dialog
+- Open Settings from the sidebar footer, `Mod+,`, global search, or an in-app
+  "Open settings" deep link.
+- Expect a **modal dialog** over the current page (sidebar and page stay
+  mounted beneath the scrim). The rail has search and the destination
+  directory of `04-ux/06-settings-ia.md` §2, plus any plugin-contributed
+  destinations; the close button sits at the dialog's top-right.
+- Deep links land on their destination and flash the anchored row. A plugin
+  settings destination renders inside the dialog.
+- Close with the close button, `Escape`, or a backdrop press and expect the
+  page underneath unchanged. `Escape` inside an open menu, the shortcut
+  recorder, or a nested dialog closes only that layer.
+- Opening a project or session from Settings → Project archive closes the
+  dialog and lands on chat.
+
+## US-UI-24a Startup guide
+- **Fresh profile, no model**: on first launch the guide opens after the boot
+  splash with *Model* then *Plugin launcher*. The model step shows the same
+  Models page as Settings; *Set up later* continues without a model.
+- **Profile with a usable model**: only the *Plugin launcher* step shows.
+- The launcher step shows actions on the left and a launcher thumbnail on the
+  right. Keycaps start dimmed; pressing the configured shortcut (or *Open
+  plugin launcher*) opens the launcher and the keycaps turn active. *Skip*
+  and *Done* both end the guide.
+- Relaunch: the guide does not reappear. Settings → Info → *Startup guide*
+  replays it for the current state, Settings returns when it ends, and the
+  next launch still shows no guide.
+- The chat home shows no first-run checklist.
+
+## US-UI-24b Release announcement and modal priority
+- With `RELEASE_ANNOUNCEMENT` null (default) nothing extra appears.
+- With an announcement enabled (fixture build): first launch shows the guide,
+  then the announcement (Markdown text + bundled image), then nothing.
+  Relaunch: the announcement does not reappear for the same release.
+- Press `Mod+,` while the guide or announcement is open: Settings does not
+  cover it and opens once both are closed.
 
 ## US-UI-27 Dark destination pages
 - Force dark theme and open Plugins and Settings → Project archive.

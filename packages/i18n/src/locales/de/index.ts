@@ -228,6 +228,8 @@ export const de = {
   },
   "nav": {
     "pinnedSessions": "Angeheftet",
+    "primary": "Hauptnavigation",
+    "pluginMarket": "Plugin-Marktplatz",
     "home": "Startseite",
     "newTask": "Neue Aufgabe",
     "newProject": "Neues Projekt",
@@ -960,7 +962,40 @@ export const de = {
     "loadPlugin": "Laden Sie ein Entwicklungs-Plugin (optional)",
     "dismiss": "Verwerfen"
   },
+  "startupGuide": {
+    "progress": "Schritt {{current}} von {{total}}",
+    "skip": "Überspringen",
+    "next": "Weiter",
+    "later": "Später einrichten",
+    "finish": "Fertig",
+    "model": {
+      "title": "Erstes Modell einrichten",
+      "description": "Verbinde einen KI-Anbieter, damit PI loslegen kann: Füge unten einen Anbieter hinzu und speichere seinen API-Schlüssel oder melde dich an.",
+      "ready": "Modell bereit",
+      "pending": "Noch kein nutzbares Modell",
+    },
+    "launcher": {
+      "title": "Plugins mit einem Tastenkürzel aufrufen",
+      "description": "Drücke dieses Tastenkürzel jederzeit, um den Plugin-Starter zu öffnen.",
+      "unbound": "Kein Tastenkürzel zugewiesen",
+      "pointAnywhere": "Funktioniert auch, wenn PI-Desktop im Hintergrund läuft.",
+      "pointPlugins": "Installierte Plugins an einem Ort suchen und ausführen.",
+      "tryIt": "Jetzt ausprobieren",
+      "customize": "Tastenkürzel ändern",
+      "pressPrompt": "Drücke das Tastenkürzel, um es auszuprobieren",
+      "pressed": "Plugin-Starter geöffnet",
+      "previewSearch": "Plugins suchen",
+    },
+  },
+  "announcement": {
+    "title": "Neuigkeiten",
+    "close": "Schließen",
+    "gotIt": "Verstanden",
+  },
   "settings": {
+    "startupGuide": "Einführung",
+    "startupGuideDesc": "Tipps zur Modelleinrichtung und zum Tastenkürzel des Plugin-Starters erneut ansehen.",
+    "openStartupGuide": "Einführung öffnen",
     scheduledTasks: "Geplante Aufgaben",
     scheduledTasksDesc: "Wenn deaktiviert, werden geplante Aufgaben ausgeblendet und keine neuen Ausführungen gestartet. Vorhandene Aufgaben und der Verlauf bleiben erhalten.",
     storage: {

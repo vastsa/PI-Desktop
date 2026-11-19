@@ -228,6 +228,8 @@ export const es = {
   },
   "nav": {
     "pinnedSessions": "Fijadas",
+    "primary": "Navegación principal",
+    "pluginMarket": "Mercado de plugins",
     "home": "Inicio",
     "newTask": "Nueva tarea",
     "newProject": "Nuevo proyecto",
@@ -960,7 +962,40 @@ export const es = {
     "loadPlugin": "Cargue un complemento de desarrollo (opcional)",
     "dismiss": "Descartar"
   },
+  "startupGuide": {
+    "progress": "Paso {{current}} de {{total}}",
+    "skip": "Omitir",
+    "next": "Siguiente",
+    "later": "Configurar más tarde",
+    "finish": "Listo",
+    "model": {
+      "title": "Configura tu primer modelo",
+      "description": "Conecta un proveedor de IA para que PI empiece a trabajar: añade un proveedor abajo y guarda su clave de API o inicia sesión.",
+      "ready": "Modelo listo",
+      "pending": "Aún no hay un modelo utilizable",
+    },
+    "launcher": {
+      "title": "Abre los plugins con un atajo",
+      "description": "Pulsa este atajo en cualquier momento para abrir el lanzador de plugins.",
+      "unbound": "No hay ningún atajo asignado",
+      "pointAnywhere": "Funciona incluso con PI-Desktop en segundo plano.",
+      "pointPlugins": "Busca y ejecuta tus plugins instalados en un solo lugar.",
+      "tryIt": "Probar ahora",
+      "customize": "Cambiar atajo",
+      "pressPrompt": "Pulsa el atajo para probarlo",
+      "pressed": "Lanzador de plugins abierto",
+      "previewSearch": "Buscar plugins",
+    },
+  },
+  "announcement": {
+    "title": "Novedades",
+    "close": "Cerrar",
+    "gotIt": "Entendido",
+  },
   "settings": {
+    "startupGuide": "Guía de inicio",
+    "startupGuideDesc": "Vuelve a ver las indicaciones de configuración del modelo y del atajo del lanzador de plugins.",
+    "openStartupGuide": "Abrir guía",
     scheduledTasks: "Tareas programadas",
     scheduledTasksDesc: "Al desactivar, se ocultan las tareas programadas y se detienen las nuevas ejecuciones. Se conservan las tareas existentes y el historial.",
     storage: {
