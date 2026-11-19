@@ -779,17 +779,49 @@
 }
 
 .empty-hero .project-underline {
-  display: inline-block;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2em;
   max-width: 100%;
+  padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.empty-hero .project-underline-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-decoration: underline dotted;
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
   text-decoration-color: var(--ds-text-faint);
+}
+
+.empty-hero .project-underline-chevron {
+  flex: none;
+  align-self: center;
+  color: var(--ds-text-faint);
+  transition: transform 150ms ease, color 150ms ease;
+}
+
+.empty-hero .project-underline:hover .project-underline-chevron,
+.empty-hero .project-underline[aria-expanded="true"] .project-underline-chevron {
+  color: var(--ds-text-secondary);
+}
+
+.empty-hero .project-underline[aria-expanded="true"] .project-underline-chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-hero .project-underline-chevron {
+    transition: none;
+  }
 }
 
 .empty-hero .project-underline:hover,
