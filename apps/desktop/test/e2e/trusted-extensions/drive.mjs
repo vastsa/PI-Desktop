@@ -272,7 +272,11 @@ await ui.click(`[data-provider-id="${pluginOAuthId}"] button[aria-haspopup="menu
 // a person's pointer has to land on the item itself.
 const menuOnTop = await ui.until(() => {
   const item = [...document.querySelectorAll('[role="menuitem"]')].find((entry) => entry.textContent?.includes("Sign out"));
-  if (!item) return null;
+  // Wait until the menu is measured and revealed (`is-open`); before that it
+  // sits hidden at the viewport origin by design.
+  const menu = item?.closest('[role="menu"]');
+  if (!item || !menu?.classList.contains("is-open")) return null;
+  if (getComputedStyle(menu).visibility !== "visible") return null;
   const box = item.getBoundingClientRect();
   if (box.width === 0 || box.height === 0) return null;
   const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
