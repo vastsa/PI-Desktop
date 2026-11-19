@@ -15,7 +15,7 @@ test("Settings opens as a dialog over the mounted chat shell", async () => {
   assert.match(appShell, /<div className="app-chat-shell">/);
   assert.match(appShell, /<ChatSurface visible=\{page === "chat"\} \/>/);
   assert.match(appShell, /<AppOverlayHost active=\{!showSplash\} \/>/);
-  assert.match(appShell, /<SearchDialog open=\{searchOpen\}/);
+  assert.match(appShell, /<SearchDialog[^>]*\bopen=\{searchOpen\}/);
   assert.match(styles, /\.app-chat-shell\s*\{\s*display:\s*contents;/);
   assert.match(styles, /\.settings-dialog\s*\{[^}]*width:\s*min\(100%, 1080px\);/);
 });
