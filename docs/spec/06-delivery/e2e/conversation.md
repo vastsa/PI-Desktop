@@ -4151,6 +4151,22 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   the rendered steering journey has not been run
   (do not run E2E locally unless explicitly requested).
 
+## E2E-SEARCH-reveal-selected-conversation-in-sidebar
+
+- **Preconditions**: Create a project with eleven unpinned conversations whose
+  oldest result is absent from the initial project and Recent sessions lists.
+- **Steps**: Open the oldest result through global search. Switch away without
+  sending a message. Repeat with the project collapsed, then open a result
+  already included in a scrollable sidebar list.
+- **Expected**: The older result has one temporary selected row below the pins
+  until another conversation or page is opened, or a normal row becomes visible.
+  The already listed result scrolls into view. Keyboard focus stays in the chat
+  and project disclosure, archive visibility, and ordering are preserved.
+- **Automation**: `node scripts/e2e-three-column-layout.mjs --sidebar-search-only`
+  exercises opening an initially hidden result and switching away. Renderer
+  fixture tests cover the alternate disclosure, archive, and Recent sessions
+  cases.
+
 ## E2E-SESSION-content-search-and-message-navigation
 
 - **Scope**: Desktop global search, host search projections, and original

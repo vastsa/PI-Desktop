@@ -498,6 +498,40 @@ async function main() {
       () => cdp.evaluate(`!document.querySelector(".startup-splash")`),
       "startup splash cleared",
     );
+    if (process.argv.includes("--sidebar-search-only")) {
+      await rig(`window.__PI_DESKTOP__.selectSession(${JSON.stringify(sidebarSeed.historySessionIds[0])})`);
+      const hiddenRow = `[data-sidebar-session-row="${sidebarSeed.historySessionIds.at(-1)}"]`;
+      const pendingRow = `[data-sidebar-search-result] ${hiddenRow}.active`;
+      const otherRow = `[data-sidebar-session-row="${sidebarSeed.historySessionIds[0]}"]`;
+      await waitFor(() => cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(`${otherRow}.active`)}))`),
+        "initial conversation in project history");
+      check(await cdp.evaluate(`!document.querySelector(${JSON.stringify(hiddenRow)})`),
+        "the oldest search fixture starts outside both sidebar lists");
+      const keyModifiers = process.platform === "darwin" ? { metaKey: true } : { ctrlKey: true };
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "k", code: "KeyK", bubbles: true, cancelable: true, ...${JSON.stringify(keyModifiers)},
+      }))`);
+      await waitFor(() => cdp.evaluate('document.activeElement?.matches(".search-input")'),
+        "global search input");
+      await cdp.send("Input.insertText", { text: "history session 11" });
+      const result = `[...document.querySelectorAll(".search-item[role=option]")]
+        .find(row => row.querySelector(".search-item-title")?.textContent === "history session 11")`;
+      await waitFor(() => cdp.evaluate(`Boolean(${result})`), "oldest conversation search result");
+      await cdp.evaluate(`${result}.click()`);
+      await waitFor(() => cdp.evaluate(`!document.querySelector(".search-dialog")`), "search selection");
+      check(await cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(pendingRow)}))
+        && document.querySelectorAll(${JSON.stringify(hiddenRow)}).length === 1`),
+        "global search temporarily reveals one selected sidebar row");
+      await cdp.evaluate(`document.querySelector(${JSON.stringify(`${otherRow} .thread-item-main`)}).click()`);
+      await waitFor(() => cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(`${otherRow}.active`)}))`),
+        "switch to another conversation");
+      check(await cdp.evaluate(`!document.querySelector(${JSON.stringify(hiddenRow)})`),
+        "switching away restores the hidden conversation's original position");
+      cleanup();
+      clearTimeout(timeout);
+      process.exit(results.some(({ ok }) => !ok) ? 1 : 0);
+    }
+
     await rig(`window.__PI_DESKTOP__.ensureVisualFixtures()`);
     // The seeded workspace already holds more sessions than the capture fixture
     // is willing to add, so activate a seeded one: the shell needs an active

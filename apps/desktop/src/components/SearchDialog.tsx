@@ -70,7 +70,11 @@ function highlightMatch(text: string, query: string) {
   return <SearchHighlight text={text} query={query} />;
 }
 
-export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SearchDialog({ open, onClose, onSessionOpened }: {
+  open: boolean;
+  onClose: () => void;
+  onSessionOpened: (sessionId: string) => void;
+}) {
   const { t } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
   const sessionMeta = useAppStore((s) => s.sessionMeta);
@@ -263,6 +267,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           selected.page !== "chat"
         )
           return;
+        onSessionOpened(row.session.id);
         const targetId = messageId ?? row.hit?.matches[0]?.messageId;
         if (targetId) void selected.navigateTranscript({
           sessionId: row.session.id, messageId: targetId, query: query.trim(),

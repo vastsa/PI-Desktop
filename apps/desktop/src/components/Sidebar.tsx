@@ -1,5 +1,5 @@
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
-import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
+import { groupRemoteProjectSessions, remoteProjectCollapseKey } from "../lib/remote-project-catalog";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import {
   useCallback,
@@ -240,6 +240,8 @@ function compareOptionalDate(
   return descending ? b - a : a - b;
 }
 
+export type SidebarSearchReveal = { sessionId: string };
+
 export function Sidebar({
   onToggleSidebar,
   onNewTask,
@@ -251,6 +253,7 @@ export function Sidebar({
   onResizeCollapse,
   className,
   onAnimationEnd,
+  searchReveal,
 }: {
   onToggleSidebar: () => void;
   onNewTask: () => void;
@@ -262,6 +265,7 @@ export function Sidebar({
   onResizeCollapse: () => void;
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
+  searchReveal?: SidebarSearchReveal | null;
 }) {
   const { t, i18n } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
@@ -1058,12 +1062,53 @@ export function Sidebar({
   const remoteProjectGroups = useMemo(() => groupRemoteProjectSessions(
     filtered.filter((session) => isRemoteSession(session) && !pinnedSessionIds.has(session.id)), compareSessions,
   ), [filtered, pinnedSessionIds, compareSessions]);
+
+  const searchSessionId = page === "chat" && searchReveal && searchReveal.sessionId === selectedSessionId
+    ? searchReveal.sessionId
+    : undefined;
+  const searchSession = searchSessionId
+    ? filtered.find((session) => session.id === searchSessionId)
+    : undefined;
+  const searchProjectPath = normalizeProjectPath(searchSession?.projectPath);
+  const searchProject = searchProjectPath ? projectEntriesByPath.get(searchProjectPath) : undefined;
+  const searchProjectRowVisible = showProjectsSection && searchProject &&
+    !(searchProject.meta.collapsed ?? projectCollapsed[searchProject.key]) &&
+    getVisibleProjectSessions(
+      searchProject.sessions.filter((session) => !pinnedSessionIds.has(session.id)),
+      expandedProjectSessions[searchProject.key] ?? false,
+    ).visibleSessions.some((session) => session.id === searchSessionId);
+  const searchRowVisible = searchSessionId && (
+    pinnedSessionIds.has(searchSessionId) ||
+    (showSessionsSection && visibleRecentSessions.some((session) => session.id === searchSessionId)) ||
+    searchProjectRowVisible ||
+    (showProjectsSection && isRemoteSession(searchSession) && remoteProjectGroups.some(({ project, sessions }) =>
+      !projectCollapsed[remoteProjectCollapseKey(project.key)] && sessions.some((session) => session.id === searchSessionId),
+    ))
+  );
+  const temporarySearchSession = searchSession && !searchRowVisible &&
+    (showArchived || !projectMetaFor(searchSession.projectPath ?? "", projectMeta).archived)
+    ? searchSession
+    : undefined;
+  const sidebarBodyRef = useRef<HTMLDivElement>(null);
+  const scrolledSearchReveal = useRef<SidebarSearchReveal | null>(null);
+  useLayoutEffect(() => {
+    if (!searchReveal || scrolledSearchReveal.current === searchReveal || !searchSessionId || !searchRowVisible) return;
+    const rows = sidebarBodyRef.current?.querySelectorAll<HTMLElement>(
+      `[data-sidebar-session-row="${CSS.escape(searchSessionId)}"]`,
+    );
+    const row = rows && Array.from(rows).find((candidate) => !candidate.closest("[inert]"));
+    if (!row) return;
+    scrolledSearchReveal.current = searchReveal;
+    row.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [searchReveal, searchSessionId, searchRowVisible]);
+
   // Flat ordered list of every visible session id — used for Shift+click range
   // selection. Follows render order; a project session also listed under
   // Recent keeps its first (Recent) position.
   const flatSessionOrder = useMemo(() => {
     const ids = new Set<string>();
     for (const s of pinnedSessions) ids.add(s.id);
+    if (temporarySearchSession) ids.add(temporarySearchSession.id);
     for (const s of visibleRecentSessions) ids.add(s.id);
     for (const entry of projectEntries) {
       for (const s of entry.sessions) {
@@ -1072,7 +1117,7 @@ export function Sidebar({
     }
     for (const group of remoteProjectGroups) for (const session of group.sessions) ids.add(session.id);
     return [...ids];
-  }, [pinnedSessions, visibleRecentSessions, projectEntries, pinnedSessionIds, remoteProjectGroups]);
+  }, [pinnedSessions, temporarySearchSession, visibleRecentSessions, projectEntries, pinnedSessionIds, remoteProjectGroups]);
 
   /** Handle multi-select click on a session row. Returns true if the click was consumed by multi-select. */
   const handleMultiSelectClick = (event: React.MouseEvent, sessionId: string): boolean => {
@@ -2138,8 +2183,10 @@ export function Sidebar({
       projectPath?: string;
       global?: boolean;
       showLastReplyDate?: boolean;
+      searchResult?: boolean;
     },
   ) => items.map((session) => {
+    if (session.id === temporarySearchSession?.id && !options?.searchResult) return null;
     const meta = sessionMeta[session.id] ?? {};
     const normalizedProjectPath = normalizeProjectPath(session.projectPath);
     const temporary = options?.temporary ?? !normalizedProjectPath;
@@ -2610,7 +2657,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="sidebar-body no-drag">
+      <div className="sidebar-body no-drag" ref={sidebarBodyRef}>
         <SidebarPrimaryNav onNewTask={onNewTask} onBeforeNavigate={() => closeMenus(false)} />
 
         {pinnedSessions.length > 0 ? (
@@ -2629,6 +2676,12 @@ export function Sidebar({
             </div>
           </section>
         ) : null}
+
+        {temporarySearchSession && (
+          <div className="sidebar-session-group-body pinned" data-sidebar-search-result="">
+            {renderSessionRows([temporarySearchSession], { global: true, searchResult: true })}
+          </div>
+        )}
 
         {showSessionsSection ? (
           <section

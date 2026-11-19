@@ -17,7 +17,7 @@ import {
 import { LifecycleConfirmationDialog } from "../../components/LifecycleConfirmationDialog";
 import { ProjectCreateDialog } from "../../components/ProjectCreateDialog";
 import { SearchDialog } from "../../components/SearchDialog";
-import { Sidebar } from "../../components/Sidebar";
+import { Sidebar, type SidebarSearchReveal } from "../../components/Sidebar";
 import { StartupRecovery } from "../../components/StartupRecovery";
 import { ToastHost } from "../../components/Toast";
 import { UpdateBanner } from "../../components/UpdateBanner";
@@ -98,6 +98,10 @@ export function AppShell() {
     requestedWorkPanelWidth,
   } = useAppShellRuntime();
   const [toastAnchor, setToastAnchor] = useState<HTMLElement | null>(null);
+  const [searchReveal, setSearchReveal] = useState<SidebarSearchReveal | null>(null);
+  if (searchReveal && (!ready || page !== "chat" || activeSessionId !== searchReveal.sessionId)) {
+    setSearchReveal(null);
+  }
   useCopyTex();
   useEffect(() => installMaximizedWindowChrome(
     window.piDesktop?.platform ?? "darwin", document, window, api,
@@ -145,6 +149,7 @@ export function AppShell() {
         <div className="app-chat-shell">
           {!sidebarCollapsed || sidebarExiting ? (
             <Sidebar
+              searchReveal={searchReveal}
               className={cx(sidebarEntering && "is-entering", sidebarExiting && "is-exiting")}
               onAnimationEnd={handleSidebarAnimationEnd}
               onToggleSidebar={toggleSidebar}
@@ -341,7 +346,11 @@ export function AppShell() {
           </TooltipButton>
         </div>
         <AppOverlayHost active={!showSplash} />
-        <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <SearchDialog
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          onSessionOpened={(sessionId) => setSearchReveal({ sessionId })}
+        />
         <ToastHost anchorElement={toastAnchor} />
         <LiveVoiceStatusHost />
         <PluginRendererHost />

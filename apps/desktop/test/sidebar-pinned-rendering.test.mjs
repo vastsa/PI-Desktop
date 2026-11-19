@@ -64,7 +64,7 @@ test("sidebar renders global pins once, outside project folding and history limi
       projectCollapsed: {},
       sessionView: { sort: "recent", archived: false },
     };
-    const render = (overrides = {}) => {
+    const render = (overrides = {}, searchReveal) => {
       Object.assign(useAppStore.getInitialState(), seed, overrides);
       globalThis.document = { documentElement: { dataset: { theme: "light" } } };
       return renderToStaticMarkup(
@@ -72,6 +72,7 @@ test("sidebar renders global pins once, outside project folding and history limi
           I18nextProvider,
           { i18n },
           createElement(Sidebar, {
+            searchReveal,
             collapsed: false,
             onToggle() {},
             sidebarWidth: 275,
@@ -128,6 +129,20 @@ test("sidebar renders global pins once, outside project folding and history limi
     ));
     assert.ok(!rows(html).includes("archived-pin"));
     assert.ok(!rows(html).includes("archived-project-pin"));
+
+    const searchRow = (markup) => markup.match(/<div[^>]*data-sidebar-search-result[\s\S]*?<\/div>/)?.[0] ?? "";
+    const reveal = (id, overrides = {}) => render({ activeSessionId: id, ...overrides }, { sessionId: id });
+    const hiddenResult = reveal("normal-10");
+    assert.deepEqual(rows(searchRow(hiddenResult)), ["normal-10"]);
+    assert.match(searchRow(hiddenResult), /class="thread-item active/);
+    assert.equal(rows(hiddenResult).filter((id) => id === "normal-10").length, 1);
+    assert.equal(searchRow(reveal("normal-00")), "", "use the visible recent row");
+    assert.equal(searchRow(reveal("open-pin")), "", "use the existing pin");
+    const collapsedResult = reveal("normal-08", { projectCollapsed: { "/open": true } });
+    assert.deepEqual(rows(searchRow(collapsedResult)), ["normal-08"]);
+    assert.equal(rows(collapsedResult).filter((id) => id === "normal-08").length, 1);
+    assert.equal(searchRow(render({ activeSessionId: "normal-00" }, { sessionId: "normal-10" })), "");
+    assert.equal(searchRow(reveal("archived-pin")), "");
 
     const unpinned = render({ sessionMeta: {} });
     assert.equal(pinnedSection(unpinned), "");

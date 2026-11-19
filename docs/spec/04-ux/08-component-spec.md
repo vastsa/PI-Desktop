@@ -1840,6 +1840,13 @@ storage but compose into one assistant turn until the next user message.
 
 ### 7.5a Global session content search
 
+- Opening a conversation from global search scrolls its existing sidebar row
+  into view once. When pagination or disclosure hides the row, show one
+  temporary selected row with its project label below pins and above history.
+  Use the regular row when it becomes visible and clear the temporary reveal
+  upon leaving the conversation or the chat page. Keep keyboard focus in the
+  chat and preserve archive visibility, ordering, and project disclosure.
+
 - The existing global search input matches session titles, project metadata,
   and indexed user/assistant message text across all host-visible sessions.
 - Group matches by session, show the complete matching-message count, and
