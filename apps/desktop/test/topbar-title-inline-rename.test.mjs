@@ -41,7 +41,6 @@ async function withTopbar(work) {
           { i18n },
           createElement(ConversationTopbar, {
             sidebarCollapsed: false,
-            workPanelOpen: false,
             onToggleSidebar() {},
             onNewTask() {},
             onOpenSearch() {},
