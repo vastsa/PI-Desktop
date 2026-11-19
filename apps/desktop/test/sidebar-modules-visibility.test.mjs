@@ -147,7 +147,9 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
     // Without projects the session list takes the freed height.
     const noProjects = renderSidebar({ sidebarModules: { projects: false } });
     assert.match(noProjects, /class="sidebar-standalone-sessions is-fill"/);
-    assert.ok(!rows(noProjects).includes("project-row"));
+    assert.ok(!noProjects.includes('data-sidebar-project-group="/open"'));
+    // Recent still lists project sessions, so they stay reachable.
+    assert.deepEqual(rows(noProjects).filter((id) => id === "project-row"), ["project-row"]);
 
     // Scheduled stays off while scheduled tasks are disabled, and its switch says so.
     const scheduledOff = { scheduledTasksEnabled: false };

@@ -38,6 +38,12 @@ import {
   getVisibleProjectSessions,
   updateProjectSessionExpansion,
 } from "../lib/sidebar-project-sessions";
+import {
+  getVisibleRecentSessions,
+  nextRecentSessionsLimit,
+  RECENT_SESSIONS_INITIAL_COUNT,
+  selectRecentSessions,
+} from "../lib/sidebar-recent-sessions";
 import { listableSessions } from "../lib/session-origin";
 import {
   composerDropItems,
@@ -342,6 +348,7 @@ export function Sidebar({
     registerDismissGuard: registerSessionHoverCardDismissGuard,
   } = useSessionHoverCard();
   const [expandedProjectSessions, setExpandedProjectSessions] = useState<Record<string, boolean>>({});
+  const [recentSessionsLimit, setRecentSessionsLimit] = useState(RECENT_SESSIONS_INITIAL_COUNT);
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
   const [dropProjectKey, setDropProjectKey] = useState<string | null>(null);
   const [projectsDropActive, setProjectsDropActive] = useState(false);
@@ -1032,29 +1039,40 @@ export function Sidebar({
       .sort(compareSessions),
     [filtered, compareSessions],
   );
-  const temporarySessionHistory = useMemo(
-    () => temporarySessions.filter((session) => !pinnedSessionIds.has(session.id)),
-    [temporarySessions, pinnedSessionIds],
+  // Recent sessions: temporary chats plus every session shown under a retained
+  // project, so a project's newest work stays visible while it is folded.
+  const recentSessions = useMemo(
+    () => selectRecentSessions(
+      [...temporarySessions, ...projectEntries.flatMap((entry) => entry.sessions)],
+      pinnedSessionIds,
+    ),
+    [temporarySessions, projectEntries, pinnedSessionIds],
+  );
+  const {
+    visibleSessions: visibleRecentSessions,
+    nextPageCount: recentNextPageCount,
+  } = useMemo(
+    () => getVisibleRecentSessions(recentSessions, recentSessionsLimit),
+    [recentSessions, recentSessionsLimit],
   );
   const remoteProjectGroups = useMemo(() => groupRemoteProjectSessions(
     filtered.filter((session) => isRemoteSession(session) && !pinnedSessionIds.has(session.id)), compareSessions,
   ), [filtered, pinnedSessionIds, compareSessions]);
-  // Flat ordered list of every visible session id — used for Shift+click range selection.
+  // Flat ordered list of every visible session id — used for Shift+click range
+  // selection. Follows render order; a project session also listed under
+  // Recent keeps its first (Recent) position.
   const flatSessionOrder = useMemo(() => {
-    const ids: string[] = [];
-    // Pinned first (same order as rendered)
-    for (const s of pinnedSessions) ids.push(s.id);
-    // Then project sessions
+    const ids = new Set<string>();
+    for (const s of pinnedSessions) ids.add(s.id);
+    for (const s of visibleRecentSessions) ids.add(s.id);
     for (const entry of projectEntries) {
       for (const s of entry.sessions) {
-        if (!pinnedSessionIds.has(s.id)) ids.push(s.id);
+        if (!pinnedSessionIds.has(s.id)) ids.add(s.id);
       }
     }
-    for (const group of remoteProjectGroups) for (const session of group.sessions) ids.push(session.id);
-    // Then temporary (standalone) sessions
-    for (const s of temporarySessionHistory) ids.push(s.id);
-    return ids;
-  }, [pinnedSessions, projectEntries, pinnedSessionIds, temporarySessionHistory, remoteProjectGroups]);
+    for (const group of remoteProjectGroups) for (const session of group.sessions) ids.add(session.id);
+    return [...ids];
+  }, [pinnedSessions, visibleRecentSessions, projectEntries, pinnedSessionIds, remoteProjectGroups]);
 
   /** Handle multi-select click on a session row. Returns true if the click was consumed by multi-select. */
   const handleMultiSelectClick = (event: React.MouseEvent, sessionId: string): boolean => {
@@ -2632,7 +2650,7 @@ export function Sidebar({
               }}
             >
               <span id="sidebar-standalone-sessions-label" className="sidebar-list-label">
-                {t("nav.sessions", { defaultValue: "Sessions" })}
+                {t("nav.recentSessions")}
               </span>
               <div className="sidebar-toolbar-actions">
                 {showSessionSort ? (
@@ -2688,11 +2706,23 @@ export function Sidebar({
                 openSectionMenu("sessions", event.clientX, event.clientY);
               }}
             >
-              {temporarySessionHistory.length > 0 ? (
-                renderSessionRows(temporarySessionHistory, { temporary: true })
-              ) : temporarySessions.length === 0 ? (
-                <div className="sidebar-session-empty">{t("nav.noTemporarySessions")}</div>
-              ) : null}
+              {visibleRecentSessions.length > 0 ? (
+                <>
+                  {renderSessionRows(visibleRecentSessions, { global: true })}
+                  {recentNextPageCount > 0 ? (
+                    <button
+                      type="button"
+                      className="sidebar-load-more"
+                      data-action="recent-sessions-load-more"
+                      onClick={() => setRecentSessionsLimit(nextRecentSessionsLimit)}
+                    >
+                      {t("nav.loadMoreCount", { count: recentNextPageCount })}
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <div className="sidebar-session-empty">{t("nav.noRecentSessions")}</div>
+              )}
             </div>
           </section>
         ) : null}
