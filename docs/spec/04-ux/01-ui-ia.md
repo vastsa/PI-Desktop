@@ -38,7 +38,10 @@ destination, chat as the home surface, tools and permissions inline.
   while Extensions is active performs one Back step). The footer holds only a
   labelled **Settings** entry (opens the Settings dialog) on the left and the
   version/update chip on the right. The sidebar has no notification entry
-  (issue #2431). Each retained
+  (issue #2431). Every module except Settings can be hidden from Settings →
+  Appearance → Sidebar modules (`AppSettings.sidebarModules`; all shown by
+  default). Hiding Pinned sessions returns pins to their own lists; hiding
+  Projects lets the Sessions list take the freed height. Each retained
   project is a
   path-keyed tab/group that can be
   collapsed independently. Project and conversation rows expose

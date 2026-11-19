@@ -1,3 +1,4 @@
+import { sidebarModuleVisible } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { useUpdateState } from "../hooks/use-update-state";
 import { api } from "../lib/api";
@@ -27,26 +28,35 @@ export function SidebarPrimaryNav({
   const scheduledTasksEnabled = useAppStore(
     (s) => s.settings?.scheduledTasksEnabled !== false,
   );
+  const modules = useAppStore((s) => s.settings?.sidebarModules);
+  const showNewTask = sidebarModuleVisible(modules, "newTask");
+  const showScheduled =
+    scheduledTasksEnabled && sidebarModuleVisible(modules, "scheduled");
+  const showPluginMarket = sidebarModuleVisible(modules, "pluginMarket");
   const openPluginMarket = () => {
     usePluginBrowseState.getState().setTab("market");
     setPage("plugins");
   };
 
+  if (!showNewTask && !showScheduled && !showPluginMarket) return null;
+
   return (
     <nav className="sidebar-primary-nav" aria-label={t("nav.primary")}>
-      <button
-        type="button"
-        className="sidebar-primary-item"
-        data-nav="new-task"
-        onClick={() => {
-          onBeforeNavigate?.();
-          onNewTask();
-        }}
-      >
-        <IconNewSession size={15} aria-hidden />
-        <span className="sidebar-primary-label">{t("nav.newTask")}</span>
-      </button>
-      {scheduledTasksEnabled && (
+      {showNewTask && (
+        <button
+          type="button"
+          className="sidebar-primary-item"
+          data-nav="new-task"
+          onClick={() => {
+            onBeforeNavigate?.();
+            onNewTask();
+          }}
+        >
+          <IconNewSession size={15} aria-hidden />
+          <span className="sidebar-primary-label">{t("nav.newTask")}</span>
+        </button>
+      )}
+      {showScheduled && (
         <button
           type="button"
           className={cx("sidebar-primary-item", page === "scheduled" && "active")}
@@ -61,25 +71,27 @@ export function SidebarPrimaryNav({
           <span className="sidebar-primary-label">{t("scheduled.title")}</span>
         </button>
       )}
-      <button
-        type="button"
-        className={cx("sidebar-primary-item", page === "plugins" && "active")}
-        data-nav="plugins"
-        aria-current={page === "plugins" ? "page" : undefined}
-        onClick={() => {
-          onBeforeNavigate?.();
-          // A second activation returns to where the user came from.
-          if (page === "plugins") {
-            if (canNavBack()) navBack();
-            else setPage("chat");
-            return;
-          }
-          openPluginMarket();
-        }}
-      >
-        <IconPlug size={15} aria-hidden />
-        <span className="sidebar-primary-label">{t("nav.pluginMarket")}</span>
-      </button>
+      {showPluginMarket && (
+        <button
+          type="button"
+          className={cx("sidebar-primary-item", page === "plugins" && "active")}
+          data-nav="plugins"
+          aria-current={page === "plugins" ? "page" : undefined}
+          onClick={() => {
+            onBeforeNavigate?.();
+            // A second activation returns to where the user came from.
+            if (page === "plugins") {
+              if (canNavBack()) navBack();
+              else setPage("chat");
+              return;
+            }
+            openPluginMarket();
+          }}
+        >
+          <IconPlug size={15} aria-hidden />
+          <span className="sidebar-primary-label">{t("nav.pluginMarket")}</span>
+        </button>
+      )}
     </nav>
   );
 }
@@ -92,6 +104,9 @@ export function SidebarFooter() {
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
   const version = useAppStore((s) => s.version);
+  const showBuildVersion = useAppStore((s) =>
+    sidebarModuleVisible(s.settings?.sidebarModules, "buildVersion"),
+  );
   const update = useUpdateState();
 
   // An update only earns the accent dot once it is actionable — a pending
@@ -124,28 +139,30 @@ export function SidebarFooter() {
         <span>{t("nav.settings")}</span>
       </button>
 
-      <TooltipButton
-        type="button"
-        className={`footer-build ${updateReady ? "has-update" : ""}`}
-        data-nav="build"
-        tooltip={buildTitle}
-        ariaLabel={buildTitle}
-        onClick={() => {
-          if (updateReady) {
-            setSettingsAnchor("updates.title");
-            setSettingsTab("about");
-            return;
-          }
-          void (async () => {
-            try {
-              await api.updatesCheck();
-            } catch { /* ignore */ }
-          })();
-        }}
-      >
-        <span className="footer-build-version">{buildLabel}</span>
-        {updateReady ? <span className="footer-build-dot" aria-hidden /> : null}
-      </TooltipButton>
+      {showBuildVersion && (
+        <TooltipButton
+          type="button"
+          className={`footer-build ${updateReady ? "has-update" : ""}`}
+          data-nav="build"
+          tooltip={buildTitle}
+          ariaLabel={buildTitle}
+          onClick={() => {
+            if (updateReady) {
+              setSettingsAnchor("updates.title");
+              setSettingsTab("about");
+              return;
+            }
+            void (async () => {
+              try {
+                await api.updatesCheck();
+              } catch { /* ignore */ }
+            })();
+          }}
+        >
+          <span className="footer-build-version">{buildLabel}</span>
+          {updateReady ? <span className="footer-build-dot" aria-hidden /> : null}
+        </TooltipButton>
+      )}
     </div>
   );
 }

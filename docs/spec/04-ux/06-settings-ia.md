@@ -200,6 +200,17 @@ D684.
   their stored value, so re-enabling the master restores the previous choice
   instead of resetting it. The affordances themselves are described in
   [01-ui-ia.md §3.2](01-ui-ia.md#32-sidebar-project-groups).
+- **Sidebar modules** card: one switch per hideable sidebar module, in sidebar
+  order — **New task**, **Scheduled**, **Plugin marketplace**, **Pinned
+  sessions**, **Sessions** (nested: **Sort button**, **New session button**),
+  **Projects** (nested: **New project button**, **Project new-task button**)
+  and **Version**. Stored as `AppSettings.sidebarModules`, a map from module id
+  to boolean; an absent object or key means shown, so existing installs keep
+  the released layout without migration. Nested switches are disabled while
+  their section is off and keep their stored value. **Scheduled** is disabled
+  while scheduled tasks are turned off. **Settings** has no switch: it is the
+  visible way back. Both Electron Main and the renderer reject a non-object
+  value or a non-boolean entry; unknown keys are dropped on read.
 - **Radial context menu** card: one switch (**Enable on the transcript
   background**) and four direction pickers (**Up**, **Right**, **Down**,
   **Left**). The switch is off when `AppSettings.radialMenu.enabled` is absent
