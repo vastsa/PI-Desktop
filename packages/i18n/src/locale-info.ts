@@ -16,6 +16,7 @@ export const supportedLocales = [
   { id: "fr", nativeName: "Français", englishName: "French" },
   { id: "ko", nativeName: "한국어", englishName: "Korean" },
   { id: "pt-BR", nativeName: "Português (Brasil)", englishName: "Portuguese (Brazil)" },
+  { id: "ru", nativeName: "Русский", englishName: "Russian" },
 ] as const;
 
 export type AppLocale = (typeof supportedLocales)[number]["id"];
@@ -69,6 +70,7 @@ export function resolveLocale(input?: string | null): AppLocale {
   if (lower === "fr" || lower.startsWith("fr-")) return "fr";
   if (lower === "ko" || lower.startsWith("ko-")) return "ko";
   if (lower === "pt" || lower.startsWith("pt-")) return "pt-BR";
+  if (lower === "ru" || lower.startsWith("ru-")) return "ru";
   const exact = supportedLocales.find((locale) => locale.id.toLowerCase() === lower);
   if (exact) return exact.id;
   const prefix = supportedLocales.find(

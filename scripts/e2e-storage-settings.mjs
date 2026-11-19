@@ -27,7 +27,7 @@ try {
       "@pi-desktop/shared/changelog-loader": join(root, "packages/shared/src/changelog-loader.ts"),
       "@pi-desktop/i18n": join(root, "packages/i18n/src/index.ts"),
       "@pi-desktop/i18n/locale-info": join(root, "packages/i18n/src/locale-info.ts"),
-      ...Object.fromEntries(["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR"].map((locale) =>
+      ...Object.fromEntries(["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR", "ru"].map((locale) =>
         [`@pi-desktop/i18n/locales/${locale}`, join(root, `packages/i18n/src/locales/${locale}/index.ts`)])),
       "@pi-desktop/voice-runtime/live": join(root, "packages/voice-runtime/src/live/index.ts"),
       react: join(root, "apps/desktop/node_modules/react"),
