@@ -9,7 +9,6 @@ import { HomeMascotLogo } from "./HomeMascotLogo";
 import { HomeProjectSwitcher } from "./HomeProjectSwitcher";
 import { IconX } from "./icons";
 import { TooltipButton } from "./ui";
-import { OnboardingChecklist } from "./OnboardingChecklist";
 import { SessionPane } from "./SessionPane";
 import { ConversationWidthHandles } from "./ConversationWidthHandles";
 import { useAppStore } from "../stores/app-store";
@@ -191,7 +190,6 @@ export const ChatSurface = memo(function ChatSurface({
                   )}
                 </h1>
               </div>
-              {!isRemoteSession(activeSession) ? <OnboardingChecklist /> : null}
             </div>
           </div>
           <div className="home-composer-wrap">
@@ -236,7 +234,6 @@ export const ChatSurface = memo(function ChatSurface({
                 onClick={() => {
                   const store = useAppStore.getState();
                   store.setSettingsTab("agent");
-                  store.setPage("settings");
                 }}
               >
                 {t("errors.action.openSettings")}

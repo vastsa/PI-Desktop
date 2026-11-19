@@ -223,10 +223,6 @@
   animation: update-notice-in var(--motion-duration-normal) var(--motion-ease-out);
 }
 
-.settings-mode > .update-notice {
-  position: fixed;
-}
-
 .update-notice-icon {
   display: inline-flex;
   width: 32px;

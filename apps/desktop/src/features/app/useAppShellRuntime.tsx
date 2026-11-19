@@ -117,7 +117,7 @@ export function useAppShellRuntime() {
   const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
   const { sidebarEntering, sidebarExiting, handleSidebarAnimationEnd } = useSidebarTransition(
     sidebarCollapsed,
-    ready && page !== "settings",
+    ready,
   );
   const [shellWidth, setShellWidth] = useState(0);
   const appShellRef = useRef<HTMLDivElement>(null);
@@ -349,8 +349,7 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
-    const pageHidesWorkPanel =
-      page === "settings" || page === "plugins" || page === "scheduled";
+    const pageHidesWorkPanel = page === "plugins" || page === "scheduled";
     const shouldPresent =
       ready && !pageHidesWorkPanel && workPanelOpen;
     const request = ++workPanelReservationRequest.current;
@@ -425,6 +424,7 @@ export function useAppShellRuntime() {
         switch (command) {
           case "newTask":
             if (workPanelMaximizedRef.current) setWorkPanelMaximized(false);
+            store.closeSettings();
             await store.newSession();
             requestAnimationFrame(() =>
               document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus(),
@@ -945,7 +945,7 @@ export function useAppShellRuntime() {
             break;
           case "openWorkPanel": {
             const p = useAppStore.getState().page;
-            if (p !== "settings" && p !== "plugins" && p !== "scheduled") {
+            if (p !== "plugins" && p !== "scheduled") {
               useAppStore.getState().toggleWorkPanel();
             }
             break;

@@ -15,6 +15,8 @@ export const deEntries: ChangelogEntry[] = [
       "Jedes Plugin liegt jetzt auf einem zweisprachigen Regal, sodass der Marktplatz auf Deutsch oder Englisch liest und nach derselben Kategorie filtert.",
       "Plugin-Details zeigen jetzt Herausgeber, Readme und Sicherheitshinweise aus dem Katalog; sie gingen beim Einlesen verloren.",
       "Wähle GPT-6.2 Sol und GPT-6.2 Astra bei OpenAI, ChatGPT, GitHub Copilot, OpenCode und Gateways, die sie anbieten, mit ihren veröffentlichten Limits und Preisen.",
+      "Die Einstellungen öffnen sich jetzt als Dialog über der aktuellen Seite, die Seitenleiste zeigt Neue Aufgabe, Geplant und Plugin-Marktplatz oben, und eine kurze Startanleitung hilft beim Hinzufügen eines Modells und beim Kennenlernen des Plugin-Launcher-Kürzels.",
+      "Unter Einstellungen → Darstellung → Seitenleistenmodule legst du fest, welche Seitenleistenmodule erscheinen: Neue Aufgabe, Geplant, Plugin-Marktplatz, angeheftete Sitzungen, Sitzungen, Projekte, ihre Schaltflächen und die Versionsanzeige.",
     ],
   },
   {
@@ -36,6 +38,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Gerenderte Mermaid-Diagramme als SVG-Text kopieren oder als eigenständige SVG-Dateien exportieren, auch in README-Vorschauen.",
       "Sieh im Kontextinspektor und in der Rundennutzungs-Kapsel, was jede Runde und die ganze Unterhaltung kostet; Abo-Nutzung wird getrennt von nutzungsbasierten Kosten gezeigt.",
       "Eigenes Video als Startanimation verwenden: einfach eines in den Ordner „startup“ legen; danach wird die Oberfläche eingeblendet.",
       "Plugins können gespeicherte Projekte und ihre Ordner auflisten, ohne die aktive Sitzung zu wechseln.",

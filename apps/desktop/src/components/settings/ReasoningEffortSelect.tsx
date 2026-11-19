@@ -8,13 +8,14 @@ export function ReasoningEffortSelect({ value, onChange }: {
 }) {
   const { t } = useTranslation();
   return (
-    <div className="provider-chosen-reasoning-effort">
+    <div className="provider-advanced-option">
       <span className="provider-chosen-thinking-label">
         {t("settings.reasoningEffortParameter")}
         <HelpIcon label={t("settings.reasoningEffortParameterHint")} />
       </span>
       <SettingsMenuSelect
         className="provider-chosen-thinking-select"
+        fullWidth
         label={t("settings.reasoningEffortParameter")}
         value={value == null ? "auto" : value ? "send" : "omit"}
         onChange={(id) => onChange(id === "auto" ? null : id === "send")}

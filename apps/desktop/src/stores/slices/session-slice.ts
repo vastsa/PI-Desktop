@@ -410,7 +410,7 @@ export function createSessionSlice({
           stateAtStart.sessionHistory[stateAtStart.activeSessionId],
         );
       }
-      set({ selectingSessionId: id, page: "chat" });
+      set({ selectingSessionId: id, page: "chat", settingsOpen: false });
       const outcomeAcknowledgement = get().acknowledgeSessionOutcome(id);
 
       const commitSelection = (

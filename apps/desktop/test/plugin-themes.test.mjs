@@ -106,15 +106,13 @@ test("scenic plugins use the normal full-window shell for compositing", () => {
   // context and pin route overlays underneath the window chrome.
   assert.doesNotMatch(baseSrc, /\.app-shell\s*>\s*:not\(\.app-scenic-backdrop\)/);
   assert.match(settingsSrc, /data-plugin-theme\^="plugin:io\.github\.akshayxkill\.nexus-scenic-themes:/);
-  assert.match(settingsSrc, /\.app-shell\.settings-mode[^}]*background:\s*transparent\s*!important/s);
-  assert.match(settingsSrc, /\.settings-content[^}]*background:\s*transparent\s*!important/s);
+  // Settings is a modal dialog now, not a full-window takeover of the shell.
+  assert.doesNotMatch(settingsSrc, /\.settings-mode\b/);
 });
 
-test("scenic plugin themes expose a full-window settings compositing hook", () => {
+test("scenic plugin themes tint the Settings dialog rail and panels", () => {
   const settingsCss = readFileSync(join(desktopRoot, "src/styles/settings.css"), "utf8");
   assert.match(settingsCss, /data-plugin-theme\^="plugin:io\.github\.akshayxkill\.nexus-scenic-themes:/);
-  assert.match(settingsCss, /\.app-shell\.settings-mode[^}]*background:\s*transparent\s*!important/s);
-  assert.match(settingsCss, /\.settings-content[^}]*background:\s*transparent\s*!important/s);
   assert.match(settingsCss, /\.settings-shell-full\s+\.settings-nav\.sidebar-surface[^}]*background:\s*color-mix/s);
   assert.match(settingsCss, /\.settings-panel[^}]*background:\s*color-mix/s);
 });

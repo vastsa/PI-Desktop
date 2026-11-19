@@ -1,9 +1,28 @@
 # 06. Settings Information Architecture
 
-## 1. Settings root (Codex full-page shell)
+## 1. Settings root (modal dialog)
 
-Settings is a **full-window page** that replaces the app sidebar + main chrome (Codex electron behavior):
+Settings is a **modal dialog** over the current page (chat, Scheduled or
+Extensions). It is not a route: opening it records no navigation history and
+the page underneath keeps its state.
 
+- Opened from the sidebar footer **Settings** entry, `Mod+,`, the native menu,
+  global search hits and in-app deep links (`setSettingsTab` / `openSettings`).
+  Closed by the dialog's close button, `Escape`, or a press on the backdrop.
+  `Escape` belongs to the innermost layer: a menu, shortcut recorder or nested
+  dialog that handles it keeps the dialog open. Navigating to a page
+  (`setPage`), selecting a session, creating a project, or **New task** closes
+  the dialog, as leaving the former full-window page did.
+- Settings is the lowest of the three app-level modals. It waits while the
+  startup guide or the release announcement is open and appears after them
+  (priority guide > announcement > settings, see `05-onboarding.md`).
+- The dialog is up to 1080 × 760px inside a 24px viewport margin (12px below
+  760px wide), portaled to the `#pi-desktop-overlays` host on the dialog layer
+  (z 40). Native plugin views beneath are hidden while it is open.
+- Each destination body is `SettingsDestinationContent`, shared with other
+  surfaces (the startup guide embeds the Models destination) so a row behaves
+  identically wherever it appears. Settings reads/writes go through
+  `useSettingsPersistence`.
 - Switching to a different Settings destination starts the content pane at the
   top, including plugin destinations. Re-selecting the current destination or
   updating settings in place preserves the current scroll position. Global
@@ -16,33 +35,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   shows a compact loading/failure state with a retry action instead of an empty
   section.
 
-- Left settings rail only, **275px**, using the same `sidebar-surface` material
-  as the main sidebar: native vibrancy with shared tint/sheen on macOS, opaque
-  `--ds-bg-sidebar` on Windows/Linux, and shared optional background imagery.
-  macOS settings-wrapper ancestry is transparent; the content pane and its
-  titlebar remain opaque. Only a nested settings content enter wrapper plays a
-  route animation; the scrolling inner pane, rail, and backing never fade or
-  translate. That entrance is opacity-only. Settings dialogs and sheets portal
-  to a viewport-fixed `#pi-desktop-overlays` host on the document element and
-  cover the full window, including the rail.
-- Returning to the app restores the prior sidebar collapsed/expanded state
-  without a sidebar entrance animation or a width ramp. Real toggle and
-  automatic collapse/restore transitions on the visible shell still animate;
-  initial presentation and route restoration do not.
-- Top of rail: traffic-light clearance and the pill **Search settings…**
-- The **Back to app** (`返回应用`) action is pinned to the foot of the rail, not
-  the top: it keeps its chevron + label form as a 32px control, and it shares
-  the horizontal band of the main shell's sidebar footer icon row (settings /
-  plugins / notifications), so the action does not jump vertically when the
-  full-page takeover opens or closes. The directory above it scrolls when the
-  window is too short for every destination, so a pinned action never covers a
-  row
-- The 46px top band is a native window drag region across both the rail and the
-  content pane, but it is drawn in two parts so each keeps its own surface: the
-  rail drags via its own top strip on the rail surface, and the content pane's
-  band starts at the rail edge on the primary surface. The band must never paint
-  the primary surface over the rail, which would show two colors in one top row.
-  Interactive controls remain explicitly non-draggable
+- Left settings rail only, **275px** (200px below 760px wide), using the same
+  `sidebar-surface` material as the main sidebar. Only a nested settings
+  content enter wrapper plays a route animation; the scrolling inner pane,
+  rail, and backing never fade or translate. That entrance is opacity-only.
+  Dialogs and sheets opened from Settings portal to the same overlay host and
+  stack above it.
+- Top of rail: the pill **Search settings…**. The rail has no footer action;
+  the dialog's close button sits at its top-right corner.
+- The dialog is not a window drag region.
+- Info (About) carries a **Startup guide** row that replays the startup guide
+  (`05-onboarding.md` §3) without resetting its first-launch marker.
 - A compact navigation directory with short, parallel labels and icons, in this
   exact order. **One destination owns one subject** (D684 / ADR 0345): a
   destination is never the landing place for whatever did not fit elsewhere,
@@ -197,6 +200,17 @@ D684.
   their stored value, so re-enabling the master restores the previous choice
   instead of resetting it. The affordances themselves are described in
   [01-ui-ia.md §3.2](01-ui-ia.md#32-sidebar-project-groups).
+- **Sidebar modules** card: one switch per hideable sidebar module, in sidebar
+  order — **New task**, **Scheduled**, **Plugin marketplace**, **Pinned
+  sessions**, **Sessions** (nested: **Sort button**, **New session button**),
+  **Projects** (nested: **New project button**, **Project new-task button**)
+  and **Version**. Stored as `AppSettings.sidebarModules`, a map from module id
+  to boolean; an absent object or key means shown, so existing installs keep
+  the released layout without migration. Nested switches are disabled while
+  their section is off and keep their stored value. **Scheduled** is disabled
+  while scheduled tasks are turned off. **Settings** has no switch: it is the
+  visible way back. Both Electron Main and the renderer reject a non-object
+  value or a non-boolean entry; unknown keys are dropped on read.
 - **Radial context menu** card: one switch (**Enable on the transcript
   background**) and four direction pickers (**Up**, **Right**, **Down**,
   **Left**). The switch is off when `AppSettings.radialMenu.enabled` is absent
@@ -1057,8 +1071,9 @@ system while preserving their different data ownership:
 
 ## 3. Navigation rules
 
-- Profile footer / command palette open Settings full page (default Appearance,
-  the first destination in the directory)
+- The sidebar footer Settings entry / command palette open the Settings dialog
+  on its last destination (default Appearance, the first destination in the
+  directory)
 - Composer model menu and provider setup actions deep-link to the Providers
   card inside Models
 - Plugin management remains available from the app shell's independent
@@ -1066,7 +1081,8 @@ system while preserving their different data ownership:
   not duplicated in Settings
 - Project archive is indexed by Settings search and is not duplicated as a home
   sidebar destination or standalone global-search page
-- Back to app returns to chat shell from the rail's pinned footer action
+- Closing the dialog (close button, Escape, backdrop) returns to the page
+  underneath unchanged
 - Developer-only destinations, where declared, join and leave the rail, page,
   and search as one unit. Cloud sync and Remote Hosts are Experimental but not
   developer-only, so both remain available in packaged builds and are not
@@ -1074,9 +1090,10 @@ system while preserving their different data ownership:
 
 ## 4. Acceptance
 
-1. Opening Settings hides the coding app sidebar (full-page takeover)
-2. Rail shows the search pill at the top, the back-to-app action pinned at the
-   foot on the main sidebar's footer icon line, and exactly Appearance / 外观,
+1. Opening Settings shows a modal dialog over the current page; the app
+   sidebar and page stay mounted underneath and keep their state
+2. Rail shows the search pill at the top, no footer action, and exactly
+   Appearance / 外观,
    Conversation / 对话, Shortcuts / 快捷键, Voice / 语音, Behavior / 行为,
    Models / 模型, Instructions / 指令, Skills / 技能, MCP, Subagents / 子智能体,
    Projects / 项目, System / 系统, Cloud sync / 云同步 and Remote Hosts /

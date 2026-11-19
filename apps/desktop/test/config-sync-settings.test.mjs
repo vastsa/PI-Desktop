@@ -10,7 +10,10 @@ import {
 const read = (relativePath) =>
   readFile(new URL(relativePath, import.meta.url), "utf8");
 
-const settingsPage = await read("../src/features/settings/SettingsPage.tsx");
+// The rail lives in SettingsPage; destination bodies in SettingsDestinationContent.
+const settingsPage =
+  (await read("../src/features/settings/SettingsPage.tsx")) +
+  (await read("../src/features/settings/SettingsDestinationContent.tsx"));
 const settingsIndex = await read("../src/lib/settings-search.ts");
 const syncPage = await read("../src/components/settings/ConfigSyncPage.tsx");
 const connectionFields = await read("../src/components/settings/ConfigSyncConnectionFields.tsx");

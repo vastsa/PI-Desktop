@@ -15,6 +15,8 @@ export const ptBREntries: ChangelogEntry[] = [
       "Cada plugin agora fica em uma prateleira bilíngue, então o marketplace é lido em português ou chinês e filtra pela mesma categoria.",
       "Os detalhes do plugin agora mostram o publicador, o readme e as notas de segurança do catálogo, que eram descartados na leitura.",
       "Escolha GPT-6.2 Sol e GPT-6.2 Astra com OpenAI, ChatGPT, GitHub Copilot, OpenCode e gateways que os publicam, com os limites e preços publicados.",
+      "As configurações agora abrem como uma caixa de diálogo sobre a página atual, a barra lateral mostra Nova tarefa, Agendadas e Mercado de plugins no topo, e um breve guia inicial ajuda você a adicionar um modelo e conhecer o atalho do lançador de plugins.",
+      "Escolha quais módulos da barra lateral aparecem em Configurações → Aparência → Módulos da barra lateral: Nova tarefa, Agendadas, Marketplace de plugins, sessões fixadas, Sessões, Projetos, seus botões e a versão.",
     ],
   },
   {
@@ -36,6 +38,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copie diagramas Mermaid como texto SVG ou exporte arquivos SVG independentes, inclusive nas prévias de README.",
       "Veja quanto custa cada turno e a conversa inteira no inspetor de contexto e na cápsula de uso do turno, com o uso da assinatura separado do gasto por uso.",
       "Use seu próprio vídeo como animação de inicialização: coloque um na pasta \"startup\" e a interface aparece com um fade ao terminar.",
       "Plugins podem listar projetos salvos e suas pastas sem trocar a sessão ativa.",
