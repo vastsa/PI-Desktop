@@ -154,6 +154,7 @@ async function checkConversationActionSpacing() {
       }
     });`);
   try {
+    await settle();
     for (const direction of ["in", "out"]) {
       const name = JSON.stringify(`work-panel-${direction}`);
       await click(".app-work-panel-toggle", false);
@@ -333,6 +334,9 @@ try {
   };
   await waitFor(() => evaluate(`!!document.querySelector('.main-pane') && !document.querySelector('.startup-splash')`), "ready shell");
   await evaluate("window.__PI_DESKTOP__.skipStartupOverlays()");
+  const restored = await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'restoreMainWindow'})`);
+  assert.equal(restored.ok, true, "restore the fixture window");
+  await waitFor(() => evaluate(`document.visibilityState === 'visible'`), "visible fixture window");
   await evaluate(`window.__PI_DESKTOP__.selectSession(${JSON.stringify(sessionId)})`);
   await waitFor(() => evaluate(`document.querySelector('.app-work-panel-toggle')?.disabled === false`), "active session");
   await settle();
@@ -499,9 +503,11 @@ try {
 } finally {
   socket?.close();
   for (const entry of pending.values()) clearTimeout(entry.timer);
-  if (child && child.exitCode === null) {
+  if (child && child.exitCode === null && child.signalCode === null) {
     const exited = once(child, "exit");
     child.kill();
+    await Promise.race([exited, delay(5000)]);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     await exited;
   }
   await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
