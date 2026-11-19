@@ -16,6 +16,7 @@ export const trEntries: ChangelogEntry[] = [
       "Eklenti ayrıntıları artık yayıncıyı, README'yi ve güvenlik notlarını gösteriyor; katalog okunurken kayboluyorlardı.",
       "GPT-6.2 Sol ve GPT-6.2 Astra modellerini OpenAI, ChatGPT, GitHub Copilot, OpenCode ve bunları yayımlayan ağ geçitlerinde, yayımlanan sınır ve fiyatlarıyla seçin.",
       "Ayarlar artık geçerli sayfanın üzerinde bir iletişim kutusu olarak açılıyor, kenar çubuğu Yeni görev, Zamanlanmış ve Eklenti pazarını en üste taşıyor ve kısa bir başlangıç rehberi model eklemenize ve eklenti başlatıcı kısayolunu öğrenmenize yardımcı oluyor.",
+      "Ayarlar → Görünüm → Kenar çubuğu modülleri bölümünden hangi kenar çubuğu modüllerinin görüneceğini seçin: Yeni görev, Zamanlanmış, Eklenti pazarı, sabitlenmiş oturumlar, Oturumlar, Projeler, araç çubuğu düğmeleri ve sürüm.",
     ],
   },
   {
