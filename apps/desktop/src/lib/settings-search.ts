@@ -411,6 +411,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     group: "system",
     keywordKeys: [
       "settings.application",
+      "settings.startupGuide",
       "settings.logs",
       "settings.feedback",
       "updates.title",

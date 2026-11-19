@@ -251,6 +251,9 @@ check("a model turn refreshes the plugin credential and uses its access token", 
 check("the refresh callback ran in the plugin process", readFileSync(hookPath, "utf8").includes("provider_oauth_refresh"));
 check("refresh credentials never enter model requests", !JSON.stringify(oauthRequest ?? {}).includes("plugin-refresh"));
 
+// Settings is a dialog: close any instance left from the OAuth step first.
+await ui.run(() => document.querySelector('[data-nav="close-settings"]')?.click());
+await ui.until(() => !document.querySelector(".settings-dialog"), null, "Settings dialog to close");
 await ui.click('button[data-nav="settings"]');
 await ui.until(() => Boolean(document.querySelector(".settings-shell-full")), null, "Settings before sign-out");
 const reopenedModels = await ui.run((label) => {

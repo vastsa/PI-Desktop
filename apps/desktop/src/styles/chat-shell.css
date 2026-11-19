@@ -964,11 +964,6 @@
   opacity: 0.6;
 }
 
-.home-onboarding-checklist {
-  margin-top: 0;
-  max-width: 100%;
-}
-
 @media (max-height: 760px) {
   .home-stack-inner {
     padding-top: 24px;

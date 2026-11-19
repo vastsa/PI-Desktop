@@ -26,12 +26,33 @@ const shortcutSource = await readFile(
   new URL("../../../packages/shared/src/keyboard-shortcuts.ts", import.meta.url),
   "utf8",
 );
-test("home sidebar exposes only the supported destination entries", () => {
+test("home sidebar exposes only the supported destination entries", async () => {
+  const navigationSource = await readFile(
+    new URL("../src/components/SidebarNavigation.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(sidebarSource, /data-nav="home"/);
-  assert.match(sidebarSource, /data-nav="plugins"/);
-  assert.doesNotMatch(sidebarSource, /data-nav="projects"/);
-  assert.match(sidebarSource, /data-nav="scheduled"/);
-  assert.doesNotMatch(sidebarSource, /t\("nav\.scheduled"\)/);
+  assert.match(sidebarSource, /<SidebarPrimaryNav onNewTask=\{onNewTask\}/);
+  assert.match(sidebarSource, /<SidebarFooter \/>/);
+  // Top: new task, scheduled, plugin market. Footer: settings + version only.
+  const primary = navigationSource.slice(
+    navigationSource.indexOf("export function SidebarPrimaryNav"),
+    navigationSource.indexOf("export function SidebarFooter"),
+  );
+  const footer = navigationSource.slice(navigationSource.indexOf("export function SidebarFooter"));
+  assert.deepEqual(
+    [...primary.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]),
+    ["new-task", "scheduled", "plugins"],
+  );
+  assert.deepEqual(
+    [...footer.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]),
+    ["settings", "build"],
+  );
+  assert.match(primary, /t\("nav\.pluginMarket"\)/);
+  assert.match(primary, /usePluginBrowseState\.getState\(\)\.setTab\("market"\)/);
+  assert.match(primary, /settings\?\.scheduledTasksEnabled !== false/);
+  assert.doesNotMatch(sidebarSource + navigationSource, /data-nav="projects"/);
+  assert.doesNotMatch(sidebarSource + navigationSource, /t\("nav\.scheduled"\)/);
 });
 
 test("sidebar brand returns to the chat home", () => {

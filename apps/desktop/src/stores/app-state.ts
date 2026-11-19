@@ -197,7 +197,12 @@ export type AppState = {
   toasts: ToastItem[];
   notifications: AppNotification[];
   unreadNotificationCount: number;
-  page: "chat" | "scheduled" | "plugins" | "settings";
+  page: "chat" | "scheduled" | "plugins";
+  /**
+   * Settings is a modal dialog over the current page, not a route. The dialog
+   * may still wait behind higher-priority startup overlays (guide, notice).
+   */
+  settingsOpen: boolean;
   /** Tab ids come from the shared settings index. */
   settingsTab: SettingsTabId;
   /** Pending row anchor (i18n key) to flash after landing on a settings tab. */
@@ -371,6 +376,10 @@ export type AppState = {
   handleAgentEvent: (envelope: AgentEventEnvelope) => void;
   handlePlansChanged: (event: PlanningStateEvent) => void;
   setPage: (page: AppState["page"], opts?: { record?: boolean }) => void;
+  /** Open the Settings dialog on its current (or the given) destination. */
+  openSettings: (tab?: AppState["settingsTab"]) => void;
+  closeSettings: () => void;
+  /** Open the Settings dialog on `tab`, even when that tab is already shown. */
   setSettingsTab: (tab: AppState["settingsTab"]) => void;
   setSettingsAnchor: (key: string | null) => void;
   navBack: () => void;
