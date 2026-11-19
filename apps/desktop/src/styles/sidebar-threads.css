@@ -300,9 +300,9 @@
 }
 
 .sidebar-session-group-body.standalone {
-  /* Five compact 28px rows plus the four 1px gaps between them, and the 2px
-     label inset, before the list starts scrolling internally. */
-  max-height: 146px;
+  /* Ten compact 28px rows plus the nine 1px gaps between them, and the 2px
+     label inset, before the Recent list starts scrolling internally. */
+  max-height: 291px;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
