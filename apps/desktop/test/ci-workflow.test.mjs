@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
@@ -65,17 +68,63 @@ test("CI does not typecheck workspace dependencies twice", () => {
   assert.doesNotMatch(ciWorkflowSource, /run: pnpm typecheck/);
 });
 
-test("release runners validate tags without a separate job barrier", () => {
-  assert.doesNotMatch(releaseWorkflowSource, /^  validate:/m);
-  assert.doesNotMatch(releaseWorkflowSource, /^    needs: validate$/m);
+test("automatic releases only build PRs merged into main and use the merge commit", () => {
   assert.match(
     releaseWorkflowSource,
-    /TAG_VERSION="\$\{GITHUB_REF_NAME#v\}"/,
+    /pull_request_target:\s+branches: \[main\]\s+types: \[closed\]/,
   );
+  assert.match(releaseWorkflowSource, /github\.event\.pull_request\.merged == true/);
   assert.match(
     releaseWorkflowSource,
-    /Tag v\$TAG_VERSION does not match apps\/desktop\/package\.json version \$APP_VERSION/,
+    /ref: \$\{\{ [^\n]+github\.event\.pull_request\.merge_commit_sha \|\| github\.sha \}\}/,
   );
+  assert.match(releaseWorkflowSource, /group: release-[^\n]+github\.event\.pull_request\.number/);
+  assert.doesNotMatch(releaseWorkflowSource, /github\.event\.pull_request\.head/);
+  const checkoutGuards = [...releaseWorkflowSource.matchAll(/allow-unsafe-pr-checkout: (.+)/g)];
+  assert.equal(checkoutGuards.length, 4);
+  for (const [, condition] of checkoutGuards) {
+    assert.equal(
+      condition,
+      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.merged == true }}",
+    );
+  }
+});
+
+test("release input resolution distinguishes PR previews, version tags, and branch runs", async (t) => {
+  const script = releaseWorkflowSource.match(/node <<'NODE'\n([\s\S]+?)\n\s+NODE/)?.[1];
+  assert.ok(script, "release input script is missing");
+  const scratch = await mkdtemp(join(tmpdir(), "pi-release-inputs-"));
+  t.after(() => rm(scratch, { recursive: true, force: true }));
+  const { version } = JSON.parse(desktopPackageSource);
+  const [major, minor, patch] = version.split("-")[0].split(".");
+  const preview = `${major}.${minor}.${Number(patch) + 1}-pr.42`;
+
+  for (const [prNumber, refType, refName, tag, previewVersion] of [
+    ["42", "branch", "main", `v${preview}`, preview],
+    ["", "tag", `v${version}`, `v${version}`, ""],
+    ["", "branch", "main", "", ""],
+    ["", "tag", "v999.0.0", null, ""],
+  ]) {
+    const output = join(scratch, `${prNumber}-${refName}`);
+    const { status, stderr } = spawnSync(process.execPath, ["-e", script], {
+      cwd: new URL("../../../", import.meta.url),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PR_NUMBER: prNumber,
+        GITHUB_REF_TYPE: refType,
+        GITHUB_REF_NAME: refName,
+        GITHUB_OUTPUT: output,
+      },
+    });
+    if (tag === null) {
+      assert.equal(status, 1);
+      assert.match(stderr, /does not match apps\/desktop\/package\.json version/);
+      continue;
+    }
+    assert.equal(status, 0, stderr);
+    assert.equal(await readFile(output, "utf8"), `tag=${tag}\npreview_version=${previewVersion}\n`);
+  }
 });
 
 test("release preparation overlaps independent work and avoids duplicate builds", () => {
@@ -90,15 +139,22 @@ test("release preparation overlaps independent work and avoids duplicate builds"
   );
   // The full JS build belongs to the verify gate; the build matrix only
   // builds the desktop app's workspace dependencies.
-  const buildJob = releaseWorkflowSource.match(/^  build:\n[\s\S]*?(?=^  publish:)/m)?.[0];
+  const buildJob = releaseWorkflowSource.match(/^  build:\n[\s\S]*?(?=^  pi-host-bundle:)/m)?.[0];
   assert.ok(buildJob, "release build job is missing");
   assert.doesNotMatch(buildJob, /run: pnpm build:js/);
 });
 
-test("release builds are gated on the CI checks and least-privilege permissions", () => {
+test("release verification and packaging run in parallel before the write-enabled publish job", () => {
   assert.match(releaseWorkflowSource, /^permissions:\n  contents: read$/m);
-  assert.match(releaseWorkflowSource, /^  verify:/m);
-  assert.match(releaseWorkflowSource, /^  build:\n[\s\S]*?^    needs: verify$/m);
+  for (const name of ["verify", "build", "pi-host-bundle"]) {
+    const job = releaseWorkflowSource.match(new RegExp(`^  ${name}:\\n[^]*?(?=^  [\\w-]+:)`, "m"))?.[0];
+    assert.ok(job, `release job ${name} is missing`);
+    assert.match(job, /^    needs: prepare$/m);
+    assert.match(job, /ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
+    if (name !== "verify") {
+      assert.match(job, /run: node scripts\/release\.mjs "\$PREVIEW_VERSION"[\s\S]*?pnpm install --frozen-lockfile/);
+    }
+  }
   const verifyJob = releaseWorkflowSource.match(/^  verify:\n[\s\S]*?(?=^  build:)/m)?.[0];
   assert.ok(verifyJob, "release verify job is missing");
   for (const step of [
@@ -112,6 +168,11 @@ test("release builds are gated on the CI checks and least-privilege permissions"
   }
   const publishJob = releaseWorkflowSource.match(/^  publish:\n[\s\S]*$/m)?.[0];
   assert.ok(publishJob, "release publish job is missing");
+  assert.match(publishJob, /^    needs: \[prepare, verify, build, pi-host-bundle\]$/m);
+  assert.match(publishJob, /if: needs\.prepare\.outputs\.tag != ''/);
+  assert.match(publishJob, /tag_name: \$\{\{ needs\.prepare\.outputs\.tag \}\}/);
+  assert.match(publishJob, /target_commitish: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
+  assert.match(publishJob, /prerelease: \$\{\{ contains\(needs\.prepare\.outputs\.tag, '-'\) \}\}/);
   assert.match(publishJob, /^    permissions:\n      contents: write$/m);
 });
 

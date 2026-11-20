@@ -174,6 +174,18 @@
 
 ## Release & Packaging
 
+## E2E-RELEASE-merged-pr-publishes-prerelease
+
+- **Preconditions**. The release workflow is enabled on `main` in the fork.
+- **Steps**. Close a PR without merging and confirm its release jobs are
+  skipped. Merge a PR into `main` and inspect its Release run and published
+  assets. Confirm the generated tag targets the merge commit and that the
+  macOS arm64 DMG and ZIP, Linux x64 and arm64 `pi-host` archives, and checksums
+  carry the same version. Repeat with another merge to check separate tags.
+- **Expected**. Successful verification and packages publish one GitHub
+  prerelease per merge. A failed verification or build prevents publication.
+  The latest stable release stays available to app update checks.
+
 ## E2E-192: Linux release publishes a system-Electron ASAR asset
 
 - **Preconditions**: A `vX.Y.Z` tag matches `apps/desktop/package.json`; the

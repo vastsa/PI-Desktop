@@ -13,11 +13,11 @@ section describes what the fork's workflow does.
 
 - **Repository**: releases, update feeds, and `pi-host` bundles come from
   `david-yang-pixel/PI-Desktop`.
-- **Lanes**: a `vX.Y.Z` tag builds the desktop for macOS arm64 only, plus the
+- **Lanes**: the workflow builds the desktop for macOS arm64 only, plus the
   `pi-host` bundles for Linux x64 and arm64. The Windows, Linux, and macOS
   Intel desktop steps remain in `release.yml` but no matrix row selects them.
 - **Signing**: nothing signs unless the repository variable
-  `MACOS_SIGN_RELEASE` is `true`. The fork leaves it unset, so tag builds are
+  `MACOS_SIGN_RELEASE` is `true`. The fork leaves it unset, so builds are
   unsigned and the secrets in §4.5 are not used. §2 and §4.5 to §4.6 describe
   the dormant upstream lane.
 - **Marker**: the unsigned lane passes
@@ -45,9 +45,17 @@ section describes what the fork's workflow does.
   same environment variable before running the Desktop build. The device flow
   takes no client secret. If the ID is omitted, the packaged connector offers
   personal access token sign-in.
-- **Cutting a release**: `node scripts/release.mjs <version> --tag`, then push
-  the branch and the tag. A `workflow_dispatch` run builds the same artifacts
-  without publishing.
+- **Automatic prereleases**. Every PR merged into `main` builds its merge
+  commit. Its GitHub prerelease tag uses the next patch number and the PR
+  number, such as `v0.23.1-pr.42` when the source version is `0.23.0`.
+  The desktop and both `pi-host` bundles embed the same version. The generated
+  version is applied only in the packaging jobs. Verification and packaging
+  run in parallel, and all jobs must pass before publication. Rerunning a
+  merge uses the same tag. Stable update checks continue to use the latest
+  stable release.
+- **Cutting a stable release**. Run `node scripts/release.mjs <version> --tag`,
+  then push the branch and the tag. The tag must match the committed app
+  version. A `workflow_dispatch` run on a branch builds Actions artifacts only.
 - **Known limitations**: an unsigned macOS build cannot update in place, and
   its first launch needs the quarantine attribute removed
   (`xattr -dr com.apple.quarantine /Applications/PI-Desktop.app`) or the app
@@ -192,7 +200,8 @@ Blocking steps:
    is a preview of the next stable line, add that **stable** version's
    entries (`x.y.z`) so testers can read "what's new" without a network
    fetch. Omit the catalog only when product explicitly ships no notes for
-   this cut.
+   this cut. The fork's automatic `-pr.N` builds are merge snapshots and
+   use the committed changelog and model catalog as-is.
 4. Sync the newest-first version list in
    `packages/shared/src/changelog.test.ts` (add the new stable version at the
    top), then run `pnpm --filter @pi-desktop/shared test` and confirm catalog
