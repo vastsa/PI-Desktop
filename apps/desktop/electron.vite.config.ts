@@ -89,6 +89,10 @@ export default defineConfig({
     define: {
       "process.env.WS_NO_BUFFER_UTIL": "\"1\"",
       "process.env.WS_NO_UTF_8_VALIDATE": "\"1\"",
+      // GitHub device flow uses the OAuth App's public client ID.
+      "process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID": JSON.stringify(
+        process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID?.trim() ?? "",
+      ),
       // The main bundle is ESM (`type: module`), where Node does not provide
       // the CommonJS `__dirname` global used by Electron's relative asset paths.
       "__dirname": "import.meta.dirname",

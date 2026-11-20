@@ -3749,7 +3749,9 @@ PowerShell-launched fixture; activation must not restore the native outline.
   contract fields. `github-device-flow.test.mjs`, `github-api.test.mjs`, and
   `github-connector-store.test.mjs` pin polling and expiry, the pinned host
   and error mapping (including SSO-partial listings and moved repositories),
-  and the stored record. `github-names.test.mjs` pins the name rules.
+  and the stored record. `github-connector-boot.test.mjs` verifies that a
+  configured public Client ID enables device login. `github-names.test.mjs`
+  pins the name rules.
   `github-login-session.test.mjs` pins the dialog adapter and the localized
   error text, and `github-avatar.test.mjs` the avatar host rule. `github-connector-settings-user-path.test.mjs`
   drives the page in an isolated Electron renderer against a mocked preload

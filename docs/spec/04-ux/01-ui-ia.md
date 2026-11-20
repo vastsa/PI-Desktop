@@ -581,9 +581,11 @@ Copy rules live in [02-i18n-english-first](02-i18n-english-first.md).
 
 ## Remote repository sessions
 
-The home composer offers a location picker with This computer and environments
-on paired Hosts. Selecting a remote environment reveals GitHub repository and
-branch pickers. The composer shows preparation and setup status. The session
+The home composer has a separate location row below the input card, with This
+computer and environments on paired Hosts. Selecting a remote environment
+reveals GitHub repository and branch pickers in the same row. The row wraps
+when space is limited and sits outside the input card's background and shadow.
+The composer shows preparation and setup status. The session
 top bar shows the Host, repository, work branch, and push and pull request
 actions. Remote Hosts settings includes environment editing and leftover
 worktree management when a Host is paired.

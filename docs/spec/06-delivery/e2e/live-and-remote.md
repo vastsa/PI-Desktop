@@ -793,6 +793,14 @@ do not end within 64 KiB are pinned byte-for-byte in
 
 ## E2E-REMOTE-composer-target-starts-isolated-repo-session
 
+On New Task, This computer is in a separate location row underneath the
+input card. Choose a paired environment and verify repository and branch
+pickers appear there. On a narrow window, the controls wrap inside the
+composer width. `home-empty-layout.test.mjs` pins the location outside
+the input card and the bottom-reserved home layout. The renderer suite
+(`pnpm test:e2e:remote-mvp-ui`) drives the pickers in Electron and verifies
+their placement, menu surface, and narrow-width wrapping.
+
 Run `PI_HOST_CORE_BINARY="$PWD/target/debug/pi-desktop-host-core" pnpm test:e2e:remote-workspace-git`.
 The fixture resolves a repository target, creates a local session, observes
 preparation and readiness, runs a setup script on the paired Host, and reads

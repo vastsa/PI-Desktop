@@ -672,8 +672,8 @@ export function Composer({
             workSessionId={activeSessionId ?? undefined}
             workSessionLabel={activeSessionSummary?.title}
           />
-          {variant === "home" && !activeSessionSummary?.remoteRepository && <SessionTargetRow />}
         </div>
+        {variant === "home" && !activeSessionSummary?.remoteRepository && <SessionTargetRow />}
       </div>
     </div>
   );

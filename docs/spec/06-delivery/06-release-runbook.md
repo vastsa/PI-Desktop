@@ -38,6 +38,13 @@ section describes what the fork's workflow does.
   which electron-builder treats every flag as a positional argument.
 - **Repository setup**. Enable GitHub Actions for build and release jobs.
   Enable GitHub Issues so the in-app feedback link can open an issue on the fork.
+- **GitHub connector login**. Register a GitHub OAuth App for the fork and
+  enable its device flow. Set the Actions repository variable
+  `PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID` to the app's public Client ID. The
+  release workflow embeds it in Electron main. For local builds, set the
+  same environment variable before running the Desktop build. The device flow
+  takes no client secret. If the ID is omitted, the packaged connector offers
+  personal access token sign-in.
 - **Cutting a release**: `node scripts/release.mjs <version> --tag`, then push
   the branch and the tag. A `workflow_dispatch` run builds the same artifacts
   without publishing.

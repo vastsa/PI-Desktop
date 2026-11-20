@@ -52,7 +52,7 @@ export function bootGitHubConnector({
     api: createGitHubApi(),
     runDeviceFlow: runGitHubDeviceFlow,
     emit: sendToRenderer,
-    clientId: GITHUB_OAUTH_CLIENT_ID,
+    clientId: process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID?.trim() || GITHUB_OAUTH_CLIENT_ID,
     openExternal: (url) => safeOpenExternal(url),
     now: () => new Date(),
     log: (level, message, data) =>

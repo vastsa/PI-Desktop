@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,10 @@ try {
   const html = await readFile(join(renderer, "index.html"), "utf8");
   const styles = [...html.matchAll(/href="([^" ]+\.css)"/g)].map(match => match[1]);
   assert.ok(styles.length, "Build Desktop before this acceptance check");
+  const routeStyles = (await readdir(join(renderer, "assets")))
+    .filter((name) => /^ChatSurface-.+\.css$/.test(name))
+    .map((name) => `assets/${name}`);
+  styles.push(...routeStyles);
   await cp(join(renderer, "assets"), join(temp, "assets"), { recursive: true });
   await writeFile(join(temp, "index.html"), `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"><title>Remote MVP test</title>${styles.map(path => `<link rel="stylesheet" href="${path}">`).join("")}<div id="root"></div><script src="renderer.js"></script>`);
   await writeFile(join(temp, "main.cjs"), `
