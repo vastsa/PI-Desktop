@@ -378,7 +378,7 @@ export function createSidecarRuntime({
   const s = new AgentSidecar((text) => logger.child("agent", text));
   wireSidecar(s);
   // The directory a session's file tools work in: its isolated worktree
-  // (ADR 0329), resolved by host-core from its own registry, or its project.
+  // (ADR 0329), project, or host-owned scratch directory (ADR 0124).
   const sessionFileRoot = async (sessionId: string): Promise<string | null> => {
     const host = runtimeState.host;
     if (!host) return null;
@@ -389,7 +389,11 @@ export function createSidecarRuntime({
       const location = await host.call<{ path?: string }>("worktree.location", { sessionId });
       return location.path?.trim() || null;
     }
-    return res?.session?.projectPath?.trim() || null;
+    if (!res?.session) return null;
+    const projectPath = res.session.projectPath?.trim();
+    if (projectPath) return projectPath;
+    const scratch = await host.call<{ path: string }>("session.getScratchPath", { sessionId });
+    return scratch.path?.trim() || null;
   };
   s.setProjectInstructionResolver(async ({ sessionId, projectPath, path }) => {
     // The root is registered by Electron main from the host-owned session
@@ -689,13 +693,7 @@ export function createSidecarRuntime({
   // Plugin authoring (D171): scaffold, validate and package a plugin without
   // leaving the session. Paths stay inside the open workspace.
   registerPluginDevTools(s, {
-    resolveWorkspace: async (sessionId) => {
-      try {
-        return await sessionFileRoot(sessionId);
-      } catch {
-        return null;
-      }
-    },
+    resolveWorkspace: sessionFileRoot,
     registerDevPlugin: async (path) => {
       if (!runtimeState.host) throw new Error("host unavailable");
       const loaded = await runtimeState.host.call<{ plugin?: { permissions?: string[] } }>(

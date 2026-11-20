@@ -39,6 +39,7 @@
 }
 
 .main-pane {
+  anchor-name: --main-pane;
   position: relative;
   display: flex;
   /* MainChat is the first-priority column and must never be compressed below
@@ -781,7 +782,6 @@
 .empty-hero .project-underline {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.2em;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -800,26 +800,17 @@
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
   text-decoration-color: var(--ds-text-faint);
+  transition: text-decoration-color 150ms ease;
 }
 
-.empty-hero .project-underline-chevron {
-  flex: none;
-  align-self: center;
-  color: var(--ds-text-faint);
-  transition: transform 150ms ease, color 150ms ease;
-}
-
-.empty-hero .project-underline:hover .project-underline-chevron,
-.empty-hero .project-underline[aria-expanded="true"] .project-underline-chevron {
-  color: var(--ds-text-secondary);
-}
-
-.empty-hero .project-underline[aria-expanded="true"] .project-underline-chevron {
-  transform: rotate(180deg);
+.empty-hero .project-underline:hover .project-underline-name,
+.empty-hero .project-underline[aria-expanded="true"] .project-underline-name {
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .empty-hero .project-underline-chevron {
+  .empty-hero .project-underline-name {
     transition: none;
   }
 }

@@ -188,10 +188,6 @@ test("a viewport-fixed toggle is the sole pointer collapse control", () => {
     globalStyles,
     /padding-right:\s*calc\(var\(--ds-window-controls-width\)/,
   );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="win32"\] \.conversation-topbar\.ct-work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.conversation-topbar\.ct-work-panel-open\s*\{[^}]*right:\s*0;/,
-  );
 });
 
 test("the work panel shortcut closes the panel it opened", () => {

@@ -9524,6 +9524,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         mark: {
           id: expect.any(String),
           throughMessageId: "recent-user",
+          createdAt: expect.any(String),
           generation: 1,
           summaryTokens: 7,
           contextTokens: 40_000,
