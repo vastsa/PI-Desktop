@@ -702,6 +702,39 @@
   white-space: nowrap;
 }
 
+.conversation-topbar .ct-project-menu {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.conversation-topbar .ct-project-trigger {
+  max-width: 100%;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-3xs);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.conversation-topbar .ct-project-trigger:hover,
+.conversation-topbar .ct-project-trigger[aria-expanded="true"] {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+}
+
+.conversation-topbar .ct-project-trigger:focus-visible {
+  outline: 2px solid var(--ds-focus);
+  outline-offset: 1px;
+}
+
+.conversation-topbar .ct-project-trigger:disabled {
+  cursor: default;
+}
+
 .conversation-topbar .ct-project > svg {
   flex: 0 0 auto;
 }

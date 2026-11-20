@@ -868,7 +868,8 @@ export const api = {
   /** Ask the host for a first-prompt title; it refuses a renamed session. */
   deriveSessionTitle: (id: string, title: string) =>
     invoke<{ updated: boolean }>(IPC.invoke.sessionDeriveTitle, id, title),
-  moveSessionProject: (sessionId: string, projectPath: string) =>
+  /** `projectPath: null` moves the session out of its project. */
+  moveSessionProject: (sessionId: string, projectPath: string | null) =>
     invoke<{ session: SessionSummary }>(IPC.invoke.sessionMoveProject, {
       sessionId,
       projectPath,

@@ -2880,12 +2880,18 @@ async fn handle_request(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
-            let project_path = params
-                .get("projectPath")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| rpc_err(1002, "projectPath required", "INVALID_PARAMS"))?;
+            // An explicit `null` detaches the session from its project; a
+            // missing key or a blank string remains a caller error.
+            let project_path = match params.get("projectPath") {
+                Some(Value::Null) => None,
+                value => Some(
+                    value
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| rpc_err(1002, "projectPath required", "INVALID_PARAMS"))?,
+                ),
+            };
             let st = state.lock().await;
             // An isolated session's worktree belongs to its project's repository.
             let isolated = crate::session_worktrees::registry::for_owner(&st.db, session_id, None)
