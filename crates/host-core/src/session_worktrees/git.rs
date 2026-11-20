@@ -165,6 +165,12 @@ impl GitRunner {
     /// argument list is readable by other local users, and the value carries
     /// the credential proxy handle. Inherited environment configuration is
     /// still removed, and every other safety flag still applies.
+    ///
+    /// git does its transfer in helper processes (`git remote-http`,
+    /// `git index-pack`). On Unix the command therefore runs in its own
+    /// process group, and the whole group is killed when the limit passes or
+    /// the returned future is dropped (a cancelled job): killing git alone
+    /// would leave the helpers transferring.
     pub async fn run_network(
         &self,
         dir: &Path,
@@ -172,8 +178,57 @@ impl GitRunner {
         args: &[&str],
         timeout: Duration,
     ) -> Result<GitOutput, GitError> {
-        self.spawn_within(self.network_command(dir, config, args), args, None, timeout)
-            .await
+        use tokio::io::AsyncReadExt;
+        let mut command = self.network_command(dir, config, args);
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = command.spawn().map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                GitError::Missing
+            } else {
+                GitError::Spawn(error)
+            }
+        })?;
+        // Declared after `child`, so it is dropped first: the group is
+        // signalled while its leader is still unreaped, which is what keeps
+        // the group id from having been reused.
+        let group = ProcessGroup::of(&child);
+        let mut stdout = child.stdout.take();
+        let mut stderr = child.stderr.take();
+        let finished = async {
+            let stdout = stdout.take();
+            let stderr = stderr.take();
+            let read_stdout = async {
+                let mut bytes = Vec::new();
+                if let Some(mut pipe) = stdout {
+                    let _ = pipe.read_to_end(&mut bytes).await;
+                }
+                bytes
+            };
+            let read_stderr = async {
+                let mut bytes = Vec::new();
+                if let Some(mut pipe) = stderr {
+                    let _ = pipe.read_to_end(&mut bytes).await;
+                }
+                bytes
+            };
+            tokio::join!(child.wait(), read_stdout, read_stderr)
+        };
+        let (status, stdout, stderr) =
+            tokio::time::timeout(timeout, finished)
+                .await
+                .map_err(|_| GitError::Timeout {
+                    args: args.join(" "),
+                    secs: timeout.as_secs(),
+                })?;
+        let status = status.map_err(GitError::Spawn)?;
+        // git ended by itself; there is nothing left to kill.
+        group.disarm();
+        Ok(GitOutput {
+            status: status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        })
     }
 
     fn network_command(&self, dir: &Path, config: &[(&str, &str)], args: &[&str]) -> Command {
@@ -283,6 +338,47 @@ impl GitRunner {
         #[cfg(windows)]
         command.creation_flags(0x0800_0000);
         command
+    }
+}
+
+/// The process group of a running network git. Dropping it while armed sends
+/// `SIGKILL` to every process in the group.
+struct ProcessGroup {
+    #[cfg(unix)]
+    id: Option<i32>,
+}
+
+impl ProcessGroup {
+    fn of(child: &tokio::process::Child) -> Self {
+        #[cfg(not(unix))]
+        let _ = child;
+        Self {
+            #[cfg(unix)]
+            id: child.id().and_then(|id| i32::try_from(id).ok()),
+        }
+    }
+
+    fn disarm(mut self) {
+        #[cfg(unix)]
+        {
+            self.id = None;
+        }
+        #[cfg(not(unix))]
+        let _ = &mut self;
+    }
+}
+
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(id) = self.id.take() {
+            // SAFETY: `killpg` only sends a signal. The group was created by
+            // this process for a child it has not reaped yet, so the id still
+            // names that group.
+            unsafe {
+                libc::killpg(id, libc::SIGKILL);
+            }
+        }
     }
 }
 
