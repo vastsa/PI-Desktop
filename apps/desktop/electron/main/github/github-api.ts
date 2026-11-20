@@ -5,8 +5,9 @@
  * on purpose:
  *
  * - Every request goes to `https://api.github.com`. The host is a constant;
- *   no caller supplies a URL, and a redirect is an error rather than a hop the
- *   `Authorization` header could follow.
+ *   no caller supplies a URL, and a redirect is never followed, so the
+ *   `Authorization` header cannot travel to another address. GitHub redirects
+ *   a renamed or transferred repository; that is reported as "not found".
  * - Owner, repository, and branch names are checked (`./names`) before they
  *   become a path segment or a query value, and are encoded where they land.
  * - Failures are typed. A revoked token, a rate limit, a refusal, and an
@@ -126,6 +127,41 @@ function redact(value: string, token: string): string {
 function detail(value: unknown, token: string): string {
   if (typeof value !== "string") return "";
   return redact(value, token).replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
+}
+
+/**
+ * How a transport says "that was a redirect and I did not follow it". Node's
+ * fetch returns the 3xx response. Electron's `net.fetch` — the process fetch
+ * in main — rejects with "Redirect was cancelled" instead, and a browser-style
+ * fetch returns an opaque response with status 0.
+ */
+function isRedirectResponse(response: Response): boolean {
+  return (response.status >= 300 && response.status < 400) || response.type === "opaqueredirect";
+}
+
+function isRefusedRedirect(error: unknown): boolean {
+  return error instanceof Error && /\bredirect/i.test(error.message);
+}
+
+/**
+ * A redirect that was not followed. GitHub answers a repository's old name
+ * with a 301 after a rename or transfer; retrying that name never works, so
+ * it is "not found". Nothing moves an account endpoint, so a redirect there
+ * is something between the app and GitHub.
+ */
+function redirectFailure(path: string, status?: number): GitHubApiError {
+  if (path.startsWith("/repos/")) {
+    return new GitHubApiError(
+      ErrorCodes.GITHUB_NOT_FOUND,
+      "This repository was renamed or moved on GitHub. Pick it again from the list.",
+      { status },
+    );
+  }
+  return new GitHubApiError(
+    ErrorCodes.GITHUB_NETWORK,
+    "GitHub could not be reached: the request was redirected.",
+    { retriable: true, status },
+  );
 }
 
 function unreadable(status?: number): GitHubApiError {
@@ -318,7 +354,7 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
     const init: RequestInit = {
       method,
       headers,
-      redirect: "error",
+      redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     };
     if (body !== undefined) {
@@ -331,6 +367,7 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
     try {
       response = await doFetch(url.toString(), init);
     } catch (error) {
+      if (isRefusedRedirect(error)) throw redirectFailure(path);
       const name = (error as { name?: unknown } | null)?.name;
       if (name === "TimeoutError" || name === "AbortError") {
         throw new GitHubApiError(
@@ -345,6 +382,9 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
         reason ? `GitHub could not be reached: ${reason}` : "GitHub could not be reached.",
         { retriable: true },
       );
+    }
+    if (isRedirectResponse(response)) {
+      throw redirectFailure(path, response.status > 0 ? response.status : undefined);
     }
     if (!response.ok) throw await failureFor(response, token, now);
     try {

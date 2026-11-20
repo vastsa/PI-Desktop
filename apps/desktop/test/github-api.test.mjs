@@ -94,7 +94,8 @@ function assertGitHubHeaders(request) {
   assert.equal(headers.get("x-github-api-version"), "2022-11-28");
   assert.equal(headers.get("authorization"), `Bearer ${TOKEN}`);
   assert.equal(headers.get("user-agent"), "pi-desktop");
-  assert.equal(request.init.redirect, "error");
+  // Never followed: the Authorization header must not travel to another URL.
+  assert.equal(request.init.redirect, "manual");
   assert.ok(request.init.signal instanceof AbortSignal, "the request carries a timeout signal");
   assert.equal(new URL(request.url).origin, "https://api.github.com");
 }
@@ -277,6 +278,98 @@ test("a missing repository is not found", async () => {
   const error = await rejection(createGitHubApi({ fetchImpl }).listBranches(TOKEN, REPO));
   assert.equal(error.errorCode, "GITHUB_NOT_FOUND");
   assert.equal(error.retriable, false);
+});
+
+test("a renamed or transferred repository is not found, and the redirect is never followed", async () => {
+  const pull = { head: "feature", base: "main", title: "t", body: "", draft: false };
+  for (const status of [301, 302, 307, 308]) {
+    const { fetchImpl, requests } = scriptedFetch(
+      () =>
+        new Response(JSON.stringify({ message: "Moved Permanently" }), {
+          status,
+          headers: { location: "https://api.github.com/repositories/1296269" },
+        }),
+    );
+    const api = createGitHubApi({ fetchImpl });
+    for (const call of [
+      () => api.listBranches(TOKEN, REPO),
+      () => api.findPullRequest(TOKEN, REPO, "feature"),
+      () => api.createPullRequest(TOKEN, REPO, pull),
+    ]) {
+      requests.length = 0;
+      const error = await rejection(call());
+      assert.ok(error instanceof GitHubApiError);
+      assert.equal(error.errorCode, "GITHUB_NOT_FOUND");
+      // Retrying the old name can never succeed.
+      assert.equal(error.retriable, false);
+      assert.equal(error.status, status);
+      assert.match(error.message, /renamed or moved/);
+      assert.equal(requests.length, 1, "the redirect target is never requested");
+      assert.equal(new URL(requests[0].url).origin, "https://api.github.com");
+    }
+  }
+});
+
+test("a repository that moves between pages fails the listing the same way", async () => {
+  const { fetchImpl, requests } = scriptedFetch((request) => {
+    if (!new URL(request.url).pathname.endsWith("/branches")) return json({ default_branch: "main" });
+    return new Response(null, { status: 301, headers: { location: "https://evil.example/x" } });
+  });
+  const error = await rejection(createGitHubApi({ fetchImpl }).listBranches(TOKEN, REPO));
+  assert.equal(error.errorCode, "GITHUB_NOT_FOUND");
+  assert.equal(requests.length, 2);
+});
+
+test("the app's transport reports a refused redirect by throwing, and it means the same", async () => {
+  // Electron's net.fetch, which main installs as the process fetch, rejects
+  // with this error for redirect: "manual" instead of returning the 3xx.
+  const thrown = scriptedFetch(() => {
+    throw new Error("Redirect was cancelled");
+  });
+  const thrownError = await rejection(
+    createGitHubApi({ fetchImpl: thrown.fetchImpl }).listBranches(TOKEN, REPO),
+  );
+  assert.equal(thrownError.errorCode, "GITHUB_NOT_FOUND");
+  assert.equal(thrownError.retriable, false);
+  assert.match(thrownError.message, /renamed or moved/);
+  assert.equal(thrown.requests.length, 1);
+
+  // A browser-style fetch hands back an opaque redirect with status 0.
+  const opaque = scriptedFetch(() => ({
+    type: "opaqueredirect",
+    status: 0,
+    ok: false,
+    headers: new Headers(),
+    text: async () => "",
+    json: async () => {
+      throw new Error("no body");
+    },
+  }));
+  const opaqueError = await rejection(
+    createGitHubApi({ fetchImpl: opaque.fetchImpl }).findPullRequest(TOKEN, REPO, "feature"),
+  );
+  assert.equal(opaqueError.errorCode, "GITHUB_NOT_FOUND");
+  assert.equal(opaqueError.retriable, false);
+});
+
+test("a redirect on an account endpoint is a network problem, and is not followed either", async () => {
+  // Nothing moves /user; a redirect there is a portal or proxy in the way.
+  for (const respond of [
+    () => new Response(null, { status: 302, headers: { location: "https://portal.example/login" } }),
+    () => {
+      throw new Error("Redirect was cancelled");
+    },
+  ]) {
+    const { fetchImpl, requests } = scriptedFetch(respond);
+    const api = createGitHubApi({ fetchImpl });
+    for (const call of [() => api.viewer(TOKEN), () => api.listRepositories(TOKEN)]) {
+      requests.length = 0;
+      const error = await rejection(call());
+      assert.equal(error.errorCode, "GITHUB_NETWORK");
+      assert.equal(error.retriable, true);
+      assert.equal(requests.length, 1);
+    }
+  }
 });
 
 test("a GitHub outage and an unreadable answer are retriable network failures", async () => {
