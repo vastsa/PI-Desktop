@@ -12,8 +12,8 @@
 
 <br />
 
-[![Release](https://img.shields.io/github/v/release/vastsa/PI-Desktop?label=release)](https://github.com/vastsa/PI-Desktop/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/vastsa/PI-Desktop/total?label=downloads)](https://github.com/vastsa/PI-Desktop/releases)
+[![Release](https://img.shields.io/github/v/release/david-yang-pixel/PI-Desktop?label=release)](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/david-yang-pixel/PI-Desktop/total?label=downloads)](https://github.com/david-yang-pixel/PI-Desktop/releases)
 [![Stars](https://img.shields.io/github/stars/vastsa/PI-Desktop?style=flat\&label=stars)](https://github.com/vastsa/PI-Desktop/stargazers)
 [![CI](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/vastsa/PI-Desktop)](LICENSE)
@@ -22,7 +22,7 @@
 
 <br />
 
-**[立即下载](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
+**[立即下载](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)** ·
 [使用文档](https://pi-docs.aiuo.net/) ·
 [插件开发](docs/plugin-development.md) ·
 [界面预览](docs/guide/screenshots.md) ·
@@ -563,29 +563,28 @@ Agent / Plan / Goal
 
 <div align="center">
 
-### [下载 PI-Desktop →](https://github.com/vastsa/PI-Desktop/releases/latest)
+### [下载 PI-Desktop →](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)
 
-**macOS · Windows · Linux**
+**macOS 桌面端 · Linux 远程 Host**
 
 </div>
 
 ### 安装包
 
-| Platform | Architecture  | Package                                 |
-| -------- | ------------- | --------------------------------------- |
-| macOS    | Apple Silicon | `.dmg` / `.zip`                         |
-| macOS    | Intel         | `.dmg` / `.zip`                         |
-| Windows  | x64           | 安装程序 / `.zip`                       |
-| Linux    | x64 / ARM64   | `.AppImage` / `.deb` / `.rpm` / `.asar` |
+| 平台  | 架构          | 安装包                            |
+| ----- | ------------- | --------------------------------- |
+| macOS | Apple Silicon | 桌面端 `.dmg` / `.zip`            |
+| Linux | x64 / arm64   | 无界面 `pi-host` `.tar.gz`       |
 
-macOS Release 使用 Developer ID 签名并经过 Apple Notarization。
+macOS 安装包使用临时签名，更新时需要手动安装。
+Intel Mac、Windows 和 Linux 桌面端安装包请见[上游发布页](https://github.com/vastsa/PI-Desktop/releases)。
 
 <details>
 <summary><strong>Linux Compatibility</strong></summary>
 
 <br />
 
-Linux 软件包（x64 与 arm64）需要 **glibc 2.35+**。
+Linux `pi-host` 软件包需要 **glibc 2.35+**。
 
 常见支持版本：
 
@@ -755,7 +754,7 @@ PI-Desktop 使用 **GNU Lesser General Public License v3.0**。
 
 <br />
 
-**[立即下载](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
+**[立即下载](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)** ·
 [Documentation](https://pi-docs.aiuo.net/) ·
 [Build a Plugin](docs/plugin-development.md)
 

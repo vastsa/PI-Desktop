@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
+      "Starte Remote-Sitzungen aus einem GitHub-Repository in einem isolierten Worktree, pushe den Sitzungsbranch und öffne einen Pull Request direkt in der Desktop-App.",
       "Aktiviere OpenAI Fast pro Modell und nutze /fast im Gespräch für bevorzugte Verarbeitung; dadurch können Abo-Limits schneller sinken oder die Kosten pro Token steigen.",
       "Inline-Visualisierungen laden mit wiederverwendbaren Diagrammhelfern schneller; fehlgeschlagene Skripte zeigen jetzt hilfreiche Fehler statt leerer Karten.",
       "Teste MCP-Server im Ordner des ausgewählten Projekts; nach einem erfolgreichen Test können Projektsitzungen inaktive fehlgeschlagene Verbindungen wiederherstellen.",

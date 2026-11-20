@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
+      "Start remote sessions from a GitHub repository in an isolated worktree, then push the session branch and open a pull request from Desktop.",
       "Turn on OpenAI Fast mode per model and use /fast in a conversation to request priority service; it may use subscription limits faster or cost more per token.",
       "Inline visualizations load faster with reusable chart helpers, and failed scripts now show actionable errors instead of blank cards.",
       "Test MCP servers from the selected project folder; after a successful test, project sessions can recover idle failed connections.",
