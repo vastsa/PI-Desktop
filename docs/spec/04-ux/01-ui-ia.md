@@ -502,10 +502,10 @@ shared capability contract:
   switcher of the sidebar's open projects instead of the folder picker. An
   open project with no session yet names the hero the same way, because that
   empty home already belongs to it and a task started there lands in the
-  project. A temporary session shows dedicated temporary-chat copy, and with
-  no project open the generic welcome title stands; both show a quiet,
-  borderless "No project" caption under the title that opens the same
-  switcher. The switcher
+  project. A temporary session shows dedicated temporary-chat copy whose scope
+  word ("temporarily" / 临时) is underlined like a project name and opens the
+  same switcher; with no project and no session the generic welcome title
+  stands. The switcher
   lists "No project" first, so the next task can leave or join a project from
   the empty home.
 - New task resolves the temporary group by its most recent session: if that

@@ -369,6 +369,8 @@ export const de = {
     "emptyTitle": "Was kann ich Ihnen beim Aufbau helfen?",
     "emptyTitleInProject": "Was können wir in {{project}} bauen?",
     "emptyTitleTemporary": "Was würden Sie gerne vorübergehend erkunden?",
+    "emptyTitleTemporaryScoped": "Was würden Sie gerne {{scope}} erkunden?",
+    "temporaryScope": "vorübergehend",
     "placeholder": "Bitten Sie PI-Desktop um Hilfe bei allem",
     "placeholderHome": "Fragen Sie alles",
     "placeholderHint": "Geben Sie / für Befehle · @ für Dateien ein",
