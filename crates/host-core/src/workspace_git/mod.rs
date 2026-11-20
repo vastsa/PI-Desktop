@@ -10,6 +10,11 @@
 
 pub mod layout;
 pub mod registry;
+pub mod repository;
+pub mod worktree;
+
+#[cfg(test)]
+pub(crate) mod test_support;
 
 /// A failure that reaches the RPC surface with a stable code: one of the
 /// `WORKSPACE_GIT_*` codes, or `INVALID_ARGUMENT` for a refused name.
