@@ -45,7 +45,7 @@ const TEMPORARY_KEY = "temporary";
 /**
  * The empty home's project picker: the underlined word in the title. In a
  * project it is the project name; in a temporary conversation it is the scope
- * word ("temporarily"). Both menus list "No project" first so the next task
+ * word ("temporarily"). Both menus list "Temporary chat" first so the next task
  * can leave or join a project from the same place (#2455).
  */
 export function HomeProjectSwitcher({

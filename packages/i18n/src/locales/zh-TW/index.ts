@@ -2147,7 +2147,7 @@ sklm: {
     createFolderRequired: "請至少新增一個資料夾。",
     active: "當前",
     switchProject: "切換專案",
-    noProject: "不使用專案",
+    noProject: "臨時會話",
     noProjectHint: "不屬於任何專案的臨時對話",
     clone: "克隆 Git 專案",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",

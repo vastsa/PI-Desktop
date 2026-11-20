@@ -1012,7 +1012,7 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 
 - **Preconditions**: Two projects are open; one idle conversation with
   messages belongs to the first project and one temporary conversation exists.
-- **Steps**: 1) Open the project conversation and choose "No project" from the
+- **Steps**: 1) Open the project conversation and choose "Temporary chat" from the
   topbar project crumb. 2) Choose the second project from the same crumb. 3)
   Open the temporary conversation's empty home or topbar and choose a project.
   4) Start a turn and open the crumb while it runs.

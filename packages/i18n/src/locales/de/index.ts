@@ -2152,7 +2152,7 @@ sklm: {
     "createFolderRequired": "Füge mindestens einen Ordner hinzu.",
     "active": "Aktiv",
     "switchProject": "Projekt wechseln",
-    "noProject": "Kein Projekt",
+    "noProject": "Temporärer Chat",
     "noProjectHint": "Temporärer Chat außerhalb von Projekten",
     "clone": "Git-Projekt klonen",
     "cloneUrlPlaceholder": "https://github.com/org/repo.git",
