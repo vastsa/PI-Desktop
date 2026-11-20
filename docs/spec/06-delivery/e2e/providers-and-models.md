@@ -1145,7 +1145,11 @@ with only Host API controlled. Running-turn configuration remains queued.
     the full transcript and carries the existing summary forward instead of
     reporting that there is no new context to compact.
   - The budget reminders appear at most once each per checkpoint window, never
-    in the transcript, and never in a persisted system prompt.
+    in the transcript, and never in a persisted system prompt. On a model
+    without mid-conversation system messages (for example a local OpenAI
+    compatible endpoint) the leading system message of the request that carries
+    a reminder is byte-identical to the previous request's, so the provider's
+    prefix cache stays warm.
   - Idle `/compact` succeeds and shows its own informational toast on top of the
     compaction warning, because the user asked for it. Compaction failures
     surface once through `CONTEXT_COMPACTION_FAILED` without duplicate error
