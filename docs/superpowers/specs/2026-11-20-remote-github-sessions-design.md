@@ -119,9 +119,16 @@ Parts are listed in delivery order. Each part is independently testable.
   `build.publish` and `homepage`, `apps/desktop/resources/app-update.yml`, and
   `RELEASES_URL` in `updater.ts` point at the fork.
 - `.github/workflows/release.yml`: macOS signing becomes conditional on the
-  signing secrets being present, and the hard-coded Apple team ID check reads
-  the expected team from a repository variable. Without secrets the macOS lane
-  produces unsigned artifacts instead of failing the release.
+  signing secrets being present. Without secrets the macOS lane produces
+  unsigned artifacts instead of failing the release.
+- The upstream Apple team ID is hard-coded in the workflow (the secrets check
+  and `CSC_NAME`) and in `scripts/notarize-and-staple-macos-release-dmg.sh`,
+  `scripts/release-macos.sh`, and `scripts/verify-macos-release.sh`. All of
+  them read the expected team from one repository variable instead.
+- An unsigned macOS build is stamped at build time with a metadata marker,
+  next to the existing `piDistribution` field. `supportsAutomaticUpdates`
+  reads it. Today every packaged macOS build counts as auto-update capable,
+  and nothing inspects the signature.
 - The `pi-host-bundle` job is unchanged in content; it now publishes to the
   fork's release, which is where the desktop looks.
 - `mirror-to-cnb.yml` and `pi-triage.yml` / `pi.yml` are disabled on the fork
@@ -131,8 +138,8 @@ Parts are listed in delivery order. Each part is independently testable.
 
 - A tag `vX.Y.Z` on the fork produces desktop installers and
   `pi-host-X.Y.Z-linux-{x64,arm64}.tar.gz` with `.sha256` sidecars.
-- An unsigned macOS build reports the existing "manual" update mode; it never
-  attempts an in-app update.
+- An unsigned macOS build, through that marker, reports the existing "manual"
+  update mode; it never attempts an in-app update.
 - Version numbers keep the upstream `X.Y.Z` shape and are bumped with
   `scripts/release.mjs`. The host bundle version must equal `APP_VERSION`.
 
@@ -140,19 +147,43 @@ Parts are listed in delivery order. Each part is independently testable.
 
 ### Part 2 — Host git workspace capability (`workspaceGit`)
 
-**Layout on the host** (under the `pi-host` data directory, which is inside
-the default browse root):
+**Layout on the host**
 
 ```text
-<dataDir>/repos/github.com/<owner>/<repo>/              main checkout, never edited by sessions
-<dataDir>/worktrees/github.com/<owner>/<repo>/<shortid>/ one per session, branch pi-desktop/<shortid>
+<workspacesRoot>/repos/github.com/<owner>/<repo>/               main checkout, never edited by sessions
+<workspacesRoot>/worktrees/github.com/<owner>/<repo>/<shortid>/ one per session, branch pi-desktop/<shortid>
 ```
 
+`workspacesRoot` is a new `pi-host` setting that defaults to
+`~/pi-workspaces`. It must be inside the browse root and outside the data
+directory: `pi-host` treats its data directory as protected, and plugin file
+reads refuse any root inside it.
+
 The main checkout is a normal (non-bare) clone left on the default branch. It
-is the remote project's directory, so every existing remote-project feature
-that needs a directory (file view, instruction loading) keeps working. Session
-worktrees are created from `refs/remotes/origin/<baseBranch>` after a fetch,
-so the base branch choice is per session.
+is the remote project's directory, so the existing remote-project features
+that need a directory (file view, plugin file reads) keep working at project
+level. Session worktrees are created from `refs/remotes/origin/<baseBranch>`
+after a fetch, so the base branch choice is per session.
+
+**Worktree ownership**
+
+RACP mints a new random device id on every pairing, and host realignment
+re-pairs. A registry keyed by device id would orphan every worktree on each
+fork release. The registry is therefore keyed by the desktop's stable
+installation id (the existing `createInstallationIdentity` value), which the
+desktop supplies with each `workspaceGit` request.
+
+That id is a label, not a credential. Every caller of these operations already
+holds the owner role, which can run arbitrary Bash on the host, so a forged
+label grants nothing the caller lacks. It exists so one desktop's reconcile
+never removes another desktop's worktrees by accident.
+
+**Transport restriction**
+
+The credential operation is accepted only for hosts reached over the desktop's
+own SSH forward, a `wss://` URL, or a loopback `ws://` URL (a forward the user
+opened themselves). A non-loopback `ws://` host is refused before the token is
+sent, with a typed error.
 
 **RACP surface** (all `role: "owner"`, `profile: "remote-host"`; capability
 flag `workspaceGit: Optional<boolean>`):
@@ -161,6 +192,7 @@ flag `workspaceGit: Optional<boolean>`):
 | --- | --- |
 | `workspace/gitCredentialSet` | Hand the host the GitHub token for this connection; held in `pi-host` memory only |
 | `workspace/gitCredentialClear` | Drop it; also implicit on disconnect |
+| `workspace/gitRepository` | Resolve a repository to its canonical main checkout path on this host and report whether it is cloned. No side effects |
 | `workspace/gitPrepare` | Start a prepare job: ensure clone, fetch, create worktree and work branch, run setup script. Returns a job id immediately |
 | `workspace/gitPush` | Start a push job for a worktree's work branch |
 | `workspace/gitJob` | Poll a job: phase, optional progress, terminal result or typed error |
@@ -187,6 +219,11 @@ and every git invocation separates options from operands with `--`.
   registry in a `kv` namespace on the host's own database, runs jobs as tasks,
   and runs the setup script through the Bash tool path with a 30-minute limit
   and a retained log tail, as the local setup command does.
+- `GitRunner` gains a network variant for clone, fetch, and push. The existing
+  runner has a fixed 120-second limit and strips environment-carried git
+  configuration on purpose. The variant takes a caller-supplied limit and
+  passes the proxy rewrite as an explicit `-c` option; it keeps stripping
+  inherited configuration and keeps every other safety flag.
 - **pi-host** (Node): validates and forwards the RACP operations, namespaces
   session keys by device as `workspace-tools.ts` does, and runs the credential
   proxy below.
@@ -200,11 +237,21 @@ proxy accepts `/<handle>/<owner>/<repo>.git/...` only for that worktree's
 repository. For `git-receive-pack` it parses the ref-update lines and rejects
 any ref other than the worktree's own work branch.
 
-Git reaches the proxy through per-command configuration
-(`url.<proxy>/<handle>/.insteadOf=https://github.com/`), supplied as
-environment-carried git config. The stored remote URL stays
+Git reaches the proxy through a per-command URL rewrite scoped to the
+session's repository. Host-run git gets it as a `-c` option; the Agent's Bash
+gets it as environment-carried git configuration. The stored remote URL stays
 `https://github.com/<owner>/<repo>.git`, so a host restart with a new port
 needs no rewrite.
+
+The token is attached only to requests for the session's repository. Any
+other GitHub URL behaves as if there were no proxy: public repositories,
+submodules, and git-based dependencies work anonymously. Private repositories
+other than the session's own are not reachable; that is a known limit of this
+version.
+
+The handle appears in host-run git arguments and in the Agent's environment.
+It is not the token: it is usable only on the host's loopback interface, only
+for one repository, and for pushes only to one branch.
 
 Result: host-core's own clone, fetch, and push, and the Agent's `git` inside
 Bash, all authenticate without the token ever reaching host-core, a child
@@ -311,6 +358,19 @@ shape (which must not gain fields: it rejects unknown ones). The sidebar shows
 it as `owner/repo` with a cloud mark and the host label. Two environments on
 the same host share the repository's project group.
 
+A separate `kv` record keyed by group id marks the group as a repository
+project and stores `owner/repo` and the default branch. In a repository
+project **no session ever runs tools in the main checkout**:
+
+- A session with no workspace binding fails tool calls closed.
+- "New task in this project" from the sidebar opens the new-session composer
+  with that host and repository preselected, so the user picks the branch.
+- Forking a session creates a new worktree at the parent work branch's current
+  commit. Uncommitted changes are not carried over, as with local isolated
+  sessions.
+- A scheduled task in a repository project prepares a worktree from the
+  default branch when it fires.
+
 **Session workspace binding**
 
 A `kv` record keyed by session id:
@@ -321,18 +381,27 @@ A `kv` record keyed by session id:
 ```
 
 `remote_tools::remote_workspace_of` consults this record first and, when the
-state is `ready`, returns the worktree path instead of the group's path. The
-four known call sites that read the group binding directly
-(`resolve_tool_workspace_for_call`, `resolve_persisted_project_workspace`,
-Electron's `remoteWorkspaceForFiles`, and the worktree probe's remote refusal)
-are routed through the same resolution. A session whose record is not `ready`
-fails tool calls closed with `REMOTE_WORKSPACE_NOT_READY`.
+state is `ready`, returns the worktree path instead of the group's path. Five
+known places read the group binding directly and are routed through the same
+resolution:
+
+- `decorate_session`, which feeds `session.remoteWorkspace` and therefore the
+  Agent's working directory and instruction loading;
+- `resolve_tool_workspace_for_call`;
+- `resolve_persisted_project_workspace`;
+- Electron's `remoteWorkspaceForFiles`;
+- the worktree probe's remote refusal.
+
+A session whose record is not `ready` fails tool calls closed with
+`REMOTE_WORKSPACE_NOT_READY`.
 
 **First prompt**
 
 1. Renderer sends the create request with the remote target.
-2. Electron main ensures the repository project group, then host-core creates
-   the session and its binding in state `preparing`.
+2. Electron main asks the host for the repository's main checkout path
+   (`workspace/gitRepository`), ensures the repository project group with that
+   path, then host-core creates the session and its binding in state
+   `preparing`.
 3. Main sets the credential on the host, starts `workspace/gitPrepare`, polls
    the job, and relays phases to the renderer: cloning or fetching, creating
    the branch, running setup.
@@ -368,12 +437,17 @@ becomes `failed` and retryable.
   commits or uncommitted files produce the loss warning. Deletion then removes
   the worktree and the local work branch. The remote branch on GitHub is never
   deleted.
-- **Host offline at delete**: the session is deleted locally and a pending
-  removal is recorded; it is carried out on the next connection.
+- **Host offline at delete**: the warning says unpushed work cannot be
+  checked. On confirmation the session is deleted locally and a pending
+  removal is recorded; it is carried out, forced, on the next connection. The
+  user consented to the loss.
 - **Reconcile on connect**: the desktop lists its own worktrees on the host
-  and removes those that have neither a local binding nor a pending removal
-  and are older than a day. Worktrees owned by another device are never
-  touched.
+  and looks at those that have neither a local binding nor a pending removal
+  and are older than a day. It removes one only when it has no uncommitted
+  files and no unpushed commits. The rest are listed under Settings → Remote
+  hosts as leftover worktrees with a manual delete. Nothing unattended ever
+  discards work the user was not warned about.
+- Worktrees labelled with another installation id are never touched.
 - Archiving a session cleans nothing up.
 
 ### Part 6 — GitHub tools for the Agent
@@ -413,7 +487,7 @@ designed at that point.
 | Asset or risk | Treatment |
 | --- | --- |
 | GitHub token at rest | Desktop secret store only |
-| GitHub token in transit | RACP over the SSH tunnel, in a dedicated owner-only operation |
+| GitHub token in transit | A dedicated owner-only RACP operation, refused unless the host is reached over SSH, `wss://`, or loopback |
 | GitHub token on the host | `pi-host` memory, dropped on disconnect; never in host-core, child processes, disk, or logs |
 | Agent-run git | Authenticates through the proxy; limited to its repository and, for pushes, its work branch |
 | Injection through repository or branch names | Strict validation, `--` separation, no shell composition |
@@ -469,7 +543,33 @@ before implementation of Part 2.
 3. The owner registers a GitHub OAuth App with device flow enabled and
    provides its client ID. Until then, sign-in is by pasted token only.
 
-## 10. Left to the builder
+## 10. Calls made by the designer
+
+These were not decided by the owner. Each is the designer's call and can be
+overturned in review.
+
+1. Worktree ownership is labelled with the desktop installation id, not the
+   RACP device id (Part 2).
+2. The git credential is refused on non-loopback `ws://` hosts (Part 2).
+3. The proxy authenticates only the session's own repository; other private
+   repositories are unreachable in this version (Part 2).
+4. Repositories and worktrees live under `~/pi-workspaces` on the host
+   (Part 2).
+5. Scopes are `repo` and `read:org`; `workflow` is an opt-in checkbox
+   (Part 3).
+6. Repository projects never run tools in the main checkout; fork, sidebar
+   new-task, and scheduled tasks behave as listed (Part 4).
+7. Unattended removal forces only after an explicit warning; reconcile removes
+   only clean, fully pushed worktrees (Part 5).
+8. The work branch is `pi-desktop/<shortid>`, and the proxy restricts pushes
+   to it (Parts 2 and 5).
+9. Push and Create PR never commit for the user (Part 5).
+10. A user-created MCP record with id `github` overrides the built-in one
+    (Part 6).
+11. Feedback issue links follow the release repository to the fork; the
+    plugin marketplace and docs site stay on upstream (§4.3).
+
+## 11. Left to the builder
 
 - Exact names of new modules, IPC channels, kv namespaces, and error codes.
 - Polling cadence and job retention on the host.
