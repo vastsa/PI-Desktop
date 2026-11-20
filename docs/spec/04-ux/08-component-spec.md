@@ -365,14 +365,15 @@ titles are host-owned. The editor closes if the active session changes.
 - Background: bg-primary for the conversation bar and every route-owned
   frameless drag band
 - Border: border-subtle bottom on every route-owned titlebar surface
-- Position: absolute 46px frameless band; `-webkit-app-region: drag` with
-  `no-drag` on interactive controls; macOS reserves the left 88px for traffic
-  lights (only when the sidebar is collapsed), Windows/Linux reserve the right
-  120px for native window controls (112px hit targets plus an 8px visual
-  buffer). The conversation titlebar also reserves the 28px work-panel toggle
-  while the panel is closed. While the panel is open, that 120px band plus the
-  toggle overlay the panel header instead, and the header ends its box before
-  the band so the panel tab strip and `+` stay clear of the native control band.
+- The 46px frameless band uses `-webkit-app-region: drag` with `no-drag` on
+  interactive controls. macOS reserves the left 88px for traffic lights when
+  the sidebar is collapsed. Windows/Linux reserve the right 120px for native
+  window controls (112px of hit targets plus an 8px visual buffer). The
+  conversation titlebar follows the pane edges and keeps at least 8px
+  between its action group and the viewport-fixed work-panel
+  toggle, including during dock animations and on narrow windows. The open
+  panel header ends its box before the native control band so its tab strip and
+  `+` stay clear of the window controls.
   In preview mode the header's left border box starts after the shell actions
   plus an 8px gap, including expanded-sidebar New Task, on every platform.
   The left inset is 8px except collapsed-sidebar windowed macOS (88px through
@@ -396,10 +397,8 @@ titles are host-owned. The editor closes if the active session changes.
 - Shell consistency: the chat topbar, non-chat drag band, Settings drag band,
   sidebar header, work-panel header, and native window-control band all use
   `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
-  for the viewport-fixed control band; when the work panel opens, that
-  reservation moves from the conversation titlebar onto the panel header so the
-  controls do not travel with MainPane (D357). The panel header carries it by
-  ending its own box before the band — a margin, not padding — because the
+  for the viewport-fixed control band, independent of work-panel width (D357).
+  The panel header uses a margin to end its box before the band because the
   native drag rectangle is the border box. The control band continues the
   titlebar's `border-subtle` bottom rule and uses the same token for its
   leading divider.
@@ -966,6 +965,11 @@ that disclosure. The trailing answer streams outside the process; later activity
 can reclassify provisional answer text into the process without changing the
 stored message. Assistant errors and stopped trailing partial answers also stay
 outside it. User/system messages and compaction boundaries are unchanged.
+
+An explicitly signed Responses `commentary` text is progress from its first
+identified chunk. The answer and its Copy action exclude it; unmarked text
+keeps its normal behavior. Reopened rows use matching provider replay lengths
+and signatures, never a guess based on wording.
 
 The disclosure owns every row the turn produced before its answer: ordinary
 activity groups and `Bash` run rows alike. A turn therefore renders exactly one
@@ -2085,7 +2089,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   streaming or empty assistant turn that would produce no items opens
   nothing. Copy on a speaking-turn menu writes the live selection in that
   turn captured when the menu opened; a collapsed caret, or a selection
-  outside the row, falls back to the whole turn.
+  outside the row, falls back to the whole turn. In the active local session,
+  a non-empty selection inside a message bubble can also show items from
+  opted-in plugin views. Items use the view's localized title and host-drawn
+  icon. Choosing an item opens its work-panel view and gives it only the
+  selected text and session ID.
   Copy conversation reads the complete session on demand, including unloaded
   history and untruncated message text, and preserves the visible in-flight
   tail. It does not change the reading window or scroll position. A failed

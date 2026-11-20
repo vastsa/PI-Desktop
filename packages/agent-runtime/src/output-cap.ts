@@ -365,12 +365,23 @@ export function requestTranscript(
   model: Pick<Model<Api>, "compat">,
   context: TranscriptContext,
 ): TranscriptContext {
+  return resolveTranscript(context, supportsMidConversationSystemMessages(model));
+}
+
+/**
+ * Whether the adapter keeps later system messages in place. Without it pi-ai
+ * folds every system update into the leading system message, so a system
+ * section added mid-run rewrites the request prefix.
+ */
+export function supportsMidConversationSystemMessages(
+  model: Pick<Model<Api>, "compat">,
+): boolean {
   const compat = model.compat;
-  const midConversation =
+  return (
     compat !== undefined &&
     "supportsMidConvoSystemMessages" in compat &&
-    compat.supportsMidConvoSystemMessages === true;
-  return resolveTranscript(context, midConversation);
+    compat.supportsMidConvoSystemMessages === true
+  );
 }
 
 /**

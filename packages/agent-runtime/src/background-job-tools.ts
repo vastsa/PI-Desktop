@@ -98,7 +98,7 @@ export function buildJobTools(
 
   const wait: AgentTool = {
     ...delegates.wait,
-    description: `${delegates.wait.description}\nFor a background Bash command, pass its job reference ({kind: "bash", id: backgroundTaskId}). Returns state, exitCode and bounded stdout/stderr tails. Timeout or interrupted waiting leaves the process running. Bash completion is not automatically delivered; call TaskWait again when needed. Omit job to keep the existing subagent defaults.`,
+    description: `${delegates.wait.description}\nFor a background Bash command, pass its job reference ({kind: "bash", id: backgroundTaskId}). Returns state, exitCode and bounded stdout/stderr tails. Timeout or interrupted waiting leaves the process running. Unless automatic completion was explicitly arranged when launching the job, call TaskWait again when needed. Omit job to keep the existing subagent defaults.`,
     parameters: Type.Object({ ...(delegates.wait.parameters as TObject).properties, job: Type.Optional(jobSchema) }),
     execute: async (id, input, signal, update) => {
       const params = record(input) ? input : {};

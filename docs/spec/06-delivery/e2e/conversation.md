@@ -1803,6 +1803,9 @@ this does not claim an installed full-app settings journey.
   tool, and denied tool. 7) Toggle `Show thinking` off and on and inspect the
   active-thinking, failure/recovery and completed states. 8) Remount rows within
   the retained pane, then reload the renderer and reopen the session.
+  9) Stream explicitly marked Responses commentary followed by a final answer;
+  check that only the process shows the commentary, then copy the answer before
+  and after reopening the signed transcript row. Neither copy includes progress.
 - **Expected**: A turn renders exactly one process disclosure containing every
   pre-answer row, the `Bash`/run rows included; the trailing answer, assistant
   errors and stopped trailing text stay outside it, as do pending actions. The
@@ -4908,3 +4911,17 @@ Build two actual runtimes with identical configuration and different scratch dir
   wrapped descriptions; preserve detail navigation, Stop and responsive layout.
 - Qualification: isolated Chromium geometry checks cover this layout regression;
   installed-client and live-provider checks remain separate.
+
+## E2E-PLUGIN-transcript-selection-view
+
+- With an opted-in plugin installed, select part of a message bubble and
+  right-click. The item shows its localized title and host icon. Repeat with
+  no selection, a selection outside the bubble, and the plugin disabled.
+  Each of those menus omits the item.
+- Choose the item on a cold view and again on an already open view. Verify the
+  same docked tab receives one `view:selection` payload per click with the
+  session ID and excerpt only. Escape delivers nothing. Switching sessions
+  while the view is loading discards the pending excerpt.
+- With a side-question plugin, verify the quote preview can be removed
+  atomically and the first explicitly sent prompt contains only the excerpt
+  and the new question. The main conversation and its input remain intact.

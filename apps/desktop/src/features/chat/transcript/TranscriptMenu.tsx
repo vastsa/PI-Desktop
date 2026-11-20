@@ -26,6 +26,10 @@ import {
   useContextMenu,
   type ContextMenuRequest,
 } from "../../../components/ContextMenu";
+import { IconPlug } from "../../../components/icons";
+import { api } from "../../../lib/api";
+import { pluginViewIcon } from "../../../lib/plugin-view-icons";
+import { pluginWorkPanelTab } from "../../../lib/work-panel-tabs";
 import { useAppStore } from "../../../stores/app-store";
 import { copySelectionOrFallback } from "../../../lib/chat-transcript-text";
 
@@ -44,10 +48,57 @@ export function useTranscriptMenu(): OpenTranscriptMenu {
   return useContext(TranscriptMenuContext);
 }
 
-export function TranscriptMenuProvider({ children }: { children: ReactNode }) {
+export function TranscriptMenuProvider({ children, sessionId }: {
+  children: ReactNode;
+  sessionId?: string;
+}) {
   const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
+  const openTranscriptMenu: OpenTranscriptMenu = useCallback((event, request) => {
+    const state = useAppStore.getState();
+    const views = state.pluginViews.filter((view) => view.acceptsTranscriptSelection);
+    if (views.length === 0) {
+      openContextMenu(event, request);
+      return;
+    }
+    const target = event.target instanceof Element ? event.target.closest(".message-bubble") : null;
+    const selection = target && window.getSelection();
+    if (!sessionId || sessionId !== state.activeSessionId || state.selectingSessionId || sessionId.startsWith("remote:") ||
+        !target || !event.currentTarget.contains(target) || !selection || selection.isCollapsed ||
+        !target.contains(selection.anchorNode) || !target.contains(selection.focusNode)) {
+      openContextMenu(event, request);
+      return;
+    }
+    openContextMenu(event, request, (text) => {
+      if (!text.trim() || new TextEncoder().encode(text).length >= 64 * 1024) return [];
+      return views.map((view, index) => {
+        const Icon = pluginViewIcon(view.icon) ?? IconPlug;
+        return {
+          id: `plugin-selection:${view.ref}`,
+          label: view.title,
+          icon: <Icon size={14} />,
+          separatorBefore: index === 0,
+          onSelect: () => {
+            const selected = useAppStore.getState();
+            if (selected.activeSessionId !== sessionId || selected.selectingSessionId) return;
+            void api.pluginViewOpen(view.pluginId, view.viewId, { sessionId, selection: text }).then(
+              () => {
+                const current = useAppStore.getState();
+                if (current.activeSessionId === sessionId && !current.selectingSessionId) {
+                  current.openWorkPanelTabForSession(sessionId, pluginWorkPanelTab(view.pluginId, view.viewId));
+                }
+              },
+              (error: unknown) => {
+                useAppStore.getState().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+              },
+            );
+          },
+        };
+      });
+    });
+  }, [openContextMenu, sessionId]);
+
   return (
-    <TranscriptMenuContext.Provider value={openContextMenu}>
+    <TranscriptMenuContext.Provider value={openTranscriptMenu}>
       {children}
       <ContextMenu state={contextMenu} onClose={closeContextMenu} />
     </TranscriptMenuContext.Provider>

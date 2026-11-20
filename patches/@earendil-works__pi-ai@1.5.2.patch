@@ -457,7 +457,7 @@ index c1b6038c2220633a8caf710288a8f6e6301f7a28..2b6e6d5a48731a37812cd42740156fe8
          openRouterRouting: model.compat.openRouterRouting ?? {},
          vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
 diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
-index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d39472222693 100644
+index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..b8c0fa9a522fa67a9ed98abb8b97501b8aa27e08 100644
 --- a/dist/api/openai-responses-shared.js
 +++ b/dist/api/openai-responses-shared.js
 @@ -1,3 +1,4 @@
@@ -487,7 +487,31 @@ index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d394
                  else if (block.type === "toolCall") {
                      const toolCall = block;
                      const [callId, itemIdRaw] = toolCall.id.split("|");
-@@ -458,6 +467,28 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -362,9 +371,7 @@ export function convertResponsesTools(tools, options) {
+             parameters: getJsonSchemaToolParameters(tool, strict === true),
+             ...(options?.toolSearchResult ? { defer_loading: true } : {}),
+         };
+-        if (supportsStrictMode) {
+-            functionTool.strict = strict;
+-        }
++        functionTool.strict = supportsStrictMode ? strict : false;
+         return functionTool;
+     });
+ }
+@@ -408,7 +415,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
+         }
+         if (item.type === "message") {
+             applyMessagePhaseStopReason(item);
+-            const block = { type: "text", text: "" };
++            const block = {
++                type: "text",
++                text: "",
++                ...(item.phase ? { textSignature: encodeTextSignatureV1(item.id, item.phase) } : {}),
++            };
+             output.content.push(block);
+             const slot = { type: "text", block, contentIndex: output.content.length - 1 };
+             outputSlots.set(outputIndex, slot);
+@@ -458,6 +469,28 @@ export async function processResponsesStream(openaiStream, output, stream, model
              stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
              return slot;
          }
@@ -516,7 +540,7 @@ index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d394
          return undefined;
      };
      const getOrCreateSlot = (outputIndex, item) => {
-@@ -539,11 +570,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -539,11 +572,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "thinking");
              if (!slot)
                  continue;
@@ -530,7 +554,7 @@ index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d394
                  partial: output,
              });
          }
-@@ -563,11 +594,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -563,11 +596,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "thinking");
              if (!slot)
                  continue;
@@ -544,7 +568,7 @@ index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d394
                  partial: output,
              });
          }
-@@ -575,23 +606,44 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -575,23 +608,44 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "text");
              if (!slot)
                  continue;
@@ -593,7 +617,7 @@ index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d394
                  partial: output,
              });
          }
-@@ -599,8 +651,8 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -599,8 +653,8 @@ export async function processResponsesStream(openaiStream, output, stream, model
              const slot = getSlot(event.output_index, "toolCall");
              if (slot?.input.kind !== "json")
                  continue;
@@ -604,7 +628,17 @@ index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..60b63766576f463b83a964ef9b16d394
          }
          else if (event.type === "response.function_call_arguments.done") {
              const slot = getSlot(event.output_index, "toolCall");
-@@ -680,9 +732,25 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -643,7 +697,8 @@ export async function processResponsesStream(openaiStream, output, stream, model
+             }
+             else if (item.type === "message" && slot?.type === "text") {
+                 slot.block.text = item.content?.map((c) => (c.type === "output_text" ? c.text : c.refusal)).join("") || "";
+-                slot.block.textSignature = encodeTextSignatureV1(item.id, item.phase ?? undefined);
++                const phase = item.phase ?? parseTextSignature(slot.block.textSignature)?.phase;
++                slot.block.textSignature = encodeTextSignatureV1(item.id, phase);
+                 stream.push({
+                     type: "text_end",
+                     contentIndex: slot.contentIndex,
+@@ -680,9 +735,25 @@ export async function processResponsesStream(openaiStream, output, stream, model
                  });
                  outputSlots.delete(event.output_index);
              }

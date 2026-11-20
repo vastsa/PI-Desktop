@@ -492,6 +492,10 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
+Responses text explicitly marked `commentary` is progress, not a subagent
+report, one-shot result, or final answer. Signed transcript rows retain the
+provider's original text for replay. Unmarked text is treated as before.
+
 When restoring a checkpoint, tool-call reconstruction respects its
 `throughMessageId` boundary. A surviving tool row must not attach its call to
 an assistant that the checkpoint removes. Legacy checkpoints can cut through
@@ -623,12 +627,17 @@ and testable.
 
 **Model-facing surface.** `new_context` takes no parameters and starts a new
 context window at the next turn boundary; it never clears or resets environment
-state. Two budget reminders are appended to the current turn's system prompt,
-each at most once per checkpoint window and reset when a checkpoint is
+state. Two budget reminders are appended to the tail of the current turn's
+request, each at most once per checkpoint window and reset when a checkpoint is
 installed: one when the remaining budget falls to
 `clamp(hardLimit * 0.15, 8k, 32k)`, asking the model to start closing out, and
 one at 2,000 tokens remaining, telling it to write down whatever must survive.
-Neither reminder is persisted or shown in the transcript.
+A reminder never rewrites the request prefix (issue #2458): where the model
+keeps mid-conversation system messages in place it is a `context_budget` system
+section that expires at the next checkpoint; elsewhere, because pi-ai folds
+every system update into the leading system message, it is a request-only user
+message that is neither persisted nor carried into the next run. Neither
+reminder is shown in the transcript.
 
 The hard boundary is the model context window minus request headroom. Automatic
 compaction starts at 90% of `hardLimit`; this deterministic margin is not
@@ -2089,8 +2098,8 @@ observation has not arrived, it returns the job reference with
 `snapshotAvailable: false` and no process state. Transcript rows identify
 explicit Bash targets and include background commands in mixed job lists.
 
-Bash is still owned by Host and does not auto-deliver completion or keep the
-parent turn open. Delegation report delivery and resumability retain their
+Bash is still owned by Host and does not keep the parent turn open. Completion
+is not auto-delivered by default; the opt-in continuation contract below is separate. Delegation report delivery and resumability retain their
 existing lifecycle. Runtime capability probing is connection-scoped; older
 Hosts and remote workspaces explicitly report Bash controls unavailable,
 while delegation controls remain usable. Transport and Host failures propagate.
@@ -2098,3 +2107,29 @@ while delegation controls remain usable. Transport and Host failures propagate.
 ### Shared prefix and scratch identity (#1926)
 
 The base runtime system section keeps shell dialect, scratch-variable syntax and temporary-file policy stable across sessions. The exact scratch directory is appended after project/memory context rather than embedded twice in the leading runtime rules. Bash tool descriptions retain their exact path guidance. This preserves a shared system-text prefix, without promising provider cache hits or changing history reconstruction.
+
+
+### Opt-in background completion continuation (#2143)
+
+`backgroundJobContinuationEnabled` defaults to false, including absent legacy settings.
+When enabled, local parent Agent Bash exposes optional `notifyOnExit` alongside
+`runInBackground`. The assistant may register follow-up for finite tests/builds;
+this is not another human approval. Existing session tool permissions still apply.
+Servers/watchers keep ordinary background behavior unless a continuation is explicitly
+registered. Remote, native-pi, delegated and contract-mode execution are out of scope.
+
+Host retains the original result while pending (at most 64 intents per Host). Both
+process exit/output drain and successful completion of the originating turn are
+required. Main uses trusted in-process identity through AgentHost admission; active
+work and queued user input win. Before dispatch Host atomically checks the intent,
+setting, source turn and destination turn, then marks it started. Results enter the
+transcript/context as a TaskWait tool result, not as a new user instruction. Output
+remains untrusted data and does not grant additional authority.
+
+A terminal TaskWait/TaskStop result observed by Main consumes pending delivery;
+raw RPC reads, UI log reads and timeouts do not. Failed acknowledgement suppresses
+local dispatch while it is retried. Stop, source-turn cancellation, session loss,
+leaving Agent mode, explicit cancellation and disabling the setting withdraw pending
+continuation. Withdrawal does not kill the process. Started turns are not interrupted
+by disabling the setting. Failed/ambiguous dispatch is not automatically retried;
+the original result remains available via TaskWait. Intent lives only with the Host.

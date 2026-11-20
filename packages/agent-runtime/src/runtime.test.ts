@@ -8,10 +8,12 @@ import {
   createAssistantMessageEventStream,
   getCurrentTools,
   getCurrentSystemMessage,
+  normalizeContext,
   toToolDeclaration,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
-import { formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { applyMessageUpdate, deltaStreamPayloadFits, formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { restoreAssistantProviderReplay } from "./assistant-provider-replay.js";
 import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { buildSessionContext } from "./session-context.js";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens } from "./pi-runtime-estimates.js";
@@ -20,6 +22,7 @@ import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   isolatedWorkspaceGuidance,
+  isProgressOnlyAssistantTurn,
   delegateWorktreeNote,
   looksLikePseudoToolCall,
   toolResultFromUi,
@@ -28,7 +31,7 @@ import {
   type RuntimeMatchConfig,
   type RuntimeProviderConfig,
 } from "./runtime.js";
-import { estimateOutputCapInputTokens } from "./output-cap.js";
+import { estimateOutputCapInputTokens, requestTranscript } from "./output-cap.js";
 
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
 import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
@@ -173,6 +176,7 @@ function createRuntime(
     provider: RuntimeProviderConfig;
     mode: Mode | "chat";
     thinkingLevel: SessionThinkingLevel;
+    backgroundJobContinuationEnabled: boolean;
     history: UiMessage[];
     compaction: ContextCompactionRecord;
     compactionSettings: ContextCompactionSettings;
@@ -206,6 +210,7 @@ function createRuntime(
     provider: overrides.provider ?? provider,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
+    backgroundJobContinuationEnabled: overrides.backgroundJobContinuationEnabled,
     history: overrides.history,
     compaction: overrides.compaction,
     compactionSettings: overrides.compactionSettings,
@@ -2830,6 +2835,22 @@ describe("DesktopAgentRuntime configuration matching", () => {
     }
     expect(host.call).toHaveBeenCalledTimes(3);
     await runtime.dispose();
+  });
+
+  it("offers background continuation registration only when enabled, and forwards the original job intent", async () => {
+    for (const enabled of [false, true]) {
+      const host = { call: vi.fn().mockResolvedValue({ ok: true, content: "done" }) };
+      const runtime = createRuntime({ host, backgroundJobContinuationEnabled: enabled });
+      try {
+        const agent = Reflect.get(runtime, "agent") as Agent;
+        const bash = agent.state.tools.find(tool => tool.name === "Bash")!;
+        expect(Object.hasOwn(bash.parameters.properties, "notifyOnExit")).toBe(enabled);
+        if (enabled) {
+          await bash.execute("background", { command: "npm test", runInBackground: true, notifyOnExit: true });
+          expect(host.call).toHaveBeenLastCalledWith("tools.execute", expect.objectContaining({ args: { command: "npm test", runInBackground: true, notifyOnExit: true } }));
+        }
+      } finally { await runtime.dispose(); }
+    }
   });
 
   it("opts into background Bash without changing foreground timeout forwarding", async () => {
@@ -6210,6 +6231,81 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
 });
 
 describe("DesktopAgentRuntime assistant thinking events", () => {
+  it.each(["provider", "interrupted"])("counts visible commentary in the %s abort estimate", async (termination) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; finalizeCurrentAssistant(status: "aborted"): void };
+    const content = [
+      { type: "text", text: "Checking", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+      { type: "text", text: "Done" },
+    ];
+    try {
+      await internal.handleAgentEvent({ type: "message_start", message: { role: "assistant", content } });
+      if (termination === "provider") {
+        await internal.handleAgentEvent({ type: "message_end", message: { role: "assistant", content: [], stopReason: "aborted" } });
+      } else internal.finalizeCurrentAssistant("aborted");
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing aborted message");
+      expect(event.message).toMatchObject({ status: "aborted", content: "Done", responseOutputTokens: 3 });
+    } finally { await runtime.dispose(); }
+  });
+
+  it("keeps the answer clean when a Responses replay exceeds the existing storage limit", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void> };
+    try {
+      const content = [
+        { type: "thinking", thinking: "reasoning", thinkingSignature: "x".repeat(65_536) },
+        { type: "text", text: "Checking.", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+        { type: "text", text: "Answer." },
+      ];
+      for (const type of ["message_start", "message_end"]) await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing settled message");
+      expect(event.message.content).toBe("Answer.");
+      expect(event.message.providerReplay).toBeUndefined();
+    } finally { await runtime.dispose(); }
+  });
+
+  it("streams Responses commentary as signed progress without sending replay on every delta", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; streamSink: { flush(): void } };
+    const signed = (text: string, phase: string) => ({ type: "text" as const, text,
+      textSignature: JSON.stringify({ v: 1, id: `msg_${phase}`, phase }) });
+    const send = async (type: string, content: ReturnType<typeof signed>[]) => {
+      await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      internal.streamSink.flush();
+      return onEvent.mock.calls.at(-1)![0].event as AgentEventEnvelope["event"];
+    };
+    try {
+      const progress = signed("Checking", "commentary");
+      const full = signed("Checking 🔎", "commentary");
+      const start = await send("message_start", [progress]);
+      if (start.type !== "message_start") throw new Error("missing start");
+      expect(start.message.providerReplay?.blocks[0]).toMatchObject({ length: progress.text.length, signature: progress.textSignature });
+      const delta = await send("message_update", [full]);
+      if (delta.type !== "message_update") throw new Error("missing progress delta");
+      expect(deltaStreamPayloadFits({ event: delta }, 64_000)).toBe(true);
+      expect(delta.message.providerReplay).toBeUndefined();
+      expect(applyMessageUpdate(start.message, delta).providerReplay?.blocks[0].length).toBe(full.text.length);
+      const boundary = await send("message_update", [full, signed("", "final_answer")]);
+      if (boundary.type !== "message_update") throw new Error("missing phase boundary");
+      expect(boundary.message.providerReplay?.blocks).toHaveLength(2);
+      const final = signed("Answer", "final_answer");
+      const answer = await send("message_update", [full, final]);
+      if (answer.type !== "message_update") throw new Error("missing answer delta");
+      expect(answer.deltaText).toBe("Answer");
+      expect(deltaStreamPayloadFits({ event: answer }, 64_000)).toBe(true);
+      const end = await send("message_end", [full, final]);
+      if (end.type !== "message_end") throw new Error("missing settled message");
+      expect(restoreAssistantProviderReplay(end.message.providerReplay, "", end.message.content)).toEqual([full, final]);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full] })).toBe(true);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full, signed("Next, use option B.", "final_answer")] })).toBe(false);
+    } finally { await runtime.dispose(); }
+  });
+
   it("normalizes thinking blocks and emits independent thinking deltas", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -7870,6 +7966,48 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("keeps the context budget reminder out of the collapsed request prefix", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 195_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+    const model = (runtime as any).model;
+    const before = requestTranscript(model, normalizeContext({ messages: [...(runtime as any).agent.state.messages] }));
+
+    const reminded = await (runtime as any).prepareNextTurn(nextTurn);
+    const after = requestTranscript(model, normalizeContext({ messages: reminded.context.messages }));
+
+    // Issue #2458: the leading system message is the cached prefix; the
+    // reminder may only grow the tail.
+    expect(after.messages[0]).toEqual(before.messages[0]);
+    expect(JSON.stringify(after.messages[0])).not.toContain("<context_budget>");
+    expect(JSON.stringify(after.messages.at(-1))).toContain("<context_budget>");
+    await runtime.dispose();
+  });
+
+  it("keeps the context budget reminder as a system section where mid-run system messages stay in place", async () => {
+    const runtime = createRuntime();
+    (runtime as any).model = { ...(runtime as any).model, compat: { supportsMidConvoSystemMessages: true } };
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 195_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+
+    const reminded = await (runtime as any).prepareNextTurn(nextTurn);
+
+    expect(reminded.context.messages.at(-1)).toMatchObject({
+      role: "system",
+      content: "",
+      sections: { context_budget: expect.stringContaining("<context_budget>") },
+    });
+    expect(getCurrentSystemMessage(reminded.context.messages)?.sections?.context_budget).toContain("new_context");
+    expect(reminded.context.systemPrompt).not.toContain("<context_budget>");
+    await runtime.dispose();
+  });
+
   it("compacts a long tool loop at the soft threshold after a reminder", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -7903,20 +8041,20 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
 
     // 29k left is inside the first reminder tier but still below the 90%
     // compaction trigger, so the model can close out before host compaction.
-    expect(below.context.systemPrompt).toContain("<context_budget>");
-    expect(below.context.systemPrompt).toContain("new_context");
+    // The default model folds system updates into the leading system message,
+    // so the reminder rides at the tail as a request-only user message.
+    expect(below.context.systemPrompt).not.toContain("<context_budget>");
     expect(below.context.messages.at(-1)).toMatchObject({
-      role: "system",
-      content: "",
-      sections: { context_budget: expect.stringContaining("<context_budget>") },
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("<context_budget>") }],
     });
-    expect(getCurrentSystemMessage(below.context.messages)?.sections?.context_budget).toContain("new_context");
-    expect(stillBelow.context.systemPrompt).not.toContain("<context_budget>");
-    // The legacy prompt baseline stays unchanged; the returned transcript
-    // carries the reminder section through the normal persistence path.
+    expect(JSON.stringify(below.context.messages.at(-1))).toContain("new_context");
+    expect(stillBelow.context.messages.at(-1)?.role).not.toBe("user");
+    // The prompt baseline stays unchanged and nothing lands in agent state.
     expect((runtime as any).agent.state.systemPrompt).not.toContain(
       "<context_budget>",
     );
+    expect(JSON.stringify((runtime as any).agent.state.messages)).not.toContain("<context_budget>");
     expect(runCompaction).not.toHaveBeenCalled();
 
     vi.spyOn(runtime as any, "contextBudget")
@@ -9506,6 +9644,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         mark: {
           id: expect.any(String),
           throughMessageId: "recent-user",
+          createdAt: expect.any(String),
           generation: 1,
           summaryTokens: 7,
           contextTokens: 40_000,

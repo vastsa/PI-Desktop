@@ -46,6 +46,7 @@ function loadComponent(name, extras = {}) {
     "../../../lib/remote-session-safety": { isRemoteSession, safeSessionSummary, sessionAllows },
     "../../../plugins/renderer-slots/use-slots": { useSlotSessionId: () => "local-session" },
     "../../../hooks/use-preview-target": { useOpenChatFileRef: () => () => {} },
+    "../../../lib/text-direction": { directionAttr: () => undefined },
     "../../../lib/chat-links": { splitChatText: () => [] },
     "../../../components/Markdown": { Markdown: ({ source: text }) => text },
     "../../../components/icons": new Proxy({}, { get: () => Icon }),

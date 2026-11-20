@@ -888,6 +888,9 @@ export const PLUGIN_VIEW_ICONS = [
 
 export type PluginViewIcon = (typeof PLUGIN_VIEW_ICONS)[number];
 
+/** User-selected transcript text sent to a single docked view. */
+export type PluginViewSelection = { sessionId: string; text: string };
+
 /**
  * One surface the plugin docks inside the host's work panel.
  *
@@ -896,6 +899,8 @@ export type PluginViewIcon = (typeof PLUGIN_VIEW_ICONS)[number];
  * plugin can ship "Changes" and "History" as two independent entries.
  */
 export type PluginViewContrib = {
+  /** Also offer this view in the context menu for selected transcript text. */
+  acceptsTranscriptSelection?: boolean;
   /** Plugin-local view id; `<pluginId>/<id>` addresses it globally. */
   id: string;
   /** Menu label. Localized objects are resolved against the host locale. */
@@ -2401,6 +2406,9 @@ export function validateContributions(
     if (entryError) return entryError;
     if (view.order !== undefined && !Number.isFinite(view.order)) {
       return `view "${view.id}" order must be a number`;
+    }
+    if (view.acceptsTranscriptSelection !== undefined && typeof view.acceptsTranscriptSelection !== "boolean") {
+      return `view "${view.id}" acceptsTranscriptSelection must be a boolean`;
     }
     // `icon` is intentionally unchecked: an unknown token degrades to a letter
     // tile, so rejecting one would break a plugin over a cosmetic detail.

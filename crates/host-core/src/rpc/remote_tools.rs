@@ -343,6 +343,7 @@ pub(super) async fn handle(
                 // Remote workspaces are never isolated (ADR 0329).
                 extra_env: Vec::new(),
                 run_in_background: false,
+                continuation_turn_id: None,
                 app_state: None,
             })
         } else {

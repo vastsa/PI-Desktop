@@ -798,6 +798,14 @@ export const es = {
     "renameSaving": "Guardando…"
   },
   backgroundTasks: {
+    continuationpending: "Continuar al finalizar",
+    continuationReady: "Esperando para continuar",
+    continuationstarted: "Continuación iniciada",
+    continuationconsumed: "Resultado recibido",
+    continuationcancelled: "Continuación cancelada",
+    continuationfailed: "Error al continuar",
+    cancelContinuation: "Cancelar continuación",
+
     running: "En ejecución",
     exited: "Finalizado",
     failed: "Fallido",
@@ -1725,6 +1733,8 @@ sklm: {
     "noResults": "No hay configuraciones coincidentes",
     "enterToSend": "Ingresar para enviar",
     "enterToSendDesc": "Desactivado: presione ⌘/Ctrl+Entrar para enviar.",
+    backgroundJobContinuation: "Continuar tras tareas en segundo plano",
+    backgroundJobContinuationDesc: "Permitir reanudar la conversación local al terminar las pruebas o compilaciones solicitadas, con los permisos actuales. Desactivado por defecto. Desactivarlo cancela las continuaciones pendientes, no los procesos.",
     "infiniteProviderRetry": "Reintentar hasta tener éxito",
     "infiniteProviderRetryDesc": "Reintenta los errores de red y temporales hasta que la solicitud tenga éxito. Puedes detener el turno; el uso de la API puede continuar.",
     "smoothStreaming": "Transmisión suave",

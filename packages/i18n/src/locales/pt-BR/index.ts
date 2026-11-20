@@ -797,6 +797,14 @@ export const ptBR = {
     renameSaving: "Salvando…"
   },
   backgroundTasks: {
+    continuationpending: "Continuar ao concluir",
+    continuationReady: "Aguardando para continuar",
+    continuationstarted: "Continuação iniciada",
+    continuationconsumed: "Resultado recebido",
+    continuationcancelled: "Continuação cancelada",
+    continuationfailed: "Falha ao continuar",
+    cancelContinuation: "Cancelar continuação",
+
     running: "Em execução",
     exited: "Finalizado",
     failed: "Falhou",
@@ -1696,6 +1704,8 @@ export const ptBR = {
     noResults: "Nenhum resultado encontrado",
     enterToSend: "Enter para enviar",
     enterToSendDesc: "Desativado: pressione ⌘/Ctrl+Enter para enviar.",
+    backgroundJobContinuation: "Continuar após tarefas em segundo plano",
+    backgroundJobContinuationDesc: "Permitir retomar a conversa local após os testes ou compilações solicitados, com as permissões atuais. Desativado por padrão. Desativar cancela as continuações pendentes, sem encerrar os processos.",
     infiniteProviderRetry: "Tentar novamente até obter sucesso",
     infiniteProviderRetryDesc: "Continua tentando indefinidamente em caso de falhas temporárias de rede ou do provedor. Ainda é possível interromper a rodada; enquanto esta opção estiver ativada, o consumo e os custos da API podem continuar.",
     smoothStreaming: "Exibição gradual",

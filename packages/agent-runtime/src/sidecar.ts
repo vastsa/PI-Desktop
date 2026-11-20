@@ -118,6 +118,8 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
+  backgroundJobContinuationEnabled?: boolean;
+  backgroundCompletion?: UiMessage;
   /** Session `/fast` switch AND the model's opt-in, resolved by main (ADR 0334). */
   fastMode?: boolean;
   /** Opt-in TypeSafe classifier credential resolved by Electron main. */
@@ -275,6 +277,7 @@ async function runtimeFor(
     reusable.setPluginSkills(pluginSkills);
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
+    reusable.setBackgroundJobContinuationEnabled(params.backgroundJobContinuationEnabled === true);
     reusable.setFastMode(params.fastMode === true);
     reusable.setMode(mode, modeDefinition);
     return reusable;
@@ -292,6 +295,7 @@ async function runtimeFor(
     });
   }
   let restoredMessages = detail.session.messages ?? [];
+  if (params.backgroundCompletion) restoredMessages = restoredMessages.filter(message => message.id !== params.backgroundCompletion!.id);
   // The current prompt is sent separately below. Exclude its persisted row
   // before attachment hydration so it cannot consume the history byte budget.
   if (currentPrompt !== undefined && params.userMessageId) {
@@ -310,7 +314,7 @@ async function runtimeFor(
   // Older callers without a stable message id retain the previous content match.
   // A Host-started mode turn has no user row at all (its content is a fixed
   // continuation notice), so nothing in the history is its prompt.
-  const hostStartedTurn = modeTurn !== undefined && modeTurn.origin !== "user";
+  const hostStartedTurn = Boolean(params.backgroundCompletion) || (modeTurn !== undefined && modeTurn.origin !== "user");
   if (currentPrompt !== undefined && !params.userMessageId && !hostStartedTurn) {
     const last = history.at(-1);
     if (last?.role === "user" && last.content === currentPrompt) {
@@ -327,6 +331,7 @@ async function runtimeFor(
     commandShell: params.commandShell,
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
+    backgroundJobContinuationEnabled: params.backgroundJobContinuationEnabled === true,
     fastMode: params.fastMode === true,
     jevApiKey: params.jevApiKey,
     history,
@@ -498,6 +503,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       const prompt: RuntimePrompt = {
         text: content,
+        ...(params.backgroundCompletion ? { backgroundCompletion: params.backgroundCompletion } : {}),
         mcpServerIds: parseMcpServerIds(params.mcpServerIds),
         mcpToolNames: parseMcpToolNames(params.mcpToolNames),
         attachments,

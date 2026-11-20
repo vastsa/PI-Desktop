@@ -123,12 +123,16 @@ test("the hard boundary is enforced by the host, with a model-side escape hatch"
   assert.match(runtime, /function contextFallbackReminder\(/);
   assert.match(runtime, /contextReminderClaimed/);
   assert.match(runtime, /contextFallbackReminderClaimed/);
-  // The reminder is appended as a replaceable system section so compaction
-  // can expire it without rewriting earlier instructions.
+  // The reminder only ever grows the request tail (#2458): a replaceable
+  // system section where mid-conversation system messages stay in place, and
+  // a request-only user message where pi-ai would fold it into the prefix.
   assert.match(
     runtime,
-    /messages: \[\s*\.\.\.context\.messages,\s*\{\s*role: "system",\s*content: "",\s*sections: \{ \[CONTEXT_BUDGET_SECTION\]: reminder \}/,
+    /supportsMidConversationSystemMessages\(this\.model\)\s*\?\s*\{\s*role: "system",\s*content: "",\s*sections: \{ \[CONTEXT_BUDGET_SECTION\]: reminder \}/,
   );
+  assert.match(runtime, /:\s*\{\s*role: "user",\s*content: \[\{ type: "text", text: reminder \}\]/);
+  assert.match(runtime, /return \{ \.\.\.context, messages: \[\.\.\.context\.messages, message\] \};/);
+  assert.doesNotMatch(runtime, /\$\{legacyContext\.systemPrompt\}\\n\\n\$\{reminder\}/);
   assert.match(hostPermissions, /"new_context"/);
 });
 
