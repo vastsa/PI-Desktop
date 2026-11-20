@@ -1639,6 +1639,7 @@ sklm: {
         "connectedAs": "Conectado como {{login}}",
         "disconnect": "Desconectar",
         "disconnectNote": "Al desconectar se elimina el token de este equipo. Para revocarlo, quita la aplicación en la configuración de GitHub.",
+        "disconnectNoteToken": "Al desconectar se elimina el token de este equipo. Para revocarlo, elimina el token en la configuración de GitHub.",
         "allowWorkflow": "Permitir cambios en los archivos de flujo de trabajo de GitHub Actions",
         "allowWorkflowHelp": "Añade el ámbito workflow. Déjalo desactivado salvo que el agente necesite editar archivos en .github/workflows.",
         "useToken": "Usar un token de acceso personal en su lugar",

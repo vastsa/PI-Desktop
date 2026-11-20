@@ -1645,6 +1645,7 @@ sklm: {
         connectedAs: "{{login}} 계정으로 연결됨",
         disconnect: "연결 해제",
         disconnectNote: "연결을 해제하면 이 컴퓨터에서 토큰이 삭제됩니다. 토큰을 취소하려면 GitHub 설정에서 앱을 제거하세요.",
+        disconnectNoteToken: "연결을 해제하면 이 컴퓨터에서 토큰이 삭제됩니다. 토큰을 취소하려면 GitHub 설정에서 토큰을 삭제하세요.",
         allowWorkflow: "GitHub Actions 워크플로 파일 변경 허용",
         allowWorkflowHelp: "workflow 범위를 추가합니다. 에이전트가 .github/workflows 아래의 파일을 수정해야 하는 경우가 아니라면 꺼 두세요.",
         useToken: "대신 개인 액세스 토큰 사용",

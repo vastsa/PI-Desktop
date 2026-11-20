@@ -1489,6 +1489,7 @@ sklm: {
         connectedAs: "Connected as {{login}}",
         disconnect: "Disconnect",
         disconnectNote: "Disconnecting removes the token from this computer. To revoke it, remove the app in your GitHub settings.",
+        disconnectNoteToken: "Disconnecting removes the token from this computer. To revoke it, delete the token in your GitHub settings.",
         allowWorkflow: "Allow changes to GitHub Actions workflow files",
         allowWorkflowHelp: "Adds the workflow scope. Leave off unless the agent needs to edit files under .github/workflows.",
         useToken: "Use a personal access token instead",

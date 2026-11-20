@@ -184,7 +184,14 @@ export function GitHubConnectorCard() {
                 {t("settings.connectors.github.missingRepoScope")}
               </p>
             ) : null}
-            <p className="connector-note">{t("settings.connectors.github.disconnectNote")}</p>
+            <p className="connector-note">
+              {/* A pasted token has no app to remove; it is revoked by deleting it. */}
+              {t(
+                status.tokenKind === "pat"
+                  ? "settings.connectors.github.disconnectNoteToken"
+                  : "settings.connectors.github.disconnectNote",
+              )}
+            </p>
           </>
         ) : null}
 

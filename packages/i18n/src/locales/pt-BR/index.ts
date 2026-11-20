@@ -1457,6 +1457,7 @@ export const ptBR = {
         connectedAs: "Conectado como {{login}}",
         disconnect: "Desconectar",
         disconnectNote: "Desconectar remove o token deste computador. Para revogá-lo, remova o aplicativo nas configurações do GitHub.",
+        disconnectNoteToken: "Desconectar remove o token deste computador. Para revogá-lo, exclua o token nas configurações do GitHub.",
         allowWorkflow: "Permitir alterações nos arquivos de workflow do GitHub Actions",
         allowWorkflowHelp: "Adiciona o escopo workflow. Deixe desativado, a menos que o agente precise editar arquivos em .github/workflows.",
         useToken: "Usar um token de acesso pessoal",

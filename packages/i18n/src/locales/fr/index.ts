@@ -1639,6 +1639,7 @@ sklm: {
         "connectedAs": "Connecté en tant que {{login}}",
         "disconnect": "Déconnecter",
         "disconnectNote": "La déconnexion supprime le jeton de cet ordinateur. Pour le révoquer, retirez l’application dans vos paramètres GitHub.",
+        "disconnectNoteToken": "La déconnexion supprime le jeton de cet ordinateur. Pour le révoquer, supprimez le jeton dans vos paramètres GitHub.",
         "allowWorkflow": "Autoriser la modification des fichiers de workflow GitHub Actions",
         "allowWorkflowHelp": "Ajoute la portée workflow. Laissez désactivé sauf si l’agent doit modifier des fichiers sous .github/workflows.",
         "useToken": "Utiliser plutôt un jeton d’accès personnel",

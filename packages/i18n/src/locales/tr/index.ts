@@ -1639,6 +1639,7 @@ sklm: {
         connectedAs: "{{login}} olarak bağlandı",
         disconnect: "Bağlantıyı kes",
         disconnectNote: "Bağlantıyı kesmek belirteci bu bilgisayardan kaldırır. İptal etmek için uygulamayı GitHub ayarlarınızdan kaldırın.",
+        disconnectNoteToken: "Bağlantıyı kesmek belirteci bu bilgisayardan kaldırır. İptal etmek için belirteci GitHub ayarlarınızdan silin.",
         allowWorkflow: "GitHub Actions iş akışı dosyalarında değişikliğe izin ver",
         allowWorkflowHelp: "workflow kapsamını ekler. Ajanın .github/workflows altındaki dosyaları düzenlemesi gerekmiyorsa kapalı bırakın.",
         useToken: "Bunun yerine kişisel erişim belirteci kullan",

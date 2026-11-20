@@ -1629,6 +1629,7 @@ sklm: {
         connectedAs: "已連接為 {{login}}",
         disconnect: "中斷連線",
         disconnectNote: "中斷連線會從這台電腦移除權杖。若要撤銷權杖，請在 GitHub 設定中移除該應用程式。",
+        disconnectNoteToken: "中斷連線會從這台電腦移除權杖。若要撤銷權杖，請在 GitHub 設定中刪除該權杖。",
         allowWorkflow: "允許修改 GitHub Actions 工作流程檔案",
         allowWorkflowHelp: "會加入 workflow 權限範圍。除非 Agent 需要編輯 .github/workflows 下的檔案，否則請保持關閉。",
         useToken: "改用個人存取權杖",

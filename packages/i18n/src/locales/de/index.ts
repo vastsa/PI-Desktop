@@ -1639,6 +1639,7 @@ sklm: {
         "connectedAs": "Verbunden als {{login}}",
         "disconnect": "Trennen",
         "disconnectNote": "Beim Trennen wird das Token von diesem Computer entfernt. Um es zu widerrufen, entfernen Sie die App in Ihren GitHub-Einstellungen.",
+        "disconnectNoteToken": "Beim Trennen wird das Token von diesem Computer entfernt. Um es zu widerrufen, löschen Sie das Token in Ihren GitHub-Einstellungen.",
         "allowWorkflow": "Änderungen an GitHub-Actions-Workflow-Dateien erlauben",
         "allowWorkflowHelp": "Fügt den Berechtigungsbereich „workflow“ hinzu. Lassen Sie die Option aus, solange der Agent keine Dateien unter .github/workflows bearbeiten muss.",
         "useToken": "Stattdessen ein persönliches Zugriffstoken verwenden",

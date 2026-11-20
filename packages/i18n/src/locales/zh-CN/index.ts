@@ -1629,6 +1629,7 @@ sklm: {
         connectedAs: "已连接为 {{login}}",
         disconnect: "断开连接",
         disconnectNote: "断开连接会从这台电脑上移除令牌。如需撤销令牌，请在 GitHub 设置中移除该应用。",
+        disconnectNoteToken: "断开连接会从这台电脑上移除令牌。如需撤销令牌，请在 GitHub 设置中删除该令牌。",
         allowWorkflow: "允许修改 GitHub Actions 工作流文件",
         allowWorkflowHelp: "会增加 workflow 权限范围。除非 Agent 需要编辑 .github/workflows 下的文件，否则请保持关闭。",
         useToken: "改用个人访问令牌",

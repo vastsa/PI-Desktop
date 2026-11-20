@@ -63,6 +63,8 @@ test("the Connectors destination is named and explained in every shipped catalog
     "settings.connectors.github.disconnect": "Disconnect",
     "settings.connectors.github.disconnectNote":
       "Disconnecting removes the token from this computer. To revoke it, remove the app in your GitHub settings.",
+    "settings.connectors.github.disconnectNoteToken":
+      "Disconnecting removes the token from this computer. To revoke it, delete the token in your GitHub settings.",
     "settings.connectors.github.allowWorkflow": "Allow changes to GitHub Actions workflow files",
     "settings.connectors.github.allowWorkflowHelp":
       "Adds the workflow scope. Leave off unless the agent needs to edit files under .github/workflows.",
@@ -98,6 +100,12 @@ test("the Connectors destination is named and explained in every shipped catalog
       }
     }
     assert.equal(flat["settings.connectors.github.name"], "GitHub", locale);
+    // A pasted token is revoked by deleting it, not by removing an app.
+    assert.notEqual(
+      flat["settings.connectors.github.disconnectNoteToken"],
+      flat["settings.connectors.github.disconnectNote"],
+      locale,
+    );
     // The scope and path names are identifiers and must survive translation.
     assert.match(flat["settings.connectors.github.missingRepoScope"], /repo/, locale);
     assert.match(flat["settings.connectors.github.allowWorkflowHelp"], /workflow/, locale);

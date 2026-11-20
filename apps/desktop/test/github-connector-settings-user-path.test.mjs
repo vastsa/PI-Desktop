@@ -216,7 +216,10 @@ window.githubConnectorProbe = async () => {
     noMissingScopeWarning: !text().includes("This token lacks the repo scope"),
     noReauthBanner: !text().includes("GitHub rejected the saved token"),
     signInControlsGone: !button("Connect GitHub") && !tokenInput(),
-    disconnectExplained: text().includes("Disconnecting removes the token from this computer."),
+    // Signed in through the OAuth App: revoking means removing the app.
+    disconnectExplained:
+      text().includes("To revoke it, remove the app in your GitHub settings.")
+      && !text().includes("delete the token in your GitHub settings"),
     // A finished login is not cancelled a second time when its dialog closes.
     finishedLoginNotCancelled: calls("pi-desktop/github/login/cancel").length === 0,
   };
@@ -266,6 +269,10 @@ window.githubConnectorProbe = async () => {
     scopesShown: text().includes("Scopes: read:user, gist"),
     notInPage: !document.documentElement.outerHTML.includes(PASTED_TOKEN),
     formGone: !tokenInput(),
+    // A pasted token has no app to remove: revoking means deleting the token.
+    disconnectExplainedForToken:
+      text().includes("To revoke it, delete the token in your GitHub settings.")
+      && !text().includes("remove the app in your GitHub settings"),
   };
 
   // 6) A build without a client id offers only the token path.
@@ -483,6 +490,7 @@ app.whenReady().then(async () => {
         scopesShown: true,
         notInPage: true,
         formGone: true,
+        disconnectExplainedForToken: true,
       },
       deviceUnavailable: {
         connectHidden: true,
