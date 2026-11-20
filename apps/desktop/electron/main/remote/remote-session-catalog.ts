@@ -84,7 +84,7 @@ export function createRemoteSessionCatalog(options: {
     async createSession(input: RemoteHostCreateSessionRequest): Promise<SessionSummary> {
       const host = requireHost(input.hostKey);
       const result = await host.client.request<{ session: RacpSession }>("session/create", {
-        projectId: input.projectId,
+        ...(input.projectId ? { projectId: input.projectId } : {}),
         ...(input.title ? { title: input.title } : {}),
         ...(input.mode ? { mode: input.mode } : {}),
         ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),

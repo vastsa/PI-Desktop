@@ -79,7 +79,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const runningSessions = useAppStore((s) => s.runningSessions);
   const refreshSessions = useAppStore((s) => s.refreshSessions);
   const selectSession = useAppStore((s) => s.selectSession);
-  const newSession = useAppStore((s) => s.newSession);
+  const openTaskDraft = useAppStore((s) => s.openTaskDraft);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
   const setPage = useAppStore((s) => s.setPage);
@@ -267,7 +267,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         if (targetId) void selected.navigateTranscript({
           sessionId: row.session.id, messageId: targetId, query: query.trim(),
         });
-      } else await newSession();
+      } else await openTaskDraft();
       onClose();
       requestAnimationFrame(() => {
         document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus({ preventScroll: true });

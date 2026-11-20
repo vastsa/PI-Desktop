@@ -241,6 +241,7 @@ export function createProjectSlice({
   | "createProjectFromFolders"
   | "createProjectFromRemote"
   | "createProjectFromGit"
+  | "chooseLocalTaskProject"
   | "clearProject"
   | "deleteProject"
   | "toggleSessionPinned"
@@ -426,6 +427,39 @@ export function createProjectSlice({
         { get, set, runtime },
         { name, folders: [checkout.path], primaryPath: checkout.path },
       );
+    },
+
+    chooseLocalTaskProject: async (path) => {
+      if (get().activeSessionId || get().choosingLocalTaskProject) return;
+      const intent = runtime.beginNavigationIntent();
+      set({ choosingLocalTaskProject: true });
+      try {
+        let selectedPath = path;
+        if (selectedPath === undefined) {
+          const result = await api.pickProjectFolders({ single: true });
+          if (result.canceled || !result.folders[0] || !runtime.navigationIntentIsCurrent(intent)) return;
+
+          // A folder can be one of the roots of an existing local project.
+          const folder = result.folders[0];
+          const { groups } = await api.listProjectGroups();
+          const key = normalizeProjectPath(folder);
+          selectedPath = groups.find((group) => !group.remote &&
+            group.roots.some((root) => normalizeProjectPath(root.path) === key))?.primaryPath ?? folder;
+        }
+        if (!runtime.navigationIntentIsCurrent(intent)) return;
+        if (selectedPath === null) {
+          if (get().workspace) await get().clearProject({ navigationIntent: intent });
+          return;
+        }
+        if (selectedPath.startsWith("remote-project:")) return;
+        if (normalizeProjectPath(get().workspace?.path) === normalizeProjectPath(selectedPath)) return;
+        const workspace = await get().activateProject(selectedPath, { navigationIntent: intent });
+        if (!workspace && runtime.navigationIntentIsCurrent(intent)) {
+          throw new Error(i18n.t("errors.workspaceActivationFailed"));
+        }
+      } finally {
+        set({ choosingLocalTaskProject: false });
+      }
     },
 
     clearProject: async (opts) => {

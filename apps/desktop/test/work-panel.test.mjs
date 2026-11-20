@@ -540,7 +540,7 @@ test("work panel context is retained by session instead of cleared on selection"
   assert.match(storeSource, /workPanelContexts:\s*Record<string, WorkPanelContext>/);
   assert.match(storeSource, /openWorkPanelTabForSession:/);
   const selectBlock =
-    storeSource.match(/selectSession: async[\s\S]*?\n\s+newSession:/)?.[0] ?? "";
+    storeSource.match(/selectSession: async[\s\S]*?\n\s+openTaskDraft:/)?.[0] ?? "";
   assert.match(
     selectBlock,
     /switchWorkPanelSession\([\s\S]*id/,

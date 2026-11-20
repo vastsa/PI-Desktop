@@ -72,3 +72,9 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+.session-target-note {
+  flex-basis: 100%;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}

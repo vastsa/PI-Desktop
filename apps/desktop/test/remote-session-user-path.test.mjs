@@ -29,7 +29,10 @@ function fixture() {
         case "project/list": return { projects: [{ id: "p1", label: "app", archived: false }] };
         case "project/browse": return { path: "/home/pi", entries: [{ name: "app", path: "/home/pi/app" }] };
         case "project/register": return { project: { id: "p1", label: "app", archived: false, path: params.path } };
-        case "session/create": case "session/get": return { session: session() };
+        case "session/create": return {
+          session: { ...session(), projectId: params.projectId, workspaceLabel: params.projectId ? "app" : undefined },
+        };
+        case "session/get": return { session: session() };
         case "session/list": return { sessions: [session()] };
         case "session/attach": return { snapshot: snapshot({ items: [item("m2", "Hello")], hasMoreHistory: true }) };
         case "session/history": return { items: [item("m1", "Earlier")], hasMore: false };
@@ -82,6 +85,19 @@ test("remote user path: project, session, prompt, approval, files, reconnect wit
   assert.equal(f.calls.filter((entry) => entry.method === "turn/start").length, 1, "recovery must not replay prompt");
 });
 
+test("a projectless cloud session uses the paired host without a project or local workspace", async () => {
+  const { calls, catalog, router } = fixture();
+  const created = await catalog.createSession({ hostKey: "h1", mode: "agent" });
+  assert.equal(created.id, "remote:h1:s1");
+  assert.equal(created.remoteProjectId, undefined);
+  assert.equal(created.projectPath, undefined);
+  assert.deepEqual(calls[0], { method: "session/create", params: { mode: "agent" } });
+
+  const result = await router.route(IPC.invoke.agentPrompt, [{ sessionId: created.id, content: "Hello from the cloud" }]);
+  assert.equal(result.value.accepted, true);
+  assert.ok(calls.some((call) => call.method === "turn/start"));
+});
+
 test("remote history pages older items and rejects foreign or unknown cursors", async () => {
   const { backend, calls } = fixture();
   const first = await backend.invoke(IPC.invoke.sessionGet, [{ id: "remote:h1:s1", messageLimit: 1 }]);
@@ -125,7 +141,9 @@ test("remote entry IPC validates fields and strips unrelated model settings", as
   registerRemoteSessionIpc({ handle: (channel, fn) => handlers.set(channel, fn) }, () => boot);
   await handlers.get(IPC.invoke.remoteHostCreateSession)({ hostKey: "h", projectId: "p", providerId: "local", modelId: "local" });
   assert.deepEqual(calls[0], { hostKey: "h", projectId: "p" });
-  for (const request of [{ hostKey: "h" }, { hostKey: "bad:key", projectId: "p" }, { hostKey: "h", projectId: "p", mode: "unknown" }]) {
+  await handlers.get(IPC.invoke.remoteHostCreateSession)({ hostKey: "h", mode: "agent" });
+  assert.deepEqual(calls[1], { hostKey: "h", mode: "agent" });
+  for (const request of [{ hostKey: "h", projectId: null }, { hostKey: "h", projectId: "" }, { hostKey: "bad:key", projectId: "p" }, { hostKey: "h", projectId: "p", mode: "unknown" }]) {
     await assert.rejects(handlers.get(IPC.invoke.remoteHostCreateSession)(request), { errorCode: "INVALID_ARGUMENT" });
   }
   await assert.rejects(handlers.get(IPC.invoke.remoteHostRegisterProject)({ hostKey: "h", path: "relative" }), { errorCode: "INVALID_ARGUMENT" });

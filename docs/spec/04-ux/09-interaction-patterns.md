@@ -1236,11 +1236,10 @@ control.
 
 During project or session initialization, the home composer can render before
 an `activeSessionId` is projected. Idle mode, Thinking, and permission
-controls remain usable in that interval; the durable empty session row is
-created or selected by the New Task action and the first configuration action
-applies to that session once it is projected. The startup-only home composer
-may still materialize a session when pasted input arrives before selection.
-Running turns and pending approvals continue to gate the controls.
+controls remain usable in that interval when supported by the chosen target.
+New Task and the project add buttons open a draft. The first send materializes
+the session using the final target and draft settings. Running turns and
+pending approvals continue to gate the controls.
 
 ## 6. Toast vs inline error
 

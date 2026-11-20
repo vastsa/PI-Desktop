@@ -1,4 +1,8 @@
 import i18n from "i18next";
+import {
+  useSessionTargetStore,
+  type DraftSessionTarget,
+} from "../../features/chat/session-target/session-target-store";
 import type {
   Mode,
   PendingInteractiveRequests,
@@ -23,6 +27,7 @@ import {
   sessionNeedsModelPin,
 } from "../../lib/session-model";
 import {
+  clearSessionPanes,
   retainSessionPane,
 } from "../../lib/session-panes";
 import {
@@ -182,6 +187,7 @@ export function createSessionSlice({
   | "refreshPlanCheckpoints"
   | "prefetchSession"
   | "selectSession"
+  | "openTaskDraft"
   | "newSession"
   | "forkSession"
   | "forkAssistantMessage"
@@ -707,6 +713,64 @@ export function createSessionSlice({
           );
         }
       }
+    },
+
+    openTaskDraft: async (options) => {
+      const intent = runtime.beginNavigationIntent();
+      const projectPath = options?.projectPath;
+      let target: DraftSessionTarget | undefined = options?.target;
+      if (projectPath?.startsWith("remote-project:")) {
+        const { groups } = await api.listProjectGroups();
+        if (!runtime.navigationIntentIsCurrent(intent)) return false;
+        const project = groups.find((group) => group.primaryPath === projectPath);
+        if (!project?.remote) throw new Error(i18n.t("errors.workspaceActivationFailed"));
+        const defaultEnvironmentId = `default:${project.remote.hostKey}`;
+        if (project.repository) {
+          const { sessions, sessionMeta } = get();
+          const previous = sessions
+            .filter((session) => sessionMatchesProject(session, projectPath) &&
+              !sessionIsArchived(session.id, sessionMeta) &&
+              session.remoteRepository?.hostKey === project.remote?.hostKey)
+            .reduce<SessionSummary | undefined>((latest, session) =>
+              !latest || session.updatedAt > latest.updatedAt ? session : latest, undefined);
+          target = {
+            environmentId: previous?.remoteRepository?.environmentId ?? defaultEnvironmentId,
+            defaultEnvironmentId,
+            repository: project.repository,
+            baseBranch: previous?.remoteRepository?.baseBranch,
+          };
+        } else {
+          target = {
+            environmentId: defaultEnvironmentId,
+            folderProject: { path: projectPath, hostKey: project.remote.hostKey },
+          };
+        }
+      }
+      if (projectPath && !target) {
+        const workspace = await get().activateProject(projectPath, {
+          navigationIntent: intent,
+        });
+        if (!runtime.navigationIntentIsCurrent(intent)) return false;
+        if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
+      } else {
+        if (get().workspace) await get().clearProject({ navigationIntent: intent });
+        if (!runtime.navigationIntentIsCurrent(intent)) return false;
+      }
+
+      get().resetWorkPanelContext();
+      useSessionTargetStore.getState().beginDraft(target);
+      set({
+        ...clearSessionPanes(),
+        activeSessionId: undefined,
+        selectingSessionId: undefined,
+        draftConfiguration: null,
+        messages: [],
+        isRunning: false,
+        error: null,
+        errorCode: null,
+      });
+      get().setPage("chat");
+      return true;
     },
 
     newSession: async (options) => {

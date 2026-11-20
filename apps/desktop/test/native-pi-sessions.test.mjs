@@ -11,7 +11,7 @@ const events = await read("../src/stores/slices/events-slice.ts");
 const sidecarDispatch = await read("../../../packages/agent-runtime/src/sidecar.ts");
 
 test("native model readiness uses capability instead of Desktop secrets", () => {
-  assert.match(composer, /const modelReady\s*=\s*remoteSession\s*\?\s*promptAllowed\s*:\s*nativeSession\s*\?\s*activeSessionSummary\.capabilities\?\.canPrompt === true\s*:/);
+  assert.match(composer, /const modelReady\s*=\s*remoteSession\s*\|\|\s*hostDraft\s*\?\s*promptAllowed\s*:\s*nativeSession\s*\?\s*activeSessionSummary\.capabilities\?\.canPrompt === true\s*:/);
 });
 
 test("native abort bypasses smart-stop rewrite and refreshes source detail", () => {
@@ -161,9 +161,9 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
 
 test("native model readiness never depends on a Desktop provider but read-only fails closed", () => {
   const expression = composer.match(/const modelReady = ([\s\S]*?);/)[1];
-  const evaluateReady = new Function("isImageOnlyChatModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", "remoteSession", "promptAllowed", "selectedModelInfo", `return ${expression}`);
-  const ready = (nativeSession, activeSessionSummary, provider, modelId, settings, remoteSession = false, promptAllowed = false, selectedModelInfo = undefined) =>
-    evaluateReady(isImageOnlyChatModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId, remoteSession, promptAllowed, selectedModelInfo);
+  const evaluateReady = new Function("isImageOnlyChatModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", "remoteSession", "promptAllowed", "selectedModelInfo", "hostDraft", `return ${expression}`);
+  const ready = (nativeSession, activeSessionSummary, provider, modelId, settings, remoteSession = false, promptAllowed = false, selectedModelInfo = undefined, hostDraft = false) =>
+    evaluateReady(isImageOnlyChatModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId, remoteSession, promptAllowed, selectedModelInfo, hostDraft);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, undefined, undefined), true);
   assert.equal(ready(true, { capabilities: { canPrompt: false } }, { enabled: true, hasSecret: true }, "model"), false);
   assert.equal(ready(true, {}, undefined, undefined), false);
@@ -191,6 +191,9 @@ test("native model readiness never depends on a Desktop provider but read-only f
     { modelId: "vision-image", modalities: { input: ["text"], output: ["image"] } }), false);
   assert.equal(ready(false, {}, { ...imageProvider, id: "chat" }, "vision-image", visionSettings, false, false,
     { modelId: "vision-image", modalities: { output: ["text", "image"] } }), true);
+
+  // A new host-backed draft can send without a local provider.
+  assert.equal(ready(false, {}, undefined, undefined, undefined, false, true, undefined, true), true);
 
   // A remote session reads its own prompt capability and never a local provider.
   assert.equal(ready(false, {}, { enabled: true, hasSecret: true }, "model", undefined, true, true), true);

@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { safeSessionSummary } from "../../lib/remote-session-safety";
 import { api } from "../../lib/api";
 import { useSessionTargetStore } from "../../features/chat/session-target/session-target-store";
 import type { PersistSessionOptions } from "./session-coordination";
@@ -10,10 +11,44 @@ export async function materializeRemoteTargetSession(
   runtime: SessionRuntime,
   persist: (options?: PersistSessionOptions) => Promise<string | null>,
 ) {
-  const { environmentId, repository, baseBranch } = useSessionTargetStore.getState();
-  if (!repository || !baseBranch) throw new Error(i18n.t("sessionTarget.repositoryRequired"));
+  const { environmentId, repository, baseBranch, remoteProject, folderProject } = useSessionTargetStore.getState();
   const initial = get();
   const intent = runtime.beginNavigationIntent();
+
+  if (!repository) {
+    const { environments } = await api.listEnvironments();
+    if (!runtime.navigationIntentIsCurrent(intent)) return null;
+    const environment = environments.find((entry) => entry.id === environmentId);
+    if (!environment) throw new Error(i18n.t("sessionTarget.environmentUnavailable"));
+    if (folderProject?.hostKey === environment.hostKey) {
+      const workspace = await get().activateProject(folderProject.path, { navigationIntent: intent });
+      if (!runtime.navigationIntentIsCurrent(intent)) return null;
+      if (!workspace) throw new Error(i18n.t("errors.workspaceActivationFailed"));
+      return persist({ intent, projectPath: folderProject.path });
+    }
+    const projectId = remoteProject?.hostKey === environment.hostKey
+      ? remoteProject.projectId
+      : undefined;
+    const requestedMode = initial.draftConfiguration?.mode ?? initial.settings?.defaultMode;
+    const mode = requestedMode === "plan" ? "plan" : requestedMode === "goal" ? "goal" : "agent";
+    const { session: created } = await api.createRemoteSession({
+      hostKey: environment.hostKey,
+      projectId,
+      mode,
+      permissionMode: "ask",
+    });
+    const session = safeSessionSummary(created);
+    set((state) => ({
+      sessions: [session, ...state.sessions.filter((item) => item.id !== session.id)],
+    }));
+    if (!runtime.navigationIntentIsCurrent(intent)) return null;
+    await get().selectSession(session.id, { navigationIntent: intent });
+    return runtime.navigationIntentIsCurrent(intent) && get().activeSessionId === session.id
+      ? session.id
+      : null;
+  }
+
+  if (!baseBranch) throw new Error(i18n.t("sessionTarget.branchRequired"));
   const { projectPath } = await api.resolveRemoteSessionTarget({
     environmentId, repository: { owner: repository.owner, name: repository.name }, defaultBranch: repository.defaultBranch,
   });

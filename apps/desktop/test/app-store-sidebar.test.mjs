@@ -89,10 +89,10 @@ test("closed projects are not recreated from historical sidebar sessions", () =>
   assert.match(sidebarSource, /if \(entry\) entry\.sessions\.push\(session\)/);
 });
 
-test("project new-session creation uses one store-owned navigation transaction", () => {
+test("opening a project task draft uses one store-owned navigation transaction", () => {
   assert.match(
     sidebarSource,
-    /const createProjectSession[\s\S]*createSession\(\{ projectPath: path \}\)/,
+    /const createProjectSession[\s\S]*openTaskDraft\(\{ projectPath \}\)/,
   );
   assert.doesNotMatch(
     sidebarSource,
