@@ -8,6 +8,7 @@ import type {
 import { isStandaloneRunActivity } from "./assistant-turns";
 import type { TranscriptDisplayMode } from "./transcript-display-mode";
 import { isDelegationStartTool } from "./tool-display";
+import { getAssistantTurnSummary } from "./transcript-summary";
 
 export function isThinkingActive(message: UiMessage, active: boolean): boolean {
   return active && message.status === "streaming" && !message.content.trim();
@@ -31,7 +32,7 @@ export function processContainsMessage(
   messageId: string,
 ): boolean {
   return parts.some((part) => {
-    if (part.kind === "message") return part.message.id === messageId;
+    if (part.kind === "message") return part.message.id === messageId || part.sourceMessageId === messageId;
     return part.items.some((item) => {
       if (item.message.id === messageId) return true;
       return (
@@ -298,25 +299,9 @@ export function liveHistoryTurnId(
   return undefined;
 }
 
-/**
- * Only a trailing assistant text can be the answer: text followed by tools is
- * progress. The stream carries no final-answer marker, so a live trailing text
- * remains visible until a later activity establishes that it was intermediate.
- * Errors remain outside the disclosure even when more activity follows them.
- */
+/** Share the renderer's answer/process partition, including signed progress. */
 export function projectTurnProcess(entry: AssistantTurnEntry) {
-  const last = entry.parts.at(-1);
-  const answer =
-    last?.kind === "message" && last.message.content.trim() ? last : undefined;
-  const process: AssistantTurnPart[] = [];
-  const responses: Extract<AssistantTurnPart, { kind: "message" }>[] = [];
-  for (const part of entry.parts) {
-    if (part.kind === "message" && (part === answer || part.message.error)) {
-      responses.push(part);
-    } else {
-      process.push(part);
-    }
-  }
+  const { process, responses } = getAssistantTurnSummary(entry);
   return { process, responses };
 }
 

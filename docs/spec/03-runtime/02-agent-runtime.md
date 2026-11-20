@@ -492,6 +492,10 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
+Responses text explicitly marked `commentary` is progress, not a subagent
+report, one-shot result, or final answer. Signed transcript rows retain the
+provider's original text for replay. Unmarked text is treated as before.
+
 When restoring a checkpoint, tool-call reconstruction respects its
 `throughMessageId` boundary. A surviving tool row must not attach its call to
 an assistant that the checkpoint removes. Legacy checkpoints can cut through
