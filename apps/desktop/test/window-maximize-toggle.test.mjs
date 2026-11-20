@@ -7,11 +7,15 @@
  * `maximize()` on a window that already fills the screen — the title-bar
  * button goes dead. The decision must fall back to geometry: a non-maximized
  * window whose bounds cover the work area of its display counts as
- * pseudo-maximized.
+ * pseudo-maximized, and the toggle restores it to an explicit windowed rect
+ * (Electron's own restore bounds are the full rect in that state, so
+ * `maximize()+unmaximize()` is a no-op — review feedback on PR #2420).
  *
  * Contract: fullscreen windows never count as pseudo-maximized (their
  * bounds cover the work area too), so the exit-fullscreen-then-maximize
- * interlock from issue #1655 stays intact.
+ * interlock from issue #1655 stays intact; and the geometric fallback is
+ * Windows-only, because elsewhere a work-area-filling window is an ordinary
+ * user-resized window.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -22,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
-const { boundsCoverWorkArea, planMaximizeToggle } = await import(
+const { boundsCoverWorkArea, planMaximizeToggle, windowedRestoreBounds } = await import(
   "../electron/main/window-maximize.ts"
 );
 
@@ -41,7 +45,7 @@ test("a maximized window always restores", () => {
   );
 });
 
-test("a pseudo-maximized window (flag lost, bounds cover the work area) resyncs and restores on Windows", () => {
+test("a pseudo-maximized window (flag lost, bounds cover the work area) restores to a windowed rect on Windows", () => {
   assert.equal(
     planMaximizeToggle({
       isMaximized: false,
@@ -50,14 +54,14 @@ test("a pseudo-maximized window (flag lost, bounds cover the work area) resyncs 
       bounds: { x: -8, y: -8, width: 1936, height: 1088 },
       workArea: WORK_AREA,
     }),
-    "resyncUnmaximize",
+    "restoreWindowed",
   );
 });
 
 test("the geometric fallback is Windows-only", () => {
   // Outside win32 a work-area-filling window is an ordinary user-resized
-  // window: the maximize() flag sets fine there, and a resync would only
-  // risk regressing the working toggle.
+  // window: the maximize() flag sets fine there, and intercepting it would
+  // only regress the working toggle.
   for (const platform of ["darwin", "linux"]) {
     assert.equal(
       planMaximizeToggle({
@@ -87,6 +91,7 @@ test("slack tolerates off-by-small bounds from DPI rounding and display changes"
       WORK_AREA,
     ),
     true,
+    "covering means the window reaches past the work area, not exact equality",
   );
   assert.equal(
     boundsCoverWorkArea(
@@ -135,5 +140,69 @@ test("a missing work area falls back to the plain maximize path", () => {
       workArea: null,
     }),
     "maximize",
+  );
+});
+
+test("trustworthy last normal bounds win over the computed rect", () => {
+  const lastNormal = { x: 200, y: 150, width: 1100, height: 700 };
+  assert.deepEqual(
+    windowedRestoreBounds({
+      workArea: WORK_AREA,
+      lastNormal,
+      minWidth: 400,
+      minHeight: 300,
+    }),
+    lastNormal,
+  );
+});
+
+test("last normal bounds are rejected when they cover the work area (flag-loss pollution)", () => {
+  // In the flag-lost state Win32 reports the full rect as the normal
+  // position, so bounds recorded afterwards are the rect being escaped.
+  assert.deepEqual(
+    windowedRestoreBounds({
+      workArea: WORK_AREA,
+      lastNormal: { x: 0, y: 0, width: 1920, height: 1040 },
+      minWidth: 400,
+      minHeight: 300,
+    }),
+    { x: 320, y: 174, width: 1280, height: 693 },
+    "falls back to two thirds of the work area, centered",
+  );
+});
+
+test("last normal bounds are rejected when they leave the work area", () => {
+  assert.deepEqual(
+    windowedRestoreBounds({
+      workArea: WORK_AREA,
+      lastNormal: { x: -500, y: 0, width: 800, height: 600 },
+      minWidth: 400,
+      minHeight: 300,
+    }),
+    { x: 320, y: 174, width: 1280, height: 693 },
+  );
+});
+
+test("last normal bounds below the minimum size are rejected", () => {
+  assert.deepEqual(
+    windowedRestoreBounds({
+      workArea: WORK_AREA,
+      lastNormal: { x: 100, y: 100, width: 200, height: 100 },
+      minWidth: 400,
+      minHeight: 300,
+    }),
+    { x: 320, y: 174, width: 1280, height: 693 },
+  );
+});
+
+test("no last normal bounds yields two thirds of the work area, centered", () => {
+  assert.deepEqual(
+    windowedRestoreBounds({
+      workArea: WORK_AREA,
+      lastNormal: null,
+      minWidth: 0,
+      minHeight: 0,
+    }),
+    { x: 320, y: 174, width: 1280, height: 693 },
   );
 });

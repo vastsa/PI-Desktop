@@ -8,7 +8,7 @@ import {
 } from "@pi-desktop/plugin-sdk";
 import { builtinWindowBackground } from "@pi-desktop/shared";
 import { suppressLinuxFramelessSystemMenu } from "./frameless-system-menu";
-import { planMaximizeToggle } from "./window-maximize";
+import { planMaximizeToggle, windowedRestoreBounds } from "./window-maximize";
 import { getModuleDirectory } from "./module-path";
 import { PanelSenders, panelReadyWithin, pageGoneWithin, resolvePanelInvocation } from "./plugin-panel-senders";
 import { PanelOperationSerializer } from "./plugin-panel-senders";
@@ -401,19 +401,33 @@ export class PluginPanelHost {
         // native maximized flag can be lost while the window still fills
         // the work area, and then every click maximizes a maximized-looking
         // window and changes nothing (issue #1993). The plan's geometric
-        // fallback catches that pseudo-maximized state.
+        // fallback catches that pseudo-maximized state. Panel windows have
+        // no persisted normal bounds, so the restore target is computed.
+        const workArea = workAreaForWindow(window);
         const plan = planMaximizeToggle({
           isMaximized: window.isMaximized(),
           isFullScreen: window.isFullScreen(),
           platform: process.platform,
           bounds: window.getBounds(),
-          workArea: workAreaForWindow(window),
+          workArea,
         });
         if (plan === "unmaximize") {
           window.unmaximize();
-        } else if (plan === "resyncUnmaximize") {
-          window.maximize();
-          window.unmaximize();
+        } else if (plan === "restoreWindowed") {
+          // `restoreWindowed` implies a work area, but the types cannot carry
+          // that narrowing across the plan value.
+          if (!workArea) {
+            window.unmaximize();
+          } else {
+            window.setBounds(
+              windowedRestoreBounds({
+                workArea,
+                lastNormal: null,
+                minWidth: 0,
+                minHeight: 0,
+              }),
+            );
+          }
         } else {
           window.maximize();
         }

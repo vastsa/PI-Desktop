@@ -20,7 +20,7 @@ import {
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { installApplicationMenu } from "../application-menu";
 import { isWindowFullScreen, setWindowFullScreen } from "../window-fullscreen";
-import { planMaximizeToggle } from "../window-maximize";
+import { planMaximizeToggle, windowedRestoreBounds } from "../window-maximize";
 import { createTraySessions } from "../tray-sessions";
 import { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
 import { createWindow, type WindowLifecycleState } from "./window";
@@ -503,18 +503,31 @@ export function createApplicationLifecycle({
         // the work area, and then every click lands in the maximize branch
         // and changes nothing (issue #1993). The plan's geometric fallback
         // catches that pseudo-maximized state.
+        const workArea = workAreaForWindow(target);
         const maximizePlan = planMaximizeToggle({
           isMaximized: target.isMaximized(),
           isFullScreen: isWindowFullScreen(target),
           platform: process.platform,
           bounds: target.getBounds(),
-          workArea: workAreaForWindow(target),
+          workArea,
         });
         if (maximizePlan === "unmaximize") {
           target.unmaximize();
-        } else if (maximizePlan === "resyncUnmaximize") {
-          target.maximize();
-          target.unmaximize();
+        } else if (maximizePlan === "restoreWindowed") {
+          // `restoreWindowed` implies a work area, but the types cannot carry
+          // that narrowing across the plan value.
+          if (!workArea) {
+            target.unmaximize();
+          } else {
+            target.setBounds(
+              windowedRestoreBounds({
+                workArea,
+                lastNormal: state.workPanelLastAppliedBounds,
+                minWidth: windowMinWidth,
+                minHeight: windowMinHeight,
+              }),
+            );
+          }
         } else {
           if (isWindowFullScreen(target)) {
             setWindowFullScreen(
