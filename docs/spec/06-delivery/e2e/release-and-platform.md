@@ -1117,9 +1117,12 @@
 - **Specs linked**: `06-delivery/06-release-runbook.md`, ADR 0022 / D686
 - **Acceptance**: Quality (release safety)
 - **Milestone**: M6+
-- **Status**: Policy covered by `apps/desktop/test/update-preference.test.mjs`
-  and the workflow stamp by `apps/desktop/test/ci-workflow.test.mjs`. The
-  packaged journey on a real unsigned build is manual validation.
+- **Status**: Policy covered by `apps/desktop/test/update-preference.test.mjs`;
+  the controller reading the marker from packaged metadata and refusing to
+  download by `apps/desktop/test/updater-controller.test.mjs`; the workflow
+  stamp by `apps/desktop/test/ci-workflow.test.mjs`; the artifact check by
+  `apps/desktop/test/packaged-distribution-check.test.mjs`. The packaged
+  journey on a real unsigned build is manual validation.
 
 ## E2E-217: Windows host starts on a clean x64-emulated ARM64 install
 

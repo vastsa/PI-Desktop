@@ -428,22 +428,15 @@ Stop and ask the owner before this step: it spends the fork's Actions minutes. W
 Expected:
 - `verify`, `Build macOS arm64`, and both `Bundle pi-host` jobs succeed.
 - The "Package unsigned macOS installer" step runs and the signed steps are skipped.
+- The "Verify the unsigned distribution marker" step passes: the packaged `app.asar` carries `piDistribution: "unsigned"` and the bundle seal verifies.
 - Artifact `dist-mac-arm64` contains one `.dmg`, one `-mac.zip`, their blockmaps, and `latest-mac-arm64.yml`.
 - The two `pi-host-linux-*` artifacts each contain a `.tar.gz` and a `.sha256`.
 
 - [ ] **Step 5: Check the app is launchable (owner, on their Mac)**
 
-The owner downloads `dist-mac-arm64`, installs the DMG, and runs:
+The final review found that electron-builder skips signing when no identity is configured, so the unsigned lane now passes `-c.mac.identity=-` and the workflow's "Verify the unsigned distribution marker" step checks the marker, `codesign --verify --deep --strict`, and `Signature=adhoc` on the runner. That step passing in Step 4 replaces the manual `codesign` check this step first described.
 
-```bash
-codesign -dv /Applications/PI-Desktop.app 2>&1 | grep Signature
-```
-
-Expected: `Signature=adhoc`. Apple Silicon refuses to run an arm64 binary with no signature at all.
-
-If the output is not `adhoc`, add `-c.mac.identity=-` to the unsigned packaging command in `release.yml`, extend the Task 3 unsigned-block assertion to require it, commit as `fix(release): ad-hoc sign unsigned macOS builds`, and repeat Steps 3 to 5.
-
-Then the owner opens the app once (after `xattr -dr com.apple.quarantine /Applications/PI-Desktop.app` or allowing it in System Settings) and confirms that "Check for updates" in the sidebar offers the releases page and never starts an in-app download.
+The owner downloads `dist-mac-arm64`, installs the DMG, opens the app once (after `xattr -dr com.apple.quarantine /Applications/PI-Desktop.app` or allowing it in System Settings), and confirms that "Check for updates" in the sidebar offers the releases page and never starts an in-app download.
 
 - [ ] **Step 6: Report**
 

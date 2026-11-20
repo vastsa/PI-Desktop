@@ -21,8 +21,21 @@ section describes what the fork's workflow does.
   unsigned and the secrets in §4.5 are not used. §2 and §4.5 to §4.6 describe
   the dormant upstream lane.
 - **Marker**: the unsigned lane passes
-  `-c.extraMetadata.piDistribution=unsigned`. The packaged app reads it and
-  uses manual update delivery only.
+  `-c.extraMetadata.piDistribution=unsigned`. The packaged app reads it on
+  every platform and uses manual update delivery only.
+- **Ad-hoc signature**: the unsigned lane also passes `-c.mac.identity=-`.
+  With no identity electron-builder skips signing, which leaves Electron's
+  original signature over a rewritten bundle and makes macOS report the app
+  as damaged. Ad-hoc signing reseals the bundle; it is not a Developer ID
+  signature and does not notarize.
+- **Artifact check**: the "Verify the unsigned distribution marker" step runs
+  `scripts/check-packaged-distribution.mjs` against the packaged `app.asar`
+  and `codesign --verify --deep --strict` against the bundle. electron-builder
+  ignores a command-line override it does not parse without failing, so the
+  workflow checks the artifact instead of trusting the command.
+- **Flag forwarding**: pass electron-builder flags to `pnpm run dist:mac`
+  without a `--` separator. The pinned pnpm forwards a literal `--`, after
+  which electron-builder treats every flag as a positional argument.
 - **Cutting a release**: `node scripts/release.mjs <version> --tag`, then push
   the branch and the tag. A `workflow_dispatch` run builds the same artifacts
   without publishing.

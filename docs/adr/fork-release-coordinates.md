@@ -27,9 +27,11 @@ ships the desktop for macOS arm64 only.
 3. A tag builds the desktop for macOS arm64 only, unsigned, unless the
    repository variable `MACOS_SIGN_RELEASE` is `true`. The upstream signed,
    notarized, and stapled lane stays in the workflow unchanged and dormant.
-4. An unsigned package is stamped `piDistribution: "unsigned"`. A build that
-   carries the marker never supports automatic updates, so it always uses
-   manual delivery, whatever preference the profile stores.
+4. An unsigned package is stamped `piDistribution: "unsigned"` and ad-hoc
+   signed so its bundle seal is valid. A build that carries the marker never
+   supports automatic updates, so it always uses manual delivery, whatever
+   preference the profile stores. The release workflow verifies the marker
+   and the seal on the packaged artifact.
 5. The `pi-host` bundle job keeps building Linux x64 and arm64. It follows the
    targets the desktop can install, not the desktop's own build matrix.
 6. Upstream's issue automation, which needs upstream's model API secret, runs
