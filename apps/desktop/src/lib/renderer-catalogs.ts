@@ -18,8 +18,8 @@ const localeLoaders: Record<NonEnglishLocale, () => Promise<LocaleModule>> = {
   fr: () => import("@pi-desktop/i18n/locales/fr"),
   ko: () => import("@pi-desktop/i18n/locales/ko"),
   "pt-BR": () => import("@pi-desktop/i18n/locales/pt-BR"),
+  ru: () => import("@pi-desktop/i18n/locales/ru"),
 };
-
 const catalogCache = new Map<AppLocale, Promise<EnglishCatalog>>();
 
 export function loadRendererCatalog(locale: AppLocale): Promise<EnglishCatalog> {

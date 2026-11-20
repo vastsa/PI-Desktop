@@ -228,7 +228,7 @@ test("every locale defines the gen-ui strings", () => {
       assert.match(catalog.chat.genUi[key], /\{\{title\}\}/, `${locale} ${key}`);
     }
   }
-  assert.equal(Object.keys(catalogs).length, 9);
+  assert.equal(Object.keys(catalogs).length, 10);
 });
 
 test("expanded frames share the quota without evicting their inline state", async (t) => {

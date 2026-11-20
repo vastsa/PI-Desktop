@@ -7,8 +7,8 @@ import { zhTWEntries } from "./changelog-zh-TW.js";
 import { koEntries } from "./changelog-ko.js";
 import { ptBREntries } from "./changelog-pt-BR.js";
 import { trEntries } from "./changelog-tr.js";
+import { ruEntries } from "./changelog-ru.js";
 import { normalizeChangelogVersion, resolveChangelogLocale } from "./changelog-runtime.js";
-
 export { normalizeChangelogVersion, resolveChangelogLocale } from "./changelog-runtime.js";
 
 /**
@@ -23,7 +23,7 @@ export { normalizeChangelogVersion, resolveChangelogLocale } from "./changelog-r
  * Stable product versions only — omit pre-releases.
  */
 
-export type ChangelogLocale = "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";
+export type ChangelogLocale = "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR" | "ru";
 
 export type ChangelogEntry = {
   /** Semver without a leading `v`, matching apps/desktop package version. */
@@ -45,6 +45,7 @@ export const CHANGELOG: Record<ChangelogLocale, readonly ChangelogEntry[]> = {
   fr: frEntries,
   ko: koEntries,
   "pt-BR": ptBREntries,
+  ru: ruEntries,
 };
 
 export function getChangelogEntry(

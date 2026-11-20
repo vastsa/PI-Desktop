@@ -41,11 +41,95 @@ test("offline storage maintenance has localized progress and recovery copy befor
 });
 
 test("every shipped catalog matches English keys and interpolation variables", () => {
+  const PLURAL_SUFFIX = /_(one|other|few|many|zero)$/;
+  const pluralBase = (key) => key.replace(PLURAL_SUFFIX, "");
+  const englishKeys = new Set(Object.keys(english));
+
   for (const [id, catalog] of Object.entries(catalogs)) {
     const flat = flattenCatalog(catalog);
-    assert.deepEqual(Object.keys(flat).sort(), Object.keys(english).sort(), id);
-    for (const key of Object.keys(english)) {
-      assert.deepEqual(placeholders(flat[key]), placeholders(english[key]), `${id} ${key}`);
+    const localeKeys = new Set(Object.keys(flat));
+
+    // Every English key must exist in the locale.
+    for (const key of englishKeys) {
+      assert.ok(localeKeys.has(key), `${id} is missing ${key}`);
+    }
+
+    // Extra keys are allowed only as plural variants of an English family:
+    // Russian CLDR needs `_few`/`_many`, which English does not ship.
+    for (const key of localeKeys) {
+      if (englishKeys.has(key)) continue;
+      const match = key.match(/^(.*)_(few|many|zero)$/);
+      assert.ok(match, `${id} has unexpected key ${key}`);
+      const base = match[1];
+      assert.ok(
+        englishKeys.has(`${base}_one`) ||
+          englishKeys.has(`${base}_other`) ||
+          englishKeys.has(base),
+        `${id} ${key} extends ${base}, which English does not pluralize`,
+      );
+    }
+
+    for (const key of englishKeys) {
+      const expected = placeholders(english[key]);
+      const actual = placeholders(flat[key]);
+      if (PLURAL_SUFFIX.test(key)) {
+        // A plural form may add {{count}} — ru `_one` fires for 21, 31, …
+        // where English hardcodes the numeral — but must keep every English
+        // variable and may add nothing else.
+        for (const name of expected) {
+          assert.ok(actual.includes(name), `${id} ${key} dropped {{${name}}}`);
+        }
+        for (const name of actual) {
+          assert.ok(
+            name === "count" || expected.includes(name),
+            `${id} ${key} added {{${name}}}`,
+          );
+        }
+      } else {
+        assert.deepEqual(actual, expected, `${id} ${key}`);
+      }
+    }
+
+    // Extra plural forms interpolate exactly like the English `_other` form.
+    for (const key of localeKeys) {
+      if (englishKeys.has(key)) continue;
+      const base = pluralBase(key);
+      const reference =
+        english[`${base}_other`] ?? english[`${base}_one`] ?? english[base];
+      assert.deepEqual(placeholders(flat[key]), placeholders(reference), `${id} ${key}`);
+    }
+  }
+});
+
+test("every locale resolves each English plural family without falling back to English", () => {
+  // For every English plural family and every count a shipped locale's CLDR
+  // rules route to a category, the locale must define that form (or the bare
+  // key that i18next tries next) — otherwise i18next leaks the English text.
+  const families = new Set();
+  for (const key of Object.keys(english)) {
+    const match = key.match(/^(.*)_(one|other)$/);
+    if (match) families.add(match[1]);
+    else if (english[`${key}_other`] !== undefined) families.add(key);
+  }
+  const sampleCounts = [0, 1, 2, 5, 21, 101, 1.5];
+
+  for (const [id] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalogs[id]);
+    const rules = new Intl.PluralRules(id);
+    for (const family of families) {
+      for (const count of sampleCounts) {
+        const category = rules.select(count);
+        const resolved =
+          flat[`${family}_${category}`] !== undefined
+            ? `${family}_${category}`
+            : flat[family] !== undefined
+              ? family
+              : null;
+        assert.ok(
+          resolved,
+          `${id}: ${family} cannot resolve count ${count} (${category}) inside the locale`,
+        );
+      }
     }
   }
 });
@@ -253,11 +337,11 @@ test("locale resolution maps variants onto shipped catalogs and falls back to En
 test("the locale registry lists English first, then other locales by English name", () => {
   assert.deepEqual(
     supportedLocales.map((locale) => locale.id),
-    ["en", "zh-CN", "zh-TW", "de", "es", "tr", "fr", "ko", "pt-BR"],
+    ["en", "zh-CN", "zh-TW", "de", "es", "tr", "fr", "ko", "pt-BR", "ru"],
   );
   assert.deepEqual(
     listedLocales().map((locale) => locale.id),
-    ["en", "zh-CN", "zh-TW", "fr", "de", "ko", "pt-BR", "es", "tr"],
+    ["en", "zh-CN", "zh-TW", "fr", "de", "ko", "pt-BR", "ru", "es", "tr"],
   );
   assert.equal(localeInfoNative("de"), "Deutsch");
   assert.equal(localeInfoNative("es"), "Español");
@@ -265,6 +349,7 @@ test("the locale registry lists English first, then other locales by English nam
   assert.equal(localeInfoNative("tr"), "Türkçe");
   assert.equal(localeInfoNative("ko"), "한국어");
   assert.equal(localeInfoNative("pt-BR"), "Português (Brasil)");
+  assert.equal(localeInfoNative("ru"), "Русский");
   assert.equal(english["settings.languageSearchPlaceholder"], "Search languages…");
   assert.equal(english["settings.themeSearchPlaceholder"], "Search themes…");
   assert.equal(english["settings.languageAutoDesc"], "Currently {{state}}");

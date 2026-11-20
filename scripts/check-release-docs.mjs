@@ -151,7 +151,7 @@ try {
 if (catalogs) {
   const enEntries = catalogs.en;
   const expectedVersions = enEntries?.map((entry) => entry.version) ?? [];
-  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR"];
+  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR", "ru"];
   for (const locale of requiredLocales) {
     if (!catalogs[locale]) {
       fail("packages/shared/src/changelog.ts", `missing shipped locale catalog: ${locale}`);
