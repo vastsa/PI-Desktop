@@ -2084,7 +2084,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   streaming or empty assistant turn that would produce no items opens
   nothing. Copy on a speaking-turn menu writes the live selection in that
   turn captured when the menu opened; a collapsed caret, or a selection
-  outside the row, falls back to the whole turn.
+  outside the row, falls back to the whole turn. In the active local session,
+  a non-empty selection inside a message bubble can also show items from
+  opted-in plugin views. Items use the view's localized title and host-drawn
+  icon. Choosing an item opens its work-panel view and gives it only the
+  selected text and session ID.
   Copy conversation reads the complete session on demand, including unloaded
   history and untruncated message text, and preserves the visible in-flight
   tail. It does not change the reading window or scroll position. A failed
