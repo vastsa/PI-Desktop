@@ -114,6 +114,15 @@ export type PluginPermissionReview = {
   addedPermissions: string[];
 };
 /**
+ * Host presentation a plugin-contributed view has opted into (ADR 0348).
+ *
+ * The ordinary docked pane is the absence of this value; `"workbench"` means
+ * the view is built for full-width work, so the host lends it a temporary
+ * layout instead of the default one.
+ */
+export type PluginViewPresentation = "workbench";
+
+/**
  * One plugin-contributed work panel view, resolved for the current window.
  *
  * The renderer never reads a manifest: the main process resolves the localized
@@ -133,6 +142,11 @@ export type PluginViewMeta = {
   pluginName: string;
   icon?: string;
   order: number;
+  /**
+   * Present only when the view opted into a non-default presentation. The host
+   * layout policy reads it; nothing else depends on it.
+   */
+  presentation?: PluginViewPresentation;
 };
 
 /** A user-invoked text action available beside the Composer controls. */

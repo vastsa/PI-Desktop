@@ -205,6 +205,11 @@ export function registerPluginUiIpc({
           pluginName: loaded.manifest.name,
           icon: view.icon,
           order: Number.isFinite(view.order) ? Number(view.order) : index,
+          // Copied only when opted in, so the default presentation stays
+          // "absent" and every consumer that ignores the field keeps working.
+          ...(view.presentation === "workbench"
+            ? { presentation: "workbench" as const }
+            : {}),
         });
       });
     }

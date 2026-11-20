@@ -506,6 +506,13 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
             if !resolved.exists() {
                 bail!("PLUGIN_INVALID: view entry missing: {entry_path}");
             }
+            // ADR 0348: an optional host presentation. The host acts on this
+            // value, so one this build does not know must not load silently.
+            if let Some(presentation) = obj.get("presentation") {
+                if presentation.as_str() != Some("workbench") {
+                    bail!("PLUGIN_INVALID: view {id} presentation must be \"workbench\"");
+                }
+            }
         }
     }
 

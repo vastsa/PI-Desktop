@@ -13,6 +13,7 @@ import {
   MAX_RENDERER_CALL_METHODS_PER_PLUGIN,
   PLUGIN_PERMISSIONS,
   PLUGIN_VIEW_ICONS,
+  PLUGIN_VIEW_PRESENTATIONS,
   type PluginProviderContrib,
   type PluginManifest,
 } from "./index.js";
@@ -436,6 +437,20 @@ describe("contributes.views", () => {
     ).toBeUndefined();
     expect(PLUGIN_VIEW_ICONS).toContain("diff");
     expect(new Set(PLUGIN_VIEW_ICONS).size).toBe(PLUGIN_VIEW_ICONS.length);
+  });
+
+  it("accepts the workbench presentation opt-in and rejects unknown ones", () => {
+    expect(
+      validateContributions({ views: [{ ...view, presentation: "workbench" }] }),
+    ).toBeUndefined();
+    expect(PLUGIN_VIEW_PRESENTATIONS).toEqual(["workbench"]);
+    // The host acts on this value, so a typo must fail the manifest instead of
+    // silently keeping the default presentation.
+    expect(
+      validateContributions({
+        views: [{ ...view, presentation: "maximized" as never }],
+      }),
+    ).toMatch(/presentation must be "workbench"/);
   });
 });
 

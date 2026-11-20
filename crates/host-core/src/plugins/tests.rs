@@ -1185,6 +1185,62 @@ fn view_contributions_require_permission_and_an_existing_entry() {
 }
 
 #[test]
+fn view_presentation_accepts_only_the_workbench_opt_in() {
+    let dir = tempdir().unwrap();
+    let view = |extra: Value| json!({ "views": [extra] });
+    let manifest = |extra: Value| capability_manifest(view(extra), json!(["ui.view"]));
+
+    // Omitting the field keeps the ordinary docked pane.
+    let plain = dir.path().join("plain");
+    write_plugin(
+        &plain,
+        manifest(json!({ "id": "a", "title": "A", "entry": "views/a.html" })),
+        &[("views/a.html", "<html></html>")],
+    );
+    assert!(PluginManager::read_manifest(&plain).is_ok());
+
+    let workbench = dir.path().join("workbench");
+    write_plugin(
+        &workbench,
+        manifest(json!({
+            "id": "a",
+            "title": "A",
+            "entry": "views/a.html",
+            "presentation": "workbench"
+        })),
+        &[("views/a.html", "<html></html>")],
+    );
+    assert!(PluginManager::read_manifest(&workbench).is_ok());
+
+    // A presentation this build does not know would silently reshape the host
+    // layout, so it must fail the manifest instead (ADR 0348).
+    for bad in [
+        json!("maximized"),
+        json!(true),
+        json!({ "kind": "workbench" }),
+    ] {
+        let unknown = dir
+            .path()
+            .join(format!("unknown-{}", bad.to_string().len()));
+        write_plugin(
+            &unknown,
+            manifest(json!({
+                "id": "a",
+                "title": "A",
+                "entry": "views/a.html",
+                "presentation": bad
+            })),
+            &[("views/a.html", "<html></html>")],
+        );
+        assert!(
+            read_manifest_err(&unknown).contains("presentation must be"),
+            "unexpected error for {bad}: {}",
+            read_manifest_err(&unknown)
+        );
+    }
+}
+
+#[test]
 fn bundled_plugins_refresh_from_disk_but_keep_user_state() {
     let ship = tempdir().unwrap();
     let plugin_manifest = |version: &str| {

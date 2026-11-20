@@ -245,7 +245,8 @@ type PluginViewContrib = {
  title: string | { en: string; "zh-CN": string };
  icon?: string; // token from the host icon set; unknown tokens draw a letter tile
  entry: string; // relative path to the view's HTML entry
-  order?: number; // ascending sort key in the plugin-views menu group, default 0
+ order?: number; // ascending sort key in the plugin-views menu group, default 0
+ presentation?: "workbench"; // host presentation opt-in (ADR 0348); omitted keeps the docked pane
 };
 
 type PluginSessionSourceContrib = {
@@ -311,6 +312,19 @@ type PluginWindowAppearanceContrib = {
  cornerRadius?: number; // integer 0..24 DIP, Windows main window only; default 12
 };
 ```
+
+**View presentation (`presentation`).** A docked view may declare
+`presentation: "workbench"`; any other value rejects the manifest. The host
+then treats the view as a working surface for as long as it is the foreground
+tab of the presented work panel on the Chat page: it maximizes the panel and
+collapses the left sidebar, and it restores the layout the user had — including
+any maximize or collapse the user had already set — when the view stops being
+the foreground tab, another page takes the center pane, or the panel closes.
+The opt-in grants no permission beyond `ui.view`, changes no tab or session
+bookkeeping, and persists no width: both columns return at the user's own
+preferred widths. A manual maximize or sidebar toggle inside the view takes
+that control back and is never re-applied for the life of the activation
+([ADR 0348](../../adr/0348-plugin-view-workbench-presentation.md)).
 
 `cornerRadius` belongs to the contributing plugin and applies while any of its
 declared themes is selected. It does not change macOS/Linux native corners.

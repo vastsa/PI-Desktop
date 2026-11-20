@@ -3690,6 +3690,22 @@ registry-only installation and credential isolation.
   the host hooks and context. Isolated Electron coverage uses
   `scripts/e2e-plugin-jsx-runtime.mjs`; no user profile or provider is used.
 
+## E2E-PLUGIN-WORKBENCH: Borrow and restore the desktop layout for a docked view
+
+- **Setup**: Start a conversation with the left sidebar expanded and a normal
+  work panel. Load a plugin with one ordinary docked view and one declaring
+  `presentation: "workbench"`.
+- **Steps**: Open the opted-in view from the work-panel picker. Switch to the
+  ordinary view, then return. Use the host restore button and drag the divider
+  to narrow the panel. Close the work panel. Repeat with the sidebar collapsed
+  before opening the workbench, and with a switch to another conversation.
+- **Expected**: Only the foreground workbench maximizes the right panel and
+  temporarily collapses the left sidebar. Leaving restores the layout it
+  changed without persisting different widths. Manual restore is not undone
+  while the same view stays active. A sidebar already collapsed stays collapsed.
+- **Coverage**: `plugin-view-workbench-layout.test.mjs` verifies activation,
+  transitions and shell wiring. The desktop path above requires Electron.
+
 ## E2E-267: A plugin follows the selected session and opens its own view
 
 - **Preconditions**: A development plugin that declares one
