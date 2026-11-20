@@ -68,8 +68,8 @@ type GitHubPullRequestSummary = {
 | `githubConnectorLoginCancel` | `pi-desktop/github/login/cancel` | `loginId: string` | `{ ok: boolean }` |
 | `githubConnectorSetToken` | `pi-desktop/github/setToken` | `{ token: string }` | `GitHubConnectorStatus` |
 | `githubConnectorDisconnect` | `pi-desktop/github/disconnect` | none | `GitHubConnectorStatus` |
-| `githubRepositories` | `pi-desktop/github/repositories` | `{ query?: string; refresh?: boolean }` | `{ repositories: GitHubRepositorySummary[]; truncated: boolean }` |
-| `githubBranches` | `pi-desktop/github/branches` | `{ owner: string; name: string }` | `{ branches: GitHubBranchSummary[]; defaultBranch: string; truncated: boolean }` |
+| `githubRepositories` | `pi-desktop/github/repositories` | `{ query?: string; refresh?: boolean }` | `{ repositories: GitHubRepositorySummary[]; truncated: boolean; ssoPartial?: boolean }` |
+| `githubBranches` | `pi-desktop/github/branches` | `{ owner: string; name: string }` | `{ branches: GitHubBranchSummary[]; defaultBranch: string; truncated: boolean; ssoPartial?: boolean }` |
 | event `githubConnectorLogin` | `pi-desktop/github/event/login` | — | `OAuthLoginEvent` |
 | event `githubConnectorChanged` | `pi-desktop/github/event/changed` | — | `GitHubConnectorStatus` |
 
@@ -93,6 +93,10 @@ function getActiveGitHubConnector(): GitHubConnector | null;
 ```
 
 **Error codes** (shared registry, not retriable unless noted): `GITHUB_NOT_CONNECTED`, `GITHUB_AUTH_FAILED`, `GITHUB_FORBIDDEN`, `GITHUB_NOT_FOUND`, `GITHUB_RATE_LIMITED` (retriable), `GITHUB_NETWORK` (retriable), `GITHUB_INVALID_TOKEN`, `GITHUB_DEVICE_FLOW_UNAVAILABLE`, `GITHUB_LOGIN_EXPIRED`, `GITHUB_LOGIN_DENIED`, `GITHUB_VALIDATION_FAILED`.
+
+**`ssoPartial`** (added after review): GitHub answers a list request for a token that an organization's SAML SSO has not authorized with HTTP 200 and the header `X-GitHub-SSO: partial-results`, silently leaving that organization's repositories out. When any page carries that header the result has `ssoPartial: true`, and the same flag is on the service methods' results. Consumers must tell the user the list may be incomplete.
+
+**Names** (changed after review): owner, repository, and branch values follow the rules in the host git plan as amended: owners may contain `_`, and branch names follow git's reference-name rules rather than a narrow allowlist, so every branch the listing returns can be passed back. A repository that GitHub reports as moved (HTTP 301 on a repository endpoint) is `GITHUB_NOT_FOUND` with a message saying it was renamed or moved, not a network error.
 
 **Settings destination id:** `connectors`, in the `agent` group, immediately after `mcp`.
 

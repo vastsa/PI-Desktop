@@ -129,16 +129,16 @@ The boot object adds `installationId` itself; callers never pass it.
 - Consumes: nothing.
 - Produces: everything under "Cross-plan contract", plus these exports from `racp-workspace-git.ts`:
   - typebox schemas, each a closed object: `WorkspaceGitCredentialSetSchema`, `WorkspaceGitRepositoryRequestSchema`, `WorkspaceGitPrepareSchema`, `WorkspaceGitSessionRefSchema` (`{ installationId, sessionId }`, used by push and status), `WorkspaceGitRemoveSchema`, `WorkspaceGitJobRefSchema`, `WorkspaceGitListSchema`
-  - `isGitHubOwner(value: string): boolean` — 1 to 39 characters of `[A-Za-z0-9-]`, not starting or ending with `-`
+  - `isGitHubOwner(value: string): boolean` — 1 to 39 characters of `[A-Za-z0-9_-]`, not starting or ending with `-`. The underscore is allowed because Enterprise Managed User logins contain one
   - `isGitHubRepositoryName(value: string): boolean` — 1 to 100 characters of `[A-Za-z0-9._-]`, not `.` or `..`, not ending in `.git`
-  - `isGitBranchName(value: string): boolean` — 1 to 244 characters of `[A-Za-z0-9._/@+-]`; rejects a leading `-` or `/`, a trailing `/`, `.`, or `.lock`, and any of `..`, `//`, `@{`, `/.`
+  - `isGitBranchName(value: string): boolean` — git's own reference-name rules, not a narrow allowlist, so that every branch GitHub lists is usable: 1 to 244 characters; rejects ASCII control characters and DEL, the space, any of `~ ^ : ? * [ \`, a leading `-` or `/`, a trailing `/`, `.`, or `.lock`, any of the sequences `..`, `//`, `@{`, `/.`, and the single name `@`. Everything else is accepted, including `#`, `=`, `+`, `,`, and non-ASCII letters. This is safe because a branch name only ever reaches git as an argument after `--` or inside a full reference name, never through a shell, and never becomes part of a directory name
   - `isEnvironmentVariableName(value: string): boolean` — `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, and not one of `PATH HOME SHELL USER LOGNAME PWD OLDPWD IFS ENV BASH_ENV PROMPT_COMMAND NODE_OPTIONS ELECTRON_RUN_AS_NODE`, and not starting with `GIT_ PI_ LD_ DYLD_ BASH_FUNC_`
 
 Field limits: `installationId` is a UUID string; `sessionId` 1 to 256 characters; `token` 1 to 4096 characters with no control characters; variable `value` at most 8192 characters; `jobId` 1 to 64 characters.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `racp-workspace-git.test.ts`, one `describe` per validator with accept and reject tables. The reject tables must include, for owners `"-a"`, `"a-"`, `""`, `"a/b"`, a 40-character name; for repository names `"."`, `".."`, `"a/b"`, `"repo.git"`, `"--upload-pack=x"`; for branches `"-x"`, `"/a"`, `"a/"`, `"a..b"`, `"a//b"`, `"a@{b"`, `"a/.b"`, `"a.lock"`, `"a b"`, `"a\u0000b"`; for variable names `"PATH"`, `"GIT_DIR"`, `"PI_PORT"`, `"LD_PRELOAD"`, `"1A"`, `"A-B"`. Accept tables include `"main"`, `"feature/x-1"`, `"release/1.2"`, `"my_var"`.
+In `racp-workspace-git.test.ts`, one `describe` per validator with accept and reject tables. The reject tables must include, for owners `"-a"`, `"a-"`, `""`, `"a/b"`, a 40-character name; for repository names `"."`, `".."`, `"a/b"`, `"repo.git"`, `"--upload-pack=x"`; for branches `"-x"`, `"/a"`, `"a/"`, `"a..b"`, `"a//b"`, `"a@{b"`, `"a/.b"`, `"a.lock"`, `"a b"`, `"a\u0000b"`, `"a~b"`, `"a^b"`, `"a:b"`, `"a?b"`, `"a*b"`, `"a[b"`, `"a\\b"`, `"@"`; for variable names `"PATH"`, `"GIT_DIR"`, `"PI_PORT"`, `"LD_PRELOAD"`, `"1A"`, `"A-B"`. Accept tables include, for branches, `"main"`, `"feature/x-1"`, `"release/1.2"`, `"fix/#123"`, `"release=1.0"`, `"功能/登录"`; for owners `"mona_acme"`; for variable names `"my_var"`.
 
 Add:
 
