@@ -181,6 +181,7 @@ export class RacpServer {
       workspaceTools: Boolean(options.operations.workspaceTools),
       workspaceFiles: Boolean(options.operations.workspaceFiles),
       workspacePluginFiles: Boolean(options.operations.workspacePluginFiles),
+      workspaceGit: Boolean(options.operations.workspaceGit),
       notifications: false,
       bindings: ["RACP-WS"],
     };
@@ -267,6 +268,9 @@ export class RacpServer {
     connection.terminals.clear();
     void this.options.operations.workspaceTools?.disconnect(connection.id).catch(() => {
       this.options.log("warn", "workspace tool disconnect cleanup failed", { connectionId: connection.id });
+    });
+    void this.options.operations.workspaceGit?.disconnect(connection.id).catch(() => {
+      this.options.log("warn", "workspace git disconnect cleanup failed", { connectionId: connection.id });
     });
     connection.close(1000, "closed");
     this.options.log("info", "racp connection released", { connectionId: connection.id });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentEventEnvelope, RacpEventEnvelope, RacpInitializeResult, RacpSessionSnapshot, RacpTurn, UiMessage } from "@pi-desktop/shared";
 
 import { hashToken, newPairingToken } from "./auth.js";
+import type { RacpHostOperations } from "./host-operations.js";
 import { OWNER_TOKEN, VIEWER_TOKEN, flush, harness } from "./test-harness.js";
 
 function envelope(sessionId: string, turnId: string, event: AgentEventEnvelope["event"]): AgentEventEnvelope {
@@ -448,6 +449,151 @@ describe("owner-only workspace tool boundary", () => {
   it("fails closed when the paired Host lacks the tool service", async () => {
     const h = await harness(); const { client } = await h.connect(OWNER_TOKEN);
     await expect(client.request("workspace/toolShell", {})).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    await client.close();
+  });
+});
+
+describe("owner-only workspace git boundary", () => {
+  const installationId = "00000000-0000-4000-8000-000000000000";
+  const repository = { owner: "octo", name: "repo" };
+  const worktree = {
+    sessionId: "s-1", repository, baseBranch: "main", workBranch: "pi-desktop/8b54618f6bc1",
+    path: "/w/worktrees/github.com/octo/repo/8b54618f6bc1", mainPath: "/w/repos/github.com/octo/repo",
+    baseCommit: "a".repeat(40), createdAt: "2026-11-20T00:00:00.000Z", setup: { status: "none" as const },
+  };
+  const job = { jobId: "job-1", kind: "prepare" as const, state: "running" as const, phase: "queued" as const };
+
+  function fakeWorkspaceGit(calls: Array<Record<string, unknown>>): NonNullable<RacpHostOperations["workspaceGit"]> {
+    return {
+      async setCredential(input, owner) { calls.push({ op: "setCredential", input, owner }); },
+      async clearCredential(owner) { calls.push({ op: "clearCredential", owner }); },
+      async repository(input) { calls.push({ op: "repository", input }); return { path: worktree.mainPath, cloned: false }; },
+      async prepare(input, owner) { calls.push({ op: "prepare", input, owner }); return { jobId: "job-1" }; },
+      async push(input, owner) { calls.push({ op: "push", input, owner }); return { jobId: "job-2" }; },
+      async job(input) { calls.push({ op: "job", input }); return job; },
+      async cancelJob(input) { calls.push({ op: "cancelJob", input }); },
+      async status(input) { calls.push({ op: "status", input }); return { worktree, ahead: 1, behind: 0, uncommittedFiles: 2, unpushedCommits: 1, pushedOnce: false }; },
+      async remove(input) { calls.push({ op: "remove", input }); return { removed: true, uncommittedFiles: 0, unpushedCommits: 0 }; },
+      async list(input) { calls.push({ op: "list", input }); return [worktree]; },
+      async disconnect(connectionId) { calls.push({ op: "disconnect", connectionId }); },
+    };
+  }
+
+  it("advertises the capability and routes every operation with validated input and the owner", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const h = await harness({ operations: { workspaceGit: fakeWorkspaceGit(calls) } });
+    const { client } = await h.connect(OWNER_TOKEN);
+    expect(client.initialized?.capabilities.workspaceGit).toBe(true);
+    const connectionId = client.initialized!.connectionId;
+    const owner = { deviceId: client.initialized!.principal.subject, connectionId };
+    const session = { installationId, sessionId: "s-1" };
+    const prepare = { ...session, repository, baseBranch: "release/1.2", fromSessionId: "parent", environment: { variables: [{ name: "MY_VAR", value: "1" }], setupScript: "true" } };
+
+    expect(await client.request("workspace/gitCredentialSet", { installationId, token: "fixture-token" })).toEqual({ ok: true });
+    expect(await client.request("workspace/gitCredentialClear", {})).toEqual({ ok: true });
+    expect(await client.request("workspace/gitRepository", { repository })).toEqual({ path: worktree.mainPath, cloned: false });
+    expect(await client.request("workspace/gitPrepare", prepare)).toEqual({ jobId: "job-1" });
+    expect(await client.request("workspace/gitPush", session)).toEqual({ jobId: "job-2" });
+    expect(await client.request("workspace/gitJob", { jobId: "job-1" })).toEqual(job);
+    expect(await client.request("workspace/gitJobCancel", { jobId: "job-1" })).toEqual({ ok: true });
+    expect(await client.request("workspace/gitStatus", session)).toMatchObject({ worktree, unpushedCommits: 1 });
+    expect(await client.request("workspace/gitRemove", { ...session, force: true })).toEqual({ removed: true, uncommittedFiles: 0, unpushedCommits: 0 });
+    expect(await client.request("workspace/gitList", { installationId })).toEqual({ worktrees: [worktree] });
+
+    expect(calls).toEqual([
+      { op: "setCredential", input: { installationId, token: "fixture-token" }, owner },
+      { op: "clearCredential", owner },
+      { op: "repository", input: { repository } },
+      { op: "prepare", input: prepare, owner },
+      { op: "push", input: session, owner },
+      { op: "job", input: { jobId: "job-1" } },
+      { op: "cancelJob", input: { jobId: "job-1" } },
+      { op: "status", input: session },
+      { op: "remove", input: { ...session, force: true } },
+      { op: "list", input: { installationId } },
+    ]);
+
+    await client.close();
+    await flush();
+    expect(calls.at(-1)).toEqual({ op: "disconnect", connectionId });
+  });
+
+  it("refuses every operation to a viewer", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const h = await harness({ operations: { workspaceGit: fakeWorkspaceGit(calls) } });
+    const viewer = await h.connect(VIEWER_TOKEN);
+    const session = { installationId, sessionId: "s-1" };
+    const requests: Array<[string, Record<string, unknown>]> = [
+      ["workspace/gitCredentialSet", { installationId, token: "fixture-token" }],
+      ["workspace/gitCredentialClear", {}],
+      ["workspace/gitRepository", { repository }],
+      ["workspace/gitPrepare", { ...session, repository, baseBranch: "main" }],
+      ["workspace/gitPush", session],
+      ["workspace/gitJob", { jobId: "job-1" }],
+      ["workspace/gitJobCancel", { jobId: "job-1" }],
+      ["workspace/gitStatus", session],
+      ["workspace/gitRemove", { ...session, force: false }],
+      ["workspace/gitList", { installationId }],
+    ];
+    for (const [method, params] of requests) {
+      await expect(viewer.client.request(method, params), method).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    expect(calls).toEqual([]);
+    await viewer.client.close();
+  });
+
+  it("rejects extra fields and names shaped like options or paths before the service", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const h = await harness({ operations: { workspaceGit: fakeWorkspaceGit(calls) } });
+    const { client } = await h.connect(OWNER_TOKEN);
+    const good = { installationId, sessionId: "s-1", repository, baseBranch: "main" };
+    const invalid: Array<[string, Record<string, unknown>]> = [
+      ["workspace/gitPrepare", { ...good, extra: 1 }],
+      ["workspace/gitPrepare", { ...good, baseBranch: "-x" }],
+      ["workspace/gitPrepare", { ...good, baseBranch: "a..b" }],
+      ["workspace/gitPrepare", { ...good, baseBranch: "a.lock" }],
+      ["workspace/gitPrepare", { ...good, repository: { owner: "octo", name: ".." } }],
+      ["workspace/gitPrepare", { ...good, repository: { owner: "octo", name: "--upload-pack=x" } }],
+      ["workspace/gitPrepare", { ...good, repository: { owner: "../../etc", name: "repo" } }],
+      ["workspace/gitPrepare", { ...good, repository: { owner: "octo", name: "repo.git" } }],
+      ["workspace/gitPrepare", { ...good, environment: { variables: [{ name: "GIT_DIR", value: "/" }] } }],
+      ["workspace/gitPrepare", { ...good, environment: { variables: [{ name: "PATH", value: "/" }] } }],
+      ["workspace/gitPrepare", { ...good, path: "/tmp/elsewhere" }],
+      ["workspace/gitRepository", { repository: { owner: "octo", name: "a/b" } }],
+      ["workspace/gitRepository", { repository, path: "/tmp" }],
+      ["workspace/gitCredentialSet", { installationId, token: "a\r\nb" }],
+      ["workspace/gitCredentialSet", { installationId: "nope", token: "t" }],
+      ["workspace/gitCredentialClear", { installationId }],
+      ["workspace/gitPush", { ...good }],
+      ["workspace/gitStatus", { installationId, sessionId: "s-1", path: "/tmp" }],
+      ["workspace/gitRemove", { installationId, sessionId: "s-1" }],
+      ["workspace/gitJob", { jobId: "" }],
+      ["workspace/gitJobCancel", { jobId: "job-1", force: true }],
+      ["workspace/gitList", {}],
+    ];
+    for (const [method, params] of invalid) {
+      await expect(client.request(method, params), `${method} ${JSON.stringify(params)}`).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    }
+    expect(calls).toEqual([]);
+    await client.close();
+  });
+
+  it("answers CAPABILITY_UNAVAILABLE and advertises false without the service", async () => {
+    const h = await harness();
+    const { client } = await h.connect(OWNER_TOKEN);
+    expect(client.initialized?.capabilities.workspaceGit).toBe(false);
+    await expect(client.request("workspace/gitPrepare", { installationId, sessionId: "s-1", repository, baseBranch: "main" })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    await expect(client.request("workspace/gitList", { installationId })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    await client.close();
+  });
+
+  it("does not put the credential in an error message", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const h = await harness({ operations: { workspaceGit: fakeWorkspaceGit(calls) } });
+    const { client } = await h.connect(OWNER_TOKEN);
+    const error = await client.request("workspace/gitCredentialSet", { installationId, token: "fixture-secret-token", extra: 1 }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "INVALID_ARGUMENT" });
+    expect(JSON.stringify(error) + String((error as Error).message)).not.toContain("fixture-secret-token");
     await client.close();
   });
 });
