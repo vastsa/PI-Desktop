@@ -216,9 +216,12 @@ recency only breaks ties between equally relevant matches.
 ### 1.6 Sidebar project and conversation organization
 
 The sidebar is a path-keyed presentation of host-owned projects and sessions.
-The `Sessions` heading appears first and contains path-less conversations plus
-their create and sort controls. Its bounded list keeps standalone work visible
-without consuming the full sidebar. The following `Projects` section heading
+The `Recent` heading appears first and lists the newest conversations across
+the temporary scope and retained projects, plus the temporary-chat create and
+sort controls. Project conversations show both in Recent and in their project
+group, so parallel project work stays visible while groups are folded;
+path-less conversations show only in Recent. Its bounded list opens with seven
+rows and loads ten more per Load more click. The following `Projects` section heading
 exposes the project picker above retained project groups. Several project groups
 may be retained while exactly one workspace supplies the visible shell context.
 
@@ -1859,8 +1862,8 @@ Project drag/drop follows these patterns:
 
 ### 9.2 Sidebar scrolling
 
-- The standalone Sessions body is capped at five compact rows and scrolls
-  internally when additional sessions exist.
+- The Recent sessions body is capped at ten compact rows and scrolls
+  internally once Load more has added rows beyond that height.
 - Retained project groups occupy the remaining sidebar height and scroll in a
   separate region. Both regions stay independent from the footer and primary
   navigation.
@@ -1992,3 +1995,33 @@ This does not prevent state changes — it makes them instant.
     the expanded sidebar yields at the threshold and returns when the panel
     closes, and divider cancellation restores the prior panel width
     (ADR 0033 / ADR 0151 / ADR 0238)
+
+
+## Native main-window gestures
+
+- Titlebar double-click and left/right edge tiling remain OS-owned. macOS
+  honors the user's titlebar double-click preference; edge tiling requires
+  macOS 15 or later and enabled system tiling. Linux behavior depends on its
+  compositor/window manager. The renderer must not duplicate native double-click.
+- On transparent Windows 10 main windows, Main observes `SC_MAXIMIZE` and
+  defers the public maximize API until Electron has consumed the otherwise
+  blocked native command. Caption double-click, keyboard and top-edge maximize
+  share this repair. Restore/minimize, opaque Windows 11 windows and fullscreen
+  are untouched; pending work is cancelled when the window closes.
+- The native main-window minimum width is capped to half the current display's
+  work area, with 16 DIP reserved for macOS tile margins. The nominal 800 DIP
+  chat-width contract is unchanged; this exception only relaxes the native
+  window constraint so small/scaled displays can accept side-by-side tiles.
+  The minimum height remains 560 DIP, capped to the work-area height.
+- On macOS and Windows a maximized main window rejects manual edge resizing.
+  Windows retains native drag-to-restore. On macOS the shell temporarily disables
+  CSS caption dragging and handles caption double-click as Restore; normal
+  windows retain native double-click behavior. The inherited `--window-drag-region`
+  marker distinguishes caption text from explicit no-drag controls. Do not use
+  `setMovable(false)`: it prevents native double-click restore in parts of the
+  inset titlebar. Native zoom/green controls, fullscreen, and programmatic bounds
+  remain enabled. Linux retains compositor-owned maximized geometry and
+  drag-to-restore.
+- A settled cross-display move refreshes the native minimum without enlarging a
+  window already placed in a narrower tile. Normal bounds persistence and the
+  internal work-panel/chat-width IPC contracts are unchanged.

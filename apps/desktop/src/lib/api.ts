@@ -77,6 +77,8 @@ import type {
   PluginViewMeta,
   PluginScenicThemesDestinationMeta,
   PluginTheme,
+  MarketBrowseQuery,
+  MarketBrowseResult,
   MarketPluginSummary,
   MarketPluginDetail,
   PluginInstallResult,
@@ -175,7 +177,9 @@ import {
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
   normalizeRadialMenuPreferences,
+  normalizeSidebarModulePreferences,
   radialMenuWriteError,
+  sidebarModulesWriteError,
   resolveFontScale,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
@@ -472,6 +476,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     ),
     fontScale: resolveFontScale(settings),
     radialMenu: normalizeRadialMenuPreferences(settings.radialMenu),
+    sidebarModules: normalizeSidebarModulePreferences(settings.sidebarModules),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
@@ -526,6 +531,12 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
   const radialMenuProblem = radialMenuWriteError(settings.radialMenu);
   if (radialMenuProblem) {
     throw Object.assign(new Error(radialMenuProblem), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  const sidebarModulesProblem = sidebarModulesWriteError(settings.sidebarModules);
+  if (sidebarModulesProblem) {
+    throw Object.assign(new Error(sidebarModulesProblem), {
       errorCode: "INVALID_PARAMS",
     });
   }
@@ -1606,6 +1617,9 @@ export const api = {
       providerId: string;
       sourceUrl: string;
     }>(IPC.invoke.marketSearch, { query, category }),
+  /** One page of the marketplace; the host falls back to its snapshot offline. */
+  marketBrowse: (query: MarketBrowseQuery) =>
+    invoke<MarketBrowseResult>(IPC.invoke.marketBrowse, query),
   marketGetDetail: (id: string) =>
     invoke<{ plugin: MarketPluginDetail }>(IPC.invoke.marketGetDetail, id),
   marketInstall: (input: {

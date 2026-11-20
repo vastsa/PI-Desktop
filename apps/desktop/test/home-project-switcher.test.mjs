@@ -58,3 +58,19 @@ test("home project switcher is a fixed portaled menu that stays inline in the he
     /\.home-project-switcher-menu\.is-open \{[\s\S]*?visibility:\s*visible;/,
   );
 });
+
+test("home project switcher trigger is the underlined name without a chevron", () => {
+  assert.match(
+    switcher,
+    /<span className="project-underline-name">\{name\}<\/span>\s*<\/button>/,
+  );
+  assert.doesNotMatch(switcher, /project-underline-chevron/);
+  assert.match(
+    styles,
+    /\.empty-hero \.project-underline-name \{[\s\S]*?text-decoration:\s*underline dotted;/,
+  );
+  assert.match(
+    styles,
+    /\.empty-hero \.project-underline\[aria-expanded="true"\] \.project-underline-name \{[\s\S]*?text-decoration-style:\s*solid;/,
+  );
+});

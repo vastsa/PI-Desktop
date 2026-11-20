@@ -93,7 +93,7 @@ test("the empty home names the project even before its first session exists", as
   // Without a project name the hero still names the folder it opened.
   const unnamed = render({ workspace: { path: "/work/demo-app" } });
   assert.equal(unnamed.kind, "project");
-  assert.match(unnamed.title, />demo-app<\/button>/);
+  assert.match(unnamed.title, /class="project-underline-name">demo-app<\/span>/);
 
   // A session on screen decides: a temporary session stays temporary even when
   // a workspace is still open.

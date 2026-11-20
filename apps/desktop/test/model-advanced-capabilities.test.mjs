@@ -8,10 +8,18 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const pickerSource = await readFile(
-  new URL("../src/components/settings/ModelSelectionPanes.tsx", import.meta.url),
+// The chosen-model row lives in the picker; its folded sheet is its own file.
+const advancedSource = await readFile(
+  new URL("../src/components/settings/ModelAdvancedSettings.tsx", import.meta.url),
   "utf8",
 );
+const pickerSource = [
+  await readFile(
+    new URL("../src/components/settings/ModelSelectionPanes.tsx", import.meta.url),
+    "utf8",
+  ),
+  advancedSource,
+].join("\n");
 const imageModelRowSource = await readFile(
   new URL("../src/components/settings/ImageGenerationModelRow.tsx", import.meta.url),
   "utf8",
@@ -96,7 +104,8 @@ test("image generation selection hides the summary when nothing can be chosen", 
     /className="provider-chosen-advanced-toggle"[^\n]*settings\.setImageModel/,
   );
   assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelId\.toLowerCase\(\) === binding\.id\.toLowerCase\(\)/);
-  assert.match(pickerSource, /onImageModelChange\(binding\.id, event\.target\.checked\)/);
+  assert.match(pickerSource, /onChange=\{\(next\) => onImageModelChange\(binding\.id, next\)\}/);
+  assert.match(pickerSource, /onChange=\{\(event\) => onChange\(event\.target\.checked\)\}/);
   // The row's own rule — the stored candidate list, the legacy single binding
   // only while no list was ever saved, plus a signed-in vendor account's image
   // model — now lives in the shared helper, pinned by image-generation-default.test.mjs.
@@ -140,11 +149,11 @@ test("selected thinking chips keep high contrast in both themes", () => {
 
 test("thinking levels use a compact accessible grouped control", () => {
   assert.match(
-    pickerSource,
-    /className="provider-chosen-thinking-head">[\s\S]*?thinkingManualOverrideHint[\s\S]*?<\/div>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
+    advancedSource,
+    /className="provider-advanced-heading">[\s\S]*?thinkingManualOverrideHint[\s\S]*?<\/span>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
   );
   assert.match(pickerSource, /role="group"/);
-  assert.match(styles, /\.provider-chosen-thinking-head \{/);
+  assert.match(styles, /\.provider-advanced-heading \{/);
   assert.match(styles, /\.provider-chosen-thinking-hint \{/);
   assert.match(
     styles,
@@ -247,14 +256,17 @@ test("the advanced body is a compact sheet without helper paragraphs", () => {
   // Every row starts folded so chosen models stay scannable (D625).
   assert.match(pickerSource, /useState<string \| null>\(null\)/);
   assert.doesNotMatch(pickerSource, /models\[0\]\?\.id \?\? null/);
+  // Sections read top to bottom: identity and limits, the thinking ladder
+  // followed by one aligned grid of every thinking selector, then capabilities.
   assert.match(
-    pickerSource,
-    /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-default[\s\S]*?provider-chosen-thinking-chips/,
+    advancedSource,
+    /className="provider-chosen-limits"[\s\S]*?className="provider-chosen-thinking-chips"[\s\S]*?className="provider-advanced-options"[\s\S]*?settings\.defaultThinkingLevel[\s\S]*?settings\.thinkingProtocol[\s\S]*?<ReasoningEffortSelect[\s\S]*?className="provider-chosen-capability-rows"/,
   );
-  assert.match(
-    pickerSource,
-    /className="provider-chosen-capability-rows">[\s\S]*?provider-chosen-delegation/,
-  );
+  // Every capability uses the shared Checkbox and the shared help mark.
+  assert.doesNotMatch(advancedSource, /<input\s+type="checkbox"/);
+  assert.doesNotMatch(advancedSource, /provider-chosen-delegation/);
+  assert.match(styles, /\.provider-advanced-options \{[\s\S]*?grid-template-columns:/);
+  assert.match(styles, /\.provider-chosen-capability-rows \{[\s\S]*?display: grid;/);
   assert.match(styles, /\.provider-chosen-field \{/);
   assert.match(styles, /\.provider-chosen-row-body\[hidden\] \{/);
   assert.match(

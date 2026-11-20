@@ -1,5 +1,5 @@
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
-index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43b72e380b 100644
+index d67feeb70a00ff60a93583bf4ffb79a3d780fa9b..de9958124712d6326b21fb1585da1a90e09b9849 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
 @@ -79,10 +79,10 @@ function withoutDeletedHeaders(headers) {
@@ -15,7 +15,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
      }
      return tokens;
  }
-@@ -431,7 +431,7 @@ export class AgentSession {
+@@ -473,7 +473,7 @@ export class AgentSession {
      _exceedsCompactionThreshold(model, projection) {
          if (model.contextWindow <= 0)
              return false;
@@ -24,7 +24,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
      }
      async _compactBeforeNextAssistantResponse(context) {
          const projection = this.sessionManager.buildSessionProjection();
-@@ -603,7 +603,7 @@ export class AgentSession {
+@@ -645,7 +645,7 @@ export class AgentSession {
                      entryId = manager.appendContextEdit(draft.targetId, draft.replacement);
                      break;
                  case "compaction": {
@@ -33,7 +33,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
                      entryId = manager.appendCompaction(draft.summary, draft.firstKeptEntryId, tokensBefore, draft.details, true, draft.usage);
                      break;
                  }
-@@ -2258,7 +2258,7 @@ export class AgentSession {
+@@ -2336,7 +2336,7 @@ export class AgentSession {
              }
              const settings = this.settingsManager.getCompactionSettings(model);
              const pathEntries = this.sessionManager.getBranch();
@@ -42,7 +42,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
              if (!preparation) {
                  // Check why we can't compact
                  const lastEntry = pathEntries[pathEntries.length - 1];
-@@ -2315,7 +2315,7 @@ export class AgentSession {
+@@ -2393,7 +2393,7 @@ export class AgentSession {
              this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
              const newEntries = this.sessionManager.getEntries();
              this._refreshFinalizedContext();
@@ -51,7 +51,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
              // Get the saved compaction entry for the extension event
              const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
              if (this._extensionRunner && savedCompactionEntry) {
-@@ -2498,11 +2498,11 @@ export class AgentSession {
+@@ -2576,11 +2576,11 @@ export class AgentSession {
          const hasContextEdits = projection.entries.some((entry) => entry.sourceEntry.type === "context_edit");
          const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
          if (hasContextEdits) {
@@ -65,7 +65,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
              // Without provider usage, estimate.tokens is the pure message-size estimate.
              // Only usage-backed estimates need the stale pre-compaction check.
              if (estimate.lastUsageIndex !== null) {
-@@ -2548,7 +2548,7 @@ export class AgentSession {
+@@ -2626,7 +2626,7 @@ export class AgentSession {
                  return false;
              }
              const pathEntries = this.sessionManager.getBranch();
@@ -74,7 +74,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
              if (!preparation) {
                  return false;
              }
-@@ -2604,7 +2604,7 @@ export class AgentSession {
+@@ -2682,7 +2682,7 @@ export class AgentSession {
              this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
              const newEntries = this.sessionManager.getEntries();
              this._refreshFinalizedContext();
@@ -83,7 +83,7 @@ index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..d423f0fd3348981f738b4229ad5c9f43
              // Get the saved compaction entry for the extension event
              const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
              if (this._extensionRunner && savedCompactionEntry) {
-@@ -3542,7 +3542,7 @@ export class AgentSession {
+@@ -3631,7 +3631,7 @@ export class AgentSession {
              if (!hasPostCompactionUsage)
                  return { tokens: null, contextWindow, percent: null };
          }
@@ -424,7 +424,7 @@ index 9b1a409d96b39413d8598c79f14fee72f4cd533c..95f9b8fb0f6e64f23e6923a7b87b02a5
      if (!firstKeptEntry?.id)
          return undefined;
 diff --git a/dist/core/compaction/utils.js b/dist/core/compaction/utils.js
-index ff5292a31ab6a81a34c58c2eba0c49c5197f28fc..7f190eed0fe7df13fefec09ced8ab2fc5233b064 100644
+index 94da1909f2f2c850bee737b4cd2d12c4a1caf9ec..c265d5ea3b2ac99041c3ede42d192e5aab8221b8 100644
 --- a/dist/core/compaction/utils.js
 +++ b/dist/core/compaction/utils.js
 @@ -2,6 +2,7 @@
@@ -432,10 +432,10 @@ index ff5292a31ab6a81a34c58c2eba0c49c5197f28fc..7f190eed0fe7df13fefec09ced8ab2fc
   */
  import { contentText } from "@earendil-works/pi-ai";
 +import { hostedSearchReplayProjection } from "@earendil-works/pi-ai/utils/hosted-search";
+ import { sliceHead } from "../tools/truncate.js";
  export function createFileOps() {
      return {
-         read: new Set(),
-@@ -114,6 +115,7 @@ export function serializeConversation(messages) {
+@@ -115,6 +116,7 @@ export function serializeConversation(messages) {
          }
          else if (msg.role === "assistant") {
              const toolCalls = [];
@@ -443,7 +443,7 @@ index ff5292a31ab6a81a34c58c2eba0c49c5197f28fc..7f190eed0fe7df13fefec09ced8ab2fc
              for (const block of msg.content) {
                  if (block.type === "toolCall") {
                      const args = block.arguments;
-@@ -122,6 +124,13 @@ export function serializeConversation(messages) {
+@@ -123,6 +125,13 @@ export function serializeConversation(messages) {
                          .join(", ");
                      toolCalls.push(`${block.name}(${argsStr})`);
                  }
@@ -457,7 +457,7 @@ index ff5292a31ab6a81a34c58c2eba0c49c5197f28fc..7f190eed0fe7df13fefec09ced8ab2fc
              }
              if (msg.content.some((block) => block.type === "text")) {
                  parts.push(`[Assistant]: ${contentText(msg.content)}`);
-@@ -129,6 +138,9 @@ export function serializeConversation(messages) {
+@@ -130,6 +139,9 @@ export function serializeConversation(messages) {
              if (toolCalls.length > 0) {
                  parts.push(`[Assistant tool calls]: ${toolCalls.join("; ")}`);
              }

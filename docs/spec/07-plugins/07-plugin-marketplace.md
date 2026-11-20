@@ -307,6 +307,26 @@ Client rules for v2:
   optional until the center's signing phase lands. An unverifiable signature is
   never treated as a valid one.
 
+### Category vocabulary
+
+A category is an **id**, never a display string. Ids are stable lowercase
+slugs in the plugin center's closed vocabulary: `ai-models`, `agents-workflow`,
+`memory-knowledge`, `developer-tools`, `productivity`, `usage-analytics`,
+`search-web`, `media-creative`, `integrations`, `desktop-system`, `themes`,
+`writing`, `fun`. Each carries an English and a Simplified Chinese label;
+Traditional Chinese reads the same label, and any other client language falls
+back to English, so a shelf is never blank.
+
+A plugin carries one to three ids, the first being its primary shelf. The
+catalog and every browse answer publish the labels by id (`categoryLabels` on
+`catalog.json` and `/api/v1/catalog/search`), so the desktop renders a shelf in
+the app's language without shipping its own copy: `MarketPluginSummary`
+carries the labels in `categories` and the ids in `categoryIds`, and a browse
+facet carries `name` beside its `id`. A filter sends the **id**; the center
+also accepts a label in either language so a link written before the
+vocabulary existed still selects what it meant. A catalog that predates the
+vocabulary carries no labels, and the id is rendered instead.
+
 ### MarketPluginSummary
 ```ts
 type MarketPluginSummary = {
@@ -501,8 +521,10 @@ Extensions
 ├─ Skills
 ├─ Marketplace
 │ ├─ Search
-│ ├─ Categories
-│ └─ Card grid
+│ ├─ Categories (with match counts) + Sort
+│ ├─ Result total
+│ ├─ Card grid (grows as you scroll)
+│ └─ End of list: loaded count + Load more
 ├─ Detail sheet (shared by both tabs)
 │ └─ Review drawer (public reads; covers the detail sheet)
 └─ Permission dialog (install / upgrade)
@@ -537,6 +559,11 @@ This is a renderer-only presentation choice; plugin permissions and activation
 contracts are unchanged.
 
 The Detail sheet must show:
+- The publisher account the catalog names, beside the display author — one is
+  who wrote the plugin, the other is who the platform recorded
+- The published readme, rendered as Markdown, and the publisher's safety notes
+  as a callout; both come from the catalog document, so a client that drops
+  them in parsing shows a plugin with no description of itself
 - Permissions, grouped and labeled by risk tier
 - Ratings summary between permissions and versions: the one-decimal average,
   the rating count, and the good / medium / bad split; an unavailable centre
@@ -583,6 +610,41 @@ error states.
 
 Marketplace cards render a monogram glyph rather than fetching `iconUrl`; the
 renderer performs no remote image loads (D169).
+
+### Paged browsing
+
+The Marketplace tab is one growing list fed 24 cards at a time by `market.browse`
+(`{ query, category, sort, seed, page, pageSize }` →
+`{ plugins, total, page, pageSize, pageCount, sort, categories[{id,count}],
+source, fallbackReason?, providerId, sourceUrl }`). The host asks the plugin
+center's `GET /api/v1/catalog/search` off the state lock (bounded like the
+review reads, 8 MiB per page), resolves package URLs against the catalog
+source exactly as for `catalog.json`, and maps entries through the same
+summary rules, so trust, installability and update state are unchanged.
+
+- Sort is `recommended` (relevance for a query, otherwise a shuffle seeded per
+  app session so every page agrees), `popular`, `updated` or `name`.
+- Categories are counted over the query's matches before the category filter;
+  the selected category stays a chip even at zero matches so it can be cleared.
+- The next page is requested when the end of the list comes within 600 px of
+  the viewport; a "Load more" button does the same for keyboard users. The
+  end shows "N of M loaded". Only one next-page request runs at a time, a
+  plugin already shown is not appended twice, and a failed page pauses
+  automatic loading until the user presses Retry.
+- Changing the query, category, sort or language restarts the list from the
+  first page; typing is debounced, every other control asks at once. Any
+  answer — first or next page — for something the user has since left is
+  dropped. An install updates its card in place instead of reloading the list.
+- Remote pages are cached in the host for 60 s and cleared by an explicit
+  marketplace refresh; a center without the route is remembered for 5 min and
+  an unreachable one for 30 s, so offline typing answers from the snapshot at
+  once.
+- A center that is unreachable, predates the route, or a source that is not an
+  http(s) center falls back to paging the last valid local snapshot with the
+  same semantics (`source: "local"`), and the tab shows a "Saved catalog"
+  chip. A detail sheet opened from a remote card reads that card's entry when
+  the snapshot does not have it yet. Install still resolves against a fresh
+  full catalog.
 
 Closing a detail sheet with Escape clears focus from its marketplace opener,
 matching pointer dismissal: no line or focus ring remains on the card.
@@ -649,7 +711,7 @@ All download metadata must include `shasum`.
 
 Desktop Extensions page now includes a Marketplace tab that calls:
 
-- `market.search`
+- `market.browse` (paged; `market.search` remains for the MCP control surface)
 - `market.getDetail`
 - `market.install`
 - `market.checkUpdates`

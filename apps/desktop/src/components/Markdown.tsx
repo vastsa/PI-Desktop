@@ -51,6 +51,7 @@ import {
 import { TooltipButton } from "./ui";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { MarkdownTable } from "./MarkdownTable";
+import { MermaidSvgActions } from "./MermaidSvgActions";
 import { markdownTableData } from "../lib/markdown-table";
 import { PluginBlockRenderer } from "./PluginBlockRenderer";
 import { blockRendererCandidate } from "../lib/block-renderer";
@@ -292,6 +293,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
     [reactId],
   );
   const rootRef = useRef<HTMLDivElement>(null);
+  const svgPreviewRef = useRef<HTMLDivElement>(null);
   const nearViewport = useNearViewport(rootRef);
   const renderedSourceRef = useRef("");
   const [svg, setSvg] = useState("");
@@ -356,6 +358,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
           <span>mermaid</span>
         </span>
         <div className="mermaid-block-actions">
+          <MermaidSvgActions svg={!error && !loading ? svg : ""} previewRef={svgPreviewRef} />
           {svg && !error ? (
             <TooltipButton
               type="button"
@@ -398,15 +401,18 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
           <pre className="mermaid-source">
             <code>{code}</code>
           </pre>
-        ) : svg ? (
+        ) : null}
+        {svg && !error ? (
           <div
+            ref={svgPreviewRef}
+            hidden={sourceVisible}
             className={`mermaid-svg${loading ? " refreshing" : ""}`}
             role="img"
             aria-label={t("chat.mermaidDiagram")}
             // Mermaid strict mode output is sanitized again in renderMermaidSvg.
             dangerouslySetInnerHTML={{ __html: svg }}
           />
-        ) : (
+        ) : !sourceVisible ? (
           <div
             className="mermaid-loading"
             role="status"
@@ -416,7 +422,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
             <span aria-hidden />
             <span aria-hidden />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

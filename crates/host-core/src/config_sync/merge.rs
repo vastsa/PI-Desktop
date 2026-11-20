@@ -99,6 +99,29 @@ fn merge_application_fields(
     Some(result)
 }
 
+/// Synthesize the delete implied by a record that is absent on one side but
+/// present in the acknowledged base.
+fn implicit_tombstone(base: &PortableEntity) -> PortableEntity {
+    PortableEntity {
+        domain: base.domain.clone(),
+        entity_id: base.entity_id.clone(),
+        label: base.label.clone(),
+        deleted: true,
+        requires_approval: false,
+        secret_bearing: base.secret_bearing,
+        mapping_required: base.mapping_required,
+        digest: base.digest.clone(),
+        payload: base.payload.clone(),
+        resource_ids: Vec::new(),
+    }
+}
+
+fn has_conflict_candidates(keys: &BTreeSet<(String, String)>, base: &PortableEntity) -> bool {
+    ["local", "remote"]
+        .iter()
+        .any(|suffix| keys.contains(&(base.domain.clone(), format!("{}:{suffix}", base.entity_id))))
+}
+
 /// Merge a captured local state and a remote revision against the last
 /// acknowledged common base. A missing entity is meaningful only when it is
 /// present in the base; callers represent that deletion as a tombstone before
@@ -112,6 +135,7 @@ pub fn three_way(
     let base = index(base);
     let local = index(Some(local));
     let remote = index(remote);
+    let remote_candidates: BTreeSet<(String, String)> = remote.keys().cloned().collect();
     let mut keys = BTreeSet::new();
     keys.extend(base.keys().cloned());
     keys.extend(local.keys().cloned());
@@ -196,48 +220,35 @@ pub fn three_way(
                 local.cloned().into_iter().collect()
             }
             (Some(base), None, Some(remote)) if same_version(remote, base) => {
-                vec![PortableEntity {
-                    domain: base.domain.clone(),
-                    entity_id: base.entity_id.clone(),
-                    label: base.label.clone(),
-                    deleted: true,
-                    requires_approval: false,
-                    secret_bearing: base.secret_bearing,
-                    mapping_required: base.mapping_required,
-                    digest: base.digest.clone(),
-                    payload: base.payload.clone(),
-                    resource_ids: Vec::new(),
-                }]
+                vec![implicit_tombstone(base)]
             }
             (Some(base), Some(local), None) if same_version(local, base) => {
-                vec![PortableEntity {
-                    domain: base.domain.clone(),
-                    entity_id: base.entity_id.clone(),
-                    label: base.label.clone(),
-                    deleted: true,
-                    requires_approval: false,
-                    secret_bearing: base.secret_bearing,
-                    mapping_required: base.mapping_required,
-                    digest: base.digest.clone(),
-                    payload: base.payload.clone(),
-                    resource_ids: Vec::new(),
-                }]
+                vec![implicit_tombstone(base)]
             }
-            (Some(base), None, None) => vec![PortableEntity {
-                domain: base.domain.clone(),
-                entity_id: base.entity_id.clone(),
-                label: base.label.clone(),
-                deleted: true,
-                requires_approval: false,
-                secret_bearing: base.secret_bearing,
-                mapping_required: base.mapping_required,
-                digest: base.digest.clone(),
-                payload: base.payload.clone(),
-                resource_ids: Vec::new(),
-            }],
+            (Some(base), None, None) => vec![implicit_tombstone(base)],
+            // One side has no record at all while the other side changed it
+            // relative to the base. An absent record is an implicit delete
+            // (see the unchanged-side arms above), so this is either a
+            // converged delete or a delete-versus-edit conflict, never an
+            // invalid merge input.
+            (Some(_), Some(local), None) if local.deleted => vec![local.clone()],
+            (Some(_), None, Some(remote)) if remote.deleted => vec![remote.clone()],
+            (Some(base), Some(local), None)
+                if has_conflict_candidates(&remote_candidates, base) =>
+            {
+                // The remote head carries an unresolved `:local`/`:remote`
+                // pair for this entity. It did not delete the entity; keep
+                // the local edit and let the pair pass through for review.
+                vec![local.clone()]
+            }
             (Some(base), local, remote) => {
-                let local = local.ok_or_else(|| anyhow::anyhow!("local merge state missing"))?;
-                let remote = remote.ok_or_else(|| anyhow::anyhow!("remote merge state missing"))?;
+                let (local, remote) = match (local, remote) {
+                    (Some(local), Some(remote)) => (local.clone(), remote.clone()),
+                    (Some(local), None) => (local.clone(), implicit_tombstone(base)),
+                    (None, Some(remote)) => (implicit_tombstone(base), remote.clone()),
+                    (None, None) => bail!("CONFIG_SYNC_INVALID: merge state is empty"),
+                };
+                let (local, remote) = (&local, &remote);
                 let (local_candidate, remote_candidate) = choose_conflict(local, remote);
                 conflicts.push(MergeConflict {
                     domain: base.domain.clone(),
@@ -525,5 +536,73 @@ mod tests {
         assert_eq!(merged.entities.len(), 2);
         assert!(merged.entities.iter().any(|entity| entity.deleted));
         assert!(merged.entities.iter().any(|entity| !entity.deleted));
+    }
+    #[test]
+    fn remote_omission_conflicts_with_a_local_edit_instead_of_failing() {
+        // A revision published by a device that no longer carries the entity
+        // (older app version, backup-mode device) omits it entirely.
+        let base = manifest(vec![entity("a", "0")]);
+        let local = manifest(vec![entity("a", "edited")]);
+        let remote = manifest(vec![]);
+        let merged = three_way(Some(&base), &local, Some(&remote)).expect("merge");
+        assert_eq!(merged.conflicts.len(), 1);
+        assert_eq!(merged.conflicts[0].reason, "delete-versus-edit");
+        assert_eq!(merged.entities.len(), 2);
+        let remote_candidate = merged
+            .entities
+            .iter()
+            .find(|item| item.entity_id == "a:remote")
+            .expect("remote candidate");
+        assert!(remote_candidate.deleted);
+        let local_candidate = merged
+            .entities
+            .iter()
+            .find(|item| item.entity_id == "a:local")
+            .expect("local candidate");
+        assert_eq!(local_candidate.digest, "edited");
+    }
+
+    #[test]
+    fn local_tombstone_and_remote_omission_converge_on_delete() {
+        let base = manifest(vec![entity("a", "0")]);
+        let mut deleted = entity("a", "0");
+        deleted.deleted = true;
+        refresh_digest(&mut deleted);
+        let local = manifest(vec![deleted.clone()]);
+        let merged = three_way(Some(&base), &local, Some(&manifest(vec![]))).expect("merge");
+        assert!(merged.conflicts.is_empty());
+        assert_eq!(merged.entities, vec![deleted]);
+    }
+
+    #[test]
+    fn local_edit_survives_an_unresolved_remote_conflict_pair() {
+        let base = manifest(vec![entity("a", "0")]);
+        let local = manifest(vec![entity("a", "edited")]);
+        let mut pair_local = entity("a:local", "x");
+        pair_local.label = "a (local)".into();
+        let mut pair_remote = entity("a:remote", "y");
+        pair_remote.label = "a (remote)".into();
+        let remote = manifest(vec![pair_local, pair_remote]);
+        let merged = three_way(Some(&base), &local, Some(&remote)).expect("merge");
+        assert!(merged.conflicts.is_empty());
+        let ids: Vec<_> = merged
+            .entities
+            .iter()
+            .map(|item| item.entity_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["a", "a:local", "a:remote"]);
+        assert_eq!(merged.entities[0].digest, "edited");
+    }
+
+    #[test]
+    fn local_omission_conflicts_with_a_remote_edit_instead_of_failing() {
+        let base = manifest(vec![entity("a", "0")]);
+        let remote = manifest(vec![entity("a", "edited")]);
+        let merged = three_way(Some(&base), &manifest(vec![]), Some(&remote)).expect("merge");
+        assert_eq!(merged.conflicts.len(), 1);
+        assert!(merged
+            .entities
+            .iter()
+            .any(|item| item.entity_id == "a:local" && item.deleted));
     }
 }

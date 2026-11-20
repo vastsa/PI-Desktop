@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-09-26.1
+Policy-Sync: 2026-11-17.1
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -104,6 +104,24 @@ runtime environment, solely for E2E. Keep temporary profiles, data, sockets,
 ports, logs, and artifacts isolated. Install or rebuild only for missing or
 incompatible host dependencies, and record the reason; clean CI/release
 runners may install from lockfiles.
+
+### Shared install teardown
+
+A worktree that shares the primary checkout's `node_modules` also shares its
+pnpm bin shims. Shims written from inside the worktree record absolute
+worktree paths, so removing the worktree breaks `tsc`, `electron`, `vitest`,
+and `electron-builder` in the primary checkout.
+
+Before `git worktree remove`, verify no shim still references a worktree:
+
+```bash
+grep -h "worktrees/" node_modules/.bin/* apps/*/node_modules/.bin/* \
+  packages/*/node_modules/.bin/* | grep -v "^# cmd-shim-target="
+```
+
+It must print nothing. Rewrite offenders back to the primary checkout path
+and confirm `tsc --version` / `electron --version` run. Never delete the
+worktree first and leave dangling shims behind.
 
 ### Architecture (frozen)
 

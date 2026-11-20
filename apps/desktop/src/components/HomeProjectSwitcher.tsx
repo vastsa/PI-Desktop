@@ -252,7 +252,7 @@ export function HomeProjectSwitcher({
             setOpen(true);
           }}
         >
-          {name}
+          <span className="project-underline-name">{name}</span>
         </button>
       )}
     >

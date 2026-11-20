@@ -1,0 +1,43 @@
+# Label a newly opened issue and link it to an existing duplicate.
+#
+# This job is silent: it posts no comment unless a duplicate is found. Treat this
+# file as data only — there is no `@pi` mention involved, and the model gets no
+# tools.
+#
+# `workflow_dispatch` runs the same pipeline on a named issue, which is how the
+# configuration is checked without publishing a test issue.
+name: Pi Triage
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to triage
+        required: true
+        type: string
+
+concurrency:
+  group: pi-triage-${{ inputs.issue_number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Tioit-Wang/pi-agent-action@v1
+        with:
+          triage: "true"
+          issue_number: ${{ inputs.issue_number }}
+          provider: deepseek
+          model: deepseek-v4.1-flash
+          base_url: https://platform.aimom.net/v1
+          api_style: openai-completions
+          api_key: ${{ secrets.API_KEY }}

@@ -7,6 +7,7 @@ pub(crate) fn built_in_catalog_at(data_dir: &Path) -> MarketCatalogFile {
     let hello_bytes = bundled_package_bytes("demo.hello", "0.2.0").unwrap_or_default();
     let notes_bytes = bundled_package_bytes("demo.workspace-notes", "0.1.0").unwrap_or_default();
     MarketCatalogFile {
+        category_labels: CategoryLabels::new(),
         schema_version: 1,
         provider_id: "official".into(),
         catalog_id: None,
