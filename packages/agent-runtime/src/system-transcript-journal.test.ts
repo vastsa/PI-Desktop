@@ -6,7 +6,8 @@ import { getCurrentTools, type SystemMessage } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { orderSystemRows, readSystemMessage, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { buildSessionContext } from "./session-context.js";
-import { CONTEXT_BUDGET_SECTION, syncSystemSections, systemTranscriptCheckpoint } from "./system-transcript.js";
+import { syncSystemSections, systemTranscriptCheckpoint } from "./system-transcript.js";
+import { CONTEXT_BUDGET_SECTION } from "./context-budget.js";
 
 const tool = { name: "Read", description: "Read", parameters: Type.Object({ path: Type.String() }) };
 const initial: SystemMessage = { role: "system", content: "", sections: { runtime: "Instructions", skills: "First skill" }, toolsAdded: [tool], timestamp: 1 };

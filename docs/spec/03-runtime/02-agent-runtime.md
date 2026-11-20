@@ -623,12 +623,17 @@ and testable.
 
 **Model-facing surface.** `new_context` takes no parameters and starts a new
 context window at the next turn boundary; it never clears or resets environment
-state. Two budget reminders are appended to the current turn's system prompt,
-each at most once per checkpoint window and reset when a checkpoint is
-installed: one when the remaining budget falls to
-`clamp(hardLimit * 0.15, 8k, 32k)`, asking the model to start closing out, and
-one at 2,000 tokens remaining, telling it to write down whatever must survive.
-Neither reminder is persisted or shown in the transcript.
+state. Two budget reminders are recorded as ordered internal system updates,
+each at most once per checkpoint window. The first asks the model to start
+closing out when the remaining budget falls to `clamp(hardLimit * 0.15, 8k, 32k)`.
+The second asks it to write down whatever must survive at 2,000 tokens remaining.
+Claims reset when a checkpoint is installed.
+The reminders stay hidden in the chat and expire at compaction. A provider
+that supports mid-conversation system messages receives the update in place.
+On other routes the runtime sends the reminder at the same position as a
+request-only user-role message. The regular system sections and tools still
+fold into the leading message. The budget notice therefore preserves the
+prior request's message prefix when ordinary system state is unchanged.
 
 The hard boundary is the model context window minus request headroom. Automatic
 compaction starts at 90% of `hardLimit`; this deterministic margin is not

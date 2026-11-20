@@ -7921,8 +7921,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
 
     // 29k left is inside the first reminder tier but still below the 90%
     // compaction trigger, so the model can close out before host compaction.
-    expect(below.context.systemPrompt).toContain("<context_budget>");
-    expect(below.context.systemPrompt).toContain("new_context");
+    expect(below.context.systemPrompt).toBe(stillBelow.context.systemPrompt);
     expect(below.context.messages.at(-1)).toMatchObject({
       role: "system",
       content: "",

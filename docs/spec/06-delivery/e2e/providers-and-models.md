@@ -1067,7 +1067,16 @@ with only Host API controlled. Running-turn configuration remains queued.
      `prompt is too long: N tokens > M maximum` once.
   8. Run a turn where the model calls `new_context` well below the hard budget.
   9. Invoke `/compact` manually while idle.
+  10. Capture two consecutive Chat Completions requests from a tool loop
+      when the first budget reminder fires below the compaction trigger.
+      Repeat with mid-conversation system support on the exact model binding.
 - **Expected**:
+  - The budget reminder follows the tool result and leaves the preceding
+    request's message prefix and tool declarations unchanged. The default
+    route sends one user-role reminder. The compatible binding sends one
+    system update. The journal writes the same hidden system record in both
+    cases. The loopback HTTP regression is covered by
+    `packages/agent-runtime/src/context-budget-request.test.ts`.
   - The summary request of every checkpoint carries the session's own
     conversation identity: on the Responses-shaped providers
     (`openai-responses`, `openai-codex-responses`) the outgoing payload keeps

@@ -187,7 +187,6 @@ import type {
 } from "./pi-runtime-types.js";
 import {
   initialSystemTranscript,
-  CONTEXT_BUDGET_SECTION,
   syncSystemSections,
   systemTranscriptCheckpoint,
   removeTrailingAssistantMessages,
@@ -216,6 +215,7 @@ import {
   automaticCompactionThresholdFor,
   contextBudgetLimitsFor,
   retainedUserMessageBudget,
+  CONTEXT_BUDGET_SECTION,
   type ContextBudget,
 } from "./context-budget.js";
 import { PathMutex } from "./path-lock.js";
@@ -7494,19 +7494,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const remaining = Math.max(0, budget.hardLimit - budget.tokens);
     const reminder = this.claimContextBudgetReminder(remaining, budget);
     if (!reminder) return context;
-    const legacyContext = context as AgentContext & { systemPrompt?: string };
-    const systemPrompt =
-      typeof legacyContext.systemPrompt === "string"
-        ? `${legacyContext.systemPrompt}\n\n${reminder}`
-        : undefined;
     return {
       ...context,
-      ...(systemPrompt ? { systemPrompt } : {}),
       messages: [
         ...context.messages,
         { role: "system", content: "", sections: { [CONTEXT_BUDGET_SECTION]: reminder }, timestamp: Date.now() },
       ],
-    } as AgentContext;
+    };
   }
 
   private claimContextBudgetReminder(

@@ -20,6 +20,8 @@ import {
   DEFAULT_MAX_TOKENS,
 } from "./provider-binding.js";
 
+export const CONTEXT_BUDGET_SECTION = "context_budget";
+
 /**
  * Tokens held back from the context window for the summary prompt and the
  * model's own output. Compaction thresholds are derived from the active model's

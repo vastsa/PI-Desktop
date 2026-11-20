@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-ai";
 
 import { SKILL_SECTION_PREFIX } from "./plugin-skills-prompt.js";
+import { CONTEXT_BUDGET_SECTION } from "./context-budget.js";
 
 function systemMessages(messages: readonly AgentMessage[]): SystemMessage[] {
   return messages.filter((message): message is SystemMessage => message.role === "system");
@@ -33,8 +34,6 @@ function currentSystemMessage(messages: readonly AgentMessage[]): SystemMessage 
 }
 
 /** Desktop-owned sections retain their order ahead of extension sections. */
-export const CONTEXT_BUDGET_SECTION = "context_budget";
-
 function desktopSectionNames(sections: Record<string, unknown>): string[] {
   return ["runtime", TOOL_ACTIVATION_SECTION, "skills", ...Object.keys(sections)
     .filter((name) => name.startsWith(SKILL_SECTION_PREFIX))

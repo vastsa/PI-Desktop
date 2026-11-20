@@ -581,6 +581,29 @@ describe("requestTranscript", () => {
     expect(requestTranscript(midConversation, context)).toBe(context);
     expect(clampOutputToContext(midConversation, requestTranscript(midConversation, context), 8_192)).toBe(1);
   });
+
+  it("replays saved budget notices in place while folding other sections and tools", () => {
+    const read = { name: "Read", description: "Read a file", parameters: { type: "object" } };
+    const head = { role: "system", content: "Base instructions.", timestamp: 1 } as const;
+    const first = { role: "user", content: "Start.", timestamp: 2 } as const;
+    const update = {
+      role: "system", content: "", timestamp: 3, toolsAdded: [read],
+      sections: { context: "Updated instructions.", context_budget: "Window is nearly full." },
+    } satisfies Message;
+    const followup = { role: "user", content: "Continue.", timestamp: 4 } as const;
+    const clear = {
+      role: "system", content: "", timestamp: 5, sections: { context_budget: null },
+    } as const;
+    const context = normalizeContext({ messages: [head, first, update, followup, clear] });
+
+    expect(requestTranscript(model, context).messages).toEqual([
+      { ...head, sections: { context: "Updated instructions." }, toolsAdded: [read] },
+      first,
+      { role: "user", content: update.sections.context_budget, timestamp: update.timestamp },
+      followup,
+    ]);
+    expect(context.messages).toEqual([head, first, update, followup, clear]);
+  });
 });
 
 // Transcript-only Pi requests have no legacy systemPrompt/tools fields.

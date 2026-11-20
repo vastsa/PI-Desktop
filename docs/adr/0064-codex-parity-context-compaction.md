@@ -42,9 +42,11 @@ retained-tail recovery, and ADR 0061's model-window budgets and `buildCheckpoint
    no-confirmation allowlist.
 5. **Two-tier reminders, once each per window.** A remaining-budget reminder asks
    the model to close out and a second tells it to write down what must survive,
-   both claims reset when a checkpoint is installed, and the reminder is appended to
-   the turn's system prompt and restored afterwards, so it never enters the
-   transcript or durable history.
+   and both claims reset when a checkpoint is installed. With the chronological
+   system journal, reminders are hidden system updates that expire at
+   compaction. For routes that fold system updates, the request projects each
+   reminder in place as a user-role message to preserve the leading system
+   prompt (issue #2458).
 6. **The whole checkpoint chain is durable.** Transcript reads and writes cover
    every record, session detail carries `compactions` with `compaction` as its last
    element, and forks validate and remap every record.

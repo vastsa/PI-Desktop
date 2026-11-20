@@ -28,8 +28,10 @@
  */
 
 import {
+  normalizeContext,
   resolveTranscript,
   type Api,
+  type Message,
   type Model,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
@@ -38,6 +40,7 @@ import {
   type HostedSearchReplayOptions,
 } from "@earendil-works/pi-ai/utils/hosted-search";
 import { truncateTextWithMarker } from "./agent-messages.js";
+import { CONTEXT_BUDGET_SECTION } from "./context-budget.js";
 
 /** Structural view of the request context; assignable from pi-ai's `Context`. */
 export type OutputCapContext = {
@@ -370,7 +373,24 @@ export function requestTranscript(
     compat !== undefined &&
     "supportsMidConvoSystemMessages" in compat &&
     compat.supportsMidConvoSystemMessages === true;
-  return resolveTranscript(context, midConversation);
+  if (midConversation) return context;
+
+  const messages: Message[] = [];
+  for (const message of context.messages) {
+    if (message.role !== "system" || message.sections?.[CONTEXT_BUDGET_SECTION] === undefined) {
+      messages.push(message);
+      continue;
+    }
+    const { [CONTEXT_BUDGET_SECTION]: reminder, ...sections } = message.sections;
+    if (message.content.length || Object.keys(sections).length
+      || message.toolsAdded?.length || message.toolsRemoved?.length) {
+      messages.push({ ...message, sections });
+    }
+    // Keep the notice at its turn boundary so folding system state cannot
+    // change the prefix. The persisted message keeps its original system role.
+    if (reminder) messages.push({ role: "user", content: reminder, timestamp: message.timestamp });
+  }
+  return resolveTranscript(normalizeContext({ messages }), false);
 }
 
 /**
