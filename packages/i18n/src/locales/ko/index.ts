@@ -378,6 +378,8 @@ export const ko = {
     emptyTitle: "무엇을 만들어 볼까요?",
     emptyTitleInProject: "{{project}}에서 무엇을 만들어 볼까요?",
     emptyTitleTemporary: "무엇을 임시로 탐색해 볼까요?",
+    emptyTitleTemporaryScoped: "무엇을 {{scope}} 탐색해 볼까요?",
+    temporaryScope: "임시로",
     placeholder: "PI-Desktop에 무엇이든 도움을 요청하세요",
     placeholderHome: "무엇이든 물어보세요",
     placeholderHint: "명령은 / · 파일은 @ 입력",

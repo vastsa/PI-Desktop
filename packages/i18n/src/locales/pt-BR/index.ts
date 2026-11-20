@@ -368,6 +368,8 @@ export const ptBR = {
     emptyTitle: "Como posso ajudar você a construir?",
     emptyTitleInProject: "O que podemos construir em {{project}}?",
     emptyTitleTemporary: "O que você gostaria de explorar temporariamente?",
+    emptyTitleTemporaryScoped: "O que você gostaria de explorar {{scope}}?",
+    temporaryScope: "temporariamente",
     placeholder: "Peça ajuda ao PI-Desktop para qualquer tarefa",
     placeholderHome: "Pergunte qualquer coisa",
     placeholderHint: "Digite / para comandos · @ para arquivos",

@@ -17,14 +17,14 @@ test("temporary empty home has a distinct session state without project actions"
     /const isTemporarySession = Boolean\([\s\S]*!activeSession\.projectPath\?\.trim\(\)/,
   );
   assert.match(chatSurface, /data-home-session-kind/);
-  assert.match(chatSurface, /t\("chat\.emptyTitleTemporary"\)/);
+  assert.match(chatSurface, /t\("chat\.emptyTitleTemporaryScoped"/);
   assert.doesNotMatch(
     chatSurface,
     /empty-hero-subtitle|emptySubtitle(?:Temporary)?/,
   );
   assert.match(
     chatSurface,
-    /heroProject \? \([\s\S]*?\) : isTemporarySession \? \([\s\S]*?emptyTitleTemporary/,
+    /heroProject \? \([\s\S]*?\) : isTemporarySession \? \([\s\S]*?temporaryTitleParts/,
   );
   assert.match(en, /emptyTitleTemporary:/);
   assert.doesNotMatch(en, /emptySubtitle(?:Temporary)?:/);

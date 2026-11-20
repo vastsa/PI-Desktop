@@ -378,6 +378,8 @@ export const tr = {
     emptyTitle: "Neyi birlikte oluşturalım?",
     emptyTitleInProject: "{{project}} içinde ne oluşturalım?",
     emptyTitleTemporary: "Geçici olarak neyi keşfetmek istersiniz?",
+    emptyTitleTemporaryScoped: "{{scope}} neyi keşfetmek istersiniz?",
+    temporaryScope: "Geçici olarak",
     placeholder: "PI-Desktop’tan herhangi bir konuda yardım isteyin",
     placeholderHome: "Bir şey sorun",
     placeholderHint: "Komutlar için / · dosyalar için @ yazın",
