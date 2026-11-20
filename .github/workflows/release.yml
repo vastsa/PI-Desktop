@@ -193,7 +193,26 @@ jobs:
           # pattern labels ZIPs, and the dmg target pattern labels DMGs.
           # The distribution marker is what turns off in-app updates: the
           # platform updater cannot install over an unsigned app.
-          pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }} -c.extraMetadata.piDistribution=unsigned
+          # `-c.mac.identity=-` ad-hoc signs the finished bundle. With no
+          # identity electron-builder skips signing altogether, which leaves
+          # Electron's original signature over a rewritten Info.plist and
+          # resources: a broken seal that macOS reports as a damaged app.
+          # No `--` before the flags: the pinned pnpm forwards it literally,
+          # and electron-builder then ignores every flag after it without an
+          # error.
+          pnpm --filter @pi-desktop/desktop run dist:mac --${{ matrix.arch }} -c.extraMetadata.piDistribution=unsigned -c.mac.identity=-
+
+      - name: Verify the unsigned distribution marker
+        # A dropped command-line override still builds a green, default
+        # package, so check the artifact itself: the marker the updater reads,
+        # and a bundle seal that verifies.
+        if: matrix.platform == 'macos' && env.MACOS_SIGN_RELEASE != 'true'
+        run: |
+          set -euo pipefail
+          app="apps/desktop/release/mac-${{ matrix.arch }}/PI-Desktop.app"
+          node scripts/check-packaged-distribution.mjs "apps/desktop/release/mac-${{ matrix.arch }}/PI-Desktop.app/Contents/Resources/app.asar" unsigned
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -F "Signature=adhoc"
 
       - name: Diagnose macOS signing environment
         # Records the runner baseline (system, codesign, identities, keychain,

@@ -17,6 +17,7 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 | `check-agent-policy-sync.mjs` | `pnpm check:agent-policy` | Verify `AGENTS.md` and `CLAUDE.md` share the same `Policy-Sync` token, cross-references, and non-negotiable policy anchors |
 | `check-marketplace-catalog.mjs` | `pnpm check:marketplace -- --url <url> --plugin <id>` | Marketplace catalog preflight; rejects a version record missing a checksum, package URL, size, or permissions, and a catalog `author` that is not a string |
 | `check-style-tokens.mjs` | run by the desktop `lint` script | Fail renderer styles that hardcode values instead of design-system tokens |
+| `check-packaged-distribution.mjs` | `node scripts/check-packaged-distribution.mjs <app.asar> <expected>` | Fail unless the packaged `app.asar` carries the expected `piDistribution` marker; run by the Release workflow on the unsigned macOS lane, because electron-builder ignores an unparsed command-line override without failing |
 
 ## Packaging
 

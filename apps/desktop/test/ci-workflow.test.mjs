@@ -231,7 +231,7 @@ test("the fork release matrix packages macOS arm64 only", () => {
   );
   assert.match(
     releaseWorkflowSource,
-    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac -- --\$\{\{ matrix\.arch \}\}/,
+    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac --\$\{\{ matrix\.arch \}\}/,
     "unsigned macOS builds use the shared artifact naming config",
   );
   assert.doesNotMatch(
@@ -272,9 +272,22 @@ test("macOS signing runs only when the repository opts in", () => {
   assert.doesNotMatch(unsignedBlock, /forceCodeSigning|notarize/);
   assert.match(
     unsignedBlock,
-    /dist:mac -- --\$\{\{ matrix\.arch \}\} -c\.extraMetadata\.piDistribution=unsigned/,
-    "unsigned packages are stamped so the updater delivers them manually",
+    /run dist:mac --\$\{\{ matrix\.arch \}\} -c\.extraMetadata\.piDistribution=unsigned -c\.mac\.identity=-\n/,
+    "unsigned packages are stamped for manual updates and ad-hoc signed so the bundle seal is valid",
   );
+  // The pinned pnpm forwards a literal `--`, and electron-builder then treats
+  // every later flag as a positional argument and silently ignores it.
+  assert.doesNotMatch(unsignedBlock, /dist:mac -- /);
+  const markerCheck = releaseWorkflowSource.match(
+    /- name: Verify the unsigned distribution marker[\s\S]*?(?=\n      - name:)/,
+  )?.[0];
+  assert.ok(markerCheck, "the packaged marker must be verified, not assumed");
+  assert.match(markerCheck, /matrix\.platform == 'macos' && env\.MACOS_SIGN_RELEASE != 'true'/);
+  assert.match(
+    markerCheck,
+    /node scripts\/check-packaged-distribution\.mjs "apps\/desktop\/release\/mac-\$\{\{ matrix\.arch \}\}\/PI-Desktop\.app\/Contents\/Resources\/app\.asar" unsigned/,
+  );
+  assert.match(markerCheck, /codesign --verify --deep --strict/);
 
   assert.match(
     releaseWorkflowSource,
