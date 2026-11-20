@@ -677,6 +677,9 @@ here.
   when it duplicates an earlier issue the two are linked in both directions.
   This one is silent: it posts no comment unless it finds a duplicate.
 
+Both jobs are gated on `github.repository == 'vastsa/PI-Desktop'`: they call a
+model through upstream's `API_KEY` secret, so they do not run in a fork (D686).
+
 ```text
 .github/pi-triage.yml             label vocabulary and comment templates
 .github/workflows/pi.yml          mention-triggered answers

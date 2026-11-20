@@ -1104,6 +1104,23 @@
   by `updater-controller.test.mjs`. Packaged Windows installer journey remains
   runner validation.
 
+## E2E-RELEASE-unsigned-macos-build-uses-manual-update
+
+- **Preconditions**: A packaged macOS build whose `package.json` metadata says
+  `piDistribution: "unsigned"`, and a profile whose stored update preference
+  is Automatic (for example one last used by a signed build).
+- **Steps**: 1) Launch the build and open Settings → Info. 2) Surface an
+  available stable version. 3) Use the update notice.
+- **Expected**: The update mode is manual. Automatic is not offered as a
+  supported choice, no download or install starts, and the notice opens the
+  fork's releases page. A signed or unmarked build keeps in-app delivery.
+- **Specs linked**: `06-delivery/06-release-runbook.md`, ADR 0022 / D686
+- **Acceptance**: Quality (release safety)
+- **Milestone**: M6+
+- **Status**: Policy covered by `apps/desktop/test/update-preference.test.mjs`
+  and the workflow stamp by `apps/desktop/test/ci-workflow.test.mjs`. The
+  packaged journey on a real unsigned build is manual validation.
+
 ## E2E-217: Windows host starts on a clean x64-emulated ARM64 install
 
 - **Preconditions**: A clean Windows 11 x64 or ARM64 machine/profile without a
