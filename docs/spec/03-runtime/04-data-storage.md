@@ -97,7 +97,8 @@ updates its canonical path in the same transaction as the group edit, moves the
 old path's `projectMemory` key and bound scheduled-task `workspacePath`, and
 absorbs only an empty target project row. Existing chats and scheduled tasks
 therefore retain their owner. A target that already owns chats, tasks, or memory
-project. Multi-root detachment keeps the existing standalone-project behavior.
+blocks the edit without changing either project. Multi-root detachment keeps the
+existing standalone-project behavior.
 5. **Plan/Goal checkpoints are immutable host artifacts** with recorded path,
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.
