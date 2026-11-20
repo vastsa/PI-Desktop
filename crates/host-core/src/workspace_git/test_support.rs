@@ -66,6 +66,16 @@ impl Remote {
         self.head(branch)
     }
 
+    /// Publish a new branch at the head of `from`.
+    pub fn create_branch(&self, name: &str, from: &str) -> String {
+        let refspec = format!("refs/heads/{from}:refs/heads/{name}");
+        git_cmd(
+            &self.source,
+            &["push", "-q", self.bare.to_str().unwrap(), &refspec],
+        );
+        self.head(name)
+    }
+
     /// The commit `branch` points at in the bare repository.
     pub fn head(&self, branch: &str) -> String {
         rev_parse(&self.bare, &format!("refs/heads/{branch}"))

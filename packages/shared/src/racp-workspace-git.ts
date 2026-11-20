@@ -24,18 +24,33 @@ type Static<T extends Type.TSchema> = Type.Static<T>;
 // never disagree. Host-core re-implements the same rules in Rust
 // (`workspace_git::layout`) with the same accept and reject tables.
 
-/** 1 to 39 characters of `[A-Za-z0-9-]`, not starting or ending with `-`. */
-const GITHUB_OWNER_PATTERN = "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$";
+/**
+ * 1 to 39 characters of `[A-Za-z0-9_-]`, not starting or ending with `-`.
+ * The underscore is what Enterprise Managed User logins carry (`mona_acme`).
+ */
+const GITHUB_OWNER_PATTERN = "^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,37}[A-Za-z0-9_])?$";
 
 /** 1 to 100 characters of `[A-Za-z0-9._-]`, not `.` or `..`, not ending in `.git`. */
 const GITHUB_REPOSITORY_NAME_PATTERN = "^(?!\\.{1,2}$)(?!.*\\.git$)[A-Za-z0-9._-]{1,100}$";
 
 /**
- * 1 to 244 characters of `[A-Za-z0-9._/@+-]`; no leading `-` or `/`, no
- * trailing `/`, `.`, or `.lock`, and none of `..`, `//`, `@{`, `/.`.
+ * git's reference-name rules rather than an allowlist, because GitHub lists
+ * branches such as `fix/#123`, `release=1.0`, and non-ASCII names. 1 to 244
+ * characters (code points). Refused: ASCII control characters, DEL, and the
+ * space; any of `~ ^ : ? * [ \`; a leading `-` or `/`; a trailing `/`, `.`,
+ * or `.lock`; any of `..`, `//`, `@{`, `/.`; and the single name `@`.
+ * Everything else is accepted.
+ *
+ * This is safe because a branch name only ever reaches git as an operand
+ * after `--` or inside a full reference name, never through a shell, and
+ * never becomes part of a directory name.
+ *
+ * The class also excludes a lone UTF-16 surrogate, which is not a character
+ * and cannot be carried to the Host as JSON.
  */
 const GIT_BRANCH_NAME_PATTERN =
-  "^(?![-/])(?!.*(?:\\.\\.|//|@\\{|/\\.))(?!.*(?:/|\\.|\\.lock)$)[A-Za-z0-9._/@+-]{1,244}$";
+  "^(?![-/])(?!@$)(?![\\s\\S]*(?:\\.\\.|//|@\\{|/\\.))(?![\\s\\S]*(?:/|\\.|\\.lock)$)"
+  + "[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\\\ud800-\\udfff]{1,244}$";
 
 const FORBIDDEN_VARIABLE_NAMES = [
   "PATH", "HOME", "SHELL", "USER", "LOGNAME", "PWD", "OLDPWD", "IFS", "ENV", "BASH_ENV",

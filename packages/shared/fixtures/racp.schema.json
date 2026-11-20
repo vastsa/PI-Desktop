@@ -2494,7 +2494,7 @@
         "properties": {
           "owner": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+            "pattern": "^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,37}[A-Za-z0-9_])?$"
           },
           "name": {
             "type": "string",
@@ -2533,7 +2533,7 @@
         "properties": {
           "owner": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+            "pattern": "^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,37}[A-Za-z0-9_])?$"
           },
           "name": {
             "type": "string",
@@ -2544,7 +2544,7 @@
       },
       "baseBranch": {
         "type": "string",
-        "pattern": "^(?![-/])(?!.*(?:\\.\\.|//|@\\{|/\\.))(?!.*(?:/|\\.|\\.lock)$)[A-Za-z0-9._/@+-]{1,244}$"
+        "pattern": "^(?![-/])(?!@$)(?![\\s\\S]*(?:\\.\\.|//|@\\{|/\\.))(?![\\s\\S]*(?:/|\\.|\\.lock)$)[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\\\ud800-\\udfff]{1,244}$"
       },
       "fromSessionId": {
         "type": "string",

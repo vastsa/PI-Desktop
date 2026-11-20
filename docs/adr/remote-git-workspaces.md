@@ -114,7 +114,9 @@ Host gains a mutation capability. Hence this record.
     through plugin file access. Only `https://github.com/<owner>/<repo>.git`
     is ever cloned; owner, repository, and branch names are validated by the
     shared contract, by the RACP server, and again by host-core, and operands
-    follow `--`.
+    follow `--`. Branch names follow git's own reference-name rules rather
+    than an allowlist, so every branch GitHub lists can be chosen; a branch
+    name never reaches a shell and never becomes part of a path.
 
 11. **No schema change.** The registry is a `kv` namespace
     (`workspaceGitWorktrees`). The fork must not claim the next SQLite

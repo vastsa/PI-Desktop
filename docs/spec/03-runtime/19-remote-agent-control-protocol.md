@@ -696,12 +696,18 @@ Request schemas are closed objects in
 from the same module. Field rules:
 
 - `repository` is `{ owner, name }`. `owner` is 1 to 39 characters of
-  `[A-Za-z0-9-]` that neither start nor end with `-`. `name` is 1 to 100
-  characters of `[A-Za-z0-9._-]`, not `.` or `..`, not ending in `.git`. Only
+  `[A-Za-z0-9_-]` that neither start nor end with `-` (the underscore is what
+  Enterprise Managed User logins carry). `name` is 1 to 100 characters of
+  `[A-Za-z0-9._-]`, not `.` or `..`, not ending in `.git`. Only
   `https://github.com/<owner>/<name>.git` is ever cloned.
-- `baseBranch` is 1 to 244 characters of `[A-Za-z0-9._/@+-]`, with no leading
-  `-` or `/`, no trailing `/`, `.`, or `.lock`, and none of `..`, `//`, `@{`,
-  `/.`.
+- `baseBranch` follows git's reference-name rules rather than an allowlist,
+  so every branch GitHub lists is accepted, including `fix/#123`,
+  `release=1.0`, and non-ASCII names. It is 1 to 244 characters. Refused are
+  ASCII control characters, DEL, and the space; any of `~ ^ : ? * [ \`; a
+  leading `-` or `/`; a trailing `/`, `.`, or `.lock`; any of `..`, `//`,
+  `@{`, `/.`; and the single name `@`. A branch name only reaches git as an
+  operand after `--` or inside a full reference name, never through a shell,
+  and never becomes part of a directory name.
 - `installationId` is the Desktop's stable installation UUID. It is an
   ownership label, not a credential: it keeps one Desktop's listing and
   cleanup away from another Desktop's worktrees. `sessionId` is 1 to 256

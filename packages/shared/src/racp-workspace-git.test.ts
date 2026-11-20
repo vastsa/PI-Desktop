@@ -18,10 +18,11 @@ import {
 const installationId = "00000000-0000-4000-8000-000000000000";
 
 describe("isGitHubOwner", () => {
-  it.each(["o", "octo-cat", "A1", "a".repeat(39)])("accepts %j", (value) => {
+  // `mona_acme`: Enterprise Managed Users carry an underscore and a short code.
+  it.each(["o", "octo-cat", "A1", "a".repeat(39), "mona_acme", "_a", "a_"])("accepts %j", (value) => {
     expect(isGitHubOwner(value)).toBe(true);
   });
-  it.each(["-a", "a-", "", "a/b", "a".repeat(40), "a.b", "a b", "a\n", "..", "--upload-pack=x"])("rejects %j", (value) => {
+  it.each(["-a", "a-", "", "a/b", "a".repeat(40), "a.b", "a b", "a\n", "..", "--upload-pack=x", "-", "a_-", "mona_acme/x"])("rejects %j", (value) => {
     expect(isGitHubOwner(value)).toBe(false);
   });
 });
@@ -36,14 +37,29 @@ describe("isGitHubRepositoryName", () => {
 });
 
 describe("isGitBranchName", () => {
-  it.each(["main", "feature/x-1", "release/1.2", "user@fix", "a+b", "a".repeat(244)])("accepts %j", (value) => {
+  // git's own reference-name rules, not an allowlist: GitHub lists branches
+  // such as `fix/#123`, `release=1.0`, and non-ASCII names.
+  it.each([
+    "main", "feature/x-1", "release/1.2", "fix/#123", "release=1.0", "功能/登录",
+    "user@fix", "a+b", "a,b", "a".repeat(244), "功".repeat(244), "a@", "@a", "a$b;c|d&e", "😀".repeat(244),
+  ])("accepts %j", (value) => {
     expect(isGitBranchName(value)).toBe(true);
   });
   it.each([
     "-x", "/a", "a/", "a..b", "a//b", "a@{b", "a/.b", "a.lock", "a b", "a\u0000b",
-    "", "a.", "a".repeat(245), "a~1", "a^", "a:b", "a?", "a*", "a[b", "a\\b", "a\n", "--upload-pack=x", "../../etc", "refs/heads/a.lock",
+    "a~b", "a^b", "a:b", "a?b", "a*b", "a[b", "a\\b", "@",
+    "", "a.", "a".repeat(245), "功".repeat(245), "a~1", "a^", "a?", "a*", "a\n", "a\tb", "a\u007fb", "a\u001fb",
+    "--upload-pack=x", "../../etc", "refs/heads/a.lock", "a\u2028..b", "a\ud800b",
   ])("rejects %j", (value) => {
     expect(isGitBranchName(value)).toBe(false);
+  });
+
+  it("agrees with the request schema for every name in both tables", () => {
+    const base = { installationId, sessionId: "s", repository: { owner: "mona_acme", name: "r" } };
+    for (const name of ["main", "fix/#123", "release=1.0", "功能/登录", "😀".repeat(244), "-x", "a..b", "a.lock", "@", "a b", "a\u2028..b", "a~b", "功".repeat(245), ""]) {
+      expect(Value.Check(WorkspaceGitPrepareSchema, { ...base, baseBranch: name }), JSON.stringify(name)).toBe(isGitBranchName(name));
+    }
+    expect(Value.Check(WorkspaceGitPrepareSchema, { ...base, baseBranch: "main", repository: { owner: "a-", name: "r" } })).toBe(false);
   });
 });
 

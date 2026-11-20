@@ -896,3 +896,42 @@ async fn a_record_whose_directory_is_gone_is_prepared_again() {
     assert!(path.join("develop.txt").is_file());
     assert_eq!(worktree_count(&f.main_path()), 2);
 }
+
+/// Branch names follow git's rules, not an allowlist: a name GitHub lists must
+/// survive every layer down to git, as an operand and inside a full ref name.
+#[tokio::test]
+async fn a_worktree_is_prepared_from_base_branches_with_unusual_names() {
+    let f = Fixture::new();
+    for (session, branch) in [
+        ("session-hash", "fix/#123"),
+        ("session-equals", "release=1.0"),
+        ("session-unicode", "功能/登录"),
+    ] {
+        let head = f.remote.create_branch(branch, "develop");
+        let worktree = f.prepare(session, branch).await;
+        assert_eq!(worktree["baseBranch"], branch);
+        assert_eq!(worktree["baseCommit"], head, "{branch}");
+        let path = f.worktree_path(session);
+        assert_eq!(rev_parse(&path, "HEAD"), head, "{branch}");
+        assert!(path.join("develop.txt").is_file());
+        // The name never became part of a path: the directory is the short id.
+        assert_eq!(
+            path.file_name().unwrap().to_str().unwrap(),
+            short_id(INSTALLATION, session)
+        );
+        let status = f
+            .call("workspaceGit.status", f.session(session))
+            .await
+            .unwrap();
+        assert_eq!(status["worktree"]["baseBranch"], branch);
+    }
+    // An owner with an underscore is a valid coordinate (it is simply absent here).
+    let mut params = f.prepare_params("session-emu", "main");
+    params["repository"] = json!({ "owner": "mona_acme", "name": "repo" });
+    let job_id = f.start_prepare(params).await;
+    let (job, _phases) = f.wait(&job_id).await;
+    assert_eq!(
+        job["error"]["code"], "WORKSPACE_GIT_REPOSITORY_NOT_FOUND",
+        "{job}"
+    );
+}

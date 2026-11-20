@@ -487,7 +487,7 @@ describe("owner-only workspace git boundary", () => {
     const connectionId = client.initialized!.connectionId;
     const owner = { deviceId: client.initialized!.principal.subject, connectionId };
     const session = { installationId, sessionId: "s-1" };
-    const prepare = { ...session, repository, baseBranch: "release/1.2", fromSessionId: "parent", environment: { variables: [{ name: "MY_VAR", value: "1" }], setupScript: "true" } };
+    const prepare = { ...session, repository: { owner: "mona_acme", name: "repo" }, baseBranch: "fix/#123", fromSessionId: "parent", environment: { variables: [{ name: "MY_VAR", value: "1" }], setupScript: "true" } };
 
     expect(await client.request("workspace/gitCredentialSet", { installationId, token: "fixture-token" })).toEqual({ ok: true });
     expect(await client.request("workspace/gitCredentialClear", {})).toEqual({ ok: true });
@@ -552,6 +552,9 @@ describe("owner-only workspace git boundary", () => {
       ["workspace/gitPrepare", { ...good, baseBranch: "-x" }],
       ["workspace/gitPrepare", { ...good, baseBranch: "a..b" }],
       ["workspace/gitPrepare", { ...good, baseBranch: "a.lock" }],
+      ["workspace/gitPrepare", { ...good, baseBranch: "@" }],
+      ["workspace/gitPrepare", { ...good, baseBranch: "a~b" }],
+      ["workspace/gitPrepare", { ...good, baseBranch: "a b" }],
       ["workspace/gitPrepare", { ...good, repository: { owner: "octo", name: ".." } }],
       ["workspace/gitPrepare", { ...good, repository: { owner: "octo", name: "--upload-pack=x" } }],
       ["workspace/gitPrepare", { ...good, repository: { owner: "../../etc", name: "repo" } }],

@@ -50,11 +50,12 @@ pub struct Repository {
 
 impl Repository {
     pub fn parse(owner: &str, name: &str) -> Result<Repository, WorkspaceGitError> {
-        // 1 to 39 characters of [A-Za-z0-9-], not starting or ending with `-`.
+        // 1 to 39 characters of [A-Za-z0-9_-], not starting or ending with
+        // `-`. Enterprise Managed User logins carry the underscore.
         let owner_ok = (1..=39).contains(&owner.len())
             && owner
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
             && !owner.starts_with('-')
             && !owner.ends_with('-');
         if !owner_ok {
@@ -87,13 +88,24 @@ impl Repository {
     }
 }
 
-/// 1 to 244 characters of `[A-Za-z0-9._/@+-]`; no leading `-` or `/`, no
-/// trailing `/`, `.`, or `.lock`, and none of `..`, `//`, `@{`, `/.`.
+/// git's reference-name rules rather than an allowlist, because GitHub lists
+/// branches such as `fix/#123`, `release=1.0`, and non-ASCII names. 1 to 244
+/// characters. Refused: ASCII control characters, DEL, and the space; any of
+/// `~ ^ : ? * [ \`; a leading `-` or `/`; a trailing `/`, `.`, or `.lock`; any
+/// of `..`, `//`, `@{`, `/.`; and the single name `@`. Everything else is
+/// accepted.
+///
+/// This is safe because a branch name only ever reaches git as an operand
+/// after `--` or inside a full reference name, never through a shell, and
+/// never becomes part of a directory name: worktree directories use the short
+/// id.
 pub fn validate_branch(name: &str) -> Result<(), WorkspaceGitError> {
-    let ok = (1..=244).contains(&name.len())
-        && name.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'@' | b'+' | b'-')
-        })
+    let forbidden = |character: char| {
+        character.is_ascii_control()
+            || matches!(character, ' ' | '~' | '^' | ':' | '?' | '*' | '[' | '\\')
+    };
+    let ok = (1..=244).contains(&name.chars().count())
+        && !name.chars().any(forbidden)
         && !name.starts_with('-')
         && !name.starts_with('/')
         && !name.ends_with('/')
@@ -101,7 +113,8 @@ pub fn validate_branch(name: &str) -> Result<(), WorkspaceGitError> {
         && !name.ends_with(".lock")
         && !["..", "//", "@{", "/."]
             .iter()
-            .any(|sequence| name.contains(sequence));
+            .any(|sequence| name.contains(sequence))
+        && name != "@";
     if ok {
         Ok(())
     } else {
@@ -255,7 +268,7 @@ mod tests {
 
     #[test]
     fn owners_follow_the_shared_contract_tables() {
-        for owner in ["o", "octo-cat", "A1", &long(39)] {
+        for owner in ["o", "octo-cat", "A1", &long(39), "mona_acme", "_a", "a_"] {
             assert!(Repository::parse(owner, "r").is_ok(), "{owner:?}");
         }
         for owner in [
@@ -269,6 +282,9 @@ mod tests {
             "a\n",
             "..",
             "--upload-pack=x",
+            "-",
+            "a_-",
+            "mona_acme/x",
         ] {
             let error = Repository::parse(owner, "r").unwrap_err();
             assert_eq!(error.code, "INVALID_ARGUMENT", "{owner:?}");
@@ -299,13 +315,24 @@ mod tests {
 
     #[test]
     fn branches_follow_the_shared_contract_tables() {
+        // git's own reference-name rules, not an allowlist: GitHub lists
+        // branches such as `fix/#123`, `release=1.0`, and non-ASCII names.
         for branch in [
             "main",
             "feature/x-1",
             "release/1.2",
+            "fix/#123",
+            "release=1.0",
+            "功能/登录",
             "user@fix",
             "a+b",
+            "a,b",
             &long(244),
+            &"功".repeat(244),
+            "a@",
+            "@a",
+            "a$b;c|d&e",
+            &"😀".repeat(244),
         ] {
             assert!(validate_branch(branch).is_ok(), "{branch:?}");
         }
@@ -320,20 +347,30 @@ mod tests {
             "a.lock",
             "a b",
             "a\u{0}b",
+            "a~b",
+            "a^b",
+            "a:b",
+            "a?b",
+            "a*b",
+            "a[b",
+            "a\\b",
+            "@",
             "",
             "a.",
             &long(245),
+            &"功".repeat(245),
             "a~1",
             "a^",
-            "a:b",
             "a?",
             "a*",
-            "a[b",
-            "a\\b",
             "a\n",
+            "a\tb",
+            "a\u{7f}b",
+            "a\u{1f}b",
             "--upload-pack=x",
             "../../etc",
             "refs/heads/a.lock",
+            "a\u{2028}..b",
         ] {
             let error = validate_branch(branch).unwrap_err();
             assert_eq!(error.code, "INVALID_ARGUMENT", "{branch:?}");
@@ -434,6 +471,7 @@ mod tests {
             ("A1", "repo.js"),
             ("a", "..."),
             ("a", "-r"),
+            ("mona_acme", "r"),
             (&long(39), &long(100)),
         ] {
             let repository = Repository::parse(owner, name).unwrap();
