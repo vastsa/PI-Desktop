@@ -2,25 +2,61 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: calc(var(--spacing, 0.25rem) * 2);
+}
+
+.session-target-controls {
+  margin-block-start: calc(var(--spacing, 0.25rem) * 2);
+  padding-inline: var(--spacing, 0.25rem);
+  gap: var(--spacing, 0.25rem);
+}
+
+.session-target-picker,
+.session-target-trigger {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.session-target-controls .session-target-trigger {
+  justify-content: flex-start;
+  padding: var(--spacing, 0.25rem) calc(var(--spacing, 0.25rem) * 2);
+  font-size: var(--text-sm);
+}
+
+.session-target-controls .session-target-trigger[aria-expanded="true"] {
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-hover);
+}
+
+.session-target-trigger svg {
+  flex-shrink: 0;
+}
+
+.session-target-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-target-menu,
 .session-target-fields {
   display: grid;
-  gap: var(--space-2);
+  gap: calc(var(--spacing, 0.25rem) * 2);
+  min-width: 0;
 }
 
 .session-target-menu {
   position: fixed;
-  min-width: var(--composer-menu-min-width, 14rem);
+  width: min(18rem, calc(100vw - 1rem));
   max-height: min(60vh, 22rem);
   overflow: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  background: var(--surface);
+  padding: calc(var(--spacing, 0.25rem) * 2);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
   z-index: var(--z-popover, 1000);
   visibility: hidden;
 }
@@ -30,5 +66,9 @@
 }
 
 .session-target-menu button {
+  min-width: 0;
   justify-content: flex-start;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

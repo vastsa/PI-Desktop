@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { GitHubBranchList, GitHubRepositoryList } from "@pi-desktop/shared";
+import { IconChevronDown, IconMonitor, IconServer } from "../../../components/icons";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
 import { Button, Input } from "../../../components/ui";
 import { api } from "../../../lib/api";
@@ -11,12 +12,18 @@ import { useSessionTargetStore } from "./session-target-store";
 import { useEnvironments } from "./use-environments";
 import "./session-target.css";
 
-function Picker({ label, title, open, toggle, close, search, children }: {
-  label: string; title: string; open: boolean; close(): void; toggle(): void; search?: boolean; children: ReactNode;
+function Picker({ label, title, icon, open, toggle, close, search, children }: {
+  label: string; title: string; icon?: ReactNode; open: boolean; close(): void; toggle(): void; search?: boolean; children: ReactNode;
 }) {
   return <AnchoredMenu open={open} onClose={close} label={title} side="top" role="dialog"
+    className="session-target-picker"
     initialFocus={search ? "input" : "selected"} menuClassName="session-target-menu"
-    trigger={(ref) => <Button ref={ref} variant="secondary" aria-label={title} aria-expanded={open} onClick={toggle}>{label}</Button>}>
+    trigger={(ref) => <Button ref={ref} type="button" variant="ghost" className="session-target-trigger"
+      aria-label={title} aria-description={label === title ? undefined : label} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}>
+      {icon}
+      <span className="session-target-trigger-label" title={label}>{label}</span>
+      <IconChevronDown size={12} aria-hidden="true" />
+    </Button>}>
     {children}
   </AnchoredMenu>;
 }
@@ -70,8 +77,10 @@ export function SessionTargetRow() {
   const matches = (value: string) => value.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const search = (label: string) => <Input aria-label={label} placeholder={label} value={query} onChange={(event) => setQuery(event.target.value)} />;
   const errorRow = <>{error && <p role="alert">{t("sessionTarget.loadFailed", { message: error })}</p>}</>;
-  return <div className="session-target-row">
-    <Picker label={environment?.name ?? t("sessionTarget.thisComputer")} title={t("sessionTarget.environmentHost")} open={menu === "environment"} toggle={() => open("environment")} close={close}>
+  return <div className="session-target-row session-target-controls">
+    <Picker label={environment?.name ?? t("sessionTarget.thisComputer")} title={t("sessionTarget.environmentHost")}
+      icon={environment ? <IconServer size={14} aria-hidden="true" /> : <IconMonitor size={14} aria-hidden="true" />}
+      open={menu === "environment"} toggle={() => open("environment")} close={close}>
       <Button variant="secondary" onClick={() => { target.setEnvironment("local"); close(); }}>{t("sessionTarget.thisComputer")}</Button>
       {hosts.map((host) => <div className="session-target-fields" key={host.hostKey}>
         <span>{host.connected ? host.label : t("sessionTarget.hostOffline", { host: host.label })}</span>
@@ -91,8 +100,10 @@ export function SessionTargetRow() {
       {repositories?.ssoPartial && <span>{t("sessionTarget.ssoPartial")}</span>}
       {repositories?.repositories.filter((item) => matches(item.fullName)).map((item) => <Button variant="secondary" key={item.fullName}
         onClick={() => { target.setRepository({ owner: item.owner, name: item.name, defaultBranch: item.defaultBranch }); setBranches(undefined); close(); }}>{item.fullName}</Button>)}
-    </Picker> : <Button variant="secondary" onClick={() => openSettings("connectors")}>
-      {t(status?.needsReauthentication ? "sessionTarget.reconnectGitHub" : "sessionTarget.connectGitHub")}
+    </Picker> : <Button type="button" variant="ghost" className="session-target-trigger" onClick={() => openSettings("connectors")}>
+      <span className="session-target-trigger-label">
+        {t(status?.needsReauthentication ? "sessionTarget.reconnectGitHub" : "sessionTarget.connectGitHub")}
+      </span>
     </Button>)}
     {environment && connected && repository && <Picker label={target.baseBranch ?? t("sessionTarget.chooseBranch")} title={t("sessionTarget.chooseBranch")}
       open={menu === "branch"} toggle={() => open("branch")} close={close} search>
