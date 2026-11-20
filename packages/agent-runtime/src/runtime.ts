@@ -353,6 +353,8 @@ export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
 
 export type RuntimePrompt = {
   text: string;
+  /** Trusted Main delivery, already recorded as a tool row. */
+  backgroundCompletion?: UiMessage;
   /** Explicit user selection, resolved against the host-provided tool catalog. */
   mcpServerIds?: string[];
   mcpToolNames?: string[];
@@ -1042,6 +1044,7 @@ export type AgentRuntimeOptions = {
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
   infiniteProviderRetry?: boolean;
+  backgroundJobContinuationEnabled?: boolean;
   /**
    * Fast mode for main turns, already resolved by the launcher from the
    * session `/fast` switch and the model binding's opt-in (ADR 0334).
@@ -1415,7 +1418,7 @@ function commandShellToolDescription(
     shellSyntaxGuidance(shell),
     `The session scratch directory variable is ${shellScratchVariable(shell)}.`,
     `An optional timeout from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS} seconds may be supplied; without it, the command defaults to a 60-second timeout.`,
-    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar. In Agent mode on supported local Hosts, use TaskList to find it, TaskWait with its job reference to read results, and TaskStop with that reference to stop it. Background completion does not automatically resume the model.`,
+    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar. In Agent mode on supported local Hosts, use TaskList to find it, TaskWait with its job reference to read results, and TaskStop with that reference to stop it. By default, background completion does not automatically resume the model. If notifyOnExit is available in the schema, it may arrange completion-triggered continuation for finite tests/builds.`,
     ...(formattedScratch ? [`The session scratch directory is ${formattedScratch}.`] : []),
   ].join(" ");
 }
@@ -1988,6 +1991,7 @@ export class DesktopAgentRuntime {
   private providerRateLimitRetryAttempt = 0;
   /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
   private infiniteProviderRetry = false;
+  private backgroundJobContinuationEnabled = false;
   private fastMode = false;
   private jevApiKey?: string;
   private computerUseEnabled = false;
@@ -2103,6 +2107,7 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
+    this.backgroundJobContinuationEnabled = opts.backgroundJobContinuationEnabled === true;
     this.fastMode = opts.fastMode === true;
     this.jevApiKey = opts.jevApiKey;
     this.computerUseEnabled = opts.computerUseEnabled === true;
@@ -2421,6 +2426,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     process.stderr.write(
       `[agent-runtime] event handler failed (session=${this.sessionId} turn=${this.turnId} event=${event.type}): ${detail}\n`,
     );
+  }
+
+  /** Applied before the next prompt rebuilds its tool declarations. */
+  setBackgroundJobContinuationEnabled(enabled: boolean): void {
+    if (this.disposed) throw new Error("runtime disposed");
+    this.backgroundJobContinuationEnabled = enabled;
   }
 
   /** Update the opt-in retry policy without rebuilding an idle runtime. */
@@ -3551,6 +3562,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               `Optional command timeout in seconds from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS}; defaults to 60 seconds.`,
           }),
         ),
+        ...(this.backgroundJobContinuationEnabled && this.mode === "agent" && !this.remoteWorkspace ? {
+          notifyOnExit: Type.Optional(Type.Boolean({ description: "With runInBackground, arrange automatic delivery to this conversation after a finite test/build completes, even after the current turn ends. No extra approval; existing permissions still apply. Do not use for servers/watchers. TaskWait may still collect the result first." })),
+        } : {}),
         runInBackground: Type.Optional(
           Type.Boolean({
             description:
@@ -9259,10 +9273,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private failBeforeProviderRequest(
-    incomingUserMessage: AgentMessage,
+    incomingUserMessage: AgentMessage | undefined,
     error: ReturnType<typeof classifyAgentError>,
   ): void {
-    this.keepPreflightUserMessage(incomingUserMessage);
+    if (incomingUserMessage) this.keepPreflightUserMessage(incomingUserMessage);
     this.failCurrentPreflight(error);
   }
 
@@ -9470,34 +9484,37 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (selectedTools.length) this.activateDeferredTools(selectedTools);
       this.setAgentTools(this.activeTools());
       if (modePromptChanged) this.setAgentSystemPrompt(this.composeSystemPrompt());
+      const completion = typeof input === "string" ? undefined : input.backgroundCompletion;
+      const completionEntries = completion ? this.historyToEntries([completion]) : [];
       const content = promptContent(modelInput);
       const incomingUserMessage: AgentMessage = {
         role: "user",
         content,
         timestamp: Date.now(),
       };
-      if (this.automaticCompactionNeeded([incomingUserMessage])) {
+      const incomingMessages = completion ? completionEntries.map(entry => entry.message) : [incomingUserMessage];
+      if (this.automaticCompactionNeeded(incomingMessages)) {
         const compacted = await this.runCompaction("threshold", false);
         if (!compacted) {
           if (this.compactionAborted) {
             // Stop landed during the pre-flight checkpoint. Keep the user's
             // message in context and end the turn as aborted, the same way a
             // stop during the provider request ends it (the catch below).
-            this.keepPreflightUserMessage(incomingUserMessage);
+            if (!completion) this.keepPreflightUserMessage(incomingUserMessage);
             throw turnAbortedError("Turn aborted while compacting context");
           }
           // A soft-trigger summary failure is recoverable while the hard
           // provider budget still has room; retain the hard guard below.
-          if (this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])) {
-            this.failBeforeProviderRequest(incomingUserMessage, {
+          if (this.automaticCompactionWouldExceedHardLimit(incomingMessages)) {
+            this.failBeforeProviderRequest(completion ? undefined : incomingUserMessage, {
               code: "CONTEXT_COMPACTION_FAILED",
               message: "Automatic context compaction failed before the model request",
               retriable: false,
             });
             return { turnId: this.turnId };
           }
-        } else if (this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])) {
-          this.failBeforeProviderRequest(incomingUserMessage, {
+        } else if (this.automaticCompactionWouldExceedHardLimit(incomingMessages)) {
+          this.failBeforeProviderRequest(completion ? undefined : incomingUserMessage, {
             code: "CONTEXT_TOO_LARGE",
             message:
               "The pending prompt still exceeds the safe model context budget after compaction",
@@ -9508,9 +9525,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       if (
         !this.compactionEnabled &&
-        this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])
+        this.automaticCompactionWouldExceedHardLimit(incomingMessages)
       ) {
-        this.failBeforeProviderRequest(incomingUserMessage, {
+        this.failBeforeProviderRequest(completion ? undefined : incomingUserMessage, {
           code: "CONTEXT_TOO_LARGE",
           message:
             "The pending prompt exceeds the safe model context budget while automatic compaction is disabled",
@@ -9520,10 +9537,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       await this.extensionBeforeAgentStart(modelInput);
       if (this.runCancelled || this.disposed) {
-        this.keepPreflightUserMessage(incomingUserMessage);
+        if (!completion) this.keepPreflightUserMessage(incomingUserMessage);
         throw turnAbortedError("Turn aborted during extension hooks");
       }
-      if (typeof modelInput === "string") {
+      if (completion) {
+        for (const entry of completionEntries) this.appendLiveEntry(entry.id, entry.message);
+        this.setAgentMessages([...this.agent.state.messages, ...incomingMessages]);
+        await this.agent.continue();
+      } else if (typeof modelInput === "string") {
         await this.agent.prompt(modelInput);
       } else {
         // pi's `(text, images)` form appends every image after the text; the

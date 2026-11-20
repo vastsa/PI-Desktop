@@ -390,6 +390,7 @@ export type BackgroundTaskSummary = {
   state: "running" | "exited" | "failed" | "stopped";
   elapsedMs: number;
   exitCode?: number;
+  continuation?: "pending" | "started" | "consumed" | "cancelled" | "failed";
 };
 
 export type BackgroundTasksListResult = {
@@ -923,6 +924,8 @@ export const api = {
     invoke<BackgroundTasksListResult>(IPC.invoke.backgroundTasksList),
   backgroundTasksOutput: (id: string) =>
     invoke<BackgroundTaskOutput>(IPC.invoke.backgroundTasksOutput, { id }),
+  backgroundTasksCancelContinuation: (id: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.backgroundTasksCancelContinuation, { id }),
   backgroundTasksStop: (id: string) =>
     invoke<{ ok: boolean; found: boolean }>(IPC.invoke.backgroundTasksStop, { id }),
   onBackgroundTasksChanged: (listener: (payload: { version?: number }) => void) => {

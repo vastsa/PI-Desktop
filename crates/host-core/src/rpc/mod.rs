@@ -1,3 +1,4 @@
+mod background_continuations;
 mod background_jobs;
 mod computer_rpc;
 mod config_sync_rpc;
@@ -1048,6 +1049,16 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
         return Ok(());
     };
     if object
+        .get("backgroundJobContinuationEnabled")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err(rpc_err(
+            1002,
+            "backgroundJobContinuationEnabled must be a boolean",
+            "INVALID_PARAMS",
+        ));
+    }
+    if object
         .get("scheduledTasksEnabled")
         .is_some_and(|enabled| !enabled.is_boolean())
     {
@@ -1981,6 +1992,10 @@ async fn handle_request(
             .map_err(config_sync_rpc_err);
     }
 
+    if method.starts_with("backgroundContinuations.") {
+        return background_continuations::handle(state, method, params).await;
+    }
+
     if method.starts_with("backgroundJobs.") {
         return background_jobs::handle(state, method, params).await;
     }
@@ -2532,6 +2547,13 @@ async fn handle_request(
             st.db
                 .set_setting("app", &settings)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            if settings
+                .get("backgroundJobContinuationEnabled")
+                .and_then(Value::as_bool)
+                != Some(true)
+            {
+                st.background_tasks.cancel_continuations(None, None, None);
+            }
             // Keep the marketplace channel in memory aligned with settings.
             // Legacy source values are ignored, so this remains the official
             // channel; the renderer owns remote refresh timing.
@@ -4159,7 +4181,9 @@ async fn handle_request(
                 .get("id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            let st = state.lock().await;
+            let mut st = state.lock().await;
+            st.background_tasks
+                .cancel_continuations(None, None, Some(id));
             // Signalling is enough: the supervisor kills the tree, records the
             // terminal state, and bumps the change counter, which fans out the
             // `backgroundTasks.changed` notification for this same task.
@@ -4191,6 +4215,46 @@ async fn handle_request(
             } else {
                 None
             };
+            let notify_on_exit = p.tool_name == "Bash"
+                && p.args.get("notifyOnExit").and_then(Value::as_bool) == Some(true);
+            if p.tool_name == "Bash"
+                && p.args
+                    .get("notifyOnExit")
+                    .is_some_and(|value| !value.is_boolean())
+            {
+                return Err(rpc_err(
+                    1002,
+                    "notifyOnExit must be a boolean",
+                    "INVALID_PARAMS",
+                ));
+            }
+            if notify_on_exit {
+                let st = state.lock().await;
+                if p.tool_name != "Bash"
+                    || !p.run_in_background
+                    || p.delegation_id.is_some()
+                    || p.permission_scope.is_some()
+                    || sessions::tool_policy(&st.db, &p.session_id)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                        != Some(sessions::ToolPolicy::Agent)
+                    || remote_tools::session_remote_workspace(&st, &p.session_id)?.is_some()
+                {
+                    return Err(rpc_err(
+                        1001,
+                        "notifyOnExit requires a local parent Agent background Bash job",
+                        "PERMISSION_DENIED",
+                    ));
+                }
+                let turn_id = p.turn_id.as_deref().ok_or_else(|| {
+                    rpc_err(1002, "notifyOnExit requires a turn", "INVALID_PARAMS")
+                })?;
+                background_tasks::continuations::authorize_registration(
+                    &st,
+                    &p.session_id,
+                    turn_id,
+                )
+                .map_err(|(code, message)| rpc_err(1001, message, &code))?;
+            }
             let execution_timeout_ms = tools::effective_timeout_ms(&p.tool_name, p.timeout_ms);
 
             let remote_workspace = {
@@ -4821,6 +4885,11 @@ async fn handle_request(
                         output_tx: Some(tx.clone()),
                         extra_env: worktree_env.clone(),
                         run_in_background: p.run_in_background,
+                        continuation_turn_id: if notify_on_exit {
+                            p.turn_id.clone()
+                        } else {
+                            None
+                        },
                         app_state: Some(state.clone()),
                     });
                 }

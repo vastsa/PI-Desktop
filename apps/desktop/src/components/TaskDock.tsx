@@ -72,6 +72,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
     output,
     toggleOutput,
     stop,
+    cancelContinuation,
     remove,
     error,
     stoppingIds,
@@ -216,6 +217,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
               stoppingIds={stoppingIds}
               onToggleOutput={toggleOutput}
               onStop={(id) => void stop(id)}
+              onCancelContinuation={(id) => void cancelContinuation(id)}
               onRemove={remove}
             />
           ) : null}
@@ -238,6 +240,7 @@ function TaskPanel({
   stoppingIds,
   onToggleOutput,
   onStop,
+  onCancelContinuation,
   onRemove,
 }: {
   listId: string;
@@ -247,6 +250,7 @@ function TaskPanel({
   stoppingIds: ReadonlySet<string>;
   onToggleOutput: (id: string) => void;
   onStop: (id: string) => void;
+  onCancelContinuation: (id: string) => void;
   onRemove: (id: string) => boolean;
 }) {
   const { t } = useTranslation();
@@ -260,6 +264,7 @@ function TaskPanel({
           const meta = [
             t(`backgroundTasks.${task.state}`),
             running ? formatElapsed(task.elapsedMs) : null,
+            task.continuation ? t(`backgroundTasks.continuation${task.continuation === "pending" && !running ? "Ready" : task.continuation}`) : null,
             task.exitCode !== undefined ? String(task.exitCode) : null,
           ].filter(Boolean).join(" \u00b7 ");
           return (
@@ -288,6 +293,11 @@ function TaskPanel({
                   <span className="task-command" title={task.command}>{task.command}</span>
                   <span className="task-meta">{meta}</span>
                 </div>
+                {task.continuation === "pending" ? (
+                  <Button type="button" variant="ghost" size="sm" className="task-action" onClick={() => onCancelContinuation(task.id)}>
+                    {t("backgroundTasks.cancelContinuation")}
+                  </Button>
+                ) : null}
                 {running ? (
                   <Button
                     type="button"
@@ -299,7 +309,7 @@ function TaskPanel({
                   >
                     {stopping ? t("backgroundTasks.stopping") : t("backgroundTasks.stop")}
                   </Button>
-                ) : (
+                ) : task.continuation !== "pending" ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -309,7 +319,7 @@ function TaskPanel({
                   >
                     {t("backgroundTasks.dismiss")}
                   </Button>
-                )}
+                ) : null}
               </div>
               {expanded ? (
                 <pre className="task-output">{formatOutput(output, task.id)}</pre>
