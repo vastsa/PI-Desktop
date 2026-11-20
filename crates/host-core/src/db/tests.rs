@@ -825,6 +825,31 @@ fn kv_roundtrip_and_delete() {
 }
 
 #[test]
+fn kv_entries_lists_one_namespace_in_key_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    assert!(db.kv_entries("ns:a").unwrap().is_empty());
+    db.kv_set("ns:a", "b", &serde_json::json!(2)).unwrap();
+    db.kv_set("ns:a", "a", &serde_json::json!({ "n": 1 }))
+        .unwrap();
+    db.kv_set("ns:a", "c", &serde_json::json!("three")).unwrap();
+    db.kv_set("ns:b", "a", &serde_json::json!("other")).unwrap();
+    db.kv_set("ns:", "a", &serde_json::json!("prefix")).unwrap();
+    assert_eq!(
+        db.kv_entries("ns:a").unwrap(),
+        vec![
+            ("a".to_string(), serde_json::json!({ "n": 1 })),
+            ("b".to_string(), serde_json::json!(2)),
+            ("c".to_string(), serde_json::json!("three")),
+        ]
+    );
+    assert_eq!(
+        db.kv_entries("ns:b").unwrap(),
+        vec![("a".to_string(), serde_json::json!("other"))]
+    );
+}
+
+#[test]
 fn migrates_v7_chat_modes_settings_and_scheduled_values_to_plan() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("pi.sqlite");

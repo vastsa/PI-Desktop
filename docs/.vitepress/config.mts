@@ -176,6 +176,11 @@ const zhNav: DefaultTheme.NavItem[] = [
 
 export default defineConfig({
   title: 'PI-Desktop',
+  // Design drafts and implementation plans are working documents for the
+  // people and agents building a change, not site content. They quote
+  // templates such as `${{ matrix.arch }}` and i18n placeholders such as
+  // `{{name}}`, which the Markdown-to-Vue compiler would evaluate.
+  srcExclude: ['superpowers/**'],
   description: 'A modular desktop workspace for AI agents',
   // Product shell is dark-base; lock docs to the same charcoal system.
   appearance: 'force-dark',

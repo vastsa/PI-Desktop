@@ -302,8 +302,8 @@ remote-control listener:
   directory. The token and connection manifest are mode `0600` where
   supported, and the manifest is marked inactive during shutdown.
 - Secret get/set/delete channels, provider/OAuth/MCP secret-write paths,
-  settings writes, and renderer-only native picker/dialog channels (including
-  `plugin/loadDev`) are excluded. Secret-shaped argument fields are stripped
+  settings writes, every GitHub connector channel (§14), and renderer-only
+  native picker/dialog channels (including `plugin/loadDev`) are excluded. Secret-shaped argument fields are stripped
   before dispatch. The reviewed catalog is explicit; newly added IPC handlers
   are not exposed automatically.
 - Calls delegate to the existing main-process IPC handlers, so host
@@ -447,3 +447,51 @@ tools, grant, or permissions. The audit log records grant and action identity
 with typed text reduced to a length and no pixels; screenshots reaching the
 model are scope-cropped tool images, and an `a11y-only` grant captures none.
 See [03-runtime/computer-use](../03-runtime/computer-use.md).
+
+## 14. GitHub connector boundary (ADR github-connector)
+
+The built-in GitHub connector holds a credential that can read and write every
+private repository the user can reach. Its boundary:
+
+- **Main only.** The token is read by Electron main from the host-core secret
+  store (`secret:app:github-connector`,
+  [14-secrets-storage](../03-runtime/14-secrets-storage.md)) and is never part
+  of a renderer payload, an IPC result, a login or status event, a log line,
+  or an error message. Error text that echoes GitHub's own message is redacted
+  against the token first. Other main-process modules obtain it through the
+  connector's `token()` accessor, which no IPC handler calls.
+- **Pinned hosts.** REST requests go to `https://api.github.com`. Device
+  sign-in talks to `https://github.com/login/device/code` and
+  `https://github.com/login/oauth/access_token`. The hosts are constants; no
+  caller supplies a host or a URL. REST requests use `redirect: "manual"` and
+  the device flow `redirect: "error"`; neither ever follows a redirect, so the
+  `Authorization` header cannot reach another address. The verification page
+  opened for the user is always `https://github.com/login/device`, through the
+  guarded external-open helper.
+- **Validated inputs.** A token must be 1 to 4096 printable ASCII characters
+  (0x21 to 0x7E) before it is placed in a header. Owner, repository, and
+  branch names are checked against the host git capability's rules — git's
+  reference-name rules for a branch — before they become a path segment or a
+  query value, and are encoded where they land.
+- **Avatar.** The card loads an account avatar only from
+  `https://avatars.githubusercontent.com`; any other address in the stored
+  record shows a placeholder, so a planted record cannot make Settings fetch
+  an arbitrary URL.
+- **Main window only.** The seven `pi-desktop/github/*` invoke channels refuse
+  any sender but the main window. They are registered with their sender, so
+  they are absent from the internal invoke map that the local MCP control
+  plane (§8) and the remote-host router dispatch through, and all seven are
+  listed in `MCP_CONTROL_BLOCKED_CHANNEL_KEYS`. Inputs are rebuilt from their
+  known fields and results from the fields the shared contract names.
+- **No client secret.** Sign-in uses an OAuth App's public client id with the
+  device flow. Nothing in the build is a secret, which is also why disconnect
+  cannot revoke the token: revocation needs the client secret.
+- **Login lifecycle.** At most one device login runs. A newer login, a pasted
+  token, disconnect, a cancelled or abandoned dialog, and a committed quit
+  each abort it; an aborted login makes no further request and stores nothing,
+  even if GitHub had already answered.
+- **Scopes.** `repo` and `read:org` by default; `workflow` only when the user
+  ticks the option at sign-in.
+
+A later decision record covers handing this token to a paired remote host;
+nothing in this boundary sends it anywhere but GitHub.

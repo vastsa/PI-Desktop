@@ -52,6 +52,7 @@ type SecretMeta = {
 secret:provider:<providerId>:api_key
 secret:provider:<providerId>:oauth
 secret:app:typesafe-jev
+secret:app:github-connector
 ```
 
 The two refs are independent, so one provider row may hold an API key, a vendor
@@ -63,6 +64,35 @@ The Jev API key uses the fixed `secret:app:typesafe-jev` reference through the
 same encrypted Host store. Renderer access is limited to set/delete/has; Electron
 main reads it only for an explicitly enabled Agent launch and passes it
 ephemerally to the sidecar.
+
+The built-in GitHub connector (D688 / ADR github-connector) uses the fixed
+`secret:app:github-connector` reference. Its value is one JSON record written
+through the generic `secrets.set` path, so it is encrypted by the same backend
+and is not indexed in `secrets_meta`:
+
+```ts
+type StoredGitHubCredential = {
+  version: 1
+  token: string            // OAuth App user token or personal access token
+  kind: "oauth" | "pat"
+  login: string            // account metadata, kept beside the token so the
+  name?: string            // connected state can be shown without a request
+  avatarUrl?: string
+  scopes: string[]         // as GitHub reported them; empty for a fine-grained token
+  savedAt: string          // ISO 8601
+}
+```
+
+Only the main-process connector reads this reference, through
+`secrets.getForRuntime`, and only it parses the value. A record that is
+missing, not JSON, of another `version`, or whose `token` is not 1 to 4096
+printable ASCII characters reads as "not connected";
+a host failure is reported as a failure. No renderer channel returns the
+record or any part of the token: the connector's IPC surface exposes the
+login, name, avatar URL, scopes, and token kind only. The generic
+`secrets/set`, `secrets/delete`, and `secrets/has` renderer channels take a
+caller-supplied reference, so a renderer can still overwrite or delete this
+record as it can any other; it cannot read it.
 
 ## 4a. Provider readiness flags
 
@@ -96,7 +126,9 @@ Renderer uses provider methods that accept optional `secretValue` on create/upda
 5. Uninstall/reset app deletes secrets unless future explicit migrate tool says otherwise
 6. Provider delete defaults to deleting linked secret — both the API key and the OAuth credential
 7. An OAuth refresh token never crosses a process boundary: only Electron main reads it, and only to mint request auth
-8. Portable configuration sync exports provider API keys or MCP
+8. The GitHub connector token never crosses a process boundary: only Electron
+   main reads it, and only to authenticate requests to GitHub's own hosts
+9. Portable configuration sync exports provider API keys or MCP
    environment/header values only after explicit credential opt-in. Values
    remain inside host-owned encrypted staging and are restored through the
    receiving device's local secret store. S3 connection credentials, machine

@@ -1,4 +1,4 @@
-export const GITHUB_REPO = "vastsa/PI-Desktop";
+export const GITHUB_REPO = "david-yang-pixel/PI-Desktop";
 export const GITHUB_BUG_TEMPLATE = "bug_report.yml";
 export const GITHUB_ISSUE_ORIGIN = "https://github.com";
 

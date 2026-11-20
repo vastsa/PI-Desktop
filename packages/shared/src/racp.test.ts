@@ -326,6 +326,46 @@ describe("catalog and roles", () => {
     expect(RACP_SHIPPED_BINDINGS).toEqual(["RACP-WS"]);
   });
 
+  it("declares the ten workspaceGit operations as owner-only remote-host operations", () => {
+    const mutations: Record<string, boolean> = {
+      "workspace/gitCredentialSet": true,
+      "workspace/gitCredentialClear": true,
+      "workspace/gitRepository": false,
+      "workspace/gitPrepare": true,
+      "workspace/gitPush": true,
+      "workspace/gitJob": false,
+      "workspace/gitJobCancel": true,
+      "workspace/gitStatus": false,
+      "workspace/gitRemove": true,
+      "workspace/gitList": false,
+    };
+    const operations: Record<string, unknown> = RACP_OPERATIONS;
+    for (const [operation, mutation] of Object.entries(mutations)) {
+      expect(operations[operation], operation).toEqual({ role: "owner", profile: "remote-host", mutation });
+    }
+    expect(Object.keys(operations).filter((operation) => operation.startsWith("workspace/git")).sort()).toEqual(Object.keys(mutations).sort());
+    expect(rolesAllowOperation(["controller", "approver"], "workspace/gitPrepare" as never)).toBe(false);
+  });
+
+  it("advertises workspaceGit as an optional server capability", () => {
+    const capabilities = { ...initializeResult.capabilities, workspaceGit: true };
+    expect(Value.Check(RacpInitializeResultSchema, { ...initializeResult, capabilities })).toBe(true);
+    expect(Value.Check(RacpInitializeResultSchema, initializeResult)).toBe(true);
+    expect(Value.Check(RacpInitializeResultSchema, { ...initializeResult, capabilities: { ...capabilities, workspaceGit: "yes" } })).toBe(false);
+  });
+
+  it("registers the workspaceGit error codes as not retriable", () => {
+    const codes: Record<string, unknown> = RACP_ERROR_CODES;
+    for (const code of [
+      "WORKSPACE_GIT_UNAVAILABLE", "WORKSPACE_GIT_AUTH_REQUIRED", "WORKSPACE_GIT_REPOSITORY_NOT_FOUND",
+      "WORKSPACE_GIT_BRANCH_NOT_FOUND", "WORKSPACE_GIT_NOT_FOUND", "WORKSPACE_GIT_BUSY", "WORKSPACE_GIT_JOB_NOT_FOUND",
+      "WORKSPACE_GIT_FAILED", "WORKSPACE_GIT_TRANSPORT_REFUSED",
+    ]) {
+      expect(codes[code], code).toEqual({ retriable: false });
+      expect(Object.values(ErrorCodes)).toContain(code);
+    }
+  });
+
   it("marks every operation with a profile", () => {
     for (const spec of Object.values(RACP_OPERATIONS)) {
       expect(["v1", "remote-host"]).toContain(spec.profile);

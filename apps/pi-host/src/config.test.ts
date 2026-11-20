@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -25,6 +25,46 @@ describe("config", () => {
     expect(() => resolveConfig({ port: "70000", "host-core": "/bin/hc", sidecar: "/s.js" }, {})).toThrow(/invalid port/);
     expect(() => resolveConfig({ "host-core": "/bin/hc", sidecar: "/s.js", port: "abc" }, {})).toThrow(/invalid port/);
     expect(resolveConfig({ "host-core": "/bin/hc", sidecar: "/s.js", "log-level": "warn" }, {}).logLevel).toBe("warn");
+  });
+});
+
+describe("workspaces root", () => {
+  const base = { "host-core": "/bin/hc", sidecar: "/s.js" };
+
+  it("defaults to pi-workspaces under the home directory", () => {
+    expect(resolveConfig(base, {}).workspacesRoot).toBe(join(homedir(), "pi-workspaces"));
+  });
+
+  it("reads the flag before the environment and resolves it", () => {
+    expect(resolveConfig({ ...base, "browse-root": "/srv", "workspaces-root": "/srv/work/../repos" }, { PI_HOST_WORKSPACES_ROOT: "/srv/env" }).workspacesRoot).toBe("/srv/repos");
+    expect(resolveConfig({ ...base, "browse-root": "/srv" }, { PI_HOST_WORKSPACES_ROOT: "/srv/env" }).workspacesRoot).toBe("/srv/env");
+  });
+
+  it("must be inside the browse root", () => {
+    expect(() => resolveConfig({ ...base, "browse-root": "/srv/projects", "workspaces-root": "/srv/elsewhere" }, {})).toThrow(/browse root/);
+    expect(() => resolveConfig({ ...base, "browse-root": "/srv/projects", "workspaces-root": "/srv/projects-other" }, {})).toThrow(/browse root/);
+    expect(() => resolveConfig({ ...base, "browse-root": "/srv/projects" }, { PI_HOST_WORKSPACES_ROOT: "/tmp/x" })).toThrow(/browse root/);
+    try {
+      resolveConfig({ ...base, "browse-root": "/srv/projects", "workspaces-root": "/srv/elsewhere" }, {});
+      expect.unreachable();
+    } catch (error) {
+      expect((error as { errorCode?: string }).errorCode).toBe("INVALID_ARGUMENT");
+    }
+    expect(resolveConfig({ ...base, "browse-root": "/srv/projects", "workspaces-root": "/srv/projects/git" }, {}).workspacesRoot).toBe("/srv/projects/git");
+  });
+
+  it("must be outside the data directory", () => {
+    const args = { ...base, "browse-root": "/srv", "data-dir": "/srv/data" };
+    for (const root of ["/srv/data", "/srv/data/workspaces"]) {
+      expect(() => resolveConfig({ ...args, "workspaces-root": root }, {})).toThrow(/data directory/);
+    }
+    expect(resolveConfig({ ...args, "workspaces-root": "/srv/data-other" }, {}).workspacesRoot).toBe("/srv/data-other");
+  });
+
+  it("keeps a host with a custom browse root starting when the root is not configured", () => {
+    // The home default would be outside this browse root; folder projects on
+    // such a host must not stop working because git workspaces exist.
+    expect(resolveConfig({ ...base, "browse-root": "/srv/projects" }, {}).workspacesRoot).toBe("/srv/projects/pi-workspaces");
   });
 });
 

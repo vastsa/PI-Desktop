@@ -6,14 +6,15 @@
 #   node scripts/release.mjs 0.2.0 --tag   # bump versions + commit + create tag v0.2.0
 #   git push origin <branch> v0.2.0        # push → this workflow builds & publishes
 #
-# Builds installers for every platform defined in the electron-builder config
-# (macOS dmg/zip arm64 and x64, Windows NSIS and portable ZIP x64, Linux
-# AppImage/deb/rpm x64 and arm64), each
-# with its native pi-desktop-host-core Rust sidecar. The Linux app.asar is also
-# exported as a system-Electron repackaging asset, and all outputs — with their
-# electron-updater latest*.yml feeds — are published to the GitHub Release
-# (D126/D285/D364/D603). macOS tag artifacts are Developer ID-signed, notarized, and
-# stapled before upload (D450 / ADR 0289).
+# This fork builds the desktop for macOS arm64 only (dmg/zip, with its native
+# pi-desktop-host-core Rust sidecar) and publishes it, with the electron-updater
+# latest-mac.yml feed, to the GitHub Release (D686). The fork has no Developer
+# ID certificate, so tag artifacts are unsigned and stamped
+# `piDistribution: "unsigned"`, which makes the app deliver updates manually.
+# The upstream signed, notarized, and stapled lane (D450 / ADR 0289) is kept
+# below unchanged and runs only when the repository variable
+# MACOS_SIGN_RELEASE is 'true'. The Windows and Linux desktop steps are kept
+# too; no matrix row selects them.
 #
 # It also builds the headless `pi-host` bundle for both Linux architectures the
 # desktop publishes and publishes each as
@@ -86,8 +87,10 @@ jobs:
     name: Build ${{ matrix.name }}
     needs: verify
     env:
-      # Tag pushes always sign. workflow_dispatch signs unless explicitly disabled.
-      MACOS_SIGN_RELEASE: ${{ github.event_name != 'workflow_dispatch' || inputs.sign_macos == true }}
+      # Signing is opt-in per repository: nothing signs unless the repository
+      # variable MACOS_SIGN_RELEASE is 'true'. With it set, tag pushes always
+      # sign and workflow_dispatch signs unless explicitly disabled.
+      MACOS_SIGN_RELEASE: ${{ vars.MACOS_SIGN_RELEASE == 'true' && (github.event_name != 'workflow_dispatch' || inputs.sign_macos == true) }}
     strategy:
       fail-fast: false
       matrix:
@@ -99,42 +102,6 @@ jobs:
             artifact: mac-arm64
             platform: macos
             dist: dist:mac
-          - name: macOS Intel x64
-            os: macos-15-intel
-            arch: x64
-            runner_arch: x86_64
-            artifact: mac-x64
-            platform: macos
-            dist: dist:mac
-          - name: Windows x64
-            os: windows-latest
-            arch: x64
-            artifact: windows-x64
-            platform: windows
-            dist: dist:win
-          - name: Linux x64
-            # Ubuntu 22.04 keeps host-core at glibc 2.35 so Ubuntu 22.04,
-            # Debian 12, and Fedora 36+ can load the binary. ubuntu-latest
-            # (24.04) would raise the floor to 2.39.
-            os: ubuntu-22.04
-            arch: x64
-            runner_arch: x86_64
-            artifact: linux-x64
-            platform: linux
-            feed: latest-linux.yml
-            dist: dist:linux
-          - name: Linux arm64
-            # GitHub's native arm64 runner packages the Electron app and the
-            # host-core sidecar at the same architecture; the `-arm` image
-            # keeps the glibc 2.35 floor the x64 lane documents
-            # (ubuntu-24.04-arm would raise it to 2.39).
-            os: ubuntu-22.04-arm
-            arch: arm64
-            runner_arch: aarch64
-            artifact: linux-arm64
-            platform: linux
-            feed: latest-linux-arm64.yml
-            dist: dist:linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:
@@ -218,13 +185,34 @@ jobs:
       - name: Package unsigned macOS installer
         if: matrix.platform == 'macos' && env.MACOS_SIGN_RELEASE != 'true'
         env:
-          # Debug-only lane: workflow_dispatch with sign_macos=false.
+          # The fork's release lane: no Developer ID certificate exists.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           set -euo pipefail
           # Artifact names are defined in apps/desktop/package.json: the mac
           # pattern labels ZIPs, and the dmg target pattern labels DMGs.
-          pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }}
+          # The distribution marker is what turns off in-app updates: the
+          # platform updater cannot install over an unsigned app.
+          # `-c.mac.identity=-` ad-hoc signs the finished bundle. With no
+          # identity electron-builder skips signing altogether, which leaves
+          # Electron's original signature over a rewritten Info.plist and
+          # resources: a broken seal that macOS reports as a damaged app.
+          # No `--` before the flags: the pinned pnpm forwards it literally,
+          # and electron-builder then ignores every flag after it without an
+          # error.
+          pnpm --filter @pi-desktop/desktop run dist:mac --${{ matrix.arch }} -c.extraMetadata.piDistribution=unsigned -c.mac.identity=-
+
+      - name: Verify the unsigned distribution marker
+        # A dropped command-line override still builds a green, default
+        # package, so check the artifact itself: the marker the updater reads,
+        # and a bundle seal that verifies.
+        if: matrix.platform == 'macos' && env.MACOS_SIGN_RELEASE != 'true'
+        run: |
+          set -euo pipefail
+          app="apps/desktop/release/mac-${{ matrix.arch }}/PI-Desktop.app"
+          node scripts/check-packaged-distribution.mjs "apps/desktop/release/mac-${{ matrix.arch }}/PI-Desktop.app/Contents/Resources/app.asar" unsigned
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -F "Signature=adhoc"
 
       - name: Diagnose macOS signing environment
         # Records the runner baseline (system, codesign, identities, keychain,
@@ -413,11 +401,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Every Linux platform the desktop release publishes. Keep this list
-          # in lockstep with the desktop build matrix above and with
-          # PUBLISHED_TARGETS in apps/desktop/electron/main/remote/pi-host-release.ts:
-          # a bundle the desktop refuses to install is dead weight, and a target
-          # the desktop offers without a bundle fails mid-download.
+          # Every Linux platform a paired remote host can run. Keep this list
+          # in lockstep with PUBLISHED_TARGETS in
+          # apps/desktop/electron/main/remote/pi-host-release.ts: a bundle the
+          # desktop refuses to install is dead weight, and a target the desktop
+          # offers without a bundle fails mid-download. It no longer follows
+          # the desktop build matrix: the fork ships host bundles for
+          # platforms it ships no desktop for.
           - arch: x64
             os: ubuntu-22.04
             runner_arch: x86_64
@@ -537,8 +527,8 @@ jobs:
           require "yaml"
 
           paths = Dir["latest-mac-*.yml"].sort
-          expected_paths = ["latest-mac-arm64.yml", "latest-mac-x64.yml"]
-          abort "Expected both macOS updater feeds" unless paths == expected_paths
+          expected_paths = ["latest-mac-arm64.yml"]
+          abort "Expected the macOS arm64 updater feed" unless paths == expected_paths
 
           feeds = paths.map do |path|
             YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
@@ -559,17 +549,15 @@ jobs:
           )
           File.write("latest-mac.yml", merged.to_yaml)
           RUBY
-          rm latest-mac-arm64.yml latest-mac-x64.yml
+          rm latest-mac-arm64.yml
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          # D126/D285/D364/D603: all desktop platforms and both native macOS
-          # architectures ship from tag builds — installers, the Windows
-          # portable ZIP, the Linux ASAR, blockmaps, and the latest*.yml
-          # feeds that drive electron-updater on each platform (in-app for
-          # Windows NSIS and Linux AppImage; macOS and Windows ZIP remain
-          # manual-delivery by product policy).
+          # D686: the fork ships the unsigned macOS arm64 DMG and ZIP with
+          # their blockmaps, the latest-mac.yml feed that update checks read
+          # (delivery is manual for unsigned builds), and the two Linux
+          # pi-host bundles with their checksums.
           files: dist/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}

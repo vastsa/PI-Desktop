@@ -70,6 +70,7 @@ export * from "./startup-animation.js";
 export * from "./radial-menu.js";
 export * from "./sidebar-modules.js";
 export * from "./racp.js";
+export * from "./racp-workspace-git.js";
 export * from "./trusted-extensions.js";
 export * from "./provider-retry.js";
 export * from "./message-stream.js";
@@ -83,6 +84,7 @@ export * from "./native-web-search.js";
 export * from "./native-web-search-transport.js";
 export * from "./header-value.js";
 export * from "./secret-refs.js";
+export * from "./github-connector.js";
 
 export * from "./session-todos.js";
 export * from "./tool-call-lineage.js";

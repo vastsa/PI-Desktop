@@ -16,6 +16,8 @@ const [
   sharedPackageSource,
   releaseMacScriptSource,
   releaseAsarScriptSource,
+  piWorkflowSource,
+  piTriageWorkflowSource,
 ] = await Promise.all([
   read("../../../.github/workflows/ci.yml"),
   read("../../../.github/workflows/release.yml"),
@@ -28,6 +30,8 @@ const [
   read("../../../packages/shared/package.json"),
   read("../../../scripts/release-macos.sh"),
   read("../../../scripts/export-linux-asar.mjs"),
+  read("../../../.github/workflows/pi.yml"),
+  read("../../../.github/workflows/pi-triage.yml"),
 ]);
 
 test("CI skips documentation-only pushes and pull requests", () => {
@@ -163,31 +167,15 @@ test("release workflow publishes the Linux ASAR beside installers", () => {
   );
 });
 
-test("the release matrix ships native Linux x64 and arm64 lanes", () => {
-  assert.match(
-    releaseWorkflowSource,
-    /name: Linux arm64[\s\S]*?os: ubuntu-22\.04-arm[\s\S]*?arch: arm64[\s\S]*?runner_arch: aarch64[\s\S]*?artifact: linux-arm64[\s\S]*?platform: linux[\s\S]*?dist: dist:linux/,
-    "the arm64 lane runs on a native arm64 runner",
-  );
+test("the release ships pi-host bundles for both Linux architectures", () => {
   // A runner that is not the architecture it packages would pair one
   // architecture's Electron app with the other's Rust sidecar.
   assert.match(
     releaseWorkflowSource,
     /name: Verify native runner architecture[\s\S]*?if: matrix\.runner_arch/,
   );
-  // electron-builder already names each Linux lane's feed after its own
-  // architecture (`latest-linux.yml` on x64, `latest-linux-arm64.yml` on
-  // arm64) — the names electron-updater requests — so the lanes cannot
-  // overwrite each other's feed during the publish merge, and the lane
-  // verifies the name it will publish instead of renaming it.
-  assert.match(
-    releaseWorkflowSource,
-    /name: Verify the Linux update feed[\s\S]*?feed="apps\/desktop\/release\/\$\{\{ matrix\.feed \}\}"/,
-  );
-  assert.match(releaseWorkflowSource, /feed: latest-linux\.yml/);
-  assert.match(releaseWorkflowSource, /feed: latest-linux-arm64\.yml/);
-  // The pi-host bundles the SSH bootstrap installs track the desktop's Linux
-  // lanes one for one.
+  // The fork ships no Linux desktop, but a paired remote host is Linux, so the
+  // bundles the SSH bootstrap installs are still built for both architectures.
   assert.match(
     releaseWorkflowSource,
     /pi-host-bundle:[\s\S]*?- arch: x64[\s\S]*?os: ubuntu-22\.04[\s\S]*?- arch: arm64[\s\S]*?os: ubuntu-22\.04-arm/,
@@ -215,19 +203,22 @@ test("the Linux package config lets the workflow choose the architecture", () =>
   assert.equal(build.rpm.artifactName, "pi-desktop-${version}-${arch}.${ext}");
 });
 
-test("release matrix packages both native macOS architectures", () => {
+test("the fork release matrix packages macOS arm64 only", () => {
   assert.match(
     releaseWorkflowSource,
     /name: macOS arm64[\s\S]*?os: macos-15[\s\S]*?arch: arm64[\s\S]*?runner_arch: arm64/,
   );
+  const matrixNames = [...releaseWorkflowSource.matchAll(/^          - name: (.+)$/gm)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(matrixNames, ["macOS arm64"]);
   assert.match(
     releaseWorkflowSource,
-    /name: macOS Intel x64[\s\S]*?os: macos-15-intel[\s\S]*?arch: x64[\s\S]*?runner_arch: x86_64/,
+    /expected_paths = \["latest-mac-arm64\.yml"\]/,
+    "publish accepts the single macOS feed the fork builds",
   );
-  assert.match(
-    releaseWorkflowSource,
-    /name: Package installers \(\$\{\{ matrix\.dist \}\}\)[\s\S]*?if: matrix\.platform != 'macos'[\s\S]*?run: pnpm --filter @pi-desktop\/desktop run \$\{\{ matrix\.dist \}\} -- --\$\{\{ matrix\.arch \}\}/,
-  );
+  assert.match(releaseWorkflowSource, /rm latest-mac-arm64\.yml\n/);
+  assert.doesNotMatch(releaseWorkflowSource, /latest-mac-x64\.yml/);
   assert.equal(
     JSON.parse(desktopPackageSource).build.mac.artifactName,
     "PI-Desktop-${version}-${arch}-mac.${ext}",
@@ -240,7 +231,7 @@ test("release matrix packages both native macOS architectures", () => {
   );
   assert.match(
     releaseWorkflowSource,
-    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac -- --\$\{\{ matrix\.arch \}\}/,
+    /Package unsigned macOS installer[\s\S]*?pnpm --filter @pi-desktop\/desktop run dist:mac --\$\{\{ matrix\.arch \}\}/,
     "unsigned macOS builds use the shared artifact naming config",
   );
   assert.doesNotMatch(
@@ -260,14 +251,14 @@ test("release matrix packages both native macOS architectures", () => {
   assert.match(releaseWorkflowSource, /Merge macOS updater metadata[\s\S]*?ruby/);
 });
 
-test("macOS release signing is required on tag pushes", () => {
+test("macOS signing runs only when the repository opts in", () => {
   assert.match(
     releaseWorkflowSource,
     /workflow_dispatch:\s+inputs:\s+sign_macos:[\s\S]*?default:\s*true[\s\S]*?type:\s*boolean/,
   );
   assert.ok(
     releaseWorkflowSource.includes(
-      "MACOS_SIGN_RELEASE: ${{ github.event_name != 'workflow_dispatch' || inputs.sign_macos == true }}",
+      "MACOS_SIGN_RELEASE: ${{ vars.MACOS_SIGN_RELEASE == 'true' && (github.event_name != 'workflow_dispatch' || inputs.sign_macos == true) }}",
     ),
   );
 
@@ -279,6 +270,24 @@ test("macOS release signing is required on tag pushes", () => {
   assert.match(unsignedBlock, /CSC_IDENTITY_AUTO_DISCOVERY:\s*'false'/);
   assert.doesNotMatch(unsignedBlock, /CSC_LINK:|CSC_KEY_PASSWORD:|APPLE_/);
   assert.doesNotMatch(unsignedBlock, /forceCodeSigning|notarize/);
+  assert.match(
+    unsignedBlock,
+    /run dist:mac --\$\{\{ matrix\.arch \}\} -c\.extraMetadata\.piDistribution=unsigned -c\.mac\.identity=-\n/,
+    "unsigned packages are stamped for manual updates and ad-hoc signed so the bundle seal is valid",
+  );
+  // The pinned pnpm forwards a literal `--`, and electron-builder then treats
+  // every later flag as a positional argument and silently ignores it.
+  assert.doesNotMatch(unsignedBlock, /dist:mac -- /);
+  const markerCheck = releaseWorkflowSource.match(
+    /- name: Verify the unsigned distribution marker[\s\S]*?(?=\n      - name:)/,
+  )?.[0];
+  assert.ok(markerCheck, "the packaged marker must be verified, not assumed");
+  assert.match(markerCheck, /matrix\.platform == 'macos' && env\.MACOS_SIGN_RELEASE != 'true'/);
+  assert.match(
+    markerCheck,
+    /node scripts\/check-packaged-distribution\.mjs "apps\/desktop\/release\/mac-\$\{\{ matrix\.arch \}\}\/PI-Desktop\.app\/Contents\/Resources\/app\.asar" unsigned/,
+  );
+  assert.match(markerCheck, /codesign --verify --deep --strict/);
 
   assert.match(
     releaseWorkflowSource,
@@ -486,4 +495,11 @@ test("GitHub releases trigger the CNB mirror pipeline with a JSON payload", () =
     /-d ".*github\.event\.release\.tag_name/,
     "JSON payload must not interpolate the release tag through YAML string escaping",
   );
+});
+
+test("issue automation that needs upstream secrets runs only upstream", () => {
+  for (const source of [piWorkflowSource, piTriageWorkflowSource]) {
+    assert.match(source, /github\.repository == 'vastsa\/PI-Desktop'/);
+    assert.match(source, /api_key: \$\{\{ secrets\.API_KEY \}\}/);
+  }
 });

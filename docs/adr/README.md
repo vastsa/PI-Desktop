@@ -423,3 +423,6 @@ git history.
 | plan-approval-session-permission | [Plan approval defaults to the owning Session's permission](plan-approval-session-permission.md) | Accepted; amends ADR 0053 and ADR 0158 |
 | plugin-transcript-selection-views | [Docked views can accept transcript selections](plugin-transcript-selection-views.md) | Accepted (issue #2395) |
 | opt-in-background-job-continuation | [Opt-in background job continuation](opt-in-background-job-continuation.md) | Proposed (#2143) |
+| fork-release-coordinates | [Fork release coordinates and unsigned macOS builds](fork-release-coordinates.md) | Accepted |
+| github-connector | [Built-in GitHub connector](github-connector.md) | Accepted |
+| remote-git-workspaces | [Remote git workspaces and the credential proxy](remote-git-workspaces.md) | Accepted (D687; extends ADR 0329 to paired Hosts) |

@@ -284,6 +284,20 @@ export const ErrorCodes = {
   REMOTE_PATH_NOT_FOUND: "REMOTE_PATH_NOT_FOUND",
   /** A Host-side path is outside what the principal may reach. */
   REMOTE_PATH_FORBIDDEN: "REMOTE_PATH_FORBIDDEN",
+  /** The Host has no usable git (missing, or older than 2.31). */
+  WORKSPACE_GIT_UNAVAILABLE: "WORKSPACE_GIT_UNAVAILABLE",
+  /** GitHub refused the request: the Host holds no credential, or it is not sufficient. */
+  WORKSPACE_GIT_AUTH_REQUIRED: "WORKSPACE_GIT_AUTH_REQUIRED",
+  WORKSPACE_GIT_REPOSITORY_NOT_FOUND: "WORKSPACE_GIT_REPOSITORY_NOT_FOUND",
+  WORKSPACE_GIT_BRANCH_NOT_FOUND: "WORKSPACE_GIT_BRANCH_NOT_FOUND",
+  /** The Host has no worktree for this installation and session. */
+  WORKSPACE_GIT_NOT_FOUND: "WORKSPACE_GIT_NOT_FOUND",
+  /** A git job for the same session is still running. */
+  WORKSPACE_GIT_BUSY: "WORKSPACE_GIT_BUSY",
+  WORKSPACE_GIT_JOB_NOT_FOUND: "WORKSPACE_GIT_JOB_NOT_FOUND",
+  WORKSPACE_GIT_FAILED: "WORKSPACE_GIT_FAILED",
+  /** The Host is not reached over SSH, `wss://`, or loopback; the credential was not sent. */
+  WORKSPACE_GIT_TRANSPORT_REFUSED: "WORKSPACE_GIT_TRANSPORT_REFUSED",
   PAIRING_FAILED: "PAIRING_FAILED",
   PAIRING_TOKEN_EXPIRED: "PAIRING_TOKEN_EXPIRED",
   /** The Host does not advertise the capability the operation needs. */
@@ -327,4 +341,28 @@ export const ErrorCodes = {
   PLAN_WORKSPACE_REQUIRED: "PLAN_WORKSPACE_REQUIRED",
   PLAN_ALREADY_ACTIVE: "PLAN_ALREADY_ACTIVE",
   PLAN_INTERNAL: "PLAN_INTERNAL",
+  // Built-in GitHub connector (ADR github-connector). Only the rate-limit and
+  // network codes are retriable.
+  /** No GitHub account is connected. */
+  GITHUB_NOT_CONNECTED: "GITHUB_NOT_CONNECTED",
+  /** GitHub rejected the credential (401): revoked, expired, or never valid. */
+  GITHUB_AUTH_FAILED: "GITHUB_AUTH_FAILED",
+  /** GitHub refused the request (403): missing scope or organization SSO. */
+  GITHUB_FORBIDDEN: "GITHUB_FORBIDDEN",
+  /** 404, or a repository GitHub redirects because it was renamed or moved. */
+  GITHUB_NOT_FOUND: "GITHUB_NOT_FOUND",
+  /** Primary or secondary rate limit. Retriable after `resetAt`. */
+  GITHUB_RATE_LIMITED: "GITHUB_RATE_LIMITED",
+  /** No usable answer: offline, timeout, a 5xx, or a portal in the way. Retriable. */
+  GITHUB_NETWORK: "GITHUB_NETWORK",
+  /** A pasted token is not printable ASCII, or GitHub does not accept it. */
+  GITHUB_INVALID_TOKEN: "GITHUB_INVALID_TOKEN",
+  /** This build has no OAuth client id, or the OAuth App has device flow off. */
+  GITHUB_DEVICE_FLOW_UNAVAILABLE: "GITHUB_DEVICE_FLOW_UNAVAILABLE",
+  /** The device code expired before the user approved it. */
+  GITHUB_LOGIN_EXPIRED: "GITHUB_LOGIN_EXPIRED",
+  /** The user declined the device login on GitHub. */
+  GITHUB_LOGIN_DENIED: "GITHUB_LOGIN_DENIED",
+  /** GitHub rejected the request body (422), e.g. a pull request that already exists. */
+  GITHUB_VALIDATION_FAILED: "GITHUB_VALIDATION_FAILED",
 } as const;

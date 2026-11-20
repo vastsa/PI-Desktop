@@ -25,6 +25,7 @@ import electronUpdaterPkg from "electron-updater";
 import type { AppUpdater, UpdateInfo, ProgressInfo } from "electron-updater";
 import {
   formatChangelogNotes,
+  GITHUB_REPO,
   IPC,
   type UpdatePreference,
   type UpdateState,
@@ -48,12 +49,13 @@ import {
   resolveStoredUpdatePreference,
   resolveUpdateMode as resolveUpdateModePolicy,
   supportsAutomaticUpdates,
-  type WindowsDistribution,
+  parsePackagedDistribution,
+  type PackagedDistribution,
 } from "./update-policy";
 import { ManualUpdateReminderTracker } from "./manual-update-reminder";
 
 export { resolveUpdateMode } from "./update-policy";
-export type { WindowsDistribution } from "./update-policy";
+export type { PackagedDistribution, WindowsDistribution } from "./update-policy";
 
 const { NsisUpdater, autoUpdater } = electronUpdaterPkg;
 
@@ -72,7 +74,7 @@ function createRelocatedUpdater(
   return platform === "win32" ? new RelocatedNsisUpdater(baseCachePath) : null;
 }
 
-export const RELEASES_URL = "https://github.com/vastsa/PI-Desktop/releases/latest";
+export const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 
 const AUTO_CHECK_INITIAL_DELAY_MS = 15_000;
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -110,7 +112,7 @@ export type UpdaterOptions = {
   /** Overrides for tests. */
   platform?: NodeJS.Platform;
   isPackaged?: boolean;
-  distribution?: WindowsDistribution;
+  distribution?: PackagedDistribution;
 };
 
 export class AppUpdaterController {
@@ -120,7 +122,7 @@ export class AppUpdaterController {
   private readonly platform: NodeJS.Platform;
   private readonly isPackaged: boolean;
   private readonly env: NodeJS.ProcessEnv;
-  private readonly distribution?: WindowsDistribution;
+  private readonly distribution?: PackagedDistribution;
   private readonly defaultPreference: UpdatePreference;
   private readonly automaticSupported: boolean;
   private readonly readUpdateSettings?: () => Promise<UpdaterSettings>;
@@ -159,7 +161,7 @@ export class AppUpdaterController {
 
   private readPackagedDistribution(
     isPackaged: boolean,
-  ): WindowsDistribution | undefined {
+  ): PackagedDistribution | undefined {
     if (!isPackaged) return undefined;
     try {
       const packageJson = JSON.parse(
@@ -168,11 +170,9 @@ export class AppUpdaterController {
       if (typeof packageJson !== "object" || packageJson === null) {
         return undefined;
       }
-      const distribution = (packageJson as Record<string, unknown>)
-        .piDistribution;
-      return distribution === "installed" || distribution === "zip" || distribution === "portable"
-        ? distribution
-        : undefined;
+      return parsePackagedDistribution(
+        (packageJson as Record<string, unknown>).piDistribution,
+      );
     } catch (error) {
       this.logger.app(
         "updater",
@@ -190,11 +190,10 @@ export class AppUpdaterController {
     this.getLocale = options.getLocale ?? (() => "en");
     const platform = options.platform ?? process.platform;
     const isPackaged = options.isPackaged ?? app.isPackaged;
+    // Read on every platform: the unsigned marker matters most on macOS,
+    // where an in-app install over an unsigned build cannot succeed.
     const distribution =
-      options.distribution ??
-      (platform === "win32"
-        ? this.readPackagedDistribution(isPackaged)
-        : undefined);
+      options.distribution ?? this.readPackagedDistribution(isPackaged);
     this.platform = platform;
     this.isPackaged = isPackaged;
     this.env = process.env;
@@ -210,6 +209,7 @@ export class AppUpdaterController {
       platform,
       isPackaged,
       this.env,
+      distribution,
     );
     this.readUpdateSettings = options.readUpdateSettings;
     this.persistLastNotifiedVersion = options.persistLastNotifiedVersion;

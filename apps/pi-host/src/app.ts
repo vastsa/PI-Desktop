@@ -17,6 +17,7 @@ import { APP_VERSION, type AgentEventEnvelope } from "@pi-desktop/shared";
 
 import type { PiHostConfig } from "./config.js";
 import { FileCredentialStore, loadOrCreateHostId } from "./credentials.js";
+import { createGitCredentialProxy } from "./git-credential-proxy.js";
 import { createHostOperations } from "./host-operations.js";
 import { createLogger, type HostLogger } from "./logger.js";
 import { TerminalService, loadPty } from "./terminal.js";
@@ -242,12 +243,18 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     : undefined;
   if (!pty) log("warn", "node-pty is not installed; terminals are disabled");
 
+  // The loopback proxy that holds the GitHub token for git on this host. It
+  // always talks to GitHub: nothing in the configuration can redirect it.
+  const gitProxy = createGitCredentialProxy({ log: (level, message, data) => log(level, message, data as Record<string, unknown> | undefined) });
+
   const operations: RacpHostOperations = {
     ...createHostOperations({
       getHost,
       runtime,
       browseRoot: config.browseRoot,
       dataDir: config.dataDir,
+      workspacesRoot: config.workspacesRoot,
+      gitProxy,
       disposeSession: async (sessionId) => {
         const sidecar = getSidecar();
         if (!sidecar) return;
@@ -261,11 +268,14 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
   const server = new RacpServer({ agentHost, operations, authenticator, hostId, serverVersion: APP_VERSION, log });
   let binding: WsBinding;
   try {
+    // Listening before the first connection can register a scope.
+    await gitProxy.start();
     binding = await bindRacpWebSocket({ server: server, authenticator, host: config.host, port: config.port, log });
   } catch (error) {
     state.stopping = true;
     await admin?.close();
     server.close();
+    await gitProxy.close();
     await terminal?.closeAll();
     plans.dispose();
     await runtime.dispose();
@@ -291,6 +301,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
       await admin?.close();
       server.close();
       await binding.close();
+      await gitProxy.close();
       await terminal?.closeAll();
       plans.dispose();
       await runtime.dispose();

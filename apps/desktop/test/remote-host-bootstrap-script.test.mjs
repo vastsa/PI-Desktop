@@ -19,7 +19,7 @@ const { buildBootstrapScript, parseBootstrapOutput, shellQuote } = await import(
 const VERSION = "0.15.1-beta.5";
 const BUNDLE_DIR = `pi-host-${VERSION}-linux-x64`;
 const ARTIFACT_NAME = `${BUNDLE_DIR}.tar.gz`;
-const ARTIFACT_URL = `https://github.com/vastsa/PI-Desktop/releases/download/v${VERSION}/${ARTIFACT_NAME}`;
+const ARTIFACT_URL = `https://github.com/david-yang-pixel/PI-Desktop/releases/download/v${VERSION}/${ARTIFACT_NAME}`;
 const DIGEST = "0123456789abcdef".repeat(4);
 /** The sandbox the script's `HOME`/`PATH` point at, outside the real user's. */
 const WORK_SUBDIR = ".pi-desktop/pi-host/.bootstrap";

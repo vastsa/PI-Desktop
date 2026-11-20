@@ -56,6 +56,9 @@ pub struct AppState {
     /// executionId -> responder for plugin tool dispatches awaiting the
     /// desktop runner (Electron main executes the plugin JS and resolves).
     pub remote_execs: HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>,
+    /// Clone, prepare, and push jobs for remote git workspaces. Process-local;
+    /// it has its own lock so a job never needs this state's lock to report.
+    pub workspace_git_jobs: crate::workspace_git::jobs::SharedJobs,
     pub plugin_execs: HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>,
     /// Rolling plugin session API brakes. These are intentionally process-local;
     /// a restart is already a natural rate-window boundary.
@@ -181,6 +184,7 @@ impl AppState {
             session_grants: HashMap::new(),
             plugin_execs: HashMap::new(),
             remote_execs: HashMap::new(),
+            workspace_git_jobs: Default::default(),
             plugin_import_rates: HashMap::new(),
             plugin_batch_import_rates: HashMap::new(),
             plugin_delete_rates: HashMap::new(),

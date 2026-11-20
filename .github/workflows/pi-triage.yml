@@ -24,6 +24,9 @@ concurrency:
 
 jobs:
   triage:
+    # The action calls a model with upstream's API_KEY secret, so it can only
+    # run in the upstream repository; in a fork every new issue would fail.
+    if: github.repository == 'vastsa/PI-Desktop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

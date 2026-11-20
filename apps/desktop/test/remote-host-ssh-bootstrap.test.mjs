@@ -16,7 +16,7 @@ const { sshHostRecord, sshMetadataOf, transportOf } = await import(
 
 const VERSION = "0.15.1-beta.5";
 const ARTIFACT_NAME = `pi-host-${VERSION}-linux-x64.tar.gz`;
-const ARTIFACT_URL = `https://github.com/vastsa/PI-Desktop/releases/download/v${VERSION}/${ARTIFACT_NAME}`;
+const ARTIFACT_URL = `https://github.com/david-yang-pixel/PI-Desktop/releases/download/v${VERSION}/${ARTIFACT_NAME}`;
 const DIGEST = "0123456789abcdef".repeat(4);
 const RESERVED_PORT = 49_152;
 
@@ -199,7 +199,7 @@ test("an arm64 Linux remote installs the published arm64 bundle", async () => {
 
   assert.equal(
     fetched[0],
-    `https://github.com/vastsa/PI-Desktop/releases/download/v${VERSION}/${arm64Artifact}.sha256`,
+    `https://github.com/david-yang-pixel/PI-Desktop/releases/download/v${VERSION}/${arm64Artifact}.sha256`,
   );
   assert.equal(outcome.ssh.version, VERSION);
   const upload = transport.calls.uploads[0];

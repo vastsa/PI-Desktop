@@ -316,6 +316,18 @@ export const IPC = {
      * `JevClassify` tool makes, and only a key that answered is stored.
      */
     jevTest: "pi-desktop/jev/test",
+    /**
+     * The built-in GitHub connector (ADR github-connector). The token stays in
+     * Electron main: none of these channels returns it, and `SetToken` is the
+     * only one that accepts it.
+     */
+    githubConnectorStatus: "pi-desktop/github/status",
+    githubConnectorLoginStart: "pi-desktop/github/login/start",
+    githubConnectorLoginCancel: "pi-desktop/github/login/cancel",
+    githubConnectorSetToken: "pi-desktop/github/setToken",
+    githubConnectorDisconnect: "pi-desktop/github/disconnect",
+    githubRepositories: "pi-desktop/github/repositories",
+    githubBranches: "pi-desktop/github/branches",
     providersListModels: "pi-desktop/providers/listModels",
     /**
      * Look one model id up in the local models.dev snapshot.
@@ -554,6 +566,10 @@ export const IPC = {
     todosChanged: "pi-desktop/todos/event/changed",
     providersOauth: "pi-desktop/providers/oauth/event",
     mcpOauth: "pi-desktop/mcp/oauth/event",
+    /** Progress of a GitHub device login, in the vendor-account event shape. */
+    githubConnectorLogin: "pi-desktop/github/event/login",
+    /** The connector's status after a sign-in, sign-out, or rejected token. */
+    githubConnectorChanged: "pi-desktop/github/event/changed",
     updatesState: "pi-desktop/updates/event/state",
     voiceStateChanged: "pi-desktop/voice/event/stateChanged",
     voiceModelProgress: "pi-desktop/voice/event/modelProgress",

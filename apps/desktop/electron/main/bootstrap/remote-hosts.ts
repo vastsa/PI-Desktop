@@ -24,6 +24,7 @@ import { sshMetadataOf, sshHostRecord, transportOf } from "../remote/remote-host
 import { createRemoteSessionCatalog } from "../remote/remote-session-catalog.js";
 import { syncRemoteProviders } from "../remote/remote-provider-transfer.js";
 import { workspaceExecutionError } from "../remote/remote-workspace-outcome.js";
+import { createWorkspaceGitBoot, type WorkspaceGitBoot } from "../remote/workspace-git-boot.js";
 export { sshMetadataOf, sshHostRecord, transportOf } from "../remote/remote-host-metadata.js";
 export type { RemoteHostSummary };
 
@@ -44,6 +45,8 @@ export type BootRemoteHostsOptions = {
   log?: (level: "info" | "warn" | "error", message: string, data?: unknown) => void;
   tunnels?: SshTunnelManager;
   sshBootstrap?: Partial<SshBootstrapDeps>;
+  /** The desktop's stable installation id; labels its git worktrees on a Host. */
+  getInstallationId?: () => Promise<string>;
 };
 export type RemoteLiveSessionSummary = Pick<RacpSession, "id" | "title" | "mode" | "permissionMode" | "status" | "activeTurnId" | "workspaceLabel"> & {
   source: "remote"; hostKey: string; hostLabel: string;
@@ -72,6 +75,8 @@ export interface RemoteHostsBoot {
   workspaceCommandShell(hostKey: string): Promise<CommandShellOption>;
   workspaceFiles(hostKey: string, input: WorkspaceFilesRequest): Promise<unknown>;
   workspacePluginFiles(hostKey: string, input: WorkspacePluginFilesRequest): Promise<unknown>;
+  /** Git workspaces on a paired Host (D687). */
+  readonly workspaceGit: WorkspaceGitBoot;
   readonly registry: RemoteHostRegistry;
 }
 let activeRemoteHostsBoot: RemoteHostsBoot | null = null;
@@ -81,6 +86,7 @@ export function getActiveRemoteHostsBoot(): RemoteHostsBoot | null { return acti
 type OpenHost = {
   hostKey: string; label: string; url: string;
   adapter: RacpRemoteHostClient; connection: RemoteHostConnection;
+  record: RemoteHostRecord;
 };
 function unavailable(): Error {
   return Object.assign(new Error("remote host is unavailable"), { errorCode: "AGENT_UNAVAILABLE" });
@@ -129,6 +135,7 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
   const readiness = new Map<string, Promise<RemoteHostSummary>>();
   const bootstraps = new Map<AbortController, Promise<unknown>>();
   let closed = false;
+  let gitHostConnected: (host: OpenHost) => void = () => undefined;
   let opening: Promise<number> | undefined;
   let closing: Promise<void> | undefined;
   const assertOpen = () => { if (closed) throw unavailable(); };
@@ -248,7 +255,7 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
       },
       log,
     });
-    const live = { hostKey: record.hostKey, label: record.label, adapter, connection, url };
+    const live: OpenHost = { hostKey: record.hostKey, label: record.label, adapter, connection, url, record };
     openingHosts.add(live);
     try {
       assertOpen();
@@ -262,6 +269,7 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
       opened.set(record.hostKey, live);
       await refresh(record.hostKey);
       assertOpen();
+      gitHostConnected(live);
       return live;
     } catch (error) {
       if (requiresUserAction(error)) actionRequired.add(record.hostKey);
@@ -347,6 +355,24 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
     return summaryOf(record);
   }
 
+  /**
+   * Bring a connected Host that lacks an optional capability up to this
+   * release. Unlike the connect-time path, the Host was serving folder
+   * projects, so it is reopened whether or not the realignment helped.
+   */
+  const realignConnected = (key: string): Promise<boolean> => serial(key, async () => {
+    const record = (await registry.list()).find((item) => item.hostKey === key);
+    assertOpen();
+    if (!record) return false;
+    const realigned = await realignHost(record, false);
+    if (!connectedHost(key)) {
+      await closeLive(key);
+      assertOpen();
+      await openHostOnce(realigned ?? record);
+    }
+    return realigned !== null;
+  });
+
   const ensureReady = (key: string): Promise<RemoteHostSummary> => {
     const pending = readiness.get(key);
     if (pending) return pending;
@@ -366,9 +392,31 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
     return task;
   };
 
+  const workspaceGit = createWorkspaceGitBoot({
+    connectedHost,
+    ensureReady: (key) => ensureReady(key),
+    realign: realignConnected,
+    record: (key) => opened.get(key)?.record,
+    getInstallationId: options.getInstallationId
+      ?? (async () => { throw new Error("no installation identity is configured"); }),
+    log,
+  });
+  /**
+   * Every new connection to a Host starts without a git credential: the Host
+   * drops it when a connection closes. Send it after the first open and after
+   * each transport-level reconnect. Failures are logged there, never thrown.
+   */
+  gitHostConnected = (live) => {
+    void workspaceGit.hostConnected(live.hostKey);
+    live.adapter.client.subscribeState?.((state) => {
+      if (state === "connected" && opened.get(live.hostKey) === live) void workspaceGit.hostConnected(live.hostKey);
+    });
+  };
+
   return {
     registry,
     ensureReady,
+    workspaceGit,
     open() {
       if (opening) return opening;
       opening = (async () => {
@@ -540,6 +588,7 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
       await closeLive(key);
       await tunnels.close(key);
       await registry.remove(key);
+      workspaceGit.hostRemoved(key);
       actionRequired.delete(key);
       catalog.forget(key);
       changed();

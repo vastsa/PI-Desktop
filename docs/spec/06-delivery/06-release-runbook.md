@@ -5,6 +5,45 @@
 > macOS signing/notarization remains the detailed qualification lane below.
 > Cross-references: [milestones](01-mvp-milestones.md) · [process model](../03-runtime/07-process-model.md) · [security](../05-security/01-security.md)
 
+## Fork release lane (D686)
+
+This repository is a fork and releases differently from the lanes described in
+the rest of this runbook. Where this section and a later section disagree, this
+section describes what the fork's workflow does.
+
+- **Repository**: releases, update feeds, and `pi-host` bundles come from
+  `david-yang-pixel/PI-Desktop`.
+- **Lanes**: a `vX.Y.Z` tag builds the desktop for macOS arm64 only, plus the
+  `pi-host` bundles for Linux x64 and arm64. The Windows, Linux, and macOS
+  Intel desktop steps remain in `release.yml` but no matrix row selects them.
+- **Signing**: nothing signs unless the repository variable
+  `MACOS_SIGN_RELEASE` is `true`. The fork leaves it unset, so tag builds are
+  unsigned and the secrets in §4.5 are not used. §2 and §4.5 to §4.6 describe
+  the dormant upstream lane.
+- **Marker**: the unsigned lane passes
+  `-c.extraMetadata.piDistribution=unsigned`. The packaged app reads it on
+  every platform and uses manual update delivery only.
+- **Ad-hoc signature**: the unsigned lane also passes `-c.mac.identity=-`.
+  With no identity electron-builder skips signing, which leaves Electron's
+  original signature over a rewritten bundle and makes macOS report the app
+  as damaged. Ad-hoc signing reseals the bundle; it is not a Developer ID
+  signature and does not notarize.
+- **Artifact check**: the "Verify the unsigned distribution marker" step runs
+  `scripts/check-packaged-distribution.mjs` against the packaged `app.asar`
+  and `codesign --verify --deep --strict` against the bundle. electron-builder
+  ignores a command-line override it does not parse without failing, so the
+  workflow checks the artifact instead of trusting the command.
+- **Flag forwarding**: pass electron-builder flags to `pnpm run dist:mac`
+  without a `--` separator. The pinned pnpm forwards a literal `--`, after
+  which electron-builder treats every flag as a positional argument.
+- **Cutting a release**: `node scripts/release.mjs <version> --tag`, then push
+  the branch and the tag. A `workflow_dispatch` run builds the same artifacts
+  without publishing.
+- **Known limitations**: an unsigned macOS build cannot update in place, and
+  its first launch needs the quarantine attribute removed
+  (`xattr -dr com.apple.quarantine /Applications/PI-Desktop.app`) or the app
+  allowed under System Settings → Privacy & Security.
+
 ## 1. Build lanes
 
 | Lane | Command | Signing | Use |

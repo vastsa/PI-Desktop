@@ -40,6 +40,7 @@ mod user_skills;
 mod user_subagents;
 mod visualizations;
 mod workspace;
+mod workspace_git;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

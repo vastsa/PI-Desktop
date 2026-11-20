@@ -466,6 +466,9 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | D166 | Settings directory split into AI and Shortcuts destinations | **The Settings rail grows from five to seven destinations in order: Basics (`SlidersHorizontal`), 全局 AI/AI (`Sparkles`, new), Shortcuts (`Keyboard`, new), Model configuration (`Bot`), Import (`Download`), Project archive (`Archive`), Info (`Info`). Permissions and Context management move from Basics to the new AI destination; Keyboard shortcuts moves from Basics to the new Shortcuts destination; Developer moves from Basics to Info. Basics keeps only Appearance and Defaults. This supersedes the five-destination count/order of D133 and the five-icon set of D143 (adding `Sparkles` and `Keyboard`) without changing any setting's semantics, the full-page shell, or rail metrics.** | Basics accumulated six unrelated cards, burying global AI behavior (permission mode, context compaction) and shortcut configuration alongside look-and-feel; splitting them gives each concern a scannable home while keeping provider/connection config separate in Model configuration. |
 | D684 | One settings destination owns one subject | **Amend D143 / D166 / D678: the Settings rail is fifteen single-subject destinations in four clusters, retiring `general` and `ai` into Appearance, Conversation, Behavior, and System.** | Two destinations had become mixed landing places. See ADR 0345. |
 | D685 | Composer model picker: text rail and segmented reasoning | **Amend D458: the reasoning control in the combined Composer model menu is a segmented track with a raised pill under the selected level, placed in the menu footer, instead of a rail with track dots. The native range input, its column geometry, latest-wins commits and keyboard ownership are unchanged. The model list uses a text-only source rail with one sliding marker; Escape clears a typed search before closing the menu. Renderer only. See `04-ux/08-component-spec.md` and E2E-050.** | The dot rail and colored source tiles read heavy next to compact model rows; a segmented pill and a text rail match the rest of the menu chrome. |
+| D686 | Fork release coordinates and unsigned macOS | **The fork publishes unsigned macOS arm64 desktop builds and Linux pi-host bundles from its own repository, and unsigned packages always use manual update delivery.** See ADR fork-release-coordinates. | The fork needs its own host bundles and has no Developer ID certificate. |
+| D687 | Remote git workspaces and the credential proxy | **A paired Host can clone a GitHub repository once and give each Desktop session its own git worktree and work branch through the optional owner-only RACP capability `workspaceGit`; host-core owns git on the Host, and the GitHub token lives only in `pi-host` memory and reaches git only through a loopback proxy scoped to one repository and one work branch.** See ADR remote-git-workspaces. | Sessions started from a repository need isolation on the Host and authenticated git without the token reaching host-core, a child process, or disk. |
+| D688 | Built-in GitHub connector | **Electron main owns one GitHub credential, obtained by OAuth App device flow or a pasted token, stored as one record under `secret:app:github-connector`, and spent only on `api.github.com`; Settings gains a Connectors destination after MCP.** See ADR github-connector. | Remote GitHub sessions need to list repositories and branches and open pull requests as the user, without the token reaching the renderer. |
 
 ## R. Decision rules going forward
 
@@ -5417,3 +5420,63 @@ See ADR 0344.
   keyboard, drag and accessibility, and the column geometry contract of D458
   holds: pill, label and native stop share one center for every stop count.
 - Escape clears a typed search first; a second Escape closes the menu.
+
+## 2026-11-20 — Fork release coordinates and unsigned macOS (D686)
+
+- The fork must publish its own desktop builds and `pi-host` bundles, because a
+  paired remote host installs from the release of the repository the desktop
+  names, and planned fork work adds a host capability upstream bundles lack.
+- `GITHUB_REPO` now names the fork; the update feed, the host bundle URLs, and
+  the feedback link follow it. The plugin marketplace and the documentation
+  site stay on upstream.
+- The fork has no Developer ID certificate, so a tag builds macOS arm64
+  unsigned and stamps the package `piDistribution: "unsigned"`. Such a build
+  never offers in-app updates, even when the profile stores the automatic
+  preference.
+- The upstream signed lane is kept unchanged behind the repository variable
+  `MACOS_SIGN_RELEASE`, to keep merges from upstream small.
+
+## 2026-11-20 — Remote git workspaces and the credential proxy (D687)
+
+- A remote project was a paired Host plus a directory that already existed
+  there. Starting a session from a GitHub repository and a branch needs the
+  Host to clone, to isolate sessions from one another, and to authenticate
+  git with a token that lives on the desktop.
+- The Host gains the optional owner-only RACP capability `workspaceGit`: ten
+  additive operations, no RACP or host-core protocol version change, and no
+  SQLite schema change (the worktree registry is a `kv` namespace). A Host
+  without it keeps serving folder projects.
+- host-core owns every git invocation and the registry on the Host, as it
+  does for local isolated sessions (ADR 0329). Each session gets a worktree
+  on `pi-desktop/<id>`, derived from the desktop installation id and the
+  session id; long work runs as jobs the desktop polls.
+- The token is sent in one dedicated operation, only over SSH, `wss://`, or
+  loopback, and stays in `pi-host` memory until the connection closes. git
+  authenticates through a loopback proxy that adds the token for one
+  repository and accepts a push only to the session's work branch, so the
+  Agent's own `git push` works without the Agent holding a credential.
+- git 2.31 or newer is required on the Host, because the proxy rewrite is
+  delivered as environment-carried configuration rather than a `-c` argument
+  that would expose the handle in the process list.
+
+## 2026-11-20 — Built-in GitHub connector (D688)
+
+- Remote GitHub sessions need the desktop to act as the user on GitHub. The
+  app had no GitHub credential of its own: the Copilot login yields a model
+  credential, and a token on an MCP server record is plain text.
+- A main-process connector now owns one credential. The user signs in with an
+  OAuth App device code, or pastes a personal access token; the token and the
+  account it belongs to are one record under `secret:app:github-connector`.
+- Only Electron main reads the token. The renderer gets an account, scopes,
+  and a state over `pi-desktop/github/*`; those channels accept only the main
+  window and are blocked on the local MCP control plane.
+- Requests go to `api.github.com` and `github.com/login/…` only, both
+  constants, and a redirect is never followed. Failures are typed and never cached, and
+  a 401 marks the stored token for re-authentication instead of showing an
+  account with no repositories.
+- Scopes are `repo` and `read:org`; `workflow` is an opt-in checkbox.
+  Disconnect removes the token locally and does not revoke it, because that
+  needs the OAuth App's secret.
+- Settings gains a sixteenth destination, Connectors, in the Agent cluster
+  after MCP. Until the OAuth App's client id is set in the build, sign-in is
+  by pasted token only.

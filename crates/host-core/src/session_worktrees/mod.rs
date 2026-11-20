@@ -10,7 +10,7 @@ pub mod merge;
 pub mod probe;
 pub mod registry;
 pub mod remove;
-mod repo_lock;
+pub(crate) mod repo_lock;
 
 #[cfg(test)]
 pub(crate) mod test_support;

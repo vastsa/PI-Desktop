@@ -82,6 +82,20 @@ test("native picker handlers and secret-write channels stay out of the MCP catal
   for (const key of MCP_CONTROL_CATALOG_CHANNEL_KEYS) {
     assert.equal(invokeKeys.has(key), true, `${key} is not an IPC.invoke channel`);
   }
+  // The GitHub connector holds a credential the control surface must never
+  // move, spend, or enumerate private repositories with.
+  const blocked = new Set(MCP_CONTROL_BLOCKED_CHANNEL_KEYS);
+  for (const key of [
+    "githubConnectorSetToken",
+    "githubConnectorLoginStart",
+    "githubConnectorLoginCancel",
+    "githubConnectorDisconnect",
+    "githubConnectorStatus",
+    "githubRepositories",
+    "githubBranches",
+  ]) {
+    assert.equal(blocked.has(key), true, `${key} must be blocked on the control plane`);
+  }
   const channels = Object.fromEntries(
     MCP_CONTROL_CATALOG_CHANNEL_KEYS.map((key) => [key, `pi-desktop/${key}`]),
   );

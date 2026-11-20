@@ -360,6 +360,22 @@ impl Database {
         Ok(())
     }
 
+    /// Every entry of one namespace, ordered by key.
+    pub fn kv_entries(&self, ns: &str) -> Result<Vec<(String, Value)>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT key, value_json FROM kv WHERE ns = ?1 ORDER BY key")?;
+        let rows = stmt.query_map(params![ns], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (key, raw) = row?;
+            entries.push((key, serde_json::from_str(&raw)?));
+        }
+        Ok(entries)
+    }
+
     // ---- settings compatibility shims (kv ns='app') -----------------------
 
     pub fn get_setting(&self, key: &str) -> Result<Option<Value>> {

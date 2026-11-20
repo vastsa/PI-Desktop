@@ -21,10 +21,14 @@ on:
 
 jobs:
   pi:
+    # The action calls a model with upstream's API_KEY secret, so it can only
+    # run in the upstream repository; in a fork every trigger would fail.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@pi')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@pi')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@pi'))
+      github.repository == 'vastsa/PI-Desktop' && (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@pi')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@pi')) ||
+        (github.event_name == 'issues' && contains(github.event.issue.body, '@pi'))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
