@@ -78,6 +78,49 @@ test("new workspace connection requires both capabilities and executes the real 
   } finally { await adapter.close(); }
 });
 
+const GIT_METHODS = [
+  "workspace/gitCredentialSet", "workspace/gitCredentialClear", "workspace/gitRepository", "workspace/gitPrepare", "workspace/gitPush",
+  "workspace/gitJob", "workspace/gitJobCancel", "workspace/gitStatus", "workspace/gitRemove", "workspace/gitList",
+];
+
+test("a Host without workspaceGit still connects for folder projects and refuses git calls before dispatch", async () => {
+  const tools = { shell: async () => ({ id: "bash" }), execute: async () => ({ ok: true, content: "remote" }),
+    abort: async () => {}, disconnect: async () => {} };
+  const h = await harness({ operations: { workspaceTools: tools, workspaceFiles: { read: async () => ({ content: "README" }) } } });
+  const adapter = createRacpRemoteHostClient({ transport: ownerTransport(h),
+    clientInfo: { name: "test", version: "1" }, requireWorkspace: true });
+  try {
+    // The connect-time requirement is unchanged: tools and files only.
+    await adapter.connect();
+    assert.deepEqual(adapter.workspaceCapabilities(), { workspaceTools: true, workspaceFiles: true, workspaceGit: false });
+    for (const method of GIT_METHODS) {
+      // The Host itself would answer CAPABILITY_UNAVAILABLE; this is the client's own refusal.
+      await assert.rejects(adapter.client.request(method, {}), error => error.errorCode === "HOST_VERSION_MISMATCH"
+        && /upgrade/i.test(error.message), method);
+    }
+    assert.deepEqual(await adapter.client.request("workspace/toolShell", {}), { shell: { id: "bash" } });
+    assert.equal(adapter.state(), "connected");
+  } finally { await adapter.close(); }
+});
+
+test("a Host that advertises workspaceGit receives the git calls", async () => {
+  const calls = [];
+  const workspaceGit = {
+    setCredential: async () => {}, clearCredential: async () => {}, repository: async () => ({ path: "/w", cloned: false }),
+    prepare: async () => ({ jobId: "job-1" }), push: async () => ({ jobId: "job-2" }), job: async () => ({}), cancelJob: async () => {},
+    status: async () => ({}), remove: async () => ({}), list: async (input) => { calls.push(input); return []; }, disconnect: async () => {},
+  };
+  const h = await harness({ operations: { workspaceGit } });
+  const adapter = createRacpRemoteHostClient({ transport: ownerTransport(h), clientInfo: { name: "test", version: "1" } });
+  try {
+    await adapter.connect();
+    assert.equal(adapter.workspaceCapabilities().workspaceGit, true);
+    const installationId = "00000000-0000-4000-8000-000000000000";
+    assert.deepEqual(await adapter.client.request("workspace/gitList", { installationId }), { worktrees: [] });
+    assert.deepEqual(calls, [{ installationId }]);
+  } finally { await adapter.close(); }
+});
+
 test("adapter connects, request delegates to RacpClient, close is clean", async () => {
   const h = await harness();
   const adapter = createRacpRemoteHostClient({

@@ -107,11 +107,24 @@ export type RacpRemoteHostClient = {
   close(): Promise<void>;
 };
 
-/** The two additive services a remote workspace install must advertise. */
+/**
+ * The additive workspace services of a Host. A remote workspace install must
+ * advertise the first two; `workspaceGit` is optional and only gates the
+ * `workspace/git*` operations, so a Host without it keeps serving folder
+ * projects.
+ */
 export type RemoteWorkspaceCapabilities = {
   workspaceTools: boolean;
   workspaceFiles: boolean;
+  workspaceGit: boolean;
 };
+
+/** The owner-only git workspace operations (D687). */
+const WORKSPACE_GIT_METHODS: ReadonlySet<string> = new Set([
+  "workspace/gitCredentialSet", "workspace/gitCredentialClear", "workspace/gitRepository", "workspace/gitPrepare",
+  "workspace/gitPush", "workspace/gitJob", "workspace/gitJobCancel", "workspace/gitStatus", "workspace/gitRemove",
+  "workspace/gitList",
+]);
 
 /**
  * The adapter multiplexes {@link RacpClient.onEvent} — a single-slot callback
@@ -147,6 +160,7 @@ export function createRacpRemoteHostClient(
     return {
       workspaceTools: capabilities.workspaceTools === true,
       workspaceFiles: capabilities.workspaceFiles === true,
+      workspaceGit: capabilities.workspaceGit === true,
     };
   };
   const requireWorkspace = (capability?: keyof RemoteWorkspaceCapabilities) => {
@@ -217,6 +231,10 @@ export function createRacpRemoteHostClient(
         } else if (method === "workspace/files") requireWorkspace("workspaceFiles");
         else if (["workspace/toolExecute", "workspace/toolAbort", "workspace/toolShell"].includes(method)) {
           requireWorkspace("workspaceTools");
+        } else if (WORKSPACE_GIT_METHODS.has(method) && !workspaceCapabilities()?.workspaceGit) {
+          throw Object.assign(new Error("Upgrade pi-host to a matching Desktop release with git workspace support"), {
+            errorCode: ErrorCodes.HOST_VERSION_MISMATCH, retriable: false,
+          });
         }
       }
       return racp.request<T>(method, params, timeoutMs);
