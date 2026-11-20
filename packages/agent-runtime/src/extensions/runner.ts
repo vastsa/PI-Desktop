@@ -151,7 +151,7 @@ export interface TrustedExtensionBridge {
   isIdle(): boolean;
   abort(): void;
   hasPendingMessages(): boolean;
-  getContextUsage(): { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
+  getContextUsage(): { tokens: number | null; contextWindow: number; percent: number | null; autoCompactAt?: number | null } | undefined;
   compact(options?: { customInstructions?: string }): void;
   getSystemPrompt(): string;
   getActiveTools(): string[];
@@ -574,8 +574,15 @@ export class TrustedExtensionRunner {
    * handler inputs isolated: handler N sees the payload returned by handler N-1.
    * Resolves to undefined when no handler returned a replacement.
    */
-  async emitBeforeProviderRequest(payload: unknown): Promise<unknown> {
-    const event = { type: "before_provider_request", payload };
+  async emitBeforeProviderRequest(
+    payload: unknown,
+    extra?: { contextRequestId?: number },
+  ): Promise<unknown> {
+    const event = {
+      type: "before_provider_request",
+      payload,
+      ...(extra?.contextRequestId !== undefined ? { contextRequestId: extra.contextRequestId } : {}),
+    };
     return this.emit<unknown>(
       "before_provider_request",
       event,
