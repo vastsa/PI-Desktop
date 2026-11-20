@@ -16,6 +16,8 @@ const [
   sharedPackageSource,
   releaseMacScriptSource,
   releaseAsarScriptSource,
+  piWorkflowSource,
+  piTriageWorkflowSource,
 ] = await Promise.all([
   read("../../../.github/workflows/ci.yml"),
   read("../../../.github/workflows/release.yml"),
@@ -28,6 +30,8 @@ const [
   read("../../../packages/shared/package.json"),
   read("../../../scripts/release-macos.sh"),
   read("../../../scripts/export-linux-asar.mjs"),
+  read("../../../.github/workflows/pi.yml"),
+  read("../../../.github/workflows/pi-triage.yml"),
 ]);
 
 test("CI skips documentation-only pushes and pull requests", () => {
@@ -478,4 +482,11 @@ test("GitHub releases trigger the CNB mirror pipeline with a JSON payload", () =
     /-d ".*github\.event\.release\.tag_name/,
     "JSON payload must not interpolate the release tag through YAML string escaping",
   );
+});
+
+test("issue automation that needs upstream secrets runs only upstream", () => {
+  for (const source of [piWorkflowSource, piTriageWorkflowSource]) {
+    assert.match(source, /github\.repository == 'vastsa\/PI-Desktop'/);
+    assert.match(source, /api_key: \$\{\{ secrets\.API_KEY \}\}/);
+  }
 });
