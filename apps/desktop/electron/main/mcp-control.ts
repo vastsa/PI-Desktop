@@ -472,6 +472,16 @@ export const MCP_CONTROL_BLOCKED_CHANNEL_KEYS = [
   "providersTest",
   // A key check spends a credential the control surface must not hold.
   "jevTest",
+  // The GitHub connector moves and spends the user's GitHub token, and its
+  // read channels enumerate private repositories. None of that belongs to a
+  // local control client.
+  "githubConnectorStatus",
+  "githubConnectorLoginStart",
+  "githubConnectorLoginCancel",
+  "githubConnectorSetToken",
+  "githubConnectorDisconnect",
+  "githubRepositories",
+  "githubBranches",
   "providersOauthStart",
   "providersOauthRespond",
   "providersOauthCancel",

@@ -37,6 +37,32 @@ describe("Browser recovery IPC", () => {
   });
 });
 
+describe("GitHub connector IPC", () => {
+  it("admits the connector channels under their fixed names", () => {
+    const invoke: Array<[keyof typeof IPC.invoke, string]> = [
+      ["githubConnectorStatus", "pi-desktop/github/status"],
+      ["githubConnectorLoginStart", "pi-desktop/github/login/start"],
+      ["githubConnectorLoginCancel", "pi-desktop/github/login/cancel"],
+      ["githubConnectorSetToken", "pi-desktop/github/setToken"],
+      ["githubConnectorDisconnect", "pi-desktop/github/disconnect"],
+      ["githubRepositories", "pi-desktop/github/repositories"],
+      ["githubBranches", "pi-desktop/github/branches"],
+    ];
+    for (const [key, channel] of invoke) {
+      expect(IPC.invoke[key]).toBe(channel);
+      expect(IPC_WHITELIST.has(channel)).toBe(true);
+    }
+    const events: Array<[keyof typeof IPC.event, string]> = [
+      ["githubConnectorLogin", "pi-desktop/github/event/login"],
+      ["githubConnectorChanged", "pi-desktop/github/event/changed"],
+    ];
+    for (const [key, channel] of events) {
+      expect(IPC.event[key]).toBe(channel);
+      expect(IPC_WHITELIST.has(channel)).toBe(true);
+    }
+  });
+});
+
 describe("Plan protocol contracts", () => {
   it("uses protocol v11/schema v16 and exposes the plan, schedule, and shell channels", () => {
     expect(PROTOCOL_VERSION).toBe(11);
