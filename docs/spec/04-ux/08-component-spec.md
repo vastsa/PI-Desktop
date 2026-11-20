@@ -966,6 +966,11 @@ can reclassify provisional answer text into the process without changing the
 stored message. Assistant errors and stopped trailing partial answers also stay
 outside it. User/system messages and compaction boundaries are unchanged.
 
+An explicitly signed Responses `commentary` text is progress from its first
+identified chunk. The answer and its Copy action exclude it; unmarked text
+keeps its normal behavior. Reopened rows use matching provider replay lengths
+and signatures, never a guess based on wording.
+
 The disclosure owns every row the turn produced before its answer: ordinary
 activity groups and `Bash` run rows alike. A turn therefore renders exactly one
 top-level process disclosure, including a Bash-only turn; no run row is a sibling

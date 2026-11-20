@@ -6,9 +6,10 @@ const {
   assistantTurnContent, assistantTurnMessages, assistantTurnUsage,
   assistantTurnResponseDuration, assistantTurnResponseOutputTokens,
   assistantTurnResponseOutputIsEstimated, assistantTurnTools,
+  buildTranscriptEntries,
 } = await import("../src/lib/assistant-turns.ts");
 const { getAssistantTurnSummary, getAssistantTurnContent, messageContentFacts, reuseReferences } = await import("../src/lib/transcript-summary.ts");
-const { projectTurnProcess } = await import("../src/lib/turn-process.ts");
+const { processContainsMessage, projectTurnProcess } = await import("../src/lib/turn-process.ts");
 const { activitySummary, visibleActivityItems } = await import("../src/lib/activity-summary.ts");
 const { cachedActivitySummary, cachedVisibleActivityItems, cachedVisibleProcessSteps, activityTimingInputs } = await import("../src/lib/transcript-activity-summary.ts");
 const { collectDelegationStatuses, collectDelegationTimings, delegationTimingBounds } = await import("../src/lib/subagent-topology.ts");
@@ -18,6 +19,90 @@ const message = (id, content, extra = {}) => ({
   id, role: "assistant", content, createdAt: "2026-09-17T00:00:00.000Z", ...extra,
 });
 const entry = (messages) => ({ kind: "assistant-turn", id: "turn", parts: messages.map((message) => ({ kind: "message", message })) });
+
+const commentarySignature = JSON.stringify({ v: 1, id: "msg_progress", phase: "commentary" });
+const textBlock = (text, signature) => ({ type: "text", length: text.length, signature });
+
+test("Responses commentary alone is progress, not thinking, an answer or an action target", () => {
+  const content = "Checking the files 🔍.";
+  const providerReplay = { version: 1, blocks: [textBlock(content, commentarySignature)] };
+  for (const extra of [{ status: "streaming" }, { status: "complete" },
+    { status: "error", error: { code: "INTERNAL", message: "Offline" } },
+    { status: "complete", outputTruncated: true }]) {
+    const row = message("reply", content, { providerReplay, ...extra });
+    const [turn] = buildTranscriptEntries([row]).entries;
+    const summary = getAssistantTurnSummary(turn);
+    assert.deepEqual(summary.process.map((part) => [part.kind, part.message.content]), [["message", content]]);
+    assert.ok(processContainsMessage(summary.process, row.id));
+    assert.equal(cachedVisibleProcessSteps(summary.process, true, row.status === "streaming"), 1);
+    assert.deepEqual(summary.responses.map(({ message }) => [message.content, message.error, message.outputTruncated]),
+      row.error || row.outputTruncated ? [["", row.error, row.outputTruncated]] : []);
+    assert.equal(summary.hasContent, false);
+    assert.equal(summary.actionMessage, undefined);
+    assert.equal(getAssistantTurnContent(turn), "");
+    assert.equal(assistantTurnContent(turn), "");
+  }
+});
+
+test("signed Responses blocks do not enter the raw reply or duplicate its metrics", () => {
+  const intro = message("intro", "Unmarked earlier text.");
+  const progress = "Looking up references.";
+  const second = "Checking the result.";
+  const raw = `**A 🔍${progress} and ${second}B**`;
+  const reply = "**A 🔍 and B**";
+  const row = message("reply", raw, {
+    status: "complete", thinking: "Why", responseDurationMs: 17,
+    usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+    providerReplay: { version: 1, blocks: [
+      textBlock("**A 🔍"), textBlock(progress, commentarySignature),
+      { type: "thinking", length: 3, signature: commentarySignature },
+      textBlock(" and ", "opaque-provider-signature"), textBlock(second, commentarySignature),
+      textBlock("B**", JSON.stringify({ v: 1, id: "msg_final", phase: "final_answer" })),
+    ] },
+  });
+  const [turn] = buildTranscriptEntries([intro, row]).entries;
+  const { process, responses } = projectTurnProcess(turn);
+  assert.deepEqual(process.filter((part) => part.kind === "message").map((part) => part.message.content), [intro.content, progress, second]);
+  assert.deepEqual(responses.map((part) => part.message.content), [reply]);
+  const summary = getAssistantTurnSummary(turn);
+  assert.deepEqual(summary.activityItems.map((item) => item.kind), ["thinking"]);
+  assert.equal(summary.actionMessage.id, row.id);
+  assert.equal(summary.actionMessage.content, reply);
+  assert.deepEqual(summary.usage, row.usage);
+  assert.equal(summary.responseDurationMs, 17);
+  assert.equal(summary.responseOutputTokens, 2);
+  assert.equal(getAssistantTurnContent(turn), `${intro.content}\n\n${reply}`);
+  assert.equal(assistantTurnContent(turn), `${intro.content}\n\n${reply}`);
+  assert.equal(row.content, raw);
+});
+
+test("unknown signatures and unusable Responses replay offsets leave the original row intact", () => {
+  const content = "Checking. Answer.";
+  const marked = textBlock("Checking.", commentarySignature);
+  const rest = textBlock(" Answer.");
+  const invalidBlocks = [
+    null, [marked], [marked, { ...rest, length: rest.length + 1 }],
+    [marked, null, rest], [marked, { type: "unknown", length: 0 }, rest],
+    [marked, { ...rest, length: -1 }], [marked, { ...rest, length: 1.5 }],
+    [marked, { ...rest, length: String(rest.length) }],
+    [marked, { type: "thinking" }, rest], [marked, { ...rest, signature: 42 }],
+  ];
+  const replays = [
+    undefined, { version: 2, blocks: [marked, rest] },
+    ...invalidBlocks.map((blocks) => ({ version: 1, blocks })),
+    ...[undefined, "msg_legacy", "{", '{"v":2,"id":"m","phase":"commentary"}', '{"v":1,"phase":"commentary"}']
+      .map((signature) => ({ version: 1, blocks: [textBlock(content, signature)] })),
+  ];
+  for (const providerReplay of replays) {
+    const row = message("reply", content, { providerReplay });
+    const turn = entry([row]);
+    const summary = getAssistantTurnSummary(turn);
+    assert.deepEqual(summary.process, []);
+    assert.equal(summary.responses[0].message, row);
+    assert.equal(summary.actionMessage, row);
+    assert.equal(getAssistantTurnContent(turn), content);
+  }
+});
 
 test("tail text updates do not read historical assistant content", () => {
   let reads = 0;
