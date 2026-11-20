@@ -1263,6 +1263,20 @@ window; opening a normal panel afterward must still work.
   unit-covered (`apps/desktop/test/bundled-plugins.test.mjs`); the plugin-side
   journey is Draft (run only in a capable environment when this surface changes)
 
+## E2E-PLUGIN-file-manager-markdown-and-workbook-previews
+
+- **Steps**: In the bundled File Manager, open a project Markdown file with a
+  relative image reference and switch to Preview. Switch files, then open an
+  `.xlsx` workbook.
+- **Expected**: A valid project-local image renders inline. Missing, denied,
+  oversized and network images do not render. The workbook shows bounded table
+  data, offers no edit action, and the plugin refuses writes to workbook paths.
+- **Coverage**: Upstream `tests/electron/verify-markdown.cjs` against the bundled
+  production view and `views-src/verify-viewers.mjs` against the pinned source.
+- **Compatibility**: Copying saved source lines retains plain text in the
+  clipboard. Adding a structured reference to chat is only offered when the
+  Desktop bridge advertises support.
+
 ## E2E-PLUGIN-file-view-switches-folder-per-project
 
 - **Preconditions**: A project group whose two folders each hold a text file the

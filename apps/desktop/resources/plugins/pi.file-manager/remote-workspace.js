@@ -35,8 +35,11 @@ async function invokeRemote(api, workspace, channel, payload, { isDenied, maxLis
   }
   if (channel === "fm.list") {
     if (!Array.isArray(result)) throw fail("INVALID_RESPONSE", "Host returned an invalid remote directory");
-    return { ok: true, path: ref, entries: result.slice(0, maxListEntries),
-      truncated: result.length > maxListEntries, ignoreActive: false, git: { available: false } };
+    // 与本地列目录同一套黑名单：Host 只跳过 .git / node_modules 这类目录，不会隐藏 .env、*.pem、.ssh/
+    // 这些条目，所以在这里按「父目录 + 条目名」再过一遍——凭据路径连名字都不出现在树里。
+    const entries = result.filter((entry) => !isDenied(ref ? `${ref}/${entry?.name ?? ""}` : String(entry?.name ?? ""), "read"));
+    return { ok: true, path: ref, entries: entries.slice(0, maxListEntries),
+      truncated: entries.length > maxListEntries, ignoreActive: false, git: { available: false } };
   }
   if (!result || !Number.isFinite(result.mtimeMs) || !Number.isSafeInteger(result.size) || result.size < 0) {
     throw fail("INVALID_RESPONSE", "Host returned invalid remote file metadata");
