@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const trEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "OpenAI Fast modunu model başına açın ve öncelikli hizmet istemek için konuşmada /fast kullanın; bu, abonelik limitlerini daha hızlı tüketebilir veya token başına maliyeti artırabilir.",
       "Satır içi görselleştirmeler yeniden kullanılabilir grafik yardımcılarıyla daha hızlı yüklenir; başarısız betikler artık boş kartlar yerine düzeltmeye yardımcı olacak hatalar gösterir.",
@@ -17,6 +18,7 @@ export const trEntries: ChangelogEntry[] = [
       "GPT-6.2 Sol ve GPT-6.2 Astra modellerini OpenAI, ChatGPT, GitHub Copilot, OpenCode ve bunları yayımlayan ağ geçitlerinde, yayımlanan sınır ve fiyatlarıyla seçin.",
       "Ayarlar artık geçerli sayfanın üzerinde bir iletişim kutusu olarak açılıyor, kenar çubuğu Yeni görev, Zamanlanmış ve Eklenti pazarını en üste taşıyor ve kısa bir başlangıç rehberi model eklemenize ve eklenti başlatıcı kısayolunu öğrenmenize yardımcı oluyor.",
       "Ayarlar → Görünüm → Kenar çubuğu modülleri bölümünden hangi kenar çubuğu modüllerinin görüneceğini seçin: Yeni görev, Zamanlanmış, Eklenti pazarı, sabitlenmiş oturumlar, Oturumlar, Projeler, araç çubuğu düğmeleri ve sürüm.",
+      "Kenar çubuğundaki Oturumlar bölümü artık Son: sabitlenmemiş tüm konuşmalar en yeniden başlayarak listelenir ve Daha fazla yükle ile genişler; boş ana sayfa başlığı da proje değiştirmek için bir açılır ok gösterir.",
     ],
   },
   {

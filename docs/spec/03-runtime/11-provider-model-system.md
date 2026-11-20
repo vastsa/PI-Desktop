@@ -757,6 +757,17 @@ the TCP connection open cannot hold the turn after the final event. Pi-ai
 1.0.0 includes this upstream fix. The 1.0.0 hosted-search patch does not need to
 reapply the old 0.99.1 terminal-event hunk.
 
+### 16.2 Responses function tool strictness
+
+When the effective Responses adapter compatibility disables strict tool sampling,
+pi-ai sends `strict: false` on function declarations to override the endpoint's
+default. This applies to current `tools` and replayed declarations in
+`additional_tools` and `tool_search_output`. Function schemas retain their
+constraints, including `uniqueItems` for scheduled task weekdays, and local tool
+validation still rejects duplicate weekdays. With strict sampling support enabled,
+the adapter continues to honor constrained sampling and its existing default,
+including Codex's `strict: null`. Custom grammar tools keep their wire shape.
+
 ## 17. Multi-provider product rules
 
 1. Multiple providers of the same `vendorKey` are allowed and independent (for

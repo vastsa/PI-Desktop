@@ -2005,6 +2005,25 @@
   line-height: inherit;
 }
 
+/* #2388: inline chips and links inside a message are isolated runs — the
+   surrounding RTL/LTR punctuation must not migrate across them. */
+.message-user-text .chat-command-chip,
+.message-user-text .chat-text-link,
+.prose-chat a,
+.prose-chat code,
+.prose-chat strong,
+.prose-chat em {
+  unicode-bidi: isolate;
+}
+
+/* #2388: typed composer paragraphs follow the first strong character of the
+   paragraph itself (per-paragraph auto direction), the standard editor
+   behavior for mixed RTL/LTR drafts. */
+.composer-input,
+.message-edit-input {
+  unicode-bidi: plaintext;
+}
+
 .message-row.session-message .message-col {
   width: min(100%, var(--chat-prose-max-width, 720px));
   max-width: 100%;

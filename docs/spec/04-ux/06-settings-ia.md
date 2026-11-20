@@ -39,8 +39,12 @@ the page underneath keeps its state.
   `sidebar-surface` material as the main sidebar. Only a nested settings
   content enter wrapper plays a route animation; the scrolling inner pane,
   rail, and backing never fade or translate. That entrance is opacity-only.
-  Dialogs and sheets opened from Settings portal to the same overlay host and
-  stack above it.
+  Dialogs opened from Settings portal to the same overlay host and stack
+  above it. Menus, dropdowns, popovers and sheets that would portal to
+  `document.body` (`portalToBody`) instead mount on the dialog's layer host
+  (`.modal-layer-host`, one step above the dialog layer), so row "…" menus,
+  pickers and market sheets stay clickable inside the dialog. The startup
+  guide provides the same host for its embedded Models page.
 - Top of rail: the pill **Search settings…**. The rail has no footer action;
   the dialog's close button sits at its top-right corner.
 - The dialog is not a window drag region.

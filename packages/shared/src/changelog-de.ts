@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const deEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Aktiviere OpenAI Fast pro Modell und nutze /fast im Gespräch für bevorzugte Verarbeitung; dadurch können Abo-Limits schneller sinken oder die Kosten pro Token steigen.",
       "Inline-Visualisierungen laden mit wiederverwendbaren Diagrammhelfern schneller; fehlgeschlagene Skripte zeigen jetzt hilfreiche Fehler statt leerer Karten.",
@@ -17,6 +18,7 @@ export const deEntries: ChangelogEntry[] = [
       "Wähle GPT-6.2 Sol und GPT-6.2 Astra bei OpenAI, ChatGPT, GitHub Copilot, OpenCode und Gateways, die sie anbieten, mit ihren veröffentlichten Limits und Preisen.",
       "Die Einstellungen öffnen sich jetzt als Dialog über der aktuellen Seite, die Seitenleiste zeigt Neue Aufgabe, Geplant und Plugin-Marktplatz oben, und eine kurze Startanleitung hilft beim Hinzufügen eines Modells und beim Kennenlernen des Plugin-Launcher-Kürzels.",
       "Unter Einstellungen → Darstellung → Seitenleistenmodule legst du fest, welche Seitenleistenmodule erscheinen: Neue Aufgabe, Geplant, Plugin-Marktplatz, angeheftete Sitzungen, Sitzungen, Projekte, ihre Schaltflächen und die Versionsanzeige.",
+      "Der Seitenleistenbereich „Sitzungen“ heißt jetzt „Zuletzt“: Alle nicht angehefteten Unterhaltungen erscheinen neueste zuerst, mit „Mehr laden“; der leere Startseitentitel zeigt außerdem einen Dropdown-Pfeil zum Wechseln des Projekts.",
     ],
   },
   {
