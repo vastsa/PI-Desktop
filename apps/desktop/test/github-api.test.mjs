@@ -12,7 +12,15 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GitHubApiError, createGitHubApi } from "../electron/main/github/github-api.ts";
+import { register } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
+const { GitHubApiError, createGitHubApi } = await import(
+  "../electron/main/github/github-api.ts"
+);
 
 const TOKEN = "gho_apiFixtureToken0123456789";
 const REPO = { owner: "octo-org", name: "hello.world" };
@@ -351,7 +359,8 @@ test("owner, repository, and branch names are checked before any request", async
     api.findPullRequest(TOKEN, { owner: "octo-org", name: ".." }, "feature"),
     api.findPullRequest(TOKEN, REPO, "-x"),
     api.findPullRequest(TOKEN, REPO, "a..b"),
-    api.findPullRequest(TOKEN, REPO, "feature&state=open"),
+    api.findPullRequest(TOKEN, REPO, "a:b"),
+    api.findPullRequest(TOKEN, REPO, "@"),
     api.findPullRequest(TOKEN, REPO, "branch.lock"),
     api.findPullRequest(TOKEN, REPO, ""),
     api.createPullRequest(TOKEN, { owner: "octo-org", name: ".." }, pull),
@@ -366,6 +375,56 @@ test("owner, repository, and branch names are checked before any request", async
     assert.equal(error.retriable, false);
   }
   assert.equal(requests.length, 0);
+});
+
+test("every name a listing can return is accepted by the calls that follow it", async () => {
+  // An Enterprise Managed User owner, and branch names git allows that are
+  // not plain identifiers. Each has to survive the trip into a URL intact.
+  const repository = { owner: "mona_acme", name: "hello.world" };
+  const names = ["fix/#123", "release=1.0", "功能/登录", "a&state=closed", "user+tag", "50%"];
+  const { fetchImpl, requests } = scriptedFetch((request) => {
+    const url = new URL(request.url);
+    if (url.pathname.endsWith("/branches")) {
+      return json(names.map((name) => ({ name, protected: false })));
+    }
+    if (url.pathname.endsWith("/pulls")) {
+      return request.init.method === "POST"
+        ? json(pullRequest({ head: { ref: JSON.parse(request.init.body).head } }), { status: 201 })
+        : json([]);
+    }
+    return json({ default_branch: "main" });
+  });
+  const api = createGitHubApi({ fetchImpl });
+
+  const listed = await api.listBranches(TOKEN, repository);
+  assert.deepEqual(listed.branches.map((branch) => branch.name), names);
+  assert.equal(requests[0].url, "https://api.github.com/repos/mona_acme/hello.world");
+
+  for (const name of names) {
+    requests.length = 0;
+    assert.equal(await api.findPullRequest(TOKEN, repository, name), null);
+    const found = new URL(requests[0].url);
+    assert.equal(found.origin, "https://api.github.com");
+    assert.equal(found.pathname, "/repos/mona_acme/hello.world/pulls");
+    assert.equal(found.hash, "", `${name} must not start a fragment`);
+    assert.equal(found.searchParams.get("head"), `mona_acme:${name}`);
+    // The name is one value: it adds no parameter and overrides none.
+    assert.deepEqual([...found.searchParams.keys()].sort(), ["head", "per_page", "state"]);
+    assert.deepEqual(found.searchParams.getAll("state"), ["all"]);
+
+    const created = await api.createPullRequest(TOKEN, repository, {
+      head: name,
+      base: name,
+      title: "t",
+      body: "",
+      draft: false,
+    });
+    assert.equal(created.head, name);
+    assert.equal(requests[1].url, "https://api.github.com/repos/mona_acme/hello.world/pulls");
+    const body = JSON.parse(requests[1].init.body);
+    assert.equal(body.head, name);
+    assert.equal(body.base, name);
+  }
 });
 
 test("branches come with the default branch, read page by page", async () => {

@@ -7,9 +7,8 @@
  * - Every request goes to `https://api.github.com`. The host is a constant;
  *   no caller supplies a URL, and a redirect is an error rather than a hop the
  *   `Authorization` header could follow.
- * - Owner, repository, and branch names are checked against the same
- *   character rules the host git capability applies before they become a path
- *   segment or a query value.
+ * - Owner, repository, and branch names are checked (`./names`) before they
+ *   become a path segment or a query value, and are encoded where they land.
  * - Failures are typed. A revoked token, a rate limit, a refusal, and an
  *   outage are different codes, and a failed page fails the whole listing: an
  *   incomplete list is never returned as if it were the account's repositories.
@@ -29,6 +28,7 @@ import {
   type GitHubRepositoryRef,
   type GitHubRepositorySummary,
 } from "@pi-desktop/shared";
+import { isGitBranchName, isGitHubOwner, isGitHubRepositoryName } from "./names";
 
 export const GITHUB_API_BASE_URL = "https://api.github.com";
 export const GITHUB_API_TIMEOUT_MS = 20_000;
@@ -100,39 +100,6 @@ export class GitHubApiError extends Error {
   }
 }
 
-// The host git capability validates the same three values before they reach
-// git. These are the same character rules, kept local so the two features do
-// not depend on each other.
-const OWNER_PATTERN = /^[A-Za-z0-9-]{1,39}$/;
-const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
-const BRANCH_PATTERN = /^[A-Za-z0-9._/@+-]{1,244}$/;
-
-function isOwner(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    OWNER_PATTERN.test(value) &&
-    !value.startsWith("-") &&
-    !value.endsWith("-")
-  );
-}
-
-function isRepositoryName(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    REPOSITORY_PATTERN.test(value) &&
-    value !== "." &&
-    value !== ".." &&
-    !value.endsWith(".git")
-  );
-}
-
-function isBranchName(value: unknown): value is string {
-  if (typeof value !== "string" || !BRANCH_PATTERN.test(value)) return false;
-  if (value.startsWith("-") || value.startsWith("/")) return false;
-  if (value.endsWith("/") || value.endsWith(".") || value.endsWith(".lock")) return false;
-  return !["..", "//", "@{", "/."].some((sequence) => value.includes(sequence));
-}
-
 function invalid(what: string): GitHubApiError {
   return new GitHubApiError(ErrorCodes.INVALID_ARGUMENT, `That is not a valid GitHub ${what}.`);
 }
@@ -140,13 +107,13 @@ function invalid(what: string): GitHubApiError {
 /** `/repos/{owner}/{repo}` with both segments validated and encoded. */
 function repositoryPath(repository: GitHubRepositoryRef): string {
   if (!repository || typeof repository !== "object") throw invalid("repository");
-  if (!isOwner(repository.owner)) throw invalid("owner name");
-  if (!isRepositoryName(repository.name)) throw invalid("repository name");
+  if (!isGitHubOwner(repository.owner)) throw invalid("owner name");
+  if (!isGitHubRepositoryName(repository.name)) throw invalid("repository name");
   return `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`;
 }
 
 function branchName(value: unknown): string {
-  if (!isBranchName(value)) throw invalid("branch name");
+  if (!isGitBranchName(value)) throw invalid("branch name");
   return value;
 }
 
