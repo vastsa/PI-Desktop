@@ -2162,7 +2162,7 @@ sklm: {
     createFolderRequired: "En az bir klasör ekleyin.",
     active: "Etkin",
     switchProject: "Projeyi değiştir",
-    noProject: "Proje yok",
+    noProject: "Geçici sohbet",
     noProjectHint: "Herhangi bir projeye ait olmayan geçici sohbet",
     clone: "Git projesi kopyala",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",

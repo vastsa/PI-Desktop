@@ -2147,7 +2147,7 @@ sklm: {
     createFolderRequired: "请至少添加一个文件夹。",
     active: "当前",
     switchProject: "切换项目",
-    noProject: "不使用项目",
+    noProject: "临时会话",
     noProjectHint: "不属于任何项目的临时会话",
     clone: "克隆 Git 项目",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",

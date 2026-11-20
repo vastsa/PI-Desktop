@@ -2122,7 +2122,7 @@ export const ptBR = {
     createFolderRequired: "Adicione ao menos uma pasta.",
     active: "Ativo",
     switchProject: "Alternar projeto",
-    noProject: "Sem projeto",
+    noProject: "Conversa temporária",
     noProjectHint: "Conversa temporária fora de qualquer projeto",
     clone: "Clonar projeto git",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",

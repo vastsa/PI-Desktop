@@ -2168,7 +2168,7 @@ sklm: {
     createFolderRequired: "폴더를 하나 이상 추가하세요.",
     active: "활성",
     switchProject: "프로젝트 전환",
-    noProject: "프로젝트 없음",
+    noProject: "임시 채팅",
     noProjectHint: "어떤 프로젝트에도 속하지 않는 임시 대화",
     clone: "Git 프로젝트 클론",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
