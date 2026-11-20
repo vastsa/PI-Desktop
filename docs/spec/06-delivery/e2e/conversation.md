@@ -1803,6 +1803,9 @@ this does not claim an installed full-app settings journey.
   tool, and denied tool. 7) Toggle `Show thinking` off and on and inspect the
   active-thinking, failure/recovery and completed states. 8) Remount rows within
   the retained pane, then reload the renderer and reopen the session.
+  9) Stream explicitly marked Responses commentary followed by a final answer;
+  check that only the process shows the commentary, then copy the answer before
+  and after reopening the signed transcript row. Neither copy includes progress.
 - **Expected**: A turn renders exactly one process disclosure containing every
   pre-answer row, the `Bash`/run rows included; the trailing answer, assistant
   errors and stopped trailing text stay outside it, as do pending actions. The

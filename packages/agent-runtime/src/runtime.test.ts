@@ -12,7 +12,8 @@ import {
   toToolDeclaration,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
-import { formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { applyMessageUpdate, deltaStreamPayloadFits, formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { restoreAssistantProviderReplay } from "./assistant-provider-replay.js";
 import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { buildSessionContext } from "./session-context.js";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens } from "./pi-runtime-estimates.js";
@@ -21,6 +22,7 @@ import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   isolatedWorkspaceGuidance,
+  isProgressOnlyAssistantTurn,
   delegateWorktreeNote,
   looksLikePseudoToolCall,
   toolResultFromUi,
@@ -6229,6 +6231,81 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
 });
 
 describe("DesktopAgentRuntime assistant thinking events", () => {
+  it.each(["provider", "interrupted"])("counts visible commentary in the %s abort estimate", async (termination) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; finalizeCurrentAssistant(status: "aborted"): void };
+    const content = [
+      { type: "text", text: "Checking", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+      { type: "text", text: "Done" },
+    ];
+    try {
+      await internal.handleAgentEvent({ type: "message_start", message: { role: "assistant", content } });
+      if (termination === "provider") {
+        await internal.handleAgentEvent({ type: "message_end", message: { role: "assistant", content: [], stopReason: "aborted" } });
+      } else internal.finalizeCurrentAssistant("aborted");
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing aborted message");
+      expect(event.message).toMatchObject({ status: "aborted", content: "Done", responseOutputTokens: 3 });
+    } finally { await runtime.dispose(); }
+  });
+
+  it("keeps the answer clean when a Responses replay exceeds the existing storage limit", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void> };
+    try {
+      const content = [
+        { type: "thinking", thinking: "reasoning", thinkingSignature: "x".repeat(65_536) },
+        { type: "text", text: "Checking.", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+        { type: "text", text: "Answer." },
+      ];
+      for (const type of ["message_start", "message_end"]) await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing settled message");
+      expect(event.message.content).toBe("Answer.");
+      expect(event.message.providerReplay).toBeUndefined();
+    } finally { await runtime.dispose(); }
+  });
+
+  it("streams Responses commentary as signed progress without sending replay on every delta", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; streamSink: { flush(): void } };
+    const signed = (text: string, phase: string) => ({ type: "text" as const, text,
+      textSignature: JSON.stringify({ v: 1, id: `msg_${phase}`, phase }) });
+    const send = async (type: string, content: ReturnType<typeof signed>[]) => {
+      await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      internal.streamSink.flush();
+      return onEvent.mock.calls.at(-1)![0].event as AgentEventEnvelope["event"];
+    };
+    try {
+      const progress = signed("Checking", "commentary");
+      const full = signed("Checking 🔎", "commentary");
+      const start = await send("message_start", [progress]);
+      if (start.type !== "message_start") throw new Error("missing start");
+      expect(start.message.providerReplay?.blocks[0]).toMatchObject({ length: progress.text.length, signature: progress.textSignature });
+      const delta = await send("message_update", [full]);
+      if (delta.type !== "message_update") throw new Error("missing progress delta");
+      expect(deltaStreamPayloadFits({ event: delta }, 64_000)).toBe(true);
+      expect(delta.message.providerReplay).toBeUndefined();
+      expect(applyMessageUpdate(start.message, delta).providerReplay?.blocks[0].length).toBe(full.text.length);
+      const boundary = await send("message_update", [full, signed("", "final_answer")]);
+      if (boundary.type !== "message_update") throw new Error("missing phase boundary");
+      expect(boundary.message.providerReplay?.blocks).toHaveLength(2);
+      const final = signed("Answer", "final_answer");
+      const answer = await send("message_update", [full, final]);
+      if (answer.type !== "message_update") throw new Error("missing answer delta");
+      expect(answer.deltaText).toBe("Answer");
+      expect(deltaStreamPayloadFits({ event: answer }, 64_000)).toBe(true);
+      const end = await send("message_end", [full, final]);
+      if (end.type !== "message_end") throw new Error("missing settled message");
+      expect(restoreAssistantProviderReplay(end.message.providerReplay, "", end.message.content)).toEqual([full, final]);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full] })).toBe(true);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full, signed("Next, use option B.", "final_answer")] })).toBe(false);
+    } finally { await runtime.dispose(); }
+  });
+
   it("normalizes thinking blocks and emits independent thinking deltas", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
