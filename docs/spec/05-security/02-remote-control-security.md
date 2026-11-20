@@ -260,6 +260,79 @@ retry or a rollback claim. Readiness for browse/files does not replay tools.
 Remote picker and Settings errors use allowlisted localized categories rather
 than raw SSH stderr, tokens, password/private-key paths or forwarded URLs.
 
+### 3.7 Git workspaces and the GitHub credential (D687)
+
+A paired Host can clone a GitHub repository and give each Desktop session its
+own git worktree
+([ADR remote-git-workspaces](../../adr/remote-git-workspaces.md), protocol
+§6.2.1). This is the one remote workflow in which a credential the user did
+not issue to the Host reaches it. The rules below bound that.
+
+**Credential path.**
+
+- At rest, the GitHub token exists only in the Desktop secret store.
+- In transit, it travels in one dedicated owner-only operation,
+  `workspace/gitCredentialSet`. Desktop sends it only to a Host reached over
+  its own SSH forward, a `wss://` URL, or a loopback `ws://` URL. For any
+  other Host nothing is sent, and a prepare or push fails with
+  `WORKSPACE_GIT_TRANSPORT_REFUSED`.
+- On the Host, it exists only in `pi-host` process memory, for as long as a
+  connection that set it stays open. `workspace/gitCredentialClear` and the
+  closing of that connection drop it. It is never written to disk, passed to
+  host-core, placed in a child process's environment or argument list, or
+  logged. A Host restart forgets it.
+- Desktop reads the token from its provider at the moment of sending and
+  never places it in a log line or an error message.
+
+**Proxy scoping.** git on the Host never receives the token. `pi-host` runs an
+HTTP proxy bound to `127.0.0.1` on a random port and gives each session scope
+a random 256-bit handle. One per-command git rewrite, delivered as
+environment-carried configuration so it is not readable in a process list,
+sends that session's repository URL to `/<handle>/<owner>/<repo>.git`. The
+proxy then:
+
+- answers 404 for an unknown handle, with no upstream request;
+- attaches the credential only to the fetch, push, and Git LFS endpoints of
+  the scope's own repository, and answers 401 with no upstream request when
+  it holds no token for the scope's installation;
+- reads a push up to the end of its ref updates (at most 64 KiB, decoding a
+  gzip body) before forwarding any byte, and answers 403 unless every update
+  names the session's work branch: another branch, a tag, a delete of the
+  base branch, or a mixed push is refused whole;
+- refuses paths with dot segments, percent escapes, or empty segments, so
+  GitHub can never resolve a request to another repository than the one
+  checked;
+- forwards any other path under a handle without credentials, and never
+  forwards the client's own `Authorization`, `Cookie`, or
+  `Proxy-Authorization` header;
+- always talks to `https://github.com`. The upstream is a constructor
+  argument used by tests; no flag, environment variable, configuration field,
+  or RPC can change it.
+
+A handle is not the token. It appears in the Agent's environment and in the
+environment of host-run git. It is usable only on the Host's loopback
+interface, only for one repository, and for a push only to one branch.
+
+**Names and paths.** Repository owner, repository name, base branch, and
+environment variable names are validated by the shared schema, by the RACP
+server, and again by host-core before a directory is created or git is
+started; git operands follow `--`. No operation accepts a worktree path.
+Worktrees live under `workspacesRoot`, which must be inside the Host's browse
+root and outside its protected data directory. Host-run git disables hooks
+and `core.fsmonitor`, as local worktree isolation does.
+
+**Ownership label.** Worktrees are keyed by the Desktop installation id. It
+is not a credential: every caller already holds the owner role, which can run
+arbitrary Bash on the Host. It keeps one Desktop's listing and cleanup from
+touching another Desktop's worktrees.
+
+**Accepted exposure.** The setup script and the worktree's environment
+variables are owner-authored configuration: the script is arbitrary code by
+design and runs without a permission prompt, and the variables are stored
+unencrypted in the Host registry and are not for secrets. A process running as
+the Host user could read `pi-host` memory; that user already runs the Agent's
+Bash.
+
 ## 4. Authorization model
 
 ### 4.1 Role matrix
@@ -586,6 +659,12 @@ separate, explicitly specified credential-management capability is added.
 21. An SSH login password is supplied only by the user, reaches `ssh` only
     through the askpass helper, is stored only encrypted, and never appears in
     a process argument list, the renderer, or a log line.
+22. The GitHub token of a git workspace never reaches host-core, a child
+    process, a file on the Host, a process argument list, or a log line; a
+    push through a session's proxy handle that names any ref other than the
+    session's work branch reaches GitHub with no byte; and git through a
+    handle whose desktop has disconnected fails with an authentication error
+    instead of reaching GitHub.
 ## 13. Amendment history
 
 D374 (2026-09-10) added the browser cookie/header authentication profiles,
@@ -614,3 +693,7 @@ D454 (2026-09-19) added SSH password authentication for the bootstrap (§3.4,
 ADR 0293): the credential-handling rules above and gate 21. It relaxes
 `BatchMode=yes` for a password target only, with `NumberOfPasswordPrompts=1`
 and `PubkeyAuthentication=no`, and keeps a key or agent as the default path.
+
+D687 (2026-11-20) added git workspaces (§3.7, ADR remote-git-workspaces): the
+credential path, the loopback credential proxy and its repository and
+work-branch scoping, the transport refusal, and gate 22.

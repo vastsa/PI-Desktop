@@ -740,3 +740,53 @@ ancestor opens after a project switch, and restored local
 editing/Browser/editor detection. No model, user profile or external SSH server
 participates. Real SSH transport and native Windows/Linux behavior require
 their separate platform acceptance.
+
+## E2E-REMOTE-repo-session-prepares-isolated-worktree
+
+Run
+`PI_HOST_CORE_BINARY=<host-core binary> pnpm test:e2e:remote-workspace-git`
+after `pnpm build:js`. The script composes the real Desktop boot API, loopback
+RACP, the `pi-host` operations and credential proxy, and a real host-core. A
+local `git http-backend` behind the basic credential GitHub accepts for a
+token stands in for GitHub; the proxy is pointed at it through its
+constructor. No real GitHub account, token, provider, or SSH server takes
+part.
+
+Verify, in order (the script's steps 1 to 4 and 6 to 8):
+
+1. Connecting delivers the credential, the Host advertises `workspaceGit`,
+   and asking where a repository lives creates nothing.
+2. Preparing session A from `main` clones the repository once and yields a
+   worktree on `pi-desktop/<id>` at `main`'s head, with the main checkout
+   beside it and `https://github.com/<owner>/<repo>.git` as its stored remote.
+   Preparing the same session again returns the same worktree.
+3. Preparing session B from a second branch yields a second worktree and
+   leaves A untouched.
+4. A commit made by Bash in A's worktree is the starting point of a forked
+   session C (`fromSessionId`) while it is still unpushed. A plain `git push`
+   from Bash in A's worktree then publishes A's work branch, and only it.
+5. Status for A reports nothing unpushed and `pushedOnce`. With an
+   uncommitted file, removal without `force` reports the counts and removes
+   nothing; with `force` it removes the worktree. The remote branch stays.
+   The list then shows only B.
+6. After the credential is cleared, `git fetch` in B's worktree fails with an
+   authentication error within 30 seconds and nothing reaches the fixture; a
+   host-run push fails as a job with `WORKSPACE_GIT_AUTH_REQUIRED`.
+7. No file under the Host's data directory or `workspacesRoot` contains the
+   token, no request URL carried it, and no log line carries the token or a
+   proxy handle.
+
+The harness does not cover a real SSH forward, the real GitHub endpoint, a
+`pi-host` restart with worktrees present, or a repository with Git LFS
+objects.
+
+## E2E-REMOTE-git-proxy-rejects-foreign-ref
+
+Covered by step 5 of the same script. From Bash in session A's worktree,
+`git push origin HEAD:main`, a push to a new branch, a delete of the second
+branch, and a push that mixes the work branch with a tag each fail with HTTP
+403. No `git-receive-pack` request for them reaches the fixture, `main` is
+unchanged, the second branch still exists, and no new branch or tag appears.
+The same refusals, a gzip-encoded foreign push, and a push whose ref updates
+do not end within 64 KiB are pinned byte-for-byte in
+`apps/pi-host/src/git-credential-proxy.test.ts`.

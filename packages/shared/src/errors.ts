@@ -284,7 +284,7 @@ export const ErrorCodes = {
   REMOTE_PATH_NOT_FOUND: "REMOTE_PATH_NOT_FOUND",
   /** A Host-side path is outside what the principal may reach. */
   REMOTE_PATH_FORBIDDEN: "REMOTE_PATH_FORBIDDEN",
-  /** The Host has no usable git (missing, or older than 2.29). */
+  /** The Host has no usable git (missing, or older than 2.31). */
   WORKSPACE_GIT_UNAVAILABLE: "WORKSPACE_GIT_UNAVAILABLE",
   /** GitHub refused the request: the Host holds no credential, or it is not sufficient. */
   WORKSPACE_GIT_AUTH_REQUIRED: "WORKSPACE_GIT_AUTH_REQUIRED",

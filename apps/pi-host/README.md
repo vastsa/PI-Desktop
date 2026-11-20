@@ -83,6 +83,32 @@ creation. Active calls are owned by their originating connection and cancelled
 when it closes. Arguments/results are bounded to 1 MiB; operations are not
 replayed. Install a matching Host bundle before using this new workflow.
 
+## Git workspaces
+
+The Host also advertises the optional `workspaceGit` capability
+([ADR](../../docs/adr/remote-git-workspaces.md)). A paired desktop's owner can
+ask it to clone a GitHub repository once and to give each session its own git
+worktree and work branch. It needs git 2.31 or newer on the Host.
+
+```text
+<workspaces-root>/repos/github.com/<owner>/<repo>            main checkout
+<workspaces-root>/worktrees/github.com/<owner>/<repo>/<id>   session worktree
+```
+
+`--workspaces-root <dir>` (or `PI_HOST_WORKSPACES_ROOT`) sets where these
+live. The default is `~/pi-workspaces`. The directory must be inside the
+browse root and outside the data directory; `pi-host` refuses to start
+otherwise. When `--browse-root` does not contain the home directory, the
+default moves to `<browse-root>/pi-workspaces`.
+
+The GitHub token is never stored on the Host. The desktop sends it over the
+paired connection; `pi-host` keeps it in memory, drops it when that connection
+closes, and adds it to git traffic through a proxy bound to `127.0.0.1`. git
+and the Agent's Bash only ever see the proxy's per-session address, which
+works for one repository and accepts a push only to that session's work
+branch. After a restart, existing worktrees authenticate again as soon as the
+desktop reconnects.
+
 ## Legacy remote-Agent provider import operational behavior
 
 The UI sends only IDs to Main. Main sends a version-1 payload over SSH stdin to

@@ -223,8 +223,10 @@ and every git invocation separates options from operands with `--`.
 - `GitRunner` gains a network variant for clone, fetch, and push. The existing
   runner has a fixed 120-second limit and strips environment-carried git
   configuration on purpose. The variant takes a caller-supplied limit and
-  passes the proxy rewrite as an explicit `-c` option; it keeps stripping
-  inherited configuration and keeps every other safety flag.
+  passes the proxy rewrite through the child's environment
+  (`GIT_CONFIG_COUNT`), not as a `-c` option, so the handle is not readable
+  in the process list; it keeps stripping inherited configuration and keeps
+  every other safety flag. This needs git 2.31 or newer.
 - **pi-host** (Node): validates and forwards the RACP operations, namespaces
   session keys by device as `workspace-tools.ts` does, and runs the credential
   proxy below.
@@ -239,8 +241,8 @@ repository. For `git-receive-pack` it parses the ref-update lines and rejects
 any ref other than the worktree's own work branch.
 
 Git reaches the proxy through a per-command URL rewrite scoped to the
-session's repository. Host-run git gets it as a `-c` option; the Agent's Bash
-gets it as environment-carried git configuration. The stored remote URL stays
+session's repository. Host-run git and the Agent's Bash both get it as
+environment-carried git configuration. The stored remote URL stays
 `https://github.com/<owner>/<repo>.git`, so a host restart with a new port
 needs no rewrite.
 
@@ -250,8 +252,8 @@ submodules, and git-based dependencies work anonymously. Private repositories
 other than the session's own are not reachable; that is a known limit of this
 version.
 
-The handle appears in host-run git arguments and in the Agent's environment.
-It is not the token: it is usable only on the host's loopback interface, only
+The handle appears in the environment of host-run git and in the Agent's
+environment, never in a process argument list. It is not the token: it is usable only on the host's loopback interface, only
 for one repository, and for pushes only to one branch.
 
 Result: host-core's own clone, fetch, and push, and the Agent's `git` inside

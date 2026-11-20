@@ -325,7 +325,7 @@ codes surface through the same error object as any other call.
 | `PAIRING_FAILED` | no | `connection/pair` could not mint a device credential |
 | `PAIRING_TOKEN_EXPIRED` | no | the single-use pairing token expired before pairing completed |
 | `CAPABILITY_UNAVAILABLE` | no | an operation was requested for a capability the host advertised as unavailable (e.g. attachments, tool relay) |
-| `WORKSPACE_GIT_UNAVAILABLE` | no | the host has no usable git (missing, or older than 2.29) for a `workspace/git*` operation |
+| `WORKSPACE_GIT_UNAVAILABLE` | no | the host has no usable git (missing, or older than 2.31) for a `workspace/git*` operation |
 | `WORKSPACE_GIT_AUTH_REQUIRED` | no | GitHub refused a clone, fetch, or push: the host holds no credential for this connection, or the credential is not sufficient |
 | `WORKSPACE_GIT_REPOSITORY_NOT_FOUND` | no | the repository does not exist on GitHub or is not visible to the credential |
 | `WORKSPACE_GIT_BRANCH_NOT_FOUND` | no | the requested base branch does not exist on the remote |

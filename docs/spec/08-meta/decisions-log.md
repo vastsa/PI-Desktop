@@ -467,6 +467,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | D684 | One settings destination owns one subject | **Amend D143 / D166 / D678: the Settings rail is fifteen single-subject destinations in four clusters, retiring `general` and `ai` into Appearance, Conversation, Behavior, and System.** | Two destinations had become mixed landing places. See ADR 0345. |
 | D685 | Composer model picker: text rail and segmented reasoning | **Amend D458: the reasoning control in the combined Composer model menu is a segmented track with a raised pill under the selected level, placed in the menu footer, instead of a rail with track dots. The native range input, its column geometry, latest-wins commits and keyboard ownership are unchanged. The model list uses a text-only source rail with one sliding marker; Escape clears a typed search before closing the menu. Renderer only. See `04-ux/08-component-spec.md` and E2E-050.** | The dot rail and colored source tiles read heavy next to compact model rows; a segmented pill and a text rail match the rest of the menu chrome. |
 | D686 | Fork release coordinates and unsigned macOS | **The fork publishes unsigned macOS arm64 desktop builds and Linux pi-host bundles from its own repository, and unsigned packages always use manual update delivery.** See ADR fork-release-coordinates. | The fork needs its own host bundles and has no Developer ID certificate. |
+| D687 | Remote git workspaces and the credential proxy | **A paired Host can clone a GitHub repository once and give each Desktop session its own git worktree and work branch through the optional owner-only RACP capability `workspaceGit`; host-core owns git on the Host, and the GitHub token lives only in `pi-host` memory and reaches git only through a loopback proxy scoped to one repository and one work branch.** See ADR remote-git-workspaces. | Sessions started from a repository need isolation on the Host and authenticated git without the token reaching host-core, a child process, or disk. |
 
 ## R. Decision rules going forward
 
@@ -5433,3 +5434,26 @@ See ADR 0344.
   preference.
 - The upstream signed lane is kept unchanged behind the repository variable
   `MACOS_SIGN_RELEASE`, to keep merges from upstream small.
+
+## 2026-11-20 — Remote git workspaces and the credential proxy (D687)
+
+- A remote project was a paired Host plus a directory that already existed
+  there. Starting a session from a GitHub repository and a branch needs the
+  Host to clone, to isolate sessions from one another, and to authenticate
+  git with a token that lives on the desktop.
+- The Host gains the optional owner-only RACP capability `workspaceGit`: ten
+  additive operations, no RACP or host-core protocol version change, and no
+  SQLite schema change (the worktree registry is a `kv` namespace). A Host
+  without it keeps serving folder projects.
+- host-core owns every git invocation and the registry on the Host, as it
+  does for local isolated sessions (ADR 0329). Each session gets a worktree
+  on `pi-desktop/<id>`, derived from the desktop installation id and the
+  session id; long work runs as jobs the desktop polls.
+- The token is sent in one dedicated operation, only over SSH, `wss://`, or
+  loopback, and stays in `pi-host` memory until the connection closes. git
+  authenticates through a loopback proxy that adds the token for one
+  repository and accepts a push only to the session's work branch, so the
+  Agent's own `git push` works without the Agent holding a credential.
+- git 2.31 or newer is required on the Host, because the proxy rewrite is
+  delivered as environment-carried configuration rather than a `-c` argument
+  that would expose the handle in the process list.
