@@ -3647,8 +3647,8 @@ PowerShell-launched fixture; activation must not restore the native outline.
   destination that owns its subject, and nothing is reachable from two.
 - **Steps:**
   1. Open Settings. The rail lists Appearance, Conversation, Shortcuts, Voice,
-     Behavior, Models, Instructions, Skills, MCP, Subagents, Projects, System,
-     Cloud sync, Remote Hosts, Info, in four titled clusters.
+     Behavior, Models, Instructions, Skills, MCP, Connectors, Subagents,
+     Projects, System, Cloud sync, Remote Hosts, Info, in four titled clusters.
   2. Visit Appearance: Interface (theme, language, font, font size, and on
      macOS translucency), Sidebar with its two indented sub-switches, Radial
      context menu, Startup. No network, storage, power or close-behavior card.
@@ -3691,6 +3691,71 @@ PowerShell-launched fixture; activation must not restore the native outline.
 - **Automation:** `settings-general.test.mjs` asserts the resolution table, and
   `settings-developer-only-destinations.test.mjs` asserts the hidden-destination
   fallback uses the index's default rather than a literal id.
+
+## E2E-CONNECTOR-device-login-stores-no-renderer-secret
+
+- **Scenario:** Settings → Connectors signs the user in to GitHub (D688, ADR
+  github-connector). The main process obtains and stores the token; the
+  renderer only ever sees an account, its scopes, and a connection state.
+- **Preconditions:** A build with an OAuth client id for the device path; any
+  build for the token path. No GitHub account connected. Automation uses a
+  scripted GitHub and a fake host secret store; no real account or token.
+- **Steps:**
+  1. Open Settings → Connectors. The GitHub card shows the workflow option
+     unticked, **Connect GitHub**, and the closed token disclosure.
+  2. Tick the workflow option and choose **Connect GitHub**. The login dialog
+     shows a device code and the `github.com/login/device` link, and the
+     verification page opens in the system browser.
+  3. Approve the code on GitHub. The dialog closes and the card shows
+     **Connected as `<login>`** with the scopes, including `workflow`.
+  4. Choose **Disconnect**. The card returns to the signed-out state.
+  5. Open the token disclosure, paste a token GitHub rejects, and choose
+     **Save token**; then paste a valid classic token without the `repo` scope
+     and save again.
+  6. Start a device login and, before approving, in turn: press Cancel, start
+     another login, leave the Connectors page, and quit the app.
+  7. With an account connected, revoke the token on GitHub, then use anything
+     that lists repositories.
+  8. Repeat step 1 in a build without an OAuth client id.
+- **Expected:**
+  - The start request carries `allowWorkflowScope: true`; the device flow
+    requests `repo read:org workflow`.
+  - After approval the secret store holds one record under
+    `secret:app:github-connector`. No IPC result, login or status event, log
+    line, error message, or DOM node contains the token.
+  - The token field is a password input; after either save attempt it is
+    empty and the page no longer contains the token. The rejected token stores
+    nothing and reports `GITHUB_INVALID_TOKEN`; the token without `repo` is
+    stored with its real scopes and the card warns that private repositories
+    and pushes will not work.
+  - Each action in step 6 ends the login: polling stops, and a token GitHub
+    issues afterwards is not stored. A superseded login can never overwrite
+    the result of a newer one or of a disconnect.
+  - In step 7 the listing fails with `GITHUB_AUTH_FAILED`, the card shows the
+    re-authentication alert with the account still visible and the sign-in
+    controls beside Disconnect, and no empty repository list is shown as if
+    the account had none.
+  - In step 8 Connect GitHub and the workflow option are replaced by a line
+    saying sign-in with a code is not configured; the token path works.
+  - Every failure and the dialog's waiting line are in the app's language.
+    The note under a connected account says to remove the app after a device
+    sign-in and to delete the token after a pasted one. An avatar address
+    outside `avatars.githubusercontent.com` is never loaded.
+- **Automation:** `github-connector.test.mjs` pins the login lifecycle, the
+  pasted-token path, re-authentication, caching, and that no emitted payload,
+  returned value, or log argument contains the token.
+  `github-connector-ipc.test.mjs` pins the channel-to-method mapping, input
+  validation, the main-window restriction, and that results carry only
+  contract fields. `github-device-flow.test.mjs`, `github-api.test.mjs`, and
+  `github-connector-store.test.mjs` pin polling and expiry, the pinned host
+  and error mapping (including SSO-partial listings and moved repositories),
+  and the stored record. `github-names.test.mjs` pins the name rules.
+  `github-login-session.test.mjs` pins the dialog adapter and the localized
+  error text, and `github-avatar.test.mjs` the avatar host rule. `github-connector-settings-user-path.test.mjs`
+  drives the page in an isolated Electron renderer against a mocked preload
+  (needs a display; skipped on headless Linux). A device login against real
+  GitHub and step 6's quit are manual until the packaged remote harness gains
+  a GitHub fixture.
 
 ## E2E-264: Reopening an archived project restores sidebar visibility
 

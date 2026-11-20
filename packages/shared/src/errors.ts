@@ -327,4 +327,28 @@ export const ErrorCodes = {
   PLAN_WORKSPACE_REQUIRED: "PLAN_WORKSPACE_REQUIRED",
   PLAN_ALREADY_ACTIVE: "PLAN_ALREADY_ACTIVE",
   PLAN_INTERNAL: "PLAN_INTERNAL",
+  // Built-in GitHub connector (ADR github-connector). Only the rate-limit and
+  // network codes are retriable.
+  /** No GitHub account is connected. */
+  GITHUB_NOT_CONNECTED: "GITHUB_NOT_CONNECTED",
+  /** GitHub rejected the credential (401): revoked, expired, or never valid. */
+  GITHUB_AUTH_FAILED: "GITHUB_AUTH_FAILED",
+  /** GitHub refused the request (403): missing scope or organization SSO. */
+  GITHUB_FORBIDDEN: "GITHUB_FORBIDDEN",
+  /** 404, or a repository GitHub redirects because it was renamed or moved. */
+  GITHUB_NOT_FOUND: "GITHUB_NOT_FOUND",
+  /** Primary or secondary rate limit. Retriable after `resetAt`. */
+  GITHUB_RATE_LIMITED: "GITHUB_RATE_LIMITED",
+  /** No usable answer: offline, timeout, a 5xx, or a portal in the way. Retriable. */
+  GITHUB_NETWORK: "GITHUB_NETWORK",
+  /** A pasted token is not printable ASCII, or GitHub does not accept it. */
+  GITHUB_INVALID_TOKEN: "GITHUB_INVALID_TOKEN",
+  /** This build has no OAuth client id, or the OAuth App has device flow off. */
+  GITHUB_DEVICE_FLOW_UNAVAILABLE: "GITHUB_DEVICE_FLOW_UNAVAILABLE",
+  /** The device code expired before the user approved it. */
+  GITHUB_LOGIN_EXPIRED: "GITHUB_LOGIN_EXPIRED",
+  /** The user declined the device login on GitHub. */
+  GITHUB_LOGIN_DENIED: "GITHUB_LOGIN_DENIED",
+  /** GitHub rejected the request body (422), e.g. a pull request that already exists. */
+  GITHUB_VALIDATION_FAILED: "GITHUB_VALIDATION_FAILED",
 } as const;

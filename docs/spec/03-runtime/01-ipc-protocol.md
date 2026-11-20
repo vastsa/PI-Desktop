@@ -1405,7 +1405,7 @@ type OAuthLoginEvent = { loginId: string; vendorId: string } & (
   | { kind: "prompt"; request: OAuthPromptRequest }
   | { kind: "promptCancelled"; promptId: string }
   | { kind: "done"; providerId: string; accountLabel?: string }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; code?: string }  // an error code, when main knows one
   | { kind: "cancelled" }
 );
 ```
@@ -1435,6 +1435,95 @@ must disappear on its own.
 
 Forbidden here as well: no event carries a token, a refresh token, or an
 authorization code. `accountLabel` is a display string.
+
+### GitHub connector (D688, ADR github-connector)
+
+Signing in to GitHub and listing what the account can reach is an
+Electron-main conversation: IPC only, no host protocol change. Seven invoke
+channels and two event channels. They accept only the main window, are not
+routed to remote hosts, and are blocked on the local MCP control plane.
+
+| Channel | Input | Result |
+|---|---|---|
+| `pi-desktop/github/status` | none | `GitHubConnectorStatus` |
+| `pi-desktop/github/login/start` | `{ allowWorkflowScope: boolean }` | `{ loginId: string }` |
+| `pi-desktop/github/login/cancel` | `loginId: string` | `{ ok: boolean }` |
+| `pi-desktop/github/setToken` | `{ token: string }` | `GitHubConnectorStatus` |
+| `pi-desktop/github/disconnect` | none | `GitHubConnectorStatus` |
+| `pi-desktop/github/repositories` | `{ query?: string; refresh?: boolean }` | `{ repositories: GitHubRepositorySummary[]; truncated: boolean; ssoPartial?: boolean }` |
+| `pi-desktop/github/branches` | `{ owner: string; name: string }` | `{ branches: GitHubBranchSummary[]; defaultBranch: string; truncated: boolean; ssoPartial?: boolean }` |
+| event `pi-desktop/github/event/login` | — | `OAuthLoginEvent` |
+| event `pi-desktop/github/event/changed` | — | `GitHubConnectorStatus` |
+
+```ts
+type GitHubConnectorStatus = {
+  connected: boolean;
+  deviceLoginAvailable: boolean;                 // the build carries an OAuth client id
+  account?: { login: string; name?: string; avatarUrl?: string };
+  scopes?: string[];                             // empty for a fine-grained token
+  tokenKind?: "oauth" | "pat";
+  needsReauthentication?: boolean;               // GitHub answered 401 with the stored token
+};
+type GitHubRepositorySummary = {
+  owner: string; name: string; fullName: string; private: boolean;
+  defaultBranch: string; archived: boolean; pushedAt?: string; description?: string;
+};
+type GitHubBranchSummary = { name: string; protected: boolean };
+```
+
+- `login/start` returns at once; the device flow runs in the main process and
+  reports on the login event channel in the vendor-account event shape, with
+  `vendorId` and `providerId` set to `github-connector`: `deviceCode`,
+  optional `progress`, then one of `done` (with `accountLabel` set to the
+  login), `error`, or `cancelled`. An `error` event carries the `GITHUB_*`
+  code as `code` when main knows one. Main's `message` text is English; the
+  renderer replaces an error by the catalog entry for its code and the
+  waiting-for-approval progress line by its own translation. The subscribe-before-start and
+  start-exactly-once rules of the vendor-account section apply unchanged, and
+  the renderer reuses the same session object and dialog.
+- A second `login/start` aborts the login in progress, which receives
+  `cancelled`. `login/cancel` answers `{ ok: false }` for a login that is not
+  the current one. `login/start` fails with `GITHUB_DEVICE_FLOW_UNAVAILABLE`
+  when `deviceLoginAvailable` is false.
+- `setToken` trims the value, refuses one that is empty, longer than 4096
+  characters, or contains anything but printable ASCII
+  (`GITHUB_INVALID_TOKEN`) before any request, checks it with GitHub, and only
+  then stores it. A token GitHub rejects is also `GITHUB_INVALID_TOKEN` and
+  leaves the stored credential untouched.
+- `event/changed` is pushed after a sign-in, a stored token, a disconnect, and
+  when a GitHub call first finds the stored token rejected or working again.
+- `repositories` reads up to 1000 repositories and `branches` up to 500
+  branches; `truncated` is true beyond that. A repository listing is cached in
+  the main process for five minutes per stored token; `refresh: true`, a new
+  token, a rejected token, and disconnect drop it. `query` is a
+  case-insensitive substring of `fullName`, applied in the main process. A
+  failed read is never cached and never returned as a shorter list.
+- `ssoPartial: true` means GitHub answered 200 but left entries out because
+  an organization's SAML SSO has not authorized the token (the
+  `X-GitHub-SSO: partial-results` response header). The list is real and
+  incomplete, and stays marked while it is served from the cache or narrowed
+  by `query`. The field is absent otherwise. A caller must not present such a
+  list as complete.
+- `owner` is 1 to 39 characters of `[A-Za-z0-9_-]` not starting or ending
+  with `-`; `name` is 1 to 100 of `[A-Za-z0-9._-]`, not `.` or `..`, and not
+  ending in `.git`. Branch names, where a main-process caller supplies one,
+  follow git's reference-name rules. A name outside the rules is
+  `INVALID_ARGUMENT` before any request.
+- A repository that was renamed or transferred answers `GITHUB_NOT_FOUND`,
+  not a retriable error: GitHub redirects the old name and the connector
+  never follows a redirect.
+- Without a stored credential the two listing channels fail with
+  `GITHUB_NOT_CONNECTED`. Other failures use the `GITHUB_*` codes of
+  [08-error-codes](08-error-codes.md) §3.11; `GITHUB_RATE_LIMITED` and
+  `GITHUB_NETWORK` are retriable, and a rate limit carries
+  `details.resetAt` when GitHub stated one.
+- Malformed input is `INVALID_ARGUMENT`. Unknown input fields are dropped, and
+  results carry only the fields above.
+
+Forbidden: no channel result, event, or error carries the token. The renderer
+sends one only in `setToken` and must not keep it afterwards. Finding and
+creating pull requests are main-process methods of the same service and have
+no renderer channel in this version.
 
 ## 9. Project API
 

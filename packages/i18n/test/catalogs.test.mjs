@@ -50,6 +50,107 @@ test("every shipped catalog matches English keys and interpolation variables", (
   }
 });
 
+test("the Connectors destination is named and explained in every shipped catalog", () => {
+  const expectedEnglish = {
+    "settings.nav.connectors": "Connectors",
+    "settings.connectors.title": "Connectors",
+    "settings.connectors.subtitle": "Accounts PI-Desktop can use on your behalf.",
+    "settings.connectors.github.name": "GitHub",
+    "settings.connectors.github.description":
+      "Pick repositories and branches for remote sessions, push branches, and open pull requests.",
+    "settings.connectors.github.connect": "Connect GitHub",
+    "settings.connectors.github.connectedAs": "Connected as {{login}}",
+    "settings.connectors.github.disconnect": "Disconnect",
+    "settings.connectors.github.disconnectNote":
+      "Disconnecting removes the token from this computer. To revoke it, remove the app in your GitHub settings.",
+    "settings.connectors.github.disconnectNoteToken":
+      "Disconnecting removes the token from this computer. To revoke it, delete the token in your GitHub settings.",
+    "settings.connectors.github.allowWorkflow": "Allow changes to GitHub Actions workflow files",
+    "settings.connectors.github.allowWorkflowHelp":
+      "Adds the workflow scope. Leave off unless the agent needs to edit files under .github/workflows.",
+    "settings.connectors.github.useToken": "Use a personal access token instead",
+    "settings.connectors.github.tokenLabel": "Personal access token",
+    "settings.connectors.github.tokenSave": "Save token",
+    "settings.connectors.github.scopes": "Scopes: {{scopes}}",
+    "settings.connectors.github.missingRepoScope":
+      "This token lacks the repo scope, so private repositories and pushes will not work.",
+    "settings.connectors.github.needsReauth": "GitHub rejected the saved token. Connect again.",
+    "settings.connectors.github.deviceUnavailable":
+      "Sign-in with a code is not configured in this build. Use a personal access token.",
+    "settings.connectors.github.waitingForApproval": "Waiting for approval on GitHub…",
+  };
+  for (const [key, value] of Object.entries(expectedEnglish)) {
+    assert.equal(english[key], value, key);
+  }
+  // Everything under the connectors branch is listed above: no stray key.
+  assert.deepEqual(
+    Object.keys(english).filter((key) => key.startsWith("settings.connectors.")).sort(),
+    Object.keys(expectedEnglish).filter((key) => key.startsWith("settings.connectors.")).sort(),
+  );
+
+  // A product name stays as it is; a sentence left in English is a missed translation.
+  const sameInEveryLanguage = new Set(["settings.connectors.github.name"]);
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    for (const key of Object.keys(expectedEnglish)) {
+      assert.equal(typeof flat[key], "string", `${locale} ${key}`);
+      assert.ok(flat[key].trim(), `${locale} ${key} must not be blank`);
+      if (locale !== "en" && !sameInEveryLanguage.has(key)) {
+        assert.notEqual(flat[key], expectedEnglish[key], `${locale} ${key} is still English`);
+      }
+    }
+    assert.equal(flat["settings.connectors.github.name"], "GitHub", locale);
+    // A pasted token is revoked by deleting it, not by removing an app.
+    assert.notEqual(
+      flat["settings.connectors.github.disconnectNoteToken"],
+      flat["settings.connectors.github.disconnectNote"],
+      locale,
+    );
+    // The scope and path names are identifiers and must survive translation.
+    assert.match(flat["settings.connectors.github.missingRepoScope"], /repo/, locale);
+    assert.match(flat["settings.connectors.github.allowWorkflowHelp"], /workflow/, locale);
+    assert.match(
+      flat["settings.connectors.github.allowWorkflowHelp"],
+      /\.github\/workflows/,
+      locale,
+    );
+  }
+});
+
+test("every GitHub connector error code has a message in every shipped catalog", () => {
+  // Main reports these as codes; the renderer shows the catalog's sentence,
+  // so a missing key would put main's English text in front of every locale.
+  const codes = [
+    "GITHUB_NOT_CONNECTED",
+    "GITHUB_AUTH_FAILED",
+    "GITHUB_FORBIDDEN",
+    "GITHUB_NOT_FOUND",
+    "GITHUB_RATE_LIMITED",
+    "GITHUB_NETWORK",
+    "GITHUB_INVALID_TOKEN",
+    "GITHUB_DEVICE_FLOW_UNAVAILABLE",
+    "GITHUB_LOGIN_EXPIRED",
+    "GITHUB_LOGIN_DENIED",
+    "GITHUB_VALIDATION_FAILED",
+  ];
+  assert.deepEqual(
+    Object.keys(english).filter((key) => key.startsWith("errors.GITHUB_")).sort(),
+    codes.map((code) => `errors.${code}`).sort(),
+  );
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    for (const code of codes) {
+      const key = `errors.${code}`;
+      assert.equal(typeof flat[key], "string", `${locale} ${key}`);
+      assert.ok(flat[key].trim(), `${locale} ${key} must not be blank`);
+      assert.match(flat[key], /GitHub/, `${locale} ${key} names the service`);
+      if (locale !== "en") {
+        assert.notEqual(flat[key], english[key], `${locale} ${key} is still English`);
+      }
+    }
+  }
+});
+
 test("Live Voice preparation and call recovery copy is localized in every shipped catalog", () => {
   const keys = [
     "prepareCall", "details", "workOptions", "allowWork", "noWorkSession",

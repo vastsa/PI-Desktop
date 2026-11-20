@@ -467,6 +467,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | D684 | One settings destination owns one subject | **Amend D143 / D166 / D678: the Settings rail is fifteen single-subject destinations in four clusters, retiring `general` and `ai` into Appearance, Conversation, Behavior, and System.** | Two destinations had become mixed landing places. See ADR 0345. |
 | D685 | Composer model picker: text rail and segmented reasoning | **Amend D458: the reasoning control in the combined Composer model menu is a segmented track with a raised pill under the selected level, placed in the menu footer, instead of a rail with track dots. The native range input, its column geometry, latest-wins commits and keyboard ownership are unchanged. The model list uses a text-only source rail with one sliding marker; Escape clears a typed search before closing the menu. Renderer only. See `04-ux/08-component-spec.md` and E2E-050.** | The dot rail and colored source tiles read heavy next to compact model rows; a segmented pill and a text rail match the rest of the menu chrome. |
 | D686 | Fork release coordinates and unsigned macOS | **The fork publishes unsigned macOS arm64 desktop builds and Linux pi-host bundles from its own repository, and unsigned packages always use manual update delivery.** See ADR fork-release-coordinates. | The fork needs its own host bundles and has no Developer ID certificate. |
+| D688 | Built-in GitHub connector | **Electron main owns one GitHub credential, obtained by OAuth App device flow or a pasted token, stored as one record under `secret:app:github-connector`, and spent only on `api.github.com`; Settings gains a Connectors destination after MCP.** See ADR github-connector. | Remote GitHub sessions need to list repositories and branches and open pull requests as the user, without the token reaching the renderer. |
 
 ## R. Decision rules going forward
 
@@ -5433,3 +5434,25 @@ See ADR 0344.
   preference.
 - The upstream signed lane is kept unchanged behind the repository variable
   `MACOS_SIGN_RELEASE`, to keep merges from upstream small.
+
+## 2026-11-20 — Built-in GitHub connector (D688)
+
+- Remote GitHub sessions need the desktop to act as the user on GitHub. The
+  app had no GitHub credential of its own: the Copilot login yields a model
+  credential, and a token on an MCP server record is plain text.
+- A main-process connector now owns one credential. The user signs in with an
+  OAuth App device code, or pastes a personal access token; the token and the
+  account it belongs to are one record under `secret:app:github-connector`.
+- Only Electron main reads the token. The renderer gets an account, scopes,
+  and a state over `pi-desktop/github/*`; those channels accept only the main
+  window and are blocked on the local MCP control plane.
+- Requests go to `api.github.com` and `github.com/login/…` only, both
+  constants, and a redirect is never followed. Failures are typed and never cached, and
+  a 401 marks the stored token for re-authentication instead of showing an
+  account with no repositories.
+- Scopes are `repo` and `read:org`; `workflow` is an opt-in checkbox.
+  Disconnect removes the token locally and does not revoke it, because that
+  needs the OAuth App's secret.
+- Settings gains a sixteenth destination, Connectors, in the Agent cluster
+  after MCP. Until the OAuth App's client id is set in the build, sign-in is
+  by pasted token only.

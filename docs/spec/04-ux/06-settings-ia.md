@@ -64,12 +64,16 @@ the page underneath keeps its state.
   7. **Instructions / 指令** — Lucide `FileText` (global and project instruction files)
   8. **Skills / 技能** — Lucide `BookOpen` (reusable agent instructions)
   9. **MCP** — Lucide `Server` (agent connections)
-  10. **Subagents / 子智能体** — Lucide `Sparkles` (built-in and personal parallel agents)
-  11. **Projects / 项目** — Lucide `Archive` (durable project index)
-  12. **System / 系统** — Lucide `Monitor` (network, storage, power, window close behavior)
-  13. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; Experimental, all builds)
-  14. **Remote Hosts / 远程主机** — Lucide `Globe` (experimental SSH hosts, sessions, and explicit model copy)
-  15. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  10. **Connectors / 连接器** — Lucide `Plug` (accounts the app acts with on the user's behalf; GitHub)
+  11. **Subagents / 子智能体** — Lucide `Sparkles` (built-in and personal parallel agents)
+  12. **Projects / 项目** — Lucide `Archive` (durable project index)
+  13. **System / 系统** — Lucide `Monitor` (network, storage, power, window close behavior)
+  14. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; Experimental, all builds)
+  15. **Remote Hosts / 远程主机** — Lucide `Globe` (experimental SSH hosts, sessions, and explicit model copy)
+  16. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+
+  That is sixteen destinations: the fifteen of D684 plus Connectors (D688 /
+  ADR github-connector).
   Rail icons are decorative (`aria-hidden` via the SVG default) and stay
   monochrome with the rail label, except on the selected row, where the glyph
   takes the accent alongside the row's accent-tinted pill; do not reuse
@@ -83,7 +87,8 @@ the page underneath keeps its state.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (Appearance, Conversation, Shortcuts, Voice),
-  `Agent` / `智能体` (Behavior, Models, Instructions, Skills, MCP, Subagents),
+  `Agent` / `智能体` (Behavior, Models, Instructions, Skills, MCP, Connectors,
+  Subagents),
   `Workspace` / `工作区` (Projects), and `System` / `系统` (System, Cloud sync,
   Remote Hosts, Info; Cloud sync and Remote Hosts are Experimental destinations
   available in all builds). Headings are muted, non-interactive labels at the
@@ -765,6 +770,49 @@ profiles.
 - The tool is on demand and unavailable in Plan and Goal modes. Removing the
   key turns Jev off first, then deletes it.
 
+### Connectors (`connectors` tab)
+
+Connectors lists the accounts PI-Desktop may act with on the user's behalf
+(D688 / ADR github-connector). It is a regular Agent destination after MCP:
+present in every build, with no Experimental badge and no developer-mode
+requirement. The page opens with its subtitle and one card per connector.
+GitHub is the first.
+
+- **Signed out.** The card shows the option **Allow changes to GitHub Actions
+  workflow files** (off by default; its help mark says it adds the `workflow`
+  scope), the primary action **Connect GitHub**, and a closed disclosure **Use
+  a personal access token instead** holding one password field and **Save
+  token**.
+- **Connect GitHub** opens the existing vendor-account login dialog on a
+  device code: the code to copy, the `github.com/login/device` link, and
+  Cancel. The verification page is opened in the system browser. Cancel,
+  Escape, starting another login, and leaving the page each end the login in
+  the main process; none of them leaves a poll running.
+- **No client id in the build.** Connect GitHub and the workflow option are
+  replaced by one line saying sign-in with a code is not configured; the token
+  disclosure remains.
+- **The token field** is a password input with autocomplete off. Its value is
+  read at submit, handed to the main process once, and cleared before the
+  answer arrives, whether the token is accepted or not. It is never held in
+  component state, and the renderer never receives a token back.
+- **Connected.** The card shows the avatar, **Connected as `<login>`**, the
+  scopes GitHub reported, **Disconnect**, and a line saying that disconnecting
+  removes the token from this computer and how to revoke it: after a device
+  sign-in, by removing the app in the user's GitHub settings; for a pasted
+  token, by deleting the token there. The avatar is loaded only from
+  `avatars.githubusercontent.com`; any other address shows the placeholder
+  glyph.
+- **Missing `repo`.** A token that reports scopes without `repo` shows a
+  warning that private repositories and pushes will not work. A fine-grained
+  token reports no scopes and shows no warning.
+- **Rejected token.** When GitHub answered 401 for the stored token, the card
+  keeps the account visible, shows an alert asking the user to connect again,
+  and offers the sign-in controls beside Disconnect.
+- Failures of Save token and Disconnect are reported as an error toast; a
+  failed status read shows the message with a Retry action. The dialog's
+  waiting line and every connector failure are shown from the catalog
+  (`errors.GITHUB_*`), not in the main process's English.
+
 ### Agent capability destinations (Skills / MCP / Subagents)
 
 Skills, MCP servers, and user-owned Subagents remain three independent
@@ -1099,8 +1147,8 @@ system while preserving their different data ownership:
 2. Rail shows the search pill at the top, no footer action, and exactly
    Appearance / 外观,
    Conversation / 对话, Shortcuts / 快捷键, Voice / 语音, Behavior / 行为,
-   Models / 模型, Instructions / 指令, Skills / 技能, MCP, Subagents / 子智能体,
-   Projects / 项目, System / 系统, Cloud sync / 云同步 and Remote Hosts /
+   Models / 模型, Instructions / 指令, Skills / 技能, MCP, Connectors / 连接器,
+   Subagents / 子智能体, Projects / 项目, System / 系统, Cloud sync / 云同步 and Remote Hosts /
    远程主机 (both Experimental, all builds), and Info / 信息 in that order. The
    rows are grouped under Preferences / 偏好, Agent / 智能体,
    Workspace / 工作区, and System / 系统. There is no Usage / 用量 destination,
@@ -1200,6 +1248,17 @@ system while preserving their different data ownership:
     - Status indicators → `Badge` (not inline `<span>` with manual classes)
     - Layout → `SettingsCard` + `SettingsRow` from `features/settings/primitives`
     Inline reimplementation of any shared primitive is a spec violation.
+
+29. Connectors is the destination after MCP in the Agent cluster, in every
+   build, with no Experimental badge. Signed out, its GitHub card offers
+   Connect GitHub with the workflow option off, and the token form behind a
+   disclosure; a build without an OAuth client id offers only the token form
+   and says why
+30. Signing in to GitHub by device code or by pasted token ends with
+   **Connected as `<login>`** and the token's scopes. No token is ever
+   rendered, held in component state after the save attempt, or returned to
+   the renderer; a rejected stored token shows a re-authentication alert with
+   the account still visible
 
 ## 5. General chrome metrics
 

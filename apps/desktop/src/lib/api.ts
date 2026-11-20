@@ -67,6 +67,11 @@ import type {
   OAuthRespondInput,
   OAuthVendor,
   OAuthStartResult,
+  GitHubBranchList,
+  GitHubConnectorStatus,
+  GitHubRepositoryList,
+  GitHubRepositoryListInput,
+  GitHubRepositoryRef,
   PluginSummary,
   LauncherCatalog,
   LauncherOpenPluginRequest,
@@ -1074,6 +1079,27 @@ export const api = {
     invoke<{ ok: boolean }>(IPC.invoke.providersOauthCancel, loginId),
   deleteOauthAccount: (providerId: string) =>
     invoke<{ ok: boolean }>(IPC.invoke.providersOauthDelete, providerId),
+  /**
+   * The built-in GitHub connector (ADR github-connector). Main owns the token:
+   * these return an account, its scopes, and a connection state, never the
+   * credential, and `setGithubToken` is the only call that sends one.
+   */
+  githubConnectorStatus: () =>
+    invoke<GitHubConnectorStatus>(IPC.invoke.githubConnectorStatus),
+  /** Begin a device login; progress arrives through `onGithubLogin`. */
+  startGithubLogin: (input: { allowWorkflowScope: boolean }) =>
+    invoke<OAuthStartResult>(IPC.invoke.githubConnectorLoginStart, input),
+  cancelGithubLogin: (loginId: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.githubConnectorLoginCancel, loginId),
+  /** Hand a pasted token to main, which checks it with GitHub before storing it. */
+  setGithubToken: (input: { token: string }) =>
+    invoke<GitHubConnectorStatus>(IPC.invoke.githubConnectorSetToken, input),
+  disconnectGithub: () =>
+    invoke<GitHubConnectorStatus>(IPC.invoke.githubConnectorDisconnect),
+  listGithubRepositories: (input: GitHubRepositoryListInput = {}) =>
+    invoke<GitHubRepositoryList>(IPC.invoke.githubRepositories, input),
+  listGithubBranches: (repository: GitHubRepositoryRef) =>
+    invoke<GitHubBranchList>(IPC.invoke.githubBranches, repository),
   getProject: () =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectGet),
   getSidebarPreferences: () => invoke<unknown>(IPC.invoke.sidebarPreferencesGet),
@@ -2067,6 +2093,18 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.providersOauth, (payload) =>
       listener(payload as OAuthLoginEvent),
+    );
+  },
+  onGithubLogin: (listener: (event: OAuthLoginEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.githubConnectorLogin, (payload) =>
+      listener(payload as OAuthLoginEvent),
+    );
+  },
+  onGithubConnectorChanged: (listener: (status: GitHubConnectorStatus) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.githubConnectorChanged, (payload) =>
+      listener(payload as GitHubConnectorStatus),
     );
   },
   onMcpOAuth: (listener: (event: McpOAuthLoginEvent) => void) => {

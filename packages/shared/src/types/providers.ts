@@ -165,7 +165,12 @@ export type OAuthLoginEvent = {
   /** The flow resolved a prompt on its own — e.g. the callback beat the paste box. */
   | { kind: "promptCancelled"; promptId: string }
   | { kind: "done"; providerId: string; accountLabel?: string }
-  | { kind: "error"; message: string; code?: "PLUGIN_OAUTH_FAILED" }
+  /**
+   * `code` is the error code when main knows one (`PLUGIN_OAUTH_FAILED`, or a
+   * `GITHUB_*` code from the GitHub connector), so the renderer can show its
+   * own translation; `message` is main's English text and the fallback.
+   */
+  | { kind: "error"; message: string; code?: string }
   | { kind: "cancelled" }
 );
 

@@ -356,6 +356,7 @@ identify the platform validation still needed.
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | C / E / F / Quality — Background Bash tasks outlive their turn | E2E-265 |
+| Security / Quality — GitHub connector sign-in keeps the token in main | E2E-CONNECTOR-device-login-stores-no-renderer-secret |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)

@@ -395,6 +395,31 @@ means the host will retry, and it never widens a scope.
 | `COMPUTER_CAPTURE_UNAVAILABLE` | no | an `a11y-only` grant or an unavailable capture backend forbids pixels |
 | `COMPUTER_TIMEOUT` | yes | a bounded inspection, wait, synthesis, or capture stage timed out |
 
+### 3.11 GitHub connector (ADR github-connector)
+
+Emitted by the main-process GitHub connector: device sign-in, the pasted-token
+path, and the REST client behind the repository, branch, and pull request
+calls. They reach the renderer as `AppError.code` on the `pi-desktop/github/*`
+channels. No message carries the token. Retriable means the same call may
+succeed later without the user changing anything. Main writes the messages in
+English; the renderer shows the catalog entry `errors.<code>` for each of
+these codes (§6) and falls back to main's message only for a code it does not
+know.
+
+| code | retriable | meaning |
+|---|---|---|
+| `GITHUB_NOT_CONNECTED` | no | no GitHub credential is stored; the user has to connect in Settings → Connectors |
+| `GITHUB_AUTH_FAILED` | no | GitHub answered 401 for the stored credential (revoked, expired, or never valid), or a device login ended with an error the flow does not name. The connector keeps the credential and reports `needsReauthentication` |
+| `GITHUB_FORBIDDEN` | no | GitHub answered 403 without rate-limit headers: a missing scope, or an organization that requires SSO authorization. The message is GitHub's own |
+| `GITHUB_NOT_FOUND` | no | GitHub answered 404: the repository does not exist or the credential cannot see it. Also a redirect on a repository endpoint: GitHub answers the old name of a renamed or transferred repository with a 301, which the connector never follows, and retrying the old name cannot succeed |
+| `GITHUB_RATE_LIMITED` | yes | GitHub answered 429, or 403 with `x-ratelimit-remaining: 0`, a `retry-after` header, or a message naming a secondary rate limit. `details.resetAt` holds the time the limit lifts when GitHub stated one |
+| `GITHUB_NETWORK` | yes | the request got no usable answer: offline, DNS failure, timeout, a 5xx from GitHub, a body that is not GitHub's JSON, or a redirect on an account endpoint (a portal or proxy in the way; never followed) |
+| `GITHUB_INVALID_TOKEN` | no | a pasted token is empty, longer than 4096 characters, or contains anything but printable ASCII (0x21 to 0x7E), or GitHub rejected it. Nothing is stored |
+| `GITHUB_DEVICE_FLOW_UNAVAILABLE` | no | the build carries no OAuth client id, or the OAuth App has device flow disabled. The pasted-token path still works |
+| `GITHUB_LOGIN_EXPIRED` | no | the device code expired before the user approved it |
+| `GITHUB_LOGIN_DENIED` | no | the user declined the device login on GitHub |
+| `GITHUB_VALIDATION_FAILED` | no | GitHub rejected the request itself: a 422 (e.g. a pull request for that head already exists) or another 4xx the connector has no narrower code for. The message is GitHub's first error. An owner, repository, or branch name the connector refuses before any request is `INVALID_ARGUMENT` instead |
+
 ## 4. Mapping rules
 
 ### Host RPC numeric → AppError.code

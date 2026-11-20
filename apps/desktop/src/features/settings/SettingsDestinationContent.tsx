@@ -15,6 +15,7 @@ import { AgentInstructionsSection } from "./agent-sections";
 import { AboutSettings } from "./pages/AboutSettings";
 import { AgentBehaviorSettings } from "./pages/AgentBehaviorSettings";
 import { AppearanceSettings } from "./pages/AppearanceSettings";
+import { ConnectorsSettings } from "./pages/ConnectorsSettings";
 import { ConversationSettings } from "./pages/ConversationSettings";
 import { SystemSettings } from "./pages/SystemSettings";
 import { ModesSettingsPage } from "../modes/ModesSettingsPage";
@@ -119,6 +120,8 @@ export function SettingsDestinationContent({
       {tab === "skills" && <AgentSkillsPage />}
 
       {tab === "mcp" && <AgentMcpPage />}
+
+      {tab === "connectors" && <ConnectorsSettings />}
 
       {tab === "subagents" && <AgentSubagentsPage />}
 

@@ -117,6 +117,50 @@ test("Remote Hosts is Experimental and available in every build", () => {
   );
 });
 
+test("Connectors is a regular Agent destination immediately after MCP", () => {
+  const ids = SETTINGS_NAV.map((entry) => entry.id);
+  assert.equal(ids[ids.indexOf("mcp") + 1], "connectors");
+  assert.equal(ids.filter((id) => id === "connectors").length, 1);
+
+  const connectors = SETTINGS_NAV.find((entry) => entry.id === "connectors");
+  assert.equal(connectors.group, "agent");
+  assert.equal(connectors.labelKey, "settings.nav.connectors");
+  assert.equal(connectors.titleKey, "settings.connectors.title");
+  assert.equal(connectors.subtitleKey, "settings.connectors.subtitle");
+  // Signing in to GitHub is not an experiment and needs no developer switch.
+  assert.equal(connectors.developerOnly, undefined);
+  assert.equal(connectors.developmentOnly, undefined);
+  assert.equal(connectors.experimentalBadgeKey, undefined);
+
+  for (const developerMode of [false, true]) {
+    for (const includeDevelopmentOnly of [false, true]) {
+      const options = { developerMode, includeDevelopmentOnly };
+      assert.ok(visibleSettingsNav(developerMode, includeDevelopmentOnly)
+        .some((entry) => entry.id === "connectors"));
+      assert.equal(
+        isSettingsDestinationHidden("connectors", developerMode, includeDevelopmentOnly),
+        false,
+      );
+      for (const query of [
+        "settings.nav.connectors",
+        "connectors.github.name",
+        "connectors.github.connect",
+        "connectors.github.tokenLabel",
+        "connectors.github.allowWorkflow",
+      ]) {
+        assert.ok(
+          searchSettings(query, identity, options).some((hit) => hit.tab === "connectors"),
+          query,
+        );
+      }
+    }
+  }
+  assert.equal(resolveSettingsTab("connectors"), "connectors");
+  // The rail has an icon for it and the content pane renders it.
+  assert.match(settingsPage, /connectors: <Icon[A-Za-z]+ size=\{14\} \/>/);
+  assert.match(settingsPage, /tab === "connectors" && <ConnectorsSettings \/>/);
+});
+
 test("developer mode retains the developer-only destinations in development", () => {
   const off = visibleSettingsNav(false).map((entry) => entry.id);
   const on = visibleSettingsNav(true).map((entry) => entry.id);
