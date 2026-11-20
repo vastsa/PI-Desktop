@@ -1,6 +1,6 @@
 # Remote GitHub sessions on paired hosts — design
 
-- Status: Draft for owner approval
+- Status: Approved by the owner on 2026-11-20
 - Date: 2026-11-20
 - Scope: fork `david-yang-pixel/PI-Desktop`
 - Size: project (seven ordered parts, each planned and landed separately)
@@ -121,10 +121,11 @@ Parts are listed in delivery order. Each part is independently testable.
 - `.github/workflows/release.yml`: macOS signing becomes conditional on the
   signing secrets being present. Without secrets the macOS lane produces
   unsigned artifacts instead of failing the release.
-- The upstream Apple team ID is hard-coded in the workflow (the secrets check
-  and `CSC_NAME`) and in `scripts/notarize-and-staple-macos-release-dmg.sh`,
-  `scripts/release-macos.sh`, and `scripts/verify-macos-release.sh`. All of
-  them read the expected team from one repository variable instead.
+- The upstream signed lane, its scripts, and its hard-coded Apple team
+  identity are left untouched and dormant behind the repository variable
+  `MACOS_SIGN_RELEASE`. The owner has no certificate (§9), so parameterizing
+  the team identity would rewrite three scripts and three test files for no
+  user, and would add merge conflicts with upstream.
 - An unsigned macOS build is stamped at build time with a metadata marker,
   next to the existing `piDistribution` field. `supportsAutomaticUpdates`
   reads it. Today every packaged macOS build counts as auto-update capable,
@@ -143,7 +144,7 @@ Parts are listed in delivery order. Each part is independently testable.
 - Version numbers keep the upstream `X.Y.Z` shape and are bumped with
   `scripts/release.mjs`. The host bundle version must equal `APP_VERSION`.
 
-**Open (owner)**: see §9, questions 1 and 2.
+**Decided (owner)**: unsigned, macOS arm64 only; see §9.
 
 ### Part 2 — Host git workspace capability (`workspaceGit`)
 
@@ -501,7 +502,7 @@ before implementation of Part 2.
 
 ## 7. Documentation and decision records owed
 
-- New decision records: fork release coordinates and optional signing; host
+- New decision records: fork release coordinates and unsigned macOS builds; host
   git workspace capability and credential proxy; GitHub connector and built-in
   MCP server; environments and the composer target row.
 - Decisions log entries starting at D686.
@@ -533,15 +534,16 @@ before implementation of Part 2.
 - **Manual acceptance** on the owner's host after the first fork release:
   sign in, create a session on a private repository, push, open a PR.
 
-## 9. Open questions for the owner
+## 9. Owner answers
 
-1. Is there an Apple Developer ID certificate for the fork? If not, macOS
-   builds are unsigned: no in-app update, and first launch needs a manual
-   allow.
-2. Which desktop platforms must the fork release? The host bundles (Linux x64
-   and arm64) are always built.
-3. The owner registers a GitHub OAuth App with device flow enabled and
-   provides its client ID. Until then, sign-in is by pasted token only.
+1. **Signing**: the fork has no Apple Developer ID certificate. macOS builds
+   are unsigned: no in-app update, and first launch needs a manual allow.
+2. **Platforms**: the fork releases the desktop for macOS arm64 only. The
+   Windows, Linux, and macOS Intel desktop lanes are removed from the fork's
+   release workflow. The host bundles (Linux x64 and arm64) are always built.
+3. **OAuth App** (still owed, not blocking): the owner registers a GitHub
+   OAuth App with device flow enabled and provides its client ID. Until then,
+   sign-in is by pasted token only.
 
 ## 10. Calls made by the designer
 
