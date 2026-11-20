@@ -15,9 +15,10 @@ export function isThinkingActive(message: UiMessage, active: boolean): boolean {
 }
 
 export function isTurnThinking(
-  latestPart: AssistantTurnPart | undefined,
+  parts: readonly AssistantTurnPart[],
   active: boolean,
 ): boolean {
+  const latestPart = parts.at(-1);
   const latestActivity =
     latestPart?.kind === "activity" ? latestPart.items.at(-1) : undefined;
   return (
@@ -33,7 +34,7 @@ export function processContainsMessage(
   return parts.some((part) => {
     if (part.kind === "message") return part.message.id === messageId || part.sourceMessageId === messageId;
     return part.items.some((item) => {
-      if (item.message.id === messageId || (item.kind === "thinking" && item.sourceMessageId === messageId)) return true;
+      if (item.message.id === messageId) return true;
       return (
         item.kind === "tool" &&
         Boolean(item.delegate?.items.some((row) => row.message.id === messageId))
@@ -298,6 +299,7 @@ export function liveHistoryTurnId(
   return undefined;
 }
 
+/** Share the renderer's answer/process partition, including signed progress. */
 export function projectTurnProcess(entry: AssistantTurnEntry) {
   const { process, responses } = getAssistantTurnSummary(entry);
   return { process, responses };

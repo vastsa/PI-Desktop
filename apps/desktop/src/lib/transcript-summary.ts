@@ -1,7 +1,6 @@
 import type { MessageUsage, UiMessage } from "@pi-desktop/shared";
 import type { AssistantActivityItem, AssistantTurnEntry, AssistantTurnPart } from "./assistant-turns";
 import { projectAssistantCommentary } from "./assistant-commentary";
-import { orderedActivityParts, projectResponseLayout } from "./assistant-response-layout";
 
 const contentFacts = new WeakMap<UiMessage, { trimmedContent: string; hasContent: boolean }>();
 
@@ -53,11 +52,10 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
     hasContent: false, process: [], responses: [],
   };
   const last = entry.parts.at(-1);
+  const answer = last?.kind === "message" && messageContentFacts(last.message).hasContent ? last : undefined;
   for (const part of entry.parts) {
     if (part.kind === "activity") {
-      const ordered = orderedActivityParts(part);
-      if (ordered) result.process.push(...ordered);
-      else result.process.push(part);
+      result.process.push(part);
       for (const item of part.items) {
         result.activityItems.push(item);
         if (item.kind !== "tool") continue;
@@ -69,21 +67,20 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
     }
     const message = part.message;
     result.messages.push(message);
-    const projected = projectResponseLayout(message) ?? projectAssistantCommentary(message);
-    if (projected && "steps" in projected) {
-      // With no activity slot (e.g. just commentary + final), the text part owns the progress rows.
-      if (projected.steps.every(step => step.kind === "message")) result.process.push(...projected.steps);
-    } else if (projected) {
-      for (const progress of projected.progress) {
-        result.process.push({ kind: "message", message: progress, sourceMessageId: message.id });
-      }
+    const projection = projectAssistantCommentary(message);
+    if (projection) {
+      for (const progress of projection.progress) result.process.push(progress);
     }
-    const reply = projected ? { ...part, message: projected.reply } : part;
+    const reply = projection?.reply ?? part;
     const hasReply = messageContentFacts(reply.message).hasContent;
-    if ((part === last && hasReply) || message.error) result.responses.push(reply);
-    else if (hasReply || !projected) result.process.push(reply);
+    // Only the marked prose moves. A notice/error still belongs to its row,
+    // and usage and timing below count the source message, not display parts.
+    if (!projection || hasReply || message.error || message.outputTruncated) {
+      if (part === answer || message.error) result.responses.push(reply);
+      else result.process.push(reply);
+    }
     if (hasReply) {
-      result.actionMessage = message;
+      result.actionMessage = reply.message;
       result.hasContent = true;
     }
     if (message.modelId || message.usage || message.responseDurationMs || message.responseOutputTokens) {
@@ -119,7 +116,7 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
 /** Do not retain duplicated reply text in the session-wide projection cache. */
 export function getAssistantTurnContent(entry: AssistantTurnEntry): string {
   return getAssistantTurnSummary(entry).messages
-    .map((message) => messageContentFacts((projectResponseLayout(message) ?? projectAssistantCommentary(message))?.reply ?? message).trimmedContent)
+    .map((message) => messageContentFacts(projectAssistantCommentary(message)?.reply.message ?? message).trimmedContent)
     .filter(Boolean)
     .join("\n\n");
 }

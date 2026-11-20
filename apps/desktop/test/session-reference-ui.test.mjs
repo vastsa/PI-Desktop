@@ -83,6 +83,7 @@ const shared = load(new URL("../src/features/chat/transcript/shared.tsx", import
     useOpenChatFileRef: () => () => {},
     useOpenPreviewTarget: () => undefined,
   },
+  "../../../lib/text-direction": { directionAttr: () => undefined },
   "../../../hooks/use-chat-file-menu": { useChatFileMenu: () => ({}) },
   "../../../hooks/use-verified-chat-text": {
     // The real segmentation, so a session link in the body reaches its chip.
@@ -125,6 +126,7 @@ const { MessageRow } = load(new URL("../src/features/chat/transcript/MessageRow.
   "react-i18next": { useTranslation: () => ({ t, i18n: { language: locale } }) },
   "@pi-desktop/shared": await import("@pi-desktop/shared"),
   "../../../hooks/use-preview-target": { useOpenChatFileRef: () => () => {} },
+  "../../../lib/text-direction": { directionAttr: () => undefined },
   "../../../lib/chat-links": { splitChatText: () => [] },
   "../../../components/Markdown": { Markdown: ({ source }) => source },
   "../../../components/icons": new Proxy({}, { get: () => Icon }),

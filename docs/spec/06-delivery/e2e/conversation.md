@@ -1803,6 +1803,9 @@ this does not claim an installed full-app settings journey.
   tool, and denied tool. 7) Toggle `Show thinking` off and on and inspect the
   active-thinking, failure/recovery and completed states. 8) Remount rows within
   the retained pane, then reload the renderer and reopen the session.
+  9) Stream explicitly marked Responses commentary followed by a final answer;
+  check that only the process shows the commentary, then copy the answer before
+  and after reopening the signed transcript row. Neither copy includes progress.
 - **Expected**: A turn renders exactly one process disclosure containing every
   pre-answer row, the `Bash`/run rows included; the trailing answer, assistant
   errors and stopped trailing text stay outside it, as do pending actions. The
@@ -4455,11 +4458,6 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   singleton segment, literal-final-item leaf selection, failure/denial/recovery,
   retained-pane remounts, run rows keeping their details closed until opened, and
   a legacy search reveal.
-  Stream a Responses assistant message containing explicitly labelled progress
-  followed by final text in the same message. Check that the progress is
-  inside the disclosure before the final text appears. Settle and reload the
-  message; only the final text should remain outside the collapsed process,
-  and expanding it should reveal the progress without changing the answer.
   In AI settings, check the display selector in English and Simplified Chinese
   at 800px, 1000px, and 1440px window widths with 100% and 150% font scales.
   Select all three values and verify each remains visibly selected and saved.
@@ -4542,26 +4540,6 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   three window widths, and both font scales with isolated Electron state.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
-
-## E2E-CHAT-responses-interleaved-process
-
-- **Preconditions:** Offline mounted React transcript with Responses layout;
-  clipboard writes mocked, no live Desktop/provider.
-- **Steps:** In Flat/Fully folded, start empty thinking, then stream thinking,
-  commentary, search, thinking, commentary, search and final text start/deltas.
-  Include non-BMP characters. Open the first search before its group grows;
-  close only the second thinking row. Complete, expand groups and copy; repeat
-  after remounting a cloned completed model with layout and no live ranges.
-- **Expected:** The empty start has no turn; the next visible delta must render.
-  Two independent thinking/search rows retain block order and disclosure choices
-  through deltas/completion. Expanded completed/reopened groups keep that order.
-  Only `Verified answer 🚀.` appears outside the process under the original ID
-  and reaches Copy. Empty starts and progress text never appear as an answer.
-- **Automation:** `scripts/e2e/turn-process.tsx` via `pnpm test:e2e:transcript`;
-  reopened UI model only, not Host persistence.
-- **Specs:** `03-runtime/02-agent-runtime.md`, `04-ux/08-component-spec.md`;
-  ADR turn-process-and-thinking-display. **Acceptance:** C / F.
-  **Milestone:** Maintenance. **Status:** Automated; isolated Windows harness passed 2026-11-19.
 
 ## E2E-OUTPUT-CAP-716: Keep model requests inside the published context window
 

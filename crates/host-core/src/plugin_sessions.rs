@@ -313,7 +313,6 @@ fn parse_message(
         hosted_search: None,
         model_system: None,
         provider_replay: None,
-        response_layout: None,
         session_message: None,
     })
 }

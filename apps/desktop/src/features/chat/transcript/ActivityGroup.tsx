@@ -248,8 +248,7 @@ export const ActivityGroup = memo(function ActivityGroup({
   const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
   const live = isActive || topologyLive;
   const searchTarget = useContext(TranscriptSearchContext);
-  const revealRequest = useMemo(() => searchTarget && items.some((item) => item.message.id === searchTarget.messageId ||
-    (item.kind === "thinking" && item.sourceMessageId === searchTarget.messageId))
+  const revealRequest = useMemo(() => searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
     ? searchTarget.requestId : undefined, [items, searchTarget]);
   const visibleItems = useMemo(() => cachedVisibleActivityItems(items, hideThinking, isActive), [items, hideThinking, isActive]);
   const first = items[0];

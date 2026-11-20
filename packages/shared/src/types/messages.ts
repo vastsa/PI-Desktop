@@ -109,24 +109,12 @@ export type ToolTokenUsage = {
   estimated: true;
 };
 
-export type AssistantCommentaryRange = { start: number; end: number };
-
-/** Ordered display references, never provider input. Lengths index content or thinking in UTF-16. */
-export type ResponseLayoutBlock =
-  | { type: "thinking" | "commentary" | "text"; length: number }
-  | { type: "search"; id: string };
-
 export type UiMessage = {
   id: string;
   /** Durable root conversation identity for display grouping, never authorization. */
   turnId?: string;
   role: UiMessageRole;
   content: string;
-  /** Live presentation metadata: UTF-16 ranges of provider-labelled progress in content.
-   * History uses responseLayout when present, otherwise the stored providerReplay phases. */
-  commentaryRanges?: readonly AssistantCommentaryRange[];
-  /** Responses content order for streaming and persisted transcripts. Absent on older rows. */
-  responseLayout?: readonly ResponseLayoutBlock[];
   /** Internal model instructions/tool declarations; never a visible chat row. */
   modelSystem?: {
     version: 1;

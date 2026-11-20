@@ -39,6 +39,7 @@ import {
   useTranscriptMenu,
 } from "./TranscriptMenu";
 import { getExtraMessageAttachments } from "./extra-attachments";
+import { directionAttr } from "../../../lib/text-direction";
 
 /**
  * The typed form of a Skill or `@agent` invocation (ADR 0346): each validated
@@ -147,26 +148,59 @@ export const MessageRow = memo(function MessageRow({
     () => splitInlineContent(directories.text, message.attachments ?? []).parts,
     [message.attachments, directories.text],
   );
+  // #2388: a Persian/Arabic paragraph opening with an English word must keep
+  // its RTL base direction; direction follows the majority strong script, not
+  // the first strong character.
+  const userTextDirection = useMemo(
+    () => directionAttr(directories.text),
+    [directories.text],
+  );
   const renderContentPart = (
     part: (typeof userContentParts)[number],
     index: number,
     keyPrefix: string,
-  ) =>
-    part.kind === "text" ? (
-      <LinkifiedText
-        key={`${keyPrefix}-${index}`}
-        text={part.text}
-        attachments={message.attachments}
-        sourceOffset={part.start}
-      />
-    ) : (
-      <MessageAttachmentImage
-        key={`${keyPrefix}-${index}`}
-        attachment={part.attachment}
-        onOpenFile={openFileRef}
-        inline
-      />
+  ) => part.kind === "text" ? (
+    <LinkifiedText
+      key={`${keyPrefix}-${index}`}
+      text={part.text}
+      attachments={message.attachments}
+      sourceOffset={part.start}
+    />
+  ) : (
+    <MessageAttachmentImage
+      key={`${keyPrefix}-${index}`}
+      attachment={part.attachment}
+      onOpenFile={openFileRef}
+      inline
+    />
+  );
+  // Group the existing inline runs inside actual paragraph boxes. This gives
+  // each paragraph its own base direction and alignment without moving chips
+  // out of their paragraph or losing LinkifiedText's source offsets.
+  const userParagraphs: ReactNode[] = [];
+  let paragraphStart = 0;
+  for (const paragraph of directories.text.match(/[^\n]*(?:\n+|$)/g) ?? []) {
+    if (!paragraph) continue;
+    const start = paragraphStart;
+    const end = start + paragraph.length;
+    paragraphStart = end;
+    userParagraphs.push(
+      <span key={start} dir={directionAttr(paragraph)} style={{ display: "block", textAlign: "start" }}>
+        {userContentParts.map((part, index) => {
+          if (part.end <= start || part.start >= end) return null;
+          if (part.kind === "attachment") return renderContentPart(part, index, `paragraph-${start}`);
+          const sliceStart = Math.max(start, part.start);
+          const sliceEnd = Math.min(end, part.end);
+          return renderContentPart({
+            ...part,
+            start: sliceStart,
+            end: sliceEnd,
+            text: part.text.slice(sliceStart - part.start, sliceEnd - part.start),
+          }, index, `paragraph-${start}`);
+        })}
+      </span>,
     );
+  }
   // An attachment the body does not already name inline continues the body
   // text instead of taking a line of its own above it.
   const attachmentChips = extraAttachments.length ? (
@@ -337,7 +371,10 @@ export const MessageRow = memo(function MessageRow({
                   </div>
                 ) : null}
                 {directories.text || message.command ? (
-                  <div className="message-user-text selectable">
+                  <div
+                    className="message-user-text selectable"
+                    dir={userTextDirection}
+                  >
                     {editableUserMessage && message.command ? (
                       <>
                         {message.skillMentions?.length || message.agentMentions?.length ? (
@@ -358,9 +395,7 @@ export const MessageRow = memo(function MessageRow({
                           .map((part, index) => renderContentPart(part, index, "inline"))}
                       </>
                     ) : (
-                      userContentParts.map((part, index) =>
-                        renderContentPart(part, index, "content"),
-                      )
+                      userParagraphs
                     )}
                     {attachmentChips}
                   </div>

@@ -18,8 +18,6 @@ pub use history_mutations::{
     activate_message_revision_canonical, delete_message, retract_pending_prompt, running_turn,
 };
 mod model_system;
-#[cfg(test)]
-mod response_layout_tests;
 mod usage;
 pub use usage::{record_usage, session_usage_cost};
 
@@ -317,10 +315,6 @@ pub struct UiMessage {
     /// migration, and older builds ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_replay: Option<Value>,
-    /// Presentation-only response item order and UTF-16 text lengths from the
-    /// runtime. Stored in record meta without changing content or provider replay.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_layout: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,9 +441,6 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     }
     if let Some(replay) = &message.provider_replay {
         meta_obj.insert("providerReplay".into(), replay.clone());
-    }
-    if let Some(layout) = &message.response_layout {
-        meta_obj.insert("responseLayout".into(), layout.clone());
     }
     if let Some(command) = &message.command {
         meta_obj.insert("command".into(), json!(command));
@@ -620,7 +611,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let meta = record.meta.unwrap_or(Value::Null);
     let model_system = meta.get("modelSystem").cloned();
     let provider_replay = meta.get("providerReplay").cloned();
-    let response_layout = meta.get("responseLayout").cloned();
     let command = meta
         .get("command")
         .and_then(Value::as_str)
@@ -815,7 +805,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             hosted_search: hosted_search.clone(),
             model_system: None,
             provider_replay: None,
-            response_layout,
         }
     } else {
         let content = blocks
@@ -865,7 +854,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             hosted_search,
             model_system,
             provider_replay,
-            response_layout,
         }
     }
 }
@@ -4709,7 +4697,6 @@ mod tests {
             hosted_search: None,
             model_system: None,
             provider_replay: None,
-            response_layout: None,
             session_message: None,
         }
     }
@@ -5677,7 +5664,6 @@ mod tests {
             hosted_search: None,
             model_system: None,
             provider_replay: None,
-            response_layout: None,
             session_message: None,
         };
         append_message(&db, &session.id, &tool, None).unwrap();
@@ -6547,7 +6533,6 @@ mod tests {
             hosted_search: None,
             model_system: None,
             provider_replay: None,
-            response_layout: None,
             session_message: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
@@ -6694,7 +6679,6 @@ mod tests {
             agent_name: None,
             model_system: None,
             provider_replay: None,
-            response_layout: None,
             hosted_search: Some(json!({
                 "status": "completed",
                 "rounds": [

@@ -11,7 +11,8 @@ import {
   toToolDeclaration,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
-import { formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { applyMessageUpdate, deltaStreamPayloadFits, formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { restoreAssistantProviderReplay } from "./assistant-provider-replay.js";
 import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { buildSessionContext } from "./session-context.js";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens } from "./pi-runtime-estimates.js";
@@ -20,6 +21,7 @@ import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   isolatedWorkspaceGuidance,
+  isProgressOnlyAssistantTurn,
   delegateWorktreeNote,
   looksLikePseudoToolCall,
   toolResultFromUi,
@@ -293,65 +295,6 @@ describe("Pi 1.4 client identity", () => {
       expect(identities).toEqual([DESKTOP_AGENT_IDENTITY]);
     } finally {
       await runtime.dispose();
-    }
-  });
-});
-
-describe("Responses commentary routing", () => {
-  it("carries stage ranges while streaming and leaves the saved model text intact", async () => {
-    const progress = "Checking references.";
-    const answer = "Here is the result.";
-    const items = [progress, answer].map((text, index) => ({
-      id: `msg_fixture_${index}`, type: "message", role: "assistant", status: "completed",
-      phase: index === 0 ? "commentary" : "final_answer",
-      content: [{ type: "output_text", text, annotations: [] }],
-    }));
-    const search = { type: "web_search_call", id: "ws_fixture", status: "completed", action: { type: "search", query: "fixture" } };
-    const thought = { type: "reasoning", id: "rs_fixture", summary: [{ type: "summary_text", text: "Checked." }] };
-    const output = [items[0], search, thought, items[1]];
-    const frames = [
-      { type: "response.created", response: { id: "resp_fixture" } },
-      ...output.flatMap((item, index) => [
-        { type: "response.output_item.added", output_index: index, item: { ...item, content: [], summary: [] } },
-        ...("content" in item ? [{ type: "response.output_text.delta", output_index: index, content_index: 0, delta: item.content[0].text }] : []),
-        { type: "response.output_item.done", output_index: index, item },
-      ]),
-      { type: "response.completed", response: { id: "resp_fixture", status: "completed", output } },
-    ];
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(
-      frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
-      { headers: { "content-type": "text/event-stream" } },
-    )));
-    const events: AgentEventEnvelope["event"][] = [];
-    const runtime = createRuntime({
-      provider: { ...provider, apiStyle: "responses", baseUrl: "https://responses-fixture.invalid/v1" },
-      onEvent: (value) => { events.push((value as AgentEventEnvelope).event); },
-    });
-    try {
-      await runtime.prompt("Check the references and answer.", "fixture-user", "fixture-turn");
-      // The runtime may batch progress and answer tokens into one update.
-      const updates = events.flatMap(event => event.type === "message_update" ? [event.message] : []);
-      expect(updates.some(row => row.commentaryRanges?.[0]?.end === progress.length)).toBe(true);
-      const withSearch = updates.filter(row => row.hostedSearch?.rounds.some(round => round.id === search.id));
-      expect(withSearch.length).toBeGreaterThan(0);
-      for (const row of withSearch) {
-        expect(row.responseLayout?.slice(0, 2)).toEqual([{ type: "commentary", length: progress.length }, { type: "search", id: search.id }]);
-      }
-      const finish = events.find((event) => event.type === "message_end" && event.message.role === "assistant");
-      expect(finish).toMatchObject({ message: { content: progress + answer, thinking: "Checked.", status: "complete", responseLayout: [
-        { type: "commentary", length: progress.length }, { type: "search", id: search.id },
-        { type: "thinking", length: thought.summary[0].text.length }, { type: "text", length: answer.length },
-      ] } });
-      // The transcript-only search position never becomes a model replay block.
-      const replay = finish?.type === "message_end" ? finish.message.providerReplay?.blocks : undefined;
-      expect(replay).toEqual([
-        { type: "text", length: progress.length, signature: JSON.stringify({ v: 1, id: items[0].id, phase: "commentary" }) },
-        { type: "thinking", length: thought.summary[0].text.length, signature: expect.any(String) },
-        { type: "text", length: answer.length, signature: JSON.stringify({ v: 1, id: items[1].id, phase: "final_answer" }) },
-      ]);
-    } finally {
-      await runtime.dispose();
-      vi.unstubAllGlobals();
     }
   });
 });
@@ -6269,6 +6212,81 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
 });
 
 describe("DesktopAgentRuntime assistant thinking events", () => {
+  it.each(["provider", "interrupted"])("counts visible commentary in the %s abort estimate", async (termination) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; finalizeCurrentAssistant(status: "aborted"): void };
+    const content = [
+      { type: "text", text: "Checking", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+      { type: "text", text: "Done" },
+    ];
+    try {
+      await internal.handleAgentEvent({ type: "message_start", message: { role: "assistant", content } });
+      if (termination === "provider") {
+        await internal.handleAgentEvent({ type: "message_end", message: { role: "assistant", content: [], stopReason: "aborted" } });
+      } else internal.finalizeCurrentAssistant("aborted");
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing aborted message");
+      expect(event.message).toMatchObject({ status: "aborted", content: "Done", responseOutputTokens: 3 });
+    } finally { await runtime.dispose(); }
+  });
+
+  it("keeps the answer clean when a Responses replay exceeds the existing storage limit", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void> };
+    try {
+      const content = [
+        { type: "thinking", thinking: "reasoning", thinkingSignature: "x".repeat(65_536) },
+        { type: "text", text: "Checking.", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+        { type: "text", text: "Answer." },
+      ];
+      for (const type of ["message_start", "message_end"]) await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing settled message");
+      expect(event.message.content).toBe("Answer.");
+      expect(event.message.providerReplay).toBeUndefined();
+    } finally { await runtime.dispose(); }
+  });
+
+  it("streams Responses commentary as signed progress without sending replay on every delta", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; streamSink: { flush(): void } };
+    const signed = (text: string, phase: string) => ({ type: "text" as const, text,
+      textSignature: JSON.stringify({ v: 1, id: `msg_${phase}`, phase }) });
+    const send = async (type: string, content: ReturnType<typeof signed>[]) => {
+      await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      internal.streamSink.flush();
+      return onEvent.mock.calls.at(-1)![0].event as AgentEventEnvelope["event"];
+    };
+    try {
+      const progress = signed("Checking", "commentary");
+      const full = signed("Checking 🔎", "commentary");
+      const start = await send("message_start", [progress]);
+      if (start.type !== "message_start") throw new Error("missing start");
+      expect(start.message.providerReplay?.blocks[0]).toMatchObject({ length: progress.text.length, signature: progress.textSignature });
+      const delta = await send("message_update", [full]);
+      if (delta.type !== "message_update") throw new Error("missing progress delta");
+      expect(deltaStreamPayloadFits({ event: delta }, 64_000)).toBe(true);
+      expect(delta.message.providerReplay).toBeUndefined();
+      expect(applyMessageUpdate(start.message, delta).providerReplay?.blocks[0].length).toBe(full.text.length);
+      const boundary = await send("message_update", [full, signed("", "final_answer")]);
+      if (boundary.type !== "message_update") throw new Error("missing phase boundary");
+      expect(boundary.message.providerReplay?.blocks).toHaveLength(2);
+      const final = signed("Answer", "final_answer");
+      const answer = await send("message_update", [full, final]);
+      if (answer.type !== "message_update") throw new Error("missing answer delta");
+      expect(answer.deltaText).toBe("Answer");
+      expect(deltaStreamPayloadFits({ event: answer }, 64_000)).toBe(true);
+      const end = await send("message_end", [full, final]);
+      if (end.type !== "message_end") throw new Error("missing settled message");
+      expect(restoreAssistantProviderReplay(end.message.providerReplay, "", end.message.content)).toEqual([full, final]);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full] })).toBe(true);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full, signed("Next, use option B.", "final_answer")] })).toBe(false);
+    } finally { await runtime.dispose(); }
+  });
+
   it("normalizes thinking blocks and emits independent thinking deltas", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -9565,6 +9583,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         mark: {
           id: expect.any(String),
           throughMessageId: "recent-user",
+          createdAt: expect.any(String),
           generation: 1,
           summaryTokens: 7,
           contextTokens: 40_000,
@@ -12963,12 +12982,7 @@ describe("DesktopAgentRuntime hosted web search rounds (ADR 0297)", () => {
     // Round 1 starts searching.
     await handleAgentEvent({
       type: "message_start",
-      message: { role: "assistant", api: "openai-responses", content: [round("ws_1", "in_progress", "first query")] },
-    });
-    // An empty partial has no replacement for the search or its position.
-    await handleAgentEvent({ type: "message_update", message: { role: "assistant", api: "openai-responses", content: [] } });
-    expect(onEvent.mock.calls.at(-1)?.[0].event).toMatchObject({
-      type: "message_update", message: { responseLayout: [{ type: "search", id: "ws_1" }] },
+      message: { role: "assistant", content: [round("ws_1", "in_progress", "first query")] },
     });
     // Round 1 completes and round 2 starts, still without any text.
     await handleAgentEvent({

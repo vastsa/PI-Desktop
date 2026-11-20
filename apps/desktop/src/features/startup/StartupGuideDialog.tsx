@@ -10,6 +10,7 @@ import {
 import { IconCheck, IconClose, IconSearch } from "../../components/icons";
 import { Badge, Button, cx, OverlayBackdrop, portalOverlay, TooltipButton } from "../../components/ui";
 import { api } from "../../lib/api";
+import { ModalLayer } from "../../lib/portal-visibility";
 import { useModalDialog } from "../../lib/use-modal-dialog";
 import { useAppStore } from "../../stores/app-store";
 import { SettingsDestinationContent } from "../settings/SettingsDestinationContent";
@@ -44,74 +45,76 @@ export function StartupGuideDialog({
   };
 
   return portalOverlay(
-    <OverlayBackdrop className="overlay startup-guide-overlay" role="presentation">
-      <div
-        ref={dialogRef}
-        className="dialog startup-guide-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="startup-guide-title"
-        aria-describedby="startup-guide-description"
-        data-surface="startup-guide"
-        data-step={step}
-      >
-        <header className="startup-guide-header">
-          <div className="startup-guide-heading">
-            {plan.steps.length > 1 ? (
-              <span className="startup-guide-progress">
-                {t("startupGuide.progress", { current: index + 1, total: plan.steps.length })}
-              </span>
-            ) : null}
-            <h2 id="startup-guide-title">{t(`startupGuide.${step}.title`)}</h2>
-            <p id="startup-guide-description">{t(`startupGuide.${step}.description`)}</p>
-          </div>
-          <TooltipButton
-            type="button"
-            className="icon-btn"
-            tooltip={t("startupGuide.skip")}
-            ariaLabel={t("startupGuide.skip")}
-            onClick={() => onExit("skipped")}
-          >
-            <IconClose size={16} />
-          </TooltipButton>
-        </header>
-
-        <div className="startup-guide-body">
-          {step === "model" ? (
-            <div className="startup-guide-settings settings-content-inner">
-              <SettingsDestinationContent tab="agent" />
+    <ModalLayer>
+      <OverlayBackdrop className="overlay startup-guide-overlay" role="presentation">
+        <div
+          ref={dialogRef}
+          className="dialog startup-guide-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="startup-guide-title"
+          aria-describedby="startup-guide-description"
+          data-surface="startup-guide"
+          data-step={step}
+        >
+          <header className="startup-guide-header">
+            <div className="startup-guide-heading">
+              {plan.steps.length > 1 ? (
+                <span className="startup-guide-progress">
+                  {t("startupGuide.progress", { current: index + 1, total: plan.steps.length })}
+                </span>
+              ) : null}
+              <h2 id="startup-guide-title">{t(`startupGuide.${step}.title`)}</h2>
+              <p id="startup-guide-description">{t(`startupGuide.${step}.description`)}</p>
             </div>
-          ) : (
-            <LauncherShortcutStep onOpenShortcuts={() => onExit("openShortcuts")} />
-          )}
-        </div>
+            <TooltipButton
+              type="button"
+              className="icon-btn"
+              tooltip={t("startupGuide.skip")}
+              ariaLabel={t("startupGuide.skip")}
+              onClick={() => onExit("skipped")}
+            >
+              <IconClose size={16} />
+            </TooltipButton>
+          </header>
 
-        <footer className="startup-guide-footer">
-          {step === "model" ? (
-            hasUsableModel ? (
-              <Badge tone="success" className="startup-guide-status">
-                <IconCheck size={12} aria-hidden />
-                {t("startupGuide.model.ready")}
-              </Badge>
+          <div className="startup-guide-body">
+            {step === "model" ? (
+              <div className="startup-guide-settings settings-content-inner">
+                <SettingsDestinationContent tab="agent" />
+              </div>
             ) : (
-              <span className="startup-guide-hint">{t("startupGuide.model.pending")}</span>
-            )
-          ) : null}
-          <div className="startup-guide-actions">
-            <Button variant="ghost" onClick={() => (last ? onExit("skipped") : next())}>
-              {t("startupGuide.skip")}
-            </Button>
-            <Button variant="primary" onClick={next}>
-              {last
-                ? t("startupGuide.finish")
-                : step === "model" && !hasUsableModel
-                  ? t("startupGuide.later")
-                  : t("startupGuide.next")}
-            </Button>
+              <LauncherShortcutStep onOpenShortcuts={() => onExit("openShortcuts")} />
+            )}
           </div>
-        </footer>
-      </div>
-    </OverlayBackdrop>,
+
+          <footer className="startup-guide-footer">
+            {step === "model" ? (
+              hasUsableModel ? (
+                <Badge tone="success" className="startup-guide-status">
+                  <IconCheck size={12} aria-hidden />
+                  {t("startupGuide.model.ready")}
+                </Badge>
+              ) : (
+                <span className="startup-guide-hint">{t("startupGuide.model.pending")}</span>
+              )
+            ) : null}
+            <div className="startup-guide-actions">
+              <Button variant="ghost" onClick={() => (last ? onExit("skipped") : next())}>
+                {t("startupGuide.skip")}
+              </Button>
+              <Button variant="primary" onClick={next}>
+                {last
+                  ? t("startupGuide.finish")
+                  : step === "model" && !hasUsableModel
+                    ? t("startupGuide.later")
+                    : t("startupGuide.next")}
+              </Button>
+            </div>
+          </footer>
+        </div>
+      </OverlayBackdrop>
+    </ModalLayer>,
   );
 }
 

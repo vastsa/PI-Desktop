@@ -64,32 +64,6 @@ describe("toWireMessageUpdate / applyMessageUpdate", () => {
     expect(applied.id).toBe("m1");
   });
 
-  it("carries the latest commentary ranges through batching and clears them on replacement", () => {
-    const start = assistant({ id: "m1", content: "" });
-    const ranges = [{ start: 0, end: 9 }];
-    const progressLayout = [{ type: "commentary" as const, length: 9 }];
-    const finalLayout = [...progressLayout, { type: "text" as const, length: 7 }];
-    const progress = toWireMessageUpdate({
-      type: "message_update", deltaText: "Checking.",
-      message: { ...start, content: "Checking.", commentaryRanges: ranges, responseLayout: progressLayout },
-    });
-    const final = toWireMessageUpdate({
-      type: "message_update", deltaText: "Answer.",
-      message: { ...start, content: "Checking.Answer.", commentaryRanges: ranges, responseLayout: finalLayout },
-    });
-    expect(progress.message.content).toBe("");
-    const applied = applyMessageUpdate(start, mergeMessageUpdates(progress, final));
-    expect(applied.content).toBe("Checking.Answer.");
-    expect(applied.commentaryRanges).toEqual(ranges);
-    expect(applied.responseLayout).toEqual(finalLayout);
-    const replacement = toWireMessageUpdate({
-      type: "message_update", deltaText: "Replacement", resetText: true,
-      message: { ...start, content: "Replacement" },
-    });
-    expect(applyMessageUpdate(applied, replacement).commentaryRanges).toBeUndefined();
-    expect(applyMessageUpdate(applied, replacement).responseLayout).toBeUndefined();
-  });
-
   it("keeps snapshot updates as replacements", () => {
     const snapshot = assistant({ id: "m1", content: "replaced" });
     const event = { type: "message_update" as const, message: snapshot };
@@ -160,6 +134,17 @@ describe("mergeMessageUpdates", () => {
     expect(merged.resetText).toBe(true);
   });
 
+  it("extends signed progress locally when a pending snapshot absorbs a delta", () => {
+    const original = assistant({ id: "m", content: "A", providerReplay: {
+      version: 1, blocks: [{ type: "text", length: 1, signature: '{"v":1,"id":"m","phase":"commentary"}' }],
+    } });
+    const append = toWireMessageUpdate({ type: "message_update", message: original, deltaText: "🔎" });
+    const { message } = mergeMessageUpdates({ type: "message_update", message: original }, append);
+    expect(message.providerReplay?.blocks[0].length).toBe(message.content.length);
+    expect(original.providerReplay?.blocks[0].length).toBe(1);
+    expect(applyMessageUpdate(message, { ...append, resetText: true, deltaText: "replacement" }).providerReplay).toBeUndefined();
+  });
+
   it("applies a later delta onto a pending snapshot replacement", () => {
     const snapshot = assistant({ id: "m1", content: "Hello" });
     const merged = mergeMessageUpdates(
@@ -220,11 +205,6 @@ describe("deltaStreamPayloadFits", () => {
         64_000,
       ),
     ).toBe(true);
-  });
-
-  it("uses exact sizing for deltas which also carry block positions", () => {
-    const message = assistant({ id: "m1", content: "", responseLayout: [{ type: "search", id: "s".repeat(8_000) }] });
-    expect(deltaStreamPayloadFits({ event: toWireMessageUpdate({ type: "message_update", message, deltaText: "a" }) }, 4_000)).toBe(false);
   });
 
   it("does not claim a snapshot payload is a small delta", () => {

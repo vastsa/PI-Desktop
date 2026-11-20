@@ -151,7 +151,8 @@ import {
 } from "./assistant-provider-replay.js";
 import {
   assistantContent,
-  responseLayoutForBubble,
+  sameCommentaryBoundaries,
+  type CommentaryTranscript,
   isRecord,
   nowIso,
   timestampMs,
@@ -1180,9 +1181,10 @@ function hasProgressForwardIntent(text: string): boolean {
 export function isProgressOnlyAssistantTurn(message: unknown): boolean {
   if (!isRecord(message) || message.role !== "assistant") return false;
   if (messageRequestsTools(message)) return false;
-  const content = isRecord(message) ? message.content : undefined;
-  const text = assistantContent(content).text.trim();
-  if (!text || !hasProgressForwardIntent(text)) return false;
+  const content = assistantContent(message.content);
+  const text = content.text.trim();
+  if (!text && content.transcript?.text.trim()) return true;
+  if (content.hasFinalAnswer || !text || !hasProgressForwardIntent(text)) return false;
   if (!PROGRESS_TERMINAL_LEAD.test(text)) return true;
 
   // A report can mention a completed step and still announce the next one.
@@ -1861,6 +1863,7 @@ export class DesktopAgentRuntime {
   private planningState: PlanningState;
   private pendingPlanId?: string;
   private currentAssistant?: UiMessage;
+  private liveCommentary?: CommentaryTranscript;
   private pluginTools: PluginToolDef[];
   private pluginSkills: PluginSkillDef[];
   private trustedExtensionSpecs: TrustedExtensionSpec[];
@@ -6729,6 +6732,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private emit(event: AgentEventEnvelope["event"], turnId?: string, ts = Date.now()) {
+    // Business state is answer-only. Only the transcript transports the original
+    // signed text, so an old or restarted host can replay the same provider input.
+    if (this.liveCommentary &&
+        (event.type === "message_start" || event.type === "message_update" || event.type === "message_end") &&
+        event.message.id === this.currentAssistant?.id) {
+      const replay = event.type === "message_end" ? event.message.providerReplay : this.liveCommentary.replay;
+      // A failed or oversized terminal replay cannot identify raw progress on reload.
+      if (replay?.blocks.length) {
+        event = { ...event, message: { ...event.message, content: this.liveCommentary.text, providerReplay: replay } };
+      }
+    }
     this.onEvent({
       sessionId: this.sessionId,
       turnId: turnId ?? this.turnId,
@@ -8499,14 +8513,27 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
-  /** Keep search-only updates observable without sending a frame with stale text/order first. */
-  private snapshotHostedSearch(message: AssistantMessage, previous?: UiMessage["hostedSearch"]) {
-    // Reuse the previous snapshot for partial events with no new search state.
+  /**
+   * Fold pi-ai hostedSearch content blocks and message citations into the
+   * current assistant bubble as `UiMessage.hostedSearch`, emitting a
+   * full-frame message_update when the normalized state actually changed.
+   * Search state transitions are low frequency, so a full frame costs less
+   * than teaching every delta path about the field.
+   */
+  private applyHostedSearch(message: AssistantMessage): void {
+    if (!this.currentAssistant) return;
     const next = hostedSearchFromMessage({
       content: message.content,
       citations: message.hostedSearchCitations,
     });
-    return !next || (previous && JSON.stringify(previous) === JSON.stringify(next)) ? previous : next;
+    if (!next) return;
+    const previous = this.currentAssistant.hostedSearch;
+    if (previous && JSON.stringify(previous) === JSON.stringify(next)) return;
+    this.currentAssistant = {
+      ...this.currentAssistant,
+      hostedSearch: next,
+    };
+    this.emit({ type: "message_update", message: this.currentAssistant });
   }
 
   private async handleAgentEvent(event: AgentEvent) {
@@ -8539,7 +8566,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (event.message.role === "assistant") {
           this.clearAgentActivity();
           this.streamStartedAt = Date.now();
-          const content = assistantContent(event.message.content, event.message.api);
+          const content = assistantContent(event.message.content);
           const retryingAssistant =
             this.providerRetryInProgress ||
             this.overflowRecoveryInProgress ||
@@ -8562,13 +8589,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               : this.progressTurnRerunInProgress || this.overflowRecoveryInProgress
                 ? retryingAssistant?.content ?? ""
                 : content.text;
+          this.liveCommentary = initialText === content.text ? content.transcript : undefined;
           this.currentAssistant = {
             id: retryingAssistant?.id ?? randomUUID(),
             role: "assistant",
             content: initialText,
-            commentaryRanges: initialText === content.text ? content.commentaryRanges : retryingAssistant?.commentaryRanges,
-            responseLayout: initialText === content.text ? content.responseLayout : undefined,
-            hostedSearch: this.snapshotHostedSearch(event.message),
             ...(content.hasThinking && content.thinking
               ? { thinking: content.thinking }
               : {}),
@@ -8595,9 +8620,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             this.emit({ type: "message_update", message: this.currentAssistant });
           } else {
             this.emit({ type: "message_start", message: this.currentAssistant });
-            // Search subscribers consume updates, including a first round already present on start.
-            if (this.currentAssistant.hostedSearch) this.emit({ type: "message_update", message: this.currentAssistant });
           }
+          this.applyHostedSearch(event.message);
         }
         // User messages are echoed and persisted by the desktop main process
         // (agentPrompt handler); re-emitting them here would duplicate the
@@ -8606,25 +8630,18 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       case "message_update": {
         if (this.currentAssistant && event.message.role === "assistant") {
-          const content = assistantContent(event.message.content, event.message.api);
-          const previousLayout = this.currentAssistant.responseLayout;
-          const previousSearch = this.currentAssistant.hostedSearch;
-          const hostedSearch = this.snapshotHostedSearch(event.message, previousSearch);
+          this.applyHostedSearch(event.message);
+          const content = assistantContent(event.message.content);
+          const previousCommentary = this.liveCommentary;
+          if (content.hasText) this.liveCommentary = content.transcript;
           const previousText = this.currentAssistant.content;
           const previousThinking = this.currentAssistant.thinking ?? "";
           const nextText = content.hasText ? content.text : previousText;
-          const previousCommentary = this.currentAssistant.commentaryRanges;
-          const commentaryRanges = content.hasText ? content.commentaryRanges : previousCommentary;
-          const commentaryChanged = commentaryRanges?.length !== previousCommentary?.length ||
-            commentaryRanges?.some(({ start, end }, index) =>
-              start !== previousCommentary?.[index]?.start || end !== previousCommentary?.[index]?.end,
-            );
           const nextThinking = content.hasThinking
             ? content.thinking
             : previousThinking;
-          const responseLayout = responseLayoutForBubble(content, this.currentAssistant, nextText, nextThinking);
           const textDelta = content.hasText
-            ? cumulativeDelta(previousText, content.text)
+            ? cumulativeDelta(previousCommentary?.text ?? previousText, this.liveCommentary?.text ?? content.text)
             : { delta: "", reset: false };
           const thinkingDelta = content.hasThinking
             ? cumulativeDelta(previousThinking, content.thinking)
@@ -8632,9 +8649,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
-            commentaryRanges,
-            responseLayout,
-            hostedSearch,
             ...(nextThinking
               ? { thinking: nextThinking }
               : content.hasThinking
@@ -8642,13 +8656,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 : {}),
             status: "streaming",
           };
-          if (
+          if (!sameCommentaryBoundaries(previousCommentary, this.liveCommentary) || (this.liveCommentary && textDelta.reset)) {
+            this.emit({ type: "message_update", message: this.currentAssistant });
+          } else if (
             textDelta.delta ||
             thinkingDelta.delta ||
             textDelta.reset ||
-            thinkingDelta.reset ||
-            commentaryChanged || hostedSearch !== previousSearch ||
-            (previousLayout !== responseLayout && JSON.stringify(previousLayout) !== JSON.stringify(responseLayout))
+            thinkingDelta.reset
           ) {
             this.emit({
               type: "message_update",
@@ -8675,6 +8689,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               } });
             }
             this.currentAssistant = undefined;
+            this.liveCommentary = undefined;
             if (steering.toolNames.length) {
               this.activateDeferredTools(steering.toolNames);
               this.setAgentTools(this.activeTools());
@@ -8696,7 +8711,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         if (this.currentAssistant && event.message.role === "assistant") {
           const assistantId = this.currentAssistant.id;
-          const content = assistantContent(event.message.content, event.message.api);
+          const content = assistantContent(event.message.content);
+          const visibleTranscript = content.hasText ? content.transcript?.text : this.liveCommentary?.text;
+          this.liveCommentary = content.transcript;
           // pi-agent-core encodes stream failures in the final message
           // (stopReason "error"/"aborted" + errorMessage) and resolves the
           // prompt normally, so this is where provider/model errors surface.
@@ -8734,12 +8751,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const nextThinking = content.hasThinking
             ? content.thinking
             : this.currentAssistant.thinking ?? "";
-          // A terminal (or recovery) event can be the first frame carrying the finished layout.
-          this.currentAssistant = {
-            ...this.currentAssistant,
-            commentaryRanges: content.hasText ? content.commentaryRanges : this.currentAssistant.commentaryRanges,
-            responseLayout: responseLayoutForBubble(content, this.currentAssistant, nextText, nextThinking),
-          };
           // `nextText` may include text retained in a reused assistant bubble
           // from an earlier recovery attempt. Recovery classification must
           // inspect only the response that just ended, or a silent retry after
@@ -8810,6 +8821,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             !failed &&
             !aborted &&
             responseText.trim().length === 0 &&
+            !content.transcript?.text.trim() &&
             !messageRequestsTools(event.message);
           // A completion notice needs no acknowledgement, so its own reply may
           // stay silent (D446). The exception covers exactly that reply: the
@@ -8967,7 +8979,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const responseOutputTokens =
             aborted && (!usage || usage.outputTokens <= 0)
               ? estimateVisibleResponseOutputTokens({
-                  content: nextText,
+                  content: visibleTranscript ?? nextText,
                   thinking: nextThinking,
                 })
               : undefined;
@@ -9010,13 +9022,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             providerReplay: failed
               ? undefined
               : providerReplayForBubble(
-                  captureAssistantProviderReplay((event.message as any).content),
+                  captureAssistantProviderReplay(event.message.content),
                   nextText === content.text && nextThinking === content.thinking,
                 ),
           };
           if (!this.currentAssistant.providerReplay) delete this.currentAssistant.providerReplay;
           if (!this.currentAssistant.responseModelId) delete this.currentAssistant.responseModelId;
           this.emit({ type: "message_end", message: this.currentAssistant });
+          this.liveCommentary = undefined;
           this.activeProviderRetryAttempt = 0;
           this.streamStartedAt = undefined;
           this.currentAssistant = undefined;
@@ -9230,7 +9243,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         (responseDurationMs ?? 0);
       const responseOutputTokens =
         status === "aborted"
-          ? estimateVisibleResponseOutputTokens(this.currentAssistant)
+          ? estimateVisibleResponseOutputTokens({
+              content: this.liveCommentary?.text ?? this.currentAssistant.content,
+              thinking: this.currentAssistant.thinking,
+            })
           : undefined;
       this.currentAssistant = {
         ...this.currentAssistant,
@@ -9250,6 +9266,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // burns its retries before giving up shows here as a large providerWaitMs.
     this.streamStartedAt = undefined;
     this.currentAssistant = undefined;
+    this.liveCommentary = undefined;
   }
 
   /** Keep a pre-flight user message in context so a reused runtime and the
@@ -9325,6 +9342,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.turnEpoch += 1;
     this.abortDelegationsFromPreviousTurns();
     this.currentAssistant = undefined;
+    this.liveCommentary = undefined;
     this.requestStartedAt = Date.now();
     // An approved plan runs as a plain Agent turn, never as a mode run turn.
     this.modeState.clearTurn();

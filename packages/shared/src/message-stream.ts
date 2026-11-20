@@ -45,8 +45,6 @@ export function streamingMessageIdentity(message: UiMessage): UiMessage {
       : {}),
     ...(message.agentName ? { agentName: message.agentName } : {}),
     ...(message.hostedSearch ? { hostedSearch: message.hostedSearch } : {}),
-    ...(message.commentaryRanges ? { commentaryRanges: message.commentaryRanges } : {}),
-    ...(message.responseLayout ? { responseLayout: message.responseLayout } : {}),
   };
 }
 
@@ -161,15 +159,25 @@ export function applyMessageUpdate(
   else if (event.deltaText) content += event.deltaText;
   if (event.resetThinking) thinking = event.deltaThinking ?? "";
   else if (event.deltaThinking) thinking += event.deltaThinking;
+  // A streaming Responses snapshot establishes the signed text boundaries once.
+  // An append grows its last block; a replacement must not reuse stale offsets.
+  let replay = seed.providerReplay;
+  if (replay?.version === 1 && Array.isArray(replay.blocks) && seed.status === "streaming") {
+    const tail = replay.blocks.at(-1);
+    if (event.resetText) replay = undefined;
+    else if (tail?.type === "text" && event.deltaText) {
+      const blocks = [...replay.blocks.slice(0, -1), { ...tail, length: tail.length + event.deltaText.length }];
+      replay = { ...replay, blocks };
+    }
+  }
   return {
     ...seed,
+    ...(replay !== seed.providerReplay ? { providerReplay: replay } : {}),
     id: event.message.id,
     role: event.message.role,
     createdAt: event.message.createdAt || seed.createdAt,
     status: event.message.status ?? seed.status,
     content,
-    commentaryRanges: event.message.commentaryRanges,
-    responseLayout: event.message.responseLayout,
     ...(thinking ? { thinking } : { thinking: undefined }),
     ...(event.message.modelId ? { modelId: event.message.modelId } : {}),
     ...(event.message.providerId ? { providerId: event.message.providerId } : {}),
@@ -198,8 +206,6 @@ export function deltaStreamPayloadFits(
   if (!event || event.type !== "message_update" || event.stream !== "delta") {
     return false;
   }
-  // Phase ranges and block references are variable-sized; use the caller's exact size check.
-  if (event.message?.responseLayout || event.message?.commentaryRanges) return false;
   const chars =
     (event.deltaText?.length ?? 0) +
     (event.deltaThinking?.length ?? 0) +

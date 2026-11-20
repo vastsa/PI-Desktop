@@ -197,23 +197,6 @@ truncated tool calls retain their existing behavior.
     visible assistant error message
 12. finalize and persist successful answer/thinking blocks independently
 
-For Responses text with a known `commentary` phase, live assistant updates
-carry presentation-only UTF-16 ranges in `commentaryRanges`, relative to the
-whole reconstructed `content`. A delta carries the current ranges, not an
-incremental range list. Persisted messages still use the original content
-and existing provider replay signatures, which retain the phase after reload.
-Classification does not change stop reasons, tool execution, usage, or the
-messages sent back to the provider.
-
-Responses-only `UiMessage.responseLayout` is an optional readonly block sequence:
-`{ type: "thinking" | "commentary" | "text", length: number }` or
-`{ type: "search", id: string }`. UTF-16 lengths consume canonical `thinking`
-or, for commentary/text, a shared cursor into `content`; search IDs match
-`hostedSearch.rounds[].id`. Starts may have zero length; delta updates carry the
-current full layout. Completed messages retain it for reopen. Without layout,
-legacy display is unchanged; no interleaving is inferred. This presentation
-metadata changes neither canonical text, provider replay nor tool/group policies.
-
 While an active turn has no new transcript row, the runtime emits a normalized
 `status` event that names the quiet interval: `starting` for the prompt
 handoff, `waiting-model` while a provider request waits for its first assistant
@@ -508,6 +491,10 @@ See E2E-146a.
 The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
+
+Responses text explicitly marked `commentary` is progress, not a subagent
+report, one-shot result, or final answer. Signed transcript rows retain the
+provider's original text for replay. Unmarked text is treated as before.
 
 When restoring a checkpoint, tool-call reconstruction respects its
 `throughMessageId` boundary. A surviving tool row must not attach its call to

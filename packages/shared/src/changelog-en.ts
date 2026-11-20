@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const enEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Turn on OpenAI Fast mode per model and use /fast in a conversation to request priority service; it may use subscription limits faster or cost more per token.",
       "Inline visualizations load faster with reusable chart helpers, and failed scripts now show actionable errors instead of blank cards.",
@@ -17,6 +18,7 @@ export const enEntries: ChangelogEntry[] = [
       "Choose GPT-6.2 Sol and GPT-6.2 Astra with OpenAI, ChatGPT, GitHub Copilot, OpenCode and gateways that publish them, with their published limits and prices.",
       "Settings now opens as a dialog over the current page, the sidebar puts New task, Scheduled and Plugin market at the top, and a short startup guide helps you add a model and learn the plugin launcher shortcut.",
       "Choose which sidebar modules to show in Settings → Appearance → Sidebar modules: New task, Scheduled, Plugin market, pinned sessions, Sessions, Projects, their toolbar buttons and the version chip.",
+      "The sidebar's Sessions section is now Recent: every unpinned conversation, newest first, with Load more; the empty home title also shows a dropdown arrow for switching projects.",
     ],
   },
   {

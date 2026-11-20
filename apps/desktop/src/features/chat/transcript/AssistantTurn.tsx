@@ -387,12 +387,11 @@ export const AssistantTurn = memo(function AssistantTurn({
     () => cachedVisibleProcessSteps(process, hideThinking, isActive),
     [process, hideThinking, isActive],
   );
-  // A single stored message can end with a visible process step rather than a reply.
-  // Give live state to that rendered part; keep the canonical entry for timing and outcome.
-  const last = entry.parts.at(-1);
-  const reply = responses.at(-1);
-  const activePart = !isActive ? undefined
-    : last?.kind === "message" && reply?.message.id === last.message.id ? reply : process.at(-1);
+  // The live tail is the turn's actual last part. A process chunk opens and
+  // reports live state only while it owns that part, so a superseded thinking
+  // chunk cannot keep a false "Thinking" header once a Bash call or a separate
+  // streamed answer takes over the turn.
+  const activePart = isActive ? entry.parts.at(-1) : undefined;
   const partContext = { isActive, activePart, runtimeActivity, turnDelegationStatuses, turnDelegationTimings };
 
   return (
@@ -410,7 +409,6 @@ export const AssistantTurn = memo(function AssistantTurn({
             turnId={entry.id}
             processParts={process}
             turnParts={entry.parts}
-            activePart={activePart}
             visibleSteps={visibleSteps}
             isActive={isActive}
             failed={summary.hasError}

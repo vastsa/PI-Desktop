@@ -89,7 +89,6 @@ const ActivityItemBlock = memo(function ActivityItemBlock({
     return <ThinkingRow
       key={`thinking-${item.message.id}`}
       message={item.message}
-      sourceMessageId={item.sourceMessageId}
       streaming={streaming}
       autoOpen={thinkingRowStartsOpen({ streaming, collapseSettled: collapseThinking })}
       onUserInteraction={onUserInteraction}

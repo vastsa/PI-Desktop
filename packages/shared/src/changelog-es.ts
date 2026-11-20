@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const esEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Activa OpenAI Fast para cada modelo y usa /fast en una conversación para solicitar prioridad; puede consumir antes los límites de tu suscripción o aumentar el coste por token.",
       "Las visualizaciones integradas cargan más rápido con asistentes de gráficos reutilizables; los scripts fallidos ahora muestran errores útiles en lugar de tarjetas en blanco.",
@@ -17,6 +18,7 @@ export const esEntries: ChangelogEntry[] = [
       "Elige GPT-6.2 Sol y GPT-6.2 Astra con OpenAI, ChatGPT, GitHub Copilot, OpenCode y las pasarelas que los publican, con sus límites y precios publicados.",
       "Los ajustes ahora se abren como un diálogo sobre la página actual, la barra lateral muestra Nueva tarea, Programadas y Mercado de plugins arriba, y una breve guía de inicio te ayuda a añadir un modelo y conocer el atajo del lanzador de plugins.",
       "Elige qué módulos de la barra lateral se muestran en Configuración → Apariencia → Módulos de la barra lateral: Nueva tarea, Programadas, Mercado de plugins, sesiones fijadas, Sesiones, Proyectos, sus botones y la versión.",
+      "La sección Sesiones de la barra lateral ahora es Recientes: todas las conversaciones no fijadas, de la más nueva a la más antigua, con Cargar más; el título de la página de inicio vacía también muestra una flecha desplegable para cambiar de proyecto.",
     ],
   },
   {

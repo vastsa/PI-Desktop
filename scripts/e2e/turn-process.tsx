@@ -3,13 +3,7 @@ import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
-import {
-  applyMessageUpdate,
-  toWireMessageUpdate,
-  type AppSettings,
-  type HostedSearchRound,
-  type UiMessage,
-} from "@pi-desktop/shared";
+import { applyMessageUpdate, type AppSettings, type UiMessage } from "@pi-desktop/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ShowThinkingRow } from "../../apps/desktop/src/components/settings/ShowThinkingRow";
 import { TranscriptDisplayModeRow } from "../../apps/desktop/src/components/settings/TranscriptDisplayModeRow";
@@ -93,17 +87,16 @@ export async function turnProcessProbe() {
     active = false,
     search: TranscriptSearchTarget | null = null,
     key = "turn",
-    allowEmpty = false,
   ) => {
     const entry = buildTranscriptEntries(messages).entries.find(
       (item) => item.kind === "assistant-turn",
     );
-    assert(entry?.kind === "assistant-turn" || allowEmpty, "missing turn");
+    assert(entry?.kind === "assistant-turn", "missing turn");
     flushSync(() =>
       root.render(
         <I18nextProvider i18n={i18n}>
           <TranscriptSearchContext.Provider value={search}>
-            {entry?.kind === "assistant-turn" ? <AssistantTurn key={key} entry={entry} isActive={active} /> : null}
+            <AssistantTurn key={key} entry={entry} isActive={active} />
           </TranscriptSearchContext.Provider>
         </I18nextProvider>,
       ),
@@ -193,154 +186,58 @@ export async function turnProcessProbe() {
   const contiguous = [read, grep, bash1, bash2, edit, answer];
 
   try {
-    // The same provider message holds both progress and the final answer.
     setSettings({ smoothStreaming: false, showThinking: false });
     const progress = "Checking references.";
-    const finalText = "Here is the result.";
-    const phased = message("phased", "assistant", "", { status: "streaming" });
-    const commentaryRanges = [{ start: 0, end: progress.length }];
-    const live = applyMessageUpdate(phased, toWireMessageUpdate({
-      type: "message_update", deltaText: progress,
-      message: { ...phased, content: progress, commentaryRanges },
-    }));
-    render([live], true, null, "live-phased-response");
-    check(firstProcess()?.textContent?.includes(progress) && !row("phased"), "live commentary is only in the process");
-    const answered = applyMessageUpdate(live, toWireMessageUpdate({
-      type: "message_update", deltaText: finalText,
-      message: { ...live, content: progress + finalText },
-    }));
-    render([answered], true, null, "live-phased-response");
-    check(row("phased")?.textContent === finalText && !row("phased")?.closest(".turn-process"), "final text streams outside the process");
-
-    const savedPhaseMessage = { ...answered, status: "complete" as const, commentaryRanges: undefined,
-      providerReplay: { version: 1 as const, blocks: [{
-        type: "text" as const, length: progress.length,
-        signature: JSON.stringify({ v: 1, id: "msg_progress", phase: "commentary" }),
-      }, { type: "text" as const, length: finalText.length }] },
-    };
-    render([savedPhaseMessage], false, null, "reopened-phased-response");
-    check(processHeaders()[0]?.getAttribute("aria-expanded") === "false" && row("phased")?.textContent === finalText, "reloaded commentary starts folded without polluting the answer");
-    click(processHeaders()[0]);
-    check(firstProcess()?.textContent?.includes(progress) && row("phased")?.textContent === finalText, "reopening the process reveals the saved commentary only there");
-    setSettings();
-
-    // Responses slices use canonical UTF-16 text; only clipboard I/O is mocked.
-    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    let copied: string | undefined;
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true, value: { writeText: async (text: string) => { copied = text; } },
+    const markdown = "**Ready.**";
+    const marked = { type: "text" as const, length: progress.length,
+      signature: JSON.stringify({ v: 1, id: "msg_progress", phase: "commentary" }) };
+    const unmarked = { type: "text" as const, length: markdown.length };
+    const identity = message("phased", "assistant", "", { status: "streaming" });
+    const append = (snapshot: UiMessage, deltaText: string) => applyMessageUpdate(snapshot, {
+      type: "message_update", stream: "delta", message: identity, deltaText,
     });
-    try {
-      const thought1 = "First reasoning 🧭.", thought2 = "Second reasoning after the first search.";
-      const commentary1 = "Checking the first source 🔎.", commentary2 = "Checking the second source.";
-      const answerLead = "Verified answer", finalAnswer = `${answerLead} 🚀.`;
-      const searches = ["first", "second"].map((name, index) => ({
-        id: `ws-layout-${index}`, query: `${name} layout search`, status: "searching" as const, sources: [],
-      } satisfies HostedSearchRound));
-      const found = searches.map((round) => ({ ...round, status: "completed" as const,
-        sources: [{ url: `https://example.test/${round.id}`, title: `${round.query} source details` }],
-      }));
-      const firstLayout = [
-        { type: "thinking", length: thought1.length }, { type: "commentary", length: commentary1.length },
-        { type: "search", id: searches[0].id },
-      ] as const;
-      const secondThoughtLayout = [...firstLayout, { type: "thinking", length: thought2.length }] as const;
-      const processLayout = [...secondThoughtLayout,
-        { type: "commentary", length: commentary2.length }, { type: "search", id: searches[1].id },
-      ] as const;
-      // No client tools: Commands first has the same grouping as Fully folded.
-      for (const mode of ["flat", "fully-folded"] as const) {
-        setSettings({ transcriptDisplayMode: mode, smoothStreaming: false,
-          showThinking: true, autoCollapseThinking: false });
-        const key = `responses-layout-${mode}`;
-        let current = message(key, "assistant", "", {
-          status: "streaming", responseLayout: [{ type: "thinking", length: 0 }],
-        });
-        const paint = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        const advance = async (responseLayout: NonNullable<UiMessage["responseLayout"]>,
-          deltaText = "", deltaThinking = "", hostedSearch = current.hostedSearch) => {
-          current = applyMessageUpdate(current, toWireMessageUpdate({
-            type: "message_update", deltaText, deltaThinking,
-            message: { ...current, responseLayout, hostedSearch,
-              content: current.content + deltaText, thinking: (current.thinking ?? "") + deltaThinking },
-          }));
-          render([current], true, null, key);
-          await paint();
-        };
-        const headers = (selector: string) => [...container.querySelectorAll<HTMLButtonElement>(selector)];
-        const thoughts = () => headers(".thinking > .tool-row-header");
-        const searchRows = () => headers(".hosted-search > .tool-row-header");
-        const checkChoices = (phase: string) => check(
-          thoughts().length === 2 && searchRows().length === 2 &&
-          thoughts()[0]?.getAttribute("aria-expanded") === "true" &&
-          thoughts()[1]?.getAttribute("aria-expanded") === "false" &&
-          searchRows()[0]?.getAttribute("aria-expanded") === "true",
-          `${mode}: ${phase} preserves independent thinking/search choices`,
-        );
-        const checkOrder = (phase: string) => {
-          const text = firstProcess()?.innerText ?? "";
-          let offset = 0;
-          check([thought1, commentary1, searches[0].query, thought2, commentary2, searches[1].query]
-            .every((fragment) => {
-              const index = text.indexOf(fragment, offset);
-              offset = index + fragment.length;
-              return index >= 0;
-            }), `${mode}: ${phase} preserves Responses block order`);
-        };
-        const checkAnswer = (text: string) => check(
-          row(key)?.textContent === text && !row(key)?.closest(".turn-process") &&
-            !firstProcess()?.textContent?.includes(text),
-          `${mode}: only the answer renders outside the process under its original message ID`,
-        );
-        render([current], true, null, key, true);
-        check(!container.querySelector(".assistant-turn"), `${mode}: empty thinking start has no turn`);
-        await advance([{ type: "thinking", length: thought1.length }, { type: "commentary", length: 0 }], "", thought1);
-        check(firstProcess()?.innerText.includes(thought1) && !row(key),
-          `${mode}: thinking delta renders before empty commentary start without an answer`);
-        await advance(firstLayout, commentary1, "", { status: "searching", rounds: [searches[0]] });
-        check(firstProcess()?.innerText.includes(commentary1) && !row(key),
-          `${mode}: commentary streams inside the process`);
-        click(searchRows()[0] ?? null);
-        await advance(secondThoughtLayout, "", thought2, { status: "completed", rounds: [found[0]] });
-        await advance(processLayout, commentary2, "", { status: "searching", rounds: [found[0], searches[1]] });
-        checkOrder("live");
-        check([...container.querySelectorAll(".hosted-search-sources a")].some((link) =>
-          visible(link) && link.textContent?.includes(found[0].sources[0].title)),
-        `${mode}: opened search sources survive later blocks and group growth`);
-        click(thoughts()[1] ?? null);
-        await advance([...processLayout, { type: "text", length: 0 }], "", "", { status: "completed", rounds: found });
-        check(!row(key), `${mode}: empty final text start does not expose progress as answer`);
-        await advance([...processLayout, { type: "text", length: answerLead.length }], answerLead);
-        checkAnswer(answerLead);
-        await advance([...processLayout, { type: "text", length: finalAnswer.length }], " 🚀.");
-        checkChoices("answer deltas");
-        checkAnswer(finalAnswer);
-        const completed: UiMessage = { ...current, status: "complete", commentaryRanges: undefined };
-        for (const [phase, snapshot, renderKey] of [
-          ["completed", completed, key], ["reloaded", structuredClone(completed), `${key}-reloaded`],
-        ] as const) {
-          render([snapshot], false, null, renderKey);
-          check(processHeaders().length === 1 && processHeaders()[0]?.getAttribute("aria-expanded") === "false",
-            `${mode}: ${phase} process starts folded`);
-          checkAnswer(finalAnswer);
-          click(processHeaders()[0] ?? null);
-          for (const header of headers(".process-activity-group.grouped > .tool-activity-header")) {
-            if (header.getAttribute("aria-expanded") === "false") click(header);
-          }
-          if (phase === "completed") { checkChoices(phase); click(thoughts()[1] ?? null); }
-          await paint();
-          checkOrder(`${phase} expanded`);
-          copied = undefined;
-          click(headers(".message-actions button").find((button) =>
-            button.getAttribute("aria-label") === i18n.t("chat.copy")) ?? null);
-          await Promise.resolve();
-          check(copied === finalAnswer, `${mode}: ${phase} Copy excludes reasoning, commentary and searches`);
-        }
+    const live = append({ ...identity,
+      providerReplay: { version: 1, blocks: [{ ...marked, length: 0 }] },
+    }, progress);
+    const copyButton = () => container.querySelector<HTMLButtonElement>(`.message-actions button[aria-label="${i18n.t("chat.copy")}"]`);
+    const copyReply = async () => {
+      // Exercise the mounted toolbar button without touching the user's clipboard.
+      const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+      let payload: string | undefined;
+      Object.defineProperty(navigator, "clipboard", { configurable: true,
+        value: { writeText: async (text: string) => { payload = text; } } });
+      try {
+        click(copyButton());
+        await Promise.resolve();
+        return payload;
+      } finally {
+        if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+        else Reflect.deleteProperty(navigator, "clipboard");
       }
-    } finally {
-      if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
-      else Reflect.deleteProperty(navigator, "clipboard");
+    };
+    render([live], true, null, "phased");
+    check(visible(firstProcess()) && firstProcess()?.querySelector(".message-bubble")?.textContent === progress &&
+      !container.querySelector(".message-col > .message-bubble, .thinking") && !copyButton(),
+      "live commentary is visible only as process prose with thinking hidden");
+    const answered = append({ ...live,
+      providerReplay: { version: 1, blocks: [marked, { ...unmarked, length: 0 }] },
+    }, markdown);
+    render([answered], true, null, "phased");
+    check(row("phased")?.textContent === "Ready." && !row("phased")?.closest(".turn-process"),
+      "the answer streams outside the commentary disclosure");
+    const settled = { ...answered, status: "complete" as const };
+    for (const [key, savedRow] of [["phased", settled], ["reopened", structuredClone(settled)]] as const) {
+      render([savedRow], false, null, key);
+      check(processHeaders()[0]?.getAttribute("aria-expanded") === "false" && row("phased")?.textContent === "Ready.",
+        `${key}: completion folds progress without hiding the answer`);
+      click(processHeaders()[0]);
+      check(firstProcess()?.querySelector(".message-bubble")?.textContent === progress && await copyReply() === markdown,
+        `${key}: opening the process reveals the commentary, but Copy writes only the raw answer`);
     }
+    render([{ ...settled, providerReplay: { version: 1, blocks: [{ ...marked, signature: "msg_legacy" }, unmarked] } }],
+      false, null, "legacy-unsigned");
+    check(!processHeaders().length && row("phased")?.textContent === `${progress}Ready.` && await copyReply() === settled.content,
+      "legacy saved text without an explicit phase still displays and copies in full");
     setSettings();
 
     // One disclosure per turn: the Bash rows are rows inside the turn's process,
