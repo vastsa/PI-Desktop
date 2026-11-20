@@ -121,6 +121,97 @@ pub(super) fn reconcile_project_paths(conn: &Connection, target: Option<&str>) -
     Ok(())
 }
 
+/// Move one explicitly selected project to its replacement directory while
+/// retaining the project id used by sessions and scheduled tasks. The target
+/// may be an empty shadow row created by opening the replacement path first;
+/// a target with its own chats, tasks, or memory is never merged implicitly.
+pub(super) fn relocate_project_path(conn: &Connection, old: &str, new: &str) -> Result<i64> {
+    let source = conn
+        .query_row("SELECT id FROM projects WHERE path=?1", [old], |row| {
+            row.get::<_, i64>(0)
+        })
+        .optional()?
+        .ok_or_else(|| anyhow!("project to relocate was not found: {old}"))?;
+    let target = conn
+        .query_row("SELECT id FROM projects WHERE path=?1", [new], |row| {
+            row.get::<_, i64>(0)
+        })
+        .optional()?;
+    let task_paths = {
+        let mut statement = conn.prepare(
+            "SELECT id,json_extract(config_json,'$.workspacePath') FROM scheduled_tasks
+             WHERE json_extract(config_json,'$.workspacePath') IS NOT NULL",
+        )?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+    let target_task = task_paths
+        .iter()
+        .any(|(_, path)| path.as_deref().and_then(canonical_project_path).as_deref() == Some(new));
+    let occupied: bool = target_task
+        || conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM kv WHERE ns='projectMemory' AND key=?1)
+                OR EXISTS(SELECT 1 FROM sessions WHERE project_id=?2)
+                OR EXISTS(SELECT 1 FROM scheduled_tasks WHERE project_id=?2)",
+            params![new, target],
+            |row| row.get(0),
+        )?;
+    if occupied {
+        return Err(anyhow!(
+            "replacement folder belongs to a non-empty project: {new}"
+        ));
+    }
+
+    conn.execute_batch("SAVEPOINT relocate_project_path")?;
+    let result = (|| -> Result<()> {
+        if let Some(target) = target {
+            conn.execute(
+                "UPDATE projects SET pinned=MAX(pinned,(SELECT pinned FROM projects WHERE id=?2)),
+                 created_at=MIN(created_at,(SELECT created_at FROM projects WHERE id=?2)),
+                 last_opened_at=MAX(last_opened_at,(SELECT last_opened_at FROM projects WHERE id=?2)),
+                 worktree_setup_command=COALESCE(worktree_setup_command,(SELECT worktree_setup_command FROM projects WHERE id=?2))
+                 WHERE id=?1",
+                params![source, target],
+            )?;
+            conn.execute(
+                "UPDATE kv SET value_json=?1 WHERE ns='app' AND key='currentProjectId'
+                 AND (value_json=?2 OR value_json=printf('\"%d\"',?2))",
+                params![source.to_string(), target],
+            )?;
+            conn.execute("DELETE FROM projects WHERE id=?1", [target])?;
+        }
+        for (id, path) in &task_paths {
+            if path.as_deref().and_then(canonical_project_path).as_deref() == Some(old) {
+                conn.execute(
+                    "UPDATE scheduled_tasks SET config_json=json_set(config_json,'$.workspacePath',?1)
+                     WHERE id=?2",
+                    params![new, id],
+                )?;
+            }
+        }
+        conn.execute(
+            "UPDATE kv SET key=?1 WHERE ns='projectMemory' AND key=?2",
+            params![new, old],
+        )?;
+        conn.execute(
+            "UPDATE projects SET path=?1 WHERE id=?2",
+            params![new, source],
+        )?;
+        conn.execute_batch("RELEASE relocate_project_path")?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        conn.execute_batch("ROLLBACK TO relocate_project_path; RELEASE relocate_project_path")
+            .context("roll back explicit project relocation")?;
+        return Err(error);
+    }
+    Ok(source)
+}
+
 impl Database {
     /// A destructive operation must prefer the selected stored row. Resolving
     /// symlinks/case first can silently select a different historical row.

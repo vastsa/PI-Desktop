@@ -560,6 +560,37 @@ journeys cover successful reads, saves and directory browsing.
   `sidebar-preferences.test.mjs`); rendered scenario Draft, with primary
   promotion covered by `node scripts/e2e-project-edit.mjs`
 
+## E2E-PROJECT-relocate-single-root-with-existing-sessions
+
+- **Preconditions**: A legacy or stored single-root local project has an idle
+  saved chat, a scheduled task, and project memory. Its directory can be
+  renamed outside the app. A second independent project can occupy the
+  replacement path for the conflict variant.
+- **Steps**: 1) Rename the only project directory outside the app. 2) Open Edit
+  project, add the replacement, promote it to Primary, remove the stale row,
+  and save once. 3) Reopen the original chat and run a workspace-dependent
+  Read or Bash call. 4) Inspect project memory, the scheduled task, the project
+  list, and the binding after restart. 5) Repeat with an empty shadow project
+  previously opened at the replacement path. 6) Repeat with a non-empty
+  independent target project and verify that saving is rejected.
+- **Expected**: The original project id and stored group id survive, its path
+  becomes the canonical replacement, and the existing chat, scheduled task, and
+  path-scoped memory remain available without recreating the session. The old
+  workspace call succeeds at the replacement path. An empty shadow row is
+  absorbed, leaving one project. A target with its own chats, tasks, or memory
+  blocks the operation with both projects and the original group unchanged.
+  Multi-root detachment still preserves a removed root's chats as a standalone
+  project; no automatic directory-move detection or implicit project merge is
+  introduced.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `03-runtime/06-host-rpc-protocol.md` (Projects),
+  `04-ux/08-component-spec.md` (project editor).
+- **Acceptance**: C (project and chat interaction), D (workspace identity),
+  F (persistence), Quality.
+- **Milestone**: M5
+- **Status**: Host integration-covered by the four
+  `single_root_replacement_*` regressions and the active-workspace RPC regression; full UI scenario Draft
+
 ## E2E-048c: Detach a project folder with chats and delete it
 
 - **Preconditions**: One retained logical project has a primary folder and an

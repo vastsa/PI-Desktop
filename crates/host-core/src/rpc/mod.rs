@@ -2173,11 +2173,25 @@ async fn handle_request(
                 .map(str::to_string)
                 .collect::<Vec<_>>();
             let primary = params.get("primary").and_then(Value::as_str);
-            let st = state.lock().await;
+            let mut st = state.lock().await;
+            let active_group = match st.workspace.path.as_deref() {
+                Some(path) => st
+                    .db
+                    .project_group_for_path(path)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
+                None => None,
+            };
             let group = st
                 .db
                 .update_project_group(group_id, name, &folders, primary)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            if active_group.is_some_and(|current| {
+                current.id == group_id
+                    && current.roots.len() == 1
+                    && current.primary_path != group.primary_path
+            }) {
+                st.workspace.set(PathBuf::from(&group.primary_path));
+            }
             Ok(json!({ "group": group }))
         }
         "project.group.rename" => {
@@ -6539,6 +6553,54 @@ mod tests {
         .unwrap();
         assert_eq!(updated["group"]["name"], "Adjusted");
         assert_eq!(updated["group"]["roots"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn project_group_update_rpc_relocates_the_active_single_root_workspace() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let old = data_dir.path().join("old");
+        let new = data_dir.path().join("new");
+        fs::create_dir(&old).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        app_state.workspace.set(&old);
+        let state = Arc::new(Mutex::new(app_state));
+        let created = handle_request(
+            state.clone(),
+            "project.group.create",
+            json!({ "name": "Movable", "folders": [old] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let group_id = created["group"]["id"].as_str().unwrap();
+        fs::rename(&old, &new).unwrap();
+
+        handle_request(
+            state.clone(),
+            "project.group.update",
+            json!({
+                "groupId": group_id,
+                "name": "Movable",
+                "folders": [new],
+                "primary": new,
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let workspace = handle_request(
+            state,
+            "workspace.get",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            workspace["workspace"]["path"],
+            json!(crate::db::canonical_project_path(&new.to_string_lossy()).unwrap())
+        );
     }
 
     #[tokio::test]

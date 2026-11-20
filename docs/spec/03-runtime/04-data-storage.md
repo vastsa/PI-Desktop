@@ -91,6 +91,13 @@ with sessions is omitted from `detachedPaths` and remains readable as a standalo
 legacy group; removing a root from group membership never deletes sessions or files.
 Existing path projects are projected as legacy single-root groups at read time;
 their path-scoped memory and filesystem instructions remain readable.
+Replacing the sole root of a legacy or stored single-root group is an explicit
+project relocation, not a detach. The host retains the original project id and
+updates its canonical path in the same transaction as the group edit, moves the
+old path's `projectMemory` key and bound scheduled-task `workspacePath`, and
+absorbs only an empty target project row. Existing chats and scheduled tasks
+therefore retain their owner. A target that already owns chats, tasks, or memory
+project. Multi-root detachment keeps the existing standalone-project behavior.
 5. **Plan/Goal checkpoints are immutable host artifacts** with recorded path,
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.

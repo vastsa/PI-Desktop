@@ -357,6 +357,7 @@ impl Database {
             }
             return self.rename_project_group(&current.id, name);
         }
+        let transaction = self.conn.unchecked_transaction()?;
         let current_primary = canonical_project_path(&current.primary_path)
             .ok_or_else(|| anyhow!("project group primary path is invalid"))?;
         let requested_primary = primary
@@ -394,12 +395,14 @@ impl Database {
                     "the primary folder must be one of the group folders: {requested}"
                 ))
             }
-            None if selected.iter().any(|path| path == &current_primary) => current_primary,
+            None if selected.iter().any(|path| path == &current_primary) => current_primary.clone(),
             None => return Err(anyhow!("the primary folder cannot be removed")),
         };
         let mut ordered = vec![primary.clone()];
         ordered.extend(selected.into_iter().filter(|path| path != &primary));
 
+        let relocating_single_root =
+            current.roots.len() == 1 && ordered.len() == 1 && primary != current_primary;
         let removed = current
             .roots
             .iter()
@@ -407,22 +410,32 @@ impl Database {
             .filter(|path| !ordered.iter().any(|candidate| candidate == path))
             .collect::<Vec<_>>();
         let mut removed_without_sessions = Vec::new();
-        for path in &removed {
-            let has_sessions: bool = self.conn.query_row(
-                "SELECT EXISTS(
-                    SELECT 1 FROM sessions s
-                    JOIN projects p ON p.id = s.project_id
-                    WHERE p.path = ?1
-                )",
-                params![path],
-                |row| row.get(0),
-            )?;
-            if !has_sessions {
-                removed_without_sessions.push(*path);
+        if !relocating_single_root {
+            for path in &removed {
+                let has_sessions: bool = self.conn.query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM sessions s
+                        JOIN projects p ON p.id = s.project_id
+                        WHERE p.path = ?1
+                    )",
+                    params![path],
+                    |row| row.get(0),
+                )?;
+                if !has_sessions {
+                    removed_without_sessions.push(*path);
+                }
             }
         }
-        for path in &ordered {
-            self.ensure_project(path, false)?;
+        if relocating_single_root {
+            super::project_path_migration::relocate_project_path(
+                &self.conn,
+                &current_primary,
+                &primary,
+            )?;
+        } else {
+            for path in &ordered {
+                self.ensure_project(path, false)?;
+            }
         }
 
         if current.legacy && ordered.len() == 1 {
@@ -431,6 +444,13 @@ impl Database {
                 .execute(params![name, primary])?;
             let mut legacy = current;
             legacy.name = name.to_string();
+            if relocating_single_root {
+                legacy.id = format!("legacy:{primary}");
+                legacy.primary_path = primary.clone();
+                legacy.roots[0].path = primary.clone();
+                legacy.roots[0].name = project_display_name(&primary);
+            }
+            transaction.commit()?;
             return Ok(legacy);
         }
 
@@ -507,6 +527,7 @@ impl Database {
             }
         }
         self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
+        transaction.commit()?;
         Ok(group)
     }
 

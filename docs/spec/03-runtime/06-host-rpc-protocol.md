@@ -286,7 +286,12 @@ type ToolBudgetHealth = {
   are removed, a `primary` outside `folders` is rejected, roots owned by
   another non-legacy group are rejected, and a root with existing chats cannot
   be detached. Removed roots are retained as suppressed historical paths rather
-  than reappearing as standalone legacy groups.
+  than reappearing as standalone legacy groups. Replacing the only root of a
+  legacy or stored single-root group instead relocates its existing project row:
+  the canonical path and path-scoped memory move while the project id, chats,
+  scheduled tasks, and group id remain stable. An empty shadow row at the new
+  path is absorbed; a target with its own chats, tasks, or memory is rejected,
+  and every database change rolls back together on failure.
 - `project.group.memory.get/set({ groupId, entries })` — reads or normalizes
   shared group memory using the existing 32 KiB entry limit.
 - `project.group.instructions.get/set({ groupId, content })` — reads or stores
