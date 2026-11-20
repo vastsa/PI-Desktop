@@ -424,3 +424,4 @@ git history.
 | plugin-transcript-selection-views | [Docked views can accept transcript selections](plugin-transcript-selection-views.md) | Accepted (issue #2395) |
 | opt-in-background-job-continuation | [Opt-in background job continuation](opt-in-background-job-continuation.md) | Proposed (#2143) |
 | fork-release-coordinates | [Fork release coordinates and unsigned macOS builds](fork-release-coordinates.md) | Accepted |
+| github-connector | [Built-in GitHub connector](github-connector.md) | Accepted |
