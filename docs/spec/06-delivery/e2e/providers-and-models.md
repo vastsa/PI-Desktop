@@ -714,6 +714,21 @@ with only Host API controlled. Running-turn configuration remains queued.
 - **Status**: Unit-covered (stream processor terminates on the terminal
   event via the pi-ai patch); live-proxy scenario Draft
 
+## E2E-PROVIDER-responses-explicit-nonstrict
+
+- Complete a turn, then switch the same conversation to a custom Responses
+  model using default compatibility. Ask to update an existing weekly task
+  for two distinct weekdays. Activate `ScheduledTaskUpdate` via `ToolSearch`.
+- Verify the new request replays the prior turn. The activated function
+  declaration carries explicit `strict: false` and retains the weekday
+  uniqueness constraint. The runtime sends one update to the Host, replays
+  the result to the provider, and returns the assistant confirmation.
+- Run `node scripts/e2e-responses-tool-strictness.mjs <built sidecar.js>`
+  against the production sidecar bundle with a loopback provider and a fixture
+  Host. The runtime regression also covers current and replayed declarations,
+  strict-capable adapters, and local rejection of duplicate weekdays.
+- Spec: [Responses function tool strictness](../../03-runtime/11-provider-model-system.md#162-responses-function-tool-strictness).
+
 ## E2E-005E: DeepSeek thinking replay includes reasoning_content on aggregator endpoints
 
 - **Preconditions**: An OpenAI-compatible provider whose base URL is not
