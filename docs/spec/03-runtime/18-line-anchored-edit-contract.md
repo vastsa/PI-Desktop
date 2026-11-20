@@ -596,6 +596,12 @@ the turn (§9.3, [08-error-codes](08-error-codes.md) §3.3).
 Every error message names one concrete next step. "Re-read and retry" without a
 range is not an acceptable message when the host knows the range.
 
+Malformed-op diagnostics name a concrete replacement form: range `PUT` with
+`+TEXT` rows, `CUT`, or a gap `PUT`. Unified-diff hunk headers and Markdown/diff
+wrappers remain invalid input; the parser rejects them with this guidance rather
+than silently discarding lines. An empty `PUT` also remains invalid and directs
+the caller to `CUT`.
+
 ## 12. Limits
 
 | Limit | Value | Behavior at the limit |
