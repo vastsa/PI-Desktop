@@ -488,6 +488,17 @@ test("a token that cannot be a header value is refused before any request", asyn
   assert.deepEqual(h.changes(), []);
 });
 
+test("a pasted token with a non-ASCII character is invalid, not a network failure", async () => {
+  const h = harness();
+  for (const token of ["ghp_abc\u00e9def", "\u201cghp_abcdef\u201d", "ghp_\u4ee4\u724c"]) {
+    const error = await rejection(h.connector.setToken(token));
+    assert.equal(error.errorCode, "GITHUB_INVALID_TOKEN");
+    assert.equal(error.retriable, false);
+  }
+  assert.deepEqual(h.apiCalls, []);
+  assert.equal(h.state.credential, null);
+});
+
 test("a classic token without the repo scope is stored with its real scopes", async () => {
   const h = harness();
   h.responders.viewer = async () => ({ login: "octocat", scopes: ["read:user", "gist"] });

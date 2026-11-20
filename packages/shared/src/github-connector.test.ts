@@ -49,6 +49,21 @@ describe("GitHub connector contract", () => {
     expect(isGitHubTokenShape(undefined as unknown as string)).toBe(false);
   });
 
+  it("rejects anything outside printable ASCII, which could not be sent in a header", () => {
+    // A header value is bytes; a pasted smart quote or accented letter would
+    // fail at the transport and read as a network problem instead of a typo.
+    expect(isGitHubTokenShape("gho_abc\u00e9123")).toBe(false);
+    expect(isGitHubTokenShape("gho_abc\u2019123")).toBe(false);
+    expect(isGitHubTokenShape("gho_\u4ee4\u724c")).toBe(false);
+    expect(isGitHubTokenShape("gho_\ud83d\ude00")).toBe(false);
+    expect(isGitHubTokenShape("gho_abc\u200b123")).toBe(false);
+    expect(isGitHubTokenShape("gho_abc\u0080")).toBe(false);
+    // Every printable ASCII character stays acceptable.
+    let printable = "";
+    for (let code = 0x21; code <= 0x7e; code += 1) printable += String.fromCharCode(code);
+    expect(isGitHubTokenShape(printable)).toBe(true);
+  });
+
   it("registers the connector error codes", () => {
     const codes = [
       "GITHUB_NOT_CONNECTED",

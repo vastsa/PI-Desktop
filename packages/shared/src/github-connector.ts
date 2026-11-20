@@ -37,13 +37,16 @@ export function githubConnectorScopes(allowWorkflowScope: boolean): string[] {
 }
 
 /**
- * Whether a string can be a GitHub token at all: 1 to 4096 characters with no
- * whitespace and no control characters. This is a shape check, not a format
- * check — GitHub has changed its token prefixes before — and it is what keeps
- * a pasted value with an embedded newline from ever reaching a request header.
+ * Whether a string can be a GitHub token at all: 1 to 4096 printable ASCII
+ * characters (0x21 to 0x7E), so no whitespace, no control character, and
+ * nothing a header value cannot carry. This is a shape check, not a format
+ * check — GitHub has changed its token prefixes before. It keeps a pasted
+ * value with an embedded newline out of a request header, and it makes a
+ * stray smart quote or accented letter an invalid token rather than a
+ * transport failure that reads like a network problem.
  */
 export function isGitHubTokenShape(value: string): boolean {
   if (typeof value !== "string") return false;
   if (value.length < 1 || value.length > GITHUB_TOKEN_MAX_LENGTH) return false;
-  return !/[\s\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}]/u.test(value);
+  return /^[\x21-\x7e]+$/.test(value);
 }
