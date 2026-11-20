@@ -46,7 +46,7 @@ export function HomeProjectSwitcher({
   const projectSort = useAppStore((state) => state.projectSort);
   const activeProjectPath = useAppStore((state) => state.activeProjectPath);
   const activeSession = useAppStore((state) => state.sessions.find((session) => session.id === state.activeSessionId));
-  const newSession = useAppStore((state) => state.newSession);
+  const openTaskDraft = useAppStore((state) => state.openTaskDraft);
   const openProject = useAppStore((state) => state.openProject);
   const cloneProject = useAppStore((state) => state.cloneProject);
   const showToast = useAppStore((state) => state.showToast);
@@ -116,7 +116,7 @@ export function HomeProjectSwitcher({
       busyRef.current = true;
       setBusy(true);
       try {
-        await newSession({ projectPath: nextPath });
+        await openTaskDraft({ projectPath: nextPath });
       } catch (error) {
         reportError(error);
       } finally {
@@ -124,14 +124,16 @@ export function HomeProjectSwitcher({
         setBusy(false);
       }
     },
-    [activeKey, busy, close, newSession, reportError],
+    [activeKey, busy, close, openTaskDraft, reportError],
   );
 
   const selectMenuProject = async (project: ProjectMenuEntry) => {
     if (project.localPath) return selectProject(project.localPath);
     if (busy || busyRef.current || !project.remoteProject?.connected) return;
     busyRef.current = true; setBusy(true);
-    try { await newSession({ remoteProject: project.remoteProject }); close(); }
+    try { await openTaskDraft({
+      target: { environmentId: `default:${project.remoteProject.hostKey}`, remoteProject: project.remoteProject },
+    }); close(); }
     catch (error) { reportError(error); }
     finally { busyRef.current = false; setBusy(false); }
   };
@@ -149,7 +151,7 @@ export function HomeProjectSwitcher({
       close();
       const nextKey = normalizeProjectPath(workspace.path);
       if (nextKey && nextKey !== previous) {
-        await newSession({ projectPath: workspace.path });
+        await openTaskDraft({ projectPath: workspace.path });
       }
     } catch (error) {
       reportError(error);
@@ -157,7 +159,7 @@ export function HomeProjectSwitcher({
       busyRef.current = false;
       setBusy(false);
     }
-  }, [busy, cloneProject, cloneTarget, close, newSession, reportError]);
+  }, [busy, cloneProject, cloneTarget, close, openTaskDraft, reportError]);
 
   const pickFolder = useCallback(async () => {
     if (busy || busyRef.current) return;
@@ -172,7 +174,7 @@ export function HomeProjectSwitcher({
       const nextPath = useAppStore.getState().workspace?.path;
       const nextKey = normalizeProjectPath(nextPath);
       if (nextPath && nextKey && nextKey !== previous) {
-        await newSession({ projectPath: nextPath });
+        await openTaskDraft({ projectPath: nextPath });
       }
     } catch (error) {
       reportError(error);
@@ -180,7 +182,7 @@ export function HomeProjectSwitcher({
       busyRef.current = false;
       setBusy(false);
     }
-  }, [busy, close, newSession, openProject, reportError]);
+  }, [busy, close, openTaskDraft, openProject, reportError]);
 
   useEffect(() => {
     if (!open) return;

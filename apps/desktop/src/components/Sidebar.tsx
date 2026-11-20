@@ -1,5 +1,4 @@
 import { useRepositoryProjects } from "../features/chat/session-target/use-repository-projects";
-import { useSessionTargetStore } from "../features/chat/session-target/session-target-store";
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
 import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
@@ -31,7 +30,6 @@ import { SessionHoverCard } from "../features/sessions/SessionHoverCard";
 import { useSessionHoverCard } from "../features/sessions/useSessionHoverCard";
 import { isDefaultSessionTitle, useAppStore } from "../stores/app-store";
 import {
-  getGlobalPinnedSessions,
   normalizeProjectPath,
   sessionArchived,
   sessionPinned,
@@ -44,7 +42,6 @@ import {
   getVisibleRecentSessions,
   nextRecentSessionsLimit,
   RECENT_SESSIONS_INITIAL_COUNT,
-  selectRecentSessions,
 } from "../lib/sidebar-recent-sessions";
 import { listableSessions } from "../lib/session-origin";
 import {
@@ -135,6 +132,7 @@ import {
 type ProjectEntry = {
   path: string;
   displayPath?: string;
+  cloud: boolean;
   key: string;
   name: string;
   sessions: SessionSummary[];
@@ -144,6 +142,10 @@ type ProjectEntry = {
   /** Best-effort git branch from the project workspace, if known. */
   branch?: string;
 };
+
+function canReorderWithinGroup(source: ProjectEntry, target: ProjectEntry) {
+  return source.cloud === target.cloud && sameProjectReorderBucket(source.meta, target.meta);
+}
 
 /** Private MIME so a sidebar session drag is never mistaken for an OS file drop. */
 const SESSION_DRAG_MIME = "application/x-pi-desktop-session";
@@ -285,6 +287,7 @@ export function Sidebar({
   const sessionOutcomes = useAppStore((s) => s.sessionOutcomes);
   const pendingPermissions = useAppStore((s) => s.pendingPermissions);
   const setPage = useAppStore((s) => s.setPage);
+  const openTaskDraft = useAppStore((s) => s.openTaskDraft);
   const page = useAppStore((s) => s.page);
   const settings = useAppStore((s) => s.settings);
   // Project headers must answer "is anything running under here?" while the
@@ -294,7 +297,6 @@ export function Sidebar({
   // Per-module visibility from Settings → Appearance → Sidebar modules.
   const moduleVisible = (id: Parameters<typeof sidebarModuleVisible>[1]) =>
     sidebarModuleVisible(settings?.sidebarModules, id);
-  const showPinnedSection = moduleVisible("pinnedSessions");
   const showSessionsSection = moduleVisible("sessions");
   const showSessionSort = moduleVisible("sessionSort");
   const showNewSession = moduleVisible("newSession");
@@ -353,7 +355,7 @@ export function Sidebar({
     registerDismissGuard: registerSessionHoverCardDismissGuard,
   } = useSessionHoverCard();
   const [expandedProjectSessions, setExpandedProjectSessions] = useState<Record<string, boolean>>({});
-  const [recentSessionsLimit, setRecentSessionsLimit] = useState(RECENT_SESSIONS_INITIAL_COUNT);
+  const [temporarySessionsLimit, setTemporarySessionsLimit] = useState(RECENT_SESSIONS_INITIAL_COUNT);
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
   const [dropProjectKey, setDropProjectKey] = useState<string | null>(null);
   const [projectsDropActive, setProjectsDropActive] = useState(false);
@@ -694,9 +696,6 @@ export function Sidebar({
     // from there.
     const candidates = listableSessions(sessions)
       .filter((session) => showArchived || !sessionArchived(session, sessionMeta[session.id]));
-    // Empty sessions are durable sidebar rows now. Their message count, not
-    // their title, controls New Task reuse, so a manual rename never changes
-    // the empty-slot behavior.
     return candidates;
   }, [sessions, showArchived, sessionMeta]);
 
@@ -737,20 +736,6 @@ export function Sidebar({
     return a.id.localeCompare(b.id);
   }, [displaySessionSort, sessionMeta, taskTitle]);
 
-  // With the pinned section hidden, pins stay in their own project or
-  // session list (still sorted first) instead of disappearing.
-  const pinnedSessions = useMemo(
-    () => showPinnedSection
-      ? getGlobalPinnedSessions(filtered, sessionMeta, projectMeta, showArchived)
-        .sort(compareSessions)
-      : [],
-    [filtered, sessionMeta, projectMeta, showArchived, compareSessions, showPinnedSection],
-  );
-  const pinnedSessionIds = useMemo(
-    () => new Set(pinnedSessions.map((session) => session.id)),
-    [pinnedSessions],
-  );
-
   const projectEntries = useMemo(() => {
     const byPath = new Map<string, ProjectEntry>();
     const add = (rawPath: string, name?: string, branch?: string, open = false) => {
@@ -764,10 +749,12 @@ export function Sidebar({
         return;
       }
       const meta = projectMetaFor(rawPath, projectMeta);
+      const remote = openProjects.find((project) => normalizeProjectPath(project.path) === normalized)?.remote
+        ?? (normalizeProjectPath(workspace?.path) === normalized ? workspace?.remote : undefined);
       byPath.set(normalized, {
         path: rawPath,
-        displayPath: openProjects.find((project) => normalizeProjectPath(project.path) === normalized)?.remote?.path
-          ?? (normalizeProjectPath(workspace?.path) === normalized ? workspace?.remote?.path : undefined),
+        displayPath: remote?.path,
+        cloud: Boolean(remote) || rawPath.startsWith("remote-project:"),
         key: normalized,
         name: projectName(rawPath, meta.name ?? name),
         sessions: [],
@@ -797,6 +784,7 @@ export function Sidebar({
     );
     for (const entry of result) entry.sessions.sort(compareSessions);
     result.sort((a, b) => {
+      if (a.cloud !== b.cloud) return Number(a.cloud) - Number(b.cloud);
       const archiveOrder = Number(!!a.meta.archived) - Number(!!b.meta.archived);
       if (archiveOrder !== 0) return archiveOrder;
       const pinOrder = Number(!!b.meta.pinned) - Number(!!a.meta.pinned);
@@ -892,7 +880,7 @@ export function Sidebar({
       if (sourceIndex < 0 || targetIndex < 0) return;
       const source = projectEntries[sourceIndex];
       const target = projectEntries[targetIndex];
-      if (!sameProjectReorderBucket(source.meta, target.meta)) {
+      if (!canReorderWithinGroup(source, target)) {
         return;
       }
       keys.splice(sourceIndex, 1);
@@ -940,7 +928,7 @@ export function Sidebar({
           source &&
           destination &&
           target.key !== current.projectKey &&
-          sameProjectReorderBucket(source.meta, destination.meta)
+          canReorderWithinGroup(source, destination)
         ) {
           const insertAfter = projectReorderInsertAfter(
             moveEvent.clientY,
@@ -1010,8 +998,9 @@ export function Sidebar({
     (event: ReactKeyboardEvent<HTMLButtonElement>, projectKey: string) => {
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
       const index = projectEntries.findIndex((entry) => entry.key === projectKey);
+      const source = projectEntries[index];
       const target = projectEntries[index + (event.key === "ArrowUp" ? -1 : 1)];
-      if (!target) return;
+      if (!source || !target || !canReorderWithinGroup(source, target)) return;
       event.preventDefault();
       event.stopPropagation();
       reorderProjectEntries(projectKey, target.key, event.key === "ArrowDown");
@@ -1044,40 +1033,29 @@ export function Sidebar({
       .sort(compareSessions),
     [filtered, compareSessions],
   );
-  // Recent sessions: temporary chats plus every session shown under a retained
-  // project, so a project's newest work stays visible while it is folded.
-  const recentSessions = useMemo(
-    () => selectRecentSessions(
-      [...temporarySessions, ...projectEntries.flatMap((entry) => entry.sessions)],
-      pinnedSessionIds,
+  const { visibleSessions: visibleTemporarySessions, nextPageCount: temporaryNextPageCount } = useMemo(
+    () => getVisibleRecentSessions(
+      temporarySessions.filter((session) => !isRemoteSession(session)), temporarySessionsLimit,
     ),
-    [temporarySessions, projectEntries, pinnedSessionIds],
+    [temporarySessions, temporarySessionsLimit],
   );
-  const {
-    visibleSessions: visibleRecentSessions,
-    nextPageCount: recentNextPageCount,
-  } = useMemo(
-    () => getVisibleRecentSessions(recentSessions, recentSessionsLimit),
-    [recentSessions, recentSessionsLimit],
+  const cloudTemporarySessions = useMemo(
+    () => temporarySessions.filter(isRemoteSession), [temporarySessions],
   );
-  const remoteProjectGroups = useMemo(() => groupRemoteProjectSessions(
-    filtered.filter((session) => isRemoteSession(session) && !pinnedSessionIds.has(session.id)), compareSessions,
-  ), [filtered, pinnedSessionIds, compareSessions]);
-  // Flat ordered list of every visible session id — used for Shift+click range
-  // selection. Follows render order; a project session also listed under
-  // Recent keeps its first (Recent) position.
-  const flatSessionOrder = useMemo(() => {
-    const ids = new Set<string>();
-    for (const s of pinnedSessions) ids.add(s.id);
-    for (const s of visibleRecentSessions) ids.add(s.id);
-    for (const entry of projectEntries) {
-      for (const s of entry.sessions) {
-        if (!pinnedSessionIds.has(s.id)) ids.add(s.id);
-      }
-    }
-    for (const group of remoteProjectGroups) for (const session of group.sessions) ids.add(session.id);
-    return [...ids];
-  }, [pinnedSessions, visibleRecentSessions, projectEntries, pinnedSessionIds, remoteProjectGroups]);
+  const remoteProjectGroups = useMemo(
+    () => groupRemoteProjectSessions(filtered, compareSessions), [filtered, compareSessions],
+  );
+  const flatSessionOrder = useMemo(() => [
+    ...(showProjectsSection ? [
+      ...projectEntries.flatMap((entry) => entry.sessions),
+      ...remoteProjectGroups.flatMap((group) => group.sessions),
+      ...cloudTemporarySessions,
+    ] : []),
+    ...(showSessionsSection ? visibleTemporarySessions : []),
+  ].map((session) => session.id), [
+    showProjectsSection, projectEntries, remoteProjectGroups, cloudTemporarySessions,
+    showSessionsSection, visibleTemporarySessions,
+  ]);
 
   /** Handle multi-select click on a session row. Returns true if the click was consumed by multi-select. */
   const handleMultiSelectClick = (event: React.MouseEvent, sessionId: string): boolean => {
@@ -1592,25 +1570,12 @@ export function Sidebar({
     }
   };
 
-  const createSession = async (options?: { projectPath?: string | null }) => {
+  const createProjectSession = async (projectPath: string) => {
     try {
-      await newSession(options);
-      focusComposer();
+      if (await openTaskDraft({ projectPath })) focusComposer();
     } catch (error) {
       reportError(error);
     }
-  };
-
-  const createProjectSession = async (path: string) => {
-    const repository = repositoryProjects[path];
-    if (!repository) {
-      await createSession({ projectPath: path });
-      return;
-    }
-    await clearProject();
-    useSessionTargetStore.getState().preselect(`default:${repository.hostKey}`, repository);
-    setPage("chat");
-    focusComposer();
   };
 
   const openProjectPicker = async () => {
@@ -2149,17 +2114,12 @@ export function Sidebar({
     options?: {
       temporary?: boolean;
       projectPath?: string;
-      global?: boolean;
       showLastReplyDate?: boolean;
     },
   ) => items.map((session) => {
     const meta = sessionMeta[session.id] ?? {};
     const normalizedProjectPath = normalizeProjectPath(session.projectPath);
     const temporary = options?.temporary ?? !normalizedProjectPath;
-    const owningProject = options?.global && normalizedProjectPath
-      ? projectEntriesByPath.get(normalizedProjectPath)?.name
-        ?? projectName(normalizedProjectPath, projectMetaFor(normalizedProjectPath, projectMeta).name)
-      : t("nav.hoverCardTemporarySpace");
     const active = page === "chat" && selectedSessionId === session.id;
     const archived = sessionArchived(session, meta);
     const running = Boolean(runningSessions[session.id]);
@@ -2253,11 +2213,6 @@ export function Sidebar({
           {isRemoteSession(session) && <span className="thread-item-source" title={session.remoteHostLabel}>{t("remote:remote")}</span>}
           <WorktreeBadge worktree={session.worktree} sessionId={session.id} />
           <span className="thread-item-title">{taskTitle(session.title)}</span>
-          {options?.global ? (
-            <span className="thread-item-project">
-              {owningProject}
-            </span>
-          ) : null}
         </button>
         <div
           className={cx(
@@ -2296,7 +2251,7 @@ export function Sidebar({
   const renderProjectGroup = (entry: ProjectEntry) => {
     const repository = repositoryProjects[entry.path];
     const hostLabel = repository && (hostLabels[repository.hostKey] ?? repository.hostKey);
-    const label = repository ? `${repository.owner}/${repository.name}` : entry.name;
+    const label = repository?.name ?? entry.name;
     const collapsedProject = entry.meta.collapsed ?? projectCollapsed[entry.key] ?? false;
     const projectId = projectDomId(entry.key);
     const isMenuOpen = projectMenu === entry.key;
@@ -2304,9 +2259,8 @@ export function Sidebar({
     // Show the initial page by default; the remaining sessions stay folded
     // behind the Load more affordance.
     const sessionsExpanded = expandedProjectSessions[entry.key] ?? false;
-    const history = entry.sessions.filter((session) => !pinnedSessionIds.has(session.id));
     const { visibleSessions, hiddenCount } = getVisibleProjectSessions(
-      history,
+      entry.sessions,
       sessionsExpanded,
     );
 
@@ -2539,7 +2493,7 @@ export function Sidebar({
                   : <IconNewProject size={14} />,
                 onSelect: () => {
                   closeMenus(false);
-                  if (isSessions) void createSession({ projectPath: null });
+                  if (isSessions) onNewTask();
                   else void openProjectPicker();
                 },
               }),
@@ -2630,120 +2584,6 @@ export function Sidebar({
       <div className="sidebar-body no-drag">
         <SidebarPrimaryNav onNewTask={onNewTask} onBeforeNavigate={() => closeMenus(false)} />
 
-        {pinnedSessions.length > 0 ? (
-          <section
-            className="sidebar-pinned-sessions"
-            aria-labelledby="sidebar-pinned-label"
-            data-sidebar-session-section="pinned"
-          >
-            <div className="sidebar-list-toolbar sidebar-list-toolbar-secondary">
-              <span id="sidebar-pinned-label" className="sidebar-list-label">
-                {t("nav.pinnedSessions")}
-              </span>
-            </div>
-            <div className="sidebar-session-group-body pinned" onScroll={() => closeMenus(false)}>
-              {renderSessionRows(pinnedSessions, { global: true })}
-            </div>
-          </section>
-        ) : null}
-
-        {showSessionsSection ? (
-          <section
-            className={cx("sidebar-standalone-sessions", !showProjectsSection && "is-fill")}
-            aria-labelledby="sidebar-standalone-sessions-label"
-            data-sidebar-session-section="temporary"
-          >
-            <div
-              className="sidebar-list-toolbar sidebar-list-toolbar-secondary"
-              data-sidebar-section="sessions"
-              onContextMenu={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                openSectionMenu("sessions", event.clientX, event.clientY);
-              }}
-              onPointerDown={(event) => {
-                // Keep native drag/text selection from eating the secondary click path.
-                if (event.button === 2) event.preventDefault();
-              }}
-            >
-              <span id="sidebar-standalone-sessions-label" className="sidebar-list-label">
-                {t("nav.recentSessions")}
-              </span>
-              <div className="sidebar-toolbar-actions">
-                {showSessionSort ? (
-                  <div className="sidebar-menu-wrap">
-                    <TooltipButton
-                      type="button"
-                      className={`sidebar-toolbar-button ${sortOpen ? "active" : ""}`}
-                      data-action="session-sort"
-                      ariaLabel={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
-                      tooltip={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
-                      aria-haspopup="menu"
-                      aria-expanded={sortOpen}
-                      onClick={(event) => {
-                        if (sortOpen) {
-                          closeMenus();
-                          return;
-                        }
-                        placeMenu(event);
-                        menuTriggerRef.current = event.currentTarget;
-                        setSessionMenu(null);
-                        setProjectMenu(null);
-                        setSectionMenu(null);
-                        setSortOpen(true);
-                      }}
-                    >
-                      <IconArrowUpDown size={14} />
-                    </TooltipButton>
-                  </div>
-                ) : null}
-                {showNewSession ? (
-                  <TooltipButton
-                    type="button"
-                    className="sidebar-toolbar-button"
-                    data-action="new-standalone-session"
-                    tooltip={t("nav.newTemporarySession")}
-                    ariaLabel={t("nav.newTemporarySession")}
-                    onClick={() => void createSession({ projectPath: null })}
-                  >
-                    <IconNewSession size={14} />
-                  </TooltipButton>
-                ) : null}
-              </div>
-            </div>
-            <div
-              className="sidebar-session-group-body standalone"
-              onScroll={() => {
-                if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
-              }}
-              onContextMenu={(event) => {
-                if ((event.target as Element).closest?.("[data-sidebar-session-row]")) return;
-                event.preventDefault();
-                event.stopPropagation();
-                openSectionMenu("sessions", event.clientX, event.clientY);
-              }}
-            >
-              {visibleRecentSessions.length > 0 ? (
-                <>
-                  {renderSessionRows(visibleRecentSessions, { global: true })}
-                  {recentNextPageCount > 0 ? (
-                    <button
-                      type="button"
-                      className="sidebar-load-more"
-                      data-action="recent-sessions-load-more"
-                      onClick={() => setRecentSessionsLimit(nextRecentSessionsLimit)}
-                    >
-                      {t("nav.loadMoreCount", { count: recentNextPageCount })}
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <div className="sidebar-session-empty">{t("nav.noRecentSessions")}</div>
-              )}
-            </div>
-          </section>
-        ) : null}
-
         {showProjectsSection ? (
           <>
             <div
@@ -2758,7 +2598,7 @@ export function Sidebar({
                 if (event.button === 2) event.preventDefault();
               }}
             >
-              <span className="sidebar-list-label">{t("nav.projects")}</span>
+              <h2 id="sidebar-local-projects" className="sidebar-list-label">{t("nav.localProjects")}</h2>
               {showNewProject ? (
                 <TooltipButton
                   type="button"
@@ -2797,23 +2637,121 @@ export function Sidebar({
               onDragLeave={onProjectsAreaDragLeave}
               onDrop={onProjectsAreaDrop}
             >
-              {projectEntries.length > 0 ? projectEntries.map(renderProjectGroup) : (
-                <section className="sidebar-session-group" aria-labelledby="sidebar-project-group-label">
-                  <div className="sidebar-session-group-header">
-                    <button type="button" id="sidebar-project-group-label" className="sidebar-session-group-title" onClick={() => void openProjectPicker()}>
-                      <IconFolder size={13} />
-                      <span>{t("project.open")}</span>
-                    </button>
-                  </div>
-                </section>
-              )}
-              <RemoteProjectGroups groups={remoteProjectGroups}
-                renderSessions={(sessions) => renderSessionRows(sessions, {
-                  temporary: false,
-                  showLastReplyDate: settings?.sidebarSessionTime === true,
-                })} />
+              <section aria-labelledby="sidebar-local-projects">
+                {projectEntries.filter((entry) => !entry.cloud).map(renderProjectGroup)}
+              </section>
+              <section aria-labelledby="sidebar-cloud-projects">
+                <div className="sidebar-list-toolbar sidebar-list-toolbar-secondary">
+                  <h2 id="sidebar-cloud-projects" className="sidebar-list-label">{t("nav.cloudProjects")}</h2>
+                </div>
+                {projectEntries.filter((entry) => entry.cloud).map(renderProjectGroup)}
+                <RemoteProjectGroups groups={remoteProjectGroups}
+                  renderSessions={(sessions) => renderSessionRows(sessions, {
+                    temporary: false,
+                    showLastReplyDate: settings?.sidebarSessionTime === true,
+                  })} />
+                {cloudTemporarySessions.length > 0 ? (
+                  <section className="sidebar-session-group" aria-labelledby="sidebar-cloud-temporary-sessions">
+                    <div className="sidebar-list-toolbar sidebar-list-toolbar-secondary">
+                      <h3 id="sidebar-cloud-temporary-sessions" className="sidebar-list-label">{t("nav.cloudTemporarySessions")}</h3>
+                    </div>
+                    {renderSessionRows(cloudTemporarySessions, { temporary: false })}
+                  </section>
+                ) : null}
+              </section>
             </div>
           </>
+        ) : null}
+
+        {showSessionsSection && visibleTemporarySessions.length > 0 ? (
+          <section
+            className={cx("sidebar-standalone-sessions", !showProjectsSection && "is-fill")}
+            aria-labelledby="sidebar-standalone-sessions-label"
+            data-sidebar-session-section="temporary"
+          >
+            <div
+              className="sidebar-list-toolbar sidebar-list-toolbar-secondary"
+              data-sidebar-section="sessions"
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openSectionMenu("sessions", event.clientX, event.clientY);
+              }}
+              onPointerDown={(event) => {
+                // Keep native drag/text selection from eating the secondary click path.
+                if (event.button === 2) event.preventDefault();
+              }}
+            >
+              <span id="sidebar-standalone-sessions-label" className="sidebar-list-label">
+                {t("nav.temporarySessions")}
+              </span>
+              <div className="sidebar-toolbar-actions">
+                {showSessionSort ? (
+                  <div className="sidebar-menu-wrap">
+                    <TooltipButton
+                      type="button"
+                      className={`sidebar-toolbar-button ${sortOpen ? "active" : ""}`}
+                      data-action="session-sort"
+                      ariaLabel={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
+                      tooltip={t("nav.sortSessions", { defaultValue: "Sort sessions" })}
+                      aria-haspopup="menu"
+                      aria-expanded={sortOpen}
+                      onClick={(event) => {
+                        if (sortOpen) {
+                          closeMenus();
+                          return;
+                        }
+                        placeMenu(event);
+                        menuTriggerRef.current = event.currentTarget;
+                        setSessionMenu(null);
+                        setProjectMenu(null);
+                        setSectionMenu(null);
+                        setSortOpen(true);
+                      }}
+                    >
+                      <IconArrowUpDown size={14} />
+                    </TooltipButton>
+                  </div>
+                ) : null}
+                {showNewSession ? (
+                  <TooltipButton
+                    type="button"
+                    className="sidebar-toolbar-button"
+                    data-action="new-standalone-session"
+                    tooltip={t("nav.newTemporarySession")}
+                    ariaLabel={t("nav.newTemporarySession")}
+                    onClick={onNewTask}
+                  >
+                    <IconNewSession size={14} />
+                  </TooltipButton>
+                ) : null}
+              </div>
+            </div>
+            <div
+              className="sidebar-session-group-body standalone"
+              onScroll={() => {
+                if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
+              }}
+              onContextMenu={(event) => {
+                if ((event.target as Element).closest?.("[data-sidebar-session-row]")) return;
+                event.preventDefault();
+                event.stopPropagation();
+                openSectionMenu("sessions", event.clientX, event.clientY);
+              }}
+            >
+              {renderSessionRows(visibleTemporarySessions)}
+              {temporaryNextPageCount > 0 ? (
+                <button
+                  type="button"
+                  className="sidebar-load-more"
+                  data-action="temporary-sessions-load-more"
+                  onClick={() => setTemporarySessionsLimit(nextRecentSessionsLimit)}
+                >
+                  {t("nav.loadMoreCount", { count: temporaryNextPageCount })}
+                </button>
+              ) : null}
+            </div>
+          </section>
         ) : null}
 
         <SidebarFooter />

@@ -58,7 +58,12 @@ test("the fallback only fires for a still-untitled session the owning host can t
   // A remote session derives on its own host through this same call — the
   // backend router forwards it to the owning `pi-host` — so the gate must not
   // exclude remote ids: doing so left every remote task unnamed.
-  assert.doesNotMatch(queueSlice, /!isRemoteSession\(/);
+  const fallback = queueSlice.slice(
+    queueSlice.indexOf("// Keeps the session readable without any plugin"),
+    queueSlice.indexOf("await api.prompt("),
+  );
+  assert.ok(fallback.includes(".deriveSessionTitle("));
+  assert.doesNotMatch(fallback, /!isRemoteSession\(/);
   assert.doesNotMatch(
     queueSlice,
     /isDefaultSessionTitle\(current\?\.title\)[\s\S]{0,200}source !== "remote"/,

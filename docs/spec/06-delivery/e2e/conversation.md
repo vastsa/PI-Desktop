@@ -978,41 +978,25 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   persistence); store callback race regression is covered by
   `apps/desktop/test/composer-input-history.test.mjs`.
 
-## E2E-011d: New task creates an immediate durable empty slot
+## E2E-011d: New task opens a draft with an editable location
 
-- **Preconditions**: Provider configured; at least one real session exists so
-  the sidebar history is non-empty.
-- **Steps**: 1) Invoke New Task from the sidebar, the top bar, or Cmd/Ctrl+N
-  inside a retained project and in the temporary scope. 2) Inspect the sidebar
-  history and the composer. 3) Click the same group's New Task control several
-  times quickly. 4) Type a message and send it. 5) Inspect the sidebar history
-  again and repeat in a different project group.
-- **Expected**: When the group's latest session is non-empty, the empty home
-  replaces the previous transcript on the first frame, then one new row is
-  persisted from `session.create` (without a blocking `session.list` /
-  `session.get` round-trip) and selected before the first send. Once that row
-  is the group's latest empty session, repeated clicks select it (or do
-  nothing when already selected) and create no duplicate. Sending updates the
-  same row's title and message count; the project and temporary groups keep
-  independent slots.
-- **Specs linked**: `03-runtime/01-ipc-protocol.md`,
-  `04-ux/08-component-spec.md` (§11), `04-ux/01-ui-ia.md` (§5)
-- **Acceptance**: C (history integrity and group-scoped creation)
-- **Milestone**: M2
-- **Status**: Source-level regression covered
-  (`app-store-sidebar.test.mjs`, `composer-send-state.test.mjs`,
-  `session-create.test.mjs`); full UI scenario Draft
+- Open a project session and invoke the primary New Task action from the
+  sidebar, top bar, or Cmd/Ctrl+N. The draft opens on This computer without
+  inheriting the project. No sidebar session appears before the first prompt.
+- Use a project's add button. Check the project defaults, change the location,
+  and send. The first prompt creates a single session at the final target.
+- **Coverage**: `pnpm test:e2e:remote-mvp-ui` drives the sidebar and composer.
+  Scoped creation APIs retain their empty-session reuse coverage below.
 
 ## E2E-011e: Empty-session reuse is scoped to the latest session
 
 - **Preconditions**: One project group contains an older empty session and a
   newer session with messages; a separate project and the Temporary group are
   available.
-- **Steps**: 1) Click New Task in the first project group. 2) Confirm the new
-  row is created even though the older empty session remains. 3) Click New Task
-  again before sending. 4) Repeat in the second project and Temporary group.
-- **Expected**: The first click creates a new durable row because only the
-  latest session is considered and it is non-empty. The second click reuses
+- **Steps**: Invoke the scoped session creation action for the first project
+  twice, then repeat with the second project and the temporary scope.
+- **Expected**: The first call creates a new durable row because only the
+  latest session is considered and it is non-empty. The second call reuses
   that newly created empty row. The older empty row remains untouched, while
   each other group gets its own independent empty-slot decision.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, `04-ux/01-ui-ia.md`,

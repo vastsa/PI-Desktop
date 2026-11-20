@@ -132,6 +132,7 @@ export type AppState = {
   openProjects: ProjectWorkspace[];
   openProjectPaths: string[];
   createProjectDialogOpen: boolean;
+  choosingLocalTaskProject: boolean;
   createProjectDialogRemoteHostKey?: string;
   activeProjectPath?: string;
   projectMeta: Record<string, ProjectMeta>;
@@ -227,6 +228,10 @@ export type AppState = {
     id: string,
     opts?: { record?: boolean } & NavigationOptions,
   ) => Promise<void>;
+  openTaskDraft: (options?: {
+    projectPath?: string;
+    target?: import("../features/chat/session-target/session-target-store").DraftSessionTarget;
+  }) => Promise<boolean>;
   newSession: (options?: {
     projectPath?: string | null;
     remoteProject?: RemoteProjectTarget;
@@ -316,6 +321,7 @@ export type AppState = {
   openProjectPath: (path: string) => Promise<ProjectWorkspace | null>;
   switchProjectPath: (path: string) => Promise<ProjectWorkspace | null>;
   closeProjectPath: (path: string) => Promise<void>;
+  chooseLocalTaskProject: (path?: string | null) => Promise<void>;
   clearProject: (opts?: NavigationOptions) => Promise<void>;
   /**
    * Delete a project and its stored sessions on the host, then drop every

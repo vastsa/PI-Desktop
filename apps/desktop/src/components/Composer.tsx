@@ -1,3 +1,4 @@
+import { useSessionTargetStore } from "../features/chat/session-target/session-target-store";
 import { SessionTargetRow } from "../features/chat/session-target/SessionTargetRow";
 import { WorkspacePreparationStatus } from "../features/chat/session-target/WorkspacePreparationStatus";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
@@ -102,23 +103,29 @@ export function Composer({
     (session) => session.id === activeSessionId,
   );
   const capabilitySession = activeSessionSummary ?? (activeSessionId?.startsWith("remote:") ? { id: activeSessionId } : undefined);
+  const useHostModel = useSessionTargetStore(
+    (target) => target.environmentId !== "local" && !target.repository && !target.folderProject,
+  );
+  const targetEditable = variant === "home" && !isRemoteSession(capabilitySession)
+    && !activeSessionSummary?.remoteRepository && !activeSessionSummary?.projectPath?.startsWith("remote-project:");
+  const hostDraft = targetEditable && useHostModel;
   const composerTransforms = useMemo(
     () =>
-      (sessionAllows(capabilitySession, "canUseLocalTools") ? plugins : [])
+      (!hostDraft && sessionAllows(capabilitySession, "canUseLocalTools") ? plugins : [])
         .filter((plugin) => plugin.enabled && plugin.status === "ready")
         .flatMap((plugin) => plugin.composerTransforms ?? []),
-    [plugins, activeSessionSummary, activeSessionId],
+    [plugins, activeSessionSummary, activeSessionId, hostDraft],
   );
   const remoteSession = isRemoteSession(capabilitySession);
-  const localToolsAllowed = sessionAllows(capabilitySession, "canUseLocalTools");
-  const attachmentsAllowed = sessionAllows(capabilitySession, "canAttach");
+  const localToolsAllowed = !hostDraft && sessionAllows(capabilitySession, "canUseLocalTools");
+  const attachmentsAllowed = !hostDraft && sessionAllows(capabilitySession, "canAttach");
   const promptAllowed = sessionAllows(capabilitySession, "canPrompt");
   const nativeSession = activeSessionSummary?.source === "pi-native";
   const nativeReadOnly =
     nativeSession && activeSessionSummary.capabilities?.canPrompt !== true;
   const nativeInputBlocked = nativeReadOnly || !promptAllowed || ((nativeSession || remoteSession) && isRunning);
   const localWorkspacePath = useAppStore((s) => s.workspace?.path ?? "");
-  const workspacePath = remoteSession ? "" : localWorkspacePath;
+  const workspacePath = remoteSession || hostDraft ? "" : localWorkspacePath;
   const providers = useAppStore((s) => s.providers);
   const providerModels = useAppStore((s) => s.providerModels);
   const liveMessages = useAppStore((s) => s.messages);
@@ -250,8 +257,9 @@ export function Composer({
   const executionActive = isActivePlanExecution(planCheckpoint);
   const runActive = isRunning || executionActive;
   const inputBlocked = approvalPending || pasting || nativeInputBlocked;
-  const controlsBlocked = approvalPending || nativeSession || !sessionAllows(capabilitySession, "canConfigureModel");
-  const sendBlocked = approvalPending || pasting || nativeInputBlocked;
+  const controlsBlocked = hostDraft || approvalPending || nativeSession || !sessionAllows(capabilitySession, "canConfigureModel");
+  const choosingLocalTaskProject = useAppStore((s) => s.choosingLocalTaskProject);
+  const sendBlocked = approvalPending || pasting || nativeInputBlocked || (targetEditable && choosingLocalTaskProject);
   // Edit returns one queued row to the composer. The row is removed and its
   // captured draft becomes the input, so the input must be empty first: the
   // live read is the only current source (the draft cache is not per keystroke).
@@ -398,7 +406,7 @@ export function Composer({
     configuredThinkingLevel,
   );
   const thinkingLabel = thinkingLevel;
-  const modelLabel = modelId
+  const modelLabel = hostDraft ? t("sessionTarget.hostDefaultModel") : modelId
     ? composerModelDisplayName(provider, modelId)
     : t("chat.model");
   const modelMenu = useComposerModelMenu({
@@ -411,7 +419,7 @@ export function Composer({
     thinkingLevel,
     controlsBlocked,
   });
-  const modelReady = remoteSession ? promptAllowed : nativeSession
+  const modelReady = remoteSession || hostDraft ? promptAllowed : nativeSession
     ? activeSessionSummary.capabilities?.canPrompt === true
     : !!provider &&
       provider.enabled &&
@@ -461,7 +469,7 @@ export function Composer({
     activeFileReferences,
     t,
     sendPrompt: (content, snapshot, sessionId, accepted) =>
-      sendPrompt(content, snapshot, sessionId, accepted, variant === "home"),
+      sendPrompt(content, snapshot, sessionId, accepted, targetEditable),
     steerPrompt,
     sendQueuedNow,
     queuedPrompts,
@@ -673,7 +681,7 @@ export function Composer({
             workSessionLabel={activeSessionSummary?.title}
           />
         </div>
-        {variant === "home" && !activeSessionSummary?.remoteRepository && <SessionTargetRow />}
+        {targetEditable && <SessionTargetRow />}
       </div>
     </div>
   );

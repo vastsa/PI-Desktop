@@ -86,7 +86,6 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
       newTask: 'data-nav="new-task"',
       scheduled: 'data-nav="scheduled"',
       pluginMarket: 'data-nav="plugins"',
-      pinnedSessions: 'data-sidebar-session-section="pinned"',
       sessions: 'data-sidebar-session-section="temporary"',
       sessionSort: 'data-action="session-sort"',
       newSession: 'data-action="new-standalone-session"',
@@ -103,7 +102,7 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
       [...html.matchAll(/data-sidebar-session-row="([^"]+)"/g)].map((match) => match[1]);
     const toggle = (html, label) =>
       html.match(new RegExp(`<button[^>]*role="switch"[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
-    const label = (id) => catalogs.en.settings.sidebarModule[id];
+    const label = (id) => id === "sessions" ? catalogs.en.nav.temporarySessions : catalogs.en.settings.sidebarModule[id];
 
     // Default: every module renders and every switch is on.
     const defaults = renderSidebar({});
@@ -128,8 +127,9 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
       }
     }
 
-    // A hidden pinned section returns pins to their own list instead of losing them.
+    // Existing visibility preferences do not move pinned conversations out of their project.
     const unpinnedView = renderSidebar({ sidebarModules: { pinnedSessions: false } });
+    assert.ok(!defaultCard.includes(catalogs.en.settings.sidebarModule.pinnedSessions));
     const projectGroup =
       unpinnedView.match(/data-sidebar-project-group="\/open"[\s\S]*?<\/section>/)?.[0] ?? "";
     assert.deepEqual(rows(projectGroup), ["pinned-in-project", "project-row"]);
@@ -148,8 +148,8 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
     const noProjects = renderSidebar({ sidebarModules: { projects: false } });
     assert.match(noProjects, /class="sidebar-standalone-sessions is-fill"/);
     assert.ok(!noProjects.includes('data-sidebar-project-group="/open"'));
-    // Recent still lists project sessions, so they stay reachable.
-    assert.deepEqual(rows(noProjects).filter((id) => id === "project-row"), ["project-row"]);
+    assert.ok(!rows(noProjects).includes("project-row"));
+    assert.ok(rows(noProjects).includes("loose-row"));
 
     // Scheduled stays off while scheduled tasks are disabled, and its switch says so.
     const scheduledOff = { scheduledTasksEnabled: false };

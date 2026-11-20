@@ -163,7 +163,7 @@ export type RemoteHostSessionsRequest = { hostKey: string };
 export type RemoteHostSessionsResult = { sessions: SessionSummary[] };
 export type RemoteHostCreateSessionRequest = {
   hostKey: string;
-  projectId: string;
+  projectId?: string;
   title?: string;
   mode?: RacpSessionMode;
   permissionMode?: RacpPermissionMode;

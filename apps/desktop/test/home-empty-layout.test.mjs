@@ -139,6 +139,6 @@ test("home and docked composers share visual shell metrics", () => {
 test("the home target picker sits below the input card inside the composer stack", () => {
   assert.match(
     composer,
-    /<\/div>\s*\{variant === "home" && !activeSessionSummary\?\.remoteRepository && <SessionTargetRow \/>\}\s*<\/div>/,
+    /<\/div>\s*\{targetEditable && <SessionTargetRow \/>\}\s*<\/div>/,
   );
 });

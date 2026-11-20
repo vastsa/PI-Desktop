@@ -387,6 +387,7 @@ export function createQueueSlice({
     },
 
     sendPrompt: async (content, draft, requestedSessionId, onAccepted, useRemoteTarget) => {
+      if (useRemoteTarget && get().choosingLocalTaskProject) return false;
       let sessionId = requestedSessionId ?? get().activeSessionId;
       const target = get().sessions.find((session) => session.id === sessionId) ?? (sessionId ? { id: sessionId } : undefined);
       if (!sessionAllows(target, "canPrompt")) return false;
@@ -400,8 +401,14 @@ export function createQueueSlice({
         if (sessionId && get().pendingPlans[sessionId]?.status === "pending") {
           return false;
         }
-        const chooseRemote = useRemoteTarget && useSessionTargetStore.getState().environmentId !== "local"
+        const targetSelection = useSessionTargetStore.getState();
+        const chooseRemote = useRemoteTarget && !isRemoteSession(target)
+          && targetSelection.environmentId !== "local"
           && !get().sessions.find((item) => item.id === sessionId)?.remoteRepository;
+        if (chooseRemote && !targetSelection.repository && !targetSelection.folderProject && draft?.fileReferences.length) {
+          get().showToast(i18n.t("remote:readOnly"), { variant: "error" });
+          return false;
+        }
         if (!sessionId || chooseRemote) {
           const createdId = chooseRemote
             ? await materializeRemoteTargetSession({ get, set }, runtime, persistSessionAndSelect)

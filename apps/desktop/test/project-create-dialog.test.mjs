@@ -89,18 +89,18 @@ test("project creation creates one logical group with a primary workspace", () =
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\) =>\s*createNamedProjectGroup\(/);
 });
 
-test("folder picker is a renderer-only multi-directory selection", () => {
+test("folder picker returns paths and keeps multi-directory selection by default", () => {
   assert.match(protocol, /projectPickFolders:\s*"pi-desktop\/project\/pickFolders"/);
   assert.match(protocol, /projectGroupCreate:\s*"pi-desktop\/project-group\/create"/);
   assert.match(api, /createProjectGroup: \(name: string, folders: string\[\]\)/);
   assert.match(main, /project\.group\.create/);
-  assert.match(api, /pickProjectFolders: \(\) =>[\s\S]*?projectPickFolders/);
+  assert.match(api, /pickProjectFolders: \(options\?: \{ single\?: boolean \}\) =>[\s\S]*?projectPickFolders/);
   const start = main.indexOf("IPC.invoke.projectPickFolders");
   const end = main.indexOf("IPC.invoke.projectClone", start);
   const handler = main.slice(start, end);
   assert.ok(start >= 0 && end > start, "folder picker handler should exist");
   assert.match(handler, /openDirectory/);
-  assert.match(handler, /multiSelections/);
+  assert.match(handler, /if \(options\?\.single !== true\) properties\.push\("multiSelections"\)/);
   assert.match(handler, /createDirectory/);
   assert.match(handler, /folders:/);
   assert.doesNotMatch(handler, /workspace\.set/);

@@ -45,7 +45,12 @@ export function RemoteProjectGroups({
     if (busy) return;
     setBusy(project.key);
     try {
-      await useAppStore.getState().newSession({ remoteProject: project });
+      const opened = await useAppStore.getState().openTaskDraft({
+        target: { environmentId: `default:${project.hostKey}`, remoteProject: project },
+      });
+      if (opened) requestAnimationFrame(() =>
+        document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus(),
+      );
     } catch (error) {
       useAppStore
         .getState()

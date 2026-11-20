@@ -29,10 +29,11 @@ destination, chat as the home surface, tools and permissions inline.
 +------------------+--------------------------------+------------------+
 ```
 
-- **Sidebar**: primary navigation — path-less conversations under a compact
-  **Sessions** section with new-session and sort actions, retained open-project
-  groups under a following **Projects** section with a persistent new-project
-  action. Above the lists, three labelled primary rows: **New task**,
+- **Sidebar**: retained project groups appear under **Local projects** and
+  **Cloud projects**. GitHub project rows show the repository name with a
+  separate Host label. A session appears under its own project, including
+  when pinned. Projectless local and cloud chats have their own temporary groups.
+  Above the lists, three labelled primary rows: **New task**,
   **Scheduled** (hidden while scheduled tasks are disabled) and **Plugin
   market** (opens the Extensions page on its Market tab; activating it again
   while Extensions is active performs one Back step). The footer holds only a
@@ -40,9 +41,8 @@ destination, chat as the home surface, tools and permissions inline.
   version/update chip on the right. The sidebar has no notification entry
   (issue #2431). Every module except Settings can be hidden from Settings →
   Appearance → Sidebar modules (`AppSettings.sidebarModules`; all shown by
-  default). Hiding Pinned sessions returns pins to their own lists; hiding
-  Projects lets the Sessions list take the freed height. Each retained
-  project is a
+  default). Hiding Projects lets the local temporary list take the freed
+  height. Each retained project is a
   path-keyed tab/group that can be
   collapsed independently. Project and conversation rows expose
   non-destructive pin/archive actions, an independent conversation-branch
@@ -505,11 +505,14 @@ shared capability contract:
   project. A temporary session shows dedicated temporary-chat copy with no
   project underline or switcher; and with no project open the generic welcome
   title stands.
-- New task resolves the current project or temporary group by its most recent
-  session: if that session has `messageCount = 0`, it is selected and reused;
-  otherwise a durable empty session is created immediately and appears in the
-  sidebar. Repeated clicks therefore keep one empty slot per visible group;
-  an empty slot remains persisted until the user deletes or archives it.
+- The primary New task action opens a temporary chat draft on This computer.
+  The control beside This computer can switch the draft to an open local
+  project or browse for a single folder. Choosing Temporary chat clears the
+  draft's project before sending. A project's add button opens a draft with its project defaults. For a GitHub
+  project these are the latest saved environment and base branch for that
+  project, with the Host and repository defaults as fallbacks. The environment,
+  repository, and branch may change until the first prompt. The first send
+  creates the session at the final target.
 
 ## 6. Keyboard map (IA level)
 
@@ -583,7 +586,10 @@ Copy rules live in [02-i18n-english-first](02-i18n-english-first.md).
 
 The home composer has a separate location row below the input card, with This
 computer and environments on paired Hosts. Selecting a remote environment
-reveals GitHub repository and branch pickers in the same row. The row wraps
+reveals a repository picker with a No repository option. A selected repository
+adds the base-branch picker. A projectless cloud prompt uses the selected
+Host's default model and a session scratch directory on that Host. Setup
+scripts and environment variables apply to repository workspaces. The row wraps
 when space is limited and sits outside the input card's background and shadow.
 The composer shows preparation and setup status. The session
 top bar shows the Host, repository, work branch, and push and pull request

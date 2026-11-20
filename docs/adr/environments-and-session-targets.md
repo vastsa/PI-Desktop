@@ -25,6 +25,13 @@ and base branch. Scheduled sessions use the project's default branch and its
 Host's default environment. The repository project is shared by sessions on the
 same Host and repository.
 
+The composer also allows No repository. Without a selected project folder,
+this uses the existing RACP session/create flow without a project id. The
+remote Host owns the session and its scratch directory, and provides the
+default model. This path requires no GitHub credential, worktree, or RACP
+schema change. Saved setup scripts and variables continue to apply to
+repository workspaces.
+
 ## Consequences
 
 The main clone provides common Git storage. A per-session checkout protects

@@ -246,9 +246,9 @@ test("pending approval keeps the draft while gating every composer control", () 
   assert.match(composerSource, /disabled=\{controlsBlocked\}/);
   assert.match(
     composerSource,
-    /const controlsBlocked = approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/,
+    /const controlsBlocked = hostDraft \|\| approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/,
   );
-  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked \|\| \(targetEditable && choosingLocalTaskProject\);/);
   assert.match(storeSource, /if \(get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"\) return/);
 });
 

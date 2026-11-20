@@ -33,9 +33,9 @@ export function SidebarModulesSettings({
 
   return (
     <SettingsCard title={t("settings.sidebarModules")}>
-      {SIDEBAR_MODULES.map((module) => {
+      {SIDEBAR_MODULES.filter((module) => module.id !== "pinnedSessions").map((module) => {
         const parent = "parent" in module ? module.parent : undefined;
-        const label = t(`settings.sidebarModule.${module.id}`);
+        const label = t(module.id === "sessions" ? "nav.temporarySessions" : `settings.sidebarModule.${module.id}`);
         // The Scheduled entry only exists while scheduled tasks are on.
         const unavailable =
           (parent !== undefined && !sidebarModuleEnabled(modules, parent)) ||

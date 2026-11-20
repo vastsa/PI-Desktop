@@ -25,7 +25,7 @@ test("home project switcher lists sidebar projects and can clone a git repo", ()
   assert.match(switcher, /<AnchoredMenu/);
   assert.match(switcher, /listSwitcherProjects/);
   assert.match(switcher, /project\.searchPlaceholder/);
-  assert.match(switcher, /newSession\(\{ projectPath: nextPath \}\)/);
+  assert.match(switcher, /openTaskDraft\(\{ projectPath: nextPath \}\)/);
   assert.match(switcher, /cloneProject/);
   assert.match(switcher, /parseGitCloneUrl/);
   assert.match(switcher, /project\.clone/);

@@ -456,10 +456,10 @@ export function registerWorkspaceIpc({
     setCurrentWorkspacePath(res.workspace?.path ?? result.filePaths[0]);
     return { workspace: await withGitBranch(res.workspace), canceled: false };
   });
-  handle(IPC.invoke.projectPickFolders, async () => {
-    const result = await openProjectPicker({
-      properties: ["openDirectory", "multiSelections", "createDirectory"],
-    });
+  handle(IPC.invoke.projectPickFolders, async (options?: { single?: boolean }) => {
+    const properties: OpenDialogOptions["properties"] = ["openDirectory", "createDirectory"];
+    if (options?.single !== true) properties.push("multiSelections");
+    const result = await openProjectPicker({ properties });
     if (!result || result.canceled || result.filePaths.length === 0) {
       return { folders: [], canceled: true };
     }

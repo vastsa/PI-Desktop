@@ -425,7 +425,7 @@ export function useAppShellRuntime() {
           case "newTask":
             if (workPanelMaximizedRef.current) setWorkPanelMaximized(false);
             store.closeSettings();
-            await store.newSession();
+            if (!(await store.openTaskDraft())) break;
             requestAnimationFrame(() =>
               document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus(),
             );

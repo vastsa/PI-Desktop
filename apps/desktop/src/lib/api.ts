@@ -1176,8 +1176,8 @@ export const api = {
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectOpen,
     ),
-  pickProjectFolders: () =>
-    invoke<{ folders: string[]; canceled?: boolean }>(IPC.invoke.projectPickFolders),
+  pickProjectFolders: (options?: { single?: boolean }) =>
+    invoke<{ folders: string[]; canceled?: boolean }>(IPC.invoke.projectPickFolders, options),
   getProjectMemory: (projectPath: string) =>
     invoke<{ memory: ProjectMemory }>(IPC.invoke.projectMemoryGet, { projectPath }),
   saveProjectMemory: (projectPath: string, entries: ProjectMemoryEntry[]) =>

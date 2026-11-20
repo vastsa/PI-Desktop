@@ -7,6 +7,7 @@ import { remoteEn, remoteZh } from "../../apps/desktop/src/locales/remote";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 import { RemoteHostSessions } from "../../apps/desktop/src/components/settings/RemoteHostSessions";
 import { RemoteHostsPage } from "../../apps/desktop/src/components/settings/RemoteHostsPage";
+import { Sidebar } from "../../apps/desktop/src/components/Sidebar";
 import { ChatSurface } from "../../apps/desktop/src/components/ChatSurface";
 import { catalogs } from "@pi-desktop/i18n";
 import { api } from "../../apps/desktop/src/lib/api";
@@ -18,6 +19,26 @@ const repository = { owner: "example", name: "a-repository-with-a-long-display-n
 const capabilities = { canPrompt: true, canStop: true, canRefresh: true, canReadWorkspace: true, canConfigureModel: false, canAttach: false, canSteer: false, canEditMessages: false, canUseLocalTools: false, canUseTerminal: false };
 const session = { id: "remote:fixture:one", source: "remote", remoteHostKey: "fixture", remoteHostLabel: "Test Host", remoteWorkspaceLabel: "Project", title: "Test session", messageCount: 0, mode: "agent", permissionMode: "ask", thinkingLevel: "inherit", capabilities, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" };
 const provider = { id: "fixture-provider", name: "Fixture provider", enabled: true, type: "native", vendorKey: "openai", protocol: "openai", authKind: "api_key", hasSecret: true, hasOauth: false, models: [bindingForCustomModel("fixture-model")] };
+const secondHost = { ...host, hostKey: "other-fixture", label: "Second Host" };
+const secondEnvironment = { ...environment, id: "other-dev", hostKey: secondHost.hostKey, name: "Second environment" };
+const localWorkspace = { path: "/local/private", name: "Local project fixture" };
+const browsedWorkspace = { path: "/local/browsed", name: "Browsed project folder" };
+const cloudWorkspace = {
+  path: "remote-project:cloud-fixture",
+  name: "Cloud project fixture",
+  remote: { hostKey: host.hostKey, path: "/srv/cloud" },
+};
+const localSession = { ...session, id: "local-fixture", source: "desktop", projectPath: localWorkspace.path, title: "Local project session" };
+const cloudSession = {
+  ...session, id: "cloud-fixture", source: "desktop", projectPath: cloudWorkspace.path, title: "Cloud project session",
+  remoteRepository: {
+    environmentId: environment.id, hostKey: host.hostKey, repository, baseBranch: "develop", workBranch: "pi-desktop/fixture", state: "ready",
+  },
+};
+let projectFlow = false;
+let scratchSession;
+let folderPickResult = { folders: [], canceled: true };
+let createdLocalSessions = 0;
 const calls = [];
 const listeners = new Map();
 let reconnects = 0;
@@ -31,9 +52,9 @@ window.piDesktop = {
   async invoke(channel, input) {
     calls.push({ channel, input });
     let data = {};
-    if (channel === IPC.invoke.remoteHostList) data = { hosts: [host] };
-    else if (channel === IPC.invoke.environmentsList) data = { environments: [environment] };
-    else if (channel === IPC.invoke.githubConnectorStatus) data = { connected: true, deviceLoginAvailable: true };
+    if (channel === IPC.invoke.remoteHostList) data = { hosts: projectFlow ? [host, secondHost] : [host] };
+    else if (channel === IPC.invoke.environmentsList) data = { environments: projectFlow ? [environment, secondEnvironment] : [environment] };
+    else if (channel === IPC.invoke.githubConnectorStatus) data = { connected: !projectFlow, deviceLoginAvailable: true };
     else if (channel === IPC.invoke.githubRepositories) data = { repositories: [repository] };
     else if (channel === IPC.invoke.githubBranches) data = { branches: [{ name: "develop" }] };
     else if (channel === IPC.invoke.remoteHostPair) data = { host: { ...host, hostKey: "paired-fixture", label: input.label, url: input.url, transport: "direct" } };
@@ -41,8 +62,29 @@ window.piDesktop = {
     else if (channel === IPC.invoke.remoteHostSessions) data = { sessions: [session] };
     else if (channel === IPC.invoke.remoteHostSyncProviders) data = { imported: [{ sourceId: provider.id, providerId: "remote-provider" }], skipped: [], defaultSet: true };
     else if (channel === IPC.invoke.remoteHostRegisterProject) data = { project: { id: "project", label: "Project" } };
-    else if (channel === IPC.invoke.remoteHostCreateSession) data = { session };
-    else if (channel === IPC.invoke.sessionGet) data = { session: { ...session, messages: [] } };
+    else if (channel === IPC.invoke.projectGroupList) data = { groups: [{
+      primaryPath: cloudWorkspace.path, remote: cloudWorkspace.remote, repository: { ...repository, hostKey: host.hostKey },
+    }] };
+    else if (channel === IPC.invoke.projectSet) data = {
+      workspace: [localWorkspace, browsedWorkspace, cloudWorkspace].find((item) => item.path === input),
+    };
+    else if (channel === IPC.invoke.projectPickFolders) data = folderPickResult;
+    else if (channel === IPC.invoke.sessionCreate) data = {
+      session: {
+        ...localSession, ...input, capabilities: undefined, id: `new-local-${++createdLocalSessions}`,
+      },
+    };
+    else if (channel === IPC.invoke.remoteHostCreateSession) {
+      if (projectFlow) {
+        scratchSession = {
+          ...session, id: `remote:${input.hostKey}:scratch`, remoteHostKey: input.hostKey,
+          remoteHostLabel: secondHost.label, remoteProjectId: undefined, remoteWorkspaceLabel: undefined,
+          title: "Cloud scratch session",
+        };
+      }
+      data = { session: scratchSession ?? session };
+    }
+    else if (channel === IPC.invoke.sessionGet) data = { session: { ...(scratchSession ?? session), messages: [] } };
     else if (channel === IPC.invoke.agentPrompt) {
       queueMicrotask(() => useAppStore.setState({ isRunning: false, runningSessions: {}, messages: [{ id: "remote-u1", role: "user", content: input.content, createdAt: Date.now() }] }));
       data = { accepted: true };
@@ -293,5 +335,127 @@ globalThis.remoteMvpProbe = async () => {
   mount.style.removeProperty("width");
   assert(!listeners.has(IPC.event.environmentsChanged) && !listeners.has(IPC.event.githubConnectorChanged), "home location picker listeners leaked");
 
-  return { ok: true, scenarios: ["history without model transfer", "open", "send", "approve", "peer resolution", "reconnect without replay", "local isolation", "Add actions precede inventory", "SSH and Pair dialog flows", "success and cancel clear drafts", "Escape and backdrop dismissal", "focus restoration", "home location row and narrow layout", "environment, repository, and branch selection", "cleanup"] };
+  projectFlow = true;
+  const beforeProjectFlow = calls.length;
+  useAppStore.setState({
+    sessions: [cloudSession, localSession], activeSessionId: cloudSession.id,
+    workspace: cloudWorkspace, activeProjectPath: cloudWorkspace.path,
+    openProjectPaths: [cloudWorkspace.path, localWorkspace.path],
+    openProjects: [cloudWorkspace, localWorkspace], settings: { defaultMode: "agent" },
+    selectingSessionId: undefined, messages: [], retainedSessionIds: [], retainedTranscripts: {},
+  });
+  const projectRoot = createRoot(mount);
+  const ignore = () => {};
+  projectRoot.render(<div style={{ display: "flex", height: "100vh" }}>
+    <Sidebar onNewTask={() => void useAppStore.getState().openTaskDraft()} onToggleSidebar={ignore}
+      sidebarToggleShortcut="" sidebarWidth={260} onWidthChange={ignore} onWidthCommit={ignore} onResizeCollapse={ignore} />
+    <div style={{ flex: 1, minWidth: 0 }}><ChatSurface /></div>
+  </div>);
+  const group = (id) => document.getElementById(id)?.closest("section") ?? document.querySelector(`section[aria-labelledby="${id}"]`);
+  const rowIn = (id, sessionId) => group(id)?.querySelector(`[data-sidebar-session-row="${sessionId}"]`);
+  const addTask = (workspace) => [...document.querySelectorAll("[data-sidebar-project-group]")]
+    .find((element) => element.dataset.sidebarProjectGroup === workspace.path)
+    ?.querySelector(".sidebar-session-group-add");
+  const cloudProjectTitle = () => document.querySelector(
+    `[data-sidebar-project-group="${cloudWorkspace.path}"] .project-toggle > span`,
+  );
+  const newTask = () => document.querySelector('[data-nav="new-task"]');
+  await until(() => rowIn("sidebar-local-projects", localSession.id)
+    && rowIn("sidebar-cloud-projects", cloudSession.id), "project sessions were not grouped by location");
+  await until(() => cloudProjectTitle()?.textContent === repository.name,
+    "the cloud project title should display only the repository name");
+  assert(!document.querySelector(".sidebar-body").textContent.includes(catalogs.en.nav.recentSessions), "Recent sessions still renders");
+  assert(document.querySelectorAll(`[data-sidebar-session-row="${cloudSession.id}"]`).length === 1, "cloud session renders more than once");
+
+  newTask().click();
+  await until(() => picker(labels.environmentHost)?.textContent.trim() === labels.thisComputer, "global task inherited cloud environment");
+  assert(!useAppStore.getState().activeSessionId && !useAppStore.getState().workspace, "global draft inherited project or session");
+
+  addTask(localWorkspace).click();
+  await until(() => useAppStore.getState().workspace?.path === localWorkspace.path && !useAppStore.getState().activeSessionId, "local project did not open a draft");
+  assert(picker(labels.environmentHost).textContent.trim() === labels.thisComputer, "local project did not select this computer");
+
+  addTask(cloudWorkspace).click();
+  await until(() => picker(labels.environmentHost)?.textContent.trim() === environment.name, "cloud project did not select its most recent environment");
+  assert(picker(labels.chooseRepository).textContent.trim() === repository.fullName, "cloud project lost its default repository");
+  assert(!useAppStore.getState().activeSessionId, "project plus created a session before the first prompt");
+  assert(!calls.slice(beforeProjectFlow).some(({ channel }) =>
+    [IPC.invoke.sessionCreate, IPC.invoke.remoteHostCreateSession, IPC.invoke.remoteSessionWorkspaceStart].includes(channel)), "opening drafts created durable work");
+
+  picker(labels.environmentHost).click();
+  await until(() => button(secondEnvironment.name), "second cloud environment did not appear");
+  button(secondEnvironment.name).click();
+  await until(() => picker(labels.environmentHost).textContent.trim() === secondEnvironment.name, "changed environment was not shown");
+  picker(labels.chooseRepository).click();
+  const noRepo = () => [...document.querySelectorAll(".session-target-menu.is-open button")]
+    .find((element) => element.textContent.trim() === labels.noRepository);
+  await until(noRepo, "the no-repository option requires GitHub");
+  noRepo().click();
+  await until(() => picker(labels.chooseRepository).textContent.trim() === labels.noRepository, "repository was not cleared");
+  assert(!picker(labels.chooseBranch), "no-repository draft displays a branch");
+  const cloudEditor = document.querySelector(".composer-input");
+  cloudEditor.textContent = "Say hello from the second host";
+  cloudEditor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "Say hello from the second host" }));
+  await until(() => send() && !send().disabled, "projectless cloud prompt cannot be sent");
+  send().click();
+  await until(() => calls.some(({ channel, input }) => channel === IPC.invoke.agentPrompt && input.sessionId === scratchSession?.id), "first prompt did not reach the new cloud session");
+  const createScratch = calls.slice(beforeProjectFlow).find(({ channel }) => channel === IPC.invoke.remoteHostCreateSession);
+  assert(createScratch?.input.hostKey === secondHost.hostKey && createScratch.input.projectId === undefined, "scratch session used the old host or project");
+  assert(!calls.slice(beforeProjectFlow).some(({ channel }) => channel === IPC.invoke.remoteSessionWorkspaceStart), "scratch session started a Git worktree");
+  await until(() => rowIn("sidebar-cloud-temporary-sessions", scratchSession.id), "cloud scratch session was not grouped under Cloud projects");
+  const temporaryLabel = catalogs.en.permission.temporarySession;
+  const localProjectPicker = () => picker(catalogs.en.nav.localProjects);
+  const localProjectOption = (label) => [...document.querySelectorAll(".session-target-menu.is-open button")]
+    .find((element) => element.textContent.trim() === label);
+  const selectLocalOption = async (label) => {
+    localProjectPicker().click();
+    await until(() => localProjectOption(label), `local project option was missing: ${label}`);
+    assert(!localProjectOption(cloudWorkspace.name), "the local menu should exclude cloud projects");
+    localProjectOption(label).click();
+  };
+  const setPrompt = (value) => {
+    const editor = document.querySelector(".composer-input");
+    editor.textContent = value;
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+  };
+  const localStarts = () => calls.filter(({ channel }) => channel === IPC.invoke.sessionCreate);
+  const sentTo = (id) => calls.some(({ channel, input }) => channel === IPC.invoke.agentPrompt && input.sessionId === id);
+  newTask().click();
+  await until(() => localProjectPicker()?.textContent.trim() === temporaryLabel, "fresh tasks should default to a local temporary chat");
+  setPrompt("Use this local folder");
+  await selectLocalOption(localWorkspace.name);
+  await until(() => localProjectPicker().textContent.trim() === localWorkspace.name && !localProjectPicker().disabled,
+    "choosing a saved local project did not update the draft");
+  await selectLocalOption(catalogs.en.project.openFolder);
+  await until(() => !useAppStore.getState().choosingLocalTaskProject, "canceling the folder dialog did not return to the draft");
+  assert(localProjectPicker().textContent.trim() === localWorkspace.name, "canceling the folder picker changed the project");
+  folderPickResult = { folders: [browsedWorkspace.path], canceled: false };
+  await selectLocalOption(catalogs.en.project.openFolder);
+  await until(() => localProjectPicker().textContent.trim() === browsedWorkspace.name && !localProjectPicker().disabled,
+    "the browsed folder was not selected");
+  assert(calls.filter(({ channel }) => channel === IPC.invoke.projectPickFolders).every(({ input }) => input.single),
+    "the draft should browse for only one folder");
+  assert(localStarts().length === 0, "selecting a project created a session before send");
+  assert(document.querySelector(".composer-input").textContent === "Use this local folder", "changing the local folder lost the prompt draft");
+  await until(() => send() && !send().disabled, "the local project prompt cannot be sent");
+  send().click();
+  await until(() => sentTo("new-local-1"), "the first prompt did not reach the local project");
+  assert(localStarts()[0].input.projectPath === browsedWorkspace.path, "the session was created in a different folder");
+  await until(() => rowIn("sidebar-local-projects", "new-local-1"), "the new session was not grouped under its project");
+
+  newTask().click();
+  await until(() => localProjectPicker()?.textContent.trim() === temporaryLabel, "global New task inherited the selected local folder");
+  await selectLocalOption(browsedWorkspace.name);
+  await until(() => localProjectPicker().textContent.trim() === browsedWorkspace.name && !localProjectPicker().disabled,
+    "the folder could not be selected in a new draft");
+  await selectLocalOption(temporaryLabel);
+  await until(() => localProjectPicker().textContent.trim() === temporaryLabel, "the draft could not return to a temporary chat");
+  setPrompt("Send as a temporary chat");
+  await until(() => send() && !send().disabled, "the temporary prompt cannot be sent");
+  send().click();
+  await until(() => sentTo("new-local-2"), "the temporary prompt did not send");
+  assert(localStarts()[1].input.projectPath === undefined, "the temporary chat inherited the selected folder");
+  projectRoot.unmount();
+
+  return { ok: true, scenarios: ["history without model transfer", "open", "send", "approve", "peer resolution", "reconnect without replay", "local isolation", "Add actions precede inventory", "SSH and Pair dialog flows", "success and cancel clear drafts", "Escape and backdrop dismissal", "focus restoration", "home location row and narrow layout", "environment, repository, and branch selection", "project-first sidebar and editable task drafts", "first prompt starts a cloud session without a repository on the selected host", "local folder selection, cancellation, and temporary drafts", "cleanup"] };
 };

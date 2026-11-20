@@ -210,9 +210,9 @@ D684.
   instead of resetting it. The affordances themselves are described in
   [01-ui-ia.md §3.2](01-ui-ia.md#32-sidebar-project-groups).
 - **Sidebar modules** card: one switch per hideable sidebar module, in sidebar
-  order — **New task**, **Scheduled**, **Plugin marketplace**, **Pinned
-  sessions**, **Sessions** (nested: **Sort button**, **New session button**),
-  **Projects** (nested: **New project button**, **Project new-task button**)
+  order — **New task**, **Scheduled**, **Plugin marketplace**, **Temporary
+  chats** (nested: **Sort button**, **New session button**), and **Projects**
+  (nested: **New project button**, **Project new-task button**)
   and **Version**. Stored as `AppSettings.sidebarModules`, a map from module id
   to boolean; an absent object or key means shown, so existing installs keep
   the released layout without migration. Nested switches are disabled while

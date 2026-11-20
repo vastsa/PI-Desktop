@@ -794,12 +794,27 @@ do not end within 64 KiB are pinned byte-for-byte in
 ## E2E-REMOTE-composer-target-starts-isolated-repo-session
 
 On New Task, This computer is in a separate location row underneath the
-input card. Choose a paired environment and verify repository and branch
-pickers appear there. On a narrow window, the controls wrap inside the
+input card. Choose a paired environment and verify the repository picker shows No
+repository. Selecting a repository reveals the base-branch picker. On a narrow window, the controls wrap inside the
 composer width. `home-empty-layout.test.mjs` pins the location outside
 the input card and the bottom-reserved home layout. The renderer suite
 (`pnpm test:e2e:remote-mvp-ui`) drives the pickers in Electron and verifies
 their placement, menu surface, and narrow-width wrapping.
+
+In the same renderer suite, start inside a cloud project and click the primary
+New task button. The empty draft starts on This computer and no durable
+session is created. The local and cloud project rows show their own sessions
+once. A GitHub project row displays the repository name. Use the cloud
+project's add button, verify its last environment and
+repository are preselected, change to another Host, choose No repository without
+a GitHub connection, and send. Verify the first prompt reaches the new
+projectless session on the chosen Host and no Git worktree is prepared.
+
+On This computer, the project picker defaults to Temporary chat. Select a
+saved project, cancel the folder browser, then pick a different folder. Verify
+the draft text remains and the first send uses the chosen folder. Start a new
+draft, pick a folder and switch back to Temporary chat before sending. The
+new session has no project path.
 
 Run `PI_HOST_CORE_BINARY="$PWD/target/debug/pi-desktop-host-core" pnpm test:e2e:remote-workspace-git`.
 The fixture resolves a repository target, creates a local session, observes

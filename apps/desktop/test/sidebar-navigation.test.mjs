@@ -128,7 +128,7 @@ test("destination history is available through shortcuts without titlebar button
   assert.doesNotMatch(appSource, /title=\{t\("nav\.(?:back|forward)"\)\}/);
 });
 
-test("sidebar shows a bounded Recent session list before retained projects", () => {
+test("sidebar groups projects by location and paginates standalone local sessions", () => {
   const newProjectAction = sidebarSource.match(
     /<div[\s\S]*?className="sidebar-list-toolbar"[\s\S]*?data-action="new-project"[\s\S]*?<\/div>/,
   )?.[0] ?? "";
@@ -136,17 +136,17 @@ test("sidebar shows a bounded Recent session list before retained projects", () 
     /data-sidebar-session-section="temporary"[\s\S]*?<\/section>/,
   )?.[0] ?? "";
 
-  assert.match(newProjectAction, /t\("nav\.projects"\)/);
+  assert.match(newProjectAction, /t\("nav\.localProjects"\)/);
   assert.match(newProjectAction, /<IconNewProject/);
   assert.match(newProjectAction, /openProjectPicker\(\)/);
-  assert.match(standaloneSessions, /t\("nav\.recentSessions"\)/);
+  assert.match(standaloneSessions, /t\("nav\.temporarySessions"\)/);
   assert.match(standaloneSessions, /data-action="new-standalone-session"/);
-  assert.match(standaloneSessions, /createSession\(\{ projectPath: null \}\)/);
-  assert.match(standaloneSessions, /renderSessionRows\(visibleRecentSessions, \{ global: true \}\)/);
-  assert.match(standaloneSessions, /data-action="recent-sessions-load-more"/);
+  assert.match(standaloneSessions, /onClick=\{onNewTask\}/);
+  assert.match(standaloneSessions, /renderSessionRows\(visibleTemporarySessions\)/);
+  assert.match(standaloneSessions, /data-action="temporary-sessions-load-more"/);
   assert.ok(
-    sidebarSource.indexOf('data-sidebar-session-section="temporary"') <
-      sidebarSource.indexOf('data-action="new-project"'),
+    sidebarSource.indexOf('data-action="new-project"') <
+      sidebarSource.indexOf('data-sidebar-session-section="temporary"'),
   );
   assert.match(
     globalStyles,
