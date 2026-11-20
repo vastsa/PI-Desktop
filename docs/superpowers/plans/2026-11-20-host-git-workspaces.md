@@ -38,7 +38,7 @@ These names are consumed by later plans. They are fixed.
 | `workspace/gitCredentialSet` | `{ installationId, token }` | `{ ok: true }` | true |
 | `workspace/gitCredentialClear` | `{}` | `{ ok: true }` | true |
 | `workspace/gitRepository` | `{ repository }` | `{ path, cloned }` | false |
-| `workspace/gitPrepare` | `{ installationId, sessionId, repository, baseBranch, environment? }` | `{ jobId }` | true |
+| `workspace/gitPrepare` | `{ installationId, sessionId, repository, baseBranch, fromSessionId?, environment? }` | `{ jobId }` | true |
 | `workspace/gitPush` | `{ installationId, sessionId }` | `{ jobId }` | true |
 | `workspace/gitJob` | `{ jobId }` | `WorkspaceGitJob` | false |
 | `workspace/gitJobCancel` | `{ jobId }` | `{ ok: true }` | true |
@@ -90,7 +90,7 @@ type WorkspaceGitBoot = {
   refreshCredential(): Promise<void>;                       // push or clear on every connected capable host
   supported(hostKey: string): Promise<boolean>;             // realigns once when the capability is missing
   repository(hostKey: string, repository: WorkspaceGitRepository): Promise<{ path: string; cloned: boolean }>;
-  prepare(hostKey: string, input: { sessionId: string; repository: WorkspaceGitRepository; baseBranch: string; environment?: WorkspaceGitEnvironment }): Promise<{ jobId: string }>;
+  prepare(hostKey: string, input: { sessionId: string; repository: WorkspaceGitRepository; baseBranch: string; fromSessionId?: string; environment?: WorkspaceGitEnvironment }): Promise<{ jobId: string }>;
   push(hostKey: string, sessionId: string): Promise<{ jobId: string }>;
   job(hostKey: string, jobId: string): Promise<WorkspaceGitJob>;
   cancelJob(hostKey: string, jobId: string): Promise<void>;
@@ -101,6 +101,8 @@ type WorkspaceGitBoot = {
 ```
 
 The boot object adds `installationId` itself; callers never pass it.
+
+**`fromSessionId`** (optional, on `workspace/gitPrepare`, the host-core `workspaceGit.prepare`, and the boot `prepare` input): when present, the new worktree starts at the current head of that session's work branch in the same repository and installation, instead of `refs/remotes/origin/<baseBranch>`. `baseBranch` is still recorded as given. No fetch is needed for that ref. If that session has no worktree record for this installation, the job fails with `WORKSPACE_GIT_NOT_FOUND`. It is how a forked session starts from its parent's commits.
 
 ## Review Focus
 

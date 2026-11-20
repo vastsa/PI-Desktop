@@ -325,6 +325,15 @@ codes surface through the same error object as any other call.
 | `PAIRING_FAILED` | no | `connection/pair` could not mint a device credential |
 | `PAIRING_TOKEN_EXPIRED` | no | the single-use pairing token expired before pairing completed |
 | `CAPABILITY_UNAVAILABLE` | no | an operation was requested for a capability the host advertised as unavailable (e.g. attachments, tool relay) |
+| `WORKSPACE_GIT_UNAVAILABLE` | no | the host has no usable git (missing, or older than 2.29) for a `workspace/git*` operation |
+| `WORKSPACE_GIT_AUTH_REQUIRED` | no | GitHub refused a clone, fetch, or push: the host holds no credential for this connection, or the credential is not sufficient |
+| `WORKSPACE_GIT_REPOSITORY_NOT_FOUND` | no | the repository does not exist on GitHub or is not visible to the credential |
+| `WORKSPACE_GIT_BRANCH_NOT_FOUND` | no | the requested base branch does not exist on the remote |
+| `WORKSPACE_GIT_NOT_FOUND` | no | the host has no worktree for this installation and session |
+| `WORKSPACE_GIT_BUSY` | no | a prepare or push job for the same session is still running |
+| `WORKSPACE_GIT_JOB_NOT_FOUND` | no | the job id is unknown or its result has expired |
+| `WORKSPACE_GIT_FAILED` | no | a git step failed for another reason; the message carries the tail of git's output |
+| `WORKSPACE_GIT_TRANSPORT_REFUSED` | no | the desktop refused to send the GitHub credential because the host is not reached over SSH, `wss://`, or loopback |
 
 ### 3.9 Live Voice
 
