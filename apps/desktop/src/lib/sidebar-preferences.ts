@@ -289,6 +289,21 @@ export function saveSidebarWidth(value: number): void {
   write(SIDEBAR_WIDTH_KEY, clampSidebarWidth(value));
 }
 
+/**
+ * Whether the Recent section is folded to its header. Like the sidebar width
+ * this is per-device view state, so it lives beside it rather than in the
+ * project/session preferences that are mirrored to the data directory.
+ */
+export const SIDEBAR_RECENT_COLLAPSED_KEY = "pi.desktop.sidebarRecentCollapsed";
+
+export function loadRecentSessionsCollapsed(): boolean {
+  return read(SIDEBAR_RECENT_COLLAPSED_KEY) === true;
+}
+
+export function saveRecentSessionsCollapsed(value: boolean): void {
+  write(SIDEBAR_RECENT_COLLAPSED_KEY, value === true);
+}
+
 export function projectIsPinned(path: string, meta: Record<string, ProjectMeta>): boolean {
   const key = normalizeProjectPath(path);
   return !!key && meta[key]?.pinned === true;

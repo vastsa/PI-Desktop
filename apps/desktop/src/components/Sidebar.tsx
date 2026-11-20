@@ -78,6 +78,8 @@ import type {
 } from "../lib/sidebar-preferences";
 import {
   clampSidebarWidth,
+  loadRecentSessionsCollapsed,
+  saveRecentSessionsCollapsed,
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
 } from "../lib/sidebar-preferences";
@@ -349,6 +351,12 @@ export function Sidebar({
   } = useSessionHoverCard();
   const [expandedProjectSessions, setExpandedProjectSessions] = useState<Record<string, boolean>>({});
   const [recentSessionsLimit, setRecentSessionsLimit] = useState(RECENT_SESSIONS_INITIAL_COUNT);
+  const [recentSessionsCollapsed, setRecentSessionsCollapsed] = useState(loadRecentSessionsCollapsed);
+  const toggleRecentSessionsCollapsed = () => {
+    const next = !recentSessionsCollapsed;
+    saveRecentSessionsCollapsed(next);
+    setRecentSessionsCollapsed(next);
+  };
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
   const [dropProjectKey, setDropProjectKey] = useState<string | null>(null);
   const [projectsDropActive, setProjectsDropActive] = useState(false);
@@ -2649,9 +2657,22 @@ export function Sidebar({
                 if (event.button === 2) event.preventDefault();
               }}
             >
-              <span id="sidebar-standalone-sessions-label" className="sidebar-list-label">
-                {t("nav.recentSessions")}
-              </span>
+              <button
+                type="button"
+                id="sidebar-standalone-sessions-label"
+                className={cx("sidebar-list-label sidebar-section-toggle", recentSessionsCollapsed && "is-collapsed")}
+                data-action="toggle-recent-sessions"
+                aria-expanded={!recentSessionsCollapsed}
+                aria-controls="sidebar-standalone-sessions-list"
+                onClick={toggleRecentSessionsCollapsed}
+              >
+                <span>{t("nav.recentSessions")}</span>
+                <IconChevronDown
+                  size={12}
+                  aria-hidden
+                  className={cx("sidebar-disclosure-icon", recentSessionsCollapsed && "collapsed")}
+                />
+              </button>
               <div className="sidebar-toolbar-actions">
                 {showSessionSort ? (
                   <div className="sidebar-menu-wrap">
@@ -2695,7 +2716,9 @@ export function Sidebar({
               </div>
             </div>
             <div
+              id="sidebar-standalone-sessions-list"
               className="sidebar-session-group-body standalone"
+              hidden={recentSessionsCollapsed}
               onScroll={() => {
                 if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
               }}

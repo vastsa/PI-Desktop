@@ -1709,7 +1709,13 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   a temporary conversation appears only in Recent. Recent opens with seven
   rows; a trailing Load more button appends ten more per click. Its body is a
   291px window over ten compact 28px rows, their 1px row gaps, and the 2px
-  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
+  label inset; it scrolls internally when more rows are loaded. The Recent
+  label is a disclosure button (`aria-expanded`, `aria-controls` the list):
+  activating it folds the whole section to its header, keeping the sort and
+  New temporary chat actions, and the Projects list takes the freed height.
+  The section opens by default; the fold is per-device view state kept in
+  `localStorage` (`pi.desktop.sidebarRecentCollapsed`) beside the sidebar
+  width, so it survives restart. The Projects list uses the remaining
   sidebar height and scrolls independently; neither region scrolls the footer
   or primary navigation. Both list scrollbars use the same global 6px,
   trackless, transparent-at-rest rule as the conversation and work-panel

@@ -329,6 +329,43 @@
   flex: 1 1 auto;
 }
 
+/* The Recent label folds the whole section; the projects list below takes
+   the freed height. */
+.sidebar-section-toggle {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-2xs);
+  background: none;
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.sidebar-section-toggle:hover,
+.sidebar-section-toggle:focus-visible {
+  color: var(--ds-text-primary);
+}
+
+.sidebar-section-toggle .sidebar-disclosure-icon {
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.sidebar-list-toolbar:hover .sidebar-section-toggle .sidebar-disclosure-icon,
+.sidebar-section-toggle:focus-visible .sidebar-disclosure-icon,
+.sidebar-section-toggle.is-collapsed .sidebar-disclosure-icon {
+  opacity: 1;
+}
+
+.sidebar-session-group-body.standalone[hidden] {
+  display: none;
+}
+
 .sidebar-session-empty {
   padding: 5px 8px;
   color: var(--ds-text-muted);

@@ -221,7 +221,9 @@ the temporary scope and retained projects, plus the temporary-chat create and
 sort controls. Project conversations show both in Recent and in their project
 group, so parallel project work stays visible while groups are folded;
 path-less conversations show only in Recent. Its bounded list opens with seven
-rows and loads ten more per Load more click. The following `Projects` section heading
+rows and loads ten more per Load more click. Activating the `Recent` heading
+folds or unfolds the whole section, keeping its header controls; the fold is
+remembered across restarts and the section opens by default. The following `Projects` section heading
 exposes the project picker above retained project groups. Several project groups
 may be retained while exactly one workspace supplies the visible shell context.
 
