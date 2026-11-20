@@ -74,6 +74,7 @@ describe("contextCompactionMark", () => {
   it("describes one compaction for its transcript row and the inspector", () => {
     expect(contextCompactionMark(record({ details: { generation: 3 } }))).toEqual({
       id: "checkpoint-1",
+      createdAt: "2026-08-06T00:00:00.000Z",
       throughMessageId: "m9",
       generation: 3,
       summaryTokens: 100,

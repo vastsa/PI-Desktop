@@ -154,6 +154,8 @@ export type ContextCompactionStatus = {
  */
 export type ContextCompactionMark = ContextCompactionStatus & {
   id: string;
+  /** Checkpoint creation time. Older live marks may omit it. */
+  createdAt?: string;
   /** Model that rebuilt the compacted context, when recorded by the runtime. */
   providerId?: string;
   modelId?: string;
