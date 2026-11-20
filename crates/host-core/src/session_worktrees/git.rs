@@ -38,6 +38,10 @@ const REDIRECT_ENV: &[&str] = &[
     "GIT_CONFIG_COUNT",
 ];
 
+/// Programs git would run to ask for a credential. A network command must
+/// fail closed instead of opening a prompt nobody is there to answer.
+const PROMPT_ENV: &[&str] = &["GIT_ASKPASS", "SSH_ASKPASS"];
+
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
     #[error("git executable was not found")]
@@ -153,11 +157,57 @@ impl GitRunner {
         self.spawn(command, args, Some(input)).await
     }
 
+    /// Run a clone, fetch, or push in `dir` with a caller-chosen limit and
+    /// per-command configuration, and return its exit status and output.
+    ///
+    /// `config` reaches git as `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` /
+    /// `GIT_CONFIG_VALUE_<n>` on the child only, not as `-c`: a process
+    /// argument list is readable by other local users, and the value carries
+    /// the credential proxy handle. Inherited environment configuration is
+    /// still removed, and every other safety flag still applies.
+    pub async fn run_network(
+        &self,
+        dir: &Path,
+        config: &[(&str, &str)],
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<GitOutput, GitError> {
+        self.spawn_within(self.network_command(dir, config, args), args, None, timeout)
+            .await
+    }
+
+    fn network_command(&self, dir: &Path, config: &[(&str, &str)], args: &[&str]) -> Command {
+        // `command` removes the inherited `GIT_CONFIG_COUNT`; it is set again
+        // below only when the caller supplied configuration.
+        let mut command = self.command(Location::WorkTree(dir), args);
+        for name in PROMPT_ENV {
+            command.env_remove(name);
+        }
+        if !config.is_empty() {
+            command.env("GIT_CONFIG_COUNT", config.len().to_string());
+            for (index, (key, value)) in config.iter().enumerate() {
+                command.env(format!("GIT_CONFIG_KEY_{index}"), key);
+                command.env(format!("GIT_CONFIG_VALUE_{index}"), value);
+            }
+        }
+        command
+    }
+
     async fn spawn(
+        &self,
+        command: Command,
+        args: &[&str],
+        input: Option<Vec<u8>>,
+    ) -> Result<GitOutput, GitError> {
+        self.spawn_within(command, args, input, self.timeout).await
+    }
+
+    async fn spawn_within(
         &self,
         mut command: Command,
         args: &[&str],
         input: Option<Vec<u8>>,
+        timeout: Duration,
     ) -> Result<GitOutput, GitError> {
         let mut child = command.spawn().map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
@@ -174,11 +224,11 @@ impl GitRunner {
                 let _ = stdin.write_all(&input).await;
             });
         }
-        let output = tokio::time::timeout(self.timeout, child.wait_with_output())
+        let output = tokio::time::timeout(timeout, child.wait_with_output())
             .await
             .map_err(|_| GitError::Timeout {
                 args: args.join(" "),
-                secs: self.timeout.as_secs(),
+                secs: timeout.as_secs(),
             })?
             .map_err(GitError::Spawn)?;
         Ok(GitOutput {
@@ -338,6 +388,144 @@ mod tests {
         git.run(repo, &["commit", "-q", "-m", message])
             .await
             .unwrap();
+    }
+
+    /// A stand-in for git that reports its own arguments and environment.
+    #[cfg(unix)]
+    fn stub_git(dir: &Path, body: &str) -> GitRunner {
+        use std::os::unix::fs::PermissionsExt;
+        let script = dir.join("git-stub");
+        std::fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        GitRunner::with_program(script)
+    }
+
+    #[cfg(unix)]
+    const REPORT: &str = "for arg in \"$@\"; do printf 'ARG:%s\\n' \"$arg\"; done\nenv";
+
+    const PROXY_KEY: &str = "url.http://127.0.0.1:1/handle-0123/o/r.git.insteadOf";
+    const PROXY_VALUE: &str = "https://github.com/o/r.git";
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn network_configuration_reaches_git_through_the_environment_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = stub_git(dir.path(), REPORT);
+        let config = [(PROXY_KEY, PROXY_VALUE), ("http.lowSpeedLimit", "1")];
+        let output = git
+            .run_network(
+                dir.path(),
+                &config,
+                &["fetch", "--prune", "--", "origin"],
+                Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+        assert!(output.success(), "{output:?}");
+        let lines: Vec<&str> = output.stdout.lines().collect();
+        for expected in [
+            "GIT_CONFIG_COUNT=2".to_string(),
+            format!("GIT_CONFIG_KEY_0={PROXY_KEY}"),
+            format!("GIT_CONFIG_VALUE_0={PROXY_VALUE}"),
+            "GIT_CONFIG_KEY_1=http.lowSpeedLimit".to_string(),
+            "GIT_CONFIG_VALUE_1=1".to_string(),
+            "GIT_TERMINAL_PROMPT=0".to_string(),
+        ] {
+            assert!(lines.contains(&expected.as_str()), "missing {expected}");
+        }
+        // The value carries the proxy handle, and a process argument list is
+        // readable by other local users: it must never be an argument.
+        let args: Vec<&str> = lines
+            .iter()
+            .filter_map(|line| line.strip_prefix("ARG:"))
+            .collect();
+        assert!(
+            args.iter()
+                .all(|arg| !arg.contains("handle-0123") && !arg.contains("insteadOf")),
+            "{args:?}"
+        );
+        // Every existing safety flag is still passed, before the subcommand.
+        let position = |needle: &str| args.iter().position(|arg| *arg == needle);
+        let fetch = position("fetch").expect("subcommand is passed");
+        for flag in [
+            format!("core.hooksPath={NULL_HOOKS_PATH}"),
+            "core.fsmonitor=false".to_string(),
+            "safe.bareRepository=explicit".to_string(),
+        ] {
+            assert!(position(&flag).is_some_and(|at| at < fetch), "{flag}");
+        }
+        assert_eq!(&args[fetch..], ["fetch", "--prune", "--", "origin"]);
+    }
+
+    #[test]
+    fn network_commands_never_inherit_git_configuration_from_the_parent() {
+        let runner = GitRunner::default();
+        let env_of = |command: &Command, name: &str| -> Option<Option<String>> {
+            command
+                .as_std()
+                .get_envs()
+                .find(|(key, _)| *key == std::ffi::OsStr::new(name))
+                .map(|(_, value)| value.map(|value| value.to_string_lossy().into_owned()))
+        };
+        // With configuration, the count is set explicitly on the child, so a
+        // parent's `GIT_CONFIG_COUNT=7` cannot be the one git reads.
+        let with = runner.network_command(Path::new("."), &[(PROXY_KEY, PROXY_VALUE)], &["fetch"]);
+        assert_eq!(env_of(&with, "GIT_CONFIG_COUNT"), Some(Some("1".into())));
+        assert_eq!(
+            env_of(&with, "GIT_CONFIG_KEY_0"),
+            Some(Some(PROXY_KEY.into()))
+        );
+        // Without configuration, the inherited count is removed outright.
+        let without = runner.network_command(Path::new("."), &[], &["fetch"]);
+        assert_eq!(env_of(&without, "GIT_CONFIG_COUNT"), Some(None));
+        for command in [&with, &without] {
+            for name in REDIRECT_ENV {
+                if *name == "GIT_CONFIG_COUNT" {
+                    continue;
+                }
+                assert_eq!(env_of(command, name), Some(None), "{name} is not removed");
+            }
+            // A graphical or scripted credential prompt must not answer for a
+            // git that is supposed to fail closed.
+            for name in ["GIT_ASKPASS", "SSH_ASKPASS"] {
+                assert_eq!(env_of(command, name), Some(None), "{name} is not removed");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_network_command_stops_at_the_callers_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = stub_git(dir.path(), "exec sleep 30");
+        let started = std::time::Instant::now();
+        let error = git
+            .run_network(
+                dir.path(),
+                &[(PROXY_KEY, PROXY_VALUE)],
+                &["clone", "--", "https://github.com/o/r.git", "target"],
+                Duration::from_millis(300),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), "WORKTREE_GIT_TIMEOUT");
+        assert!(matches!(error, GitError::Timeout { .. }));
+        assert!(started.elapsed() < Duration::from_millis(2300));
+        // The timeout message names the subcommand, never the configuration.
+        assert!(!error.to_string().contains("handle-0123"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failing_network_command_returns_its_status_and_stderr() {
+        let dir = tempfile::tempdir().unwrap();
+        let git = stub_git(dir.path(), "echo 'fatal: nope' >&2\nexit 128");
+        let output = git
+            .run_network(dir.path(), &[], &["fetch"], Duration::from_secs(30))
+            .await
+            .unwrap();
+        assert_eq!(output.status, 128);
+        assert_eq!(output.stderr.trim(), "fatal: nope");
     }
 
     #[test]
