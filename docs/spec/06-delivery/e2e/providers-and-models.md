@@ -2458,3 +2458,63 @@ Image-model marking explains chat/default-menu exclusion and distinguishes gener
 - **Acceptance:** Offline runtime/contract validation.
 - **Milestone:** Maintenance.
 - **Status:** Candidate validation recorded in `docs/project/pi-152-adoption.md`.
+
+## E2E-PROVIDER-subagent-delegation-catalog: Models page states and edits the subagent delegation catalog
+
+- **Preconditions:** Two AI services are configured, enabled and credentialed,
+  the first with two models and the second with one; exactly one model carries
+  "Available for AI delegation". A plugin-declared service publishes one model,
+  and one vendor subscription is signed in twice with both logins holding the
+  same model. A parent Agent-mode session can delegate a task.
+- **Steps:**
+  1. Open Settings → Models and read the **Subagent models** row: opted-in models
+     appear as chips; the full list lives behind **Edit**.
+  2. Click **Edit** and read the dialog's list.
+  3. Use that list's **Advanced** to open the second service's model editor, tick
+     "Available for AI delegation", save, and re-read both surfaces.
+  4. Start a parent turn and inspect the delegation model summary the Task tool
+     receives.
+  5. Return to the dialog, remove that model with ×, and re-read both surfaces.
+  6. Remove every opted-in model, read the empty state, and use an empty-state
+     button to open a service editor and tick one model.
+  7. Read the plugin-declared service's row and a disabled service's row.
+  8. Tick one model id on two services, and again on two logins of one vendor.
+  9. While a write is slow (a throttled host or a long model list), remove a
+     model and try Advanced, Close, the backdrop and Escape together.
+- **Expected:** The summary row is one line of chips occupying at most 60% of the
+  row, with overflow collapsed into `+N`; every chip's tooltip and accessible
+  name carry `service · model`. A model joins only by ticking the flag in its own
+  editor. Adding writes `availableForSubagents` on that service's binding, so the
+  next parent turn lists the model in the delegation catalog; removing drops it
+  from the catalog and leaves no `false` on the stored binding. Two services
+  publishing the same model id get a service-prefixed chip; two logins of one
+  vendor stay distinguishable by account, so no chip stands for two selected
+  models. The empty state offers one button per service that still has a model to
+  tick, and that button opens the service's own model editor. A service that is
+  off or holds no credential keeps its opted-in models visible and removable,
+  annotated with why they are idle, while its models stay out of the catalog. A
+  plugin-declared service offers neither Advanced nor a remove control and says it
+  is managed by a plugin; a vanished service reports that instead of closing the
+  dialog silently. During a removal, Advanced, Close, the backdrop and Escape are
+  all inert. The service editor and the row show the same flag in both
+  directions. With no configured models the row is hidden; a refused save reports
+  the error instead of silently keeping the old value.
+- **Coverage:** Unit coverage in `subagent-delegation.test.mjs` (candidate
+  construction, account disambiguation, chip disambiguation, empty-state targets,
+  row-to-editor routing, write pre-check id parity and the exact provider write).
+  A real-renderer interaction test in
+  `subagent-delegation-account-routing.user-path.test.mjs` clicks Advanced on a
+  vendor account and asserts the account dialog opens, and on an API service row
+  and asserts the provider form opens, without issuing a `providers.update` write.
+  The interactive save → next-turn catalog path remains Draft and is run only when
+  requested in a capable environment.
+- **Specs:** [Agent runtime](../../03-runtime/02-agent-runtime.md) §5f,
+  [Provider and model system](../../03-runtime/11-provider-model-system.md) §7,
+  [Settings IA](../../04-ux/06-settings-ia.md) (Model configuration).
+- **Acceptance:** C / E / Quality — the catalog the parent agent may pick from is
+  reviewable and editable in one place on the Models page without adding a second
+  stored selection, every row states why an opted-in model is not in effect, and
+  no surface offers an editor that cannot save.
+- **Milestone:** Post-MVP model configuration.
+- **Status:** Unit and interaction coverage as described under Coverage; the
+  interactive save → next-turn catalog path remains Draft.
