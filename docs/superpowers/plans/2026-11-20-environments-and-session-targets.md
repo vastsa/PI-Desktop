@@ -116,6 +116,8 @@ function getActiveSessionWorkspaces(): SessionWorkspaces | null;
 
 **Renderer:** `useSessionTargetStore` (`apps/desktop/src/features/chat/session-target/session-target-store.ts`) holding `{ environmentId: "local" | string; repository?: { owner: string; name: string; defaultBranch: string }; baseBranch?: string }`.
 
+**Renderer API methods** (`apps/desktop/src/lib/api.ts`), one per channel: `listEnvironments`, `upsertEnvironment`, `removeEnvironment`, `resolveRemoteSessionTarget`, `startRemoteSessionWorkspace`, `retryRemoteSessionWorkspace`, `onRemoteSessionWorkspaceChanged`, `onEnvironmentsChanged`.
+
 ## Review Focus
 
 1. The user sends a prompt, the prepare job is running, and they delete the session, switch sessions, or quit: the job is cancelled or resumed correctly, the prompt is never sent to a workspace that is not ready, and nothing is sent into another session. Pinned in Tasks 6 and 9.
