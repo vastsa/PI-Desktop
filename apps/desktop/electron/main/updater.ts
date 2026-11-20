@@ -49,12 +49,13 @@ import {
   resolveStoredUpdatePreference,
   resolveUpdateMode as resolveUpdateModePolicy,
   supportsAutomaticUpdates,
-  type WindowsDistribution,
+  parsePackagedDistribution,
+  type PackagedDistribution,
 } from "./update-policy";
 import { ManualUpdateReminderTracker } from "./manual-update-reminder";
 
 export { resolveUpdateMode } from "./update-policy";
-export type { WindowsDistribution } from "./update-policy";
+export type { PackagedDistribution, WindowsDistribution } from "./update-policy";
 
 const { NsisUpdater, autoUpdater } = electronUpdaterPkg;
 
@@ -111,7 +112,7 @@ export type UpdaterOptions = {
   /** Overrides for tests. */
   platform?: NodeJS.Platform;
   isPackaged?: boolean;
-  distribution?: WindowsDistribution;
+  distribution?: PackagedDistribution;
 };
 
 export class AppUpdaterController {
@@ -121,7 +122,7 @@ export class AppUpdaterController {
   private readonly platform: NodeJS.Platform;
   private readonly isPackaged: boolean;
   private readonly env: NodeJS.ProcessEnv;
-  private readonly distribution?: WindowsDistribution;
+  private readonly distribution?: PackagedDistribution;
   private readonly defaultPreference: UpdatePreference;
   private readonly automaticSupported: boolean;
   private readonly readUpdateSettings?: () => Promise<UpdaterSettings>;
@@ -160,7 +161,7 @@ export class AppUpdaterController {
 
   private readPackagedDistribution(
     isPackaged: boolean,
-  ): WindowsDistribution | undefined {
+  ): PackagedDistribution | undefined {
     if (!isPackaged) return undefined;
     try {
       const packageJson = JSON.parse(
@@ -169,11 +170,9 @@ export class AppUpdaterController {
       if (typeof packageJson !== "object" || packageJson === null) {
         return undefined;
       }
-      const distribution = (packageJson as Record<string, unknown>)
-        .piDistribution;
-      return distribution === "installed" || distribution === "zip" || distribution === "portable"
-        ? distribution
-        : undefined;
+      return parsePackagedDistribution(
+        (packageJson as Record<string, unknown>).piDistribution,
+      );
     } catch (error) {
       this.logger.app(
         "updater",
@@ -211,6 +210,7 @@ export class AppUpdaterController {
       platform,
       isPackaged,
       this.env,
+      distribution,
     );
     this.readUpdateSettings = options.readUpdateSettings;
     this.persistLastNotifiedVersion = options.persistLastNotifiedVersion;

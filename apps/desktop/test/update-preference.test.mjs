@@ -23,10 +23,12 @@ const [
 ]);
 
 const {
+  parsePackagedDistribution,
   resolveDefaultUpdatePreference,
   resolveEffectiveUpdatePreference,
   resolveStoredUpdatePreference,
   resolveUpdateMode,
+  supportsAutomaticUpdates,
 } = policy;
 const { ManualUpdateReminderTracker } = reminders;
 const { persistUpdatePreference } = settingsPreference;
@@ -93,4 +95,26 @@ test("dismissed update banner hides via persisted state, not component memory", 
   // record the dismissal through the updatesDismiss IPC channel (#1317).
   assert.match(updateBannerSource, /update\.dismissed === true/);
   assert.match(updateBannerSource, /api\.updatesDismiss\(\)/);
+});
+
+test("an unsigned build never offers in-app delivery", () => {
+  assert.equal(supportsAutomaticUpdates("darwin", true, {}, "unsigned"), false);
+  assert.equal(resolveDefaultUpdatePreference("darwin", true, {}, "unsigned"), "manual");
+  assert.equal(resolveUpdateMode("darwin", true, {}, "unsigned"), "manual");
+  // A stored "automatic" preference from another build must not win.
+  assert.equal(resolveUpdateMode("darwin", true, {}, "unsigned", "automatic"), "manual");
+  // Signed and unmarked builds behave as before.
+  assert.equal(supportsAutomaticUpdates("darwin", true, {}, "installed"), true);
+  assert.equal(supportsAutomaticUpdates("darwin", true, {}), true);
+  assert.equal(resolveUpdateMode("darwin", true, {}, "installed"), "in-app");
+  assert.equal(resolveUpdateMode("darwin", false, {}, "unsigned"), "disabled");
+});
+
+test("packaged distribution metadata accepts only the known markers", () => {
+  for (const value of ["installed", "zip", "portable", "unsigned"]) {
+    assert.equal(parsePackagedDistribution(value), value);
+  }
+  for (const value of ["Unsigned", "", 1, null, undefined, {}, ["unsigned"]]) {
+    assert.equal(parsePackagedDistribution(value), undefined);
+  }
 });
