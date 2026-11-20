@@ -386,3 +386,206 @@ async fn remote_projects_cannot_create_isolated_sessions() {
         .len();
     assert_eq!(before, after);
 }
+
+mod worktree_environment {
+    use super::*;
+    use crate::workspace_git::layout::Repository;
+    use crate::workspace_git::registry::{self, SetupStatus, Variable, WorktreeRecord};
+
+    const PROBE: &str = "printf '%s|%s|%s|%s|%s|%s|%s' \"${MY_VAR-unset}\" \"${PI_WORKTREE_ROOT-unset}\" \"${PI_PROJECT_ROOT-unset}\" \"${GIT_CONFIG_COUNT-unset}\" \"${GIT_CONFIG_KEY_0-unset}\" \"${GIT_CONFIG_VALUE_0-unset}\" \"${GIT_DIR-unset}\"";
+
+    fn proxy() -> String {
+        format!("http://127.0.0.1:4321/{}/", "ab".repeat(32))
+    }
+
+    /// What the probe prints for a variable host-core does not set: the value
+    /// the Bash tool inherits from this process, or `unset`.
+    fn ambient(name: &str) -> String {
+        std::env::var(name).unwrap_or_else(|_| "unset".to_string())
+    }
+
+    /// The probe's output for a root that is not a registered worktree: the
+    /// tool environment exactly as it was before worktrees existed.
+    fn untouched() -> String {
+        [
+            "MY_VAR",
+            "PI_WORKTREE_ROOT",
+            "PI_PROJECT_ROOT",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_0",
+            "GIT_CONFIG_VALUE_0",
+            "GIT_DIR",
+        ]
+        .map(ambient)
+        .join("|")
+    }
+
+    fn ambient_git_config() -> String {
+        ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]
+            .map(ambient)
+            .join("|")
+    }
+
+    async fn register(state: &Arc<Mutex<AppState>>, root: &Path, variables: &[(&str, &str)]) {
+        let guard = state.lock().await;
+        registry::insert(
+            &guard.db,
+            &WorktreeRecord {
+                installation_id: "00000000-0000-4000-8000-000000000000".into(),
+                session_id: "s-1".into(),
+                repository: Repository::parse("octo", "repo").unwrap(),
+                base_branch: "main".into(),
+                work_branch: "pi-desktop/8b54618f6bc1".into(),
+                path: root.to_string_lossy().into_owned(),
+                main_path: "/w/repos/github.com/octo/repo".into(),
+                base_commit: "a".repeat(40),
+                created_at: "2026-11-20T00:00:00.000Z".into(),
+                variables: variables
+                    .iter()
+                    .map(|(name, value)| Variable {
+                        name: name.to_string(),
+                        value: value.to_string(),
+                    })
+                    .collect(),
+                setup_script: None,
+                setup_status: SetupStatus::None,
+                setup_log_tail: None,
+            },
+        )
+        .unwrap();
+    }
+
+    /// Run the probe through `tools.workspaceExecute` and return its stdout.
+    async fn probe(
+        state: &Arc<Mutex<AppState>>,
+        tx: &mpsc::UnboundedSender<String>,
+        root: &Path,
+        call: &str,
+        git_proxy_url: Option<&str>,
+    ) -> String {
+        let shell = {
+            let guard = state.lock().await;
+            command_shell_catalog(&guard).unwrap().effective.unwrap()
+        };
+        let mut input = json!({
+            "path": root,
+            "sessionId": "local-owner",
+            "toolCallId": call,
+            "toolName": "Bash",
+            "args": { "command": PROBE },
+            "expectedCommandShellId": shell.id,
+            "expectedCommandShellDialect": shell.dialect.as_str(),
+        });
+        if let Some(url) = git_proxy_url {
+            input["gitProxyUrl"] = json!(url);
+        }
+        let result = handle_request(state.clone(), "tools.workspaceExecute", input, tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(result["ok"], true, "{result}");
+        result["content"]["stdout"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no stdout in {result}"))
+            .to_string()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bash_in_a_registered_worktree_sees_its_variables_and_roots() {
+        let (dir, state, tx, _rx) = fixture();
+        let root = crate::workspace::simple_canonicalize(dir.path())
+            .unwrap()
+            .join("wt");
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        register(&state, &root, &[("MY_VAR", "from-record")]).await;
+        let root_text = root.to_string_lossy().into_owned();
+
+        let plain = probe(&state, &tx, &root, "plain", None).await;
+        assert_eq!(
+            plain,
+            format!(
+                "from-record|{root_text}|/w/repos/github.com/octo/repo|{}|{}",
+                ambient_git_config(),
+                ambient("GIT_DIR")
+            )
+        );
+
+        let proxy = proxy();
+        let proxied = probe(&state, &tx, &root.join("nested"), "proxied", Some(&proxy)).await;
+        assert_eq!(
+            proxied,
+            format!(
+                "from-record|{root_text}|/w/repos/github.com/octo/repo|1|url.{proxy}octo/repo.git.insteadOf|https://github.com/octo/repo.git|{}",
+                ambient("GIT_DIR")
+            )
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bash_in_an_unregistered_directory_sees_none_of_it_even_with_a_proxy_url() {
+        let (dir, state, tx, _rx) = fixture();
+        let base = crate::workspace::simple_canonicalize(dir.path()).unwrap();
+        let registered = base.join("wt");
+        let other = base.join("wt-other");
+        std::fs::create_dir_all(&registered).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        register(&state, &registered, &[("MY_VAR", "from-record")]).await;
+        let proxy = proxy();
+        for (call, url) in [("with-proxy", Some(proxy.as_str())), ("without", None)] {
+            assert_eq!(probe(&state, &tx, &other, call, url).await, untouched());
+        }
+        // The parent of a worktree is not the worktree either.
+        assert_eq!(
+            probe(&state, &tx, &base, "parent", Some(&proxy)).await,
+            untouched()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stored_variable_with_a_forbidden_name_is_not_injected() {
+        let (dir, state, tx, _rx) = fixture();
+        let root = crate::workspace::simple_canonicalize(dir.path())
+            .unwrap()
+            .join("wt");
+        std::fs::create_dir_all(&root).unwrap();
+        register(
+            &state,
+            &root,
+            &[
+                ("GIT_DIR", "/elsewhere"),
+                ("MY_VAR", "kept"),
+                ("PI_WORKTREE_ROOT", "/elsewhere"),
+            ],
+        )
+        .await;
+        let root_text = root.to_string_lossy().into_owned();
+        assert_eq!(
+            probe(&state, &tx, &root, "forbidden", None).await,
+            format!(
+                "kept|{root_text}|/w/repos/github.com/octo/repo|{}|{}",
+                ambient_git_config(),
+                ambient("GIT_DIR")
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_malformed_proxy_url_is_refused_before_the_tool_runs() {
+        let (dir, state, tx, _rx) = fixture();
+        for bad in [json!("https://evil.example/"), json!(7), json!("")] {
+            let error = handle_request(
+                state.clone(),
+                "tools.workspaceExecute",
+                json!({"path":dir.path(),"sessionId":"local-owner","toolCallId":"w","toolName":"Write","args":{"path":"should-not-exist","content":"x"},"gitProxyUrl":bad}),
+                tx.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
+        assert!(!dir.path().join("should-not-exist").exists());
+        assert!(state.lock().await.active_bash_cancellations.is_empty());
+    }
+}

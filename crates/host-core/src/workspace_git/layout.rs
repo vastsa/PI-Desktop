@@ -235,6 +235,12 @@ impl Layout {
     /// The URL stored as `origin`. It never carries a credential or a proxy
     /// address, so a host restart on a new proxy port needs no rewrite.
     pub fn clone_url(&self, repository: &Repository) -> String {
+        Self::github_url(repository)
+    }
+
+    /// `https://github.com/<owner>/<repo>.git`: the only URL ever cloned, and
+    /// the one the credential proxy rewrite stands in for.
+    pub fn github_url(repository: &Repository) -> String {
         format!(
             "https://{GITHUB_HOST}/{}/{}.git",
             repository.owner, repository.name

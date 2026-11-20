@@ -275,6 +275,16 @@ pub(super) async fn handle(
         ));
     }
     let mut input = params.clone();
+    // Not part of `ToolsExecuteParams`: the paired host's own git proxy
+    // address, which only reaches a tool that runs inside a registered
+    // worktree (see `workspace_git::environment`).
+    let git_proxy_url = crate::workspace_git::environment::parse_proxy_url(
+        input
+            .as_object_mut()
+            .and_then(|object| object.remove("gitProxyUrl"))
+            .as_ref(),
+    )
+    .map_err(|error| rpc_err(1002, error.message, "INVALID_PARAMS"))?;
     input["mode"] = json!("agent");
     let p: ToolsExecuteParams = serde_json::from_value(input)
         .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
@@ -293,7 +303,7 @@ pub(super) async fn handle(
     }
     tools::validate_timeout_ms(p.timeout_ms)
         .map_err(|(code, message)| rpc_err(1002, message, &code))?;
-    let (mut cancellation, hashline, shell) = {
+    let (mut cancellation, hashline, shell, extra_env) = {
         let mut st = state.lock().await;
         let shell = if p.tool_name == "Bash" {
             let catalog = command_shell_catalog(&st)?;
@@ -320,7 +330,13 @@ pub(super) async fn handle(
         let cancellation = st
             .register_bash_cancellation(&p.session_id, &p.tool_call_id)
             .map_err(|code| rpc_err(1008, "tool already executing", &code))?;
-        (Some(cancellation), st.hashline.clone(), shell)
+        // Empty unless `root` is inside a registered git worktree.
+        let extra_env = if p.tool_name == "Bash" {
+            crate::workspace_git::environment::for_tool(&st.db, &root, git_proxy_url.as_deref())
+        } else {
+            Vec::new()
+        };
+        (Some(cancellation), st.hashline.clone(), shell, extra_env)
     };
     if tool_cancellation_requested(&cancellation) {
         state
@@ -340,8 +356,9 @@ pub(super) async fn handle(
                 timeout_ms: tools::effective_timeout_ms(&p.tool_name, p.timeout_ms),
                 cancellation: cancellation.clone(),
                 output_tx: Some(tx),
-                // Remote workspaces are never isolated (ADR 0329).
-                extra_env: Vec::new(),
+                // Remote workspaces are never isolated (ADR 0329); a git
+                // worktree prepared for a session brings its own environment.
+                extra_env,
                 run_in_background: false,
                 continuation_turn_id: None,
                 app_state: None,
