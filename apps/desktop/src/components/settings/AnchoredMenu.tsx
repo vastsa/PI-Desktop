@@ -3,7 +3,8 @@
  *
  * Settings cards clip their overflow (`.settings-panel` draws the frame with
  * `overflow: hidden`), so an anchored surface cannot be an absolutely
- * positioned child: it portals to `document.body` as a fixed layer and is
+ * positioned child: it portals to body level (or the enclosing modal's layer
+ * host, see `portalToBody`) as a fixed layer and is
  * placed from the trigger's rect. The placement, close and reposition rules
  * follow the font picker, which solved the same problem first.
  *
@@ -20,7 +21,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../../lib/portal-visibility";
 
 const MARGIN = 8;
 const GAP = 6;
@@ -231,8 +232,8 @@ export function AnchoredMenu({
   return (
     <div className={className} ref={rootRef}>
       {trigger(triggerRef)}
-      {open && typeof document !== "undefined"
-        ? createPortal(
+      {open
+        ? portalToBody(
             <div
               ref={menuRef}
               className={`${menuClassName}${position ? " is-open" : ""}`}
@@ -253,7 +254,6 @@ export function AnchoredMenu({
             >
               {children}
             </div>,
-            document.body,
           )
         : null}
     </div>

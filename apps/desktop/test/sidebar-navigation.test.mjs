@@ -128,7 +128,7 @@ test("destination history is available through shortcuts without titlebar button
   assert.doesNotMatch(appSource, /title=\{t\("nav\.(?:back|forward)"\)\}/);
 });
 
-test("sidebar shows a bounded standalone session list before retained projects", () => {
+test("sidebar shows a bounded Recent session list before retained projects", () => {
   const newProjectAction = sidebarSource.match(
     /<div[\s\S]*?className="sidebar-list-toolbar"[\s\S]*?data-action="new-project"[\s\S]*?<\/div>/,
   )?.[0] ?? "";
@@ -139,10 +139,11 @@ test("sidebar shows a bounded standalone session list before retained projects",
   assert.match(newProjectAction, /t\("nav\.projects"\)/);
   assert.match(newProjectAction, /<IconNewProject/);
   assert.match(newProjectAction, /openProjectPicker\(\)/);
-  assert.match(standaloneSessions, /t\("nav\.sessions"/);
+  assert.match(standaloneSessions, /t\("nav\.recentSessions"\)/);
   assert.match(standaloneSessions, /data-action="new-standalone-session"/);
   assert.match(standaloneSessions, /createSession\(\{ projectPath: null \}\)/);
-  assert.match(standaloneSessions, /renderSessionRows\(temporarySessionHistory/);
+  assert.match(standaloneSessions, /renderSessionRows\(visibleRecentSessions, \{ global: true \}\)/);
+  assert.match(standaloneSessions, /data-action="recent-sessions-load-more"/);
   assert.ok(
     sidebarSource.indexOf('data-sidebar-session-section="temporary"') <
       sidebarSource.indexOf('data-action="new-project"'),
@@ -151,7 +152,7 @@ test("sidebar shows a bounded standalone session list before retained projects",
     globalStyles,
     // `[^}]*`, not `[\s\S]*?`: the assertion must read this block, not a
     // `max-height` in some later partial of the concatenated stylesheet.
-    /\.sidebar-session-group-body\.standalone\s*\{[^}]*max-height:\s*146px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/,
+    /\.sidebar-session-group-body\.standalone\s*\{[^}]*max-height:\s*291px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/,
   );
   assert.doesNotMatch(sidebarSource, /data-sidebar-project-group="temporary"/);
 });
